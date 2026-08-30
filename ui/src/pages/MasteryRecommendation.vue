@@ -37,6 +37,17 @@
       </n-space>
     </div>
 
+    <div
+      class="mastery-global-switch"
+      style="display: flex; align-items: center; gap: 8px; margin-top: 8px"
+    >
+      <n-switch v-model:value="configStore.enable_mastery" size="small" />
+      <n-text strong>全自动专精</n-text>
+      <n-text depth="3" style="font-size: 12px"
+        >关闭后暂停专精自动化（训练室动作/通知/守卫），保留仓库材料扫描</n-text
+      >
+    </div>
+
     <n-space style="margin-top: 8px" :size="8" align="center" wrap>
       <n-input
         v-model:value="searchQuery"
@@ -349,6 +360,7 @@
           </n-scrollbar>
           <div style="display: flex; gap: 12px; margin-top: 16px; align-items: center">
             <n-checkbox v-model:checked="routeSettings[prof].optimal">最优协助干员</n-checkbox>
+            <n-checkbox v-model:checked="routeSettings[prof].half_off">有减半加成</n-checkbox>
           </div>
           <n-divider />
           <n-text depth="2">中枢干员加成</n-text>
@@ -362,11 +374,26 @@
           <n-text v-if="controlCenterBonus > 0" depth="2" style="font-size: 12px; margin-top: 4px">
             中枢加成: +{{ controlCenterBonus }}%
           </n-text>
+          <n-divider />
+          <n-text depth="2">减半换人缓冲时间（分钟）</n-text>
+          <n-input-number
+            v-model:value="configStore.mastery_swap_buffer"
+            :min="0"
+            :max="60"
+            size="small"
+            style="width: 120px; margin-top: 4px"
+          />
+          <n-text depth="3" style="font-size: 11px; margin-top: 2px">
+            减半对象需在位时间 = 5小时 + 缓冲时间，缓冲越大越保守
+          </n-text>
         </n-tab-pane>
       </n-tabs>
       <template #footer>
         <n-space justify="end">
-          <n-button @click="resetRoute">恢复默认</n-button>
+          <n-button @click="resetRoute" :disabled="routeSaving">恢复默认</n-button>
+          <n-button type="primary" @click="saveRouteAndClose" :loading="routeSaving">
+            保存并关闭
+          </n-button>
         </n-space>
       </template>
     </n-modal>
@@ -381,19 +408,29 @@
     >
       <n-space vertical>
         <n-input v-model:value="planSearch" placeholder="搜索干员" clearable size="small" />
-        <n-space :size="4" wrap>
-          <n-tag
-            v-for="e in planEntries"
-            :key="e.key"
-            closable
-            size="small"
-            type="success"
-            @close="removePlanEntry(e)"
-          >
-            {{ e.name }} {{ e.skill_name }}
-          </n-tag>
-          <n-text v-if="!planEntries.length" depth="3">未添加计划</n-text>
-        </n-space>
+        <draggable
+          v-model="sortablePlanEntries"
+          item-key="key"
+          handle=".drag-handle"
+          @end="onPlanReorder"
+        >
+          <template #item="{ element: e }">
+            <n-tag
+              closable
+              size="small"
+              :type="getStatusType(e.status)"
+              @close="removePlanEntry(e)"
+              style="margin: 2px 4px; cursor: move"
+              class="drag-handle"
+            >
+              {{ e.name }} {{ e.skill_name }}
+              <template v-if="e.status && e.status !== 'idle'">
+                ({{ getStatusLabel(e.status) }}{{ e.failed_reason ? '：' + e.failed_reason : '' }})
+              </template>
+            </n-tag>
+          </template>
+        </draggable>
+        <n-text v-if="!planEntries.length" depth="3">未添加计划</n-text>
         <n-divider />
         <n-scrollbar style="max-height: 50vh">
           <div v-for="op in filteredPlanOperators" :key="op.char_id" class="plan-op-row">
@@ -425,7 +462,6 @@
       <template #footer>
         <n-space justify="end">
           <n-button @click="clearPlan" size="small">清空</n-button>
-          <n-button @click="retryFailed" size="small" type="warning">重试失败项</n-button>
           <n-button type="primary" @click="savePlanFn" size="small">保存</n-button>
         </n-space>
       </template>
@@ -469,7 +505,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
   NAvatar,
@@ -504,11 +540,17 @@ import {
 import { Settings, List } from '@vicons/carbon'
 import { Build, Refresh } from '@vicons/ionicons5'
 import axios from 'axios'
+import draggable from 'vuedraggable'
 import { useMasteryStore } from '@/stores/mastery'
 import { usePlanStore } from '@/stores/plan'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 import { pinyin_match } from '@/utils/common'
+import {
+  buildMasteryRoutePayload,
+  normalizeMasteryRouteDefaults,
+  parseMasteryRoute
+} from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
 
 const ListIcon = List
@@ -520,8 +562,6 @@ const store = useMasteryStore()
 const planStore = usePlanStore()
 const configStore = useConfigStore()
 const { operators: operatorOptions } = storeToRefs(planStore)
-
-const ROUTE_KEY = 'mower_mastery_route'
 
 const profKeys = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种']
 const profMap = {
@@ -553,7 +593,8 @@ const decomposeT3 = ref(false)
 const {
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
-  book_operators: bookOps
+  book_operators: bookOps,
+  mastery_control_center: controlCenter
 } = storeToRefs(configStore)
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
@@ -575,6 +616,7 @@ const emptyText = computed(() => {
 // ─── 计划（技能级别）───
 // 格式: { "charId_skillIndex": true, ... }
 const plan = ref({})
+const planStatus = ref({}) // { "charId_skillIndex": {id, status, target_level, priority, expires_at} }
 const showPlan = ref(false)
 const planSearch = ref('')
 
@@ -591,23 +633,63 @@ function allPlanned(op) {
   return op.recommendations.every((r) => isSkillPlanned(op.char_id, r.skill_index))
 }
 
+function getStatusLabel(status) {
+  const map = {
+    idle: '待执行',
+    arranging: '正在安排',
+    training: '训练中',
+    waiting_collect: '待收取',
+    completed: '已完成',
+    failed: '失败'
+  }
+  return map[status] || status
+}
+
+function getStatusType(status) {
+  const map = {
+    idle: 'default',
+    arranging: 'info',
+    training: 'success',
+    waiting_collect: 'warning',
+    completed: 'success',
+    failed: 'error'
+  }
+  return map[status] || 'default'
+}
+
 async function toggleSkillPlan(op, rec) {
   const k = planKey(op.char_id, rec.skill_index)
   if (plan.value[k]) {
-    delete plan.value[k]
-  } else {
-    plan.value[k] = true
-  }
-  try {
-    const body = {}
-    for (const key in plan.value) {
-      const [cid, si] = parsePlanKey(key)
-      const o = store.recommendations.find((x) => x.char_id === cid)
-      if (o && !isNaN(si)) body[o.name] = si
+    // 删除计划
+    const info = planStatus.value[k]
+    if (info && info.id) {
+      try {
+        await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
+          data: { id: info.id }
+        })
+      } catch (e) {
+        message.error(`删除失败: ${e.message}`)
+        return
+      }
     }
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
-  } catch (e) {
-    message.error(`保存失败: ${e.message}`)
+    delete plan.value[k]
+    delete planStatus.value[k]
+  } else {
+    // 添加计划
+    try {
+      const body = { items: [{ name: op.name, skill_index: rec.skill_index }] }
+      const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
+      const results = r.data?.results || []
+      if (results[0]?.status === 'added') {
+        plan.value[k] = true
+        // #65：target_level 由服务端默认专三（与推荐一致）
+        planStatus.value[k] = { id: results[0].id, status: 'idle', target_level: 3, priority: 0 }
+      } else {
+        message.warning(results[0]?.reason || '添加失败')
+      }
+    } catch (e) {
+      message.error(`保存失败: ${e.message}`)
+    }
   }
 }
 
@@ -618,51 +700,90 @@ function addAllToPlan(op) {
   message.success(`${op.name} 全部技能已加入计划`)
 }
 
-function removePlanEntry(e) {
-  delete plan.value[e.key]
-}
-function clearPlan() {
-  plan.value = {}
-}
-async function savePlanFn() {
-  const body = {}
-  for (const k in plan.value) {
-    const [cid, si] = k.split('_')
-    const op = store.recommendations.find((o) => o.char_id === cid)
-    if (op && si !== undefined) {
-      body[op.name] = parseInt(si)
+async function removePlanEntry(e) {
+  const info = planStatus.value[e.key]
+  if (info && info.id) {
+    try {
+      await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { data: { id: info.id } })
+    } catch (err) {
+      message.error(`删除失败: ${err.message}`)
+      return
     }
   }
-  const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
+  delete plan.value[e.key]
+  delete planStatus.value[e.key]
+}
+async function clearPlan() {
+  for (const k in planStatus.value) {
+    const info = planStatus.value[k]
+    if (info && info.id) {
+      try {
+        await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
+          data: { id: info.id }
+        })
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+  plan.value = {}
+  planStatus.value = {}
+}
+async function savePlanFn() {
+  const items = []
+  for (const k in plan.value) {
+    const [cid, si] = parsePlanKey(k)
+    const op = store.recommendations.find((o) => o.char_id === cid)
+    if (op && si !== undefined) {
+      if (!planStatus.value[k]?.id) {
+        // #65：不传 target_level，服务端默认专三
+        items.push({ name: op.name, skill_index: parseInt(si) })
+      }
+    }
+  }
+  if (!items.length) {
+    message.info('没有新计划需要保存')
+    showPlan.value = false
+    return
+  }
+  const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items })
   const results = r.data?.results || []
-  const ok = results.filter((x) => x.status === 'added' || x.status === 'retry')
+  const ok = results.filter((x) => x.status === 'added')
   const err = results.filter((x) => x.status === 'error')
   if (err.length) {
     message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
   } else {
     message.success(`计划已保存，新增 ${ok.length} 项`)
   }
+  await refreshPlanFromServer()
   showPlan.value = false
 }
 
-async function retryFailed() {
+async function refreshPlanFromServer() {
   try {
     const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
     const data = r.data || {}
-    const failed = {}
-    for (const [key, val] of Object.entries(data.plans || {})) {
-      if (val.status === 'failed') failed[key] = true
+    const p = {}
+    const ps = {}
+    for (const item of data.plans || []) {
+      const k = planKey(item.char_id, item.skill_index)
+      // failed 计划也要显示（带失败原因），不能从列表凭空消失（#69）
+      if (item.status !== 'completed') {
+        p[k] = true
+      }
+      ps[k] = {
+        id: item.id,
+        status: item.status,
+        target_level: item.target_level,
+        priority: item.priority,
+        expires_at: item.expires_at,
+        failed_reason: item.failed_reason
+      }
     }
-    if (!Object.keys(failed).length) {
-      message.info('没有失败项需要重试')
-      return
-    }
-    const result = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, failed)
-    const results = result.data?.results || []
-    const retried = results.filter((r) => r.status === 'retry' || r.status === 'added')
-    message.success(`已重试 ${retried.length} 项`)
+    plan.value = p
+    planStatus.value = ps
   } catch (e) {
-    message.error(`重试失败: ${e.message}`)
+    console.error('refreshPlanFromServer failed', e)
   }
 }
 
@@ -678,18 +799,53 @@ const planEntries = computed(() => {
     const op = store.recommendations.find((o) => o.char_id === cid)
     if (op) {
       const rec = op.recommendations.find((r) => r.skill_index === si)
+      const info = planStatus.value[k] || {}
       if (rec)
         entries.push({
           key: k,
           char_id: cid,
           skill_index: si,
           name: op.name,
-          skill_name: rec.skill_name
+          skill_name: rec.skill_name,
+          status: info.status || 'idle',
+          priority: info.priority || 0,
+          failed_reason: info.failed_reason
         })
     }
   }
+  entries.sort((a, b) => {
+    // failed 计划排到列表底部（待重试，不参与正常优先级排序）
+    if (a.status === 'failed' && b.status !== 'failed') return 1
+    if (b.status === 'failed' && a.status !== 'failed') return -1
+    return a.priority - b.priority
+  })
   return entries
 })
+
+const sortablePlanEntries = ref([])
+watch(
+  planEntries,
+  (val) => {
+    sortablePlanEntries.value = [...val]
+  },
+  { immediate: true }
+)
+
+async function onPlanReorder() {
+  const updates = sortablePlanEntries.value
+    .map((e, idx) => ({ id: planStatus.value[e.key]?.id, priority: idx }))
+    .filter((u) => u.id)
+  if (!updates.length) return
+  try {
+    await axios.patch(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/order`, updates)
+    for (const u of updates) {
+      const entry = sortablePlanEntries.value.find((e) => planStatus.value[e.key]?.id === u.id)
+      if (entry) planStatus.value[entry.key].priority = u.priority
+    }
+  } catch (e) {
+    message.error(`排序失败: ${e.message}`)
+  }
+}
 
 const filteredPlanOperators = computed(() => {
   let list = allOperatorList.value.filter((o) => hasPlannedSkill(o))
@@ -799,11 +955,6 @@ async function autoWorkshop() {
   }
 }
 
-function getCharName(cid) {
-  const op = store.recommendations.find((o) => o.char_id === cid)
-  return op ? op.name : cid
-}
-
 // ─── 专精路线设置 ───
 const showSettings = ref(false)
 const settingsTab = ref('近卫')
@@ -826,40 +977,74 @@ const controlCenterOptions = [
   { label: '烛煌 (+5%)', value: 'zhuhuang' },
   { label: '斩业星熊 (+5%)', value: 'star_bear' }
 ]
-const controlCenter = ref('none')
 const controlCenterBonus = computed(() => (controlCenter.value === 'none' ? 0 : 5))
 
 const defaultsCache = ref(null)
 
-const routeSettings = reactive(Object.fromEntries(profKeys.map((p) => [p, { supports: [] }])))
+const routeSettings = reactive(
+  Object.fromEntries(profKeys.map((p) => [p, { supports: [], half_off: true }]))
+)
 let _autoSaveReady = false
 let _autoSaveTimer = null
-watch(
-  routeSettings,
-  () => {
-    if (!_autoSaveReady) return
-    if (_autoSaveTimer) clearTimeout(_autoSaveTimer)
-    _autoSaveTimer = setTimeout(() => {
-      _autoSaveTimer = null
-      for (const p of profKeys) {
-        const s = routeSettings[p]
-        if (s?.supports?.length) {
-          const payload = s.supports.map((sup) => ({
-            ...sup,
-            match: sup.match === 'yes'
-          }))
-          axios
-            .post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, {
-              profession: p,
-              supports: JSON.stringify(payload)
-            })
-            .catch((e) => console.error(`auto-save ${p} failed`, e))
-        }
-      }
-    }, 500)
-  },
-  { deep: true }
-)
+let _routeSaveChain = Promise.resolve()
+const _dirtyRouteProfessions = new Set()
+const routeSaving = ref(false)
+
+function persistRouteSettings() {
+  const professions = [..._dirtyRouteProfessions]
+  if (!professions.length) return _routeSaveChain
+  _dirtyRouteProfessions.clear()
+  const payloads = professions.map((profession) =>
+    buildMasteryRoutePayload(profession, routeSettings[profession])
+  )
+  routeSaving.value = true
+  const savePromise = _routeSaveChain
+    .catch(() => {})
+    .then(() =>
+      Promise.all(
+        payloads.map((payload) =>
+          axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, payload)
+        )
+      )
+    )
+  _routeSaveChain = savePromise
+  savePromise.then(
+    () => {
+      if (_routeSaveChain === savePromise) routeSaving.value = false
+    },
+    () => {
+      professions.forEach((profession) => _dirtyRouteProfessions.add(profession))
+      if (_routeSaveChain === savePromise) routeSaving.value = false
+    }
+  )
+  return savePromise
+}
+
+function scheduleRouteSave(profession) {
+  if (!_autoSaveReady) return
+  _dirtyRouteProfessions.add(profession)
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer)
+  _autoSaveTimer = setTimeout(() => {
+    _autoSaveTimer = null
+    persistRouteSettings().catch((e) => console.error('auto-save mastery routes failed', e))
+  }, 500)
+}
+
+function flushRouteSettings() {
+  if (_autoSaveTimer) {
+    clearTimeout(_autoSaveTimer)
+    _autoSaveTimer = null
+  }
+  return persistRouteSettings()
+}
+
+for (const profession of profKeys) {
+  watch(
+    () => routeSettings[profession],
+    () => scheduleRouteSave(profession),
+    { deep: true }
+  )
+}
 
 function newSupport(p) {
   const n = routeSettings[p].supports.length
@@ -889,49 +1074,41 @@ function applyRoute(d) {
     if (d[p]) {
       routeSettings[p].supports = (d[p].supports || routeSettings[p].supports).filter(Boolean)
       routeSettings[p].optimal = !!d[p].optimal
+      routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
     }
   }
   if (d.controlCenter) controlCenter.value = d.controlCenter
 }
 
 async function loadRoute() {
-  localStorage.removeItem(ROUTE_KEY)
   const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-route`)
   const routes = r.data?.routes || []
   const backups = r.data?.backups || {}
-  const jsonDefaults = r.data?.defaults || []
+  const routeDefaults = r.data?.defaults || {}
   const merged = { _backups: backups }
   for (const rt of routes) {
-    try {
-      const parsed = JSON.parse(rt.supports)
-      const supports = (Array.isArray(parsed) ? parsed : parsed.supports || []).map((s) => ({
-        ...s,
-        match: s.match === true ? 'yes' : s.match === false ? 'no' : s.match
-      }))
-      merged[rt.profession] = {
-        supports,
-        optimal: false
+    const parsed = parseMasteryRoute(rt)
+    if (!parsed.profession) continue
+    merged[parsed.profession] = parsed
+    if (parsed.legacyControlCenter && controlCenter.value === 'none') {
+      controlCenter.value = parsed.legacyControlCenter
+    }
+  }
+  merged._jsonDefaults = normalizeMasteryRouteDefaults(routeDefaults)
+  // DB 未保存过此职业路线时，用默认配置兜底显示（不自动写库，编辑后由保存流程落库）
+  for (const p of profKeys) {
+    if (!merged[p] && merged._jsonDefaults[p]?.length) {
+      merged[p] = {
+        profession: p,
+        supports: merged._jsonDefaults[p],
+        optimal: false,
+        half_off: true
       }
-    } catch (e) {
-      console.error(`loadRoute: failed to parse supports for ${rt.profession}`, e)
     }
   }
-  const jsonMap = {}
-  for (const d of jsonDefaults) {
-    try {
-      const parsed = JSON.parse(d.supports)
-      const supports = (Array.isArray(parsed) ? parsed : parsed.supports || []).map((s) => ({
-        ...s,
-        match: s.match === true ? 'yes' : s.match === false ? 'no' : s.match
-      }))
-      jsonMap[d.profession] = supports
-    } catch (e) {
-      console.error(`loadRoute: failed to parse json default for ${d.profession}`, e)
-    }
-  }
-  merged._jsonDefaults = jsonMap
   defaultsCache.value = merged
   applyRoute(merged)
+  await nextTick()
   _autoSaveReady = true
 }
 async function openSettings() {
@@ -948,26 +1125,25 @@ async function openSettings() {
   showSettings.value = true
 }
 watch(showSettings, (val) => {
-  if (!val && _autoSaveTimer) {
-    clearTimeout(_autoSaveTimer)
-    _autoSaveTimer = null
-    for (const p of profKeys) {
-      const s = routeSettings[p]
-      if (s?.supports?.length) {
-        const payload = s.supports.map((sup) => ({
-          ...sup,
-          match: sup.match === 'yes'
-        }))
-        axios
-          .post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, {
-            profession: p,
-            supports: JSON.stringify(payload)
-          })
-          .catch((e) => console.error(`flush-save ${p} failed`, e))
-      }
-    }
+  if (!val && (_autoSaveTimer || _dirtyRouteProfessions.size)) {
+    flushRouteSettings().catch((e) => console.error('flush-save mastery routes failed', e))
   }
 })
+
+async function saveRouteAndClose() {
+  try {
+    await Promise.all([
+      flushRouteSettings(),
+      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
+    ])
+    showSettings.value = false
+    message.success('专精路线设置已保存')
+  } catch (e) {
+    console.error('saveRouteAndClose: failed', e)
+    message.error('保存失败')
+  }
+}
+
 async function resetRoute() {
   const p = settingsTab.value
   if (!p) return
@@ -982,16 +1158,11 @@ async function resetRoute() {
     return
   }
   routeSettings[p].supports = jsonSupports.map((s) => ({ ...s }))
+  routeSettings[p].half_off = true
   routeSettings[p].optimal = false
+  _dirtyRouteProfessions.add(p)
   try {
-    const payload = routeSettings[p].supports.map((sup) => ({
-      ...sup,
-      match: sup.match === 'yes'
-    }))
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, {
-      profession: p,
-      supports: JSON.stringify(payload)
-    })
+    await flushRouteSettings()
     message.success(`已恢复 ${p} 默认路线并保存`)
   } catch (e) {
     console.error(`resetRoute: failed to save ${p}`, e)
@@ -1069,9 +1240,6 @@ function formatTime(s) {
   if (m > 0) return `${m}分钟`
   return `${s}秒`
 }
-async function refresh() {
-  await store.fetchRecommendations()
-}
 async function fetchCultivate() {
   await store.fetchCultivate()
   if (store.cultivateOk) {
@@ -1095,7 +1263,8 @@ function buildSupports(op) {
     swap_name: sup.swap ? sup.swap_name || sup.name : sup.name,
     skill_level: sup.skill_level,
     efficiency: Math.min(100, (sup.efficiency || 45) + bonus),
-    match: sup.swap ? !!sup.match : false
+    match: sup.swap ? !!sup.match : false,
+    half_off: s.half_off
   }))
 }
 
@@ -1110,35 +1279,20 @@ function confirmSkill(op, rec) {
 
 async function doAddTask() {
   showConfirm.value = false
-  const { op, rec, supports } = cd
-  const p = profMap[op.profession] || '近卫'
-  const firstSupport = routeSettings[p]?.supports?.[0]?.name || ''
-  const skillNum = rec.skill_index + 1
+  const { op, rec } = cd
   try {
-    const r1 = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
-      task: {
-        time: new Date(Date.now() + 60000).toISOString(),
-        plan: { train: [firstSupport, op.name] },
-        task_type: '上班',
-        meta_data: ''
-      }
+    // #71：一键专精走 DB 计划创建 API（POST /mastery-plan），不再发原始 /task「技能专精」
+    // （死流：server 只认 DB 计划）。target_level 由服务端默认专三，与确认弹窗「→ M3」一致。
+    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
+      items: [{ name: op.name, skill_index: rec.skill_index }]
     })
-    if (r1.data !== '添加任务成功！') {
-      message.warning(r1.data)
-      return
+    const results = r.data?.results || []
+    if (results[0]?.status === 'added') {
+      message.success(`${op.name} ${rec.skill_name} 专精任务已添加！`)
+      await refreshPlanFromServer()
+    } else {
+      message.warning(results[0]?.reason || '添加失败')
     }
-    const r2 = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
-      task: {
-        time: new Date(Date.now() + 120000).toISOString(),
-        plan: {},
-        task_type: '技能专精',
-        meta_data: '' + skillNum
-      },
-      upgrade_support: supports
-    })
-    r2.data === '添加任务成功！'
-      ? message.success(`${op.name} ${rec.skill_name} 专精任务已添加！`)
-      : message.warning(r2.data)
   } catch (e) {
     message.error(`添加失败: ${e.message}`)
   }
@@ -1146,19 +1300,7 @@ async function doAddTask() {
 
 // ─── 初始化 ───
 onMounted(async () => {
-  try {
-    const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
-    const data = r.data || {}
-    const p = {}
-    for (const [key, val] of Object.entries(data.plans || {})) {
-      if (val.status === 'pending' || val.status === 'in_progress') {
-        p[key] = true
-      }
-    }
-    plan.value = p
-  } catch (e) {
-    console.error('onMounted: failed to fetch mastery-plan', e)
-  }
+  await refreshPlanFromServer()
   await Promise.all([loadOperators(), store.fetchRecommendations()])
   allOperatorList.value = store.recommendations.map((op) => ({
     char_id: op.char_id,

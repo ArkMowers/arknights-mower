@@ -9,11 +9,9 @@ from functools import wraps
 from io import BytesIO
 from threading import RLock, Thread
 
-import pytz
 from flask import Flask, abort, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
-from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 from werkzeug.security import safe_join
 
@@ -32,6 +30,7 @@ from arknights_mower.utils.maa_check import (
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
 from arknights_mower.views.mastery import mastery_bp
+from arknights_mower.views.task import set_mower_thread, task_bp
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -328,6 +327,8 @@ def start(start_type):
     mower_thread = Thread(
         target=main, args=(saved_state, restart_after_mood_read), daemon=True
     )
+    # /task 路由（views/task.py）独立判定「mower 正在运行」，须与本模块同步
+    set_mower_thread(mower_thread)
     mower_thread.start()
 
     log_lines = []
@@ -353,6 +354,7 @@ def stop():
     else:
         logger.info("成功停止mower线程")
         mower_thread = None
+        set_mower_thread(None)
         return "true"
 
 
@@ -1192,102 +1194,6 @@ def cultivate_fetch():
         return {"success": False, "message": str(e)}
 
 
-@app.route("/task", methods=["GET", "POST"])
-def add_task():
-    from arknights_mower.__main__ import base_scheduler
-    from arknights_mower.utils.mastery_db import get_route, has_train_group_plan
-    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
-
-    if request.method == "POST":
-        try:
-            req = request.json
-            task = req["task"]
-            logger.debug(f"收到新增任务请求：{req}")
-            if base_scheduler and mower_thread.is_alive():
-                # if not base_scheduler.sleeping:
-                #     raise Exception("只能在休息时间添加")
-                if task:
-                    utc_time = datetime.datetime.strptime(
-                        task["time"], "%Y-%m-%dT%H:%M:%S.%f%z"
-                    )
-                    task_time = (
-                        utc_time.replace(tzinfo=pytz.utc)
-                        .astimezone(get_localzone())
-                        .replace(tzinfo=None)
-                    )
-                    new_task = SchedulerTask(
-                        time=task_time,
-                        task_plan=task["plan"],
-                        task_type=task["task_type"],
-                        meta_data=task["meta_data"],
-                    )
-                    if base_scheduler.find_next_task(
-                        compare_time=task_time, compare_type="="
-                    ):
-                        raise Exception("找到同时间任务请勿重复添加")
-                    if new_task.type == TaskTypes.SKILL_UPGRADE:
-                        if has_train_group_plan():
-                            raise Exception("训练室已设置小组轮换，无法添加专精任务")
-                        pk = task.get("plan_key", "")
-                        if not pk:
-                            raise Exception("专精任务缺少 plan_key")
-                        parts = pk.rsplit("_", 1)
-                        if len(parts) != 2:
-                            raise Exception("plan_key 格式错误")
-                        char_id = parts[0]
-                        from arknights_mower.utils.mastery_recommendation import (
-                            PROF_MAP,
-                            _supports_from_dicts,
-                            get_skill_data,
-                        )
-
-                        char_table = get_skill_data().get("characters", {})
-                        prof_en = char_table.get(char_id, {}).get("profession", "")
-                        if not prof_en:
-                            raise Exception(f"未找到干员 {char_id} 的职业信息")
-                        prof_cn = PROF_MAP.get(prof_en, prof_en)
-                        route = get_route(prof_cn)
-                        if not route:
-                            raise Exception(
-                                f"未配置 {prof_cn} 的专精路线，请先在专精路线设置中保存"
-                            )
-                        import json as _json
-
-                        parsed = _json.loads(route["supports"])
-                        supports_list = (
-                            parsed.get("supports", [])
-                            if isinstance(parsed, dict)
-                            else parsed
-                        )
-                        if not supports_list:
-                            raise Exception(f"{prof_cn} 的专精路线为空")
-                        supports = _supports_from_dicts(supports_list)
-                        base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.info(f"从数据库加载 {prof_cn} 专精路线完毕")
-                    base_scheduler.tasks.append(new_task)
-                    logger.debug(f"成功：{str(new_task)}")
-                    return "添加任务成功！"
-            raise Exception("添加任务失败！！请确保Mower正在运行")
-        except Exception as e:
-            logger.exception(f"添加任务失败：{str(e)}")
-            return str(e)
-    else:
-        if base_scheduler and mower_thread and mower_thread.is_alive():
-            from jsonpickle import encode
-
-            return [
-                json.loads(
-                    encode(
-                        i,
-                        unpicklable=False,
-                    )
-                )
-                for i in base_scheduler.tasks
-            ]
-        else:
-            return []
-
-
 @app.route("/weekly-plans", methods=["GET"])
 @require_token
 def get_weekly_plans():
@@ -1407,3 +1313,4 @@ def ws_chat(ws):
 
 
 app.register_blueprint(mastery_bp)
+app.register_blueprint(task_bp)

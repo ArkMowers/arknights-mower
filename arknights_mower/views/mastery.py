@@ -1,32 +1,25 @@
 import json
-from enum import Enum
 from functools import wraps
 
 from flask import Blueprint, abort, current_app, request
 from flask.views import MethodView
 
 from arknights_mower.utils.mastery_db import (
+    add_plan_checked,
+    delete_plan,
     get_all_history,
     get_all_plans,
     get_all_routes,
-    get_current_plan,
-    get_history,
-    has_train_group_plan,
-    insert_plan,
+    get_failed_plans,
     save_route,
+    update_plan_priority,
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
 
 
-class PlanStatus(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class Routes(str, Enum):
+class Routes:
     PLAN = "/mastery-plan"
+    PLAN_ORDER = "/mastery-plan/order"
     ROUTE = "/mastery-route"
     HISTORY = "/mastery-history"
 
@@ -49,183 +42,157 @@ class MasteryPlanView(MethodView):
     decorators = [_require_token]
 
     def get(self):
-        plans = get_all_plans()
+        # #69 展示：failed 计划也返回给前端（带 failed_reason），否则计划"凭空消失"。
+        # 仅展示用途；执行循环仍从 get_all_plans（不含 failed）读取。
+        plans = get_all_plans() + get_failed_plans()
         history = get_all_history()
         char_table = get_skill_data().get("characters", {})
-        plans_dict = {}
+        plans_list = []
         for p in plans:
-            key = f"{p['char_id']}_{p['skill_index']}"
             char_info = char_table.get(p["char_id"], {})
-            plans_dict[key] = {
-                "status": p["status"],
-                "skill_name": p.get("skill_name", f"技能{p['skill_index'] + 1}"),
-                "name": char_info.get("name", p["char_id"]),
-            }
+            plans_list.append(
+                {
+                    "id": p["id"],
+                    "char_id": p["char_id"],
+                    "name": p.get("char_name") or char_info.get("name", p["char_id"]),
+                    "skill_index": p["skill_index"],
+                    "skill_name": p.get("skill_name", f"技能{p['skill_index'] + 1}"),
+                    "target_level": p["target_level"],
+                    "status": p["status"],
+                    "priority": p["priority"],
+                    "expires_at": p.get("expires_at"),
+                    "failed_reason": p.get("failed_reason"),
+                }
+            )
         history_list = []
         for h in history:
             char_info = char_table.get(h["char_id"], {})
             history_list.append(
                 {
                     "char_id": h["char_id"],
+                    "name": h.get("char_name") or char_info.get("name", h["char_id"]),
                     "skill_index": h["skill_index"],
+                    "skill_name": h.get("skill_name", f"技能{h['skill_index'] + 1}"),
+                    "target_level": h["target_level"],
                     "status": h["status"],
                     "failed_reason": h.get("failed_reason"),
-                    "level": h.get("level", 1),
-                    "skill_name": h.get("skill_name", f"技能{h['skill_index'] + 1}"),
-                    "name": char_info.get("name", h["char_id"]),
                     "time": h.get("created_at", ""),
                 }
             )
-        return {"plans": plans_dict, "history": history_list}
+        return {"plans": plans_list, "history": history_list}
 
     def post(self):
-        if has_train_group_plan():
-            return {
-                "results": [],
-                "error": "训练室已设置小组轮换，请先清理后再添加专精计划",
-            }
         data = request.json or {}
         char_table = get_skill_data().get("characters", {})
-        name_to_id = {}
-        for cid, info in char_table.items():
-            n = info.get("name", "")
-            if n:
-                name_to_id[n] = cid
+        name_to_id = {
+            info.get("name", ""): cid
+            for cid, info in char_table.items()
+            if info.get("name")
+        }
+
         results = []
-        for name, skill_index in data.items():
-            char_id = name_to_id.get(name)
-            if char_id is None:
-                results.append(
-                    {
-                        "key": name,
-                        "status": "error",
-                        "reason": "operator name not found",
-                    }
+        items = (
+            data.get("items", [])
+            if isinstance(data, dict) and "items" in data
+            else None
+        )
+
+        if items is not None:
+            for item in items:
+                name = item.get("name", "")
+                skill_index = item.get("skill_index", 0)
+                target_level = item.get("target_level")
+                char_id = name_to_id.get(name)
+                if char_id is None:
+                    results.append(
+                        {"key": name, "status": "error", "reason": "operator not found"}
+                    )
+                    continue
+                char_info = char_table.get(char_id, {})
+                skills = char_info.get("skills", [])
+                skill_name = (
+                    skills[skill_index].get("name", f"技能{skill_index + 1}")
+                    if len(skills) > skill_index
+                    else f"技能{skill_index + 1}"
                 )
-                continue
-            if not isinstance(skill_index, int) or skill_index not in (0, 1, 2):
-                results.append(
-                    {
-                        "key": name,
-                        "status": "error",
-                        "reason": "invalid skill_index, must be 0/1/2",
-                    }
-                )
-                continue
-            char_info = char_table.get(char_id, {})
-            skill_name = (
-                char_info.get("skills", [{}])[skill_index].get(
-                    "name", f"技能{skill_index + 1}"
-                )
-                if len(char_info.get("skills", [])) > skill_index
-                else f"技能{skill_index + 1}"
-            )
-            existing = get_current_plan(char_id, skill_index)
-            if existing is None:
-                insert_plan(
-                    char_id, skill_index, PlanStatus.PENDING, skill_name=skill_name
-                )
-                results.append(
-                    {
-                        "key": name,
-                        "status": "added",
-                        "name": name,
-                        "skill": skill_name,
-                    }
-                )
-            elif existing["status"] == PlanStatus.COMPLETED:
-                results.append(
-                    {
-                        "key": name,
-                        "status": "already_completed",
-                        "name": name,
-                        "skill": skill_name,
-                    }
-                )
-            elif existing["status"] == PlanStatus.FAILED:
-                insert_plan(
-                    char_id,
-                    skill_index,
-                    PlanStatus.PENDING,
+                plan_id, reason = add_plan_checked(
+                    char_id=char_id,
+                    skill_index=skill_index,
+                    target_level=target_level,
                     skill_name=skill_name,
+                    char_name=name,
                 )
-                results.append(
-                    {
-                        "key": name,
-                        "status": "retry",
-                        "name": name,
-                        "skill": skill_name,
-                    }
+                if plan_id > 0:
+                    results.append({"key": name, "status": "added", "id": plan_id})
+                else:
+                    results.append({"key": name, "status": "error", "reason": reason})
+        else:
+            for name, skill_index in data.items():
+                char_id = name_to_id.get(name)
+                if char_id is None:
+                    results.append(
+                        {"key": name, "status": "error", "reason": "operator not found"}
+                    )
+                    continue
+                if not isinstance(skill_index, int) or skill_index not in (0, 1, 2):
+                    results.append(
+                        {
+                            "key": name,
+                            "status": "error",
+                            "reason": "invalid skill_index",
+                        }
+                    )
+                    continue
+                char_info = char_table.get(char_id, {})
+                skills = char_info.get("skills", [])
+                skill_name = (
+                    skills[skill_index].get("name", f"技能{skill_index + 1}")
+                    if len(skills) > skill_index
+                    else f"技能{skill_index + 1}"
                 )
-            elif existing["status"] in (
-                PlanStatus.PENDING,
-                PlanStatus.IN_PROGRESS,
-            ):
-                results.append(
-                    {
-                        "key": name,
-                        "status": "already_planned",
-                        "name": name,
-                        "skill": skill_name,
-                    }
+                plan_id, reason = add_plan_checked(
+                    char_id=char_id,
+                    skill_index=skill_index,
+                    skill_name=skill_name,
+                    char_name=name,
                 )
-            else:
-                results.append(
-                    {
-                        "key": name,
-                        "status": "error",
-                        "reason": f"unknown status {existing['status']}",
-                    }
-                )
+                if plan_id > 0:
+                    results.append({"key": name, "status": "added", "id": plan_id})
+                else:
+                    results.append({"key": name, "status": "error", "reason": reason})
         return {"results": results}
+
+    def delete(self):
+        data = request.json or {}
+        plan_id = data.get("id")
+        if not plan_id:
+            return {"error": "id is required"}, 400
+        if delete_plan(int(plan_id)):
+            return {"status": "ok"}
+        return {"error": "delete failed"}, 500
+
+
+class MasteryPlanOrderView(MethodView):
+    decorators = [_require_token]
+
+    def patch(self):
+        data = request.json or []
+        for item in data:
+            plan_id = item.get("id")
+            priority = item.get("priority")
+            if plan_id is not None and priority is not None:
+                update_plan_priority(int(plan_id), int(priority))
+        return {"status": "ok"}
 
 
 class MasteryRouteView(MethodView):
     decorators = [_require_token]
 
     def get(self):
-        try:
-            from arknights_mower.utils.mastery_recommendation import (
-                _load_default_route,
-            )
+        from arknights_mower.solvers.mastery import DEFAULT_ROUTES
 
-            defaults = _load_default_route()
-            routes = get_all_routes()
-            saved_profs = {r["profession"] for r in routes}
-            for prof, data in defaults.items():
-                if prof.startswith("_"):
-                    continue
-                if prof not in saved_profs:
-                    routes.append(
-                        {
-                            "profession": prof,
-                            "supports": json.dumps(
-                                data.get("supports", []),
-                                ensure_ascii=False,
-                            ),
-                            "is_default": 1,
-                        }
-                    )
-            default_routes = []
-            for prof, data in defaults.items():
-                if prof.startswith("_"):
-                    continue
-                default_routes.append(
-                    {
-                        "profession": prof,
-                        "supports": json.dumps(
-                            data.get("supports", []),
-                            ensure_ascii=False,
-                        ),
-                    }
-                )
-            return {
-                "routes": routes,
-                "backups": defaults.get("_backups", {}),
-                "defaults": default_routes,
-            }
-        except Exception:
-            return {"routes": [], "backups": {}}
+        routes = get_all_routes()
+        return {"routes": routes, "defaults": DEFAULT_ROUTES}
 
     def post(self):
         data = request.json or {}
@@ -235,8 +202,12 @@ class MasteryRouteView(MethodView):
             return {"error": "profession is required"}, 400
         save_route(
             profession,
-            supports if isinstance(supports, str) else json.dumps(supports),
+            supports
+            if isinstance(supports, str)
+            else json.dumps(supports, ensure_ascii=False),
             is_default=0,
+            optimal=bool(data.get("optimal", False)),
+            half_off=bool(data.get("half_off", True)),
         )
         return {"status": "ok"}
 
@@ -245,13 +216,14 @@ class MasteryHistoryView(MethodView):
     decorators = [_require_token]
 
     def get(self):
-        char_id = request.args.get("char_id", "")
-        skill_index = request.args.get("skill_index", 0, type=int)
-        history = get_history(char_id, skill_index)
+        history = get_all_history()
         return {"history": history}
 
 
 mastery_bp.add_url_rule(Routes.PLAN, view_func=MasteryPlanView.as_view("mastery_plan"))
+mastery_bp.add_url_rule(
+    Routes.PLAN_ORDER, view_func=MasteryPlanOrderView.as_view("mastery_plan_order")
+)
 mastery_bp.add_url_rule(
     Routes.ROUTE, view_func=MasteryRouteView.as_view("mastery_route")
 )

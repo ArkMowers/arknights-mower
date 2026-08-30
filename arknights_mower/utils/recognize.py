@@ -629,6 +629,11 @@ class Recognizer:
             self.scene = Scene.CONNECTING
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
+        elif self.find("room_detail"):
+            # #78 进驻详情浮窗头：浮窗开着时优先识别为详情浮层，须在 train_main/
+            # training_support 之前（否则浮窗被误标 217/219）；不能用 arrange_check_in
+            # （裸主页面也有，加了会恒 205）。复活 _read_slots 的关浮窗死代码。
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
         elif self.find("skill_collect_confirm"):
