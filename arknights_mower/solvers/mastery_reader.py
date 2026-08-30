@@ -307,6 +307,42 @@ def _settle_in_room(solver, max_iters=15) -> int:
     return solver.train_scene()
 
 
+def _read_slots_raw(solver):
+    """读进驻详情浮窗原始扫描：返回 (scan, reliable)。
+
+    reliable=False = get_agent_from_room 异常（如 OCR 坏名 KeyError）或返回非列表。
+    与「真空位」不可混淆：真空位是 scan 内 agent 为空的项（train 房恒 2 槽），
+    读失败才是 scan 空。补位等 mutation 必须只在 reliable 时做（稳为先：读不到不动）。
+    """
+    try:
+        scan = solver.get_agent_from_room("train")
+    except Exception as e:
+        logger.debug(f"进驻详情读取失败: {e}")
+        return [], False
+    if not isinstance(scan, list):
+        logger.debug(f"进驻详情返回非列表: {type(scan)}")
+        return [], False
+    return scan, True
+
+
+def _read_slots_checked(solver):
+    """读进驻详情浮窗：返回 (协助位, 训练位, scan, reliable)。读后关浮窗。
+
+    #100：reliable=False（读失败）时返回 ("", "", scan, False)——调用方不得把读失败
+    当真空位做补位/纠错 mutation（与「真空」区分，稳为先：读不到就不动作）。
+    scan 为 get_agent_from_room 原始列表（want_mood 用，含 mood）。
+    """
+    scan, reliable = _read_slots_raw(solver)
+    try:
+        if solver.train_scene() == Scene.INFRA_DETAILS:
+            _close_room_detail(solver)
+    except Exception:
+        pass
+    if len(scan) < 2:
+        return "", "", scan, reliable
+    return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
+
+
 def _read_slots(solver, want_mood=False):
     """读进驻详情浮窗：返回 (协助位, 训练位)。读后关浮窗回训练室主界面。
 
@@ -315,20 +351,8 @@ def _read_slots(solver, want_mood=False):
     槽位约定：scan[0]=上排=协助位，scan[1]=下排=训练位（与 choose_train 一致）。
     读失败/无两人 → ("", "")；want_mood 时 mood_data 为空列表。
     """
-    try:
-        scan = solver.get_agent_from_room("train")
-    except Exception as e:
-        logger.debug(f"进驻详情读取失败: {e}")
-        scan = []
-    try:
-        if solver.train_scene() == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
-    except Exception:
-        pass
-    if len(scan) < 2:
-        slots = "", ""
-    else:
-        slots = scan[0].get("agent", ""), scan[1].get("agent", "")
+    support_slot, train_slot, scan, _ = _read_slots_checked(solver)
+    slots = support_slot, train_slot
     if want_mood:
         return slots, scan
     return slots
@@ -512,13 +536,19 @@ def _plan_matches_room(plan, room: RoomState) -> bool:
 
 
 def _match_plan(plans, room: RoomState):
-    """截图 (干员,技能) → 非终态计划命中；未命中返回 None。"""
+    """截图 (干员,技能) → 计划命中；未命中返回 None。
+
+    #98：failed 也纳入匹配（此前排除 → DB failed 但实际在训练时永不命中，见
+    `get_reconcile_plans`）；completed 仍排除（真正终态，不恢复）。命中后按状态决定
+    动作：failed/idle → 恢复 training（`_reconcile_training`），failed 待收取不接管
+    （`_reconcile_waiting_collect` 守卫）。
+    """
     op = room.panel.operator_name
     if not op:
         return None
     sk = room.panel.skill_name
     for p in plans:
-        if p["status"] in ("completed", "failed"):
+        if p["status"] == "completed":
             continue
         if not _plan_operator_matches(p, op):
             continue
@@ -545,6 +575,25 @@ def _can_adopt_expiry(plan, room: RoomState) -> bool:
         and bool(room.panel.skill_name)
         and _plan_matches_room(plan, room)
     )
+
+
+def _can_recover_plan(plan, room: RoomState) -> bool:
+    """#98 恢复门：比 B8 采纳门更严——技能必须被解析器无歧义命中且等于计划 skill_index。
+
+    恢复的后果重（failed→training 写库 + 清 failed_reason + 排收取/换人），若技能 OCR
+    退化片段走 `_plan_matches_room` 的子串回退（如「技能」⊂ 所有技能名），会把同干员
+    另一技能的计划误恢复。故不允许子串回退：只有 `resolve_panel_skill` 唯一命中且等于
+    计划技能才恢复——截断前缀 OCR 由解析器正确解析（不受影响）；未知干员/含混片段 →
+    None → 不恢复，静默等待（B8 稳为先）。
+    """
+    op = room.panel.operator_name
+    sk = room.panel.skill_name
+    if not op or not sk:
+        return False
+    if not _plan_operator_matches(plan, op):
+        return False
+    resolved = resolve_panel_skill(op, sk)
+    return resolved is not None and resolved == plan.get("skill_index")
 
 
 def _plan_label(plan) -> str:
@@ -595,6 +644,30 @@ def _find_swap_task(solver, plan_key):
                 if t.type == TaskTypes.SWAP_SUPPORT
                 and t is not current
                 and getattr(t, "plan_key", None) == plan_key
+            ),
+            None,
+        )
+    except (AttributeError, TypeError):
+        return None
+
+
+def _find_fill_task(solver, plan_id):
+    """#100：队列中该计划的补位任务（plan_key=f"fill-{id}"），无则 None。
+
+    补位与半程换人都是 SWAP_SUPPORT 且共用 plan_key=计划ID 会互相掩盖——已排的
+    半程换人任务（确认时排到阈值时刻）会让 `_find_swap_task` 恒命中 → 空协助位补位
+    永远排不上。补位任务用独立 plan_key 前缀 `fill-`，去重互不干扰。
+    """
+    current = getattr(solver, "task", None)
+    try:
+        tasks = solver.tasks
+        return next(
+            (
+                t
+                for t in tasks
+                if t.type == TaskTypes.SWAP_SUPPORT
+                and t is not current
+                and getattr(t, "plan_key", None) == f"fill-{plan_id}"
             ),
             None,
         )
@@ -745,6 +818,38 @@ def _update_expiry(solver, plan, room):
         update_plan_status(plan["id"], "training", expires_at=expires_at)
 
 
+def _recover_to_training(solver, plan, room):
+    """#98：failed/idle 计划读到面板匹配 + 倒计时 active → 恢复 training（截图为准）。
+
+    failed 撤销 false-failure（#69 归属校验的误判）；同一 update_plan_status 写
+    status=training + expires_at + swap_frozen=0（对齐 SM-03），并清 failed_reason。
+    本地 plan dict 同步更新，供调用方继续 `_refresh_training_plan`（换人/收取）使用。
+    """
+    from arknights_mower.utils.mastery_db import update_plan_status
+
+    prev = plan["status"]
+    countdown = room.panel.countdown
+    expires_at = (
+        countdown.strftime("%Y-%m-%d %H:%M:%S") if countdown is not None else None
+    )
+    update_plan_status(
+        plan["id"],
+        "training",
+        expires_at=expires_at,
+        swap_frozen=0,
+        failed_reason="",  # 清 false-failure 原因（update_plan_status 仅非 None 才写）
+    )
+    plan["status"] = "training"
+    plan["swap_frozen"] = 0
+    plan["failed_reason"] = None
+    if expires_at is not None:
+        plan["expires_at"] = expires_at
+    logger.info(
+        f"[mastery] #98 截图为准：{_plan_label(plan)} 由 {prev} 恢复为 training"
+        f"（面板匹配 + 倒计时 {expires_at}）"
+    )
+
+
 def _refresh_training_plan(solver, plan, room):
     """training×一致（采纳门通过）：B8 采纳倒计时 + #82 半重叠消除。
 
@@ -768,7 +873,7 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     门控（照搬 run_swap_support / _schedule_swap_if_needed）：
     - enable_mastery 开、非跟随排班（协助位归排班系统管）；
     - swap_frozen=1（换人已完成）→ 跳过；
-    - 队列已有同计划 SWAP 任务 → 跳过（去重，重启恢复的队列可能还留着旧任务）；
+    - 队列已有同计划 SWAP 任务 → 半程换人不重复排（去重，重启恢复的队列可能还留着旧任务）；
     - 倒计时可读且 `calc_swap_threshold` 判剩余够（<5h 不补排）→ 补排 SWAP 任务。
     #80：判陌生人时**自己读协助位**（作为读房的一部分，铁律 3 一次进房做完全部；
     不依赖排班读心情的数据——数据未留存、时间点不可控）——协助位 ∉ {operator,
@@ -776,7 +881,11 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     run_swap_support：先纠成路线 operator，重读倒计时判值不值得再换 swap_target）。
     专三/时间不足的步也纠（swap_target=None / <5h 只是不换减半对象，协助位仍要纠成
     路线人）。已减半（协助位 == swap_target）→ 不再排换人，只排收取。
-    返回 True = 已排换人任务（或队列已有）→ 调用方不排收取。
+    #100：协助位**可靠地空着**（`_read_slots_checked` 读成功，读失败不算空）同样需纠——
+    排补位任务填路线 operator（不碰训练位）；补位与半程换人独立（fill-{id} 去重键，
+    不被阈值时刻的半程换人任务掩盖），补位后仍落到半程换人去重/排程。减半与否由
+    dispatch 时再判（空位先补 operator，再按值得门换 swap_target）。
+    返回 True = 已排补位/换人任务（或队列已有）→ 调用方不排收取。
     """
     from arknights_mower.utils import config
 
@@ -786,8 +895,6 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
         return False
     if plan.get("swap_frozen"):
         return False
-    if _find_swap_task(solver, str(plan["id"])) is not None:
-        return True  # 已有换人任务在队列 → 调用方不排收取（该任务完成时会排收取）
     countdown = room.panel.countdown
     if countdown is None:
         return False
@@ -799,22 +906,39 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     )
 
     route = _get_plan_route(plan, step_level)
+    scheduled = False
     if route and route.get("operator"):
         operator = route["operator"]
         swap_target = route.get("swap_target")
-        support_slot, _ = _read_slots(solver)
-        if support_slot and support_slot not in (operator, swap_target):
+        support_slot, _, _, reliable = _read_slots_checked(solver)
+        if reliable and not support_slot and _find_fill_task(solver, plan["id"]) is None:
+            # #100：协助位**可靠地**空着（读失败不算空）→ 排补位任务（填路线 operator，
+            # 不碰训练位）。独立去重键 fill-{id} 不被半程换人任务掩盖——补位（现在）
+            # 与减半换人（阈值时刻）是两件事，都要排。受管理计划训练中空协助位得不到
+            # 任何加成（若叶睦 15:08–08-17 06:39 协助位一直空着）。
+            _schedule_fill_support(solver, plan, operator)
+            scheduled = True
+        elif (
+            reliable
+            and support_slot
+            and support_slot not in (operator, swap_target)
+            and _find_swap_task(solver, str(plan["id"])) is None
+        ):
             # 陌生人/坐错 → 排纠错任务（纠成 operator；减半与否由 dispatch 时再判）
             _schedule_correction_swap(solver, plan, operator)
-            return True
-        if support_slot == swap_target:
+            scheduled = True
+        elif reliable and support_slot == swap_target:
             # 已减半（协助位已是 swap_target）→ 不再排换人，调用方排收取
             return False
 
+    # 半程换人（减半）：队列已有同计划 SWAP 任务 → 不重复排（#77 去重）。空位补位
+    # 后仍落到这里——补位失败不阻塞减半（dispatch 时 did_swap 兜底）。
+    if _find_swap_task(solver, str(plan["id"])) is not None:
+        return True
     if _schedule_swap_if_needed(solver, plan, countdown, step_level) is not None:
         logger.info(f"[mastery] #77 重启恢复：补排换人任务 id={plan['id']}")
-        return True
-    return False
+        scheduled = True
+    return scheduled
 
 
 def _schedule_correction_swap(solver, plan, operator):
@@ -835,6 +959,27 @@ def _schedule_correction_swap(solver, plan, operator):
     solver.tasks.append(task)
     logger.info(
         f"[mastery] #80 陌生人协助位纠错：排换人任务 id={plan['id']} 期望={operator}"
+    )
+
+
+def _schedule_fill_support(solver, plan, operator):
+    """#100：协助位空着 → 排补位任务（填路线 operator，不碰训练位）。
+
+    与 #80 纠错同形（SWAP_SUPPORT，但 plan_key 用独立前缀 `fill-{id}`——补位与半程
+    换人共用 plan_key=计划ID 会互相掩盖，见 `_find_fill_task`）。派发走
+    run_swap_support：空位先填 operator，再按值得门换 swap_target。
+    """
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    task = SchedulerTask(
+        time=datetime.now(),
+        task_type=TaskTypes.SWAP_SUPPORT,
+        meta_data=f"{_plan_label(plan)} 协助位补位为 {operator}",
+    )
+    task.plan_key = f"fill-{plan['id']}"  # 独立去重键，不与半程换人（plan_key=计划id）互掩
+    solver.tasks.append(task)
+    logger.info(
+        f"[mastery] #100 协助位补位：排换人任务 id={plan['id']} 期望={operator}"
     )
 
 
@@ -1038,13 +1183,15 @@ def _collect_plan(solver, plan, room: RoomState):
     return _reconcile_after_collect(solver, plan, room.panel)
 
 
-def _collect_silent(solver, room: RoomState):
+def _collect_silent(solver, room: RoomState, suppress_help=False):
     """未命中计划纯收取：非专三且面板可读 → 通知④帮收（§16.3）；专三/面板不可读 → 静默。
 
     面板不可读（OCR 失败，干员名空）时不发④——档位可能误读为 0（如 TRAIN_FINISH
     完成页主面板区域不可读），专三完成会被错发「帮收」；稳为先：不可读则静默。
+    suppress_help（#98）：干员其实在 failed 计划里（failed 待收取不接管），发
+    「不在专精计划中」的帮收通知会误导 → 抑制。
     """
-    if room.panel.mastery_tier != 3 and room.panel.operator_name:
+    if not suppress_help and room.panel.mastery_tier != 3 and room.panel.operator_name:
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
 
@@ -1074,13 +1221,13 @@ def reconcile_and_act(solver, scan_plan=None):
     计划开始训练，其他情况交还排班。材料判断在扫描时完成（auto_schedule 的 scheduled
     结果），不违背「删材料门控」。
     """
-    from arknights_mower.utils.mastery_db import get_active_plan, get_all_plans
+    from arknights_mower.utils.mastery_db import get_active_plan, get_reconcile_plans
 
     if not config.conf.enable_mastery:
         return None, True, None
     room = read_room_state(solver)
     active = get_active_plan()
-    plans = get_all_plans()
+    plans = get_reconcile_plans()
     plan, arrange_support = _reconcile(solver, room, active, plans, scan_plan=scan_plan)
     if plan is None:
         # 各矩阵路径已 back 的不会重复退出；收集后无级联 / 空房无计划时在此退出
@@ -1159,6 +1306,8 @@ def _reconcile_training(solver, room, active, plans):
     B8：采纳倒计时（`_update_expiry`）只在 `_can_adopt_expiry` 通过时发生——面板
     干员名+技能名任一不可读 → 不采纳（不刷新、不改写状态）、不排重检，静默等排班
     系统下次自然进房重读（用户 08-15 定案）。
+    #98：failed/idle 命中训练 + 面板可读且匹配（倒计时 active 由本函数前提保证）→
+    恢复 training（截图为准适用于所有状态），此后进入正常 active×训练中管理。
     """
     hit = _match_plan(plans, room)
     if active is not None:
@@ -1175,13 +1324,20 @@ def _reconcile_training(solver, room, active, plans):
             return None, True
 
     if hit is not None:
-        if hit["status"] == "idle":
-            if room.panel.skill_name:
-                # idle×🔴 命中：静默等它练完（级联靠后续收取），不打断
-                _wait_for_training(solver, room)
+        if hit["status"] in ("failed", "idle"):
+            if room.panel.countdown is not None and _can_recover_plan(hit, room):
+                # #98：截图为准——failed/idle 计划对应干员正在训练（面板干员名可读且
+                # 技能被解析器无歧义命中计划技能 + 倒计时 active）→ 恢复 training，
+                # 进入正常 active×训练中管理（换人/收取，_refresh_training_plan）。
+                _recover_to_training(solver, hit, room)
+                _refresh_training_plan(solver, hit, room)
             else:
-                # B8：命中但技能不可读 → 不排重检，静默等排班下次自然进房重读
-                logger.debug("命中计划但面板技能不可读，不排重检，静默等待")
+                # 恢复门不通过（B8 稳为先，技能解析不可靠/倒计时不可读）→ 不误恢复；
+                # 技能可读时保留原重检（练完由 dispatch/gate 收），不可读静默等待。
+                if room.panel.skill_name:
+                    _wait_for_training(solver, room)
+                else:
+                    logger.debug("命中计划但技能不可读，不恢复、不排重检，静默等待")
             return None, True
         if _can_adopt_expiry(hit, room):
             # hit 为另一条 active 状态计划（active 重置后），面板可读且匹配 → 采纳
@@ -1220,6 +1376,14 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
     训练室再回归排班）。dispatch（reconcile_and_act）defer 恒 False 永不跳过。
     """
     hit = _match_plan(plans, room)  # 干员+技能都在计划
+    suppress_help = False
+    if hit is not None and hit["status"] == "failed":
+        # #98：failed 计划不在收取阶段接管——训练中已按截图恢复 training；收取阶段
+        # 若仍 failed（恢复错过了训练期），保持静默收取、不按该计划记账/续训（避免
+        # 无材料强开下一级、把他人训练误记为计划进度），由扫描 retry_failed_plans 兜底。
+        # 干员确实在 failed 计划里，「不在专精计划中」的帮收通知会误导 → 抑制④。
+        suppress_help = True
+        hit = None
     tier = room.panel.mastery_tier
     # 日志用真实保护状态（_compute_protected 已按档位/状态算好）：专三待收取即使协助位
     # 是逻各斯/艾丽妮也不保护（§16.3 第1格），只看协助位会误报保护=True。
@@ -1290,7 +1454,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         协助位=room.support_slot,
         保护=protective,
     )
-    _collect_silent(solver, room)
+    _collect_silent(solver, room, suppress_help=suppress_help)
     return None, True
 
 
@@ -1304,13 +1468,13 @@ def reconcile_short(solver, room_state: RoomState, defer_collect=False):
     defer_collect（#75 方案 C）：gate 传 True——待收取格跳过「队列已有专精任务」的
     收集，留给队列任务收；dispatch 不经由本函数。
     """
-    from arknights_mower.utils.mastery_db import get_active_plan, get_all_plans
+    from arknights_mower.utils.mastery_db import get_active_plan, get_reconcile_plans
 
     _reconcile(
         solver,
         room_state,
         get_active_plan(),
-        get_all_plans(),
+        get_reconcile_plans(),
         defer_collect=defer_collect,
     )
 

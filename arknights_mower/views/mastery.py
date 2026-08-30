@@ -46,7 +46,7 @@ class MasteryPlanView(MethodView):
 
     def get(self):
         # #69 展示：failed 计划也返回给前端（带 failed_reason），否则计划"凭空消失"。
-        # 仅展示用途；执行循环仍从 get_all_plans（不含 failed）读取。
+        # 执行循环（reconcile）经 get_reconcile_plans 也会读 failed（#98 按截图恢复）。
         plans = get_all_plans() + get_failed_plans()
         history = get_all_history()
         char_table = get_skill_data().get("characters", {})

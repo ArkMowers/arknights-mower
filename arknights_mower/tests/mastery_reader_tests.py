@@ -371,6 +371,12 @@ class TestMatchPlan(unittest.TestCase):
         done = make_plan(status="completed")
         self.assertIsNone(reader._match_plan([done], room))
 
+    def test_match_includes_failed(self):
+        # #98：failed 也纳入匹配（reconcile 计划集含 failed，按截图恢复 training）
+        room = make_room("training")
+        failed = make_plan(status="failed")
+        self.assertEqual(reader._match_plan([failed], room), failed)
+
 
 class TestResolvePanelSkillIntegration(unittest.TestCase):
     """#95 集成：_plan_matches_room / _match_plan 优先用技能表解析，回退包含匹配。"""
@@ -456,6 +462,65 @@ class TestCanAdoptExpiry(unittest.TestCase):
         room = make_room("training", skill_name="别的技能")
         plan = make_plan()
         self.assertFalse(reader._can_adopt_expiry(plan, room))
+
+
+class TestCanRecoverPlan(unittest.TestCase):
+    """#98 恢复门：比 B8 采纳门更严——技能必须被解析器无歧义命中且等于计划 skill_index。
+
+    恢复的后果重（failed→training 写库 + 清 failed_reason + 排收取/换人），不允许
+    `_plan_matches_room` 的子串回退（OCR 退化片段如「技能」⊂ 所有技能名会把同干员
+    另一技能的计划误恢复）；截断前缀由 resolve_panel_skill 正确解析，不受影响。
+    """
+
+    def setUp(self):
+        self._patcher = _patch_synth_skill_data()
+        self.addCleanup(self._patcher.stop)
+
+    def tearDown(self):
+        skill_label_mod._name_to_char_id_cache = None
+
+    def _plan(self, char_name="测试干员", skill_index=1, skill_name="二技能·破坏与滋养"):
+        return make_plan(
+            char_id="char_test", char_name=char_name, skill_index=skill_index,
+            skill_name=skill_name,
+        )
+
+    def test_resolves_unique_skill_adopts(self):
+        # 截断/尾噪片段被解析器唯一命中且等于计划技能 → 可恢复（正控制）
+        room = make_room("training", operator_name="测试干员", skill_name="破坏与滋养A")
+        self.assertTrue(reader._can_recover_plan(self._plan(), room))
+
+    def test_truncated_prefix_resolves_adopts(self):
+        # 截断前缀（长名截断）由解析器正确解析 → 可恢复
+        room = make_room("training", operator_name="截断干员", skill_name="秘杖")
+        plan = make_plan(
+            char_name="截断干员", skill_index=1, skill_name="二技能·秘杖·反重力模式"
+        )
+        self.assertTrue(reader._can_recover_plan(plan, room))
+
+    def test_ambiguous_fragment_rejects(self):
+        # 技能 OCR 退化片段「技能」⊂ 所有技能名 → 解析器含混 → 不恢复（#98 收紧核心）
+        room = make_room("training", operator_name="测试干员", skill_name="技能")
+        self.assertFalse(reader._can_recover_plan(self._plan(), room))
+
+    def test_ambiguous_operator_skill_rejects(self):
+        # 干员两个技能共享前缀「破坏」（破坏与滋养/破坏之光）→ 解析器含混 → 不恢复
+        room = make_room("training", operator_name="含混干员", skill_name="破坏")
+        plan = make_plan(char_name="含混干员", skill_index=0, skill_name="一技能·破坏与滋养")
+        self.assertFalse(reader._can_recover_plan(plan, room))
+
+    def test_operator_mismatch_rejects(self):
+        room = make_room("training", operator_name="别的干员", skill_name="破坏与滋养A")
+        self.assertFalse(reader._can_recover_plan(self._plan(), room))
+
+    def test_unknown_operator_rejects(self):
+        # 干员不在技能表 → 解析器 None → 不恢复（宁可漏恢复，不可误接管）
+        room = make_room("training", operator_name="陌生干员", skill_name="破坏与滋养A")
+        self.assertFalse(reader._can_recover_plan(self._plan(char_name="陌生干员"), room))
+
+    def test_skill_unreadable_rejects(self):
+        room = make_room("training", operator_name="测试干员", skill_name="")
+        self.assertFalse(reader._can_recover_plan(self._plan(), room))
 
 
 class TestReadRoomState(unittest.TestCase):
@@ -604,7 +669,7 @@ class TestReconcileShort(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=active
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[active]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[active]
             ),
             patch.object(reader, "_update_expiry") as ue,
             patch.object(reader, "_collect_plan"),
@@ -622,7 +687,7 @@ class TestReconcileShort(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[plan]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[plan]
             ),
             patch.object(reader, "_collect_plan") as cp,
             patch.object(reader, "_promote_plan"),
@@ -649,7 +714,7 @@ class TestReconcileShort(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[plan]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[plan]
             ),
             patch.object(reader, "_collect_plan") as cp,
             patch.object(reader, "_promote_plan") as pp,
@@ -670,7 +735,7 @@ class TestReconcileShort(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[plan]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[plan]
             ),
             patch.object(reader, "_collect_plan") as cp,
             patch.object(reader, "_promote_plan"),
@@ -694,7 +759,7 @@ class TestReconcileShort(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[plan]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[plan]
             ),
             patch.object(reader, "_collect_plan") as cp,
             patch.object(reader, "_promote_plan") as pp,
@@ -910,8 +975,9 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         self.assertFalse(result)
         sched.assert_not_called()
 
-    def test_recover_empty_assist_slot_no_correction(self):
-        # 协助位读不到（空）→ 不纠错，走 _schedule_swap_if_needed（时间判定）
+    def test_recover_empty_assist_slot_fills(self):
+        # #100：协助位空着 → 排补位任务（填路线 operator，独立 fill-{id} 去重键）+
+        # 半程换人照常排（补位现在、减半阈值时刻，两件事不互斥——review 修复）
         solver = self._solver()
         solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": "能天使"}]
         plan = self._training_plan()
@@ -921,9 +987,82 @@ class TestReconcileRecoverSwap(unittest.TestCase):
                 "arknights_mower.solvers.mastery._get_plan_route",
                 return_value=self._correction_route(),
             ),
-            patch("arknights_mower.solvers.mastery._schedule_swap_if_needed") as sched,
+            patch(
+                "arknights_mower.solvers.mastery._schedule_swap_if_needed",
+                return_value=None,
+            ) as sched,
         ):
-            reader._maybe_recover_swap(solver, plan, room)
+            result = reader._maybe_recover_swap(solver, plan, room)
+        self.assertTrue(result, "排了补位任务 → 调用方不排收取")
+        sched.assert_called_once_with(solver, plan, room.panel.countdown, 2)
+        fills = [
+            t
+            for t in solver.tasks
+            if t.type == reader.TaskTypes.SWAP_SUPPORT
+            and t.plan_key == f"fill-{plan['id']}"
+        ]
+        self.assertEqual(len(fills), 1)
+        self.assertIn("补位为 夜半", fills[0].meta_data)
+
+    def test_recover_empty_assist_slot_fills_despite_queued_swap(self):
+        # #100 review 修复（major：去重掩盖）：已排半程换人任务**不掩盖**空位补位——
+        # 补位用独立 fill-{id} 去重键，不被阈值时刻的半程换人任务挡住
+        solver = self._solver()
+        solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": "能天使"}]
+        plan = self._training_plan()
+        room = self._room()
+        swap_task = reader.SchedulerTask(
+            time=datetime.now() + timedelta(hours=3),
+            task_type=reader.TaskTypes.SWAP_SUPPORT,
+        )
+        swap_task.plan_key = str(plan["id"])
+        solver.tasks = [swap_task]
+        with (
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value=self._correction_route(),
+            ),
+            patch(
+                "arknights_mower.solvers.mastery._schedule_swap_if_needed"
+            ) as sched,
+        ):
+            result = reader._maybe_recover_swap(solver, plan, room)
+        self.assertTrue(result)
+        sched.assert_not_called()  # 队列已有半程换人 → 不重复排
+        fills = [
+            t
+            for t in solver.tasks
+            if t.type == reader.TaskTypes.SWAP_SUPPORT
+            and t.plan_key == f"fill-{plan['id']}"
+        ]
+        self.assertEqual(len(fills), 1, "半程换人在队不掩盖空位补位")
+
+    def test_recover_unreliable_slot_read_no_fill(self):
+        # #100 review 修复（major：读失败当空位）：get_agent_from_room 异常（OCR 坏名
+        # KeyError）→ reliable=False → 不算空位，不排补位（稳为先：读不到就不动作）
+        solver = self._solver()
+        solver.get_agent_from_room.side_effect = KeyError("坏名")
+        plan = self._training_plan()
+        room = self._room()
+        with (
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value=self._correction_route(),
+            ),
+            patch(
+                "arknights_mower.solvers.mastery._schedule_swap_if_needed",
+                return_value=None,
+            ) as sched,
+        ):
+            result = reader._maybe_recover_swap(solver, plan, room)
+        self.assertFalse(result, "读失败不算空位 → 无任务可排")
+        fills = [
+            t
+            for t in solver.tasks
+            if t.type == reader.TaskTypes.SWAP_SUPPORT
+            and t.plan_key == f"fill-{plan['id']}"
+        ]
+        self.assertEqual(len(fills), 0, "读失败不补位（稳为先）")
         sched.assert_called_once()
 
     def test_recover_route_no_operator_no_correction(self):
@@ -1007,7 +1146,7 @@ class TestReconcileRecoverSwap(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[plan]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[plan]
             ),
             patch.object(reader, "_update_expiry"),
             patch(
@@ -1039,7 +1178,7 @@ class TestReconcileRecoverSwap(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
             ),
             patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[plan]
+                "arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[plan]
             ),
             patch.object(reader, "_update_expiry"),
             patch(
@@ -1364,26 +1503,134 @@ class TestReconcileMatrix(unittest.TestCase):
         self.assertTrue(arrange_support)
         self.assertEqual(solver.tasks, [], "干员名不可读不排重检")
 
-    def test_training_idle_hit_waits(self):
+    def test_training_idle_hit_recovers(self):
+        # #98：idle×🔴 命中 + 恢复门通过（面板干员可读 + 技能被解析器无歧义命中计划技能
+        # + 倒计时 active）→ 恢复 training（截图为准），进入正常 active×训练中管理。
         solver = MagicMock()
         room = make_room("training")
         idle_plan = make_plan()
-        with patch.object(reader, "_wait_for_training") as wt:
+        with (
+            patch.object(reader, "_can_recover_plan", return_value=True),
+            patch.object(reader, "_recover_to_training") as rt,
+            patch.object(reader, "_refresh_training_plan") as rf,
+        ):
             reader._reconcile(solver, room, None, [idle_plan])
-        wt.assert_called_once_with(solver, room)
+        rt.assert_called_once_with(solver, idle_plan, room)
+        rf.assert_called_once_with(solver, idle_plan, room)
 
-    def test_training_idle_hit_skill_unreadable_no_recheck(self):
-        # B8：idle×🔴 命中但技能不可读 → 不排重检（排班下次自然进房重读）
+    def test_training_idle_hit_ambiguous_skill_rechecks(self):
+        # #98 收紧门：idle×🔴 命中但技能含混（解析器无歧义命中失败）→ 不恢复（避免把
+        # 同干员另一技能的计划误接管），技能可读时保留原重检（练完由 dispatch/gate 收）。
+        solver = MagicMock()
+        solver.tasks = []
+        room = make_room("training")  # 技能可读但含混
+        idle_plan = make_plan()
+        with (
+            patch.object(reader, "_can_recover_plan", return_value=False),
+            patch.object(reader, "_recover_to_training") as rt,
+            patch.object(reader, "_wait_for_training") as wt,
+        ):
+            start, arrange_support = reader._reconcile(solver, room, None, [idle_plan])
+        rt.assert_not_called()
+        wt.assert_called_once_with(solver, room)
+        self.assertIsNone(start)
+        self.assertTrue(arrange_support)
+
+    def test_training_idle_hit_skill_unreadable_no_recover(self):
+        # #98/B8：idle×🔴 命中但技能不可读 → 不恢复、不重检（排班下次自然进房重读）
         solver = MagicMock()
         solver.tasks = []
         room = make_room("training", skill_name="")
         idle_plan = make_plan()
-        with patch.object(reader, "_wait_for_training") as wt:
+        with (
+            patch.object(reader, "_recover_to_training") as rt,
+            patch.object(reader, "_wait_for_training") as wt,
+        ):
             start, arrange_support = reader._reconcile(solver, room, None, [idle_plan])
+        rt.assert_not_called()
         wt.assert_not_called()
         self.assertIsNone(start)
         self.assertTrue(arrange_support)
         self.assertEqual(solver.tasks, [], "技能不可读不排重检")
+
+    # --- #98 failed/idle 截图为准恢复 training ---
+
+    def test_training_failed_hit_recovers(self):
+        # failed×🔴 命中 + 恢复门通过 → 恢复 training（截图为准），撤销 false-failure
+        solver = MagicMock()
+        room = make_room("training")
+        failed_plan = make_plan(status="failed")
+        with (
+            patch.object(reader, "_can_recover_plan", return_value=True),
+            patch.object(reader, "_recover_to_training") as rt,
+            patch.object(reader, "_refresh_training_plan") as rf,
+        ):
+            reader._reconcile(solver, room, None, [failed_plan])
+        rt.assert_called_once_with(solver, failed_plan, room)
+        rf.assert_called_once_with(solver, failed_plan, room)
+
+    def test_training_failed_hit_skill_unreadable_no_recover(self):
+        # #98/B8：failed×🔴 命中但技能不可读 → 不恢复、不重检（静默等待）
+        solver = MagicMock()
+        solver.tasks = []
+        room = make_room("training", skill_name="")
+        failed_plan = make_plan(status="failed")
+        with patch.object(reader, "_recover_to_training") as rt:
+            start, arrange_support = reader._reconcile(
+                solver, room, None, [failed_plan]
+            )
+        rt.assert_not_called()
+        self.assertIsNone(start)
+        self.assertTrue(arrange_support)
+        self.assertEqual(solver.tasks, [], "技能不可读不排重检")
+
+    def test_training_failed_hit_not_blocked(self):
+        # 恢复后不再走计划外 blocked（hit 命中 → 不通知①、不排占用重检）
+        solver = MagicMock()
+        solver.tasks = []
+        room = make_room("training")
+        failed_plan = make_plan(status="failed")
+        with (
+            patch.object(reader, "_can_recover_plan", return_value=True),
+            patch.object(reader, "_recover_to_training"),
+            patch.object(reader, "_refresh_training_plan"),
+            patch.object(reader, "_notify_blocked") as nb,
+        ):
+            reader._reconcile(solver, room, None, [failed_plan])
+        nb.assert_not_called()
+        self.assertEqual(solver.tasks, [], "恢复管理不排占用重检")
+
+    def test_waiting_collect_failed_not_collected(self):
+        # #98：failed 计划待收取不接管（避免无材料强开下一级）→ 静默收取，不按计划记账；
+        # 干员在 failed 计划里，「不在专精计划中」的帮收通知误导 → 抑制④。
+        solver = MagicMock()
+        room = make_room("waiting_collect")
+        failed_plan = make_plan(status="failed")
+        with (
+            patch.object(reader, "_collect_plan") as cp,
+            patch.object(reader, "_collect_silent") as cs,
+        ):
+            reader._reconcile(solver, room, None, [failed_plan])
+        cp.assert_not_called()
+        cs.assert_called_once_with(solver, room, suppress_help=True)
+
+    def test_recover_to_training_writes_status_expiry_clears_reason(self):
+        # #98 恢复：同一 update_plan_status 写 training + expires_at + swap_frozen=0 + 清
+        # failed_reason；本地 plan dict 同步更新（供 _refresh_training_plan 继续使用）
+        solver = MagicMock()
+        room = make_room("training")
+        countdown = room.panel.countdown
+        plan = make_plan(status="failed", failed_reason="材料不足", swap_frozen=1)
+        with patch("arknights_mower.utils.mastery_db.update_plan_status") as upd:
+            reader._recover_to_training(solver, plan, room)
+        expires_at = countdown.strftime("%Y-%m-%d %H:%M:%S")
+        upd.assert_called_once_with(
+            1, "training", expires_at=expires_at, swap_frozen=0, failed_reason=""
+        )
+        self.assertEqual(plan["status"], "training")
+        self.assertEqual(plan["swap_frozen"], 0)
+        self.assertIsNone(plan["failed_reason"])
+        self.assertEqual(plan["expires_at"], expires_at)
 
     def test_training_hit_plan_updates_expiry(self):
         # 无 active、但另一条 training 状态计划命中（面板可读且匹配）→ 采纳倒计时。
@@ -1788,7 +2035,7 @@ class TestReconcileAndAct(unittest.TestCase):
             patch(
                 "arknights_mower.utils.mastery_db.get_active_plan", return_value=None
             ),
-            patch("arknights_mower.utils.mastery_db.get_all_plans", return_value=[]),
+            patch("arknights_mower.utils.mastery_db.get_reconcile_plans", return_value=[]),
             patch.object(reader, "_reconcile", return_value=(scan_plan, True)) as rec,
         ):
             result, arrange_support, returned_room = reader.reconcile_and_act(

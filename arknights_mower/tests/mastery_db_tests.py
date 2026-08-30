@@ -14,6 +14,7 @@ from arknights_mower.utils.mastery_db import (
     get_failed_plans,
     get_next_idle_plan,
     get_plan_by_id,
+    get_reconcile_plans,
     get_route,
     get_route_settings,
     insert_plan,
@@ -84,6 +85,28 @@ class TestMasteryDb(unittest.TestCase):
         failed = get_failed_plans(path=self.db_path)
         self.assertEqual([f["id"] for f in failed], [p2])
         self.assertEqual(failed[0]["failed_reason"], "材料不足")
+
+    def test_get_reconcile_plans_merge_and_sort(self):
+        # #98：reconcile 计划集 = 非终态 + failed（completed 仍排除），跨两组合并后
+        # 按 (priority, id) 排序——重复计划（同干员技能）时优先高优先级一条。
+        p_fail_hi = insert_plan("char_fail", 0, 1, priority=10, path=self.db_path)
+        p_idle_lo = insert_plan("char_idle", 0, 1, priority=1, path=self.db_path)
+        p_train = insert_plan("char_train", 1, 2, path=self.db_path)  # priority 0
+        p_done = insert_plan("char_done", 0, 1, priority=3, path=self.db_path)
+        update_plan_status(p_fail_hi, "failed", failed_reason="材料不足", path=self.db_path)
+        update_plan_status(p_train, "training", path=self.db_path)
+        update_plan_status(p_done, "completed", path=self.db_path)
+        plans = get_reconcile_plans(path=self.db_path)
+        ids = [p["id"] for p in plans]
+        self.assertIn(p_fail_hi, ids, "failed 应纳入 reconcile 计划集（#98）")
+        self.assertIn(p_idle_lo, ids)
+        self.assertIn(p_train, ids)
+        self.assertNotIn(p_done, ids, "completed 仍排除（真正终态，不恢复）")
+        self.assertEqual(
+            [p["priority"] for p in plans],
+            [0, 1, 10],
+            "跨 get_all_plans/get_failed_plans 合并后按 priority 排序",
+        )
 
     def test_update_status(self):
         pid = insert_plan("char_001", 0, 1, path=self.db_path)

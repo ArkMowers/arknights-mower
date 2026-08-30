@@ -294,9 +294,11 @@ def get_next_idle_plan(path: Optional[str] = None) -> Optional[dict]:
 
 
 def get_failed_plans(path: Optional[str] = None) -> list[dict]:
-    """failed 状态的计划（含 failed_reason），供前端展示失败原因，避免计划"凭空消失"。
+    """failed 状态的计划（含 failed_reason）。
 
-    仅展示用途；执行循环仍走 get_all_plans（不含 failed，#4 SM-09）。
+    消费方：① 前端展示失败原因（避免计划"凭空消失"）；② `get_reconcile_plans`
+    （#98：reconcile 计划集 = 非终态 + failed，按截图恢复 training——§4 SM-09 的
+    「执行循环不含 failed」已随 #98 修改，reconcile 现在能看到 failed）。
     """
     try:
         with _conn(path) as conn:
@@ -307,6 +309,19 @@ def get_failed_plans(path: Optional[str] = None) -> list[dict]:
     except Exception as e:
         logger.error(f"get_failed_plans failed: {e}")
         return []
+
+
+def get_reconcile_plans(path: Optional[str] = None) -> list[dict]:
+    """#98：reconcile 用计划集 = 非终态 + failed（completed 仍排除）。
+
+    此前 get_all_plans 排除 failed → `_match_plan` 永不命中 failed，DB failed 但实际
+    在训练时计划状态永不改正（2026-08-16 若叶睦事故）。reconcile 需要看到 failed 以便
+    按截图恢复 training；completed 是真正终态（已收取完成），不恢复。按 (priority, id)
+    排序——重复计划（同干员技能）时优先高优先级一条，不重复管理。
+    """
+    plans = get_all_plans(path) + get_failed_plans(path)
+    plans.sort(key=lambda p: (p.get("priority", 0), p.get("id", 0)))
+    return plans
 
 
 def update_plan_status(

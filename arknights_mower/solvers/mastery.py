@@ -12,7 +12,7 @@ from arknights_mower.solvers.mastery_reader import (
     _plan_matches_room,
     _plan_operator_matches,
     _read_panel_text,
-    _read_slots,
+    _read_slots_checked,
     _read_train_countdown,
     _schedule_collect,
     _target_label,
@@ -1002,10 +1002,14 @@ def run_swap_support(solver):
     #78 整合：换人前先读全（read_main_panel 一次截图）确认训练——场景必须在训练室
     主页面（TRAIN_MAIN，219=技能选择页读不出倒计时、不再放行）且倒计时非 0 非空
     （countdown_state=="active"）才算训练确认，才读图标/算路线/换人（铁律 1）。
-    #79：读全后开进驻浮窗（_read_slots）读实际协助位——协助位 ∉ {operator,
+    #79：读全后开进驻浮窗（_read_slots_checked）读实际协助位——协助位 ∉ {operator,
     swap_target}（陌生人/坐错）先 choose_train 纠错成 operator，纠错成功重读倒计时
     （此时效率已知 = route["efficiency"]）才算换人；纠错失败 → 邮件通知 + 不换人 +
     排收取退出。协助位已 = swap_target（已减半）→ 不再换、不置 swap_frozen。
+    #100：协助位**空着**同样补 operator（填路线 operator，不碰训练位）——只在
+    countdown active 时动（00:00:00 收取边界不动，铁律 6）且读可靠（reliable，
+    OCR 坏名读失败不算空，稳为先）；空位补位失败 → 不阻塞减半（落到 did_swap 直接
+    换 swap_target，pre-#100 行为）。
     换人公式/路线沿用稳定方案，只加协助位确认 + 倒计时门。
     """
     from arknights_mower.utils import config
@@ -1045,39 +1049,57 @@ def run_swap_support(solver):
     operator = route.get("operator") if route else None
     swap_target = route.get("swap_target") if route else None
 
-    # #79 协助位确认：开进驻浮窗读实际协助位（_read_slots 读后自动关浮窗回主页面）。
-    # 协助位 ∉ {operator, swap_target}（陌生人/读不到）→ 先纠错成 operator，换完再
-    # 读一遍（此时效率已知 = route["efficiency"]）才算换人。
-    support_slot, _ = _read_slots(solver)
-    if support_slot and support_slot not in (operator, swap_target):
-        logger.info(f"协助位坐着 {support_slot}，纠错为 {operator}")
-        logger.debug(f"[mastery] 协助位纠错 id={plan['id']} 期望={operator} 动作=纠错")
+    # #79 协助位确认：开进驻浮窗读实际协助位（_read_slots_checked 读后自动关浮窗回
+    # 主页面）。协助位 ∉ {operator, swap_target}（陌生人/空位）→ 坐错人纠错成 operator
+    # （#80）、空位补 operator（#100）。只在倒计时 active（训练确认）时动协助位——
+    # 00:00:00 收取边界不动（铁律 6）；读失败（reliable=False，OCR 坏名等）不动作
+    #（稳为先：读不到就不动，防基于不可靠读撤销已减半）。
+    support_slot, _, _, reliable = _read_slots_checked(solver)
+    if (
+        countdown_active
+        and operator
+        and reliable
+        and support_slot not in (operator, swap_target)
+    ):
+        if support_slot:
+            logger.info(f"协助位坐着 {support_slot}，纠错为 {operator}")
+            logger.debug(f"[mastery] 协助位纠错 id={plan['id']} 期望={operator} 动作=纠错")
+        else:
+            logger.info(f"协助位空着，补位为 {operator}")
+            logger.debug(f"[mastery] 协助位补位 id={plan['id']} 期望={operator} 动作=补位")
         try:
             solver.choose_train([operator, "Current"])
         except Exception as e:
-            logger.warning(f"协助位纠错失败: {e}")
-            logger.debug(f"[mastery] 协助位纠错 id={plan['id']} 结果=失败 err={e}")
-            _notify_swap_correction_failed(solver, plan, support_slot, operator)
-            _schedule_collect_after_swap(solver, plan)
-            solver.back()
-            return
-        logger.debug(f"[mastery] 协助位纠错 id={plan['id']} 结果=ok")
-        support_slot = operator
-        # 纠错消耗时间 → 重读倒计时（铁律 1 动作前先读房）
-        scene = solver.train_scene()
-        if scene == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
+            logger.warning(f"协助位补位/纠错失败: {e}")
+            logger.debug(f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=失败 err={e}")
+            _notify_swap_correction_failed(
+                solver, plan, support_slot, operator, fallback_swap=not support_slot
+            )
+            if support_slot:
+                # #79 坐错人纠错失败 → 维持语义：不换人、排收取退出
+                _schedule_collect_after_swap(solver, plan)
+                solver.back()
+                return
+            # #100 空位补位失败 → 不阻塞减半：落到 did_swap 直接换 swap_target
+            #（pre-#100 空位行为，减半收益不丢；support_slot 仍空 → did_swap 判换）
+        else:
+            logger.debug(f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=ok")
+            support_slot = operator
+            # 补位/纠错消耗时间 → 重读倒计时（铁律 1 动作前先读房）
             scene = solver.train_scene()
-        panel = None
-        if scene == Scene.TRAIN_MAIN:
-            try:
-                panel = read_main_panel(solver)
-            except Exception as e:
-                logger.debug(f"主面板重读失败: {e}")
-        countdown_active = bool(panel is not None and panel.countdown_state == "active")
-        step_level = panel.mastery_tier if panel is not None else None
-        route = _get_plan_route(plan, step_level)
-        swap_target = route.get("swap_target") if route else None
+            if scene == Scene.INFRA_DETAILS:
+                _close_room_detail(solver)
+                scene = solver.train_scene()
+            panel = None
+            if scene == Scene.TRAIN_MAIN:
+                try:
+                    panel = read_main_panel(solver)
+                except Exception as e:
+                    logger.debug(f"主面板重读失败: {e}")
+            countdown_active = bool(panel is not None and panel.countdown_state == "active")
+            step_level = panel.mastery_tier if panel is not None else None
+            route = _get_plan_route(plan, step_level)
+            swap_target = route.get("swap_target") if route else None
 
     # #80：换人前用当前倒计时判「值不值得换」（_swap_worthwhileness = calc_swap_threshold
     # 的 301 守卫，换后真实剩余 <5h 不值得）——纠错任务由 reconcile 排（排程时不做值得
@@ -1136,9 +1158,14 @@ def _try_swap(solver, plan, swap_target) -> bool:
         return False
 
 
-def _notify_swap_correction_failed(solver, plan, support_slot, operator):
-    """#79 协助位纠错失败通知：换入 operator 失败，减半收益可能丢 + 协助位坐错人。
+def _notify_swap_correction_failed(
+    solver, plan, support_slot, operator, fallback_swap=False
+):
+    """#79 协助位纠错失败通知：换入 operator 失败 + 协助位坐错人/空。
 
+    #100：support_slot 空（协助位空着补位失败）时显示「空」；空位补位失败会落到
+    did_swap 直接尝试换入 swap_target（**不跳过减半**）→ fallback_swap=True 时文案
+    如实改为「将尝试直接换入减半对象」（否则「跳过减半」与实际行为矛盾）。
     去重按 plan id（同计划只通知一次）；异常时 fail open 照发（宁可多发不漏发）。
     """
     from arknights_mower.utils.email import send_message
@@ -1147,10 +1174,16 @@ def _notify_swap_correction_failed(solver, plan, support_slot, operator):
     if not should_notify("swap_correction_failed", str(plan["id"])):
         return
     label = _plan_fail_label(plan)
-    msg = (
-        f"{label} 协助位 {support_slot} 纠错失败（未能换入 {operator}），"
-        "本次跳过减半换人，减半收益可能丢失"
-    )
+    if fallback_swap:
+        msg = (
+            f"{label} 协助位 {support_slot or '空'} 补位失败（未能换入 {operator}），"
+            "将尝试直接换入减半对象"
+        )
+    else:
+        msg = (
+            f"{label} 协助位 {support_slot or '空'} 补位/纠错失败（未能换入 {operator}），"
+            "本次跳过减半换人，减半收益可能丢失"
+        )
     send_message(msg, level="WARNING")
 
 

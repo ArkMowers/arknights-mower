@@ -57,7 +57,7 @@
 
 以下规则没有任何例外，改动时不得放宽：
 
-1. **截图权威**：任何训练室动作之前**必须先读房**（主页面面板）；DB 只是「意图缓存」，DB 与截图冲突**以截图为准**。（`mastery_reader.py:6-10`，#61/#63）
+1. **截图权威**：任何训练室动作之前**必须先读房**（主页面面板）；DB 只是「意图缓存」，DB 与截图冲突**以截图为准**，**适用于所有计划状态（含 failed/idle）**——failed/idle 计划读到面板匹配 + 倒计时 active → 恢复 training（#98，见 §4 SM-09 例外 / §16.4）。（`mastery_reader.py:6-10`，#61/#63/#98）
 2. **`expires_at` 只是调度提示**，永不作为判定权威；训练状态永远从房内截图读。（#61）
 3. **一次进房做完全部**：读全部状态 + 做全部动作，不拆成两次进房。（#61/#63）
 4. **开始训练（长动作）只由 `SKILL_UPGRADE` dispatch（`run_mastery_task`）执行**；排班路径 / `reconcile_short` 只做短动作（核实/帮收/重置/对账），**永不开始训练、永不退出房间**（退出由调用方 gate 负责）。（#61/#63）
@@ -88,7 +88,8 @@
 - `arranging → failed`：必带 `failed_reason`；覆盖 5 分钟纯墙钟超时（无加载豁免）、材料不足、换错人失败；标记后退出房间 + 恰好一次 ERROR 通知。（SM-05）
 - `training → training`（更新 expires_at）：静默重读倒计时、刷新 expires_at、重排收取任务，**不发通知**。（SM-06 / C-06）
 - 收取对账：档位 == target → `completed`（**不级联**，等扫描，用户定案 #74 第2段）；档位 ≠ target → `idle`（继续本级），**一律当场开下一级**（2026-08-14 用户拍板「都去掉」：不分扫描链/重启，重启后也不保守等扫描；材料不足由确认页 fail-fast 兜底）。**档位高于目标不记账完成**（#67/B6：专二收取不得关掉专一计划——本次收取不属于早已满足的计划，保持 idle 由已到target检测正确完成）。（SM-08 / #67 / #74 第3段）
-- `completed`/`failed` 是执行循环的终态：从 `get_all_plans` 和 `_match_plan` 排除，只进 `get_all_history`；**唯一回到 idle 的路是 `retry_failed_plans()`**。（SM-09 / DB-03）
+- `completed` 是执行循环的终态：从 `get_all_plans` 和 `_match_plan` 排除，只进 `get_all_history`；**唯一回到 idle 的路是 `retry_failed_plans()`**。（SM-09 / DB-03）
+- `failed` **例外（#98，2026-08-16）**：通常同 completed 视为终态（`get_all_plans` 不含 failed），但 reconcile 计划集 **`get_reconcile_plans` 纳入 failed**（= 非终态 + failed，completed 仍排除，按 priority/id 排序）——面板干员名+技能名**都可读且与某计划匹配** + 倒计时 active → 该 failed 计划恢复 training（撤销 false-failure，**不依赖 `retry_failed_plans`**）；不可读/含混 → 不恢复、静默等待（B8 稳为先）。failed 待收取阶段**不接管**（防无材料强开下一级），由扫描 `retry_failed_plans` 兜底。（SM-09 / DB-03 / #98）
 - `failed → idle`：仅 `retry_failed_plans()`（清 `failed_reason`），且只从仓库扫描路径 `_auto_schedule_mastery_after_scan` 调用。（DB-06）
 
 ### 其它
@@ -170,6 +171,15 @@
    run_swap_support 减半换人失败 → **立刻原地重试**（无 +5min 间隔，不排新任务），
    连续 SWAP_RETRY_LIMIT 次仍失败 / 剩余不足 5h → 放弃 + ⑧ 通知，**不再置
    swap_frozen=1**——reconcile 下次进房重新补排再试一轮，暂时性失败可被救回。
+   **#100 空协助位补位（2026-08-16）**：受管理计划训练中协助位**空着**同样需纠——
+   `_maybe_recover_swap` 读协助位**可靠地空着**（`_read_slots_checked`，读失败不算空）
+   → 排补位任务（`_schedule_fill_support`，填路线 operator、不碰训练位）；补位与半程
+   换人**独立去重**（fill-{id} 键，不被阈值时刻的半程换人任务掩盖），补位后仍落半程
+   换人去重/排程。run_swap_support 空位先补 operator 再按值得门换 swap_target；**只在
+   倒计时 active 时动协助位**（00:00:00 收取边界不动，铁律 6）、**读失败不动**（稳为先）；
+   空位补位失败 → 不阻塞减半（落到 did_swap 直接换 swap_target）。
+   门控：enable_mastery 开、非跟随排班、swap_frozen=0；已减半（协助位 == swap_target）/
+   保护（逻各斯/艾丽妮在协助位）→ 不补。
 
 ### `calc_swap_threshold` 公式（`mastery.py:238-271`）
 - `target_minutes = 300 + buffer`（buffer 默认 10）。
@@ -375,7 +385,7 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 2. 读**进驻详情浮窗**：协助位/训练位干员 + 心情（心情只记入结构化日志，不 gate 判定）。
 3. 读**左下角**：干员名 / 技能名 / 倒计时 / 专精图标。
 4. 按状态矩阵判定（16.2）。
-5. **凡「干员+技能都在计划内」的情况，一律用左下角信息更新 DB**（以截图为准）。
+5. **凡「干员+技能都在计划内」的情况，一律用左下角信息更新 DB**（以截图为准）。**#98：failed/idle 计划同样适用**——面板干员名+技能名都可读且匹配某计划 + 倒计时 active → 恢复该计划为 training（撤销 false-failure；恢复门比 B8 采纳门更严，见 §16.4）。
 
 ### 16.2 状态矩阵（倒计时三态 × 干员/技能存在性 × 图标亮点）
 
@@ -399,9 +409,12 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 | 非专三 | 逻各斯/艾丽妮 | 干员在、技能不在 | 收取 → 通知帮收（④）→ **不可排班**（保护） |
 | 非专三 | 逻各斯/艾丽妮 | 都在计划 | **重启清缓存恢复（丢失收取任务）** → 恢复流程（16.6）→ **期间排班不能接管**（保护） |
 
+> **#98 failed 例外**：待收取格命中的是 **failed** 计划（恢复错过了训练期）→ **不接管**——静默收取、不按该计划记账/续训（避免无材料强开下一级、把他人训练误记为计划进度），并**抑制④帮收通知**（干员确实在 failed 计划里，「不在专精计划中」文案误导）；由扫描 `retry_failed_plans` 置 idle 后经已到target检测兜底。
+
 ### 16.4 训练中 / 空闲动作
 
 **训练中（倒计时非 0）**
+- **#98 恢复（截图为准适用于所有状态）**：无 active 时从匹配的 failed/idle 计划中按 priority/id 选一条，**恢复门 `_can_recover_plan`**（比 B8 采纳门更严）通过 → `_recover_to_training` 恢复 training（同一 update_plan_status 写 status + expires_at + swap_frozen=0 + 清 failed_reason，撤销 false-failure），此后按「计划匹配」正常管理（换人/收取）。恢复门要求：面板**干员名可读**且**技能被 `resolve_panel_skill` 无歧义命中并 == 计划 skill_index**（**禁子串回退**——OCR 退化片段如「技能」⊂ 所有技能名会把同干员另一技能的计划误恢复；截断前缀由解析器正确解析不受影响）。**反向约束**：不可读 / 含混 / 倒计时不可读 → 不恢复、不改写状态；技能可读时保留原重检（练完由 dispatch/gate 收），技能不可读静默等待（B8 稳为先）。
 - 开了跟随排班（`assistant_follows_schedule=True`）→ 协助位可换（无论谁/计划），训练位不可移动（游戏设计）→ 冻结训练位。
 - 未开跟随排班 + 计划匹配（干员+技能都在计划）→ 加载路线配置，结合倒计时 + 左下角 + 进驻详情 → 决定是否换人/收取 → 排换人任务或收取任务（去重，同计划只一条）→ **保护训练室**（后续排班不进训练室）。
 - 未开跟随排班 + 不匹配（其他情况）→ 不动房间 + 通知① blocked 一次（按倒计时结束时刻去重，PRD #64 保留；通知≠动房间）→ **排一条未来重检**（倒计时结束 + 2min，`_upsert_skill_upgrade_task` 按 plan_key 去重恒 ≤1 条）。重检到点再进房，若占用已结束走待收取动作（16.3）。（#66/B1：原「下次排班再看」若无排班事件会一直不重检 → 每 ~4s 进出训练室死循环；排未来重检让队列不空。keepalive 已删，#74 第3段。）
