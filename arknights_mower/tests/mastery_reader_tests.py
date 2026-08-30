@@ -936,6 +936,60 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         self.assertEqual(len(swaps), 1, "专三步陌生人协助位也应纠错")
         route.assert_called_once()
 
+    def test_recover_protected_stranger_low_countdown_no_correction(self):
+        # #107 保护门：逻各斯在协助位（非路线干员/减半对象）+ 剩余 < 5h+缓冲 →
+        # 不排纠错/换人任务，返回 False 让调用方排收取（expires_at 已由 _update_expiry 刷新）
+        solver = self._slots("逻各斯")
+        plan = self._training_plan()
+        room = self._room(countdown=datetime.now() + timedelta(hours=4))  # 240 < 310
+        with (
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value=self._correction_route(swap_target="缄默德克萨斯"),
+            ),
+            patch("arknights_mower.solvers.mastery._schedule_swap_if_needed") as sched,
+        ):
+            result = reader._maybe_recover_swap(solver, plan, room)
+        self.assertFalse(result, "受保护且剩余不足 → 不排任务，调用方排收取")
+        sched.assert_not_called()
+        swaps = [t for t in solver.tasks if t.type == reader.TaskTypes.SWAP_SUPPORT]
+        self.assertEqual(len(swaps), 0, "逻各斯在协助位且剩余不足，不排纠错/换人任务")
+
+    def test_recover_protected_stranger_high_countdown_corrects(self):
+        # #107 保护门：逻各斯在协助位 + 剩余 ≥ 5h+缓冲 → 照常纠成路线人（再走减半）
+        solver = self._slots("逻各斯")
+        plan = self._training_plan()
+        room = self._room()  # now+6h = 360 ≥ 310
+        with (
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value=self._correction_route(swap_target="缄默德克萨斯"),
+            ),
+            patch("arknights_mower.solvers.mastery._schedule_swap_if_needed") as sched,
+        ):
+            result = reader._maybe_recover_swap(solver, plan, room)
+        self.assertTrue(result, "剩余足够 → 排纠错任务，调用方不排收取")
+        sched.assert_not_called()
+        swaps = [t for t in solver.tasks if t.type == reader.TaskTypes.SWAP_SUPPORT]
+        self.assertEqual(len(swaps), 1)
+        self.assertEqual(swaps[0].plan_key, str(plan["id"]))
+        self.assertIn("纠错为 夜半", swaps[0].meta_data)
+
+    def test_recover_non_protected_stranger_low_countdown_corrects(self):
+        # #107 保护门不误伤：普通陌生人 + 剩余不足 → 照旧纠（保护只认逻各斯/艾丽妮）
+        solver = self._slots("缄默德克萨斯")
+        plan = self._training_plan()
+        room = self._room(countdown=datetime.now() + timedelta(hours=4))  # 240 < 310
+        with patch(
+            "arknights_mower.solvers.mastery._get_plan_route",
+            return_value=self._correction_route(swap_target="掠风"),
+        ) as route:
+            result = reader._maybe_recover_swap(solver, plan, room)
+        self.assertTrue(result, "普通陌生人剩余不足也纠（#80 只纠不换减半对象）")
+        swaps = [t for t in solver.tasks if t.type == reader.TaskTypes.SWAP_SUPPORT]
+        self.assertEqual(len(swaps), 1)
+        route.assert_called_once()
+
     def test_recover_assist_operator_falls_through_to_swap(self):
         # 协助位已是路线 operator（不是陌生人）→ 不纠错，走 _schedule_swap_if_needed 判减半
         solver = self._slots("夜半")
@@ -1787,6 +1841,19 @@ class TestReconcile73(unittest.TestCase):
         ):
             reader._reconcile(solver, room, None, [])
         nh.assert_called_once_with(solver, room)
+        cp.assert_not_called()
+
+    def test_waiting_collect_tier_zero_pixel_fail_no_help_collect(self):
+        # #116：图标像素读取失败（tier 读成 0）+ 干员名可读 → 不得误发④帮收
+        # （读失败不算专三、不算非专三 → 静默），专三完成不再被错发「帮收」
+        solver = MagicMock()
+        room = make_room("waiting_collect", mastery_tier=0, operator_name="路人")
+        with (
+            patch.object(reader, "_notify_help_collect") as nh,
+            patch.object(reader, "_collect_plan") as cp,
+        ):
+            reader._reconcile(solver, room, None, [])
+        nh.assert_not_called()
         cp.assert_not_called()
 
     def test_waiting_collect_below_m3_matched_recovers_and_promotes(self):

@@ -187,6 +187,12 @@
    空位放 operator 失败 → 不阻塞减半（直接尝试换入 swap_target）。
    门控：enable_mastery 开、非跟随排班、swap_frozen=0；已减半（协助位 == swap_target）/
    保护（逻各斯/艾丽妮在协助位）→ 不补。
+   **#107 保护分档（2026-08-17）**：逻各斯/艾丽妮在协助位且 ∉ {operator, swap_target}
+   （非路线干员/非减半对象）时，按剩余倒计时分档：**剩余 < 300+缓冲 分钟 → 不纠不换**
+   （她们本身是最优加成，路线干员+减半收益赶不上；expires_at 照常刷新，只排收取）；
+   **剩余 ≥ 300+缓冲 → 照常纠成路线 operator 再走减半流程**。实现点：`_maybe_recover_swap`
+   陌生人分支与 `run_swap_support` 纠错分支前（后者必须整段 return，防 did_swap 用路线
+   效率误判直接换减半）。非保护陌生人（含专三）照旧纠（只纠不换减半对象，不变）。
 
 ### `calc_swap_threshold` 公式（`mastery.py:238-271`）
 - `target_minutes = 300 + buffer`（buffer 默认 10）。

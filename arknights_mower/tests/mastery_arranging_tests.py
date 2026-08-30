@@ -1064,6 +1064,7 @@ class TestSwapCollectGating(unittest.TestCase):
         # （换后真实 ≥ 301，read_time=15000→250 分钟）才会真正执行换人。
         solver = self._solver()
         solver.read_time.return_value = 15000  # 250 分钟，换后真实 ≈ 330 分钟
+        solver.get_agent_from_room.return_value = self._slots("夜半")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
             patch(
@@ -1130,6 +1131,8 @@ class TestSwapCollectGating(unittest.TestCase):
         solver.read_time.return_value = read_seconds
         solver.task = task
         solver.choose_train.side_effect = Exception("选人流程超时")
+        # 协助位读可靠（reliable=True），did_swap 才触发——读失败不换（#117）
+        solver.get_agent_from_room.return_value = self._slots("夜半")
         return solver
 
     def _swap_route(self):
@@ -1181,6 +1184,106 @@ class TestSwapCollectGating(unittest.TestCase):
         )
         upd.assert_called_once_with(1, "training", swap_frozen=1)
         sc.assert_called_once()
+
+    def test_swap_support_protected_stranger_low_countdown_no_correction(self):
+        # #107 保护门：逻各斯在协助位（非路线干员/减半对象）+ 剩余 < 5h+缓冲 →
+        # 不纠不换，只排收取退出（不能落到 did_swap 用路线效率误判直接换减半）
+        solver = self._solver()
+        solver.read_time.return_value = 15000  # 250 分钟 < 310（300+缓冲10）
+        solver.get_agent_from_room.return_value = self._slots("逻各斯")
+        plan = make_plan(status="training", swap_frozen=0, target_level=2)
+        route = {
+            "operator": "夜半",
+            "swap_target": "缄默德克萨斯",
+            "central_bonus": 5,
+            "efficiency": 75,
+            "job_match": True,
+        }
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
+            ),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch.object(mastery, "_get_plan_route", return_value=route),
+            patch.object(mastery, "_schedule_collect") as sc,
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(config_mod.conf, "enable_mastery", True),
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+        ):
+            mastery.run_swap_support(solver)
+        solver.choose_train.assert_not_called()
+        upd.assert_not_called()
+        sc.assert_called_once()
+        solver.back.assert_called_once()
+
+    def test_swap_support_protected_stranger_high_countdown_corrects(self):
+        # #107 保护门：逻各斯在协助位 + 剩余 ≥ 5h+缓冲 → 照常纠成路线人再换减半对象
+        solver = self._solver()
+        solver.read_time.return_value = 23400  # 390 分钟 ≥ 310
+        solver.get_agent_from_room.return_value = self._slots("逻各斯")
+        plan = make_plan(status="training", swap_frozen=0, target_level=2)
+        route = {
+            "operator": "夜半",
+            "swap_target": "缄默德克萨斯",
+            "central_bonus": 5,
+            "efficiency": 75,
+            "job_match": True,
+        }
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
+            ),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch.object(mastery, "_get_plan_route", return_value=route),
+            patch.object(mastery, "_schedule_collect") as sc,
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(config_mod.conf, "enable_mastery", True),
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+        ):
+            mastery.run_swap_support(solver)
+        calls = [c.args[0] for c in solver.choose_train.call_args_list]
+        self.assertEqual(
+            calls,
+            [["夜半", "Current"], ["缄默德克萨斯", "Current"]],
+            "剩余足够 → 先纠成路线人，再换入减半对象",
+        )
+        upd.assert_called_once_with(1, "training", swap_frozen=1)
+        sc.assert_called_once()
+
+    def test_swap_support_unreliable_read_no_swap(self):
+        # #107/#117：读协助位失败（reliable=False）→ 不盲目换人（槽位未知，可能坐着
+        # 受保护干员或已减半对象）——did_swap 需 reliable，「稳为先：读不到就不动」，
+        # 只排收取退出
+        solver = self._solver()
+        solver.read_time.return_value = 15000  # 250 分钟 < 310
+        solver.get_agent_from_room.side_effect = RuntimeError("OCR fail")
+        plan = make_plan(status="training", swap_frozen=0, target_level=2)
+        route = {
+            "operator": "夜半",
+            "swap_target": "缄默德克萨斯",
+            "central_bonus": 5,
+            "efficiency": 75,
+            "job_match": True,
+        }
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
+            ),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch.object(mastery, "_get_plan_route", return_value=route),
+            patch.object(mastery, "_schedule_collect") as sc,
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(config_mod.conf, "enable_mastery", True),
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+        ):
+            mastery.run_swap_support(solver)
+        solver.choose_train.assert_not_called()
+        upd.assert_not_called()
+        sc.assert_called_once()
+        solver.back.assert_called_once()
 
     def test_swap_support_empty_slot_places_swap_target_directly(self):
         # #101：空位 + calc_swap_threshold(0,...) 的 should_swap（含 301 值得门）= True
@@ -1552,6 +1655,7 @@ class TestSwapCollectGating(unittest.TestCase):
         # 暂时性失败可被救回：首次失败、重试成功 → swap_frozen=1，不通知
         solver = self._solver()
         solver.read_time.return_value = 15000
+        solver.get_agent_from_room.return_value = self._slots("夜半")
         attempts = {"n": 0}
 
         def flaky(*args, **kwargs):
@@ -1645,6 +1749,7 @@ class TestSwapCollectGating(unittest.TestCase):
         solver.read_time.return_value = (
             15000  # 250 分钟，值得换（否则 worth 门跳过换人）
         )
+        solver.get_agent_from_room.return_value = self._slots("夜半")
         solver.train_scene.side_effect = [Scene.INFRA_DETAILS, Scene.TRAIN_MAIN]
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
@@ -1892,6 +1997,10 @@ class TestRouteStepLevel(unittest.TestCase):
         solver = self._lit_solver(lit=2)
         solver.train_scene.return_value = Scene.TRAIN_MAIN
         solver.read_time.return_value = 15000  # 250 分钟，值得换（否则 worth 门跳过）
+        solver.get_agent_from_room.return_value = [
+            {"agent": "夜半"},
+            {"agent": "能天使"},
+        ]
         plan = make_plan(status="training", swap_frozen=0, target_level=3)
         route_calls = []
         with (

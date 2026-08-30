@@ -901,6 +901,18 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
             and _find_swap_task(solver, str(plan["id"])) is None
         ):
             # 陌生人/坐错 → 排纠错任务（纠成 operator；减半与否由 dispatch 时再判）
+            # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）
+            # 且剩余不足 5h+缓冲 → 不纠不换（她们本身是最优加成；expires_at 已由调用方
+            # _update_expiry 刷新），返回 False 让调用方排收取；剩余足够才照常纠错。
+            if support_slot in PROTECT_OPERATORS:
+                remaining = (countdown - datetime.now()).total_seconds() / 60
+                buffer_min = route.get("mastery_swap_buffer", 10)
+                if remaining < 300 + buffer_min:
+                    logger.info(
+                        f"[mastery] #107 协助位保护：{support_slot} 剩余不足 "
+                        f"{300 + buffer_min} 分钟，不纠错换人，仅刷新时间"
+                    )
+                    return False
             _schedule_correction_swap(solver, plan, operator)
             scheduled = True
         elif reliable and support_slot == swap_target:
@@ -1167,14 +1179,15 @@ def _collect_plan(solver, plan, room: RoomState):
 
 
 def _collect_silent(solver, room: RoomState, suppress_help=False):
-    """未命中计划纯收取：非专三且面板可读 → 通知④帮收（§16.3）；专三/面板不可读 → 静默。
+    """未命中计划纯收取：非专三 → 通知④帮收（§16.3）；专三/档位读失败 → 静默。
 
-    面板不可读（OCR 失败，干员名空）时不发④——档位可能误读为 0（如 TRAIN_FINISH
-    完成页主面板区域不可读），专三完成会被错发「帮收」；稳为先：不可读则静默。
+    #116 守卫用 mastery_tier 自身（像素读取）而非 operator_name（文本 OCR）判可读性：
+    待收取语境真实档位必 ≥1，tier 读成 0 = 图标像素读失败 → 不算专三也不算非专三，
+    抑制④（否则专三完成会被误发「帮收」）；tier ∈ (1,2) 才发④。
     suppress_help（#98）：干员其实在 failed 计划里（failed 待收取不接管），发
     「不在专精计划中」的帮收通知会误导 → 抑制。
     """
-    if not suppress_help and room.panel.mastery_tier != 3 and room.panel.operator_name:
+    if not suppress_help and room.panel.mastery_tier in (1, 2):
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
 

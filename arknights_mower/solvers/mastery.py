@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from arknights_mower.solvers.mastery_reader import (
+    PROTECT_OPERATORS,
     RoomPanel,
     RoomState,
     _close_room_detail,
@@ -1063,6 +1064,26 @@ def run_swap_support(solver):
     #（稳为先：读不到就不动，防基于不可靠读撤销已减半）。
     support_slot, _, _, reliable = _read_slots_checked(solver)
     if operator and reliable and support_slot not in (operator, swap_target):
+        # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）且
+        # 剩余不足 5h+缓冲 → 不纠不换——她们本身是最优加成，路线干员+减半收益在这里
+        # 赶不上；只排收取退出（expires_at 已由 B8 采纳门刷新）。剩余足够才照常纠错
+        # 走减半流程。必须整段 return：否则落到 did_swap 会用路线效率(75)判值得、
+        # 直接换减半对象，绕过「不换人」。
+        if (
+            support_slot in PROTECT_OPERATORS
+            and panel is not None
+            and panel.countdown is not None
+        ):
+            remaining_min = (panel.countdown - datetime.now()).total_seconds() / 60
+            buffer_min = route.get("mastery_swap_buffer", 10)
+            if remaining_min < 300 + buffer_min:
+                logger.info(
+                    f"[mastery] #107 协助位保护：{support_slot} 剩余不足 "
+                    f"{300 + buffer_min} 分钟，不纠错换人，仅排收取"
+                )
+                _schedule_collect_after_swap(solver, plan)
+                solver.back()
+                return
         if not support_slot:
             # #101 空位一步定夺（当前效率已知=0）：calc_swap_threshold(0,...) 判
             # 「放 operator 还是 swap_target」——should_swap（含 301 值得门）→ 直接放
@@ -1220,6 +1241,8 @@ def run_swap_support(solver):
         scene == Scene.TRAIN_MAIN
         and countdown_active
         and swap_target
+        and reliable  # #107/#117：读协助位失败（reliable=False）不盲目换——槽位未知，
+        # 可能坐着受保护干员/已减半对象，「稳为先：读不到就不动」
         and support_slot != swap_target  # 已减半（协助位已是 swap_target）不再换
         and worth_swap
     )
