@@ -1802,22 +1802,39 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ].replacement, self.op_data.operators["菲亚梅塔"].room
         return None, None
 
+    def _run_order_time_region(self):
+        """#85：跑单剩余时间的双端坐标（三处调用点曾各自复制，UI 调整只改这里）。"""
+        return (
+            (int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+            (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+        )
+
+    def _wait_drone_interface(self, interval=0.5, accelerate_template=None):
+        """#85：等待进入无人机界面（出现预期的加速按钮）。
+
+        ``accelerate_template`` 用于贸易站专属流程；未指定时制造站/贸易站任一
+        加速按钮都视为成功。
+        """
+        error_count = 0
+        templates = (
+            (accelerate_template,)
+            if accelerate_template is not None
+            else ("factory_accelerate", "bill_accelerate")
+        )
+        while all(self.find(template) is None for template in templates):
+            if error_count > 5:
+                raise Exception("未成功进入无人机界面")
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=interval)
+            error_count += 1
+
     def get_run_order_time(self, room):
         logger.info("基建：读取插拔时间")
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
-        error_count = 0
-        while self.find("bill_accelerate") is None:
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
-            error_count += 1
+        self._wait_drone_interface(interval=1, accelerate_template="bill_accelerate")
         execute_time = self.double_read_time(
-            (
-                (int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
-                (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
-            ),
+            self._run_order_time_region(),
             use_digit_reader=True,
         )
         execute_time = execute_time - timedelta(
@@ -2218,7 +2235,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
 
     def adjust_order_time(self, accelerate, room):
-        error_count = 0
         action_required_task = scheduling(self.tasks)
         # logger.error(f"action_required_task:{action_required_task}")
         logger.debug(f"room:{room}")
@@ -2250,11 +2266,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not self.waiting_solver():
                     return None
 
-            while self.find("bill_accelerate") is None:
-                if error_count > 5:
-                    raise Exception("未成功进入订单界面")
-                self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
-                error_count += 1
+            self._wait_drone_interface(
+                interval=1, accelerate_template="bill_accelerate"
+            )
 
             _time = self.double_read_time(
                 (
@@ -2295,15 +2309,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
         # 关闭掉房间总览
-        error_count = 0
-        while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
-        ):
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-            error_count += 1
+        self._wait_drone_interface(interval=3)
 
         accelerate = self.find("factory_accelerate")
         if accelerate:
@@ -3154,21 +3160,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return _current_room
 
     def get_order_remaining_time(self):
-        error_count = 0
-        while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
-        ):
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
-            error_count += 1
+        self._wait_drone_interface()
         # 订单剩余时间
         execute_time = self.double_read_time(
-            (
-                (int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
-                (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
-            ),
+            self._run_order_time_region(),
             use_digit_reader=True,
         )
         return round((execute_time - datetime.now()).total_seconds(), 1)
@@ -3498,27 +3493,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.drone(room, not_customize=True)
             else:
                 # 葛朗台跑单模式
-                error_count = 0
-                while (
-                    self.find("factory_accelerate") is None
-                    and self.find("bill_accelerate") is None
-                ):
-                    if error_count > 5:
-                        raise Exception("未成功进入无人机界面")
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
-                    error_count += 1
+                self._wait_drone_interface()
                 # 订单剩余时间
                 execute_time = self.double_read_time(
-                    (
-                        (
-                            int(self.recog.w * 650 / 2496),
-                            int(self.recog.h * 660 / 1404),
-                        ),
-                        (
-                            int(self.recog.w * 815 / 2496),
-                            int(self.recog.h * 710 / 1404),
-                        ),
-                    ),
+                    self._run_order_time_region(),
                     use_digit_reader=True,
                 )
                 wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
