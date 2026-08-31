@@ -458,7 +458,7 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 - 未开跟随排班 + 不匹配（其他情况）→ 不动房间 + 通知① blocked 一次（按倒计时结束时刻去重，PRD #64 保留；通知≠动房间）→ **排一条未来重检**（倒计时结束 + 2min，`_upsert_skill_upgrade_task` 按 plan_key 去重恒 ≤1 条）。重检到点再进房，若占用已结束走待收取动作（16.3）。（#66/B1：原「下次排班再看」若无排班事件会一直不重检 → 每 ~4s 进出训练室死循环；排未来重检让队列不空。keepalive 已删，#74 第3段。）
 
 **空闲（倒计时空 / 读失败）**
-- **开始训练由带 plan_key 的 SKILL_UPGRADE dispatch**（#74 第3段「都去掉」）：`_reconcile` 空闲×未保护格在 `scan_plan`（任务 plan_key 指定计划）非 None 且仍 idle 时返回该计划开始；`plan_key=None`（占用重检）与排班顺路（`reconcile_short`）在空闲格不开始。
+- **开始训练由带 plan_key 的 SKILL_UPGRADE dispatch**（#74 第3段「都去掉」）：`_reconcile` 空闲格在 `scan_plan`（任务 plan_key 指定计划）非 None 且仍 idle 时返回该计划开始（受保护格需训练位=计划干员，见 §16.5 例外）；`plan_key=None`（占用重检）与排班顺路（`reconcile_short`）在空闲格不开始。
 - 协助位不是逻各斯/艾丽妮 → 可排班。
 - 协助位是逻各斯/艾丽妮 + 训练位有人 → 进技能选择页读该干员**所有**技能：**有专一/专二 → 不能动**（保护）；全专三或专0 → 可动。
 - 协助位是逻各斯/艾丽妮 + 训练位没人 → 可排班。
@@ -468,6 +468,7 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 - **定义**：训练室的训练位/协助位保持现状不被排班系统改动。
 - **解除时机**：每次排班进训练室重新读房重判，条件一变自动解除（开始训练 / 协助位换人 / 训练位空了）。
 - **挡住谁**：既挡排班系统动房间，也挡 mower 自己开始训练——mower 想开始训练但房间受保护时**发邮件提醒用户**（新通知⑤），计划保持 idle。
+- **例外（2026-08-31 方案 A）**：受保护空闲格若**训练位已是计划干员**（`scan_plan` 非 None 且 idle，`room.train_slot` 匹配计划干员 char_name/char_id），开始训练不动训练位（只按路线补协助位），保护不适用 → 放行 mower 开始。训练位空/坐别人，或 `scan_plan` None/非 idle 时仍按上条保护。
 - 已知风险：待收取+非专三+协助位逻各斯/艾丽妮+干员技能都不在计划时，若无新训练开始，房间会长期受保护（现读现判下条件不变则持续），见 §14。
 
 ### 16.6 恢复流程（待收取 + 干员+技能都在计划内 + 非专三）
