@@ -66,6 +66,8 @@ load_plan()
 
 stop_mower = Event()
 stop_maa = Event()
+# #141：一键专精建计划后唤醒调度休眠（web 线程 set，_idle_sleep 轮询检查清掉）
+wake_scheduler = Event()
 
 # 日志
 log_queue = Queue()
