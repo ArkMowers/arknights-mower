@@ -284,7 +284,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 - **通知去重表** `mastery_notify`：(notify_type, dedup_key) 主键 + `INSERT OR IGNORE`；`should_notify` fail open。（NTFY-01/03）
 - **懒填充**：所有把计划交给消费者的读路径（`get_all_plans`/`get_plan_by_id`/`get_active_plan`/`get_next_idle_plan`）都必须过 `lazy_fill_plan_names`，消费者永不看到 NULL char_name 或占位 skill_name。（LZ-02）
 - **建表只跑一次（#82，2026-08-15）**：`_ensure_tables` 按库路径进程内只跑一次（模块级 `_tables_created` 集合），连接仍每次新开；库文件被删/被清空（0 字节）→ 重置该库标记，下次连接重建表（#86 同款守卫，防运行中丢库后 no-such-table）。
-- **队列不变量**：`SKILL_UPGRADE` 同形状任务恒 ≤1（按 plan_key 去重，到点改期不新增）；`plan_key=None` 是占用重检，`meta_data` 留空；`plan_key=计划id` 是收取任务或扫描驱动的开始任务（均无逻辑标记，meta_data 仅描述性标签；房间状态决定行为：空闲→开始、待收取→收集+继续本级当场开）。开始任务在计划开始后按 plan_key 原位升级为收取任务（`_schedule_collect` 去重命中）。（TASK-01/C-32）
+- **队列不变量**：`SKILL_UPGRADE` 同形状任务恒 ≤1（按 plan_key 去重，到点改期不新增）；`plan_key=None` 是占用重检，`meta_data` 为描述性标签（**#153**，2026-08-19 起不再留空——`干员（技能） 专N 占用中`，纯描述、无逻辑标记）；`plan_key=计划id` 是收取任务或**开始任务**（扫描派发 / 一键专精立即派发，均无逻辑标记，meta_data 仅描述性标签；房间状态决定行为：空闲→开始、待收取→收集+继续本级当场开）。开始任务在计划开始后按 plan_key 原位升级为收取任务（`_schedule_collect` 去重命中）。（TASK-01/C-32）
 - `expires_at` 存 localtime 文本 `%Y-%m-%d %H:%M:%S`，仅用于调度重查，改格式会破坏比较。
 
 ## 12. 推荐 / 自动排程
