@@ -1,7 +1,9 @@
 import json
 import os
+from typing import Optional
 
 from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
+from arknights_mower.utils.skill_label import format_skill_label
 
 
 def _find_skill_data():
@@ -29,6 +31,50 @@ def get_skill_data():
         else:
             _skill_data_cache = {}
     return _skill_data_cache
+
+
+def get_skill_real_name(char_id: str, skill_index: int):
+    """从 skill_data.json 取干员技能的显示真名（如 飞翔瞪射）；查不到返回 None。
+
+    skill_data.json 由 auto_get_res_new.py 生成并并入真名（#63）。
+    """
+    try:
+        skills = (
+            get_skill_data().get("characters", {}).get(char_id, {}).get("skills", [])
+        )
+        if 0 <= skill_index < len(skills):
+            name = skills[skill_index].get("name")
+            if name:
+                return name
+    except Exception:
+        pass
+    return None
+
+
+def get_current_mastery_level(char_id: str, skill_index: int) -> Optional[int]:
+    """cultivate.json 中干员技能当前专精等级；文件缺失/干员不在/读失败 → None。
+
+    #65/B7：计划创建校验当前等级用。与 get_mastery_recommendations 同读
+    cultivate.json 的 skills[i].level；推荐层把缺失当 0，本函数缺失/读不到
+    返回 None 跳过校验（创建不误拒，执行层已到target检测按截图兜底）。
+    """
+    cultivate_path = get_path("@app/tmp/cultivate.json")
+    if not os.path.exists(cultivate_path):
+        return None
+    try:
+        with open(cultivate_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    for char in data.get("data", {}).get("characters", []):
+        if char.get("id") != char_id:
+            continue
+        skills = char.get("skills", [])
+        if not 0 <= skill_index < len(skills):
+            return None
+        level = skills[skill_index].get("level")
+        return level if isinstance(level, int) else None
+    return None
 
 
 def _decompose_to_t3(materials, composite, item_table, inventory):
@@ -242,7 +288,7 @@ def get_mastery_recommendations():
             recommendations.append(
                 {
                     "skill_index": i,
-                    "skill_name": f"技能{i + 1}",
+                    "skill_name": format_skill_label(i, skill_def.get("name")),
                     "skill_icon_id": skill_def.get("skillId", ""),
                     "current_level": current_level,
                     "target_level": 3,
@@ -292,14 +338,28 @@ def compute_workshop_config(
     from collections import defaultdict
 
     from arknights_mower.data import workshop_formula
+
+    # #83：计划直接读 DB（get_all_plans 非终态）。matery_plan.json 是全仓库无写入者
+    # 的孤儿文件（@app/tmp 上的 stale key），UI/API/agent 新增计划不在里面；completed/
+    # failed 计划不核算材料（不消耗；failed 已由扫描钩子 retry_failed_plans 先重置 idle）。
     from arknights_mower.utils.mastery_db import get_all_plans
 
-    db_plans = get_all_plans()
-    planned_keys = [
-        f"{p['char_id']}_{p['skill_index']}"
-        for p in db_plans
-        if p.get("status") != "completed"
-    ]
+    planned_keys = [f"{p['char_id']}_{p['skill_index']}" for p in get_all_plans()]
+
+    if planned_keys:
+        try:
+            cultivate_path = get_path("@app/tmp/cultivate.json")
+            if os.path.exists(cultivate_path):
+                with open(cultivate_path, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                m3 = set()
+                for char in cdata.get("data", {}).get("characters", []):
+                    for idx, s in enumerate(char.get("skills", [])):
+                        if s.get("level", 0) >= 3:
+                            m3.add(f"{char.get('id')}_{idx}")
+                planned_keys = [k for k in planned_keys if k not in m3]
+        except Exception:
+            pass
 
     skill_data_path = _find_skill_data()
     with open(skill_data_path, "r", encoding="utf-8") as f:
@@ -499,101 +559,15 @@ def compute_default_workshop_config(
     )
 
 
-_default_route_cache = None
-
-
-def _load_default_route():
-    global _default_route_cache
-    if _default_route_cache is not None:
-        return _default_route_cache
-    path = get_path("@internal/arknights_mower/data/training_route.json")
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                _default_route_cache = json.load(f)
-        except Exception:
-            _default_route_cache = {}
-    else:
-        _default_route_cache = {}
-    return _default_route_cache
-
-
-def _build_route_supports(profession, control_center="none"):
-    prof_cn = PROF_MAP.get(profession, "???")
-    supports_data = None
-    cc = control_center
-    try:
-        from arknights_mower.utils.mastery_db import get_route
-
-        route = get_route(prof_cn)
-        if route:
-            import json as _json
-
-            route_data = _json.loads(route["supports"])
-            supports_data = (
-                route_data.get("supports")
-                if isinstance(route_data, dict)
-                else route_data
-            )
-            cc = cc or (
-                route_data.get("controlCenter", "none")
-                if isinstance(route_data, dict)
-                else "none"
-            )
-    except Exception:
-        pass
-    if supports_data is None:
-        defaults = _load_default_route()
-        prof_default = defaults.get(prof_cn, {})
-        supports_data = prof_default.get("supports", [])
-    bonus = 0 if cc == "none" else 5
-    supports = []
-    for s in supports_data:
-        supports.append(
-            {
-                "name": s["name"],
-                "skill_level": s["skill_level"],
-                "efficiency": min(100, s["efficiency"] + bonus),
-                "match": s.get("match", False),
-                "swap_name": s.get("swap_name") if s.get("swap") else s["name"],
-            }
-        )
-    return supports
-
-
-def _supports_from_dicts(supports_data):
-    from arknights_mower.utils.operators import SkillUpgradeSupport
-
-    supports = []
-    for s in supports_data:
-        sup = SkillUpgradeSupport(
-            name=s["name"],
-            skill_level=s["skill_level"],
-            efficiency=s["efficiency"],
-            match=s.get("match", False),
-            swap_name=s.get("swap_name", s["name"]),
-        )
-        supports.append(sup)
-    return supports
-
-
 def auto_schedule_mastery_tasks():
     """仓库扫描后：检测计划内未满M3的技能，直接需求全部满足则返回待安排列表"""
     result = {"scheduled": [], "skipped": []}
 
-    from arknights_mower.utils.mastery_db import get_all_plans, get_pending_plans
+    # #83：计划直接读 DB（get_all_plans 非终态）——matery_plan.json 是全仓库无写入者
+    # 的孤儿文件，只靠它的话新装/绕过前端新增的计划永远不在 plan_set，扫描自动开始失效。
+    from arknights_mower.utils.mastery_db import get_all_plans
 
-    db_plans = get_pending_plans()
-    if not db_plans:
-        all_plans = get_all_plans()
-        if not all_plans:
-            return result
-        db_plans = [p for p in all_plans if p.get("status") in ("pending", "failed")]
-
-    plan_set = set()
-    for p in db_plans:
-        plan_set.add((p["char_id"], p["skill_index"]))
-
+    plan_set = {(p["char_id"], p["skill_index"]) for p in get_all_plans()}
     if not plan_set:
         return result
 
