@@ -1,6 +1,7 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
@@ -77,6 +78,7 @@ onMounted(() => {
   if (savedPreviewState !== null) {
     sc_preview.value = JSON.parse(savedPreviewState)
   }
+  db_load_stats()
 })
 
 onUnmounted(() => {
@@ -109,6 +111,7 @@ const show_feedback = ref(false)
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
+import ServerOutlineIcon from '@vicons/ionicons5/ServerOutline'
 import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
 import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
 
@@ -150,6 +153,108 @@ const start_options = [
     key: '2'
   }
 ]
+
+// --- 数据库管理：按类删除不需要的数据（只删行，绝不动表结构） ---
+const db_groups = [
+  {
+    key: 'mastery',
+    label: '全自动专精',
+    items: ['mastery_plan', 'mastery_route', 'mastery_notify']
+  },
+  {
+    key: 'record',
+    label: '运行数据',
+    items: [
+      'log',
+      'agent_action',
+      'operation_history',
+      'trading_history',
+      'inventory',
+      'saved_state'
+    ]
+  }
+]
+const db_cat_labels = {
+  mastery_plan: '专精计划',
+  mastery_route: '专精路线配置',
+  mastery_notify: '专精通知记录',
+  log: '错误日志',
+  agent_action: '干员心情记录',
+  operation_history: '刷图记录',
+  trading_history: '跑单记录',
+  inventory: '仓库库存',
+  saved_state: '运行缓存'
+}
+const db_stats = ref({})
+const db_sel = ref({})
+const db_dialog = useDialog()
+const db_message = useMessage()
+const show_db_admin = ref(false)
+for (const g of db_groups) for (const k of g.items) db_sel.value[k] = false
+const db_group = computed(() => {
+  const out = {}
+  for (const g of db_groups) {
+    const vals = g.items.map((k) => db_sel.value[k])
+    out[g.key] = {
+      checked: vals.every(Boolean),
+      indeterminate: vals.some(Boolean) && !vals.every(Boolean)
+    }
+  }
+  return out
+})
+const db_all = computed(() => {
+  const vals = Object.values(db_sel.value)
+  return { checked: vals.every(Boolean), indeterminate: vals.some(Boolean) && !vals.every(Boolean) }
+})
+const db_any_selected = computed(() => Object.values(db_sel.value).some(Boolean))
+
+function db_load_stats() {
+  axios
+    .get(`${import.meta.env.VITE_HTTP_URL}/db-admin/stats`)
+    .then((resp) => {
+      db_stats.value = resp.data || {}
+    })
+    .catch(() => {}) // 后端未启动/接口不可用时静默（卡片仍显示 0 条）
+}
+function db_toggle_panel() {
+  show_db_admin.value = !show_db_admin.value
+  if (show_db_admin.value) db_load_stats() // 打开时刷新条数
+}
+function db_toggle_group(gkey, value) {
+  db_groups.find((g) => g.key === gkey).items.forEach((k) => (db_sel.value[k] = value))
+}
+function db_toggle_all(value) {
+  Object.keys(db_sel.value).forEach((k) => (db_sel.value[k] = value))
+}
+function db_selected_keys() {
+  return Object.keys(db_sel.value).filter((k) => db_sel.value[k])
+}
+function db_confirm_delete() {
+  const keys = db_selected_keys()
+  if (!keys.length) return
+  const active = keys.includes('mastery_plan') ? db_stats.value.mastery_plan_active || 0 : 0
+  const content =
+    active > 0
+      ? `确定删除选中的 ${keys.length} 类数据？其中专精计划有 ${active} 条正在训练，会一起删掉（练完可能收到一条「训练室占用」提醒）。`
+      : `确定删除选中的 ${keys.length} 类数据？删除后不可恢复。`
+  db_dialog.warning({
+    title: '删除确认',
+    content,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => db_delete(keys)
+  })
+}
+async function db_delete(keys) {
+  try {
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/db-admin/delete`, { categories: keys })
+    db_load_stats()
+    keys.forEach((k) => (db_sel.value[k] = false))
+    db_message.success('删除成功')
+  } catch (e) {
+    db_message.error(`删除失败：${e?.response?.data?.error || e.message || ''}`)
+  }
+}
 </script>
 
 <template>
@@ -261,6 +366,14 @@ const start_options = [
         <template v-if="!mobile">反馈问题</template>
       </n-button>
       <feedback />
+      <n-button type="info" @click="db_toggle_panel">
+        <template #icon>
+          <n-icon>
+            <server-outline-icon />
+          </n-icon>
+        </template>
+        <template v-if="!mobile">数据库管理</template>
+      </n-button>
       <div class="expand"></div>
       <div class="scroll-container">
         <n-checkbox v-model:checked="sc_preview">
@@ -285,6 +398,54 @@ const start_options = [
         </n-icon>
       </template>
     </n-button>
+    <n-modal
+      v-model:show="show_db_admin"
+      preset="card"
+      transform-origin="center"
+      style="width: 480px"
+    >
+      <template #header>
+        <div>数据库管理</div>
+      </template>
+      <div class="db-admin-body">
+        <div class="db-admin-group" v-for="g in db_groups" :key="g.key">
+          <n-checkbox
+            :checked="db_group[g.key].checked"
+            :indeterminate="db_group[g.key].indeterminate"
+            @update:checked="(v) => db_toggle_group(g.key, v)"
+          >
+            {{ g.label }}
+          </n-checkbox>
+          <div class="db-admin-items">
+            <div class="db-admin-item" v-for="k in g.items" :key="k">
+              <n-checkbox :checked="db_sel[k]" @update:checked="(v) => (db_sel[k] = v)">
+                {{ db_cat_labels[k] }}
+              </n-checkbox>
+              <span class="db-cat-count">{{ db_stats[k] ?? 0 }} 条</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="db-admin-footer">
+          <n-checkbox
+            :checked="db_all.checked"
+            :indeterminate="db_all.indeterminate"
+            @update:checked="db_toggle_all"
+          >
+            全选
+          </n-checkbox>
+          <n-button
+            type="error"
+            size="small"
+            :disabled="!db_any_selected"
+            @click="db_confirm_delete"
+          >
+            删除选中
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -346,6 +507,41 @@ const start_options = [
   background-size: cover;
   background-position: 65% 50%;
   pointer-events: none;
+}
+
+.db-admin-body {
+  .db-admin-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0;
+  }
+
+  .db-admin-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 24px;
+  }
+
+  .db-admin-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .db-cat-count {
+    opacity: 0.55;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+}
+
+.db-admin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 </style>
 

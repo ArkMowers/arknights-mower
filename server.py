@@ -31,6 +31,7 @@ from arknights_mower.utils.maa_check import (
 )
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
+from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.mastery import mastery_bp
 
 mimetypes.add_type("text/html", ".html")
@@ -1407,3 +1408,4 @@ def ws_chat(ws):
 
 
 app.register_blueprint(mastery_bp)
+app.register_blueprint(db_admin_bp)
