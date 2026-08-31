@@ -29,6 +29,7 @@ class TaskTypes(Enum):
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
     REFRESH_TIME = ("强制刷新任务时间", "强制刷新任务时间", 2)
     SKILL_UPGRADE = ("技能专精", "技能专精", 2)
+    SWAP_SUPPORT = ("换协助位", "换协助位", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)
     WORKSHOP = ("加工材料", "加工材料", 2)
 
