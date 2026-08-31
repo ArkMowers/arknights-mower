@@ -249,7 +249,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 无倒计时 + 训练位坐错人 → 只换训练位：`choose_train(['Current', 目标])`，idx0 恒 Current 保协助位。（C-22）
 
 ### 其它
-- 错误清理（>15 分钟清空）必须保留 `SKILL_UPGRADE`/`REFRESH_TIME` 两类任务；错误空任务仅在「无 next 任务 且 无 SKILL_UPGRADE 任务」时才生成。（C-17）
+- 错误清理（>15 分钟清空）必须保留 `SKILL_UPGRADE`/`REFRESH_TIME` 两类任务；错误空任务在「无 next 任务 且 无 SKILL_UPGRADE 任务」时生成（原条件），**清队后也补一条立即空任务**（**#144**：清队后队列只剩远期专精重检时，立即空任务让下一轮 run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始——缓解「睡死」症状，选人失败根因 #146 另查；两分支互斥，单次调用内不双补）。（C-17）
 - **keepalive 已删（#74 第3段）**：不再有「DB 有计划就**周期**自动入队 now-task」的逻辑（含 #66 的 60s 守卫 `_skill_upgrade_just_dispatched`）。开始训练有**两个入口**（都受 `enable_mastery` 门控、都复用同一套派发）：① **扫描派发**——`_auto_schedule_mastery_after_scan`（`base_schedule.py`）在 `retry_failed_plans` + `auto_schedule_mastery_tasks` 之后，对**材料足够（scheduled 结果）的 idle 计划**入队一条 `SKILL_UPGRADE`（`plan_key=计划id`，`meta_data` 仅描述性标签、无逻辑标记，`_schedule_scan_start`）；② **一键专精立即派发（2026-08-18 方案 A 定稿）**——`POST /mastery-plan` 建计划成功（added）后立即复用同一套派发（`views/mastery.py` `_dispatch_new_plans_immediately`），但先**刷新 cultivate.json**（缺失/过期 >`maa_gap` 才拉，尊重间隔铁律；新鲜则用缓存）再 `auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`，材料足够即入队 now-task、并设 `wake_scheduler` 事件**唤醒调度休眠**（`_idle_sleep` 轮询检查，清事件提前返回）——**确认后真的开始训练（#141 AC），不再静默只加计划**；材料不足不派发、不唤醒（继续等扫描）。**#141 review 跟进（2026-08-19）**：新增计划干员**不在本地 cultivate 数据**（新获得、cultivate.json 还新鲜）时，强制拉一次让推荐数据包含它再重算（`_refresh_cultivate_if_stale(force=True)`，用户显式点了一键、不算绕过间隔；在数据里的干员不触发）。这是对 #74「无自动 now-task」的**有意部分反转**（用户拍板）：区别于 keepalive 的「有计划就自动入队」，立即派发是**事件驱动**（用户点了一键专精的即时响应）+ 材料核算门控，不是周期后台动作。重启恢复：active 计划靠排班 gate 进房顺路 `reconcile_short` 重排收取（用户确认「靠排班收取、等待可接受」）；idle 计划靠扫描派发兜底。
 
 ## 9. 全局开关 `enable_mastery`
