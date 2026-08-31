@@ -124,6 +124,20 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks[0].type, TaskTypes.EXHAUST_OFF)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_idle_sleep_wakes_on_wake_event(self):
+        # #141：web 一键专精派发后设 wake_scheduler → 休息被唤醒（不再睡满剩余时长），
+        # 事件被消费（clear）；结束时照常刷新场景缓存
+        from arknights_mower.utils import config as cfg
+
+        solver = MagicMock()
+        cfg.wake_scheduler.clear()
+        cfg.wake_scheduler.set()
+        BaseSchedulerSolver._idle_sleep(solver, 3600)
+        self.assertFalse(cfg.wake_scheduler.is_set(), "唤醒事件应被消费（clear）")
+        self.assertFalse(solver.sleeping, "try/finally 应复位 sleeping")
+        solver.recog.update.assert_called_once()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_backup_plan_solver_Caper(self):
         plan_config = {
             "meeting": [
