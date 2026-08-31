@@ -330,6 +330,9 @@ class RIICPart(ConfModel):
     "缓存清零重启后读取心情并按载入心情数据模式重启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
+    enable_mastery: bool = True
+    "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
+    # 中枢加成（0/5）与换人缓冲时间已迁到路线配置全局设置行（#91 修订），不再存 conf
 
 
 class SimulatorPart(ConfModel):

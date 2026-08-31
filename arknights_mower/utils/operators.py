@@ -97,23 +97,6 @@ def build_global_plan():
     return plan
 
 
-class SkillUpgradeSupport:
-    support_class = None
-    level = 1
-    efficiency = 0
-    match = False
-    use_booster = True
-    name = ""
-    swap_name = ""
-
-    def __init__(self, name, skill_level, efficiency, match, swap_name="艾丽妮"):
-        self.name = name
-        self.level = skill_level
-        self.efficiency = efficiency
-        self.match = match
-        self.swap_name = swap_name
-
-
 class Operators:
     config = None
     operators = None
@@ -126,7 +109,6 @@ class Operators:
     shadow_copy = {}
     current_room_changed_callback = None
     first_init = True
-    skill_upgrade_supports = []
 
     def __init__(self, plan):
         self.operators = {}
@@ -202,7 +184,7 @@ class Operators:
             for idx, data in enumerate(self.plan[room]):
                 if data.agent not in agent_list and data.agent != "Free":
                     return f"干员名输入错误: 房间->{room}, 干员->{data.agent}"
-                if data.agent in TRADE_ORDER_AGENTS + ["可露希尔"]:
+                if data.agent in TRADE_ORDER_AGENTS:
                     return f"高效组不可用龙舌兰，但书,佩佩，可露希尔 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and idx == 1:
                     return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
@@ -602,21 +584,6 @@ class Operators:
             if agent.current_room == "train" and agent.current_index == 0:
                 return agent.name
         return None
-
-    def calculate_switch_time(self, support: SkillUpgradeSupport, hour):
-        match = support.match
-        efficiency = support.efficiency
-        same = support.name == support.swap_name
-        basic = 5
-        current_speed = 100 + efficiency + basic
-        base_h = hour * current_speed / 100
-        if same:
-            return hour
-        swap_share = 5 * (100 + basic + (30 if match else 0)) / 100
-        left = base_h - swap_share
-        if left < 0:
-            return 0
-        return left * 100 / current_speed
 
     def get_refresh_index(self, room, plan):
         ret = []

@@ -156,9 +156,6 @@ def simulate(saved, restart_after_mood_read=False):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
-            base_scheduler.op_data.skill_upgrade_supports = saved[
-                "skill_upgrade_supports"
-            ]
             base_scheduler.tasks = tasks
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
@@ -322,14 +319,18 @@ def simulate(saved, restart_after_mood_read=False):
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning("出现错误.尝试重启Mower")
-                connected = False
-                while not connected:
+                # #84：内层重连循环加次数上限，最后失败抛错而非无限重启
+                retry = 0
+                while retry < reconnect_max_tries:
+                    retry += 1
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
                     except MowerExit:
                         raise
                     except Exception as e:
+                        if retry >= reconnect_max_tries:
+                            raise
                         logger.exception(e)
                         restart_simulator()
                         base_scheduler.device.client.check_server_alive()
@@ -340,7 +341,6 @@ def simulate(saved, restart_after_mood_read=False):
                             base_scheduler.device.control.scrcpy = Scrcpy(
                                 base_scheduler.device.client
                             )
-                        continue
                 continue
             else:
                 raise e
