@@ -629,6 +629,13 @@ class Recognizer:
             self.scene = Scene.CONNECTING
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
+        elif self.find("room_detail") or self.find("arrange_check_in_on"):
+            # 进驻详情浮窗（浮窗头 room_detail 或浮窗上的关闭按钮 arrange_check_in_on）：
+            # 浮窗开着时优先识别为详情浮层，须在 train_main/training_support 之前（否则
+            # 浮窗被误标 217/219）；不能用 arrange_check_in（裸主页面也有，加了会恒 205）。
+            # 205 是基建放大视角，back() 会退到基建主界面而非训练室主界面，关浮窗应点
+            # arrange_check_in_on（见 _close_room_detail）。
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
         elif self.find("skill_collect_confirm"):
