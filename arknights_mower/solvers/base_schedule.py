@@ -4618,7 +4618,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
                     break
-                csleep(min(1, max(0.01, (end_time - datetime.now()).total_seconds())))
+                csleep(min(1, (end_time - datetime.now()).total_seconds()))
             self.recog.update()
         finally:
             self.sleeping = False
