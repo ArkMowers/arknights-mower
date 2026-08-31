@@ -78,10 +78,10 @@ def _conn():
         conn.close()
 
 
-def _fetchall(sql):
+def _fetchall(sql, *params):
     """共享连接上执行只读查询（建表检查只跑一次）。"""
     with _conn() as conn:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, params).fetchall()
 
 
 # 记录干员进出站以及心情数据，将记录信息存入agent_action表里
@@ -238,15 +238,13 @@ def clear_data(date_time):
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
-    sel = ""
-    for name in favorite:
-        sel = (
-            sel
-            + """
-                UNION
-                SELECT '{}' AS name
-            """.format(name)
-        )
+    sel = "".join(
+        """
+            UNION
+            SELECT ? AS name
+        """
+        for _ in favorite
+    )
     try:
         # 查询数据
         data = _fetchall(
@@ -266,7 +264,8 @@ def get_work_rest_ratios():
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
-                       """
+                       """,
+            *favorite,
         )
     except sqlite3.Error:
         data = []
@@ -315,15 +314,13 @@ def get_work_rest_ratios():
 # 整理心情曲线
 def get_mood_ratios():
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
-    sel = ""
-    for name in favorite:
-        sel = (
-            sel
-            + """
-                UNION
-                SELECT '{}' AS name
-            """.format(name)
-        )
+    sel = "".join(
+        """
+            UNION
+            SELECT ? AS name
+        """
+        for _ in favorite
+    )
     try:
         # 查询数据（筛掉宿管和替班组的数据）
         data = _fetchall(
@@ -344,7 +341,8 @@ def get_mood_ratios():
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
                         ORDER BY a.agent_group DESC, a.current_time;
 
-        """
+        """,
+            *favorite,
         )
     except sqlite3.Error:
         data = []
