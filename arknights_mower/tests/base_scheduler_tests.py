@@ -92,6 +92,97 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks[0].type, TaskTypes.EXHAUST_OFF)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_handle_error_appends_immediate_empty_task_after_clearing(self):
+        # #144：错误分支「检测到超过15分钟的任务」清空非专精任务后，补一条立即
+        # 空任务，让下一次 run() 走正常 planned 分支重读心情/换班/跑单，而不是
+        # rest_until_next_task 睡到远期专精重检开始（队列只剩远期专精时睡死）。
+        import arknights_mower.utils.scheduler_task as st
+
+        solver = BaseSchedulerSolver()
+        solver.error = True
+        now = datetime(2026, 8, 19, 12, 0, 0)
+        solver.tasks = [
+            st.SchedulerTask(
+                time=now - timedelta(minutes=20),
+                task_type=TaskTypes.RUN_ORDER,
+                task_plan={"meeting": ["伊内丝"]},
+            ),
+            st.SchedulerTask(
+                time=now + timedelta(hours=5),
+                task_type=TaskTypes.SKILL_UPGRADE,
+                task_plan={"train": ["Current", "泥岩"]},
+            ),
+        ]
+
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is not None:
+                    return cls.now_value.replace(tzinfo=tz)
+                return cls.now_value
+
+        FixedDateTime.now_value = now
+
+        with (
+            patch.object(base_schedule, "datetime", FixedDateTime),
+            patch.object(st, "datetime", FixedDateTime),
+            patch.object(BaseSchedulerSolver, "scene", return_value=Scene.INDEX),
+        ):
+            solver.handle_error(force=True)
+
+        # 超时的非专精任务被清掉
+        self.assertIsNone(find_next_task(solver.tasks, task_type=TaskTypes.RUN_ORDER))
+        # 远期专精重检保留
+        self.assertIsNotNone(
+            find_next_task(solver.tasks, task_type=TaskTypes.SKILL_UPGRADE)
+        )
+        # 补了一条立即空任务（NOT_SPECIFIC，time=now）
+        empty = find_next_task(solver.tasks, task_type=TaskTypes.NOT_SPECIFIC)
+        self.assertIsNotNone(empty)
+        self.assertEqual(empty.time, now)
+        # 队列里有 time <= now 的任务 → __main__ 主循环不会 rest_until_next_task 睡满
+        self.assertIsNotNone(find_next_task(solver.tasks, now + timedelta(seconds=1)))
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_handle_error_keeps_skill_upgrade_gate_when_nothing_overdue(self):
+        # #144 负向对照：没有超时任务时（不触发清队），即使存在远期专精任务，
+        # 第一个分支的 SKILL_UPGRADE 门也不应被放宽——不补空任务、任务列表不变。
+        import arknights_mower.utils.scheduler_task as st
+
+        solver = BaseSchedulerSolver()
+        solver.error = True
+        now = datetime(2026, 8, 19, 12, 0, 0)
+        solver.tasks = [
+            st.SchedulerTask(
+                time=now + timedelta(hours=5),
+                task_type=TaskTypes.SKILL_UPGRADE,
+                task_plan={"train": ["Current", "泥岩"]},
+            ),
+        ]
+
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is not None:
+                    return cls.now_value.replace(tzinfo=tz)
+                return cls.now_value
+
+        FixedDateTime.now_value = now
+
+        with (
+            patch.object(base_schedule, "datetime", FixedDateTime),
+            patch.object(st, "datetime", FixedDateTime),
+            patch.object(BaseSchedulerSolver, "scene", return_value=Scene.INDEX),
+        ):
+            solver.handle_error(force=True)
+
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, TaskTypes.SKILL_UPGRADE)
+        self.assertIsNone(
+            find_next_task(solver.tasks, task_type=TaskTypes.NOT_SPECIFIC)
+        )
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_idle_sleep_wakes_on_wake_event(self):
         # #141：web 一键专精派发后设 wake_scheduler → 休息被唤醒（不再睡满剩余时长），
         # 事件被消费（clear）；结束时照常刷新场景缓存
