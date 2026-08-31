@@ -45,6 +45,9 @@ class Arknights数据处理器:
         self.干员表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/character_table.json"
         )
+        self.技能表 = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/skill_table.json"
+        )
         self.抽卡表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/gacha_table.json"
         )
@@ -972,6 +975,16 @@ class Arknights数据处理器:
         ) as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
 
+    def 取技能名(self, skill_id: str) -> str:
+        """从 skill_table.json 取技能显示真名（levels[0].name）。"""
+        info = self.技能表.get(skill_id, {})
+        levels = info.get("levels") or []
+        if levels:
+            name = levels[0].get("name", "")
+            if name:
+                return name
+        return ""
+
     def 提取专精数据(self):
         import time as _time
 
@@ -1007,9 +1020,11 @@ class Arknights数据处理器:
                     ]
                     levels.append({"materials": materials, "time": lvl_up_time})
 
+                skill_id = skill_def.get("skillId", "")
                 skills.append(
                     {
-                        "skillId": skill_def.get("skillId", ""),
+                        "skillId": skill_id,
+                        "name": self.取技能名(skill_id),
                         "levels": levels,
                     }
                 )
