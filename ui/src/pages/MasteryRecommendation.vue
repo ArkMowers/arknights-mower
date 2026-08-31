@@ -588,8 +588,7 @@ const professionName = (p) => profMap[p] || p
 const rarityOptions = [
   { label: '6★', value: 6 },
   { label: '5★', value: 5 },
-  { label: '4★', value: 4 },
-  { label: '3★', value: 3 }
+  { label: '4★', value: 4 }
 ]
 const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 
