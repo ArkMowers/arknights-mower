@@ -436,6 +436,172 @@ class TestBaseScheduler(unittest.TestCase):
 
         return read_room
 
+    def _build_resting_solver(self):
+        plan_config = {
+            # 会客室真实容量为 2，办公室为 1。大组 = 会客室 2 名主力 + 办公室 1 名主力。
+            "meeting": [Room("伊内丝", "大组", ["陈"]), Room("银灰", "大组", ["初雪"])],
+            "contact": [Room("讯使", "大组", ["红"])],
+            "dormitory_1": [
+                Room("塑心", "", []),
+                Room("冰酿", "", []),
+                Room("Free", "", []),
+                Room("Free", "", []),
+                Room("Free", "", []),
+            ],
+        }
+        plan = {
+            "default_plan": Plan(plan_config, PlanConfig("", "", "")),
+            "backup_plans": [],
+        }
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.initialize_operators()
+        solver.tasks = []
+        return solver
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_low_resting_occupants_do_not_block_takable_group_beds(self):
+        """低优占床消耗低优配额，但可被接管的床不能挡住主力大组下班。"""
+        solver = self._build_resting_solver()
+        for name, index in [("泥岩", 3), ("能天使", 4)]:
+            solver.op_data.add(Operator(name, ""))
+            op = solver.op_data.operators[name]
+            op.current_room = "dormitory_1"
+            op.current_index = index
+            dorm = next(
+                d for d in solver.op_data.dorm if d.position == ("dormitory_1", index)
+            )
+            dorm.name = name
+
+        current_resting = (
+            len(solver.op_data.dorm)
+            - solver.op_data.available_free()
+            - solver.op_data.available_free("low")
+        )
+        self.assertEqual(2, current_resting)
+        self.assertEqual(0, solver.op_data.available_free("low"))
+
+        plan = {}
+        solver.get_resting_plan(
+            solver.op_data.groups["大组"], [], plan, current_resting
+        )
+
+        self.assertEqual(["陈", "初雪"], plan["meeting"])
+        self.assertEqual(["红"], plan["contact"])
+        resting_names = {d.name for d in solver.op_data.dorm}
+        self.assertIn("伊内丝", resting_names)
+        self.assertIn("银灰", resting_names)
+        self.assertIn("讯使", resting_names)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_resting_assigns_idle_low_replacement_to_dorm(self):
+        solver = self._build_resting_solver()
+        op = solver.op_data.operators["陈"]
+        op.mood = 5
+        op.current_room = ""
+        op.room = ""
+        solver.total_agent = [op]
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "plan_metadata", lambda self: None),
+        ):
+            solver.resting()
+        self.assertIn("陈", [d.name for d in solver.op_data.dorm])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_resting_low_replacements_get_distinct_slots(self):
+        solver = self._build_resting_solver()
+        for name in ["陈", "红"]:
+            op = solver.op_data.operators[name]
+            op.mood = 5
+            op.current_room = ""
+            op.room = ""
+        solver.total_agent = [solver.op_data.operators[n] for n in ["陈", "红"]]
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "plan_metadata", lambda self: None),
+        ):
+            solver.resting()
+        dorm_names = [d.name for d in solver.op_data.dorm]
+        self.assertEqual(1, dorm_names.count("陈"))
+        self.assertEqual(1, dorm_names.count("红"))
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_resting_does_not_evict_resting_low_replacement(self):
+        """生产日志中的低优互踢活锁：新低优不能覆盖正在休息的低优。"""
+        solver = self._build_resting_solver()
+        chen = solver.op_data.operators["陈"]
+        chen.mood = 5
+        chen.current_room = "dormitory_1"
+        chen.current_index = 3
+        occupied = next(
+            d for d in solver.op_data.dorm if d.position == ("dormitory_1", 3)
+        )
+        occupied.name = "陈"
+
+        hong = solver.op_data.operators["红"]
+        hong.mood = 5
+        hong.current_room = ""
+        hong.room = ""
+        solver.total_agent = [hong]
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "plan_metadata", lambda self: None),
+        ):
+            solver.resting()
+
+        dorm = {d.position: d.name for d in solver.op_data.dorm}
+        self.assertEqual("陈", dorm[("dormitory_1", 3)])
+        self.assertIn("红", dorm.values())
+        self.assertNotEqual(
+            ("dormitory_1", 3),
+            next(d.position for d in solver.op_data.dorm if d.name == "红"),
+        )
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_assign_dorm_returns_none_when_low_beds_are_occupied(self):
+        solver = self._build_resting_solver()
+        for name, index in [("陈", 3), ("红", 4)]:
+            op = solver.op_data.operators[name]
+            op.current_room = "dormitory_1"
+            op.current_index = index
+            next(
+                d for d in solver.op_data.dorm if d.position == ("dormitory_1", index)
+            ).name = name
+        high = solver.op_data.operators["伊内丝"]
+        high.current_room = "dormitory_1"
+        high.current_index = 2
+        next(
+            d for d in solver.op_data.dorm if d.position == ("dormitory_1", 2)
+        ).name = "伊内丝"
+
+        self.assertIsNone(solver.op_data.assign_dorm("红", True))
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_group_dorm_assignment_rolls_back_when_capacity_is_insufficient(self):
+        solver = self._build_resting_solver()
+        for name, index in [("泥岩", 3), ("能天使", 4)]:
+            solver.op_data.add(Operator(name, ""))
+            op = solver.op_data.operators[name]
+            op.current_room = "dormitory_1"
+            op.current_index = index
+            next(
+                d for d in solver.op_data.dorm if d.position == ("dormitory_1", index)
+            ).name = name
+        high = solver.op_data.operators["伊内丝"]
+        high.current_room = "dormitory_1"
+        high.current_index = 2
+        next(
+            d for d in solver.op_data.dorm if d.position == ("dormitory_1", 2)
+        ).name = "伊内丝"
+        before = [(d.name, d.time) for d in solver.op_data.dorm]
+
+        plan = {}
+        solver.get_resting_plan(solver.op_data.groups["大组"], [], plan, 3)
+
+        self.assertEqual({}, plan)
+        self.assertEqual(before, [(d.name, d.time) for d in solver.op_data.dorm])
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_get_agent_from_room_uses_train_slots_without_train_plan(self):
         solver = self._create_no_train_plan_solver()

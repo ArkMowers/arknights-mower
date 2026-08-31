@@ -232,11 +232,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]
         logger.debug(f"更新下班小组信息为{candidates}")
         # 在candidate 中，计算出需要的high free 和 Low free 数量
-        current_resting = (
-            len(self.op_data.dorm)
-            - self.op_data.available_free()
-            - self.op_data.available_free("low")
-        )
+        # 只计算无法直接接管的主力床位。低优、替班和临时休息干员会让床，
+        # 不能在这里阻止整个大组尝试下班。
+        current_resting = self.op_data.active_high_resting_count()
         plan = {}
         self.get_resting_plan(candidates, [], plan, current_resting)
         if len(plan.items()) > 0:
@@ -1587,8 +1585,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 根据剩余心情排序
         self.total_agent = list(
             v
-            for k, v in self.op_data.operators.items()
-            if v.is_high() and not v.room.startswith("dorm")
+            for v in self.op_data.operators.values()
+            if (v.is_high() or (v.current_room == "" and v.room == ""))
+            and not v.room.startswith("dorm")
         )
         self.total_agent.sort(key=lambda x: x.current_mood(), reverse=False)
         # 目前有换班的计划后面改
@@ -1627,14 +1626,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def resting(self):
         self.total_agent.sort(
-            key=lambda x: x.current_mood() - x.lower_limit, reverse=False
+            key=lambda x: (
+                self._resting_tier(x),
+                x.current_mood() - x.lower_limit,
+            ),
+            reverse=False,
         )
         self.plan_metadata()
-        current_resting = (
-            len(self.op_data.dorm)
-            - self.op_data.available_free()
-            - self.op_data.available_free("low")
-        )
+        # 理想休息人数只描述主力轮休；低优占床另由 available_free("low")
+        # 管理，不能抬高这里的当前人数或挡住可接管床位上的大组。
+        current_resting = self.op_data.active_high_resting_count()
         # 阈值暂定为 0.5
         self.ideal_resting_count = (
             4
@@ -1657,11 +1658,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             has_active_mastery = False
         _replacement = []
         _plan = {}
+        _high_done = False
+        _low_used = set()
         for op in self.total_agent:
-            if (
-                current_resting + len(_replacement) >= self.ideal_resting_count
-                and self.op_data.available_free() == 0
-            ):
+            if op.is_high():
+                if _high_done:
+                    continue
+                if (
+                    current_resting + len(_replacement) >= self.ideal_resting_count
+                    and self.op_data.available_free() == 0
+                ):
+                    _high_done = True
+                    continue
+            elif self.op_data.available_free("low") == 0:
                 break
             if op.name in self.op_data.workaholic_agent:
                 continue
@@ -1686,6 +1695,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 + op.lower_limit
             ):
                 continue
+            if not op.is_high():
+                _dorm = self.op_data.assign_dorm(op.name, True, used=_low_used)
+                if _dorm is not None:
+                    logger.debug(f"安排低优{op.name}休息 -> {_dorm.position}")
+                continue
             if op.group != "":
                 if op.group in self.op_data.exhaust_group:
                     # 忽略掉用尽心情的分组
@@ -1702,6 +1716,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             logger.info(f"生成{_plan}的下班任务")
         return _plan
+
+    _REST_TIER_HIGH = 0
+    _REST_TIER_MARKED_LOW = 1
+    _REST_TIER_REPLACEMENT = 2
+
+    @staticmethod
+    def _resting_tier(op):
+        if op.is_high() and op.resting_priority == "high":
+            return BaseSchedulerSolver._REST_TIER_HIGH
+        if op.is_high():
+            return BaseSchedulerSolver._REST_TIER_MARKED_LOW
+        return BaseSchedulerSolver._REST_TIER_REPLACEMENT
 
     def backup_plan_solver(self, timing=None, append_empty_task=True):
         if timing is None:
@@ -1789,8 +1815,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.debug(f"需求:{required}宿舍空位")
         logger.debug(f"需求:{exist_replacement} 当前安排")
         logger.debug(f"当前计划{plan}")
-        if current_resting + required + len(exist_replacement) > len(self.op_data.dorm):
-            return
         success = True
 
         fia_plan, fia_room = self.check_fia()
@@ -1841,15 +1865,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 success = False
         if success:
-            # 记录替换组
+            resting_agents = [
+                x for x in agents if not self.op_data.operators[x].workaholic
+            ]
+            # 床位判断和分配使用同一套规则。先为整组模拟预留，避免低优占床
+            # 提前挡住大组，也避免分到一半才失败留下脏状态。
+            dorms = self.op_data.assign_dorm_group(resting_agents)
+            if dorms is None:
+                return
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
-            for idx, x in enumerate(agents):
-                # 0心情不需要宿舍位
-                if self.op_data.operators[x].workaholic:
-                    continue
-                _dorm = self.op_data.assign_dorm(x, True)
-            logger.debug(_dorm)
+            logger.debug(dorms)
             for k, v in __plan.items():
                 if k not in plan.keys():
                     plan[k] = __plan[k]
