@@ -231,6 +231,60 @@ class TestDbAdminDelete(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_delete_mastery_plan_purges_queued_tasks(self):
+        # #118：批量删计划后清 #97 队列残留任务（plan_key=旧id 的 SKILL_UPGRADE/SWAP
+        # 照常派发到已删计划），与 DELETE /mastery-plan 的清理对齐
+        import sys
+        import types
+        from datetime import datetime
+
+        from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = types.SimpleNamespace()
+        t1 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t1.plan_key = "1"
+        t2 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SWAP_SUPPORT)
+        t2.plan_key = "2"
+        t3 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t3.plan_key = "9"
+        sched.tasks = [t1, t2, t3]
+        fake.base_scheduler = sched
+        with _patch_conn(self.db_path):
+            with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
+                resp = self.client.post(
+                    "/db-admin/delete", json={"categories": ["mastery_plan"]}
+                )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["deleted"]["mastery_plan"], 2)
+        remaining = [getattr(t, "plan_key", None) for t in sched.tasks]
+        self.assertEqual(
+            remaining, ["9"], "plan_key=种子库计划id(1/2) 应清掉，plan_key=9 保留"
+        )
+
+    def test_delete_other_tables_keeps_queued_tasks(self):
+        # #118：删非 mastery_plan 类别不触发队列清理（只清计划类）
+        import sys
+        import types
+        from datetime import datetime
+
+        from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = types.SimpleNamespace()
+        t1 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t1.plan_key = "1"
+        sched.tasks = [t1]
+        fake.base_scheduler = sched
+        with _patch_conn(self.db_path):
+            with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
+                resp = self.client.post(
+                    "/db-admin/delete", json={"categories": ["log"]}
+                )
+        self.assertEqual(resp.status_code, 200)
+        remaining = [getattr(t, "plan_key", None) for t in sched.tasks]
+        self.assertEqual(remaining, ["1"], "删 log 不应清计划队列任务")
+
 
 if __name__ == "__main__":
     unittest.main()
