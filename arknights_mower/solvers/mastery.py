@@ -582,18 +582,26 @@ def _exit_occupied(solver, plan, countdown, trigger="训练室占用"):
     countdown 可读时重排到倒计时+缓冲；不可读（面板归属与计划不符 / 已到target
     档位读取失败）时重排到 now+缓冲，避免占用期间每轮 dispatch 空转重试。
     trigger 写进状态转换日志，区分退出原因。
+    #153：重检任务（plan_key=None）带描述性 meta_data——计划干员+技能+「占用中」，
+    任务列表不再只显示类型名；档位未知（本路径读不到面板图标）不带专N。
     """
-    from arknights_mower.solvers.mastery_reader import _upsert_skill_upgrade_task
+    from arknights_mower.solvers.mastery_reader import (
+        _occupancy_recheck_label,
+        _upsert_skill_upgrade_task,
+    )
     from arknights_mower.utils.mastery_db import update_plan_status
 
+    panel = RoomPanel(operator_name=plan["char_name"], skill_name=plan["skill_name"])
+    room = RoomState("training", panel)
     if countdown is not None and countdown > datetime.now():
-        _wait_for_training(
-            solver, RoomState("training", RoomPanel(countdown=countdown))
-        )
+        panel.countdown = countdown
+        _wait_for_training(solver, room)
         reschedule = countdown + ARRANGING_RETRY_BUFFER
     else:
         reschedule = datetime.now() + ARRANGING_RETRY_BUFFER
-        _upsert_skill_upgrade_task(solver, reschedule)
+        _upsert_skill_upgrade_task(
+            solver, reschedule, meta_data=_occupancy_recheck_label(room)
+        )
     _log_transition(plan, "idle", trigger, 重排到=reschedule.strftime("%H:%M:%S"))
     update_plan_status(plan["id"], "idle")
     solver.back()
@@ -1118,7 +1126,7 @@ def run_swap_support(solver):
                     f"[mastery] #107 协助位保护：{support_slot} 剩余不足 "
                     f"{300 + buffer_min} 分钟，不纠错换人，仅排收取"
                 )
-                _schedule_collect_after_swap(solver, plan)
+                _schedule_collect_after_swap(solver, plan, tier=step_level)
                 solver.back()
                 return
         if not support_slot:
@@ -1155,7 +1163,7 @@ def run_swap_support(solver):
                         did_swap = _retry_swap_in_place(
                             solver, plan, route, swap_target
                         )
-                    _schedule_collect_after_swap(solver, plan)
+                    _schedule_collect_after_swap(solver, plan, tier=step_level)
                     if not did_swap:
                         solver.back()
                     return
@@ -1182,7 +1190,7 @@ def run_swap_support(solver):
                             did_swap = _retry_swap_in_place(
                                 solver, plan, route, swap_target
                             )
-                    _schedule_collect_after_swap(solver, plan)
+                    _schedule_collect_after_swap(solver, plan, tier=step_level)
                     solver.back()
                     return
                 logger.debug(f"[mastery] 协助位补位 id={plan['id']} 结果=ok")
@@ -1207,7 +1215,7 @@ def run_swap_support(solver):
                         )
                         is None
                     ):
-                        _schedule_collect_after_swap(solver, plan)
+                        _schedule_collect_after_swap(solver, plan, tier=step_level)
                 else:
                     # 重读失败 → 轻量倒计时重试读（_read_countdown_with_retry）重排阈值
                     # 任务——#101 合并后阈值任务已被本 dispatch 消费，重读失败只排收取会
@@ -1225,7 +1233,7 @@ def run_swap_support(solver):
                     ):
                         pass  # 已重排换人任务，不排收取
                     else:
-                        _schedule_collect_after_swap(solver, plan)
+                        _schedule_collect_after_swap(solver, plan, tier=step_level)
                 solver.back()
                 return
         elif countdown_active:
@@ -1245,7 +1253,7 @@ def run_swap_support(solver):
                     solver, plan, support_slot, operator, fallback_swap=False
                 )
                 # #79 坐错人纠错失败 → 维持语义：不换人、排收取退出
-                _schedule_collect_after_swap(solver, plan)
+                _schedule_collect_after_swap(solver, plan, tier=step_level)
                 solver.back()
                 return
             else:
@@ -1304,7 +1312,7 @@ def run_swap_support(solver):
         )
     # §16.10：无论换人成功与否/是否跳过，重读倒计时再排收取——开始训练时「排了换人
     # 任务则不排收取」，收集只能靠这里补；跳过换人也补排（防读图标失败/不在主页面丢收集）。
-    _schedule_collect_after_swap(solver, plan)
+    _schedule_collect_after_swap(solver, plan, tier=step_level)
     if not did_swap:
         solver.back()
 
@@ -1458,17 +1466,19 @@ def _read_countdown_with_retry(solver) -> Optional[datetime]:
     return countdown
 
 
-def _schedule_collect_after_swap(solver, plan):
+def _schedule_collect_after_swap(solver, plan, tier=None):
     """§16.10：SWAP_SUPPORT 完成后重读倒计时再排收取。
 
-    读倒计时前先确认在训练室主页面（TRAIN_MAIN）；若是主页面带进驻详情浮窗
-    （INFRA_DETAILS），先关浮窗再读。最多原地重试 5 次；仍读不到 → 保守重排到
-    now+缓冲（下次进房再读）。
+    #150：与训练开始路径（_confirm_training_started）一致，收取任务档位标签用实际
+    读到的面板图标档位（tier=panel.mastery_tier，run_swap_support 进房已读），读不到
+    （None/0）回退 target_level——不再恒为专三。读倒计时前先确认在训练室主页面
+    （TRAIN_MAIN）；若是主页面带进驻详情浮窗（INFRA_DETAILS），先关浮窗再读。最多
+    原地重试 5 次；仍读不到 → 保守重排到 now+缓冲（下次进房再读）。
     """
     countdown = _read_countdown_with_retry(solver)
     if countdown is None:
         countdown = datetime.now() + ARRANGING_RETRY_BUFFER
-    _schedule_collect(solver, plan, countdown)
+    _schedule_collect(solver, plan, countdown, tier=tier)
 
 
 def _get_plan_route(plan, step_level=None) -> dict | None:
