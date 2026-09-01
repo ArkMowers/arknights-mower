@@ -4,6 +4,7 @@
 插入到正确位置、前缀版本不误判、插入不删除其他版本内容。
 """
 
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -29,6 +30,33 @@ def _write(tmp: str, content: str) -> Path:
     path = Path(tmp) / "CHANGELOG.md"
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def _fake_git(tags: dict[str, int | None], creation_order: list[str] | None = None):
+    """模拟 changelog_generator.git()：tag 值=HEAD 到该 tag 的提交距离，None=不可达。"""
+
+    def fake_git(*args):
+        if args == ("tag", "-l"):
+            return "\n".join(tags) + "\n"
+        if args == ("tag", "--sort=-creatordate"):
+            return "\n".join(creation_order or list(tags)) + "\n"
+        if args[0] == "rev-list" and args[1] == "--count":
+            name = args[2].removesuffix("..HEAD")
+            distance = tags.get(name)
+            return str(distance if distance is not None else 0)
+        raise AssertionError(f"unexpected git call: {args}")
+
+    return fake_git
+
+
+def _fake_run(tags: dict[str, int | None]):
+    """模拟 merge-base --is-ancestor 的可达性判断（returncode 0=可达）。"""
+
+    def fake_run(cmd, capture_output=True, text=True, encoding="utf-8"):
+        name = cmd[-1]
+        return subprocess.CompletedProcess(cmd, 0 if tags.get(name) is not None else 1)
+
+    return fake_run
 
 
 class PrependChangelogTests(unittest.TestCase):
@@ -229,7 +257,7 @@ class ContributorLoginTests(unittest.TestCase):
             )
 
         self.assertIn(
-            "- 修复发布流程 ([#42](https://github.com/owner/repo/pull/42) @Alice @Bob)",
+            "- 修复发布流程 [(#42)](https://github.com/owner/repo/pull/42) @Alice @Bob",
             body,
         )
         self.assertNotIn("[@Alice]", body)
@@ -252,6 +280,120 @@ class ContributorLoginTests(unittest.TestCase):
                 ("Primary Name", "primary@example.com"),
                 ("Shared Name", "shared@example.com"),
             ],
+        )
+
+
+class FindBaseTagTests(unittest.TestCase):
+    def test_stable_tag_skips_nearer_alpha_and_uses_previous_stable(self):
+        tags = {"v4.1.6-alpha.1": 1, "v4.1.5": 86, "v4.1.2": 300}
+        with (
+            mock.patch.object(changelog_generator, "git", side_effect=_fake_git(tags)),
+            mock.patch.object(
+                changelog_generator.subprocess, "run", side_effect=_fake_run(tags)
+            ),
+        ):
+            self.assertEqual(changelog_generator.find_base_tag("v4.1.6"), "v4.1.5")
+
+    def test_alpha_tag_uses_previous_alpha(self):
+        tags = {"v4.1.6-alpha.1": 5, "v4.1.5": 100}
+        with (
+            mock.patch.object(changelog_generator, "git", side_effect=_fake_git(tags)),
+            mock.patch.object(
+                changelog_generator.subprocess, "run", side_effect=_fake_run(tags)
+            ),
+        ):
+            self.assertEqual(
+                changelog_generator.find_base_tag("v4.1.6-alpha.2"), "v4.1.6-alpha.1"
+            )
+
+    def test_alpha_tag_without_previous_alpha_falls_back_to_stable(self):
+        tags = {"v4.1.5": 100}
+        with (
+            mock.patch.object(changelog_generator, "git", side_effect=_fake_git(tags)),
+            mock.patch.object(
+                changelog_generator.subprocess, "run", side_effect=_fake_run(tags)
+            ),
+        ):
+            self.assertEqual(
+                changelog_generator.find_base_tag("v4.1.6-alpha.1"), "v4.1.5"
+            )
+
+    def test_stable_tag_falls_back_to_latest_stable_by_creation_when_none_reachable(
+        self,
+    ):
+        tags = {"v4.1.5": None, "v4.1.2": None}
+        with (
+            mock.patch.object(changelog_generator, "git", side_effect=_fake_git(tags)),
+            mock.patch.object(
+                changelog_generator.subprocess, "run", side_effect=_fake_run(tags)
+            ),
+        ):
+            self.assertEqual(changelog_generator.find_base_tag("v4.1.6"), "v4.1.5")
+
+    def test_non_version_tags_are_ignored(self):
+        tags = {"backup/pre-split-abc": 1, "v4.1.5": 50}
+        with (
+            mock.patch.object(changelog_generator, "git", side_effect=_fake_git(tags)),
+            mock.patch.object(
+                changelog_generator.subprocess, "run", side_effect=_fake_run(tags)
+            ),
+        ):
+            self.assertEqual(changelog_generator.find_base_tag("v4.1.6"), "v4.1.5")
+
+
+class ParseCategoryTests(unittest.TestCase):
+    def test_dependency_upgrade_keyword_maps_to_deps(self):
+        self.assertEqual(
+            changelog_generator.parse_category(
+                "build(ui): 前端依赖整体升级 + 图表修复"
+            ),
+            "deps",
+        )
+
+    def test_deps_scope_maps_to_deps(self):
+        self.assertEqual(
+            changelog_generator.parse_category("build(deps): bump vite"), "deps"
+        )
+
+    def test_dependency_update_keyword_maps_to_deps(self):
+        self.assertEqual(
+            changelog_generator.parse_category("chore(ui): 更新依赖"), "deps"
+        )
+
+    def test_build_release_prepare_is_still_skipped(self):
+        self.assertIsNone(
+            changelog_generator.parse_category("build(release): prepare release v4.1.6")
+        )
+
+    def test_ci_prefix_is_still_skipped(self):
+        self.assertIsNone(changelog_generator.parse_category("ci: fix build"))
+
+    def test_release_body_includes_dependencies_heading(self):
+        commits = [
+            {
+                "category": "deps",
+                "hash": "aaa",
+                "authors": [("Alice", "alice@example.com")],
+                "desc": "前端依赖整体升级",
+                "number": 154,
+            }
+        ]
+        with (
+            mock.patch.object(
+                changelog_generator, "release_date", return_value="2026-09-01"
+            ),
+            mock.patch.object(
+                changelog_generator, "resolve_logins", return_value=["Alice"]
+            ),
+        ):
+            body = changelog_generator.render_release_body(
+                "v4.1.6-alpha.2", "owner/repo", "v4.1.6-alpha.1", commits
+            )
+        self.assertIn("### Dependencies", body)
+        self.assertIn(
+            "- 前端依赖整体升级 "
+            "[(#154)](https://github.com/owner/repo/pull/154) @Alice",
+            body,
         )
 
 
