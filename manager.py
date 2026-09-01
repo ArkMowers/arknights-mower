@@ -47,6 +47,7 @@ class Api:
     def start(self, idx):
         import platform
         import sys
+        from pathlib import Path
         from subprocess import Popen
 
         is_win = platform.system() == "Windows"
@@ -54,6 +55,10 @@ class Api:
         instance = self.instances[idx]
         if is_win and frozen:
             Popen(["mower.exe", instance["path"], instance["name"]])
+        elif frozen:
+            # macOS/Linux 冻结运行：mower 与多开管理器位于同一目录
+            mower = Path(sys.executable).resolve().parent / "mower"
+            Popen([str(mower), instance["path"], instance["name"]])
         else:
             if is_win:
                 Popen(

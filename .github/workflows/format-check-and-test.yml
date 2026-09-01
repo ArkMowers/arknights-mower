@@ -30,6 +30,13 @@ jobs:
       - name: Prettier check
         run: npx --yes prettier@latest --check "ui/**/*.js" "ui/**/*.vue"
 
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint GitHub Actions workflows
+        uses: rhysd/actionlint@v1.7.12
+
   unittest:
     runs-on: ubuntu-latest
     steps:
@@ -42,5 +49,8 @@ jobs:
       - run: |
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
+      - name: Compile all Python sources
+        run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
       - run: |
           ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
+          ./venv/bin/python3 -m unittest discover -s scripts/tests -p "*_tests.py"
