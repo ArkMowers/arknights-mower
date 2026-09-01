@@ -1,7 +1,7 @@
 import sys
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 # base_schedule 导入链（cultivate_depot→skland）会在 skland 模块加载时调用
 # SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关）。与
@@ -22,6 +22,38 @@ with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
 
 
 class TestBaseScheduler(unittest.TestCase):
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_wait_drone_interface_can_require_bill_accelerate(self):
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock(w=1920, h=1080)
+        bill_results = iter((None, object()))
+        solver.find = MagicMock(
+            side_effect=lambda template: (
+                next(bill_results) if template == "bill_accelerate" else object()
+            )
+        )
+        solver.tap = MagicMock()
+
+        solver._wait_drone_interface(interval=1, accelerate_template="bill_accelerate")
+
+        self.assertEqual(
+            solver.find.call_args_list,
+            [call("bill_accelerate"), call("bill_accelerate")],
+        )
+        solver.tap.assert_called_once_with((96, 1026), interval=1)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_wait_drone_interface_accepts_either_button_by_default(self):
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock(w=1920, h=1080)
+        solver.find = MagicMock(return_value=object())
+        solver.tap = MagicMock()
+
+        solver._wait_drone_interface()
+
+        solver.find.assert_called_once_with("factory_accelerate")
+        solver.tap.assert_not_called()
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_run_order_solver_uses_current_time_for_expired_exhaust_task(self):
         solver = BaseSchedulerSolver()

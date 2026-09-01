@@ -1,0 +1,507 @@
+# 正式版与 alpha 测试版共用的跨平台发布流水线（五个平台）
+#
+# - 外部合法 tag push 可以直接进入；发布准备流程通过 workflow_call 显式调用
+# - 两个入口都只从 tag checkout，不根据 tag 猜测来源分支，也不写回任何分支
+# - prepare 生成 Release 正文（body.md，含 unsigned 说明）和带当前版本块的
+#   CHANGELOG.md，上传为 release-metadata
+# - build-* 下载 release-metadata，用生成的 CHANGELOG 覆盖工作区文件，使打包产物
+#   包含本次变更记录
+# - release 在全部构建成功后只调用一次 action-gh-release，一次性附加五个平台产物
+#   与统一 SHA-256 清单（SHA256SUMS）；alpha 为 prerelease，正式版为普通 Release
+#
+# 平台矩阵：
+#   Windows x64        windows-latest        webui_zip.spec                 .zip
+#   Linux x64/arm64    ubuntu-24.04(-arm)     webui_zip_for_linux.spec      .tar.gz
+#   macOS x64/arm64    macos-15-intel/15      webui_zip_for_macos.spec      .zip
+# Windows ARM64 暂缓：锁定的核心原生依赖（opencv-python、rjieba 等）在 PyPI
+# 上没有 win_arm64 wheel，当前矩阵不包含该平台。见 doc/release-platforms.md。
+# macOS 与 Linux 一样依赖宿主机系统库（libzbar 等）；macOS 产物为 unsigned
+# experimental build（PyInstaller 仅做 ad-hoc 签名，非 Developer ID）。
+#
+# 权限说明：GITHUB_TOKEN 只保留 contents 作用域即可——artifact 上传/下载用的是
+# runner 注入的 ACTIONS_RUNTIME_TOKEN，不受 permissions 限制；只有创建 Release
+# 才需要 contents: write，所以只给 release 任务放开。
+
+name: "Release & Prerelease"
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-alpha.[0-9]+"
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 已由发布准备流程创建的合法发布 tag
+        type: string
+        required: true
+      release_sha:
+        description: 发布 tag 必须指向的提交
+        type: string
+        required: true
+
+concurrency:
+  group: release-${{ github.repository }}-${{ inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PYINSTALLER_VERSION: "6.22.2"
+  UPX_VERSION: "5.2.0"
+  UPX_WINDOWS_SHA256: "b471ebf1b7f20f4a89150264ed9a008a2a5bfd247f3c6d1184a75bb59ca08f5d"
+
+jobs:
+  prepare:
+    name: Prepare release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version
+        id: meta
+        env:
+          CALLED_TAG_NAME: ${{ inputs.tag_name }}
+          CALLED_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          if [[ -n "${CALLED_TAG_NAME}" ]]; then
+            tag_name="${CALLED_TAG_NAME}"
+            expected_sha="${CALLED_RELEASE_SHA}"
+          else
+            tag_name="${GITHUB_REF_NAME}"
+            expected_sha="${GITHUB_SHA}"
+          fi
+
+          if ! [[ "${tag_name}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]]; then
+            echo "::error::invalid release tag: ${tag_name}" >&2
+            exit 1
+          fi
+          if ! git show-ref --verify --quiet "refs/tags/${tag_name}"; then
+            echo "::error::release tag does not exist: ${tag_name}" >&2
+            exit 1
+          fi
+          tag_sha="$(git rev-parse "refs/tags/${tag_name}^{commit}")"
+          if [[ "$(git rev-parse HEAD)" != "${tag_sha}" ]]; then
+            echo "::error::checkout does not match release tag: ${tag_name}" >&2
+            exit 1
+          fi
+          if [[ "${tag_sha}" != "${expected_sha}" ]]; then
+            echo "::error::release tag does not point to expected commit: ${expected_sha}" >&2
+            exit 1
+          fi
+
+          version="${tag_name#v}"
+          if [[ "${version}" == *-alpha.* ]]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag_name=${tag_name}"
+            echo "prerelease=${prerelease}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Generate release body and changelog
+        env:
+          RELEASE_TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+        run: |
+          python scripts/changelog_generator.py \
+            --tag "${RELEASE_TAG_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --out body.md \
+            --prepend-to CHANGELOG.md
+
+      - name: Append signing notes to body
+        run: |
+          cat >> body.md <<EOF
+
+          > 产物均为未签名构建，并附带统一 SHA-256 清单（SHA256SUMS）。Windows
+          > 首次运行可能出现 SmartScreen 提示；macOS 为 unsigned experimental
+          > build，若被系统拦截需在「隐私与安全性」中手动允许。建议先核对
+          > SHA256SUMS 再使用。
+          EOF
+
+      - name: Upload release metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: |
+            body.md
+            CHANGELOG.md
+
+  build-windows:
+    name: Build Windows x64
+    needs: prepare
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+
+      - name: Download release metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Overwrite changelog with generated
+        shell: bash
+        run: cp release-metadata/CHANGELOG.md CHANGELOG.md
+
+      - name: Inject version from tag
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+
+      - name: Install UPX
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "upx-$($env:UPX_VERSION)-win64.zip"
+          $destination = Join-Path $env:RUNNER_TEMP "upx-$($env:UPX_VERSION)"
+          $url = "https://github.com/upx/upx/releases/download/v$($env:UPX_VERSION)/upx-$($env:UPX_VERSION)-win64.zip"
+
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:UPX_WINDOWS_SHA256) {
+            throw "UPX SHA-256 mismatch: expected $($env:UPX_WINDOWS_SHA256), got $actualHash"
+          }
+
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $upx = Get-ChildItem -LiteralPath $destination -Filter upx.exe -Recurse | Select-Object -First 1
+          if ($null -eq $upx) {
+            throw "upx.exe was not found in the downloaded archive"
+          }
+
+          $upx.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $upx.FullName --version
+
+      - name: Build frontend
+        working-directory: ui
+        run: npm ci
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: python -m PyInstaller webui_zip.spec
+
+      - name: Synchronize Windows runtime DLLs
+        run: python scripts/fix_runtime_dlls.py
+
+      - name: Verify PE architecture
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+        run: python scripts/check_pe_arch.py dist/mower --arch x64
+
+      - name: Package into zip
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          Compress-Archive -Path dist/mower -DestinationPath "dist/arknights-mower_${version}_windows_x64.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arknights-mower_${{ needs.prepare.outputs.version }}_windows_x64
+          path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_windows_x64.zip
+
+  build-linux:
+    name: Build Linux ${{ matrix.arch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+
+      - name: Download release metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Overwrite changelog with generated
+        run: cp release-metadata/CHANGELOG.md CHANGELOG.md
+
+      - name: Inject version from tag
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libzbar0 \
+            libgl1 \
+            libglib2.0-0 \
+            libgtk-3-0 \
+            libwebkit2gtk-4.1-0 \
+            xvfb \
+            file
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.in
+          python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+
+      - name: Build frontend
+        working-directory: ui
+        run: npm ci
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller webui_zip_for_linux.spec
+
+      - name: Package into tar.gz
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          tar -czf "dist/arknights-mower_${version}_linux_${{ matrix.arch }}.tar.gz" -C dist mower
+
+      - name: Smoke check package
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          arch="${{ matrix.arch }}"
+          pkg="dist/arknights-mower_${version}_linux_${arch}.tar.gz"
+          rm -rf smoke && mkdir smoke
+          tar -xzf "${pkg}" -C smoke
+          # 主程序存在且带可执行权限
+          test -x smoke/mower/mower
+          # 必备资源存在（PyInstaller 目录布局随版本变化，用 find 兜底）
+          find smoke/mower -name CHANGELOG.md | grep -q .
+          find smoke/mower -name logo.png | grep -q .
+          # 架构校验：file 输出必须与目标架构一致，不符即硬失败
+          file smoke/mower/mower
+          case "${arch}" in
+            x64) file smoke/mower/mower | grep -q "x86-64" ;;
+            arm64) file smoke/mower/mower | grep -q "aarch64" ;;
+          esac
+          # 动态库校验：把包内私有共享库目录加入搜索路径后检查解析结果
+          package_library_dirs="$(
+            find smoke/mower \
+              \( -type f -o -type l \) \
+              \( -name '*.so' -o -name '*.so.*' \) \
+              -printf '%h\n' |
+              sort -u |
+              paste -sd:
+          )"
+          package_library_path="smoke/mower:smoke/mower/_internal"
+          if [ -n "${package_library_dirs}" ]; then
+            package_library_path="${package_library_path}:${package_library_dirs}"
+          fi
+
+          missing=0
+          check_ldd() {
+            local so="$1"
+            local count
+            local output
+            output="$(
+              LD_LIBRARY_PATH="${package_library_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+                ldd "${so}" 2>/dev/null || true
+            )"
+            count="$(grep -c 'not found' <<< "${output}" || true)"
+            if [ "${count}" -gt 0 ]; then
+              echo "::error::unresolved shared libraries in ${so}:"
+              grep 'not found' <<< "${output}" || true
+              missing=$((missing + count))
+            fi
+          }
+          check_ldd smoke/mower/mower
+          while IFS= read -r so; do
+            if file "${so}" | grep -q ELF; then
+              check_ldd "${so}"
+            fi
+          done < <(find smoke/mower -type f \( -name '*.so' -o -name '*.so.*' \) | sort)
+          if [ "${missing}" -gt 0 ]; then
+            echo "::error::共 ${missing} 处未解析共享库引用，构建失败"
+            exit 1
+          fi
+          echo "主程序与包内 ELF 共享库的依赖解析正常"
+
+      - name: Smoke launch
+        run: |
+          rm -f launch.log
+          set +e
+          timeout 30 xvfb-run -a ./smoke/mower/mower > launch.log 2>&1
+          exit_code=$?
+          set -e
+          cat launch.log
+          if [ "${exit_code}" -eq 124 ]; then
+            echo "GUI 进程成功拉起并存活至 timeout（exit ${exit_code}）"
+          else
+            echo "::error::GUI 进程在 timeout 前以 ${exit_code} 退出，见上方日志"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arknights-mower_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}
+          path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}.tar.gz
+
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+            macho: x86_64
+          - runner: macos-15
+            arch: arm64
+            macho: arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+
+      - name: Download release metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Overwrite changelog with generated
+        run: cp release-metadata/CHANGELOG.md CHANGELOG.md
+
+      - name: Inject version from tag
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+
+      - name: Install zbar system library
+        run: brew install zbar
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.in
+          python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+
+      - name: Build frontend
+        working-directory: ui
+        run: npm ci
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller webui_zip_for_macos.spec
+
+      - name: Verify app bundle structure
+        run: |
+          python scripts/check_macos_app.py dist/mower.app --arch ${{ matrix.macho }}
+
+      - name: Smoke launch
+        run: |
+          python - <<'PYEOF'
+          import subprocess
+          import time
+
+          binary = "./mower.app/Contents/MacOS/mower"
+          process = subprocess.Popen([binary], cwd="dist")
+          time.sleep(20)
+          status = process.poll()
+          if status is None:
+              print("GUI 进程成功拉起并存活 20s")
+              process.terminate()
+          else:
+              print(f"::error::GUI 进程在 20s 内以 {status} 退出")
+              raise SystemExit(1)
+          PYEOF
+
+      - name: Package into zip with ditto
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/mower.app "dist/arknights-mower_${version}_macos_${{ matrix.arch }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}
+          path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}.zip
+
+  release:
+    name: Publish GitHub Release
+    needs: [prepare, build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: arknights-mower_*
+          merge-multiple: true
+
+      - name: Generate SHA-256 manifest
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum arknights-mower_* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/arknights-mower_*
+            release-assets/SHA256SUMS
+          body_path: release-metadata/body.md
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}

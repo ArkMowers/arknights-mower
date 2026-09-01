@@ -1813,16 +1813,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
         )
 
-    def _wait_drone_interface(self, interval=0.5):
-        """#85：等待进入无人机界面（出现 制造站/贸易站 加速按钮）。
+    def _wait_drone_interface(self, interval=0.5, accelerate_template=None):
+        """#85：等待进入无人机界面（出现预期的加速按钮）。
 
-        5 处副本抽出的单一 helper：点击坐标/重试上限统一，调用方只传重试节奏。
+        ``accelerate_template`` 用于贸易站专属流程；未指定时制造站/贸易站任一
+        加速按钮都视为成功。
         """
         error_count = 0
-        while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
-        ):
+        templates = (
+            (accelerate_template,)
+            if accelerate_template is not None
+            else ("factory_accelerate", "bill_accelerate")
+        )
+        while all(self.find(template) is None for template in templates):
             if error_count > 5:
                 raise Exception("未成功进入无人机界面")
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=interval)
@@ -1833,7 +1836,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
-        self._wait_drone_interface(interval=1)
+        self._wait_drone_interface(interval=1, accelerate_template="bill_accelerate")
         execute_time = self.double_read_time(
             self._run_order_time_region(),
             use_digit_reader=True,
@@ -2267,7 +2270,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not self.waiting_solver():
                     return None
 
-            self._wait_drone_interface(interval=1)
+            self._wait_drone_interface(
+                interval=1, accelerate_template="bill_accelerate"
+            )
 
             _time = self.double_read_time(
                 (
