@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import gzip
 import subprocess
 import time
@@ -124,6 +125,8 @@ class Device:
         self.client = None
         self.control = None
         self.start()
+        # 进程退出时释放 adb 资源，避免退出后 DroidCast/scrcpy 等常驻连接藕断丝连
+        atexit.register(self.close)
 
     def start(self) -> None:
         self.client = ADBClient(self.device_id, self.connect)
@@ -178,17 +181,24 @@ class Device:
         self.run(command)
 
     def is_app_running_in_background(self) -> bool:
+        """检查游戏进程是否存活；无法判定时按「运行中」处理，避免误判重新拉起游戏。"""
         try:
-            output = self.client.cmd_shell(f"pidof {config.conf.APPNAME}")
-            return bool(output.strip())
+            # 同一条持久 adb 会话查询，避免另起 adb.exe 进程的竞态假阴性（#159 根因）
+            output = self.run(f"ps -A | grep {config.conf.APPNAME} | grep -v grep")
+            if output.strip():
+                return True
+            # ps 查不到：只有 dumpsys package 能检出 force-stop（stopped=true）
+            package = self.run(f"dumpsys package {config.conf.APPNAME}")
+            if b"stopped=true" in package:
+                return False
         except Exception as e:
             logger.debug(f"检查应用是否在后台运行时出错：{e}")
-            return False
+            return True
+        # ps 查不到、又非 force-stop：无法判定，按「运行中」处理
+        return True
 
     def bring_to_foreground(self):
-        self.client.cmd_shell(
-            f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}"
-        )
+        self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
 
     def get_droidcast_classpath(self) -> str | None:
         # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
@@ -211,7 +221,12 @@ class Device:
         if not class_path:
             logger.info("安装DroidCast")
             apk_path = f"{__rootdir__}/vendor/droidcast/DroidCast-debug-1.2.1.apk"
-            out = self.client.cmd(["install", apk_path], decode=True)
+            try:
+                out = self.client.cmd(["install", apk_path], decode=True)
+            except Exception as e:
+                # 设备瞬时离线时 install 会失败：按「装不上」返回 False，不让重连崩
+                logger.warning(f"DroidCast安装失败：{e}")
+                return False
             if "Success" in out:
                 logger.info("DroidCast安装完成，获取CLASSPATH")
             else:
@@ -271,70 +286,53 @@ class Device:
             start_time = min_time
 
         if self.control.mumu12IPC:
-            while True:
+            # 瞬时错误重建 IPC 重试；重试耗尽且设备无法连接时自动重启模拟器
+            for _ in range(3):
                 try:
                     img = self.control.mumu12IPC.capture_display()
                     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                     break
+                except MowerExit:
+                    raise
                 except Exception as e:
                     logger.exception(e)
-                    restart_simulator()
                     self.control.mumu12IPC = MuMu12IPC(self.device)
+            else:
+                restart_simulator()
+                self.control.mumu12IPC = MuMu12IPC(self.device)
+                img = self.control.mumu12IPC.capture_display()
+                gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         elif config.conf.droidcast.enable:
             session = config.droidcast.session
-            while True:
-                try:
-                    port = config.droidcast.port
-                    url = f"http://127.0.0.1:{port}/screenshot"
-                    logger.debug(f"GET {url}")
-                    r = session.get(url)
-                    img = bytes2img(r.content)
-                    if config.conf.droidcast.rotate:
-                        img = cv2.rotate(img, cv2.ROTATE_180)
-                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
-                    self.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    self.start_droidcast()
-                    if config.conf.touch_method == "scrcpy":
-                        self.control.scrcpy = Scrcpy(self.client)
+
+            def grab_droidcast() -> bytes:
+                port = config.droidcast.port
+                url = f"http://127.0.0.1:{port}/screenshot"
+                logger.debug(f"GET {url}")
+                return session.get(url).content
+
+            img = bytes2img(self.recover(grab_droidcast))
+            if config.conf.droidcast.rotate:
+                img = cv2.rotate(img, cv2.ROTATE_180)
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         elif config.conf.custom_screenshot.enable:
             command = config.conf.custom_screenshot.command
-            while True:
-                try:
-                    data = subprocess.check_output(
-                        command,
-                        shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                        if __system__ == "windows"
-                        else 0,
-                    )
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
-                    self.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    if config.conf.touch_method == "scrcpy":
-                        self.control.scrcpy = Scrcpy(self.client)
+
+            def grab_custom() -> bytes:
+                return subprocess.check_output(
+                    command,
+                    shell=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                    if __system__ == "windows"
+                    else 0,
+                )
+
+            data = self.recover(grab_custom)
             img = bytes2img(data)
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         else:
             command = "screencap 2>/dev/null | gzip -1"
-            while True:
-                try:
-                    resp = self.run(command)
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
-                    self.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    if config.conf.touch_method == "scrcpy":
-                        self.control.scrcpy = Scrcpy(self.client)
+            resp = self.recover(lambda: self.run(command))
             data = gzip.decompress(resp)
             array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
                 1080, 1920, 4
@@ -400,40 +398,88 @@ class Device:
         )
         self.control.swipe_ext(points, durations, up_wait)
 
-    def check_current_focus(self) -> bool:
-        """check if the application is in the foreground"""
-        update = False
-        while True:
-            try:
-                focus = self.current_focus()
-                expected_focuses = [
-                    f"{config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}",
-                    "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
-                    "com.hypergryph.arknights.bilibili/com.gsc.auto_login.AutoLoginActivity",
-                ]
+    def close(self) -> None:
+        """释放 adb 相关资源（常驻子进程与 socket）。
 
-                if focus not in expected_focuses:
-                    if self.is_app_running_in_background():
-                        self.bring_to_foreground()
-                        csleep(2)
-                    else:
-                        # 游戏既不在前台也不在后台，尝试直接拉起前台
-                        self.launch()
-                        csleep(10)
-                    update = True
+        mower 的 DroidCast 截图子进程与 scrcpy 常驻连接都依赖模拟器连接；退出时不清理
+        会一直占住（共享 adb socket 与 mower 所在目录），需关闭模拟器才释放。该方法由
+        atexit 注册，进程退出时调用，幂等可重复调用。
+        """
+        try:
+            process = getattr(config.droidcast, "process", None)
+            if process is not None:
+                process.terminate()
+                config.droidcast.process = None
+        except Exception:
+            logger.debug("终止 DroidCast 进程失败", exc_info=True)
+        try:
+            if self.control is not None and self.control.scrcpy is not None:
+                self.control.scrcpy.stop()
+        except Exception:
+            logger.debug("关闭 scrcpy 失败", exc_info=True)
+
+    def reconnect(self) -> None:
+        """重连 adb 会话 + 重初始化显示/触摸管线（不杀游戏、不重启模拟器）。
+
+        先重新发现目标模拟器当前 adb 端点（如 MuMu 双开端口漂移），避免一直连
+        config.conf.adb 里已失效的旧端口。"""
+        self.client.check_server_alive()
+        target = self.client.refresh_target()
+        self.device_id = target
+        Session().connect(target)
+        if config.conf.droidcast.enable:
+            self.start_droidcast()
+        if config.conf.touch_method == "scrcpy":
+            self.control.scrcpy = Scrcpy(self.client)
+
+    def _safe_reconnect(self) -> None:
+        """重连失败不抛给上层，计入 recover 的重试/重启语义。"""
+        try:
+            self.reconnect()
+        except Exception as e:
+            logger.warning(f"重连失败：{e}")
+
+    def recover(self, func, retries: int = 3, restarts: int = 2):
+        """瞬时错误重连重试；重试耗尽且设备无法连接时自动重启模拟器；重启有上限。"""
+        last_exc = None
+        for _ in range(restarts):
+            for _ in range(retries):
+                try:
+                    return func()
+                except MowerExit:
+                    raise
+                except Exception as e:
+                    last_exc = e
+                    logger.warning(f"重试失败：{e}")
+                    self._safe_reconnect()
+            logger.warning(f"重试 {retries} 次仍失败，判定设备无法连接，自动重启模拟器")
+            restart_simulator()
+            self._safe_reconnect()
+        raise ConnectionError(
+            f"设备连不上，自动重启模拟器 {restarts} 次后仍失败"
+        ) from last_exc
+
+    def check_current_focus(self) -> bool:
+        """检查游戏是否在前台；不在则切回/拉起；仅设备无法连接时才自动重启模拟器。"""
+        update = False
+
+        def check() -> bool:
+            nonlocal update
+            focus = self.current_focus()
+            # 前台判定：package 前缀匹配（游戏包下任何界面都算前台，免疫新 activity）
+            if focus.startswith(config.conf.APPNAME + "/"):
                 return update
-            except MowerExit:
-                raise
-            except Exception as e:
-                logger.exception(e)
-                restart_simulator()
-                self.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    self.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    self.control.scrcpy = Scrcpy(self.client)
-                update = True
+            if self.is_app_running_in_background():
+                self.bring_to_foreground()
+                csleep(2)
+            else:
+                # 游戏进程已停止（force-stop），重拉前台
+                self.launch()
+                csleep(10)
+            update = True
+            return update
+
+        return self.recover(check, retries=3, restarts=3)
 
     def check_resolution(self) -> bool:
         """检查分辨率"""

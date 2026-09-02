@@ -2,10 +2,7 @@ import functools
 
 import networkx as nx
 
-from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.adb_client.session import Session
-from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.simulator import restart_simulator
@@ -448,14 +445,8 @@ class SceneGraphSolver(BaseSolver):
             try:
                 sp = nx.shortest_path(DG, current, scene, weight="weight")
             except Exception as e:
+                # 纯图计算错误（如无路径），与设备无关：不重启模拟器，放弃本次导航
                 logger.exception(f"场景图路径计算异常：{e}")
-                restart_simulator()
-                self.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    self.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    self.device.control.scrcpy = Scrcpy(self.device.client)
                 return
 
             logger.debug(sp)
@@ -475,12 +466,7 @@ class SceneGraphSolver(BaseSolver):
                     error_count += 1
                     continue
                 if restart_simulator():
-                    self.device.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    if config.conf.droidcast.enable:
-                        self.device.start_droidcast()
-                    if config.conf.touch_method == "scrcpy":
-                        self.device.control.scrcpy = Scrcpy(self.device.client)
+                    self.device.reconnect()
                     self.check_current_focus()
                 else:
                     self.restart_game()

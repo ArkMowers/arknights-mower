@@ -54,7 +54,7 @@ class BaseSolver:
         if device is not None:
             self.device = device
         else:
-            while True:
+            for _ in range(3):
                 try:
                     self.device = Device()
                     self.device.client.check_server_alive()
@@ -69,8 +69,22 @@ class BaseSolver:
                 except MowerExit:
                     raise
                 except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
+                    last_exc = e
+                    logger.warning(f"设备连接失败：{e}")
+                    # 启动时目标设备未注册到 adb=模拟器未启动，直接启动（只启动不关闭，
+                    # 误判也不会杀在跑的游戏）；已注册但瞬时故障才走重连重试
+                    try:
+                        registered = [d for d, _ in Session().devices_list()]
+                    except Exception:
+                        registered = []
+                    if config.conf.adb and config.conf.adb not in registered:
+                        restart_simulator(stop=False, start=True)
+                    elif hasattr(self, "device") and self.device.client:
+                        self.device._safe_reconnect()
+            else:
+                raise ConnectionError(
+                    "设备连接 3 次失败（判定设备无法连接，自动重启模拟器由上层处理）"
+                ) from last_exc
 
         self.recog = recog if recog is not None else Recognizer(self.device)
 

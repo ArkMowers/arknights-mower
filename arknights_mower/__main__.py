@@ -9,8 +9,6 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
-from arknights_mower.utils.device.adb_client.session import Session
-from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.maa_check import is_maa_connectivity_check_enabled
@@ -106,14 +104,10 @@ def simulate(saved, restart_after_mood_read=False):
             reconnect_tries += 1
             if reconnect_tries < 3:
                 restart_simulator()
-                base_scheduler.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    base_scheduler.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    base_scheduler.device.control.scrcpy = Scrcpy(
-                        base_scheduler.device.client
-                    )
+                # 首次 initialize 失败时模块全局 base_scheduler 仍是 None（initialize 内是局部变量），
+                # 不能拿它重连；下一次 initialize 会新建 Device 自然重连
+                if base_scheduler is not None:
+                    base_scheduler.device.reconnect()
                 continue
             else:
                 raise e
@@ -122,7 +116,7 @@ def simulate(saved, restart_after_mood_read=False):
             base_scheduler.check_maa_connectivity("启动预检")
         except RuntimeError as e:
             message = str(e)
-            logger.error(message)
+            logger.warning(message)
             send_message(
                 message,
                 "Mower启动中止：Maa连接测试失败",
@@ -333,28 +327,14 @@ def simulate(saved, restart_after_mood_read=False):
                             raise
                         logger.exception(e)
                         restart_simulator()
-                        base_scheduler.device.client.check_server_alive()
-                        Session().connect(config.conf.adb)
-                        if config.conf.droidcast.enable:
-                            base_scheduler.device.start_droidcast()
-                        if config.conf.touch_method == "scrcpy":
-                            base_scheduler.device.control.scrcpy = Scrcpy(
-                                base_scheduler.device.client
-                            )
+                        base_scheduler.device.reconnect()
                 continue
             else:
                 raise e
         except RuntimeError as e:
             logger.exception(f"程序出错-尝试重启模拟器->{e}")
             restart_simulator()
-            base_scheduler.device.client.check_server_alive()
-            Session().connect(config.conf.adb)
-            if config.conf.droidcast.enable:
-                base_scheduler.device.start_droidcast()
-            if config.conf.touch_method == "scrcpy":
-                base_scheduler.device.control.scrcpy = Scrcpy(
-                    base_scheduler.device.client
-                )
+            base_scheduler.device.reconnect()
         except Exception as e:
             logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()
