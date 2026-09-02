@@ -3,6 +3,7 @@ import json
 import requests
 
 from arknights_mower.utils import config
+from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skland import (
     get_binding_list,
@@ -34,9 +35,12 @@ class cultivate:
                     headers=get_sign_header(ingame, "get", body, self.sign_token),
                     timeout=30,
                 ).json()
-                self.record_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.record_path, "w", encoding="utf-8") as file:
+
+                def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
+
+                # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
+                atomic_write(self.record_path, dump)
 
     def save_param(self, cred_resp):
         header["cred"] = cred_resp["cred"]
