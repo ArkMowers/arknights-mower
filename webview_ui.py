@@ -384,6 +384,9 @@ if __name__ == "__main__":
                     )
                     config.webview_process.start()
             elif msg == "exit":
+                # 退出前先让 mower 线程停止：否则 daemon 线程仍在跑 adb 操作，
+                # 会占着 DroidCast/scrcpy 连接（需关模拟器才释放），且影响进程退出
+                config.stop_mower.set()
                 config.parent_conn.send("exit")
                 if config.webview_process.join(3) is None:
                     config.webview_process.terminate()

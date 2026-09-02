@@ -80,7 +80,7 @@ def add_task():
                     return "添加任务成功！"
             raise Exception("添加任务失败！！请确保Mower正在运行")
         except Exception as e:
-            logger.exception(f"添加任务失败：{str(e)}")
+            logger.warning(f"添加任务失败：{str(e)}")
             return str(e)
     else:
         if base_scheduler and mower_thread and mower_thread.is_alive():
