@@ -4,10 +4,13 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
+import sklearn.pipeline  # noqa
+import sklearn.preprocessing
+import sklearn.svm  # noqa
+from skimage.metrics import structural_similarity as compare_ssim
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils import vision_np
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
 
@@ -26,7 +29,7 @@ def keypoints(img: tp.GrayImage):
 
 
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
-    SVC_MODEL: vision_np.LinearSvcModel = pickle.loads(f.read())
+    SVC = pickle.loads(f.read())
 
 
 # build FlannBasedMatcher
@@ -101,9 +104,7 @@ class Matcher:
             else:
                 logger.debug(f"score is not greater than {prescore}: {rect_score}")
                 return None
-        if judge and not vision_np.linear_svc_predict(
-            score, SVC_MODEL["w"], SVC_MODEL["b"]
-        ):
+        if judge and not SVC.predict([score])[0]:
             logger.debug(f"match fail: {rect_score}")
             return None
         logger.debug(f"match success: {rect_score}")
@@ -281,7 +282,7 @@ class Matcher:
             hash = 1 - (aHash(query, rect_img) / 16)
 
             # calc ssim between query image and rect_img
-            ssim = vision_np.ssim(query, rect_img)
+            ssim = compare_ssim(query, rect_img, multichannel=True)
 
             # return final rectangle and four dimensions of scoring
             if only_score:

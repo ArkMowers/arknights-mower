@@ -181,10 +181,6 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
 
-      - name: Prune unused OpenCV assets
-        shell: bash
-        run: python scripts/prune_opencv.py
-
       - name: Install UPX
         shell: pwsh
         run: |
@@ -214,6 +210,9 @@ jobs:
       - name: Build with PyInstaller
         shell: bash
         run: python -m PyInstaller webui_zip.spec
+
+      - name: Synchronize Windows runtime DLLs
+        run: python scripts/fix_runtime_dlls.py
 
       - name: Verify PE architecture
         shell: bash
@@ -286,9 +285,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.in
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
-
-      - name: Prune unused OpenCV assets
-        run: python scripts/prune_opencv.py
 
       - name: Build frontend
         working-directory: ui
@@ -430,9 +426,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.in
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
-
-      - name: Prune unused OpenCV assets
-        run: python scripts/prune_opencv.py
 
       - name: Build frontend
         working-directory: ui

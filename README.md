@@ -59,40 +59,12 @@ pip install -r requirements.in
 pip install Flask flask-cors flask-sock pywebview
 ```
 
-### 识别等价测试与模型重训
-
-scipy、scikit-image、scikit-learn 仅用于开发期 golden 对照与模型重训，不属于运行依赖：
-
-```bash
-pip install -r requirements-dev.txt
-python -m unittest arknights_mower.tests.vision_np_tests
-```
-
-这些用例在上述三个库缺失时会整体跳过，因此 CI 的 `recognition-equivalence` 任务会安装开发依赖真正执行它们。
-
-识别层加载的是不含 sklearn 对象的 numpy 字典，而 `auto_get_res_new.py` 重新训练仓库识别模型（`NORMAL.pkl`、`CONSUME.pkl`）后写出的仍是 sklearn 对象，需要再折叠一次才能被加载：
-
-```bash
-python scripts/collapse_recognition_models.py
-```
-
-折叠脚本会先用 sklearn 原模型逐样本校验折叠结果，校验通过才原地替换；模型已经是折叠格式时会跳过并提示。
-
-运行依赖与开发依赖的锁文件必须由 Python 3.12 统一生成，避免环境 marker 与交付运行时不一致：
-
-```bash
-python -m pip install pip==25.3 pip-tools==7.6.0
-python scripts/compile_requirements.py
-```
-
-两份锁文件必须成对生成，`scripts/tests/requirements_sync_tests.py` 会校验它们的公共依赖版本一致。
-
 ### 打包（Windows）
 
 ```bash
 pip install pyinstaller
-python scripts/prune_opencv.py
 pyinstaller webui_zip.spec
+python scripts/fix_runtime_dlls.py
 ```
 
 生成的 `mower.exe` 在 `dist` 文件夹中，到此打包完成，已可使用。
@@ -101,7 +73,6 @@ pyinstaller webui_zip.spec
 
 ```bash
 pip install pyinstaller
-python scripts/prune_opencv.py
 pyinstaller webui_zip_for_linux.spec
 ```
 
@@ -119,7 +90,6 @@ pyinstaller webui_zip_for_linux.spec
 ```bash
 pip install pyinstaller
 brew install zbar
-python scripts/prune_opencv.py
 pyinstaller webui_zip_for_macos.spec
 ```
 

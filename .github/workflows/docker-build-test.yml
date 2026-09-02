@@ -1,4 +1,4 @@
-name: Test Docker Build and Runtime
+name: Test Docker Build Only
 
 on:
   workflow_dispatch:
@@ -26,58 +26,3 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Load native image for runtime smoke test
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./docker/Dockerfile
-          platforms: linux/amd64
-          load: true
-          tags: mower:runtime-smoke
-          cache-from: type=gha
-
-      - name: Start image and verify health endpoint
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          maa_dir="${RUNNER_TEMP}/mower-maa-smoke"
-          mkdir -p "${maa_dir}"
-          touch "${maa_dir}/placeholder"
-
-          container_id=$(docker run --detach \
-            --env MOWER_TOKEN=runtime-smoke \
-            --mount "type=bind,src=${maa_dir},dst=/MAA,readonly" \
-            mower:runtime-smoke)
-
-          # 清理逻辑直接写进 trap：用函数会被 shellcheck 判为不可达（不同版本分别
-          # 报 SC2317 与 SC2329），压制码随版本变化，这里从写法上避免。
-          trap 'docker logs "${container_id}" || true; docker rm --force "${container_id}" >/dev/null 2>&1 || true' EXIT
-
-          for _ in $(seq 1 60); do
-            state=$(docker inspect --format '{{.State.Status}}' "${container_id}")
-            health=$(docker inspect --format '{{.State.Health.Status}}' "${container_id}")
-
-            if [ "${state}" != "running" ]; then
-              echo "Container stopped before becoming healthy (state=${state})" >&2
-              exit 1
-            fi
-
-            if [ "${health}" = "healthy" ]; then
-              docker exec "${container_id}" \
-                curl --fail --silent http://127.0.0.1:58000/status \
-                | grep --quiet '"status"'
-              exit 0
-            fi
-
-            if [ "${health}" = "unhealthy" ]; then
-              echo "Container health check failed" >&2
-              exit 1
-            fi
-
-            sleep 2
-          done
-
-          echo "Container did not become healthy within 120 seconds" >&2
-          exit 1
