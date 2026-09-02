@@ -26,17 +26,20 @@ conf_path = get_path("@app/config/conf.yml")
 plan_path = get_path("@app/config/plan.json")
 app_state_path = get_path("@app/config/state.json")
 weekly_plans_path = get_path("@app/config/weekly_plans.yml")
+gui_path = get_path("@app/config/gui.yml")
 
 _LEGACY_CONF_PATH = get_path("@app/conf.yml")
 _LEGACY_PLAN_PATH = get_path("@app/plan.json")
 _LEGACY_APP_STATE_PATH = get_path("@app/state.json")
 _LEGACY_WEEKLY_PLANS_PATH = get_path("@app/weekly_plans.yml")
+_LEGACY_GUI_PATH = get_path("@app/gui.yml")
 
 _CONFIG_PATH_PAIRS = (
     (_LEGACY_CONF_PATH, conf_path),
     (_LEGACY_PLAN_PATH, plan_path),
     (_LEGACY_APP_STATE_PATH, app_state_path),
     (_LEGACY_WEEKLY_PLANS_PATH, weekly_plans_path),
+    (_LEGACY_GUI_PATH, gui_path),
 )
 
 

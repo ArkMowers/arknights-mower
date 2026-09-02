@@ -146,6 +146,12 @@ class TestMigrateAppConfigPaths(unittest.TestCase):
         self.assertTrue(old.exists())
         self.assertFalse(new.exists())
 
+    def test_gui_pair_converges_to_config_dir(self):
+        # gui 窗口尺寸配置与其余应用配置一起收敛到 @app/config/，旧 @app/gui.yml 纳入迁移
+        pairs = dict(config_module._CONFIG_PATH_PAIRS)
+        self.assertEqual(pairs[config_module._LEGACY_GUI_PATH], config_module.gui_path)
+        self.assertEqual(config_module.gui_path.parent.name, "config")
+
 
 class TestPersistFunctionsWriteThrough(unittest.TestCase):
     def setUp(self):
