@@ -99,13 +99,38 @@ pyinstaller webui_zip.spec
 
 ### 打包（Linux）
 
+先安装**构建机**上打包 pywebview GTK 后端所需的系统依赖（PyGObject 与 GTK/WebKit2
+的 gir typelib，否则打包时 gi 收不进产物）：
+
+```bash
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 libgirepository1.0-dev
+```
+
+如果用的是 venv，需要让 venv 能看到系统的 PyGObject，用 `--system-site-packages`
+创建，或在 venv 里 `pip install pygobject`（后者需要先安装编译依赖）。
+
+再打包：
+
 ```bash
 pip install pyinstaller
 python scripts/prune_opencv.py
 pyinstaller webui_zip_for_linux.spec
 ```
 
-生成的 `mower` 在 `dist` 文件夹中，到此打包完成，已可使用。
+生成的 `mower` 在 `dist` 文件夹中，到此打包完成，已可使用。Linux 独立包的窗口后端是
+GTK（`gi`/PyGObject），Qt 后端不随包分发。宿主若缺 GTK/WebKit2 原生库与 gir typelib，
+程序启动时会给出中文安装提示，也可按发行版安装：
+
+```bash
+# Debian / Ubuntu
+sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 gir1.2-gtk-3.0 gir1.2-soup-3.0
+# Fedora
+sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3
+# Arch Linux
+sudo pacman -S webkit2gtk-4.1 gobject-introspection
+```
+
+各发行版的详细依赖与打包命令见 `doc/release-platforms.md`。
 
 注：Linux 下运行时，shell 会显示如 `Running on http://127.0.0.1:53703` 的输出，本地浏览器访问 `http://127.0.0.1:53703` 即进入 Mower 页面。
 

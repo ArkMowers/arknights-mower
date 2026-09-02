@@ -1,6 +1,72 @@
 #!/usr/bin/env python3
 import multiprocessing as mp
+import os
+import platform
+import sys
 from urllib.parse import quote
+
+# Linux 版独立包运行期需要宿主提供 GTK/WebKit2 原生库与 typelib，PyInstaller 只把
+# pywebview 的 Python 依赖打进包。这份提示在窗口后端初始化失败时展示，直接给出
+# 三个发行版的安装命令，避免用户对着裸 ImportError 无从下手。
+_LINUX_WEBVIEW_INSTALL_HINT = (
+    "Linux 版 mower 需要宿主安装 GTK/WebKit2 原生库，窗口后端无法初始化。\n\n"
+    "Debian / Ubuntu：\n"
+    "    sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 gir1.2-gtk-3.0 gir1.2-soup-3.0\n"
+    "Fedora：\n"
+    "    sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3\n"
+    "Arch Linux：\n"
+    "    sudo pacman -S webkit2gtk-4.1 gobject-introspection\n\n"
+    "安装完成后重新运行 mower。更完整的说明见 README 的 Linux 打包一节。"
+)
+
+
+def linux_webview_backend_error() -> str | None:
+    """Linux 上检查 pywebview 的窗口后端能否初始化；缺失时返回中文安装指引。"""
+    if platform.system() not in ("Linux", "OpenBSD"):
+        return None
+
+    # 复刻 pywebview 5.1 guilib.initialize 的调度：PYWEBVIEW_GUI 优先，其次
+    # KDE_FULL_SESSION 触发 Qt，否则默认 GTK 优先。
+    requested_gui = os.environ.get("PYWEBVIEW_GUI", "").strip().lower()
+    if requested_gui not in ("qt", "gtk"):
+        requested_gui = "qt" if "KDE_FULL_SESSION" in os.environ else None
+    candidates = (
+        ["webview.platforms.qt", "webview.platforms.gtk"]
+        if requested_gui == "qt"
+        else ["webview.platforms.gtk", "webview.platforms.qt"]
+    )
+    for module in candidates:
+        # GTK 后端还会因宿主缺 typelib 抛 ValueError，Qt 后端只抛 ImportError，
+        # 与 guilib 的 import_gtk / import_qt 保持一致。
+        errors = (
+            (ImportError, ValueError) if module.endswith(".gtk") else (ImportError,)
+        )
+        try:
+            __import__(module)
+            return None  # 有一个后端可用即可，无需提示
+        except errors:
+            continue
+
+    return _LINUX_WEBVIEW_INSTALL_HINT
+
+
+def exit_if_webview_backend_missing():
+    """Linux 上窗口后端缺失时输出安装指引并退出；其它平台直接返回。"""
+    backend_error = linux_webview_backend_error()
+    if backend_error is None:
+        return
+    print(backend_error, file=sys.stderr)
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("arknights-mower", backend_error)
+        root.destroy()
+    except Exception:
+        pass  # 无显示环境（如 headless）时 stderr 已足够
+    sys.exit(1)
 
 
 def splash_screen(queue: mp.Queue):
@@ -199,6 +265,10 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
 
 if __name__ == "__main__":
     mp.freeze_support()
+
+    # 先检查窗口后端是否可用。Linux 独立包若宿主缺 GTK/WebKit2 原生库，在这里给出
+    # 中文安装指引并退出，而不是让 webview 子进程走到裸 ImportError 后悄悄开浏览器。
+    exit_if_webview_backend_missing()
 
     splash_queue = mp.Queue()
     splash_process = mp.Process(target=splash_screen, args=(splash_queue,), daemon=True)

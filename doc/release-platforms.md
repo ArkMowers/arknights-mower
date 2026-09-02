@@ -122,3 +122,57 @@ Windows ARM64 继续暂缓，避免它阻塞其他平台的 Release。
 这套流程只创建当前仓库的分支提交、tag 和 GitHub Release，不包含 OTA、
 多仓库分发或镜像推送。现有 `.github/workflows/python-publish.yml` 仍是独立的
 PyPI 发布流程，发布准备任务不会显式调用它。
+
+## Linux 独立包的窗口后端与宿主依赖
+
+上面各节描述跨平台构建与 Release 流程，这里补充 Linux 独立包运行时窗口后端的
+两层依赖，以及各发行版的宿主安装命令。
+
+### 窗口后端
+
+| 平台 | 独立包窗口后端 | 依赖 |
+| --- | --- | --- |
+| Windows | `webview.platforms.edgechromium` | WebView2 |
+| macOS | `webview.platforms.cocoa` | PyObjC |
+| Linux | `webview.platforms.gtk` | PyGObject（`gi`） |
+
+pywebview 在 Linux 上的默认调度是先试 GTK（`webview.platforms.gtk`），失败再试
+Qt（`webview.platforms.qt`）。`KDE_FULL_SESSION` 或 `PYWEBVIEW_GUI=qt` 时反过来。
+
+Linux **独立包**只随包分发 GTK 后端的 Python 依赖（`gi`/PyGObject），Qt 后端
+（`qtpy` + PyQt/PySide）刻意不收集：它不是默认路径、体积也大。因此 Linux 独立包
+一律走 GTK；Qt 版只能在源码运行时使用。
+
+### 构建机依赖
+
+构建机（运行 PyInstaller 的机器）需要在打包前安装 PyGObject 与 GTK/WebKit2 的
+gir typelib，否则 `webui_zip_for_linux.spec` 收集不到 `gi`：
+
+```bash
+# Debian / Ubuntu
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 libgirepository1.0-dev
+```
+
+如果使用 venv，需要用 `--system-site-packages` 创建以便看到系统 PyGObject，或在
+venv 中 `pip install pygobject`（后者需先安装编译依赖）。
+
+### 宿主运行依赖
+
+宿主（运行独立包的机器）只需安装 GTK/WebKit2 原生库与 gir typelib，缺库时程序启动
+会给出中文安装提示：
+
+```bash
+# Debian / Ubuntu
+sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 gir1.2-gtk-3.0 gir1.2-soup-3.0
+
+# Fedora
+sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3
+
+# Arch Linux
+sudo pacman -S webkit2gtk-4.1 gobject-introspection
+```
+
+说明：Debian 的 `gir1.2-webkit2-4.1` 依赖 `libwebkit2gtk-4.1-0`，`gir1.2-gtk-3.0`
+依赖 `libgtk-3-0`，`gir1.2-soup-3.0` 依赖 `libsoup-3.0-0`，传递依赖会随之安装。
+Fedora 的 `webkit2gtk4.1 + gi-girepository` 覆盖 WebKit2 与 GObject 内省，`libgtk-3`
+提供 GTK3。Arch 的 `webkit2gtk-4.1` 会带 `gobject-introspection` 与 GTK3。
