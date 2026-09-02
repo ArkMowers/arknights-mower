@@ -73,6 +73,12 @@ def jump_to_index(window):
 
 
 if __name__ == "__main__":
+    from webview_ui import exit_if_webview_backend_missing
+
+    # 多开管理器和主程序一样依赖窗口后端，宿主缺 GTK/WebKit2 原生库时先给出中文
+    # 安装指引再退出，避免裸 WebViewException。
+    exit_if_webview_backend_missing()
+
     api = Api()
     window = webview.create_window(
         title="多开管理器",

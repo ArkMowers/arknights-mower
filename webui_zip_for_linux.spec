@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 import rapidocr_onnxruntime
+from PyInstaller.utils.hooks import collect_submodules
 
 SPEC_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 if str(SPEC_DIR) not in sys.path:
@@ -11,6 +12,48 @@ if str(SPEC_DIR) not in sys.path:
 from build_assets import get_pyinstaller_common_datas
 
 block_cipher = None
+
+# pywebview 在 Linux 上默认先加载 GTK 后端（webview.platforms.gtk），该后端只依赖
+# PyGObject（gi），Qt 后端（qtpy + PyQt/PySide）不是默认路径、体积也大，刻意不收集，
+# 避免把不需要的 Qt 全家打进包。guilib.py 对 webview.platforms.gtk 的 import 位于
+# 惰性加载路径，PyInstaller 并不稳定地沿它收集 gi；这里显式收集 gi 的 Python 包并
+# 强制 webview.platforms.gtk，保证产物带上 PyGObject。运行期经 gi.repository 的
+# DynamicImporter 从宿主加载 Gtk/WebKit2 等 typelib。宿主仍需安装 libgtk-3、
+# libwebkit2gtk-4.1、gir1.2-webkit2 等原生库。
+PYWEBVIEW_GTK_HIDDENIMPORTS = []
+PYWEBVIEW_GTK_EXCLUDES = []
+try:
+    import gi  # noqa: F401  # 仅探测构建机是否安装 PyGObject
+
+    PYWEBVIEW_GTK_HIDDENIMPORTS = [
+        "webview.platforms.gtk",
+        "gi",
+        "gi.repository",
+    ]
+    try:
+        PYWEBVIEW_GTK_HIDDENIMPORTS += collect_submodules("gi")
+    except Exception:
+        pass
+    # GTK/WebKit2 的原生库与 typelib 一律来自宿主，不进产物，避免把 libgtk-3、
+    # libwebkit2gtk-4.1 整棵依赖树打包并与宿主 WebKit2 版本不一致。
+    PYWEBVIEW_GTK_EXCLUDES = [
+        "gi.repository.GLib",
+        "gi.repository.GObject",
+        "gi.repository.Gio",
+        "gi.repository.Gdk",
+        "gi.repository.GdkPixbuf",
+        "gi.repository.Gtk",
+        "gi.repository.Pango",
+        "gi.repository.PangoCairo",
+        "gi.repository.cairo",
+        "gi.repository.Soup",
+        "gi.repository.WebKit2",
+        "gi.repository.HarfBuzz",
+    ]
+except ImportError:
+    # 构建机没有安装 PyGObject：产物不含 pywebview 的 GTK 后端，运行期会用中文提示
+    # 宿主安装原生库，而不是抛出裸 ImportError。
+    pass
 
 # 参考 https://github.com/RapidAI/RapidOCR/blob/main/ocrweb/rapidocr_web/ocrweb.spec
 package_name = "rapidocr_onnxruntime"
@@ -48,7 +91,7 @@ mower_a = Analysis(
         ),
     ]
     + add_data,
-    hiddenimports=[],
+    hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS,
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
@@ -72,6 +115,7 @@ mower_a = Analysis(
         "openpyxl",
         "_pytest",
         "pytest",
+        *PYWEBVIEW_GTK_EXCLUDES,
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -113,7 +157,7 @@ manager_a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -129,6 +173,7 @@ manager_a = Analysis(
         "openpyxl",
         "_pytest",
         "pytest",
+        *PYWEBVIEW_GTK_EXCLUDES,
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
