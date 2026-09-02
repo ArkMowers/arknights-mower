@@ -69,6 +69,32 @@ def exit_if_webview_backend_missing():
     sys.exit(1)
 
 
+# 托盘开关窗口是杀进程重建（见 webview_window / start_tray），新窗口尺寸读
+# gui.yml。Windows WebView2 在窗口初始化/销毁路径会触发极小/零尺寸 resized，
+# 若当成立即写回配置，下次打开就缩成一团——下限钳制挡住这些残留事件。
+MIN_WINDOW_SIZE = 100
+# 仅在 gui.yml 缺失或内容损坏（极小/零/非数字）时兜底，避免坏尺寸被读进创建
+# 并再次持久化。窗口尺寸唯一落在 GUI 进程专属的 gui.yml，不再进共享的 conf.yml。
+DEFAULT_WINDOW_SIZE = (1450, 850)
+
+
+def sanitize_window_size(width, height, min_size=MIN_WINDOW_SIZE):
+    """返回合法的窗口尺寸；极小/零/非数字视为销毁路径的残留事件，返回 None。"""
+    try:
+        w = int(width)
+        h = int(height)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if w < min_size or h < min_size:
+        return None
+    return (w, h)
+
+
+def resolve_window_size(width, height, min_size=MIN_WINDOW_SIZE):
+    """校验并返回合法的初始尺寸；损坏（极小/零/非数字）时兜底到默认启动尺寸。"""
+    return sanitize_window_size(width, height, min_size) or DEFAULT_WINDOW_SIZE
+
+
 def splash_screen(queue: mp.Queue):
     import tkinter as tk
     from tkinter.font import Font
@@ -196,22 +222,24 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
     webview.settings["ALLOW_DOWNLOADS"] = True
 
     from arknights_mower.__init__ import __version__
-    from arknights_mower.utils import config, path
+    from arknights_mower.utils import path
 
     path.global_space = global_space
+
+    from arknights_mower.utils.config.gui import load_window_size, save_window_size
 
     global width
     global height
 
-    config.load_conf()
-    width = config.conf.webview.width
-    height = config.conf.webview.height
+    size = load_window_size()
+    width, height = resolve_window_size(*size) if size else DEFAULT_WINDOW_SIZE
 
     def window_size(w, h):
         global width
         global height
-        width = w
-        height = h
+        size = sanitize_window_size(w, h)
+        if size is not None:
+            width, height = size
 
     window = webview.create_window(
         f"arknights-mower {__version__} - {build_window_title(instance_name, port)}",
@@ -252,10 +280,9 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
     try:
         webview.start()
 
-        config.load_conf()
-        config.conf.webview.width = width
-        config.conf.webview.height = height
-        config.save_conf()
+        size = sanitize_window_size(width, height)
+        if size is not None:
+            save_window_size(size)
         sys.exit()
     except Exception:
         import webbrowser
