@@ -37,6 +37,7 @@ COPY --from=node-base /arknights-mower/ui/dist ./ui/dist
 RUN python3 -m venv venv && \
     . venv/bin/activate && \
     pip install -r requirements.in && \
+    python scripts/prune_opencv.py && \
     pip install pyinstaller && \
     pyinstaller webui_zip_for_linux.spec && \
     deactivate
