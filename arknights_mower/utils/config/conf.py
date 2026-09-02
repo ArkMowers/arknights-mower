@@ -87,10 +87,6 @@ class ExtraPart(ConfModel):
     class WebViewConf(ConfModel):
         port: int = 58000
         "端口号"
-        width: int = 1450
-        "窗口宽度"
-        height: int = 850
-        "窗口高度"
         token: str = ""
         "远程连接密钥"
         scale: float = 1
