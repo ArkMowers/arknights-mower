@@ -105,6 +105,8 @@ class RoomState:
     train_slot: str = ""  # 训练位干员（进驻详情浮窗，§16.1）
     protected: bool = False  # §16.5 保护检查（逻各斯/艾丽妮）
     read_failed: bool = False  # 状态矩阵 OCR 失败 5 次仍不一致 → 保守训练中
+    collected: bool = False  # reconcile 是否收走了待收取训练（房间物理变空闲）
+    slots_read: bool = False  # 是否读过进驻槽位（TRAIN_FINISH 横幅页首次进房时未读）
 
     @property
     def locked(self) -> bool:
@@ -457,6 +459,9 @@ def _fill_slots_and_protection(solver, room, want_mood=False):
         else:
             room.support_slot, room.train_slot = _read_slots(solver)
             mood = None
+        room.slots_read = (
+            True  # #210：gate 据此区分「① 读过槽位」可复用 / TRAIN_FINISH 未读需重读
+        )
     else:
         mood = None
     room.protected = _compute_protected(solver, room)
@@ -1261,6 +1266,7 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 def _collect_plan(solver, plan, room: RoomState):
     """命中计划：收集 + 对账 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
+    room.collected = True  # #210：收集后房间物理变空闲（面板全空），gate 据此免重读
     collect_flow(solver, plan, room.panel)
     result = _reconcile_after_collect(solver, plan, room.panel)
     _tap_collect_confirm(solver)
@@ -1276,6 +1282,7 @@ def _collect_silent(solver, room: RoomState, suppress_help=False):
     suppress_help（#98）：干员其实在 failed 计划里（failed 待收取不接管），发
     「不在专精计划中」的帮收通知会误导 → 抑制。
     """
+    room.collected = True  # #210：同 _collect_plan，收完即空闲
     if not suppress_help and room.panel.mastery_tier in (1, 2):
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
@@ -1564,6 +1571,8 @@ def reconcile_short(solver, room_state: RoomState, defer_collect=False):
 
     defer_collect（#75 方案 C）：gate 传 True——待收取格跳过「队列已有专精任务」的
     收集，留给队列任务收；dispatch 不经由本函数。
+
+    返回 room_state.collected：#210 起 gate 用「是否收集」代替收集后重读 read_room_state。
     """
     from arknights_mower.utils.mastery_db import get_active_plan, get_reconcile_plans
 
@@ -1574,30 +1583,4 @@ def reconcile_short(solver, room_state: RoomState, defer_collect=False):
         get_reconcile_plans(),
         defer_collect=defer_collect,
     )
-
-
-# --- 排班 gate 复用（#59） ---
-
-
-def train_slot_locked(solver) -> bool:
-    """训练位是否锁定（choose_train D4 用）。
-
-    详情开着时按确定化流程：确认详情渲染完成后关回 TRAIN_MAIN 读倒计时，
-    再重开详情，防止动画中误退房（#59）。#73：00:00:00（待收取）也算锁定。
-    """
-    scene = solver.train_scene()
-    if scene == Scene.INFRA_DETAILS:
-        _close_room_detail(solver)
-        scene = solver.train_scene()
-    if scene == Scene.TRAIN_FINISH:
-        return True
-    if scene == Scene.TRAIN_MAIN:
-        state, _ = _read_train_countdown3(solver)
-        locked = state in ("active", "zero")
-        if not locked and solver.find("training_completed"):
-            locked = True
-        # 重开详情供调用方继续（仅当原本在详情里）
-        solver.turn_on_room_detail("train")
-        return locked
-    # 其他房内场景保守视为锁定
-    return True
+    return room_state.collected

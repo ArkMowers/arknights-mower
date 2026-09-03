@@ -15,6 +15,7 @@ from arknights_mower.solvers.mastery_reader import (
     _read_panel_text,
     _read_slots_checked,
     _read_train_countdown,
+    _read_train_countdown3,
     _schedule_collect,
     _target_label,
     _wait_for_training,
@@ -672,10 +673,20 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         elif scene == Scene.TRAIN_FINISH:
             solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
         elif scene == Scene.TRAIN_MAIN:
-            execute_time = _read_train_countdown(solver)
-            if execute_time is not None and execute_time > datetime.now():
+            countdown_state, countdown = _read_train_countdown3(solver)
+            if (
+                countdown_state == "active"
+                and countdown is not None
+                and countdown > datetime.now()
+            ):
                 # 训练室使用中（#16 决议）：保持 idle，重排到倒计时+缓冲，退出
-                _exit_occupied(solver, plan, execute_time)
+                _exit_occupied(solver, plan, countdown)
+                return
+            if countdown_state == "zero":
+                # #211：00:00:00 待收取 → 训练位锁定，不能换人；保持 idle 重排退出。
+                # 旧的 _read_train_countdown 把 zero 和没倒计时都折叠成 None，分不清
+                # 待收取/空闲，会被误判空闲而换入锁定的训练位（原靠 train_slot_locked 兜底）。
+                _exit_occupied(solver, plan, None, trigger="训练室待收取")
                 return
             if not checked_slot:
                 checked_slot = True

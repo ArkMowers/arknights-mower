@@ -854,6 +854,61 @@ class TestReconcileShort(unittest.TestCase):
         pp.assert_not_called()
         solver.back.assert_not_called()
 
+    def test_collect_marks_room_collected(self):
+        """#210：收集后 room.collected 置位，gate 据此免重读。"""
+        solver = MagicMock()
+        room = make_room("waiting_collect")
+        with (
+            patch.object(reader, "_notify_help_collect"),
+            patch.object(reader, "collect_flow"),
+            patch.object(reader, "_tap_collect_confirm"),
+        ):
+            reader._collect_silent(solver, room)
+        self.assertTrue(room.collected)
+
+    def test_reconcile_short_returns_true_when_collected(self):
+        """#210：收集路径 reconcile_short 返回 True（room.collected）。"""
+        solver = MagicMock()
+        room = make_room("waiting_collect")
+        plan = make_plan(status="training")
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
+            ),
+            patch(
+                "arknights_mower.utils.mastery_db.get_reconcile_plans",
+                return_value=[plan],
+            ),
+            patch.object(reader, "collect_flow"),
+            patch.object(reader, "_reconcile_after_collect", return_value=None),
+            patch.object(reader, "_tap_collect_confirm"),
+        ):
+            result = reader.reconcile_short(solver, room)
+        self.assertTrue(result)
+
+    def test_reconcile_short_returns_false_when_skipped(self):
+        """#210：defer_collect 跳过收集 → 返回 False，gate 不重算。"""
+        solver = MagicMock()
+        room = make_room("waiting_collect")
+        plan = make_plan(status="training")
+        task = reader.SchedulerTask(
+            time=datetime.now(), task_type=reader.TaskTypes.SKILL_UPGRADE
+        )
+        task.plan_key = str(plan["id"])
+        solver.tasks = [task]
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=plan
+            ),
+            patch(
+                "arknights_mower.utils.mastery_db.get_reconcile_plans",
+                return_value=[plan],
+            ),
+            patch.object(reader, "_collect_plan"),
+        ):
+            result = reader.reconcile_short(solver, room, defer_collect=True)
+        self.assertFalse(result)
+
 
 class TestReconcileRecoverSwap(unittest.TestCase):
     """#77：重启恢复 training×一致 时补排丢失的 SWAP_SUPPORT。

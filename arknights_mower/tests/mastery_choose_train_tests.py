@@ -14,28 +14,21 @@ from arknights_mower.utils.scene import Scene  # noqa: E402
 choose_train = BaseSchedulerSolver.choose_train
 
 
-def make_solver(scenes, scan_results, locked=False):
+def make_solver(scenes, scan_results):
     """fake solver：脚本化场景 + 分次返回的训练室槽位扫描结果。
 
     复刻 tests/mastery_arranging_tests.py 的 fake solver 范式：
     用 MagicMock 替身驱动真实的 choose_train 逻辑，断言选人调用。
-
-    locked=True：D4 锁定检测读到有效倒计时 → 训练位视为锁定。
     """
     solver = MagicMock()
     solver.scene.side_effect = list(scenes)
     solver.get_agent_from_room.side_effect = list(scan_results)
 
     def fake_find(res, *args, **kwargs):
-        # 房间详情浮层常开；training_completed 模板不存在（否则 D4 会判锁定）
-        if res == "training_completed":
-            return None
         return True
 
     solver.find.side_effect = fake_find
     solver.train_scene.return_value = Scene.TRAIN_MAIN
-    # #73 三态倒计时：train_slot_locked 改读 read_time（秒），locked=True 给未来倒计时
-    solver.read_time.return_value = 7200 if locked else None
     solver.recog.w = 1920
     solver.recog.h = 1080
     solver.tasks = []
@@ -95,67 +88,6 @@ class TestChooseTrainCurrentReplacement(unittest.TestCase):
         )
 
 
-class TestChooseTrainD4LockSkip(unittest.TestCase):
-    """#59 D4 / #69 B3：训练位锁定（🔴 训练中 / 🟡 待收取）时不能换 idx1。
-
-    - idx1 是唯一变更且锁定 → choose_train 必须明确抛异常（修复前静默 return
-      会让换人"看似成功"、流程继续点错干员开始）；
-    - 锁定但还有 idx0 变更 → 只换协助位、不换训练位、不空转 2 分钟超时。
-    """
-
-    def test_locked_trainer_swap_raises(self):
-        solver = make_solver(
-            scenes=[Scene.INFRA_DETAILS],
-            scan_results=[
-                [{"agent": "褐果"}, {"agent": "桃金娘"}],
-            ],
-            locked=True,
-        )
-        with self.assertRaises(Exception) as ctx:
-            choose_train(solver, ["Current", "若叶睦"])
-        self.assertIn("训练位被锁定", str(ctx.exception))
-        self.assertFalse(solver.choose_train_ope.called, "锁定的训练位不应尝试更换")
-        self.assertFalse(solver.choose_agent.called, "协助位 Current 保持原样")
-
-    def test_locked_trainer_keeps_assistant_then_raises(self):
-        """idx0 也要换：先换协助位成功，重扫后训练位仍锁定 → 明确失败而非静默成功。"""
-        solver = make_solver(
-            scenes=[
-                Scene.INFRA_DETAILS,
-                Scene.INFRA_DETAILS,
-                Scene.INFRA_ARRANGE_ORDER,
-                Scene.INFRA_DETAILS,
-            ],
-            scan_results=[
-                [{"agent": "褐果"}, {"agent": "桃金娘"}],
-                [{"agent": "夜莺"}, {"agent": "桃金娘"}],
-            ],
-            locked=True,
-        )
-        with self.assertRaises(Exception) as ctx:
-            choose_train(solver, ["夜莺", "若叶睦"])
-        self.assertIn("训练位被锁定", str(ctx.exception))
-        solver.choose_agent.assert_called_once_with(["夜莺"], "train", True)
-        self.assertFalse(solver.choose_train_ope.called, "锁定的训练位不应尝试更换")
-
-    def test_not_locked_still_swaps_trainer(self):
-        solver = make_solver(
-            scenes=[
-                Scene.INFRA_DETAILS,
-                Scene.INFRA_DETAILS,
-                Scene.INFRA_ARRANGE_ORDER,
-                Scene.INFRA_DETAILS,
-            ],
-            scan_results=[
-                [{"agent": "褐果"}, {"agent": "桃金娘"}],
-                [{"agent": "褐果"}, {"agent": "若叶睦"}],
-            ],
-            locked=False,
-        )
-        choose_train(solver, ["Current", "若叶睦"])
-        solver.choose_train_ope.assert_called_once_with("若叶睦")
-
-
 class TestChooseTrainOpensCheckInDetail(unittest.TestCase):
     """#92 换协助位坐标：训练室主页面（TRAIN_MAIN/INFRA_DETAILS-no-room_detail）
     开进驻信息浮窗必须用 arrange_check_in 位置，不能用旧死坐标 (0.25w, 0.95h)。
@@ -165,7 +97,7 @@ class TestChooseTrainOpensCheckInDetail(unittest.TestCase):
     turn_on_room_detail 同源：find("arrange_check_in")（屏幕左侧 ~(101,441)）。
     """
 
-    def _make_solver(self, scenes, scan_results, locked=False):
+    def _make_solver(self, scenes, scan_results):
         """fake solver：脚本化场景 + 分次返回槽位扫描。find 侧状态化——room_detail
         在 arrange_check_in 被点过一次前视为浮窗未开（这正是 #92 的触发前提）。
         """
@@ -175,8 +107,6 @@ class TestChooseTrainOpensCheckInDetail(unittest.TestCase):
         state = {"detail_open": False}
 
         def fake_find(res, *args, **kwargs):
-            if res == "training_completed":
-                return None
             if res == "arrange_check_in":
                 # 屏幕左侧进驻按钮（真实识别约 (65,384)-(139,452)）
                 return ((80, 380), (140, 460))
@@ -197,7 +127,6 @@ class TestChooseTrainOpensCheckInDetail(unittest.TestCase):
             BaseSchedulerSolver._open_check_in_detail, solver
         )
         solver.train_scene.return_value = Scene.TRAIN_MAIN
-        solver.read_time.return_value = 7200 if locked else None
         solver.recog.w = 1920
         solver.recog.h = 1080
         solver.tasks = []
