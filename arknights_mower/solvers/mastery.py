@@ -1036,13 +1036,19 @@ def _schedule_swap_if_needed(
 
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
+    # #230：档位显示当前步（当前级 → 步目标级，与收取标签同式），不写死计划最终
+    # 目标 target_level；step_level 读不到时只留换入对象、不显示档位（不回退
+    # target_level，避免任务列表误导为计划目标级）。
+    if isinstance(step_level, int) and step_level >= 1:
+        level_text = (
+            f"{_target_label(max(0, step_level - 1))} → {_target_label(step_level)} "
+        )
+    else:
+        level_text = ""
     task = SchedulerTask(
         time=swap_time,
         task_type=TaskTypes.SWAP_SUPPORT,
-        meta_data=(
-            f"{_plan_label(plan)} → {_target_label(plan['target_level'])} "
-            f"换入{route['swap_target']}"
-        ),
+        meta_data=f"{_plan_label(plan)} {level_text}换入{route['swap_target']}",
     )
     # #77 补排去重键（与 SKILL_UPGRADE 同形）：reconcile 恢复 / 重试都按 plan_key 去重
     task.plan_key = str(plan["id"])
