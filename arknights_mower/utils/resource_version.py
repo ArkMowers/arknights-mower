@@ -18,7 +18,6 @@ from arknights_mower.utils.resource_pkg import resource_pkg_path
 RESOURCE_VERSION_URL = (
     "https://raw.githubusercontent.com/ArkMowers/MowerResource/main/version.json"
 )
-LOCAL_VERSION_PATH = resource_pkg_path("arknights_mower/data/version.json")
 TMP_VERSION_PATH = get_path("@install/tmp/resource_version.json")
 
 
@@ -31,7 +30,9 @@ def _read_json(path: Path) -> dict | None:
 
 
 def _read_local_version_json() -> dict | None:
-    return _read_json(LOCAL_VERSION_PATH)
+    # 资源包目录会在运行期间被原子替换。每次读取都重新解析 overlay，避免首次启动
+    # 尚未安装资源包时把内置 version.json 路径永久缓存到进程结束。
+    return _read_json(resource_pkg_path("arknights_mower/data/version.json"))
 
 
 def _read_tmp_cache() -> dict | None:

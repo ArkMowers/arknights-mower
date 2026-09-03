@@ -571,41 +571,12 @@ def hot_update_manual():
 
     用于国内直连 GitHub 不稳时的人工兜底：热更走 apply_manual_zip，资源包走 overlay 原子安装。
     """
-    from zipfile import ZipFile
-
-    from arknights_mower.utils import hot_update as hu
-    from arknights_mower.utils.resource_pkg import (
-        _RESOURCE_MARKER,
-        install_resource_pkg,
-    )
+    from arknights_mower.utils.manual_update import apply_manual_update
 
     update_file = request.files.get("update")
     if update_file is None:
         return {"ok": False, "message": "没有收到更新包文件"}
-    raw = update_file.read()
-    try:
-        with ZipFile(BytesIO(raw)) as z:
-            names = z.namelist()
-    except Exception:
-        return {"ok": False, "message": "不是有效的 zip 包"}
-    if hu._has_hotupdate_marker(names):
-        if hu.apply_manual_zip(raw):
-            return {"ok": True, "message": "热更包已应用"}
-        return {
-            "ok": False,
-            "message": "热更包应用失败（请确认是有效的 hot_update.zip）",
-        }
-    if _RESOURCE_MARKER in names:
-        busy = _mower_busy_response()
-        if busy:
-            return busy
-        if install_resource_pkg(raw):
-            return {"ok": True, "message": "资源包安装成功，重启后完全生效"}
-        return {"ok": False, "message": "资源包安装失败（已回滚）"}
-    return {
-        "ok": False,
-        "message": "无法识别的更新包（热更包需 nav_steps.json，资源包需 version.json）",
-    }
+    return apply_manual_update(update_file.read(), _mower_busy_response)
 
 
 @app.route("/dialog/save/img", methods=["POST"])
