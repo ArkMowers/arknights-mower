@@ -1,12 +1,12 @@
 """共享训练室状态读取器（#63 / #73）。
 
 训练室**一次进房读全部状态**，在自然触发点（SKILL_UPGRADE dispatch、排班房间
-循环、仓库扫描）顺路调用，并按 #61/#73 状态矩阵执行对账动作。
+循环、仓库扫描）顺路调用，并按 #61/#73 状态矩阵更新对应状态。
 
 铁律：
 - training 状态永远先读房（主页面面板干员名），`expires_at` 只是调度提示；
 - DB 与截图冲突**以截图为准**；
-- 一次进房做完全部动作（读+动作不拆两次）；短动作（核实/帮收/重置/对账）可排班路径
+- 一次进房做完全部动作（读+动作不拆两次）；短动作（核实/帮收/重置/更新状态）可排班路径
   内联，长动作（开始训练）返回给调用方（SKILL_UPGRADE dispatch）执行。
 
 #73 重设计（doc/mastery-constraints.md §16）：
@@ -1230,7 +1230,7 @@ def collect_flow(solver, plan, panel: RoomPanel):
        6 轮；超时识别页面）→ 找到点它跳过动画
     4. sleep(1) → recog.update() → 截图（收集页不读文本）
     5. 档位==专3 → 邮件（截图 + 第1步信息）
-    6. 对账、7. 点勾确认：由调用方按 C-34 固定顺序执行（先对账后确认，#106）
+    6. 更新状态、7. 点勾确认：由调用方按 C-34 固定顺序执行（先更新状态、后确认，#106）
     """
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
@@ -1258,10 +1258,10 @@ def collect_flow(solver, plan, panel: RoomPanel):
 
 
 def _reconcile_after_collect(solver, plan, panel: RoomPanel):
-    """收集后对账：档位==target completed（不级联，等扫描）/ ≠target 继续本级。
+    """收集后更新状态：档位==target completed（不级联，等扫描）/ ≠target 继续本级。
 
     #67/B6：档位**高于**计划目标时，本次收取不属于该计划（计划早已满足），
-    不按"专{target} 完成"记账，保持 idle——由已到target检测按真实档位正确完成，
+    不按"专{target} 完成"记录，保持 idle——由已到target检测按真实档位正确完成，
     防止"专二收取关掉专一计划"的错记。返回需要开始的计划或 None：继续本级返回
     本级（当场开与否由调用方按「扫描链记号」判定，#74 第3段 Q2）；收取完成返回
     None 等扫描，不再级联开始下一个计划。
@@ -1291,7 +1291,7 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 
 def _collect_plan(solver, plan, room: RoomState):
-    """命中计划：收集 + 对账 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
+    """命中计划：收集 + 更新状态 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
     room.collected = True  # #210：收集后房间物理变空闲（面板全空），gate 据此免重读
     collect_flow(solver, plan, room.panel)
     result = _reconcile_after_collect(solver, plan, room.panel)
@@ -1321,11 +1321,11 @@ def _next_idle_to_start(solver):
     return get_next_idle_plan()
 
 
-# --- 状态矩阵对账（#61 / #73） ---
+# --- 状态矩阵更新（#61 / #73） ---
 
 
 def reconcile_and_act(solver, scan_plan=None):
-    """共享读取器主入口：进房读全部 + 状态矩阵对账执行。
+    """共享读取器主入口：进房读全部 + 按状态矩阵更新状态。
 
     返回 (start_plan, arrange_support, room)：
     - start_plan：需要开始训练的计划（长动作由 SKILL_UPGRADE dispatch 执行），无则 None；
@@ -1505,7 +1505,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
     suppress_help = False
     if hit is not None and hit["status"] == "failed":
         # #98：failed 计划不在收取阶段接管——训练中已按截图恢复 training；收取阶段
-        # 若仍 failed（恢复错过了训练期），保持静默收取、不按该计划记账/续训（避免
+        # 若仍 failed（恢复错过了训练期），保持静默收取、不按该计划记进度/续训（避免
         # 无材料强开下一级、把他人训练误记为计划进度），由扫描 retry_failed_plans 兜底。
         # 干员确实在 failed 计划里，「不在专精计划中」的帮收通知会误导 → 抑制④。
         suppress_help = True
@@ -1521,7 +1521,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         active = None
     if hit is None and active is not None and _plan_matches_room(active, room):
         # 干员名/技能名 OCR 不可读时 _match_plan 判不了命中，但 active 计划视为
-        # 匹配（稳为先，铁律），照常对账收取——否则 active 计划会永远停在 training
+        # 匹配（稳为先，铁律），照常更新状态后收取——否则 active 计划会永远停在 training
         hit = active
 
     if defer_collect and hit is not None and _queue_has_mastery_task(solver):
@@ -1589,7 +1589,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
 
 
 def reconcile_short(solver, room_state: RoomState, defer_collect=False):
-    """排班路径顺路短动作（#61）：核实/帮收/重置/对账，不开始训练、不退出房间。
+    """排班路径顺路短动作（#61）：核实/帮收/重置/更新状态，不开始训练、不退出房间。
 
     供 agent_arrange_room 的 gate 在所有房间状态上调用（#74 gate L0 先读再判：
     空闲格也据截图修正 DB）；开始训练（长动作）留给 SKILL_UPGRADE dispatch。

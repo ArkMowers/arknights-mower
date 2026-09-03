@@ -815,7 +815,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                         self, room_state, defer_collect=False
                                     )
                             except Exception as e:
-                                logger.warning(f"训练室顺路对账失败: {e}")
+                                logger.warning(f"训练室顺路更新状态失败: {e}")
                         else:
                             # enable_mastery 关闭：不跑 mastery 读取器（铁律 10），保留
                             # 通用心情读取。
@@ -3334,7 +3334,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.warning(f"训练室状态读取失败: {e}")
                             room_state = None
                         if room_state is not None and config.conf.enable_mastery:
-                            # #61 短动作排班路径内联：顺路核实/帮收/重置/对账，并据截图
+                            # #61 短动作排班路径内联：顺路核实/帮收/重置/更新状态，并据截图
                             # 修正 DB（空闲×DB active 冲突 → 重置 idle，以截图为准）。不
                             # 开始训练；退出训练室由本 gate 的跳过/冻结分支统一负责。
                             # #75 方案 C：defer_collect=True——待收取格若队列已有任一
@@ -3349,7 +3349,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     self, room_state, defer_collect=True
                                 )
                             except Exception as e:
-                                logger.warning(f"训练室顺路对账失败: {e}")
+                                logger.warning(f"训练室顺路更新状态失败: {e}")
                             if room_state.state == "waiting_collect" and collected:
                                 if room_state.slots_read:
                                     # ① 在 TRAIN_MAIN 读过槽位（收集不挪人）→ 复用 +

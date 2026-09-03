@@ -399,7 +399,7 @@ def _log_transition(plan, to_status, trigger, **fields):
 
 
 def run_mastery_task(solver):
-    """SKILL_UPGRADE dispatch：共享读取器进房读全部 + #61 矩阵对账执行。
+    """SKILL_UPGRADE dispatch：共享读取器进房读全部 + #61 矩阵更新状态。
 
     读取器返回需要开始训练的计划时，由本入口执行开始（长动作）。
     不再依赖 DB 状态预判（铁律：先读房，截图为准）。
@@ -407,7 +407,7 @@ def run_mastery_task(solver):
     # #74 第3段：任务带 plan_key 时解析其指定计划为 scan_plan——任何带 plan_key 的
     SKILL_UPGRADE 任务（扫描开始/收取/重检）在空闲×未保护格都会让该计划开始训练
     （2026-08-14 用户拍板「都去掉」：不再区分扫描标记；开始/继续一律当场）。房间状态
-    决定分支：空闲→开始、待收取→收集+继续本级当场开、训练中→对账。
+    决定分支：空闲→开始、待收取→收集+继续本级当场开、训练中→更新状态。
     """
     from arknights_mower.utils import config
 
