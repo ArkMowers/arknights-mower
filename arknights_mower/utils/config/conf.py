@@ -203,10 +203,12 @@ class LongTaskPart(ConfModel):
 
 class MaaPart(ConfModel):
     maa_path: str = "D:\\MAA-v4.13.0-win-x64"
+    maa_mirrorchyan_token: str = ""
+    "Mirror酱下载 Token"
+    maa_update_channel: str = "stable"
+    "MAA 版本通道：stable 正式版，beta 公测版"
     maa_conn_preset: str = "General"
     maa_touch_option: str = "maatouch"
-    maa_startup_check: bool = False
-    "Mower启动及每次初始化Maa前测试连接"
 
 
 class RecruitPart(ConfModel):
