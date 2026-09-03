@@ -132,6 +132,29 @@ class TestCheckResourceUpdate(unittest.TestCase):
         self.assertIsNone(got["update_available"])
         self.assertEqual(got["error"], "远程版本号缺失")
 
+    def test_local_only_returns_current_without_remote(self):
+        local = _version(res_version="2026.08.23-31a240b")
+        # local_only 只读本地，即使远端更新也不应触碰 `_fetch_remote_version_json`
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "arknights_mower.utils.resource_version._fetch_remote_version_json",
+                    side_effect=AssertionError("local_only 不应触碰远端"),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "arknights_mower.utils.resource_version._read_local_version_json",
+                    return_value=local,
+                )
+            )
+            got = rv.check_resource_update(local_only=True)
+        self.assertEqual(got["current_version"], "2026.08.23-31a240b")
+        self.assertTrue(got["current_display"].startswith("墟·复刻#"))
+        self.assertEqual(got["remote_version"], "")
+        self.assertEqual(got["update_available"], None)
+        self.assertEqual(got["error"], None)
+
 
 if __name__ == "__main__":
     unittest.main()

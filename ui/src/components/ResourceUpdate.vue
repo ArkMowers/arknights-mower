@@ -12,12 +12,17 @@ const { hot_update_enable } = storeToRefs(config_store)
 
 const resource_store = useResourceVersionStore()
 const { info, loading, installing, install_message } = storeToRefs(resource_store)
-const { loadResourceVersion, installResource } = resource_store
+const { loadResourceVersion, loadResourceVersionLocal, installResource } = resource_store
 
 const manual_result = ref('')
 
 onMounted(() => {
-  if (hot_update_enable.value) loadResourceVersion()
+  // 当前版本常驻显示；开启「启动时检查更新」时才顺带拉远端最新版本。
+  if (hot_update_enable.value) {
+    loadResourceVersion()
+  } else {
+    loadResourceVersionLocal()
+  }
 })
 
 function on_manual_finish({ event }) {
@@ -79,6 +84,7 @@ function on_manual_finish({ event }) {
           name="update"
           :show-file-list="false"
           @finish="on_manual_finish"
+          @error="on_manual_finish"
         >
           <n-upload-dragger>
             <div>点击或拖入更新包</div>

@@ -62,7 +62,12 @@ ws_connections = []
 
 
 def _mower_busy_response():
-    """mower 正在运行任务时返回 409 拒绝；空闲返回 None。"""
+    """mower 正在运行任务时返回繁忙响应；空闲返回 None。
+
+    用 200 + ok:false（与应用内其它错误一致），否则前端 n-upload 只在 2xx 才
+    触发 finish，409 只落到 error 事件、手动应用路径拿不到 message，用户只看到
+    笼统失败。
+    """
     from arknights_mower.__main__ import base_scheduler
 
     if (
@@ -71,7 +76,7 @@ def _mower_busy_response():
         and base_scheduler
         and not base_scheduler.sleeping
     ):
-        return {"ok": False, "message": "mower 正在运行任务，请稍后再试"}, 409
+        return {"ok": False, "message": "有任务正在运行，请等待任务结束后再更新"}
     return None
 
 
@@ -787,7 +792,8 @@ def ack_update_notice():
 def get_resource_version():
     from arknights_mower.utils.resource_version import check_resource_update
 
-    return check_resource_update()
+    local_only = request.args.get("local") == "1"
+    return check_resource_update(local_only=local_only)
 
 
 @app.route("/resource/install", methods=["POST"])

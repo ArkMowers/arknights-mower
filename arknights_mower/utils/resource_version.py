@@ -65,11 +65,24 @@ def _read_json_from_bytes(raw: bytes) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def check_resource_update() -> dict:
-    """拉远端 version.json 到 tmp、比对本地 res_version，返回展示与更新状态。"""
+def check_resource_update(local_only: bool = False) -> dict:
+    """拉远端 version.json 到 tmp、比对本地 res_version，返回展示与更新状态。
+
+    ``local_only`` 只读本地已装版本、不触碰网络，用于常驻显示「当前版本」。
+    """
     local = _read_local_version_json() or {}
     current_version = local.get("res_version") or ""
     current_display = display_version(local) or ""
+
+    if local_only:
+        return {
+            "current_version": current_version,
+            "current_display": current_display,
+            "remote_version": "",
+            "remote_display": "",
+            "update_available": None,
+            "error": None,
+        }
 
     remote = _fetch_remote_version_json()
     if remote is None:
