@@ -2318,8 +2318,10 @@ class TestCollectFlow(unittest.TestCase):
         ):
             reader.collect_flow(solver, make_plan(), make_panel())
         taps = [c.args[0] for c in solver.tap.call_args_list]
+        # 兜底：training_completed 与 skill_collect_confirm 都找不到 → 只点完成标记兜底坐标
         self.assertIn((solver.recog.w * 0.05, solver.recog.h * 0.95), taps)
-        self.assertIn((solver.recog.w * 0.5, solver.recog.h * 0.5), taps)
+        # 不再有点屏幕中央跳动画（改由找 skill_collect_confirm 代替）
+        self.assertNotIn((solver.recog.w * 0.5, solver.recog.h * 0.5), taps)
         # #106：点勾确认已挪到调用方（_collect_plan/_collect_silent），collect_flow 不再点
 
     def test_collect_plan_reconciles_before_confirm(self):

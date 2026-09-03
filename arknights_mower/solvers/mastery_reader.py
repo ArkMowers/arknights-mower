@@ -1169,27 +1169,51 @@ def _promote_plan(solver, plan):
 
 
 def _tap_finish_mark(solver):
-    """点左下角完成标记进收取页：优先模板定位，兜底旧坐标。
+    """点主页面左下角完成标记（training_completed）进横幅页，兜底旧坐标。
 
-    旧坐标 (0.05w,0.95h) 实机疑似打不中（#63 待实现细节），模板命中时优先。
+    training_completed 只在训练室主页面、且仅在待收取状态时出现；点了才进横幅页，
+    横幅页才有 skill_collect_confirm。旧坐标 (0.05w,0.95h) 实机疑似打不中（#63
+    待实现细节），模板命中时优先。
     """
-    for tpl in ("skill_collect_confirm", "training_completed"):
-        pos = solver.find(tpl)
-        if pos:
-            solver.tap(pos, interval=0.5)
-            return
+    pos = solver.find("training_completed")
+    if pos:
+        solver.tap(pos, interval=0.5)
+        return
     solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
 
 
+def _wait_collect_button(solver, retries=6):
+    """等横幅页出现 skill_collect_confirm（领奖/跳动画按钮），返回位置或 None。
+
+    每轮 sleep(1) 刷新截图再找（solver.sleep = 等待 + 刷帧），共 retries 轮。超时后
+    识别页面：training_completed 仍可见（还在主页面）说明 _tap_finish_mark 那下没
+    点进去 → 重试点一次再等一轮；否则判横幅页按钮认不出，返回 None 交给调用方保守处理。
+    """
+    for _ in range(retries):
+        pos = solver.find("skill_collect_confirm")
+        if pos:
+            return pos
+        solver.sleep(1)
+    if solver.find("training_completed"):
+        _tap_finish_mark(solver)
+        for _ in range(retries):
+            pos = solver.find("skill_collect_confirm")
+            if pos:
+                return pos
+            solver.sleep(1)
+    return None
+
+
 def _tap_collect_confirm(solver):
-    """收取后点勾确认收尾：优先 confirm_train 模板。位置实机校准待办。"""
-    # #145：截图后先等 1s 再点勾——收取动画/收集页稳定后再点确认，防点早漏帧
+    """收取后点横幅页真确认（skill_collect_confirm）收尾，轮询退场。
+
+    真确认是横幅页按钮 skill_collect_confirm（不是 confirm_train）。#145：先等 1s
+    让收取动画稳定再点，防点早漏帧；找不到就不盲点兜底坐标，直接轮询退场。
+    """
     solver.sleep(1)
-    pos = solver.find("confirm_train")
+    pos = solver.find("skill_collect_confirm")
     if pos:
         solver.tap(pos, interval=0.5)
-    else:
-        solver.tap((solver.recog.w * 0.5, solver.recog.h * 0.85), interval=0.5)
     for _ in range(6):
         scene = solver.train_scene()
         if scene in (Scene.TRAIN_MAIN, Scene.INFRA_MAIN):
@@ -1201,19 +1225,21 @@ def collect_flow(solver, plan, panel: RoomPanel):
     """#61 定死收取流程。plan 可为 None（未命中纯收取）。返回收集页截图。
 
     1. 主页面已读（panel，全部信息源）
-    2. 点左下角完成标记 → 进收取页（动画）
-    3. sleep ~2s
-    4. 点任意处 → 跳过动画 → 稳定页
-    5. 截图（收集页不读文本）
-    6. 档位==专3 → 邮件（截图 + 第1步信息）
-    7. 对账、8. 点勾确认：由调用方按 C-34 固定顺序执行（先对账后确认，#106）
+    2. _tap_finish_mark：点主页面 training_completed → 进横幅页（动画）
+    3. _wait_collect_button：等横幅页出现 skill_collect_confirm（sleep(1) 刷新找，
+       6 轮；超时识别页面）→ 找到点它跳过动画
+    4. sleep(1) → recog.update() → 截图（收集页不读文本）
+    5. 档位==专3 → 邮件（截图 + 第1步信息）
+    6. 对账、7. 点勾确认：由调用方按 C-34 固定顺序执行（先对账后确认，#106）
     """
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
     _tap_finish_mark(solver)
-    solver.sleep(1.5)  # #145：等 1.5s 再跳动画，缩短等待，防截图截晚漏帧
-    solver.tap((solver.recog.w * 0.5, solver.recog.h * 0.5), interval=1)
+    pos = _wait_collect_button(solver)
+    if pos is not None:
+        solver.tap(pos, interval=0.5)  # 跳动画
+    solver.sleep(1)
     solver.recog.update()
     screenshot = solver.recog.img
 
