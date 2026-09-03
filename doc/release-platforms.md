@@ -55,8 +55,8 @@ Release 正文和带当前版本块的 `CHANGELOG.md`，并将后者放入打包
 | Windows x64 | `windows-latest` | `webui_zip.spec` | `.zip` | PE x64 |
 | Linux x64 | `ubuntu-24.04` | `webui_zip_for_linux.spec` | `.tar.gz` | `file` x86-64、`ldd`、GUI 冒烟 |
 | Linux ARM64 | `ubuntu-24.04-arm` | `webui_zip_for_linux.spec` | `.tar.gz` | `file` aarch64、`ldd`、GUI 冒烟 |
-| macOS x64 | `macos-15-intel` | `webui_zip_for_macos.spec` | `.zip` | `file`、`lipo`、`otool`、`codesign --verify`、GUI 冒烟 |
-| macOS ARM64 | `macos-15` | `webui_zip_for_macos.spec` | `.zip` | 同上 |
+| macOS x64 | `macos-15-intel` | `webui_zip_for_macos.spec` | `.dmg` | `file`、`lipo`、`otool`、`codesign --verify`、GUI 冒烟 |
+| macOS ARM64 | `macos-15` | `webui_zip_for_macos.spec` | `.dmg` | 同上 |
 
 产物统一使用以下名称：
 
@@ -64,8 +64,8 @@ Release 正文和带当前版本块的 `CHANGELOG.md`，并将后者放入打包
 arknights-mower_<version>_windows_x64.zip
 arknights-mower_<version>_linux_x64.tar.gz
 arknights-mower_<version>_linux_arm64.tar.gz
-arknights-mower_<version>_macos_x64.zip
-arknights-mower_<version>_macos_arm64.zip
+arknights-mower_<version>_macos_x64.dmg
+arknights-mower_<version>_macos_arm64.dmg
 ```
 
 Release 任务在全部平台构建成功后附加五个产物，并生成统一的 SHA-256 清单
@@ -83,8 +83,10 @@ Release 任务在全部平台构建成功后附加五个产物，并生成统一
   解析结果，再通过 Xvfb 运行 30 秒 GUI 冒烟。
 - macOS spec 显式收集 pywebview Cocoa 后端依赖和当前 wheel 中存在的
   onnxruntime 动态库，并将主程序与多开管理器放入 `.app/Contents/MacOS`。
-  构建任务检查应用目录结构、Mach-O 架构、外部动态库和 ad-hoc 签名，再运行
-  20 秒 GUI 冒烟，最后使用 `ditto` 保留应用目录结构。
+  构建任务分别检查多开管理器与主程序 GUI，并通过 `MOWER_DATA_DIR` 将冒烟产生的
+  配置、日志和数据库隔离到 runner 临时目录。冒烟后再次检查应用目录结构、
+  Mach-O 架构、外部动态库和 ad-hoc 签名，最后生成包含 `.app` 与
+  `Applications` 快捷方式的压缩 DMG。
 
 任意架构、动态库或冒烟检查失败时，对应构建任务失败，Release 任务不会执行。
 PyInstaller 只在 Windows 使用 UPX；Linux 不执行 UPX 压缩，macOS spec 也显式
@@ -92,13 +94,15 @@ PyInstaller 只在 Windows 使用 UPX；Linux 不执行 UPX 压缩，macOS spec 
 
 ## 签名与系统依赖
 
-所有产物均为未签名构建：
+产物均未使用受信任发行证书：
 
 - Windows 不使用商业证书、SignPath、MSIX 或自签证书。首次运行可能出现
   SmartScreen 提示。
 - macOS 不使用 Developer ID、notarization 或 stapling。PyInstaller 只进行
   ad-hoc 签名，首次运行可能被 Gatekeeper 拦截，需要在「隐私与安全性」中手动
-  允许。
+  允许。冻结版运行数据默认写入
+  `~/Library/Application Support/arknights_mower`，不会修改 DMG 中只读的应用包
+  或破坏应用包的资源签名。
 - Linux 产物在 Ubuntu 24.04 上构建，要求运行环境提供兼容的 glibc、`libzbar0`、
   `libgl1`、`libglib2.0-0`、`libgtk-3-0` 与
   `libwebkit2gtk-4.1-0`。

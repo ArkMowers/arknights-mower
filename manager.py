@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 
 import json
+from pathlib import Path
 
 import webview
 
+from arknights_mower.utils.path import get_path
+
 
 class Api:
-    def __init__(self):
+    def __init__(self, storage_path=None):
+        self.storage_path = (
+            Path(storage_path)
+            if storage_path is not None
+            else get_path("@app/instances.json", space="")
+        )
         try:
-            with open("instances.json", "r", encoding="utf-8") as f:
+            with self.storage_path.open("r", encoding="utf-8") as f:
                 self.instances = json.load(f)
         except Exception:
             self.instances = []
             self.save()
 
     def save(self):
-        with open("instances.json", "w", encoding="utf-8") as f:
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.storage_path.open("w", encoding="utf-8") as f:
             json.dump(self.instances, f, ensure_ascii=False)
 
     def get_instances(self):
@@ -47,7 +56,6 @@ class Api:
     def start(self, idx):
         import platform
         import sys
-        from pathlib import Path
         from subprocess import Popen
 
         is_win = platform.system() == "Windows"

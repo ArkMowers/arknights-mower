@@ -7,7 +7,7 @@ from ..utils.resource_pkg import resource_pkg_path
 
 
 def _data_path(name: str) -> Path:
-    """资源包 overlay 优先（@install/tmp/resource），回退内置 data/。"""
+    """资源包 overlay 优先（@app/tmp/resource），回退内置 data/。"""
     return resource_pkg_path(f"arknights_mower/data/{name}")
 
 
@@ -18,7 +18,7 @@ def stage_data_path() -> Path:
 
 def stage_data_overlay_path() -> Path:
     """热更的活动关卡层（只含 ACTIVITY），运行时读，热更落地即生效。"""
-    return get_path("@install/tmp/hot_update/stage_data.json")
+    return get_path("@app/tmp/hot_update/stage_data.json")
 
 
 # 全量基线：启动读一次进内存，之后不变（常驻关卡只在基线，不随热更改）。

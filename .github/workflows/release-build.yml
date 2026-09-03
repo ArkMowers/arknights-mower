@@ -12,11 +12,11 @@
 # 平台矩阵：
 #   Windows x64        windows-latest        webui_zip.spec                 .zip
 #   Linux x64/arm64    ubuntu-24.04(-arm)     webui_zip_for_linux.spec      .tar.gz
-#   macOS x64/arm64    macos-15-intel/15      webui_zip_for_macos.spec      .zip
+#   macOS x64/arm64    macos-15-intel/15      webui_zip_for_macos.spec      .dmg
 # Windows ARM64 暂缓：锁定的核心原生依赖（opencv-python、rjieba 等）在 PyPI
 # 上没有 win_arm64 wheel，当前矩阵不包含该平台。见 doc/release-platforms.md。
-# macOS 与 Linux 一样依赖宿主机系统库（libzbar 等）；macOS 产物为 unsigned
-# experimental build（PyInstaller 仅做 ad-hoc 签名，非 Developer ID）。
+# macOS 与 Linux 一样依赖宿主机系统库（libzbar 等）；macOS 的 .app 仅有
+# PyInstaller ad-hoc 签名，没有 Developer ID 签名或 notarization。
 #
 # 权限说明：GITHUB_TOKEN 只保留 contents 作用域即可——artifact 上传/下载用的是
 # runner 注入的 ACTIONS_RUNTIME_TOKEN，不受 permissions 限制；只有创建 Release
@@ -131,10 +131,10 @@ jobs:
         run: |
           cat >> body.md <<EOF
 
-          > 产物均为未签名构建，并附带统一 SHA-256 清单（SHA256SUMS）。Windows
-          > 首次运行可能出现 SmartScreen 提示；macOS 为 unsigned experimental
-          > build，若被系统拦截需在「隐私与安全性」中手动允许。建议先核对
-          > SHA256SUMS 再使用。
+          > 产物未使用受信任发行证书，并附带统一 SHA-256 清单（SHA256SUMS）。
+          > Windows 首次运行可能出现 SmartScreen 提示；macOS DMG 内的 .app
+          > 仅有 ad-hoc 签名且未 notarize，若被系统拦截需在「隐私与安全性」中
+          > 手动允许。建议先核对 SHA256SUMS 再使用。
           EOF
 
       - name: Upload release metadata
@@ -441,39 +441,89 @@ jobs:
       - name: Build with PyInstaller
         run: python -m PyInstaller webui_zip_for_macos.spec
 
-      - name: Verify app bundle structure
+      - name: Smoke launch bundled entry points
+        env:
+          MOWER_DATA_DIR: ${{ runner.temp }}/mower-smoke-data-${{ matrix.arch }}
         run: |
-          python scripts/check_macos_app.py dist/mower.app --arch ${{ matrix.macho }}
-
-      - name: Smoke launch
-        run: |
+          mkdir -p "${MOWER_DATA_DIR}"
           python - <<'PYEOF'
+          import os
+          import signal
           import subprocess
           import time
 
-          binary = "./mower.app/Contents/MacOS/mower"
-          process = subprocess.Popen([binary], cwd="dist")
-          time.sleep(20)
-          status = process.poll()
-          if status is None:
-              print("GUI 进程成功拉起并存活 20s")
-              process.terminate()
-          else:
-              print(f"::error::GUI 进程在 20s 内以 {status} 退出")
-              raise SystemExit(1)
+          def smoke(executable, seconds):
+              binary = f"./mower.app/Contents/MacOS/{executable}"
+              process = subprocess.Popen(
+                  [binary],
+                  cwd="dist",
+                  start_new_session=True,
+              )
+              try:
+                  time.sleep(seconds)
+                  status = process.poll()
+                  if status is not None:
+                      print(
+                          f"::error::{executable} GUI 进程在 {seconds}s 内以 {status} 退出"
+                      )
+                      raise SystemExit(1)
+                  print(f"{executable} GUI 进程成功拉起并存活 {seconds}s")
+              finally:
+                  try:
+                      os.killpg(process.pid, signal.SIGTERM)
+                  except ProcessLookupError:
+                      pass
+                  try:
+                      process.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      try:
+                          os.killpg(process.pid, signal.SIGKILL)
+                      except ProcessLookupError:
+                          pass
+                      process.wait(timeout=10)
+
+          # manager 是 Info.plist 中双击 .app 时真正执行的入口；mower 是其拉起的
+          # 主程序。两者都要冒烟，避免只测内部二进制却漏掉默认入口。
+          smoke("manager", 10)
+          smoke("mower", 20)
           PYEOF
 
-      - name: Package into zip with ditto
+      - name: Verify app bundle after smoke launch
         run: |
+          set -euo pipefail
+
+          for path in config log screenshot tmp instances.json; do
+            if [[ -e "dist/mower.app/Contents/${path}" ]]; then
+              echo "::error::smoke launch wrote runtime data into the signed app bundle: ${path}" >&2
+              exit 1
+            fi
+          done
+
+          python scripts/check_macos_app.py dist/mower.app --arch ${{ matrix.macho }}
+
+      - name: Package into DMG
+        run: |
+          set -euo pipefail
+
           version="${{ needs.prepare.outputs.version }}"
-          ditto -c -k --sequesterRsrc --keepParent \
-            dist/mower.app "dist/arknights-mower_${version}_macos_${{ matrix.arch }}.zip"
+          dmg_path="dist/arknights-mower_${version}_macos_${{ matrix.arch }}.dmg"
+          dmg_root="$(mktemp -d "${RUNNER_TEMP}/mower-dmg.XXXXXX")"
+
+          ditto dist/mower.app "${dmg_root}/mower.app"
+          ln -s /Applications "${dmg_root}/Applications"
+          hdiutil create \
+            -volname "arknights-mower ${version}" \
+            -srcfolder "${dmg_root}" \
+            -ov \
+            -format UDZO \
+            "${dmg_path}"
+          hdiutil verify "${dmg_path}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}
-          path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}.zip
+          path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}.dmg
 
   release:
     name: Publish GitHub Release

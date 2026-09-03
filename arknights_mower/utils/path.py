@@ -16,11 +16,30 @@ def find_git_root(directory: Path) -> Path:
         return find_git_root(directory.parent)
 
 
+def _default_frozen_data_dir(
+    internal_dir: Path,
+    platform_name: str | None = None,
+    home_dir: Path | None = None,
+) -> Path:
+    """Return the writable data root used by a frozen application.
+
+    A macOS ``.app`` bundle is signed and can also be launched from a read-only
+    DMG, so runtime state must not be written below ``Contents``. Windows and
+    Linux keep their existing portable layout next to PyInstaller's internal
+    directory.
+    """
+    platform_name = sys.platform if platform_name is None else platform_name
+    if platform_name == "darwin":
+        home_dir = Path.home() if home_dir is None else Path(home_dir)
+        return home_dir / "Library" / "Application Support" / appname
+    return internal_dir.parent
+
+
 # define _app_dir
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     _internal_dir = Path(sys._MEIPASS).resolve()
     _install_dir = _internal_dir.parent.resolve()
-    _app_dir = _internal_dir.parent
+    _app_dir = _default_frozen_data_dir(_internal_dir)
 else:
     _app_dir = find_git_root(Path(os.getcwd()).resolve())
     if not _app_dir:

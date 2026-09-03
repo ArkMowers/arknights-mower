@@ -1075,7 +1075,7 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
     def _official_paths(self) -> tuple:
         """官方层候选路径：热更目录优先，自带打包兜底。"""
         return (
-            get_path("@install/tmp/hot_update/nav_steps.json"),
+            get_path("@app/tmp/hot_update/nav_steps.json"),
             Path(__rootdir__) / "data" / "nav_steps.json",
         )
 
