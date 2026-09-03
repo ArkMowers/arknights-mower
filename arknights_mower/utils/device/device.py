@@ -308,7 +308,6 @@ class Device:
             def grab_droidcast() -> bytes:
                 port = config.droidcast.port
                 url = f"http://127.0.0.1:{port}/screenshot"
-                logger.debug(f"GET {url}")
                 return session.get(url).content
 
             img = bytes2img(self.recover(grab_droidcast))

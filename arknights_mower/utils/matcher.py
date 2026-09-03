@@ -68,7 +68,6 @@ class Matcher:
     """image matching module"""
 
     def __init__(self, origin: tp.GrayImage) -> None:
-        logger.debug(f"Matcher init: shape ({origin.shape})")
         self.origin = origin
         self.kp, self.des = keypoints(self.origin)
 
@@ -136,7 +135,6 @@ class Matcher:
                     ):
                         ori_kp.append(_kp)
                         ori_des.append(_des)
-                logger.debug(f"match crop: {scope}, {len(self.kp)} -> {len(ori_kp)}")
                 ori_kp, ori_des = np.array(ori_kp), np.array(ori_des)
             else:
                 ori_kp, ori_des = self.kp, self.des
@@ -194,8 +192,6 @@ class Matcher:
             if M is None:
                 logger.debug("calculated transformation matrix failed")
                 return None
-            else:
-                logger.debug(f"transform matrix: {M.tolist()}")
 
             M[0][1] = 0
             M[1][0] = 0
@@ -234,13 +230,11 @@ class Matcher:
                 rect[1][0] - rect[0][0] < min_width
                 or rect[1][1] - rect[0][1] < min_height
             ):
-                logger.debug(f"rectangle is too small: {rect}")
                 return None
 
             if not dpi_aware:
                 max_width = w * 1.25
                 if rect[1][0] - rect[0][0] > max_width:
-                    logger.debug(f"rectangle is too big: {rect}")
                     return None
 
             # measure the rate of good match within the rectangle (x-axis)
