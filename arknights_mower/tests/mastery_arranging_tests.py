@@ -1938,6 +1938,69 @@ class TestRouteStepLevel(unittest.TestCase):
             )
         self.assertIsNone(scheduled, "专三步路线无 swap_target → 不换人")
 
+    def test_schedule_swap_meta_data_shows_step_level(self):
+        # #230：换人任务档位显示当前步（当前级 → 步目标级，与收取标签同式），
+        # 不写死计划最终目标 target_level。step_level=2 → 「专一 → 专二」。
+        solver = self._solver()
+        plan = make_plan(target_level=3)
+        with (
+            patch.object(
+                mastery,
+                "_get_plan_route",
+                return_value={
+                    "swap_target": "艾丽妮",
+                    "central_bonus": 5,
+                    "efficiency": 75,
+                    "job_match": True,
+                },
+            ),
+            patch.object(mastery, "calc_swap_threshold", return_value=(True, 100.0)),
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(mastery, "datetime", FixedDateTime),
+        ):
+            scheduled = mastery._schedule_swap_if_needed(
+                solver, plan, START + timedelta(hours=2), step_level=2
+            )
+        self.assertIsNotNone(scheduled)
+        self.assertEqual(
+            solver.tasks[0].meta_data,
+            "测试干员 测试技能 专一 → 专二 换入艾丽妮",
+            "换人任务档位用当前步（专一→专二），不是计划目标专三",
+        )
+
+    def test_schedule_swap_meta_data_hides_level_when_step_unknown(self):
+        # #230：step_level 读不到（None）→ 不显示档位（不回退 target_level，避免
+        # 任务列表误导为专三）；只留换入对象。与纠错/补位任务文案同风格。
+        solver = self._solver()
+        plan = make_plan(target_level=2)
+        route_calls = []
+
+        def fake_route(p, step_level=None):
+            route_calls.append(step_level)
+            return {
+                "swap_target": "逻各斯",
+                "central_bonus": 5,
+                "efficiency": 75,
+                "job_match": True,
+            }
+
+        with (
+            patch.object(mastery, "_get_plan_route", side_effect=fake_route),
+            patch.object(mastery, "calc_swap_threshold", return_value=(True, 100.0)),
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(mastery, "datetime", FixedDateTime),
+        ):
+            scheduled = mastery._schedule_swap_if_needed(
+                solver, plan, START + timedelta(hours=2), step_level=None
+            )
+        self.assertIsNotNone(scheduled)
+        self.assertEqual(route_calls, [None], "step_level 缺省应原样传给路线加载")
+        self.assertEqual(
+            solver.tasks[0].meta_data,
+            "测试干员 测试技能 换入逻各斯",
+            "step_level 读不到时不显示档位，只留换入对象",
+        )
+
     # --- _confirm_training_started：确认后读图标当前步级，传给协助位/换人安排 ---
     def test_confirm_passes_step_level_to_arrange_and_swap(self):
         solver = self._lit_solver(lit=2)
