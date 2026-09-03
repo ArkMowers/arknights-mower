@@ -163,6 +163,12 @@ class depotREC(SceneGraphSolver):
             self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
+            # 进仓库后等界面就绪再切 tab：先确认识别到仓库场景，再等画面稳定（物品网格渲染完）。
+            # 否则持续加载期间点击 tab 会被吞掉，导致在「全部物品」视图上误识别。
+            if not self.wait_for_scene_stable(Scene.DEPOT):
+                logger.warning("仓库扫描: 未识别到仓库场景，继续等待画面稳定")
+            self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
+
             starttime = datetime.now()
             任务组 = [
                 (1200, self.knn模型_CONSUME, "消耗物品"),
