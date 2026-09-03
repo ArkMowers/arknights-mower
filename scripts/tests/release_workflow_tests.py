@@ -180,14 +180,16 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("sha256sum", manifest["run"])
         self.assertIn("SHA256SUMS", manifest["run"])
 
-    def test_prepare_appends_unsigned_notes_without_download_list(self):
+    def test_prepare_appends_signing_notes_without_download_list(self):
         append = find_step(self.jobs["prepare"], "Append signing notes to body")
         run = append["run"]
         self.assertNotIn("## 下载", run)
         self.assertNotIn("arknights-mower_", run)
         self.assertIn("SHA256SUMS", run)
         self.assertIn("SmartScreen", run)
-        self.assertIn("unsigned experimental", run)
+        self.assertIn("macOS DMG", run)
+        self.assertIn("ad-hoc", run)
+        self.assertIn("notarize", run)
 
     def test_builds_share_version_injection(self):
         command = f'python scripts/inject_version.py "{VERSION}"'
@@ -243,26 +245,48 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         step = find_step(self.jobs["build-windows"], "Verify PE architecture")
         self.assertEqual(step["env"]["PYTHONUTF8"], "1")
 
-    def test_macos_spec_bundle_check_and_ditto(self):
+    def test_macos_smoke_verifies_bundle_and_packages_dmg(self):
         job = self.jobs["build-macos"]
         names = [step.get("name") for step in job["steps"]]
         build = names.index("Build with PyInstaller")
-        verify = names.index("Verify app bundle structure")
-        package = names.index("Package into zip with ditto")
-        self.assertLess(build, verify)
+        smoke = names.index("Smoke launch bundled entry points")
+        verify = names.index("Verify app bundle after smoke launch")
+        package = names.index("Package into DMG")
+        upload = names.index("Upload artifact")
+        self.assertLess(build, smoke)
+        self.assertLess(smoke, verify)
         self.assertLess(verify, package)
+        self.assertLess(package, upload)
+
+        smoke_step = job["steps"][smoke]
+        self.assertEqual(
+            smoke_step["env"]["MOWER_DATA_DIR"],
+            "${{ runner.temp }}/mower-smoke-data-${{ matrix.arch }}",
+        )
+        smoke_run = smoke_step["run"]
+        self.assertIn('cwd="dist"', smoke_run)
+        self.assertIn('smoke("manager", 10)', smoke_run)
+        self.assertIn('smoke("mower", 20)', smoke_run)
+
         verify_run = job["steps"][verify]["run"]
         self.assertIn("check_macos_app.py", verify_run)
         self.assertIn("${{ matrix.macho }}", verify_run)
         self.assertIn("dist/mower.app", verify_run)
         self.assertNotIn("dist/mower/mower.app", verify_run)
+        self.assertIn("config log screenshot tmp instances.json", verify_run)
+
         package_run = job["steps"][package]["run"]
-        self.assertIn("ditto", package_run)
-        self.assertIn("--keepParent", package_run)
-        self.assertIn("dist/mower.app", package_run)
-        smoke = job["steps"][names.index("Smoke launch")]["run"]
-        self.assertIn('cwd="dist"', smoke)
-        self.assertIn("./mower.app/Contents/MacOS/mower", smoke)
+        self.assertIn('ditto dist/mower.app "${dmg_root}/mower.app"', package_run)
+        self.assertIn('ln -s /Applications "${dmg_root}/Applications"', package_run)
+        self.assertIn("hdiutil create", package_run)
+        self.assertIn("hdiutil verify", package_run)
+
+        upload_path = job["steps"][upload]["with"]["path"]
+        self.assertEqual(
+            upload_path,
+            "dist/arknights-mower_${{ needs.prepare.outputs.version }}_macos_"
+            "${{ matrix.arch }}.dmg",
+        )
 
     def test_macos_keeps_zbar_system_dependency(self):
         job = self.jobs["build-macos"]
