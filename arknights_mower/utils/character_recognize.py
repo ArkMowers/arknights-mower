@@ -5,16 +5,20 @@ from concurrent.futures import ThreadPoolExecutor
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.resource_pkg import resource_pkg_path
 
 kernel = np.ones((10, 10), np.uint8)
 
-with lzma.open(f"{__rootdir__}/models/operator_select.model", "rb") as f:
+with lzma.open(
+    str(resource_pkg_path("arknights_mower/models/operator_select.model")), "rb"
+) as f:
     OP_SELECT = pickle.loads(f.read())
 
-with lzma.open(f"{__rootdir__}/models/operator_train.model", "rb") as f:
+with lzma.open(
+    str(resource_pkg_path("arknights_mower/models/operator_train.model")), "rb"
+) as f:
     OP_TRAIN = pickle.loads(f.read())
 
 

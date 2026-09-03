@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.data import workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import rapidocr, segment
@@ -13,8 +12,11 @@ from arknights_mower.utils.character_recognize import operator_list, operator_li
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.resource_pkg import resource_pkg_path
 
-with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
+with lzma.open(
+    str(resource_pkg_path("arknights_mower/models/operator_room.model")), "rb"
+) as f:
     OP_ROOM = pickle.loads(f.read())
 
 kernel = np.ones((12, 12), np.uint8)

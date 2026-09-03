@@ -18,6 +18,7 @@ from ..utils.image import loadimg
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene
+from ..utils.resource_pkg import resource_pkg_path
 
 # 向下x变大 = 0
 # 向右y变大 = 0
@@ -89,9 +90,13 @@ class depotREC(SceneGraphSolver):
 
         self.仓库输出 = get_path("@app/tmp/depotresult.csv")
 
-        with lzma.open(f"{__rootdir__}/models/CONSUME.pkl", "rb") as pkl:
+        with lzma.open(
+            str(resource_pkg_path("arknights_mower/models/CONSUME.pkl")), "rb"
+        ) as pkl:
             self.knn模型_CONSUME = pickle.load(pkl)
-        with lzma.open(f"{__rootdir__}/models/NORMAL.pkl", "rb") as pkl:
+        with lzma.open(
+            str(resource_pkg_path("arknights_mower/models/NORMAL.pkl")), "rb"
+        ) as pkl:
             self.knn模型_NORMAL = pickle.load(pkl)
         self.物品数字 = 导入_数字模板()
 

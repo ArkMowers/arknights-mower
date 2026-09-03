@@ -255,11 +255,6 @@ const menuOptions = [
       }
     ]
   },
-  // {
-  //   label: () => h(RouterLink, { to: { path: '/aio' } }, { default: () => 'aio' }),
-  //   icon: renderIcon(Settings),
-  //   key: 'go-to-aio'
-  // },
   {
     label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
@@ -372,6 +367,7 @@ import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
 import { useUpdateNoticeStore } from '@/stores/updateNotice'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 
 import { usewatermarkStore } from '@/stores/watermark'
 
@@ -382,7 +378,7 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop, load_item } = config_store
-const { check_for_updates, simulator, start_automatically, theme, webview } =
+const { hot_update_enable, simulator, start_automatically, theme, webview } =
   storeToRefs(config_store)
 
 const plan_store = usePlanStore()
@@ -397,6 +393,9 @@ const update_notice_store = useUpdateNoticeStore()
 const { notice: updateNotice } = storeToRefs(update_notice_store)
 const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
 const showUpdateNoticeModal = ref(false)
+
+const resource_version_store = useResourceVersionStore()
+const { loadResourceVersion } = resource_version_store
 
 const axios = inject('axios')
 
@@ -486,16 +485,21 @@ onMounted(async () => {
 
   await load_plan()
 
-  if (check_for_updates.value) {
+  try {
+    const notice = await loadUpdateNotice()
+    showUpdateNoticeModal.value = notice.should_show
+    if (notice.should_show) {
+      renderChangelog()
+    }
+  } catch (error) {
+    console.error('failed to load update notice', error)
+    showUpdateNoticeModal.value = false
+  }
+  if (hot_update_enable.value) {
     try {
-      const notice = await loadUpdateNotice()
-      showUpdateNoticeModal.value = notice.should_show
-      if (notice.should_show) {
-        renderChangelog()
-      }
+      await loadResourceVersion()
     } catch (error) {
-      console.error('failed to load update notice', error)
-      showUpdateNoticeModal.value = false
+      console.error('failed to load resource version', error)
     }
   }
 

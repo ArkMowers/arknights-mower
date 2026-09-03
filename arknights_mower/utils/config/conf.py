@@ -112,8 +112,6 @@ class ExtraPart(ConfModel):
     "截图最短间隔（毫秒）"
     screenshot: float = 0.02
     "截图保留时长（小时）"
-    check_for_updates: bool = True
-    "检查更新"
     waiting_scene: WaitingSceneConf
     "等待时间"
 
@@ -194,6 +192,13 @@ class LongTaskPart(ConfModel):
     "隐秘战线结局"
     sign_in: SignInConf
     "签到活动"
+
+    class HotUpdateConf(ConfModel):
+        enable: bool = False
+        "热更新检查开关（默认关）"
+
+    hot_update: HotUpdateConf
+    "热更新"
 
 
 class MaaPart(ConfModel):

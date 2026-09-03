@@ -3,15 +3,29 @@ import lzma
 import os
 import pickle
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from skimage.feature import hog
-from sklearn.neighbors import KNeighborsClassifier
 
 from arknights_mower.utils.image import loadimg, thres2
+from arknights_mower.utils.res_version import (
+    content_hash,
+    package_file_paths,
+    pick_latest_activity,
+    pick_latest_gacha,
+)
+
+# 字体目录：生成期从 MowerFonts 检出读取（环境变量 MOWERFONTS_DIR），
+# 未设置时回退到 ./ArknightsGameResource/fonts（本地手动放置/双击可用）。
+FONTS_DIR = os.environ.get("MOWERFONTS_DIR", "./ArknightsGameResource/fonts")
+
+
+def 字体路径(文件名: str) -> str:
+    """返回字体文件在字体目录下的完整路径。"""
+    return os.path.join(FONTS_DIR, 文件名)
 
 
 def 提取干员名图片(imgpath, 裁剪区域: int = 1, 模式: int = 1):
@@ -65,7 +79,6 @@ class Arknights数据处理器:
         )
         self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
 
-        self.常驻关卡 = self.加载json("arknights_mower/data/stage_data.json")
         self.所有buff = []
 
         self.限定十连 = self.抽卡表["limitTenGachaItem"]
@@ -284,50 +297,15 @@ class Arknights数据处理器:
                 name = retro_act_names.get(activity_id, "")
             return clean_zone_name(name or activity_id)
 
-        for 键, _ in 还未结束的非常驻关卡.items():
+        for 键, 关卡窗口 in 还未结束的非常驻关卡.items():
             关卡代码 = self.关卡表["stages"][键]["code"]
             if 键.endswith("#f#"):
                 关卡代码 += " 突袭"
             关卡名称 = self.关卡表["stages"][键]["name"]
-            关卡结束时间戳 = 还未结束的非常驻关卡[键]["endTs"]
-            # 关卡结束时间 = datetime.fromtimestamp(还未结束的非常驻关卡[键]["endTs"] + 1)
             关卡掉落表 = self.关卡表["stages"][键]["stageDropInfo"][
                 "displayDetailRewards"
             ]
 
-            关卡掉落 = {}
-            突袭首次掉落 = [
-                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
-                for item in 关卡掉落表
-                if item["dropType"] == 1
-            ]
-            常规掉落 = [
-                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
-                for item in 关卡掉落表
-                if item["dropType"] == 2
-            ]
-            特殊掉落 = [
-                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
-                for item in 关卡掉落表
-                if item["dropType"] == 3
-            ]
-            额外物资 = [
-                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
-                for item in 关卡掉落表
-                if item["dropType"] == 4
-            ]
-            首次掉落 = [
-                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
-                for item in 关卡掉落表
-                if item["dropType"] == 8
-            ]
-            关卡掉落 = {
-                "突袭首次掉落": 突袭首次掉落,
-                "常规掉落": 常规掉落,
-                "首次掉落": 首次掉落,
-                "特殊掉落": 特殊掉落,
-                "额外物资": 额外物资,
-            }
             值 = self.关卡表["stages"][键]
             if (
                 值["zoneId"] in zones
@@ -345,43 +323,22 @@ class Arknights数据处理器:
                     {
                         "id": 关卡代码,
                         "name": 关卡名称,
-                        "drop": 关卡掉落表,
+                        "drop": [
+                            {k: _v for k, _v in _d.items() if k != "occPercent"}
+                            for _d in 关卡掉落表
+                        ],
                         "zoneId": 值["zoneId"],
                         "apCost": 值["apCost"],
                         "difficulty": 值["difficulty"],
-                        "diffGroup": 值["diffGroup"],
                         "zoneNameSecond": clean_zone_name(event_name),
                         "subTitle": get_zone_name(值["zoneId"])
                         if 值["zoneId"] in zones
                         else "",
                         "stageType": 值["stageType"],
-                        "endTs": _,
+                        "endTs": 关卡窗口,
                     }
                 )
 
-            self.常驻关卡.append(
-                {
-                    "id": 关卡代码,
-                    "name": 关卡名称,
-                    "drop": 关卡掉落,
-                    "end": 关卡结束时间戳,
-                    "周一": 1,
-                    "周二": 1,
-                    "周三": 1,
-                    "周四": 1,
-                    "周五": 1,
-                    "周六": 1,
-                    "周日": 1,
-                }
-            )
-        unkey = 0
-        for item in self.常驻关卡:
-            item["key"] = unkey
-            unkey += 1
-        with open(
-            "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
-        ) as f:
-            json.dump(self.常驻关卡, f, ensure_ascii=False, indent=2)
         普通关卡 = self.关卡表["stages"]
         storylineStorySets = self.关卡表["storylineStorySets"]
         ssData = {}
@@ -424,7 +381,6 @@ class Arknights数据处理器:
                         "zoneId": 关卡ZONE,
                         "apCost": 关卡AP,
                         "difficulty": 值["difficulty"],
-                        "diffGroup": 值["diffGroup"],
                         "zoneNameSecond": clean_zone_name(get_zone_name(关卡ZONE)),
                         "stageType": 值["stageType"],
                     }
@@ -438,7 +394,6 @@ class Arknights数据处理器:
                         "zoneId": 值["zoneId"],
                         "apCost": 值["apCost"],
                         "difficulty": 值["difficulty"],
-                        "diffGroup": 值["diffGroup"],
                         "zoneNameSecond": clean_zone_name(get_zone_name(值["zoneId"]))
                         if 值["zoneId"] in zones
                         else "",
@@ -463,7 +418,6 @@ class Arknights数据处理器:
                         "zoneId": 关卡ZONE,
                         "apCost": 关卡AP,
                         "difficulty": 值["difficulty"],
-                        "diffGroup": 值["diffGroup"],
                         "zoneNameSecond": clean_zone_name(activity_name),
                         "subTitle": get_zone_name(关卡ZONE)
                         if 关卡ZONE in zones
@@ -481,7 +435,6 @@ class Arknights数据处理器:
                     "zoneId": "Annihilation",
                     "apCost": 25,
                     "difficulty": "NORMAL",
-                    "diffGroup": "Annihilation",
                     "zoneNameSecond": "剿灭",
                     "subTitle": "",
                     "stageType": "UNKNOWN",
@@ -595,7 +548,7 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/recruit.json", "r", encoding="utf-8") as f:
             recruit_operators = json.load(f)
 
-        font = ImageFont.truetype("ArknightsGameResource/fonts/FZDYSK.TTF", 120)
+        font = ImageFont.truetype(字体路径("FZDYSK.TTF"), 120)
         print(len(recruit_operators))
         for operator in recruit_operators:
             im = Image.new(mode="RGBA", size=(1920, 1080))
@@ -612,9 +565,7 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/recruit.json", "r", encoding="utf-8") as f:
             recruit_agent = json.load(f)
 
-        font = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 30
-        )
+        font = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 30)
         recruit_tag = ["资深干员", "高级资深干员"]
         recruit_tag_template = {}
         for x in recruit_agent.values():
@@ -663,16 +614,19 @@ class Arknights数据处理器:
                 标签列表.append(self.物品_名称对[目标文件路径[18:-5]][2])
             return 特征点列表, 标签列表
 
-        def 训练knn模型(images, labels):
-            knn_classifier = KNeighborsClassifier(
-                weights="distance", n_neighbors=1, n_jobs=-1
-            )
-            knn_classifier.fit(images, labels)
-            return knn_classifier
+        def 训练knn模型(特征点列表, 标签列表):
+            # 与运行时 vision_np.Knn1Model 对齐：X=特征矩阵, y=编码标签索引, classes=唯一类别名。
+            # 复刻 sklearn KNeighborsClassifier(k=1, weights="distance") 的编码逻辑
+            # （classes_=np.unique(labels), _y=np.searchsorted(classes_, labels)），
+            # 使生成的模型能直接被 numpy 识别栈（vision_np.knn1_predict）读取。
+            classes = np.unique(np.asarray(标签列表))
+            X = np.asarray(特征点列表, dtype=np.float32)
+            y = np.searchsorted(classes, 标签列表).astype(np.int64)
+            return {"X": X, "y": y, "classes": classes}
 
-        def 保存knn模型(classifier, filename):
+        def 保存knn模型(模型, filename):
             with lzma.open(filename, "wb") as f:
-                pickle.dump(classifier, f)
+                pickle.dump(模型, f)
 
         模板特征点, 模板标签 = 加载图片特征点_标签(模板文件夹)
         knn模型 = 训练knn模型(模板特征点, 模板标签)
@@ -684,9 +638,7 @@ class Arknights数据处理器:
         # self.训练仓库的knn模型("MATERIAL", "./arknights_mower/models/MATERIAL.pkl")
 
     def 训练在房间内的干员名的模型(self):
-        font = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 37
-        )
+        font = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 37)
 
         data = {}
 
@@ -721,22 +673,12 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练选中的干员名的模型(self):
-        font31 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 31
-        )
-        font30 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 30
-        )
-        font25 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 25
-        )
-        font23 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 23
-        )
+        font31 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 31)
+        font30 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 30)
+        font25 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 25)
+        font23 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 23)
 
-        font27 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 27
-        )
+        font27 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 27)
 
         data = {}
 
@@ -808,19 +750,11 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练训练室干员名的模型(self):
-        font30 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 30
-        )
-        font28 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 28
-        )
-        font25 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 25
-        )
+        font30 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 30)
+        font28 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 28)
+        font25 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 25)
 
-        font24 = ImageFont.truetype(
-            "ArknightsGameResource/fonts/SourceHanSansCN-Medium.otf", 24
-        )
+        font24 = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 24)
 
         data = {}
 
@@ -1187,6 +1121,32 @@ class Arknights数据处理器:
         ) as json_file:
             json.dump(配方类别, json_file, ensure_ascii=False, indent=4)
 
+    def generate_version_info(self):
+        """生成资源包 version.json：res_version=日期+内容哈希，加 activity/gacha/last_updated。"""
+        version_info = {
+            "res_version": "",
+            "last_updated": "",
+            "activity": {},
+            "gacha": {},
+        }
+        # last_updated：上游 yuanyan3060 仓库根 version 文件（管线拉到 ./ArknightsGameResource/version）
+        version_file = "./ArknightsGameResource/version"
+        if os.path.exists(version_file):
+            with open(version_file, encoding="utf-8") as f:
+                version_info["last_updated"] = f.read().strip()
+        activity = pick_latest_activity(self.活动表)
+        if activity:
+            version_info["activity"] = activity
+        gacha = pick_latest_gacha(self.抽卡表)
+        if gacha:
+            version_info["gacha"] = gacha
+        date_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y.%m.%d")
+        digest = content_hash(".", package_file_paths("."))
+        version_info["res_version"] = f"v{date_str}-{digest[:7]}"
+        with open("./arknights_mower/data/version.json", "w", encoding="utf-8") as f:
+            json.dump(version_info, f, ensure_ascii=False, indent=2)
+        print("生成 version.json,完成")
+
 
 roomType = {
     "POWER": "发电站",
@@ -1232,7 +1192,7 @@ print("训练选中的干员名的模型,完成")
 print("训练训练室干员名的模型,完成")
 
 
-数据处理器.auto_fight_avatar()
+# 数据处理器.auto_fight_avatar()  # 暂时停用：CreditFight 未接线、AutoFight 识别未启用，avatar.pkl 不进打包
 
 数据处理器.获得干员基建描述()
 
@@ -1246,3 +1206,6 @@ print("训练训练室干员名的模型,完成")
 
 数据处理器.提取专精数据()
 print("提取专精数据,完成")
+
+数据处理器.generate_version_info()
+print("生成 version.json,完成")

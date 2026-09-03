@@ -49,7 +49,6 @@ const {
   maa_adb_path,
   maa_gap,
   custom_screenshot,
-  check_for_updates,
   waiting_scene,
   enable_party,
   leifeng_mode,
@@ -411,9 +410,6 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="check_for_updates">检查版本更新</n-checkbox>
             </n-form-item>
             <n-form-item label="截图方案">
               <n-radio-group v-model:value="screenshot_method">
@@ -881,6 +877,9 @@ if (return_home_when_idle.value) {
       </div>
       <div>
         <ChatBotSetting />
+      </div>
+      <div>
+        <ResourceUpdate />
       </div>
     </div>
   </div>
