@@ -712,7 +712,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"find: {res}")
         normalized_res = str(res).replace("\\", "/")
         force_feature_match = "navigation/stage/" in normalized_res
 
@@ -832,11 +831,11 @@ class Recognizer:
                     gray = cropimg(self.gray, scope)
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
                     ssim = vision_np.ssim(gray, res_img)
-                    logger.debug(f"{ssim=}")
                     threshold = 0.9
                     if res in template_matching_score:
                         threshold = template_matching_score[res]
                     if ssim >= threshold:
+                        logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
             return None
@@ -926,6 +925,7 @@ class Recognizer:
                 threshold = template_matching_score[res]
 
             pos = template_matching[res]
+            res_name = res
             res = loadres(res, True)
             h, w = res.shape
 
@@ -938,8 +938,8 @@ class Recognizer:
             result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             top_left = va(max_loc, scope[0])
-            logger.debug(f"{top_left=} {max_val=}")
             if max_val >= threshold:
+                logger.debug(f"find: {res_name} {top_left=} {max_val=}")
                 return top_left, va(top_left, (w, h))
             return None
 
@@ -1014,8 +1014,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"score: {res}")
-
         res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理

@@ -9,7 +9,6 @@ class Socket:
     """Connect ADB server with socket"""
 
     def __init__(self, server: tuple[str, int], timeout: int) -> None:
-        logger.debug(f"server: {server}, timeout: {timeout}")
         try:
             self.sock = None
             self.sock = socket.create_connection(server, timeout=timeout)
