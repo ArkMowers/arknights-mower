@@ -1,10 +1,11 @@
 <script setup>
-import { inject, onMounted, ref } from 'vue'
+import axios from 'axios'
+import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
+import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 
-const token = inject('token')
 const manual_url = `${import.meta.env.VITE_HTTP_URL}/hot-update/manual`
 
 const config_store = useConfigStore()
@@ -15,6 +16,7 @@ const { info, loading, installing, install_message } = storeToRefs(resource_stor
 const { loadResourceVersion, loadResourceVersionLocal, installResource } = resource_store
 
 const manual_result = ref('')
+const manual_installing = ref(false)
 
 onMounted(() => {
   // 当前版本常驻显示；开启「启动时检查更新」时才顺带拉远端最新版本。
@@ -25,17 +27,48 @@ onMounted(() => {
   }
 })
 
-function on_manual_finish({ event }) {
-  let text = '更新包应用失败'
-  try {
-    const data = JSON.parse(event.target.response)
-    if (data && typeof data.message === 'string') {
-      text = data.message
+async function show_manual_result(data) {
+  manual_result.value = data && typeof data.message === 'string' ? data.message : '更新包应用失败'
+  if (data?.ok && data.kind === 'resource') {
+    if (hot_update_enable.value) {
+      await loadResourceVersion(true)
+    } else {
+      await loadResourceVersionLocal()
     }
-  } catch (e) {
-    // keep default failure text
   }
-  manual_result.value = text
+}
+
+async function upload_manual_file(file, onProgress) {
+  if (!file || manual_installing.value) return false
+  manual_installing.value = true
+  manual_result.value = '正在应用更新包…'
+  try {
+    const data = await postManualUpdate(axios, manual_url, file, onProgress)
+    await show_manual_result(data)
+    return data?.ok === true
+  } catch (error) {
+    await show_manual_result(error.response?.data)
+    return false
+  } finally {
+    manual_installing.value = false
+  }
+}
+
+async function request_manual_update({ file, onProgress, onFinish, onError }) {
+  const ok = await upload_manual_file(file.file, onProgress)
+  if (ok) {
+    onFinish()
+  } else {
+    onError()
+  }
+}
+
+function drop_manual_update(event) {
+  // 直接读取标准 FileList，兼容未实现 webkitGetAsEntry 的浏览器与桌面 WebView。
+  const file = getDroppedFile(event)
+  if (file) {
+    void upload_manual_file(file)
+  }
 }
 </script>
 
@@ -79,14 +112,12 @@ function on_manual_finish({ event }) {
       <n-form-item label="手动应用">
         <n-upload
           style="width: 100%"
-          :action="manual_url"
-          :headers="{ token: token }"
-          name="update"
+          accept=".zip"
+          :custom-request="request_manual_update"
+          :disabled="manual_installing"
           :show-file-list="false"
-          @finish="on_manual_finish"
-          @error="on_manual_finish"
         >
-          <n-upload-dragger>
+          <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="drop_manual_update">
             <div>点击或拖入更新包</div>
             <div class="hint">自动识别热更包 / 资源包，用于直连 GitHub 不稳时的兜底</div>
           </n-upload-dragger>

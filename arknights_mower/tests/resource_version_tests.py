@@ -1,5 +1,8 @@
+import json
+import tempfile
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 from arknights_mower.utils import resource_version as rv
@@ -154,6 +157,25 @@ class TestCheckResourceUpdate(unittest.TestCase):
         self.assertEqual(got["remote_version"], "")
         self.assertEqual(got["update_available"], None)
         self.assertEqual(got["error"], None)
+
+
+class TestReadLocalVersion(unittest.TestCase):
+    def test_resolves_overlay_path_on_every_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            first = Path(d) / "builtin.json"
+            second = Path(d) / "overlay.json"
+            first.write_text(json.dumps(_version("2026.08.22-aaaaaaa")), "utf-8")
+            second.write_text(json.dumps(_version("2026.08.23-bbbbbbb")), "utf-8")
+
+            with patch.object(rv, "resource_pkg_path", side_effect=[first, second]):
+                self.assertEqual(
+                    rv._read_local_version_json()["res_version"],
+                    "2026.08.22-aaaaaaa",
+                )
+                self.assertEqual(
+                    rv._read_local_version_json()["res_version"],
+                    "2026.08.23-bbbbbbb",
+                )
 
 
 if __name__ == "__main__":
