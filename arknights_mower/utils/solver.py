@@ -228,14 +228,13 @@ class BaseSolver:
         draw: bool = False,
         scope: tp.Scope = None,
         judge: bool = True,
-        detected: bool = False,
         thres: Optional[int] = None,
     ) -> bool:
-        """tap element"""
+        """tap element，找不到时返回 False 而不报错"""
         element = self.find(
             element_name, draw, scope, judge=judge, score=score, thres=thres
         )
-        if detected and element is None:
+        if element is None:
             return False
         self.tap(element, x_rate, y_rate, interval)
         return True
@@ -630,7 +629,7 @@ class BaseSolver:
         while retry_times:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
-            elif not self.tap_element("nav_button", detected=True):
+            elif not self.tap_element("nav_button"):
                 return False
             retry_times -= 1
 

@@ -43,5 +43,30 @@ class TestSolverStartupLaunch(unittest.TestCase):
         self.restart_mock.assert_not_called()
 
 
+class TestTapElement(unittest.TestCase):
+    """tap_element：find 返回空时不 tap、不抛错、返回 False；找到时 tap 中心、返回 True。"""
+
+    def setUp(self):
+        self.solver = BaseSolver.__new__(BaseSolver)
+        self.find_patch = patch.object(BaseSolver, "find")
+        self.tap_patch = patch.object(BaseSolver, "tap")
+        self.find_mock = self.find_patch.start()
+        self.tap_mock = self.tap_patch.start()
+        self.addCleanup(self.find_patch.stop)
+        self.addCleanup(self.tap_patch.stop)
+
+    def test_missing_element_no_tap_returns_false(self):
+        self.find_mock.return_value = None
+        result = self.solver.tap_element("confirm_blue")
+        self.assertFalse(result)
+        self.tap_mock.assert_not_called()
+
+    def test_found_element_taps_center_returns_true(self):
+        self.find_mock.return_value = [[100, 200], [300, 400]]
+        result = self.solver.tap_element("confirm_blue")
+        self.assertTrue(result)
+        self.tap_mock.assert_called_once_with([[100, 200], [300, 400]], 0.5, 0.5, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
