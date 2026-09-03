@@ -947,8 +947,6 @@ class Operator:
             return True
 
     def not_valid(self):
-        if self.room == "train":
-            return False
         if self.operator_type == "high":
             if self.workaholic:
                 return (

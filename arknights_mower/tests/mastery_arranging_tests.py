@@ -31,8 +31,9 @@ def make_plan(**overrides):
 def _to_seconds(dt):
     """fake execute_time(datetime) → read_time 秒；None → None（倒计时读失败）。
 
-    #73 三态倒计时：_read_train_countdown3 改读 read_time 返回秒（None/0/正数），
-    START(=now) 即 00:00:00 语义 → 0（为0 → 不占用，同读失败效果）。
+    #73 三态倒计时：_read_train_countdown3 改读 read_time 返回秒（None/0/正数）。
+    #211：0（00:00:00）是待收取、训练位锁定，与 None（空闲）语义不同——空闲房应传
+    None，待收取才传 START（=now，秒 0）。
     """
     if dt is None:
         return None
@@ -196,6 +197,22 @@ class TestArrangingConvergence(unittest.TestCase):
         solver.choose_train.assert_called()
         self.assertEqual(solver.choose_train.call_args[0][0], ["Current", "测试干员"])
 
+    # --- 00:00:00 待收取：训练位锁定，不换人 ---
+    def test_waiting_collect_zero_exits_without_swap(self):
+        """#211：00:00:00（待收取，有倒计时值为 0）→ 训练位锁定，保持 idle 退出，
+        不触发坐错人换人（旧 _read_train_countdown 把 zero 折叠成 None、误判空闲，
+        会换入锁定的训练位，原靠 train_slot_locked 兜底）。"""
+        solver = self.make_solver(
+            scene=Scene.TRAIN_MAIN,
+            slots=[{"agent": ""}, {"agent": "错误干员"}],
+        )
+        solver.read_time.return_value = 0  # 00:00:00
+        plan = make_plan()
+        _, upd = self.run_arranging(solver, plan)
+        self.assertFalse(solver.choose_train.called, "待收取不应换训练位")
+        self.assertEqual(upd.call_args[0][1], "idle")
+        self.assertTrue(solver.back.called)
+
     # --- 换人失败 → failed + 退出 ---
     def test_swap_failure_marks_failed(self):
         def boom(*args, **kwargs):
@@ -219,9 +236,9 @@ class TestArrangingConvergence(unittest.TestCase):
 
         def fake_read(*args, **kwargs):
             read_count["n"] += 1
-            # 前两次（读占用×2）无倒计时（00:00:00 语义 =0 → 不占用）；第三次起是
-            # 确认流程（第一次无倒计时继续等，第二次读到有效倒计时确认开始）——219 不再读倒计时（#72）
-            return 0 if read_count["n"] <= 3 else 7200
+            # 前几次（读占用×N）无倒计时（空闲 → 读失败 None，不占用）；确认流程
+            # 读到有效倒计时（7200）确认开始——219 不再读倒计时（#72）
+            return None if read_count["n"] <= 3 else 7200
 
         scenes = [
             Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 读槽位(空) → back
@@ -535,7 +552,7 @@ class TestArrangingConvergence(unittest.TestCase):
     def test_arranging_no_wrong_start_on_mismatch(self):
         """#69/B2 全流程（#72 真实页面模型）：219 经训练位确认进入、不读面板文字，
         确认页读到陌生干员面板 → 计划 failed，绝不写 training。"""
-        reads = iter([0, 0, 7200])
+        reads = iter([None, None, 7200])
 
         def fake_read(*args, **kwargs):
             return next(reads, 0)

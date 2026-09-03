@@ -1,12 +1,12 @@
 """共享训练室状态读取器（#63 / #73）。
 
 训练室**一次进房读全部状态**，在自然触发点（SKILL_UPGRADE dispatch、排班房间
-循环、仓库扫描）顺路调用，并按 #61/#73 状态矩阵执行对账动作。
+循环、仓库扫描）顺路调用，并按 #61/#73 状态矩阵更新对应状态。
 
 铁律：
 - training 状态永远先读房（主页面面板干员名），`expires_at` 只是调度提示；
 - DB 与截图冲突**以截图为准**；
-- 一次进房做完全部动作（读+动作不拆两次）；短动作（核实/帮收/重置/对账）可排班路径
+- 一次进房做完全部动作（读+动作不拆两次）；短动作（核实/帮收/重置/更新状态）可排班路径
   内联，长动作（开始训练）返回给调用方（SKILL_UPGRADE dispatch）执行。
 
 #73 重设计（doc/mastery-constraints.md §16）：
@@ -105,6 +105,8 @@ class RoomState:
     train_slot: str = ""  # 训练位干员（进驻详情浮窗，§16.1）
     protected: bool = False  # §16.5 保护检查（逻各斯/艾丽妮）
     read_failed: bool = False  # 状态矩阵 OCR 失败 5 次仍不一致 → 保守训练中
+    collected: bool = False  # reconcile 是否收走了待收取训练（房间物理变空闲）
+    slots_read: bool = False  # 是否读过进驻槽位（TRAIN_FINISH 横幅页首次进房时未读）
 
     @property
     def locked(self) -> bool:
@@ -457,6 +459,9 @@ def _fill_slots_and_protection(solver, room, want_mood=False):
         else:
             room.support_slot, room.train_slot = _read_slots(solver)
             mood = None
+        room.slots_read = (
+            True  # #210：gate 据此区分「① 读过槽位」可复用 / TRAIN_FINISH 未读需重读
+        )
     else:
         mood = None
     room.protected = _compute_protected(solver, room)
@@ -1164,27 +1169,51 @@ def _promote_plan(solver, plan):
 
 
 def _tap_finish_mark(solver):
-    """点左下角完成标记进收取页：优先模板定位，兜底旧坐标。
+    """点主页面左下角完成标记（training_completed）进横幅页，兜底旧坐标。
 
-    旧坐标 (0.05w,0.95h) 实机疑似打不中（#63 待实现细节），模板命中时优先。
+    training_completed 只在训练室主页面、且仅在待收取状态时出现；点了才进横幅页，
+    横幅页才有 skill_collect_confirm。旧坐标 (0.05w,0.95h) 实机疑似打不中（#63
+    待实现细节），模板命中时优先。
     """
-    for tpl in ("skill_collect_confirm", "training_completed"):
-        pos = solver.find(tpl)
-        if pos:
-            solver.tap(pos, interval=0.5)
-            return
+    pos = solver.find("training_completed")
+    if pos:
+        solver.tap(pos, interval=0.5)
+        return
     solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
 
 
+def _wait_collect_button(solver, retries=6):
+    """等横幅页出现 skill_collect_confirm（领奖/跳动画按钮），返回位置或 None。
+
+    每轮 sleep(1) 刷新截图再找（solver.sleep = 等待 + 刷帧），共 retries 轮。超时后
+    识别页面：training_completed 仍可见（还在主页面）说明 _tap_finish_mark 那下没
+    点进去 → 重试点一次再等一轮；否则判横幅页按钮认不出，返回 None 交给调用方保守处理。
+    """
+    for _ in range(retries):
+        pos = solver.find("skill_collect_confirm")
+        if pos:
+            return pos
+        solver.sleep(1)
+    if solver.find("training_completed"):
+        _tap_finish_mark(solver)
+        for _ in range(retries):
+            pos = solver.find("skill_collect_confirm")
+            if pos:
+                return pos
+            solver.sleep(1)
+    return None
+
+
 def _tap_collect_confirm(solver):
-    """收取后点勾确认收尾：优先 confirm_train 模板。位置实机校准待办。"""
-    # #145：截图后先等 1s 再点勾——收取动画/收集页稳定后再点确认，防点早漏帧
+    """收取后点横幅页真确认（skill_collect_confirm）收尾，轮询退场。
+
+    真确认是横幅页按钮 skill_collect_confirm（不是 confirm_train）。#145：先等 1s
+    让收取动画稳定再点，防点早漏帧；找不到就不盲点兜底坐标，直接轮询退场。
+    """
     solver.sleep(1)
-    pos = solver.find("confirm_train")
+    pos = solver.find("skill_collect_confirm")
     if pos:
         solver.tap(pos, interval=0.5)
-    else:
-        solver.tap((solver.recog.w * 0.5, solver.recog.h * 0.85), interval=0.5)
     for _ in range(6):
         scene = solver.train_scene()
         if scene in (Scene.TRAIN_MAIN, Scene.INFRA_MAIN):
@@ -1196,19 +1225,21 @@ def collect_flow(solver, plan, panel: RoomPanel):
     """#61 定死收取流程。plan 可为 None（未命中纯收取）。返回收集页截图。
 
     1. 主页面已读（panel，全部信息源）
-    2. 点左下角完成标记 → 进收取页（动画）
-    3. sleep ~2s
-    4. 点任意处 → 跳过动画 → 稳定页
-    5. 截图（收集页不读文本）
-    6. 档位==专3 → 邮件（截图 + 第1步信息）
-    7. 对账、8. 点勾确认：由调用方按 C-34 固定顺序执行（先对账后确认，#106）
+    2. _tap_finish_mark：点主页面 training_completed → 进横幅页（动画）
+    3. _wait_collect_button：等横幅页出现 skill_collect_confirm（sleep(1) 刷新找，
+       6 轮；超时识别页面）→ 找到点它跳过动画
+    4. sleep(1) → recog.update() → 截图（收集页不读文本）
+    5. 档位==专3 → 邮件（截图 + 第1步信息）
+    6. 更新状态、7. 点勾确认：由调用方按 C-34 固定顺序执行（先更新状态、后确认，#106）
     """
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
     _tap_finish_mark(solver)
-    solver.sleep(1.5)  # #145：等 1.5s 再跳动画，缩短等待，防截图截晚漏帧
-    solver.tap((solver.recog.w * 0.5, solver.recog.h * 0.5), interval=1)
+    pos = _wait_collect_button(solver)
+    if pos is not None:
+        solver.tap(pos, interval=0.5)  # 跳动画
+    solver.sleep(1)
     solver.recog.update()
     screenshot = solver.recog.img
 
@@ -1227,10 +1258,10 @@ def collect_flow(solver, plan, panel: RoomPanel):
 
 
 def _reconcile_after_collect(solver, plan, panel: RoomPanel):
-    """收集后对账：档位==target completed（不级联，等扫描）/ ≠target 继续本级。
+    """收集后更新状态：档位==target completed（不级联，等扫描）/ ≠target 继续本级。
 
     #67/B6：档位**高于**计划目标时，本次收取不属于该计划（计划早已满足），
-    不按"专{target} 完成"记账，保持 idle——由已到target检测按真实档位正确完成，
+    不按"专{target} 完成"记录，保持 idle——由已到target检测按真实档位正确完成，
     防止"专二收取关掉专一计划"的错记。返回需要开始的计划或 None：继续本级返回
     本级（当场开与否由调用方按「扫描链记号」判定，#74 第3段 Q2）；收取完成返回
     None 等扫描，不再级联开始下一个计划。
@@ -1260,7 +1291,8 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 
 def _collect_plan(solver, plan, room: RoomState):
-    """命中计划：收集 + 对账 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
+    """命中计划：收集 + 更新状态 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
+    room.collected = True  # #210：收集后房间物理变空闲（面板全空），gate 据此免重读
     collect_flow(solver, plan, room.panel)
     result = _reconcile_after_collect(solver, plan, room.panel)
     _tap_collect_confirm(solver)
@@ -1276,6 +1308,7 @@ def _collect_silent(solver, room: RoomState, suppress_help=False):
     suppress_help（#98）：干员其实在 failed 计划里（failed 待收取不接管），发
     「不在专精计划中」的帮收通知会误导 → 抑制。
     """
+    room.collected = True  # #210：同 _collect_plan，收完即空闲
     if not suppress_help and room.panel.mastery_tier in (1, 2):
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
@@ -1288,11 +1321,11 @@ def _next_idle_to_start(solver):
     return get_next_idle_plan()
 
 
-# --- 状态矩阵对账（#61 / #73） ---
+# --- 状态矩阵更新（#61 / #73） ---
 
 
 def reconcile_and_act(solver, scan_plan=None):
-    """共享读取器主入口：进房读全部 + 状态矩阵对账执行。
+    """共享读取器主入口：进房读全部 + 按状态矩阵更新状态。
 
     返回 (start_plan, arrange_support, room)：
     - start_plan：需要开始训练的计划（长动作由 SKILL_UPGRADE dispatch 执行），无则 None；
@@ -1472,7 +1505,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
     suppress_help = False
     if hit is not None and hit["status"] == "failed":
         # #98：failed 计划不在收取阶段接管——训练中已按截图恢复 training；收取阶段
-        # 若仍 failed（恢复错过了训练期），保持静默收取、不按该计划记账/续训（避免
+        # 若仍 failed（恢复错过了训练期），保持静默收取、不按该计划记进度/续训（避免
         # 无材料强开下一级、把他人训练误记为计划进度），由扫描 retry_failed_plans 兜底。
         # 干员确实在 failed 计划里，「不在专精计划中」的帮收通知会误导 → 抑制④。
         suppress_help = True
@@ -1488,7 +1521,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         active = None
     if hit is None and active is not None and _plan_matches_room(active, room):
         # 干员名/技能名 OCR 不可读时 _match_plan 判不了命中，但 active 计划视为
-        # 匹配（稳为先，铁律），照常对账收取——否则 active 计划会永远停在 training
+        # 匹配（稳为先，铁律），照常更新状态后收取——否则 active 计划会永远停在 training
         hit = active
 
     if defer_collect and hit is not None and _queue_has_mastery_task(solver):
@@ -1556,7 +1589,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
 
 
 def reconcile_short(solver, room_state: RoomState, defer_collect=False):
-    """排班路径顺路短动作（#61）：核实/帮收/重置/对账，不开始训练、不退出房间。
+    """排班路径顺路短动作（#61）：核实/帮收/重置/更新状态，不开始训练、不退出房间。
 
     供 agent_arrange_room 的 gate 在所有房间状态上调用（#74 gate L0 先读再判：
     空闲格也据截图修正 DB）；开始训练（长动作）留给 SKILL_UPGRADE dispatch。
@@ -1564,6 +1597,8 @@ def reconcile_short(solver, room_state: RoomState, defer_collect=False):
 
     defer_collect（#75 方案 C）：gate 传 True——待收取格跳过「队列已有专精任务」的
     收集，留给队列任务收；dispatch 不经由本函数。
+
+    返回 room_state.collected：#210 起 gate 用「是否收集」代替收集后重读 read_room_state。
     """
     from arknights_mower.utils.mastery_db import get_active_plan, get_reconcile_plans
 
@@ -1574,30 +1609,4 @@ def reconcile_short(solver, room_state: RoomState, defer_collect=False):
         get_reconcile_plans(),
         defer_collect=defer_collect,
     )
-
-
-# --- 排班 gate 复用（#59） ---
-
-
-def train_slot_locked(solver) -> bool:
-    """训练位是否锁定（choose_train D4 用）。
-
-    详情开着时按确定化流程：确认详情渲染完成后关回 TRAIN_MAIN 读倒计时，
-    再重开详情，防止动画中误退房（#59）。#73：00:00:00（待收取）也算锁定。
-    """
-    scene = solver.train_scene()
-    if scene == Scene.INFRA_DETAILS:
-        _close_room_detail(solver)
-        scene = solver.train_scene()
-    if scene == Scene.TRAIN_FINISH:
-        return True
-    if scene == Scene.TRAIN_MAIN:
-        state, _ = _read_train_countdown3(solver)
-        locked = state in ("active", "zero")
-        if not locked and solver.find("training_completed"):
-            locked = True
-        # 重开详情供调用方继续（仅当原本在详情里）
-        solver.turn_on_room_detail("train")
-        return locked
-    # 其他房内场景保守视为锁定
-    return True
+    return room_state.collected

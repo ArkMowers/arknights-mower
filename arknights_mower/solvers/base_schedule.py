@@ -372,7 +372,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.tasks = [
                     t
                     for t in self.tasks
-                    if t.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.REFRESH_TIME)
+                    if t.type
+                    in (
+                        TaskTypes.SKILL_UPGRADE,
+                        TaskTypes.SWAP_SUPPORT,
+                        TaskTypes.REFRESH_TIME,
+                    )
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -810,7 +815,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                         self, room_state, defer_collect=False
                                     )
                             except Exception as e:
-                                logger.warning(f"训练室顺路对账失败: {e}")
+                                logger.warning(f"训练室顺路更新状态失败: {e}")
                         else:
                             # enable_mastery 关闭：不跑 mastery 读取器（铁律 10），保留
                             # 通用心情读取。
@@ -852,8 +857,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
-            if key == "train":
-                continue
             need_fix = False
             _current_room = self.op_data.get_current_room(key, True)
             for idx, name in enumerate(_current_room):
@@ -988,11 +991,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 or self.op_data.operators[x].is_resting()
                             ):
                                 room = self.op_data.operators[x].room
-                                if room == "train":
-                                    continue
                                 if room not in fix_plan:
                                     fix_plan[room] = ["Current"] * len(plan[room])
                                 fix_plan[room][self.op_data.operators[x].index] = x
+            # #207：训练室受专精管理或受保护时不参与纠错——弹掉 fix_plan 里的 train 项
+            # （受保护时发节流提醒邮件）。fix_plan 拿 op_data 缓存比对静态计划，专精
+            # 活跃/受保护时缓存与计划必然错位，不弹会每轮生成训练室纠错（反复进出）。
+            self._suppress_train_correction(fix_plan)
             if len(fix_plan.keys()) > 0:
                 # 如果5分钟之内有任务则跳过心情读取
                 next_task = self.find_next_task()
@@ -1012,7 +1017,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.skip()
                     return
                 else:
-                    fix_plan.pop("train", None)
                     self.tasks.append(
                         SchedulerTask(
                             task_plan=fix_plan, task_type=TaskTypes.SELF_CORRECTION
@@ -1020,6 +1024,70 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     logger.info(f"纠错任务为-->{fix_plan}")
                     return "self_correction"
+
+    def _train_mastery_active(self) -> bool:
+        """训练室是否受专精管理：enable_mastery 开 + DB 有 active 计划 或 队列有专精任务。
+
+        #59：队列重启后可能没补回来，DB 为准；队列补队覆盖「idle 计划即将排」的竞态窗口。
+        """
+        if not config.conf.enable_mastery:
+            return False
+        try:
+            from arknights_mower.utils.mastery_db import get_active_plan
+
+            if get_active_plan() is not None:
+                return True
+        except Exception:
+            pass
+        return (
+            self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE) is not None
+            or self.find_next_task(task_type=TaskTypes.SWAP_SUPPORT) is not None
+        )
+
+    def _train_protected(self) -> bool:
+        """训练室是否受保护：协助位（槽0）是逻各斯/艾丽妮（§16.5）。
+
+        铁律 10/§16.11：enable_mastery OFF 时保护全停、排班照常排训练室，故先按开关门控。
+        用 op_data 缓存判定（深读训练室浮窗会让纠错生成阶段反复进出训练室，反而放大
+        本票要消除的问题）；缓存漏过保护时，执行闸门 agent_arrange_room 在
+        enable_mastery ON 路径读 room_state.protected 兜底（OFF 时保护本就全停，不兜底）。
+        """
+        if not config.conf.enable_mastery:
+            return False
+        return self.op_data.get_train_support() in ("逻各斯", "艾丽妮")
+
+    def _suppress_train_correction(self, fix_plan: dict) -> None:
+        """训练室纠错是否应抑制：专精活跃或受保护时弹出 train 项（受保护时提醒）。"""
+        if "train" not in fix_plan:
+            return
+        if self._train_mastery_active():
+            fix_plan.pop("train")
+            logger.debug("训练室受专精管理，跳过训练室纠错")
+            return
+        if self._train_protected():
+            fix_plan.pop("train")
+            logger.debug("训练室受保护，跳过训练室纠错")
+            self._notify_train_correction_skipped()
+
+    def _notify_train_correction_skipped(self) -> None:
+        """训练室受保护导致纠错跳过 → 发节流提醒邮件（⑤ protected，key=协助位:训练位）。
+
+        复用 ⑤ 类型与其 key 约定（铁律 8 通知共 8 类）；与 mastery_reader 的
+        _notify_protected（mower 无法开始训练）同 key 去重——同一受保护组合至多一封。
+        """
+        from arknights_mower.utils.email import send_message
+        from arknights_mower.utils.mastery_db import should_notify
+
+        current = self.op_data.get_current_room("train", True)
+        support = current[0] if current and current[0] else "未知"
+        train_slot = current[1] if current and len(current) > 1 and current[1] else "空"
+        key = f"{support}:{train_slot}"
+        if should_notify("protected", key):
+            msg = (
+                f"训练室受保护（协助位 {support}），排班纠错已跳过该训练室，"
+                "mower 不调整该房间"
+            )
+            send_message(msg, level="WARNING")
 
     def generate_product(self, agent: str):
         """
@@ -2586,28 +2654,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if not select_targets:
                         tasks = []
                         return
-                    # #59 D4：训练位锁定跳过（截图权威）。训练中/待收取时 idx1 换不了人，
-                    # 提前剔除出 select_targets，避免空转 2 分钟超时。
-                    if any(idx == 1 for idx, _name in select_targets):
-                        locked1 = False
-                        try:
-                            from arknights_mower.solvers.mastery_reader import (
-                                train_slot_locked,
-                            )
-
-                            if train_slot_locked(self):
-                                logger.info("训练位锁定（训练中/待收取）")
-                                locked1 = True
-                        except Exception as e:
-                            logger.warning(f"训练位锁定检测失败: {e}")
-                        if locked1:
-                            select_targets = [
-                                (i, n) for i, n in select_targets if i != 1
-                            ]
-                        if not select_targets:
-                            # #69/B3：唯一要换的槽位是训练位（idx1）且被锁定 → 明确失败，
-                            # 不再静默 return（否则换人"看似成功"、流程继续点错干员开始）。
-                            raise Exception("训练位被锁定，无法换入指定干员")
+                    # #211：训练位锁定判断已归调用方（gate 冻结 idx1 / 坐错人纠正
+                    # 用三态判空闲），choose_train 不再自查锁定，只执行换人。
                     tasks[0] = "select"
                     logger.debug(f"需要选择的干员：{select_targets}")
                 else:
@@ -3275,6 +3323,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 僵住，违背「截图为准」铁律）。现在一律先进房读屏幕，截图权威更新
                         # DB，再按锁定/保护判定跳过/冻结；空闲×未保护正常安排。
                         from arknights_mower.solvers.mastery_reader import (
+                            _compute_protected,
                             read_room_state,
                             reconcile_short,
                         )
@@ -3285,29 +3334,44 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.warning(f"训练室状态读取失败: {e}")
                             room_state = None
                         if room_state is not None and config.conf.enable_mastery:
-                            # #61 短动作排班路径内联：顺路核实/帮收/重置/对账，并据截图
+                            # #61 短动作排班路径内联：顺路核实/帮收/重置/更新状态，并据截图
                             # 修正 DB（空闲×DB active 冲突 → 重置 idle，以截图为准）。不
                             # 开始训练；退出训练室由本 gate 的跳过/冻结分支统一负责。
                             # #75 方案 C：defer_collect=True——待收取格若队列已有任一
                             # 专精任务则跳过收集（留给队列任务收，避免残留任务空闲房
                             # 触发开始训练）；队列空时照常收集兜底。
+                            collected = False
                             try:
-                                reconcile_short(self, room_state, defer_collect=True)
+                                # #210：返回是否收集——收集后房间物理变空闲（面板全空），
+                                # gate 用 ① 的槽位 + 状态设空闲 + 按空闲规则重算保护，
+                                # 不再重读 read_room_state；没收集时状态/保护都没变。
+                                collected = reconcile_short(
+                                    self, room_state, defer_collect=True
+                                )
                             except Exception as e:
-                                logger.warning(f"训练室顺路对账失败: {e}")
-                            # 对账后房间状态可能变化（帮收后空出），重读状态决定 gate。
-                            # 只有待收取态 reconcile 会收走房间（变空）；训练/空闲态
-                            # reconcile 只改 DB，物理房间不变，重读纯浪费（面板 OCR +
-                            # 可能重开进驻浮窗/技能页深读）。
-                            if room_state.state == "waiting_collect":
-                                try:
-                                    room_state = read_room_state(self, enter=False)
-                                except Exception:
-                                    room_state = None
-                        # §16.5 保护检查：locked（训练中/待收取）或 protected（逻各斯/
-                        # 艾丽妮 保护训练室）都算「不能排班」→ 冻结/跳过。
-                        if room_state is not None and (
-                            room_state.locked or room_state.protected
+                                logger.warning(f"训练室顺路更新状态失败: {e}")
+                            if room_state.state == "waiting_collect" and collected:
+                                if room_state.slots_read:
+                                    # ① 在 TRAIN_MAIN 读过槽位（收集不挪人）→ 复用 +
+                                    # 状态设空闲 + 按空闲规则重算保护（深读保留）
+                                    room_state.state = "empty"
+                                    room_state.protected = _compute_protected(
+                                        self, room_state
+                                    )
+                                else:
+                                    # ① 在 TRAIN_FINISH 横幅页首次进房，未读槽位 →
+                                    # 收集后面板回到主页面，重读拿进驻数据 + 保护
+                                    try:
+                                        room_state = read_room_state(self, enter=False)
+                                    except Exception:
+                                        room_state = None
+                        # §16.5 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
+                        # 保护训练室）或读失败（room_state=None）都算「不能排班」→ 冻结/
+                        # 跳过（#211：读失败保守不碰训练位，替代已删除的 train_slot_locked）。
+                        if (
+                            room_state is None
+                            or room_state.locked
+                            or room_state.protected
                         ):
                             if config.conf.assistant_follows_schedule:
                                 if len(plan[room]) > 1:

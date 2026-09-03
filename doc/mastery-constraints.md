@@ -42,7 +42,7 @@
 | 模块 | 职责 | 关键入口 |
 |---|---|---|
 | `solvers/mastery.py` | 执行流：开始训练、确认开始、协助位安排、换人 | `run_mastery_task` / `run_swap_support` / `_start_new_training` / `_confirm_training_started` / `calc_swap_threshold` / `DEFAULT_ROUTES` |
-| `solvers/mastery_reader.py` | 共享读取器：读房、恢复矩阵、收取、通知、gate 辅助 | `read_room_state` / `reconcile_and_act` / `reconcile_short` / `collect_flow` / `train_slot_locked` |
+| `solvers/mastery_reader.py` | 共享读取器：读房、恢复矩阵、收取、通知、gate 辅助 | `read_room_state` / `reconcile_and_act` / `reconcile_short` / `collect_flow` |
 | `utils/mastery_db.py` | 计划/路线 DB、通知去重、`is_operator_busy` | `update_plan_status` / `get_active_plan` / `get_next_idle_plan` / `retry_failed_plans` / `should_notify` / `insert_plan` / `get_route` |
 | `utils/skill_label.py` | 技能名规范唯一格式化器 | `format_skill_label` / `normalize_skill_text` / `panel_skill_matches` |
 | `utils/mastery_recommendation.py` | 推荐 + 自动排程 + 仓库扫描联动 + 材料核算 | `get_mastery_recommendations` / `auto_schedule_mastery_tasks` / `compute_workshop_config` / `get_skill_data` |
@@ -60,7 +60,7 @@
 1. **截图权威**：任何训练室动作之前**必须先读房**（主页面面板）；DB 只是「意图缓存」，DB 与截图冲突**以截图为准**，**适用于所有计划状态（含 failed/idle）**——failed/idle 计划读到面板匹配 + 倒计时 active → 恢复 training（#98，见 §4 SM-09 例外 / §16.4）。（`mastery_reader.py:6-10`，#61/#63/#98）
 2. **`expires_at` 只是调度提示**，永不作为判定权威；训练状态永远从房内截图读。（#61）
 3. **一次进房做完全部**：读全部状态 + 做全部动作，不拆成两次进房。（#61/#63）
-4. **开始训练（长动作）只由 `SKILL_UPGRADE` dispatch（`run_mastery_task`）执行**；排班路径 / `reconcile_short` 只做短动作（核实/帮收/重置/对账），**永不开始训练、永不退出房间**（退出由调用方 gate 负责）。（#61/#63）
+4. **开始训练（长动作）只由 `SKILL_UPGRADE` dispatch（`run_mastery_task`）执行**；排班路径 / `reconcile_short` 只做短动作（核实/帮收/重置/更新状态），**永不开始训练、永不退出房间**（退出由调用方 gate 负责）。（#61/#63）
 5. **协助位只动在训练确认开始之后**；确认开始之前不得改协助位。（#16 §8）
 6. **协助位安排无守卫例外（2026-08-17 #103 删减半守卫）**：路线 operator 每次开始照常安排，**跨「收取 → 下一次开始」边界也不例外**——`arrange_support` 恒 True，收集级联不再传 False；「专三不换减半对象」由路线数据保证（level_3 路线 `swap_target=None`，见铁律 7），不靠「不动协助位」。（#63 → #103；详见 §7 C-15）
 7. **专三（当前步）永不换人**（调度侧与执行侧都要挡）：由 level_3 路线 `swap_target=None` 保证（#76 2026-08-15 用户定案删显式 `target_level==3` 守卫、靠路线数据；自定义路线若给专三填 swap_target 会打破该保证）。
@@ -87,7 +87,7 @@
 - `arranging → completed`：合法，走「已到target检测」（技能选择页读目标槽档位 ≥ target）。（SM-04）
 - `arranging → failed`：必带 `failed_reason`；覆盖 5 分钟纯墙钟超时（无加载豁免）、材料不足、换错人失败；标记后退出房间 + 恰好一次 ERROR 通知。（SM-05）
 - `training → training`（更新 expires_at）：静默重读倒计时、刷新 expires_at、重排收取任务，**不发通知**。（SM-06 / C-06）
-- 收取对账：档位 == target → `completed`（**不级联**，等扫描，用户定案 #74 第2段）；档位 ≠ target → `idle`（继续本级），**一律当场开下一级**（2026-08-14 用户拍板「都去掉」：不分扫描链/重启，重启后也不保守等扫描；材料不足由确认页 fail-fast 兜底）。**档位高于目标不记账完成**（#67/B6：专二收取不得关掉专一计划——本次收取不属于早已满足的计划，保持 idle 由已到target检测正确完成）。（SM-08 / #67 / #74 第3段）
+- 收取后更新状态：档位 == target → `completed`（**不级联**，等扫描，用户定案 #74 第2段）；档位 ≠ target → `idle`（继续本级），**一律当场开下一级**（2026-08-14 用户拍板「都去掉」：不分扫描链/重启，重启后也不保守等扫描；材料不足由确认页 fail-fast 兜底）。**档位高于目标不记为完成**（#67/B6：专二收取不得关掉专一计划——本次收取不属于早已满足的计划，保持 idle 由已到target检测正确完成）。（SM-08 / #67 / #74 第3段）
 - `completed` 是执行循环的终态：从 `get_all_plans` 和 `_match_plan` 排除，只进 `get_all_history`；**唯一回到 idle 的路是 `retry_failed_plans()`**。（SM-09 / DB-03）
 - `failed` **例外（#98，2026-08-16）**：通常同 completed 视为终态（`get_all_plans` 不含 failed），但 reconcile 计划集 **`get_reconcile_plans` 纳入 failed**（= 非终态 + failed，completed 仍排除，按 priority/id 排序）——面板干员名+技能名**都可读且与某计划匹配** + 倒计时 active → 该 failed 计划恢复 training（撤销 false-failure，**不依赖 `retry_failed_plans`**）；不可读/含混 → 不恢复、静默等待（B8 稳为先）。failed 待收取阶段**不接管**（防无材料强开下一级），由扫描 `retry_failed_plans` 兜底。（SM-09 / DB-03 / #98）
 - `failed → idle`：仅 `retry_failed_plans()`（清 `failed_reason`），且只从仓库扫描路径 `_auto_schedule_mastery_after_scan` 调用。（DB-06）
@@ -109,14 +109,14 @@
 ### 恢复矩阵（DB 行 × 截图列）
 | DB | 截图 | 动作 |
 |---|---|---|
-| arranging | 任意 | 先重置 idle，再继续对账（不发通知） |
+| arranging | 任意 | 先重置 idle，再继续更新状态（不发通知） |
 | active(training) | 🔴 training 一致 | 静默 `_refresh_training_plan`：重读倒计时、刷新 expires_at（同值跳过 DB 写）、先换人判定再排收取——排了换人则不排收取（§16.10 半重叠消除，**#82**）；不发通知 |
 | active | 🟡 waiting_collect | `_collect_plan` 收取，级联返回 `arrange_support=False` |
 | active | ⚪ 空房 | 重置 idle + 重开（**不发 ② fake_reset**，空房无从比对） |
 | active | 干员/技能与截图不一致（且面板可读） | 重置 idle + 发 ② fake_reset（dedup key=plan id） |
 | idle 命中 | 🔴 training | 保持 idle，静默重排 SKILL_UPGRADE 到 倒计时+2min（`ARRANGING_RETRY_BUFFER`），**不打断训练** |
 | 无 active、无命中 | 🔴 training | 发 ① blocked（dedup key=倒计时结束时刻；**仅面板干员名可读时**，否则静默等待） |
-| 无 active、无命中 | 🟡 waiting_collect | 静默收取（无通知、无对账） |
+| 无 active、无命中 | 🟡 waiting_collect | 静默收取（无通知、不更新状态） |
 
 （C-05~C-07、C-23、MX-01~MX-10、SM-10~SM-13）
 
@@ -130,8 +130,8 @@
 ## 6. 收取流程与通知
 
 ### `collect_flow`（固定顺序，不得重排）（C-34）
-主面板已读 → 点完成标记（模板 `skill_collect_confirm`/`training_completed` 优先，旧坐标 `(0.05w,0.95h)` 仅兜底）→ sleep 1.5s（**#145**，2026-08-19 由 ~2s 缩短，防截图截晚漏帧） → 点任意处跳过动画 → **截图**（收集页不读文本）→ 专3 才邮件（截图 + 面板信息）→ 对账 → 点勾确认（**#145**：截图后先 sleep 1s 再点，动画稳定后点确认）。**#106（2026-08-17）**：`collect_flow` 函数体止于专3 邮件，对账/点勾确认由调用方 `_collect_plan`/`_collect_silent` 在 `collect_flow` 返回后按此顺序执行（对账先、确认后，不得重排）——崩溃窗口里 DB 先收敛，不会把已收的 target 计划误当 training 重开。
-- 对账档位**只用主面板第 1 步读取值**（`panel.mastery_tier`），收集页不重读。（C-33）
+主面板已读 → `_tap_finish_mark` 点主页面 `training_completed`（只认这个模板；旧坐标 `(0.05w,0.95h)` 只在找不到模板时才用）→ 进横幅页 → `_wait_collect_button` 等横幅页出现 `skill_collect_confirm`（每 1 秒刷新截图找一次，最多 6 轮；一直没找到就先判断现在在哪个页面，还在主页面就重新点一次完成标记，否则不再点、保守处理）→ 找到后点它跳过动画 → `sleep(1)` → **截图**（收集页不读文本）→ 专3 才邮件（截图 + 面板信息）→ 更新这条训练计划的状态 → `_tap_collect_confirm` 点横幅页 `skill_collect_confirm`（真正确认；先 `sleep(1)` 再点，找不到就不点）→ 轮询等画面回到训练室主页（`range(6)`，回到 `TRAIN_MAIN`/`INFRA_MAIN` 即返回）。**#106（2026-08-17）**：`collect_flow` 函数体止于专3 邮件，更新状态/点勾确认由调用方 `_collect_plan`/`_collect_silent` 在 `collect_flow` 返回后按此顺序执行（先更新状态、再确认，不得重排）——崩溃窗口里 DB 先收敛，不会把已收的 target 计划误当 training 重开。
+- 更新状态用的档位**只取主面板第 1 步读取值**（`panel.mastery_tier`），收集页不重读。（C-33）
 - 专3 邮件条件：命中计划（plan 非 None）且档位 == 3。（C-13）
 
 ### 通知清单（8 类，①-⑧ 完整清单见 §16.9；`mastery_notify` 表，`INSERT OR IGNORE` 去重）
@@ -231,14 +231,14 @@
 ## 8. 排班集成（#59 gate）
 
 ### L0：先读再判（进房读屏幕，截图权威更新 DB）（#74，2026-08-14 改）
-**删除**「DB active 就跳过」的预判（原 base_schedule.py:3257 死锁——DB 是意图缓存可能过期，排班一进门就因 DB active 整房跳过、永不读屏幕、永不修正 DB → 重启后训练室僵住，违背「截图为准」铁律 1）。现在 `agent_arrange_room` 排班进训练室一律：`enter_room('train')` → `read_room_state(enter=False)` → `enable_mastery=True` 时 `reconcile_short`（据截图修正 DB：空闲×DB active 冲突 → 重置 idle）→ 重读 → 按锁定/保护判定：`assistant_follows_schedule=False` 整房跳过（delete 房间、back、返回）；`True` 冻结 idx1=Current（仅当 `len(plan[room]) > 1`）只排 idx0。不再依赖 `find_next_task(SKILL_UPGRADE)`。（C-07 改为截图权威）
+**删除**「DB active 就跳过」的预判（原 base_schedule.py:3257 死锁——DB 是意图缓存可能过期，排班一进门就因 DB active 整房跳过、永不读屏幕、永不修正 DB → 重启后训练室僵住，违背「截图为准」铁律 1）。现在 `agent_arrange_room` 排班进训练室一律：`enter_room('train')` → `read_room_state(enter=False)` → `enable_mastery=True` 时 `reconcile_short`（据截图修正 DB：空闲×DB active 冲突 → 重置 idle；**返回是否收集**——收集后 gate 复用①槽位 + 状态设空闲 + 按空闲规则重算保护，**不再重读**（#210）；没收集则状态/保护没变、整个跳过）→ 按锁定/保护判定：`assistant_follows_schedule=False` 整房跳过（delete 房间、back、返回）；`True` 冻结 idx1=Current（仅当 `len(plan[room]) > 1`）只排 idx0；**读失败（room_state=None）也按锁定处理，保守不碰训练位**（#211，替代已删的 `train_slot_locked`）。不再依赖 `find_next_task(SKILL_UPGRADE)`。（C-07 改为截图权威）
 
 ### 排班路径内联短动作 `reconcile_short`
-核实/帮收/重置/对账可内联；**不得开始训练、不得退出房间**；`enable_mastery=True` 时在所有房间状态上运行（#74：空闲格也据截图修正 DB，不再仅锁定格）。（C-06/C-36/MX-11）
+核实/帮收/重置/更新状态可内联；**不得开始训练、不得退出房间**；`enable_mastery=True` 时在所有房间状态上运行（#74：空闲格也据截图修正 DB，不再仅锁定格）。（C-06/C-36/MX-11）
 - **#75 方案 C（2026-08-14 已实现）**：gate 以 `reconcile_short(self, room_state, defer_collect=True)` 调用。`_reconcile_waiting_collect` 在待收取格命中计划且队列已有任一 SKILL_UPGRADE 任务时**跳过本次收集**、留给队列任务收（任何 dispatch 进房都会收待收取格，收完被消费 → 无残留任务，防残留任务空闲房触发开始训练）；队列空照常收集（恢复兜底）。**专三同样纳入 skip**（2026-08-14 用户撤回「gate 收专三」例外）。dispatch 路径 `defer_collect` 恒 False 永不跳过。
 
-### `choose_train` D4（锁定检测确定化）
-idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）判锁定，锁定则丢弃 idx1，避免 2 分钟超时空转；**若 idx1 是唯一待换槽位（调用方明确要换训练位，如 `_swap_into_wrong_slot`）则抛异常**（#69/B3：换人失败不得静默 return，否则流程误以为换人成功继续点错干员开始）。详情浮层开着时先关详情读倒计时再重开，防动画中误退房。（C-10 / CS-04 / #69）
+### `choose_train` 训练位锁定判断归调用方（#211）
+`train_slot_locked` 已删除（2026-08-26）：choose_train 不再自查训练位锁定，锁定判断归到真正读过房间的调用方——gate 在进房读后按「锁定/保护/读失败」冻结 idx1（见 L0）；坐错人纠正（`_swap_into_wrong_slot`）的调用方用三态倒计时精确判空闲：**00:00:00（待收取）训练位锁定不换人、倒计时空（没倒计时）才换**。旧的 `_read_train_countdown` 把 zero 和没倒计时都折叠成 None，分不清待收取/空闲，会被误判空闲换入锁定的训练位（原靠 train_slot_locked 兜底）。（C-10 / CS-04 / #69 行为上移到调用方）
 
 ### `resting()` 用 DB active，不用队列
 `resting()` 跳过训练室干员的休息规划，依据 `get_active_plan()`（重启后队列可能为空，队列失真不影响休息规划），且**只在 `enable_mastery=True` 时跳过**（**#109**：OFF 恒放行休息，残留 active 计划不得把训练室干员耗到心情尽；§9 OFF 清单）。（C-27）
@@ -341,9 +341,9 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
 - **「已到target检测」已启用**：`SKILL_SLOT_PIPS`（技能选择页，每技能 3 颗星坐标，点亮顺序 顶→右下→左下：专一顶/专二右下/专三左下）已按实机坐标填入；`_read_slot_mastery_tier` 逐框判亮计数（阈值同上）。读失败（无此技能/无截图/异常）→ None，#70 起调用方**保守处理**：保持 idle 重排退出，**绝不盲点技能行开始**（档位不可读 = 无法确认是否已到 target，可能重训已完成的档位）；档位读到 0（明确低于 target）才正常开始。（C-30 / #70）
 - **#72 页面模型**：219（TRAIN_SKILL_SELECT）只读得到 `SKILL_SLOT_PIPS` 星星，无倒计时、读不到主面板 `[干员名]技能名`——**219 分支不再读主面板区域（COUNTDOWN/PANEL）当占用探针**。`_start_new_training` 用 `identity_confirmed` 标志做数星星前的身份确认：只在 TRAIN_MAIN 训练位校验通过并主动点开技能选择页时置位；未置位就出现 219（重启停在技能选择页/手动进入）→ 保守 idle 重排退出（重排到 now+2min 重检，不读倒计时/不数星星、不点技能行——219 读不到主面板/倒计时，无法确认星星归属；下次 dispatch 正确判为 TRAIN_MAIN 时按「倒计时+2min」收敛）。（C-30 / #72）
 - **#89 `_confirm_training_started` 的 219 = 真技能选择页（读不出倒计时）**：确认升级后游戏自动退回 219，须先 `back()` 一次回训练室主页面（217）再读倒计时（§16.10 第 3 步「再退出一次」）。旧表述「运行页被误判成 219」写反语义——219 左下角是协助位天赋文本，会被 OCR 当倒计时反复读（卡 ~15 秒），甚至偶然读出类时间文本 → 假确认开始。（C-30 / #89）
-- `_tap_finish_mark` 兜底坐标 `(0.05w,0.95h)` 实机疑似打不中（#63）；`_tap_collect_confirm` 兜底 `(0.5w,0.85h)` 未验证；模板优先路径未实机验证。（C-35）
+- `_tap_finish_mark` 兜底坐标 `(0.05w,0.95h)` 实机疑似打不中（#63）；`_tap_collect_confirm` 找不到 `skill_collect_confirm` 时不盲点兜底坐标，直接轮询退场（原 `(0.5w,0.85h)` 兜底已弃）；模板优先路径未实机验证。（C-35）
 - **#92 换协助位坐标（2026-08-16 已修）**：`choose_train` 在训练室主页面开进驻信息浮窗的旧坐标 `(0.25w,0.95h)`=(480,1026) 落在左下角技能/进度面板、点出技能详情浮窗（Scene -1 空转 7s 后出房重进）——改 `_open_check_in_detail` 用 `arrange_check_in` 模板（屏幕左侧 ~(101,441)）开（`base_schedule.py`，INFRA_DETAILS 浮窗未开与 TRAIN_MAIN 两分支共用；换人语义=主页带进驻信息浮窗右侧换）。
-- **#93 训练室开始流程收敛（2026-08-16 已修）**：dispatch 的 `reconcile_and_act` 返回已读的 `RoomState`（`(plan, arrange_support, room)`），`run_mastery_task` 传给 `_start_new_training`——开始流程复用 reconcile 已读的槽位，不再重复 `enter_room`、不再 `_training_slots` 重开进驻浮窗读槽位（消除双进房 + 一次重复浮窗开关；浮窗 4→3：reconcile 保护读槽位 + choose_train 换协助位扫描/确认为必需）。**槽位复用**：`room.train_slot` 非空直接复用；读到空串无法区分「真空」与「读浮窗失败」→ 重读一次兜底（读失败恢复「空闲但训练位坐错人」换人校验、真空重读仍空无害）。注：TRAIN_FINISH=220 只靠主动点左下角完成标记（`skill_collect_confirm`）才进得去，进房必是 217（`train_main`），练完未收也是 217 + `training_completed` 模板照常读槽位。**技能选择页进 2 次保留为残留**：保护深读（§16.5 逻各斯/艾丽妮空房判专一/专二）与开始流程自身的技能页进入（数星星 + 点技能行开始）语义上都需要——合并需把保护深读的逐技能档位透传到开始流程、且仅 train_slot==计划干员 时有效，收益仅限该场景、over-engineering（用户「最简实现」取向）。**未做 #92 已拒绝的「调用方先开浮窗」大重构**（choose_train 换协助位的两次浮窗开关为换人必需，保持现状）。
+- **#93 训练室开始流程收敛（2026-08-16 已修）**：dispatch 的 `reconcile_and_act` 返回已读的 `RoomState`（`(plan, arrange_support, room)`），`run_mastery_task` 传给 `_start_new_training`——开始流程复用 reconcile 已读的槽位，不再重复 `enter_room`、不再 `_training_slots` 重开进驻浮窗读槽位（消除双进房 + 一次重复浮窗开关；浮窗 4→3：reconcile 保护读槽位 + choose_train 换协助位扫描/确认为必需）。**槽位复用**：`room.train_slot` 非空直接复用；读到空串无法区分「真空」与「读浮窗失败」→ 重读一次兜底（读失败恢复「空闲但训练位坐错人」换人校验、真空重读仍空无害）。注：TRAIN_FINISH=220 只靠主动点左下角完成标记（`training_completed`）才进得去，进房必是 217（`train_main`），练完未收也是 217 + `training_completed` 模板照常读槽位。**技能选择页进 2 次保留为残留**：保护深读（§16.5 逻各斯/艾丽妮空房判专一/专二）与开始流程自身的技能页进入（数星星 + 点技能行开始）语义上都需要——合并需把保护深读的逐技能档位透传到开始流程、且仅 train_slot==计划干员 时有效，收益仅限该场景、over-engineering（用户「最简实现」取向）。**未做 #92 已拒绝的「调用方先开浮窗」大重构**（choose_train 换协助位的两次浮窗开关为换人必需，保持现状）。
 - **#94 统一训练室读取（2026-08-16 已修）**：`agent_get_mood` 训练室分支原为 `get_agent_from_room`（开浮窗读心情）+ `read_room_state`（`_read_slots` 再开一次浮窗读槽位）→ 一次进房开两次浮窗。现统一走 `read_room_state(want_mood=True)` 一次进房读全（协助位+训练位+心情+左下角面板）→ `reconcile_short` → 返回心情（对齐 mood_info）。`read_room_state`/`_read_slots`/`_fill_slots_and_protection` 加 `want_mood` 参数：浮窗读槽位顺带收集心情返回 `(RoomState, mood_data)`（mood_data=浮窗槽位扫描，含 mood）；心情取不到的状态（TRAIN_FINISH 横幅页浮窗不可靠 / OCR 失败保守训练中只读面板）返回空列表 `[]`；默认 `want_mood=False` 返回 `RoomState` 不破坏现有调用（gate/reconcile_and_act 不变）。`enable_mastery` OFF 分支保留旧 `get_agent_from_room` 通用心情读取（铁律 10）。
 - **训练室心情读取频率与其它房间对齐（2026-08-16 已修）**：`agent_get_mood` 原 `room != "train"` 跳过免除（#881 为配合 `should_read_train_in_mood` gate 加的，gate 已在 #886 删）使训练室永不跳过 → 计划在训练室但未进驻（等待中）的陈旧干员把训练室永远留在待读集合 → 2h 内读心情十多次。已移除免除，训练室与其他房间一致（当前房内干员都近期读过则跳过）。**行为变更**：训练室进房时顺路 reconcile（破重启待收取死锁，522b7fa1）的触发从「每轮循环」降为「~2.5h 占用干员心情陈旧 / 重启后 current_working 空」。正常收取由 dispatch 收取任务覆盖，死锁兜底保留（重启必触发）。
 - `TRAIN_MAIN` 区分「空」与「刚完成」仅靠 `training_completed` 模板；模板/OCR 漏判会误分类房间、可能误触发重置。（open_risks）
@@ -370,7 +370,7 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
     入队开始任务——UI/API/agent 新增计划都会被扫描自动拉起，不再依赖 matery_plan.json。
   - **训练无法取消（游戏机制，prts.wiki）**：训练开始后不可中止，训练位干员直到完成不可移动。因此训练室不可能出现「训练中途被取消 → 空房」；空闲房只来自「从未开始」或「完成并已收取」。
 - 测试环境坑：`mastery_choose_train_tests.py` 必须在 import 时 stub `arknights_mower.utils.skland`（base_schedule 导入链会触发 `SecuritySm.get_d_id` 网络调用）——环境性 flake。
-- **#78 浮窗识别盲区（2026-08-15 修复）**：`get_train_scene` 新增 `find("room_detail") → INFRA_DETAILS(205)`（浮窗头，放在 train_main 之前）——浮窗开着时不再被误标 217/219。**不可用 `arrange_check_in`**（裸主页面也有，加了会恒 205、217 永远不出来）。复活所有「`INFRA_DETAILS → back()` 关浮窗」死代码：`_read_slots`（读完进驻详情自己关，调用方 `_fill_slots_and_protection` 不再二次关）、`_settle_in_room`、`_start_new_training`、`run_swap_support`、`train_slot_locked`、`_read_train_countdown`。`back()`→`sleep()`→`recog.update()` 重置场景缓存，无死循环。`_training_slots` 仍不关浮窗（由 `_start_new_training` 唯一调用方关，单次 back 无二次退出）。**顺带整合（#78 comment 拍板）**：`run_swap_support` 换人前改 `read_main_panel` 读全 + 倒计时门（见 §7 换人前置门）——场景只在 TRAIN_MAIN 且倒计时 active 才换，219/zero/failed 不换，删场景标签依赖。
+- **#78 浮窗识别盲区（2026-08-15 修复）**：`get_train_scene` 新增 `find("room_detail") → INFRA_DETAILS(205)`（浮窗头，放在 train_main 之前）——浮窗开着时不再被误标 217/219。**不可用 `arrange_check_in`**（裸主页面也有，加了会恒 205、217 永远不出来）。复活所有「`INFRA_DETAILS → back()` 关浮窗」死代码：`_read_slots`（读完进驻详情自己关，调用方 `_fill_slots_and_protection` 不再二次关）、`_settle_in_room`、`_start_new_training`、`run_swap_support`、`train_slot_locked`（**#211 已删**，其锁定职责上移到调用方，见 §8）、`_read_train_countdown`。`back()`→`sleep()`→`recog.update()` 重置场景缓存，无死循环。`_training_slots` 仍不关浮窗（由 `_start_new_training` 唯一调用方关，单次 back 无二次退出）。**顺带整合（#78 comment 拍板）**：`run_swap_support` 换人前改 `read_main_panel` 读全 + 倒计时门（见 §7 换人前置门）——场景只在 TRAIN_MAIN 且倒计时 active 才换，219/zero/failed 不换，删场景标签依赖。
 - **#73 风险（§16，已实现 2026-08-14）**：
   - 待收取+非专三+协助位逻各斯/艾丽妮+干员技能都不在计划 → 长期保护：现读现判下若无新训练开始、无人换协助位，训练室持续不可排班（符合定案，需用户知晓）。
   - 材料门控已删（§16.7，用户 2026-08-14 决定）：无开始前材料检查，材料不足走确认页 fail-fast 兜底（旧行为，`_exit_failed`）。
@@ -447,7 +447,7 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 | 非专三 | 逻各斯/艾丽妮 | 干员在、技能不在 | 收取 → 通知帮收（④）→ **不可排班**（保护） |
 | 非专三 | 逻各斯/艾丽妮 | 都在计划 | **重启清缓存恢复（丢失收取任务）** → 恢复流程（16.6）→ **期间排班不能接管**（保护） |
 
-> **#98 failed 例外**：待收取格命中的是 **failed** 计划（恢复错过了训练期）→ **不接管**——静默收取、不按该计划记账/续训（避免无材料强开下一级、把他人训练误记为计划进度），并**抑制④帮收通知**（干员确实在 failed 计划里，「不在专精计划中」文案误导）；由扫描 `retry_failed_plans` 置 idle 后经已到target检测兜底。
+> **#98 failed 例外**：待收取格命中的是 **failed** 计划（恢复错过了训练期）→ **不接管**——静默收取、不按该计划记进度/续训（避免无材料强开下一级、把他人训练误记为计划进度），并**抑制④帮收通知**（干员确实在 failed 计划里，「不在专精计划中」文案误导）；由扫描 `retry_failed_plans` 置 idle 后经已到target检测兜底。
 
 ### 16.4 训练中 / 空闲动作
 
