@@ -177,7 +177,7 @@ def serve_resource_overlay():
     """资源包 webp（depot/avatar/building_skill）overlay 优先，刷新即生效。"""
     path = request.path.lstrip("/")
     if path.startswith(("depot/", "avatar/", "building_skill/")):
-        base = Path(get_path("@install/tmp/resource/ui/public"))
+        base = Path(get_path("@app/tmp/resource/ui/public"))
         p = (base / path).resolve()
         if base.resolve() in p.parents and p.is_file():
             return send_file(p)

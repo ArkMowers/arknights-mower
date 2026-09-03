@@ -18,7 +18,7 @@ from arknights_mower.utils.resource_pkg import resource_pkg_path
 RESOURCE_VERSION_URL = (
     "https://raw.githubusercontent.com/ArkMowers/MowerResource/main/version.json"
 )
-TMP_VERSION_PATH = get_path("@install/tmp/resource_version.json")
+TMP_VERSION_PATH = get_path("@app/tmp/resource_version.json")
 
 
 def _read_json(path: Path) -> dict | None:

@@ -12,8 +12,8 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import version_newer
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
-extract_path = get_path("@install/tmp/hot_update")
-version_state = get_path("@install/tmp/hot_update_version.json")
+extract_path = get_path("@app/tmp/hot_update")
+version_state = get_path("@app/tmp/hot_update_version.json")
 HOT_UPDATE_REPO = "ArkMowers/MowerHotUpdate"
 
 last_update = None

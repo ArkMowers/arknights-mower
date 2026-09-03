@@ -1,6 +1,6 @@
 """资源包 overlay：文件解析 + 下载 + 原子安装（#191）。
 
-- 资源包解压到可写 ``@install/tmp/resource/``（冻结 exe 下 ``__rootdir__`` 只读，原位替换不成立），
+- 资源包解压到可写 ``@app/tmp/resource/``（冻结 exe 下 ``__rootdir__`` 只读，原位替换不成立），
   各加载器经 ``resource_pkg_path`` 先查 overlay、回退内置 ``__rootdir__``。
 - zip 内路径相对仓库根（``arknights_mower/data/X.json``、``ui/public/depot/X.webp``）。
 - 安装走「原子换目录」：staging → resource，旧目录先挪走，失败回滚；version.json 随 zip
@@ -20,9 +20,9 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
-RESOURCE_OVERLAY = get_path("@install/tmp/resource")
-_STAGING = get_path("@install/tmp/resource_staging")
-_OLD = get_path("@install/tmp/resource_old")
+RESOURCE_OVERLAY = get_path("@app/tmp/resource")
+_STAGING = get_path("@app/tmp/resource_staging")
+_OLD = get_path("@app/tmp/resource_old")
 RESOURCE_REPO = "ArkMowers/MowerResource"
 RESOURCE_ZIP_URL = (
     f"https://github.com/{RESOURCE_REPO}/releases/latest/download/resource.zip"
