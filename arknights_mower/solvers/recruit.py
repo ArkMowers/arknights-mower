@@ -5,7 +5,6 @@ from itertools import combinations
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
@@ -18,12 +17,15 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.resource_pkg import resource_pkg_path
 from arknights_mower.utils.vector import va
 
 number = riic_base_digits
-with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
+with lzma.open(
+    str(resource_pkg_path("arknights_mower/models/recruit_result.pkl")), "rb"
+) as f:
     recruit_res_template = pickle.load(f)
-with lzma.open(f"{__rootdir__}/models/recruit.pkl", "rb") as f:
+with lzma.open(str(resource_pkg_path("arknights_mower/models/recruit.pkl")), "rb") as f:
     tag_template = pickle.load(f)
 job_list = [
     "recruit/riic_res/CASTER",

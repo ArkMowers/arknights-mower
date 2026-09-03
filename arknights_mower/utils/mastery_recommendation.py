@@ -3,11 +3,13 @@ import os
 from typing import Optional
 
 from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
+from arknights_mower.utils.resource_pkg import resource_pkg_path
 from arknights_mower.utils.skill_label import format_skill_label
 
 
 def _find_skill_data():
     candidates = [
+        resource_pkg_path("arknights_mower/data/skill_data.json"),
         _internal_dir / "arknights_mower" / "data" / "skill_data.json",
         _install_dir / "arknights_mower" / "data" / "skill_data.json",
         _install_dir / "data" / "skill_data.json",

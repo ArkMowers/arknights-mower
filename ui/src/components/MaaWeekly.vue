@@ -1,7 +1,8 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { NTag, NCheckbox } from 'naive-ui'
-import { computed, h, inject, ref } from 'vue'
+import axios from 'axios'
+import { computed, h, inject, onMounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import WeeklyPlanSelector from './WeeklyPlanSelector.vue'
 
@@ -15,6 +16,21 @@ const {
 } = storeToRefs(store)
 
 const mobile = inject('mobile')
+
+// 最近开启活动（后端供给，热更后最新）：prepend 到关卡下拉最前
+const latestActivityOptions = ref([])
+
+async function loadLatestActivityStages() {
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stage/latest-activity`)
+    latestActivityOptions.value = Array.isArray(response.data) ? response.data : []
+  } catch (error) {
+    // 接口不可用时静默忽略，保住基础常驻关下拉
+    latestActivityOptions.value = []
+  }
+}
+
+onMounted(loadLatestActivityStages)
 
 const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const weekdayIndices = { 周一: 0, 周二: 1, 周三: 2, 周四: 3, 周五: 4, 周六: 5, 周日: 6 }
@@ -84,12 +100,13 @@ const currentWeekdayIndex = computed(() => {
   return day === 0 ? 6 : day - 1
 })
 
-const stageOptions = computed(() =>
-  presetStages.map((value) => ({
+const stageOptions = computed(() => [
+  ...latestActivityOptions.value,
+  ...presetStages.map((value) => ({
     label: value ? `${stageDisplayNames[value]} (${value})` : stageDisplayNames[value],
     value
   }))
-)
+])
 
 // 根据开关过滤关卡选项
 function filteredStageOptions(weekday) {

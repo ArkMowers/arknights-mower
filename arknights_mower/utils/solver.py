@@ -371,22 +371,26 @@ class BaseSolver:
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
-        duration: int = 20,
+        duration: int = 80,
         interval: float = 0.2,
     ) -> None:
-        """swipe with no inertia (movement should be vertical)"""
+        """swipe with no inertia (movement should be vertical)。
+
+        duration 调大、偏置调小：主轴太快会甩过头弹回（画面抖动、稳定不下来），
+        回放会拿着没停稳的画面继续走而错位；改成受控拖动。
+        """
         if config.stop_mower.is_set():
             raise MowerExit
         points = [start]
         if movement[0] == 0:
             dis = abs(movement[1])
-            points.append((start[0] + 100, start[1]))
-            points.append((start[0] + 100, start[1] + movement[1]))
+            points.append((start[0] + 40, start[1]))
+            points.append((start[0] + 40, start[1] + movement[1]))
             points.append((start[0], start[1] + movement[1]))
         else:
             dis = abs(movement[0])
-            points.append((start[0], start[1] + 100))
-            points.append((start[0] + movement[0], start[1] + 100))
+            points.append((start[0], start[1] + 40))
+            points.append((start[0] + movement[0], start[1] + 40))
             points.append((start[0] + movement[0], start[1]))
         self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:

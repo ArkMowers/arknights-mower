@@ -160,7 +160,7 @@ class AutoFight(BaseSolver):
             tpl = cv2.resize(tpl, None, None, 0.5, 0.5)
             max_score = 0
             name = None
-            for i, img_list in avatar.items():
+            for i, img_list in (avatar or {}).items():
                 for img in img_list:
                     result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
                     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
