@@ -82,7 +82,11 @@ class Arknights数据处理器:
         self.所有buff = []
 
         self.限定十连 = self.抽卡表["limitTenGachaItem"]
-        self.联动十连 = self.抽卡表["linkageTenGachaItem"]
+        self.联动十连 = (
+            self.抽卡表.get("linkageTenGachaItem")
+            or self.抽卡表.get("linkageGachaItem")
+            or []
+        )
         self.普通十连 = self.抽卡表["normalGachaItem"]
         self.所有卡池 = self.限定十连 + self.联动十连 + self.普通十连
 
@@ -138,7 +142,12 @@ class Arknights数据处理器:
             源文件路径 = f"./ArknightsGameResource/item/{图标代码}.png"
             排除开关 = False
             排除开关 = 检查图标代码匹配(图标代码, 物品类型)
-            if 分类类型 != "NONE" and 排序代码 > 0 and not 排除开关:
+            if (
+                分类类型 != "NONE"
+                and 排序代码 > 0
+                and not 排除开关
+                and 分类类型 in self.装仓库物品的字典
+            ):
                 if os.path.exists(源文件路径):
                     目标文件路径 = f"./ui/public/depot/{中文名称}.webp"
                     self.装仓库物品的字典[分类类型].append([目标文件路径, 源文件路径])

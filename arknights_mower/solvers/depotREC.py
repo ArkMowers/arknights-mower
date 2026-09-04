@@ -171,8 +171,8 @@ class depotREC(SceneGraphSolver):
 
             starttime = datetime.now()
             任务组 = [
-                (1200, self.knn模型_CONSUME, "消耗物品"),
-                (1400, self.knn模型_NORMAL, "基础物品"),
+                (1063, self.knn模型_CONSUME, "消耗物品"),
+                (1298, self.knn模型_NORMAL, "基础物品"),
             ]
 
             for 任务 in 任务组:
