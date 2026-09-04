@@ -81,6 +81,12 @@ const maa_installed = ref(false)
 const maa_installed_version = ref('')
 const maa_backup_path = ref('')
 const maa_update_info_msg = ref('')
+const maa_update_check = ref({
+  status: 'idle',
+  message: '',
+  available: false,
+  id: ''
+})
 const maa_update_job = ref({
   status: 'idle',
   phase: 'idle',
@@ -94,6 +100,32 @@ const maa_update_job = ref({
 })
 let maa_update_timer = null
 let maa_update_info_request_id = 0
+const maa_resource_update_supported = ref(false)
+const maa_resource_current_version = ref('')
+const maa_resource_latest_version = ref('')
+const maa_resource_release_note = ref('')
+const maa_resource_backup_path = ref('')
+const maa_resource_update_info_msg = ref('')
+const maa_resource_update_check = ref({
+  status: 'idle',
+  message: '',
+  available: false,
+  id: ''
+})
+const maa_resource_update_job = ref({
+  status: 'idle',
+  phase: 'idle',
+  message: '',
+  progress: null,
+  current: 0,
+  total: 0,
+  version: '',
+  target: '',
+  result: null
+})
+let maa_resource_update_timer = null
+let maa_resource_update_info_request_id = 0
+let maa_path_refresh_timer = null
 const mirrorchyan_cdk_status = ref({
   loading: false,
   checked_token: '',
@@ -187,10 +219,48 @@ function schedule_mirrorchyan_cdk_check(token) {
   mirrorchyan_cdk_timer = window.setTimeout(() => check_mirrorchyan_cdk(normalized_token), 500)
 }
 
+function reset_maa_update_check() {
+  maa_update_check.value = {
+    status: 'idle',
+    message: '',
+    available: false,
+    id: ''
+  }
+  maa_latest_version.value = ''
+}
+
+function reset_maa_resource_update_check() {
+  maa_resource_update_check.value = {
+    status: 'idle',
+    message: '',
+    available: false,
+    id: ''
+  }
+  maa_resource_latest_version.value = ''
+  maa_resource_release_note.value = ''
+}
+
+function normalize_maa_version(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^v/i, '')
+    .toLowerCase()
+}
+
+function versions_are_equal(left, right, normalizer = (value) => String(value || '').trim()) {
+  const normalized_left = normalizer(left)
+  const normalized_right = normalizer(right)
+  return Boolean(normalized_left && normalized_right && normalized_left === normalized_right)
+}
+
 watch(
   maa_mirrorchyan_token,
   (token, previousToken = '') => {
     if (token.trim() && !previousToken.trim()) maa_update_source.value = 'mirrorchyan'
+    if (token !== previousToken && maa_update_source.value === 'mirrorchyan') {
+      reset_maa_update_check()
+      reset_maa_resource_update_check()
+    }
     if (maa_update_supported.value) {
       schedule_mirrorchyan_cdk_check(token)
     }
@@ -200,14 +270,32 @@ watch(
 
 watch(maa_update_channel, (channel, previous_channel) => {
   if (channel === previous_channel) return
+  reset_maa_update_check()
   if (maa_update_supported.value) {
     schedule_mirrorchyan_cdk_check(maa_mirrorchyan_token.value)
   }
   if (maa_update_supported.value) get_maa_update_info()
 })
 
+watch(maa_update_source, (source, previous_source) => {
+  if (source === previous_source) return
+  reset_maa_update_check()
+  reset_maa_resource_update_check()
+})
+
 const maa_updating = computed(() => maa_update_job.value.status === 'running')
+const maa_resource_updating = computed(() => maa_resource_update_job.value.status === 'running')
+const maa_update_checking = computed(() => maa_update_check.value.status === 'checking')
+const maa_resource_update_checking = computed(
+  () => maa_resource_update_check.value.status === 'checking'
+)
 const maa_path_missing = computed(() => !String(maa_path.value || '').trim())
+const maa_update_versions_equal = computed(() =>
+  versions_are_equal(maa_latest_version.value, maa_installed_version.value, normalize_maa_version)
+)
+const maa_resource_versions_equal = computed(() =>
+  versions_are_equal(maa_resource_latest_version.value, maa_resource_current_version.value)
+)
 const maa_managed_operation_label = computed(() => (maa_installed.value ? '更新' : '下载'))
 const maa_job_operation_label = computed(() =>
   maa_update_job.value.operation === 'update' ? '更新' : '下载'
@@ -252,9 +340,37 @@ const mirrorchyan_cdk_ready = computed(() => {
     !status.expired
   )
 })
+const maa_update_check_message_class = computed(() =>
+  maa_update_check.value.status === 'error' ? 'update-error' : 'update-success'
+)
+const maa_resource_update_check_message_class = computed(() =>
+  maa_resource_update_check.value.status === 'error' ? 'update-error' : 'update-success'
+)
+const maa_update_action_disabled = computed(() => {
+  if (maa_updating.value || maa_resource_updating.value || maa_update_checking.value) return true
+  if (maa_update_source.value === 'mirrorchyan' && !mirrorchyan_cdk_ready.value) return true
+  if (!maa_installed.value) return false
+  if (maa_update_versions_equal.value) return true
+  return !maa_update_check.value.available || !maa_update_check.value.id
+})
+const maa_resource_update_action_disabled = computed(
+  () =>
+    maa_resource_updating.value ||
+    maa_resource_update_checking.value ||
+    maa_updating.value ||
+    maa_resource_versions_equal.value ||
+    !maa_resource_update_check.value.available ||
+    !maa_resource_update_check.value.id ||
+    (maa_update_source.value === 'mirrorchyan' && !mirrorchyan_cdk_ready.value)
+)
 const maa_update_progress_status = computed(() => {
   if (maa_update_job.value.status === 'error') return 'error'
   if (maa_update_job.value.status === 'success') return 'success'
+  return 'default'
+})
+const maa_resource_update_progress_status = computed(() => {
+  if (maa_resource_update_job.value.status === 'error') return 'error'
+  if (maa_resource_update_job.value.status === 'success') return 'success'
   return 'default'
 })
 
@@ -285,7 +401,10 @@ async function poll_maa_update() {
     if (maa_update_job.value.status === 'running') {
       maa_update_timer = window.setTimeout(poll_maa_update, 800)
     } else if (maa_update_job.value.status === 'success') {
+      reset_maa_update_check()
+      reset_maa_resource_update_check()
       await get_maa_update_info()
+      await get_maa_resource_update_info()
       await get_maa_conn_presets()
     }
   } catch (error) {
@@ -298,7 +417,7 @@ async function get_maa_update_info() {
   const request_id = ++maa_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/info`, {
-      params: { channel: maa_update_channel.value }
+      params: { channel: maa_update_channel.value, maa_path: maa_path.value }
     })
     if (request_id !== maa_update_info_request_id) return
     const data = response.data
@@ -329,6 +448,176 @@ async function get_maa_update_info() {
   }
 }
 
+function apply_maa_resource_update_job(job, apply_install_info = true) {
+  if (!job) return
+  maa_resource_update_job.value = { ...maa_resource_update_job.value, ...job }
+  if (apply_install_info && job.status === 'success' && job.result?.installed) {
+    maa_resource_current_version.value = job.result.installed.version || ''
+    if (job.result.backup) maa_resource_backup_path.value = job.result.backup
+  }
+}
+
+async function poll_maa_resource_update() {
+  if (maa_resource_update_timer) window.clearTimeout(maa_resource_update_timer)
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/status`)
+    apply_maa_resource_update_job(response.data.job)
+    if (maa_resource_update_job.value.status === 'running') {
+      maa_resource_update_timer = window.setTimeout(poll_maa_resource_update, 800)
+    } else if (maa_resource_update_job.value.status === 'success') {
+      reset_maa_resource_update_check()
+      await get_maa_resource_update_info()
+      await get_maa_conn_presets()
+    }
+  } catch (error) {
+    maa_resource_update_job.value.status = 'error'
+    maa_resource_update_job.value.message = `读取 Maa 资源更新进度失败：${error.message}`
+  }
+}
+
+async function get_maa_resource_update_info() {
+  const request_id = ++maa_resource_update_info_request_id
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/info`, {
+      params: { maa_path: maa_path.value }
+    })
+    if (request_id !== maa_resource_update_info_request_id) return
+    const data = response.data
+    maa_resource_update_supported.value = Boolean(data.supported)
+    maa_resource_current_version.value = data.current?.version || ''
+    maa_resource_latest_version.value = data.latest?.version || ''
+    maa_resource_release_note.value = data.latest?.release_note || ''
+    maa_resource_backup_path.value = data.backup || ''
+    maa_resource_update_info_msg.value = data.ok ? '' : data.message || '读取 Maa 资源版本失败'
+    if (data.job?.target === data.target) {
+      apply_maa_resource_update_job(data.job)
+      if (maa_resource_update_job.value.status === 'running') poll_maa_resource_update()
+    } else {
+      maa_resource_update_job.value = {
+        status: 'idle',
+        phase: 'idle',
+        message: '',
+        progress: null,
+        current: 0,
+        total: 0,
+        version: '',
+        target: data.target || '',
+        result: null
+      }
+    }
+  } catch (error) {
+    if (request_id !== maa_resource_update_info_request_id) return
+    maa_resource_update_info_msg.value = `读取 Maa 资源版本失败：${error.message}`
+  }
+}
+
+async function check_maa_update() {
+  if (maa_update_checking.value || maa_updating.value || !maa_installed.value) return
+  reset_maa_update_check()
+  maa_update_info_msg.value = ''
+  if (maa_path_missing.value) {
+    maa_update_check.value.status = 'error'
+    maa_update_check.value.message = '请先设置 Maa 目录'
+    return
+  }
+  if (maa_update_source.value === 'mirrorchyan') {
+    const valid = await check_mirrorchyan_cdk()
+    if (!valid) {
+      maa_update_check.value.status = 'error'
+      maa_update_check.value.message = mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      return
+    }
+  }
+  maa_update_check.value.status = 'checking'
+  maa_update_check.value.message = '正在检查 Maa 更新……'
+  try {
+    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/maa-update/check`, {
+      maa_path: maa_path.value,
+      source: maa_update_source.value,
+      mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : '',
+      channel: maa_update_channel.value
+    })
+    const data = response.data
+    if (!data.ok) {
+      maa_update_check.value.status = 'error'
+      maa_update_check.value.message = data.message || '检查 Maa 更新失败'
+      return
+    }
+    maa_installed_version.value = data.installed_version || maa_installed_version.value
+    maa_latest_version.value = data.latest?.tag || ''
+    const available = Boolean(data.available) && !maa_update_versions_equal.value
+    maa_update_check.value = {
+      status: 'success',
+      message:
+        !available && maa_update_versions_equal.value
+          ? '当前 Maa 已是最新版本'
+          : data.message || (available ? '发现 Maa 新版本' : '当前 Maa 已是最新版本'),
+      available,
+      id: available ? data.check_id || '' : ''
+    }
+  } catch (error) {
+    maa_update_check.value.status = 'error'
+    maa_update_check.value.message =
+      error.response?.data?.message || `检查 Maa 更新失败：${error.message}`
+  }
+}
+
+async function check_maa_resource_update() {
+  if (maa_resource_update_checking.value || maa_resource_updating.value || maa_updating.value)
+    return
+  reset_maa_resource_update_check()
+  maa_resource_update_info_msg.value = ''
+  if (maa_path_missing.value) {
+    maa_resource_update_check.value.status = 'error'
+    maa_resource_update_check.value.message = '请先设置 Maa 目录'
+    return
+  }
+  if (maa_update_source.value === 'mirrorchyan') {
+    const valid = await check_mirrorchyan_cdk()
+    if (!valid) {
+      maa_resource_update_check.value.status = 'error'
+      maa_resource_update_check.value.message =
+        mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      return
+    }
+  }
+  maa_resource_update_check.value.status = 'checking'
+  maa_resource_update_check.value.message = '正在检查 Maa 资源更新……'
+  try {
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/maa-resource-update/check`,
+      {
+        maa_path: maa_path.value,
+        source: maa_update_source.value,
+        mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : ''
+      }
+    )
+    const data = response.data
+    if (!data.ok) {
+      maa_resource_update_check.value.status = 'error'
+      maa_resource_update_check.value.message = data.message || '检查 Maa 资源更新失败'
+      return
+    }
+    maa_resource_current_version.value = data.current?.version || maa_resource_current_version.value
+    maa_resource_latest_version.value = data.latest?.version || ''
+    maa_resource_release_note.value = data.latest?.release_note || ''
+    const available = Boolean(data.available) && !maa_resource_versions_equal.value
+    maa_resource_update_check.value = {
+      status: 'success',
+      message:
+        !available && maa_resource_versions_equal.value
+          ? '当前 Maa 资源已是最新版本'
+          : data.message || (available ? '发现 Maa 资源新版本' : '当前 Maa 资源已是最新版本'),
+      available,
+      id: available ? data.check_id || '' : ''
+    }
+  } catch (error) {
+    maa_resource_update_check.value.status = 'error'
+    maa_resource_update_check.value.message =
+      error.response?.data?.message || `检查 Maa 资源更新失败：${error.message}`
+  }
+}
+
 async function start_maa_update() {
   if (maa_updating.value) return
   maa_update_info_msg.value = ''
@@ -350,7 +639,8 @@ async function start_maa_update() {
       maa_path: maa_path.value,
       source: maa_update_source.value,
       mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : '',
-      channel: maa_update_channel.value
+      channel: maa_update_channel.value,
+      check_id: maa_update_check.value.id
     })
     if (!response.data.ok) {
       maa_update_job.value.status = 'error'
@@ -358,6 +648,7 @@ async function start_maa_update() {
         response.data.message || `MAA ${maa_managed_operation_label.value}启动失败`
       return
     }
+    reset_maa_update_check()
     apply_maa_update_job(response.data.job)
     poll_maa_update()
   } catch (error) {
@@ -368,15 +659,73 @@ async function start_maa_update() {
   }
 }
 
+async function start_maa_resource_update() {
+  if (maa_resource_updating.value || maa_updating.value) return
+  maa_resource_update_info_msg.value = ''
+  if (maa_path_missing.value) {
+    maa_resource_update_job.value.status = 'error'
+    maa_resource_update_job.value.message = '请先设置 Maa 目录'
+    return
+  }
+  if (maa_update_source.value === 'mirrorchyan') {
+    const valid = await check_mirrorchyan_cdk()
+    if (!valid) {
+      maa_resource_update_job.value.status = 'error'
+      maa_resource_update_job.value.message =
+        mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      return
+    }
+  }
+  try {
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/maa-resource-update/start`,
+      {
+        maa_path: maa_path.value,
+        source: maa_update_source.value,
+        mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : '',
+        check_id: maa_resource_update_check.value.id
+      }
+    )
+    if (!response.data.ok) {
+      maa_resource_update_job.value.status = 'error'
+      maa_resource_update_job.value.message = response.data.message || 'Maa 资源更新启动失败'
+      return
+    }
+    reset_maa_resource_update_check()
+    apply_maa_resource_update_job(response.data.job)
+    poll_maa_resource_update()
+  } catch (error) {
+    maa_resource_update_job.value.status = 'error'
+    maa_resource_update_job.value.message =
+      error.response?.data?.message || `Maa 资源更新启动失败：${error.message}`
+  }
+}
+
+watch(maa_path, (value, previous_value) => {
+  if (value === previous_value) return
+  reset_maa_update_check()
+  reset_maa_resource_update_check()
+  if (maa_path_refresh_timer) window.clearTimeout(maa_path_refresh_timer)
+  maa_path_refresh_timer = window.setTimeout(() => {
+    get_maa_update_info()
+    get_maa_resource_update_info()
+    get_maa_conn_presets()
+  }, 400)
+})
+
 onMounted(() => {
   get_maa_conn_presets()
   get_maa_update_info()
+  get_maa_resource_update_info()
 })
 
 onUnmounted(() => {
   if (maa_update_timer) window.clearTimeout(maa_update_timer)
+  if (maa_resource_update_timer) window.clearTimeout(maa_resource_update_timer)
+  if (maa_path_refresh_timer) window.clearTimeout(maa_path_refresh_timer)
   if (mirrorchyan_cdk_timer) window.clearTimeout(mirrorchyan_cdk_timer)
   mirrorchyan_cdk_request_id++
+  maa_resource_update_info_request_id++
 })
 </script>
 
@@ -519,18 +868,37 @@ onUnmounted(() => {
           </template>
         </div>
         <div v-if="maa_update_info_msg" class="update-error">{{ maa_update_info_msg }}</div>
-        <n-button
-          type="primary"
-          :loading="maa_updating"
-          :disabled="
-            maa_updating || (maa_update_source === 'mirrorchyan' && !mirrorchyan_cdk_ready)
-          "
-          @click="start_maa_update"
+        <div
+          v-if="maa_update_check.message"
+          :class="maa_update_check_message_class"
+          aria-live="polite"
         >
-          {{
-            maa_update_platform === 'windows' ? '下载 Maa' : maa_installed ? '更新 Maa' : '下载 Maa'
-          }}
-        </n-button>
+          {{ maa_update_check.message }}
+        </div>
+        <n-space>
+          <n-button
+            v-if="maa_installed"
+            :loading="maa_update_checking"
+            :disabled="maa_updating || maa_resource_updating || maa_update_checking"
+            @click="check_maa_update"
+          >
+            检查 Maa 更新
+          </n-button>
+          <n-button
+            type="primary"
+            :loading="maa_updating"
+            :disabled="maa_update_action_disabled"
+            @click="start_maa_update"
+          >
+            {{
+              maa_update_platform === 'windows'
+                ? '下载 Maa'
+                : maa_installed
+                  ? '更新 Maa'
+                  : '下载 Maa'
+            }}
+          </n-button>
+        </n-space>
       </div>
     </template>
     <template v-else-if="maa_update_platform === 'linux' && maa_update_info_msg">
@@ -548,9 +916,76 @@ onUnmounted(() => {
           <span>已安装：{{ maa_installed_version || '已检测到 Maa' }}</span>
         </div>
         <div class="update-hint">
-          已检测到 Windows Maa，请手动打开 Maa，并在 Maa 设置中检查和完成更新。更新源、版本通道和
-          Mirror酱 CDK 以 Maa 内的配置为准，Mower 不会覆盖 Maa 目录。
+          已检测到 Windows Maa，请手动打开 Maa，并在 Maa
+          设置中完成程序及资源更新。更新源、版本通道和 Mirror酱 CDK 以 Maa 内的配置为准，Mower
+          不会覆盖 Maa 目录。
         </div>
+      </div>
+    </template>
+    <template v-if="maa_resource_update_supported">
+      <n-divider />
+      <div class="maa-updater">
+        <div class="update-title">
+          {{ maa_update_platform === 'linux' ? 'Linux' : 'macOS' }} 更新 Maa 资源
+        </div>
+        <div class="update-meta">
+          <span>当前资源：{{ maa_resource_current_version || '未知' }}</span>
+          <span>最新资源：{{ maa_resource_latest_version || '待获取' }}</span>
+        </div>
+        <div v-if="maa_resource_release_note" class="update-hint">
+          最新活动资源：{{ maa_resource_release_note }}
+        </div>
+        <div class="update-hint">
+          Maa 资源更新不区分正式版与公测版，将使用上方选择的
+          {{ maa_update_source === 'mirrorchyan' ? 'Mirror酱' : 'GitHub' }}
+          更新源。资源包会增量合并到 resource 目录，不会替换 MaaCore 与 Python。
+        </div>
+        <div v-if="maa_resource_backup_path" class="update-hint">
+          更新前的资源保存在
+          {{ maa_resource_backup_path }}；下一次成功更新时替换该备份，失败时回滚。
+        </div>
+        <n-progress
+          v-if="maa_resource_update_job.progress !== null"
+          type="line"
+          :percentage="maa_resource_update_job.progress"
+          :status="maa_resource_update_progress_status"
+          :indicator-placement="'inside'"
+          processing
+        />
+        <div v-if="maa_resource_update_job.message" class="update-message">
+          {{ maa_resource_update_job.message }}
+          <template v-if="maa_resource_update_job.total">
+            （{{ format_bytes(maa_resource_update_job.current) }} /
+            {{ format_bytes(maa_resource_update_job.total) }}）
+          </template>
+        </div>
+        <div v-if="maa_resource_update_info_msg" class="update-error">
+          {{ maa_resource_update_info_msg }}
+        </div>
+        <div
+          v-if="maa_resource_update_check.message"
+          :class="maa_resource_update_check_message_class"
+          aria-live="polite"
+        >
+          {{ maa_resource_update_check.message }}
+        </div>
+        <n-space>
+          <n-button
+            :loading="maa_resource_update_checking"
+            :disabled="maa_resource_updating || maa_updating || maa_resource_update_checking"
+            @click="check_maa_resource_update"
+          >
+            检查 Maa 资源更新
+          </n-button>
+          <n-button
+            type="primary"
+            :loading="maa_resource_updating"
+            :disabled="maa_resource_update_action_disabled"
+            @click="start_maa_resource_update"
+          >
+            更新 Maa 资源
+          </n-button>
+        </n-space>
       </div>
     </template>
   </n-card>
