@@ -7,6 +7,8 @@ from arknights_mower.utils.config import atomic_write, weekly_plans_path
 from arknights_mower.utils.config.app_state import read_app_state, write_app_state
 from arknights_mower.utils.log import logger
 
+_UNSET = object()
+
 
 class WeeklyPlanManager:
     """Persist weekly plan presets and keep the active plan synced to runtime config."""
@@ -15,6 +17,7 @@ class WeeklyPlanManager:
     DEFAULT_PLAN_KEY = "默认"
     ACTIVITY_FALLBACKS_KEY = "activity_fallbacks"
     ACTIVITY_FALLBACK_END_TIMES_KEY = "activity_fallback_end_times"
+    ACTIVITY_FALLBACK_SWITCH_TIMES_KEY = "activity_fallback_switch_times"
 
     def __init__(self):
         self._ensure_weekly_plans_exists()
@@ -138,7 +141,63 @@ class WeeklyPlanManager:
             if source in plans and target in plans and source != target
         }
 
-    def set_activity_fallback(self, source: str, target: str = "") -> bool:
+    @staticmethod
+    def _timestamp(value) -> int | None:
+        if value in (None, ""):
+            return None
+        try:
+            result = int(value)
+        except (TypeError, ValueError):
+            raise ValueError("切换时间必须是有效时间戳") from None
+        if result <= 0:
+            raise ValueError("切换时间必须大于 0")
+        return result
+
+    def get_activity_fallback_switch_times(self) -> dict[str, int]:
+        data = self._read_weekly_plans()
+        fallbacks = self.get_activity_fallbacks()
+        raw_switch_times = data.get(self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY) or {}
+        if not isinstance(raw_switch_times, dict):
+            return {}
+        result = {}
+        for source, value in raw_switch_times.items():
+            if source not in fallbacks:
+                continue
+            try:
+                timestamp = self._timestamp(value)
+            except ValueError:
+                continue
+            if timestamp is not None:
+                result[str(source)] = timestamp
+        return result
+
+    def get_activity_plan_end_times(self, stages=None) -> dict[str, int]:
+        """返回各方案可识别或已缓存的活动结束时间。"""
+        if stages is None:
+            from arknights_mower.data import stage_data_full
+
+            stages = list(stage_data_full)
+        data = self._read_weekly_plans()
+        plans = data.get("plans") or {}
+        raw_end_times = data.get(self.ACTIVITY_FALLBACK_END_TIMES_KEY) or {}
+        cached_end_times = raw_end_times if isinstance(raw_end_times, dict) else {}
+        result = {}
+        for key, plan_data in plans.items():
+            detected = self._activity_end_ts_for_plan_data(plan_data, stages)
+            if detected is not None:
+                result[str(key)] = detected
+                continue
+            try:
+                cached = self._timestamp(cached_end_times.get(key))
+            except ValueError:
+                cached = None
+            if cached is not None:
+                result[str(key)] = cached
+        return result
+
+    def set_activity_fallback(
+        self, source: str, target: str = "", switch_time=_UNSET
+    ) -> bool:
         source = (source or "").strip()
         target = (target or "").strip()
         data = self._read_weekly_plans()
@@ -152,16 +211,29 @@ class WeeklyPlanManager:
         fallbacks = dict(raw_fallbacks) if isinstance(raw_fallbacks, dict) else {}
         raw_end_times = data.get(self.ACTIVITY_FALLBACK_END_TIMES_KEY)
         end_times = dict(raw_end_times) if isinstance(raw_end_times, dict) else {}
+        raw_switch_times = data.get(self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY)
+        switch_times = (
+            dict(raw_switch_times) if isinstance(raw_switch_times, dict) else {}
+        )
+        if switch_time is not _UNSET:
+            try:
+                switch_time = self._timestamp(switch_time)
+            except ValueError:
+                return False
         if target:
             fallbacks[source] = target
             activity_end_ts = self._activity_end_ts_for_plan_data(plans[source])
             if activity_end_ts is not None:
                 end_times[source] = activity_end_ts
-            else:
-                end_times.pop(source, None)
+            if switch_time is not _UNSET:
+                if switch_time is None:
+                    switch_times.pop(source, None)
+                else:
+                    switch_times[source] = switch_time
         else:
             fallbacks.pop(source, None)
             end_times.pop(source, None)
+            switch_times.pop(source, None)
         if fallbacks:
             data[self.ACTIVITY_FALLBACKS_KEY] = fallbacks
         else:
@@ -170,6 +242,10 @@ class WeeklyPlanManager:
             data[self.ACTIVITY_FALLBACK_END_TIMES_KEY] = end_times
         else:
             data.pop(self.ACTIVITY_FALLBACK_END_TIMES_KEY, None)
+        if switch_times:
+            data[self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY] = switch_times
+        else:
+            data.pop(self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY, None)
         self._write_weekly_plans(data)
         return True
 
@@ -196,7 +272,7 @@ class WeeklyPlanManager:
     def maybe_switch_expired_activity_plan(
         self, stages=None, now: int | None = None
     ) -> dict | None:
-        """活动方案内所有可识别活动关结束后，切换到用户绑定的常规方案。"""
+        """到达活动默认结束时间或用户设定时间后切换绑定方案。"""
         source = self.get_active_plan_key()
         target = self.get_activity_fallbacks().get(source)
         if not source or not target:
@@ -219,8 +295,10 @@ class WeeklyPlanManager:
             end_times[source] = detected_end_ts
             data[self.ACTIVITY_FALLBACK_END_TIMES_KEY] = end_times
             self._write_weekly_plans(data)
-        current_ts = int(time.time()) if now is None else int(now)
-        if activity_end_ts is None or activity_end_ts >= current_ts:
+        custom_switch_ts = self.get_activity_fallback_switch_times().get(source)
+        switch_ts = custom_switch_ts or activity_end_ts
+        current_ts = self._current_server_timestamp() if now is None else int(now)
+        if switch_ts is None or switch_ts > current_ts:
             return None
         if not self.set_active_plan(target):
             return None
@@ -229,14 +307,28 @@ class WeeklyPlanManager:
             "source": source,
             "target": target,
             "activity_end_ts": activity_end_ts,
+            "switch_ts": switch_ts,
         }
         logger.info(
-            "weekly activity ended, switched plan | source=%s | target=%s | end=%s",
+            "weekly plan switch time reached | source=%s | target=%s | "
+            "activity_end=%s | switch=%s",
             source,
             target,
             activity_end_ts,
+            switch_ts,
         )
         return result
+
+    @staticmethod
+    def _current_server_timestamp() -> int:
+        """使用已校准的服务器时钟偏移，避免设备时间误差影响切换。"""
+        try:
+            from arknights_mower.utils import skland
+
+            offset = int(getattr(skland, "server_time_offset", 0) or 0)
+        except (ImportError, TypeError, ValueError):
+            offset = 0
+        return int(time.time()) + offset
 
     def set_active_plan(self, key: str) -> bool:
         key = (key or "").strip()
@@ -264,8 +356,6 @@ class WeeklyPlanManager:
             activity_end_ts = self._activity_end_ts_for_plan_data(plan_data)
             if activity_end_ts is not None:
                 end_times[key] = activity_end_ts
-            else:
-                end_times.pop(key, None)
             if end_times:
                 data[self.ACTIVITY_FALLBACK_END_TIMES_KEY] = end_times
             else:
@@ -285,13 +375,23 @@ class WeeklyPlanManager:
         fallbacks = dict(raw_fallbacks) if isinstance(raw_fallbacks, dict) else {}
         raw_end_times = data.get(self.ACTIVITY_FALLBACK_END_TIMES_KEY)
         end_times = dict(raw_end_times) if isinstance(raw_end_times, dict) else {}
+        raw_switch_times = data.get(self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY)
+        switch_times = (
+            dict(raw_switch_times) if isinstance(raw_switch_times, dict) else {}
+        )
         fallbacks.pop(key, None)
         end_times.pop(key, None)
+        switch_times.pop(key, None)
         fallbacks = {
             source: target for source, target in fallbacks.items() if target != key
         }
         end_times = {
             source: end for source, end in end_times.items() if source in fallbacks
+        }
+        switch_times = {
+            source: switch
+            for source, switch in switch_times.items()
+            if source in fallbacks
         }
         if fallbacks:
             data[self.ACTIVITY_FALLBACKS_KEY] = fallbacks
@@ -301,6 +401,10 @@ class WeeklyPlanManager:
             data[self.ACTIVITY_FALLBACK_END_TIMES_KEY] = end_times
         else:
             data.pop(self.ACTIVITY_FALLBACK_END_TIMES_KEY, None)
+        if switch_times:
+            data[self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY] = switch_times
+        else:
+            data.pop(self.ACTIVITY_FALLBACK_SWITCH_TIMES_KEY, None)
         self._write_weekly_plans(data)
 
         if active_before == key:

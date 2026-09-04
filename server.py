@@ -2231,6 +2231,10 @@ def get_weekly_plans():
     return {
         "plans": manager.get_plans(),
         "activity_fallbacks": manager.get_activity_fallbacks(),
+        "activity_fallback_switch_times": (
+            manager.get_activity_fallback_switch_times()
+        ),
+        "activity_plan_end_times": manager.get_activity_plan_end_times(),
     }
 
 
@@ -2244,9 +2248,21 @@ def update_weekly_plan_activity_fallback():
         manager = get_weekly_plan_manager()
         source = str(req.get("source", "")).strip()
         target = str(req.get("target", "")).strip()
-        if not manager.set_activity_fallback(source, target):
+        if "switch_time" in req:
+            updated = manager.set_activity_fallback(
+                source, target, switch_time=req.get("switch_time")
+            )
+        else:
+            updated = manager.set_activity_fallback(source, target)
+        if not updated:
             return {"error": "Invalid activity fallback plan binding"}, 400
-        return {"activity_fallbacks": manager.get_activity_fallbacks()}
+        return {
+            "activity_fallbacks": manager.get_activity_fallbacks(),
+            "activity_fallback_switch_times": (
+                manager.get_activity_fallback_switch_times()
+            ),
+            "activity_plan_end_times": manager.get_activity_plan_end_times(),
+        }
     except Exception as e:
         logger.exception(f"Failed to update weekly plan activity fallback: {e}")
         return {"error": str(e)}, 500
@@ -2278,6 +2294,11 @@ def update_active_weekly_plan():
         return {
             "active": active_key,
             "plan": new_plan,
+            "activity_fallbacks": manager.get_activity_fallbacks(),
+            "activity_fallback_switch_times": (
+                manager.get_activity_fallback_switch_times()
+            ),
+            "activity_plan_end_times": manager.get_activity_plan_end_times(),
         }
     except Exception as e:
         logger.exception(f"Failed to update weekly plan: {e}")

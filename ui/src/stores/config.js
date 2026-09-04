@@ -25,6 +25,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
   const maa_weekly_plan_activity_fallbacks = ref({})
+  const maa_weekly_plan_activity_switch_times = ref({})
+  const maa_weekly_plan_activity_end_times = ref({})
   const maa_stage_inventory_enable = ref(false)
   const maa_stage_limit_rules = ref([])
   const maa_stage_ratio_rules = ref([])
@@ -212,16 +214,34 @@ export const useConfigStore = defineStore('config', () => {
     }))
   }
 
+  function normalizeTimestampMap(rawValue) {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+      return {}
+    }
+    return Object.fromEntries(
+      Object.entries(rawValue)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0)
+    )
+  }
+
+  function applyWeeklyPlanMetadata(data = {}) {
+    maa_weekly_plan_activity_fallbacks.value =
+      data.activity_fallbacks && typeof data.activity_fallbacks === 'object'
+        ? data.activity_fallbacks
+        : {}
+    maa_weekly_plan_activity_switch_times.value = normalizeTimestampMap(
+      data.activity_fallback_switch_times
+    )
+    maa_weekly_plan_activity_end_times.value = normalizeTimestampMap(data.activity_plan_end_times)
+  }
+
   async function load_weekly_plan_state() {
     const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
     maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
       ? listResponse.data.plans
       : []
-    maa_weekly_plan_activity_fallbacks.value =
-      listResponse.data.activity_fallbacks &&
-      typeof listResponse.data.activity_fallbacks === 'object'
-        ? listResponse.data.activity_fallbacks
-        : {}
+    applyWeeklyPlanMetadata(listResponse.data)
 
     if (!maa_weekly_plan_active.value) {
       await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
@@ -254,6 +274,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.from(
         new Set([...maa_weekly_plan_options.value, response.data.active])
       )
+      applyWeeklyPlanMetadata(response.data)
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
@@ -285,33 +306,30 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
         ? listResponse.data.plans
         : []
-      maa_weekly_plan_activity_fallbacks.value =
-        listResponse.data.activity_fallbacks &&
-        typeof listResponse.data.activity_fallbacks === 'object'
-          ? listResponse.data.activity_fallbacks
-          : {}
+      applyWeeklyPlanMetadata(listResponse.data)
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
     }
   }
 
-  async function update_weekly_plan_activity_fallback(target) {
+  async function update_weekly_plan_activity_fallback(target, switchTime = undefined) {
     const source = maa_weekly_plan_active.value
     if (!source) {
       throw new Error('请先选择周计划方案')
     }
+    const payload = {
+      source,
+      target: typeof target === 'string' ? target.trim() : ''
+    }
+    if (switchTime !== undefined) {
+      payload.switch_time = switchTime
+    }
     const response = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/weekly-plans/activity-fallback`,
-      {
-        source,
-        target: typeof target === 'string' ? target.trim() : ''
-      }
+      payload
     )
-    maa_weekly_plan_activity_fallbacks.value =
-      response.data.activity_fallbacks && typeof response.data.activity_fallbacks === 'object'
-        ? response.data.activity_fallbacks
-        : {}
+    applyWeeklyPlanMetadata(response.data)
     return response.data
   }
 
@@ -615,6 +633,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_weekly_plan_options,
     maa_weekly_plan_active,
     maa_weekly_plan_activity_fallbacks,
+    maa_weekly_plan_activity_switch_times,
+    maa_weekly_plan_activity_end_times,
     maa_stage_inventory_enable,
     maa_stage_limit_rules,
     maa_stage_ratio_rules,

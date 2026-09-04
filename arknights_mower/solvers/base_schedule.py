@@ -3901,7 +3901,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
 
     def maybe_switch_expired_activity_plan(self):
-        """刷理智实际选关前，根据资源活动结束时间切换周计划方案。"""
+        """刷理智实际选关前，根据活动方案的切换时间更新周计划。"""
         try:
             from arknights_mower.utils.config.weekly_plan_loader import (
                 get_weekly_plan_manager,
