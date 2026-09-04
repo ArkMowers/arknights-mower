@@ -471,6 +471,9 @@ class SceneGraphSolver(BaseSolver):
                 else:
                     self.restart_game()
                 error_count = 0
+            # 每圈强制清场景缓存：转移静默失败（如 tap_element 找不到元素直接返回
+            # False）时缓存不失效，get_scene 一直返回陈旧场景导致死循环刷日志
+            self.recog.update()
 
     def back_to_index(self):
         logger.info("场景图导航：back_to_index")
