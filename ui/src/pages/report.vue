@@ -289,25 +289,13 @@ const option_manufactor = computed(() => {
       },
 
       formatter: function (params) {
-        if (params[0].data['龙舌兰赤金'] || params[0].data['可露希尔赤金']) {
-          total_earnings.value =
-            (params[0].data['赤金'] +
-              params[0].data['龙舌兰赤金'] +
-              params[0].data['可露希尔赤金']) *
-              value_coefficient_gold.value +
-            params[0].data['龙门币订单'] * value_coefficient_lmb.value +
-            params[0].data['作战录像'] * value_coefficient_exp.value
-        } else {
-          params[0].data['龙舌兰赤金'] = 0
-          params[0].data['可露希尔赤金'] = 0
-          total_earnings.value =
-            (params[0].data['赤金'] +
-              params[0].data['龙舌兰赤金'] +
-              params[0].data['可露希尔赤金']) *
-              value_coefficient_gold.value +
-            params[0].data['龙门币订单'] * value_coefficient_lmb.value +
-            params[0].data['作战录像'] * value_coefficient_exp.value
-        }
+        total_earnings.value =
+          (params[0].data['赤金'] +
+            (params[0].data['龙舌兰赤金'] || 0) +
+            (params[0].data['可露希尔赤金'] || 0)) *
+            value_coefficient_gold.value +
+          params[0].data['龙门币订单'] * value_coefficient_lmb.value +
+          params[0].data['作战录像'] * value_coefficient_exp.value
         const tip = `<div style="font-size:1.4rem;">
                         <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
                         ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
