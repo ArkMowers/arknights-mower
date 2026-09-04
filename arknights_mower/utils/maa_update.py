@@ -30,6 +30,7 @@ from urllib.parse import urlsplit
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 import requests
+from packaging.version import InvalidVersion, Version
 
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
@@ -171,6 +172,14 @@ def normalize_update_channel(channel: str | None = None) -> str:
     if normalized not in {"stable", "beta"}:
         raise MaaUpdateError(f"未知的 MAA 版本通道：{normalized or '未知'}")
     return normalized
+
+
+def is_maa_version_newer(latest: str, installed: str) -> bool:
+    """按 MAA 使用的 SemVer 版本号判断是否存在更新。"""
+    try:
+        return Version(latest.strip()) > Version(installed.strip())
+    except (AttributeError, InvalidVersion):
+        raise MaaUpdateError("Maa 版本号格式无效，请检查安装目录") from None
 
 
 def parse_release(

@@ -22,6 +22,15 @@ def _asset(name: str, size: int = 100) -> dict:
 
 
 class TestReleaseParsing(unittest.TestCase):
+    def test_compares_stable_and_beta_versions(self):
+        self.assertTrue(mu.is_maa_version_newer("v6.18.0", "v6.17.0"))
+        self.assertTrue(mu.is_maa_version_newer("v6.18.0-beta.2", "v6.18.0-beta.1"))
+        self.assertFalse(mu.is_maa_version_newer("v6.17.0", "v6.17.0"))
+
+    def test_invalid_version_comparison_is_rejected(self):
+        with self.assertRaisesRegex(mu.MaaUpdateError, "版本号格式无效"):
+            mu.is_maa_version_newer("latest", "v6.17.0")
+
     def test_selects_runtime_and_arm64_python_source(self):
         release = mu.parse_release(
             {
