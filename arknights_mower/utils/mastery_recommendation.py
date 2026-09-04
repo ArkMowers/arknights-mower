@@ -3,7 +3,10 @@ import os
 from typing import Optional
 
 from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
-from arknights_mower.utils.resource_pkg import resource_pkg_path
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 from arknights_mower.utils.skill_label import format_skill_label
 
 
@@ -23,16 +26,33 @@ def _find_skill_data():
 _skill_data_cache = None
 
 
+def _load_skill_data():
+    path = _find_skill_data()
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("专精推荐资源格式错误")
+        return data
+    return {}
+
+
 def get_skill_data():
     global _skill_data_cache
     if _skill_data_cache is None:
-        path = _find_skill_data()
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                _skill_data_cache = json.load(f)
-        else:
-            _skill_data_cache = {}
+        _skill_data_cache = _load_skill_data()
     return _skill_data_cache
+
+
+@register_resource_reload
+def reload_resource_data() -> None:
+    global _skill_data_cache
+    new_data = _load_skill_data()
+    if _skill_data_cache is None:
+        _skill_data_cache = new_data
+    else:
+        _skill_data_cache.clear()
+        _skill_data_cache.update(new_data)
 
 
 def get_skill_real_name(char_id: str, skill_index: int):

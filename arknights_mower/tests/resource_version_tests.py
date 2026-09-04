@@ -5,8 +5,15 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils import resource_version as rv
-from arknights_mower.utils.res_version import parse_version, version_newer
+from arknights_mower.utils.res_version import (
+    content_hash,
+    display_version,
+    package_file_paths,
+    parse_version,
+    version_newer,
+)
 
 
 def _version(res_version="2026.08.23-31a240b", name="墟·复刻", time=1724068800):
@@ -160,6 +167,46 @@ class TestCheckResourceUpdate(unittest.TestCase):
 
 
 class TestReadLocalVersion(unittest.TestCase):
+    def test_builtin_version_is_available_without_overlay(self):
+        marker = json.loads(
+            (Path(__rootdir__) / "data/version.json").read_text(encoding="utf-8")
+        )
+        with tempfile.TemporaryDirectory() as d:
+            missing_overlay = Path(d) / "resource"
+            with patch(
+                "arknights_mower.utils.resource_pkg.RESOURCE_OVERLAY",
+                missing_overlay,
+            ):
+                got = rv.check_resource_update(local_only=True)
+
+        self.assertTrue(got["current_version"])
+        self.assertTrue(got["current_display"])
+        self.assertEqual(got["current_version"], marker["res_version"])
+        self.assertEqual(got["current_display"], display_version(marker))
+
+    def test_overlay_version_replaces_builtin_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            overlay = Path(d) / "resource"
+            marker = overlay / "arknights_mower/data/version.json"
+            marker.parent.mkdir(parents=True)
+            marker.write_text(
+                json.dumps(_version("2026.09.04-bbbbbbb", "墟·复刻", 1787342400)),
+                encoding="utf-8",
+            )
+            with patch("arknights_mower.utils.resource_pkg.RESOURCE_OVERLAY", overlay):
+                got = rv.check_resource_update(local_only=True)
+
+        self.assertEqual(got["current_version"], "2026.09.04-bbbbbbb")
+        self.assertEqual(got["current_display"], "墟·复刻#0822")
+
+    def test_builtin_version_hash_matches_bundled_resources(self):
+        project_root = Path(__rootdir__).parent
+        marker = json.loads(
+            (Path(__rootdir__) / "data/version.json").read_text(encoding="utf-8")
+        )
+        digest = content_hash(project_root, package_file_paths(project_root))
+        self.assertTrue(marker["res_version"].endswith(f"-{digest[:7]}"))
+
     def test_resolves_overlay_path_on_every_read(self):
         with tempfile.TemporaryDirectory() as d:
             first = Path(d) / "builtin.json"

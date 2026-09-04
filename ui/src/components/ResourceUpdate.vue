@@ -3,20 +3,33 @@ import axios from 'axios'
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 
 const manual_url = `${import.meta.env.VITE_HTTP_URL}/hot-update/manual`
 
 const config_store = useConfigStore()
-const { hot_update_enable } = storeToRefs(config_store)
+const { hot_update_enable, hot_update_auto_update } = storeToRefs(config_store)
+const { load_item, load_shop } = config_store
+
+const plan_store = usePlanStore()
+const { load_operators } = plan_store
 
 const resource_store = useResourceVersionStore()
-const { info, loading, installing, install_message } = storeToRefs(resource_store)
+const { canInstall, info, loading, installing, install_message } = storeToRefs(resource_store)
 const { loadResourceVersion, loadResourceVersionLocal, installResource } = resource_store
 
 const manual_result = ref('')
 const manual_installing = ref(false)
+
+async function refresh_resource_options() {
+  try {
+    await Promise.all([load_item(), load_shop(), load_operators()])
+  } catch (error) {
+    console.error('failed to refresh resource-backed options', error)
+  }
+}
 
 onMounted(() => {
   // 当前版本常驻显示；开启「启动时检查更新」时才顺带拉远端最新版本。
@@ -30,11 +43,18 @@ onMounted(() => {
 async function show_manual_result(data) {
   manual_result.value = data && typeof data.message === 'string' ? data.message : '更新包应用失败'
   if (data?.ok && data.kind === 'resource') {
+    await refresh_resource_options()
     if (hot_update_enable.value) {
       await loadResourceVersion(true)
     } else {
       await loadResourceVersionLocal()
     }
+  }
+}
+
+async function install_resource() {
+  if (await installResource()) {
+    await refresh_resource_options()
   }
 }
 
@@ -70,14 +90,36 @@ function drop_manual_update(event) {
     void upload_manual_file(file)
   }
 }
+
+function set_auto_check(checked) {
+  hot_update_enable.value = checked
+  if (!checked) {
+    hot_update_auto_update.value = false
+  }
+}
+
+function set_auto_update(checked) {
+  hot_update_auto_update.value = checked
+  if (checked) {
+    hot_update_enable.value = true
+  }
+}
 </script>
 
 <template>
   <n-card title="资源更新">
     <n-form :show-feedback="false" label-placement="left" label-width="72">
       <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="hot_update_enable">启动时检查更新</n-checkbox>
+        <n-checkbox :checked="hot_update_enable" @update:checked="set_auto_check">
+          自动检查更新
+        </n-checkbox>
         <span class="hint">打开 mower 时自动检查热更新和资源包</span>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox :checked="hot_update_auto_update" @update:checked="set_auto_update">
+          自动更新
+        </n-checkbox>
+        <span class="hint">发现更新后自动应用热更新和资源包</span>
       </n-form-item>
       <n-form-item label="当前版本">
         <span>{{ info.current_display || '未安装' }}</span>
@@ -96,11 +138,11 @@ function drop_manual_update(event) {
             检查更新
           </n-button>
           <n-button
-            v-if="info.update_available === true"
             size="small"
             type="primary"
             :loading="installing"
-            @click="installResource"
+            :disabled="!canInstall"
+            @click="install_resource"
           >
             下载并安装
           </n-button>
@@ -108,6 +150,9 @@ function drop_manual_update(event) {
       </n-form-item>
       <n-form-item v-if="install_message" :show-label="false">
         <span>{{ install_message }}</span>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <span class="hint">资源包安装后会在当前进程内生效；仅软件版本更新需要重启 Mower</span>
       </n-form-item>
       <n-form-item label="手动应用">
         <n-upload

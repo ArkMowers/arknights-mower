@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import resource_pkg as rp
+from build_assets import _collect_arknights_mower_datas
 
 
 def _zip_bytes(entries=None, marker=True):
@@ -42,6 +43,9 @@ class ResourcePkgTestBase(unittest.TestCase):
         self._patch.enter_context(patch.object(rp, "RESOURCE_OVERLAY", self.overlay))
         self._patch.enter_context(patch.object(rp, "_STAGING", self.staging))
         self._patch.enter_context(patch.object(rp, "_OLD", self.old))
+        self.reload_caches = self._patch.enter_context(
+            patch.object(rp, "reload_resource_caches")
+        )
         self.addCleanup(self._patch.close)
 
 
@@ -60,6 +64,13 @@ class TestResourcePkgPath(ResourcePkgTestBase):
         got = rp.resource_pkg_path("arknights_mower/data/key_mapping.json")
         self.assertEqual(got, Path(__rootdir__) / "data/key_mapping.json")
 
+    def test_pyinstaller_collects_builtin_version(self):
+        collected = {
+            Path(source).relative_to(Path(__rootdir__).parent).as_posix()
+            for source, _destination in _collect_arknights_mower_datas()
+        }
+        self.assertIn("arknights_mower/data/version.json", collected)
+
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
     def test_missing_marker_rejected(self):
@@ -77,6 +88,7 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         self.assertTrue((self.overlay / "ui/public/depot/x.webp").is_file())
         self.assertFalse(self.staging.exists())
         self.assertFalse(self.old.exists())
+        self.reload_caches.assert_called_once_with()
 
     def test_replaces_previous_overlay(self):
         self.assertTrue(rp.install_resource_pkg(_zip_bytes()))
@@ -120,6 +132,32 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
             ),
             old_marker,
         )
+        self.assertFalse(self.old.exists())
+
+    def test_reload_failure_rolls_back_previous_overlay_and_caches(self):
+        self.assertTrue(rp.install_resource_pkg(_zip_bytes()))
+        old_marker = (self.overlay / "arknights_mower/data/version.json").read_text(
+            encoding="utf-8"
+        )
+        self.reload_caches.reset_mock()
+        self.reload_caches.side_effect = [RuntimeError("bad resource"), None]
+
+        new = _zip_bytes(
+            entries={
+                "arknights_mower/data/version.json": json.dumps(
+                    {"res_version": "v2026.08.24-bbbbbbb"}
+                )
+            }
+        )
+        self.assertFalse(rp.install_resource_pkg(new))
+        self.assertEqual(
+            (self.overlay / "arknights_mower/data/version.json").read_text(
+                encoding="utf-8"
+            ),
+            old_marker,
+        )
+        self.assertEqual(self.reload_caches.call_count, 2)
+        self.assertFalse(self.staging.exists())
         self.assertFalse(self.old.exists())
 
 

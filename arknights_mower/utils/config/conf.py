@@ -196,6 +196,14 @@ class LongTaskPart(ConfModel):
     class HotUpdateConf(ConfModel):
         enable: bool = False
         "热更新检查开关（默认关）"
+        auto_update: bool = False
+        "发现热更新或资源包更新时自动安装"
+
+        @model_validator(mode="after")
+        def auto_update_requires_check(self):
+            if self.auto_update:
+                self.enable = True
+            return self
 
     hot_update: HotUpdateConf
     "热更新"

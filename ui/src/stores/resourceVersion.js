@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import axios from 'axios'
 
@@ -16,11 +16,22 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
   const loaded = ref(false)
   const installing = ref(false)
   const install_message = ref('')
+  const canInstall = computed(
+    () => loaded.value && !loading.value && info.value.update_available === true
+  )
 
   async function loadResourceVersion(force = false) {
     if (loading.value) return info.value
     if (loaded.value && !force) return info.value
     loading.value = true
+    loaded.value = false
+    info.value = {
+      ...info.value,
+      remote_version: '',
+      remote_display: '',
+      update_available: null,
+      error: null
+    }
     try {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/resource-version`)
       info.value = {
@@ -33,7 +44,13 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
       }
       loaded.value = true
     } catch (error) {
-      info.value = { ...info.value, error: '网络错误：无法获取资源版本' }
+      info.value = {
+        ...info.value,
+        remote_version: '',
+        remote_display: '',
+        update_available: null,
+        error: '网络错误：无法获取资源版本'
+      }
     } finally {
       loading.value = false
     }
@@ -42,12 +59,23 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
 
   async function loadResourceVersionLocal() {
     // 只读本地已装版本，常驻显示「当前版本」，不触碰网络。
+    loaded.value = false
+    info.value = {
+      ...info.value,
+      remote_version: '',
+      remote_display: '',
+      update_available: null,
+      error: null
+    }
     try {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/resource-version?local=1`)
       info.value = {
         ...info.value,
         current_version: response.data.current_version || '',
         current_display: response.data.current_display || '',
+        remote_version: '',
+        remote_display: '',
+        update_available: null,
         error: null
       }
     } catch (error) {
@@ -56,7 +84,12 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
   }
 
   async function installResource() {
-    if (installing.value) return
+    if (installing.value || !canInstall.value) {
+      if (!loading.value && !canInstall.value) {
+        install_message.value = '请先检查更新，发现新版本后再安装'
+      }
+      return false
+    }
     installing.value = true
     install_message.value = ''
     try {
@@ -66,8 +99,10 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
         loaded.value = false
         await loadResourceVersion(true)
       }
+      return response.data.ok === true
     } catch (error) {
       install_message.value = error.response?.data?.message || '安装失败：网络错误'
+      return false
     } finally {
       installing.value = false
     }
@@ -79,6 +114,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
     loaded,
     installing,
     install_message,
+    canInstall,
     loadResourceVersion,
     loadResourceVersionLocal,
     installResource

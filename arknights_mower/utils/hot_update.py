@@ -136,10 +136,10 @@ def _download_and_extract() -> bool:
 
 
 def update():
-    """检查并应用热更：GitHub Releases latest 的 tag 与本地已应用版本比对。
+    """检查热更，并在开启自动更新时应用。
 
-    由 config.conf.hot_update.enable 控制（默认关）；保留 30 分钟节流。
-    仅在发现新版本或检测失败时记录日志，其余情况静默返回。
+    由 ``hot_update.enable`` 控制检查，``hot_update.auto_update`` 控制安装；
+    保留 30 分钟节流。仅在发现新版本或检测失败时记录日志，其余情况静默返回。
     """
     global last_update
 
@@ -156,6 +156,13 @@ def update():
 
     local_tag = _read_applied_tag()
     if not version_newer(remote_tag, local_tag, require_v=True):
+        last_update = datetime.now()
+        return
+
+    if not config.conf.hot_update.auto_update:
+        logger.info(
+            f"发现新热更版本 {remote_tag}（本地 {local_tag or '无'}），等待手动更新"
+        )
         last_update = datetime.now()
         return
 

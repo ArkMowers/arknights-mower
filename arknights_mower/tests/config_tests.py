@@ -21,6 +21,16 @@ class TestMaaConfig(unittest.TestCase):
         self.assertEqual(restored.maa_update_channel, "beta")
 
 
+class TestUpdateConfig(unittest.TestCase):
+    def test_auto_update_enables_check_and_round_trips(self):
+        conf = Conf(hot_update={"enable": False, "auto_update": True})
+        self.assertTrue(conf.hot_update.enable)
+        self.assertTrue(conf.hot_update.auto_update)
+        restored = Conf(**conf.model_dump())
+        self.assertTrue(restored.hot_update.enable)
+        self.assertTrue(restored.hot_update.auto_update)
+
+
 class TestAtomicWrite(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
