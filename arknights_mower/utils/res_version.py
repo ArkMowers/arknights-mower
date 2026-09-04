@@ -111,17 +111,23 @@ def pick_latest_gacha(gacha_table: dict) -> dict:
 
 
 def display_version(version_info: dict) -> str:
-    """客户端展示用可读版本号：较晚开启的 activity/gacha 的 name + #MMDD（北京时区）。"""
+    """客户端展示用可读版本号：较晚开启的 activity/gacha 的 name + #构建日期（MMDD）。"""
     later = max(
         (version_info.get("activity") or {}, version_info.get("gacha") or {}),
         key=lambda e: e.get("time", 0),
     )
     name = later.get("name")
-    if not name or not later.get("time"):
+    if not name:
         return ""
-    mmdd = datetime.fromtimestamp(
-        later["time"], tz=timezone(timedelta(hours=8))
-    ).strftime("%m%d")
+    parsed = parse_version(version_info.get("res_version") or "")
+    if parsed:
+        mmdd = f"{parsed[1]:02d}{parsed[2]:02d}"
+    elif later.get("time"):
+        mmdd = datetime.fromtimestamp(
+            later["time"], tz=timezone(timedelta(hours=8))
+        ).strftime("%m%d")
+    else:
+        return ""
     return f"{name}#{mmdd}"
 
 

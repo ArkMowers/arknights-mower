@@ -178,6 +178,15 @@ class TestDisplayVersion(unittest.TestCase):
         }
         self.assertEqual(display_version(info), "新卡池#0822")
 
+    def test_构建日期优先于开启日期(self):
+        # res_version 的日期（构建日期）优先于 activity/gacha 开启日期
+        info = {
+            "res_version": "v2026.09.05-12ab34",
+            "activity": {"name": "活动甲", "time": 1787342400, "endTime": 0},
+            "gacha": {"name": "卡池乙", "time": 1785538800, "endTime": 0},
+        }
+        self.assertEqual(display_version(info), "活动甲#0905")
+
     def test_空表返回空(self):
         self.assertEqual(display_version({}), "")
         self.assertEqual(display_version({"activity": {}, "gacha": {}}), "")

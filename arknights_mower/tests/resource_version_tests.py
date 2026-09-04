@@ -197,7 +197,7 @@ class TestReadLocalVersion(unittest.TestCase):
                 got = rv.check_resource_update(local_only=True)
 
         self.assertEqual(got["current_version"], "2026.09.04-bbbbbbb")
-        self.assertEqual(got["current_display"], "墟·复刻#0822")
+        self.assertEqual(got["current_display"], "墟·复刻#0904")
 
     def test_builtin_version_hash_matches_bundled_resources(self):
         project_root = Path(__rootdir__).parent
