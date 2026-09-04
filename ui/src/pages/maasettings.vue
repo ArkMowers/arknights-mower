@@ -1,4 +1,6 @@
 <script setup lang="jsx">
+defineOptions({ name: 'MaaSettings' })
+
 const scale_marks = {}
 const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
 for (let i = 0.5; i <= 3.0; i += 0.25) {
@@ -10,11 +12,11 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
   <div class="grid-two">
     <div class="grid-left">
       <div><maa-basic /></div>
-      <div><maa-weekly /></div>
       <div><maa-reward /></div>
     </div>
 
     <div class="grid-right">
+      <div><maa-weekly /></div>
       <div><clue /></div>
       <div><long-tasks /></div>
     </div>

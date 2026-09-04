@@ -3848,7 +3848,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     use_medicine = server_weekday >= 5
                 else:
                     use_medicine = True
-            for stage in _plan.stage:
+            stages = self.apply_maa_stage_inventory_rules(_plan.stage)
+            for stage in stages:
                 logger.info(f"添加关卡:{stage}")
                 self.MAA.append_task(
                     "Fight",
@@ -4129,6 +4130,52 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.last_execution["recruit"] = datetime.now()
             logger.info(f"下一次公开招募执行时间在{config.conf.recruit_gap}小时之后")
 
+    def apply_maa_stage_inventory_rules(self, stages) -> list[str]:
+        conf = config.conf
+        original = list(stages)
+        if not conf.maa_stage_inventory_enable:
+            return original
+        if not conf.maa_stage_limit_rules and not conf.maa_stage_ratio_rules:
+            return original
+
+        from arknights_mower.utils.maa_stage_inventory import (
+            load_inventory_snapshot,
+            select_stages_by_inventory,
+        )
+
+        try:
+            cultivateDepotSolver().start()
+        except Exception:
+            logger.exception("刷新森空岛库存失败，继续使用本地库存快照")
+        inventory, updated_at = load_inventory_snapshot()
+        selection = select_stages_by_inventory(
+            original,
+            limit_rules=conf.maa_stage_limit_rules,
+            ratio_rules=conf.maa_stage_ratio_rules,
+            inventory=inventory,
+        )
+        if selection["limit_fallback"]:
+            logger.info("全部关卡均达到库存上限，本次忽略库存跳过设置")
+        elif selection["limit_skipped"]:
+            logger.info(
+                "库存达到上限，跳过关卡: %s",
+                selection["limit_skipped"],
+            )
+        for decision in selection["ratio_decisions"]:
+            logger.info(
+                "库存比例选关 | rule=%s | selected=%s | candidates=%s",
+                decision["name"],
+                decision["selected"],
+                decision["candidates"],
+            )
+        logger.info(
+            "库存选关完成 | snapshot=%s | original=%s | selected=%s",
+            updated_at,
+            original,
+            selection["stages"],
+        )
+        return selection["stages"]
+
     def mower_stage_plan(self) -> list[str]:
         plan = config.conf.maa_weekly_plan[get_server_weekday()]
         stages = []
@@ -4139,7 +4186,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if not stage:
                 continue
             stages.append(stage)
-        return stages
+        return self.apply_maa_stage_inventory_rules(stages)
 
     def mower_stage_ap_cost(self, stage_id: str) -> int | None:
         stage_meta = next(
