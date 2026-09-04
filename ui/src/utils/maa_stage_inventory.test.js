@@ -4,6 +4,7 @@ import {
   createLimitRule,
   createRatioMember,
   evaluateLimitRule,
+  inventoryCount,
   previewInventorySelection,
   selectRatioMember
 } from './maa_stage_inventory.js'
@@ -84,6 +85,43 @@ describe('刷理智库存选关', () => {
       { A: 100, B: 60, C: 0 }
     )
     expect(selected.member.stage).toBe('A-1')
+  })
+
+  it('比例得分相同时按周计划顺序选择关卡', () => {
+    const result = previewInventorySelection(
+      ['B-1', 'A-1'],
+      [],
+      [
+        {
+          enabled: true,
+          members: [
+            { stage: 'A-1', item_id: 'A', ratio: 1 },
+            { stage: 'B-1', item_id: 'B', ratio: 1 }
+          ]
+        }
+      ],
+      { A: 10, B: 10 }
+    )
+    expect(result.stages).toEqual(['B-1'])
+    expect(result.ratioDecisions[0].selected).toBe('B-1')
+  })
+
+  it('物品名称通过别名读取真实库存 ID', () => {
+    const itemAliases = new Map([['固源岩', '30012']])
+    expect(inventoryCount({ item_id: '固源岩' }, { 30012: 100 }, itemAliases)).toBe(100)
+    expect(inventoryCount({ item_name: '固源岩' }, { 30012: 100 }, itemAliases)).toBe(100)
+
+    for (const item of [{ item_id: '固源岩' }, { item_name: '固源岩' }]) {
+      const result = previewInventorySelection(
+        ['1-7', 'CE-6'],
+        [{ stage: '1-7', enabled: true, items: [{ ...item, limit: 100 }] }],
+        [],
+        { 30012: 100 },
+        itemAliases
+      )
+      expect(result.stages).toEqual(['CE-6'])
+      expect(result.limitSkipped).toEqual(['1-7'])
+    }
   })
 
   it('上限优先，达到上限的关卡不参与比例计算', () => {

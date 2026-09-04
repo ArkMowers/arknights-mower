@@ -51,6 +51,22 @@ const stageOptionMap = computed(
 const itemOptionMap = computed(
   () => new Map(itemOptions.value.map((option) => [option.value, option]))
 )
+const itemAliasMap = computed(() => {
+  const aliases = new Map()
+  for (const option of itemOptions.value) {
+    const itemId = String(option?.id || option?.value || '').trim()
+    if (!itemId) {
+      continue
+    }
+    for (const alias of [option.value, option.id, option.name, option.label]) {
+      const normalized = String(alias || '').trim()
+      if (normalized) {
+        aliases.set(normalized, itemId)
+      }
+    }
+  }
+  return aliases
+})
 
 const selectedStageValues = computed(() => {
   const selected = new Set()
@@ -81,7 +97,8 @@ const previewResult = computed(() =>
     currentPlanStages.value,
     maa_stage_limit_rules.value,
     maa_stage_ratio_rules.value,
-    inventory.value
+    inventory.value,
+    itemAliasMap.value
   )
 )
 
@@ -119,15 +136,19 @@ function ratioStageOptions(rule, memberIndex) {
 }
 
 function limitEvaluation(rule) {
-  return evaluateLimitRule(rule, inventory.value)
+  return evaluateLimitRule(rule, inventory.value, itemAliasMap.value)
+}
+
+function displayInventoryCount(item) {
+  return inventoryCount(item, inventory.value, itemAliasMap.value)
 }
 
 function memberScore(member) {
   const ratio = Number(member?.ratio) || 0
-  if (ratio <= 0 || !member?.item_id) {
+  if (ratio <= 0 || !(member?.item_id || member?.item_name)) {
     return null
   }
-  return inventoryCount(member, inventory.value) / ratio
+  return displayInventoryCount(member) / ratio
 }
 
 function selectedRatioMember(rule) {
@@ -136,7 +157,15 @@ function selectedRatioMember(rule) {
       .map((member) => member.stage)
       .filter((stage) => stage && !selectedStageValues.value.has(stage))
   )
-  return selectRatioMember(rule, inventory.value, excludedStages)?.member || null
+  return (
+    selectRatioMember(
+      rule,
+      inventory.value,
+      excludedStages,
+      currentPlanStages.value,
+      itemAliasMap.value
+    )?.member || null
+  )
 }
 
 async function loadInventoryRuleData() {
@@ -387,7 +416,7 @@ onMounted(loadInventoryRuleData)
                 :on-create="createInventoryItemOption"
                 @update:value="(value) => updateItem(item, value)"
               />
-              <span class="inventory-number">{{ inventoryCount(item, inventory) }}</span>
+              <span class="inventory-number">{{ displayInventoryCount(item) }}</span>
               <n-input-number v-model:value="item.limit" :min="0" :precision="0" placeholder="0" />
               <n-button
                 quaternary
@@ -492,7 +521,7 @@ onMounted(loadInventoryRuleData)
                 :on-create="createInventoryItemOption"
                 @update:value="(value) => updateItem(member, value)"
               />
-              <span class="inventory-number">{{ inventoryCount(member, inventory) }}</span>
+              <span class="inventory-number">{{ displayInventoryCount(member) }}</span>
               <n-input-number v-model:value="member.ratio" :min="0" placeholder="0" />
               <n-tag v-if="memberScore(member) === null" size="small" :bordered="false">
                 不参与

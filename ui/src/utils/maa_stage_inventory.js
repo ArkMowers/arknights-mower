@@ -1,12 +1,38 @@
+// 本文件是后端 arknights_mower/utils/maa_stage_inventory.py 实际调度算法的 UI
+// 即时预览镜像。修改物品解析、上限回退、比例参与条件或同分选择顺序时，需要同步
+// 更新两处实现及对应测试。
+
 export function createInventoryItemOption(label) {
   const value = typeof label === 'string' ? label.trim() : ''
   return { value, label: value, id: value, name: value }
 }
 
-export function inventoryCount(item, inventory = {}) {
-  const itemId = String(item?.item_id || item?.value || '')
-  const count = Number(inventory[itemId])
-  return Number.isFinite(count) ? count : 0
+function resolveItemId(value, itemAliases = {}) {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+  const resolved =
+    itemAliases instanceof Map ? itemAliases.get(normalized) : itemAliases?.[normalized]
+  return String(resolved || normalized).trim()
+}
+
+export function inventoryCount(item, inventory = {}, itemAliases = {}) {
+  const itemId = String(item?.item_id || item?.value || '').trim()
+  const itemName = String(item?.item_name || item?.name || '').trim()
+  const candidates = new Set(
+    [itemId, resolveItemId(itemId, itemAliases), resolveItemId(itemName, itemAliases)].filter(
+      Boolean
+    )
+  )
+  let count = 0
+  for (const candidate of candidates) {
+    const candidateCount = Number(inventory[candidate])
+    if (Number.isFinite(candidateCount)) {
+      count = Math.max(count, candidateCount)
+    }
+  }
+  return count
 }
 
 export function createLimitRule(stageOption) {
@@ -26,53 +52,76 @@ export function createRatioMember() {
   return { stage: '', item_id: '', item_name: '', ratio: 0 }
 }
 
-export function evaluateLimitRule(rule, inventory = {}) {
+export function evaluateLimitRule(rule, inventory = {}, itemAliases = {}) {
   const conditions = (rule?.items || [])
-    .filter((item) => Number(item.limit) > 0 && item.item_id)
-    .map((item) => ({
-      item,
-      count: inventoryCount(item, inventory),
-      reached: inventoryCount(item, inventory) >= Number(item.limit)
-    }))
-  if (!rule?.enabled || conditions.length === 0) {
+    .filter((item) => Number(item.limit) > 0 && (item.item_id || item.item_name))
+    .map((item) => {
+      const count = inventoryCount(item, inventory, itemAliases)
+      return {
+        item,
+        count,
+        reached: count >= Number(item.limit)
+      }
+    })
+  if (rule?.enabled === false || conditions.length === 0) {
     return { active: false, reached: false, conditions }
   }
   const reached =
-    rule.operator === 'or'
+    String(rule.operator || 'and').toLowerCase() === 'or'
       ? conditions.some((condition) => condition.reached)
       : conditions.every((condition) => condition.reached)
   return { active: true, reached, conditions }
 }
 
-export function selectRatioMember(rule, inventory = {}, excludedStages = new Set()) {
-  if (!rule?.enabled) {
+export function selectRatioMember(
+  rule,
+  inventory = {},
+  excludedStages = new Set(),
+  stageOrder = [],
+  itemAliases = {}
+) {
+  if (rule?.enabled === false) {
     return null
   }
-  const candidates = (rule.members || [])
-    .filter(
-      (member) =>
-        member.stage &&
-        member.item_id &&
-        Number(member.ratio) > 0 &&
-        !excludedStages.has(member.stage)
-    )
-    .map((member, index) => ({
+  const stagePositions = new Map(stageOrder.map((stage, index) => [stage, index]))
+  const seenStages = new Set()
+  const candidates = []
+  for (const member of rule?.members || []) {
+    if (
+      !member.stage ||
+      seenStages.has(member.stage) ||
+      !(member.item_id || member.item_name) ||
+      Number(member.ratio) <= 0 ||
+      excludedStages.has(member.stage)
+    ) {
+      continue
+    }
+    seenStages.add(member.stage)
+    const count = inventoryCount(member, inventory, itemAliases)
+    candidates.push({
       member,
-      index,
-      count: inventoryCount(member, inventory),
-      score: inventoryCount(member, inventory) / Number(member.ratio)
-    }))
+      count,
+      score: count / Number(member.ratio),
+      stagePosition: stagePositions.get(member.stage) ?? Number.MAX_SAFE_INTEGER
+    })
+  }
   if (candidates.length < 2) {
     return null
   }
-  return candidates.reduce((best, candidate) => (candidate.score < best.score ? candidate : best))
+  return candidates.reduce((best, candidate) =>
+    candidate.score < best.score ||
+    (candidate.score === best.score && candidate.stagePosition < best.stagePosition)
+      ? candidate
+      : best
+  )
 }
 
 export function previewInventorySelection(
   stages = [],
   limitRules = [],
   ratioRules = [],
-  inventory = {}
+  inventory = {},
+  itemAliases = {}
 ) {
   const original = Array.isArray(stages) ? [...stages] : []
   const skippedStages = new Set()
@@ -84,7 +133,7 @@ export function previewInventorySelection(
     }
     const reached = limitRules
       .filter((rule) => rule?.stage === stage)
-      .some((rule) => evaluateLimitRule(rule, inventory).reached)
+      .some((rule) => evaluateLimitRule(rule, inventory, itemAliases).reached)
     if (reached) {
       skippedStages.add(stage)
       if (!limitSkipped.includes(stage)) {
@@ -112,7 +161,7 @@ export function previewInventorySelection(
         excludedStages.add(member.stage)
       }
     }
-    const selected = selectRatioMember(rule, inventory, excludedStages)
+    const selected = selectRatioMember(rule, inventory, excludedStages, original, itemAliases)
     if (!selected || !kept.includes(selected.member.stage)) {
       continue
     }
@@ -121,7 +170,7 @@ export function previewInventorySelection(
         .filter(
           (member) =>
             member.stage &&
-            member.item_id &&
+            (member.item_id || member.item_name) &&
             Number(member.ratio) > 0 &&
             kept.includes(member.stage) &&
             !claimedStages.has(member.stage)

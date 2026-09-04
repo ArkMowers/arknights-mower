@@ -112,6 +112,38 @@ class MaaStageInventoryTests(unittest.TestCase):
         self.assertEqual(result["stages"], ["ACT-A"])
         self.assertEqual(result["ratio_decisions"][0]["selected"], "ACT-A")
 
+    def test_ratio_score_tie_uses_weekly_plan_order(self):
+        result = select_stages_by_inventory(
+            ["ACT-B", "ACT-A"],
+            ratio_rules=[
+                {
+                    "members": [
+                        {"stage": "ACT-A", "item_id": "A", "ratio": 1},
+                        {"stage": "ACT-B", "item_id": "B", "ratio": 1},
+                    ]
+                }
+            ],
+            inventory={"A": 10, "B": 10},
+        )
+        self.assertEqual(result["stages"], ["ACT-B"])
+        self.assertEqual(result["ratio_decisions"][0]["selected"], "ACT-B")
+
+    def test_item_name_alias_matches_inventory_item_id(self):
+        for item in ({"item_id": "固源岩"}, {"item_name": "固源岩"}):
+            with self.subTest(item=item):
+                result = select_stages_by_inventory(
+                    ["1-7", "CE-6"],
+                    limit_rules=[
+                        {
+                            "stage": "1-7",
+                            "items": [{**item, "limit": 100}],
+                        }
+                    ],
+                    inventory={"30012": 100},
+                )
+                self.assertEqual(result["stages"], ["CE-6"])
+                self.assertEqual(result["limit_skipped"], ["1-7"])
+
     def test_zero_ratio_member_does_not_participate(self):
         result = select_stages_by_inventory(
             ["ACT-A", "ACT-B", "ACT-C"],
