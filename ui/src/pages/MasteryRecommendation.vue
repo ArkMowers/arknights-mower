@@ -165,9 +165,9 @@
               <template #header>
                 <n-space align="center" justify="space-between" style="width: 100%">
                   <n-space align="center" :size="8">
-                    <n-text strong>{{ rec.skill_name }} → M3</n-text>
+                    <n-text strong>{{ rec.skill_name }}</n-text>
                     <n-text depth="3" style="font-size: 12px"
-                      >Lv{{ rec.current_level + 7 }}→10</n-text
+                      >Lv{{ rec.current_level + 7 }} → 专精3级</n-text
                     >
                   </n-space>
                   <n-space :size="4">
@@ -255,7 +255,7 @@
           <n-tag size="small">{{ professionName(cd.op?.profession) }}</n-tag></n-text
         >
         <n-text
-          >技能: <n-text strong>{{ cd.rec?.skill_name }}</n-text> → M3 |
+          >技能: <n-text strong>{{ cd.rec?.skill_name }}</n-text> → 专精3级 |
           {{ formatTime(cd.rec?.total_time || 0) }}</n-text
         >
         <n-divider />
@@ -1408,7 +1408,7 @@ async function doAddTask() {
   const { op, rec } = cd
   try {
     // #71：一键专精走 DB 计划创建 API（POST /mastery-plan），不再发原始 /task「技能专精」
-    // （死流：server 只认 DB 计划）。target_level 由服务端默认专三，与确认弹窗「→ M3」一致。
+    // （死流：server 只认 DB 计划）。target_level 由服务端默认专三，与确认弹窗「→ 专精3级」一致。
     const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
       items: [{ name: op.name, skill_index: rec.skill_index }]
     })
