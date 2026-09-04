@@ -17,8 +17,12 @@ from arknights_mower.solvers.base_schedule import (  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
-from arknights_mower.utils.recognize import Scene  # noqa: E402
-from arknights_mower.utils.scheduler_task import TaskTypes, find_next_task  # noqa: E402
+from arknights_mower.utils.recognize import RecognizeError, Scene  # noqa: E402
+from arknights_mower.utils.scheduler_task import (  # noqa: E402
+    SchedulerTask,
+    TaskTypes,
+    find_next_task,
+)
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass
@@ -1694,6 +1698,171 @@ class TestGroupToFixPlan(unittest.TestCase):
         self.assertIn("train", fix_plan)
         self.assertEqual(fix_plan["train"][0], "褐果")
         self.assertNotIn("central", fix_plan)
+
+
+class TestDroneAccelerate(unittest.TestCase):
+    """#907：无人机加速面板首次点击未生效时不应误消费跑单任务。
+
+    复现点：BaseSchedulerSolver.drone() 点击 bill_accelerate 后未确认加速面板
+    打开就继续操作 all_in，首次点击未生效时会在详情页误触，甚至把未执行的跑单
+    当成已完成。修复后由 _tap_drone_accelerate 先确认面板出现（有界重试）再操作，
+    持续失败则抛异常，上层据此保留任务并按既有策略退避。
+    """
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_tap_drone_accelerate_retries_when_first_attempt_fails(self):
+        """首次点击 bill_accelerate 未打开面板时，重试后成功。"""
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock()
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        accelerate_scope = ((100, 100), (200, 200))
+        all_in_scope = ((300, 300), (400, 400))
+
+        find_results = [
+            accelerate_scope,  # find(bill_accelerate)
+            None,  # find(all_in) -> 面板未打开
+            accelerate_scope,  # 重试前重新识别 bill_accelerate
+            all_in_scope,  # find(all_in) -> 面板已打开
+        ]
+        taps = []
+
+        with patch.object(solver, "find", side_effect=find_results):
+            with patch.object(
+                solver, "tap", side_effect=lambda poly, **kw: taps.append(poly)
+            ):
+                result = solver._tap_drone_accelerate("bill_accelerate", "all_in")
+
+        self.assertEqual(result, all_in_scope)
+        # 两次点击都是加速按钮：一次首次、一次重试
+        self.assertEqual(taps, [accelerate_scope, accelerate_scope])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_tap_drone_accelerate_raises_after_bounded_retries(self):
+        """持续无法打开面板时，重试有界且抛出异常，上层据此保留任务。"""
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock()
+        accelerate_scope = ((100, 100), (200, 200))
+        taps = []
+
+        def fake_find(res, *args, **kwargs):
+            return accelerate_scope if res == "bill_accelerate" else None
+
+        with patch.object(solver, "find", side_effect=fake_find):
+            with patch.object(
+                solver, "tap", side_effect=lambda poly, **kw: taps.append(poly)
+            ):
+                with self.assertRaises(RecognizeError):
+                    solver._tap_drone_accelerate(
+                        "bill_accelerate", "all_in", max_retry=3
+                    )
+
+        # 有界重试：加速按钮只被点击 max_retry 次
+        self.assertEqual(len(taps), 3)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_tap_drone_accelerate_confirms_all_in_when_button_disappears(self):
+        """加速按钮消失（面板已打开）时，确认 all_in 而非直接判失败。
+
+        面板打开后加速按钮会被遮挡，此时不应把「识别不到按钮」当作失败，
+        而是再确认一次 all_in。
+        """
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock()
+        accelerate_scope = ((100, 100), (200, 200))
+        all_in_scope = ((300, 300), (400, 400))
+
+        find_sequence = [
+            accelerate_scope,  # find(bill_accelerate) 初始命中
+            None,  # find(all_in) -> 面板瞬时未识别到
+            None,  # find(bill_accelerate) -> 按钮消失（面板已打开）
+            all_in_scope,  # 再确认 find(all_in) -> 面板已打开
+        ]
+        taps = []
+
+        with patch.object(solver, "find", side_effect=find_sequence):
+            with patch.object(solver, "sleep"):
+                with patch.object(
+                    solver, "tap", side_effect=lambda poly, **kw: taps.append(poly)
+                ):
+                    result = solver._tap_drone_accelerate("bill_accelerate", "all_in")
+
+        self.assertEqual(result, all_in_scope)
+        self.assertEqual(taps, [accelerate_scope])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_drone_factory_route_confirms_panel_before_accelerate(self):
+        """制造站加速前同样确认加速面板打开（#907 建议一并检查制造站）。"""
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock()
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        solver.recog.gray = "gray"
+        solver.op_data = MagicMock()
+        solver.op_data.run_order_rooms = []
+        solver.digit_reader = MagicMock()
+        solver.digit_reader.get_drone.return_value = 150
+        accelerate_scope = ((100, 100), (200, 200))
+        all_in_scope = ((300, 300), (400, 400))
+
+        with (
+            patch.object(solver, "enter_room"),
+            patch.object(
+                solver,
+                "find",
+                side_effect=lambda res, **kw: (
+                    accelerate_scope if res == "factory_accelerate" else None
+                ),
+            ),
+            patch.object(solver, "_wait_drone_interface"),
+            patch.object(solver, "tap"),
+            patch.object(
+                solver, "_tap_drone_accelerate", return_value=all_in_scope
+            ) as mock_helper,
+            patch.object(solver, "scene_graph_navigation"),
+        ):
+            solver.drone("factory", not_customize=True)
+
+        # 制造站走确认面板的 helper，避免在详情页误触
+        mock_helper.assert_called_once_with("factory_accelerate", "all_in")
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_infra_main_keeps_run_order_task_alive_across_two_passes(self):
+        """#907：无人机加速失败后跑单任务不被消费、计划保持非空。
+
+        真实路径是 agent_arrange_room 会 del plan[room] 清空 self.task.plan；若
+        drone() 失败仅保留任务而不恢复计划，下一轮该空计划任务会绕过排班分支在
+        infra_main 被误消费。本测试连续两轮验证任务留存且计划被恢复。
+        """
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_plan={"trading_1": ["干员"]},
+            task_type=TaskTypes.RUN_ORDER,
+            adjusted=True,  # 强制走「开始插拔」无人机跑单分支
+        )
+        solver = BaseSchedulerSolver()
+        solver.error = False
+        solver.tasks = [task]
+
+        def fake_arrange_room(new_plan, room, plan, get_time=False):
+            del plan[room]  # 与真实 agent_arrange_room 一致：清空 self.task.plan
+            return {room: ["干员"]}
+
+        for _ in range(2):  # 连续两轮，验证第二轮不被误消费
+            solver.task = task
+            solver.refresh_connecting = True  # 跳过 run_order_grandet_mode 提前返回
+            with (
+                patch.object(solver, "find", return_value=((0, 0), (10, 10))),
+                patch.object(
+                    solver, "agent_arrange_room", side_effect=fake_arrange_room
+                ),
+                patch.object(solver, "drone", side_effect=RecognizeError("boom")),
+                patch.object(base_schedule, "save_exception"),
+            ):
+                solver.infra_main()
+            self.assertEqual(solver.tasks, [task])  # 任务未被消费
+            self.assertEqual(task.plan, {"trading_1": ["干员"]})  # 计划已恢复
+        self.assertTrue(solver.error)  # 失败已置位，走既有退避
 
 
 if __name__ == "__main__":
