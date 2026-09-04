@@ -193,6 +193,45 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(server.maa_update_check["id"], "")
 
+    def test_maa_update_start_rejects_equal_checked_version(self):
+        target = str(Path(self.target).expanduser())
+        channel = server.config.conf.maa_update_channel
+        check_id = server._record_update_check(
+            server.maa_update_check,
+            server.maa_update_check_lock,
+            target=target,
+            source="github",
+            channel=channel,
+            installed_version="v6.18.0",
+            latest_version="v6.18.0",
+        )
+        with (
+            patch.object(server, "__system__", "darwin"),
+            patch.object(server, "_mower_busy_response", return_value=None),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.read_installed_version",
+                return_value="v6.18.0",
+            ),
+        ):
+            response = self.client.post(
+                "/maa-update/start",
+                json={
+                    "maa_path": target,
+                    "source": "github",
+                    "channel": channel,
+                    "check_id": check_id,
+                },
+                headers=self.headers,
+            )
+
+        data = response.get_json()
+        self.assertFalse(data["ok"])
+        self.assertIn("发现新版本后再更新", data["message"])
+
     def test_resource_check_and_start_use_separate_check_result(self):
         current = {"version": "2026-09-03 01:00:00.000", "release_note": ""}
         release = MaaResourceRelease(
@@ -244,6 +283,42 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         data = response.get_json()
         self.assertFalse(data["ok"])
         self.assertIn("先检查 Maa 资源更新", data["message"])
+
+    def test_resource_update_start_rejects_equal_checked_version(self):
+        target = str(Path(self.target).expanduser())
+        version = "2026-09-04 01:07:54.000"
+        check_id = server._record_update_check(
+            server.maa_resource_update_check,
+            server.maa_resource_update_check_lock,
+            target=target,
+            source="github",
+            current_version=version,
+            latest_version=version,
+        )
+        with (
+            patch.object(server, "__system__", "darwin"),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                return_value={"version": version, "release_note": ""},
+            ),
+        ):
+            response = self.client.post(
+                "/maa-resource-update/start",
+                json={
+                    "maa_path": target,
+                    "source": "github",
+                    "check_id": check_id,
+                },
+                headers=self.headers,
+            )
+
+        data = response.get_json()
+        self.assertFalse(data["ok"])
+        self.assertIn("发现新版本后再更新", data["message"])
 
 
 if __name__ == "__main__":

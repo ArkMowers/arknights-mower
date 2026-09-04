@@ -240,6 +240,19 @@ function reset_maa_resource_update_check() {
   maa_resource_release_note.value = ''
 }
 
+function normalize_maa_version(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^v/i, '')
+    .toLowerCase()
+}
+
+function versions_are_equal(left, right, normalizer = (value) => String(value || '').trim()) {
+  const normalized_left = normalizer(left)
+  const normalized_right = normalizer(right)
+  return Boolean(normalized_left && normalized_right && normalized_left === normalized_right)
+}
+
 watch(
   maa_mirrorchyan_token,
   (token, previousToken = '') => {
@@ -277,6 +290,12 @@ const maa_resource_update_checking = computed(
   () => maa_resource_update_check.value.status === 'checking'
 )
 const maa_path_missing = computed(() => !String(maa_path.value || '').trim())
+const maa_update_versions_equal = computed(() =>
+  versions_are_equal(maa_latest_version.value, maa_installed_version.value, normalize_maa_version)
+)
+const maa_resource_versions_equal = computed(() =>
+  versions_are_equal(maa_resource_latest_version.value, maa_resource_current_version.value)
+)
 const maa_managed_operation_label = computed(() => (maa_installed.value ? '更新' : '下载'))
 const maa_job_operation_label = computed(() =>
   maa_update_job.value.operation === 'update' ? '更新' : '下载'
@@ -331,6 +350,7 @@ const maa_update_action_disabled = computed(() => {
   if (maa_updating.value || maa_resource_updating.value || maa_update_checking.value) return true
   if (maa_update_source.value === 'mirrorchyan' && !mirrorchyan_cdk_ready.value) return true
   if (!maa_installed.value) return false
+  if (maa_update_versions_equal.value) return true
   return !maa_update_check.value.available || !maa_update_check.value.id
 })
 const maa_resource_update_action_disabled = computed(
@@ -338,6 +358,7 @@ const maa_resource_update_action_disabled = computed(
     maa_resource_updating.value ||
     maa_resource_update_checking.value ||
     maa_updating.value ||
+    maa_resource_versions_equal.value ||
     !maa_resource_update_check.value.available ||
     !maa_resource_update_check.value.id ||
     (maa_update_source.value === 'mirrorchyan' && !mirrorchyan_cdk_ready.value)
@@ -524,11 +545,15 @@ async function check_maa_update() {
     }
     maa_installed_version.value = data.installed_version || maa_installed_version.value
     maa_latest_version.value = data.latest?.tag || ''
+    const available = Boolean(data.available) && !maa_update_versions_equal.value
     maa_update_check.value = {
       status: 'success',
-      message: data.message || (data.available ? '发现 Maa 新版本' : '当前 Maa 已是最新版本'),
-      available: Boolean(data.available),
-      id: data.check_id || ''
+      message:
+        !available && maa_update_versions_equal.value
+          ? '当前 Maa 已是最新版本'
+          : data.message || (available ? '发现 Maa 新版本' : '当前 Maa 已是最新版本'),
+      available,
+      id: available ? data.check_id || '' : ''
     }
   } catch (error) {
     maa_update_check.value.status = 'error'
@@ -576,12 +601,15 @@ async function check_maa_resource_update() {
     maa_resource_current_version.value = data.current?.version || maa_resource_current_version.value
     maa_resource_latest_version.value = data.latest?.version || ''
     maa_resource_release_note.value = data.latest?.release_note || ''
+    const available = Boolean(data.available) && !maa_resource_versions_equal.value
     maa_resource_update_check.value = {
       status: 'success',
       message:
-        data.message || (data.available ? '发现 Maa 资源新版本' : '当前 Maa 资源已是最新版本'),
-      available: Boolean(data.available),
-      id: data.check_id || ''
+        !available && maa_resource_versions_equal.value
+          ? '当前 Maa 资源已是最新版本'
+          : data.message || (available ? '发现 Maa 资源新版本' : '当前 Maa 资源已是最新版本'),
+      available,
+      id: available ? data.check_id || '' : ''
     }
   } catch (error) {
     maa_resource_update_check.value.status = 'error'

@@ -210,6 +210,13 @@ def _clear_update_check(check: dict, lock: RLock) -> None:
         check["id"] = ""
 
 
+def _checked_latest_version(check: dict, lock: RLock, check_id: str) -> str:
+    with lock:
+        if not check_id or check.get("id") != check_id:
+            return ""
+        return str(check.get("latest_version") or "")
+
+
 def _consume_update_check(
     check: dict,
     lock: RLock,
@@ -1130,6 +1137,7 @@ def start_maa_update():
     from arknights_mower.utils.maa_update import (
         MaaUpdateError,
         has_maa_installation,
+        is_maa_version_newer,
         normalize_update_channel,
         read_installed_version,
     )
@@ -1182,19 +1190,31 @@ def start_maa_update():
             thread = maa_update_job.get("thread")
             if thread is not None and thread.is_alive():
                 return {"ok": False, "message": f"MAA {operation}正在进行中"}
-            if installed and not _consume_update_check(
-                maa_update_check,
-                maa_update_check_lock,
-                str(payload.get("check_id") or ""),
-                target=target,
-                source=source,
-                channel=channel,
-                installed_version=read_installed_version(target),
-            ):
-                return {
-                    "ok": False,
-                    "message": "请先检查 Maa 更新，发现新版本后再更新",
-                }
+            if installed:
+                check_id = str(payload.get("check_id") or "")
+                installed_version = read_installed_version(target)
+                checked_latest = _checked_latest_version(
+                    maa_update_check,
+                    maa_update_check_lock,
+                    check_id,
+                )
+                try:
+                    newer = is_maa_version_newer(checked_latest, installed_version)
+                except MaaUpdateError:
+                    newer = False
+                if not newer or not _consume_update_check(
+                    maa_update_check,
+                    maa_update_check_lock,
+                    check_id,
+                    target=target,
+                    source=source,
+                    channel=channel,
+                    installed_version=installed_version,
+                ):
+                    return {
+                        "ok": False,
+                        "message": "请先检查 Maa 更新，发现新版本后再更新",
+                    }
             thread = Thread(
                 target=_run_maa_update,
                 args=(target, source, mirror_token, __system__, channel),
@@ -1380,7 +1400,11 @@ def check_maa_resource_update():
 @app.route("/maa-resource-update/start", methods=["POST"])
 @require_token
 def start_maa_resource_update():
-    from arknights_mower.utils.maa_update import has_maa_installation
+    from arknights_mower.utils.maa_resource_update import (
+        parse_resource_version,
+        read_maa_resource_info,
+    )
+    from arknights_mower.utils.maa_update import MaaUpdateError, has_maa_installation
 
     if __system__ not in {"darwin", "linux"}:
         return {"ok": False, "message": "请在 Maa 主程序中更新 Maa 资源"}
@@ -1411,17 +1435,26 @@ def start_maa_resource_update():
         with maa_resource_update_lock:
             if _job_running(maa_resource_update_job):
                 return {"ok": False, "message": "Maa 资源更新正在进行中"}
-            from arknights_mower.utils.maa_resource_update import (
-                read_maa_resource_info,
-            )
-
-            if not _consume_update_check(
+            check_id = str(payload.get("check_id") or "")
+            current_version = read_maa_resource_info(target)["version"]
+            checked_latest = _checked_latest_version(
                 maa_resource_update_check,
                 maa_resource_update_check_lock,
-                str(payload.get("check_id") or ""),
+                check_id,
+            )
+            try:
+                newer = parse_resource_version(checked_latest) > parse_resource_version(
+                    current_version
+                )
+            except MaaUpdateError:
+                newer = False
+            if not newer or not _consume_update_check(
+                maa_resource_update_check,
+                maa_resource_update_check_lock,
+                check_id,
                 target=target,
                 source=source,
-                current_version=read_maa_resource_info(target)["version"],
+                current_version=current_version,
             ):
                 return {
                     "ok": False,
