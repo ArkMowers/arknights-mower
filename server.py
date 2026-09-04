@@ -569,6 +569,7 @@ def load_config():
             )
 
             manager = get_weekly_plan_manager()
+            manager.maybe_switch_expired_activity_plan()
             manager.sync_active_plan_to_config()
         except Exception:
             logger.exception("Failed to sync active weekly plan before returning /conf")
@@ -2227,7 +2228,28 @@ def get_weekly_plans():
     from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
 
     manager = get_weekly_plan_manager()
-    return {"plans": manager.get_plans()}
+    return {
+        "plans": manager.get_plans(),
+        "activity_fallbacks": manager.get_activity_fallbacks(),
+    }
+
+
+@app.route("/weekly-plans/activity-fallback", methods=["POST"])
+@require_token
+def update_weekly_plan_activity_fallback():
+    from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
+
+    try:
+        req = request.json or {}
+        manager = get_weekly_plan_manager()
+        source = str(req.get("source", "")).strip()
+        target = str(req.get("target", "")).strip()
+        if not manager.set_activity_fallback(source, target):
+            return {"error": "Invalid activity fallback plan binding"}, 400
+        return {"activity_fallbacks": manager.get_activity_fallbacks()}
+    except Exception as e:
+        logger.exception(f"Failed to update weekly plan activity fallback: {e}")
+        return {"error": str(e)}, 500
 
 
 @app.route("/weekly-plans/active", methods=["POST"])

@@ -44,6 +44,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
         solver.stages = []
 
         with (
+            patch.object(solver, "maybe_switch_expired_activity_plan") as auto_switch,
             patch.object(base_schedule.config, "conf", _conf()),
             patch.object(base_schedule, "get_server_weekday", return_value=0),
             patch.object(base_schedule, "cultivateDepotSolver") as refresh_solver,
@@ -55,6 +56,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
             solver.append_maa_task("Fight")
 
         refresh_solver.return_value.start.assert_called_once_with()
+        auto_switch.assert_called_once_with()
         solver.MAA.append_task.assert_called_once()
         task_type, task_config = solver.MAA.append_task.call_args.args
         self.assertEqual(task_type, "Fight")
@@ -66,6 +68,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
         solver = BaseSchedulerSolver()
 
         with (
+            patch.object(solver, "maybe_switch_expired_activity_plan") as auto_switch,
             patch.object(base_schedule.config, "conf", _conf()),
             patch.object(base_schedule, "get_server_weekday", return_value=0),
             patch.object(base_schedule, "cultivateDepotSolver"),
@@ -76,6 +79,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
         ):
             stages = solver.mower_stage_plan()
 
+        auto_switch.assert_called_once_with()
         self.assertEqual(stages, ["CE-6"])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)

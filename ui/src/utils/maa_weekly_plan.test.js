@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildStageOptions,
   buildTableStageOptions,
   isStageAvailableOnWeekday,
+  mergeTableStageOrder,
   normalizeCreatedStage,
   reorderWeeklyPlanStages,
   setStageForWeekday,
@@ -20,9 +22,42 @@ describe('刷理智周计划双视图同步', () => {
       value: 'ACT-9',
       label: 'ACT-9:材料'
     })
-    expect(options[0].value).toBe('ACT-9')
+    expect(options[0].value).toBe('Annihilation')
+    expect(options[1].value).toBe('ACT-9')
     expect(options.map((option) => option.value)).toContain('CUSTOM-1')
     expect(options.filter((option) => option.value === 'ACT-9')).toHaveLength(1)
+  })
+
+  it('列表和表格默认将当期剿灭排在活动关卡之前', () => {
+    const activity = [{ value: 'ACT-9', label: 'ACT-9:材料' }]
+    expect(
+      buildStageOptions(activity)
+        .slice(0, 2)
+        .map((option) => option.value)
+    ).toEqual(['Annihilation', 'ACT-9'])
+    expect(
+      buildTableStageOptions(activity)
+        .slice(0, 2)
+        .map((option) => option.value)
+    ).toEqual(['Annihilation', 'ACT-9'])
+  })
+
+  it('新活动插入当期剿灭之后，同时保留用户已有拖动顺序', () => {
+    const options = buildTableStageOptions([{ value: 'ACT-9', label: 'ACT-9:材料' }])
+    const ordered = mergeTableStageOrder(options, ['Annihilation', '1-7', 'CE-6'], ['ACT-9'])
+    expect(ordered.slice(0, 4).map((option) => option.value)).toEqual([
+      'Annihilation',
+      'ACT-9',
+      '1-7',
+      'CE-6'
+    ])
+
+    const userOrdered = mergeTableStageOrder(options, ['1-7', 'Annihilation', 'ACT-9'], ['ACT-9'])
+    expect(userOrdered.slice(0, 3).map((option) => option.value)).toEqual([
+      '1-7',
+      'Annihilation',
+      'ACT-9'
+    ])
   })
 
   it('点击表格格子直接更新列表计划使用的同一份 stage 数组', () => {

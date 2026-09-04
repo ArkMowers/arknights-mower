@@ -1,6 +1,7 @@
 import unittest
 
 from arknights_mower.utils.weekly_stage import (
+    activity_end_ts_for_stages,
     build_options,
     select_latest_activity_stages,
 )
@@ -290,6 +291,18 @@ class TestSelectLatestActivityStages(unittest.TestCase):
         self.assertEqual(label["TO-9"], "TO-9:晶体元件(库存:190)")
         self.assertEqual(label["TO-4"], "TO-4:固源岩(库存:443)")
         self.assertEqual(label["TO-5"], "TO-5:装置(库存:294)")
+
+    def test_activity_end_time_for_plan_uses_latest_matching_window(self):
+        stages = [
+            _stage("OLD-1", "旧活动", start=100, end=200),
+            _stage("NEW-1", "新活动", start=300, end=500),
+            _stage("MAIN-1", "常驻", stage_type="MAIN"),
+        ]
+        self.assertEqual(
+            activity_end_ts_for_stages(stages, ["OLD-1", "NEW-1", "MAIN-1"]),
+            500,
+        )
+        self.assertIsNone(activity_end_ts_for_stages(stages, ["MAIN-1", "UNKNOWN"]))
 
 
 class TestBuildOptions(unittest.TestCase):

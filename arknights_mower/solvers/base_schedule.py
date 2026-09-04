@@ -3838,6 +3838,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if type in ["StartUp", "Visit"]:
             self.MAA.append_task(type)
         elif type == "Fight":
+            self.maybe_switch_expired_activity_plan()
             conf = config.conf
             server_weekday = get_server_weekday()
             _plan = conf.maa_weekly_plan[server_weekday]
@@ -3870,6 +3871,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     },
                 )
                 self.stages.append(stage)
+
         elif type == "Mall":
             conf = config.conf
             self.MAA.append_task(
@@ -3897,6 +3899,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "specialaccess": config.conf.maa_specialaccess,
                 },
             )
+
+    def maybe_switch_expired_activity_plan(self):
+        """刷理智实际选关前，根据资源活动结束时间切换周计划方案。"""
+        try:
+            from arknights_mower.utils.config.weekly_plan_loader import (
+                get_weekly_plan_manager,
+            )
+
+            return get_weekly_plan_manager().maybe_switch_expired_activity_plan()
+        except Exception:
+            logger.exception("检测活动结束并切换刷理智周计划失败，继续使用当前方案")
+            return None
 
     def maa_stop(self, stop=True):
         if stop:
@@ -4177,6 +4191,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return selection["stages"]
 
     def mower_stage_plan(self) -> list[str]:
+        self.maybe_switch_expired_activity_plan()
         plan = config.conf.maa_weekly_plan[get_server_weekday()]
         stages = []
         for stage in plan.stage:

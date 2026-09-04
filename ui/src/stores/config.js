@@ -24,6 +24,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
+  const maa_weekly_plan_activity_fallbacks = ref({})
   const maa_stage_inventory_enable = ref(false)
   const maa_stage_limit_rules = ref([])
   const maa_stage_ratio_rules = ref([])
@@ -216,6 +217,11 @@ export const useConfigStore = defineStore('config', () => {
     maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
       ? listResponse.data.plans
       : []
+    maa_weekly_plan_activity_fallbacks.value =
+      listResponse.data.activity_fallbacks &&
+      typeof listResponse.data.activity_fallbacks === 'object'
+        ? listResponse.data.activity_fallbacks
+        : {}
 
     if (!maa_weekly_plan_active.value) {
       await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
@@ -279,10 +285,34 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
         ? listResponse.data.plans
         : []
+      maa_weekly_plan_activity_fallbacks.value =
+        listResponse.data.activity_fallbacks &&
+        typeof listResponse.data.activity_fallbacks === 'object'
+          ? listResponse.data.activity_fallbacks
+          : {}
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
     }
+  }
+
+  async function update_weekly_plan_activity_fallback(target) {
+    const source = maa_weekly_plan_active.value
+    if (!source) {
+      throw new Error('请先选择周计划方案')
+    }
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/weekly-plans/activity-fallback`,
+      {
+        source,
+        target: typeof target === 'string' ? target.trim() : ''
+      }
+    )
+    maa_weekly_plan_activity_fallbacks.value =
+      response.data.activity_fallbacks && typeof response.data.activity_fallbacks === 'object'
+        ? response.data.activity_fallbacks
+        : {}
+    return response.data
   }
 
   function normalizeLaunchConfig(config = {}) {
@@ -584,6 +614,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_weekly_plan,
     maa_weekly_plan_options,
     maa_weekly_plan_active,
+    maa_weekly_plan_activity_fallbacks,
     maa_stage_inventory_enable,
     maa_stage_limit_rules,
     maa_stage_ratio_rules,
@@ -681,6 +712,7 @@ export const useConfigStore = defineStore('config', () => {
     load_weekly_plan_state,
     update_weekly_plan_active,
     sync_active_weekly_plan,
-    delete_weekly_plan
+    delete_weekly_plan,
+    update_weekly_plan_activity_fallback
   }
 })

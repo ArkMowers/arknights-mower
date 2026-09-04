@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 
-const props = defineProps({
+defineProps({
   compact: {
     type: Boolean,
     default: false
@@ -12,12 +12,19 @@ const props = defineProps({
 })
 
 const store = useConfigStore()
-const { maa_weekly_plan, maa_weekly_plan_active, maa_weekly_plan_options } = storeToRefs(store)
-const { update_weekly_plan_active, delete_weekly_plan } = store
+const {
+  maa_weekly_plan,
+  maa_weekly_plan_active,
+  maa_weekly_plan_options,
+  maa_weekly_plan_activity_fallbacks
+} = storeToRefs(store)
+const { update_weekly_plan_active, delete_weekly_plan, update_weekly_plan_activity_fallback } =
+  store
 
 const loading = ref(false)
 const error = ref('')
 const localValue = ref('')
+const localFallbackValue = ref(null)
 
 watch(
   maa_weekly_plan_active,
@@ -25,6 +32,14 @@ watch(
     localValue.value = value || ''
   },
   { immediate: true }
+)
+
+watch(
+  [maa_weekly_plan_active, maa_weekly_plan_activity_fallbacks],
+  ([active, fallbacks]) => {
+    localFallbackValue.value = fallbacks?.[active] || null
+  },
+  { immediate: true, deep: true }
 )
 
 const options = computed(() =>
@@ -36,6 +51,9 @@ const options = computed(() =>
 
 const canDelete = computed(
   () => maa_weekly_plan_options.value.length > 1 && Boolean(maa_weekly_plan_active.value)
+)
+const fallbackOptions = computed(() =>
+  options.value.filter((option) => option.value !== maa_weekly_plan_active.value)
 )
 
 function handleInputKeydown(event) {
@@ -97,6 +115,21 @@ async function handleDelete() {
     loading.value = false
   }
 }
+
+async function handleFallback(value) {
+  loading.value = true
+  error.value = ''
+  try {
+    await update_weekly_plan_activity_fallback(value || '')
+    localFallbackValue.value = value || null
+  } catch (e) {
+    error.value = e?.response?.data?.error || e?.message || String(e)
+    localFallbackValue.value =
+      maa_weekly_plan_activity_fallbacks.value?.[maa_weekly_plan_active.value] || null
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
@@ -126,6 +159,26 @@ async function handleDelete() {
         <n-icon :component="Close" />
       </template>
     </n-button>
+    <div v-if="fallbackOptions.length" class="weekly-plan-label fallback-label">
+      {{ compact ? '结束后' : '活动结束后' }}
+    </div>
+    <n-select
+      v-if="fallbackOptions.length"
+      :value="localFallbackValue"
+      class="weekly-plan-input"
+      :options="fallbackOptions"
+      :loading="loading"
+      clearable
+      placeholder="自动切换到方案"
+      @update:value="handleFallback"
+    />
+    <span
+      v-if="fallbackOptions.length"
+      class="fallback-note"
+      title="当前方案包含的资源活动关卡全部结束后，在实际刷理智前自动切换"
+    >
+      自动
+    </span>
     <div v-if="error" class="selector-error">{{ error }}</div>
   </div>
 </template>
@@ -140,7 +193,7 @@ async function handleDelete() {
 }
 
 .weekly-plan-row.compact {
-  grid-template-columns: 40px minmax(0, 1fr) 32px;
+  grid-template-columns: 48px minmax(0, 1fr) 32px;
 }
 
 .weekly-plan-label {
@@ -153,6 +206,16 @@ async function handleDelete() {
 
 .delete-plan-button {
   justify-self: end;
+}
+
+.fallback-label,
+.fallback-note {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.fallback-note {
+  text-align: center;
 }
 
 .selector-error {

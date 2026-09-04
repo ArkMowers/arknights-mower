@@ -4,10 +4,12 @@ import { computed, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { useConfigStore } from '@/stores/config'
 import {
+  ANNIHILATION_STAGE,
   WEEKDAYS,
   buildTableStageOptions,
   createStageOption,
   isStageAvailableOnWeekday,
+  mergeTableStageOrder,
   reorderWeeklyPlanStages,
   setStageForWeekday,
   splitStageInventoryLabel
@@ -30,6 +32,8 @@ const { maa_weekly_plan } = storeToRefs(store)
 const manuallyAddedOptions = ref([])
 const stageToAdd = ref(null)
 const stageOrderStorageKey = 'maa-weekly-plan-table-stage-order'
+const stageOrderVersionStorageKey = 'maa-weekly-plan-table-stage-order-version'
+const stageOrderVersion = 'annihilation-first-v1'
 
 function loadSavedStageOrder() {
   try {
@@ -42,6 +46,8 @@ function loadSavedStageOrder() {
 
 const savedStageOrder = loadSavedStageOrder()
 const sortableStageOptions = ref([])
+let needsDefaultOrderMigration =
+  window.localStorage.getItem(stageOrderVersionStorageKey) !== stageOrderVersion
 
 const currentWeekdayIndex = computed(() => {
   const day = new Date().getDay()
@@ -62,23 +68,22 @@ const availableStageOptions = computed(() =>
 watch(
   availableStageOptions,
   (options) => {
-    const optionsByValue = new Map(options.map((option) => [option.value, option]))
-    const activityValues = new Set(props.latestActivityOptions.map((option) => option.value))
-    const currentOrder = sortableStageOptions.value.length
+    let currentOrder = sortableStageOptions.value.length
       ? sortableStageOptions.value.map((option) => option.value)
       : savedStageOrder
-    const existingOptions = []
-    for (const value of currentOrder) {
-      const option = optionsByValue.get(value)
-      if (option) {
-        existingOptions.push(option)
-        optionsByValue.delete(value)
-      }
+    if (needsDefaultOrderMigration) {
+      currentOrder = [
+        ANNIHILATION_STAGE,
+        ...currentOrder.filter((value) => value !== ANNIHILATION_STAGE)
+      ]
+      needsDefaultOrderMigration = false
+      window.localStorage.setItem(stageOrderVersionStorageKey, stageOrderVersion)
     }
-    const missingOptions = [...optionsByValue.values()]
-    const newActivityOptions = missingOptions.filter((option) => activityValues.has(option.value))
-    const otherNewOptions = missingOptions.filter((option) => !activityValues.has(option.value))
-    sortableStageOptions.value = [...newActivityOptions, ...existingOptions, ...otherNewOptions]
+    sortableStageOptions.value = mergeTableStageOrder(
+      options,
+      currentOrder,
+      props.latestActivityOptions.map((option) => option.value)
+    )
   },
   { immediate: true }
 )
@@ -179,7 +184,7 @@ function applyStageOrder() {
         @update:value="addStageRow"
       />
       <span class="table-editor-hint">
-        活动关卡首次出现时默认置顶，可拖动把手调整；表格只选择关卡
+        当期剿灭默认置顶，活动关卡紧随其后；可拖动把手调整，表格只选择关卡
       </span>
     </div>
 

@@ -24,6 +24,7 @@ export const STAGE_DISPLAY_NAMES = {
 }
 
 export const PRESET_STAGES = Object.keys(STAGE_DISPLAY_NAMES)
+export const ANNIHILATION_STAGE = 'Annihilation'
 
 const STAGE_VALUE_MAP = Object.fromEntries(
   Object.entries(STAGE_DISPLAY_NAMES).map(([value, label]) => [label, value])
@@ -118,8 +119,12 @@ export function dedupeStageOptions(options) {
 
 export function buildStageOptions(latestActivityOptions = []) {
   return dedupeStageOptions([
+    {
+      label: STAGE_DISPLAY_NAMES[ANNIHILATION_STAGE],
+      value: ANNIHILATION_STAGE
+    },
     ...latestActivityOptions,
-    ...PRESET_STAGES.map((value) => ({
+    ...PRESET_STAGES.filter((value) => value !== ANNIHILATION_STAGE).map((value) => ({
       label: value ? `${STAGE_DISPLAY_NAMES[value]} (${value})` : STAGE_DISPLAY_NAMES[value],
       value
     }))
@@ -150,14 +155,58 @@ export function buildTableStageOptions(
       .map((option) => [option.value, option])
   )
   const options = dedupeStageOptions([
+    { label: formatStageLabel(ANNIHILATION_STAGE), value: ANNIHILATION_STAGE },
     ...latestActivityOptions,
     ...collectConfiguredStageOptions(weeklyPlan),
     ...manuallyAddedOptions,
-    ...PRESET_STAGES.map((value) => ({ label: formatStageLabel(value), value }))
+    ...PRESET_STAGES.filter((value) => value !== ANNIHILATION_STAGE).map((value) => ({
+      label: formatStageLabel(value),
+      value
+    }))
   ])
   return options.map((option) =>
     latestByValue.has(option.value) ? { ...option, ...latestByValue.get(option.value) } : option
   )
+}
+
+export function mergeTableStageOrder(options, currentOrder = [], activityValues = []) {
+  const optionsByValue = new Map(options.map((option) => [option.value, option]))
+  const existingOptions = []
+  for (const value of currentOrder) {
+    const option = optionsByValue.get(value)
+    if (option) {
+      existingOptions.push(option)
+      optionsByValue.delete(value)
+    }
+  }
+
+  const activitySet = new Set(activityValues)
+  const newActivityOptions = []
+  for (const value of activityValues) {
+    const option = optionsByValue.get(value)
+    if (option) {
+      newActivityOptions.push(option)
+      optionsByValue.delete(value)
+    }
+  }
+  const newAnnihilationOption = optionsByValue.get(ANNIHILATION_STAGE)
+  if (newAnnihilationOption) {
+    optionsByValue.delete(ANNIHILATION_STAGE)
+  }
+
+  const ordered = [...existingOptions]
+  if (newAnnihilationOption) {
+    ordered.unshift(newAnnihilationOption)
+  }
+  const annihilationIndex = ordered.findIndex((option) => option.value === ANNIHILATION_STAGE)
+  ordered.splice(annihilationIndex >= 0 ? annihilationIndex + 1 : 0, 0, ...newActivityOptions)
+
+  for (const option of optionsByValue.values()) {
+    if (!activitySet.has(option.value)) {
+      ordered.push(option)
+    }
+  }
+  return ordered
 }
 
 export function isStageAvailableOnWeekday(stage, weekday) {
