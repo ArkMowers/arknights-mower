@@ -113,6 +113,26 @@ def _drops_target(stage) -> bool:
     )
 
 
+def activity_end_ts_for_stages(stages, stage_ids) -> int | None:
+    """返回指定关卡所属活动的最晚结束时间；没有可识别活动窗口时返回 None。"""
+    selected = {
+        str(stage_id).strip()
+        for stage_id in stage_ids or []
+        if isinstance(stage_id, str) and stage_id.strip()
+    }
+    if not selected:
+        return None
+
+    end_times = []
+    for stage in stages:
+        if stage.get("stageType") != "ACTIVITY" or _stage_code(stage) not in selected:
+            continue
+        window = _window(stage)
+        if window is not None:
+            end_times.append(int(window[1]))
+    return max(end_times) if end_times else None
+
+
 def select_latest_activity_stages(stages, key_mapping, now) -> list[dict]:
     """返回「最近开启活动」的选中普通关，按代号尾号大到小。
 

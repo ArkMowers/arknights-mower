@@ -569,6 +569,7 @@ def load_config():
             )
 
             manager = get_weekly_plan_manager()
+            manager.maybe_switch_expired_activity_plan()
             manager.sync_active_plan_to_config()
         except Exception:
             logger.exception("Failed to sync active weekly plan before returning /conf")
@@ -2227,7 +2228,44 @@ def get_weekly_plans():
     from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
 
     manager = get_weekly_plan_manager()
-    return {"plans": manager.get_plans()}
+    return {
+        "plans": manager.get_plans(),
+        "activity_fallbacks": manager.get_activity_fallbacks(),
+        "activity_fallback_switch_times": (
+            manager.get_activity_fallback_switch_times()
+        ),
+        "activity_plan_end_times": manager.get_activity_plan_end_times(),
+    }
+
+
+@app.route("/weekly-plans/activity-fallback", methods=["POST"])
+@require_token
+def update_weekly_plan_activity_fallback():
+    from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
+
+    try:
+        req = request.json or {}
+        manager = get_weekly_plan_manager()
+        source = str(req.get("source", "")).strip()
+        target = str(req.get("target", "")).strip()
+        if "switch_time" in req:
+            updated = manager.set_activity_fallback(
+                source, target, switch_time=req.get("switch_time")
+            )
+        else:
+            updated = manager.set_activity_fallback(source, target)
+        if not updated:
+            return {"error": "Invalid activity fallback plan binding"}, 400
+        return {
+            "activity_fallbacks": manager.get_activity_fallbacks(),
+            "activity_fallback_switch_times": (
+                manager.get_activity_fallback_switch_times()
+            ),
+            "activity_plan_end_times": manager.get_activity_plan_end_times(),
+        }
+    except Exception as e:
+        logger.exception(f"Failed to update weekly plan activity fallback: {e}")
+        return {"error": str(e)}, 500
 
 
 @app.route("/weekly-plans/active", methods=["POST"])
@@ -2256,6 +2294,11 @@ def update_active_weekly_plan():
         return {
             "active": active_key,
             "plan": new_plan,
+            "activity_fallbacks": manager.get_activity_fallbacks(),
+            "activity_fallback_switch_times": (
+                manager.get_activity_fallback_switch_times()
+            ),
+            "activity_plan_end_times": manager.get_activity_plan_end_times(),
         }
     except Exception as e:
         logger.exception(f"Failed to update weekly plan: {e}")
