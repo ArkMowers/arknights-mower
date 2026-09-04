@@ -464,6 +464,24 @@ def _check_hot_update_on_launch():
 Thread(target=_check_hot_update_on_launch, daemon=True).start()
 
 
+def _watch_shared_resource_changes():
+    """其他实例更新共享资源后，在本实例空闲时刷新进程内缓存。"""
+    from arknights_mower.utils.resource_pkg import reload_resource_caches_if_changed
+
+    while True:
+        time.sleep(1)
+        if _mower_busy_response():
+            continue
+        try:
+            reload_resource_caches_if_changed()
+        except Exception:
+            logger.exception("刷新其他 mower 实例更新的共享资源失败")
+            time.sleep(30)
+
+
+Thread(target=_watch_shared_resource_changes, daemon=True).start()
+
+
 def require_token(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -484,7 +502,7 @@ def serve_resource_overlay():
     """资源包 webp（depot/avatar/building_skill）overlay 优先，刷新即生效。"""
     path = request.path.lstrip("/")
     if path.startswith(("depot/", "avatar/", "building_skill/")):
-        base = Path(get_path("@app/tmp/resource/ui/public"))
+        base = Path(get_path("@app/tmp/resource/ui/public", space=""))
         p = (base / path).resolve()
         if base.resolve() in p.parents and p.is_file():
             response = send_file(p)

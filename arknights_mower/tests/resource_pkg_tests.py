@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from arknights_mower import __rootdir__
+from arknights_mower.utils import path as mower_path
 from arknights_mower.utils import resource_pkg as rp
 from build_assets import _collect_arknights_mower_datas
 
@@ -43,10 +44,27 @@ class ResourcePkgTestBase(unittest.TestCase):
         self._patch.enter_context(patch.object(rp, "RESOURCE_OVERLAY", self.overlay))
         self._patch.enter_context(patch.object(rp, "_STAGING", self.staging))
         self._patch.enter_context(patch.object(rp, "_OLD", self.old))
+        self._patch.enter_context(
+            patch.object(rp, "_INSTALL_LOCK_PATH", self.base / "resource_install.lock")
+        )
+        self.legacy = self.base / "instance" / "tmp" / "resource"
+        self._patch.enter_context(
+            patch.object(rp, "_LEGACY_RESOURCE_OVERLAY", self.legacy)
+        )
+        self._patch.enter_context(patch.object(rp, "_loaded_resource_signature", None))
         self.reload_caches = self._patch.enter_context(
             patch.object(rp, "reload_resource_caches")
         )
         self.addCleanup(self._patch.close)
+
+
+class TestSharedResourceScope(unittest.TestCase):
+    def test_overlay_uses_shared_app_space(self):
+        with patch.object(mower_path, "global_space", "instance-a"):
+            shared = mower_path.get_path("@app/tmp/resource", space="")
+            instance = mower_path.get_path("@app/tmp/resource")
+        self.assertEqual(rp.RESOURCE_OVERLAY, shared)
+        self.assertNotEqual(shared, instance)
 
 
 class TestResourcePkgPath(ResourcePkgTestBase):
@@ -73,6 +91,42 @@ class TestResourcePkgPath(ResourcePkgTestBase):
 
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
+    def test_migrates_existing_instance_overlay(self):
+        marker = self.legacy / "arknights_mower/data/version.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text('{"res_version":"v2026.08.23-aaaaaaa"}', encoding="utf-8")
+
+        self.assertTrue(rp.migrate_legacy_resource_overlay())
+        self.assertEqual(
+            (self.overlay / "arknights_mower/data/version.json").read_text(
+                encoding="utf-8"
+            ),
+            marker.read_text(encoding="utf-8"),
+        )
+
+    def test_existing_shared_overlay_wins_over_legacy(self):
+        shared_marker = self.overlay / "arknights_mower/data/version.json"
+        shared_marker.parent.mkdir(parents=True)
+        shared_marker.write_text("shared", encoding="utf-8")
+        legacy_marker = self.legacy / "arknights_mower/data/version.json"
+        legacy_marker.parent.mkdir(parents=True)
+        legacy_marker.write_text("legacy", encoding="utf-8")
+
+        self.assertFalse(rp.migrate_legacy_resource_overlay())
+        self.assertEqual(shared_marker.read_text(encoding="utf-8"), "shared")
+
+    def test_process_lock_rejects_parallel_installer(self):
+        with rp._resource_install_guard():
+            with self.assertRaisesRegex(TimeoutError, "其他 mower 实例"):
+                with rp._resource_install_guard(timeout=0):
+                    pass
+
+    def test_process_lock_is_released(self):
+        with rp._resource_install_guard():
+            pass
+        with rp._resource_install_guard(timeout=0):
+            pass
+
     def test_missing_marker_rejected(self):
         self.assertFalse(rp.install_resource_pkg(_zip_bytes(marker=False)))
         self.assertFalse(self.overlay.exists())
@@ -159,6 +213,17 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         self.assertEqual(self.reload_caches.call_count, 2)
         self.assertFalse(self.staging.exists())
         self.assertFalse(self.old.exists())
+
+    def test_other_instance_change_reloads_once(self):
+        marker = self.overlay / "arknights_mower/data/version.json"
+        marker.parent.mkdir(parents=True)
+        marker.write_text('{"res_version":"v2026.08.23-aaaaaaa"}', encoding="utf-8")
+        rp._remember_loaded_resource()
+        marker.write_text('{"res_version":"v2026.08.24-bbbbbbb"}', encoding="utf-8")
+
+        self.assertTrue(rp.reload_resource_caches_if_changed())
+        self.assertFalse(rp.reload_resource_caches_if_changed())
+        self.reload_caches.assert_called_once_with()
 
 
 if __name__ == "__main__":

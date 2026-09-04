@@ -152,7 +152,9 @@ function set_auto_update(checked) {
         <span>{{ install_message }}</span>
       </n-form-item>
       <n-form-item :show-label="false">
-        <span class="hint">资源包安装后会在当前进程内生效；仅软件版本更新需要重启 Mower</span>
+        <span class="hint">
+          同一套 mower 的所有实例共用资源包，空闲实例会自动加载新资源；仅软件版本更新需要重启 Mower
+        </span>
       </n-form-item>
       <n-form-item label="手动应用">
         <n-upload
