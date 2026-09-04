@@ -85,8 +85,8 @@ DEFAULT_ROUTES = {
             "swap_target": "逻各斯",
         },
         "level_3": {
-            "operator": "星熊",
-            "efficiency": 60,
+            "operator": "望",
+            "efficiency": 70,
             "job_match": False,
             "swap_target": None,
         },
@@ -145,8 +145,8 @@ DEFAULT_ROUTES = {
             "swap_target": "逻各斯",
         },
         "level_3": {
-            "operator": "阿",
-            "efficiency": 60,
+            "operator": "望",
+            "efficiency": 70,
             "job_match": False,
             "swap_target": None,
         },
