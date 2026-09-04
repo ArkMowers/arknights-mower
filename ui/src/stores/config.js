@@ -18,6 +18,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_path = ref('')
   const maa_mirrorchyan_token = ref('')
   const maa_update_channel = ref('stable')
+  const maa_auto_check_update = ref(false)
   const maa_expiring_medicine = ref(true)
   const ap_fallback = ref(0)
   const maa_weekly_plan = ref([])
@@ -270,6 +271,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_path.value = response.data.maa_path
     maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
     maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
+    maa_auto_check_update.value = response.data.maa_auto_check_update ?? false
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
     maa_expiring_medicine.value = response.data.maa_expiring_medicine
@@ -382,6 +384,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_path: maa_path.value,
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
       maa_update_channel: maa_update_channel.value,
+      maa_auto_check_update: maa_auto_check_update.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
       maa_expiring_medicine: maa_expiring_medicine.value,
@@ -526,6 +529,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_path,
     maa_mirrorchyan_token,
     maa_update_channel,
+    maa_auto_check_update,
     maa_rg_enable,
     maa_long_task_type,
     maa_expiring_medicine,

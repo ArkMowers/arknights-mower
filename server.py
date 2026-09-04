@@ -135,6 +135,7 @@ maa_resource_update_check = {
     "source": "",
     "current_version": "",
     "latest_version": "",
+    "latest_release_note": "",
 }
 maa_resource_update_check_lock = RLock()
 maa_maintenance_lock = RLock()
@@ -215,6 +216,14 @@ def _checked_latest_version(check: dict, lock: RLock, check_id: str) -> str:
         if not check_id or check.get("id") != check_id:
             return ""
         return str(check.get("latest_version") or "")
+
+
+def _cached_update_check(check: dict, lock: RLock, **expected: str) -> dict:
+    """读取最近一次匹配的检查结果；检查凭据消费后仍保留展示缓存。"""
+    with lock:
+        if not all(check.get(key) == value for key, value in expected.items()):
+            return {}
+        return dict(check)
 
 
 def _consume_update_check(
@@ -303,7 +312,9 @@ def _run_maa_update(
             channel=channel,
         )
         clear_loaded_maa_cache(result["target"])
-        result["installed_version"] = read_installed_version(result["target"])
+        result["installed_version"] = read_installed_version(
+            result["target"], fresh=True
+        )
     except Exception as e:
         logger.exception(f"MAA {operation}失败：{e}")
         with maa_update_lock:
@@ -994,7 +1005,7 @@ def get_maa_update_info():
     target = Path(configured_target).expanduser() if configured_target else None
     target_text = str(target) if target is not None else ""
     job = _maa_update_snapshot()
-    installed_version = read_installed_version(target) if target else ""
+    installed_version = read_installed_version(target, fresh=True) if target else ""
     installed = has_maa_installation(target) if target else False
     channel_error = ""
     try:
@@ -1004,6 +1015,15 @@ def get_maa_update_info():
     except MaaUpdateError as e:
         channel = "stable"
         channel_error = str(e)
+    source = str(request.args.get("source") or "github").strip()
+    cached_check = _cached_update_check(
+        maa_update_check,
+        maa_update_check_lock,
+        target=target_text,
+        source=source,
+        channel=channel,
+    )
+    cached_latest = str(cached_check.get("latest_version") or "")
     supported = __system__ in {"darwin", "linux"} or (
         __system__ == "windows" and not installed
     )
@@ -1035,7 +1055,7 @@ def get_maa_update_info():
         "backup": str(backup_path_for(target)) if target is not None else "",
         "installed": installed,
         "installed_version": installed_version,
-        "latest": None,
+        "latest": {"tag": cached_latest} if cached_latest else None,
         "check_required": installed and __system__ in {"darwin", "linux"},
         "job": job,
     }
@@ -1090,7 +1110,7 @@ def check_maa_update():
         channel = normalize_update_channel(
             payload.get("channel") or config.conf.maa_update_channel
         )
-        installed_version = read_installed_version(target)
+        installed_version = read_installed_version(target, fresh=True)
         if not installed_version:
             raise MaaUpdateError("未读取到已安装的 Maa 版本，请检查 Maa 目录")
         release = (
@@ -1194,7 +1214,7 @@ def start_maa_update():
                 return {"ok": False, "message": f"MAA {operation}正在进行中"}
             if installed:
                 check_id = str(payload.get("check_id") or "")
-                installed_version = read_installed_version(target)
+                installed_version = read_installed_version(target, fresh=True)
                 checked_latest = _checked_latest_version(
                     maa_update_check,
                     maa_update_check_lock,
@@ -1304,6 +1324,15 @@ def get_maa_resource_update_info():
         request.args.get("maa_path") or config.conf.maa_path or ""
     ).strip()
     target = Path(configured_target).expanduser() if configured_target else None
+    target_text = str(target) if target else ""
+    source = str(request.args.get("source") or "github").strip()
+    cached_check = _cached_update_check(
+        maa_resource_update_check,
+        maa_resource_update_check_lock,
+        target=target_text,
+        source=source,
+    )
+    cached_latest = str(cached_check.get("latest_version") or "")
     installed = has_maa_installation(target) if target else False
     supported = __system__ in {"darwin", "linux"} and installed
     current = (
@@ -1315,9 +1344,16 @@ def get_maa_resource_update_info():
         "ok": True,
         "supported": supported,
         "platform": __system__,
-        "target": str(target) if target else "",
+        "target": target_text,
         "current": current,
-        "latest": None,
+        "latest": (
+            {
+                "version": cached_latest,
+                "release_note": str(cached_check.get("latest_release_note") or ""),
+            }
+            if cached_latest
+            else None
+        ),
         "available": False,
         "backup": str(resource_backup_path(target)) if target else "",
         "job": _maa_resource_update_snapshot(),
@@ -1383,6 +1419,7 @@ def check_maa_resource_update():
             source=source,
             current_version=current["version"],
             latest_version=release.version,
+            latest_release_note=release.release_note,
         )
     source_label = "Mirror酱" if source == "mirrorchyan" else "GitHub"
     return {

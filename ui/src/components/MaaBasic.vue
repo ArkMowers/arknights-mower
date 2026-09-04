@@ -8,8 +8,14 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_path, maa_mirrorchyan_token, maa_update_channel, maa_conn_preset, maa_touch_option } =
-  storeToRefs(store)
+const {
+  maa_path,
+  maa_mirrorchyan_token,
+  maa_update_channel,
+  maa_auto_check_update,
+  maa_conn_preset,
+  maa_touch_option
+} = storeToRefs(store)
 
 import { folder_dialog } from '@/utils/dialog'
 
@@ -126,6 +132,7 @@ const maa_resource_update_job = ref({
 let maa_resource_update_timer = null
 let maa_resource_update_info_request_id = 0
 let maa_path_refresh_timer = null
+let maa_auto_check_timer = null
 const mirrorchyan_cdk_status = ref({
   loading: false,
   checked_token: '',
@@ -151,6 +158,10 @@ function reset_mirrorchyan_cdk_status(message = '') {
 }
 
 async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
+  if (mirrorchyan_cdk_timer) {
+    window.clearTimeout(mirrorchyan_cdk_timer)
+    mirrorchyan_cdk_timer = null
+  }
   const normalized_token = String(token || '').trim()
   if (normalized_token.length !== 24) {
     reset_mirrorchyan_cdk_status(normalized_token ? '请输入完整的 24 位 Mirror酱 CDK' : '')
@@ -219,25 +230,27 @@ function schedule_mirrorchyan_cdk_check(token) {
   mirrorchyan_cdk_timer = window.setTimeout(() => check_mirrorchyan_cdk(normalized_token), 500)
 }
 
-function reset_maa_update_check() {
+function reset_maa_update_check(clear_latest = true) {
   maa_update_check.value = {
     status: 'idle',
     message: '',
     available: false,
     id: ''
   }
-  maa_latest_version.value = ''
+  if (clear_latest) maa_latest_version.value = ''
 }
 
-function reset_maa_resource_update_check() {
+function reset_maa_resource_update_check(clear_latest = true) {
   maa_resource_update_check.value = {
     status: 'idle',
     message: '',
     available: false,
     id: ''
   }
-  maa_resource_latest_version.value = ''
-  maa_resource_release_note.value = ''
+  if (clear_latest) {
+    maa_resource_latest_version.value = ''
+    maa_resource_release_note.value = ''
+  }
 }
 
 function normalize_maa_version(value) {
@@ -264,23 +277,36 @@ watch(
     if (maa_update_supported.value) {
       schedule_mirrorchyan_cdk_check(token)
     }
+    schedule_auto_check_updates(900)
   },
   { immediate: true }
 )
 
-watch(maa_update_channel, (channel, previous_channel) => {
+watch(maa_update_channel, async (channel, previous_channel) => {
   if (channel === previous_channel) return
   reset_maa_update_check()
   if (maa_update_supported.value) {
     schedule_mirrorchyan_cdk_check(maa_mirrorchyan_token.value)
+    await get_maa_update_info()
   }
-  if (maa_update_supported.value) get_maa_update_info()
+  schedule_auto_check_updates()
 })
 
-watch(maa_update_source, (source, previous_source) => {
+watch(maa_update_source, async (source, previous_source) => {
   if (source === previous_source) return
   reset_maa_update_check()
   reset_maa_resource_update_check()
+  await Promise.all([get_maa_update_info(), get_maa_resource_update_info()])
+  schedule_auto_check_updates()
+})
+
+watch(maa_auto_check_update, (enabled) => {
+  if (enabled) {
+    schedule_auto_check_updates(0)
+  } else if (maa_auto_check_timer) {
+    window.clearTimeout(maa_auto_check_timer)
+    maa_auto_check_timer = null
+  }
 })
 
 const maa_updating = computed(() => maa_update_job.value.status === 'running')
@@ -374,6 +400,46 @@ const maa_resource_update_progress_status = computed(() => {
   return 'default'
 })
 
+async function auto_check_updates() {
+  if (
+    !maa_auto_check_update.value ||
+    maa_path_missing.value ||
+    maa_updating.value ||
+    maa_resource_updating.value ||
+    maa_update_checking.value ||
+    maa_resource_update_checking.value
+  ) {
+    return
+  }
+  if (
+    maa_update_source.value === 'mirrorchyan' &&
+    String(maa_mirrorchyan_token.value || '').trim().length !== 24
+  ) {
+    return
+  }
+  if (maa_installed.value && maa_update_supported.value) {
+    await check_maa_update()
+  }
+  if (
+    maa_auto_check_update.value &&
+    !maa_updating.value &&
+    !maa_resource_updating.value &&
+    maa_resource_update_supported.value
+  ) {
+    await check_maa_resource_update()
+  }
+}
+
+function schedule_auto_check_updates(delay = 400) {
+  if (maa_auto_check_timer) window.clearTimeout(maa_auto_check_timer)
+  maa_auto_check_timer = null
+  if (!maa_auto_check_update.value) return
+  maa_auto_check_timer = window.setTimeout(() => {
+    maa_auto_check_timer = null
+    auto_check_updates()
+  }, delay)
+}
+
 function format_bytes(value) {
   const size = Number(value || 0)
   if (!size) return '0 B'
@@ -385,27 +451,23 @@ function format_bytes(value) {
 function apply_maa_update_job(job, apply_install_info = true) {
   if (!job) return
   maa_update_job.value = { ...maa_update_job.value, ...job }
-  if (apply_install_info) {
-    if (job.result?.backup) maa_backup_path.value = job.result.backup
-    if (job.status === 'success' && job.result?.installed_version) {
-      maa_installed_version.value = job.result.installed_version
-    }
-  }
+  if (apply_install_info && job.result?.backup) maa_backup_path.value = job.result.backup
 }
 
 async function poll_maa_update() {
   if (maa_update_timer) window.clearTimeout(maa_update_timer)
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/status`)
-    apply_maa_update_job(response.data.job)
+    apply_maa_update_job(response.data.job, false)
     if (maa_update_job.value.status === 'running') {
       maa_update_timer = window.setTimeout(poll_maa_update, 800)
     } else if (maa_update_job.value.status === 'success') {
-      reset_maa_update_check()
-      reset_maa_resource_update_check()
+      reset_maa_update_check(false)
+      reset_maa_resource_update_check(false)
       await get_maa_update_info()
       await get_maa_resource_update_info()
       await get_maa_conn_presets()
+      schedule_auto_check_updates()
     }
   } catch (error) {
     maa_update_job.value.status = 'error'
@@ -417,7 +479,11 @@ async function get_maa_update_info() {
   const request_id = ++maa_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/info`, {
-      params: { channel: maa_update_channel.value, maa_path: maa_path.value }
+      params: {
+        channel: maa_update_channel.value,
+        maa_path: maa_path.value,
+        source: maa_update_source.value
+      }
     })
     if (request_id !== maa_update_info_request_id) return
     const data = response.data
@@ -434,7 +500,7 @@ async function get_maa_update_info() {
       maa_update_source.value = data.default_source === 'mirrorchyan' ? 'mirrorchyan' : 'github'
       maa_update_source_initialized = true
     }
-    maa_latest_version.value = data.latest?.tag || ''
+    if (data.latest?.tag) maa_latest_version.value = data.latest.tag
     maa_installed_version.value = data.installed_version || ''
     maa_backup_path.value = data.backup || ''
     maa_update_info_msg.value = data.ok
@@ -465,9 +531,10 @@ async function poll_maa_resource_update() {
     if (maa_resource_update_job.value.status === 'running') {
       maa_resource_update_timer = window.setTimeout(poll_maa_resource_update, 800)
     } else if (maa_resource_update_job.value.status === 'success') {
-      reset_maa_resource_update_check()
+      reset_maa_resource_update_check(false)
       await get_maa_resource_update_info()
       await get_maa_conn_presets()
+      schedule_auto_check_updates()
     }
   } catch (error) {
     maa_resource_update_job.value.status = 'error'
@@ -479,14 +546,16 @@ async function get_maa_resource_update_info() {
   const request_id = ++maa_resource_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/info`, {
-      params: { maa_path: maa_path.value }
+      params: { maa_path: maa_path.value, source: maa_update_source.value }
     })
     if (request_id !== maa_resource_update_info_request_id) return
     const data = response.data
     maa_resource_update_supported.value = Boolean(data.supported)
     maa_resource_current_version.value = data.current?.version || ''
-    maa_resource_latest_version.value = data.latest?.version || ''
-    maa_resource_release_note.value = data.latest?.release_note || ''
+    if (data.latest?.version) {
+      maa_resource_latest_version.value = data.latest.version
+      maa_resource_release_note.value = data.latest.release_note || ''
+    }
     maa_resource_backup_path.value = data.backup || ''
     maa_resource_update_info_msg.value = data.ok ? '' : data.message || '读取 Maa 资源版本失败'
     if (data.job?.target === data.target) {
@@ -513,7 +582,7 @@ async function get_maa_resource_update_info() {
 
 async function check_maa_update() {
   if (maa_update_checking.value || maa_updating.value || !maa_installed.value) return
-  reset_maa_update_check()
+  reset_maa_update_check(false)
   maa_update_info_msg.value = ''
   if (maa_path_missing.value) {
     maa_update_check.value.status = 'error'
@@ -565,7 +634,7 @@ async function check_maa_update() {
 async function check_maa_resource_update() {
   if (maa_resource_update_checking.value || maa_resource_updating.value || maa_updating.value)
     return
-  reset_maa_resource_update_check()
+  reset_maa_resource_update_check(false)
   maa_resource_update_info_msg.value = ''
   if (maa_path_missing.value) {
     maa_resource_update_check.value.status = 'error'
@@ -648,7 +717,7 @@ async function start_maa_update() {
         response.data.message || `MAA ${maa_managed_operation_label.value}启动失败`
       return
     }
-    reset_maa_update_check()
+    reset_maa_update_check(false)
     apply_maa_update_job(response.data.job)
     poll_maa_update()
   } catch (error) {
@@ -691,7 +760,7 @@ async function start_maa_resource_update() {
       maa_resource_update_job.value.message = response.data.message || 'Maa 资源更新启动失败'
       return
     }
-    reset_maa_resource_update_check()
+    reset_maa_resource_update_check(false)
     apply_maa_resource_update_job(response.data.job)
     poll_maa_resource_update()
   } catch (error) {
@@ -706,25 +775,29 @@ watch(maa_path, (value, previous_value) => {
   reset_maa_update_check()
   reset_maa_resource_update_check()
   if (maa_path_refresh_timer) window.clearTimeout(maa_path_refresh_timer)
-  maa_path_refresh_timer = window.setTimeout(() => {
-    get_maa_update_info()
-    get_maa_resource_update_info()
-    get_maa_conn_presets()
+  maa_path_refresh_timer = window.setTimeout(async () => {
+    await Promise.all([
+      get_maa_update_info(),
+      get_maa_resource_update_info(),
+      get_maa_conn_presets()
+    ])
+    schedule_auto_check_updates()
   }, 400)
 })
 
-onMounted(() => {
-  get_maa_conn_presets()
-  get_maa_update_info()
-  get_maa_resource_update_info()
+onMounted(async () => {
+  await Promise.all([get_maa_conn_presets(), get_maa_update_info(), get_maa_resource_update_info()])
+  schedule_auto_check_updates()
 })
 
 onUnmounted(() => {
   if (maa_update_timer) window.clearTimeout(maa_update_timer)
   if (maa_resource_update_timer) window.clearTimeout(maa_resource_update_timer)
   if (maa_path_refresh_timer) window.clearTimeout(maa_path_refresh_timer)
+  if (maa_auto_check_timer) window.clearTimeout(maa_auto_check_timer)
   if (mirrorchyan_cdk_timer) window.clearTimeout(mirrorchyan_cdk_timer)
   mirrorchyan_cdk_request_id++
+  maa_update_info_request_id++
   maa_resource_update_info_request_id++
 })
 </script>
@@ -772,11 +845,16 @@ onUnmounted(() => {
         <div class="update-meta">
           <span>
             可{{ maa_managed_operation_label }}的{{ maa_update_channel_label }}：{{
-              maa_latest_version || '待获取'
+              maa_latest_version || '尚未检查'
             }}
           </span>
           <span v-if="maa_update_platform === 'windows'">已安装：未检测到 Maa</span>
           <span v-else>已安装：{{ maa_installed_version || '未知/手动安装' }}</span>
+        </div>
+        <div class="update-option">
+          <span class="update-option-label">自动检查更新</span>
+          <n-switch v-model:value="maa_auto_check_update" />
+          <span class="update-hint">进入此页面或更新配置后自动检查 Maa 本体与 Maa 资源。</span>
         </div>
         <div class="update-option">
           <span class="update-option-label">{{ maa_managed_operation_label }}通道</span>
@@ -930,7 +1008,7 @@ onUnmounted(() => {
         </div>
         <div class="update-meta">
           <span>当前资源：{{ maa_resource_current_version || '未知' }}</span>
-          <span>最新资源：{{ maa_resource_latest_version || '待获取' }}</span>
+          <span>最新资源：{{ maa_resource_latest_version || '尚未检查' }}</span>
         </div>
         <div v-if="maa_resource_release_note" class="update-hint">
           最新活动资源：{{ maa_resource_release_note }}
