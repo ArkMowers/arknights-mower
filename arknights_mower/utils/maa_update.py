@@ -3,7 +3,7 @@
 运行库使用官方 macOS runtime 包；Python API 则通过 HTTP Range 读取 Windows
 arm64 ZIP 的中央目录，只提取其中的 ``Python`` 目录，避免下载完整 Windows 包。
 Linux 按当前架构下载单个官方 ``tar.gz`` 完整包。
-Windows 未安装 Maa 时按当前架构下载完整包，已有安装则交由 Maa 自带更新程序处理。
+Windows 未安装 Maa 时按当前架构下载完整包，已有安装则提示用户打开 Maa 手动更新。
 """
 
 from __future__ import annotations
@@ -1360,45 +1360,6 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
     gc.collect()
 
 
-def find_builtin_maa_launcher(target: Path | str, system: str) -> Path:
-    """查找 Windows 的 MAA 自带更新程序。"""
-    system = system.lower()
-    target_path = Path(target).expanduser()
-    if target_path.is_file():
-        if system == "windows" and target_path.name.lower() == "maa.updater.exe":
-            return target_path
-        raise MaaUpdateError("请选择包含 MAA.Updater.exe 的 Maa 目录")
-    if not target_path.is_dir():
-        raise MaaUpdateError("Maa 目录不存在")
-
-    if system == "windows":
-        candidates = [target_path / "MAA.Updater.exe"]
-    else:
-        raise MaaUpdateError("MAA 自带更新入口仅用于 Windows")
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise MaaUpdateError("Maa 目录中没有找到 MAA.Updater.exe")
-
-
-def launch_builtin_maa_update(target: Path | str, system: str) -> Path:
-    """启动 Windows ``MAA.Updater.exe``，不改写安装目录。"""
-    launcher = find_builtin_maa_launcher(target, system)
-    kwargs: dict[str, Any] = {
-        "cwd": str(launcher.parent),
-        "close_fds": True,
-    }
-    kwargs["creationflags"] = getattr(
-        subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200
-    ) | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
-    try:
-        subprocess.Popen([str(launcher)], **kwargs)
-    except OSError as e:
-        raise MaaUpdateError(f"启动 MAA.Updater.exe 失败：{e}") from e
-    return launcher
-
-
 def install_latest_maa(
     target: Path | str,
     callback: ProgressCallback | None = None,
@@ -1429,7 +1390,7 @@ def install_latest_maa(
     elif system == "windows":
         arch = normalize_windows_arch(machine)
         if installed_before:
-            raise MaaUpdateError("已检测到 Windows Maa，请使用 Maa 自带更新程序")
+            raise MaaUpdateError("已检测到 Windows Maa，请手动打开 Maa 进行更新")
     else:
         arch = ""
     if source not in {"github", "mirrorchyan"}:

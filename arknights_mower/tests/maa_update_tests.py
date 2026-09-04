@@ -825,7 +825,7 @@ class TestInstallAndBackup(unittest.TestCase):
                 "get_latest_release",
                 side_effect=AssertionError("已安装 Maa 时不应请求下载信息"),
             ),
-            self.assertRaisesRegex(mu.MaaUpdateError, "Maa 自带更新程序"),
+            self.assertRaisesRegex(mu.MaaUpdateError, "手动打开 Maa 进行更新"),
         ):
             mu.install_latest_maa(
                 self.target,
@@ -862,30 +862,7 @@ class TestInstallAndBackup(unittest.TestCase):
         self.assertEqual((self.backup / "older.txt").read_text(), "older")
 
 
-class TestBuiltinUpdater(unittest.TestCase):
-    def test_windows_updater_is_started_without_install_replacement(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            launcher = root / "MAA.Updater.exe"
-            launcher.write_bytes(b"fixture")
-            (root / "MAA.exe").write_bytes(b"main")
-            with patch.object(mu.subprocess, "Popen") as popen:
-                found = mu.launch_builtin_maa_update(root, "windows")
-            self.assertEqual(found, launcher)
-            popen.assert_called_once_with(
-                [str(launcher)],
-                cwd=str(root),
-                close_fds=True,
-                creationflags=0x00000200 | 0x00000008,
-            )
-
-    def test_linux_has_no_builtin_update_launcher(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            (root / "maa").write_text("#!/bin/sh\n", encoding="utf-8")
-            with self.assertRaises(mu.MaaUpdateError):
-                mu.find_builtin_maa_launcher(root, "linux")
-
+class TestLoadedMaaCache(unittest.TestCase):
     def test_loaded_maa_cache_is_released(self):
         target = Path("/tmp/test-maa-cache")
         python_path = str(target / "Python")
