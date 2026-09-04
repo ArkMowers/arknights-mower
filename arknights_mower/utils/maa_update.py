@@ -1306,16 +1306,29 @@ def _close_dynamic_library(handle: int) -> None:
         pass
 
 
-def read_installed_version(target: Path | str) -> str:
-    """直接调用安装目录中 MaaCore 的版本接口，不依赖更新记录文件。"""
+def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
+    """直接调用安装目录中 MaaCore 的版本接口，不依赖更新记录文件。
+
+    ``fresh`` 会把 MaaCore 临时复制到同目录的唯一文件名后再加载，避开
+    macOS 等平台按动态库路径复用旧映像的缓存。
+    """
     library_path = _find_maa_core_library(target)
     if library_path is None:
         return ""
 
+    load_path = library_path
+    probe_path = None
     library = None
     get_version = None
     try:
-        library = ctypes.CDLL(str(library_path))
+        if fresh:
+            probe_path = library_path.with_name(
+                f".{library_path.stem}.version-probe-{uuid.uuid4().hex}"
+                f"{library_path.suffix}"
+            )
+            shutil.copy2(library_path, probe_path)
+            load_path = probe_path
+        library = ctypes.CDLL(str(load_path))
         get_version = library.AsstGetVersion
         get_version.argtypes = []
         get_version.restype = ctypes.c_char_p
@@ -1334,6 +1347,11 @@ def read_installed_version(target: Path | str) -> str:
             handle = library._handle
             library = None
             _close_dynamic_library(handle)
+        if probe_path is not None:
+            try:
+                probe_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def clear_loaded_maa_cache(target: Path | str) -> None:

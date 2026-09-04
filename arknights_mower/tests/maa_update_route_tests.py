@@ -55,6 +55,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
                 "source": "",
                 "current_version": "",
                 "latest_version": "",
+                "latest_release_note": "",
             }
         )
         server.maa_update_job.update({"thread": None, "status": "idle"})
@@ -75,7 +76,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
             patch(
                 "arknights_mower.utils.maa_update.read_installed_version",
                 return_value="v6.17.0",
-            ),
+            ) as read_version,
             patch(
                 "arknights_mower.utils.maa_update.get_latest_release",
                 return_value=_maa_release("v6.18.0"),
@@ -95,6 +96,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertTrue(data["available"])
         self.assertTrue(data["check_id"])
+        read_version.assert_called_once_with(self.target, fresh=True)
 
         with (
             patch.object(server, "__system__", "darwin"),
@@ -125,6 +127,45 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertFalse(data["available"])
         self.assertEqual(data["check_id"], "")
+
+    def test_maa_info_returns_cached_latest_and_fresh_installed_version(self):
+        target = str(Path(self.target).expanduser())
+        channel = server.config.conf.maa_update_channel
+        server.maa_update_check.update(
+            {
+                "id": "",
+                "target": target,
+                "source": "github",
+                "channel": channel,
+                "installed_version": "v6.17.0",
+                "latest_version": "v6.18.0",
+            }
+        )
+        with (
+            patch.object(server, "__system__", "darwin"),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.read_installed_version",
+                return_value="v6.18.0",
+            ) as read_version,
+        ):
+            response = self.client.get(
+                "/maa-update/info",
+                query_string={
+                    "maa_path": target,
+                    "source": "github",
+                    "channel": channel,
+                },
+                headers=self.headers,
+            )
+
+        data = response.get_json()
+        self.assertEqual(data["latest"]["tag"], "v6.18.0")
+        self.assertEqual(data["installed_version"], "v6.18.0")
+        read_version.assert_called_once_with(Path(target), fresh=True)
 
     def test_maa_update_start_requires_matching_successful_check(self):
         with (
@@ -283,6 +324,40 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         data = response.get_json()
         self.assertFalse(data["ok"])
         self.assertIn("先检查 Maa 资源更新", data["message"])
+
+    def test_resource_info_returns_cached_latest_version(self):
+        target = str(Path(self.target).expanduser())
+        latest = "2026-09-04 01:07:54.000"
+        server.maa_resource_update_check.update(
+            {
+                "id": "",
+                "target": target,
+                "source": "github",
+                "current_version": "2026-09-03 01:00:00.000",
+                "latest_version": latest,
+                "latest_release_note": "测试活动",
+            }
+        )
+        with (
+            patch.object(server, "__system__", "darwin"),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                return_value={"version": latest, "release_note": "测试活动"},
+            ),
+        ):
+            response = self.client.get(
+                "/maa-resource-update/info",
+                query_string={"maa_path": target, "source": "github"},
+                headers=self.headers,
+            )
+
+        data = response.get_json()
+        self.assertEqual(data["latest"]["version"], latest)
+        self.assertEqual(data["latest"]["release_note"], "测试活动")
 
     def test_resource_update_start_rejects_equal_checked_version(self):
         target = str(Path(self.target).expanduser())

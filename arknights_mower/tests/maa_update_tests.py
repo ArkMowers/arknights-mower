@@ -554,28 +554,60 @@ class TestArchiveExtraction(unittest.TestCase):
 
 
 class TestInstalledVersion(unittest.TestCase):
-    def test_reads_version_from_maa_core(self):
+    @staticmethod
+    def _library(version=b"v6.17.0"):
         class GetVersion:
             argtypes = None
             restype = None
 
             def __call__(self):
-                return b"v6.17.0"
+                return version
 
         class Library:
             _handle = 123
             AsstGetVersion = GetVersion()
 
+        return Library()
+
+    def test_reads_version_from_maa_core(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "libMaaCore.dylib").write_bytes(b"fixture")
             with (
-                patch.object(mu.ctypes, "CDLL", return_value=Library()),
+                patch.object(mu.ctypes, "CDLL", return_value=self._library()),
                 patch.object(mu, "_close_dynamic_library") as close,
             ):
                 version = mu.read_installed_version(root)
 
         self.assertEqual(version, "v6.17.0")
+        close.assert_called_once_with(123)
+
+    def test_fresh_read_uses_and_removes_unique_library_copy(self):
+        loaded_paths = []
+
+        def load_library(path):
+            loaded_path = Path(path)
+            self.assertTrue(loaded_path.is_file())
+            loaded_paths.append(loaded_path)
+            return self._library(b"v6.18.0")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            library_path = root / "libMaaCore.dylib"
+            library_path.write_bytes(b"fixture")
+            with (
+                patch.object(mu.ctypes, "CDLL", side_effect=load_library),
+                patch.object(mu, "_close_dynamic_library") as close,
+            ):
+                version = mu.read_installed_version(root, fresh=True)
+
+            self.assertEqual(len(loaded_paths), 1)
+            self.assertNotEqual(loaded_paths[0], library_path)
+            self.assertEqual(loaded_paths[0].parent, root)
+            self.assertIn(".version-probe-", loaded_paths[0].name)
+            self.assertFalse(loaded_paths[0].exists())
+
+        self.assertEqual(version, "v6.18.0")
         close.assert_called_once_with(123)
 
     def test_missing_maa_core_has_no_installed_version(self):

@@ -15,10 +15,12 @@ class TestMaaConfig(unittest.TestCase):
         conf = Conf(
             maa_mirrorchyan_token="fixture-token",
             maa_update_channel="beta",
+            maa_auto_check_update=True,
         )
         restored = Conf(**conf.model_dump())
         self.assertEqual(restored.maa_mirrorchyan_token, "fixture-token")
         self.assertEqual(restored.maa_update_channel, "beta")
+        self.assertTrue(restored.maa_auto_check_update)
 
 
 class TestUpdateConfig(unittest.TestCase):

@@ -215,6 +215,8 @@ class MaaPart(ConfModel):
     "Mirror酱下载 Token"
     maa_update_channel: str = "stable"
     "MAA 版本通道：stable 正式版，beta 公测版"
+    maa_auto_check_update: bool = False
+    "进入 Maa 设置页后自动检查 Maa 本体及资源更新"
     maa_conn_preset: str = "General"
     maa_touch_option: str = "maatouch"
 
