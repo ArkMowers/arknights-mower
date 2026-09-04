@@ -916,7 +916,7 @@ def start_maa_update():
     if __system__ == "windows" and installed:
         return {
             "ok": False,
-            "message": "已检测到 Windows Maa，请使用 Maa 自带更新程序",
+            "message": "已检测到 Windows Maa，请手动打开 Maa 进行更新",
         }
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": f"未知的 MAA {operation}源"}
@@ -1008,55 +1008,6 @@ def get_maa_mirrorchyan_status():
 @require_token
 def get_maa_update_status():
     return {"ok": True, "job": _maa_update_snapshot()}
-
-
-@app.route("/maa-update/builtin", methods=["POST"])
-@require_token
-def start_builtin_maa_update():
-    from arknights_mower.utils.maa_update import (
-        MaaUpdateError,
-        clear_loaded_maa_cache,
-        launch_builtin_maa_update,
-        normalize_update_channel,
-    )
-
-    if __system__ != "windows":
-        return {"ok": False, "message": "MAA 自带更新程序仅用于 Windows"}
-    if busy := _mower_busy_response():
-        return busy
-    payload = request.get_json(silent=True) or {}
-    target = str(payload.get("maa_path") or config.conf.maa_path).strip()
-    if not target:
-        return {"ok": False, "message": "请先设置 Maa 目录"}
-    try:
-        channel = normalize_update_channel(
-            payload.get("channel") or config.conf.maa_update_channel
-        )
-    except MaaUpdateError as e:
-        return {"ok": False, "message": str(e)}
-    mirror_token = str(payload.get("mirror_token") or "").strip()
-    config_changed = False
-    if mirror_token and mirror_token != config.conf.maa_mirrorchyan_token:
-        config.conf.maa_mirrorchyan_token = mirror_token
-        config_changed = True
-    if channel != config.conf.maa_update_channel:
-        config.conf.maa_update_channel = channel
-        config_changed = True
-    if config_changed:
-        config.save_conf()
-    try:
-        launcher = launch_builtin_maa_update(target, __system__)
-    except MaaUpdateError as e:
-        return {"ok": False, "message": str(e)}
-    clear_loaded_maa_cache(target)
-    return {
-        "ok": True,
-        "message": (
-            "已启动 MAA.Updater.exe，后续更新由 Maa 自带更新程序处理，"
-            "更新源和版本通道以 Maa 内的配置为准"
-        ),
-        "launcher": str(launcher),
-    }
 
 
 @app.route("/maa-conn-preset")

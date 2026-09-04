@@ -94,8 +94,6 @@ const maa_update_job = ref({
 })
 let maa_update_timer = null
 let maa_update_info_request_id = 0
-const builtin_update_loading = ref(false)
-const builtin_update_msg = ref('')
 const mirrorchyan_cdk_status = ref({
   loading: false,
   checked_token: '',
@@ -193,7 +191,7 @@ watch(
   maa_mirrorchyan_token,
   (token, previousToken = '') => {
     if (token.trim() && !previousToken.trim()) maa_update_source.value = 'mirrorchyan'
-    if (maa_update_supported.value || maa_update_platform.value === 'windows') {
+    if (maa_update_supported.value) {
       schedule_mirrorchyan_cdk_check(token)
     }
   },
@@ -202,7 +200,7 @@ watch(
 
 watch(maa_update_channel, (channel, previous_channel) => {
   if (channel === previous_channel) return
-  if (maa_update_supported.value || maa_update_platform.value === 'windows') {
+  if (maa_update_supported.value) {
     schedule_mirrorchyan_cdk_check(maa_mirrorchyan_token.value)
   }
   if (maa_update_supported.value) get_maa_update_info()
@@ -308,7 +306,7 @@ async function get_maa_update_info() {
     maa_update_platform.value = data.platform || ''
     maa_update_arch.value = data.arch || ''
     maa_installed.value = Boolean(data.installed)
-    if (maa_update_supported.value || maa_update_platform.value === 'windows') {
+    if (maa_update_supported.value) {
       schedule_mirrorchyan_cdk_check(maa_mirrorchyan_token.value)
     } else {
       reset_mirrorchyan_cdk_status()
@@ -367,30 +365,6 @@ async function start_maa_update() {
     maa_update_job.value.message =
       error.response?.data?.message ||
       `MAA ${maa_managed_operation_label.value}启动失败：${error.message}`
-  }
-}
-
-async function start_builtin_maa_update() {
-  if (builtin_update_loading.value) return
-  if (maa_path_missing.value) {
-    builtin_update_msg.value = '请先设置 Maa 目录'
-    return
-  }
-  builtin_update_loading.value = true
-  builtin_update_msg.value = ''
-  try {
-    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/maa-update/builtin`, {
-      maa_path: maa_path.value,
-      mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : '',
-      channel: maa_update_channel.value
-    })
-    builtin_update_msg.value = response.data.message || ''
-    if (!response.data.ok) return
-  } catch (error) {
-    builtin_update_msg.value =
-      error.response?.data?.message || `启动 MAA 自带更新失败：${error.message}`
-  } finally {
-    builtin_update_loading.value = false
   }
 }
 
@@ -569,64 +543,14 @@ onUnmounted(() => {
     <template v-else-if="maa_update_platform === 'windows'">
       <n-divider />
       <div class="maa-updater">
-        <div class="update-title">Maa 自带更新</div>
+        <div class="update-title">Windows 更新 Maa</div>
         <div class="update-meta">
           <span>已安装：{{ maa_installed_version || '已检测到 Maa' }}</span>
         </div>
-        <div class="update-option">
-          <span class="update-option-label">Mower 下载通道</span>
-          <n-radio-group v-model:value="maa_update_channel">
-            <n-space>
-              <n-radio value="stable">正式版</n-radio>
-              <n-radio value="beta">公测版</n-radio>
-            </n-space>
-          </n-radio-group>
-        </div>
-        <div class="update-option">
-          <span class="update-option-label">Mower 下载源</span>
-          <n-radio-group v-model:value="maa_update_source">
-            <n-space>
-              <n-radio value="github">GitHub</n-radio>
-              <n-radio value="mirrorchyan">Mirror酱</n-radio>
-            </n-space>
-          </n-radio-group>
-        </div>
-        <template v-if="maa_update_source === 'mirrorchyan'">
-          <n-input
-            v-model:value="maa_mirrorchyan_token"
-            type="password"
-            show-password-on="mousedown"
-            placeholder="Mirror酱 CDK"
-            :disabled="builtin_update_loading"
-          />
-          <div
-            v-if="mirrorchyan_cdk_message"
-            :class="mirrorchyan_cdk_message_class"
-            aria-live="polite"
-          >
-            {{ mirrorchyan_cdk_message }}
-          </div>
-          <div class="update-hint">
-            CDK 保存在 Mower 配置文件中。
-            <n-a href="https://mirrorchyan.com/" target="_blank" rel="noopener noreferrer">
-              获取 CDK
-            </n-a>
-          </div>
-        </template>
         <div class="update-hint">
-          已检测到 Windows Maa，本次操作只启动 MAA.Updater.exe，Mower 不会替换 Maa
-          目录。上方更新源、版本通道和 CDK 只用于 Mower 首次下载，本次更新不会传递给
-          MAA.Updater.exe；请在 Maa 内配置正式版/公测版通道、更新源和 Mirror酱 CDK。
+          已检测到 Windows Maa，请手动打开 Maa，并在 Maa 设置中检查和完成更新。更新源、版本通道和
+          Mirror酱 CDK 以 Maa 内的配置为准，Mower 不会覆盖 Maa 目录。
         </div>
-        <div v-if="builtin_update_msg" class="update-message">{{ builtin_update_msg }}</div>
-        <n-button
-          type="primary"
-          :loading="builtin_update_loading"
-          :disabled="builtin_update_loading"
-          @click="start_builtin_maa_update"
-        >
-          启动 MAA.Updater.exe
-        </n-button>
       </div>
     </template>
   </n-card>
