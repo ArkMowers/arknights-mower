@@ -497,17 +497,42 @@ def serve_index(path):
     return send_from_directory("ui/dist", path)
 
 
+def _serve_resource(base_dir: Path, relative: str):
+    """serve 资源包目录下的单个文件；不存在则返回 None，由调用方决定兜底。
+
+    资源包装到 ``@app/tmp/resource`` 后按仓库相对路径存放，这里从 base 下取出一个文件并
+    打 ``no-cache`` 保证刷新即生效。resolve 后校验仍位于 base 之下，避免路径穿越读到目录外。
+    """
+    base = base_dir.resolve()
+    p = (base / relative).resolve()
+    if base in p.parents and p.is_file():
+        response = send_file(p)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+    return None
+
+
 @app.before_request
 def serve_resource_overlay():
     """资源包 webp（depot/avatar/building_skill）overlay 优先，刷新即生效。"""
     path = request.path.lstrip("/")
     if path.startswith(("depot/", "avatar/", "building_skill/")):
-        base = Path(get_path("@app/tmp/resource/ui/public", space=""))
-        p = (base / path).resolve()
-        if base.resolve() in p.parents and p.is_file():
-            response = send_file(p)
-            response.headers["Cache-Control"] = "no-cache"
-            return response
+        return _serve_resource(
+            Path(get_path("@app/tmp/resource/ui/public", space="")), path
+        )
+
+
+@app.route("/basement_skill/<filename>")
+def serve_basement_skill(filename):
+    """基建技能数据（skill.json/buffer.json）运行时下发，资源包优先、无则 404。
+
+    注意不要用 abort(404)：@app.errorhandler(404) 会把它兜底成 index.html(200)，
+    前端拉不到资源会拿到 HTML 而非 JSON；直接返回 (…, 404) 才能被 axios 当失败处理。
+    """
+    return _serve_resource(
+        Path(get_path("@app/tmp/resource/ui/src/pages/basement_skill", space="")),
+        filename,
+    ) or ("", 404)
 
 
 @app.after_request
