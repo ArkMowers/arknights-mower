@@ -24,6 +24,9 @@ export const useConfigStore = defineStore('config', () => {
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
+  const maa_stage_inventory_enable = ref(false)
+  const maa_stage_limit_rules = ref([])
+  const maa_stage_ratio_rules = ref([])
   const maa_rg_enable = ref(0)
   const maa_long_task_type = ref('rogue')
   const mail_enable = ref(false)
@@ -170,6 +173,44 @@ export const useConfigStore = defineStore('config', () => {
     })
   }
 
+  function normalizeStageLimitRules(rawRules) {
+    if (!Array.isArray(rawRules)) {
+      return []
+    }
+    return rawRules
+      .filter((rule) => rule && typeof rule.stage === 'string' && rule.stage.trim())
+      .map((rule) => ({
+        stage: rule.stage.trim(),
+        operator: rule.operator === 'or' ? 'or' : 'and',
+        enabled: rule.enabled !== false,
+        items: (Array.isArray(rule.items) ? rule.items : [])
+          .filter((item) => item && (item.item_id || item.item_name))
+          .map((item) => ({
+            item_id: String(item.item_id || item.item_name || '').trim(),
+            item_name: String(item.item_name || item.item_id || '').trim(),
+            limit: Math.max(0, Number.isFinite(Number(item.limit)) ? Number(item.limit) : 0)
+          }))
+      }))
+  }
+
+  function normalizeStageRatioRules(rawRules) {
+    if (!Array.isArray(rawRules)) {
+      return []
+    }
+    return rawRules.map((rule, index) => ({
+      name: String(rule?.name || `比例规则 ${index + 1}`).trim(),
+      enabled: rule?.enabled !== false,
+      members: (Array.isArray(rule?.members) ? rule.members : [])
+        .filter((member) => member && member.stage && (member.item_id || member.item_name))
+        .map((member) => ({
+          stage: String(member.stage).trim(),
+          item_id: String(member.item_id || member.item_name || '').trim(),
+          item_name: String(member.item_name || member.item_id || '').trim(),
+          ratio: Math.max(0, Number.isFinite(Number(member.ratio)) ? Number(member.ratio) : 0)
+        }))
+    }))
+  }
+
   async function load_weekly_plan_state() {
     const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
     maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
@@ -278,6 +319,9 @@ export const useConfigStore = defineStore('config', () => {
     ap_fallback.value = Number(response.data.ap_fallback) || 0
     maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
     maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
+    maa_stage_inventory_enable.value = response.data.maa_stage_inventory_enable === true
+    maa_stage_limit_rules.value = normalizeStageLimitRules(response.data.maa_stage_limit_rules)
+    maa_stage_ratio_rules.value = normalizeStageRatioRules(response.data.maa_stage_ratio_rules)
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
@@ -389,6 +433,9 @@ export const useConfigStore = defineStore('config', () => {
       maa_long_task_type: maa_long_task_type.value,
       maa_expiring_medicine: maa_expiring_medicine.value,
       ap_fallback: ap_fallback.value,
+      maa_stage_inventory_enable: maa_stage_inventory_enable.value,
+      maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
+      maa_stage_ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value),
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
@@ -537,6 +584,9 @@ export const useConfigStore = defineStore('config', () => {
     maa_weekly_plan,
     maa_weekly_plan_options,
     maa_weekly_plan_active,
+    maa_stage_inventory_enable,
+    maa_stage_limit_rules,
+    maa_stage_ratio_rules,
     mail_enable,
     account,
     pass_code,

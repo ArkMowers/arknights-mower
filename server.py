@@ -625,8 +625,8 @@ def stage_latest_activity():
     """刷理智周计划：最近开启活动（stage_data_full 热更后最新）的选中关。
 
     返回 [{value, label, code, materials}]，按代号尾号大到小。材料仅 MATERIAL 常规掉落
-    （剔 ACTIVITY_ITEM/COMPLETE）；库存取自 @app/tmp/cultivate.json（{id: count}）——
-    该材料缺档或为 0 时不带 (库存:n)。
+    （剔 ACTIVITY_ITEM/COMPLETE）；库存取自 @app/tmp/cultivate.json（{id: count}），
+    该材料缺档时按 0 完整显示。
     """
     from arknights_mower.data import key_mapping, stage_data_full
     from arknights_mower.utils.weekly_stage import (
@@ -651,6 +651,31 @@ def stage_latest_activity():
         list(stage_data_full), key_mapping, int(time.time())
     )
     return build_options(selected, inventory)
+
+
+@app.route("/stage/inventory-rules")
+@require_token
+def stage_inventory_rules():
+    """库存选关配置所需的关卡、默认掉落、物品及库存快照。"""
+    from arknights_mower.utils.maa_stage_inventory import (
+        build_item_options,
+        build_stage_options,
+        load_inventory_snapshot,
+    )
+
+    inventory, updated_at = load_inventory_snapshot()
+    stages, activity_ratio_suggestion = build_stage_options(
+        weekly_plan=config.conf.maa_weekly_plan,
+        limit_rules=config.conf.maa_stage_limit_rules,
+        ratio_rules=config.conf.maa_stage_ratio_rules,
+    )
+    return {
+        "stages": stages,
+        "items": build_item_options(),
+        "inventory": inventory,
+        "inventory_updated_at": updated_at,
+        "activity_ratio_suggestion": activity_ratio_suggestion,
+    }
 
 
 @app.route("/status")

@@ -236,6 +236,32 @@ class RecruitPart(ConfModel):
     "五星词条组合唯一时自动选择"
 
 
+class MaaStageLimitItem(ConfModel):
+    item_id: str = ""
+    item_name: str = ""
+    limit: int = 0
+
+
+class MaaStageLimitRule(ConfModel):
+    stage: str = ""
+    operator: str = "and"
+    enabled: bool = True
+    items: list[MaaStageLimitItem] = []
+
+
+class MaaStageRatioMember(ConfModel):
+    stage: str = ""
+    item_id: str = ""
+    item_name: str = ""
+    ratio: float = 0
+
+
+class MaaStageRatioRule(ConfModel):
+    name: str = ""
+    enabled: bool = True
+    members: list[MaaStageRatioMember] = []
+
+
 class RegularTaskPart(ConfModel):
     class MaaDailyPlan(BaseModel):
         medicine: int = 0
@@ -267,6 +293,12 @@ class RegularTaskPart(ConfModel):
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周日"},
     ]
     "周计划"
+    maa_stage_inventory_enable: bool = False
+    "按库存上限与比例选择刷理智关卡"
+    maa_stage_limit_rules: list[MaaStageLimitRule] = []
+    "每个关卡的物品库存上限规则"
+    maa_stage_ratio_rules: list[MaaStageRatioRule] = []
+    "多关卡物品库存比例规则"
     maa_depot_enable: bool = False
     "仓库物品混合读取"
     visit_friend: bool = True

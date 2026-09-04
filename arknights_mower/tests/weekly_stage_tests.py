@@ -293,7 +293,7 @@ class TestSelectLatestActivityStages(unittest.TestCase):
 
 
 class TestBuildOptions(unittest.TestCase):
-    """label/value 组装：库存有则 (库存:n)，无则省略。"""
+    """label/value 组装：始终完整显示掉落物库存。"""
 
     def setUp(self):
         self.selected = [
@@ -306,14 +306,14 @@ class TestBuildOptions(unittest.TestCase):
         got = build_options(self.selected, {"30012": 7})
         by = {g["value"]: g for g in got}
         self.assertEqual(by["BS-2"]["label"], "BS-2:固源岩(库存:7)")
-        self.assertEqual(by["BS-4"]["label"], "BS-4:装置")
+        self.assertEqual(by["BS-4"]["label"], "BS-4:装置(库存:0)")
         self.assertEqual(by["BS-5"]["label"], "BS-5")
 
-    def test_zero_or_missing_stock_omits_parenthetical(self):
+    def test_zero_or_missing_stock_is_displayed_as_zero(self):
         got = build_options(self.selected, {"30062": 0, "30012": 0})
         by = {g["value"]: g for g in got}
-        self.assertEqual(by["BS-2"]["label"], "BS-2:固源岩")
-        self.assertEqual(by["BS-4"]["label"], "BS-4:装置")
+        self.assertEqual(by["BS-2"]["label"], "BS-2:固源岩(库存:0)")
+        self.assertEqual(by["BS-4"]["label"], "BS-4:装置(库存:0)")
 
     def test_value_is_code_and_preserves_selection_order(self):
         got = build_options(self.selected, {"30012": 7, "30062": 3})
