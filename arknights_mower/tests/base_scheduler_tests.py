@@ -10,7 +10,10 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers import mastery_reader  # noqa: E402
-from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.solvers.base_schedule import (  # noqa: E402
+    BaseSchedulerSolver,
+    _add_group_to_fix_plan,
+)
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
@@ -1475,6 +1478,56 @@ class TestScanDispatchMastery(unittest.TestCase):
             solver._auto_schedule_mastery_after_scan()
         self.assertEqual(len(solver.tasks), 1)
         self.assertEqual(solver.tasks[0].type, TaskTypes.SKILL_UPGRADE)
+
+
+class TestGroupToFixPlan(unittest.TestCase):
+    """#229：组逻辑把已在岗成员塞进 fix_plan 是 no-op；叠加训练室纠错被抑制时
+    fix_plan 永不收敛 → 排班死循环。已在岗成员应跳过，只写真正缺位的。"""
+
+    @staticmethod
+    def _op(room, index, current_room=None, current_index=None):
+        o = MagicMock()
+        o.room = room
+        o.index = index
+        o.current_room = current_room if current_room is not None else room
+        o.current_index = current_index if current_index is not None else index
+        return o
+
+    def test_skips_members_already_in_static_slot(self):
+        # 自动化组：褐果/桃金娘 被专精拉走（current_room=''），森蚺已在岗
+        op_data = MagicMock()
+        op_data.groups = {"自动化": ["褐果", "桃金娘", "森蚺"]}
+        op_data.operators = {
+            "褐果": self._op("train", 0, current_room="", current_index=-1),
+            "桃金娘": self._op("train", 1, current_room="", current_index=-1),
+            "森蚺": self._op("central", 2),
+        }
+        op_data.plan = {
+            "train": [MagicMock(), MagicMock()],
+            "central": [MagicMock(), MagicMock(), MagicMock()],
+        }
+        fix_plan = {}
+        _add_group_to_fix_plan(fix_plan, op_data, "自动化")
+        # 森蚺已在岗 → 不写进 fix_plan；缺位的训练室成员写入
+        self.assertEqual(fix_plan, {"train": ["褐果", "桃金娘"]})
+
+    def test_adds_member_not_in_static_slot(self):
+        # 不在静态槽位（如在宿舍）的成员仍被拉回
+        op_data = MagicMock()
+        op_data.groups = {"自动化": ["褐果", "森蚺"]}
+        op_data.operators = {
+            "褐果": self._op("train", 0, current_room="dormitory_1", current_index=2),
+            "森蚺": self._op("central", 2),
+        }
+        op_data.plan = {
+            "train": [MagicMock()],
+            "central": [MagicMock(), MagicMock(), MagicMock()],
+        }
+        fix_plan = {}
+        _add_group_to_fix_plan(fix_plan, op_data, "自动化")
+        self.assertIn("train", fix_plan)
+        self.assertEqual(fix_plan["train"][0], "褐果")
+        self.assertNotIn("central", fix_plan)
 
 
 if __name__ == "__main__":

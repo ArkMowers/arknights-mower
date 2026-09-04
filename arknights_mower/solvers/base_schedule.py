@@ -91,6 +91,22 @@ def _is_mastery_busy(operator_name: str) -> bool:
         return False
 
 
+def _add_group_to_fix_plan(fix_plan: dict, op_data: Operators, group: str) -> None:
+    """把组内真正不在岗的成员写进 fix_plan；已在静态槽位的成员跳过。
+
+    已在岗成员写进去只是 no-op：arrange 逐房间对比后「任务与当前房间相同，
+    跳过」。当唯一真实修复项（如训练室）被 _suppress_train_correction 抑制时，
+    no-op 项撑起 fix_plan 永不收敛 → 排班死循环（#229）。
+    """
+    for name in op_data.groups[group]:
+        agent = op_data.operators[name]
+        if agent.room == agent.current_room and agent.index == agent.current_index:
+            continue
+        if agent.room not in fix_plan:
+            fix_plan[agent.room] = ["Current"] * len(op_data.plan[agent.room])
+        fix_plan[agent.room][agent.index] = name
+
+
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -911,15 +927,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.debug(f"跳过检查{_agent}")
                     continue
                 elif _agent.group != "":
-                    # 把所有小组成员都移到工作站
-                    agents = self.op_data.groups[_agent.group]
-                    for a in agents:
-                        __agent = self.op_data.operators[a]
-                        if __agent.room not in fix_plan.keys():
-                            fix_plan[__agent.room] = ["Current"] * len(
-                                self.op_data.plan[__agent.room]
-                            )
-                        fix_plan[__agent.room][__agent.index] = a
+                    # 把所有小组成员都移到工作站（已在岗成员跳过，避免 no-op 假任务）
+                    _add_group_to_fix_plan(fix_plan, self.op_data, _agent.group)
                 if _agent.room not in fix_plan.keys():
                     fix_plan[_agent.room] = ["Current"] * len(
                         self.op_data.plan[_agent.room]
