@@ -9,9 +9,7 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
-from arknights_mower.utils.email import send_message
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.maa_check import is_maa_connectivity_check_enabled
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -111,18 +109,6 @@ def simulate(saved, restart_after_mood_read=False):
                 continue
             else:
                 raise e
-    if is_maa_connectivity_check_enabled():
-        try:
-            base_scheduler.check_maa_connectivity("启动预检")
-        except RuntimeError as e:
-            message = str(e)
-            logger.warning(message)
-            send_message(
-                message,
-                "Mower启动中止：Maa连接测试失败",
-                level="ERROR",
-            )
-            return
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:

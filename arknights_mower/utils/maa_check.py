@@ -1,8 +1,6 @@
 import json
-import subprocess
 import sys
 
-from arknights_mower import __system__
 from arknights_mower.utils import config
 
 MAA_CHECK_TIMEOUT = 30
@@ -86,37 +84,3 @@ def maa_check_timeout_result(timeout: int = MAA_CHECK_TIMEOUT) -> dict[str, str]
         "status": "timeout",
         "message": f"Maa连通性测试超时（{timeout}秒），已终止测试进程",
     }
-
-
-def run_maa_connectivity_check(
-    timeout: int = MAA_CHECK_TIMEOUT,
-    adb: str | None = None,
-) -> dict[str, str]:
-    subprocess_options: dict[str, int | bool]
-    if __system__ == "windows":
-        # Windows 由 CreateProcess 创建检测器，并隐藏控制台窗口。
-        subprocess_options = {"creationflags": subprocess.CREATE_NO_WINDOW}
-    else:
-        # 长期运行的 Mower 已加载 Maa/OpenCV 等原生库，不应再通过 fork
-        # 派生检测器。POSIX 会因此走 posix_spawn；Python 文件描述符默认
-        # 不可继承。
-        subprocess_options = {"close_fds": False}
-
-    try:
-        result = subprocess.run(
-            maa_check_command(maa_check_params(adb)),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            **subprocess_options,
-        )
-    except subprocess.TimeoutExpired:
-        return maa_check_timeout_result(timeout)
-    except Exception as e:
-        return {"status": "error", "message": "Maa测试启动失败：" + str(e)}
-
-    return parse_maa_check_output(result.stdout, result.stderr, result.returncode)
-
-
-def is_maa_connectivity_check_enabled() -> bool:
-    return bool(config.conf.maa_startup_check)
