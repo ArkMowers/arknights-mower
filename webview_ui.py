@@ -285,6 +285,9 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
             save_window_size(size)
         sys.exit()
     except Exception:
+        from arknights_mower.utils.log import logger
+
+        logger.exception("WebView 窗口启动失败，回退为浏览器打开")
         import webbrowser
 
         webbrowser.open(url)
