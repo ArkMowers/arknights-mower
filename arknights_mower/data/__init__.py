@@ -3,7 +3,7 @@ from pathlib import Path
 
 from .. import __rootdir__
 from ..utils.path import get_path
-from ..utils.resource_pkg import resource_pkg_path
+from ..utils.resource_pkg import register_resource_reload, resource_pkg_path
 
 
 def _data_path(name: str) -> Path:
@@ -12,7 +12,7 @@ def _data_path(name: str) -> Path:
 
 
 def stage_data_path() -> Path:
-    """打包内置的全量关卡基线（常驻 + 当时活动），启动读一次，之后不变。"""
+    """资源包里的全量关卡基线（常驻 + 当时活动）。"""
     return _data_path("stage_data_full.json")
 
 
@@ -21,7 +21,7 @@ def stage_data_overlay_path() -> Path:
     return get_path("@app/tmp/hot_update/stage_data.json")
 
 
-# 全量基线：启动读一次进内存，之后不变（常驻关卡只在基线，不随热更改）。
+# 全量基线：启动时读入，资源包更新后原位刷新（常驻关卡只在基线）。
 _stage_data_base = json.loads(stage_data_path().read_text("utf-8"))
 
 
@@ -34,7 +34,7 @@ def _stage_key(item: dict) -> str | None:
 
 
 class StageData:
-    """关卡信息合并视图：内置全量基线（启动固定）+ 热更活动层（运行时读）。
+    """关卡信息合并视图：资源包全量基线 + 热更活动层（运行时读）。
 
     常驻关卡（MAIN/DAILY/剿灭）只在基线；热更层按约定只含 ACTIVITY 活动关，
     按 id（缺省 name）覆盖基线同名、补全新关。stageType 不做代码过滤——"只放活动关"
@@ -124,30 +124,75 @@ recruit_result = json.loads(_data_path("recruit_result.json").read_text("utf-8")
 
 key_mapping = json.loads(_data_path("key_mapping.json").read_text("utf-8"))
 
-recruit_tag = ["资深干员", "高级资深干员"]
-for x in recruit_agent.values():
-    recruit_tag += x["tags"]
-recruit_tag = list(set(recruit_tag))
 
-"""
-按tag分类组合干员
-"""
+def _build_recruit_views(recruit_data: dict, result_data: dict):
+    tags = {"资深干员", "高级资深干员"}
+    for recruit in recruit_data.values():
+        tags.update(recruit["tags"])
 
-agent_with_tags = {}
-for item in recruit_tag:
-    agent_with_tags[item] = []
-    for agent in recruit_agent:
-        if {item} < set(recruit_agent[agent]["tags"]):
-            agent_with_tags[item].append(
-                {
-                    "id": agent,
-                    "name": recruit_agent[agent]["name"],
-                    "star": recruit_agent[agent]["stars"],
-                }
-            )
+    by_tag = {}
+    for tag in tags:
+        by_tag[tag] = []
+        for agent, recruit in recruit_data.items():
+            if {tag} < set(recruit["tags"]):
+                by_tag[tag].append(
+                    {
+                        "id": agent,
+                        "name": recruit["name"],
+                        "star": recruit["stars"],
+                    }
+                )
 
-result_template_list = []
+    templates = []
+    for result in result_data.values():
+        templates.extend(result)
+    return sorted(tags), by_tag, templates
 
-for item in recruit_result:
-    for name in recruit_result[item]:
-        result_template_list.append(name)
+
+recruit_tag, agent_with_tags, result_template_list = _build_recruit_views(
+    recruit_agent, recruit_result
+)
+
+
+def _replace_list(target: list, source: list) -> None:
+    target[:] = source
+
+
+def _replace_dict(target: dict, source: dict) -> None:
+    target.clear()
+    target.update(source)
+
+
+def _read_resource_json(name: str, expected_type: type):
+    value = json.loads(_data_path(name).read_text("utf-8"))
+    if not isinstance(value, expected_type):
+        raise ValueError(f"资源数据 {name} 类型错误")
+    return value
+
+
+@register_resource_reload
+def reload_resource_data() -> None:
+    """资源包切换后原位刷新数据，保留各调用模块已经导入的对象引用。"""
+    new_stage_data_base = _read_resource_json("stage_data_full.json", list)
+    new_agent_list = _read_resource_json("agent.json", list)
+    new_agent_profession = _read_resource_json("agent_profession.json", dict)
+    new_workshop_formula = _read_resource_json("workshop_formula.json", dict)
+    new_stage_order = _read_resource_json("stage_order.json", list)
+    new_recruit_agent = _read_resource_json("recruit.json", dict)
+    new_recruit_result = _read_resource_json("recruit_result.json", dict)
+    new_key_mapping = _read_resource_json("key_mapping.json", dict)
+    new_recruit_tag, new_agent_with_tags, new_result_template_list = (
+        _build_recruit_views(new_recruit_agent, new_recruit_result)
+    )
+
+    _replace_list(_stage_data_base, new_stage_data_base)
+    _replace_list(agent_list, new_agent_list)
+    _replace_dict(agent_profession, new_agent_profession)
+    _replace_dict(workshop_formula, new_workshop_formula)
+    _replace_list(stage_order, new_stage_order)
+    _replace_dict(recruit_agent, new_recruit_agent)
+    _replace_dict(recruit_result, new_recruit_result)
+    _replace_dict(key_mapping, new_key_mapping)
+    _replace_list(recruit_tag, new_recruit_tag)
+    _replace_dict(agent_with_tags, new_agent_with_tags)
+    _replace_list(result_template_list, new_result_template_list)

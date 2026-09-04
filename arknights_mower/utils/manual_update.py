@@ -37,7 +37,8 @@ def apply_manual_update(data: bytes, busy_check: BusyCheck | None = None) -> dic
             return {
                 "ok": True,
                 "kind": "resource",
-                "message": "资源包安装成功，重启后完全生效",
+                "restart_required": False,
+                "message": "资源包安装成功，已生效，无需重启 Mower",
             }
         return {
             "ok": False,

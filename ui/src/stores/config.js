@@ -109,6 +109,7 @@ export const useConfigStore = defineStore('config', () => {
   const credit_fight = ref({})
   const custom_screenshot = ref({})
   const hot_update_enable = ref(false)
+  const hot_update_auto_update = ref(false)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
   const exipring_medicine_on_weekend = ref(false)
@@ -354,6 +355,7 @@ export const useConfigStore = defineStore('config', () => {
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
     hot_update_enable.value = response.data.hot_update?.enable ?? false
+    hot_update_auto_update.value = response.data.hot_update?.auto_update ?? false
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
     exipring_medicine_on_weekend.value = response.data.exipring_medicine_on_weekend
@@ -468,7 +470,10 @@ export const useConfigStore = defineStore('config', () => {
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
-      hot_update: { enable: hot_update_enable.value },
+      hot_update: {
+        enable: hot_update_enable.value,
+        auto_update: hot_update_auto_update.value
+      },
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
       exipring_medicine_on_weekend: exipring_medicine_on_weekend.value,
@@ -610,6 +615,7 @@ export const useConfigStore = defineStore('config', () => {
     credit_fight,
     custom_screenshot,
     hot_update_enable,
+    hot_update_auto_update,
     notification_level,
     waiting_scene,
     exipring_medicine_on_weekend,

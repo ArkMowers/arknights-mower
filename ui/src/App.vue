@@ -378,8 +378,14 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop, load_item } = config_store
-const { hot_update_enable, simulator, start_automatically, theme, webview } =
-  storeToRefs(config_store)
+const {
+  hot_update_enable,
+  hot_update_auto_update,
+  simulator,
+  start_automatically,
+  theme,
+  webview
+} = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
@@ -395,7 +401,7 @@ const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
 const showUpdateNoticeModal = ref(false)
 
 const resource_version_store = useResourceVersionStore()
-const { loadResourceVersion } = resource_version_store
+const { installResource, loadResourceVersion } = resource_version_store
 
 const axios = inject('axios')
 
@@ -497,7 +503,12 @@ onMounted(async () => {
   }
   if (hot_update_enable.value) {
     try {
-      await loadResourceVersion()
+      const resourceInfo = await loadResourceVersion()
+      if (hot_update_auto_update.value && resourceInfo.update_available === true) {
+        if (await installResource()) {
+          await Promise.all([load_shop(), load_item(), load_operators()])
+        }
+      }
     } catch (error) {
       console.error('failed to load resource version', error)
     }

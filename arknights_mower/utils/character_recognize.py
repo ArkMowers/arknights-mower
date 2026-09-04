@@ -7,19 +7,38 @@ import numpy as np
 
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.resource_pkg import resource_pkg_path
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 
 kernel = np.ones((10, 10), np.uint8)
 
-with lzma.open(
-    str(resource_pkg_path("arknights_mower/models/operator_select.model")), "rb"
-) as f:
-    OP_SELECT = pickle.loads(f.read())
 
-with lzma.open(
-    str(resource_pkg_path("arknights_mower/models/operator_train.model")), "rb"
-) as f:
-    OP_TRAIN = pickle.loads(f.read())
+def _load_models():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/operator_select.model")), "rb"
+    ) as f:
+        select = pickle.loads(f.read())
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/operator_train.model")), "rb"
+    ) as f:
+        train = pickle.loads(f.read())
+    if not isinstance(select, dict) or not isinstance(train, dict):
+        raise ValueError("干员选择识别模型格式错误")
+    return select, train
+
+
+OP_SELECT, OP_TRAIN = _load_models()
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    select, train = _load_models()
+    OP_SELECT.clear()
+    OP_SELECT.update(select)
+    OP_TRAIN.clear()
+    OP_TRAIN.update(train)
 
 
 def operator_list(img, draw=False, full_scan=True):

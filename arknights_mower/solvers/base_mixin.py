@@ -12,12 +12,23 @@ from arknights_mower.utils.character_recognize import operator_list, operator_li
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.resource_pkg import resource_pkg_path
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 
-with lzma.open(
-    str(resource_pkg_path("arknights_mower/models/operator_room.model")), "rb"
-) as f:
-    OP_ROOM = pickle.loads(f.read())
+
+def _load_operator_room_model():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/operator_room.model")), "rb"
+    ) as f:
+        model = pickle.loads(f.read())
+    if not isinstance(model, dict):
+        raise ValueError("基建干员识别模型格式错误")
+    return model
+
+
+OP_ROOM = _load_operator_room_model()
 
 kernel = np.ones((12, 12), np.uint8)
 PREFIX_NAME_SCORE_RATIO = 0.9
@@ -51,6 +62,18 @@ def _foreground_width(img):
 OP_ROOM_WIDTH = {
     operator: _foreground_width(template) for operator, template in OP_ROOM.items()
 }
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    model = _load_operator_room_model()
+    widths = {
+        operator: _foreground_width(template) for operator, template in model.items()
+    }
+    OP_ROOM.clear()
+    OP_ROOM.update(model)
+    OP_ROOM_WIDTH.clear()
+    OP_ROOM_WIDTH.update(widths)
 
 
 def _resolve_operator_room_prefix(

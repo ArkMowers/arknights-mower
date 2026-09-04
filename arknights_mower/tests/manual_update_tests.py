@@ -19,8 +19,15 @@ class TestApplyManualUpdate(unittest.TestCase):
         data = _zip_bytes({"arknights_mower/data/version.json": '{"res_version":"v1"}'})
         with patch.object(manual_update, "install_resource_pkg", return_value=True):
             got = manual_update.apply_manual_update(data)
-        self.assertEqual(got["kind"], "resource")
-        self.assertTrue(got["ok"])
+        self.assertEqual(
+            got,
+            {
+                "ok": True,
+                "kind": "resource",
+                "restart_required": False,
+                "message": "资源包安装成功，已生效，无需重启 Mower",
+            },
+        )
 
     def test_resource_package_honors_busy_response(self):
         data = _zip_bytes({"arknights_mower/data/version.json": '{"res_version":"v1"}'})

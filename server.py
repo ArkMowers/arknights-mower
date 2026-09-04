@@ -476,7 +476,9 @@ def serve_resource_overlay():
         base = Path(get_path("@app/tmp/resource/ui/public"))
         p = (base / path).resolve()
         if base.resolve() in p.parents and p.is_file():
-            return send_file(p)
+            response = send_file(p)
+            response.headers["Cache-Control"] = "no-cache"
+            return response
 
 
 @app.after_request
@@ -1604,7 +1606,11 @@ def install_resource():
         return {"ok": False, "message": "资源包下载失败，请检查网络"}
     if not install_resource_pkg(data):
         return {"ok": False, "message": "资源包安装失败（已回滚）"}
-    return {"ok": True, "message": "安装成功，重启后完全生效"}
+    return {
+        "ok": True,
+        "restart_required": False,
+        "message": "资源包安装成功，已生效，无需重启 Mower",
+    }
 
 
 def str2date(target: str):

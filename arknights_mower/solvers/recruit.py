@@ -17,16 +17,41 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
-from arknights_mower.utils.resource_pkg import resource_pkg_path
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 from arknights_mower.utils.vector import va
 
 number = riic_base_digits
-with lzma.open(
-    str(resource_pkg_path("arknights_mower/models/recruit_result.pkl")), "rb"
-) as f:
-    recruit_res_template = pickle.load(f)
-with lzma.open(str(resource_pkg_path("arknights_mower/models/recruit.pkl")), "rb") as f:
-    tag_template = pickle.load(f)
+
+
+def _load_recruit_models():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit_result.pkl")), "rb"
+    ) as f:
+        result = pickle.load(f)
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit.pkl")), "rb"
+    ) as f:
+        tags = pickle.load(f)
+    if not isinstance(result, dict) or not isinstance(tags, dict):
+        raise ValueError("公开招募识别模型格式错误")
+    return result, tags
+
+
+recruit_res_template, tag_template = _load_recruit_models()
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    result, tags = _load_recruit_models()
+    recruit_res_template.clear()
+    recruit_res_template.update(result)
+    tag_template.clear()
+    tag_template.update(tags)
+
+
 job_list = [
     "recruit/riic_res/CASTER",
     "recruit/riic_res/MEDIC",

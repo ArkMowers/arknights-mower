@@ -30,6 +30,9 @@ class TestHotUpdateBase(unittest.TestCase):
         self.version = self.dir / "hot_update_version.json"
 
         self.enable = patch.object(config.conf.hot_update, "enable", True)
+        self.auto_update = patch.object(config.conf.hot_update, "auto_update", True)
+        self.auto_update.start()
+        self.addCleanup(self.auto_update.stop)
         self.extract_p = patch.object(hu, "extract_path", self.extract)
         self.version_p = patch.object(hu, "version_state", self.version)
         # 模块全局 last_update 跨用例残留会触发 30 分钟节流，逐用例重置
@@ -109,6 +112,23 @@ class TestUpdateOrchestration(TestHotUpdateBase):
         ):
             hu.update()
             dl.assert_not_called()
+
+    def test_new_version_check_only_does_not_download(self):
+        self.version.write_text("v2026.08.21-aaaaaa", encoding="utf-8")
+        with (
+            self.enable,
+            patch.object(config.conf.hot_update, "auto_update", False),
+            self.extract_p,
+            self.version_p,
+            patch.object(hu, "_latest_release_tag", return_value="v2026.08.22-bbbbbb"),
+            patch.object(hu, "_download_and_extract") as dl,
+        ):
+            hu.update()
+            dl.assert_not_called()
+            self.assertEqual(
+                self.version.read_text(encoding="utf-8"), "v2026.08.21-aaaaaa"
+            )
+            self.assertIsNotNone(hu.last_update)
 
     def test_new_version_downloads_and_records(self):
         self.version.write_text("v2026.08.21-aaaaaa", encoding="utf-8")
