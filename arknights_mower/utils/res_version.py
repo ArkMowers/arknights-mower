@@ -37,6 +37,9 @@ RES_PACKAGE_DATA = (
     "arknights_mower/data/recruit_result.json",
     "arknights_mower/data/skill_data.json",
     "arknights_mower/data/workshop_formula.json",
+    # 前端基建技能数据：静态 import 作内置兜底，运行时由资源包下发
+    "ui/src/pages/basement_skill/skill.json",
+    "ui/src/pages/basement_skill/buffer.json",
 )
 
 
