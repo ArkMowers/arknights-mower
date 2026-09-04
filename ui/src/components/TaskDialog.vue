@@ -27,6 +27,7 @@ const error = ref(false)
 const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
+  { label: '仓库扫描', value: '仓库扫描' },
   { label: '空任务', value: '空任务' }
 ]
 const workshopOperatorOptions = computed(() => {
@@ -127,6 +128,9 @@ async function saveTasks() {
       return
     }
     task.meta_data = workshop_operator.value
+    task.plan = {}
+  } else if (task_type.value == '仓库扫描') {
+    // 仓库扫描任务无需房间 plan：到点由调度器触发基地仓库扫描
     task.plan = {}
   }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task })).data

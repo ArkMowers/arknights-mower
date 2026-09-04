@@ -623,6 +623,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     self.plan_run_order(self.task.meta_data)
                     self.skip(["todo_task", "collect_notification"])
+                elif self.task.type == TaskTypes.DEPOT:
+                    self.仓库扫描()
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
                 del self.tasks[0]
