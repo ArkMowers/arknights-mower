@@ -1398,6 +1398,14 @@ def _reconcile(
             )
             update_plan_status(active["id"], "idle")
         if room.protected:
+            # §16.5 保护挡「移动协助位/训练位」。训练位已是计划干员时，开始训练
+            # 不动训练位（只按路线补协助位），保护不适用 → 放行 mower 开始。
+            if (
+                scan_plan is not None
+                and scan_plan["status"] == "idle"
+                and _plan_operator_matches(scan_plan, room.train_slot)
+            ):
+                return scan_plan, True
             idle = _next_idle_to_start(solver)
             if idle is not None:
                 # §16.5 保护挡住 mower 自己开始训练 → 通知⑤ + 保持 idle。

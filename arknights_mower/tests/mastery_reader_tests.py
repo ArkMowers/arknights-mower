@@ -1552,7 +1552,8 @@ class TestReconcileMatrix(unittest.TestCase):
         self.assertIsNone(start, "计划已不在 idle 不得开始")
 
     def test_empty_room_scan_driven_protected_skips(self):
-        # 受保护优先：扫描任务指定的计划在受保护空房也不开始（⑤ 通知）
+        # 受保护优先：训练位不是计划干员时，扫描任务指定的计划在受保护空房也不开始
+        # （⑤ 通知）；训练位=计划干员时放行（见 TestReconcileProtectedRelease）
         solver = MagicMock()
         solver.tasks = []
         room = make_room("empty", support_slot="逻各斯", train_slot="能天使")
@@ -2682,6 +2683,64 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
         ):
             reader._refresh_training_plan(solver, plan, self._room())
         sc.assert_not_called()
+
+
+class TestReconcileProtectedRelease(unittest.TestCase):
+    """§16.5 保护：训练位已是计划干员时放行 mower 开始训练。
+
+    保护挡「移动协助位/训练位」；训练位 = 计划干员时开始训练不动训练位
+    （只按路线补协助位）→ 保护不适用，放行 scan_plan；训练位空/坐别人
+    或 scan_plan 非 idle 时保留保护。
+    """
+
+    def _call(self, room, scan_plan):
+        solver = MagicMock()
+        with (
+            patch.object(reader, "_next_idle_to_start", return_value=None) as ni,
+            patch.object(reader, "_notify_protected") as np,
+        ):
+            result = reader._reconcile(solver, room, None, [], scan_plan=scan_plan)
+        return result, ni, np
+
+    def test_release_when_train_slot_is_plan_operator(self):
+        room = make_room(state="empty", train_slot="Miss.Christine")
+        room.protected = True
+        plan = make_plan(char_id="char_4198_christ", char_name="Miss.Christine")
+        (result, _, np) = self._call(room, plan)
+        self.assertIs(result[0], plan)
+        self.assertTrue(result[1])
+        np.assert_not_called()
+
+    def test_keep_protected_when_train_slot_not_plan_operator(self):
+        room = make_room(state="empty", train_slot="焰狐龙梓兰")
+        room.protected = True
+        plan = make_plan(char_id="char_4198_christ", char_name="Miss.Christine")
+        (result, ni, _) = self._call(room, plan)
+        self.assertIsNone(result[0])
+        ni.assert_called_once()
+
+    def test_keep_protected_when_train_slot_empty(self):
+        # 空训练位读不出计划干员匹配，不放行（防御性：实际 protected 时空位不会到）
+        room = make_room(state="empty", train_slot="")
+        room.protected = True
+        plan = make_plan(char_id="char_4198_christ", char_name="Miss.Christine")
+        (result, _, _) = self._call(room, plan)
+        self.assertIsNone(result[0])
+
+    def test_keep_protected_when_scan_plan_none(self):
+        room = make_room(state="empty", train_slot="Miss.Christine")
+        room.protected = True
+        (result, _, _) = self._call(room, None)
+        self.assertIsNone(result[0])
+
+    def test_keep_protected_when_scan_plan_not_idle(self):
+        room = make_room(state="empty", train_slot="Miss.Christine")
+        room.protected = True
+        plan = make_plan(
+            char_id="char_4198_christ", char_name="Miss.Christine", status="training"
+        )
+        (result, _, _) = self._call(room, plan)
+        self.assertIsNone(result[0])
 
 
 if __name__ == "__main__":
