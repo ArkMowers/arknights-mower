@@ -39,9 +39,6 @@ const commits = computed(() =>
     value: commit.sha
   }))
 )
-const selectedCommit = computed(
-  () => commits.value.find((item) => item.value === reference.value)?.value || null
-)
 const canInstall = computed(
   () =>
     checked.value &&
@@ -83,27 +80,22 @@ function confirm() {
             @update:value="selectBranch"
           />
         </n-form-item>
-        <n-form-item label="近期提交">
+        <n-form-item label="目标版本">
           <n-select
-            :value="selectedCommit"
+            v-model:value="reference"
             :options="commits"
             filterable
+            tag
+            :filter="
+              (pattern, option) =>
+                option.value.toLowerCase().includes(pattern.trim().toLowerCase()) ||
+                option.label.toLowerCase().includes(pattern.trim().toLowerCase())
+            "
             size="small"
             :loading="loading"
             :disabled="running || loading || checking"
-            placeholder="选择最近 20 次提交"
-            :input-props="{ 'aria-label': '源码近期提交' }"
-            @update:value="reference = $event"
-          />
-        </n-form-item>
-        <n-form-item label="目标版本">
-          <n-input
-            v-model:value="reference"
-            size="small"
-            :disabled="running || checking"
-            placeholder="分支、完整 / 短 SHA 或 tag"
+            placeholder="选择提交，或输入 SHA 后回车"
             :input-props="{ 'aria-label': '源码目标版本' }"
-            @keyup.enter="!running && !checking && reference.trim() && checkVersion()"
           />
         </n-form-item>
         <n-checkbox v-model:checked="force" :disabled="running || !forceSupported">
