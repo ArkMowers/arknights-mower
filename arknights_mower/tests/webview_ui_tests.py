@@ -153,6 +153,31 @@ class TestWindowTitle(unittest.TestCase):
         ):
             self.assertEqual(title_version(), __version__)
 
+    def test_title_uses_parent_version_instead_of_child_resource_cache(self):
+        with mock.patch(
+            "arknights_mower.utils.resource_version.check_resource_update",
+            side_effect=AssertionError("child resource cache must not override parent"),
+        ):
+            self.assertEqual(
+                window_title("测试", 8080, "2026.09.06"),
+                f"arknights-mower {__version__} - 2026.09.06 - mower@8080(测试)",
+            )
+            self.assertEqual(title_version(""), __version__)
+
+    def test_resource_reload_sends_current_parent_version_to_window(self):
+        import server
+
+        conn = mock.Mock()
+        with (
+            mock.patch("server._webview_conn", return_value=conn),
+            mock.patch(
+                "arknights_mower.utils.resource_version.check_resource_update",
+                return_value={"current_display": "2026.09.06"},
+            ),
+        ):
+            server._request_title_refresh()
+        conn.send.assert_called_once_with(("title", "2026.09.06"))
+
 
 if __name__ == "__main__":
     unittest.main()

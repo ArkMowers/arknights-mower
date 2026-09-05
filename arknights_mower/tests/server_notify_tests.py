@@ -30,7 +30,7 @@ class TestWebviewConn(unittest.TestCase):
 
 
 class TestRequestTitleRefresh(unittest.TestCase):
-    """标题刷新：fire-and-forget 发 "title"，不 recv；进程不可用或发送失败均静默。"""
+    """标题刷新发送主进程的资源版本，不 recv；进程不可用或发送失败均静默。"""
 
     def test_sends_title_without_recv(self):
         process = mock.Mock()
@@ -39,9 +39,13 @@ class TestRequestTitleRefresh(unittest.TestCase):
         with (
             mock.patch.object(server.config, "webview_process", process, create=True),
             mock.patch.object(server.config, "parent_conn", conn, create=True),
+            mock.patch(
+                "arknights_mower.utils.resource_version.check_resource_update",
+                return_value={"current_display": "2026.09.06"},
+            ),
         ):
             server._request_title_refresh()
-        conn.send.assert_called_once_with("title")
+        conn.send.assert_called_once_with(("title", "2026.09.06"))
         conn.recv.assert_not_called()
 
     def test_noop_when_process_not_started(self):

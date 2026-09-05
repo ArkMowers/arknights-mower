@@ -7,7 +7,7 @@ from ..utils.resource_pkg import register_resource_reload, resource_pkg_path
 
 
 def _data_path(name: str) -> Path:
-    """资源包 overlay 优先（@app/tmp/resource），回退内置 data/。"""
+    """读取本实例在任务边界选定的完整资源版本。"""
     return resource_pkg_path(f"arknights_mower/data/{name}")
 
 

@@ -19,7 +19,7 @@ from werkzeug.security import safe_join
 
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
-from arknights_mower.utils import config
+from arknights_mower.utils import config, network_settings
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
@@ -31,8 +31,12 @@ from arknights_mower.utils.maa_check import (
 )
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.resource_pkg import register_resource_reload
+from arknights_mower.utils.update_runtime import active_job
 from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.mastery import mastery_bp
+from arknights_mower.views.network import network_bp
+from arknights_mower.views.software_update import software_update_bp
 from arknights_mower.views.task import set_mower_thread, task_bp
 
 mimetypes.add_type("text/html", ".html")
@@ -42,6 +46,7 @@ mimetypes.add_type("application/javascript", ".js")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
+network_settings.start_proxy_sync()
 
 
 @app.errorhandler(500)
@@ -465,16 +470,13 @@ Thread(target=_check_hot_update_on_launch, daemon=True).start()
 
 
 def _watch_shared_resource_changes():
-    """其他实例更新共享资源后，在本实例空闲时刷新进程内缓存。"""
+    """停止任务时刷新资源；运行期间由任务线程在安全边界主动刷新。"""
     from arknights_mower.utils.resource_pkg import reload_resource_caches_if_changed
 
     while True:
         time.sleep(1)
-        if _mower_busy_response():
-            continue
         try:
-            if reload_resource_caches_if_changed():
-                _request_title_refresh()
+            reload_resource_caches_if_changed()
         except Exception:
             logger.exception("刷新其他 mower 实例更新的共享资源失败")
             time.sleep(30)
@@ -501,8 +503,7 @@ def serve_index(path):
 def _serve_resource(base_dir: Path, relative: str):
     """serve 资源包目录下的单个文件；不存在则返回 None，由调用方决定兜底。
 
-    资源包装到 ``@app/tmp/resource`` 后按仓库相对路径存放，这里从 base 下取出一个文件并
-    打 ``no-cache`` 保证刷新即生效。resolve 后校验仍位于 base 之下，避免路径穿越读到目录外。
+    从本实例固定的资源版本读取文件，禁用缓存，并确保路径位于指定目录内。
     """
     base = base_dir.resolve()
     p = (base / relative).resolve()
@@ -515,25 +516,26 @@ def _serve_resource(base_dir: Path, relative: str):
 
 @app.before_request
 def serve_resource_overlay():
-    """资源包 webp（depot/avatar/building_skill）overlay 优先，刷新即生效。"""
+    """图片与本实例当前加载的数据使用同一个完整资源版本。"""
+    from arknights_mower.utils.resource_pkg import resource_ui_path
+
     path = request.path.lstrip("/")
     if path.startswith(("depot/", "avatar/", "building_skill/")):
-        return _serve_resource(
-            Path(get_path("@app/tmp/resource/ui/public", space="")), path
-        )
+        selected = resource_ui_path("")
+        if selected is not None:
+            return _serve_resource(selected, path) or ("", 404)
 
 
 @app.route("/basement_skill/<filename>")
 def serve_basement_skill(filename):
-    """基建技能数据（skill.json/buffer.json）运行时下发，资源包优先、无则 404。
+    """基建技能 JSON 与当前整包资源一致；内置资源由前端自身加载。"""
+    from arknights_mower.utils.resource_pkg import resource_ui_path
 
-    注意不要用 abort(404)：@app.errorhandler(404) 会把它兜底成 index.html(200)，
-    前端拉不到资源会拿到 HTML 而非 JSON；直接返回 (…, 404) 才能被 axios 当失败处理。
-    """
-    return _serve_resource(
-        Path(get_path("@app/tmp/resource/ui/src/pages/basement_skill", space="")),
-        filename,
-    ) or ("", 404)
+    selected = resource_ui_path("pages/basement_skill", source=True)
+    if selected is None:
+        return "", 404
+    # 直接返回 404，避免全局错误处理器把缺失 JSON 替换成 index.html。
+    return _serve_resource(selected, filename) or ("", 404)
 
 
 @app.after_request
@@ -726,6 +728,7 @@ def stage_inventory_rules():
 @app.route("/status")
 def get_status():
     response = {
+        "auto_start_handled": bool(os.environ.get("MOWER_RESTART_JOB")),
         "plan_condition": [],
         "status": "stopped",
         "next_task_time": None,
@@ -762,6 +765,9 @@ def get_status():
 def start(start_type):
     global mower_thread
     global log_lines
+
+    if active_job():
+        return "false"
 
     with maa_maintenance_lock:
         if (
@@ -886,13 +892,17 @@ def _webview_conn():
     return conn
 
 
+@register_resource_reload
 def _request_title_refresh():
-    """资源包变更后让 WebView 子进程重算并刷新窗口标题（fire-and-forget，不等待回执）。"""
+    """向窗口发送主进程当前资源版本，任务边界切换也会触发此回调。"""
     conn = _webview_conn()
     if conn is None:
         return
     try:
-        conn.send("title")
+        from arknights_mower.utils.resource_version import check_resource_update
+
+        current = check_resource_update(local_only=True).get("current_display") or ""
+        conn.send(("title", current))
     except Exception:
         logger.exception("通知 WebView 刷新窗口标题失败")
 
@@ -1299,6 +1309,8 @@ def start_maa_update():
     with maa_maintenance_lock:
         if _job_running(maa_resource_update_job):
             return {"ok": False, "message": "Maa 资源更新正在进行中"}
+        if active_job():
+            return {"ok": False, "message": "Mower 软件更新正在进行中"}
         with maa_update_lock:
             thread = maa_update_job.get("thread")
             if thread is not None and thread.is_alive():
@@ -1560,6 +1572,8 @@ def start_maa_resource_update():
     with maa_maintenance_lock:
         if mower_thread and mower_thread.is_alive():
             return {"ok": False, "message": "请先停止 Mower，再更新 Maa 资源"}
+        if active_job():
+            return {"ok": False, "message": "Mower 软件更新正在进行中"}
         if _job_running(maa_update_job):
             return {"ok": False, "message": "MAA 下载或更新正在进行中"}
         with maa_resource_update_lock:
@@ -1738,7 +1752,7 @@ def install_resource():
     return {
         "ok": True,
         "restart_required": False,
-        "message": "资源包安装成功，已生效，无需重启 Mower",
+        "message": "资源包已安装，各实例在任务间歇加载，无需重启 Mower",
     }
 
 
@@ -2433,3 +2447,5 @@ def ws_chat(ws):
 app.register_blueprint(mastery_bp)
 app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
+app.register_blueprint(software_update_bp)
+app.register_blueprint(network_bp)

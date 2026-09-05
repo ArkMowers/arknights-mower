@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import webview
@@ -54,26 +56,33 @@ class Api:
         return folder
 
     def start(self, idx):
-        import platform
-        import sys
         from subprocess import Popen
 
-        is_win = platform.system() == "Windows"
+        from arknights_mower.utils.update_runtime import (
+            active_job,
+            installation_root,
+            launch_environment,
+        )
+
+        if active_job():
+            return {"ok": False, "message": "软件更新期间无法启动新实例"}
         frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
         instance = self.instances[idx]
-        if is_win and frozen:
-            Popen(["mower.exe", instance["path"], instance["name"]])
-        elif frozen:
-            # macOS/Linux 冻结运行：mower 与多开管理器位于同一目录
-            mower = Path(sys.executable).resolve().parent / "mower"
-            Popen([str(mower), instance["path"], instance["name"]])
+        if frozen:
+            mower = Path(sys.executable).resolve().parent / (
+                "mower.exe" if sys.platform == "win32" else "mower"
+            )
+            command = [str(mower), instance["path"], instance["name"]]
         else:
-            if is_win:
-                Popen(
-                    ["python.exe", "webview_ui.py", instance["path"], instance["name"]]
-                )
-            else:
-                Popen(["python3", "webview_ui.py", instance["path"], instance["name"]])
+            command = [
+                sys.executable,
+                str(installation_root() / "webview_ui.py"),
+                instance["path"],
+                instance["name"],
+            ]
+        env = launch_environment({"data_dir": os.environ.get("MOWER_DATA_DIR", "")})
+        Popen(command, cwd=installation_root(), env=env)
+        return {"ok": True}
 
 
 def jump_to_index(window):
@@ -81,8 +90,14 @@ def jump_to_index(window):
 
 
 if __name__ == "__main__":
+    from threading import Thread
+    from time import sleep
+
+    from arknights_mower.utils.update_runtime import RuntimeRegistration, active_job
     from webview_ui import exit_if_webview_backend_missing
 
+    if active_job() and not os.environ.get("MOWER_RESTART_JOB"):
+        sys.exit("软件正在更新，请等待完成后启动多开管理器")
     # 多开管理器和主程序一样依赖窗口后端，宿主缺 GTK/WebKit2 原生库时先给出中文
     # 安装指引再退出，避免裸 WebViewException。
     exit_if_webview_backend_missing()
@@ -96,4 +111,18 @@ if __name__ == "__main__":
         width=400,
         height=500,
     )
+    registration = RuntimeRegistration("manager")
+
+    def watch_update():
+        while not registration.shutdown_requested():
+            sleep(0.5)
+        window.destroy()
+
+    def manager_ready():
+        registration.record["ready"] = True
+        registration.publish()
+
+    window.events.loaded += manager_ready
+    Thread(target=watch_update, daemon=True).start()
     webview.start(jump_to_index, window, http_server=True)
+    registration.close()

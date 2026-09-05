@@ -32,6 +32,7 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 import requests
 from packaging.version import InvalidVersion, Version
 
+from arknights_mower.utils.github_download import download_url
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
 MAA_REPOSITORY = "MaaAssistantArknights/MaaAssistantArknights"
@@ -563,9 +564,10 @@ class HTTPRangeReader(io.RawIOBase):
         self._position = 0
         self._cache_start = 0
         self._cache = b""
+        request_url = download_url(url)
         try:
             response = self._session.head(
-                url,
+                request_url,
                 allow_redirects=True,
                 timeout=REQUEST_TIMEOUT,
             )
@@ -577,7 +579,9 @@ class HTTPRangeReader(io.RawIOBase):
                 self._length = int(response.headers["Content-Length"])
             except (KeyError, TypeError, ValueError) as e:
                 raise MaaUpdateError("MAA Python 包没有提供文件大小") from e
-            self._url = response.url
+            # Keep Range reads on the chosen download station even if HEAD was
+            # redirected to GitHub's asset CDN. Pin one URL for this ZIP reader.
+            self._url = request_url if request_url != url else response.url
         finally:
             response.close()
 
@@ -1153,7 +1157,7 @@ def download_asset(
     digest = hashlib.sha256()
     try:
         with client.get(
-            asset.url,
+            download_url(asset.url),
             stream=True,
             timeout=REQUEST_TIMEOUT,
         ) as response:
