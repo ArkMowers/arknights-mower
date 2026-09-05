@@ -218,10 +218,13 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         marker = self.overlay / "arknights_mower/data/version.json"
         marker.parent.mkdir(parents=True)
         marker.write_text('{"res_version":"v2026.08.23-aaaaaaa"}', encoding="utf-8")
-        rp._remember_loaded_resource()
-        marker.write_text('{"res_version":"v2026.08.24-bbbbbbb"}', encoding="utf-8")
-
-        self.assertTrue(rp.reload_resource_caches_if_changed())
+        # 用安装锁串行化「记住旧签名 → 改文件 → reload」这三步：server 模块 import 时会
+        # 启动后台资源监控线程（每秒 reload），若在该窗口内抢先 reload，会把
+        # _loaded_resource_signature 改成本测试正在写入的新值，导致本次 reload 返回 False。
+        with rp._install_lock:
+            rp._remember_loaded_resource()
+            marker.write_text('{"res_version":"v2026.08.24-bbbbbbb"}', encoding="utf-8")
+            self.assertTrue(rp.reload_resource_caches_if_changed())
         self.assertFalse(rp.reload_resource_caches_if_changed())
         self.reload_caches.assert_called_once_with()
 

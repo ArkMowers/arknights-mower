@@ -160,6 +160,30 @@ def build_window_title(instance_name, port):
     return f"mower@{port}"
 
 
+def title_version():
+    """窗口标题里的版本串：软件版本后追加资源包版本号（尽力读取，失败只显示软件版本）。"""
+    from arknights_mower.__init__ import __version__
+
+    try:
+        from arknights_mower.utils.resource_version import check_resource_update
+
+        resource_version = (
+            check_resource_update(local_only=True).get("current_display") or ""
+        )
+    except Exception:
+        resource_version = ""
+    if resource_version:
+        return f"{__version__} - {resource_version}"
+    return __version__
+
+
+def window_title(instance_name, port):
+    """完整窗口标题：应用版本 + 资源包版本（若有）+ 实例标识。"""
+    return (
+        f"arknights-mower {title_version()} - {build_window_title(instance_name, port)}"
+    )
+
+
 def append_query_param(url, key, value):
     if not value:
         return url
@@ -221,7 +245,6 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
 
     webview.settings["ALLOW_DOWNLOADS"] = True
 
-    from arknights_mower.__init__ import __version__
     from arknights_mower.utils import path
 
     path.global_space = global_space
@@ -242,7 +265,7 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
             width, height = size
 
     window = webview.create_window(
-        f"arknights-mower {__version__} - {build_window_title(instance_name, port)}",
+        window_title(instance_name, port),
         url,
         text_select=True,
         confirm_close=not tray,
@@ -258,6 +281,9 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
                 window.confirm_close = False
                 window.destroy()
                 return
+            if msg == "title":
+                window.set_title(window_title(instance_name, port))
+                continue
             if msg == "file":
                 result = window.create_file_dialog(
                     dialog_type=webview.OPEN_DIALOG,
