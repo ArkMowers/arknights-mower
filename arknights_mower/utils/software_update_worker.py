@@ -1,4 +1,4 @@
-"""Detached, standard-library-only software installer.
+"""Detached software installer; source transactions use only the standard library.
 
 Source deployments copy this module and update_runtime.py outside the checkout.
 Frozen deployments run a copy of the complete old runtime outside the install.
@@ -16,7 +16,6 @@ import tarfile
 import threading
 import time
 import traceback
-import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -154,13 +153,13 @@ class Worker:
         write_json(self.state / "status.json", self.status)
         print(message, flush=True)
 
-    def run_command(self, args, cwd=None, timeout=1800):
+    def run_command(self, args, cwd=None, timeout=1800, env=None):
         # Commands and arguments are fixed by the installer. Never use shell=True.
         print("执行：" + " ".join(map(str, args)), flush=True)
         process = subprocess.Popen(
             list(map(str, args)),
             cwd=cwd or self.root,
-            env=self.env,
+            env=self.env if env is None else env,
             stdin=subprocess.DEVNULL,
             **detached_options(),
         )
@@ -265,23 +264,24 @@ class Worker:
         if not package.exists():
             if manual:
                 raise ValueError("上传的安装包不存在，请重新上传")
+            # Release workers retain the complete old runtime, including SOCKS
+            # dependencies. Source workers never execute this branch.
+            import requests
+
             proxy = self.job.get("proxy")
-            handler = (
-                urllib.request.ProxyHandler({"http": proxy, "https": proxy})
-                if proxy
-                else urllib.request.ProxyHandler()
-            )
-            opener = urllib.request.build_opener(handler)
-            request = urllib.request.Request(
-                download_url(asset["url"], self.job.get("github_proxy", "")),
-                headers={"User-Agent": "Mower-Software-Update"},
-            )
             with (
-                opener.open(request, timeout=60) as response,
+                requests.get(
+                    download_url(asset["url"], self.job.get("github_proxy", "")),
+                    headers={"User-Agent": "Mower-Software-Update"},
+                    proxies={"http": proxy, "https": proxy} if proxy else None,
+                    stream=True,
+                    timeout=60,
+                ) as response,
                 package.open("wb") as out,
             ):
+                response.raise_for_status()
                 size = 0
-                while chunk := response.read(1024 * 1024):
+                for chunk in response.iter_content(1024 * 1024):
                     size += len(chunk)
                     if size > MAX_PACKAGE_BYTES:
                         raise ValueError("安装包超过 2 GiB 限制")
@@ -401,7 +401,8 @@ class Worker:
             [self.job["base_python"], "-m", "venv", self.root / self.venv_dir]
         )
         self.run_command(
-            [self.job["python"], "-m", "pip", "install", "-r", "requirements.in"]
+            [self.job["python"], "-m", "pip", "install", "-r", "requirements.in"],
+            env=self.pip_environment(),
         )
         self.report("building", "安装前端依赖并构建页面")
         npm_command = (
@@ -409,6 +410,16 @@ class Worker:
         )
         self.run_command([self.job["npm"], npm_command], cwd=self.root / "ui")
         self.run_command([self.job["npm"], "run", "build"], cwd=self.root / "ui")
+
+    def pip_environment(self):
+        env = self.env.copy()
+        if (self.work / "socks.py").is_file():
+            # A fresh venv has pip but no PySocks yet. The staged module lets
+            # pip download its own SOCKS dependency without using a direct route.
+            env["PYTHONPATH"] = os.pathsep.join(
+                filter(None, (str(self.work), env.get("PYTHONPATH")))
+            )
+        return env
 
     def install_package(self):
         self.report("installing", "替换程序，保留用户数据和原版本")

@@ -118,7 +118,7 @@ onUnmounted(() => {
           <template #trigger>
             <n-button size="small" :disabled="busy || !info?.supported">重启 Mower 进程</n-button>
           </template>
-          重启当前实例，保留名称、数据目录、端口和启动参数，并恢复原运行状态。
+          重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
         </n-popconfirm>
         <n-popconfirm
           style="max-width: min(360px, calc(100vw - 32px))"

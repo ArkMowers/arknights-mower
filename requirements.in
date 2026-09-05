@@ -41,7 +41,8 @@ tzlocal==5.2
 pytz==2024.1
 
 # 网络请求、官网公告解析、HTML转Markdown、检查版本
-requests==2.31.0
+requests[socks]==2.31.0
+httpx[socks]==0.28.1
 beautifulsoup4==4.12.3
 lxml==5.2.2
 htmllistparse==0.6.1

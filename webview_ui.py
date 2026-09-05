@@ -472,7 +472,7 @@ def run_desktop():
         if registration.shutdown_requested():
             return
         with server.app.test_request_context(headers={"token": token or ""}):
-            server.start("0")
+            server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
 
     resume = (
         os.environ.get("MOWER_RESUME_RUN") == "1"

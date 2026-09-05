@@ -44,9 +44,10 @@ def normalize_http_proxy(value):
     try:
         parsed = urlsplit(value)
         valid = (
-            parsed.scheme in ("http", "https")
+            parsed.scheme in ("http", "https", "socks5", "socks5h")
             and parsed.hostname
             and parsed.port != 0
+            and (not parsed.scheme.startswith("socks") or parsed.port is not None)
             and not parsed.username
             and not parsed.password
             and parsed.path in ("", "/")
@@ -58,7 +59,10 @@ def normalize_http_proxy(value):
     except ValueError:
         valid = False
     if not valid:
-        raise ValueError("全局网络代理请填写 HTTP(S) 地址，例如 http://127.0.0.1:7897")
+        raise ValueError(
+            "全局网络代理支持 http://、https://、socks5:// 和 socks5h://；"
+            "SOCKS 代理请填写端口，例如 socks5h://127.0.0.1:7897"
+        )
     return value.rstrip("/")
 
 

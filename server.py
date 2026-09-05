@@ -780,9 +780,8 @@ def start(start_type):
         tmp_dir.mkdir(exist_ok=True)
 
         config.stop_mower.clear()
-        saved_state = load_state()
-        if saved_state is None or start_type == "2":
-            saved_state = {}
+        # Reset starts must not deserialize a snapshot from an older version.
+        saved_state = {} if start_type == "2" else (load_state() or {})
         if start_type == "1":
             saved_state["tasks"] = []
         restart_after_mood_read = (

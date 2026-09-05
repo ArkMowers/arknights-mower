@@ -240,7 +240,7 @@ onUnmounted(() => {
           @update:checked="setAutoUpdate"
           >自动更新</n-checkbox
         >
-        <span class="hint">发现更新后自动安装并重启当前运行的实例</span>
+        <span class="hint">发现更新后自动安装，重启同一安装目录下所有运行实例</span>
       </n-form-item>
       <n-form-item :show-label="false">
         <div class="restart-option">
@@ -319,7 +319,7 @@ onUnmounted(() => {
       </n-form-item>
       <n-form-item :show-label="false">
         <span class="hint"
-          >更新后恢复当前运行的实例和任务，在线更新与上传安装均使用上方的重启方式。</span
+          >更新后重启同一安装目录下所有运行实例；原本运行中的任务重置运行缓存后重新开始。在线更新与上传安装均使用上方的重启方式。</span
         >
       </n-form-item>
       <n-form-item label="手动应用">
@@ -354,7 +354,7 @@ onUnmounted(() => {
                 安装并重启
               </n-button>
             </template>
-            将安装选中的 Release 包并重启当前实例。请从官方发布页下载安装包。
+            将安装选中的 Release 包并重启同一安装目录下所有运行实例。请从官方发布页下载安装包。
           </n-popconfirm>
         </n-space>
         <span v-else>—</span>

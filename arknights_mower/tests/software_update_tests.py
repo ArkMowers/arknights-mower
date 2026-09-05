@@ -567,7 +567,7 @@ class WorkerTests(unittest.TestCase):
         )
         worker = self.worker()
         worker.stop_instances = Mock()
-        with patch("urllib.request.build_opener") as network:
+        with patch("requests.get") as network:
             worker.execute()
             network.assert_not_called()
         worker.stop_instances.assert_not_called()
@@ -592,7 +592,7 @@ class WorkerTests(unittest.TestCase):
                     deployment="release", background=False, manual=manual, asset=asset
                 )
                 worker = self.worker()
-                with patch("urllib.request.build_opener") as network:
+                with patch("requests.get") as network:
                     worker.prepare_package()
                     network.assert_not_called()
                 self.assertEqual(
@@ -769,8 +769,8 @@ class ArchiveAndLauncherTests(unittest.TestCase):
         from arknights_mower import utils
         from arknights_mower.utils import network, path
 
-        for system, background, tray_enabled in product(
-            ("darwin", "linux", "win32"), (True, False), (True, False)
+        for system, background, tray_enabled, restart in product(
+            ("darwin", "linux", "win32"), (True, False), (True, False), (True, False)
         ):
             config = Mock()
             config.conf.webview.tray = tray_enabled
@@ -782,13 +782,19 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
             with (
-                self.subTest(system=system, background=background, tray=tray_enabled),
+                self.subTest(
+                    system=system,
+                    background=background,
+                    tray=tray_enabled,
+                    restart=restart,
+                ),
                 patch.object(sys, "platform", system),
                 patch.dict(
                     os.environ,
                     {
                         "MOWER_BACKGROUND": "1" if background else "0",
-                        "MOWER_RESTART_JOB": "",
+                        "MOWER_RESTART_JOB": "fixture" if restart else "",
+                        "MOWER_RESUME_RUN": "1",
                         "MOWER_RESTART_PORT": "58100",
                     },
                 ),
@@ -807,7 +813,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 patch.object(webview_ui.mp, "Queue") as queue,
                 patch.object(webview_ui.mp, "Pipe", return_value=(Mock(), Mock())),
                 patch.object(webview_ui.mp, "Process") as process,
-                patch("threading.Thread"),
+                patch("threading.Thread") as threads,
             ):
                 webview_ui.run_desktop()
                 targets = [call.kwargs["target"] for call in process.call_args_list]
@@ -821,6 +827,16 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     queue.assert_not_called()
                 self.assertEqual(hide_dock.call_count, int(background))
                 registration.close.assert_called_once()
+                resumes = [
+                    call.kwargs["target"]
+                    for call in threads.call_args_list
+                    if call.kwargs["target"].__name__ == "resume_after_update"
+                ]
+                self.assertEqual(len(resumes), int(restart))
+                if resumes:
+                    registration.shutdown_requested.return_value = False
+                    resumes[0]()
+                    server.start.assert_called_once_with("2")
 
     def test_dock_helper_sets_accessory_policy(self):
         appkit = Mock()

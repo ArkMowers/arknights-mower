@@ -4,13 +4,13 @@ import math
 import os
 import pathlib
 import sys
-import urllib
 from collections import defaultdict, deque
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 from typing import Literal, Optional
 
 import cv2
+import requests
 
 from arknights_mower.data import (
     agent_list,
@@ -3811,9 +3811,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0"
             }
-            request = urllib.request.Request(url=ota_tasks_url, headers=headers)
-            with urllib.request.urlopen(request, timeout=60) as u:
-                res = u.read().decode("utf-8")
+            with requests.get(ota_tasks_url, headers=headers, timeout=60) as response:
+                response.raise_for_status()
+                res = response.content.decode("utf-8")
             with open(ota_tasks_path, "w", encoding="utf-8") as f:
                 f.write(res)
             logger.info("Maa活动关卡导航更新成功")

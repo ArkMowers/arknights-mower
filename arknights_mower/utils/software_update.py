@@ -449,6 +449,20 @@ def _start_job(plan, background=False, uploaded=None):
             },
         )
         if plan["deployment"] == "source":
+            # Stage PySocks before moving the old venv. Only pip's subprocess
+            # receives this bootstrap module through PYTHONPATH.
+            if any(
+                value.lower().startswith(("socks5://", "socks5h://"))
+                for key, value in os.environ.items()
+                if key.lower() in ("http_proxy", "https_proxy", "all_proxy")
+            ):
+                try:
+                    import socks
+                except ImportError as exc:
+                    raise ValueError(
+                        "SOCKS 代理需要 PySocks，请先更新 Python 依赖"
+                    ) from exc
+                shutil.copy2(socks.__file__, work / "socks.py")
             for name in (
                 "software_update_worker.py",
                 "update_runtime.py",

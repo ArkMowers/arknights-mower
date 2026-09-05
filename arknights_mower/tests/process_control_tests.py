@@ -17,6 +17,52 @@ from arknights_mower.views.process_control import process_control_bp
 
 
 class ProcessControlTests(unittest.TestCase):
+    def test_reset_start_skips_incompatible_saved_state(self):
+        import server
+
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(server, "active_job", return_value=False),
+            patch.object(server, "_job_running", return_value=False),
+            patch.object(server, "mower_thread", None),
+            patch.object(server, "log_lines", []),
+            patch.object(server, "get_path", return_value=Path(folder)),
+            patch.object(server.config, "stop_mower"),
+            patch.object(server.config.conf, "refresh_backup_plan_after_mood", True),
+            patch.object(
+                server, "load_state", side_effect=ValueError("incompatible snapshot")
+            ) as load,
+            patch.object(server, "Thread") as thread,
+            patch.object(server, "set_mower_thread"),
+        ):
+            headers = {"token": getattr(server.app, "token", "")}
+            response = server.app.test_client().get("/start/2", headers=headers)
+            self.assertEqual(response.get_data(as_text=True), "true")
+            load.assert_not_called()
+            self.assertEqual(thread.call_args.kwargs["args"], ({}, True))
+
+    def test_normal_start_still_loads_saved_state(self):
+        import server
+
+        saved_state = {"tasks": ["saved-task"]}
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(server, "active_job", return_value=False),
+            patch.object(server, "_job_running", return_value=False),
+            patch.object(server, "mower_thread", None),
+            patch.object(server, "log_lines", []),
+            patch.object(server, "get_path", return_value=Path(folder)),
+            patch.object(server.config, "stop_mower"),
+            patch.object(server, "load_state", return_value=saved_state) as load,
+            patch.object(server, "Thread") as thread,
+            patch.object(server, "set_mower_thread"),
+        ):
+            headers = {"token": getattr(server.app, "token", "")}
+            response = server.app.test_client().get("/start/0", headers=headers)
+            self.assertEqual(response.get_data(as_text=True), "true")
+            load.assert_called_once_with()
+            self.assertEqual(thread.call_args.kwargs["args"], (saved_state, False))
+
     def test_route_requires_token_and_intent_header(self):
         app = Flask(__name__)
         app.token = "private-fixture"
