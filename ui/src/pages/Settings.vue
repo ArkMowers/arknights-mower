@@ -459,9 +459,7 @@ if (return_home_when_idle.value) {
             <n-form-item :show-feedback="screenshot === 0">
               <template #label>
                 <span>截图保存时间</span>
-                <help-text>
-                  默认保留 1 小时，可填小数；设为 0 时所有截图不再写盘，实时预览仍可用。
-                </help-text>
+                <help-text>默认保留 1 小时，可填小数。</help-text>
               </template>
               <n-input-number v-model:value="screenshot" :min="0">
                 <template #suffix>小时</template>
