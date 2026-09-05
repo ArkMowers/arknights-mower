@@ -13,6 +13,7 @@ import threading
 import time
 import unittest
 import zipfile
+from itertools import product
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -46,6 +47,13 @@ def release(version, prerelease=False, draft=False, system="macos", arch="arm64"
 
 
 class ReleaseDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        state = patch.object(runtime, "state_dir", return_value=Path(temporary.name))
+        state.start()
+        self.addCleanup(state.stop)
+
     def test_channels_are_separate_and_drafts_are_excluded(self):
         data = [
             release("v4.1.6-alpha.3", True),
@@ -404,6 +412,11 @@ class AdmissionAndRoutesTests(unittest.TestCase):
 
 class WorkerTests(unittest.TestCase):
     def setUp(self):
+        clean_source = patch(
+            "arknights_mower.utils.software_update_worker.require_clean_source"
+        )
+        clean_source.start()
+        self.addCleanup(clean_source.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         base = Path(self.temporary.name)
@@ -616,7 +629,6 @@ class WorkerTests(unittest.TestCase):
         worker = self.worker()
         worker.git_output = Mock(
             side_effect=[
-                "",
                 "old",
                 "main",
                 "new",
@@ -752,14 +764,16 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 ):
                     self.assertEqual(background_requested(), value == "1")
 
-    def test_release_desktop_background_keeps_tray_without_opening_windows(self):
+    def test_desktop_background_respects_macos_tray_setting(self):
         import webview_ui
         from arknights_mower import utils
         from arknights_mower.utils import network, path
 
-        for background in (True, False):
+        for system, background, tray_enabled in product(
+            ("darwin", "linux", "win32"), (True, False), (True, False)
+        ):
             config = Mock()
-            config.conf.webview.tray = False
+            config.conf.webview.tray = tray_enabled
             config.conf.webview.token = ""
             config.conf.start_automatically = False
             server = Mock(app=Flask(__name__))
@@ -768,7 +782,8 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
             with (
-                self.subTest(background=background),
+                self.subTest(system=system, background=background, tray=tray_enabled),
+                patch.object(sys, "platform", system),
                 patch.dict(
                     os.environ,
                     {
@@ -779,7 +794,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 ),
                 patch.dict(sys.modules, {"server": server}),
                 patch.object(sys, "argv", ["mower"]),
-                patch.object(utils, "config", config),
+                patch.object(utils, "config", config, create=True),
                 patch.object(path, "global_space", ""),
                 patch.object(runtime, "read_json", return_value={}),
                 patch.object(runtime, "active_job", return_value=False),
@@ -789,19 +804,21 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 patch.object(network, "is_port_in_use", side_effect=[False, True]),
                 patch.object(webview_ui, "exit_if_webview_backend_missing"),
                 patch.object(webview_ui, "close_child"),
-                patch.object(webview_ui.mp, "Queue"),
+                patch.object(webview_ui.mp, "Queue") as queue,
                 patch.object(webview_ui.mp, "Pipe", return_value=(Mock(), Mock())),
                 patch.object(webview_ui.mp, "Process") as process,
                 patch("threading.Thread"),
             ):
                 webview_ui.run_desktop()
                 targets = [call.kwargs["target"] for call in process.call_args_list]
-                self.assertEqual(
-                    targets,
-                    [webview_ui.start_tray]
-                    if background
-                    else [webview_ui.splash_screen, webview_ui.webview_window],
-                )
+                expected = [] if background else [webview_ui.splash_screen]
+                if tray_enabled or (background and system != "darwin"):
+                    expected.append(webview_ui.start_tray)
+                if not background:
+                    expected.append(webview_ui.webview_window)
+                self.assertEqual(targets, expected)
+                if background and system == "darwin" and not tray_enabled:
+                    queue.assert_not_called()
                 self.assertEqual(hide_dock.call_count, int(background))
                 registration.close.assert_called_once()
 

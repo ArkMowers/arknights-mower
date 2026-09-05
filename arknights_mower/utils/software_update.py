@@ -16,7 +16,10 @@ import requests
 from arknights_mower import __version__
 from arknights_mower.utils import github_download, network_settings
 from arknights_mower.utils import update_runtime as runtime
-from arknights_mower.utils.software_update_worker import MAX_PACKAGE_BYTES
+from arknights_mower.utils.software_update_worker import (
+    MAX_PACKAGE_BYTES,
+    require_clean_source,
+)
 
 REPO = "ArkMowers/arknights-mower"
 API = f"https://api.github.com/repos/{REPO}"
@@ -35,7 +38,7 @@ CHANNELS = [
     {
         "value": "dev",
         "label": "开发版（仅源码部署）",
-        "description": "跟随 alpha 分支的最新提交，比公测版更新更频繁；需要 Git、Git LFS、Python 虚拟环境和 Node.js。",
+        "description": "跟随 alpha 分支的最新提交，比公测版更新更频繁；需要 Git、Python 虚拟环境和 Node.js。",
     },
 ]
 VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?(?:\+.*)?$")
@@ -43,6 +46,69 @@ ASSET_RE = re.compile(
     r"^arknights-mower_(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)_(windows|linux|macos)_(x64|arm64)\.(zip|tar\.gz|dmg)$"
 )
 _checks = {}
+
+
+def get_settings():
+    saved = runtime.read_json(runtime.state_dir() / "settings.json", {})
+    return {
+        "channel": saved.get("channel", "beta" if "-" in __version__ else "stable"),
+        "background": saved.get("background", True),
+        "auto_check": saved.get("auto_check", False),
+        "auto_update": saved.get("auto_update", False),
+    }
+
+
+def save_settings(data):
+    if not isinstance(data, dict):
+        raise ValueError("请提供软件更新设置")
+    settings = get_settings()
+    for key in ("background", "auto_check", "auto_update"):
+        if key in data:
+            if not isinstance(data[key], bool):
+                raise ValueError("更新开关必须是布尔值")
+            settings[key] = data[key]
+    if "channel" in data:
+        if data["channel"] not in {item["value"] for item in CHANNELS}:
+            raise ValueError("未知更新渠道")
+        if data["channel"] == "dev" and runtime.frozen():
+            raise ValueError("开发版仅支持源码部署")
+        settings["channel"] = data["channel"]
+    if settings["auto_update"]:
+        settings["auto_check"] = True
+    with runtime.submission_lock(runtime.state_dir()):
+        runtime.write_json(runtime.state_dir() / "settings.json", settings)
+    return {"ok": True, "settings": settings}
+
+
+def check_on_launch():
+    """One installation checks once when several instances start together."""
+    if os.environ.get("MOWER_RESTART_JOB"):
+        return
+    settings = get_settings()
+    if not settings["auto_check"]:
+        return
+    state = runtime.state_dir()
+    try:
+        with runtime.submission_lock(state):
+            if runtime.active_job(state):
+                return
+            previous = runtime.read_json(state / "auto-check.json", {})
+            if time.time() - previous.get("started_at", 0) < 60:
+                return
+            runtime.write_json(state / "auto-check.json", {"started_at": time.time()})
+        result = check(settings["channel"])
+        if result["available"] and settings["auto_update"]:
+            submit(result["check_id"], settings["background"])
+    except Exception as error:
+        runtime.write_json(
+            state / "last-check.json",
+            {
+                "ok": False,
+                "channel": settings["channel"],
+                "message": "自动更新检查未完成：" + str(error),
+                "checked_at": time.time(),
+            },
+        )
 
 
 def version_key(value):
@@ -126,6 +192,14 @@ def choose_asset(release):
     }
 
 
+def source_tool_path():
+    paths = os.environ.get("PATH", os.defpath).split(os.pathsep)
+    if sys.platform == "darwin":
+        # Finder/desktop launches do not inherit the interactive shell's PATH.
+        paths.extend(("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin"))
+    return os.pathsep.join(dict.fromkeys(path for path in paths if path))
+
+
 def source_tools(root):
     if not (root / ".git").exists():
         raise ValueError(
@@ -134,10 +208,19 @@ def source_tools(root):
     venv = Path(sys.prefix).resolve()
     if venv.parent != root.resolve() or venv.name not in (".venv", "venv"):
         raise ValueError("请使用安装目录内 .venv 或 venv 的 Python 启动 Mower 后更新")
-    git, npm = shutil.which("git"), shutil.which("npm")
-    if not git or not npm:
+    tool_path = source_tool_path()
+    git, npm, node = (
+        shutil.which(name, path=tool_path) for name in ("git", "npm", "node")
+    )
+    if not git or not npm or not node:
         raise ValueError(
-            "未找到 Git 或 npm，请安装 Git、Git LFS 和 Node.js 并检查启动环境的 PATH"
+            "未找到 "
+            + "、".join(
+                name
+                for name, found in (("Git", git), ("npm", npm), ("Node.js", node))
+                if not found
+            )
+            + "，请安装对应工具并检查启动环境的 PATH"
         )
     origin = (
         subprocess.check_output(
@@ -154,12 +237,10 @@ def source_tools(root):
         f"ssh://git@github.com/{REPO}".lower(),
     ):
         raise ValueError("源码更新仅支持 origin 指向 ArkMowers/arknights-mower 的安装")
-    subprocess.run(
-        [git, "lfs", "version"], cwd=root, capture_output=True, check=True, timeout=10
-    )
     return {
         "git": git,
         "npm": npm,
+        "tool_path": tool_path,
         "python": sys.executable,
         "base_python": getattr(sys, "_base_executable", sys.executable),
         "venv_dir": venv.name,
@@ -173,14 +254,7 @@ def info():
     if deployment == "source":
         try:
             tools = source_tools(root)
-            if subprocess.check_output(
-                [tools["git"], "status", "--porcelain", "--untracked-files=normal"],
-                cwd=root,
-                timeout=10,
-            ):
-                blockers.append(
-                    "源码目录有未提交修改或未跟踪文件，请先提交或自行备份；不会执行强制重置"
-                )
+            require_clean_source(tools["git"], root)
         except Exception as exc:
             blockers.append(str(exc))
     elif not os.access(root.parent, os.W_OK) or not os.access(root, os.W_OK):
@@ -192,7 +266,7 @@ def info():
         blockers.append(
             "请通过 webview_ui.py / Mower 桌面程序启动；直接运行 Flask 或容器请使用原部署工具更新"
         )
-    settings = runtime.read_json(runtime.state_dir() / "settings.json", {})
+    settings = get_settings()
     return {
         "ok": True,
         "version": __version__,
@@ -201,12 +275,10 @@ def info():
         "root": str(root),
         "channels": CHANNELS,
         "settings": {
-            "channel": settings.get(
-                "channel", "beta" if "-" in __version__ else "stable"
-            ),
+            **settings,
             "proxy": network_settings.get_effective_settings()["http_proxy"],
-            "background": settings.get("background", True),
         },
+        "last_check": runtime.read_json(runtime.state_dir() / "last-check.json", {}),
         "blockers": blockers,
         "instances": [
             {"name": r["name"] or "默认实例", "running": r["running"]}
@@ -287,7 +359,7 @@ def check(channel, proxy=None):
     check_id = uuid4().hex
     _checks.clear()
     _checks[check_id] = plan
-    return {
+    result = {
         "ok": True,
         "check_id": check_id if available else "",
         "available": available,
@@ -298,6 +370,15 @@ def check(channel, proxy=None):
         if available
         else "当前版本已是所选渠道最新版本，或比该渠道更新",
     }
+    runtime.write_json(
+        runtime.state_dir() / "last-check.json",
+        {
+            **{key: value for key, value in result.items() if key != "check_id"},
+            "channel": channel,
+            "checked_at": time.time(),
+        },
+    )
+    return result
 
 
 def submit(check_id, background=False):
@@ -320,15 +401,7 @@ def _start_job(plan, background=False, uploaded=None):
     root = runtime.installation_root()
     tools = source_tools(root) if plan["deployment"] == "source" else {}
     if tools:
-        dirty = subprocess.check_output(
-            [tools["git"], "status", "--porcelain", "--untracked-files=normal"],
-            cwd=root,
-            timeout=10,
-        )
-        if dirty:
-            raise ValueError(
-                "源码目录有未提交修改或未跟踪文件，请先提交或自行备份；不会执行强制重置"
-            )
+        require_clean_source(tools["git"], root)
     state = runtime.state_dir()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = state / "active"
@@ -362,7 +435,7 @@ def _start_job(plan, background=False, uploaded=None):
         runtime.write_json(job_path, job)
         runtime.write_json(
             state / "settings.json",
-            {k: job[k] for k in ("channel", "proxy", "background")},
+            {**get_settings(), **{k: job[k] for k in ("channel", "background")}},
         )
         runtime.write_json(
             state / "status.json",
@@ -440,7 +513,11 @@ def status():
                 result["log"] = log.read().decode("utf-8", errors="replace")
         except OSError:
             pass
-    return {"ok": True, **result}
+    return {
+        "ok": True,
+        **result,
+        "last_check": runtime.read_json(state / "last-check.json", {}),
+    }
 
 
 def manual_plan(filename, proxy=""):

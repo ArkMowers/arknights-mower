@@ -36,6 +36,7 @@ from arknights_mower.utils.update_runtime import active_job
 from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
+from arknights_mower.views.process_control import process_control_bp
 from arknights_mower.views.software_update import software_update_bp
 from arknights_mower.views.task import set_mower_thread, task_bp
 
@@ -599,6 +600,7 @@ def load_config():
             logger.exception("Failed to sync active weekly plan before returning /conf")
             manager = None
         data = config.conf.model_dump()
+        data["runtime_platform"] = __system__
         if manager is not None:
             data["maa_weekly_plan_active"] = manager.get_active_plan_key()
         return data
@@ -1312,7 +1314,7 @@ def start_maa_update():
         if _job_running(maa_resource_update_job):
             return {"ok": False, "message": "Maa 资源更新正在进行中"}
         if active_job():
-            return {"ok": False, "message": "Mower 软件更新正在进行中"}
+            return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}
         with maa_update_lock:
             thread = maa_update_job.get("thread")
             if thread is not None and thread.is_alive():
@@ -1575,7 +1577,7 @@ def start_maa_resource_update():
         if mower_thread and mower_thread.is_alive():
             return {"ok": False, "message": "请先停止 Mower，再更新 Maa 资源"}
         if active_job():
-            return {"ok": False, "message": "Mower 软件更新正在进行中"}
+            return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}
         if _job_running(maa_update_job):
             return {"ok": False, "message": "MAA 下载或更新正在进行中"}
         with maa_resource_update_lock:
@@ -2451,3 +2453,4 @@ app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
 app.register_blueprint(software_update_bp)
 app.register_blueprint(network_bp)
+app.register_blueprint(process_control_bp)

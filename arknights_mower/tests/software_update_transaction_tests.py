@@ -19,7 +19,7 @@ from arknights_mower.utils.software_update_worker import Worker
 
 
 @unittest.skipUnless(
-    shutil.which("git") and shutil.which("npm"), "requires Git LFS and npm"
+    shutil.which("git") and shutil.which("npm"), "requires Git and npm"
 )
 class SourceTransactionTests(unittest.TestCase):
     def transaction(self, fail_build=False):
@@ -136,6 +136,15 @@ class SourceTransactionTests(unittest.TestCase):
                 }
                 runtime.write_json(work / "job.json", job)
                 worker = Worker(work / "job.json")
+                run_command = worker.run_command
+
+                def run_without_lfs(args, **kwargs):
+                    self.assertNotIn(
+                        "lfs", args, "ordinary source updates must not require Git LFS"
+                    )
+                    return run_command(args, **kwargs)
+
+                worker.run_command = run_without_lfs
                 worker.env.update(
                     PIP_DISABLE_PIP_VERSION_CHECK="1",
                     npm_config_offline="true",

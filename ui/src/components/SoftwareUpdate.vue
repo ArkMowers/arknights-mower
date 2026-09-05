@@ -12,6 +12,8 @@ const card = ref(null)
 const info = ref(null)
 const channel = ref('beta')
 const background = ref(true)
+const autoCheck = ref(false)
+const autoUpdate = ref(false)
 const checked = ref(null)
 const job = ref({ status: 'idle' })
 const busy = ref(false)
@@ -36,6 +38,44 @@ const pendingKey = `mower-software-update:${base}`
 let timer
 let disposed = false
 let pendingSince = 0
+let settingsRequest = Promise.resolve()
+
+function saveSettings() {
+  const settings = {
+    channel: channel.value,
+    background: background.value,
+    auto_check: autoCheck.value,
+    auto_update: autoUpdate.value
+  }
+  settingsRequest = settingsRequest
+    .catch(() => {})
+    .then(async () => {
+      const { data } = await axios.post(`${base}/settings`, settings, { headers })
+      if (!data.ok) throw new Error(data.message)
+    })
+  settingsRequest.catch((err) => {
+    error.value = errorMessage(err)
+  })
+  return settingsRequest
+}
+
+function setAutoCheck(value) {
+  autoCheck.value = value
+  if (!value) autoUpdate.value = false
+  saveSettings()
+}
+
+function setAutoUpdate(value) {
+  autoUpdate.value = value
+  if (value) autoCheck.value = true
+  saveSettings()
+}
+
+function showLastCheck(result) {
+  if (checked.value || !result || result.channel !== channel.value) return
+  if (result.ok) checked.value = result
+  else if (result.message) error.value = result.message
+}
 
 function errorMessage(err) {
   return err.response?.data?.message || err.message || '操作失败，请重试'
@@ -61,9 +101,14 @@ function dropSoftwarePackage(event) {
 async function loadInfo() {
   const { data } = await axios.get(`${base}/info`)
   if (!data.ok) throw new Error(data.message)
+  if (!info.value) {
+    channel.value = data.settings.channel
+    background.value = data.settings.background
+    autoCheck.value = data.settings.auto_check
+    autoUpdate.value = data.settings.auto_update
+  }
   info.value = data
-  channel.value = data.settings.channel
-  background.value = data.settings.background
+  showLastCheck(data.last_check)
 }
 
 async function poll() {
@@ -72,6 +117,7 @@ async function poll() {
     const { data } = await axios.get(`${base}/status`, { timeout: 5000 })
     if (!data.ok) throw new Error(data.message)
     job.value = data
+    showLastCheck(data.last_check)
     disconnected.value = false
     if (data.status === 'running' && !pendingSince) pendingSince = Date.now()
     const pending = sessionStorage.getItem(pendingKey)
@@ -97,7 +143,8 @@ async function checkUpdate() {
   checked.value = null
   error.value = ''
   try {
-    if (!info.value) await loadInfo()
+    await settingsRequest
+    await loadInfo()
     const { data } = await axios.post(`${base}/check`, { channel: channel.value }, { headers })
     if (!data.ok) throw new Error(data.message)
     checked.value = data
@@ -125,6 +172,10 @@ async function install(manual = false) {
         }
       })
     } else {
+      if (!checked.value?.check_id) {
+        await checkUpdate()
+        if (!checked.value?.available || !checked.value?.check_id) return
+      }
       response = await axios.post(
         `${base}/start`,
         {
@@ -177,12 +228,31 @@ onUnmounted(() => {
   <n-card id="software-update" ref="card" title="软件更新">
     <n-form :show-feedback="false" label-placement="left" label-width="72">
       <n-form-item :show-label="false">
+        <n-checkbox :checked="autoCheck" :disabled="!info || running" @update:checked="setAutoCheck"
+          >自动检查更新</n-checkbox
+        >
+        <span class="hint">打开 Mower 时检查所选渠道的软件更新</span>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox
+          :checked="autoUpdate"
+          :disabled="!info || running"
+          @update:checked="setAutoUpdate"
+          >自动更新</n-checkbox
+        >
+        <span class="hint">发现更新后自动安装并重启当前运行的实例</span>
+      </n-form-item>
+      <n-form-item :show-label="false">
         <div class="restart-option">
-          <n-checkbox v-model:checked="background" :disabled="running || !info">
+          <n-checkbox
+            v-model:checked="background"
+            :disabled="running || !info"
+            @update:checked="saveSettings"
+          >
             更新后后台静默重启
           </n-checkbox>
           <span class="hint">{{
-            background ? '不打开窗口，保留托盘入口' : '重启后正常打开窗口'
+            background ? '不打开窗口，在后台运行' : '重启后正常打开窗口'
           }}</span>
         </div>
       </n-form-item>
@@ -206,6 +276,7 @@ onUnmounted(() => {
           :options="channelOptions"
           :disabled="running || checking || !info"
           :input-props="{ 'aria-label': '更新渠道' }"
+          @update:value="saveSettings"
         />
       </n-form-item>
       <n-form-item v-if="selectedChannel" :show-label="false">

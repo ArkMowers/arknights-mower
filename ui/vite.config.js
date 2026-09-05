@@ -10,7 +10,7 @@ import Components from 'unplugin-vue-components/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     Inspect(),
     vue(),
@@ -24,6 +24,7 @@ export default defineConfig({
       ]
     }),
     Components({
+      dts: command === 'serve' ? 'components.d.ts' : false,
       resolvers: [NaiveUiResolver()]
     })
   ],
@@ -40,4 +41,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))

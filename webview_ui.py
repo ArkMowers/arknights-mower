@@ -5,6 +5,12 @@ import platform
 import sys
 from urllib.parse import quote
 
+if __name__ == "__main__" and sys.argv[1:2] == ["--process-control-worker"]:
+    from arknights_mower.utils.process_control import worker_main
+
+    worker_main(sys.argv[2])
+    sys.exit()
+
 # The copied frozen updater must run before importing Flask, config or any GUI.
 if __name__ == "__main__" and sys.argv[1:2] == ["--software-update-worker"]:
     from arknights_mower.utils.software_update_worker import main as update_main
@@ -359,7 +365,7 @@ def background_requested():
 
 
 def run_desktop():
-    from queue import Empty
+    from queue import Empty, Queue
     from threading import Thread
     from time import sleep
 
@@ -368,14 +374,14 @@ def run_desktop():
 
     owner = runtime.read_json(runtime.state_dir() / "active/owner.json", {})
     if runtime.active_job() and os.environ.get("MOWER_RESTART_JOB") != owner.get("id"):
-        sys.exit("软件正在更新，请等待完成后启动 Mower")
+        sys.exit("软件更新或进程操作正在进行，请等待完成后启动 Mower")
     background = background_requested()
     if background or not runtime.frozen():
         runtime.hide_macos_dock_icon()
     exit_if_webview_backend_missing()
     path.global_space = sys.argv[1] if len(sys.argv) >= 2 else None
     instance_name = sys.argv[2] if len(sys.argv) >= 3 else ""
-    splash_queue = mp.Queue()
+    splash_queue = Queue() if background else mp.Queue()
     splash_process = None
     tray_process = None
     registration = runtime.RuntimeRegistration(
@@ -391,7 +397,8 @@ def run_desktop():
     from arknights_mower.utils.network import get_new_port, is_port_in_use
 
     conf = config.conf
-    tray = conf.webview.tray or background
+    tray = conf.webview.tray or (background and sys.platform != "darwin")
+    keep_running = tray or background or sys.platform == "darwin"
     token = conf.webview.token
     host = "0.0.0.0" if token else "127.0.0.1"
     restart_port = os.environ.get("MOWER_RESTART_PORT", "")
@@ -423,7 +430,7 @@ def run_desktop():
         sleep(0.1)
     registration.record["ready"] = True
     registration.publish()
-    tray_queue = mp.Queue()
+    tray_queue = mp.Queue() if tray else Queue()
     if tray:
         tray_process = mp.Process(
             target=start_tray,
@@ -436,15 +443,28 @@ def run_desktop():
         config.parent_conn, child_conn = mp.Pipe()
         config.webview_process = mp.Process(
             target=webview_window,
-            args=(child_conn, path.global_space, instance_name, host, port, url, tray),
+            args=(
+                child_conn,
+                path.global_space,
+                instance_name,
+                host,
+                port,
+                url,
+                keep_running,
+            ),
             daemon=True,
         )
         config.webview_process.start()
 
     config.webview_process = None
+    config.parent_conn = None
     if not background:
         open_window()
     close_child(splash_process)
+
+    from arknights_mower.utils.software_update import check_on_launch
+
+    Thread(target=check_on_launch, daemon=True).start()
 
     def resume_after_update():
         while runtime.active_job() and not registration.shutdown_requested():
@@ -473,10 +493,16 @@ def run_desktop():
                     stopped = server.stop() == "true"
                 if stopped and registration.shutdown_requested():
                     break
-            if not tray:
-                config.webview_process.join(0.5)
-                if not config.webview_process.is_alive():
+            if config.webview_process and not config.webview_process.is_alive():
+                close_child(config.webview_process)
+                config.webview_process = None
+                if config.parent_conn is not None:
+                    config.parent_conn.close()
+                    config.parent_conn = None
+                if not keep_running:
                     break
+            if not tray:
+                sleep(0.5)
                 continue
             try:
                 msg = tray_queue.get(timeout=0.5)
