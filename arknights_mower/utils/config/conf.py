@@ -111,7 +111,7 @@ class ExtraPart(ConfModel):
     screenshot_interval: int = 500
     "截图最短间隔（毫秒）"
     screenshot: float = 0.02
-    "截图保留时长（小时）"
+    "截图保留时长（小时），0 不保存普通截图，关键截图继续保留"
     waiting_scene: WaitingSceneConf
     "等待时间"
 

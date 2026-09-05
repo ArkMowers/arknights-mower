@@ -459,9 +459,11 @@ if (return_home_when_idle.value) {
             <n-form-item>
               <template #label>
                 <span>截图保存时间</span>
-                <help-text>可填小数</help-text>
+                <help-text>
+                  可填小数；设为 0 不保存普通和调试截图，实时预览仍可用，跑单等关键截图继续保留。
+                </help-text>
               </template>
-              <n-input-number v-model:value="screenshot">
+              <n-input-number v-model:value="screenshot" :min="0">
                 <template #suffix>小时</template>
               </n-input-number>
             </n-form-item>
