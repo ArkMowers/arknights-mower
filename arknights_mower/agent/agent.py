@@ -4,6 +4,7 @@ import re
 from typing import Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_openai import ChatOpenAI
 
 try:
     from langgraph.graph import END, MessageGraph
@@ -15,7 +16,6 @@ from arknights_mower.agent.missed_order import (
     format_missed_order_list,
     summarize_missed_order_result,
 )
-from arknights_mower.agent.network import ChatOpenAI
 from arknights_mower.agent.tools.analyze_missed_order import (
     analyze_missed_order,
     analyze_missed_order_tool_def,

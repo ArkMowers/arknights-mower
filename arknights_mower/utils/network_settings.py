@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import threading
-import urllib.request
 from urllib.parse import urlsplit
 
 from arknights_mower.utils.github_download import normalize_proxy
@@ -23,7 +22,6 @@ _ENV_KEYS = (
     *_PROXY_ENV_KEYS,
     "no_proxy",
     "NO_PROXY",
-    "OPENAI_PROXY",
 )
 _BASE_ENV_KEY = "MOWER_PROXY_BASE_ENV"
 _base_environment = None
@@ -123,8 +121,6 @@ def apply_http_proxy():
         if proxy:
             for key in _PROXY_ENV_KEYS:
                 os.environ[key] = proxy
-            # LangChain otherwise lets OPENAI_PROXY override HTTP(S)/NO_PROXY.
-            os.environ["OPENAI_PROXY"] = ""
         # Keep the web UI, local screenshot services and readiness checks local.
         if proxy or any(_base_environment[key] for key in _PROXY_ENV_KEYS):
             bypass = ",".join(
@@ -138,7 +134,6 @@ def apply_http_proxy():
                 )
             )
             os.environ["no_proxy"] = os.environ["NO_PROXY"] = bypass
-        urllib.request.install_opener(urllib.request.build_opener())
         _last_proxy = proxy
         _effective_settings = settings
 
@@ -149,26 +144,18 @@ def get_effective_settings():
         return dict(_effective_settings)
 
 
-def proxy_for_url(url, *, ai=False):
+def proxy_for_url(url):
     """Resolve a route at request time, including the launch environment fallback."""
     import requests
 
     with _environment_lock:
         apply_http_proxy()
-        if (
-            ai
-            and os.environ.get("OPENAI_PROXY")
-            and not requests.utils.should_bypass_proxies(
-                url, no_proxy=os.environ.get("no_proxy", os.environ.get("NO_PROXY"))
-            )
-        ):
-            return os.environ["OPENAI_PROXY"]
         proxies = requests.utils.get_environ_proxies(url)
         return proxies.get(urlsplit(url).scheme) or proxies.get("all")
 
 
 def start_proxy_sync():
-    """Keep requests/urllib and future subprocesses in other instances current."""
+    """Keep the proxy environment in other instances and future children current."""
     global _sync_thread
     with _environment_lock:
         apply_http_proxy()

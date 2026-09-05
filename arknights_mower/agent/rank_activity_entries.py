@@ -2,8 +2,8 @@ import json
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
-from arknights_mower.agent.network import ChatOpenAI
 from arknights_mower.agent.tools.pick_activity_entry import pick_activity_entry
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger

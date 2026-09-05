@@ -1,9 +1,7 @@
 """Proxy integration uses only temporary settings and loopback HTTP servers."""
 
-import asyncio
 import hashlib
 import io
-import json
 import os
 import subprocess
 import sys
@@ -385,67 +383,6 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         return f"http://127.0.0.1:{server.server_port}", seen
-
-    def test_existing_ai_model_uses_updated_proxy_for_sync_and_async_requests(self):
-        from arknights_mower.agent.network import ChatOpenAI
-
-        def response(name):
-            return json.dumps(
-                {
-                    "id": "local-proxy-test",
-                    "object": "chat.completion",
-                    "created": 0,
-                    "model": "fixture",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "finish_reason": "stop",
-                            "message": {"role": "assistant", "content": name},
-                        }
-                    ],
-                }
-            ).encode()
-
-        first, first_seen = self.start_server(lambda path: response("first proxy"))
-        second, second_seen = self.start_server(lambda path: response("second proxy"))
-        os.environ["OPENAI_PROXY"] = "http://old.example.invalid:9999"
-        os.environ["NO_PROXY"] = "*"
-        model = ChatOpenAI(
-            model="fixture",
-            base_url="http://ai.example.invalid/v1",
-            api_key="local-fixture-key",
-            max_retries=0,
-        )
-        self.addCleanup(model.http_client.close)
-        self.addCleanup(lambda: asyncio.run(model.http_async_client.aclose()))
-        self.save(http=first)
-        self.assertEqual(model.invoke("local test").content, "first proxy")
-        self.save(http=second)
-        self.assertEqual(model.invoke("local test").content, "second proxy")
-        self.assertEqual(
-            asyncio.run(model.ainvoke("local async test")).content, "second proxy"
-        )
-        endpoint = "http://ai.example.invalid/v1/chat/completions"
-        self.assertEqual(first_seen, [endpoint])
-        self.assertEqual(second_seen, [endpoint, endpoint])
-
-    def test_proxy_change_keeps_active_ai_response_readable(self):
-        import httpx
-
-        from arknights_mower.agent.network import _ProxyTransport
-
-        first, first_seen = self.start_server(lambda path: b"existing response")
-        second, second_seen = self.start_server(lambda path: b"new response")
-        with httpx.Client(transport=_ProxyTransport()) as client:
-            self.save(http=first)
-            with client.stream("GET", "http://ai.example.invalid/stream") as response:
-                self.save(http=second)
-                self.assertEqual(response.read(), b"existing response")
-            self.assertEqual(
-                client.get("http://ai.example.invalid/next").content, b"new response"
-            )
-        self.assertEqual(first_seen, ["http://ai.example.invalid/stream"])
-        self.assertEqual(second_seen, ["http://ai.example.invalid/next"])
 
     def test_maa_program_resource_and_range_downloads_use_github_station(self):
         def body(path):
