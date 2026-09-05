@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from arknights_mower import __version__
 from arknights_mower.utils.config import gui
 from webview_ui import (
     _LINUX_WEBVIEW_INSTALL_HINT,
@@ -11,6 +12,8 @@ from webview_ui import (
     linux_webview_backend_error,
     resolve_window_size,
     sanitize_window_size,
+    title_version,
+    window_title,
 )
 
 
@@ -113,6 +116,42 @@ class TestGuiWindowSize(unittest.TestCase):
             p.write_text("width: abc\nheight: 900\n", encoding="utf-8")
             with mock.patch.object(gui, "gui_path", p):
                 self.assertIsNone(gui.load_window_size())
+
+
+class TestWindowTitle(unittest.TestCase):
+    def test_composes_app_and_resource_version(self):
+        # 标题 = 应用版本 + 资源包版本 + 实例标识；资源包版本来自 title_version 的尽力读取。
+        with mock.patch(
+            "webview_ui.title_version", return_value="4.1.6-alpha.3 - 2026.09.05"
+        ):
+            self.assertEqual(
+                window_title("测试", 8080),
+                "arknights-mower 4.1.6-alpha.3 - 2026.09.05 - mower@8080(测试)",
+            )
+
+    def test_omits_resource_version_when_absent(self):
+        # 未装资源包时不显示资源包版本段（title_version 只返回应用版本）。
+        with mock.patch("webview_ui.title_version", return_value="4.1.6-alpha.3"):
+            self.assertEqual(
+                window_title("", 8080),
+                "arknights-mower 4.1.6-alpha.3 - mower@8080",
+            )
+
+    def test_title_version_appends_resource_when_present(self):
+        # 资源包展示版本非空时，title_version 在应用版本后追加资源包版本号。
+        with mock.patch(
+            "arknights_mower.utils.resource_version.check_resource_update",
+            return_value={"current_display": "2026.09.05"},
+        ):
+            self.assertEqual(title_version(), f"{__version__} - 2026.09.05")
+
+    def test_title_version_omits_resource_when_absent(self):
+        # 未装资源包时 title_version 只返回应用版本，不残留空号段。
+        with mock.patch(
+            "arknights_mower.utils.resource_version.check_resource_update",
+            return_value={"current_display": ""},
+        ):
+            self.assertEqual(title_version(), __version__)
 
 
 if __name__ == "__main__":

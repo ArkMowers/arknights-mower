@@ -473,7 +473,8 @@ def _watch_shared_resource_changes():
         if _mower_busy_response():
             continue
         try:
-            reload_resource_caches_if_changed()
+            if reload_resource_caches_if_changed():
+                _request_title_refresh()
         except Exception:
             logger.exception("刷新其他 mower 实例更新的共享资源失败")
             time.sleep(30)
@@ -876,14 +877,32 @@ def get_latest_screenshot():
     return ""
 
 
+def _webview_conn():
+    """返回当前存活的 WebView 子进程连接；未启动或已退出时返回 None。"""
+    process = getattr(config, "webview_process", None)
+    conn = getattr(config, "parent_conn", None)
+    if process is None or conn is None or not process.is_alive():
+        return None
+    return conn
+
+
+def _request_title_refresh():
+    """资源包变更后让 WebView 子进程重算并刷新窗口标题（fire-and-forget，不等待回执）。"""
+    conn = _webview_conn()
+    if conn is None:
+        return
+    try:
+        conn.send("title")
+    except Exception:
+        logger.exception("通知 WebView 刷新窗口标题失败")
+
+
 def conn_send(text):
-    from arknights_mower.utils import config
-
-    if not config.webview_process.is_alive():
+    conn = _webview_conn()
+    if conn is None:
         return ""
-
-    config.parent_conn.send(text)
-    return config.parent_conn.recv()
+    conn.send(text)
+    return conn.recv()
 
 
 @app.route("/dialog/file")
@@ -960,7 +979,10 @@ def hot_update_manual():
     update_file = request.files.get("update")
     if update_file is None:
         return {"ok": False, "message": "没有收到更新包文件"}
-    return apply_manual_update(update_file.read(), _mower_busy_response)
+    result = apply_manual_update(update_file.read(), _mower_busy_response)
+    if result.get("ok") and result.get("kind") == "resource":
+        _request_title_refresh()
+    return result
 
 
 @app.route("/dialog/save/img", methods=["POST"])
@@ -1712,6 +1734,7 @@ def install_resource():
         return {"ok": False, "message": "资源包下载失败，请检查网络"}
     if not install_resource_pkg(data):
         return {"ok": False, "message": "资源包安装失败（已回滚）"}
+    _request_title_refresh()
     return {
         "ok": True,
         "restart_required": False,
