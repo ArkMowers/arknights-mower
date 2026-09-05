@@ -30,6 +30,13 @@ jobs:
       - name: Prettier check
         run: npx --yes prettier@latest --check "ui/**/*.js" "ui/**/*.vue"
 
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint GitHub Actions workflows
+        uses: rhysd/actionlint@v1.7.12
+
   unittest:
     runs-on: ubuntu-latest
     steps:
@@ -42,5 +49,28 @@ jobs:
       - run: |
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
+      - name: Compile all Python sources
+        run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
       - run: |
           ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
+          ./venv/bin/python3 -m unittest discover -s scripts/tests -p "*_tests.py"
+
+  # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
+  # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。
+  recognition-equivalence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: |
+          python3.12 -m venv venv
+          ./venv/bin/pip install -r requirements-dev.txt
+      - name: Assert upstream libraries are importable
+        # 缺少任何一个都会让等价性用例静默跳过，这里先失败，避免任务假绿。
+        run: ./venv/bin/python3 -c "import scipy, skimage, sklearn"
+      - name: Compare vision_np against upstream implementations
+        run: ./venv/bin/python3 -m unittest arknights_mower.tests.vision_np_tests -v

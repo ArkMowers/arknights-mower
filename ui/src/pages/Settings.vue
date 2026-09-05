@@ -37,6 +37,7 @@ const {
   screenshot_interval,
   run_order_grandet_mode,
   webview,
+  runtime_platform,
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
@@ -49,7 +50,6 @@ const {
   maa_adb_path,
   maa_gap,
   custom_screenshot,
-  check_for_updates,
   waiting_scene,
   enable_party,
   leifeng_mode,
@@ -58,6 +58,11 @@ const {
   ai_type,
   ai_key
 } = storeToRefs(config_store)
+
+const hide_macos_menu_bar = computed({
+  get: () => !webview.value.tray,
+  set: (hidden) => (webview.value.tray = !hidden)
+})
 
 const { operators } = storeToRefs(plan_store)
 
@@ -171,6 +176,8 @@ const onSelectionChange = (newValue) => {
 }
 import { ref } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
+import SoftwareUpdate from '../components/SoftwareUpdate.vue'
+import NetworkSettings from '../components/NetworkSettings.vue'
 
 const showSettingModal = ref(false)
 const editingIndex = ref(null)
@@ -412,9 +419,6 @@ if (return_home_when_idle.value) {
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="check_for_updates">检查版本更新</n-checkbox>
-            </n-form-item>
             <n-form-item label="截图方案">
               <n-radio-group v-model:value="screenshot_method">
                 <n-flex>
@@ -458,14 +462,19 @@ if (return_home_when_idle.value) {
                 <template #suffix>毫秒</template>
               </n-input-number>
             </n-form-item>
-            <n-form-item>
+            <n-form-item :show-feedback="screenshot === 0">
               <template #label>
                 <span>截图保存时间</span>
-                <help-text>可填小数</help-text>
+                <help-text>默认保留 1 小时，可填小数。</help-text>
               </template>
-              <n-input-number v-model:value="screenshot">
+              <n-input-number v-model:value="screenshot" :min="0">
                 <template #suffix>小时</template>
               </n-input-number>
+              <template v-if="screenshot === 0" #feedback>
+                <span role="status">
+                  已关闭截图保存，实时预览仍可用。后续调试、跑单等截图不会保存，排查问题时可能缺少截图记录。设为正数可恢复保存。
+                </span>
+              </template>
             </n-form-item>
             <n-form-item label="等待时间">
               <n-table size="small" class="waiting-table">
@@ -512,7 +521,16 @@ if (return_home_when_idle.value) {
               </n-button>
             </n-form-item>
             <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="webview.tray">
+              <n-checkbox
+                v-if="runtime_platform === 'darwin'"
+                v-model:checked="hide_macos_menu_bar"
+              >
+                隐藏菜单栏图标
+                <help-text>
+                  重启生效。不创建托盘进程，关闭窗口后仍在后台运行，可通过浏览器访问原网页地址。
+                </help-text>
+              </n-checkbox>
+              <n-checkbox v-else v-model:checked="webview.tray">
                 使用托盘图标
                 <help-text>重启生效</help-text>
               </n-checkbox>
@@ -883,10 +901,43 @@ if (return_home_when_idle.value) {
         <ChatBotSetting />
       </div>
     </div>
+    <div class="settings-network">
+      <NetworkSettings />
+    </div>
+    <div class="settings-updates">
+      <div><SoftwareUpdate /></div>
+      <div><ResourceUpdate /></div>
+    </div>
+    <div class="settings-network">
+      <ProcessControl />
+    </div>
   </div>
 </template>
 
 <style scoped lang="scss">
+.settings-network {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.settings-updates {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+
+  > div {
+    min-width: 0;
+    max-width: 600px;
+  }
+
+  @media (min-width: 1400px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+}
+
 .threshold {
   display: flex;
   align-items: center;

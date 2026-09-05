@@ -6,7 +6,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.log import logger, save_screenshot
+from arknights_mower.utils.log import save_screenshot
 from arknights_mower.utils.path import get_path
 
 
@@ -32,7 +32,7 @@ def img2bytes(img: tp.Image) -> bytes:
 
 def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     if res.startswith("@hot"):
-        res_name = res.replace("@hot", "@install/tmp/hot_update", 1)
+        res_name = res.replace("@hot", "@app/tmp/hot_update", 1)
     else:
         res_name = f"{__rootdir__}/resources/{res}"
     if not res.endswith(".jpg"):
@@ -44,7 +44,6 @@ def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
 @lru_cache(maxsize=128)
 def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     """load image from file"""
-    logger.debug(filename)
     img_data = np.fromfile(filename, dtype=np.uint8)
     if gray:
         return cv2.imdecode(img_data, cv2.IMREAD_GRAYSCALE)
@@ -112,7 +111,6 @@ def cmatch(
     cb = cv2.mean(img2)[:3]
     diff = np.array(ca).astype(int) - np.array(cb).astype(int)
     diff = np.max(np.maximum(diff, 0)) - np.min(np.minimum(diff, 0))
-    logger.debug(f"{ca=} {cb=} {diff=}")
 
     if draw:
         board = np.zeros([h + 5, w * 2, 3], dtype=np.uint8)

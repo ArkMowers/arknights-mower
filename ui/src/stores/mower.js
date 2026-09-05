@@ -26,6 +26,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const auto_start_handled = ref(false)
   const plan_condition = ref([])
   const waiting = ref(false)
 
@@ -33,7 +34,6 @@ export const useMowerStore = defineStore('mower', () => {
 
   const get_task_id = ref(0)
   const task_list = ref([])
-  const sc_uri = ref('')
   const speed_msg = ref([])
   function listen_ws() {
     let backend_url
@@ -48,9 +48,6 @@ export const useMowerStore = defineStore('mower', () => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
         log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100) // 追加日志
-        if (data.screenshot) {
-          sc_uri.value = data.screenshot
-        }
       }
     }
   }
@@ -58,6 +55,7 @@ export const useMowerStore = defineStore('mower', () => {
   async function get_running() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
     running.value = response.data['status'] !== 'stopped'
+    auto_start_handled.value = response.data.auto_start_handled === true
     plan_condition.value = response.data['plan_condition']
   }
 
@@ -77,6 +75,7 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    auto_start_handled,
     plan_condition,
     waiting,
     listen_ws,
@@ -85,7 +84,6 @@ export const useMowerStore = defineStore('mower', () => {
     task_list,
     get_task_id,
     get_tasks,
-    sc_uri,
     speed_msg
   }
 })

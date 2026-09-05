@@ -16,12 +16,20 @@ export const useConfigStore = defineStore('config', () => {
   const maa_adb_path = ref('')
   const maa_enable = ref(false)
   const maa_path = ref('')
-  const maa_startup_check = ref(false)
+  const maa_mirrorchyan_token = ref('')
+  const maa_update_channel = ref('stable')
+  const maa_auto_check_update = ref(false)
   const maa_expiring_medicine = ref(true)
   const ap_fallback = ref(0)
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
+  const maa_weekly_plan_activity_fallbacks = ref({})
+  const maa_weekly_plan_activity_switch_times = ref({})
+  const maa_weekly_plan_activity_end_times = ref({})
+  const maa_stage_inventory_enable = ref(false)
+  const maa_stage_limit_rules = ref([])
+  const maa_stage_ratio_rules = ref([])
   const maa_rg_enable = ref(0)
   const maa_long_task_type = ref('rogue')
   const mail_enable = ref(false)
@@ -72,7 +80,7 @@ export const useConfigStore = defineStore('config', () => {
   const rcl = ref({})
   const rogue = ref({})
   const sss = ref({})
-  const screenshot = ref(0)
+  const screenshot = ref(1)
   const screenshot_interval = ref(500)
   const mail_subject = ref('')
   const ai_type = ref('')
@@ -89,6 +97,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
+  const runtime_platform = ref('')
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
@@ -100,13 +109,15 @@ export const useConfigStore = defineStore('config', () => {
   const fia_fool = ref(true)
   const refresh_backup_plan_after_mood = ref(false)
   const assistant_follows_schedule = ref(false)
+  const enable_mastery = ref(true)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const mumu12IPC = ref(false)
   const visit_friend = ref(true)
   const credit_fight = ref({})
   const custom_screenshot = ref({})
-  const check_for_updates = ref(true)
+  const hot_update_enable = ref(false)
+  const hot_update_auto_update = ref(false)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
   const exipring_medicine_on_weekend = ref(false)
@@ -166,11 +177,72 @@ export const useConfigStore = defineStore('config', () => {
     })
   }
 
+  function normalizeStageLimitRules(rawRules) {
+    if (!Array.isArray(rawRules)) {
+      return []
+    }
+    return rawRules
+      .filter((rule) => rule && typeof rule.stage === 'string' && rule.stage.trim())
+      .map((rule) => ({
+        stage: rule.stage.trim(),
+        operator: rule.operator === 'or' ? 'or' : 'and',
+        enabled: rule.enabled !== false,
+        items: (Array.isArray(rule.items) ? rule.items : [])
+          .filter((item) => item && (item.item_id || item.item_name))
+          .map((item) => ({
+            item_id: String(item.item_id || item.item_name || '').trim(),
+            item_name: String(item.item_name || item.item_id || '').trim(),
+            limit: Math.max(0, Number.isFinite(Number(item.limit)) ? Number(item.limit) : 0)
+          }))
+      }))
+  }
+
+  function normalizeStageRatioRules(rawRules) {
+    if (!Array.isArray(rawRules)) {
+      return []
+    }
+    return rawRules.map((rule, index) => ({
+      name: String(rule?.name || `比例规则 ${index + 1}`).trim(),
+      enabled: rule?.enabled !== false,
+      members: (Array.isArray(rule?.members) ? rule.members : [])
+        .filter((member) => member && member.stage && (member.item_id || member.item_name))
+        .map((member) => ({
+          stage: String(member.stage).trim(),
+          item_id: String(member.item_id || member.item_name || '').trim(),
+          item_name: String(member.item_name || member.item_id || '').trim(),
+          ratio: Math.max(0, Number.isFinite(Number(member.ratio)) ? Number(member.ratio) : 0)
+        }))
+    }))
+  }
+
+  function normalizeTimestampMap(rawValue) {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+      return {}
+    }
+    return Object.fromEntries(
+      Object.entries(rawValue)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0)
+    )
+  }
+
+  function applyWeeklyPlanMetadata(data = {}) {
+    maa_weekly_plan_activity_fallbacks.value =
+      data.activity_fallbacks && typeof data.activity_fallbacks === 'object'
+        ? data.activity_fallbacks
+        : {}
+    maa_weekly_plan_activity_switch_times.value = normalizeTimestampMap(
+      data.activity_fallback_switch_times
+    )
+    maa_weekly_plan_activity_end_times.value = normalizeTimestampMap(data.activity_plan_end_times)
+  }
+
   async function load_weekly_plan_state() {
     const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
     maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
       ? listResponse.data.plans
       : []
+    applyWeeklyPlanMetadata(listResponse.data)
 
     if (!maa_weekly_plan_active.value) {
       await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
@@ -203,6 +275,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.from(
         new Set([...maa_weekly_plan_options.value, response.data.active])
       )
+      applyWeeklyPlanMetadata(response.data)
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
@@ -234,10 +307,31 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
         ? listResponse.data.plans
         : []
+      applyWeeklyPlanMetadata(listResponse.data)
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
     }
+  }
+
+  async function update_weekly_plan_activity_fallback(target, switchTime = undefined) {
+    const source = maa_weekly_plan_active.value
+    if (!source) {
+      throw new Error('请先选择周计划方案')
+    }
+    const payload = {
+      source,
+      target: typeof target === 'string' ? target.trim() : ''
+    }
+    if (switchTime !== undefined) {
+      payload.switch_time = switchTime
+    }
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/weekly-plans/activity-fallback`,
+      payload
+    )
+    applyWeeklyPlanMetadata(response.data)
+    return response.data
   }
 
   function normalizeLaunchConfig(config = {}) {
@@ -254,6 +348,7 @@ export const useConfigStore = defineStore('config', () => {
 
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
+    runtime_platform.value = response.data.runtime_platform || ''
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
@@ -265,13 +360,18 @@ export const useConfigStore = defineStore('config', () => {
     maa_adb_path.value = response.data.maa_adb_path
     maa_enable.value = response.data.maa_enable != 0
     maa_path.value = response.data.maa_path
-    maa_startup_check.value = response.data.maa_startup_check
+    maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
+    maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
+    maa_auto_check_update.value = response.data.maa_auto_check_update ?? false
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
     maa_expiring_medicine.value = response.data.maa_expiring_medicine
     ap_fallback.value = Number(response.data.ap_fallback) || 0
     maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
     maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
+    maa_stage_inventory_enable.value = response.data.maa_stage_inventory_enable === true
+    maa_stage_limit_rules.value = normalizeStageLimitRules(response.data.maa_stage_limit_rules)
+    maa_stage_ratio_rules.value = normalizeStageRatioRules(response.data.maa_stage_ratio_rules)
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
@@ -339,6 +439,7 @@ export const useConfigStore = defineStore('config', () => {
     fia_fool.value = response.data.fia_fool
     refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? false
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
+    enable_mastery.value = response.data.enable_mastery ?? true
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     mumu12IPC.value = response.data.mumu12IPC
@@ -349,7 +450,8 @@ export const useConfigStore = defineStore('config', () => {
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
-    check_for_updates.value = response.data.check_for_updates
+    hot_update_enable.value = response.data.hot_update?.enable ?? false
+    hot_update_auto_update.value = response.data.hot_update?.auto_update ?? false
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
     exipring_medicine_on_weekend.value = response.data.exipring_medicine_on_weekend
@@ -374,11 +476,16 @@ export const useConfigStore = defineStore('config', () => {
       maa_adb_path: maa_adb_path.value,
       maa_enable: maa_enable.value ? 1 : 0,
       maa_path: maa_path.value,
-      maa_startup_check: maa_startup_check.value,
+      maa_mirrorchyan_token: maa_mirrorchyan_token.value,
+      maa_update_channel: maa_update_channel.value,
+      maa_auto_check_update: maa_auto_check_update.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
       maa_expiring_medicine: maa_expiring_medicine.value,
       ap_fallback: ap_fallback.value,
+      maa_stage_inventory_enable: maa_stage_inventory_enable.value,
+      maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
+      maa_stage_ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value),
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
@@ -452,6 +559,7 @@ export const useConfigStore = defineStore('config', () => {
       fia_fool: fia_fool.value,
       refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
+      enable_mastery: enable_mastery.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
@@ -462,7 +570,10 @@ export const useConfigStore = defineStore('config', () => {
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
-      check_for_updates: check_for_updates.value,
+      hot_update: {
+        enable: hot_update_enable.value,
+        auto_update: hot_update_auto_update.value
+      },
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
       exipring_medicine_on_weekend: exipring_medicine_on_weekend.value,
@@ -495,15 +606,25 @@ export const useConfigStore = defineStore('config', () => {
     },
     { deep: true }
   )
+  let configSaveRequest = Promise.resolve()
+  function save_config() {
+    const payload = JSON.parse(JSON.stringify(build_config()))
+    configSaveRequest = configSaveRequest
+      .catch(() => {})
+      .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, payload))
+    return configSaveRequest
+  }
+
   watchEffect(() => {
     if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+      save_config().catch((error) => console.error('配置保存失败', error))
     }
   })
 
   return {
     adb,
     load_config,
+    save_config,
     drone_count_limit,
     drone_room,
     drone_interval,
@@ -513,7 +634,9 @@ export const useConfigStore = defineStore('config', () => {
     maa_adb_path,
     maa_enable,
     maa_path,
-    maa_startup_check,
+    maa_mirrorchyan_token,
+    maa_update_channel,
+    maa_auto_check_update,
     maa_rg_enable,
     maa_long_task_type,
     maa_expiring_medicine,
@@ -521,6 +644,12 @@ export const useConfigStore = defineStore('config', () => {
     maa_weekly_plan,
     maa_weekly_plan_options,
     maa_weekly_plan_active,
+    maa_weekly_plan_activity_fallbacks,
+    maa_weekly_plan_activity_switch_times,
+    maa_weekly_plan_activity_end_times,
+    maa_stage_inventory_enable,
+    maa_stage_limit_rules,
+    maa_stage_ratio_rules,
     mail_enable,
     account,
     pass_code,
@@ -584,6 +713,7 @@ export const useConfigStore = defineStore('config', () => {
     recruit_gap,
     recruit_auto_5,
     webview,
+    runtime_platform,
     shop_collect_enable,
     meeting_level,
     fix_mumu12_adb_disconnect,
@@ -595,13 +725,15 @@ export const useConfigStore = defineStore('config', () => {
     fia_fool,
     refresh_backup_plan_after_mood,
     assistant_follows_schedule,
+    enable_mastery,
     sign_in,
     droidcast,
     mumu12IPC,
     visit_friend,
     credit_fight,
     custom_screenshot,
-    check_for_updates,
+    hot_update_enable,
+    hot_update_auto_update,
     notification_level,
     waiting_scene,
     exipring_medicine_on_weekend,
@@ -613,6 +745,7 @@ export const useConfigStore = defineStore('config', () => {
     load_weekly_plan_state,
     update_weekly_plan_active,
     sync_active_weekly_plan,
-    delete_weekly_plan
+    delete_weekly_plan,
+    update_weekly_plan_activity_fallback
   }
 })

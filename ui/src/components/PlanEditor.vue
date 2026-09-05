@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { swap } from '@/utils/common'
+import { swapTask, updateTrigger } from '@/utils/plan_edit'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -145,44 +146,6 @@ const color_map = computed(() => {
 function drag_facility(room, event) {
   event.dataTransfer.setData('text/plain', room)
   event.dataTransfer.dropEffect = 'move'
-}
-
-function updateTrigger(trigger, source, target) {
-  for (const key in trigger) {
-    if (key === 'left' || key === 'right') {
-      if (typeof trigger[key] === 'string') {
-        trigger[key] = swapSubstrings(trigger[key], source, target)
-      } else if (typeof trigger[key] === 'object' && trigger[key] !== null) {
-        updateTrigger(trigger[key], source, target)
-      }
-    }
-  }
-}
-
-function swapSubstrings(str, source, target) {
-  const placeholder = '__PLACEHOLDER__'
-  let newStr = str.replace(new RegExp(source, 'g'), placeholder)
-  newStr = newStr.replace(new RegExp(target, 'g'), source)
-  newStr = newStr.replace(new RegExp(placeholder, 'g'), target)
-  return newStr
-}
-
-function swapTask(tasks, source, target) {
-  if (tasks) {
-    const placeholder = '__PLACEHOLDER__'
-    if (tasks.hasOwnProperty(source)) {
-      tasks[placeholder] = tasks[source]
-      delete tasks[source]
-    }
-    if (tasks.hasOwnProperty(target)) {
-      tasks[source] = tasks[target]
-      delete tasks[target]
-    }
-    if (tasks.hasOwnProperty(placeholder)) {
-      tasks[target] = tasks[placeholder]
-      delete tasks[placeholder]
-    }
-  }
 }
 
 function drop_facility(target, event) {

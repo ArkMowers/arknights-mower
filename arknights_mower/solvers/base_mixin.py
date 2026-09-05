@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.data import workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import rapidocr, segment
@@ -13,14 +12,44 @@ from arknights_mower.utils.character_recognize import operator_list, operator_li
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 
-with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
-    OP_ROOM = pickle.loads(f.read())
+
+def _load_operator_room_model():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/operator_room.model")), "rb"
+    ) as f:
+        model = pickle.loads(f.read())
+    if not isinstance(model, dict):
+        raise ValueError("基建干员识别模型格式错误")
+    return model
+
+
+OP_ROOM = _load_operator_room_model()
 
 kernel = np.ones((12, 12), np.uint8)
 PREFIX_NAME_SCORE_RATIO = 0.9
 PREFIX_NAME_WIDTH_RATIO = 0.75
 PREFIX_NAME_WIDTH_MARGIN = 30
+
+# #85：排序列→x 坐标单一来源（detect_arrange_order / switch_arrange_order 共用；
+# 2026-08-16 实机校准取读坐标，工作房 5 列、宿舍/中枢 4 列无「效率」）
+_ARRANGE_ORDER_X = {
+    "工作状态": 935,
+    "效率": 1070,
+    "技能": 1210,
+    "心情": 1355,
+    "信赖值": 1490,
+}
+_ARRANGE_ORDER_X_DORM = {
+    "工作状态": 1070,
+    "技能": 1217,
+    "心情": 1352,
+    "信赖值": 1490,
+}
 
 
 def _foreground_width(img):
@@ -33,6 +62,18 @@ def _foreground_width(img):
 OP_ROOM_WIDTH = {
     operator: _foreground_width(template) for operator, template in OP_ROOM.items()
 }
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    model = _load_operator_room_model()
+    widths = {
+        operator: _foreground_width(template) for operator, template in model.items()
+    }
+    OP_ROOM.clear()
+    OP_ROOM.update(model)
+    OP_ROOM_WIDTH.clear()
+    OP_ROOM_WIDTH.update(widths)
 
 
 def _resolve_operator_room_prefix(
@@ -79,48 +120,34 @@ class BaseMixin:
         "SPECIAL",
     ]
 
-    def detect_arrange_order(self, current_room):
-        name_list = []
+    def _arrange_order_x(self, current_room):
+        """排序列→x 坐标单一来源（#85：detect/switch 共用，取实机校准的读坐标）。"""
         if current_room.startswith("dormitory") or current_room == "central":
-            name_list = ["工作状态", "技能", "心情", "信赖值"]
-            x_list = (1070, 1217, 1352, 1490)
-            y = 70
-        else:
-            name_list = ["工作状态", "效率", "技能", "心情", "信赖值"]
-            x_list = (935, 1070, 1210, 1355, 1490)
+            return _ARRANGE_ORDER_X_DORM
+        return _ARRANGE_ORDER_X
+
+    def detect_arrange_order(self, current_room):
         y = 70
         hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
-        for idx, x in enumerate(x_list):
+        for name, x in self._arrange_order_x(current_room).items():
             if np.count_nonzero(mask[y : y + 3, x : x + 5]):
-                return (name_list[idx], False)
+                return (name, False)
             if np.count_nonzero(mask[y + 10 : y + 13, x : x + 5]):
-                return (name_list[idx], True)
+                return (name, True)
 
     def switch_arrange_order(self, name, current_room, ascending=False):
-        name_x = {}
-        if current_room.startswith("dormitory") or current_room == "central":
-            name_x = {"工作状态": 1070, "技能": 1220, "心情": 1358, "信赖值": 1495}
-            if isinstance(ascending, str):
-                ascending = ascending == "true"
-        else:
-            name_x = {
-                "工作状态": 935,
-                "效率": 1072,
-                "技能": 1215,
-                "心情": 1360,
-                "信赖值": 1495,
-            }
-            if isinstance(ascending, str):
-                ascending = ascending == "true"
+        if isinstance(ascending, str):
+            ascending = ascending == "true"
         name_y = 60
-        self.tap((name_x[name], name_y), interval=0.5)
+        x = self._arrange_order_x(current_room)[name]
+        self.tap((x, name_y), interval=0.5)
         while True:
             self.recog.update()
             n, s = self.detect_arrange_order(current_room)
             if n == name and s == ascending:
                 break
-            self.tap((name_x[name], name_y), interval=0.5)
+            self.tap((x, name_y), interval=0.5)
 
     def scan_agent(
         self,

@@ -1,9 +1,6 @@
 ﻿# 图像处理
 opencv-python==4.9.0.80
 numpy==1.26.4
-scipy==1.13.0
-scikit-image==0.23.2
-scikit-learn==1.4.2
 pillow==10.3.0
 
 # OCR
@@ -44,7 +41,8 @@ tzlocal==5.2
 pytz==2024.1
 
 # 网络请求、官网公告解析、HTML转Markdown、检查版本
-requests==2.31.0
+requests[socks]==2.31.0
+httpx[socks]==0.28.1
 beautifulsoup4==4.12.3
 lxml==5.2.2
 htmllistparse==0.6.1

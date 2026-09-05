@@ -33,12 +33,6 @@ export const routes = [
         name: 'maasettings'
       },
       {
-        path: 'aio',
-        component: () => import('@/pages/Material_all_in_one.vue'),
-        meta: { title: '设置' },
-        name: 'aio'
-      },
-      {
         path: 'doc',
         component: () => import('@/pages/Doc.vue'),
         meta: { title: '文档' },

@@ -42,6 +42,7 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
+              <GlobalUpdateDrop v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
               <n-modal
@@ -210,8 +211,9 @@ import RoseOutline from '@vicons/ionicons5/RoseOutline'
 import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref } from 'vue'
+import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref, watch } from 'vue'
 import Feedback from '@/components/Feedback.vue'
+import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
 
@@ -255,11 +257,6 @@ const menuOptions = [
       }
     ]
   },
-  // {
-  //   label: () => h(RouterLink, { to: { path: '/aio' } }, { default: () => 'aio' }),
-  //   icon: renderIcon(Settings),
-  //   key: 'go-to-aio'
-  // },
   {
     label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
@@ -372,6 +369,7 @@ import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
 import { useUpdateNoticeStore } from '@/stores/updateNotice'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 
 import { usewatermarkStore } from '@/stores/watermark'
 
@@ -382,21 +380,30 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop, load_item } = config_store
-const { check_for_updates, simulator, start_automatically, theme, webview } =
-  storeToRefs(config_store)
+const {
+  hot_update_enable,
+  hot_update_auto_update,
+  simulator,
+  start_automatically,
+  theme,
+  webview
+} = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const { ws, running, log_lines } = storeToRefs(mower_store)
+const { ws, running, log_lines, auto_start_handled } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 
 const update_notice_store = useUpdateNoticeStore()
 const { notice: updateNotice } = storeToRefs(update_notice_store)
 const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
 const showUpdateNoticeModal = ref(false)
+
+const resource_version_store = useResourceVersionStore()
+const { installResource, loadResourceVersion, loadResourceJob } = resource_version_store
 
 const axios = inject('axios')
 
@@ -484,20 +491,46 @@ onMounted(async () => {
       ? `${simulator.value.name} - arknights-mower`
       : 'arknights-mower'
 
+  axios
+    .post(
+      `${import.meta.env.VITE_HTTP_URL || ''}/software-update/auto-check`,
+      {},
+      {
+        headers: { 'X-Mower-Update': '1' }
+      }
+    )
+    .catch((error) => console.error('failed to request automatic software check', error))
+
   await load_plan()
 
-  if (check_for_updates.value) {
+  try {
+    const notice = await loadUpdateNotice()
+    showUpdateNoticeModal.value = notice.should_show
+    if (notice.should_show) {
+      renderChangelog()
+    }
+  } catch (error) {
+    console.error('failed to load update notice', error)
+    showUpdateNoticeModal.value = false
+  }
+  // Render settings while updating, but resume automatic tasks only afterwards.
+  const resourceUpdateRequest = (async () => {
     try {
-      const notice = await loadUpdateNotice()
-      showUpdateNoticeModal.value = notice.should_show
-      if (notice.should_show) {
-        renderChangelog()
+      if (await loadResourceJob()) {
+        await Promise.all([load_shop(), load_item(), load_operators()])
+      }
+      if (hot_update_enable.value) {
+        const resourceInfo = await loadResourceVersion()
+        if (hot_update_auto_update.value && resourceInfo.update_available === true) {
+          if (await installResource()) {
+            await Promise.all([load_shop(), load_item(), load_operators()])
+          }
+        }
       }
     } catch (error) {
-      console.error('failed to load update notice', error)
-      showUpdateNoticeModal.value = false
+      console.error('failed to load resource version', error)
     }
-  }
+  })()
 
   loaded.value = true
 
@@ -549,14 +582,15 @@ onMounted(async () => {
     listen_ws()
   }
 
-  if (start_automatically.value) {
+  await resourceUpdateRequest
+  if (start_automatically.value && !auto_start_handled.value) {
     start()
   }
 })
 
 watch(
   () => webview.value.scale,
-  (scale) => {
+  () => {
     const ele = document.querySelector('#app')
     ele.style.transform = `scale(${webview.value.scale})`
     actions_on_resize()

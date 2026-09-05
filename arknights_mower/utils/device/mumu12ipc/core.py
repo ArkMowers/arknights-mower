@@ -53,18 +53,28 @@ def retry_wrapper(max_retries: int = 3, delay: float = 0.5):
                     logger.info(
                         f"{func.__name__} failed (attempt {attempt}/{max_retries}): {e}"
                     )
-
+                    # 瞬时错误：重置 IPC 状态 + 重连，不杀游戏/不重启模拟器
                     try:
                         if hasattr(self, "_conn"):
                             self._conn = 0
                         if hasattr(self, "_display_id"):
                             self._display_id = -1
-                        restart_simulator()
+                        if hasattr(self, "device") and hasattr(
+                            self.device, "reconnect"
+                        ):
+                            self.device.reconnect()
                     except Exception as inner:
-                        logger.error(f"restart_simulator failed: {inner}")
+                        logger.error(f"reconnect failed: {inner}")
                 time.sleep(delay)
+            # 重试耗尽且设备无法连接时自动重启模拟器，再试最后一次
             if last_exc is not None:
-                raise last_exc
+                logger.warning(
+                    f"{func.__name__} 重试 {max_retries} 次仍失败，判定设备无法连接，自动重启模拟器"
+                )
+                restart_simulator()
+                if hasattr(self, "device") and hasattr(self.device, "reconnect"):
+                    self.device.reconnect()
+                return func(self, *args, **kwargs)
             raise RuntimeError(f"{func.__name__} failed after {max_retries} retries")
 
         return wrapper
@@ -385,7 +395,6 @@ class MuMu12IPC:
             # Attempt soft recovery for next call
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
             return np.zeros((self._H, self._W, 3), dtype=np.uint8)
 
     def _map_xy(self, x: int, y: int) -> tuple[int, int]:
@@ -410,7 +419,6 @@ class MuMu12IPC:
             logger.error(f"key_down error: {e}")
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
 
     def key_up(self, key_code: int):
         try:
@@ -424,7 +432,6 @@ class MuMu12IPC:
             logger.error(f"key_up error: {e}")
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
 
     def touch_down(self, x: int, y: int):
         try:
@@ -439,7 +446,6 @@ class MuMu12IPC:
             logger.error(f"touch_down error: {e}")
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
 
     def touch_up(self):
         try:
@@ -451,7 +457,6 @@ class MuMu12IPC:
             logger.error(f"touch_up error: {e}")
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
 
     def finger_touch_down(self, finger_id: int, x: int, y: int):
         try:
@@ -466,7 +471,6 @@ class MuMu12IPC:
             logger.error(f"finger_touch_down error: {e}")
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
 
     def finger_touch_up(self, finger_id: int):
         try:
@@ -480,7 +484,6 @@ class MuMu12IPC:
             logger.error(f"finger_touch_up error: {e}")
             self._conn = 0
             self._display_id = -1
-            self.device.exit()
 
     def tap(self, x: int, y: int, hold_time: float = 0.07):
         self.touch_down(x, y)

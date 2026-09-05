@@ -4,9 +4,8 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from skimage.metrics import structural_similarity
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, vision_np
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
@@ -629,6 +628,13 @@ class Recognizer:
             self.scene = Scene.CONNECTING
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
+        elif self.find("room_detail") or self.find("arrange_check_in_on"):
+            # 进驻详情浮窗（浮窗头 room_detail 或浮窗上的关闭按钮 arrange_check_in_on）：
+            # 浮窗开着时优先识别为详情浮层，须在 train_main/training_support 之前（否则
+            # 浮窗被误标 217/219）；不能用 arrange_check_in（裸主页面也有，加了会恒 205）。
+            # 205 是基建放大视角，back() 会退到基建主界面而非训练室主界面，关浮窗应点
+            # arrange_check_in_on（见 _close_room_detail）。
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
         elif self.find("skill_collect_confirm"):
@@ -706,7 +712,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"find: {res}")
         normalized_res = str(res).replace("\\", "/")
         force_feature_match = "navigation/stage/" in normalized_res
 
@@ -825,12 +830,12 @@ class Recognizer:
                 if cmatch(img, res_img, draw=draw):
                     gray = cropimg(self.gray, scope)
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
-                    ssim = structural_similarity(gray, res_img)
-                    logger.debug(f"{ssim=}")
+                    ssim = vision_np.ssim(gray, res_img)
                     threshold = 0.9
                     if res in template_matching_score:
                         threshold = template_matching_score[res]
                     if ssim >= threshold:
+                        logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
             return None
@@ -920,6 +925,7 @@ class Recognizer:
                 threshold = template_matching_score[res]
 
             pos = template_matching[res]
+            res_name = res
             res = loadres(res, True)
             h, w = res.shape
 
@@ -932,8 +938,8 @@ class Recognizer:
             result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             top_left = va(max_loc, scope[0])
-            logger.debug(f"{top_left=} {max_val=}")
             if max_val >= threshold:
+                logger.debug(f"find: {res_name} {top_left=} {max_val=}")
                 return top_left, va(top_left, (w, h))
             return None
 
@@ -1008,8 +1014,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"score: {res}")
-
         res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理

@@ -97,23 +97,6 @@ def build_global_plan():
     return plan
 
 
-class SkillUpgradeSupport:
-    support_class = None
-    level = 1
-    efficiency = 0
-    match = False
-    use_booster = True
-    name = ""
-    swap_name = ""
-
-    def __init__(self, name, skill_level, efficiency, match, swap_name="艾丽妮"):
-        self.name = name
-        self.level = skill_level
-        self.efficiency = efficiency
-        self.match = match
-        self.swap_name = swap_name
-
-
 class Operators:
     config = None
     operators = None
@@ -126,7 +109,6 @@ class Operators:
     shadow_copy = {}
     current_room_changed_callback = None
     first_init = True
-    skill_upgrade_supports = []
 
     def __init__(self, plan):
         self.operators = {}
@@ -202,7 +184,7 @@ class Operators:
             for idx, data in enumerate(self.plan[room]):
                 if data.agent not in agent_list and data.agent != "Free":
                     return f"干员名输入错误: 房间->{room}, 干员->{data.agent}"
-                if data.agent in TRADE_ORDER_AGENTS + ["可露希尔"]:
+                if data.agent in TRADE_ORDER_AGENTS:
                     return f"高效组不可用龙舌兰，但书,佩佩，可露希尔 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and idx == 1:
                     return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
@@ -603,21 +585,6 @@ class Operators:
                 return agent.name
         return None
 
-    def calculate_switch_time(self, support: SkillUpgradeSupport, hour):
-        match = support.match
-        efficiency = support.efficiency
-        same = support.name == support.swap_name
-        basic = 5
-        current_speed = 100 + efficiency + basic
-        base_h = hour * current_speed / 100
-        if same:
-            return hour
-        swap_share = 5 * (100 + basic + (30 if match else 0)) / 100
-        left = base_h - swap_share
-        if left < 0:
-            return 0
-        return left * 100 / current_speed
-
     def get_refresh_index(self, room, plan):
         ret = []
         if room.startswith("dorm") and self.config.free_room:
@@ -718,22 +685,20 @@ class Operators:
         count_low = 0
         free_name = []
 
-        # 一次性遍历 dorm
-        for idx, dorm in enumerate(self.dorm):
-            if dorm.name == "" or (
-                dorm.name in self.operators.keys()
-                and not self.operators[dorm.name].is_high()
-            ):
+        # 一次性遍历 dorm。低优占位也必须消耗 low 配额，否则调度器会持续把
+        # 已占用床位误判为空位；但它仍可被高优主力接管，不能据此阻止大组下班。
+        for dorm in self.dorm:
+            if dorm.name == "" or dorm.name not in self.operators:
                 continue
-            elif dorm.time is not None and dorm.time < time:
-                free_name.append(dorm.name)
+            op = self.operators[dorm.name]
+            if dorm.time is not None and dorm.time < time:
+                if op.is_high():
+                    free_name.append(dorm.name)
                 continue
-            if dorm.name in self.operators:
-                op = self.operators[dorm.name]
-                if op.resting_priority == "high":
-                    count_high += 1
-                else:
-                    count_low += 1
+            if op.resting_priority == "high":
+                count_high += 1
+            else:
+                count_low += 1
         available_high = max(0, dorm_count - count_high)
         available_low = total - count_low - max(count_high, dorm_count)
 
@@ -746,33 +711,84 @@ class Operators:
                     self.operators[name].time_stamp = time
         return available_high if free_type == "high" else available_low
 
-    def assign_dorm(self, name, is_new=False):
+    def active_high_resting_count(self, time=None):
+        """当前不能被其他主力直接接管的主力床位数。"""
+        if time is None:
+            time = datetime.now()
+        return sum(
+            1
+            for dorm in self.dorm
+            if dorm.name in self.operators
+            and self.operators[dorm.name].is_high()
+            and not (dorm.time is not None and dorm.time < time)
+        )
+
+    def _slot_takable(self, dorm, protect_resting):
+        """床位能否被接管；低优之间保护正在休息者，高优可接管低优床位。"""
+        name = dorm.name
+        if name == "" or name not in self.operators:
+            return True
+        op = self.operators[name]
+        if dorm.time is not None and dorm.time < datetime.now():
+            return True
+        if not op.is_high():
+            return not (protect_resting and op.is_resting())
+        return False
+
+    def _find_dorm_slot(self, name, used):
         is_high = self.operators[name].resting_priority == "high"
-        _room = None
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
         if not is_high:
             for i in range(max_count, len(self.dorm)):
-                _name = self.dorm[i].name
-                if (
-                    _name == ""
-                    or not self.operators[_name].is_high()
-                    or (
-                        self.dorm[i].time is not None
-                        and self.dorm[i].time < datetime.now()
-                    )
+                if i not in used and self._slot_takable(
+                    self.dorm[i], protect_resting=True
                 ):
-                    _room = self.dorm[i]
-                    break
-        if is_high or _room is None:
-            if not is_high:
-                logger.warning("弹性模式下请勿设置过多低优先")
-            _room = next(
-                obj
-                for obj in self.dorm
-                if obj.name not in self.operators.keys()
-                or not self.operators[obj.name].is_high()
-                or (obj.time is not None and obj.time < datetime.now())
-            )
+                    return i
+        return next(
+            (
+                i
+                for i, dorm in enumerate(self.dorm)
+                if i not in used
+                and self._slot_takable(dorm, protect_resting=not is_high)
+            ),
+            None,
+        )
+
+    def assign_dorm_group(self, names):
+        """先为整组模拟预留互不重复的床位；全部成功后才一次性写入。"""
+        used = set()
+        assignments = []
+        # 低优可选床位更受限，先为低优预留；高优随后可使用剩余空位或接管低优。
+        ordered_names = sorted(
+            names,
+            key=lambda name: self.operators[name].resting_priority == "high",
+        )
+        for name in ordered_names:
+            index = self._find_dorm_slot(name, used)
+            if index is None:
+                logger.debug(f"没有足够宿舍位可安排整组{names}")
+                return None
+            used.add(index)
+            assignments.append((name, index))
+
+        rooms = []
+        for name, index in assignments:
+            room = self.dorm[index]
+            logger.debug(f"安排{name}去{room.position}")
+            room.name = name
+            room.time = None
+            rooms.append(room)
+        return rooms
+
+    def assign_dorm(self, name, is_new=False, used=None):
+        if used is None:
+            used = set()
+        index = self._find_dorm_slot(name, used)
+        if index is None:
+            logger.debug(f"没有空闲宿舍位可安排{name}")
+            return None
+        used.add(index)
+        _room = self.dorm[index]
         logger.debug(f"安排{name}去{_room.position}")
         _room.name = name
         _room.time = None
@@ -980,8 +996,6 @@ class Operator:
             return True
 
     def not_valid(self):
-        if self.room == "train":
-            return False
         if self.operator_type == "high":
             if self.workaholic:
                 return (

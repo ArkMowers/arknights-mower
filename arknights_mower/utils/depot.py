@@ -4,7 +4,9 @@ from datetime import datetime
 
 from arknights_mower.data import key_mapping, workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
+from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.csv_utils import read_csv_rows
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 
@@ -15,11 +17,17 @@ def 读取仓库():
     with open(path, "r", encoding="utf-8") as f:
         depotinfo = json.load(f)
     物品数量 = depotinfo["data"]["items"]
-    新物品1 = {
-        key_mapping[item["id"]][2]: int(item["count"])
-        for item in 物品数量
-        if int(item["count"]) != 0
-    }
+    新物品1 = {}
+    for item in 物品数量:
+        if int(item["count"]) == 0:
+            continue
+        entry = key_mapping.get(item["id"])
+        if entry is None:
+            # 活动/新素材 id 不在本地 key_mapping（资源包 vs 内置数据可能不同步），
+            # 跳过而不是让整个扫描 KeyError。
+            logger.warning(f"仓库扫描: 忽略未知物品 id {item['id']}")
+            continue
+        新物品1[entry[2]] = int(item["count"])
 
     csv_path = get_path("@app/tmp/depotresult.csv")
     if not os.path.exists(csv_path):
@@ -35,9 +43,15 @@ def 读取仓库():
     db_dict = {}
     for k in workshop_formula.keys():
         db_dict[k] = 0
-    for item in 新物品:
-        新物品json[key_mapping[item][0]] = 新物品[item]
-        db_dict[key_mapping[item][2]] = 新物品[item]
+    for item, count in 新物品.items():
+        entry = key_mapping.get(item)
+        if entry is None:
+            # 上一轮 CSV 里残留的旧物品名（key_mapping 更新后可能失效）也跳过，
+            # 避免合并历史数据时再次 KeyError。
+            logger.warning(f"仓库扫描: 忽略未知物品名 {item}")
+            continue
+        新物品json[entry[0]] = count
+        db_dict[entry[2]] = count
     time = depotinfo[-1][0]
     save_inventory_counts(db_dict)
     sort = {
@@ -247,5 +261,9 @@ def 创建json():
         "timestamp": "1719065002",
         "data": {"items": [{"id": "31063", "count": "0"}]},
     }
-    with open(path, "w", encoding="utf-8") as f:
+
+    def dump(f):
         json.dump(a, f)
+
+    # 与 cultivate_depot.py 共用写点，原子写防撕裂（web 刷新线程并发）
+    atomic_write(path, dump)

@@ -56,7 +56,8 @@ def _get_run_order_delay_minutes() -> float:
         return float(getattr(config.conf, "run_order_delay", 0) or 0)
     except Exception:
         try:
-            conf_path = get_path("@app/conf.yml")
+            from arknights_mower.utils.config import conf_path
+
             with conf_path.open("r", encoding="utf-8", errors="ignore") as handle:
                 for raw_line in handle:
                     line = raw_line.strip()

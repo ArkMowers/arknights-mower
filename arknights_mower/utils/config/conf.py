@@ -87,10 +87,6 @@ class ExtraPart(ConfModel):
     class WebViewConf(ConfModel):
         port: int = 58000
         "端口号"
-        width: int = 1450
-        "窗口宽度"
-        height: int = 850
-        "窗口高度"
         token: str = ""
         "远程连接密钥"
         scale: float = 1
@@ -114,10 +110,8 @@ class ExtraPart(ConfModel):
     "界面主题"
     screenshot_interval: int = 500
     "截图最短间隔（毫秒）"
-    screenshot: float = 0.02
-    "截图保留时长（小时）"
-    check_for_updates: bool = True
-    "检查更新"
+    screenshot: float = 1
+    "截图保留时长（小时），0 不写盘，实时预览仍可用"
     waiting_scene: WaitingSceneConf
     "等待时间"
 
@@ -199,13 +193,32 @@ class LongTaskPart(ConfModel):
     sign_in: SignInConf
     "签到活动"
 
+    class HotUpdateConf(ConfModel):
+        enable: bool = False
+        "热更新检查开关（默认关）"
+        auto_update: bool = False
+        "发现热更新或资源包更新时自动安装"
+
+        @model_validator(mode="after")
+        def auto_update_requires_check(self):
+            if self.auto_update:
+                self.enable = True
+            return self
+
+    hot_update: HotUpdateConf
+    "热更新"
+
 
 class MaaPart(ConfModel):
     maa_path: str = "D:\\MAA-v4.13.0-win-x64"
+    maa_mirrorchyan_token: str = ""
+    "Mirror酱下载 Token"
+    maa_update_channel: str = "stable"
+    "MAA 版本通道：stable 正式版，beta 公测版"
+    maa_auto_check_update: bool = False
+    "进入 Maa 设置页后自动检查 Maa 本体及资源更新"
     maa_conn_preset: str = "General"
     maa_touch_option: str = "maatouch"
-    maa_startup_check: bool = False
-    "Mower启动及每次初始化Maa前测试连接"
 
 
 class RecruitPart(ConfModel):
@@ -221,6 +234,32 @@ class RecruitPart(ConfModel):
     "五星招募策略，1自动，2手动"
     recruit_auto_only5: bool = False
     "五星词条组合唯一时自动选择"
+
+
+class MaaStageLimitItem(ConfModel):
+    item_id: str = ""
+    item_name: str = ""
+    limit: int = 0
+
+
+class MaaStageLimitRule(ConfModel):
+    stage: str = ""
+    operator: str = "and"
+    enabled: bool = True
+    items: list[MaaStageLimitItem] = []
+
+
+class MaaStageRatioMember(ConfModel):
+    stage: str = ""
+    item_id: str = ""
+    item_name: str = ""
+    ratio: float = 0
+
+
+class MaaStageRatioRule(ConfModel):
+    name: str = ""
+    enabled: bool = True
+    members: list[MaaStageRatioMember] = []
 
 
 class RegularTaskPart(ConfModel):
@@ -254,6 +293,12 @@ class RegularTaskPart(ConfModel):
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周日"},
     ]
     "周计划"
+    maa_stage_inventory_enable: bool = False
+    "按库存上限与比例选择刷理智关卡"
+    maa_stage_limit_rules: list[MaaStageLimitRule] = []
+    "每个关卡的物品库存上限规则"
+    maa_stage_ratio_rules: list[MaaStageRatioRule] = []
+    "多关卡物品库存比例规则"
     maa_depot_enable: bool = False
     "仓库物品混合读取"
     visit_friend: bool = True
@@ -330,6 +375,9 @@ class RIICPart(ConfModel):
     "缓存清零重启后读取心情并按载入心情数据模式重启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
+    enable_mastery: bool = True
+    "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
+    # 中枢加成（0/5）与换人缓冲时间已迁到路线配置全局设置行（#91 修订），不再存 conf
 
 
 class SimulatorPart(ConfModel):

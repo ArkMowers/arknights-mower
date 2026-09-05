@@ -9,14 +9,14 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
-from arknights_mower.utils.device.adb_client.session import Session
-from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.email import send_message
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.maa_check import is_maa_connectivity_check_enabled
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.resource_pkg import (
+    refresh_resource_at_boundary,
+    resource_task_session,
+)
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
@@ -32,6 +32,11 @@ def _read_depot_scan_timestamp(path):
 
 # 执行自动排班
 def main(saved_state, restart_after_mood_read=False):
+    with resource_task_session():
+        return _main(saved_state, restart_after_mood_read)
+
+
+def _main(saved_state, restart_after_mood_read=False):
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     data = None
@@ -40,10 +45,17 @@ def main(saved_state, restart_after_mood_read=False):
     result = simulate(data, restart_after_mood_read)
     if result == "restart_after_mood_read":
         from arknights_mower.solvers.record import load_state
+        from arknights_mower.utils.scheduler_task import TaskTypes
 
         logger.info("正在按载入心情数据模式重启Mower")
         saved_state = load_state() or {}
-        saved_state["tasks"] = []
+        # simulate 已保存本次读取后的新状态。排班任务需要按新心情重建，但训练室
+        # 刚恢复的收取/换人任务必须保留，否则近期读过的训练室可能数小时不再进入。
+        saved_state["tasks"] = [
+            task
+            for task in saved_state.get("tasks", [])
+            if task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+        ]
         simulate(saved_state)
 
 
@@ -103,32 +115,18 @@ def simulate(saved, restart_after_mood_read=False):
             return
         except Exception as e:
             logger.exception(e)
+            if not config.conf.close_simulator_when_idle:
+                raise
             reconnect_tries += 1
             if reconnect_tries < 3:
                 restart_simulator()
-                base_scheduler.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    base_scheduler.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    base_scheduler.device.control.scrcpy = Scrcpy(
-                        base_scheduler.device.client
-                    )
+                # 首次 initialize 失败时模块全局 base_scheduler 仍是 None（initialize 内是局部变量），
+                # 不能拿它重连；下一次 initialize 会新建 Device 自然重连
+                if base_scheduler is not None:
+                    base_scheduler.device.reconnect()
                 continue
             else:
                 raise e
-    if is_maa_connectivity_check_enabled():
-        try:
-            base_scheduler.check_maa_connectivity("启动预检")
-        except RuntimeError as e:
-            message = str(e)
-            logger.error(message)
-            send_message(
-                message,
-                "Mower启动中止：Maa连接测试失败",
-                level="ERROR",
-            )
-            return
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
@@ -156,9 +154,6 @@ def simulate(saved, restart_after_mood_read=False):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
-            base_scheduler.op_data.skill_upgrade_supports = saved[
-                "skill_upgrade_supports"
-            ]
             base_scheduler.tasks = tasks
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
@@ -167,6 +162,7 @@ def simulate(saved, restart_after_mood_read=False):
             logger.exception(ex)
     while True:
         try:
+            refresh_resource_at_boundary()
             st, et = NewsChecker.get_update_time()
             if st is not None and et is not None:
                 if et > datetime.now() > st:
@@ -322,39 +318,28 @@ def simulate(saved, restart_after_mood_read=False):
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning("出现错误.尝试重启Mower")
-                connected = False
-                while not connected:
+                # #84：内层重连循环加次数上限，最后失败抛错而非无限重启
+                retry = 0
+                while retry < reconnect_max_tries:
+                    retry += 1
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
                     except MowerExit:
                         raise
                     except Exception as e:
+                        if retry >= reconnect_max_tries:
+                            raise
                         logger.exception(e)
                         restart_simulator()
-                        base_scheduler.device.client.check_server_alive()
-                        Session().connect(config.conf.adb)
-                        if config.conf.droidcast.enable:
-                            base_scheduler.device.start_droidcast()
-                        if config.conf.touch_method == "scrcpy":
-                            base_scheduler.device.control.scrcpy = Scrcpy(
-                                base_scheduler.device.client
-                            )
-                        continue
+                        base_scheduler.device.reconnect()
                 continue
             else:
                 raise e
         except RuntimeError as e:
             logger.exception(f"程序出错-尝试重启模拟器->{e}")
             restart_simulator()
-            base_scheduler.device.client.check_server_alive()
-            Session().connect(config.conf.adb)
-            if config.conf.droidcast.enable:
-                base_scheduler.device.start_droidcast()
-            if config.conf.touch_method == "scrcpy":
-                base_scheduler.device.control.scrcpy = Scrcpy(
-                    base_scheduler.device.client
-                )
+            base_scheduler.device.reconnect()
         except Exception as e:
             logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()

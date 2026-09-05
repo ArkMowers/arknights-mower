@@ -54,7 +54,7 @@ class BaseSolver:
         if device is not None:
             self.device = device
         else:
-            while True:
+            for _ in range(3):
                 try:
                     self.device = Device()
                     self.device.client.check_server_alive()
@@ -62,15 +62,36 @@ class BaseSolver:
                     if not self.device.check_resolution():
                         raise MowerExit
                     if config.conf.droidcast.enable:
-                        self.device.start_droidcast()
+                        if not self.device.start_droidcast():
+                            raise ConnectionError("DroidCast启动失败")
                     if config.conf.touch_method == "scrcpy":
                         self.device.control.scrcpy = Scrcpy(self.device.client)
                     break
                 except MowerExit:
                     raise
                 except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
+                    last_exc = e
+                    logger.warning(f"设备连接失败：{e}")
+                    # 自动关闭模式也负责首轮启动，无需用户提前打开模拟器。
+                    try:
+                        available = [
+                            d
+                            for d, status in Session().devices_list()
+                            if status == "device"
+                        ]
+                    except Exception:
+                        available = []
+                    if config.conf.adb and config.conf.adb not in available:
+                        if config.conf.close_simulator_when_idle:
+                            logger.info("已启用任务结束后关闭模拟器，启动目标模拟器")
+                            if not restart_simulator(stop=False, start=True):
+                                raise ConnectionError("首次任务启动模拟器失败") from e
+                    elif hasattr(self, "device") and self.device.client:
+                        self.device._safe_reconnect()
+            else:
+                raise ConnectionError(
+                    "设备连接 3 次失败（判定设备无法连接，自动重启模拟器由上层处理）"
+                ) from last_exc
 
         self.recog = recog if recog is not None else Recognizer(self.device)
 
@@ -214,14 +235,13 @@ class BaseSolver:
         draw: bool = False,
         scope: tp.Scope = None,
         judge: bool = True,
-        detected: bool = False,
         thres: Optional[int] = None,
     ) -> bool:
-        """tap element"""
+        """tap element，找不到时返回 False 而不报错"""
         element = self.find(
             element_name, draw, scope, judge=judge, score=score, thres=thres
         )
-        if detected and element is None:
+        if element is None:
             return False
         self.tap(element, x_rate, y_rate, interval)
         return True
@@ -357,22 +377,26 @@ class BaseSolver:
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
-        duration: int = 20,
+        duration: int = 80,
         interval: float = 0.2,
     ) -> None:
-        """swipe with no inertia (movement should be vertical)"""
+        """swipe with no inertia (movement should be vertical)。
+
+        duration 调大、偏置调小：主轴太快会甩过头弹回（画面抖动、稳定不下来），
+        回放会拿着没停稳的画面继续走而错位；改成受控拖动。
+        """
         if config.stop_mower.is_set():
             raise MowerExit
         points = [start]
         if movement[0] == 0:
             dis = abs(movement[1])
-            points.append((start[0] + 100, start[1]))
-            points.append((start[0] + 100, start[1] + movement[1]))
+            points.append((start[0] + 40, start[1]))
+            points.append((start[0] + 40, start[1] + movement[1]))
             points.append((start[0], start[1] + movement[1]))
         else:
             dis = abs(movement[0])
-            points.append((start[0], start[1] + 100))
-            points.append((start[0] + movement[0], start[1] + 100))
+            points.append((start[0], start[1] + 40))
+            points.append((start[0] + movement[0], start[1] + 40))
             points.append((start[0] + movement[0], start[1]))
         self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:
@@ -612,7 +636,7 @@ class BaseSolver:
         while retry_times:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
-            elif not self.tap_element("nav_button", detected=True):
+            elif not self.tap_element("nav_button"):
                 return False
             retry_times -= 1
 

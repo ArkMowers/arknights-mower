@@ -1,11 +1,11 @@
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from os import system
 
 from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.device.adb_client.core import query_mumu_adb_port
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.log import logger
 
@@ -27,6 +27,28 @@ class SimulatorCommandSet:
     blocking: bool = False
 
 
+def _clear_mumu_adb_transport() -> None:
+    """关闭 MuMu12 时清理目标实例的 adb 传输，但不结束共享的 adb server。
+
+    此前 `taskkill /f /t /im adb.exe` 会杀掉 5037 上的全局 adb server，使共用它的
+    另一台模拟器一起掉线（双模拟器场景互相干扰）；改为仅断开当前实例的连接端点。
+    """
+    target = config.conf.adb
+    adb_bin = config.conf.maa_adb_path
+    if not target or not adb_bin:
+        return
+    try:
+        subprocess.run(
+            [adb_bin, "disconnect", target],
+            check=False,
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+        )
+        logger.info("结束adb进程（仅断开当前实例端点）")
+    except (OSError, subprocess.SubprocessError):
+        logger.debug("断开 MuMu adb 端点失败", exc_info=True)
+
+
 def restart_simulator(stop: bool = True, start: bool = True) -> bool:
     return _restart_simulator(stop=stop, start=start, allow_retry=True)
 
@@ -40,6 +62,12 @@ def _restart_simulator(stop: bool, start: bool, allow_retry: bool) -> bool:
         csleep(10)
         return False
 
+    # 重启前先同步目标实例当前 adb 端点（端口可能漂移），供后续 wait_for_adb→adb_ready
+    # 探测，避免一直探测 config.conf.adb 里已失效的旧端口
+    discovered = query_mumu_adb_port(data)
+    if discovered is not None:
+        config.conf.adb = discovered
+
     commands = build_command_set(simulator_type, data.index)
 
     if stop:
@@ -49,8 +77,7 @@ def _restart_simulator(stop: bool, start: bool, allow_retry: bool) -> bool:
             simulator_type == Simulator_Type.MuMu12.value
             and config.conf.fix_mumu12_adb_disconnect
         ):
-            logger.info("结束adb进程")
-            system("taskkill /f /t /im adb.exe")
+            _clear_mumu_adb_transport()
 
     if not start:
         return True
@@ -190,11 +217,14 @@ def wait_for_adb(process: subprocess.Popen, wait_time: int) -> bool:
 
 
 def adb_ready() -> bool:
+    # 冷启动后端口才可能出现，等待期间也要重新发现，不能一直探测旧端口。
+    discovered = query_mumu_adb_port(config.conf.simulator)
+    if discovered is not None:
+        config.conf.adb = discovered
     target = config.conf.adb
-    if not target:
-        return len(Session().devices_list()) > 0
-    Session().connect(target, throw_error=True)
+    if target:
+        Session().connect(target, throw_error=True)
     devices = [
-        device for device, status in Session().devices_list() if status != "offline"
+        device for device, status in Session().devices_list() if status == "device"
     ]
-    return target in devices
+    return target in devices if target else bool(devices)

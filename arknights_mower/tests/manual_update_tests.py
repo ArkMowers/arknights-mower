@@ -1,0 +1,75 @@
+import io
+import unittest
+from unittest.mock import patch
+from zipfile import ZipFile
+
+from arknights_mower.utils import manual_update
+
+
+def _zip_bytes(entries: dict[str, str]) -> bytes:
+    buf = io.BytesIO()
+    with ZipFile(buf, "w") as z:
+        for name, content in entries.items():
+            z.writestr(name, content)
+    return buf.getvalue()
+
+
+class TestApplyManualUpdate(unittest.TestCase):
+    def test_applies_resource_package(self):
+        data = _zip_bytes({"arknights_mower/data/version.json": '{"res_version":"v1"}'})
+        with patch.object(manual_update, "install_resource_pkg", return_value=True):
+            got = manual_update.apply_manual_update(data)
+        self.assertEqual(
+            got,
+            {
+                "ok": True,
+                "kind": "resource",
+                "restart_required": False,
+                "message": "资源包已安装，各实例在任务间歇加载，无需重启 Mower",
+            },
+        )
+
+    def test_resource_package_honors_busy_response(self):
+        data = _zip_bytes({"arknights_mower/data/version.json": '{"res_version":"v1"}'})
+
+        def busy():
+            return {"ok": False, "message": "busy"}
+
+        with patch.object(
+            manual_update,
+            "install_resource_pkg",
+            side_effect=AssertionError("busy 时不应安装"),
+        ):
+            got = manual_update.apply_manual_update(data, busy)
+        self.assertEqual(got, {"ok": False, "message": "busy", "kind": "resource"})
+
+    def test_applies_hot_update_package(self):
+        data = _zip_bytes({"nav_steps.json": "{}"})
+        with patch.object(
+            manual_update.hot_update, "apply_manual_zip", return_value=True
+        ):
+            got = manual_update.apply_manual_update(data)
+        self.assertEqual(
+            got, {"ok": True, "kind": "hot_update", "message": "热更包已应用"}
+        )
+
+    def test_invalid_zip_is_rejected(self):
+        got = manual_update.apply_manual_update(b"not a zip")
+        self.assertFalse(got["ok"])
+        self.assertEqual(got["kind"], "unknown")
+
+    def test_legacy_binary_zip_is_not_applied_as_resource_or_hot_update(self):
+        data = _zip_bytes({"mower.exe": "legacy package fixture"})
+        with (
+            patch.object(manual_update, "install_resource_pkg") as install_resource,
+            patch.object(manual_update.hot_update, "apply_manual_zip") as install_hot,
+        ):
+            result = manual_update.apply_manual_update(data)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["kind"], "unknown")
+        install_resource.assert_not_called()
+        install_hot.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
