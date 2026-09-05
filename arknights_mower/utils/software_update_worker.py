@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -18,6 +19,7 @@ import threading
 import time
 import traceback
 import zipfile
+from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 if __package__:
@@ -91,8 +93,15 @@ def generated_npm_lockfile(git, root, env=None):
     return None
 
 
-def require_clean_source(git, root, env=None, *, force=False):
+def require_clean_source(git, root, env=None, *, force=False, environment=None):
     """Check source edits without rewriting files; return generated lock changes."""
+    # Exclude only untracked runtime files, including custom/nested venv names.
+    # Tracked edits inside that directory still require explicit force.
+    relative = None
+    if environment:
+        directory = Path(root) / environment
+        if directory.is_relative_to(Path(root)) and directory != Path(root):
+            relative = directory.relative_to(root).as_posix()
     changes = subprocess.check_output(
         [
             git,
@@ -101,7 +110,8 @@ def require_clean_source(git, root, env=None, *, force=False):
             "status",
             "--porcelain",
             "--untracked-files=normal",
-        ],
+        ]
+        + (["--", ".", ":(exclude,literal)" + relative] if relative else []),
         cwd=root,
         env=env,
         text=True,
@@ -110,6 +120,24 @@ def require_clean_source(git, root, env=None, *, force=False):
     if isinstance(changes, bytes):
         changes = changes.decode("utf-8", errors="replace")
     entries = changes.rstrip().splitlines()
+    if relative:
+        tracked = subprocess.check_output(
+            [
+                git,
+                "-c",
+                "core.quotepath=false",
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+                "--",
+                ":(literal)" + relative,
+            ],
+            cwd=root,
+            env=env,
+            text=True,
+            timeout=10,
+        )
+        entries.extend(tracked.rstrip().splitlines())
     generated = {}
     # Staged edits, deletions, renames and untracked files still require action.
     if " M " + NPM_LOCKFILE in entries:
@@ -200,6 +228,14 @@ class Worker:
         self.new_processes = []
         self.recovery_processes = []
         self.venv_dir = self.job.get("venv_dir", ".venv")
+        self.environment = self.root / self.venv_dir
+        self.source_backup_paths = [
+            self.root / "ui/node_modules",
+            self.root / "ui/dist",
+        ]
+        if not self.job.get("in_place_environment"):
+            self.source_backup_paths.insert(0, self.environment)
+        self.dependencies_started = False
         self.needs_lfs = False
 
     def report(self, phase, message, status="running"):
@@ -247,7 +283,11 @@ class Worker:
 
     def prepare_source(self):
         require_clean_source(
-            self.job["git"], self.root, self.env, force=self.job.get("force", False)
+            self.job["git"],
+            self.root,
+            self.env,
+            force=self.job.get("force", False),
+            environment=self.job.get("source_environment", self.venv_dir),
         )
         self.old_commit = self.git_output("rev-parse", "HEAD")
         self.old_branch = self.git_output("branch", "--show-current")
@@ -257,14 +297,16 @@ class Worker:
                 "root": str(self.root),
                 "old_commit": self.old_commit,
                 "old_branch": self.old_branch,
+                "original_python": self.job.get(
+                    "original_python", self.job.get("python")
+                ),
+                "python": self.job.get("python"),
                 "backups": [
                     {
-                        "target": str(self.root / relative),
-                        "backup": str(
-                            self.work / (relative.replace("/", "-") + ".backup")
-                        ),
+                        "target": str(target),
+                        "backup": str(self.work / f"runtime-{index}.backup"),
                     }
-                    for relative in (self.venv_dir, "ui/node_modules", "ui/dist")
+                    for index, target in enumerate(self.source_backup_paths)
                 ],
             },
         )
@@ -295,6 +337,30 @@ class Worker:
             self.run_command(
                 [self.job["git"], "lfs", "fetch", "origin", self.job["commit"]]
             )
+        if self.job.get("in_place_environment"):
+            self.report("preparing", "检查当前 Python 环境的依赖安装工具")
+            try:
+                if self.job.get("uv"):
+                    self.run_command([self.job["uv"], "--version"], timeout=30)
+                else:
+                    if self.job.get("pip_available") is False:
+                        self.run_command(
+                            [self.job["python"], "-m", "ensurepip"], timeout=60
+                        )
+                    self.run_command(
+                        [self.job["python"], "-m", "pip", "--version"], timeout=30
+                    )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise ValueError(
+                    "当前 Python 无法使用依赖安装工具，请查看日志，为此解释器安装 pip 或在启动路径中提供 uv；当前实例尚未停止"
+                ) from exc
+
+    def create_environment(self):
+        args = [self.job["base_python"], "-m", "venv"]
+        if self.job.get("system_site_packages"):
+            args.append("--system-site-packages")
+        args.append(str(self.environment))
+        self.run_command(args)
 
     def target_uses_lfs(self):
         commit = self.job["commit"]
@@ -442,7 +508,11 @@ class Worker:
         # Recheck after shutdown: the checkout may have been edited during fetch.
         force = self.job.get("force", False)
         generated = require_clean_source(
-            self.job["git"], self.root, self.env, force=force
+            self.job["git"],
+            self.root,
+            self.env,
+            force=force,
+            environment=self.job.get("source_environment", self.venv_dir),
         )
         if self.git_output("rev-parse", "HEAD") != self.old_commit:
             raise ValueError("更新准备期间源码发生变化，已取消安装")
@@ -454,11 +524,10 @@ class Worker:
                 # npm's metadata is regenerated; dependency changes never enter
                 # this path. Keep checks and fetch strictly read-only.
                 target.write_bytes(committed)
-        self.report("installing", "切换源码，保留原版本、虚拟环境和前端用于失败恢复")
-        for relative in (self.venv_dir, "ui/node_modules", "ui/dist"):
-            target = self.root / relative
+        self.report("installing", "切换源码，保留原提交和前端用于失败恢复")
+        for index, target in enumerate(self.source_backup_paths):
             if target.exists():
-                backup = self.work / (relative.replace("/", "-") + ".backup")
+                backup = self.work / f"runtime-{index}.backup"
                 shutil.move(str(target), backup)
                 self.backups.append((target, backup))
         self.switched = True
@@ -475,14 +544,11 @@ class Worker:
             )
         if self.needs_lfs:
             self.run_command([self.job["git"], "lfs", "checkout"])
-        self.report("dependencies", "创建虚拟环境并安装 Python 依赖")
-        self.run_command(
-            [self.job["base_python"], "-m", "venv", self.root / self.venv_dir]
-        )
-        self.run_command(
-            [self.job["python"], "-m", "pip", "install", "-r", "requirements.in"],
-            env=self.pip_environment(),
-        )
+        self.report("dependencies", "使用当前 Python 环境安装依赖")
+        if not self.job.get("in_place_environment"):
+            self.create_environment()
+        self.dependencies_started = True
+        self.install_dependencies()
         self.report("building", "安装前端依赖并构建页面")
         npm_command = (
             "ci" if (self.root / "ui/package-lock.json").is_file() else "install"
@@ -499,6 +565,15 @@ class Worker:
                 filter(None, (str(self.work), env.get("PYTHONPATH")))
             )
         return env
+
+    def install_dependencies(self):
+        if self.job.get("uv"):
+            command = [self.job["uv"], "pip", "install", "--python", self.job["python"]]
+        else:
+            command = [self.job["python"], "-m", "pip", "install"]
+        self.run_command(
+            command + ["-r", "requirements.in"], env=self.pip_environment()
+        )
 
     def install_package(self):
         self.report("installing", "替换程序，保留用户数据和原版本")
@@ -541,8 +616,15 @@ class Worker:
                 if new.exists():
                     os.replace(new, old)
 
-    def command_for(self, record):
+    def command_for(self, record, *, recovery=False):
         if self.job["deployment"] == "source":
+            if recovery and record.get("argv"):
+                return [
+                    record.get("executable") or self.job["original_python"],
+                    *record["argv"],
+                ]
+            if record.get("argv"):
+                return [self.job["python"], *record["argv"]]
             return [
                 self.job["python"],
                 str(
@@ -567,6 +649,8 @@ class Worker:
         )
 
     def restart(self, records, verify=True):
+        if self.job.get("operation") == "source-version":
+            self.clear_source_runtime_snapshots(records)
         self.report("restarting", "恢复实例，等待网页服务就绪")
         processes = []
         if verify:
@@ -581,8 +665,8 @@ class Worker:
                 env["PATH"] = self.job["tool_path"]
             with (self.work / "restart.log").open("ab") as log:
                 process = subprocess.Popen(
-                    self.command_for(record),
-                    cwd=self.root,
+                    self.command_for(record, recovery=not verify),
+                    cwd=record.get("cwd") or self.root,
                     env=env,
                     stdin=subprocess.DEVNULL,
                     stdout=log,
@@ -624,6 +708,34 @@ class Worker:
             "新版本启动失败或不支持更新恢复协议，准备恢复原版本；详情见 restart.log"
         )
 
+    def clear_source_runtime_snapshots(self, records):
+        """Old launchers may resume mode 0; remove only their runtime snapshots."""
+        self.report("resetting", "重置实例运行缓存，保留配置、专精计划和数据库记录")
+        databases = set()
+        for record in records:
+            if record.get("kind") != "instance":
+                continue
+            data = record.get("data_dir")
+            base = Path(data).expanduser() if data else self.root
+            if not base.is_absolute():
+                base = Path(record.get("cwd") or self.root) / base
+            database = (base / record.get("space", "") / "tmp/data.db").resolve()
+            if database in databases or not database.is_file():
+                continue
+            databases.add(database)
+            with (
+                closing(
+                    sqlite3.connect(
+                        database.as_uri() + "?mode=rw", uri=True, timeout=10
+                    )
+                ) as connection,
+                connection,
+            ):
+                if connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
+                ).fetchone():
+                    connection.execute("DELETE FROM saved_state")
+
     def rollback(self):
         self.report("rollback", "安装未完成，恢复原版本")
         if self.job["deployment"] == "source":
@@ -637,6 +749,9 @@ class Worker:
                 if target.exists():
                     shutil.rmtree(target)
                 shutil.move(str(backup), target)
+            if self.job.get("in_place_environment") and self.dependencies_started:
+                self.report("rollback", "按原版本依赖清单恢复当前 Python 环境")
+                self.install_dependencies()
         elif self.root.suffix == ".app" and self.bundle_backup.exists():
             failed = self.root.with_name(f"{self.root.name}.failed-{self.job['id']}")
             if self.root.exists():

@@ -63,6 +63,19 @@ def check():
     return updater.check(data.get("channel"))
 
 
+@software_update_bp.get("/source/history")
+@result
+def source_history():
+    return updater.source_history(request.args.get("branch"))
+
+
+@software_update_bp.post("/source/check")
+@result
+def source_check():
+    data = request.get_json()
+    return updater.check_source_version(data.get("reference"), data.get("branch"))
+
+
 @software_update_bp.post("/start")
 @result
 def start():

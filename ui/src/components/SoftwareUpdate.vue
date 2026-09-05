@@ -4,6 +4,7 @@ import { useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import { confirmForceUpdate } from '@/utils/softwareUpdate'
+import SourceVersionManager from './SourceVersionManager.vue'
 
 const axios = inject('axios')
 const messages = useMessage()
@@ -157,11 +158,13 @@ async function checkUpdate() {
   }
 }
 
-async function install(manual = false, force = false) {
+async function install(manual = false, force = false, target = null) {
+  if (running.value) return
   busy.value = true
   error.value = ''
   uploadPercent.value = 0
   try {
+    await settingsRequest
     let response
     if (manual) {
       const form = new FormData()
@@ -174,14 +177,14 @@ async function install(manual = false, force = false) {
         }
       })
     } else {
-      if (!checked.value?.check_id) {
+      if (!target && !checked.value?.check_id) {
         await checkUpdate()
         if ((!force && !checked.value?.available) || !checked.value?.check_id) return
       }
       response = await axios.post(
         `${base}/start`,
         {
-          check_id: checked.value.check_id,
+          check_id: (target || checked.value).check_id,
           background: background.value,
           force
         },
@@ -189,6 +192,10 @@ async function install(manual = false, force = false) {
       )
     }
     if (!response.data.ok) throw new Error(response.data.message)
+    if (target) {
+      autoUpdate.value = false
+      channel.value = 'dev'
+    }
     sessionStorage.setItem(pendingKey, response.data.id)
     pendingSince = Date.now()
     job.value = { ...response.data, status: 'running', phase: 'preparing' }
@@ -342,6 +349,16 @@ onUnmounted(() => {
         <span class="hint"
           >更新后重启同一安装目录下所有运行实例；原本运行中的任务重置运行缓存后重新开始。在线更新与上传安装均使用上方的重启方式。</span
         >
+      </n-form-item>
+      <n-form-item v-if="source" :show-label="false">
+        <SourceVersionManager
+          :initial-branch="info.settings.source_branch"
+          :running="running || checking"
+          :blocked="blocked"
+          :force-supported="info.force_supported"
+          :instance-count="info.instances.length"
+          @install="(target) => install(false, target.force, target)"
+        />
       </n-form-item>
       <n-form-item label="手动应用">
         <span v-if="source" class="hint"
