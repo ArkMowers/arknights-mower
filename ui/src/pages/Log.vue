@@ -4,18 +4,10 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
+import { createScreenshotPreview } from '@/utils/screenshotPreview'
 const mower_store = useMowerStore()
-const {
-  log,
-  log_mobile,
-  running,
-  plan_condition,
-  log_lines,
-  task_list,
-  waiting,
-  get_task_id,
-  sc_uri
-} = storeToRefs(mower_store)
+const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
+  storeToRefs(mower_store)
 const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
@@ -24,31 +16,22 @@ const auto_scroll = ref(true)
 const sc_preview = ref(true)
 const sc_blob = ref('')
 
-watch(sc_uri, async (new_value) => {
-  if (new_value && sc_preview.value) {
-    try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_HTTP_URL}/screenshots/${sc_uri.value}`,
-        {
-          responseType: 'blob'
-        }
-      )
-      if (sc_blob.value) {
-        URL.revokeObjectURL(sc_blob.value)
-      }
-      const blob = new Blob([response.data], { type: 'image/jpeg' })
-      sc_blob.value = URL.createObjectURL(blob)
-    } catch (error) {
-      console.error('获取最新截图失败:', error)
-      sc_blob.value = ''
-    }
-  } else {
-    if (sc_blob.value) {
-      URL.revokeObjectURL(sc_blob.value)
-    }
-    sc_blob.value = ''
+const screenshotPreview = createScreenshotPreview({
+  fetchSnapshot: (options) =>
+    axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshot/latest`, options),
+  onChange: (url) => {
+    sc_blob.value = url
   }
-  localStorage.setItem('sc_preview', JSON.stringify(sc_preview.value))
+})
+
+function updateScreenshotPreview() {
+  if (sc_preview.value && !document.hidden) screenshotPreview.start()
+  else screenshotPreview.stop()
+}
+
+watch(sc_preview, (enabled) => {
+  localStorage.setItem('sc_preview', JSON.stringify(enabled))
+  updateScreenshotPreview()
 })
 function scroll_last_line() {
   nextTick(() => {
@@ -70,22 +53,25 @@ watch(
   { deep: true }
 )
 
+let runningTimer
 onMounted(() => {
   get_tasks()
   get_running()
-  setInterval(get_running, 5000)
+  runningTimer = setInterval(get_running, 5000)
   const savedPreviewState = localStorage.getItem('sc_preview')
   if (savedPreviewState !== null) {
     sc_preview.value = JSON.parse(savedPreviewState)
   }
+  document.addEventListener('visibilitychange', updateScreenshotPreview)
+  updateScreenshotPreview()
   db_load_stats()
 })
 
 onUnmounted(() => {
   clearTimeout(get_task_id.value)
-  if (sc_blob.value) {
-    URL.revokeObjectURL(sc_blob.value)
-  }
+  clearInterval(runningTimer)
+  document.removeEventListener('visibilitychange', updateScreenshotPreview)
+  screenshotPreview.stop()
 })
 
 function start(value) {

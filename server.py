@@ -449,11 +449,7 @@ def read_log():
         log_lines.append(msg)
         log_lines = log_lines[-100:]
         for ws in ws_connections:
-            ws.send(
-                json.dumps(
-                    {"type": "log", "data": msg, "screenshot": get_latest_screenshot()}
-                )
-            )
+            ws.send(json.dumps({"type": "log", "data": msg}))
 
 
 Thread(target=read_log, daemon=True).start()
@@ -871,16 +867,22 @@ def serve_screenshot(filename):
     return send_from_directory(screenshot_dir, filename)
 
 
+@app.route("/screenshot/latest")
+@require_token
+def get_screenshot_preview():
+    from arknights_mower.views.screenshot import latest_screenshot_response
+
+    return latest_screenshot_response()
+
+
 @app.route("/latest-screenshot")
 def get_latest_screenshot():
     """
     返回最新截图的路径
     """
-    from arknights_mower.utils.log import last_screenshot
+    from arknights_mower.utils.log import screenshot_store
 
-    if last_screenshot:
-        return last_screenshot
-    return ""
+    return screenshot_store.last_saved()
 
 
 def _webview_conn():
