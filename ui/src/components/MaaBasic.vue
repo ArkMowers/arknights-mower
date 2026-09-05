@@ -1,5 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useUpdateProgress } from '@/composables/useUpdateProgress'
 const axios = inject('axios')
 
 const mobile = inject('mobile')
@@ -129,10 +130,14 @@ const maa_resource_update_job = ref({
   target: '',
   result: null
 })
+const show_maa_update_progress = useUpdateProgress(maa_update_job)
+const show_maa_resource_update_progress = useUpdateProgress(maa_resource_update_job)
+
 let maa_resource_update_timer = null
 let maa_resource_update_info_request_id = 0
 let maa_path_refresh_timer = null
 let maa_auto_check_timer = null
+let disposed = false
 const mirrorchyan_cdk_status = ref({
   loading: false,
   checked_token: '',
@@ -402,6 +407,7 @@ const maa_resource_update_progress_status = computed(() => {
 
 async function auto_check_updates() {
   if (
+    disposed ||
     !maa_auto_check_update.value ||
     maa_path_missing.value ||
     maa_updating.value ||
@@ -433,7 +439,7 @@ async function auto_check_updates() {
 function schedule_auto_check_updates(delay = 400) {
   if (maa_auto_check_timer) window.clearTimeout(maa_auto_check_timer)
   maa_auto_check_timer = null
-  if (!maa_auto_check_update.value) return
+  if (disposed || !maa_auto_check_update.value) return
   maa_auto_check_timer = window.setTimeout(() => {
     maa_auto_check_timer = null
     auto_check_updates()
@@ -455,9 +461,11 @@ function apply_maa_update_job(job, apply_install_info = true) {
 }
 
 async function poll_maa_update() {
+  if (disposed) return
   if (maa_update_timer) window.clearTimeout(maa_update_timer)
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/status`)
+    if (disposed) return
     apply_maa_update_job(response.data.job, false)
     if (maa_update_job.value.status === 'running') {
       maa_update_timer = window.setTimeout(poll_maa_update, 800)
@@ -476,6 +484,7 @@ async function poll_maa_update() {
 }
 
 async function get_maa_update_info() {
+  if (disposed) return
   const request_id = ++maa_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/info`, {
@@ -524,9 +533,11 @@ function apply_maa_resource_update_job(job, apply_install_info = true) {
 }
 
 async function poll_maa_resource_update() {
+  if (disposed) return
   if (maa_resource_update_timer) window.clearTimeout(maa_resource_update_timer)
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/status`)
+    if (disposed) return
     apply_maa_resource_update_job(response.data.job)
     if (maa_resource_update_job.value.status === 'running') {
       maa_resource_update_timer = window.setTimeout(poll_maa_resource_update, 800)
@@ -543,6 +554,7 @@ async function poll_maa_resource_update() {
 }
 
 async function get_maa_resource_update_info() {
+  if (disposed) return
   const request_id = ++maa_resource_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/info`, {
@@ -690,6 +702,13 @@ async function check_maa_resource_update() {
 async function start_maa_update() {
   if (maa_updating.value) return
   maa_update_info_msg.value = ''
+  maa_update_job.value = {
+    ...maa_update_job.value,
+    id: '',
+    status: 'running',
+    progress: null,
+    message: '正在准备更新'
+  }
   if (maa_path_missing.value) {
     maa_update_job.value.status = 'error'
     maa_update_job.value.message = '请先设置 Maa 目录'
@@ -731,6 +750,13 @@ async function start_maa_update() {
 async function start_maa_resource_update() {
   if (maa_resource_updating.value || maa_updating.value) return
   maa_resource_update_info_msg.value = ''
+  maa_resource_update_job.value = {
+    ...maa_resource_update_job.value,
+    id: '',
+    status: 'running',
+    progress: null,
+    message: '正在准备更新'
+  }
   if (maa_path_missing.value) {
     maa_resource_update_job.value.status = 'error'
     maa_resource_update_job.value.message = '请先设置 Maa 目录'
@@ -791,6 +817,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  disposed = true
   if (maa_update_timer) window.clearTimeout(maa_update_timer)
   if (maa_resource_update_timer) window.clearTimeout(maa_resource_update_timer)
   if (maa_path_refresh_timer) window.clearTimeout(maa_path_refresh_timer)
@@ -931,14 +958,14 @@ onUnmounted(() => {
           cache 与 config 会复制到新目录继续使用。
         </div>
         <n-progress
-          v-if="maa_update_job.progress !== null"
+          v-if="show_maa_update_progress && maa_update_job.progress !== null"
           type="line"
           :percentage="maa_update_job.progress"
           :status="maa_update_progress_status"
           :indicator-placement="'inside'"
-          processing
+          :processing="maa_updating"
         />
-        <div v-if="maa_update_job.message" class="update-message">
+        <div v-if="show_maa_update_progress && maa_update_job.message" class="update-message">
           {{ maa_update_job.message }}
           <template v-if="maa_update_job.total">
             （{{ format_bytes(maa_update_job.current) }} /
@@ -1023,14 +1050,17 @@ onUnmounted(() => {
           {{ maa_resource_backup_path }}；下一次成功更新时替换该备份，失败时回滚。
         </div>
         <n-progress
-          v-if="maa_resource_update_job.progress !== null"
+          v-if="show_maa_resource_update_progress && maa_resource_update_job.progress !== null"
           type="line"
           :percentage="maa_resource_update_job.progress"
           :status="maa_resource_update_progress_status"
           :indicator-placement="'inside'"
-          processing
+          :processing="maa_resource_updating"
         />
-        <div v-if="maa_resource_update_job.message" class="update-message">
+        <div
+          v-if="show_maa_resource_update_progress && maa_resource_update_job.message"
+          class="update-message"
+        >
           {{ maa_resource_update_job.message }}
           <template v-if="maa_resource_update_job.total">
             （{{ format_bytes(maa_resource_update_job.current) }} /

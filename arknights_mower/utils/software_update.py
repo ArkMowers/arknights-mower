@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from threading import RLock, Thread, current_thread
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -48,6 +49,9 @@ ASSET_RE = re.compile(
     r"^arknights-mower_(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)_(windows|linux|macos)_(x64|arm64)\.(zip|tar\.gz|dmg)$"
 )
 _checks = {}
+_auto_check_lock = RLock()
+_auto_check_thread = None
+_auto_check_revision = 0
 
 
 def remember_check(plan):
@@ -118,25 +122,51 @@ def save_settings(data):
     return {"ok": True, "settings": settings}
 
 
+def automatic_check_key(settings):
+    return {
+        key: settings[key]
+        for key in ("channel", "source_branch", "auto_check", "auto_update")
+    }
+
+
 def check_on_launch():
     """One installation checks once when several instances start together."""
-    if os.environ.get("MOWER_RESTART_JOB"):
-        return
     settings = get_settings()
     if not settings["auto_check"]:
-        return
+        return True
     state = runtime.state_dir()
     try:
         with runtime.submission_lock(state):
             if runtime.active_job(state):
-                return
+                return False
             previous = runtime.read_json(state / "auto-check.json", {})
-            if time.time() - previous.get("started_at", 0) < 60:
-                return
-            runtime.write_json(state / "auto-check.json", {"started_at": time.time()})
+            key = automatic_check_key(settings)
+            if (
+                previous.get("settings") == key
+                and time.time() - previous.get("started_at", 0) < 60
+            ):
+                return True
+            runtime.write_json(
+                state / "auto-check.json", {"started_at": time.time(), "settings": key}
+            )
         result = check(settings["channel"])
-        if result["available"] and settings["auto_update"]:
-            submit(result["check_id"], settings["background"])
+        current = get_settings()
+        # A settings change while the request was in flight must not install an
+        # obsolete channel or ignore a newly disabled automatic-update switch.
+        completed = runtime.read_json(state / "status.json", {})
+        recent_restart = (
+            os.environ.get("MOWER_RESTART_JOB")
+            and completed.get("id") == os.environ["MOWER_RESTART_JOB"]
+            and completed.get("status") in {"succeeded", "failed", "cancelled"}
+            and time.time() - completed.get("updated_at", 0) < 60
+        )
+        if (
+            result["available"]
+            and current["auto_update"]
+            and automatic_check_key(current) == automatic_check_key(settings)
+            and not recent_restart
+        ):
+            submit(result["check_id"], current["background"])
     except Exception as error:
         runtime.write_json(
             state / "last-check.json",
@@ -147,6 +177,49 @@ def check_on_launch():
                 "checked_at": time.time(),
             },
         )
+    return True
+
+
+def request_auto_check():
+    """Check on app entry or settings changes; coalesce simultaneous callers."""
+    global _auto_check_thread, _auto_check_revision
+    if not get_settings()["auto_check"]:
+        return {"ok": True, "scheduled": False}
+
+    def run():
+        global _auto_check_thread
+        try:
+            deadline = time.monotonic() + 300
+            while time.monotonic() < deadline:
+                with _auto_check_lock:
+                    revision = _auto_check_revision
+                before = get_settings()
+                completed = not before["auto_check"] or check_on_launch()
+                with _auto_check_lock:
+                    if (
+                        completed
+                        and revision == _auto_check_revision
+                        and automatic_check_key(before)
+                        == automatic_check_key(get_settings())
+                    ):
+                        # Clear under the same lock used by new requests, so a
+                        # settings save cannot coalesce into an exiting worker.
+                        _auto_check_thread = None
+                        return
+                time.sleep(0.5)
+        finally:
+            with _auto_check_lock:
+                if _auto_check_thread is current_thread():
+                    _auto_check_thread = None
+
+    with _auto_check_lock:
+        _auto_check_revision += 1
+        if _auto_check_thread is None or not _auto_check_thread.is_alive():
+            _auto_check_thread = Thread(
+                target=run, name="mower-auto-update-check", daemon=True
+            )
+            _auto_check_thread.start()
+    return {"ok": True, "scheduled": True}
 
 
 def version_key(value):
@@ -565,6 +638,8 @@ def check(channel, proxy=None):
     check_id = remember_check(plan)
     result = {
         "ok": True,
+        "channel": channel,
+        "checked_at": time.time(),
         "check_id": check_id if available or plan["force_available"] else "",
         "available": available,
         "version": plan["version"],
@@ -576,11 +651,7 @@ def check(channel, proxy=None):
     }
     runtime.write_json(
         runtime.state_dir() / "last-check.json",
-        {
-            **{key: value for key, value in result.items() if key != "check_id"},
-            "channel": channel,
-            "checked_at": time.time(),
-        },
+        {key: value for key, value in result.items() if key != "check_id"},
     )
     return result
 

@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
+import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 
 const manual_url = `${import.meta.env.VITE_HTTP_URL}/hot-update/manual`
@@ -17,8 +18,11 @@ const plan_store = usePlanStore()
 const { load_operators } = plan_store
 
 const resource_store = useResourceVersionStore()
-const { canInstall, info, loading, installing, install_message } = storeToRefs(resource_store)
-const { loadResourceVersion, loadResourceVersionLocal, installResource } = resource_store
+const { canInstall, info, loading, installing, install_message, job, progress_error } =
+  storeToRefs(resource_store)
+const { loadResourceVersion, loadResourceVersionLocal, installResource, loadResourceJob } =
+  resource_store
+const showProgress = useUpdateProgress(job)
 
 const manual_result = ref('')
 const manual_installing = ref(false)
@@ -32,6 +36,7 @@ async function refresh_resource_options() {
 }
 
 onMounted(() => {
+  loadResourceJob()
   // 当前版本常驻显示；开启「启动时检查更新」时才顺带拉远端最新版本。
   if (hot_update_enable.value) {
     loadResourceVersion()
@@ -148,7 +153,27 @@ function set_auto_update(checked) {
           </n-button>
         </n-space>
       </n-form-item>
-      <n-form-item v-if="install_message" :show-label="false">
+      <n-form-item v-if="showProgress" :show-label="false">
+        <div class="resource-progress" aria-live="polite">
+          <n-progress
+            type="line"
+            :percentage="job.progress ?? 100"
+            :show-indicator="job.progress != null"
+            :processing="installing"
+            :status="
+              job.status === 'error' ? 'error' : job.status === 'success' ? 'success' : 'default'
+            "
+          />
+          <p>{{ job.message }}</p>
+          <p v-if="job.current">
+            已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
+              / {{ (job.total / 1048576).toFixed(1) }} MiB</span
+            >
+          </p>
+          <p v-if="progress_error">{{ progress_error }}</p>
+        </div>
+      </n-form-item>
+      <n-form-item v-if="install_message && showProgress && !job.message" :show-label="false">
         <span>{{ install_message }}</span>
       </n-form-item>
       <n-form-item :show-label="false">
@@ -178,6 +203,13 @@ function set_auto_update(checked) {
 </template>
 
 <style scoped>
+.resource-progress {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.resource-progress p {
+  margin: 8px 0 0;
+}
 .hint {
   margin-left: 8px;
   font-size: 12px;

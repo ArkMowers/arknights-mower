@@ -814,6 +814,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             config.conf.start_automatically = False
             server = Mock(app=Flask(__name__))
             server._job_running.return_value = False
+            server.resource_update.running.side_effect = [True, False]
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
@@ -844,14 +845,20 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 patch.object(runtime, "RuntimeRegistration", return_value=registration),
                 patch.object(runtime, "hide_macos_dock_icon") as hide_dock,
                 patch.object(network, "is_port_in_use", side_effect=[False, True]),
-                patch.object(webview_ui, "exit_if_webview_backend_missing"),
-                patch.object(webview_ui, "close_child"),
+                patch.multiple(
+                    webview_ui,
+                    exit_if_webview_backend_missing=Mock(),
+                    close_child=Mock(),
+                ),
+                patch.object(update, "request_auto_check") as auto_check,
                 patch.object(webview_ui.mp, "Queue") as queue,
                 patch.object(webview_ui.mp, "Pipe", return_value=(Mock(), Mock())),
                 patch.object(webview_ui.mp, "Process") as process,
                 patch("threading.Thread") as threads,
             ):
                 webview_ui.run_desktop()
+                auto_check.assert_called_once()
+                self.assertEqual(server.resource_update.running.call_count, 2)
                 targets = [call.kwargs["target"] for call in process.call_args_list]
                 expected = [] if background else [webview_ui.splash_screen]
                 if tray_enabled or (background and system != "darwin"):

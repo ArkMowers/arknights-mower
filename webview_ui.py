@@ -468,9 +468,9 @@ def run_desktop():
         open_window()
     close_child(splash_process)
 
-    from arknights_mower.utils.software_update import check_on_launch
+    from arknights_mower.utils.software_update import request_auto_check
 
-    Thread(target=check_on_launch, daemon=True).start()
+    request_auto_check()
 
     def resume_after_update():
         while runtime.active_job() and not registration.shutdown_requested():
@@ -490,8 +490,10 @@ def run_desktop():
     try:
         while True:
             if registration.shutdown_requested():
-                if server._job_running(server.maa_update_job) or server._job_running(
-                    server.maa_resource_update_job
+                if (
+                    server._job_running(server.maa_update_job)
+                    or server._job_running(server.maa_resource_update_job)
+                    or server.resource_update.running()
                 ):
                     sleep(0.5)
                     continue

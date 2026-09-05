@@ -117,3 +117,9 @@ def progress():
 @result
 def cancel():
     return updater.cancel(request.get_json().get("id"))
+
+
+@software_update_bp.post("/auto-check")
+@result
+def auto_check():
+    return updater.request_auto_check()
