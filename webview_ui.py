@@ -381,6 +381,12 @@ def run_desktop():
     exit_if_webview_backend_missing()
     path.global_space = sys.argv[1] if len(sys.argv) >= 2 else None
     instance_name = sys.argv[2] if len(sys.argv) >= 3 else ""
+    from arknights_mower.utils.log import init_file_logging
+
+    # 文件日志只由主进程建立。子进程（webview_window 等）不调用 init_file_logging，
+    # 否则它们经 title_version→resource_version import log.py 时会各自打开
+    # runtime.log，Windows 上整点切换日志文件（os.rename 需独占）就会因多进程同时持有而失败。
+    init_file_logging()
     splash_queue = Queue() if background else mp.Queue()
     splash_process = None
     tray_process = None
