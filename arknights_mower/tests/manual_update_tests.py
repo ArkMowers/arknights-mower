@@ -25,7 +25,7 @@ class TestApplyManualUpdate(unittest.TestCase):
                 "ok": True,
                 "kind": "resource",
                 "restart_required": False,
-                "message": "资源包安装成功，已生效，无需重启 Mower",
+                "message": "资源包已安装，各实例在任务间歇加载，无需重启 Mower",
             },
         )
 

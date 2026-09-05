@@ -13,6 +13,10 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.resource_pkg import (
+    refresh_resource_at_boundary,
+    resource_task_session,
+)
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
@@ -28,6 +32,11 @@ def _read_depot_scan_timestamp(path):
 
 # 执行自动排班
 def main(saved_state, restart_after_mood_read=False):
+    with resource_task_session():
+        return _main(saved_state, restart_after_mood_read)
+
+
+def _main(saved_state, restart_after_mood_read=False):
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     data = None
@@ -146,6 +155,7 @@ def simulate(saved, restart_after_mood_read=False):
             logger.exception(ex)
     while True:
         try:
+            refresh_resource_at_boundary()
             st, et = NewsChecker.get_update_time()
             if st is not None and et is not None:
                 if et > datetime.now() > st:

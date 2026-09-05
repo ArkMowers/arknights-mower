@@ -42,6 +42,7 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
+              <GlobalUpdateDrop v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
               <n-modal
@@ -212,6 +213,7 @@ import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref } from 'vue'
 import Feedback from '@/components/Feedback.vue'
+import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
 
@@ -392,7 +394,7 @@ const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const { ws, running, log_lines } = storeToRefs(mower_store)
+const { ws, running, log_lines, auto_start_handled } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 
 const update_notice_store = useUpdateNoticeStore()
@@ -564,7 +566,7 @@ onMounted(async () => {
     listen_ws()
   }
 
-  if (start_automatically.value) {
+  if (start_automatically.value && !auto_start_handled.value) {
     start()
   }
 })

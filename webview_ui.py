@@ -5,6 +5,13 @@ import platform
 import sys
 from urllib.parse import quote
 
+# The copied frozen updater must run before importing Flask, config or any GUI.
+if __name__ == "__main__" and sys.argv[1:2] == ["--software-update-worker"]:
+    from arknights_mower.utils.software_update_worker import main as update_main
+
+    update_main(sys.argv[2])
+    sys.exit()
+
 # Linux 版独立包运行期需要宿主提供 GTK/WebKit2 原生库与 typelib，PyInstaller 只把
 # pywebview 的 Python 依赖打进包。这份提示在窗口后端初始化失败时展示，直接给出
 # 三个发行版的安装命令，避免用户对着裸 ImportError 无从下手。
@@ -104,6 +111,10 @@ def splash_screen(queue: mp.Queue):
     from arknights_mower.utils.path import get_path
 
     root = tk.Tk()
+    from arknights_mower.utils.update_runtime import frozen, hide_macos_dock_icon
+
+    if not frozen():
+        hide_macos_dock_icon()
     container = tk.Frame(root)
 
     logo_path = get_path("@internal/logo.png")
@@ -160,28 +171,27 @@ def build_window_title(instance_name, port):
     return f"mower@{port}"
 
 
-def title_version():
+def title_version(resource_version=None):
     """窗口标题里的版本串：软件版本后追加资源包版本号（尽力读取，失败只显示软件版本）。"""
     from arknights_mower.__init__ import __version__
 
-    try:
-        from arknights_mower.utils.resource_version import check_resource_update
+    if resource_version is None:
+        try:
+            from arknights_mower.utils.resource_version import check_resource_update
 
-        resource_version = (
-            check_resource_update(local_only=True).get("current_display") or ""
-        )
-    except Exception:
-        resource_version = ""
+            resource_version = (
+                check_resource_update(local_only=True).get("current_display") or ""
+            )
+        except Exception:
+            resource_version = ""
     if resource_version:
         return f"{__version__} - {resource_version}"
     return __version__
 
 
-def window_title(instance_name, port):
+def window_title(instance_name, port, resource_version=None):
     """完整窗口标题：应用版本 + 资源包版本（若有）+ 实例标识。"""
-    return (
-        f"arknights-mower {title_version()} - {build_window_title(instance_name, port)}"
-    )
+    return f"arknights-mower {title_version(resource_version)} - {build_window_title(instance_name, port)}"
 
 
 def append_query_param(url, key, value):
@@ -196,6 +206,10 @@ def start_tray(queue: mp.Queue, instance_name, port, url):
     from pystray import Icon, Menu, MenuItem
 
     from arknights_mower.utils.path import get_path
+    from arknights_mower.utils.update_runtime import frozen, hide_macos_dock_icon
+
+    if background_requested() or not frozen():
+        hide_macos_dock_icon()
 
     logo_path = get_path("@internal/logo.png")
     img = Image.open(logo_path)
@@ -281,6 +295,9 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
                 window.confirm_close = False
                 window.destroy()
                 return
+            if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "title":
+                window.set_title(window_title(instance_name, port, msg[1]))
+                continue
             if msg == "title":
                 window.set_title(window_title(instance_name, port))
                 continue
@@ -319,83 +336,95 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
         webbrowser.open(url)
 
 
-if __name__ == "__main__":
-    mp.freeze_support()
+def close_child(process, connection=None):
+    """Reap auxiliary processes so closing a window leaves no Python Dock tile."""
+    if process is None or process.pid is None:
+        return
+    if process.is_alive() and connection is not None:
+        try:
+            connection.send("exit")
+        except (BrokenPipeError, OSError):
+            pass
+        process.join(3)
+    if process.is_alive():
+        process.terminate()
+    process.join(3)
+    if process.is_alive():
+        process.kill()
+        process.join(3)
 
-    # 先检查窗口后端是否可用。Linux 独立包若宿主缺 GTK/WebKit2 原生库，在这里给出
-    # 中文安装指引并退出，而不是让 webview 子进程走到裸 ImportError 后悄悄开浏览器。
-    exit_if_webview_backend_missing()
 
-    splash_queue = mp.Queue()
-    splash_process = mp.Process(target=splash_screen, args=(splash_queue,), daemon=True)
-    splash_process.start()
+def background_requested():
+    return os.environ.get("MOWER_BACKGROUND") == "1"
 
-    splash_queue.put({"type": "text", "data": "加载配置文件"})
 
-    import sys
-
-    from arknights_mower.utils import path
-
-    instance_name = ""
-    if len(sys.argv) >= 2:
-        path.global_space = sys.argv[1]
-    if len(sys.argv) >= 3:
-        instance_name = sys.argv[2]
-
-    from arknights_mower.utils import config
-
-    conf = config.conf
-    tray = conf.webview.tray
-    token = conf.webview.token
-    host = "0.0.0.0" if token else "127.0.0.1"
-
-    splash_queue.put({"type": "text", "data": "检测端口占用"})
-
-    from arknights_mower.utils.network import get_new_port, is_port_in_use
-
-    if token:
-        port = conf.webview.port
-
-        if is_port_in_use(port):
-            splash_queue.put(
-                {"type": "dialog", "data": f"端口{port}已被占用，无法启动！"}
-            )
-            sys.exit()
-    else:
-        port = get_new_port()
-
-    url = f"http://127.0.0.1:{port}"
-    if token:
-        url += f"?token={token}"
-    url = append_query_param(url, "instance_name", instance_name)
-
-    splash_queue.put({"type": "text", "data": "加载Flask依赖"})
-
-    from server import app
-
-    splash_queue.put({"type": "text", "data": "启动Flask网页服务器"})
-
+def run_desktop():
+    from queue import Empty
     from threading import Thread
     from time import sleep
 
-    flask_thread = Thread(
-        target=app.run,
-        kwargs={"host": host, "port": port},
-        daemon=True,
+    from arknights_mower.utils import path
+    from arknights_mower.utils import update_runtime as runtime
+
+    owner = runtime.read_json(runtime.state_dir() / "active/owner.json", {})
+    if runtime.active_job() and os.environ.get("MOWER_RESTART_JOB") != owner.get("id"):
+        sys.exit("软件正在更新，请等待完成后启动 Mower")
+    background = background_requested()
+    if background or not runtime.frozen():
+        runtime.hide_macos_dock_icon()
+    exit_if_webview_backend_missing()
+    path.global_space = sys.argv[1] if len(sys.argv) >= 2 else None
+    instance_name = sys.argv[2] if len(sys.argv) >= 3 else ""
+    splash_queue = mp.Queue()
+    splash_process = None
+    tray_process = None
+    registration = runtime.RuntimeRegistration(
+        "instance", space=path.global_space, name=instance_name
     )
-    flask_thread.start()
+    if not background:
+        splash_process = mp.Process(
+            target=splash_screen, args=(splash_queue,), daemon=True
+        )
+        splash_process.start()
+    splash_queue.put({"type": "text", "data": "加载配置文件"})
+    from arknights_mower.utils import config
+    from arknights_mower.utils.network import get_new_port, is_port_in_use
 
-    while not is_port_in_use(port):
-        sleep(0.1)
+    conf = config.conf
+    tray = conf.webview.tray or background
+    token = conf.webview.token
+    host = "0.0.0.0" if token else "127.0.0.1"
+    restart_port = os.environ.get("MOWER_RESTART_PORT", "")
+    port = (
+        int(restart_port)
+        if restart_port
+        else (conf.webview.port if token else get_new_port())
+    )
+    if is_port_in_use(port):
+        close_child(splash_process)
+        registration.close()
+        raise RuntimeError(f"端口{port}已被占用，无法启动！")
+    registration.record["port"] = port
+    registration.publish()
+    splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
+    import server
 
+    registration.running = lambda: bool(
+        server.mower_thread and server.mower_thread.is_alive()
+    )
     url = f"http://127.0.0.1:{port}"
     if token:
         url += f"?token={token}"
     url = append_query_param(url, "instance_name", instance_name)
-
+    Thread(
+        target=server.app.run, kwargs={"host": host, "port": port}, daemon=True
+    ).start()
+    while not is_port_in_use(port):
+        sleep(0.1)
+    registration.record["ready"] = True
+    registration.publish()
+    tray_queue = mp.Queue()
     if tray:
-        splash_queue.put({"type": "text", "data": "加载托盘图标"})
-        tray_queue = mp.Queue()
         tray_process = mp.Process(
             target=start_tray,
             args=(tray_queue, instance_name or path.global_space, port, url),
@@ -403,49 +432,70 @@ if __name__ == "__main__":
         )
         tray_process.start()
 
-    splash_queue.put({"type": "text", "data": "创建主窗口"})
+    def open_window():
+        config.parent_conn, child_conn = mp.Pipe()
+        config.webview_process = mp.Process(
+            target=webview_window,
+            args=(child_conn, path.global_space, instance_name, host, port, url, tray),
+            daemon=True,
+        )
+        config.webview_process.start()
 
-    config.parent_conn, child_conn = mp.Pipe()
-    config.webview_process = mp.Process(
-        target=webview_window,
-        args=(child_conn, path.global_space, instance_name, host, port, url, tray),
-        daemon=True,
+    config.webview_process = None
+    if not background:
+        open_window()
+    close_child(splash_process)
+
+    def resume_after_update():
+        while runtime.active_job() and not registration.shutdown_requested():
+            sleep(0.5)
+        if registration.shutdown_requested():
+            return
+        with server.app.test_request_context(headers={"token": token or ""}):
+            server.start("0")
+
+    resume = (
+        os.environ.get("MOWER_RESUME_RUN") == "1"
+        if os.environ.get("MOWER_RESTART_JOB")
+        else background and conf.start_automatically
     )
-    config.webview_process.start()
-
-    splash_process.terminate()
-
-    if tray:
+    if resume:
+        Thread(target=resume_after_update, daemon=True).start()
+    try:
         while True:
-            msg = tray_queue.get()
+            if registration.shutdown_requested():
+                if server._job_running(server.maa_update_job) or server._job_running(
+                    server.maa_resource_update_job
+                ):
+                    sleep(0.5)
+                    continue
+                with server.app.test_request_context(headers={"token": token or ""}):
+                    stopped = server.stop() == "true"
+                if stopped and registration.shutdown_requested():
+                    break
+            if not tray:
+                config.webview_process.join(0.5)
+                if not config.webview_process.is_alive():
+                    break
+                continue
+            try:
+                msg = tray_queue.get(timeout=0.5)
+            except Empty:
+                continue
             if msg == "toggle":
-                if config.webview_process.is_alive():
-                    config.parent_conn.send("exit")
-                    if config.webview_process.join(3) is None:
-                        config.webview_process.terminate()
+                if config.webview_process and config.webview_process.is_alive():
+                    close_child(config.webview_process, config.parent_conn)
                 else:
-                    config.parent_conn, child_conn = mp.Pipe()
-                    config.webview_process = mp.Process(
-                        target=webview_window,
-                        args=(
-                            child_conn,
-                            path.global_space,
-                            instance_name,
-                            host,
-                            port,
-                            url,
-                            tray,
-                        ),
-                        daemon=True,
-                    )
-                    config.webview_process.start()
+                    open_window()
             elif msg == "exit":
-                # 退出前先让 mower 线程停止：否则 daemon 线程仍在跑 adb 操作，
-                # 会占着 DroidCast/scrcpy 连接（需关模拟器才释放），且影响进程退出
-                config.stop_mower.set()
-                config.parent_conn.send("exit")
-                if config.webview_process.join(3) is None:
-                    config.webview_process.terminate()
                 break
-    else:
-        config.webview_process.join()
+    finally:
+        config.stop_mower.set()
+        close_child(config.webview_process, getattr(config, "parent_conn", None))
+        close_child(tray_process)
+        registration.close()
+
+
+if __name__ == "__main__":
+    mp.freeze_support()
+    run_desktop()

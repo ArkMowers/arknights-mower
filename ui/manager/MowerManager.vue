@@ -10,6 +10,7 @@ import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import { onMounted, ref } from 'vue'
 
 const loading = ref(true)
+const error = ref('')
 
 const instances = ref([])
 
@@ -67,12 +68,14 @@ async function select_path(idx) {
 }
 
 async function start(idx) {
-  await pywebview.api.start(idx)
+  const result = await pywebview.api.start(idx)
+  error.value = result?.ok === false ? result.message : ''
 }
 </script>
 
 <template>
   <div class="mower-list">
+    <n-alert v-if="error" type="warning">{{ error }}</n-alert>
     <div class="openheader">
       <n-button @click="openAll">全部打开</n-button>
     </div>

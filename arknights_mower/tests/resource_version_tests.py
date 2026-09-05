@@ -185,15 +185,35 @@ class TestReadLocalVersion(unittest.TestCase):
         self.assertEqual(got["current_display"], display_version(marker))
 
     def test_overlay_version_replaces_builtin_version(self):
+        from arknights_mower.tests.resource_pkg_tests import resource_zip
+        from arknights_mower.utils import resource_pkg as rp
+
         with tempfile.TemporaryDirectory() as d:
             overlay = Path(d) / "resource"
-            marker = overlay / "arknights_mower/data/version.json"
-            marker.parent.mkdir(parents=True)
-            marker.write_text(
-                json.dumps(_version("2026.09.04-bbbbbbb", "墟·复刻", 1787342400)),
-                encoding="utf-8",
+            builtin = Path(d) / "builtin"
+            (builtin / "data").mkdir(parents=True)
+            (builtin / "data/version.json").write_text(
+                json.dumps(_version("2026.09.03-aaaaaaa")), encoding="utf-8"
             )
-            with patch("arknights_mower.utils.resource_pkg.RESOURCE_OVERLAY", overlay):
+            with (
+                patch.object(rp, "__rootdir__", builtin),
+                patch.object(rp, "RESOURCE_OVERLAY", overlay),
+                patch.object(rp, "_STAGING", overlay / ".staging"),
+                patch.object(rp, "_INSTALL_LOCK_PATH", overlay / "install.lock"),
+                patch.object(rp, "_active_resource", None),
+                patch.object(rp, "_loaded_resource_signature", None),
+                patch.object(rp, "_rejected_resource_signature", None),
+                patch.object(rp, "reload_resource_caches"),
+            ):
+                self.assertTrue(
+                    rp.install_resource_pkg(
+                        resource_zip(
+                            manifest=_version(
+                                "2026.09.04-bbbbbbb", "墟·复刻", 1787342400
+                            )
+                        )
+                    )
+                )
                 got = rv.check_resource_update(local_only=True)
 
         self.assertEqual(got["current_version"], "2026.09.04-bbbbbbb")

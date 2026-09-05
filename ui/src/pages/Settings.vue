@@ -170,6 +170,8 @@ const onSelectionChange = (newValue) => {
 }
 import { ref } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
+import SoftwareUpdate from '../components/SoftwareUpdate.vue'
+import NetworkSettings from '../components/NetworkSettings.vue'
 
 const showSettingModal = ref(false)
 const editingIndex = ref(null)
@@ -878,14 +880,41 @@ if (return_home_when_idle.value) {
       <div>
         <ChatBotSetting />
       </div>
-      <div>
-        <ResourceUpdate />
-      </div>
+    </div>
+    <div class="settings-network">
+      <NetworkSettings />
+    </div>
+    <div class="settings-updates">
+      <div><SoftwareUpdate /></div>
+      <div><ResourceUpdate /></div>
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
+.settings-network {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.settings-updates {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+
+  > div {
+    min-width: 0;
+    max-width: 600px;
+  }
+
+  @media (min-width: 1400px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+}
+
 .threshold {
   display: flex;
   align-items: center;

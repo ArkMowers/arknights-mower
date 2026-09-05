@@ -16,7 +16,10 @@ from yamlcore import CoreDumper, CoreLoader
 
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.plan import PlanModel
+from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
+
+apply_http_proxy()
 
 logger = logging.getLogger(__name__)
 

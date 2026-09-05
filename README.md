@@ -20,6 +20,12 @@ Mower 是为长期运行设计的开源明日方舟脚本。
 
 ## 下载与安装
 
+已部署的程序可在 **Mower 设置 → 软件更新** 中检查正式版、公测版或开发版更新，并在更新后恢复当前实例。Release 独立包支持手动上传安装包离线安装；源码与独立包部署均可选择后台静默重启。首次启用、平台支持与失败恢复说明见 [软件更新与实例恢复](doc/software-update.md)。
+
+设置页下方的 **网络与下载代理** 可配置全局网络连接及 GitHub 下载代理站点（如 `https://ghfast.top/`）。填写后自动保存，后续连接使用新设置，并可测试网络与 GitHub 文件下载连接。软件更新与资源更新位于其下方，宽屏并排显示。
+
+资源包保存在共享的持久目录 `@app/resources`，各实例在任务间歇加载，不修改 internal 或已签名的 macOS 程序包。详见[共享资源存储与实例加载](doc/resource-storage.md)。
+
 ### 运行环境准备
 
 git、Python 3.12、Node.js 16
@@ -162,8 +168,8 @@ pyinstaller webui_zip_for_macos.spec
 arknights-mower_<version>_windows_x64.zip
 arknights-mower_<version>_linux_x64.tar.gz
 arknights-mower_<version>_linux_arm64.tar.gz
-arknights-mower_<version>_macos_x64.zip
-arknights-mower_<version>_macos_arm64.zip
+arknights-mower_<version>_macos_x64.dmg
+arknights-mower_<version>_macos_arm64.dmg
 ```
 
 发布入口、版本格式、构建检查和系统依赖见

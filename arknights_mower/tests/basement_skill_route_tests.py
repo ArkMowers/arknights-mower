@@ -19,16 +19,31 @@ class TestBasementSkillRoute(unittest.TestCase):
 
     def test_returns_json_with_no_cache_when_resource_installed(self):
         (self.base / "skill.json").write_text('{"name": "sample"}', encoding="utf-8")
-        with patch("server.get_path", return_value=self.base):
+        with patch(
+            "arknights_mower.utils.resource_pkg.resource_ui_path",
+            return_value=self.base,
+        ):
             resp = self.client.get("/basement_skill/skill.json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_data(as_text=True), '{"name": "sample"}')
         self.assertEqual(resp.headers["Cache-Control"], "no-cache")
 
     def test_404_when_resource_not_installed(self):
-        with patch("server.get_path", return_value=self.base):
+        with patch(
+            "arknights_mower.utils.resource_pkg.resource_ui_path", return_value=None
+        ):
             resp = self.client.get("/basement_skill/skill.json")
         self.assertEqual(resp.status_code, 404)
+
+    def test_missing_file_does_not_fall_back_to_html_or_builtin(self):
+        with patch(
+            "arknights_mower.utils.resource_pkg.resource_ui_path",
+            return_value=self.base,
+        ):
+            self.assertEqual(
+                self.client.get("/basement_skill/skill.json").status_code, 404
+            )
+            self.assertEqual(self.client.get("/depot/missing.webp").status_code, 404)
 
 
 if __name__ == "__main__":

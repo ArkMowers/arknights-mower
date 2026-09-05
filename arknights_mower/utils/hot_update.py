@@ -7,6 +7,7 @@ from zipfile import ZipFile
 import requests
 
 from arknights_mower.utils import config
+from arknights_mower.utils.github_download import download_url
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import version_newer
@@ -125,7 +126,7 @@ def _download_and_extract() -> bool:
         f"https://github.com/{HOT_UPDATE_REPO}/releases/latest/download/hot_update.zip"
     )
     try:
-        r = requests.get(url, timeout=60)
+        r = requests.get(download_url(url), timeout=60)
         if r.status_code != 200:
             logger.warning(f"热更新下载失败：HTTP {r.status_code}")
             return False

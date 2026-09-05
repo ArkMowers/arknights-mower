@@ -67,6 +67,7 @@ from arknights_mower.utils.operators import (
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import PlanTriggerTiming
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.resource_pkg import refresh_resource_at_boundary
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -4797,12 +4798,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
             while datetime.now() < end_time:
+                refresh_resource_at_boundary()
                 if config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
                     break
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
             if config.stop_mower.is_set():
                 raise MowerExit
+            refresh_resource_at_boundary()
             if (
                 config.conf.close_simulator_when_idle
                 and self._simulator_closed_for_idle
