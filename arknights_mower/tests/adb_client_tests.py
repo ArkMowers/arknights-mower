@@ -43,6 +43,15 @@ class TestAdbClientConnectionError(unittest.TestCase):
         self.assertEqual(exec_mock.call_args_list[1].args[0], "connect 127.0.0.1:16928")
         init_device_mock.assert_called_once_with()
 
+    def test_available_devices_excludes_offline_and_unauthorized(self):
+        with patch("arknights_mower.utils.device.adb_client.core.Session") as session:
+            session.return_value.devices_list.return_value = [
+                ("offline-device", "offline"),
+                ("unauthorized-device", "unauthorized"),
+                ("online-device", "device"),
+            ]
+            self.assertEqual(_client()._Client__available_devices(), ["online-device"])
+
     def test_run_reraises_connection_error_after_retries(self):
         client = _client()
         session_mock = MagicMock()

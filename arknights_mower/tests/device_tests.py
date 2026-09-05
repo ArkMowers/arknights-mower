@@ -1,5 +1,7 @@
+import subprocess
 import unittest
 from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from arknights_mower.utils import config
@@ -180,6 +182,83 @@ class TestStartDroidcast(unittest.TestCase):
         device.get_droidcast_classpath = MagicMock(return_value=None)
         device.client.cmd = MagicMock(side_effect=RuntimeError("device offline"))
         self.assertFalse(device.start_droidcast())
+
+    def setUp(self):
+        self.device = _device()
+        self.device.client.cmd.return_value = "Success"
+        self.runtime = SimpleNamespace(port=0, process=None)
+        self.enterContext(patch.object(config, "droidcast", self.runtime))
+        self.enterContext(
+            patch(
+                "arknights_mower.utils.device.device.get_new_port", return_value=54321
+            )
+        )
+
+    def test_missing_package_installs_then_starts(self):
+        self.device.client.cmd_shell.side_effect = [
+            "",
+            "package:/data/app/droidcast/base.apk\n",
+        ]
+        self.assertTrue(self.device.start_droidcast())
+        self.assertEqual(self.device.client.cmd.call_args_list[0].args[0][0], "install")
+        self.device.client.process.assert_called_once_with(
+            "CLASSPATH=/data/app/droidcast/base.apk",
+            ["app_process", "/", "com.rayworks.droidcast.Main", "--port=54321"],
+        )
+
+    def test_missing_package_exit_code_one_installs(self):
+        self.device.client.cmd_shell.side_effect = [
+            subprocess.CalledProcessError(1, "pm path", output=b""),
+            "package:/data/app/droidcast/base.apk\n",
+        ]
+        self.assertTrue(self.device.start_droidcast())
+        self.assertEqual(self.device.client.cmd.call_args_list[0].args[0][0], "install")
+
+    def test_existing_package_does_not_install(self):
+        self.device.client.cmd_shell.return_value = (
+            "package:/data/app/droidcast/base.apk"
+        )
+        self.assertTrue(self.device.start_droidcast())
+        self.device.client.cmd.assert_called_once_with("forward tcp:54321 tcp:54321")
+
+    def test_query_failure_does_not_install(self):
+        for error in (
+            ConnectionError("offline"),
+            subprocess.CalledProcessError(1, "pm path", output=b"device not found"),
+            subprocess.CalledProcessError(1, "pm path", output=None),
+            subprocess.CalledProcessError(2, "pm path", output=b""),
+        ):
+            with self.subTest(error=error):
+                self.device.client.cmd_shell.side_effect = error
+                with self.assertRaises(type(error)):
+                    self.device.start_droidcast()
+        self.device.client.cmd.assert_not_called()
+        self.device.client.process.assert_not_called()
+
+    def test_unexpected_query_output_does_not_install(self):
+        self.device.client.cmd_shell.return_value = "Error: package manager unavailable"
+        with self.assertRaises(ValueError):
+            self.device.start_droidcast()
+        self.device.client.cmd.assert_not_called()
+
+    def test_install_failure_does_not_start_server(self):
+        self.device.client.cmd_shell.return_value = ""
+        self.device.client.cmd.return_value = "Failure [INSTALL_FAILED_INTERNAL_ERROR]"
+        self.assertFalse(self.device.start_droidcast())
+        self.device.client.process.assert_not_called()
+
+    def test_reconnect_failure_does_not_start_touch_service(self):
+        self.device.control = MagicMock()
+        self.device.start_droidcast = MagicMock(return_value=False)
+        with (
+            patch.object(config.conf.droidcast, "enable", True),
+            patch.object(config.conf, "touch_method", "scrcpy"),
+            patch("arknights_mower.utils.device.device.Session"),
+            patch("arknights_mower.utils.device.device.Scrcpy") as scrcpy,
+        ):
+            with self.assertRaisesRegex(ConnectionError, "DroidCast启动失败"):
+                self.device.reconnect()
+        scrcpy.assert_not_called()
 
 
 if __name__ == "__main__":

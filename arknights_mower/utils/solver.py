@@ -62,7 +62,8 @@ class BaseSolver:
                     if not self.device.check_resolution():
                         raise MowerExit
                     if config.conf.droidcast.enable:
-                        self.device.start_droidcast()
+                        if not self.device.start_droidcast():
+                            raise ConnectionError("DroidCast启动失败")
                     if config.conf.touch_method == "scrcpy":
                         self.device.control.scrcpy = Scrcpy(self.device.client)
                     break
@@ -73,10 +74,14 @@ class BaseSolver:
                     logger.warning(f"设备连接失败：{e}")
                     # 自动关闭模式也负责首轮启动，无需用户提前打开模拟器。
                     try:
-                        registered = [d for d, _ in Session().devices_list()]
+                        available = [
+                            d
+                            for d, status in Session().devices_list()
+                            if status == "device"
+                        ]
                     except Exception:
-                        registered = []
-                    if config.conf.adb and config.conf.adb not in registered:
+                        available = []
+                    if config.conf.adb and config.conf.adb not in available:
                         if config.conf.close_simulator_when_idle:
                             logger.info("已启用任务结束后关闭模拟器，启动目标模拟器")
                             if not restart_simulator(stop=False, start=True):

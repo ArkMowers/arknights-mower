@@ -204,8 +204,16 @@ class Device:
         # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
         try:
             out = self.client.cmd_shell("pm path com.rayworks.droidcast", decode=True)
+        except subprocess.CalledProcessError as e:
+            # Android 部分版本在包不存在时返回退出码 1，且没有输出。
+            if e.returncode == 1 and e.output is not None and not e.output.strip():
+                return None
+            logger.exception("无法获取CLASSPATH")
+            raise
         except Exception:
             logger.exception("无法获取CLASSPATH")
+            raise
+        if not out.strip():
             return None
         prefix = "package:"
         postfix = ".apk"
@@ -427,7 +435,8 @@ class Device:
         self.device_id = target
         Session().connect(target)
         if config.conf.droidcast.enable:
-            self.start_droidcast()
+            if not self.start_droidcast():
+                raise ConnectionError("DroidCast启动失败")
         if config.conf.touch_method == "scrcpy":
             self.control.scrcpy = Scrcpy(self.client)
 

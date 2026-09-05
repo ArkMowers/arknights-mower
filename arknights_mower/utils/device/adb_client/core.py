@@ -134,7 +134,7 @@ class Client:
 
     def __available_devices(self) -> list[str]:
         """return available devices"""
-        return [x[0] for x in Session().devices_list() if x[1] != "offline"]
+        return [x[0] for x in Session().devices_list() if x[1] == "device"]
 
     def refresh_target(self) -> str:
         """重新发现目标模拟器当前 adb 端点并同步到 device_id / config.conf.adb。

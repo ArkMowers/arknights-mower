@@ -49,6 +49,48 @@ class TestSolverStartupLaunch(unittest.TestCase):
                 BaseSolver()
         self.restart_mock.assert_not_called()
 
+    def test_offline_device_is_started_on_first_failure(self):
+        device = MagicMock()
+        self.device_mock.side_effect = [RuntimeError("offline"), device]
+        self.session_mock.return_value.devices_list.return_value = [
+            (config.conf.adb, "offline")
+        ]
+        with patch("arknights_mower.utils.solver.Recognizer"):
+            solver = BaseSolver()
+        self.assertIs(solver.device, device)
+        self.assertEqual(self.device_mock.call_count, 2)
+        self.restart_mock.assert_called_once_with(stop=False, start=True)
+
+    def test_offline_device_with_unchecked_option_is_not_started(self):
+        self.session_mock.return_value.devices_list.return_value = [
+            (config.conf.adb, "offline")
+        ]
+        with patch.object(config.conf, "close_simulator_when_idle", False):
+            with self.assertRaises(ConnectionError):
+                BaseSolver()
+        self.restart_mock.assert_not_called()
+
+    def test_droidcast_failure_prevents_startup_success(self):
+        device = MagicMock()
+        device.start_droidcast.return_value = False
+        self.device_mock.side_effect = None
+        self.device_mock.return_value = device
+        self.session_mock.return_value.devices_list.return_value = [
+            (config.conf.adb, "device")
+        ]
+        with (
+            patch.object(config.conf.droidcast, "enable", True),
+            patch.object(config.conf, "touch_method", "scrcpy"),
+            patch("arknights_mower.utils.solver.Recognizer") as recog,
+            patch("arknights_mower.utils.solver.Scrcpy") as scrcpy,
+        ):
+            with self.assertRaises(ConnectionError):
+                BaseSolver()
+        self.assertEqual(device.start_droidcast.call_count, 3)
+        recog.assert_not_called()
+        scrcpy.assert_not_called()
+        self.restart_mock.assert_not_called()
+
     def test_running_device_does_not_need_start(self):
         self.device_mock.side_effect = None
         with patch("arknights_mower.utils.solver.Recognizer"):
