@@ -277,7 +277,8 @@ class ScreenshotTests(unittest.TestCase):
             Path, "mkdir", side_effect=AssertionError("关闭保存仍访问磁盘")
         ):
             filename = self.store.submit(b"preview")
-            self.store.submit(b"debug", "terminal_main")
+            for folder in ("terminal_main", "run_order", "workshop", "solve_captcha"):
+                self.store.submit(b"debug", folder)
         self.assertEqual(self.store.latest().filename, filename)
         self.assertEqual(self.store.latest().data, b"preview")
         self.assertEqual(self.store.stats()["pending_count"], 0)
@@ -285,7 +286,7 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(self.store.stats()["dropped"], 0)
         self.assertFalse(self.root.exists())
 
-    def test_disabled_history_preserves_important_frames_and_can_be_reenabled(self):
+    def test_disabled_history_skips_all_folders_and_can_be_reenabled(self):
         self.retention = 0
         files = [
             self.store.submit(b"important", folder)
@@ -293,31 +294,43 @@ class ScreenshotTests(unittest.TestCase):
         ]
         self.store.start()
         self.wait_idle()
-        self.assertTrue(all((self.root / file).exists() for file in files))
+        self.assertTrue(all(not (self.root / file).exists() for file in files))
+        self.assertEqual(self.store.stats()["saved"], 0)
         self.assertEqual(self.store.last_saved(), "")
         self.retention = 1
         filename = self.store.submit(b"ordinary")
+        important = self.store.submit(b"order", "run_order")
         self.wait_idle()
         self.assertEqual((self.root / filename).read_bytes(), b"ordinary")
+        self.assertEqual((self.root / important).read_bytes(), b"order")
 
-    def test_cleanup_resumes_after_new_write_in_an_empty_store(self):
-        first, resumed = Event(), Event()
-        cleanup = self.store.cleanup
+    def test_disabling_storage_skips_queued_frames_after_current_write(self):
+        entered, release = Event(), Event()
+        write = self.store._write
 
-        def track_cleanup():
-            if first.is_set():
-                resumed.set()
-            result = cleanup()
-            first.set()
-            return result
+        def slow_write(frame):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            write(frame)
 
-        with patch.object(self.store, "cleanup", side_effect=track_cleanup):
+        with patch.object(self.store, "_write", side_effect=slow_write):
+            active = self.store.submit(b"in flight", "run_order")
             self.store.start()
-            self.assertTrue(first.wait(2))
-            self.assertFalse(resumed.wait(0.06))
-            self.store.submit(b"new history")
-            self.wait_idle()
-            self.assertTrue(resumed.wait(2))
+            try:
+                self.assertTrue(entered.wait(2))
+                queued = [
+                    self.store.submit(b"queued", folder)
+                    for folder in (None, "run_order", "workshop", "solve_captcha")
+                ]
+                self.retention = 0
+            finally:
+                release.set()
+                self.wait_idle()
+        self.assertTrue((self.root / active).exists())
+        self.assertTrue(all(not (self.root / file).exists() for file in queued))
+        self.assertEqual(self.store.stats()["saved"], 1)
+        self.assertEqual(self.store.stats()["failed"], 0)
+        self.assertEqual(self.store.stats()["dropped"], 0)
 
     def test_queue_within_capacity_keeps_every_frame_and_important_folder(self):
         files = [self.store.submit(b"jpeg" * 256) for _ in range(30)]
@@ -551,32 +564,37 @@ class ScreenshotMaintenanceTests(unittest.TestCase):
         self.assertEqual(calls, [0, 3600, 7200])
         self.logger.debug.assert_not_called()
 
-    def test_short_retention_cleans_until_history_expires_then_backs_off(self):
+    def test_expired_history_is_removed_on_hourly_cleanup(self):
         self.retention = 0.02
         path = self.seed(self.epoch_ns - 10 * 10**9)
-        calls = self.run_cleaner_until(900)
-        self.assertEqual(calls, [0, 60, 120])
+
+        def before_cleanup():
+            if self.now < 3600:
+                self.assertTrue(path.exists())
+
+        calls = self.run_cleaner_until(7201, before_cleanup)
+        self.assertEqual(calls, [0, 3600, 7200])
         self.assertFalse(path.exists())
         self.logger.debug.assert_not_called()
 
-    def test_cleanup_interval_adapts_to_retention_without_thirty_second_scans(self):
-        for retention, interval in ((0.1, 180), (1, 1800), (24, 3600)):
+    def test_retention_does_not_change_hourly_cleanup_interval(self):
+        for retention in (0, 0.02, 0.1, 1, 24):
             with self.subTest(retention=retention):
                 self.now = 0
                 self.retention = retention
                 self.seed(self.epoch_ns + 48 * 3600 * 10**9)
-                calls = self.run_cleaner_until(interval * 2 + 1)
-                self.assertEqual(calls, [0, interval, interval * 2])
+                calls = self.run_cleaner_until(7201)
+                self.assertEqual(calls, [0, 3600, 7200])
 
-    def test_shortening_retention_triggers_cleanup_at_next_poll(self):
+    def test_retention_changes_take_effect_at_next_hourly_cleanup(self):
         path = self.seed(self.epoch_ns - 120 * 10**9)
 
         def shorten():
             if self.now >= 60:
                 self.retention = 0.02
 
-        calls = self.run_cleaner_until(121, shorten)
-        self.assertEqual(calls, [0, 60])
+        calls = self.run_cleaner_until(3601, shorten)
+        self.assertEqual(calls, [0, 3600])
         self.assertFalse(path.exists())
 
     def test_cleanup_errors_are_reported_and_retried(self):
@@ -584,9 +602,8 @@ class ScreenshotMaintenanceTests(unittest.TestCase):
             "arknights_mower.utils.screenshot.os.scandir",
             side_effect=PermissionError("denied"),
         ):
-            self.retention = 0.02
-            calls = self.run_cleaner_until(121)
-        self.assertEqual(calls, [0, 60, 120])
+            calls = self.run_cleaner_until(7201)
+        self.assertEqual(calls, [0, 3600, 7200])
         self.assertEqual(self.store.stats()["cleanup_failed"], 3)
         self.assertEqual(self.logger.error.call_count, 3)
         self.assertEqual(self.logger.debug.call_count, 3)
@@ -666,6 +683,14 @@ class ScreenshotRouteTests(unittest.TestCase):
         response = self.client.get("/screenshot/latest", headers=self.headers)
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_preview_still_works_with_storage_disabled(self):
+        self.store.retention_hours = lambda: 0
+        self.store.submit(b"preview without disk")
+        response = self.client.get("/screenshot/latest", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"preview without disk")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
 
     def test_preview_before_write_and_etag_when_unchanged(self):
         self.store.submit(b"jpeg bytes")

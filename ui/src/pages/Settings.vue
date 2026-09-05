@@ -460,7 +460,7 @@ if (return_home_when_idle.value) {
               <template #label>
                 <span>截图保存时间</span>
                 <help-text>
-                  可填小数；设为 0 不保存普通和调试截图，实时预览仍可用，跑单等关键截图继续保留。
+                  默认保留 1 小时，可填小数；设为 0 时所有截图不再写盘，实时预览仍可用。
                 </help-text>
               </template>
               <n-input-number v-model:value="screenshot" :min="0">

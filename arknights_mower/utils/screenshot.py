@@ -44,14 +44,14 @@ class ScreenshotStore:
         folder: Path,
         retention_hours: Callable[[], float],
         logger: logging.Logger | None = None,
-        cleanup_interval: float | None = None,
+        cleanup_interval: float = 3600,
         *,
         max_pending_count: int = 128,
         max_pending_bytes: int = 64 * 1024**2,
     ):
         if max_pending_count <= 0 or max_pending_bytes <= 0:
             raise ValueError("待写截图数量和字节数上限必须大于 0")
-        if cleanup_interval is not None and cleanup_interval <= 0:
+        if cleanup_interval <= 0:
             raise ValueError("截图清理间隔必须大于 0")
         self.folder = Path(folder)
         self.retention_hours = retention_hours
@@ -135,8 +135,8 @@ class ScreenshotStore:
             )
             if frame.preview:
                 self._latest = frame
-            # 关闭普通截图保存时仍更新预览，关键截图用于历史记录等功能。
-            persist = frame.important or self.retention_hours() > 0
+            # 保存时间为 0 时，所有截图只更新内存，不再入队写盘。
+            persist = self.retention_hours() > 0
             if persist and self._make_room(frame):
                 self._pending_count += 1
                 self._pending_bytes += len(data)
@@ -262,7 +262,12 @@ class ScreenshotStore:
                 frame = self._queue.popleft()
             try:
                 started = time.monotonic()
+                write_enabled = False
                 try:
+                    write_enabled = self.retention_hours() > 0
+                    if not write_enabled:
+                        # 设置可能在入队后关闭，跳过尚未开始写入的截图。
+                        continue
                     self._write(frame)
                 except Exception as exc:
                     with self._lock:
@@ -277,8 +282,9 @@ class ScreenshotStore:
                     with self._lock:
                         self._pending_count -= 1
                         self._pending_bytes -= len(frame.data)
-                        self._write_ms = (time.monotonic() - started) * 1000
-                        self._queue_wait_ms = (started - frame.queued_at) * 1000
+                        if write_enabled:
+                            self._write_ms = (time.monotonic() - started) * 1000
+                            self._queue_wait_ms = (started - frame.queued_at) * 1000
             finally:
                 # 不让等待新任务的线程留住上一帧。
                 del frame
@@ -312,24 +318,20 @@ class ScreenshotStore:
         if keep_latest:
             newest = heapq.nlargest(keep_latest, self._images(folder))
             if len(newest) < keep_latest:
-                return bool(newest)
+                return
             # 第二遍扫描时新写入的文件比这个边界新，不会被误删。
             cutoff_ns = min(newest)[0]
         deleted = 0
-        has_history = False
         for timestamp, name in self._images(folder):
             if timestamp >= cutoff_ns:
-                has_history = True
                 continue
             try:
                 (folder / name).unlink(missing_ok=True)
                 deleted += 1
             except OSError as exc:
-                has_history = True
                 self._cleanup_error(exc)
             if deleted and deleted % 100 == 0 and self._stop.wait(0.01):
-                return True
-        return has_history
+                return
 
     def _cleanup_error(self, exc):
         with self._lock:
@@ -337,7 +339,6 @@ class ScreenshotStore:
         self._report_error("清理截图失败", exc)
 
     def cleanup(self):
-        """清理过期截图，返回是否仍有历史截图或需要重试的目录。"""
         # 防止手动清理和定时清理重叠，不占用预览/提交的锁。
         with self._cleanup_lock:
             started = time.monotonic()
@@ -346,9 +347,9 @@ class ScreenshotStore:
                     max(0, self.retention_hours()) * 3600 * 10**9
                 )
                 # 旧根目录仅做过期删除，不迁移也不建立路径映射。
-                has_history = self._remove_expired(self.folder, cutoff_ns)
+                self._remove_expired(self.folder, cutoff_ns)
                 if not self.folder.exists():
-                    return False
+                    return
                 with os.scandir(self.folder) as entries:
                     for entry in entries:
                         if self._stop.is_set():
@@ -360,35 +361,24 @@ class ScreenshotStore:
                             if _HOUR_FOLDER.fullmatch(entry.name):
                                 hour = datetime.strptime(entry.name, "%Y%m%d-%H")
                                 if int(hour.timestamp() * 10**9) >= cutoff_ns:
-                                    has_history = True
                                     continue
-                            remaining = self._remove_expired(
+                            self._remove_expired(
                                 folder,
                                 cutoff_ns,
                                 100 if entry.name in _IMPORTANT_FOLDERS else 0,
                             )
-                            has_history = has_history or remaining
                             if _HOUR_FOLDER.fullmatch(entry.name):
                                 try:
                                     folder.rmdir()  # 仅删除空目录，保留写入中的 .tmp。
                                 except OSError:
                                     pass
                         except (OSError, ValueError) as exc:
-                            has_history = True
                             self._cleanup_error(exc)
             except Exception as exc:
-                has_history = True
                 self._cleanup_error(exc)
             finally:
                 with self._lock:
                     self._cleanup_ms = (time.monotonic() - started) * 1000
-            return has_history
-
-    def _cleanup_delay(self, retention):
-        if self.cleanup_interval is not None:
-            return self.cleanup_interval
-        # 短期调试记录及时回收；长保留时间不必频繁扫描目录。
-        return min(3600, max(60, retention * 1800)) if retention > 0 else 3600
 
     def _report_status(self):
         stats = self.stats()
@@ -400,32 +390,11 @@ class ScreenshotStore:
 
     def _cleaner(self):
         last_cleanup = float("-inf")
-        cleaned_saved = -1
-        last_retention = None
-        has_history = True
-        poll_interval = min(30, self.cleanup_interval or 30)
+        poll_interval = min(30, self.cleanup_interval)
         while not self._stop.is_set():
-            try:
-                retention = max(0, self.retention_hours())
-                stats = self.stats()
-                elapsed = time.monotonic() - last_cleanup
-                changed = stats["saved"] != cleaned_saved
-                if (
-                    retention != last_retention
-                    or elapsed >= 3600
-                    or (
-                        (has_history or changed)
-                        and elapsed >= self._cleanup_delay(retention)
-                    )
-                ):
-                    # 记录扫描前的写入次数，避免漏掉扫描期间新落盘的截图。
-                    cleaned_saved = stats["saved"]
-                    has_history = self.cleanup()
-                    last_cleanup = time.monotonic()
-                    last_retention = retention
-            except Exception as exc:
-                has_history = True
-                self._cleanup_error(exc)
+            if time.monotonic() - last_cleanup >= self.cleanup_interval:
+                self.cleanup()
+                last_cleanup = time.monotonic()
             self._report_status()
             if self._stop.wait(poll_interval):
                 return
