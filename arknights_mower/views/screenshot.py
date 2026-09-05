@@ -1,6 +1,6 @@
 """实时截图只读取内存快照，不等待写盘或扫描历史目录。"""
 
-from flask import abort, current_app, request
+from flask import current_app, request
 
 
 def _get_store():
@@ -10,9 +10,6 @@ def _get_store():
 
 
 def latest_screenshot_response():
-    token = getattr(current_app, "token", None)
-    if token and request.headers.get("token", "") != token:
-        abort(403)
     frame = _get_store().latest()
     if frame is None:
         response = current_app.response_class(status=204)

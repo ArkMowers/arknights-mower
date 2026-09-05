@@ -11,7 +11,6 @@ from threading import Event
 from unittest.mock import Mock, patch
 
 import numpy as np
-from flask import Flask
 
 from arknights_mower.utils.screenshot import ScreenshotStore
 from arknights_mower.views import screenshot as views
@@ -234,15 +233,17 @@ class ScreenshotTests(unittest.TestCase):
 
 class ScreenshotRouteTests(unittest.TestCase):
     def setUp(self):
+        import server
+
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.store = ScreenshotStore(Path(self.tmp.name), lambda: 1)
-        app = Flask(__name__)
-        app.token = "test-token"
-        app.add_url_rule(
-            "/screenshot/latest", view_func=views.latest_screenshot_response
-        )
-        self.client = app.test_client()
+        # 使用实际路由，确保覆盖 server.py 上的 require_token 装饰器接线。
+        self.app = server.app
+        token_patch = patch.object(self.app, "token", "test-token", create=True)
+        token_patch.start()
+        self.addCleanup(token_patch.stop)
+        self.client = self.app.test_client()
         self.headers = {"token": "test-token"}
         store_patch = patch.object(views, "_get_store", return_value=self.store)
         store_patch.start()
@@ -250,6 +251,27 @@ class ScreenshotRouteTests(unittest.TestCase):
 
     def test_preview_requires_configured_token(self):
         self.assertEqual(self.client.get("/screenshot/latest").status_code, 403)
+
+    def test_wrong_token_cannot_read_a_frame_or_use_a_matching_etag(self):
+        self.store.submit(b"private frame")
+        headers = {
+            "token": "wrong-token",
+            "If-None-Match": f'"{self.store.latest().captured_ns}"',
+        }
+        with patch.object(self.store, "latest") as latest:
+            response = self.client.get("/screenshot/latest", headers=headers)
+        self.assertEqual(response.status_code, 403)
+        latest.assert_not_called()
+
+    def test_preview_without_configured_token(self):
+        del self.app.token
+        try:
+            self.store.submit(b"frame")
+            response = self.client.get("/screenshot/latest")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data, b"frame")
+        finally:
+            self.app.token = "test-token"
 
     def test_no_frame_returns_no_content(self):
         response = self.client.get("/screenshot/latest", headers=self.headers)

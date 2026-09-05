@@ -444,11 +444,7 @@ def read_log():
         log_lines.append(msg)
         log_lines = log_lines[-100:]
         for ws in ws_connections:
-            ws.send(
-                json.dumps(
-                    {"type": "log", "data": msg, "screenshot": get_latest_screenshot()}
-                )
-            )
+            ws.send(json.dumps({"type": "log", "data": msg}))
 
 
 Thread(target=read_log, daemon=True).start()
@@ -866,6 +862,7 @@ def serve_screenshot(filename):
 
 
 @app.route("/screenshot/latest")
+@require_token
 def get_screenshot_preview():
     from arknights_mower.views.screenshot import latest_screenshot_response
 

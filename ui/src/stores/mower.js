@@ -33,7 +33,6 @@ export const useMowerStore = defineStore('mower', () => {
 
   const get_task_id = ref(0)
   const task_list = ref([])
-  const sc_uri = ref('')
   const speed_msg = ref([])
   function listen_ws() {
     let backend_url
@@ -48,9 +47,6 @@ export const useMowerStore = defineStore('mower', () => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
         log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100) // 追加日志
-        if (data.screenshot) {
-          sc_uri.value = data.screenshot
-        }
       }
     }
   }
@@ -85,7 +81,6 @@ export const useMowerStore = defineStore('mower', () => {
     task_list,
     get_task_id,
     get_tasks,
-    sc_uri,
     speed_msg
   }
 })
