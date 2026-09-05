@@ -55,11 +55,15 @@ def _probe_connection(label, url, proxy):
             client.trust_env = False
             if proxy:
                 client.proxies = {"http": proxy, "https": proxy}
-            with client.head(url, timeout=(3, 6), allow_redirects=True) as response:
+            with client.head(url, timeout=(10, 10), allow_redirects=True) as response:
                 response.raise_for_status()
         result.update(ok=True, message="连接成功")
+    except requests.ConnectTimeout:
+        result["message"] = "建立连接超过 10 秒，请稍后重试或检查代理服务"
+    except requests.ReadTimeout:
+        result["message"] = "下载接口响应超过 10 秒，请稍后重试"
     except requests.Timeout:
-        result["message"] = "连接超时，请检查代理地址和网络"
+        result["message"] = "连接测试超时，请稍后重试或检查网络"
     except requests.exceptions.ProxyError:
         result["message"] = "无法连接代理，请检查代理服务是否开启"
     except requests.RequestException:
