@@ -301,6 +301,42 @@ class AdmissionAndRoutesTests(unittest.TestCase):
         self.app.register_blueprint(software_update_bp)
         self.client = self.app.test_client()
 
+    def test_force_route_requires_explicit_boolean_and_forwards_it(self):
+        with patch.object(update, "submit", return_value={"ok": True}) as submit:
+            for value in ("false", "true", 1, None):
+                response = self.client.post(
+                    "/software-update/start",
+                    json={"check_id": "fixture", "force": value},
+                    headers={"X-Mower-Update": "1"},
+                )
+                self.assertEqual(response.status_code, 400)
+            submit.assert_not_called()
+            for value in (False, True):
+                response = self.client.post(
+                    "/software-update/start",
+                    json={"check_id": "fixture", "background": True, "force": value},
+                    headers={"X-Mower-Update": "1"},
+                )
+                self.assertEqual(response.status_code, 200)
+                submit.assert_called_with("fixture", True, force=value)
+
+    def test_force_cannot_bypass_tools_or_apply_to_release(self):
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(runtime, "state_dir", return_value=Path(folder)),
+            patch.object(
+                update,
+                "info",
+                return_value={"blockers": ["missing npm"], "force_supported": False},
+            ),
+            patch.object(subprocess, "Popen") as process,
+        ):
+            with self.assertRaisesRegex(ValueError, "missing npm"):
+                update.start_job({"deployment": "source"}, force=True)
+            with self.assertRaisesRegex(ValueError, "仅支持源码"):
+                update.start_job({"deployment": "release"}, force=True)
+            process.assert_not_called()
+
     def test_manual_route_accepts_one_package_offline(self):
         with (
             tempfile.TemporaryDirectory() as temporary,
