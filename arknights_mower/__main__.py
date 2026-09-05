@@ -99,6 +99,8 @@ def simulate(saved, restart_after_mood_read=False):
             return
         except Exception as e:
             logger.exception(e)
+            if not config.conf.close_simulator_when_idle:
+                raise
             reconnect_tries += 1
             if reconnect_tries < 3:
                 restart_simulator()

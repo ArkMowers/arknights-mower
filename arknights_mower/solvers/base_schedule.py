@@ -133,6 +133,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.recruit_time = None
         self.last_clue = None
         self.sleeping = False
+        self._simulator_closed_for_idle = False
         self.operators = {}
         self.last_execution = {"maa": None, "recruit": None, "todo": None}
         self.order_reader = TradingOrder()
@@ -4800,6 +4801,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     config.wake_scheduler.clear()
                     break
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
+            if config.stop_mower.is_set():
+                raise MowerExit
+            if (
+                config.conf.close_simulator_when_idle
+                and self._simulator_closed_for_idle
+            ):
+                logger.info("休眠结束，启动自动关闭的模拟器")
+                if not restart_simulator(stop=False, start=True):
+                    raise ConnectionError("休眠结束后模拟器启动失败")
+                self.device.reconnect()
+                self._simulator_closed_for_idle = False
             self.recog.update()
         finally:
             self.sleeping = False
@@ -4840,7 +4852,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def handle_idle_action(self, remaining_time=0):
         if config.conf.close_simulator_when_idle and remaining_time > 300:
-            restart_simulator(start=False)
+            if restart_simulator(start=False):
+                self._simulator_closed_for_idle = True
         elif config.conf.exit_game_when_idle and remaining_time > 300:
             self.device.exit()
         elif config.conf.return_home_when_idle:

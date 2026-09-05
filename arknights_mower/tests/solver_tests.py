@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, call, patch
 
 from arknights_mower.utils import config
 from arknights_mower.utils.solver import BaseSolver
@@ -9,6 +9,9 @@ class TestSolverStartupLaunch(unittest.TestCase):
     """启动时目标设备未注册到 adb=模拟器未启动，直接启动模拟器而不是重连（修复点）。"""
 
     def setUp(self):
+        self.enterContext(patch.object(config.conf, "close_simulator_when_idle", True))
+        self.enterContext(patch.object(config.conf, "adb", "127.0.0.1:16384"))
+        self.enterContext(patch("arknights_mower.utils.solver.Scrcpy"))
         self.device_patch = patch("arknights_mower.utils.solver.Device")
         self.device_mock = self.device_patch.start()
         self.device_mock.side_effect = RuntimeError("Device connection failure")
@@ -17,9 +20,88 @@ class TestSolverStartupLaunch(unittest.TestCase):
         self.session_mock.return_value.devices_list.return_value = []
         self.restart_patch = patch("arknights_mower.utils.solver.restart_simulator")
         self.restart_mock = self.restart_patch.start()
+        self.restart_mock.return_value = True
         self.addCleanup(self.device_patch.stop)
         self.addCleanup(self.session_patch.stop)
         self.addCleanup(self.restart_patch.stop)
+
+    def test_first_task_starts_closed_simulator_then_connects(self):
+        device = MagicMock()
+        self.device_mock.side_effect = [
+            RuntimeError("Device connection failure"),
+            device,
+        ]
+        actions = MagicMock()
+        actions.attach_mock(self.device_mock, "device")
+        actions.attach_mock(self.restart_mock, "start")
+        with patch("arknights_mower.utils.solver.Recognizer") as recog:
+            solver = BaseSolver()
+        self.assertIs(solver.device, device)
+        self.assertEqual(
+            actions.mock_calls,
+            [call.device(), call.start(stop=False, start=True), call.device()],
+        )
+        recog.assert_called_once_with(device)
+
+    def test_unchecked_option_does_not_start_missing_simulator(self):
+        with patch.object(config.conf, "close_simulator_when_idle", False):
+            with self.assertRaises(ConnectionError):
+                BaseSolver()
+        self.restart_mock.assert_not_called()
+
+    def test_offline_device_is_started_on_first_failure(self):
+        device = MagicMock()
+        self.device_mock.side_effect = [RuntimeError("offline"), device]
+        self.session_mock.return_value.devices_list.return_value = [
+            (config.conf.adb, "offline")
+        ]
+        with patch("arknights_mower.utils.solver.Recognizer"):
+            solver = BaseSolver()
+        self.assertIs(solver.device, device)
+        self.assertEqual(self.device_mock.call_count, 2)
+        self.restart_mock.assert_called_once_with(stop=False, start=True)
+
+    def test_offline_device_with_unchecked_option_is_not_started(self):
+        self.session_mock.return_value.devices_list.return_value = [
+            (config.conf.adb, "offline")
+        ]
+        with patch.object(config.conf, "close_simulator_when_idle", False):
+            with self.assertRaises(ConnectionError):
+                BaseSolver()
+        self.restart_mock.assert_not_called()
+
+    def test_droidcast_failure_prevents_startup_success(self):
+        device = MagicMock()
+        device.start_droidcast.return_value = False
+        self.device_mock.side_effect = None
+        self.device_mock.return_value = device
+        self.session_mock.return_value.devices_list.return_value = [
+            (config.conf.adb, "device")
+        ]
+        with (
+            patch.object(config.conf.droidcast, "enable", True),
+            patch.object(config.conf, "touch_method", "scrcpy"),
+            patch("arknights_mower.utils.solver.Recognizer") as recog,
+            patch("arknights_mower.utils.solver.Scrcpy") as scrcpy,
+        ):
+            with self.assertRaises(ConnectionError):
+                BaseSolver()
+        self.assertEqual(device.start_droidcast.call_count, 3)
+        recog.assert_not_called()
+        scrcpy.assert_not_called()
+        self.restart_mock.assert_not_called()
+
+    def test_running_device_does_not_need_start(self):
+        self.device_mock.side_effect = None
+        with patch("arknights_mower.utils.solver.Recognizer"):
+            BaseSolver()
+        self.restart_mock.assert_not_called()
+
+    def test_failed_start_does_not_continue_device_initialization(self):
+        self.restart_mock.return_value = False
+        with self.assertRaisesRegex(ConnectionError, "首次任务启动模拟器失败"):
+            BaseSolver()
+        self.device_mock.assert_called_once_with()
 
     def test_no_device_launches_simulator(self):
         old_adb = config.conf.adb

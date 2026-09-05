@@ -217,11 +217,14 @@ def wait_for_adb(process: subprocess.Popen, wait_time: int) -> bool:
 
 
 def adb_ready() -> bool:
+    # 冷启动后端口才可能出现，等待期间也要重新发现，不能一直探测旧端口。
+    discovered = query_mumu_adb_port(config.conf.simulator)
+    if discovered is not None:
+        config.conf.adb = discovered
     target = config.conf.adb
-    if not target:
-        return len(Session().devices_list()) > 0
-    Session().connect(target, throw_error=True)
+    if target:
+        Session().connect(target, throw_error=True)
     devices = [
-        device for device, status in Session().devices_list() if status != "offline"
+        device for device, status in Session().devices_list() if status == "device"
     ]
-    return target in devices
+    return target in devices if target else bool(devices)
