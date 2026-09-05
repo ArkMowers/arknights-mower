@@ -1,5 +1,6 @@
 """Release discovery, upload validation and detached update job submission."""
 
+import importlib.util
 import os
 import platform
 import re
@@ -39,7 +40,7 @@ CHANNELS = [
     {
         "value": "dev",
         "label": "开发版（仅源码部署）",
-        "description": "跟随 alpha 分支的最新提交，比公测版更新更频繁；需要 Git、Python 虚拟环境和 Node.js。",
+        "description": "跟随所选源码分支（默认 alpha）的最新提交，比公测版更新更频繁；需要 Git、Python 和 Node.js。",
     },
 ]
 VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?(?:\+.*)?$")
@@ -49,6 +50,41 @@ ASSET_RE = re.compile(
 _checks = {}
 
 
+def remember_check(plan):
+    # A branch preview must not invalidate an update checked in another tab.
+    for key, previous in list(_checks.items()):
+        if time.time() - previous["created_at"] > 1800:
+            _checks.pop(key, None)
+    while len(_checks) >= 32:
+        _checks.pop(next(iter(_checks)), None)
+    check_id = uuid4().hex
+    _checks[check_id] = plan
+    return check_id
+
+
+def normalize_source_ref(value):
+    if not isinstance(value, str):
+        raise ValueError("请填写分支、提交 SHA 或 tag")
+    value = value.strip()
+    if (
+        not value
+        or len(value) > 255
+        or value.startswith(("-", "/", "."))
+        or any(
+            ord(char) <= 32 or ord(char) == 127 or char in "~^:?*[\\" for char in value
+        )
+        or any(part in value for part in ("..", "//", "@{"))
+        or any(
+            part.startswith(".") or part.endswith((".", ".lock"))
+            for part in value.split("/")
+        )
+        or value.endswith("/")
+        or value == "@"
+    ):
+        raise ValueError("请填写有效的分支、提交 SHA 或 tag，不接受 URL 或 Git 命令")
+    return value
+
+
 def get_settings():
     saved = runtime.read_json(runtime.state_dir() / "settings.json", {})
     return {
@@ -56,6 +92,7 @@ def get_settings():
         "background": saved.get("background", True),
         "auto_check": saved.get("auto_check", False),
         "auto_update": saved.get("auto_update", False),
+        "source_branch": saved.get("source_branch", "alpha"),
     }
 
 
@@ -156,6 +193,121 @@ def github(path, proxy=""):
     return response.json()
 
 
+def source_commit_info(commit):
+    sha = commit.get("sha", "")
+    if not isinstance(sha, str) or not re.fullmatch(r"[a-fA-F0-9]{40}", sha):
+        raise ValueError("GitHub 返回的提交 SHA 无效")
+    details = commit.get("commit", {})
+    author = details.get("author") or {}
+    return {
+        "sha": sha.lower(),
+        "message": details.get("message") or "无提交说明",
+        "author": author.get("name") or "",
+        "date": author.get("date") or "",
+        "url": f"https://github.com/{REPO}/commit/{sha.lower()}",
+    }
+
+
+def source_repository():
+    if runtime.frozen():
+        raise ValueError("版本管理仅支持源码部署")
+    root = runtime.installation_root()
+    git = shutil.which("git", path=source_tool_path())
+    if not git or not (root / ".git").exists():
+        raise ValueError("版本管理需要 Git 检出目录和 Git 工具")
+    current = subprocess.check_output(
+        [git, "rev-parse", "HEAD"], cwd=root, text=True, timeout=10
+    ).strip()
+    branch = subprocess.check_output(
+        [git, "branch", "--show-current"], cwd=root, text=True, timeout=10
+    ).strip()
+    network_settings.apply_http_proxy()
+    proxy = network_settings.get_effective_settings()["http_proxy"]
+    return current, branch, proxy
+
+
+def source_history(branch=None):
+    branch = normalize_source_ref(branch or get_settings()["source_branch"])
+    current, current_branch, proxy = source_repository()
+    branches = []
+    for page in range(1, 4):
+        rows = github(f"/branches?per_page=100&page={page}", proxy)
+        branches.extend(row["name"] for row in rows)
+        if len(rows) < 100:
+            break
+    try:
+        commits = github(
+            "/commits?sha=" + quote(branch, safe="") + "&per_page=20", proxy
+        )
+    except requests.HTTPError as error:
+        if error.response is not None and error.response.status_code in (404, 422):
+            raise ValueError("远端分支不存在或没有可读取的提交") from error
+        raise
+    return {
+        "ok": True,
+        "branch": branch,
+        "branches": branches,
+        "current_branch": current_branch,
+        "current_commit": current,
+        "commits": [source_commit_info(commit) for commit in commits],
+    }
+
+
+def check_source_version(reference, branch=None):
+    reference = normalize_source_ref(reference)
+    branch = normalize_source_ref(branch or get_settings()["source_branch"])
+    current, _, proxy = source_repository()
+    try:
+        github("/branches/" + quote(branch, safe=""), proxy)
+    except requests.HTTPError as error:
+        if error.response is not None and error.response.status_code == 404:
+            raise ValueError("所选远端分支不存在，请刷新分支列表") from error
+        raise
+    try:
+        target = source_commit_info(
+            github("/commits/" + quote(reference, safe=""), proxy)
+        )
+    except requests.HTTPError as error:
+        if error.response is not None and error.response.status_code in (404, 422):
+            raise ValueError("未找到该分支、提交 SHA 或 tag，请检查输入") from error
+        raise
+    try:
+        protocol = github(
+            "/contents/arknights_mower/utils/update_runtime.py?ref=" + target["sha"],
+            proxy,
+        )
+        if protocol.get("type") != "file":
+            raise ValueError("目标版本未包含可用的实例恢复模块")
+    except requests.HTTPError as error:
+        if error.response is not None and error.response.status_code == 404:
+            raise ValueError(
+                "该版本早于软件更新与实例恢复功能，无法从页面自动切换，请使用 Git 手动部署"
+            ) from error
+        raise
+    plan = {
+        "deployment": "source",
+        "operation": "source-version",
+        "channel": "dev",
+        "source_branch": branch,
+        "ref": target["sha"],  # Pin the resolved commit, even if the branch/tag moves.
+        "commit": target["sha"],
+        "version": "commit@" + target["sha"][:7],
+        "notes": target["message"],
+        "url": target["url"],
+        "created_at": time.time(),
+        "available": True,
+        "force_available": True,
+    }
+    check_id = remember_check(plan)
+    return {
+        "ok": True,
+        "check_id": check_id,
+        "current_commit": current,
+        **target,
+        "version": plan["version"],
+    }
+
+
 def choose_release(releases, channel):
     candidates = [
         r
@@ -206,9 +358,25 @@ def source_tools(root):
         raise ValueError(
             "自动源码更新需要 Git 检出目录；下载的 Source code 压缩包不支持 Git 更新"
         )
-    venv = Path(sys.prefix).resolve()
-    if venv.parent != root.resolve() or venv.name not in (".venv", "venv"):
-        raise ValueError("请使用安装目录内 .venv 或 venv 的 Python 启动 Mower 后更新")
+    environment = Path(sys.prefix).resolve()
+    base_python = getattr(sys, "_base_executable", None) or sys.executable
+    # Rebuild a project-owned venv at its existing path, regardless of its name.
+    # Other environments are updated through the running interpreter's pip.
+    # Never require users to rename, move or recreate their Python environment.
+    local_environment = (
+        environment != root.resolve()
+        and environment.is_relative_to(root.resolve())
+        and (environment / "pyvenv.cfg").is_file()
+        and not Path(base_python).resolve().is_relative_to(environment)
+    )
+    system_site_packages = False
+    if local_environment:
+        system_site_packages = any(
+            re.fullmatch(r"include-system-site-packages\s*=\s*true", line.strip(), re.I)
+            for line in (environment / "pyvenv.cfg")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
     tool_path = source_tool_path()
     git, npm, node = (
         shutil.which(name, path=tool_path) for name in ("git", "npm", "node")
@@ -223,6 +391,21 @@ def source_tools(root):
             )
             + "，请安装对应工具并检查启动环境的 PATH"
         )
+    pip_available = importlib.util.find_spec("pip") is not None
+    uv = (
+        shutil.which(
+            "uv",
+            path=os.pathsep.join(
+                (
+                    tool_path,
+                    str(Path.home() / ".local/bin"),
+                    str(Path.home() / ".cargo/bin"),
+                )
+            ),
+        )
+        if not pip_available
+        else None
+    )
     origin = (
         subprocess.check_output(
             [git, "remote", "get-url", "origin"], cwd=root, text=True, timeout=10
@@ -243,8 +426,18 @@ def source_tools(root):
         "npm": npm,
         "tool_path": tool_path,
         "python": sys.executable,
-        "base_python": getattr(sys, "_base_executable", sys.executable),
-        "venv_dir": venv.name,
+        "base_python": base_python,
+        "original_python": sys.executable,
+        "in_place_environment": not local_environment or not pip_available,
+        "pip_available": pip_available,
+        "uv": uv,
+        "system_site_packages": system_site_packages,
+        "source_environment": str(environment)
+        if environment != root.resolve() and environment.is_relative_to(root.resolve())
+        else "",
+        "venv_dir": str(environment.relative_to(root.resolve()))
+        if local_environment
+        else "",
     }
 
 
@@ -256,7 +449,9 @@ def info():
     if deployment == "source":
         try:
             tools = source_tools(root)
-            require_clean_source(tools["git"], root)
+            require_clean_source(
+                tools["git"], root, environment=tools.get("source_environment")
+            )
         except SourceChangesError as exc:
             source_changes = str(exc)
         except Exception as exc:
@@ -315,13 +510,14 @@ def check(channel, proxy=None):
     if channel == "dev":
         if deployment != "source":
             raise ValueError("开发版仅支持源码部署")
-        commit = github("/commits/alpha", proxy)
+        branch = normalize_source_ref(get_settings()["source_branch"])
+        commit = github("/commits/" + quote(branch, safe=""), proxy)
         plan.update(
-            ref="refs/heads/alpha",
+            ref="refs/heads/" + branch,
             commit=commit["sha"],
-            version="alpha@" + commit["sha"][:7],
+            version=branch + "@" + commit["sha"][:7],
             notes=commit["commit"]["message"],
-            url=f"https://github.com/{REPO}/commits/alpha",
+            url=f"https://github.com/{REPO}/commits/" + quote(branch, safe=""),
         )
     else:
         # Fetch pages until both channel types have a candidate (not /latest,
@@ -362,13 +558,11 @@ def check(channel, proxy=None):
         )
     else:
         available = version_key(plan["version"]) > version_key(__version__)
-    check_id = uuid4().hex
     plan["available"] = available
     plan["force_available"] = deployment == "source" and (
         available or current == plan["commit"]
     )
-    _checks.clear()
-    _checks[check_id] = plan
+    check_id = remember_check(plan)
     result = {
         "ok": True,
         "check_id": check_id if available or plan["force_available"] else "",
@@ -419,7 +613,9 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
     root = runtime.installation_root()
     tools = source_tools(root) if plan["deployment"] == "source" else {}
     if tools:
-        require_clean_source(tools["git"], root, force=force)
+        require_clean_source(
+            tools["git"], root, force=force, environment=tools.get("source_environment")
+        )
     state = runtime.state_dir()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = state / "active"
@@ -436,6 +632,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
     runtime.write_json(lock / "owner.json", {"id": job_id, "pid": os.getpid()})
     work = state / "jobs" / job_id
     work.mkdir(parents=True, mode=0o700)
+    previous_settings = get_settings()
     try:
         job = {
             **plan,
@@ -452,10 +649,10 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             shutil.move(str(uploaded), work / plan["asset"]["name"])
         job_path = work / "job.json"
         runtime.write_json(job_path, job)
-        runtime.write_json(
-            state / "settings.json",
-            {**get_settings(), **{k: job[k] for k in ("channel", "background")}},
-        )
+        settings = {**get_settings(), **{k: job[k] for k in ("channel", "background")}}
+        if plan.get("operation") == "source-version":
+            settings.update(auto_update=False, source_branch=plan["source_branch"])
+        runtime.write_json(state / "settings.json", settings)
         runtime.write_json(
             state / "status.json",
             {
@@ -517,6 +714,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         runtime.write_json(lock / "owner.json", {"id": job_id, "pid": process.pid})
         return {"ok": True, "id": job_id, "message": "更新任务已启动"}
     except Exception:
+        runtime.write_json(state / "settings.json", previous_settings)
         shutil.rmtree(lock, ignore_errors=True)
         runtime.write_json(
             state / "status.json",

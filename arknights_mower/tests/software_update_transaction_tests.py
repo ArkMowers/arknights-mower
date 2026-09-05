@@ -1,7 +1,7 @@
 """Local end-to-end source transactions with Git, venv, pip and npm.
 
-No dependencies are downloaded: the fixture contains only a stdlib launcher and
-an empty requirements.in. Git's origin is another temporary local directory.
+No dependencies are downloaded: the fixture contains a stdlib launcher and
+two locally generated test wheels. Git's origin is a temporary local directory.
 """
 
 import json
@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import unittest
+import zipfile
 from pathlib import Path
 
 from arknights_mower.utils import update_runtime as runtime
@@ -22,7 +23,15 @@ from arknights_mower.utils.software_update_worker import Worker
     shutil.which("git") and shutil.which("npm"), "requires Git and npm"
 )
 class SourceTransactionTests(unittest.TestCase):
-    def transaction(self, fail_build=False, local_changes=None):
+    def transaction(
+        self,
+        fail_build=False,
+        local_changes=None,
+        downgrade=False,
+        external=False,
+        uv=None,
+        no_pip=False,
+    ):
         with tempfile.TemporaryDirectory(prefix="mower-transaction-") as temporary:
             directory = Path(temporary)
             root, state = directory / "install", directory / "state"
@@ -42,7 +51,25 @@ class SourceTransactionTests(unittest.TestCase):
             (root / ".gitignore").write_text(
                 ".venv/\nui/node_modules/\nui/dist/\n__pycache__/\n"
             )
-            (root / "requirements.in").write_text("# No third party dependencies\n")
+            wheels = {}
+            for number, version in (("1.0", "old"), ("2.0", "new")):
+                wheel = directory / f"mower_update_fixture-{number}-py3-none-any.whl"
+                metadata = f"mower_update_fixture-{number}.dist-info"
+                files = {
+                    "mower_update_fixture.py": f"VERSION = {version!r}\n",
+                    f"{metadata}/METADATA": f"Metadata-Version: 2.1\nName: mower-update-fixture\nVersion: {number}\n",
+                    f"{metadata}/WHEEL": "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+                }
+                files[f"{metadata}/RECORD"] = "".join(
+                    f"{name},,\n" for name in [*files, f"{metadata}/RECORD"]
+                )
+                with zipfile.ZipFile(wheel, "w") as archive:
+                    for name, content in files.items():
+                        archive.writestr(name, content)
+                wheels[version] = wheel
+            (root / "requirements.in").write_text(
+                "--no-index\n" + wheels["old"].as_uri() + "\n"
+            )
             shutil.copy2(runtime.__file__, root / "update_runtime.py")
             (root / "arknights_mower/utils").mkdir(parents=True)
             shutil.copy2(
@@ -53,7 +80,7 @@ class SourceTransactionTests(unittest.TestCase):
                 f"r.state_dir = lambda: Path({str(state)!r})\n"
                 f"r.installation_root = lambda: Path({str(root)!r})\n"
                 "registration = r.RuntimeRegistration('instance', space=sys.argv[1], name=sys.argv[2], port=int(os.environ['MOWER_RESTART_PORT']), running=lambda: os.environ['MOWER_RESUME_RUN']=='1')\n"
-                "registration.record.update(ready=True, fixture_version=Path('version.txt').read_text())\nregistration.publish()\n"
+                "registration.record.update(ready=True, fixture_version=Path('version.txt').read_text(), fixture_prefix=sys.prefix, fixture_dependency=__import__('mower_update_fixture').VERSION)\nregistration.publish()\n"
                 "while not registration.shutdown_requested(): time.sleep(.05)\nregistration.close()\n",
                 encoding="utf-8",
             )
@@ -83,6 +110,9 @@ class SourceTransactionTests(unittest.TestCase):
             command(git, "commit", "-m", "old version")
             old_commit = command(git, "rev-parse", "HEAD")
             (root / "version.txt").write_text("new")
+            (root / "requirements.in").write_text(
+                "--no-index\n" + wheels["new"].as_uri() + "\n"
+            )
             (root / "new-target.txt").write_text("upstream file")
             if fail_build:
                 (ui / "build.cjs").write_text("process.exit(2)")
@@ -92,7 +122,13 @@ class SourceTransactionTests(unittest.TestCase):
             command(git, "init", "--bare", str(directory / "origin.git"))
             command(git, "remote", "add", "origin", str(directory / "origin.git"))
             command(git, "push", "origin", "HEAD:refs/heads/alpha")
-            command(git, "switch", "-c", "original", old_commit)
+            target_commit, initial_commit = (
+                (old_commit, new_commit) if downgrade else (new_commit, old_commit)
+            )
+            target_version, initial_version = (
+                ("old", "new") if downgrade else ("new", "old")
+            )
+            command(git, "switch", "-c", "original", initial_commit)
             if local_changes == "metadata":
                 lockfile["packages"][""]["peer"] = True
                 (ui / "package-lock.json").write_text(json.dumps(lockfile, indent=2))
@@ -102,13 +138,27 @@ class SourceTransactionTests(unittest.TestCase):
                 (ui / "package-lock.json").write_text("invalid local lockfile")
                 (root / "new-target.txt").write_text("conflicting untracked file")
                 (root / "local-note.txt").write_text("unrelated untracked file")
-            command(base_python, "-m", "venv", "--without-pip", str(root / ".venv"))
-            python = root / (
-                ".venv/Scripts/python.exe"
-                if sys.platform == "win32"
-                else ".venv/bin/python"
+            environment = directory / "external python" if external else root / ".venv"
+            command(
+                base_python,
+                "-m",
+                "venv",
+                *([] if external and not uv and not no_pip else ["--without-pip"]),
+                str(environment),
             )
-            (root / ".venv/old-marker").write_text("original environment")
+            python = environment / (
+                "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+            )
+            (environment / "old-marker").write_text("original environment")
+            packages = Path(
+                command(
+                    python,
+                    "-c",
+                    "import sysconfig; print(sysconfig.get_path('purelib'))",
+                )
+            )
+            with zipfile.ZipFile(wheels[initial_version]) as archive:
+                archive.extractall(packages)
             (ui / "dist").mkdir()
             (ui / "dist/index.html").write_text("old")
             original = []
@@ -142,15 +192,21 @@ class SourceTransactionTests(unittest.TestCase):
                     "root": str(root),
                     "state_dir": str(state),
                     "deployment": "source",
-                    "version": "alpha@" + new_commit[:7],
+                    "version": "alpha@" + target_commit[:7],
                     "background": True,
                     "force": local_changes == "force",
                     "git": git,
                     "npm": shutil.which("npm"),
                     "python": str(python),
                     "base_python": base_python,
-                    "commit": new_commit,
-                    "ref": "refs/heads/alpha",
+                    "original_python": str(python),
+                    "in_place_environment": external,
+                    "venv_dir": str(environment),
+                    "uv": uv,
+                    "pip_available": not no_pip and not uv,
+                    "commit": target_commit,
+                    "ref": target_commit if downgrade else "refs/heads/alpha",
+                    "operation": "source-version" if downgrade else "update",
                 }
                 runtime.write_json(work / "job.json", job)
                 worker = Worker(work / "job.json")
@@ -160,6 +216,10 @@ class SourceTransactionTests(unittest.TestCase):
                     self.assertNotIn(
                         "lfs", args, "ordinary source updates must not require Git LFS"
                     )
+                    if "ensurepip" in args:
+                        self.assertTrue(
+                            all(process.poll() is None for process in original)
+                        )
                     return run_command(args, **kwargs)
 
                 worker.run_command = run_without_lfs
@@ -184,22 +244,41 @@ class SourceTransactionTests(unittest.TestCase):
                 status = runtime.read_json(state / "status.json")
                 if fail_build:
                     self.assertEqual(status["status"], "failed")
-                    self.assertEqual(command(git, "rev-parse", "HEAD"), old_commit)
+                    self.assertEqual(command(git, "rev-parse", "HEAD"), initial_commit)
                     self.assertEqual(
                         command(git, "branch", "--show-current"), "original"
                     )
                     self.assertEqual((ui / "dist/index.html").read_text(), "old")
-                    self.assertTrue((root / ".venv/old-marker").exists())
+                    self.assertTrue((environment / "old-marker").exists())
                     self.assertTrue(
-                        all(row["fixture_version"] == "old" for row in records)
+                        all(
+                            row["fixture_version"] == initial_version for row in records
+                        )
                     )
                 else:
                     self.assertEqual(status["status"], "succeeded")
-                    self.assertEqual(command(git, "rev-parse", "HEAD"), new_commit)
+                    self.assertEqual(command(git, "rev-parse", "HEAD"), target_commit)
                     self.assertEqual((ui / "dist/index.html").read_text(), "new")
                     self.assertTrue(
-                        all(row["fixture_version"] == "new" for row in records)
+                        all(row["fixture_version"] == target_version for row in records)
                     )
+                if external:
+                    self.assertTrue((environment / "old-marker").exists())
+                    self.assertTrue(
+                        all(
+                            Path(row["fixture_prefix"]).resolve()
+                            == environment.resolve()
+                            for row in records
+                        )
+                    )
+                    self.assertFalse((work / "runtime-0.backup/old-marker").exists())
+                self.assertTrue(
+                    all(
+                        row["fixture_dependency"]
+                        == (initial_version if fail_build else target_version)
+                        for row in records
+                    )
+                )
                 self.assertFalse((state / "active").exists())
                 if local_changes:
                     self.assertEqual(
@@ -246,6 +325,22 @@ class SourceTransactionTests(unittest.TestCase):
 
     def test_force_failure_restores_version_but_not_discarded_local_edits(self):
         self.transaction(fail_build=True, local_changes="force")
+
+    def test_switch_to_older_commit_restores_three_instances(self):
+        self.transaction(downgrade=True)
+
+    def test_external_environment_is_updated_without_moving_or_recreating(self):
+        self.transaction(external=True)
+
+    def test_external_environment_failure_restores_original_code_and_instances(self):
+        self.transaction(external=True, fail_build=True)
+
+    def test_environment_without_pip_or_uv_bootstraps_pip_before_shutdown(self):
+        self.transaction(external=True, no_pip=True)
+
+    @unittest.skipUnless(shutil.which("uv"), "requires uv")
+    def test_uv_environment_without_pip_updates_using_same_interpreter(self):
+        self.transaction(external=True, uv=shutil.which("uv"), downgrade=True)
 
 
 if __name__ == "__main__":

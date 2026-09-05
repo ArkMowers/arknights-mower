@@ -123,6 +123,48 @@ class SourceCheckoutTests(unittest.TestCase):
         self.assertEqual(self.command("rev-parse", "HEAD"), self.commit)
         self.assertTrue(worker.env["PATH"].startswith("/tool-fixture/bin"))
 
+    def test_missing_install_tools_fails_before_stopping_current_instances(self):
+        worker = self.worker()
+        worker.job.update(
+            in_place_environment=True,
+            python=sys.executable,
+            pip_available=False,
+            uv=None,
+        )
+        run_command = worker.run_command
+
+        def command(args, **kwargs):
+            if "ensurepip" in args:
+                raise subprocess.CalledProcessError(1, args)
+            return run_command(args, **kwargs)
+
+        worker.run_command = command
+        worker.stop_instances = Mock()
+        worker.execute()
+        worker.stop_instances.assert_not_called()
+        self.assertIn(
+            "当前实例尚未停止",
+            runtime.read_json(worker.state / "status.json")["message"],
+        )
+
+    def test_uv_installation_explicitly_targets_the_current_interpreter(self):
+        worker = self.worker()
+        worker.job.update(uv="/tools/uv", python="/custom/环境/python.exe")
+        worker.run_command = Mock()
+        worker.install_dependencies()
+        self.assertEqual(
+            worker.run_command.call_args.args[0],
+            [
+                "/tools/uv",
+                "pip",
+                "install",
+                "--python",
+                "/custom/环境/python.exe",
+                "-r",
+                "requirements.in",
+            ],
+        )
+
     def test_lfs_target_is_rejected_before_stopping_instances_when_lfs_missing(self):
         worker = self.worker("*.model filter=lfs diff=lfs merge=lfs -text\n")
         run_command = worker.run_command
@@ -153,6 +195,23 @@ class SourceCheckoutTests(unittest.TestCase):
         self.assertIn("user-note.txt", str(caught.exception))
         self.assertEqual(changed.read_text(), "# local edit\n")
         self.assertEqual(untracked.read_text(), "keep me")
+
+    def test_custom_environment_files_do_not_block_but_tracked_edits_do(self):
+        self.worker()
+        environment = self.root / "python environments/custom name"
+        environment.mkdir(parents=True)
+        (environment / "pyvenv.cfg").write_text("# active runtime")
+        (environment / "library.py").write_text("# generated dependency")
+        require_clean_source(self.git, self.root, environment=str(environment))
+        (environment.parent / "user-note.txt").write_text("keep me")
+        with self.assertRaisesRegex(ValueError, "python environments"):
+            require_clean_source(self.git, self.root, environment=str(environment))
+        (environment.parent / "user-note.txt").unlink()
+        self.command("add", ".")
+        self.command("commit", "-m", "tracked fixture environment")
+        (environment / "library.py").write_text("# tracked edit")
+        with self.assertRaisesRegex(ValueError, "library.py"):
+            require_clean_source(self.git, self.root, environment=str(environment))
 
     def test_gitignore_excludes_generated_files_but_not_tracked_source_edits(self):
         self.worker()
