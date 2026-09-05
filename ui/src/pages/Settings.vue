@@ -456,7 +456,7 @@ if (return_home_when_idle.value) {
                 <template #suffix>毫秒</template>
               </n-input-number>
             </n-form-item>
-            <n-form-item>
+            <n-form-item :show-feedback="screenshot === 0">
               <template #label>
                 <span>截图保存时间</span>
                 <help-text>
