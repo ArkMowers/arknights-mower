@@ -291,18 +291,42 @@ def resource_ui_path(rel, *, source=False):
     return selected.root / "ui" / ("src" if source else "public") / rel
 
 
-def download_resource_pkg():
+def download_resource_pkg(callback=None):
+    report = callback or (lambda **values: None)
     try:
-        response = requests.get(download_url(RESOURCE_ZIP_URL), timeout=60)
-        if response.status_code == 200:
-            return response.content
-        logger.warning(f"资源包下载失败: HTTP {response.status_code}")
+        with requests.get(
+            download_url(RESOURCE_ZIP_URL), timeout=60, stream=True
+        ) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("Content-Length") or 0)
+            current = 0
+            data = BytesIO()
+            report(
+                phase="downloading",
+                message="正在下载资源包",
+                current=0,
+                total=total,
+                progress=0 if total else None,
+            )
+            for chunk in response.iter_content(64 * 1024):
+                current += len(chunk)
+                data.write(chunk)
+                report(
+                    phase="downloading",
+                    message="正在下载资源包",
+                    current=current,
+                    total=total,
+                    progress=min(80, round(current / total * 80, 1)) if total else None,
+                )
+            return data.getvalue()
     except Exception as error:
         logger.warning(f"资源包下载失败: {error}")
     return None
 
 
-def _extract_package(data):
+def _extract_package(data, callback=None):
+    report = callback or (lambda **values: None)
+    report(phase="validating", message="正在检查资源包", progress=82)
     rmtree(_STAGING, ignore_errors=True)
     with ZipFile(BytesIO(data)) as archive:
         names = archive.namelist()
@@ -327,17 +351,28 @@ def _extract_package(data):
                 or any(name.startswith(d + "/") for d in RES_PACKAGE_DIRS)
             ):
                 raise ValueError(f"资源包包含未声明文件：{name}")
-        archive.extractall(_STAGING)
+        members = archive.infolist()
+        total = sum(member.file_size for member in members) or 1
+        extracted = 0
+        for member in members:
+            archive.extract(member, _STAGING)
+            extracted += member.file_size
+            report(
+                phase="extracting",
+                message="正在解压资源包",
+                progress=84 + round(extracted / total * 10, 1),
+            )
     return validate_package(_STAGING, __version__)
 
 
-def install_resource_pkg(data):
+def install_resource_pkg(data, callback=None):
     """原子发布不可变版本。正在运行的实例保持原版本，到任务边界再加载。"""
+    report = callback or (lambda **values: None)
     # Always acquire the process lock before the file lock, also during reload.
     with _install_lock:
         try:
             with _resource_install_guard():
-                manifest = _extract_package(data)
+                manifest = _extract_package(data, callback)
                 current = select_resource(
                     RESOURCE_OVERLAY, Path(__rootdir__), __version__
                 )
@@ -345,6 +380,7 @@ def install_resource_pkg(data):
                     "res_version"
                 ) and not resource_newer(manifest, current.manifest):
                     raise ValueError("资源包不新于当前可用资源，保留当前版本")
+                report(phase="installing", message="正在应用资源包", progress=96)
                 previous = _selection()
                 packages = read_index(RESOURCE_OVERLAY)
                 name = hashlib.sha256(data).hexdigest()

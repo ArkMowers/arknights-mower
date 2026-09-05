@@ -3,7 +3,7 @@
 from functools import wraps
 from urllib.parse import urlparse
 
-from flask import Blueprint, abort, current_app, request
+from flask import Blueprint, Response, abort, current_app, request
 
 from arknights_mower.utils import software_update as updater
 
@@ -14,6 +14,8 @@ software_update_bp = Blueprint(
 
 @software_update_bp.before_request
 def authorize():
+    if request.endpoint == "software_update.progress":
+        return  # Public static shell; status and cancellation still require auth.
     if (
         hasattr(current_app, "token")
         and request.headers.get("token", "") != current_app.token
@@ -98,3 +100,26 @@ def manual():
         request.files.get("file"),
         background=request.form.get("background", "false") == "true",
     )
+
+
+@software_update_bp.get("/progress")
+def progress():
+    from arknights_mower.utils.software_update_progress import PROGRESS_HTML
+
+    return Response(
+        PROGRESS_HTML,
+        mimetype="text/html",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@software_update_bp.post("/cancel")
+@result
+def cancel():
+    return updater.cancel(request.get_json().get("id"))
+
+
+@software_update_bp.post("/auto-check")
+@result
+def auto_check():
+    return updater.request_auto_check()

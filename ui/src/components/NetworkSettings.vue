@@ -103,7 +103,7 @@ async function testConnection() {
   try {
     if (!(await save())) return
     testedRevision = revision
-    const { data } = await axios.post(`${base}/test`, {}, { headers, timeout: 20000 })
+    const { data } = await axios.post(`${base}/test`, {}, { headers, timeout: 65000 })
     if (!data.ok) throw new Error(data.message)
     if (revision === testedRevision) {
       if (

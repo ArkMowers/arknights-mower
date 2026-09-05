@@ -211,7 +211,7 @@ import RoseOutline from '@vicons/ionicons5/RoseOutline'
 import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref } from 'vue'
+import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref, watch } from 'vue'
 import Feedback from '@/components/Feedback.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 
@@ -403,7 +403,7 @@ const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
 const showUpdateNoticeModal = ref(false)
 
 const resource_version_store = useResourceVersionStore()
-const { installResource, loadResourceVersion } = resource_version_store
+const { installResource, loadResourceVersion, loadResourceJob } = resource_version_store
 
 const axios = inject('axios')
 
@@ -491,6 +491,16 @@ onMounted(async () => {
       ? `${simulator.value.name} - arknights-mower`
       : 'arknights-mower'
 
+  axios
+    .post(
+      `${import.meta.env.VITE_HTTP_URL || ''}/software-update/auto-check`,
+      {},
+      {
+        headers: { 'X-Mower-Update': '1' }
+      }
+    )
+    .catch((error) => console.error('failed to request automatic software check', error))
+
   await load_plan()
 
   try {
@@ -503,18 +513,24 @@ onMounted(async () => {
     console.error('failed to load update notice', error)
     showUpdateNoticeModal.value = false
   }
-  if (hot_update_enable.value) {
+  // Render settings while updating, but resume automatic tasks only afterwards.
+  const resourceUpdateRequest = (async () => {
     try {
-      const resourceInfo = await loadResourceVersion()
-      if (hot_update_auto_update.value && resourceInfo.update_available === true) {
-        if (await installResource()) {
-          await Promise.all([load_shop(), load_item(), load_operators()])
+      if (await loadResourceJob()) {
+        await Promise.all([load_shop(), load_item(), load_operators()])
+      }
+      if (hot_update_enable.value) {
+        const resourceInfo = await loadResourceVersion()
+        if (hot_update_auto_update.value && resourceInfo.update_available === true) {
+          if (await installResource()) {
+            await Promise.all([load_shop(), load_item(), load_operators()])
+          }
         }
       }
     } catch (error) {
       console.error('failed to load resource version', error)
     }
-  }
+  })()
 
   loaded.value = true
 
@@ -566,6 +582,7 @@ onMounted(async () => {
     listen_ws()
   }
 
+  await resourceUpdateRequest
   if (start_automatically.value && !auto_start_handled.value) {
     start()
   }
@@ -573,7 +590,7 @@ onMounted(async () => {
 
 watch(
   () => webview.value.scale,
-  (scale) => {
+  () => {
     const ele = document.querySelector('#app')
     ele.style.transform = `scale(${webview.value.scale})`
     actions_on_resize()

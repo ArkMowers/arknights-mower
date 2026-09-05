@@ -474,6 +474,21 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.assertEqual(paths, ["/download", "/asset"])
         self.assertEqual(methods, ["HEAD", "HEAD"])
 
+    def test_connection_test_distinguishes_connect_and_response_timeouts(self):
+        from arknights_mower.views.network import _probe_connection
+
+        for error, message in (
+            (requests.ConnectTimeout, "建立连接超过 10 秒"),
+            (requests.ReadTimeout, "下载接口响应超过 10 秒"),
+        ):
+            with (
+                self.subTest(error=error),
+                patch("requests.Session.head", side_effect=error),
+            ):
+                result = _probe_connection("fixture", "https://github.com/", None)
+                self.assertFalse(result["ok"])
+                self.assertIn(message, result["message"])
+
     def test_connection_test_reports_http_errors(self):
         from arknights_mower.views.network import _probe_connection
 

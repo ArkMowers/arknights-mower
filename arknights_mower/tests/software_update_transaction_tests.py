@@ -31,6 +31,9 @@ class SourceTransactionTests(unittest.TestCase):
         external=False,
         uv=None,
         no_pip=False,
+        cancel_build=False,
+        unchanged=False,
+        fail_install=False,
     ):
         with tempfile.TemporaryDirectory(prefix="mower-transaction-") as temporary:
             directory = Path(temporary)
@@ -56,7 +59,8 @@ class SourceTransactionTests(unittest.TestCase):
                 wheel = directory / f"mower_update_fixture-{number}-py3-none-any.whl"
                 metadata = f"mower_update_fixture-{number}.dist-info"
                 files = {
-                    "mower_update_fixture.py": f"VERSION = {version!r}\n",
+                    "mower_update_fixture.py": f"VERSION = {version!r}\n"
+                    + "#" * int(float(number)),
                     f"{metadata}/METADATA": f"Metadata-Version: 2.1\nName: mower-update-fixture\nVersion: {number}\n",
                     f"{metadata}/WHEEL": "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
                 }
@@ -68,7 +72,9 @@ class SourceTransactionTests(unittest.TestCase):
                         archive.writestr(name, content)
                 wheels[version] = wheel
             (root / "requirements.in").write_text(
-                "--no-index\n" + wheels["old"].as_uri() + "\n"
+                "mower-update-fixture==1.0\n"
+                if unchanged
+                else "--no-index\n" + wheels["old"].as_uri() + "\n"
             )
             shutil.copy2(runtime.__file__, root / "update_runtime.py")
             (root / "arknights_mower/utils").mkdir(parents=True)
@@ -110,10 +116,15 @@ class SourceTransactionTests(unittest.TestCase):
             command(git, "commit", "-m", "old version")
             old_commit = command(git, "rev-parse", "HEAD")
             (root / "version.txt").write_text("new")
-            (root / "requirements.in").write_text(
-                "--no-index\n" + wheels["new"].as_uri() + "\n"
-            )
+            if not unchanged:
+                (root / "requirements.in").write_text(
+                    "--no-index\n" + wheels["new"].as_uri() + "\n"
+                )
             (root / "new-target.txt").write_text("upstream file")
+            if cancel_build:
+                (ui / "build.cjs").write_text(
+                    "setTimeout(() => process.exit(0), 90000)"
+                )
             if fail_build:
                 (ui / "build.cjs").write_text("process.exit(2)")
             command(git, "add", ".")
@@ -143,7 +154,7 @@ class SourceTransactionTests(unittest.TestCase):
                 base_python,
                 "-m",
                 "venv",
-                *([] if external and not uv and not no_pip else ["--without-pip"]),
+                *(["--without-pip"] if uv or no_pip or unchanged else []),
                 str(environment),
             )
             python = environment / (
@@ -161,6 +172,8 @@ class SourceTransactionTests(unittest.TestCase):
                 archive.extractall(packages)
             (ui / "dist").mkdir()
             (ui / "dist/index.html").write_text("old")
+            initial_file_version = (root / "version.txt").read_text()
+            local_lockfile = (ui / "package-lock.json").read_bytes()
             original = []
             replacements = []
             try:
@@ -220,7 +233,32 @@ class SourceTransactionTests(unittest.TestCase):
                         self.assertTrue(
                             all(process.poll() is None for process in original)
                         )
-                    return run_command(args, **kwargs)
+                    preparing = not (state / "active/installing.json").exists()
+                    if preparing:
+                        self.assertTrue(
+                            all(process.poll() is None for process in original)
+                        )
+                    if unchanged:
+                        self.assertNotIn(
+                            "pip",
+                            args,
+                            "unchanged requirements must reuse the environment",
+                        )
+                        self.assertNotIn("venv", args)
+                    if cancel_build and "build" in args:
+                        from arknights_mower.utils.software_update_progress import (
+                            cancel_update,
+                        )
+
+                        threading.Timer(
+                            0.3, lambda: cancel_update(state, "transaction")
+                        ).start()
+                    result = run_command(args, **kwargs)
+                    if fail_install and "install" in args and not preparing:
+                        raise RuntimeError(
+                            "fixture failure after dependency installation"
+                        )
+                    return result
 
                 worker.run_command = run_without_lfs
                 worker.env.update(
@@ -242,8 +280,10 @@ class SourceTransactionTests(unittest.TestCase):
                     [row["running"] for row in records], [True, False, True]
                 )
                 status = runtime.read_json(state / "status.json")
-                if fail_build:
-                    self.assertEqual(status["status"], "failed")
+                if fail_build or cancel_build or fail_install:
+                    self.assertEqual(
+                        status["status"], "cancelled" if cancel_build else "failed"
+                    )
                     self.assertEqual(command(git, "rev-parse", "HEAD"), initial_commit)
                     self.assertEqual(
                         command(git, "branch", "--show-current"), "original"
@@ -252,7 +292,13 @@ class SourceTransactionTests(unittest.TestCase):
                     self.assertTrue((environment / "old-marker").exists())
                     self.assertTrue(
                         all(
-                            row["fixture_version"] == initial_version for row in records
+                            row["fixture_version"]
+                            == (
+                                initial_file_version
+                                if fail_build or cancel_build
+                                else initial_version
+                            )
+                            for row in records
                         )
                     )
                 else:
@@ -262,7 +308,7 @@ class SourceTransactionTests(unittest.TestCase):
                     self.assertTrue(
                         all(row["fixture_version"] == target_version for row in records)
                     )
-                if external:
+                if external or unchanged:
                     self.assertTrue((environment / "old-marker").exists())
                     self.assertTrue(
                         all(
@@ -275,15 +321,27 @@ class SourceTransactionTests(unittest.TestCase):
                 self.assertTrue(
                     all(
                         row["fixture_dependency"]
-                        == (initial_version if fail_build else target_version)
+                        == (
+                            initial_version
+                            if fail_build or cancel_build or fail_install or unchanged
+                            else target_version
+                        )
                         for row in records
                     )
                 )
                 self.assertFalse((state / "active").exists())
+                self.assertFalse(worker.source_stage.exists())
+                if fail_build or cancel_build:
+                    self.assertEqual(
+                        {row["pid"] for row in records}, {p.pid for p in original}
+                    )
+                    self.assertFalse(worker.stopped)
                 if local_changes:
                     self.assertEqual(
                         (ui / "package-lock.json").read_bytes(),
-                        subprocess.check_output(
+                        local_lockfile
+                        if fail_build or cancel_build
+                        else subprocess.check_output(
                             [git, "show", "HEAD:ui/package-lock.json"], cwd=root
                         ),
                     )
@@ -294,7 +352,7 @@ class SourceTransactionTests(unittest.TestCase):
                         (root / "local-note.txt").read_text(),
                         "unrelated untracked file",
                     )
-                    if not fail_build:
+                    if not fail_build and not cancel_build and not fail_install:
                         self.assertEqual(
                             (root / "new-target.txt").read_text(), "upstream file"
                         )
@@ -323,7 +381,7 @@ class SourceTransactionTests(unittest.TestCase):
     def test_force_update_discards_local_edits_and_conflicting_untracked_files(self):
         self.transaction(local_changes="force")
 
-    def test_force_failure_restores_version_but_not_discarded_local_edits(self):
+    def test_force_preparation_failure_preserves_original_edits_and_processes(self):
         self.transaction(fail_build=True, local_changes="force")
 
     def test_switch_to_older_commit_restores_three_instances(self):
@@ -341,6 +399,15 @@ class SourceTransactionTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("uv"), "requires uv")
     def test_uv_environment_without_pip_updates_using_same_interpreter(self):
         self.transaction(external=True, uv=shutil.which("uv"), downgrade=True)
+
+    def test_cancel_during_build_preserves_all_original_processes_and_edits(self):
+        self.transaction(cancel_build=True, local_changes="force")
+
+    def test_unchanged_dependencies_reuse_environment_without_pip(self):
+        self.transaction(unchanged=True)
+
+    def test_failure_after_dependency_install_restores_original_environment(self):
+        self.transaction(fail_install=True)
 
 
 if __name__ == "__main__":

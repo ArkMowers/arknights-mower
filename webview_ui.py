@@ -411,7 +411,13 @@ def run_desktop():
         close_child(splash_process)
         registration.close()
         raise RuntimeError(f"端口{port}已被占用，无法启动！")
-    registration.record["port"] = port
+    from hashlib import sha256
+
+    registration.record.update(
+        port=port,
+        listen_host=host,
+        token_hash=sha256((token or "").encode()).hexdigest(),
+    )
     registration.publish()
     splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
     import server
@@ -462,9 +468,9 @@ def run_desktop():
         open_window()
     close_child(splash_process)
 
-    from arknights_mower.utils.software_update import check_on_launch
+    from arknights_mower.utils.software_update import request_auto_check
 
-    Thread(target=check_on_launch, daemon=True).start()
+    request_auto_check()
 
     def resume_after_update():
         while runtime.active_job() and not registration.shutdown_requested():
@@ -484,8 +490,10 @@ def run_desktop():
     try:
         while True:
             if registration.shutdown_requested():
-                if server._job_running(server.maa_update_job) or server._job_running(
-                    server.maa_resource_update_job
+                if (
+                    server._job_running(server.maa_update_job)
+                    or server._job_running(server.maa_resource_update_job)
+                    or server.resource_update.running()
                 ):
                     sleep(0.5)
                     continue

@@ -5,6 +5,7 @@ import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import { confirmForceUpdate } from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
+import { useUpdateProgress } from '@/composables/useUpdateProgress'
 
 const axios = inject('axios')
 const messages = useMessage()
@@ -19,10 +20,16 @@ const autoCheck = ref(false)
 const autoUpdate = ref(false)
 const checked = ref(null)
 const job = ref({ status: 'idle' })
+const showProgress = useUpdateProgress(job)
 const busy = ref(false)
 const checking = ref(false)
 const error = ref('')
 const disconnected = ref(false)
+const cancelling = ref(false)
+const progressUrl = computed(() => {
+  const token = axios.defaults.headers.common.token || ''
+  return `${base}/progress#${new URLSearchParams({ token }).toString()}`
+})
 const packageFiles = ref([])
 const uploadPercent = ref(0)
 const source = computed(() => info.value?.deployment === 'source')
@@ -41,6 +48,7 @@ const pendingKey = `mower-software-update:${base}`
 let timer
 let disposed = false
 let pendingSince = 0
+let lastCheckAt = 0
 let settingsRequest = Promise.resolve()
 
 function saveSettings() {
@@ -55,6 +63,7 @@ function saveSettings() {
     .then(async () => {
       const { data } = await axios.post(`${base}/settings`, settings, { headers })
       if (!data.ok) throw new Error(data.message)
+      if (settings.auto_check) await axios.post(`${base}/auto-check`, {}, { headers })
     })
   settingsRequest.catch((err) => {
     error.value = errorMessage(err)
@@ -75,9 +84,21 @@ function setAutoUpdate(value) {
 }
 
 function showLastCheck(result) {
-  if (checked.value || !result || result.channel !== channel.value) return
-  if (result.ok) checked.value = result
-  else if (result.message) error.value = result.message
+  if (
+    checking.value ||
+    !result ||
+    result.channel !== channel.value ||
+    (result.checked_at || 0) <= lastCheckAt
+  )
+    return
+  lastCheckAt = result.checked_at
+  if (result.ok) {
+    checked.value = result
+    error.value = ''
+  } else if (result.message) {
+    checked.value = null
+    error.value = result.message
+  }
 }
 
 function errorMessage(err) {
@@ -118,15 +139,21 @@ async function poll() {
   if (disposed) return
   try {
     const { data } = await axios.get(`${base}/status`, { timeout: 5000 })
+    if (disposed) return
     if (!data.ok) throw new Error(data.message)
+    if (job.value.id !== data.id || data.status !== 'running') cancelling.value = false
     job.value = data
     showLastCheck(data.last_check)
     disconnected.value = false
     if (data.status === 'running' && !pendingSince) pendingSince = Date.now()
     const pending = sessionStorage.getItem(pendingKey)
-    if (pending && pending === data.id && ['succeeded', 'failed'].includes(data.status)) {
+    if (
+      pending &&
+      pending === data.id &&
+      ['succeeded', 'failed', 'cancelled'].includes(data.status)
+    ) {
       sessionStorage.removeItem(pendingKey)
-      if (data.status === 'succeeded') {
+      if (data.status === 'succeeded' && showProgress.value) {
         window.location.reload()
         return
       }
@@ -151,6 +178,7 @@ async function checkUpdate() {
     const { data } = await axios.post(`${base}/check`, { channel: channel.value }, { headers })
     if (!data.ok) throw new Error(data.message)
     checked.value = data
+    lastCheckAt = data.checked_at || Date.now() / 1000
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -198,13 +226,31 @@ async function install(manual = false, force = false, target = null) {
     }
     sessionStorage.setItem(pendingKey, response.data.id)
     pendingSince = Date.now()
-    job.value = { ...response.data, status: 'running', phase: 'preparing' }
+    cancelling.value = false
+    job.value = { ...response.data, status: 'running', phase: 'preparing', cancellable: true }
     clearTimeout(timer)
     await poll()
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
     busy.value = false
+  }
+}
+
+async function cancelUpdate() {
+  if (!job.value.cancellable || cancelling.value) return
+  cancelling.value = true
+  try {
+    const { data } = await axios.post(
+      `${base}/cancel`,
+      { id: job.value.id },
+      { headers, timeout: 5000 }
+    )
+    if (!data.ok) throw new Error(data.message)
+    messages.info(data.message)
+  } catch (err) {
+    cancelling.value = false
+    error.value = errorMessage(err)
   }
 }
 
@@ -218,6 +264,7 @@ function requestForceUpdate() {
 
 watch(channel, () => {
   checked.value = null
+  lastCheckAt = 0
 })
 watch(
   pendingSoftwarePackage,
@@ -231,6 +278,7 @@ watch(
 onMounted(async () => {
   try {
     await loadInfo()
+    if (autoCheck.value) await axios.post(`${base}/auto-check`, {}, { headers })
   } catch (err) {
     error.value = errorMessage(err)
   }
@@ -423,7 +471,7 @@ onUnmounted(() => {
           </n-collapse-item>
         </n-collapse>
       </n-form-item>
-      <n-form-item v-if="job.status !== 'idle' || disconnected" :show-label="false">
+      <n-form-item v-if="showProgress || disconnected" :show-label="false">
         <n-alert
           :type="
             job.status === 'failed' ? 'error' : job.status === 'succeeded' ? 'success' : 'info'
@@ -431,7 +479,8 @@ onUnmounted(() => {
           title="更新状态"
           aria-live="polite"
         >
-          {{ disconnected ? '网页服务暂时断开，正在等待重启并重连。' : job.message }}
+          {{ job.message }}
+          <p v-if="disconnected">更新服务正在交接，稍后自动重试。</p>
           <p v-if="job.current" class="version">
             已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
               / {{ (job.total / 1048576).toFixed(1) }} MiB</span
@@ -440,7 +489,21 @@ onUnmounted(() => {
           <p v-if="job.log_path" class="log-path">日志：{{ job.log_path }}</p>
         </n-alert>
       </n-form-item>
-      <n-form-item v-if="job.log" :show-label="false">
+      <n-form-item v-if="showProgress" :show-label="false">
+        <n-space>
+          <n-button tag="a" :href="progressUrl" target="_blank" rel="noopener noreferrer">
+            独立更新进度
+          </n-button>
+          <n-button
+            v-if="job.status === 'running'"
+            :disabled="!job.cancellable || cancelling"
+            :loading="cancelling"
+            @click="cancelUpdate"
+            >取消更新</n-button
+          >
+        </n-space>
+      </n-form-item>
+      <n-form-item v-if="showProgress && job.log" :show-label="false">
         <n-collapse>
           <n-collapse-item title="安装日志" name="log">
             <pre class="notes">{{ job.log }}</pre>

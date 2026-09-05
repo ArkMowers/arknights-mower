@@ -32,6 +32,7 @@ from arknights_mower.utils.maa_check import (
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.resource_pkg import register_resource_reload
+from arknights_mower.utils.resource_update_job import ResourceUpdateJob
 from arknights_mower.utils.update_runtime import active_job
 from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.mastery import mastery_bp
@@ -145,6 +146,9 @@ maa_resource_update_check = {
 }
 maa_resource_update_check_lock = RLock()
 maa_maintenance_lock = RLock()
+
+
+resource_update = ResourceUpdateJob()
 
 
 def _collect_maa_check_result():
@@ -773,6 +777,7 @@ def start(start_type):
             and mower_thread.is_alive()
             or _job_running(maa_update_job)
             or _job_running(maa_resource_update_job)
+            or resource_update.running()
         ):
             return "false"
         # 创建 tmp 文件夹
@@ -1351,6 +1356,7 @@ def start_maa_update():
             maa_update_job.update(
                 {
                     "thread": thread,
+                    "id": uuid4().hex,
                     "status": "running",
                     "phase": "checking",
                     "message": (
@@ -1615,6 +1621,7 @@ def start_maa_resource_update():
             maa_resource_update_job.update(
                 {
                     "thread": thread,
+                    "id": uuid4().hex,
                     "status": "running",
                     "phase": "checking",
                     "message": "正在检查 Maa 资源更新",
@@ -1736,27 +1743,33 @@ def get_resource_version():
 @app.route("/resource/install", methods=["POST"])
 @require_token
 def install_resource():
-    """下载并原子安装资源包（overlay 模型）；mower 运行任务时拒绝。"""
-    busy = _mower_busy_response()
-    if busy:
-        return busy
-
-    from arknights_mower.utils.resource_pkg import (
-        download_resource_pkg,
-        install_resource_pkg,
-    )
-
-    data = download_resource_pkg()
-    if data is None:
-        return {"ok": False, "message": "资源包下载失败，请检查网络"}
-    if not install_resource_pkg(data):
-        return {"ok": False, "message": "资源包安装失败（已回滚）"}
-    _request_title_refresh()
+    """Start a tracked update; old clients may still wait synchronously."""
+    with maa_maintenance_lock:
+        busy = _mower_busy_response()
+        if busy:
+            return busy
+        if active_job():
+            return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}, 409
+        try:
+            job = resource_update.start(_request_title_refresh)
+        except ValueError as error:
+            return {"ok": False, "message": str(error)}, 409
+    if (request.get_json(silent=True) or {}).get("background") is True:
+        return {"ok": True, "job": job}
+    resource_update.thread.join()
+    job = resource_update.snapshot()
     return {
-        "ok": True,
+        "ok": job["status"] == "success",
+        "message": job["message"],
         "restart_required": False,
-        "message": "资源包已安装，各实例在任务间歇加载，无需重启 Mower",
+        "job": job,
     }
+
+
+@app.route("/resource/status")
+@require_token
+def resource_update_status():
+    return {"ok": True, "job": resource_update.snapshot()}
 
 
 def str2date(target: str):
