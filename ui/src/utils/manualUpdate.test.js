@@ -10,15 +10,10 @@ import {
 
 describe('manual update helpers', () => {
   it('routes software packages separately from resource zip files', () => {
-    for (const name of [
-      'arknights-mower_4.2.0_windows_x64.zip',
-      'mower.zip',
-      'mower.dmg',
-      'mower.tar.gz'
-    ]) {
+    for (const name of ['arknights-mower_4.2.0_windows_x64.zip', 'mower.dmg', 'mower.tar.gz']) {
       expect(updatePackageKind({ name })).toBe('software')
     }
-    for (const name of ['resource.zip', 'hot_update.zip']) {
+    for (const name of ['resource.zip', 'hot_update.zip', 'mower.zip', 'MOWER.ZIP']) {
       expect(updatePackageKind({ name })).toBe('resource')
     }
     expect(updatePackageKind({ name: 'plan.json' })).toBeNull()

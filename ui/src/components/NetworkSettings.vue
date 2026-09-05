@@ -173,7 +173,7 @@ onBeforeUnmount(() => {
           已应用到后续连接
         </n-text>
       </n-space>
-      <n-text depth="3">测试 GitHub API 与资源文件连接，不调用 AI 接口。</n-text>
+      <n-text depth="3">测试 GitHub 下载接口是否可达。</n-text>
       <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
       <n-alert
         v-for="result in results"

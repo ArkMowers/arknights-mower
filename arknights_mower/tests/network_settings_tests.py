@@ -49,7 +49,6 @@ class ProxySettingsBase(unittest.TestCase):
         for target, name, value in (
             (network, "settings_path", lambda: self.folder / "network.json"),
             (network, "_base_environment", None),
-            (network, "_last_proxy", None),
             (network, "_effective_settings", None),
             (urllib.request, "_opener", None),
         ):
@@ -74,7 +73,7 @@ class ProxySettingsBase(unittest.TestCase):
         return settings
 
     def restart(self):
-        network._effective_settings = network._last_proxy = None
+        network._effective_settings = None
         network.apply_http_proxy()
 
 
@@ -203,9 +202,7 @@ class ProxySettingsTests(ProxySettingsBase):
         os.environ["https_proxy"] = "http://original.example.test:8080"
         self.save("http://127.0.0.1:7897")
         # Simulate a restarted child that inherited the active proxy and baseline.
-        network._base_environment = network._last_proxy = (
-            network._effective_settings
-        ) = None
+        network._base_environment = network._effective_settings = None
         network.apply_http_proxy()
         self.save()
         self.assertEqual(os.environ["https_proxy"], "http://original.example.test:8080")
@@ -342,7 +339,7 @@ class ProxySettingsTests(ProxySettingsBase):
 
 
 class LocalProxyIntegrationTests(ProxySettingsBase):
-    def start_server(self, body, headers_seen=None):
+    def start_server(self, body, headers_seen=None, methods_seen=None, redirects=None):
         seen = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -355,6 +352,14 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
 
             def do_GET(self):
                 seen.append(self.path)
+                if methods_seen is not None:
+                    methods_seen.append(self.command)
+                if redirects and self.path in redirects:
+                    self.send_response(302)
+                    self.send_header("Location", redirects[self.path])
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 if headers_seen is not None:
                     headers_seen.append(dict(self.headers))
                 payload = body(self.path)
@@ -410,12 +415,13 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
             ],
         )
 
-    def test_connection_test_checks_both_routes_without_forwarding_credentials(self):
+    def test_connection_test_checks_download_route_without_forwarding_credentials(self):
         from arknights_mower.views import network as view
 
-        body = b'{"full_name":"ArkMowers/arknights-mower","res_version":"v2026.09.05-fixture"}'
-        headers_seen = []
-        proxy, seen = self.start_server(lambda path: body, headers_seen)
+        headers_seen, methods_seen = [], []
+        proxy, seen = self.start_server(
+            lambda path: b"download fixture", headers_seen, methods_seen
+        )
         self.save(http=proxy, github_proxy="http://download.example.invalid/")
         app = Flask(__name__)
         app.token = "private-local-token"
@@ -429,34 +435,49 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
             ).status_code,
             403,
         )
-        with patch.object(view, "API_TEST_URL", "http://api.example.invalid/check"):
-            result = client.post("/network/test", headers=headers).get_json()
+        result = client.post("/network/test", headers=headers).get_json()
         self.assertTrue(result["ok"])
-        self.assertEqual([item["ok"] for item in result["results"]], [True, True])
+        self.assertEqual([item["ok"] for item in result["results"]], [True])
         self.assertCountEqual(
             seen,
             [
-                "http://api.example.invalid/check",
                 "http://download.example.invalid/" + view.FILE_TEST_URL,
             ],
         )
+        self.assertEqual(methods_seen, ["HEAD"])
+        self.assertEqual(view.FILE_TEST_URL, resource_pkg.RESOURCE_ZIP_URL)
         for item in result["results"]:
             self.assertGreaterEqual(item["elapsed_ms"], 0)
         self.assertEqual(result["settings"], network.get_settings())
         for sent in headers_seen:
             self.assertNotIn("token", {key.lower() for key in sent})
             self.assertNotIn("authorization", {key.lower() for key in sent})
-        with patch("requests.Session.get", side_effect=requests.Timeout):
+        with patch("requests.Session.head", side_effect=requests.Timeout):
             result = client.post("/network/test", headers=headers).get_json()
         self.assertTrue(all(not item["ok"] for item in result["results"]))
         self.assertTrue(all("超时" in item["message"] for item in result["results"]))
 
-    def test_connection_test_rejects_proxy_landing_page(self):
+    def test_connection_test_follows_redirects_without_requesting_body(self):
         from arknights_mower.views.network import _probe_connection
 
-        url, _ = self.start_server(lambda path: b"<html>Proxy site</html>")
-        result = _probe_connection("fixture", url, None, "res_version")
+        methods = []
+        url, paths = self.start_server(
+            lambda path: b"<html>No JSON validation for connectivity</html>",
+            methods_seen=methods,
+            redirects={"/download": "/asset"},
+        )
+        result = _probe_connection("fixture", url + "/download", None)
+        self.assertTrue(result["ok"])
+        self.assertEqual(paths, ["/download", "/asset"])
+        self.assertEqual(methods, ["HEAD", "HEAD"])
+
+    def test_connection_test_reports_http_errors(self):
+        from arknights_mower.views.network import _probe_connection
+
+        with patch("requests.Session.head", side_effect=requests.HTTPError("404")):
+            result = _probe_connection("fixture", "https://github.com/", None)
         self.assertFalse(result["ok"])
+        self.assertIn("连接失败", result["message"])
 
     def test_resource_hot_update_and_raw_version_downloads_use_site(self):
         proxy, seen = self.start_server(

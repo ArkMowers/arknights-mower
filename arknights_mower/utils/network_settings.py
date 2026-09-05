@@ -25,7 +25,6 @@ _ENV_KEYS = (
 )
 _BASE_ENV_KEY = "MOWER_PROXY_BASE_ENV"
 _base_environment = None
-_last_proxy = None
 _environment_lock = threading.RLock()
 _effective_settings = None
 _sync_thread = None
@@ -92,7 +91,7 @@ def apply_http_proxy():
     Keep the launch environment through restarts so clearing a saved override
     restores the original proxy instead of inheriting the previous override.
     """
-    global _base_environment, _last_proxy, _effective_settings
+    global _base_environment, _effective_settings
     with _environment_lock:
         if _base_environment is None:
             try:
@@ -134,7 +133,6 @@ def apply_http_proxy():
                 )
             )
             os.environ["no_proxy"] = os.environ["NO_PROXY"] = bypass
-        _last_proxy = proxy
         _effective_settings = settings
 
 

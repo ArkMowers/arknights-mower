@@ -11,7 +11,7 @@ export function updatePackageKind(file) {
   const name = file?.name?.toLowerCase() || ''
   if (name.endsWith('.dmg') || name.endsWith('.tar.gz')) return 'software'
   if (!name.endsWith('.zip')) return null
-  return name.startsWith('arknights-mower_') || name === 'mower.zip' ? 'software' : 'resource'
+  return name.startsWith('arknights-mower_') ? 'software' : 'resource'
 }
 
 export function droppedUpdateFile(event) {

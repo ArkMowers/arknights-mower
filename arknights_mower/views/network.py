@@ -1,8 +1,6 @@
 """Shared network settings for desktop and web deployments."""
 
-import json
 import time
-from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import requests
@@ -12,9 +10,8 @@ from arknights_mower.utils import network_settings
 from arknights_mower.utils.github_download import download_url
 
 network_bp = Blueprint("network", __name__, url_prefix="/network")
-API_TEST_URL = "https://api.github.com/repos/ArkMowers/arknights-mower"
 FILE_TEST_URL = (
-    "https://raw.githubusercontent.com/ArkMowers/MowerResource/main/version.json"
+    "https://github.com/ArkMowers/MowerResource/releases/latest/download/resource.zip"
 )
 
 
@@ -49,7 +46,7 @@ def settings():
     return {"ok": True, **settings}
 
 
-def _probe_connection(label, url, proxy, key, expected=None):
+def _probe_connection(label, url, proxy):
     started = time.monotonic()
     result = {"label": label, "ok": False}
     try:
@@ -58,59 +55,28 @@ def _probe_connection(label, url, proxy, key, expected=None):
             client.trust_env = False
             if proxy:
                 client.proxies = {"http": proxy, "https": proxy}
-            with client.get(url, timeout=(3, 6), stream=True) as response:
+            with client.head(url, timeout=(3, 6), allow_redirects=True) as response:
                 response.raise_for_status()
-                body = bytearray()
-                for chunk in response.iter_content(8192):
-                    if time.monotonic() - started > 10:
-                        raise requests.Timeout()
-                    body.extend(chunk)
-                    if len(body) > 128 * 1024:
-                        raise ValueError("测试响应过大")
-                payload = json.loads(body)
-                if not isinstance(payload, dict) or not isinstance(
-                    payload.get(key), str
-                ):
-                    raise ValueError("测试地址返回的内容不正确")
-                if expected is not None and payload[key] != expected:
-                    raise ValueError("测试地址返回的内容不正确")
         result.update(ok=True, message="连接成功")
     except requests.Timeout:
         result["message"] = "连接超时，请检查代理地址和网络"
     except requests.exceptions.ProxyError:
         result["message"] = "无法连接代理，请检查代理服务是否开启"
-    except (requests.RequestException, ValueError):
-        result["message"] = "连接失败或返回内容异常，请检查代理设置"
+    except requests.RequestException:
+        result["message"] = "连接失败，请检查代理设置或下载地址状态"
     result["elapsed_ms"] = round((time.monotonic() - started) * 1000)
     return result
 
 
 @network_bp.post("/test")
 def test_connections():
+    """Probe the saved download route; callers save edited settings separately."""
     settings = network_settings.get_effective_settings()
-    targets = (
-        ("网络连接", API_TEST_URL, "full_name", "ArkMowers/arknights-mower"),
-        (
-            "GitHub 文件下载",
-            download_url(FILE_TEST_URL, settings["github_proxy"]),
-            "res_version",
-            None,
-        ),
+    url = download_url(FILE_TEST_URL, settings["github_proxy"])
+    result = _probe_connection(
+        "GitHub 文件下载", url, network_settings.proxy_for_url(url)
     )
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [
-            pool.submit(
-                _probe_connection,
-                label,
-                url,
-                network_settings.proxy_for_url(url),
-                key,
-                expected,
-            )
-            for label, url, key, expected in targets
-        ]
-        results = [future.result() for future in futures]
-    return {"ok": True, "settings": settings, "results": results}
+    return {"ok": True, "settings": settings, "results": [result]}
 
 
 @network_bp.get("/maa-copilot/<int:code>")

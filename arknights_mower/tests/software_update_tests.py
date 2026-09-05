@@ -210,6 +210,7 @@ class ManualPackageTests(unittest.TestCase):
 
     def test_wrong_arch_old_version_and_unrelated_packages_are_rejected(self):
         for name in [
+            "mower.zip",
             "hot_update.zip",
             "resource.zip",
             "arknights-mower_4.2.0_windows_x64.zip",

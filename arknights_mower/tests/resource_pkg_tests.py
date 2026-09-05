@@ -146,10 +146,12 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
 
     def test_new_software_prefers_newer_builtin_as_a_whole(self):
         self.assertTrue(rp.install_resource_pkg(resource_zip()))
-        (self.builtin / "data/version.json").write_text(
-            '{"res_version":"v2026.08.25-ccccccc"}'
-        )
-        self.assertTrue(rp.reload_resource_caches_if_changed())
+        # Keep the server watcher from consuming the change before this assertion.
+        with rp._install_lock:
+            (self.builtin / "data/version.json").write_text(
+                '{"res_version":"v2026.08.25-ccccccc"}'
+            )
+            self.assertTrue(rp.reload_resource_caches_if_changed())
         self.assertEqual(self.installed_version(), "v2026.08.25-ccccccc")
         self.assertEqual(
             rp.resource_pkg_path(RES_PACKAGE_MODELS[0]),

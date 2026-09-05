@@ -58,6 +58,18 @@ class TestApplyManualUpdate(unittest.TestCase):
         self.assertFalse(got["ok"])
         self.assertEqual(got["kind"], "unknown")
 
+    def test_legacy_binary_zip_is_not_applied_as_resource_or_hot_update(self):
+        data = _zip_bytes({"mower.exe": "legacy package fixture"})
+        with (
+            patch.object(manual_update, "install_resource_pkg") as install_resource,
+            patch.object(manual_update.hot_update, "apply_manual_zip") as install_hot,
+        ):
+            result = manual_update.apply_manual_update(data)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["kind"], "unknown")
+        install_resource.assert_not_called()
+        install_hot.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
