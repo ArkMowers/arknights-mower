@@ -271,6 +271,67 @@ class ScreenshotTests(unittest.TestCase):
         self.assertFalse(self.root.exists())
         self.assertEqual(self.store.stats()["pending_bytes"], 3)
 
+    def test_disabled_history_keeps_preview_without_queueing_or_dropping(self):
+        self.retention = 0
+        with patch.object(
+            Path, "mkdir", side_effect=AssertionError("关闭保存仍访问磁盘")
+        ):
+            filename = self.store.submit(b"preview")
+            for folder in ("terminal_main", "run_order", "workshop", "solve_captcha"):
+                self.store.submit(b"debug", folder)
+        self.assertEqual(self.store.latest().filename, filename)
+        self.assertEqual(self.store.latest().data, b"preview")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        self.assertEqual(self.store.stats()["pending_bytes"], 0)
+        self.assertEqual(self.store.stats()["dropped"], 0)
+        self.assertFalse(self.root.exists())
+
+    def test_disabled_history_skips_all_folders_and_can_be_reenabled(self):
+        self.retention = 0
+        files = [
+            self.store.submit(b"important", folder)
+            for folder in ("run_order", "workshop", "solve_captcha")
+        ]
+        self.store.start()
+        self.wait_idle()
+        self.assertTrue(all(not (self.root / file).exists() for file in files))
+        self.assertEqual(self.store.stats()["saved"], 0)
+        self.assertEqual(self.store.last_saved(), "")
+        self.retention = 1
+        filename = self.store.submit(b"ordinary")
+        important = self.store.submit(b"order", "run_order")
+        self.wait_idle()
+        self.assertEqual((self.root / filename).read_bytes(), b"ordinary")
+        self.assertEqual((self.root / important).read_bytes(), b"order")
+
+    def test_disabling_storage_skips_queued_frames_after_current_write(self):
+        entered, release = Event(), Event()
+        write = self.store._write
+
+        def slow_write(frame):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            write(frame)
+
+        with patch.object(self.store, "_write", side_effect=slow_write):
+            active = self.store.submit(b"in flight", "run_order")
+            self.store.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                queued = [
+                    self.store.submit(b"queued", folder)
+                    for folder in (None, "run_order", "workshop", "solve_captcha")
+                ]
+                self.retention = 0
+            finally:
+                release.set()
+                self.wait_idle()
+        self.assertTrue((self.root / active).exists())
+        self.assertTrue(all(not (self.root / file).exists() for file in queued))
+        self.assertEqual(self.store.stats()["saved"], 1)
+        self.assertEqual(self.store.stats()["failed"], 0)
+        self.assertEqual(self.store.stats()["dropped"], 0)
+
     def test_queue_within_capacity_keeps_every_frame_and_important_folder(self):
         files = [self.store.submit(b"jpeg" * 256) for _ in range(30)]
         latest = self.store.latest()
@@ -451,6 +512,131 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(all(not thread.is_alive() for thread in self.store._threads))
 
 
+class ScreenshotMaintenanceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "screenshots"
+        self.logger = Mock()
+        self.retention = 1
+        self.store = ScreenshotStore(self.root, lambda: self.retention, self.logger)
+        self.addCleanup(self.store.close)
+        self.now = 0
+        self.epoch_ns = time.time_ns()
+
+    def run_cleaner_until(self, end, on_wait=None):
+        calls = []
+        cleanup = self.store.cleanup
+
+        def track_cleanup():
+            calls.append(self.now)
+            return cleanup()
+
+        def advance(seconds):
+            self.now = min(end, self.now + seconds)
+            if on_wait:
+                on_wait()
+            return self.now >= end
+
+        with (
+            patch(
+                "arknights_mower.utils.screenshot.time.monotonic",
+                side_effect=lambda: self.now,
+            ),
+            patch(
+                "arknights_mower.utils.screenshot.time.time_ns",
+                side_effect=lambda: self.epoch_ns + int(self.now * 10**9),
+            ),
+            patch.object(self.store._stop, "wait", side_effect=advance),
+            patch.object(self.store, "cleanup", side_effect=track_cleanup),
+        ):
+            self.store._cleaner()
+        return calls
+
+    def seed(self, timestamp):
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self.root / f"{timestamp}.jpg"
+        path.write_bytes(b"history")
+        return path
+
+    def test_empty_idle_store_scans_hourly_without_status_noise(self):
+        calls = self.run_cleaner_until(7201)
+        self.assertEqual(calls, [0, 3600, 7200])
+        self.logger.debug.assert_not_called()
+
+    def test_expired_history_is_removed_on_hourly_cleanup(self):
+        self.retention = 0.02
+        path = self.seed(self.epoch_ns - 10 * 10**9)
+
+        def before_cleanup():
+            if self.now < 3600:
+                self.assertTrue(path.exists())
+
+        calls = self.run_cleaner_until(7201, before_cleanup)
+        self.assertEqual(calls, [0, 3600, 7200])
+        self.assertFalse(path.exists())
+        self.logger.debug.assert_not_called()
+
+    def test_retention_does_not_change_hourly_cleanup_interval(self):
+        for retention in (0, 0.02, 0.1, 1, 24):
+            with self.subTest(retention=retention):
+                self.now = 0
+                self.retention = retention
+                self.seed(self.epoch_ns + 48 * 3600 * 10**9)
+                calls = self.run_cleaner_until(7201)
+                self.assertEqual(calls, [0, 3600, 7200])
+
+    def test_retention_changes_take_effect_at_next_hourly_cleanup(self):
+        path = self.seed(self.epoch_ns - 120 * 10**9)
+
+        def shorten():
+            if self.now >= 60:
+                self.retention = 0.02
+
+        calls = self.run_cleaner_until(3601, shorten)
+        self.assertEqual(calls, [0, 3600])
+        self.assertFalse(path.exists())
+
+    def test_cleanup_errors_are_reported_and_retried(self):
+        with patch(
+            "arknights_mower.utils.screenshot.os.scandir",
+            side_effect=PermissionError("denied"),
+        ):
+            calls = self.run_cleaner_until(7201)
+        self.assertEqual(calls, [0, 3600, 7200])
+        self.assertEqual(self.store.stats()["cleanup_failed"], 3)
+        self.assertEqual(self.logger.error.call_count, 3)
+        self.assertEqual(self.logger.debug.call_count, 3)
+
+    def test_changing_cleanup_duration_alone_does_not_print_status(self):
+        stats = self.store.stats()
+        with patch.object(
+            self.store,
+            "stats",
+            side_effect=[
+                {**stats, "cleanup_ms": value} for value in (12.2, 8.53, 64.96)
+            ],
+        ):
+            for _ in range(3):
+                self.store._report_status()
+        self.logger.debug.assert_not_called()
+
+    def test_new_activity_is_reported_once_and_pending_work_remains_visible(self):
+        stats = self.store.stats()
+        states = [
+            {**stats, "saved": 1},
+            {**stats, "saved": 1, "cleanup_ms": 10},
+            {**stats, "saved": 1, "pending_count": 1, "pending_bytes": 10},
+            {**stats, "saved": 1, "pending_count": 1, "pending_bytes": 10},
+            {**stats, "saved": 2},
+            {**stats, "saved": 2, "cleanup_ms": 20},
+        ]
+        with patch.object(self.store, "stats", side_effect=states):
+            for _ in states:
+                self.store._report_status()
+        self.assertEqual(self.logger.debug.call_count, 4)
+
+
 class ScreenshotRouteTests(unittest.TestCase):
     def setUp(self):
         import server
@@ -497,6 +683,14 @@ class ScreenshotRouteTests(unittest.TestCase):
         response = self.client.get("/screenshot/latest", headers=self.headers)
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_preview_still_works_with_storage_disabled(self):
+        self.store.retention_hours = lambda: 0
+        self.store.submit(b"preview without disk")
+        response = self.client.get("/screenshot/latest", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"preview without disk")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
 
     def test_preview_before_write_and_etag_when_unchanged(self):
         self.store.submit(b"jpeg bytes")

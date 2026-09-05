@@ -80,7 +80,7 @@ export const useConfigStore = defineStore('config', () => {
   const rcl = ref({})
   const rogue = ref({})
   const sss = ref({})
-  const screenshot = ref(0)
+  const screenshot = ref(1)
   const screenshot_interval = ref(500)
   const mail_subject = ref('')
   const ai_type = ref('')

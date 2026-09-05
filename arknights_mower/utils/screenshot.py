@@ -18,6 +18,14 @@ from typing import Callable
 
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
 _IMPORTANT_FOLDERS = {"run_order", "workshop", "solve_captcha"}
+_STATUS_FIELDS = (
+    "pending_count",
+    "pending_bytes",
+    "saved",
+    "failed",
+    "dropped",
+    "cleanup_failed",
+)
 
 
 @dataclass(frozen=True)
@@ -36,13 +44,15 @@ class ScreenshotStore:
         folder: Path,
         retention_hours: Callable[[], float],
         logger: logging.Logger | None = None,
-        cleanup_interval: float = 30,
+        cleanup_interval: float = 3600,
         *,
         max_pending_count: int = 128,
         max_pending_bytes: int = 64 * 1024**2,
     ):
         if max_pending_count <= 0 or max_pending_bytes <= 0:
             raise ValueError("待写截图数量和字节数上限必须大于 0")
+        if cleanup_interval <= 0:
+            raise ValueError("截图清理间隔必须大于 0")
         self.folder = Path(folder)
         self.retention_hours = retention_hours
         self.logger = logger or logging.getLogger(__name__)
@@ -72,6 +82,7 @@ class ScreenshotStore:
         self._cleanup_ms = 0.0
         self._cleanup_failed = 0
         self._last_error_log = float("-inf")
+        self._last_reported_state = (0,) * len(_STATUS_FIELDS)
 
     def start(self):
         with self._lock:
@@ -124,7 +135,9 @@ class ScreenshotStore:
             )
             if frame.preview:
                 self._latest = frame
-            if self._make_room(frame):
+            # 保存时间为 0 时，所有截图只更新内存，不再入队写盘。
+            persist = self.retention_hours() > 0
+            if persist and self._make_room(frame):
                 self._pending_count += 1
                 self._pending_bytes += len(data)
                 self._queue.append(frame)
@@ -249,7 +262,12 @@ class ScreenshotStore:
                 frame = self._queue.popleft()
             try:
                 started = time.monotonic()
+                write_enabled = False
                 try:
+                    write_enabled = self.retention_hours() > 0
+                    if not write_enabled:
+                        # 设置可能在入队后关闭，跳过尚未开始写入的截图。
+                        continue
                     self._write(frame)
                 except Exception as exc:
                     with self._lock:
@@ -264,8 +282,9 @@ class ScreenshotStore:
                     with self._lock:
                         self._pending_count -= 1
                         self._pending_bytes -= len(frame.data)
-                        self._write_ms = (time.monotonic() - started) * 1000
-                        self._queue_wait_ms = (started - frame.queued_at) * 1000
+                        if write_enabled:
+                            self._write_ms = (time.monotonic() - started) * 1000
+                            self._queue_wait_ms = (started - frame.queued_at) * 1000
             finally:
                 # 不让等待新任务的线程留住上一帧。
                 del frame
@@ -361,18 +380,21 @@ class ScreenshotStore:
                 with self._lock:
                     self._cleanup_ms = (time.monotonic() - started) * 1000
 
-    def _cleaner(self):
-        while not self._stop.is_set():
-            self.cleanup()
-            stats = self.stats()
+    def _report_status(self):
+        stats = self.stats()
+        state = tuple(stats[field] for field in _STATUS_FIELDS)
+        # 清理耗时自然波动不代表截图活动，空闲时不重复打印全零统计。
+        if stats["pending_count"] or state != self._last_reported_state:
             self.logger.debug("截图存储状态 %s", stats)
-            if stats["pending_count"]:
-                self.logger.debug(
-                    "待写截图 %s 张 / %.2f MiB，最近排队 %.0f ms，写盘 %.0f ms",
-                    stats["pending_count"],
-                    stats["pending_bytes"] / 1024**2,
-                    stats["queue_wait_ms"],
-                    stats["write_ms"],
-                )
-            if self._stop.wait(self.cleanup_interval):
+        self._last_reported_state = state
+
+    def _cleaner(self):
+        last_cleanup = float("-inf")
+        poll_interval = min(30, self.cleanup_interval)
+        while not self._stop.is_set():
+            if time.monotonic() - last_cleanup >= self.cleanup_interval:
+                self.cleanup()
+                last_cleanup = time.monotonic()
+            self._report_status()
+            if self._stop.wait(poll_interval):
                 return
