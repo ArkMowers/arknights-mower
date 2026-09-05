@@ -1,18 +1,17 @@
+import atexit
 import logging
-import shutil
 import sys
-import time
 import traceback
 from datetime import datetime, timedelta
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
 from queue import Queue
-from threading import Thread
 
 import colorlog
 
 from arknights_mower.utils import config
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.screenshot import ScreenshotStore
 
 BASIC_FORMAT = (
     "%(asctime)s %(relativepath)s:%(lineno)d %(levelname)s %(funcName)s: %(message)s"
@@ -34,7 +33,6 @@ class PackagePathFilter(logging.Filter):
         return True
 
 
-last_screenshot = None
 filter = PackagePathFilter()
 
 logger = logging.getLogger(__name__)
@@ -79,60 +77,18 @@ listener = QueueListener(log_queue, dhlr, fhlr, whlr, respect_handler_level=True
 listener.start()
 
 screenshot_folder = get_path("@app/screenshot")
-screenshot_folder.mkdir(exist_ok=True, parents=True)
-screenshot_queue = Queue()
-cleanup_time = datetime.now()
-
-
-def screenshot_cleanup():
-    logger.info("清理过期截图")
-    start_time_ns = time.time_ns() - config.conf.screenshot * 3600 * 10**9
-    for i in screenshot_folder.iterdir():
-        if i.is_dir():
-            if i.name in ["run_order", "workshop", "solve_captcha"]:
-                # 处理run_order文件夹，只保留最后100张图片
-                images = sorted(
-                    [f for f in i.iterdir() if f.is_file() and f.stem.isnumeric()],
-                    key=lambda x: int(x.stem),
-                )
-                if len(images) > 100:
-                    for img in images[:-100]:  # 保留最后100张，删除其余的
-                        img.unlink()
-                continue
-            shutil.rmtree(i)
-        elif not i.stem.isnumeric():
-            i.unlink()
-        elif int(i.stem) < start_time_ns:
-            i.unlink()
-    global cleanup_time
-    cleanup_time = datetime.now()
-
-
-def screenshot_worker():
-    screenshot_cleanup()
-    global last_screenshot
-    while True:
-        now = datetime.now()
-        if now - cleanup_time > timedelta(hours=1):
-            screenshot_cleanup()
-        img, filename, upate_last = screenshot_queue.get()
-        with screenshot_folder.joinpath(filename).open("wb") as f:
-            f.write(img)
-            if upate_last:
-                last_screenshot = filename
-
-
-Thread(target=screenshot_worker, daemon=True).start()
+screenshot_store = ScreenshotStore(
+    screenshot_folder, lambda: config.conf.screenshot, logger
+)
+screenshot_queue = screenshot_store.queue
+screenshot_cleanup = screenshot_store.cleanup
+screenshot_store.start()
+atexit.register(screenshot_store.close)
 
 
 def save_screenshot(img: bytes, sub_folder=None) -> None:
-    filename = f"{time.time_ns()}.jpg"
+    filename = screenshot_store.submit(img, sub_folder)
     logger.debug(filename)
-    if sub_folder:
-        sub_folder_path = Path(screenshot_folder) / sub_folder
-        sub_folder_path.mkdir(parents=True, exist_ok=True)
-        filename = f"{sub_folder}/{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-    screenshot_queue.put((img, filename, not sub_folder))
 
 
 def get_log_by_time(target_time, time_range=1):

@@ -865,16 +865,21 @@ def serve_screenshot(filename):
     return send_from_directory(screenshot_dir, filename)
 
 
+@app.route("/screenshot/latest")
+def get_screenshot_preview():
+    from arknights_mower.views.screenshot import latest_screenshot_response
+
+    return latest_screenshot_response()
+
+
 @app.route("/latest-screenshot")
 def get_latest_screenshot():
     """
     返回最新截图的路径
     """
-    from arknights_mower.utils.log import last_screenshot
+    from arknights_mower.utils.log import screenshot_store
 
-    if last_screenshot:
-        return last_screenshot
-    return ""
+    return screenshot_store.last_saved()
 
 
 def _webview_conn():
