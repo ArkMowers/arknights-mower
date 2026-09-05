@@ -80,7 +80,6 @@ screenshot_folder = get_path("@app/screenshot")
 screenshot_store = ScreenshotStore(
     screenshot_folder, lambda: config.conf.screenshot, logger
 )
-screenshot_queue = screenshot_store.queue
 screenshot_cleanup = screenshot_store.cleanup
 screenshot_store.start()
 atexit.register(screenshot_store.close)

@@ -5,9 +5,10 @@ import tempfile
 import time
 import unittest
 import weakref
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -41,6 +42,225 @@ class ScreenshotTests(unittest.TestCase):
         path.write_bytes(contents)
         return path
 
+    def limit_store(self, **limits):
+        self.store = ScreenshotStore(
+            self.root, lambda: self.retention, self.logger, **limits
+        )
+        self.addCleanup(self.store.close)
+
+    def test_limits_must_be_positive(self):
+        for field in ("max_pending_count", "max_pending_bytes"):
+            for value in (0, -1):
+                with (
+                    self.subTest(field=field, value=value),
+                    self.assertRaises(ValueError),
+                ):
+                    self.limit_store(**{field: value})
+
+    def test_default_count_limit_keeps_recent_frames_and_releases_evicted_data(self):
+        oldest = self.store.submit(b"old")
+        reference = weakref.ref(self.store.latest())
+        files = [self.store.submit(b"new") for _ in range(1000)]
+        stats = self.store.stats()
+        self.assertEqual(stats["max_pending_count"], 128)
+        self.assertEqual(stats["max_pending_bytes"], 64 * 1024**2)
+        self.assertEqual(stats["pending_count"], 128)
+        self.assertEqual(stats["pending_bytes"], 128 * 3)
+        self.assertEqual(stats["dropped"], 873)
+        self.assertEqual(stats["dropped_bytes"], 873 * 3)
+        self.assertEqual(self.store.latest().filename, files[-1])
+        self.assertIsNone(reference())
+        self.store.start()
+        self.wait_idle()
+        self.assertFalse((self.root / oldest).exists())
+        self.assertFalse((self.root / files[-129]).exists())
+        self.assertTrue(all((self.root / file).exists() for file in files[-128:]))
+
+    def test_byte_limit_evicts_enough_old_frames_and_keeps_fifo_order(self):
+        self.limit_store(max_pending_bytes=10)
+        files = [self.store.submit(b"abc") for _ in range(3)]
+        latest = self.store.submit(b"1234567")
+        stats = self.store.stats()
+        self.assertEqual(stats["pending_count"], 2)
+        self.assertEqual(stats["pending_bytes"], 10)
+        self.assertEqual(stats["dropped"], 2)
+        written = []
+        with patch.object(
+            self.store, "_write", side_effect=lambda f: written.append(f.filename)
+        ):
+            self.store.start()
+            self.wait_idle()
+        self.assertEqual(written, [files[-1], latest])
+
+    def test_pressure_preserves_each_important_folder_and_evicts_debug_frames(self):
+        self.limit_store(max_pending_count=4)
+        important = [
+            self.store.submit(b"important", folder)
+            for folder in ("run_order", "workshop", "solve_captcha")
+        ]
+        debug = self.store.submit(b"debug", "terminal_main")
+        latest = self.store.submit(b"latest")
+        self.assertEqual(self.store.stats()["dropped_important"], 0)
+        self.store.start()
+        self.wait_idle()
+        self.assertTrue(all((self.root / file).exists() for file in important))
+        self.assertFalse((self.root / debug).exists())
+        self.assertTrue((self.root / latest).exists())
+
+    def test_important_frame_can_replace_an_ordinary_frame_in_a_full_queue(self):
+        self.limit_store(max_pending_count=1)
+        ordinary = self.store.submit(b"ordinary")
+        latest = self.store.latest()
+        important = self.store.submit(b"order", "run_order")
+        self.assertIs(self.store.latest(), latest)
+        self.store.start()
+        self.wait_idle()
+        self.assertFalse((self.root / ordinary).exists())
+        self.assertEqual((self.root / important).read_bytes(), b"order")
+
+    def test_full_important_queue_rejects_new_frames_but_updates_preview(self):
+        self.limit_store(max_pending_count=1)
+        kept = self.store.submit(b"order", "run_order")
+        normal = self.store.submit(b"preview")
+        rejected = self.store.submit(b"captcha", "solve_captcha")
+        self.assertEqual(self.store.latest().filename, normal)
+        self.assertEqual(self.store.latest().data, b"preview")
+        stats = self.store.stats()
+        self.assertEqual(stats["pending_count"], 1)
+        self.assertEqual(stats["dropped"], 2)
+        self.assertEqual(stats["dropped_important"], 1)
+        self.store.start()
+        self.wait_idle()
+        self.assertTrue((self.root / kept).exists())
+        self.assertFalse((self.root / normal).exists())
+        self.assertFalse((self.root / rejected).exists())
+
+    def test_oversized_frame_does_not_disturb_queue_or_block_preview(self):
+        self.limit_store(max_pending_bytes=5)
+        kept = self.store.submit(b"small")
+        oversized = self.store.submit(b"oversized")
+        self.assertEqual(self.store.latest().filename, oversized)
+        self.assertEqual(self.store.stats()["pending_bytes"], 5)
+        self.assertEqual(self.store.stats()["dropped_bytes"], 9)
+        self.store.start()
+        self.wait_idle()
+        self.assertTrue((self.root / kept).exists())
+        self.assertFalse((self.root / oversized).exists())
+
+    def test_limits_include_inflight_frame_and_rejection_keeps_existing_queue(self):
+        self.limit_store(max_pending_count=2, max_pending_bytes=10)
+        entered, release = Event(), Event()
+        write = self.store._write
+
+        def slow_write(frame):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            write(frame)
+
+        with patch.object(self.store, "_write", side_effect=slow_write):
+            active = self.store.submit(b"active")
+            self.store.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                old = self.store.submit(b"aa")
+                rejected = self.store.submit(b"large")
+                self.assertEqual(self.store.stats()["pending_bytes"], 8)
+                self.assertEqual([f.filename for f in self.store._queue], [old])
+                newest = self.store.submit(b"bb")
+                self.assertEqual(self.store.stats()["pending_count"], 2)
+                self.assertEqual(self.store.stats()["pending_bytes"], 8)
+                self.assertEqual(self.store.stats()["dropped"], 2)
+            finally:
+                release.set()
+                self.wait_idle()
+        self.assertEqual(self.store.stats()["saved"], 2)
+        self.assertTrue((self.root / active).exists())
+        self.assertTrue((self.root / newest).exists())
+        self.assertFalse((self.root / old).exists())
+        self.assertFalse((self.root / rejected).exists())
+
+    def test_concurrent_producers_respect_limits_and_account_for_every_frame(self):
+        self.limit_store(max_pending_count=8, max_pending_bytes=100)
+        entered, release = Event(), Event()
+        write = self.store._write
+
+        def slow_write(frame):
+            entered.set()
+            self.assertTrue(release.wait(5))
+            write(frame)
+
+        def produce(worker):
+            for i in range(50):
+                folder = "run_order" if i % 25 == 0 else None
+                self.store.submit(f"{worker}-{i}".encode(), folder)
+                stats = self.store.stats()
+                self.assertLessEqual(stats["pending_count"], 8)
+                self.assertLessEqual(stats["pending_bytes"], 100)
+
+        with patch.object(self.store, "_write", side_effect=slow_write):
+            active = self.store.submit(b"active")
+            self.store.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    list(pool.map(produce, range(4)))
+                expected = {active, *(f.filename for f in self.store._queue)}
+            finally:
+                release.set()
+                self.wait_idle()
+        stats = self.store.stats()
+        self.assertEqual(stats["saved"] + stats["dropped"], 201)
+        self.assertEqual(stats["failed"], 0)
+        self.assertEqual(
+            {p.relative_to(self.root).as_posix() for p in self.root.rglob("*.jpg")},
+            expected,
+        )
+
+    def test_drop_warning_is_throttled_without_losing_counts(self):
+        self.limit_store(max_pending_count=1)
+        with patch("arknights_mower.utils.screenshot.time.monotonic", return_value=100):
+            for _ in range(5):
+                self.store.submit(b"frame")
+        self.logger.warning.assert_called_once()
+        with patch("arknights_mower.utils.screenshot.time.monotonic", return_value=131):
+            self.store.submit(b"frame")
+        self.assertEqual(self.logger.warning.call_count, 2)
+        self.assertEqual(self.store.stats()["dropped"], 5)
+
+    def test_close_at_capacity_returns_on_timeout_then_drains_after_disk_recovers(self):
+        self.limit_store(max_pending_count=2)
+        entered, release = Event(), Event()
+        write = self.store._write
+
+        def slow_write(frame):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            write(frame)
+
+        with patch.object(self.store, "_write", side_effect=slow_write):
+            self.store.submit(b"active")
+            self.store.start()
+            closer = Thread(target=lambda: self.store.close(timeout=0.02), daemon=True)
+            try:
+                self.assertTrue(entered.wait(2))
+                self.store.submit(b"queued")
+                closer.start()
+                closer.join(0.5)
+                self.assertFalse(closer.is_alive())
+                with self.assertRaises(RuntimeError):
+                    self.store.submit(b"closed")
+            finally:
+                release.set()
+                self.store.close()
+        self.assertEqual(self.store.stats()["saved"], 2)
+        self.assertEqual(self.store.stats()["pending_bytes"], 0)
+        self.assertTrue(all(not thread.is_alive() for thread in self.store._threads))
+
+    def test_close_wakes_idle_writer(self):
+        self.store.start()
+        self.store.close(timeout=0.5)
+        self.assertTrue(all(not thread.is_alive() for thread in self.store._threads))
+
     def test_preview_is_an_immutable_copy_without_filesystem_access(self):
         data = np.asarray([1, 2, 3], dtype=np.uint8)
         with patch.object(Path, "mkdir", side_effect=AssertionError("同步访问磁盘")):
@@ -51,18 +271,18 @@ class ScreenshotTests(unittest.TestCase):
         self.assertFalse(self.root.exists())
         self.assertEqual(self.store.stats()["pending_bytes"], 3)
 
-    def test_unbounded_queue_keeps_every_frame_and_preserves_important_folder(self):
-        files = [self.store.submit(b"jpeg" * 256) for _ in range(300)]
+    def test_queue_within_capacity_keeps_every_frame_and_important_folder(self):
+        files = [self.store.submit(b"jpeg" * 256) for _ in range(30)]
         latest = self.store.latest()
         important = self.store.submit(b"order", "run_order")
         self.assertIs(self.store.latest(), latest)
-        self.assertEqual(self.store.stats()["pending_count"], 301)
+        self.assertEqual(self.store.stats()["pending_count"], 31)
         self.assertEqual(Path(important).parent.as_posix(), "run_order")
         # 跑单历史支持纳秒时间戳文件名（长度大于 19）。
         self.assertGreater(len(Path(important).name), 19)
         self.store.start()
         self.wait_idle()
-        self.assertEqual(self.store.stats()["saved"], 301)
+        self.assertEqual(self.store.stats()["saved"], 31)
         self.assertTrue(all((self.root / file).exists() for file in files))
         self.assertEqual((self.root / important).read_bytes(), b"order")
         self.assertEqual(self.store.last_saved(), files[-1])
@@ -134,7 +354,7 @@ class ScreenshotTests(unittest.TestCase):
 
     def test_completed_frame_is_not_retained_by_waiting_writer(self):
         self.store.submit(b"first", "run_order")
-        reference = weakref.ref(self.store.queue.queue[0])
+        reference = weakref.ref(self.store._queue[0])
         self.store.start()
         self.wait_idle()
         self.assertIsNone(reference())

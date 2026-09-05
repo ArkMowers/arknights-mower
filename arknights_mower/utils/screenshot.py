@@ -1,7 +1,7 @@
 """截图的内存预览、后台存储和独立过期清理。
 
-识别端只提交已经编码的图片，不等待磁盘。写盘队列按顺序保存所有提交的
-截图，并记录待写字节数及存储耗时。
+识别端只提交已经编码的图片，不等待磁盘。待写数量和字节数均有上限，
+积压时优先淘汰普通截图，并记录跳过数量及存储耗时。
 """
 
 import heapq
@@ -9,11 +9,11 @@ import logging
 import os
 import re
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from queue import Queue
-from threading import Event, Lock, Thread
+from threading import Condition, Event, Lock, Thread
 from typing import Callable
 
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
@@ -27,6 +27,7 @@ class Screenshot:
     captured_ns: int
     queued_at: float
     preview: bool
+    important: bool
 
 
 class ScreenshotStore:
@@ -36,13 +37,21 @@ class ScreenshotStore:
         retention_hours: Callable[[], float],
         logger: logging.Logger | None = None,
         cleanup_interval: float = 30,
+        *,
+        max_pending_count: int = 128,
+        max_pending_bytes: int = 64 * 1024**2,
     ):
+        if max_pending_count <= 0 or max_pending_bytes <= 0:
+            raise ValueError("待写截图数量和字节数上限必须大于 0")
         self.folder = Path(folder)
         self.retention_hours = retention_hours
         self.logger = logger or logging.getLogger(__name__)
         self.cleanup_interval = cleanup_interval
-        self.queue = Queue()
+        self.max_pending_count = max_pending_count
+        self.max_pending_bytes = max_pending_bytes
+        self._queue: deque[Screenshot] = deque()
         self._lock = Lock()
+        self._ready = Condition(self._lock)
         self._cleanup_lock = Lock()
         self._stop = Event()
         self._threads: list[Thread] = []
@@ -53,6 +62,11 @@ class ScreenshotStore:
         self._pending_bytes = 0
         self._saved = 0
         self._failed = 0
+        self._dropped = 0
+        self._dropped_bytes = 0
+        self._dropped_important = 0
+        self._reported_dropped = 0
+        self._last_drop_log = float("-inf")
         self._write_ms = 0.0
         self._queue_wait_ms = 0.0
         self._cleanup_ms = 0.0
@@ -73,10 +87,11 @@ class ScreenshotStore:
 
     def close(self, timeout=5):
         """正常关闭时排空写盘队列；磁盘卡住时不无限等待。"""
-        with self._lock:
+        with self._ready:
             if not self._stop.is_set():
                 self._stop.set()
-                self.queue.put(None)
+                # 唤醒空闲写盘线程；不向已满队列插入退出标记。
+                self._ready.notify_all()
         deadline = time.monotonic() + timeout
         for thread in self._threads:
             thread.join(max(0, deadline - time.monotonic()))
@@ -100,14 +115,76 @@ class ScreenshotStore:
             )
             filename = f"{folder}/{captured_ns}.jpg"
             frame = Screenshot(
-                filename, data, captured_ns, time.monotonic(), not sub_folder
+                filename,
+                data,
+                captured_ns,
+                time.monotonic(),
+                not sub_folder,
+                sub_folder in _IMPORTANT_FOLDERS,
             )
             if frame.preview:
                 self._latest = frame
-            self._pending_count += 1
-            self._pending_bytes += len(data)
-            self.queue.put(frame)
+            if self._make_room(frame):
+                self._pending_count += 1
+                self._pending_bytes += len(data)
+                self._queue.append(frame)
+                self._ready.notify()
+        self._report_dropped()
         return filename
+
+    def _record_drop(self, frame: Screenshot):
+        self._dropped += 1
+        self._dropped_bytes += len(frame.data)
+        self._dropped_important += int(frame.important)
+
+    def _make_room(self, frame: Screenshot) -> bool:
+        # 调用时持有 _lock，容量同时计入等待中和正在写入的截图。
+        count = self._pending_count + 1
+        size = self._pending_bytes + len(frame.data)
+
+        def fits():
+            return count <= self.max_pending_count and size <= self.max_pending_bytes
+
+        if fits():
+            return True
+        evicted = []
+        if len(frame.data) <= self.max_pending_bytes:
+            for waiting in self._queue:
+                if waiting.important:
+                    continue
+                evicted.append(waiting)
+                count -= 1
+                size -= len(waiting.data)
+                if fits():
+                    break
+        if not fits():
+            # 已在写入的图、关键截图不能淘汰；保持原队列，跳过新图。
+            self._record_drop(frame)
+            return False
+        for waiting in evicted:
+            self._queue.remove(waiting)
+            self._pending_count -= 1
+            self._pending_bytes -= len(waiting.data)
+            self._record_drop(waiting)
+        return True
+
+    def _report_dropped(self):
+        now = time.monotonic()
+        with self._lock:
+            if (
+                self._dropped == self._reported_dropped
+                or now - self._last_drop_log < 30
+            ):
+                return
+            self._reported_dropped = self._dropped
+            self._last_drop_log = now
+            dropped = self._dropped
+            important = self._dropped_important
+        self.logger.warning(
+            "截图待写容量不足，累计跳过 %s 张（关键截图 %s 张），内存预览继续更新",
+            dropped,
+            important,
+        )
 
     def latest(self) -> Screenshot | None:
         with self._lock:
@@ -123,8 +200,13 @@ class ScreenshotStore:
                 # 包含正在写入的一帧，因此慢磁盘下也能观察真实待写占用。
                 "pending_count": self._pending_count,
                 "pending_bytes": self._pending_bytes,
+                "max_pending_count": self.max_pending_count,
+                "max_pending_bytes": self.max_pending_bytes,
                 "saved": self._saved,
                 "failed": self._failed,
+                "dropped": self._dropped,
+                "dropped_bytes": self._dropped_bytes,
+                "dropped_important": self._dropped_important,
                 "write_ms": round(self._write_ms, 2),
                 "queue_wait_ms": round(self._queue_wait_ms, 2),
                 "cleanup_ms": round(self._cleanup_ms, 2),
@@ -160,10 +242,12 @@ class ScreenshotStore:
 
     def _writer(self):
         while True:
-            frame = self.queue.get()
-            try:
-                if frame is None:
+            with self._ready:
+                self._ready.wait_for(lambda: self._queue or self._stop.is_set())
+                if not self._queue:
                     return
+                frame = self._queue.popleft()
+            try:
                 started = time.monotonic()
                 try:
                     self._write(frame)
@@ -183,8 +267,7 @@ class ScreenshotStore:
                         self._write_ms = (time.monotonic() - started) * 1000
                         self._queue_wait_ms = (started - frame.queued_at) * 1000
             finally:
-                self.queue.task_done()
-                # 不让阻塞中的 queue.get() 留住上一帧。
+                # 不让等待新任务的线程留住上一帧。
                 del frame
 
     @staticmethod
