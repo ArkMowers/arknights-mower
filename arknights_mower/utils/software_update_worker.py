@@ -30,6 +30,7 @@ if __package__:
         launch_environment,
         process_alive,
         read_json,
+        submission_lock,
         write_json,
     )
 else:
@@ -40,12 +41,17 @@ else:
         launch_environment,
         process_alive,
         read_json,
+        submission_lock,
         write_json,
     )
 
 MAX_PACKAGE_BYTES = 2 * 1024**3
 MAX_EXTRACTED_BYTES = 8 * 1024**3
 NPM_LOCKFILE = "ui/package-lock.json"
+
+
+class UpdateCancelled(Exception):
+    """Preparation was cancelled before any instance was stopped."""
 
 
 class SourceChangesError(ValueError):
@@ -156,7 +162,7 @@ def require_clean_source(git, root, env=None, *, force=False, environment=None):
     return generated
 
 
-def extract_archive(archive, destination):
+def extract_archive(archive, destination, check_cancelled=lambda: None):
     """Extract official zip/tar layouts; no absolute paths or escaping links."""
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
@@ -166,6 +172,7 @@ def extract_archive(archive, destination):
             if sum(m.file_size for m in members) > MAX_EXTRACTED_BYTES:
                 raise ValueError("安装包解压后过大")
             for member in members:
+                check_cancelled()
                 name = member.filename
                 path = PurePosixPath(name)
                 if (
@@ -184,7 +191,9 @@ def extract_archive(archive, destination):
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with source.open(member) as src, target.open("wb") as dst:
-                        shutil.copyfileobj(src, dst)
+                        while chunk := src.read(1024 * 1024):
+                            check_cancelled()
+                            dst.write(chunk)
                     mode = (member.external_attr >> 16) & 0o777
                     if mode:
                         target.chmod(mode)
@@ -192,7 +201,9 @@ def extract_archive(archive, destination):
         with tarfile.open(archive, "r:gz") as source:
             if sum(m.size for m in source.getmembers()) > MAX_EXTRACTED_BYTES:
                 raise ValueError("安装包解压后过大")
-            source.extractall(destination, filter="data")
+            for member in source.getmembers():
+                check_cancelled()
+                source.extract(member, destination, filter="data")
 
 
 class Worker:
@@ -237,6 +248,14 @@ class Worker:
             self.source_backup_paths.insert(0, self.environment)
         self.dependencies_started = False
         self.needs_lfs = False
+        self.cancellable = True
+        self.status["cancellable"] = True
+        self.source_stage = self.work / "source"
+        self.stage_attempted = False
+        self.payload_ready = False
+        self.dependencies_changed = True
+        self.wheels = None
+        self.progress_servers = []
 
     def report(self, phase, message, status="running"):
         self.status.update(
@@ -245,7 +264,32 @@ class Worker:
         write_json(self.state / "status.json", self.status)
         print(message, flush=True)
 
-    def run_command(self, args, cwd=None, timeout=1800, env=None):
+    def check_cancelled(self):
+        if self.cancellable and (self.state / "active/cancel.json").exists():
+            raise UpdateCancelled("已取消更新，当前实例继续运行")
+
+    def begin_install(self):
+        # Serialize the last cancellation check with the authenticated API.
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                with submission_lock(self.state):
+                    self.check_cancelled()
+                    self.cancellable = False
+                    self.status["cancellable"] = False
+                    write_json(
+                        self.state / "active/installing.json", {"id": self.job["id"]}
+                    )
+                    self.report("prepared", "准备完成，开始保存任务并重启全部实例")
+                return
+            except ValueError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+
+    def run_command(self, args, cwd=None, timeout=1800, env=None, cancellable=True):
+        if cancellable:
+            self.check_cancelled()
         # Commands and arguments are fixed by the installer. Never use shell=True.
         print("执行：" + " ".join(map(str, args)), flush=True)
         process = subprocess.Popen(
@@ -256,8 +300,19 @@ class Worker:
             **detached_options(),
         )
         try:
-            code = process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+            deadline = time.monotonic() + timeout
+            while True:
+                if cancellable:
+                    self.check_cancelled()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args, timeout)
+                try:
+                    code = process.wait(timeout=min(0.25, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        except (subprocess.TimeoutExpired, UpdateCancelled):
             # Only this command's own child tree is stopped. npm/git can have
             # grandchildren; leaving them running would race with rollback.
             if sys.platform == "win32":
@@ -337,6 +392,8 @@ class Worker:
             self.run_command(
                 [self.job["git"], "lfs", "fetch", "origin", self.job["commit"]]
             )
+
+    def ensure_installer(self):
         if self.job.get("in_place_environment"):
             self.report("preparing", "检查当前 Python 环境的依赖安装工具")
             try:
@@ -354,6 +411,149 @@ class Worker:
                 raise ValueError(
                     "当前 Python 无法使用依赖安装工具，请查看日志，为此解释器安装 pip 或在启动路径中提供 uv；当前实例尚未停止"
                 ) from exc
+
+    def prepare_source_payload(self):
+        self.report("preparing", "在临时目录准备目标版本，当前实例继续运行")
+        self.stage_attempted = True
+        self.run_command(
+            [
+                self.job["git"],
+                "worktree",
+                "add",
+                "--detach",
+                self.source_stage,
+                self.job["commit"],
+            ]
+        )
+        # Only reuse an environment for unchanged, ordinary index requirements.
+        # Local paths, included files and VCS requirements need fresh resolution.
+        requirements = self.source_stage / "requirements.in"
+        current = self.root / "requirements.in"
+        lines = requirements.read_text(encoding="utf-8").splitlines()
+        simple = all(
+            not line.strip()
+            or line.lstrip().startswith("#")
+            or (
+                not line.lstrip().startswith(("-", ".", "/"))
+                and not any(char in line for char in ("/", "@", "\\"))
+            )
+            for line in lines
+        )
+        inputs = self.git_output(
+            "diff", "--name-only", self.old_commit, self.job["commit"]
+        )
+        changed_inputs = any(
+            Path(name).name in ("pyproject.toml", "setup.py", "setup.cfg", "uv.lock")
+            or Path(name).name.startswith("requirements")
+            for name in inputs.splitlines()
+        )
+        self.dependencies_changed = not (
+            simple
+            and not changed_inputs
+            and current.is_file()
+            and current.read_bytes() == requirements.read_bytes()
+        )
+        if self.dependencies_changed:
+            self.report("dependencies", "下载并准备 Python 依赖，当前实例继续运行")
+            self.ensure_installer()
+            python = self.job["python"]
+            if self.job.get("uv"):
+                temporary_env = self.work / "dependency-tools"
+                self.run_command(
+                    [self.job["uv"], "venv", "--python", python, temporary_env]
+                )
+                python = temporary_env / (
+                    "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+                )
+                # uv has no download command. An isolated environment warms its
+                # cache without modifying the currently running interpreter.
+                self.run_command(
+                    [
+                        self.job["uv"],
+                        "pip",
+                        "install",
+                        "--python",
+                        python,
+                        "-r",
+                        "requirements.in",
+                    ],
+                    cwd=self.source_stage,
+                    env=self.pip_environment(),
+                )
+            else:
+                self.wheels = self.work / "wheels"
+                self.run_command(
+                    [
+                        python,
+                        "-m",
+                        "pip",
+                        "wheel",
+                        "-r",
+                        "requirements.in",
+                        "--wheel-dir",
+                        self.wheels,
+                    ],
+                    cwd=self.source_stage,
+                    env=self.pip_environment(),
+                )
+                # Install the resolved wheels offline, including direct-URL
+                # requirements, rather than fetching those URLs a second time.
+                from email.parser import BytesParser
+
+                resolved = []
+                for wheel in self.wheels.glob("*.whl"):
+                    with zipfile.ZipFile(wheel) as archive:
+                        name = next(
+                            name
+                            for name in archive.namelist()
+                            if name.endswith(".dist-info/METADATA")
+                        )
+                        metadata = BytesParser().parsebytes(archive.read(name))
+                        resolved.append(f"{metadata['Name']}=={metadata['Version']}")
+                (self.work / "resolved-requirements.txt").write_text(
+                    "\n".join(resolved), encoding="utf-8"
+                )
+        else:
+            self.report("dependencies", "Python 依赖清单未变化，保留当前环境")
+        self.report("building", "安装前端依赖并构建页面，当前实例继续运行")
+        ui = self.source_stage / "ui"
+        self.run_command(
+            [
+                self.job["npm"],
+                "ci" if (ui / "package-lock.json").is_file() else "install",
+            ],
+            cwd=ui,
+        )
+        self.run_command([self.job["npm"], "run", "build"], cwd=ui)
+        self.payload_ready = True
+
+    def cleanup_preparation(self):
+        if self.stage_attempted or self.source_stage.exists():
+            try:
+                self.run_command(
+                    [
+                        self.job["git"],
+                        "worktree",
+                        "remove",
+                        "--force",
+                        "--force",
+                        self.source_stage,
+                    ],
+                    timeout=120,
+                    cancellable=False,
+                )
+            except Exception:
+                traceback.print_exc()
+        for path in (
+            self.work / "dependency-tools",
+            self.work / "wheels",
+            self.work / "payload",
+            getattr(self, "prepared", None),
+        ):
+            if path and path.exists():
+                shutil.rmtree(path, ignore_errors=True)
+        if self.job["deployment"] == "release" and self.status["status"] == "cancelled":
+            (self.work / self.job["asset"]["name"]).unlink(missing_ok=True)
 
     def create_environment(self):
         args = [self.job["base_python"], "-m", "venv"]
@@ -399,13 +599,14 @@ class Worker:
                     headers={"User-Agent": "Mower-Software-Update"},
                     proxies={"http": proxy, "https": proxy} if proxy else None,
                     stream=True,
-                    timeout=60,
+                    timeout=(10, 10),
                 ) as response,
                 package.open("wb") as out,
             ):
                 response.raise_for_status()
                 size = 0
-                for chunk in response.iter_content(1024 * 1024):
+                for chunk in response.iter_content(64 * 1024):
+                    self.check_cancelled()
                     size += len(chunk)
                     if size > MAX_PACKAGE_BYTES:
                         raise ValueError("安装包超过 2 GiB 限制")
@@ -415,9 +616,11 @@ class Worker:
             digest = hashlib.sha256()
             with package.open("rb") as stream:
                 while chunk := stream.read(1024 * 1024):
+                    self.check_cancelled()
                     digest.update(chunk)
             if digest.hexdigest() != asset["sha256"]:
                 raise ValueError("SHA-256 校验失败，未安装")
+        self.check_cancelled()
         payload_dir = self.work / "payload"
         self.report("extracting", "解压并验证安装包")
         if package.suffix == ".dmg":
@@ -440,13 +643,21 @@ class Worker:
                 app = mount / "mower.app"
                 if not (app / "Contents/MacOS/mower").is_file():
                     raise ValueError("DMG 中未找到 mower.app")
-                shutil.copytree(app, payload_dir / "mower.app", symlinks=True)
+                shutil.copytree(
+                    app,
+                    payload_dir / "mower.app",
+                    symlinks=True,
+                    copy_function=self.copy_package_file,
+                )
             finally:
                 self.run_command(
-                    ["/usr/bin/hdiutil", "detach", mount], cwd=self.work, timeout=120
+                    ["/usr/bin/hdiutil", "detach", mount],
+                    cwd=self.work,
+                    timeout=120,
+                    cancellable=False,
                 )
         else:
-            extract_archive(package, payload_dir)
+            extract_archive(package, payload_dir, self.check_cancelled)
         if self.root.suffix == ".app":
             payload = payload_dir / "mower.app"
             executable = payload / "Contents/MacOS/mower"
@@ -466,9 +677,15 @@ class Worker:
             )
         # Prepare on the same filesystem as the installation for atomic renames.
         self.prepared = self.root.with_name(f"{self.root.name}.new-{self.job['id']}")
-        shutil.copytree(payload, self.prepared, symlinks=True)
+        shutil.copytree(
+            payload, self.prepared, symlinks=True, copy_function=self.copy_package_file
+        )
         if self.root.suffix == ".app":
             self.verify_macos_signature(self.prepared)
+
+    def copy_package_file(self, source, target):
+        self.check_cancelled()
+        return shutil.copy2(source, target)
 
     def verify_macos_signature(self, bundle):
         self.report("verifying", "检查 macOS 程序签名完整性")
@@ -489,6 +706,7 @@ class Worker:
         self.original = instances(self.state)
         if not any(r["kind"] == "instance" for r in self.original):
             raise ValueError("未找到可恢复的实例，请从桌面启动器打开 Mower 后重试")
+        write_json(self.work / "instances-before.json", self.original)
         for record in self.original:
             write_json(
                 self.state / "shutdown" / f"{record['id']}.json",
@@ -526,6 +744,8 @@ class Worker:
                 target.write_bytes(committed)
         self.report("installing", "切换源码，保留原提交和前端用于失败恢复")
         for index, target in enumerate(self.source_backup_paths):
+            if target == self.environment and not self.dependencies_changed:
+                continue
             if target.exists():
                 backup = self.work / f"runtime-{index}.backup"
                 shutil.move(str(target), backup)
@@ -544,17 +764,20 @@ class Worker:
             )
         if self.needs_lfs:
             self.run_command([self.job["git"], "lfs", "checkout"])
-        self.report("dependencies", "使用当前 Python 环境安装依赖")
-        if not self.job.get("in_place_environment"):
-            self.create_environment()
-        self.dependencies_started = True
-        self.install_dependencies()
-        self.report("building", "安装前端依赖并构建页面")
-        npm_command = (
-            "ci" if (self.root / "ui/package-lock.json").is_file() else "install"
-        )
-        self.run_command([self.job["npm"], npm_command], cwd=self.root / "ui")
-        self.run_command([self.job["npm"], "run", "build"], cwd=self.root / "ui")
+        if self.dependencies_changed:
+            self.report("dependencies", "安装已准备的 Python 依赖")
+            if not self.job.get("in_place_environment"):
+                self.create_environment()
+            self.dependencies_started = True
+            self.install_dependencies(prepared=self.payload_ready)
+        if self.payload_ready:
+            self.report("installing", "应用已构建的前端页面")
+            for name in ("node_modules", "dist"):
+                staged = self.source_stage / "ui" / name
+                if staged.exists():
+                    shutil.move(str(staged), self.root / "ui" / name)
+        else:
+            raise RuntimeError("目标版本尚未准备完成")
 
     def pip_environment(self):
         env = self.env.copy()
@@ -566,14 +789,24 @@ class Worker:
             )
         return env
 
-    def install_dependencies(self):
+    def install_dependencies(self, *, prepared=False):
         if self.job.get("uv"):
             command = [self.job["uv"], "pip", "install", "--python", self.job["python"]]
         else:
             command = [self.job["python"], "-m", "pip", "install"]
-        self.run_command(
-            command + ["-r", "requirements.in"], env=self.pip_environment()
-        )
+        arguments = ["-r", "requirements.in"]
+        if prepared:
+            if self.wheels:
+                arguments = [
+                    "--no-index",
+                    "--find-links",
+                    self.wheels,
+                    "-r",
+                    self.work / "resolved-requirements.txt",
+                ]
+            elif self.job.get("uv"):
+                arguments = ["--offline", *arguments]
+        self.run_command(command + arguments, env=self.pip_environment())
 
     def install_package(self):
         self.report("installing", "替换程序，保留用户数据和原版本")
@@ -766,6 +999,19 @@ class Worker:
                 if backup.exists():
                     os.replace(backup, target)
 
+    def start_progress_servers(self):
+        if __package__:
+            from .software_update_progress import ProgressServers
+        else:
+            from software_update_progress import ProgressServers
+        self.progress_servers = ProgressServers(self.state, self.original)
+        self.progress_servers.start()
+
+    def close_progress_servers(self):
+        if self.progress_servers:
+            self.progress_servers.close()
+            self.progress_servers = []
+
     def execute(self):
         finished = threading.Event()
 
@@ -785,31 +1031,50 @@ class Worker:
         try:
             if self.job["deployment"] == "source":
                 self.prepare_source()
+                self.prepare_source_payload()
             else:
                 self.prepare_package()
+            self.begin_install()
             self.stop_instances()
+            self.start_progress_servers()
             if self.job["deployment"] == "source":
                 self.install_source()
             else:
                 self.install_package()
+            self.close_progress_servers()
             self.restart(self.original)
             self.report("done", "更新成功，实例已恢复", "succeeded")
         except Exception as exc:
-            traceback.print_exc()
-            message = str(exc)
-            try:
-                # Refuse rollback over a new process still using the replacement.
-                if any(p.poll() is None for p in self.new_processes):
-                    raise RuntimeError(
-                        "新实例仍在运行，未覆盖程序；请查看备份和 restart.log 后手动恢复"
-                    )
-                self.rollback()
-                self.restart(self.stopped, verify=False)
-            except Exception as recovery_error:
+            cancelled = isinstance(exc, UpdateCancelled) or (
+                self.cancellable and (self.state / "active/cancel.json").exists()
+            )
+            self.cancellable = False
+            self.status["cancellable"] = False
+            if cancelled:
+                self.report("cancelled", "已取消更新，当前实例继续运行", "cancelled")
+            else:
                 traceback.print_exc()
-                message += f"；恢复需要处理：{recovery_error}"
-            self.report("failed", message, "failed")
+                message = str(exc)
+                try:
+                    # Refuse rollback over a process still using the replacement.
+                    if any(p.poll() is None for p in self.new_processes):
+                        raise RuntimeError(
+                            "新实例仍在运行，未覆盖程序；请查看备份和 restart.log 后手动恢复"
+                        )
+                    if self.original or self.switched or self.replacements:
+                        self.rollback()
+                        self.close_progress_servers()
+                        self.restart(self.stopped, verify=False)
+                except Exception as recovery_error:
+                    traceback.print_exc()
+                    message += f"；恢复需要处理：{recovery_error}"
+                self.report("failed", message, "failed")
+
         finally:
+            self.cancellable = False
+            self.status["cancellable"] = False
+            self.close_progress_servers()
+            self.cleanup_preparation()
             finished.set()
             thread.join()
             for record in self.original:

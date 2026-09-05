@@ -411,7 +411,13 @@ def run_desktop():
         close_child(splash_process)
         registration.close()
         raise RuntimeError(f"端口{port}已被占用，无法启动！")
-    registration.record["port"] = port
+    from hashlib import sha256
+
+    registration.record.update(
+        port=port,
+        listen_host=host,
+        token_hash=sha256((token or "").encode()).hexdigest(),
+    )
     registration.publish()
     splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
     import server

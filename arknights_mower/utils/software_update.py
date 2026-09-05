@@ -661,6 +661,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
                 "phase": "preparing",
                 "version": plan["version"],
                 "message": "正在启动独立更新程序",
+                "cancellable": True,
                 "log_path": str(work / "update.log"),
             },
         )
@@ -681,6 +682,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
                 shutil.copy2(socks.__file__, work / "socks.py")
             for name in (
                 "software_update_worker.py",
+                "software_update_progress.py",
                 "update_runtime.py",
                 "github_download.py",
             ):
@@ -729,26 +731,15 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
 
 
 def status():
-    state = runtime.state_dir()
-    result = runtime.read_json(
-        state / "status.json", {"status": "idle", "message": "尚未执行软件更新"}
-    )
-    if result.get("status") == "running" and not runtime.active_job(state):
-        result.update(
-            status="failed", message="更新程序意外退出，请查看日志和备份后再试"
-        )
-    if log_path := result.get("log_path"):
-        try:
-            with Path(log_path).open("rb") as log:
-                log.seek(max(0, log.seek(0, 2) - 16000))
-                result["log"] = log.read().decode("utf-8", errors="replace")
-        except OSError:
-            pass
-    return {
-        "ok": True,
-        **result,
-        "last_check": runtime.read_json(state / "last-check.json", {}),
-    }
+    from arknights_mower.utils.software_update_progress import read_status
+
+    return read_status(runtime.state_dir())
+
+
+def cancel(job_id):
+    from arknights_mower.utils.software_update_progress import cancel_update
+
+    return cancel_update(runtime.state_dir(), job_id)
 
 
 def manual_plan(filename, proxy=""):

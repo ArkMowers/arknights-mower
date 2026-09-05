@@ -23,6 +23,11 @@ const busy = ref(false)
 const checking = ref(false)
 const error = ref('')
 const disconnected = ref(false)
+const cancelling = ref(false)
+const progressUrl = computed(() => {
+  const token = axios.defaults.headers.common.token || ''
+  return `${base}/progress#${new URLSearchParams({ token }).toString()}`
+})
 const packageFiles = ref([])
 const uploadPercent = ref(0)
 const source = computed(() => info.value?.deployment === 'source')
@@ -124,7 +129,11 @@ async function poll() {
     disconnected.value = false
     if (data.status === 'running' && !pendingSince) pendingSince = Date.now()
     const pending = sessionStorage.getItem(pendingKey)
-    if (pending && pending === data.id && ['succeeded', 'failed'].includes(data.status)) {
+    if (
+      pending &&
+      pending === data.id &&
+      ['succeeded', 'failed', 'cancelled'].includes(data.status)
+    ) {
       sessionStorage.removeItem(pendingKey)
       if (data.status === 'succeeded') {
         window.location.reload()
@@ -198,13 +207,31 @@ async function install(manual = false, force = false, target = null) {
     }
     sessionStorage.setItem(pendingKey, response.data.id)
     pendingSince = Date.now()
-    job.value = { ...response.data, status: 'running', phase: 'preparing' }
+    cancelling.value = false
+    job.value = { ...response.data, status: 'running', phase: 'preparing', cancellable: true }
     clearTimeout(timer)
     await poll()
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
     busy.value = false
+  }
+}
+
+async function cancelUpdate() {
+  if (!job.value.cancellable || cancelling.value) return
+  cancelling.value = true
+  try {
+    const { data } = await axios.post(
+      `${base}/cancel`,
+      { id: job.value.id },
+      { headers, timeout: 5000 }
+    )
+    if (!data.ok) throw new Error(data.message)
+    messages.info(data.message)
+  } catch (err) {
+    cancelling.value = false
+    error.value = errorMessage(err)
   }
 }
 
@@ -431,7 +458,8 @@ onUnmounted(() => {
           title="更新状态"
           aria-live="polite"
         >
-          {{ disconnected ? '网页服务暂时断开，正在等待重启并重连。' : job.message }}
+          {{ job.message }}
+          <p v-if="disconnected">更新服务正在交接，稍后自动重试。</p>
           <p v-if="job.current" class="version">
             已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
               / {{ (job.total / 1048576).toFixed(1) }} MiB</span
@@ -439,6 +467,20 @@ onUnmounted(() => {
           </p>
           <p v-if="job.log_path" class="log-path">日志：{{ job.log_path }}</p>
         </n-alert>
+      </n-form-item>
+      <n-form-item v-if="job.status !== 'idle'" :show-label="false">
+        <n-space>
+          <n-button tag="a" :href="progressUrl" target="_blank" rel="noopener noreferrer">
+            独立更新进度
+          </n-button>
+          <n-button
+            v-if="job.status === 'running'"
+            :disabled="!job.cancellable || cancelling"
+            :loading="cancelling"
+            @click="cancelUpdate"
+            >取消更新</n-button
+          >
+        </n-space>
       </n-form-item>
       <n-form-item v-if="job.log" :show-label="false">
         <n-collapse>

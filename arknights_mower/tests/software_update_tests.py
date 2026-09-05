@@ -960,6 +960,7 @@ class ThreeInstanceIntegrationTests(unittest.TestCase):
                 runtime.write_json(directory / "job.json", job)
                 worker = Worker(directory / "job.json")
                 worker.prepare_source = Mock()
+                worker.prepare_source_payload = Mock()
                 worker.install_source = Mock()
                 worker.execute()
                 replacement = worker.new_processes

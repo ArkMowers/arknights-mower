@@ -82,6 +82,7 @@ class SourceCheckoutTests(unittest.TestCase):
         ).strip()
 
     def worker(self, attributes=None):
+        (self.root / "requirements.in").write_text("--no-index\n")
         if attributes is not None:
             (self.root / "assets").mkdir()
             (self.root / "assets/.gitattributes").write_text(attributes)
