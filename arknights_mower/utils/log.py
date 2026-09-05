@@ -61,20 +61,33 @@ whlr = Handler()
 whlr.setLevel(logging.INFO)
 
 log_queue = Queue()
-listener = None
-
-folder = Path(get_path("@app/log"))
-folder.mkdir(exist_ok=True, parents=True)
-fhlr = TimedRotatingFileHandler(
-    folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
-)
-fhlr.setFormatter(basic_formatter)
-fhlr.setLevel("DEBUG")
-fhlr.addFilter(filter)
 queue_handler = QueueHandler(log_queue)
 logger.addHandler(queue_handler)
-listener = QueueListener(log_queue, dhlr, fhlr, whlr, respect_handler_level=True)
+listener = QueueListener(log_queue, dhlr, whlr, respect_handler_level=True)
 listener.start()
+
+# f(ile)hlr: 文件记录（整点滚转）。不在导入时建立，避免 GUI 子进程（webview_window
+# 等）import 本模块时也各建一个指向同一 runtime.log 的文件句柄。Windows 的 os.rename
+# 需要独占移动文件，两个进程都持有该文件时，任一进程整点滚转都会因另一进程仍占用而
+# 抛 PermissionError [WinError 32]，且失败后该进程之后所有日志都会重复失败、全部丢失。
+# 因此文件日志交由主进程显式 init_file_logging() 建立，子进程不调用。
+fhlr = None
+
+
+def init_file_logging() -> None:
+    global fhlr
+    if fhlr is not None:
+        return
+    folder = Path(get_path("@app/log"))
+    folder.mkdir(exist_ok=True, parents=True)
+    fhlr = TimedRotatingFileHandler(
+        folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
+    )
+    fhlr.setFormatter(basic_formatter)
+    fhlr.setLevel("DEBUG")
+    fhlr.addFilter(filter)
+    logger.addHandler(fhlr)
+
 
 screenshot_folder = get_path("@app/screenshot")
 screenshot_store = ScreenshotStore(
