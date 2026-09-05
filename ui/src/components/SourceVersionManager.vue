@@ -64,7 +64,7 @@ function confirm() {
   <n-collapse @update:expanded-names="expand">
     <n-collapse-item title="源码版本管理" name="source">
       <n-space vertical :size="12" class="source-versions">
-        <p class="hint">选择分支和近期提交，或填写 SHA / tag，可更新或切回旧版本。</p>
+        <p class="hint">可以选择最近20次提交，或手动输入SHA/tag</p>
         <p v-if="history" class="current version">
           当前检出：{{ history.current_branch || '分离 HEAD' }} ·
           {{ history.current_commit.slice(0, 12) }}
