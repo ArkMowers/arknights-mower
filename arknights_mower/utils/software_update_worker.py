@@ -6,6 +6,7 @@ The old code, virtualenv and frontend remain available for rollback.
 """
 
 import hashlib
+import json
 import os
 import shutil
 import signal
@@ -42,9 +43,56 @@ else:
 
 MAX_PACKAGE_BYTES = 2 * 1024**3
 MAX_EXTRACTED_BYTES = 8 * 1024**3
+NPM_LOCKFILE = "ui/package-lock.json"
 
 
-def require_clean_source(git, root, env=None):
+class SourceChangesError(ValueError):
+    """Local checkout edits that can be discarded by an explicit force update."""
+
+
+def npm_lockfile_without_metadata(content):
+    """Compare dependency data while ignoring npm's generated bookkeeping."""
+    lockfile = json.loads(content)
+
+    def clean_package(package):
+        # These fields do not change the installed dependency graph. Do not
+        # strip dependency maps: a dependency can itself be named "peer".
+        for key in ("peer", "license", "funding"):
+            package.pop(key, None)
+
+    for package in lockfile.get("packages", {}).values():
+        clean_package(package)
+
+    def clean_legacy_dependencies(dependencies):
+        for package in dependencies.values():
+            clean_package(package)
+            clean_legacy_dependencies(package.get("dependencies", {}))
+
+    clean_legacy_dependencies(lockfile.get("dependencies", {}))
+    return lockfile
+
+
+def generated_npm_lockfile(git, root, env=None):
+    """Return local/committed bytes only for equivalent, regular lockfiles."""
+    target = Path(root) / NPM_LOCKFILE
+    if target.is_symlink() or not target.is_file():
+        return None
+    try:
+        local = target.read_bytes()
+        committed = subprocess.check_output(
+            [git, "show", "HEAD:" + NPM_LOCKFILE], cwd=root, env=env, timeout=10
+        )
+        if npm_lockfile_without_metadata(local) == npm_lockfile_without_metadata(
+            committed
+        ):
+            return local, committed
+    except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def require_clean_source(git, root, env=None, *, force=False):
+    """Check source edits without rewriting files; return generated lock changes."""
     changes = subprocess.check_output(
         [
             git,
@@ -59,17 +107,25 @@ def require_clean_source(git, root, env=None):
         text=True,
         timeout=10,
     )
-    if changes:
-        if isinstance(changes, bytes):
-            changes = changes.decode("utf-8", errors="replace")
-        entries = changes.rstrip().splitlines()
+    if isinstance(changes, bytes):
+        changes = changes.decode("utf-8", errors="replace")
+    entries = changes.rstrip().splitlines()
+    generated = {}
+    # Staged edits, deletions, renames and untracked files still require action.
+    if " M " + NPM_LOCKFILE in entries:
+        content = generated_npm_lockfile(git, root, env)
+        if content is not None:
+            generated[NPM_LOCKFILE] = content
+            entries.remove(" M " + NPM_LOCKFILE)
+    if entries and not force:
         preview = "\n".join(entries[:10])
         if len(entries) > 10:
             preview += f"\n……另有 {len(entries) - 10} 项"
-        raise ValueError(
-            "源码目录有未提交修改或未跟踪文件，请先提交或备份后清理；"
-            "更新不会强制覆盖这些文件：\n" + preview
+        raise SourceChangesError(
+            "源码目录有未提交修改或未跟踪文件，可自行处理或使用“强制更新”；"
+            "普通更新不会覆盖这些文件：\n" + preview
         )
+    return generated
 
 
 def extract_archive(archive, destination):
@@ -190,7 +246,9 @@ class Worker:
         ).strip()
 
     def prepare_source(self):
-        require_clean_source(self.job["git"], self.root, self.env)
+        require_clean_source(
+            self.job["git"], self.root, self.env, force=self.job.get("force", False)
+        )
         self.old_commit = self.git_output("rev-parse", "HEAD")
         self.old_branch = self.git_output("branch", "--show-current")
         write_json(
@@ -382,9 +440,20 @@ class Worker:
 
     def install_source(self):
         # Recheck after shutdown: the checkout may have been edited during fetch.
-        require_clean_source(self.job["git"], self.root, self.env)
+        force = self.job.get("force", False)
+        generated = require_clean_source(
+            self.job["git"], self.root, self.env, force=force
+        )
         if self.git_output("rev-parse", "HEAD") != self.old_commit:
             raise ValueError("更新准备期间源码发生变化，已取消安装")
+        if not force:
+            for relative, (local, committed) in generated.items():
+                target = self.root / relative
+                if target.is_symlink() or target.read_bytes() != local:
+                    raise ValueError(f"更新准备期间 {relative} 发生变化，已取消安装")
+                # npm's metadata is regenerated; dependency changes never enter
+                # this path. Keep checks and fetch strictly read-only.
+                target.write_bytes(committed)
         self.report("installing", "切换源码，保留原版本、虚拟环境和前端用于失败恢复")
         for relative in (self.venv_dir, "ui/node_modules", "ui/dist"):
             target = self.root / relative
@@ -393,7 +462,17 @@ class Worker:
                 shutil.move(str(target), backup)
                 self.backups.append((target, backup))
         self.switched = True
-        self.run_command([self.job["git"], "switch", "--detach", self.job["commit"]])
+        if force:
+            self.report("installing", "强制更新：覆盖本地源码改动，不备份本地修改")
+            # Detach first so resetting does not move the user's original branch.
+            # reset --hard also replaces untracked files in the target's way;
+            # unrelated untracked/ignored runtime files are not globally cleaned.
+            self.run_command([self.job["git"], "switch", "--detach", self.old_commit])
+            self.run_command([self.job["git"], "reset", "--hard", self.job["commit"]])
+        else:
+            self.run_command(
+                [self.job["git"], "switch", "--detach", self.job["commit"]]
+            )
         if self.needs_lfs:
             self.run_command([self.job["git"], "lfs", "checkout"])
         self.report("dependencies", "创建虚拟环境并安装 Python 依赖")

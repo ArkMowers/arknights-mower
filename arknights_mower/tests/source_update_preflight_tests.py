@@ -1,5 +1,6 @@
 """Source update preflight with installed tools and ordinary Git checkouts."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -175,3 +176,128 @@ class SourceCheckoutTests(unittest.TestCase):
         with patch.object(subprocess, "Popen") as start:
             worker.restart([{"kind": "instance", "name": "fixture"}], verify=False)
         self.assertEqual(start.call_args.kwargs["env"]["PATH"], worker.env["PATH"])
+
+    def lockfile_fixture(self):
+        (self.root / "ui").mkdir()
+        self.lockfile = self.root / "ui/package-lock.json"
+        self.lock_data = {
+            "lockfileVersion": 2,
+            "packages": {
+                "": {"name": "fixture", "dependencies": {"peer": "1.0.0"}},
+                "node_modules/peer": {
+                    "version": "1.0.0",
+                    "resolved": "https://registry.example.invalid/peer.tgz",
+                    "integrity": "fixture-digest",
+                    "dependencies": {"peer": "1.0.0"},
+                },
+            },
+            "dependencies": {"peer": {"version": "1.0.0"}},
+        }
+        self.lockfile.write_text(json.dumps(self.lock_data))
+        (self.root / "ui/package.json").write_text('{"name":"fixture"}')
+        return self.worker()
+
+    def test_npm_metadata_and_formatting_do_not_block_or_rewrite_on_check(self):
+        worker = self.lockfile_fixture()
+        self.lock_data["packages"]["node_modules/peer"].update(peer=True, license="MIT")
+        self.lock_data["dependencies"]["peer"]["peer"] = True
+        self.lockfile.write_text(json.dumps(self.lock_data, indent=2) + "\n")
+        original = self.lockfile.read_bytes()
+        generated = require_clean_source(self.git, self.root)
+        self.assertEqual(generated["ui/package-lock.json"][0], original)
+        worker.prepare_source()
+        self.assertEqual(self.lockfile.read_bytes(), original)
+
+    def test_real_dependency_changes_still_block_regular_update(self):
+        self.lockfile_fixture()
+        package = self.lock_data["packages"]["node_modules/peer"]
+        for key, value in (
+            ("version", "2.0.0"),
+            ("resolved", "https://other.example.invalid/peer.tgz"),
+            ("integrity", "changed-digest"),
+            ("dependencies", {"peer": "2.0.0"}),
+        ):
+            with self.subTest(key=key):
+                original = package[key]
+                package[key] = value
+                self.lockfile.write_text(json.dumps(self.lock_data))
+                with self.assertRaisesRegex(ValueError, "package-lock.json"):
+                    require_clean_source(self.git, self.root)
+                require_clean_source(self.git, self.root, force=True)
+                package[key] = original
+
+    def test_staged_lock_changes_and_invalid_json_require_force(self):
+        self.lockfile_fixture()
+        self.lock_data["packages"]["node_modules/peer"]["peer"] = True
+        self.lockfile.write_text(json.dumps(self.lock_data))
+        self.command("add", "ui/package-lock.json")
+        with self.assertRaisesRegex(ValueError, "package-lock.json"):
+            require_clean_source(self.git, self.root)
+        require_clean_source(self.git, self.root, force=True)
+        self.command("reset", "HEAD", "--", "ui/package-lock.json")
+        self.lockfile.write_text('{"invalid":')
+        with self.assertRaisesRegex(ValueError, "package-lock.json"):
+            require_clean_source(self.git, self.root)
+
+    def test_force_only_bypasses_local_changes_not_git_errors(self):
+        self.worker()
+        (self.root / "local.txt").write_text("local file")
+        require_clean_source(self.git, self.root, force=True)
+        with self.assertRaises(subprocess.CalledProcessError):
+            require_clean_source(self.git, self.folder, force=True)
+
+    def test_info_only_allows_force_to_bypass_source_changes(self):
+        self.worker()
+        (self.root / "local.txt").write_text("local edit")
+        with (
+            patch.object(runtime, "installation_root", return_value=self.root),
+            patch.object(runtime, "state_dir", return_value=self.folder / "state"),
+            patch.object(runtime, "frozen", return_value=False),
+            patch.object(
+                runtime,
+                "instances",
+                return_value=[
+                    {
+                        "pid": os.getpid(),
+                        "kind": "instance",
+                        "name": "fixture",
+                        "running": False,
+                    }
+                ],
+            ) as instances,
+            patch.object(
+                update, "source_tools", return_value={"git": self.git}
+            ) as tools,
+        ):
+            info = update.info()
+            self.assertTrue(info["force_supported"])
+            self.assertIn("local.txt", info["source_changes"])
+            self.assertTrue(info["blockers"])
+            instances.return_value = []
+            self.assertFalse(update.info()["force_supported"])
+            tools.side_effect = ValueError("missing npm")
+            self.assertFalse(update.info()["force_supported"])
+
+    def test_current_source_version_can_only_be_reinstalled_with_explicit_force(self):
+        self.worker()
+        with (
+            patch.object(runtime, "installation_root", return_value=self.root),
+            patch.object(runtime, "state_dir", return_value=self.folder / "state"),
+            patch.object(runtime, "frozen", return_value=False),
+            patch.object(
+                update,
+                "github",
+                return_value={"sha": self.commit, "commit": {"message": "fixture"}},
+            ),
+            patch.object(update.network_settings, "apply_http_proxy"),
+            patch.dict(update._checks, {}, clear=True),
+            patch.object(update, "start_job") as start,
+        ):
+            result = update.check("dev", proxy="")
+            self.assertFalse(result["available"])
+            self.assertTrue(result["check_id"])
+            with self.assertRaisesRegex(ValueError, "没有可用更新"):
+                update.submit(result["check_id"])
+            start.assert_not_called()
+            update.submit(result["check_id"], force=True)
+            self.assertTrue(start.call_args.kwargs["force"])

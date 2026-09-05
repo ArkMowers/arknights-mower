@@ -69,7 +69,13 @@ def start():
     data = request.get_json()
     if not isinstance(data.get("background", False), bool):
         raise ValueError("后台启动选项必须是布尔值")
-    return updater.submit(data.get("check_id"), data.get("background", False))
+    if not isinstance(data.get("force", False), bool):
+        raise ValueError("强制更新选项必须是布尔值")
+    return updater.submit(
+        data.get("check_id"),
+        data.get("background", False),
+        force=data.get("force", False),
+    )
 
 
 @software_update_bp.post("/manual")

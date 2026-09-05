@@ -22,7 +22,7 @@ from arknights_mower.utils.software_update_worker import Worker
     shutil.which("git") and shutil.which("npm"), "requires Git and npm"
 )
 class SourceTransactionTests(unittest.TestCase):
-    def transaction(self, fail_build=False):
+    def transaction(self, fail_build=False, local_changes=None):
         with tempfile.TemporaryDirectory(prefix="mower-transaction-") as temporary:
             directory = Path(temporary)
             root, state = directory / "install", directory / "state"
@@ -72,10 +72,18 @@ class SourceTransactionTests(unittest.TestCase):
             )
             build_script = "const fs = require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/index.html','new');"
             (ui / "build.cjs").write_text(build_script)
+            lockfile = {
+                "name": "mower-update-fixture",
+                "version": "1.0.0",
+                "lockfileVersion": 3,
+                "packages": {"": {"name": "mower-update-fixture", "version": "1.0.0"}},
+            }
+            (ui / "package-lock.json").write_text(json.dumps(lockfile))
             command(git, "add", ".")
             command(git, "commit", "-m", "old version")
             old_commit = command(git, "rev-parse", "HEAD")
             (root / "version.txt").write_text("new")
+            (root / "new-target.txt").write_text("upstream file")
             if fail_build:
                 (ui / "build.cjs").write_text("process.exit(2)")
             command(git, "add", ".")
@@ -85,6 +93,15 @@ class SourceTransactionTests(unittest.TestCase):
             command(git, "remote", "add", "origin", str(directory / "origin.git"))
             command(git, "push", "origin", "HEAD:refs/heads/alpha")
             command(git, "switch", "-c", "original", old_commit)
+            if local_changes == "metadata":
+                lockfile["packages"][""]["peer"] = True
+                (ui / "package-lock.json").write_text(json.dumps(lockfile, indent=2))
+            elif local_changes == "force":
+                (root / "version.txt").write_text("local modification")
+                command(git, "add", "version.txt")
+                (ui / "package-lock.json").write_text("invalid local lockfile")
+                (root / "new-target.txt").write_text("conflicting untracked file")
+                (root / "local-note.txt").write_text("unrelated untracked file")
             command(base_python, "-m", "venv", "--without-pip", str(root / ".venv"))
             python = root / (
                 ".venv/Scripts/python.exe"
@@ -127,6 +144,7 @@ class SourceTransactionTests(unittest.TestCase):
                     "deployment": "source",
                     "version": "alpha@" + new_commit[:7],
                     "background": True,
+                    "force": local_changes == "force",
                     "git": git,
                     "npm": shutil.which("npm"),
                     "python": str(python),
@@ -183,6 +201,24 @@ class SourceTransactionTests(unittest.TestCase):
                         all(row["fixture_version"] == "new" for row in records)
                     )
                 self.assertFalse((state / "active").exists())
+                if local_changes:
+                    self.assertEqual(
+                        (ui / "package-lock.json").read_bytes(),
+                        subprocess.check_output(
+                            [git, "show", "HEAD:ui/package-lock.json"], cwd=root
+                        ),
+                    )
+                    self.assertFalse((work / "local-files").exists())
+                    self.assertFalse(command(git, "stash", "list"))
+                if local_changes == "force":
+                    self.assertEqual(
+                        (root / "local-note.txt").read_text(),
+                        "unrelated untracked file",
+                    )
+                    if not fail_build:
+                        self.assertEqual(
+                            (root / "new-target.txt").read_text(), "upstream file"
+                        )
             finally:
                 for record in runtime.instances(state):
                     runtime.write_json(state / "shutdown" / f"{record['id']}.json", {})
@@ -201,6 +237,15 @@ class SourceTransactionTests(unittest.TestCase):
 
     def test_build_failure_rolls_back_code_environment_and_ui(self):
         self.transaction(fail_build=True)
+
+    def test_npm_metadata_update_restores_all_instances_without_backup(self):
+        self.transaction(local_changes="metadata")
+
+    def test_force_update_discards_local_edits_and_conflicting_untracked_files(self):
+        self.transaction(local_changes="force")
+
+    def test_force_failure_restores_version_but_not_discarded_local_edits(self):
+        self.transaction(fail_build=True, local_changes="force")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,13 @@
 <script setup>
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
+import { confirmForceUpdate } from '@/utils/softwareUpdate'
 
 const axios = inject('axios')
 const messages = useMessage()
+const dialogs = useDialog()
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
 const headers = { 'X-Mower-Update': '1' }
 const card = ref(null)
@@ -155,7 +157,7 @@ async function checkUpdate() {
   }
 }
 
-async function install(manual = false) {
+async function install(manual = false, force = false) {
   busy.value = true
   error.value = ''
   uploadPercent.value = 0
@@ -174,13 +176,14 @@ async function install(manual = false) {
     } else {
       if (!checked.value?.check_id) {
         await checkUpdate()
-        if (!checked.value?.available || !checked.value?.check_id) return
+        if ((!force && !checked.value?.available) || !checked.value?.check_id) return
       }
       response = await axios.post(
         `${base}/start`,
         {
           check_id: checked.value.check_id,
-          background: background.value
+          background: background.value,
+          force
         },
         { headers }
       )
@@ -196,6 +199,14 @@ async function install(manual = false) {
   } finally {
     busy.value = false
   }
+}
+
+function requestForceUpdate() {
+  if (!info.value?.force_supported || running.value || checking.value || !checked.value?.check_id)
+    return
+  confirmForceUpdate(dialogs, checked.value.version, info.value.instances.length, () =>
+    install(false, true)
+  )
 }
 
 watch(channel, () => {
@@ -295,7 +306,7 @@ onUnmounted(() => {
               <n-button
                 size="small"
                 type="primary"
-                :disabled="blocked || running || !checked?.available"
+                :disabled="blocked || running || checking || !checked?.available"
                 :loading="busy"
               >
                 下载并安装
@@ -304,6 +315,16 @@ onUnmounted(() => {
             将保存任务并重启同一安装目录下的
             {{ info?.instances.length || 0 }} 个实例。安装失败时尝试恢复原版本。
           </n-popconfirm>
+          <n-button
+            v-if="source"
+            size="small"
+            type="warning"
+            :disabled="!info?.force_supported || running || checking || !checked?.check_id"
+            :loading="busy"
+            @click="requestForceUpdate"
+          >
+            强制更新
+          </n-button>
         </n-space>
       </n-form-item>
       <n-form-item v-if="checked?.message" :show-label="false">

@@ -18,6 +18,7 @@ from arknights_mower.utils import github_download, network_settings
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.software_update_worker import (
     MAX_PACKAGE_BYTES,
+    SourceChangesError,
     require_clean_source,
 )
 
@@ -251,10 +252,13 @@ def info():
     root = runtime.installation_root()
     deployment = "release" if runtime.frozen() else "source"
     blockers = []
+    source_changes = ""
     if deployment == "source":
         try:
             tools = source_tools(root)
             require_clean_source(tools["git"], root)
+        except SourceChangesError as exc:
+            source_changes = str(exc)
         except Exception as exc:
             blockers.append(str(exc))
     elif not os.access(root.parent, os.W_OK) or not os.access(root, os.W_OK):
@@ -279,7 +283,9 @@ def info():
             "proxy": network_settings.get_effective_settings()["http_proxy"],
         },
         "last_check": runtime.read_json(runtime.state_dir() / "last-check.json", {}),
-        "blockers": blockers,
+        "blockers": blockers + ([source_changes] if source_changes else []),
+        "source_changes": source_changes,
+        "force_supported": deployment == "source" and not blockers,
         "instances": [
             {"name": r["name"] or "默认实例", "running": r["running"]}
             for r in registered
@@ -357,11 +363,15 @@ def check(channel, proxy=None):
     else:
         available = version_key(plan["version"]) > version_key(__version__)
     check_id = uuid4().hex
+    plan["available"] = available
+    plan["force_available"] = deployment == "source" and (
+        available or current == plan["commit"]
+    )
     _checks.clear()
     _checks[check_id] = plan
     result = {
         "ok": True,
-        "check_id": check_id if available else "",
+        "check_id": check_id if available or plan["force_available"] else "",
         "available": available,
         "version": plan["version"],
         "notes": plan["notes"],
@@ -381,27 +391,35 @@ def check(channel, proxy=None):
     return result
 
 
-def submit(check_id, background=False):
+def submit(check_id, background=False, *, force=False):
     plan = _checks.get(check_id)
     if not plan or time.time() - plan["created_at"] > 1800:
         raise ValueError("版本检查已过期，请重新检查更新")
-    return start_job(plan, background)
+    if not force and not plan.get("available", True):
+        raise ValueError("当前没有可用更新")
+    if force and not plan.get("force_available", True):
+        raise ValueError("强制更新不支持切换到更旧的发布版本")
+    return start_job(plan, background, force=force)
 
 
-def start_job(plan, background=False, uploaded=None):
+def start_job(plan, background=False, uploaded=None, *, force=False):
     with runtime.submission_lock(runtime.state_dir()):
-        return _start_job(plan, background, uploaded)
+        return _start_job(plan, background, uploaded, force=force)
 
 
-def _start_job(plan, background=False, uploaded=None):
+def _start_job(plan, background=False, uploaded=None, *, force=False):
+    if not isinstance(force, bool):
+        raise ValueError("强制更新选项必须是布尔值")
+    if force and (plan["deployment"] != "source" or uploaded is not None):
+        raise ValueError("强制更新仅支持源码部署")
     details = info()
-    if details["blockers"]:
+    if details["blockers"] and not (force and details.get("force_supported", False)):
         raise ValueError("；".join(details["blockers"]))
     network_settings.apply_http_proxy()
     root = runtime.installation_root()
     tools = source_tools(root) if plan["deployment"] == "source" else {}
     if tools:
-        require_clean_source(tools["git"], root)
+        require_clean_source(tools["git"], root, force=force)
     state = runtime.state_dir()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = state / "active"
@@ -426,6 +444,7 @@ def _start_job(plan, background=False, uploaded=None):
             "root": str(root),
             "state_dir": str(state),
             "background": bool(background),
+            "force": force,
             "github_proxy": github_download.get_proxy(),
             "proxy": network_settings.get_effective_settings()["http_proxy"],
         }
