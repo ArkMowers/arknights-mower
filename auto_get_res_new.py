@@ -77,7 +77,14 @@ class Arknights数据处理器:
         self.游戏变量 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/gamedata_const.json"
         )
-        self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
+        # 仓库物品分类。MEMENTO(纪念品/纪念券，如温泉度假村体验券)是森空岛仓库 API
+        # 会返回的物品，不放进白名单的话这些 id 不在 key_mapping，扫仓库时 KeyError。
+        self.装仓库物品的字典 = {
+            "NORMAL": [],
+            "CONSUME": [],
+            "MATERIAL": [],
+            "MEMENTO": [],
+        }
 
         self.所有buff = []
 
