@@ -124,6 +124,7 @@ async function poll() {
   try {
     const { data } = await axios.get(`${base}/status`, { timeout: 5000 })
     if (!data.ok) throw new Error(data.message)
+    if (job.value.id !== data.id || data.status !== 'running') cancelling.value = false
     job.value = data
     showLastCheck(data.last_check)
     disconnected.value = false

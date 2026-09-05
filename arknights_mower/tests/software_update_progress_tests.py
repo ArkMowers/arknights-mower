@@ -66,6 +66,7 @@ class ProgressTests(unittest.TestCase):
             Worker(self.work / "job.json").begin_install()
         self.assertFalse((self.state / "active/installing.json").exists())
         self.assertFalse(read_status(self.state)["cancellable"])
+        self.assertIn("正在取消", read_status(self.state)["message"])
 
     def test_installation_transition_refuses_late_cancel(self):
         worker = Worker(self.work / "job.json")

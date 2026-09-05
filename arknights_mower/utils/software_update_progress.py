@@ -33,6 +33,8 @@ def read_status(state):
         and not (state / "active/installing.json").exists()
         and not (state / "active/cancel.json").exists()
     )
+    if result.get("status") == "running" and (state / "active/cancel.json").exists():
+        result["message"] = "正在取消更新，等待下载或构建进程退出"
     if log_path := result.get("log_path"):
         try:
             with Path(log_path).open("rb") as log:
