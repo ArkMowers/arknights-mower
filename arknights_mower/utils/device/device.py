@@ -245,29 +245,31 @@ class Device:
                 logger.error(f"无法获取CLASSPATH：{out}")
                 return False
         port = config.droidcast.port
+        occupied_by_adb_forward = False
         if port != 0 and is_port_in_use(port):
             try:
-                occupied_by_adb_forward = False
-                forward_list = self.client.cmd("forward --list", True).strip().split()
-                for host, pc_port, android_port in forward_list:
-                    # 127.0.0.1:5555 tcp:60579 tcp:60579
-                    if pc_port != android_port:
-                        # 不是咱转发的，别乱动
-                        continue
-                    if pc_port == f"tcp:{port}":
-                        occupied_by_adb_forward = True
-                        break
-                if not occupied_by_adb_forward:
-                    port = 0
+                forward_list = self.client.cmd("forward --list", True).splitlines()
+                expected = [self.client.device_id, f"tcp:{port}", f"tcp:{port}"]
+                occupied_by_adb_forward = any(
+                    line.split() == expected for line in forward_list
+                )
             except Exception as e:
                 logger.exception(e)
+            if not occupied_by_adb_forward:
+                port = 0
         if port == 0:
             port = get_new_port()
             config.droidcast.port = port
             logger.info(f"更新DroidCast端口为{port}")
         else:
             logger.info(f"保持DroidCast端口为{port}")
-        self.client.cmd(f"forward tcp:{port} tcp:{port}")
+        if not occupied_by_adb_forward:
+            try:
+                self.client.cmd(f"forward --no-rebind tcp:{port} tcp:{port}")
+            except subprocess.CalledProcessError:
+                # 选端口后仍可能发生占用，交由连接恢复流程重新分配。
+                config.droidcast.port = 0
+                raise
         logger.info("ADB端口转发成功，启动DroidCast")
         if config.droidcast.process is not None:
             config.droidcast.process.terminate()
