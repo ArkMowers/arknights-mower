@@ -163,6 +163,10 @@ class RuntimeRegistration:
             "port": port,
             "root": str(installation_root()),
             "data_dir": os.environ.get("MOWER_DATA_DIR", ""),
+            "executable": sys.executable,
+            "argv": list(sys.argv),
+            "cwd": os.getcwd(),
+            "background": os.environ.get("MOWER_BACKGROUND") == "1",
             "ready": False,
             "restart_job": os.environ.get("MOWER_RESTART_JOB", ""),
         }

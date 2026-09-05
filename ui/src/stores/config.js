@@ -97,6 +97,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
+  const runtime_platform = ref('')
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
@@ -347,6 +348,7 @@ export const useConfigStore = defineStore('config', () => {
 
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
+    runtime_platform.value = response.data.runtime_platform || ''
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
@@ -604,15 +606,25 @@ export const useConfigStore = defineStore('config', () => {
     },
     { deep: true }
   )
+  let configSaveRequest = Promise.resolve()
+  function save_config() {
+    const payload = JSON.parse(JSON.stringify(build_config()))
+    configSaveRequest = configSaveRequest
+      .catch(() => {})
+      .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, payload))
+    return configSaveRequest
+  }
+
   watchEffect(() => {
     if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+      save_config().catch((error) => console.error('配置保存失败', error))
     }
   })
 
   return {
     adb,
     load_config,
+    save_config,
     drone_count_limit,
     drone_room,
     drone_interval,
@@ -701,6 +713,7 @@ export const useConfigStore = defineStore('config', () => {
     recruit_gap,
     recruit_auto_5,
     webview,
+    runtime_platform,
     shop_collect_enable,
     meeting_level,
     fix_mumu12_adb_disconnect,

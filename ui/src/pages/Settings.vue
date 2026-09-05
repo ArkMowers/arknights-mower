@@ -37,6 +37,7 @@ const {
   screenshot_interval,
   run_order_grandet_mode,
   webview,
+  runtime_platform,
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
@@ -57,6 +58,11 @@ const {
   ai_type,
   ai_key
 } = storeToRefs(config_store)
+
+const hide_macos_menu_bar = computed({
+  get: () => !webview.value.tray,
+  set: (hidden) => (webview.value.tray = !hidden)
+})
 
 const { operators } = storeToRefs(plan_store)
 
@@ -510,7 +516,16 @@ if (return_home_when_idle.value) {
               </n-button>
             </n-form-item>
             <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="webview.tray">
+              <n-checkbox
+                v-if="runtime_platform === 'darwin'"
+                v-model:checked="hide_macos_menu_bar"
+              >
+                隐藏菜单栏图标
+                <help-text>
+                  重启生效。不创建托盘进程，关闭窗口后仍在后台运行，可通过浏览器访问原网页地址。
+                </help-text>
+              </n-checkbox>
+              <n-checkbox v-else v-model:checked="webview.tray">
                 使用托盘图标
                 <help-text>重启生效</help-text>
               </n-checkbox>
@@ -887,6 +902,9 @@ if (return_home_when_idle.value) {
     <div class="settings-updates">
       <div><SoftwareUpdate /></div>
       <div><ResourceUpdate /></div>
+    </div>
+    <div class="settings-network">
+      <ProcessControl />
     </div>
   </div>
 </template>

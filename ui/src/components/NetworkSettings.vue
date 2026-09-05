@@ -135,7 +135,7 @@ onBeforeUnmount(() => {
         <n-input
           v-model:value="httpProxy"
           :input-props="{ 'aria-label': '全局网络代理' }"
-          placeholder="例如 http://127.0.0.1:7897；留空沿用启动环境"
+          placeholder="HTTP(S) / SOCKS5，例如 socks5h://127.0.0.1:7897；留空沿用启动环境"
           :disabled="loading || !ready"
           clearable
           @update:value="changed"

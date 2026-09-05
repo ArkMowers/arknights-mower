@@ -45,10 +45,17 @@ def _main(saved_state, restart_after_mood_read=False):
     result = simulate(data, restart_after_mood_read)
     if result == "restart_after_mood_read":
         from arknights_mower.solvers.record import load_state
+        from arknights_mower.utils.scheduler_task import TaskTypes
 
         logger.info("正在按载入心情数据模式重启Mower")
         saved_state = load_state() or {}
-        saved_state["tasks"] = []
+        # simulate 已保存本次读取后的新状态。排班任务需要按新心情重建，但训练室
+        # 刚恢复的收取/换人任务必须保留，否则近期读过的训练室可能数小时不再进入。
+        saved_state["tasks"] = [
+            task
+            for task in saved_state.get("tasks", [])
+            if task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+        ]
         simulate(saved_state)
 
 

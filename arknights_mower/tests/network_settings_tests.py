@@ -110,10 +110,13 @@ class ProxySettingsTests(ProxySettingsBase):
             self.assertEqual(github.get_proxy(), "https://ghfast.top/")
         for value in (
             None,
-            "socks5://localhost:1080",
+            "socks4://localhost:1080",
+            "socks5h://localhost",
             "http://localhost/path",
             "http://localhost:0",
             "http://localhost:65536",
+            "socks5://localhost:0",
+            "socks5h://user:password@localhost:1080",
         ):
             with self.subTest(http=value), self.assertRaises(ValueError):
                 self.save(http=value)

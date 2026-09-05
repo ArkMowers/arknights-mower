@@ -1,4 +1,4 @@
-"""Detached, standard-library-only software installer.
+"""Detached software installer; source transactions use only the standard library.
 
 Source deployments copy this module and update_runtime.py outside the checkout.
 Frozen deployments run a copy of the complete old runtime outside the install.
@@ -16,7 +16,6 @@ import tarfile
 import threading
 import time
 import traceback
-import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -43,6 +42,34 @@ else:
 
 MAX_PACKAGE_BYTES = 2 * 1024**3
 MAX_EXTRACTED_BYTES = 8 * 1024**3
+
+
+def require_clean_source(git, root, env=None):
+    changes = subprocess.check_output(
+        [
+            git,
+            "-c",
+            "core.quotepath=false",
+            "status",
+            "--porcelain",
+            "--untracked-files=normal",
+        ],
+        cwd=root,
+        env=env,
+        text=True,
+        timeout=10,
+    )
+    if changes:
+        if isinstance(changes, bytes):
+            changes = changes.decode("utf-8", errors="replace")
+        entries = changes.rstrip().splitlines()
+        preview = "\n".join(entries[:10])
+        if len(entries) > 10:
+            preview += f"\n……另有 {len(entries) - 10} 项"
+        raise ValueError(
+            "源码目录有未提交修改或未跟踪文件，请先提交或备份后清理；"
+            "更新不会强制覆盖这些文件：\n" + preview
+        )
 
 
 def extract_archive(archive, destination):
@@ -92,6 +119,8 @@ class Worker:
         self.state = Path(self.job["state_dir"])
         self.root = Path(self.job["root"])
         self.env = launch_environment({})
+        if self.job.get("tool_path"):
+            self.env["PATH"] = self.job["tool_path"]
         if self.job.get("proxy"):
             self.env.update(http_proxy=self.job["proxy"], https_proxy=self.job["proxy"])
         self.status = {
@@ -115,6 +144,7 @@ class Worker:
         self.new_processes = []
         self.recovery_processes = []
         self.venv_dir = self.job.get("venv_dir", ".venv")
+        self.needs_lfs = False
 
     def report(self, phase, message, status="running"):
         self.status.update(
@@ -123,13 +153,13 @@ class Worker:
         write_json(self.state / "status.json", self.status)
         print(message, flush=True)
 
-    def run_command(self, args, cwd=None, timeout=1800):
+    def run_command(self, args, cwd=None, timeout=1800, env=None):
         # Commands and arguments are fixed by the installer. Never use shell=True.
         print("执行：" + " ".join(map(str, args)), flush=True)
         process = subprocess.Popen(
             list(map(str, args)),
             cwd=cwd or self.root,
-            env=self.env,
+            env=self.env if env is None else env,
             stdin=subprocess.DEVNULL,
             **detached_options(),
         )
@@ -160,10 +190,7 @@ class Worker:
         ).strip()
 
     def prepare_source(self):
-        if self.git_output("status", "--porcelain", "--untracked-files=normal"):
-            raise ValueError(
-                "源码目录有未提交修改或未跟踪文件，请先提交或自行备份；更新未修改源码"
-            )
+        require_clean_source(self.job["git"], self.root, self.env)
         self.old_commit = self.git_output("rev-parse", "HEAD")
         self.old_branch = self.git_output("branch", "--show-current")
         write_json(
@@ -183,7 +210,7 @@ class Worker:
                 ],
             },
         )
-        self.report("downloading", "获取目标源码和 Git LFS 资源")
+        self.report("downloading", "获取目标源码")
         self.run_command(
             [self.job["git"], "fetch", "--no-tags", "origin", self.job["ref"]]
         )
@@ -199,9 +226,32 @@ class Worker:
             raise ValueError(
                 "目标版本尚未包含软件更新与实例恢复功能，请等待包含此功能的版本发布；当前程序未停止"
             ) from exc
-        self.run_command(
-            [self.job["git"], "lfs", "fetch", "origin", self.job["commit"]]
-        )
+        self.needs_lfs = self.target_uses_lfs()
+        if self.needs_lfs:
+            try:
+                self.run_command([self.job["git"], "lfs", "version"], timeout=10)
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise ValueError(
+                    "目标版本使用 Git LFS，请安装 Git LFS 并确保启动环境可以运行 git lfs；当前实例尚未停止"
+                ) from exc
+            self.run_command(
+                [self.job["git"], "lfs", "fetch", "origin", self.job["commit"]]
+            )
+
+    def target_uses_lfs(self):
+        commit = self.job["commit"]
+        paths = self.git_output("ls-tree", "-r", "--name-only", "-z", commit)
+        for path in paths.split("\0"):
+            if PurePosixPath(path).name != ".gitattributes":
+                continue
+            contents = self.git_output("show", f"{commit}:{path}")
+            for line in contents.splitlines():
+                if (
+                    not line.lstrip().startswith("#")
+                    and "filter=lfs" in line.split()[1:]
+                ):
+                    return True
+        return False
 
     def prepare_package(self):
         asset = self.job["asset"]
@@ -214,23 +264,24 @@ class Worker:
         if not package.exists():
             if manual:
                 raise ValueError("上传的安装包不存在，请重新上传")
+            # Release workers retain the complete old runtime, including SOCKS
+            # dependencies. Source workers never execute this branch.
+            import requests
+
             proxy = self.job.get("proxy")
-            handler = (
-                urllib.request.ProxyHandler({"http": proxy, "https": proxy})
-                if proxy
-                else urllib.request.ProxyHandler()
-            )
-            opener = urllib.request.build_opener(handler)
-            request = urllib.request.Request(
-                download_url(asset["url"], self.job.get("github_proxy", "")),
-                headers={"User-Agent": "Mower-Software-Update"},
-            )
             with (
-                opener.open(request, timeout=60) as response,
+                requests.get(
+                    download_url(asset["url"], self.job.get("github_proxy", "")),
+                    headers={"User-Agent": "Mower-Software-Update"},
+                    proxies={"http": proxy, "https": proxy} if proxy else None,
+                    stream=True,
+                    timeout=60,
+                ) as response,
                 package.open("wb") as out,
             ):
+                response.raise_for_status()
                 size = 0
-                while chunk := response.read(1024 * 1024):
+                for chunk in response.iter_content(1024 * 1024):
                     size += len(chunk)
                     if size > MAX_PACKAGE_BYTES:
                         raise ValueError("安装包超过 2 GiB 限制")
@@ -331,10 +382,8 @@ class Worker:
 
     def install_source(self):
         # Recheck after shutdown: the checkout may have been edited during fetch.
-        if (
-            self.git_output("status", "--porcelain", "--untracked-files=normal")
-            or self.git_output("rev-parse", "HEAD") != self.old_commit
-        ):
+        require_clean_source(self.job["git"], self.root, self.env)
+        if self.git_output("rev-parse", "HEAD") != self.old_commit:
             raise ValueError("更新准备期间源码发生变化，已取消安装")
         self.report("installing", "切换源码，保留原版本、虚拟环境和前端用于失败恢复")
         for relative in (self.venv_dir, "ui/node_modules", "ui/dist"):
@@ -345,13 +394,15 @@ class Worker:
                 self.backups.append((target, backup))
         self.switched = True
         self.run_command([self.job["git"], "switch", "--detach", self.job["commit"]])
-        self.run_command([self.job["git"], "lfs", "checkout"])
+        if self.needs_lfs:
+            self.run_command([self.job["git"], "lfs", "checkout"])
         self.report("dependencies", "创建虚拟环境并安装 Python 依赖")
         self.run_command(
             [self.job["base_python"], "-m", "venv", self.root / self.venv_dir]
         )
         self.run_command(
-            [self.job["python"], "-m", "pip", "install", "-r", "requirements.in"]
+            [self.job["python"], "-m", "pip", "install", "-r", "requirements.in"],
+            env=self.pip_environment(),
         )
         self.report("building", "安装前端依赖并构建页面")
         npm_command = (
@@ -359,6 +410,16 @@ class Worker:
         )
         self.run_command([self.job["npm"], npm_command], cwd=self.root / "ui")
         self.run_command([self.job["npm"], "run", "build"], cwd=self.root / "ui")
+
+    def pip_environment(self):
+        env = self.env.copy()
+        if (self.work / "socks.py").is_file():
+            # A fresh venv has pip but no PySocks yet. The staged module lets
+            # pip download its own SOCKS dependency without using a direct route.
+            env["PYTHONPATH"] = os.pathsep.join(
+                filter(None, (str(self.work), env.get("PYTHONPATH")))
+            )
+        return env
 
     def install_package(self):
         self.report("installing", "替换程序，保留用户数据和原版本")
@@ -437,6 +498,8 @@ class Worker:
             if record["kind"] == "manager" and self.job["background"]:
                 continue
             env = launch_environment(record, self.job["id"], self.job["background"])
+            if self.job.get("tool_path"):
+                env["PATH"] = self.job["tool_path"]
             with (self.work / "restart.log").open("ab") as log:
                 process = subprocess.Popen(
                     self.command_for(record),
@@ -536,9 +599,7 @@ class Worker:
             else:
                 self.install_package()
             self.restart(self.original)
-            self.report(
-                "done", "更新成功，实例已恢复；后台模式可从托盘打开窗口", "succeeded"
-            )
+            self.report("done", "更新成功，实例已恢复", "succeeded")
         except Exception as exc:
             traceback.print_exc()
             message = str(exc)

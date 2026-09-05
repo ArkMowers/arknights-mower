@@ -8,6 +8,7 @@ FZDYSK.TTF
 
 # Local debug output
 /debug/
+/.playwright-cli/
 
 !main.spec
 *.yaml

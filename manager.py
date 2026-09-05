@@ -57,6 +57,7 @@ class Api:
 
     def start(self, idx):
         from subprocess import Popen
+        from threading import Thread
 
         from arknights_mower.utils.update_runtime import (
             active_job,
@@ -65,7 +66,7 @@ class Api:
         )
 
         if active_job():
-            return {"ok": False, "message": "软件更新期间无法启动新实例"}
+            return {"ok": False, "message": "软件更新或进程操作期间无法启动新实例"}
         frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
         instance = self.instances[idx]
         if frozen:
@@ -81,7 +82,10 @@ class Api:
                 instance["name"],
             ]
         env = launch_environment({"data_dir": os.environ.get("MOWER_DATA_DIR", "")})
-        Popen(command, cwd=installation_root(), env=env)
+        process = Popen(command, cwd=installation_root(), env=env)
+        # Reap exited instances while the manager remains open, so process
+        # control does not mistake an unreaped child for a running instance.
+        Thread(target=process.wait, daemon=True).start()
         return {"ok": True}
 
 
@@ -97,7 +101,7 @@ if __name__ == "__main__":
     from webview_ui import exit_if_webview_backend_missing
 
     if active_job() and not os.environ.get("MOWER_RESTART_JOB"):
-        sys.exit("软件正在更新，请等待完成后启动多开管理器")
+        sys.exit("软件更新或进程操作正在进行，请等待完成后启动多开管理器")
     # 多开管理器和主程序一样依赖窗口后端，宿主缺 GTK/WebKit2 原生库时先给出中文
     # 安装指引再退出，避免裸 WebViewException。
     exit_if_webview_backend_missing()

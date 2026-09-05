@@ -13,6 +13,7 @@ import threading
 import time
 import unittest
 import zipfile
+from itertools import product
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -46,6 +47,13 @@ def release(version, prerelease=False, draft=False, system="macos", arch="arm64"
 
 
 class ReleaseDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        state = patch.object(runtime, "state_dir", return_value=Path(temporary.name))
+        state.start()
+        self.addCleanup(state.stop)
+
     def test_channels_are_separate_and_drafts_are_excluded(self):
         data = [
             release("v4.1.6-alpha.3", True),
@@ -404,6 +412,11 @@ class AdmissionAndRoutesTests(unittest.TestCase):
 
 class WorkerTests(unittest.TestCase):
     def setUp(self):
+        clean_source = patch(
+            "arknights_mower.utils.software_update_worker.require_clean_source"
+        )
+        clean_source.start()
+        self.addCleanup(clean_source.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         base = Path(self.temporary.name)
@@ -554,7 +567,7 @@ class WorkerTests(unittest.TestCase):
         )
         worker = self.worker()
         worker.stop_instances = Mock()
-        with patch("urllib.request.build_opener") as network:
+        with patch("requests.get") as network:
             worker.execute()
             network.assert_not_called()
         worker.stop_instances.assert_not_called()
@@ -579,7 +592,7 @@ class WorkerTests(unittest.TestCase):
                     deployment="release", background=False, manual=manual, asset=asset
                 )
                 worker = self.worker()
-                with patch("urllib.request.build_opener") as network:
+                with patch("requests.get") as network:
                     worker.prepare_package()
                     network.assert_not_called()
                 self.assertEqual(
@@ -616,7 +629,6 @@ class WorkerTests(unittest.TestCase):
         worker = self.worker()
         worker.git_output = Mock(
             side_effect=[
-                "",
                 "old",
                 "main",
                 "new",
@@ -752,14 +764,16 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 ):
                     self.assertEqual(background_requested(), value == "1")
 
-    def test_release_desktop_background_keeps_tray_without_opening_windows(self):
+    def test_desktop_background_respects_macos_tray_setting(self):
         import webview_ui
         from arknights_mower import utils
         from arknights_mower.utils import network, path
 
-        for background in (True, False):
+        for system, background, tray_enabled, restart in product(
+            ("darwin", "linux", "win32"), (True, False), (True, False), (True, False)
+        ):
             config = Mock()
-            config.conf.webview.tray = False
+            config.conf.webview.tray = tray_enabled
             config.conf.webview.token = ""
             config.conf.start_automatically = False
             server = Mock(app=Flask(__name__))
@@ -768,18 +782,25 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
             with (
-                self.subTest(background=background),
+                self.subTest(
+                    system=system,
+                    background=background,
+                    tray=tray_enabled,
+                    restart=restart,
+                ),
+                patch.object(sys, "platform", system),
                 patch.dict(
                     os.environ,
                     {
                         "MOWER_BACKGROUND": "1" if background else "0",
-                        "MOWER_RESTART_JOB": "",
+                        "MOWER_RESTART_JOB": "fixture" if restart else "",
+                        "MOWER_RESUME_RUN": "1",
                         "MOWER_RESTART_PORT": "58100",
                     },
                 ),
                 patch.dict(sys.modules, {"server": server}),
                 patch.object(sys, "argv", ["mower"]),
-                patch.object(utils, "config", config),
+                patch.object(utils, "config", config, create=True),
                 patch.object(path, "global_space", ""),
                 patch.object(runtime, "read_json", return_value={}),
                 patch.object(runtime, "active_job", return_value=False),
@@ -789,21 +810,33 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 patch.object(network, "is_port_in_use", side_effect=[False, True]),
                 patch.object(webview_ui, "exit_if_webview_backend_missing"),
                 patch.object(webview_ui, "close_child"),
-                patch.object(webview_ui.mp, "Queue"),
+                patch.object(webview_ui.mp, "Queue") as queue,
                 patch.object(webview_ui.mp, "Pipe", return_value=(Mock(), Mock())),
                 patch.object(webview_ui.mp, "Process") as process,
-                patch("threading.Thread"),
+                patch("threading.Thread") as threads,
             ):
                 webview_ui.run_desktop()
                 targets = [call.kwargs["target"] for call in process.call_args_list]
-                self.assertEqual(
-                    targets,
-                    [webview_ui.start_tray]
-                    if background
-                    else [webview_ui.splash_screen, webview_ui.webview_window],
-                )
+                expected = [] if background else [webview_ui.splash_screen]
+                if tray_enabled or (background and system != "darwin"):
+                    expected.append(webview_ui.start_tray)
+                if not background:
+                    expected.append(webview_ui.webview_window)
+                self.assertEqual(targets, expected)
+                if background and system == "darwin" and not tray_enabled:
+                    queue.assert_not_called()
                 self.assertEqual(hide_dock.call_count, int(background))
                 registration.close.assert_called_once()
+                resumes = [
+                    call.kwargs["target"]
+                    for call in threads.call_args_list
+                    if call.kwargs["target"].__name__ == "resume_after_update"
+                ]
+                self.assertEqual(len(resumes), int(restart))
+                if resumes:
+                    registration.shutdown_requested.return_value = False
+                    resumes[0]()
+                    server.start.assert_called_once_with("2")
 
     def test_dock_helper_sets_accessory_policy(self):
         appkit = Mock()

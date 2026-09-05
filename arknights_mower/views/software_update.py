@@ -50,6 +50,12 @@ def status():
     return updater.status()
 
 
+@software_update_bp.post("/settings")
+@result
+def settings():
+    return updater.save_settings(request.get_json())
+
+
 @software_update_bp.post("/check")
 @result
 def check():

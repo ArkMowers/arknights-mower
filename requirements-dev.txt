@@ -105,7 +105,7 @@ httpcore==1.0.8
     # via
     #   -r requirements.txt
     #   httpx
-httpx==0.28.1
+httpx[socks]==0.28.1
     # via
     #   -r requirements.txt
     #   langgraph-sdk
@@ -305,6 +305,10 @@ pyscreeze==0.1.30
     # via
     #   -r requirements.txt
     #   pyautogui
+pysocks==1.7.1
+    # via
+    #   -r requirements.txt
+    #   requests
 pystray==0.19.5
     # via -r requirements.txt
 pythonnet==3.0.5
@@ -334,7 +338,7 @@ regex==2024.11.6
     # via
     #   -r requirements.txt
     #   tiktoken
-requests==2.31.0
+requests[socks]==2.31.0
     # via
     #   -r requirements.txt
     #   htmllistparse
@@ -375,6 +379,10 @@ sniffio==1.3.1
     #   -r requirements.txt
     #   anyio
     #   openai
+socksio==1.0.0
+    # via
+    #   -r requirements.txt
+    #   httpx
 soupsieve==2.5
     # via
     #   -r requirements.txt
