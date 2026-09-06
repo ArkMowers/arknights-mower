@@ -257,7 +257,9 @@ def start_tray(queue: mp.Queue, instance_name, port, url):
     icon.run()
 
 
-def webview_window(child_conn, global_space, instance_name, host, port, url, tray):
+def webview_window(
+    child_conn, global_space, instance_name, host, port, url, tray, log_queue=None
+):
     import sys
     from threading import Thread
 
@@ -268,6 +270,11 @@ def webview_window(child_conn, global_space, instance_name, host, port, url, tra
     from arknights_mower.utils import path
 
     path.global_space = global_space
+
+    if log_queue is not None:
+        from arknights_mower.utils import log as mower_log
+
+        mower_log.bind_mp_queue(log_queue)
 
     from arknights_mower.utils.config.gui import load_window_size, save_window_size
 
@@ -381,6 +388,15 @@ def run_desktop():
     exit_if_webview_backend_missing()
     path.global_space = sys.argv[1] if len(sys.argv) >= 2 else None
     instance_name = sys.argv[2] if len(sys.argv) >= 3 else ""
+    from arknights_mower.utils.log import init_file_logging, start_mp_listener
+
+    # 文件日志只由主进程建立。子进程（webview_window 等）不调用 init_file_logging，
+    # 否则它们经 title_version→resource_version import log.py 时会各自打开
+    # runtime.log，Windows 上整点切换日志文件（os.rename 需独占）就会因多进程同时持有而失败。
+    init_file_logging()
+    # webview_window 等 mp.Process 子进程把日志上行到这里，由主进程统一写入 runtime.log。
+    mp_log_queue = mp.Queue()
+    start_mp_listener(mp_log_queue)
     splash_queue = Queue() if background else mp.Queue()
     splash_process = None
     tray_process = None
@@ -457,6 +473,7 @@ def run_desktop():
                 port,
                 url,
                 keep_running,
+                mp_log_queue,
             ),
             daemon=True,
         )
