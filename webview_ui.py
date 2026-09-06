@@ -18,6 +18,15 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--software-update-worker"]:
     update_main(sys.argv[2])
     sys.exit()
 
+# The frozen launcher has no standalone Python, so a MAA connectivity check that
+# asked for "-c <script>" would spawn a second desktop window. Route it here
+# instead; the process runs the check and exits before opening any window.
+if __name__ == "__main__" and sys.argv[1:2] == ["--maa-check-worker"]:
+    from arknights_mower.utils.maa_check import worker_main
+
+    worker_main(sys.argv[2])
+    sys.exit()
+
 # Linux 版独立包运行期需要宿主提供 GTK/WebKit2 原生库与 typelib，PyInstaller 只把
 # pywebview 的 Python 依赖打进包。这份提示在窗口后端初始化失败时展示，直接给出
 # 三个发行版的安装命令，避免用户对着裸 ImportError 无从下手。
@@ -386,7 +395,14 @@ def run_desktop():
     if background or not runtime.frozen():
         runtime.hide_macos_dock_icon()
     exit_if_webview_backend_missing()
-    path.global_space = sys.argv[1] if len(sys.argv) >= 2 else None
+    space = sys.argv[1] if len(sys.argv) >= 2 else None
+    if space is not None and space.startswith("-"):
+        # A CLI option (e.g. "-c") reached us via argv rather than a config-space
+        # name. Spaces are always a filesystem path or data-dir label, which can
+        # never start with "-" (Windows drive letter / POSIX "/"), so treat it as
+        # absent instead of resolving "@app/..." under an "install/-c" directory.
+        space = None
+    path.global_space = space
     instance_name = sys.argv[2] if len(sys.argv) >= 3 else ""
     from arknights_mower.utils.log import init_file_logging, start_mp_listener
 
