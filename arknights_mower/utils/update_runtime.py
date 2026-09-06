@@ -57,12 +57,12 @@ def write_json(path, value):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(value, stream, ensure_ascii=False)
-        _replace_with_retry(temporary, path)
+        replace_with_retry(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
 
-def _replace_with_retry(source, destination):
+def replace_with_retry(source, destination):
     """Atomically replace ``destination``, tolerating transient Windows locks.
 
     ``os.replace`` is atomic, but on Windows it fails with a sharing violation
@@ -172,7 +172,17 @@ def instances(directory=None):
     directory = Path(directory or state_dir())
     result = []
     for path in (directory / "instances").glob("*.json"):
-        record = read_json(path, {})
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except OSError:
+            # A concurrent writer may be mid-replace (see replace_with_retry);
+            # a transient read failure must not be mistaken for a stale record,
+            # or a live instance's registration would be deleted.
+            continue
+        except ValueError:
+            # Unparsable JSON is never a live registration (its heartbeat
+            # rewrites valid JSON every second), so treat it as stale.
+            record = {}
         if record and process_alive(record.get("pid")):
             result.append(record)
         else:
@@ -307,15 +317,20 @@ def launch_environment(record, job_id="", background=False):
         else:
             env.pop(name, None)
     # os._Environ normalizes variable names to uppercase on Windows, so a plain
-    # copy can change the casing of proxy variables. Normalize them to lowercase
-    # so subprocesses and callers see a deterministic environment on every platform.
+    # copy can change the casing of proxy variables. Prefer the lowercase value
+    # (requests reads lowercase first) and drop any uppercase duplicate, so a
+    # child starts with exactly one deterministic value on every platform.
     for name in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
-        matched = next((key for key in env if key.lower() == name), None)
-        if matched is not None:
-            if matched != name:
-                env[name] = env.pop(matched)
-        else:
-            env.pop(name, None)
+        lower = env.pop(name, None)
+        upper = env.pop(name.upper(), None)
+        value = lower if lower is not None else upper
+        if value is not None:
+            env[name] = value
+    # A child's stdout is captured into logs that are always decoded as UTF-8
+    # (for example update/restart log). Pin its stdio encoding regardless of the
+    # console codepage (Chinese Windows defaults to GBK) so those logs do not
+    # come back garbled.
+    env["PYTHONIOENCODING"] = "utf-8"
     env.update(
         MOWER_RESTART_JOB=job_id,
         MOWER_BACKGROUND="1" if background else "0",

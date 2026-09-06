@@ -126,6 +126,24 @@ class TestContentHash(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             content_hash(self.dir, [Path("nope.bin")])
 
+    def test_文本后缀按换行归一化(self):
+        # 文本类型（.json）在任何检出下 LF/CRLF 应得到同一摘要，Windows/CI 一致
+        rel = Path("data.json")
+        (self.dir / rel).write_bytes(b'{"a":1}\r\n{"b":2}\r\n')
+        h_crlf = content_hash(self.dir, [rel])
+        (self.dir / rel).write_bytes(b'{"a":1}\n{"b":2}\n')
+        h_lf = content_hash(self.dir, [rel])
+        self.assertEqual(h_crlf, h_lf)
+
+    def test_二进制后缀不过换行归一化(self):
+        # 非文本类型即便不含 NUL 也按原始字节参与，内容不同的二进制样例不致同摘要
+        rel = Path("blob.bin")
+        (self.dir / rel).write_bytes(b"a\r\nb\r\n")
+        h_crlf = content_hash(self.dir, [rel])
+        (self.dir / rel).write_bytes(b"a\nb\n")
+        h_lf = content_hash(self.dir, [rel])
+        self.assertNotEqual(h_crlf, h_lf)
+
 
 class TestPackageFilePaths(unittest.TestCase):
     def setUp(self):

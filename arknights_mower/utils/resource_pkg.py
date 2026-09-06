@@ -39,6 +39,7 @@ from arknights_mower.utils.resource_store import (
     select_resource,
     validate_package,
 )
+from arknights_mower.utils.update_runtime import replace_with_retry
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
 RESOURCE_OVERLAY = get_path("@app/resources", space="")
@@ -123,7 +124,9 @@ def _write_index(packages):
     temporary = RESOURCE_OVERLAY / f".index-{uuid4().hex}.json"
     try:
         temporary.write_text(json.dumps({"packages": packages}), encoding="utf-8")
-        os.replace(temporary, RESOURCE_OVERLAY / "index.json")
+        # index.json is also walked by a server-side watchdog; tolerate the
+        # transient lock a concurrent reader keeps on it (see replace_with_retry).
+        replace_with_retry(temporary, RESOURCE_OVERLAY / "index.json")
     finally:
         temporary.unlink(missing_ok=True)
 
