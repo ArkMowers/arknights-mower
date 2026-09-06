@@ -7,7 +7,9 @@ from urllib import parse
 
 import requests
 
+from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 from arknights_mower.utils.SecuritySm import get_d_id
 
 app_code = "4ca99fa6b56cc2ba"
@@ -58,29 +60,76 @@ header_login = {
 header_for_sign = {"platform": "1", "timestamp": "", "dId": "", "vName": SKLAND_VERSION}
 
 # 模块级状态：设备指纹与服务器时钟偏移，均由下列函数惰性维护。
-# 设备指纹导入时不联网（fp-it 服务不可达也不会导致导入崩溃），首次登录前取、失败降级为空串，
-# 且失败一次后本程序不再重试（_device_id_failed 短路），避免反复捶打不可达服务、重复刷警告；
+# 设备指纹导入时不联网（fp-it 服务不可达也不会导致导入崩溃），首次登录前取，
+# 重试几次仍失败才降级为空串，随后本程序运行期间不再重试（_device_id_failed 短路），
+# 避免反复捶打不可达服务、重复刷警告；
 # 时钟偏移由 _sync_server_time 从每次响应校准，签名时间戳用它落在服务器时间上。
 _device_id = ""
 _device_id_failed = False
 server_time_offset = 0
 
+# 设备指纹（dId）落盘文件：dId 是数美（fp-it）签发的设备身份，设备级且长期稳定。
+# 复用上次签发的结果能扛住指纹服务临时不可达/被阻断（正是「设备信息无效」的根因），
+# 不必每次运行都重新联网去要。
+_DEVICE_ID_FILE = get_path("@app/config/skland_device_id.json", space="")
+# 指纹服务偶发超时：取不到时重试几次再放弃，避免一次瞬时故障就让整个运行期的森空岛认证落空。
+_DEVICE_ID_RETRIES = 3
+
+
+def _read_persisted_did() -> str:
+    """读上次落盘的 dId；文件缺失或内容非法时返回空串。"""
+    try:
+        data = json.loads(_DEVICE_ID_FILE.read_text("utf-8"))
+        did = data.get("dId", "")
+        return did if isinstance(did, str) else ""
+    except Exception:
+        return ""
+
+
+def _write_persisted_did(did: str) -> None:
+    """幂等写落盘 dId；写入失败不影响本次运行（仅下次无法复用）。"""
+    try:
+        atomic_write(_DEVICE_ID_FILE, lambda f: json.dump({"dId": did}, f))
+    except Exception:
+        pass
+
+
+def _invalidate_device_id() -> None:
+    """认证因设备指纹被拒（设备信息无效）时清掉内存与落盘 dId，下次重新取。"""
+    global _device_id, _device_id_failed
+    _device_id = ""
+    _device_id_failed = False
+    try:
+        _DEVICE_ID_FILE.unlink()
+    except Exception:
+        pass
+
 
 def _ensure_device_id() -> str:
-    """取森空岛设备指纹；设备信息服务不可达时降级为空串，不抛异常。
+    """取森空岛设备指纹；服务不可达时降级为空串，不抛异常。
 
-    失败一次后本程序运行期间不再尝试取（_device_id_failed 短路），
-    避免每次生成签名都重打一次不可达的设备信息服务、重复刷警告。
+    优先用上次落盘的 dId（不再联网）；没有才去 fp-it 取，重试几次仍失败才放弃，
+    并在本次运行期间不再尝试（_device_id_failed 短路）。
     """
     global _device_id, _device_id_failed
     if _device_id_failed:
         return _device_id
     if not _device_id:
-        try:
-            _device_id = get_d_id()
-        except Exception:
-            _device_id_failed = True
-            logger.warning("设备指纹获取失败（设备信息服务不可达），设备校验可能被拒")
+        _device_id = _read_persisted_did()
+    if not _device_id:
+        for attempt in range(_DEVICE_ID_RETRIES):
+            try:
+                _device_id = get_d_id()
+                _write_persisted_did(_device_id)
+                break
+            except Exception:
+                if attempt == _DEVICE_ID_RETRIES - 1:
+                    _device_id_failed = True
+                    logger.warning(
+                        "设备指纹获取失败（设备信息服务不可达），设备校验可能被拒"
+                    )
+                else:
+                    time.sleep(1)
     return _device_id
 
 
@@ -183,6 +232,10 @@ def get_cred(grant):
     ).json()
 
     if resp["code"] != 0:
+        # 「设备信息无效」是 dId 失效/丢失的信号：清掉内存与落盘缓存，
+        # 让下次认证重新取一个新的，避免连续复用同一个失效 dId
+        if resp.get("message") == "设备信息无效":
+            _invalidate_device_id()
         raise Exception(f"获得cred失败：{resp['message']}")
 
     return resp["data"]
@@ -221,6 +274,10 @@ def get_cred_by_token(token):
 
 def log(account):
     header_login["dId"] = _ensure_device_id()
+    if not header_login["dId"]:
+        # 取不到 dId 时不应以空串继续请求：森空岛后端在换 cred 时会把空 dId 视为无效设备，
+        # 误报「设备信息无效」。提前中止，明确报指纹服务不可达。
+        raise Exception("设备指纹服务不可达，无法认证森空岛")
     resp = requests.post(
         token_password_url,
         json={"phone": account.account, "password": account.password},
