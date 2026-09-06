@@ -853,6 +853,7 @@ class Recognizer:
             "fight/use": (858, 864),
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
+            "clue_next_black": ((1600, 850), (1920, 1030)),
             "loading": (736, 333),
             "loading2": (630, 240),
             "loading3": (1681, 1000),

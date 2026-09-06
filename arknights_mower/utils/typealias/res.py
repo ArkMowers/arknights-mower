@@ -16,6 +16,7 @@ Res = Literal[
     "business_card",
     "clue",
     "clue_next",
+    "clue_next_black",
     "collection",
     "collection_small",
     "confirm",
