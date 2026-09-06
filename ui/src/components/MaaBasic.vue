@@ -846,7 +846,7 @@ onUnmounted(() => {
             时保留。也可以选择自定义目录。</help-text
           >
         </template>
-        <n-input type="textarea" :autosize="true" v-model:value="maa_path" />
+        <n-input v-model:value="maa_path" />
         <n-button @click="select_maa_dir" class="dialog-btn">...</n-button>
       </n-form-item>
       <n-form-item label="连接配置">

@@ -282,7 +282,7 @@ if (return_home_when_idle.value) {
                   </div>
                 </help-text>
               </template>
-              <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
+              <n-input v-model:value="maa_adb_path" />
               <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
             </n-form-item>
             <n-form-item>
@@ -319,11 +319,7 @@ if (return_home_when_idle.value) {
                   <div>MuMu12: 写到nx_main文件夹</div>
                 </help-text>
               </template>
-              <n-input
-                v-model:value="simulator.simulator_folder"
-                type="textarea"
-                :autosize="true"
-              />
+              <n-input v-model:value="simulator.simulator_folder" />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
             </n-form-item>
             <n-form-item v-if="simulator.name">

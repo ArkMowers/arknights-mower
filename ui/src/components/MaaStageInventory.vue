@@ -411,6 +411,7 @@ onMounted(loadInventoryRuleData)
                 filterable
                 tag
                 clearable
+                :clear-created-options-on-clear="false"
                 placeholder="选择或输入物品"
                 :options="itemOptionsFor(item)"
                 :on-create="createInventoryItemOption"
@@ -516,6 +517,7 @@ onMounted(loadInventoryRuleData)
                 filterable
                 tag
                 clearable
+                :clear-created-options-on-clear="false"
                 placeholder="选择或输入物品"
                 :options="itemOptionsFor(member)"
                 :on-create="createInventoryItemOption"
