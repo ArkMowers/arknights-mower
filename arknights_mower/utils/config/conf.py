@@ -3,8 +3,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from pydantic import BaseModel, Field, model_validator
-from pydantic_core import PydanticUndefined
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.path import get_path
@@ -31,18 +30,11 @@ def default_adb_path():
 
 
 class ConfModel(BaseModel):
-    @model_validator(mode="before")
-    @classmethod
-    def nested_defaults(cls, data):
-        for name, field in cls.model_fields.items():
-            if name not in data:
-                if field.default_factory is not None:
-                    data[name] = field.default_factory()
-                elif field.default is PydanticUndefined:
-                    data[name] = field.annotation()
-                else:
-                    data[name] = field.default
-        return data
+    # 用户没配置的字段由 pydantic 用默认值在运行时补齐，不写回配置文件。
+    # validate_default=True 让带默认值的字段（如 maa_weekly_plan 的 dict 默认值）也经历一次
+    # 校验、转成模型实例；配合 save_conf 的 model_dump(exclude_unset=True)，落盘的只有
+    # 用户显式配置过的键，未配置的字段不写入磁盘（新字段默认值由运行时补齐）。
+    model_config = ConfigDict(validate_default=True)
 
 
 class CluePart(ConfModel):
@@ -60,7 +52,7 @@ class CluePart(ConfModel):
 
     maa_credit_fight: bool = True
     "信用作战开关"
-    credit_fight: CreditFightConf
+    credit_fight: CreditFightConf = Field(default_factory=CreditFightConf)
     "信用作战设置"
     enable_party: int = 1
     "线索收集"
@@ -93,7 +85,9 @@ class EmailPart(ConfModel):
     "邮箱密码"
     recipient: list[str] = []
     "收件人"
-    custom_smtp_server: CustomSMTPServerConf
+    custom_smtp_server: CustomSMTPServerConf = Field(
+        default_factory=CustomSMTPServerConf
+    )
     "自定义邮箱"
     mail_subject: str = "[Mower通知]"
     "标题前缀"
@@ -124,7 +118,7 @@ class ExtraPart(ConfModel):
 
     start_automatically: bool = False
     "启动后自动开始任务"
-    webview: WebViewConf
+    webview: WebViewConf = Field(default_factory=WebViewConf)
     "GUI相关设置"
     theme: str = "light"
     "界面主题"
@@ -132,7 +126,7 @@ class ExtraPart(ConfModel):
     "截图最短间隔（毫秒）"
     screenshot: float = 1
     "截图保留时长（小时），0 不写盘，实时预览仍可用"
-    waiting_scene: WaitingSceneConf
+    waiting_scene: WaitingSceneConf = Field(default_factory=WaitingSceneConf)
     "等待时间"
 
 
@@ -200,17 +194,19 @@ class LongTaskPart(ConfModel):
     "肉鸽主题"
     maa_rcl_theme: str = "Tales"
     "生息演算主题（Tales/Fire/RelaunchAnchor）"
-    rcl: RclConf
+    rcl: RclConf = Field(default_factory=RclConf)
     "生息演算设置"
-    rogue: RogueConf
+    rogue: RogueConf = Field(default_factory=RogueConf)
     "肉鸽设置"
-    sss: SSSConf
+    sss: SSSConf = Field(default_factory=SSSConf)
     "保全设置"
-    reclamation_algorithm: ReclamationAlgorithmConf
+    reclamation_algorithm: ReclamationAlgorithmConf = Field(
+        default_factory=ReclamationAlgorithmConf
+    )
     "生息演算"
-    secret_front: SecretFrontConf
+    secret_front: SecretFrontConf = Field(default_factory=SecretFrontConf)
     "隐秘战线结局"
-    sign_in: SignInConf
+    sign_in: SignInConf = Field(default_factory=SignInConf)
     "签到活动"
 
     class HotUpdateConf(ConfModel):
@@ -225,7 +221,7 @@ class LongTaskPart(ConfModel):
                 self.enable = True
             return self
 
-    hot_update: HotUpdateConf
+    hot_update: HotUpdateConf = Field(default_factory=HotUpdateConf)
     "热更新"
 
 
@@ -299,7 +295,7 @@ class RegularTaskPart(ConfModel):
     "日常任务间隔"
     maa_expiring_medicine: bool = True
     "自动使用将要过期（约3天）的理智药"
-    exipring_medicine_on_weekend: bool = False
+    expiring_medicine_on_weekend: bool = False
     "仅在周末使用将要过期的理智药"
     ap_fallback: int = 0
     "关卡体力消耗默认值（数据中找不到关卡时的兜底，0 表示不启用）"
@@ -369,7 +365,9 @@ class RIICPart(ConfModel):
     "跑单前置延时"
     resting_threshold: float = 0.65
     "心情阈值"
-    run_order_grandet_mode: RunOrderGrandetModeConf
+    run_order_grandet_mode: RunOrderGrandetModeConf = Field(
+        default_factory=RunOrderGrandetModeConf
+    )
     "葛朗台跑单"
     free_room: bool = False
     "宿舍不养闲人模式"
@@ -450,7 +448,7 @@ class SimulatorPart(ConfModel):
 
     adb: str = "127.0.0.1:16384"
     "ADB连接地址"
-    simulator: SimulatorConf
+    simulator: SimulatorConf = Field(default_factory=SimulatorConf)
     "模拟器"
     maa_adb_path: str = Field(default_factory=default_adb_path)
     "ADB路径"
@@ -458,9 +456,11 @@ class SimulatorPart(ConfModel):
     "任务结束后关闭游戏"
     package_type: int = 1
     "游戏服务器"
-    custom_screenshot: CustomScreenshotConf
+    custom_screenshot: CustomScreenshotConf = Field(
+        default_factory=CustomScreenshotConf
+    )
     "自定义截图"
-    tap_to_launch_game: TapToLaunchGameConf
+    tap_to_launch_game: TapToLaunchGameConf = Field(default_factory=TapToLaunchGameConf)
     "点击屏幕启动游戏"
     exit_game_when_idle: bool = False
     "任务结束后退出游戏"
@@ -472,7 +472,7 @@ class SimulatorPart(ConfModel):
     "关闭MuMu模拟器12时结束adb进程"
     touch_method: str = "scrcpy"
     "触控模式"
-    droidcast: DroidCastConf
+    droidcast: DroidCastConf = Field(default_factory=DroidCastConf)
     "DroidCast截图设置"
     mumu12IPC: bool = False
     "MuMu12IPC截图设置"
@@ -534,6 +534,14 @@ class MaaRewardPart(ConfModel):
     "领取五周年赠送月卡奖励"
 
 
+# 已退役的旧字段名 → 现在的字段名。旧键名拼写有误（exipring），已换名；旧配置文件或旧前端
+# 提交时仍会用旧键名，须在构造 Conf 时统一把它搬到新键名下——只在旧键名确实出现时搬运
+# （没配过就不写新键、不注入默认值），新旧并存时以新键为准（不覆盖）。
+_LEGACY_KEY_MIGRATIONS = {
+    "exipring_medicine_on_weekend": "expiring_medicine_on_weekend",
+}
+
+
 class Conf(
     CluePart,
     EmailPart,
@@ -548,6 +556,21 @@ class Conf(
     MaaRewardPart,
     AIAgentPart,
 ):
+    # 迁移放在校验层而不是 load_conf：/conf POST 等所有构造路径都能统一兼容旧字段，
+    # 否则旧前端整包提交旧键名会被当未知键忽略、新键落成默认值。
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_keys(cls, data):
+        if not isinstance(data, dict):
+            return data
+        for old, new in _LEGACY_KEY_MIGRATIONS.items():
+            if old not in data:
+                continue
+            if new not in data:
+                data[new] = data[old]
+            data.pop(old, None)
+        return data
+
     @property
     def APPNAME(self):
         return (

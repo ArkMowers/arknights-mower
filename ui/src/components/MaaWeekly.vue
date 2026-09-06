@@ -20,7 +20,7 @@ const {
   maa_weekly_plan,
   maa_enable,
   maa_expiring_medicine,
-  exipring_medicine_on_weekend,
+  expiring_medicine_on_weekend,
   ap_fallback
 } = storeToRefs(store)
 
@@ -263,7 +263,7 @@ function cancelCopyDialogLongPress() {
           <n-flex class="weekly-plan-toolbar" align="center">
             <n-checkbox v-model:checked="maa_expiring_medicine">使用将要过期的理智药</n-checkbox>
             <n-checkbox
-              v-model:checked="exipring_medicine_on_weekend"
+              v-model:checked="expiring_medicine_on_weekend"
               :disabled="!maa_expiring_medicine"
             >
               周末使用

@@ -3,12 +3,30 @@ import os
 import tempfile
 import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 from arknights_mower.utils import config as config_module
 from arknights_mower.utils.config import atomic_write, migrate_app_config_paths
 from arknights_mower.utils.config.conf import Conf
+
+
+@contextmanager
+def _patched_conf(path, conf=None):
+    """临时切到 path 与 conf 下读取/写配置，结束后还原模块级 conf。
+
+    #258 之后 save_conf 只写用户配置过的键，测试须用固定的 path/conf 隔离环境里的
+    @app/config/conf.yml，避免依赖残留内容。
+    """
+    original = config_module.conf
+    try:
+        with patch.object(config_module, "conf_path", path):
+            if conf is not None:
+                config_module.conf = conf
+            yield
+    finally:
+        config_module.conf = original
 
 
 class TestMaaConfig(unittest.TestCase):
@@ -265,7 +283,8 @@ class TestPersistFunctionsWriteThrough(unittest.TestCase):
 
     def test_save_conf_writes_atomic(self):
         target = self.dir / "conf.yml"
-        with patch.object(config_module, "conf_path", target):
+        # 固定一份带 webview 的配置，避免依赖测试环境 @app/config/conf.yml 的遗留内容
+        with _patched_conf(target, Conf(webview={"port": 58000})):
             config_module.save_conf()
         self.assertTrue(target.is_file())
         self.assertIn("webview", target.read_text(encoding="utf-8"))
@@ -303,6 +322,100 @@ class TestPersistFunctionsWriteThrough(unittest.TestCase):
         self.assertTrue(target.is_file())
         leftovers = [p for p in self.dir.rglob(".*.tmp") if p.is_file()]
         self.assertEqual(leftovers, [])
+
+
+class TestConfigPersistence(unittest.TestCase):
+    """#258：save_conf 只写用户配置过的键 + 旧键→新键迁移钩子。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.conf_path = self.dir / "conf.yml"
+
+    def _write_conf(self, text):
+        self.conf_path.parent.mkdir(parents=True, exist_ok=True)
+        self.conf_path.write_text(text, encoding="utf-8")
+
+    def test_save_conf_writes_only_user_configured_keys(self):
+        with _patched_conf(self.conf_path, Conf(maa_expiring_medicine=False)):
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("maa_expiring_medicine", written)
+        # 未配置的默认字段不落盘
+        self.assertNotIn("expiring_medicine_on_weekend", written)
+        self.assertNotIn("maa_eat_stone", written)
+        self.assertNotIn("ap_fallback", written)
+
+    def test_unconfigured_conf_serializes_without_injected_defaults(self):
+        with _patched_conf(self.conf_path, Conf()):
+            # 未配置任何字段 → 序列化结果为空，不注入任何默认值
+            dumped = config_module.conf.model_dump(exclude_unset=True)
+            config_module.save_conf()
+        self.assertEqual(dumped, {})
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertNotIn("maa_eat_stone", written)
+        self.assertNotIn("webview", written)
+
+    def test_legacy_key_migrates_to_new_key_when_configured(self):
+        self._write_conf("exipring_medicine_on_weekend: true\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertTrue(config_module.conf.expiring_medicine_on_weekend)
+            self.assertIn(
+                "expiring_medicine_on_weekend",
+                config_module.conf.model_fields_set,
+            )
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("expiring_medicine_on_weekend", written)
+        self.assertNotIn("exipring_medicine_on_weekend", written)
+
+    def test_legacy_key_not_migrated_when_absent(self):
+        self._write_conf("maa_expiring_medicine: false\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            # 没配过旧键：新键用运行时默认值，且不被标记为已设置（因此不落盘）
+            self.assertFalse(config_module.conf.expiring_medicine_on_weekend)
+            self.assertNotIn(
+                "expiring_medicine_on_weekend",
+                config_module.conf.model_fields_set,
+            )
+
+    def test_new_key_takes_precedence_when_legacy_and_new_both_present(self):
+        self._write_conf(
+            "exipring_medicine_on_weekend: true\nexpiring_medicine_on_weekend: false\n"
+        )
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            # 新旧键同时出现时以新键为准，不覆盖已配置的取反值
+            self.assertFalse(config_module.conf.expiring_medicine_on_weekend)
+
+    def test_migrated_value_survives_round_trip(self):
+        self._write_conf("exipring_medicine_on_weekend: true\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertTrue(config_module.conf.expiring_medicine_on_weekend)
+
+    def test_conf_post_with_legacy_key_reconciles_at_validation_layer(self):
+        # 兼容：/conf POST 提交旧键名（旧前端整包）时，Conf 校验层统一迁移，不把新键重置成默认。
+        # 旧迁移只在 load_conf（读文件）执行，/conf 提交会绕过——此测锁定那条路径。
+        with _patched_conf(self.conf_path):
+            # 模拟旧前端整包提交：请求体带旧键名、不带新键名
+            config_module.conf = config_module.Conf(
+                **{"exipring_medicine_on_weekend": True}
+            )
+            self.assertTrue(config_module.conf.expiring_medicine_on_weekend)
+            self.assertIn(
+                "expiring_medicine_on_weekend",
+                config_module.conf.model_fields_set,
+            )
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("expiring_medicine_on_weekend", written)
+        self.assertNotIn("exipring_medicine_on_weekend", written)
 
 
 if __name__ == "__main__":

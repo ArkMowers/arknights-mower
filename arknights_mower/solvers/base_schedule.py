@@ -3849,7 +3849,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(f"现在服务器是{_plan.weekday}")
             use_medicine = False
             if conf.maa_expiring_medicine:
-                if conf.exipring_medicine_on_weekend:
+                if conf.expiring_medicine_on_weekend:
                     use_medicine = server_weekday >= 5
                 else:
                     use_medicine = True

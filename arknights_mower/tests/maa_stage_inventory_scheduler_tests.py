@@ -31,7 +31,7 @@ def _conf(*, enabled=True):
             )
         ],
         maa_expiring_medicine=False,
-        exipring_medicine_on_weekend=False,
+        expiring_medicine_on_weekend=False,
         maa_eat_stone=False,
     )
 
