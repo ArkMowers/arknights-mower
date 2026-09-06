@@ -1,0 +1,157 @@
+.provider,
+:root {
+  --mower-segment-rail: #efefed;
+  --mower-segment-active: #ffffff;
+  --mower-segment-muted: rgba(31, 30, 28, 0.5);
+  --mower-segment-border: rgba(55, 49, 43, 0.09);
+  --mower-segment-rail-shadow: inset 0 1px 3px rgba(55, 49, 43, 0.11),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.72);
+  --mower-segment-capsule-shadow: inset 0 0 0 1px rgba(55, 49, 43, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88), 0 1px 3px rgba(55, 49, 43, 0.13),
+    0 4px 10px -7px rgba(55, 49, 43, 0.32);
+}
+
+html[data-mower-theme='dark'],
+html[data-mower-theme='dark'] .provider {
+  --mower-segment-rail: rgb(24, 24, 28);
+  --mower-segment-active: rgb(49, 49, 55);
+  --mower-segment-muted: rgba(255, 255, 255, 0.48);
+  --mower-segment-border: rgba(255, 255, 255, 0.08);
+  --mower-segment-rail-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.68),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  --mower-segment-capsule-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 3px rgba(0, 0, 0, 0.52),
+    0 4px 12px -7px rgba(0, 0, 0, 0.78);
+}
+
+.provider .n-card:not(.n-card--embedded),
+.provider .n-checkbox-box,
+.provider .mower-surface-panel {
+  box-shadow: none;
+}
+
+/* 实色按钮（非 text/ghost）加一档 shadcn `shadow-xs` 轻阴影；text/ghost 按钮不加。
+   默认按钮的可见边框由主题 Button.border 给出（1px solid border），这里只管阴影。 */
+.provider .n-button:not(.n-button--text):not(.n-button--ghost) {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+html[data-mower-theme='dark'] .provider .n-button:not(.n-button--text):not(.n-button--ghost) {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* shadcn `focus-visible:ring-[3px]` 绿色聚焦环（与输入框聚焦一致），叠加在轻阴影之上 */
+.provider .n-button:not(.n-button--text):not(.n-button--ghost):focus-visible {
+  outline: none;
+  box-shadow:
+    0 1px 2px 0 rgba(0, 0, 0, 0.08),
+    0 0 0 3px rgba(24, 160, 88, 0.2);
+}
+html[data-mower-theme='dark']
+  .provider
+  .n-button:not(.n-button--text):not(.n-button--ghost):focus-visible {
+  box-shadow:
+    0 1px 2px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 3px rgba(99, 226, 183, 0.2);
+}
+
+.provider .n-data-table,
+.provider .n-table,
+.provider .n-list,
+.provider .n-upload-dragger {
+  border-radius: 10px;
+}
+
+.provider .n-collapse-item {
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--mower-control-surface);
+}
+
+.provider .n-collapse-item + .n-collapse-item {
+  margin-top: 8px;
+}
+
+.provider .mower-surface-panel {
+  border-radius: 12px;
+  background: var(--mower-surface);
+}
+
+#app .n-tabs.n-tabs--segment-type .n-tabs-capsule {
+  border: 1px solid var(--mower-segment-border);
+  background: var(--mower-segment-active);
+  box-shadow: var(--mower-segment-capsule-shadow);
+}
+
+#app .n-tabs.n-tabs--segment-type .n-tabs-rail {
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--mower-segment-rail);
+  box-shadow: var(--mower-segment-rail-shadow);
+}
+
+#app .n-tabs.n-tabs--segment-type .n-tabs-tab:not(.n-tabs-tab--active) {
+  color: var(--mower-segment-muted);
+}
+
+/* Cap the modal panel to the app viewport. We deliberately do NOT set
+   `overflow: hidden` on the panel itself: naive-ui teleports inner popovers
+   (select menus, tooltips, …) into the panel root, so an `overflow` there would
+   clip them — the "dropdown hidden behind the modal wall" symptom. The panel
+   keeps its height cap; content scrolls inside `.n-card-content`/`.n-dialog__content`
+   below, which is a separate node, so popovers still fly above it. */
+.n-modal {
+  max-width: calc(var(--app-width, 100vw) - 48px);
+  max-height: calc(var(--app-height, 100dvh) - 48px);
+}
+
+.n-modal.n-card,
+.n-modal.n-dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.n-modal.n-card > .n-card-header,
+.n-modal.n-card > .n-card__footer,
+.n-modal.n-card > .n-card__action,
+.n-modal.n-dialog > .n-dialog__title,
+.n-modal.n-dialog > .n-dialog__action {
+  flex: 0 0 auto;
+}
+
+.n-modal.n-card > .n-card-content,
+.n-modal.n-dialog > .n-dialog__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.provider .n-divider:not(.n-divider--vertical) {
+  width: calc(100% - 32px);
+  margin-right: 16px;
+  margin-left: 16px;
+}
+
+.provider .n-divider:not(.n-divider--vertical) .n-divider__line {
+  height: 1px;
+}
+
+.provider .n-input.mower-input--underline {
+  overflow: hidden;
+  border-radius: var(--n-border-radius);
+  background-color: transparent;
+  border-bottom: 1px solid color-mix(in srgb, currentcolor 18%, transparent);
+  box-shadow: none;
+}
+
+.provider .n-input.mower-input--underline .n-input__border,
+.provider .n-input.mower-input--underline .n-input__state-border {
+  display: none;
+}
+
+.provider .n-input.mower-input--underline.n-input--focus {
+  border-bottom-color: var(--n-caret-color);
+}

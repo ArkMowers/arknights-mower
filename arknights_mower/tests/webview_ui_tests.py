@@ -5,6 +5,7 @@ from unittest import mock
 
 from arknights_mower import __version__
 from arknights_mower.utils.config import gui
+from arknights_mower.utils.window_shell import WindowRatio
 from webview_ui import (
     _LINUX_WEBVIEW_INSTALL_HINT,
     DEFAULT_WINDOW_SIZE,
@@ -95,27 +96,27 @@ class TestResolveWindowSize(unittest.TestCase):
         self.assertEqual(resolve_window_size(float("inf"), 850), DEFAULT_WINDOW_SIZE)
 
 
-class TestGuiWindowSize(unittest.TestCase):
+class TestGuiWindowRatio(unittest.TestCase):
     def test_missing_file_returns_none(self):
-        # gui.yml 还不存在（首次运行）→ 返回 None，由调用方兜底默认尺寸。
+        # gui.yml 还不存在（首次运行）→ 返回 None，由调用方兜底默认比例。
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
-                self.assertIsNone(gui.load_window_size())
+                self.assertIsNone(gui.load_window_ratio())
 
     def test_save_then_load_roundtrip(self):
-        # 存进去的尺寸能原样读回，验证读写都落在 gui.yml 上。
+        # 存进去的比例能原样读回，验证读写都落在 gui.yml 上。
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
-                gui.save_window_size((1600, 900))
-                self.assertEqual(gui.load_window_size(), (1600, 900))
+                gui.save_window_ratio(WindowRatio(0.6, 0.5))
+                self.assertEqual(gui.load_window_ratio(), WindowRatio(0.6, 0.5))
 
     def test_corrupt_content_returns_none(self):
         # 内容非法（宽为非数字）→ 返回 None，不把坏值传出去。
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "gui.yml"
-            p.write_text("width: abc\nheight: 900\n", encoding="utf-8")
+            p.write_text("ratio:\n  width: abc\n  height: 900\n", encoding="utf-8")
             with mock.patch.object(gui, "gui_path", p):
-                self.assertIsNone(gui.load_window_size())
+                self.assertIsNone(gui.load_window_ratio())
 
 
 class TestWindowTitle(unittest.TestCase):

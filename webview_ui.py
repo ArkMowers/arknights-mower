@@ -280,20 +280,60 @@ def webview_window(
 
         mower_log.bind_mp_queue(log_queue)
 
-    from arknights_mower.utils.config.gui import load_window_size, save_window_size
+    from arknights_mower.utils import config
+    from arknights_mower.utils.config.gui import load_window_ratio, save_window_ratio
+    from arknights_mower.utils.window_shell import (
+        DESKTOP_WINDOW_MIN_SIZE,
+        WindowSize,
+        attach_window_shell,
+        default_desktop_window_size,
+        is_windows,
+        ratio_from_window_size,
+        window_background_color,
+        window_dpi_scale,
+        window_size_from_ratio,
+    )
 
     global width
     global height
 
-    size = load_window_size()
-    width, height = resolve_window_size(*size) if size else DEFAULT_WINDOW_SIZE
+    config.load_conf()
+    theme = config.conf.theme
+    ratio = load_window_ratio()
+    if ratio:
+        width, height = window_size_from_ratio(ratio)
+    else:
+        width, height = default_desktop_window_size()
+    # 无边框自绘标题栏是 Windows 专属：原生非客户区缩放/DPI 都依赖下面的 Win32
+    # hook，其余平台沿用原生窗口。否则会得到一个既不能拖拽也不能缩放的裸窗口。
+    shell_enabled = is_windows()
+    url = append_query_param(url, "window_shell", "1") if shell_enabled else url
+    url = append_query_param(url, "window_theme", theme)
+    url = append_query_param(url, "mower_version", title_version())
+
+    def current_dpi_scale() -> float:
+        # 窗口所在显示器 DPI 缩放（1.0 / 1.25 / 1.5 ...）。resized 回调给的是物理
+        # 像素，存盘前要还原成逻辑值，否则物理值会被 create_window 当作逻辑再放大
+        # 一次，越开越大。每次缩放时重新探测，窗口拖到不同 DPI 的显示器也能对上。
+        if not shell_enabled:
+            return 1.0
+        try:
+            from webview.platforms import winforms
+
+            form = winforms.BrowserView.instances.get(window.uid)
+            if form is not None:
+                return window_dpi_scale(int(form.Handle.ToInt64()))
+        except Exception:
+            pass
+        return 1.0
 
     def window_size(w, h):
         global width
         global height
-        size = sanitize_window_size(w, h)
-        if size is not None:
-            width, height = size
+        scale = current_dpi_scale()
+        logical = sanitize_window_size(round(w / scale), round(h / scale))
+        if logical is not None:
+            width, height = logical
 
     window = webview.create_window(
         window_title(instance_name, port),
@@ -302,8 +342,25 @@ def webview_window(
         confirm_close=not tray,
         width=width,
         height=height,
+        min_size=DESKTOP_WINDOW_MIN_SIZE,
+        resizable=True,
+        frameless=shell_enabled,
+        easy_drag=False,
+        shadow=True,
+        background_color=window_background_color(theme),
     )
     window.events.resized += window_size
+    bridge = attach_window_shell(window, initial_size=WindowSize(width, height))
+    if bridge.get_platform()["platform"] == "windows":
+        from arknights_mower.utils.windows_frameless import (
+            install_windows_frameless_resize,
+        )
+
+        install_windows_frameless_resize(
+            window,
+            WindowSize(width, height),
+            DESKTOP_WINDOW_MIN_SIZE,
+        )
 
     def recv_msg():
         while True:
@@ -345,7 +402,9 @@ def webview_window(
 
         size = sanitize_window_size(width, height)
         if size is not None:
-            save_window_size(size)
+            ratio = ratio_from_window_size(WindowSize(*size))
+            if ratio is not None:
+                save_window_ratio(ratio)
         sys.exit()
     except Exception:
         from arknights_mower.utils.log import logger

@@ -913,6 +913,11 @@ def _request_title_refresh():
         conn.send(("title", current))
     except Exception:
         logger.exception("通知 WebView 刷新窗口标题失败")
+    for ws in list(ws_connections):
+        try:
+            ws.send(json.dumps({"type": "resource_updated"}))
+        except Exception:
+            logger.exception("广播资源版本变更给前端失败")
 
 
 def conn_send(text):

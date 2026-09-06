@@ -48,6 +48,16 @@ export const useMowerStore = defineStore('mower', () => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
         log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100) // 追加日志
+        if (data.screenshot) {
+          sc_uri.value = data.screenshot
+        }
+      } else if (data.type === 'resource_updated') {
+        // 资源包在别处被更新（安装/共享资源/手动上传）时，让标题栏的资源版本实时刷新
+        import('@/stores/resourceVersion')
+          .then(({ useResourceVersionStore }) =>
+            useResourceVersionStore().loadResourceVersionLocal()
+          )
+          .catch(() => {})
       }
     }
   }
