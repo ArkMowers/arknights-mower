@@ -154,9 +154,14 @@ def execute(job_path):
                 **runtime.detached_options(),
             )
         deadline = time.monotonic() + 120
+        # Match readiness by instance identity rather than the spawned process
+        # id. Some Windows launchers (for example a venv python.exe) are a
+        # launcher that re-execs the real interpreter, so the spawned Popen.pid
+        # differs from the registered os.getpid().
+        target = runtime.registration_key(record)
         while time.monotonic() < deadline:
             if any(
-                item["pid"] == child.pid
+                runtime.registration_key(item) == target
                 and item.get("ready")
                 and item.get("restart_job") == job["id"]
                 for item in runtime.instances(state)

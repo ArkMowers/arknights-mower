@@ -289,10 +289,14 @@ def source_repository():
     if not git or not (root / ".git").exists():
         raise ValueError("版本管理需要 Git 检出目录和 Git 工具")
     current = subprocess.check_output(
-        [git, "rev-parse", "HEAD"], cwd=root, text=True, timeout=10
+        [git, "rev-parse", "HEAD"], cwd=root, text=True, encoding="utf-8", timeout=10
     ).strip()
     branch = subprocess.check_output(
-        [git, "branch", "--show-current"], cwd=root, text=True, timeout=10
+        [git, "branch", "--show-current"],
+        cwd=root,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
     ).strip()
     network_settings.apply_http_proxy()
     proxy = network_settings.get_effective_settings()["http_proxy"]
@@ -481,7 +485,11 @@ def source_tools(root):
     )
     origin = (
         subprocess.check_output(
-            [git, "remote", "get-url", "origin"], cwd=root, text=True, timeout=10
+            [git, "remote", "get-url", "origin"],
+            cwd=root,
+            text=True,
+            encoding="utf-8",
+            timeout=10,
         )
         .strip()
         .removesuffix(".git")
@@ -508,7 +516,7 @@ def source_tools(root):
         "source_environment": str(environment)
         if environment != root.resolve() and environment.is_relative_to(root.resolve())
         else "",
-        "venv_dir": str(environment.relative_to(root.resolve()))
+        "venv_dir": str(environment.relative_to(root.resolve()).as_posix())
         if local_environment
         else "",
     }
@@ -624,6 +632,7 @@ def check(channel, proxy=None):
             ["git", "rev-parse", "HEAD"],
             cwd=runtime.installation_root(),
             text=True,
+            encoding="utf-8",
             timeout=10,
         ).strip()
         available = current != plan["commit"] and (

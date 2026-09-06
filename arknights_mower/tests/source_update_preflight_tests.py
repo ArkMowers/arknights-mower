@@ -20,7 +20,7 @@ class SourceToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / ".git").mkdir()
-            original_path = "/usr/bin:/bin"
+            original_path = os.pathsep.join(["/usr/bin", "/bin"])
             selected = {}
 
             def which(name, path):
@@ -78,7 +78,11 @@ class SourceCheckoutTests(unittest.TestCase):
 
     def command(self, *args):
         return subprocess.check_output(
-            [self.git, *args], cwd=self.root, text=True, stderr=subprocess.STDOUT
+            [self.git, *args],
+            cwd=self.root,
+            text=True,
+            encoding="utf-8",
+            stderr=subprocess.STDOUT,
         ).strip()
 
     def worker(self, attributes=None):

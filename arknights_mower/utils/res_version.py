@@ -59,16 +59,53 @@ def package_file_paths(root) -> list:
 
 
 def content_hash(root, rels) -> str:
-    """对相对路径文件集算聚合 sha256（含路径，结果与顺序无关）。"""
+    """对相对路径文件集算聚合 sha256（含路径，结果与顺序无关）。
+
+    Windows 检出（core.autocrlf）会把文本文件的 LF 转成 CRLF。文本文件按
+    git 自身判断文本的启发式（无 NUL 字节）归一化到 LF，使摘要在任何检出下
+    与打包内容一致；二进制文件按原字节参与。分块读取避免一次载入整文件。
+    """
     root = Path(root)
     digest = hashlib.sha256()
     for rel in sorted(rels, key=lambda p: p.as_posix()):
         digest.update(rel.as_posix().encode("utf-8"))
         digest.update(b"\0")
         with open(root / rel, "rb") as f:
-            for chunk in iter(lambda: f.read(1 << 20), b""):
-                digest.update(chunk)
+            normalize = not _contains_nul(f)
+            f.seek(0)
+            _update_digest(digest, f, normalize)
     return digest.hexdigest()
+
+
+def _contains_nul(stream) -> bool:
+    """Whether the stream contains a NUL byte, matching git's text heuristic."""
+    while chunk := stream.read(1 << 20):
+        if b"\0" in chunk:
+            return True
+    return False
+
+
+def _update_digest(digest, stream, normalize: bool) -> None:
+    """Hash a stream, normalizing CRLF to LF for text files.
+
+    A trailing ``\\r`` can pair with the leading ``\\n`` of the next chunk, so it
+    is carried over between reads instead of being dropped.
+    """
+    if not normalize:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+        return
+    pending = b""
+    while chunk := stream.read(1 << 20):
+        data = pending + chunk
+        if data.endswith(b"\r"):
+            pending = b"\r"
+            data = data[:-1]
+        else:
+            pending = b""
+        digest.update(data.replace(b"\r\n", b"\n"))
+    if pending:
+        digest.update(pending)
 
 
 def _pick_latest(entries, filter_field, skip_keys, time_key, name_key) -> dict:

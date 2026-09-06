@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -315,7 +316,7 @@ class SourceEnvironmentTests(unittest.TestCase):
             ]
             for path in paths:
                 (path / "tmp").mkdir(parents=True)
-                with sqlite3.connect(path / "tmp/data.db") as db:
+                with closing(sqlite3.connect(path / "tmp/data.db")) as db:
                     for table in (
                         "saved_state",
                         "mastery_plan",
@@ -324,13 +325,14 @@ class SourceEnvironmentTests(unittest.TestCase):
                     ):
                         db.execute(f"CREATE TABLE {table} (value TEXT)")
                         db.execute(f"INSERT INTO {table} VALUES ('keep')")
+                    db.commit()
             Worker(work / "job.json").clear_source_runtime_snapshots(
                 records
                 + records
                 + [{"kind": "manager"}, {"kind": "instance", "space": "missing"}]
             )
             for path in paths:
-                with sqlite3.connect(path / "tmp/data.db") as db:
+                with closing(sqlite3.connect(path / "tmp/data.db")) as db:
                     self.assertEqual(
                         db.execute("SELECT COUNT(*) FROM saved_state").fetchone()[0], 0
                     )

@@ -5,6 +5,7 @@ two locally generated test wheels. Git's origin is a temporary local directory.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -42,9 +43,19 @@ class SourceTransactionTests(unittest.TestCase):
             git = shutil.which("git")
             base_python = getattr(sys, "_base_executable", sys.executable)
 
+            # git emits UTF-8, but on Windows a Python subprocess prints in the
+            # console codepage (GBK). Force child Python to UTF-8 so a single
+            # encoding decodes both; this is a no-op on POSIX.
+            child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
             def command(*args, cwd=root):
                 return subprocess.check_output(
-                    list(map(str, args)), cwd=cwd, stderr=subprocess.STDOUT, text=True
+                    list(map(str, args)),
+                    cwd=cwd,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    env=child_env,
                 ).strip()
 
             command(git, "init", "-b", "main")
@@ -199,6 +210,10 @@ class SourceTransactionTests(unittest.TestCase):
                 ):
                     time.sleep(0.05)
                 self.assertEqual(len(runtime.instances(state)), 3)
+                # On Windows a venv python.exe can be a launcher that re-execs
+                # the real interpreter, so Popen.pid differs from the registered
+                # os.getpid(). Compare registered pids, not Popen pids.
+                original_pids = {r["pid"] for r in runtime.instances(state)}
                 work = directory / "job"
                 job = {
                     "id": "transaction",
@@ -332,9 +347,7 @@ class SourceTransactionTests(unittest.TestCase):
                 self.assertFalse((state / "active").exists())
                 self.assertFalse(worker.source_stage.exists())
                 if fail_build or cancel_build:
-                    self.assertEqual(
-                        {row["pid"] for row in records}, {p.pid for p in original}
-                    )
+                    self.assertEqual({row["pid"] for row in records}, original_pids)
                     self.assertFalse(worker.stopped)
                 if local_changes:
                     self.assertEqual(

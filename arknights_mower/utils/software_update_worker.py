@@ -30,6 +30,7 @@ if __package__:
         launch_environment,
         process_alive,
         read_json,
+        registration_key,
         submission_lock,
         write_json,
     )
@@ -41,6 +42,7 @@ else:
         launch_environment,
         process_alive,
         read_json,
+        registration_key,
         submission_lock,
         write_json,
     )
@@ -121,6 +123,7 @@ def require_clean_source(git, root, env=None, *, force=False, environment=None):
         cwd=root,
         env=env,
         text=True,
+        encoding="utf-8",
         timeout=10,
     )
     if isinstance(changes, bytes):
@@ -141,6 +144,7 @@ def require_clean_source(git, root, env=None, *, force=False, environment=None):
             cwd=root,
             env=env,
             text=True,
+            encoding="utf-8",
             timeout=10,
         )
         entries.extend(tracked.rstrip().splitlines())
@@ -333,7 +337,12 @@ class Worker:
 
     def git_output(self, *args):
         return subprocess.check_output(
-            [self.job["git"], *args], cwd=self.root, env=self.env, text=True, timeout=60
+            [self.job["git"], *args],
+            cwd=self.root,
+            env=self.env,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
         ).strip()
 
     def prepare_source(self):
@@ -909,14 +918,24 @@ class Worker:
             processes.append(process)
         if not verify:
             return
+        # Confirm readiness by instance identity rather than process id. Some
+        # Windows launchers (for example a venv python.exe) are a launcher that
+        # re-execs the real interpreter, so the spawned Popen.pid differs from
+        # the registered os.getpid(). Matching identity keeps the wait robust on
+        # every platform.
+        requested = {
+            registration_key(record)
+            for record in records
+            if not (record.get("kind") == "manager" and self.job["background"])
+        }
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             ready = {
-                r["pid"]
+                registration_key(r)
                 for r in instances(self.state)
                 if r.get("ready") and r.get("restart_job") == self.job["id"]
             }
-            if all(p.pid in ready for p in processes):
+            if requested <= ready:
                 return
             if any(p.poll() is not None for p in processes):
                 break

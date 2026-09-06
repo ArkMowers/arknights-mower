@@ -145,14 +145,17 @@ class ProcessControlIntegrationTests(unittest.TestCase):
             state = root / "state"
             launcher = root / "launcher.py"
             runtime_copy = root / "update_runtime.py"
-            runtime_copy.write_text(Path(runtime.__file__).read_text())
+            runtime_copy.write_text(
+                Path(runtime.__file__).read_text(encoding="utf-8"), encoding="utf-8"
+            )
             launcher.write_text(
                 "import os,sys,time\nfrom pathlib import Path\nimport update_runtime as r\n"
                 f"r.state_dir=lambda:Path({str(state)!r})\n"
                 "kind='manager' if sys.argv[1]=='manager' else 'instance'\n"
                 "record=r.RuntimeRegistration(kind,space=sys.argv[1],name=sys.argv[2],port=int(os.environ['MOWER_RESTART_PORT']),running=lambda:os.environ.get('MOWER_RESUME_RUN')=='1')\n"
                 "record.record.update(ready=True);record.publish()\n"
-                "while not record.shutdown_requested():time.sleep(.02)\nrecord.close()\n"
+                "while not record.shutdown_requested():time.sleep(.02)\nrecord.close()\n",
+                encoding="utf-8",
             )
             processes = []
             real_popen = subprocess.Popen

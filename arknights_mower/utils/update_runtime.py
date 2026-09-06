@@ -57,9 +57,33 @@ def write_json(path, value):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(value, stream, ensure_ascii=False)
-        os.replace(temporary, path)
+        _replace_with_retry(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
+
+
+def _replace_with_retry(source, destination):
+    """Atomically replace ``destination``, tolerating transient Windows locks.
+
+    ``os.replace`` is atomic, but on Windows it fails with a sharing violation
+    (WinError 5/32) when another handle keeps the destination open without
+    ``FILE_SHARE_DELETE`` — for example a concurrent ``instances()`` directory
+    scan reading the same JSON. Retrying briefly is enough for the reader to
+    release the file. POSIX ``os.replace`` never contends this way, so it
+    always re-raises immediately.
+    """
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            if sys.platform != "win32" or winerror not in (5, 32):
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
 
 
 def process_alive(pid):
@@ -132,6 +156,16 @@ def submission_lock(directory):
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def registration_key(record):
+    """Stable identity for matching an instance's registration across a restart.
+
+    Space, name and port only mean something together as the identity of an
+    instance. Matching on them is independent of the process id, which on some
+    Windows launchers differs from the registered ``os.getpid()``.
+    """
+    return (record.get("space") or "", record.get("name") or "", record.get("port"))
 
 
 def instances(directory=None):
@@ -221,6 +255,16 @@ def launch_environment(record, job_id="", background=False):
     for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
         if name + "_ORIG" in env:
             env[name] = env[name + "_ORIG"]
+        else:
+            env.pop(name, None)
+    # os._Environ normalizes variable names to uppercase on Windows, so a plain
+    # copy can change the casing of proxy variables. Normalize them to lowercase
+    # so subprocesses and callers see a deterministic environment on every platform.
+    for name in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
+        matched = next((key for key in env if key.lower() == name), None)
+        if matched is not None:
+            if matched != name:
+                env[name] = env.pop(matched)
         else:
             env.pop(name, None)
     env.update(
