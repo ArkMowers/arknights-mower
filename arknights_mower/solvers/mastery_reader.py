@@ -118,13 +118,24 @@ class RoomState:
 
 
 def _parse_panel_text(text):
-    """`[干员名]技能名` → (干员名, 技能名)。无方括号视为纯技能名。"""
+    """`[干员名]技能名` → (干员名, 技能名)。无方括号视为纯技能名。
+
+    OCR 常在括号前带噪声（前置引号/残缺字符/零宽字符），旧逻辑要求 `[` 恰为首字符，
+    噪声一前置就把整串 `[干员]技能` 当纯技能名返回 → 干员名被误判不可读 → 状态矩阵走
+    ocr_fail → 5 次重读仍不一致 → 保守训练中。改为「找第一个 `[`」：括号前的噪声丢弃，
+    括号内容作干员名、其后作技能名——信息 OCR 其实已读到，不因噪声丢失。
+    无 `[` 仍视为纯技能名（保持原语义）。
+    """
     if not text:
         return "", ""
     t = str(text).strip()
-    if t.startswith("[") and "]" in t:
-        name, _, rest = t[1:].partition("]")
-        return name.strip(), rest.strip()
+    start = t.find("[")
+    if start != -1:
+        end = t.find("]", start)
+        if end != -1:
+            name = t[start + 1 : end].strip()
+            rest = t[end + 1 :].strip()
+            return name, rest
     return "", t
 
 

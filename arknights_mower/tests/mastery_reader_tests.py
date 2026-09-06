@@ -180,6 +180,21 @@ class TestPanelParse(unittest.TestCase):
     def test_parse_empty(self):
         self.assertEqual(reader._parse_panel_text(""), ("", ""))
 
+    def test_parse_leading_noise(self):
+        # OCR 在括号前带噪声（前置引号/残缺字符）时，干员名不应被整串丢弃
+        self.assertEqual(
+            reader._parse_panel_text('"[能天使]扫射模式'), ("能天使", "扫射模式")
+        )
+        self.assertEqual(
+            reader._parse_panel_text("×[能天使]扫射模式"), ("能天使", "扫射模式")
+        )
+
+    def test_parse_real_panel_curly_quotes(self):
+        # 实机面板 [珊比]“慢慢走~”（技能名带全角引号），主读取器应正确拆分
+        self.assertEqual(
+            reader._parse_panel_text("[珊比]“慢慢走~”"), ("珊比", "“慢慢走~”")
+        )
+
 
 class TestCountLitMainPanelIcons(unittest.TestCase):
     """主面板专精图标逐框判亮（MASTERY_ICON_PIPS）。"""
