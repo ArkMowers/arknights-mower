@@ -94,6 +94,34 @@ class Client:
             self.__exec("start-server")
         except (subprocess.CalledProcessError, OSError) as e:
             raise RuntimeError("Can't start adb server") from e
+        self.__connect_device()
+        # 模拟器重启/更新后设备可能尚未在 adb 就绪：端点可能会漂移、设备短暂离线或仍在注册。
+        # 按配置的模拟器启动时间等待，期间反复重选/重连端口再探测，避免只连接一次就立即判定失败。
+        attempts = max(1, (int(config.conf.simulator.wait_time) + 1) // 2)
+        for _ in range(attempts):
+            devices = self.__available_devices()
+            if self.device_id in devices:
+                logger.info(devices)
+                return
+            logger.debug(
+                f"设备未就绪：{devices}，重新选择端口 {self.device_id or config.conf.adb}"
+            )
+            # 端口可能因模拟器重启/更新而漂移：重跑完整选择逻辑（重发现 + 认领存活设备）后重连。
+            self.device_id = self.__choose_devices(devices)
+            target = self.device_id or config.conf.adb
+            if target:
+                Session().connect(target)
+            csleep(2)
+        devices = self.__available_devices()
+        logger.info(devices)
+        if self.device_id not in devices:
+            logger.error(
+                "未检测到相应设备。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。"
+            )
+            raise RuntimeError("Device connection failure")
+
+    def __connect_device(self) -> None:
+        """选定 device_id 并建立到对应端点的连接（原 __init_device 的选中/连接逻辑）。"""
         if self.device_id is None or self.device_id != config.conf.adb:
             self.device_id = self.__choose_devices()
         if self.device_id is None:
@@ -105,28 +133,15 @@ class Client:
         elif self.connect is None:
             Session().connect(self.device_id)
 
-        # if self.device_id is None or self.device_id not in config.ADB_DEVICE:
-        #     if self.connect is None or self.device_id not in config.ADB_CONNECT:
-        #         for connect in config.ADB_CONNECT:
-        #             Session().connect(connect)
-        #     else:
-        #         Session().connect(self.connect)
-        #     self.device_id = self.__choose_devices()
-        logger.info(self.__available_devices())
-        if self.device_id not in self.__available_devices():
-            logger.error(
-                "未检测到相应设备。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。"
-            )
-            raise RuntimeError("Device connection failure")
-
-    def __choose_devices(self) -> Optional[str]:
+    def __choose_devices(self, devices: list[str] | None = None) -> Optional[str]:
         """choose available devices"""
-        devices = self.__available_devices()
+        if devices is None:
+            devices = self.__available_devices()
         if config.conf.adb in devices:
             return config.conf.adb
         # 配置端口不在线：重新发现模拟器当前真实 adb 端口（双模拟器下端口可能漂移或未连）
         target = self.refresh_target()
-        if target in self.__available_devices():
+        if target in devices:
             return target
         if len(devices) > 0 and config.conf.adb == "":
             logger.debug(devices[0])
