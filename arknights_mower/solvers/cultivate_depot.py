@@ -1,7 +1,5 @@
 import json
 
-import requests
-
 from arknights_mower.utils import config
 from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.path import get_path
@@ -11,6 +9,7 @@ from arknights_mower.utils.skland import (
     get_sign_header,
     header,
     log,
+    request_with_retry,
 )
 
 
@@ -30,10 +29,10 @@ class cultivate:
             if i.get("gameId") == 1 and item.cultivate_select == i.get("isOfficial"):
                 body = {"gameId": 1, "uid": i.get("uid")}
                 ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
-                resp = requests.get(
+                resp = request_with_retry(
+                    "get",
                     ingame,
                     headers=get_sign_header(ingame, "get", body, self.sign_token),
-                    timeout=30,
                 ).json()
 
                 def dump(file):

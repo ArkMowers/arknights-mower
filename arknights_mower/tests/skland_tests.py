@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import requests
+
 # mastery_view_tests 等模块收集期会先往 sys.modules 塞 skland 的 MagicMock 桩
 # （历史原因：skland 导入时 get_d_id 会联网）。本测试需要真实模块：删桩后导入
 # （导入已惰性化、不再联网），测试结束恢复桩，避免影响后续依赖该桩的测试。
@@ -237,6 +239,108 @@ class TestEnsureDeviceId(unittest.TestCase):
         self.assertEqual(skland._device_id, "")
         self.assertFalse(skland._device_id_failed)
         self.assertFalse(self._did_file.exists())
+
+
+class TestAuthChainNetworkRetry(unittest.TestCase):
+    """认证链路网络重试：瞬时网络错误重试、认证被拒不重试。"""
+
+    def setUp(self):
+        skland.server_time_offset = 0
+
+    def _resp(self, body, status_code=200):
+        fake = Mock()
+        fake.headers = {}
+        fake.status_code = status_code
+        fake.json = Mock(return_value=body)
+        return fake
+
+    def test_get_cred_retries_transient_then_succeeds(self):
+        # zonai.skland.com 瞬时连接超时 → 重试一次后成功，而非直接抛错中断任务
+        good = self._resp({"code": 0, "data": {"cred": "c", "token": "t"}})
+        with (
+            patch(
+                "requests.post",
+                side_effect=[requests.exceptions.ConnectTimeout(), good],
+            ),
+            patch("time.sleep"),
+        ):
+            self.assertEqual(skland.get_cred("grant"), {"cred": "c", "token": "t"})
+
+    def test_get_cred_raises_after_retries_exhausted(self):
+        # 网络持续不可达 → 重试耗尽后抛出最后的瞬时异常，不静默吞掉
+        with (
+            patch(
+                "requests.post", side_effect=requests.exceptions.ConnectTimeout()
+            ) as post,
+            patch("time.sleep"),
+        ):
+            with self.assertRaises(requests.exceptions.ConnectTimeout):
+                skland.get_cred("grant")
+        self.assertEqual(post.call_count, skland._AUTH_NETWORK_RETRIES)
+
+    def test_get_grant_code_retries_transient_then_succeeds(self):
+        # as.hypergryph.com 瞬时拒连 → 重试一次后成功
+        good = self._resp({"status": 0, "data": {"code": "g"}})
+        with (
+            patch(
+                "requests.post",
+                side_effect=[requests.exceptions.ConnectionError(), good],
+            ),
+            patch("time.sleep"),
+        ):
+            self.assertEqual(skland.get_grant_code("tok"), "g")
+
+    def test_get_cred_sets_request_timeout(self):
+        # 回归护栏：cred 请求必须带超时，避免 connect timeout=None 无限期悬挂
+        good = self._resp({"code": 0, "data": {"cred": "c", "token": "t"}})
+        with patch("requests.post", return_value=good) as post:
+            skland.get_cred("grant")
+        self.assertEqual(
+            post.call_args.kwargs.get("timeout"), skland._AUTH_REQUEST_TIMEOUT
+        )
+        self.assertEqual(post.call_count, 1)
+
+    def test_login_retries_transient_then_succeeds(self):
+        # 登录请求（as.hypergryph.com）瞬时连接超时 → 重试一次后成功
+        fake = self._resp({"status": 0, "data": {"token": "tok"}})
+        fake.headers = {"Date": SERVER_DATE}
+        account = Mock(account="13800000000", password="pw")
+        with (
+            patch(
+                "requests.post",
+                side_effect=[requests.exceptions.ConnectTimeout(), fake],
+            ),
+            patch("time.time", return_value=LOCAL_EPOCH),
+            patch.object(skland, "_ensure_device_id", return_value="B" + "0" * 16),
+            patch("time.sleep"),
+        ):
+            self.assertEqual(skland.log(account), "tok")
+
+    def test_get_binding_list_retries_transient_then_succeeds(self):
+        # 仓库扫描取绑定角色列表也是 zonai.skland.com 的直连 GET，瞬时超时同样重试
+        body = {
+            "code": 0,
+            "data": {
+                "list": [
+                    {
+                        "appCode": "arknights",
+                        "bindingList": [{"gameId": 1, "uid": "u1"}],
+                    },
+                ]
+            },
+        }
+        good = self._resp(body)
+        with (
+            patch(
+                "requests.get",
+                side_effect=[requests.exceptions.ConnectTimeout(), good],
+            ),
+            patch.object(skland, "_ensure_device_id", return_value="B123"),
+            patch("time.sleep"),
+        ):
+            self.assertEqual(
+                skland.get_binding_list("tok"), [{"gameId": 1, "uid": "u1"}]
+            )
 
 
 class TestSignHeaderFields(unittest.TestCase):

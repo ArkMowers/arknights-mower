@@ -205,8 +205,39 @@ def get_sign_header(url: str, method, body, sign_token, old_header=header):
     return h
 
 
+# 森空岛认证与仓库数据请求的远端服务（as.hypergryph.com / zonai.skland.com）偶发瞬时不可达：
+# 给每次请求设超时并对连接层瞬时错误重试几次，避免一次网络抖动就中断认证、连带仓库扫描等任务失败。
+# 重试节奏与 _ensure_device_id 一致；认证被拒（如「设备信息无效」）是语义性失败，不在重试范围内。
+_AUTH_REQUEST_TIMEOUT = 30
+_AUTH_NETWORK_RETRIES = 3
+
+
+def request_with_retry(
+    method, url, *, json=None, headers, timeout=_AUTH_REQUEST_TIMEOUT
+):
+    """带超时发起请求；连接层瞬时错误（连接超时/拒连/重置/响应体截断或损坏）重试几次再抛出。
+
+    只重试连接层瞬时错误，不重试认证被拒（如「设备信息无效」）这类语义性失败。
+    """
+    for attempt in range(_AUTH_NETWORK_RETRIES):
+        try:
+            if method.lower() == "post":
+                return requests.post(url, json=json, headers=headers, timeout=timeout)
+            return requests.get(url, headers=headers, timeout=timeout)
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.ChunkedEncodingError,
+            requests.exceptions.ContentDecodingError,
+        ):
+            if attempt == _AUTH_NETWORK_RETRIES - 1:
+                raise
+            time.sleep(1)
+
+
 def get_grant_code(token):
-    response = requests.post(
+    response = request_with_retry(
+        "post",
         grant_code_url,
         json={"appCode": app_code, "token": token, "type": 0},
         headers=header_login,
@@ -227,8 +258,8 @@ def get_cred(grant):
     :param header_login: 登录请求头
     :return: cred
     """
-    resp = requests.post(
-        cred_code_url, json={"code": grant, "kind": 1}, headers=header_login
+    resp = request_with_retry(
+        "post", cred_code_url, json={"code": grant, "kind": 1}, headers=header_login
     ).json()
 
     if resp["code"] != 0:
@@ -243,7 +274,8 @@ def get_cred(grant):
 
 def get_binding_list(sign_token):
     v = []
-    resp = requests.get(
+    resp = request_with_retry(
+        "get",
         binding_url,
         headers=get_sign_header(
             binding_url,
@@ -251,7 +283,6 @@ def get_binding_list(sign_token):
             None,
             sign_token,
         ),
-        timeout=30,
     )
     _sync_server_time(resp)
     body = resp.json()
@@ -278,11 +309,11 @@ def log(account):
         # 取不到 dId 时不应以空串继续请求：森空岛后端在换 cred 时会把空 dId 视为无效设备，
         # 误报「设备信息无效」。提前中止，明确报指纹服务不可达。
         raise Exception("设备指纹服务不可达，无法认证森空岛")
-    resp = requests.post(
+    resp = request_with_retry(
+        "post",
         token_password_url,
         json={"phone": account.account, "password": account.password},
         headers=header_login,
-        timeout=30,
     )
     _sync_server_time(resp)
     r = resp.json()
