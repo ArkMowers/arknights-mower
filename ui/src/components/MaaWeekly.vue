@@ -19,7 +19,7 @@ const store = useConfigStore()
 const {
   maa_weekly_plan,
   maa_enable,
-  maa_expiring_medicine,
+  medicine_expire_days,
   expiring_medicine_on_weekend,
   ap_fallback
 } = storeToRefs(store)
@@ -261,16 +261,37 @@ function cancelCopyDialogLongPress() {
       <n-form-item :show-label="false">
         <n-flex vertical :size="8">
           <n-flex class="weekly-plan-toolbar" align="center">
-            <n-checkbox v-model:checked="maa_expiring_medicine">使用将要过期的理智药</n-checkbox>
-            <n-checkbox
-              v-model:checked="expiring_medicine_on_weekend"
-              :disabled="!maa_expiring_medicine"
+            <span>使用还剩</span>
+            <n-input-number
+              v-model:value="medicine_expire_days"
+              :min="0"
+              :max="999"
+              :show-button="false"
+              placeholder="0"
+              style="width: 90px"
             >
-              周末使用
-            </n-checkbox>
+              <template #suffix>天</template>
+            </n-input-number>
+            <span>过期的理智药</span>
+            <help-text>
+              <div>
+                实际会服用游戏内显示剩余天数小于此处填写天数的理智药（如填 3，则剩余不足 3
+                天才用）。
+              </div>
+              <div>填 0 表示不服用（默认）。</div>
+              <div>勾选「只在周末服用过期的理智药」后，只在周末服用，平时不用。</div>
+            </help-text>
             <div class="weekly-plan-selector-wrap">
               <WeeklyPlanSelector compact />
             </div>
+          </n-flex>
+          <n-flex>
+            <n-checkbox
+              v-model:checked="expiring_medicine_on_weekend"
+              :disabled="medicine_expire_days <= 0"
+            >
+              只在周末服用过期的理智药
+            </n-checkbox>
           </n-flex>
           <n-flex>
             <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>

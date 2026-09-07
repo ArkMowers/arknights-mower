@@ -293,8 +293,8 @@ class RegularTaskPart(ConfModel):
     "日常任务"
     maa_gap: float = 3
     "日常任务间隔"
-    maa_expiring_medicine: bool = True
-    "自动使用将要过期（约3天）的理智药"
+    medicine_expire_days: int = 0
+    "自动使用将要过期的理智药（剩余天数，0 表示不使用）"
     expiring_medicine_on_weekend: bool = False
     "仅在周末使用将要过期的理智药"
     ap_fallback: int = 0
