@@ -13,10 +13,12 @@ from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E
 def _conf(
     *,
     enabled=True,
+    package_type=1,
     medicine_expire_days=0,
     expiring_medicine_on_weekend=False,
 ):
     return SimpleNamespace(
+        package_type=package_type,
         maa_stage_inventory_enable=enabled,
         maa_stage_limit_rules=[
             {
@@ -154,6 +156,51 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
 
         self.assertEqual(stages, ["1-7", "CE-6"])
         refresh_solver.assert_not_called()
+
+
+class MaaClientTypeTests(unittest.TestCase):
+    """#260：StartUp 与 Fight 下发协议必填的 client_type，由 package_type 推导。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _append(self, task_type, package_type):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.stages = []
+        with (
+            patch.object(solver, "maybe_switch_expired_activity_plan"),
+            patch.object(
+                base_schedule.config,
+                "conf",
+                _conf(enabled=False, package_type=package_type),
+            ),
+            patch.object(base_schedule, "get_server_weekday", return_value=0),
+            patch.object(base_schedule, "cultivateDepotSolver"),
+        ):
+            solver.append_maa_task(task_type)
+        return solver.MAA.append_task.call_args
+
+    def test_startup_sends_official_for_official_package(self):
+        # 官服（package_type=1）推导为 Official
+        call = self._append("StartUp", 1)
+        self.assertEqual(call.args, ("StartUp", {"client_type": "Official"}))
+
+    def test_startup_sends_bilibili_for_bilibili_package(self):
+        # B 服（package_type != 1）推导为 Bilibili
+        call = self._append("StartUp", 2)
+        self.assertEqual(call.args, ("StartUp", {"client_type": "Bilibili"}))
+
+    def test_fight_sends_official_for_official_package(self):
+        # 官服 package_type=1 时 Fight 与 StartUp 一致下发 Official
+        call = self._append("Fight", 1)
+        task_type, task_config = call.args
+        self.assertEqual(task_type, "Fight")
+        self.assertEqual(task_config["client_type"], "Official")
+
+    def test_fight_sends_bilibili_for_bilibili_package(self):
+        # B 服 package_type=2 时 Fight 下发 Bilibili
+        call = self._append("Fight", 2)
+        task_config = call.args[1]
+        self.assertEqual(task_config["client_type"], "Bilibili")
 
 
 if __name__ == "__main__":

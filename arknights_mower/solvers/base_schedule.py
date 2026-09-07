@@ -108,6 +108,11 @@ def _add_group_to_fix_plan(fix_plan: dict, op_data: Operators, group: str) -> No
         fix_plan[agent.room][agent.index] = name
 
 
+def _maa_client_type() -> str:
+    """推导 MAA 集成协议的客户端类型：官服 Official，B 服 Bilibili。"""
+    return "Official" if config.conf.package_type == 1 else "Bilibili"
+
+
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -3845,7 +3850,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             raise Exception("MAA 连接失败")
 
     def append_maa_task(self, type):
-        if type in ["StartUp", "Visit"]:
+        if type == "StartUp":
+            self.MAA.append_task("StartUp", {"client_type": _maa_client_type()})
+        elif type == "Visit":
             self.MAA.append_task(type)
         elif type == "Fight":
             self.maybe_switch_expired_activity_plan()
@@ -3875,7 +3882,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "times": 999,
                         "series": 0,
                         "report_to_penguin": True,
-                        "client_type": "",
+                        "client_type": _maa_client_type(),
                         "penguin_id": "",
                         "DrGrandet": False,
                         "server": "CN",
