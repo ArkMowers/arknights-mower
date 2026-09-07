@@ -884,7 +884,7 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
   --n-placeholder-color: #71717a !important;
   --n-box-shadow-focus: 0 0 0 2px #ffffff, 0 0 0 4px rgba(24, 160, 88, 0.4) !important;
 }
-html[data-window-shell-theme='dark'] .n-input {
+html[data-mower-theme='dark'] .n-input {
   --n-border: 1px solid #27272a !important;
   --n-border-hover: 1px solid #3f3f46 !important;
   --n-border-focus: 1px solid #27272a !important;
@@ -919,7 +919,7 @@ html[data-window-shell-theme='dark'] .n-input {
   --n-option-color-active: rgba(24, 160, 88, 0.1) !important;
   --n-option-color-active-pending: rgba(24, 160, 88, 0.14) !important;
 }
-html[data-window-shell-theme='dark'] .n-base-selection {
+html[data-mower-theme='dark'] .n-base-selection {
   --n-border: 1px solid #27272a !important;
   --n-border-hover: 1px solid #3f3f46 !important;
   --n-border-focus: 1px solid #27272a !important;
@@ -929,7 +929,7 @@ html[data-window-shell-theme='dark'] .n-base-selection {
   --n-placeholder-color: #71717a !important;
   --n-box-shadow-focus: 0 0 0 2px #101014, 0 0 0 4px rgba(99, 226, 183, 0.4) !important;
 }
-html[data-window-shell-theme='dark'] .n-base-select-menu {
+html[data-mower-theme='dark'] .n-base-select-menu {
   --n-color: #101014 !important;
   --n-option-color-pending: rgba(99, 226, 183, 0.12) !important;
   --n-option-color-active: rgba(99, 226, 183, 0.16) !important;
