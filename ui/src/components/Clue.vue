@@ -9,6 +9,8 @@ const {
   maa_mall_buy,
   maa_mall_blacklist,
   maa_mall_ignore_blacklist_when_full,
+  maa_mall_only_buy_discount,
+  maa_mall_reserve_max_credit,
   maa_enable,
   maa_credit_fight,
   credit_fight,
@@ -148,6 +150,17 @@ const show_map = ref(false)
       label-width="72"
       label-align="left"
     >
+      <n-form-item label="购物设置">
+        <n-space :size="24">
+          <n-checkbox v-model:checked="maa_mall_only_buy_discount">只购买折扣物品</n-checkbox>
+          <n-checkbox v-model:checked="maa_mall_reserve_max_credit">
+            保留最大信用点（低于 300 停止购买）
+          </n-checkbox>
+        </n-space>
+        <help-text>
+          <div>两个设置均仅作用于第二轮购买。</div>
+        </help-text>
+      </n-form-item>
       <n-form-item label="信用溢出">
         <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
           <n-space>

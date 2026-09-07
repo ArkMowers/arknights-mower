@@ -21,6 +21,8 @@ const {
   maa_enable,
   medicine_expire_days,
   expiring_medicine_on_weekend,
+  maa_report_to_yituliu,
+  maa_yituliu_id,
   ap_fallback
 } = storeToRefs(store)
 
@@ -281,9 +283,6 @@ function cancelCopyDialogLongPress() {
               <div>填 0 表示不服用（默认）。</div>
               <div>勾选「只在周末服用过期的理智药」后，只在周末服用，平时不用。</div>
             </help-text>
-            <div class="weekly-plan-selector-wrap">
-              <WeeklyPlanSelector compact />
-            </div>
           </n-flex>
           <n-flex>
             <n-checkbox
@@ -292,6 +291,28 @@ function cancelCopyDialogLongPress() {
             >
               只在周末服用过期的理智药
             </n-checkbox>
+          </n-flex>
+          <n-flex align="center">
+            <n-checkbox v-model:checked="maa_report_to_yituliu">上报至一图流</n-checkbox>
+            <n-input
+              v-model:value="maa_yituliu_id"
+              :disabled="!maa_report_to_yituliu"
+              placeholder="一图流 id"
+              style="width: 200px"
+            />
+            <help-text>
+              <div>
+                默认上传关卡掉落数据至
+                <n-a href="https://penguin-stats.io/" target="_blank" rel="noopener noreferrer">
+                  企鹅物流
+                </n-a>
+                ，勾选后额外上传至
+                <n-a href="https://yituliu.site/" target="_blank" rel="noopener noreferrer">
+                  一图流
+                </n-a>
+                。
+              </div>
+            </help-text>
           </n-flex>
           <n-flex>
             <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
@@ -309,6 +330,10 @@ function cancelCopyDialogLongPress() {
         </n-flex>
       </n-form-item>
     </n-form>
+
+    <div class="weekly-plan-selector-wrap">
+      <WeeklyPlanSelector compact />
+    </div>
 
     <n-tabs v-model:value="editorMode" type="segment" animated class="weekly-plan-editors">
       <n-tab-pane name="list" tab="列表计划">

@@ -3885,6 +3885,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "DrGrandet": False,
                         "server": "CN",
                         "medicine_expire_days": medicine_expire_days,
+                        "report_to_yituliu": conf.maa_report_to_yituliu,
+                        "yituliu_id": conf.maa_yituliu_id,
                     },
                 )
                 self.stages.append(stage)
@@ -3904,6 +3906,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
                     "visit_friends": conf.visit_friend_enable
                     and conf.visit_friend_mode == "maa",
+                    "only_buy_discount": conf.maa_mall_only_buy_discount,
+                    "reserve_max_credit": conf.maa_mall_reserve_max_credit,
                 },
             )
         elif type == "Award":
