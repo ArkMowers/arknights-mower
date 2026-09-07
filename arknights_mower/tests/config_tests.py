@@ -373,6 +373,47 @@ class TestConfigPersistence(unittest.TestCase):
         written = self.conf_path.read_text(encoding="utf-8")
         self.assertIn("medicine_expire_days", written)
 
+    def test_mall_and_fight_new_fields_default_without_injection(self):
+        # #265：Mall/Fight 新字段未配置时用运行时默认值，且不被标记为已设置（不落盘）
+        with _patched_conf(self.conf_path, Conf()):
+            conf = config_module.conf
+            self.assertFalse(conf.maa_mall_only_buy_discount)
+            self.assertFalse(conf.maa_mall_reserve_max_credit)
+            self.assertFalse(conf.maa_report_to_yituliu)
+            self.assertEqual(conf.maa_yituliu_id, "")
+            for field in (
+                "maa_mall_only_buy_discount",
+                "maa_mall_reserve_max_credit",
+                "maa_report_to_yituliu",
+                "maa_yituliu_id",
+            ):
+                self.assertNotIn(field, conf.model_fields_set)
+
+    def test_mall_and_fight_new_fields_round_trip_when_configured(self):
+        # #265：四个新字段配置后如实读回并落盘
+        with _patched_conf(
+            self.conf_path,
+            Conf(
+                maa_mall_only_buy_discount=True,
+                maa_mall_reserve_max_credit=True,
+                maa_report_to_yituliu=True,
+                maa_yituliu_id="yituliu-abc",
+            ),
+        ):
+            conf = config_module.conf
+            self.assertTrue(conf.maa_mall_only_buy_discount)
+            self.assertTrue(conf.maa_mall_reserve_max_credit)
+            self.assertTrue(conf.maa_report_to_yituliu)
+            self.assertEqual(conf.maa_yituliu_id, "yituliu-abc")
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("maa_mall_only_buy_discount", written)
+        self.assertIn("maa_mall_reserve_max_credit", written)
+        self.assertIn("maa_report_to_yituliu", written)
+        self.assertIn("maa_yituliu_id", written)
+        # 未配置的默认字段仍不落盘
+        self.assertNotIn("maa_eat_stone", written)
+
     def test_legacy_key_migrates_to_new_key_when_configured(self):
         self._write_conf("exipring_medicine_on_weekend: true\n")
         with _patched_conf(self.conf_path):

@@ -64,6 +64,10 @@ class CluePart(ConfModel):
     "优先购买"
     maa_mall_ignore_blacklist_when_full: bool = False
     "信用溢出时无视黑名单"
+    maa_mall_only_buy_discount: bool = False
+    "只购买折扣物品（仅第二轮购买）"
+    maa_mall_reserve_max_credit: bool = False
+    "保留最大信用点：信用点低于 300 时停止购买（仅第二轮购买）"
 
 
 class EmailPart(ConfModel):
@@ -301,6 +305,10 @@ class RegularTaskPart(ConfModel):
     "关卡体力消耗默认值（数据中找不到关卡时的兜底，0 表示不启用）"
     maa_eat_stone: bool = False
     "无限吃源石"
+    maa_report_to_yituliu: bool = False
+    "向一图流上报作战结果"
+    maa_yituliu_id: str = ""
+    "一图流上报 id（仅在开启上报时有效）"
     maa_weekly_plan: list[MaaDailyPlan] = [
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周一"},
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周二"},

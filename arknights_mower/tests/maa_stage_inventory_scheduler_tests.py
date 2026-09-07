@@ -16,6 +16,8 @@ def _conf(
     package_type=1,
     medicine_expire_days=0,
     expiring_medicine_on_weekend=False,
+    maa_report_to_yituliu=False,
+    maa_yituliu_id="",
 ):
     return SimpleNamespace(
         package_type=package_type,
@@ -38,6 +40,8 @@ def _conf(
         medicine_expire_days=medicine_expire_days,
         expiring_medicine_on_weekend=expiring_medicine_on_weekend,
         maa_eat_stone=False,
+        maa_report_to_yituliu=maa_report_to_yituliu,
+        maa_yituliu_id=maa_yituliu_id,
     )
 
 
@@ -48,6 +52,8 @@ def _mall_conf(
     ignore_blacklist=False,
     visit_friend_enable=True,
     visit_friend_mode="maa",
+    maa_mall_only_buy_discount=False,
+    maa_mall_reserve_max_credit=False,
 ):
     return SimpleNamespace(
         maa_mall_buy="招聘许可,技巧概要·卷2",
@@ -57,6 +63,8 @@ def _mall_conf(
         maa_mall_ignore_blacklist_when_full=ignore_blacklist,
         visit_friend_enable=visit_friend_enable,
         visit_friend_mode=visit_friend_mode,
+        maa_mall_only_buy_discount=maa_mall_only_buy_discount,
+        maa_mall_reserve_max_credit=maa_mall_reserve_max_credit,
     )
 
 
@@ -117,6 +125,45 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
         self.assertEqual(task_config["medicine_expire_days"], 3)
 
 
+class MaaFightYituliuTests(unittest.TestCase):
+    """#265：Fight 补齐协议可加字段 report_to_yituliu / yituliu_id，默认关闭。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _append_fight(self, **overrides):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.stages = []
+        with (
+            patch.object(solver, "maybe_switch_expired_activity_plan"),
+            patch.object(
+                base_schedule.config, "conf", _conf(enabled=False, **overrides)
+            ),
+            patch.object(base_schedule, "get_server_weekday", return_value=0),
+            patch.object(base_schedule, "cultivateDepotSolver"),
+        ):
+            solver.append_maa_task("Fight")
+        return solver.MAA.append_task.call_args
+
+    def test_fight_defaults_report_disabled_and_id_empty(self):
+        # 默认关闭：report_to_yituliu 为 false，yituliu_id 为空字符串
+        task_config = self._append_fight().args[1]
+        self.assertEqual(task_config["report_to_yituliu"], False)
+        self.assertEqual(task_config["yituliu_id"], "")
+
+    def test_fight_enabled_report_and_id_round_trip(self):
+        # 开启上报并填 id：如实下发
+        task_config = self._append_fight(
+            maa_report_to_yituliu=True, maa_yituliu_id="yituliu-abc"
+        ).args[1]
+        self.assertEqual(task_config["report_to_yituliu"], True)
+        self.assertEqual(task_config["yituliu_id"], "yituliu-abc")
+
+    def test_fight_id_is_string_type(self):
+        # yituliu_id 按协议为 string：默认下发空字符串而非 null
+        task_config = self._append_fight().args[1]
+        self.assertIsInstance(task_config["yituliu_id"], str)
+
+
 class MaaMallFormationIndexTests(unittest.TestCase):
     """#261：Mall 下发协议字段 formation_index，替换非协议字段 select_formation。"""
 
@@ -147,6 +194,44 @@ class MaaMallFormationIndexTests(unittest.TestCase):
         # 钳制到 0–4，防御未来配置越界（不做 -1 变换）
         self.assertEqual(self._append_mall(squad=9).args[1]["formation_index"], 4)
         self.assertEqual(self._append_mall(squad=-3).args[1]["formation_index"], 0)
+
+
+class MaaMallDiscountCreditTests(unittest.TestCase):
+    """#265：Mall 补齐协议可加字段 only_buy_discount / reserve_max_credit，默认均 false。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _append_mall(self, **overrides):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.stages = []
+        solver.credit_fight = None
+        with patch.object(base_schedule.config, "conf", _mall_conf(**overrides)):
+            solver.append_maa_task("Mall")
+        return solver.MAA.append_task.call_args
+
+    def test_mall_defaults_send_false_for_both_discount_fields(self):
+        # 默认未开启：两个字段都下发 false（协议默认值，不省略）
+        task_config = self._append_mall().args[1]
+        self.assertEqual(task_config["only_buy_discount"], False)
+        self.assertEqual(task_config["reserve_max_credit"], False)
+
+    def test_mall_enabled_both_discount_fields_round_trip(self):
+        # 两个开关开启时如实下发 true
+        task_config = self._append_mall(
+            maa_mall_only_buy_discount=True,
+            maa_mall_reserve_max_credit=True,
+        ).args[1]
+        self.assertEqual(task_config["only_buy_discount"], True)
+        self.assertEqual(task_config["reserve_max_credit"], True)
+
+    def test_mall_discount_fields_each_controlled_independently(self):
+        # 两个开关互不影响：各开启一个，另一个保持 false
+        task_config = self._append_mall(
+            maa_mall_only_buy_discount=True,
+            maa_mall_reserve_max_credit=False,
+        ).args[1]
+        self.assertEqual(task_config["only_buy_discount"], True)
+        self.assertEqual(task_config["reserve_max_credit"], False)
 
 
 class MaaStageInventorySchedulerTests(unittest.TestCase):

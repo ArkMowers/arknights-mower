@@ -20,6 +20,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_update_channel = ref('stable')
   const maa_auto_check_update = ref(false)
   const medicine_expire_days = ref(0)
+  const maa_report_to_yituliu = ref(false)
+  const maa_yituliu_id = ref('')
   const ap_fallback = ref(0)
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
@@ -71,6 +73,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_conn_preset = ref('General')
   const maa_touch_option = ref('maatouch')
   const maa_mall_ignore_blacklist_when_full = ref(false)
+  const maa_mall_only_buy_discount = ref(false)
+  const maa_mall_reserve_max_credit = ref(false)
   const maa_rg_sleep_min = ref('00:00')
   const maa_rg_sleep_max = ref('00:00')
   const maa_credit_fight = ref(true)
@@ -367,6 +371,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
     medicine_expire_days.value = response.data.medicine_expire_days
+    maa_report_to_yituliu.value = response.data.maa_report_to_yituliu ?? false
+    maa_yituliu_id.value = response.data.maa_yituliu_id ?? ''
     ap_fallback.value = Number(response.data.ap_fallback) || 0
     maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
     maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
@@ -403,6 +409,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_conn_preset.value = response.data.maa_conn_preset
     maa_touch_option.value = response.data.maa_touch_option
     maa_mall_ignore_blacklist_when_full.value = response.data.maa_mall_ignore_blacklist_when_full
+    maa_mall_only_buy_discount.value = response.data.maa_mall_only_buy_discount ?? false
+    maa_mall_reserve_max_credit.value = response.data.maa_mall_reserve_max_credit ?? false
     maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
     maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
     maa_credit_fight.value = response.data.maa_credit_fight
@@ -484,6 +492,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
       medicine_expire_days: medicine_expire_days.value,
+      maa_report_to_yituliu: maa_report_to_yituliu.value,
+      maa_yituliu_id: maa_yituliu_id.value,
       ap_fallback: ap_fallback.value,
       maa_stage_inventory_enable: maa_stage_inventory_enable.value,
       maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
@@ -520,6 +530,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_conn_preset: maa_conn_preset.value,
       maa_touch_option: maa_touch_option.value,
       maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
+      maa_mall_only_buy_discount: maa_mall_only_buy_discount.value,
+      maa_mall_reserve_max_credit: maa_mall_reserve_max_credit.value,
       maa_rg_sleep_max: maa_rg_sleep_max.value,
       maa_rg_sleep_min: maa_rg_sleep_min.value,
       maa_credit_fight: maa_credit_fight.value,
@@ -643,6 +655,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_enable,
     maa_long_task_type,
     medicine_expire_days,
+    maa_report_to_yituliu,
+    maa_yituliu_id,
     ap_fallback,
     maa_weekly_plan,
     maa_weekly_plan_options,
@@ -690,6 +704,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_conn_preset,
     maa_touch_option,
     maa_mall_ignore_blacklist_when_full,
+    maa_mall_only_buy_discount,
+    maa_mall_reserve_max_credit,
     maa_rg_sleep_min,
     maa_rg_sleep_max,
     maa_credit_fight,
