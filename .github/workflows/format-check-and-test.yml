@@ -39,9 +39,10 @@ jobs:
             update:
               # Updater, shared runtime helpers and their regression tests.
               - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download}*.py'
-              - 'arknights_mower/utils/{config/**,path.py,log.py,zip_safe.py,git_rev.py}'
-              - 'arknights_mower/tests/{config,path,log,zip_safe,git_rev}_tests.py'
+              - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
+              - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
               - 'arknights_mower/{__init__,__main__}.py'
+              - 'arknights_mower/{utils,views,tests}/__init__.py'
               - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new}.py'
               # Resource payloads covered by content-hash regressions.
               - 'arknights_mower/{data,models}/**'
