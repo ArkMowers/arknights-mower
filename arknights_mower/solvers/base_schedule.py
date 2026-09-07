@@ -4108,10 +4108,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.maa_stop()
                             break
                     if maa_crash:
-                        self.device.exit()
-                        self.check_current_focus()
-                    else:
-                        break
+                        logger.error("MAA 肉鸽/保全/盐酸运行中断")
+                        send_message("MAA 肉鸽/保全/盐酸运行中断", level="ERROR")
+                    break
 
             elif not rg_sleep:
                 if conf.RA:
@@ -4134,15 +4133,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             save_exception(e)
             logger.exception(e)
             self.MAA = None
-            self.device.exit()
             send_message(str(e), "Maa调用出错！", level="ERROR")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
+                # 参照 rest_until_next_task：休眠前重置场景计时，避免 check_freeze
+                # 把这段休眠当成「同一场景超时」而再次调用 device.exit() 关闭游戏。
+                self.recog.last_scene = None
                 logger.info(
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
                 self._idle_sleep(remaining_time)
-            self.check_current_focus()
 
     def skland_plan_solver(self):
         try:
