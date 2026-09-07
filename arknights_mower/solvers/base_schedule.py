@@ -3853,12 +3853,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             server_weekday = get_server_weekday()
             _plan = conf.maa_weekly_plan[server_weekday]
             logger.info(f"现在服务器是{_plan.weekday}")
-            use_medicine = False
-            if conf.maa_expiring_medicine:
+            medicine_expire_days = 0
+            if conf.medicine_expire_days > 0:
                 if conf.expiring_medicine_on_weekend:
-                    use_medicine = server_weekday >= 5
+                    medicine_expire_days = (
+                        conf.medicine_expire_days if server_weekday >= 5 else 0
+                    )
                 else:
-                    use_medicine = True
+                    medicine_expire_days = conf.medicine_expire_days
             stages = self.apply_maa_stage_inventory_rules(_plan.stage)
             for stage in stages:
                 logger.info(f"添加关卡:{stage}")
@@ -3877,7 +3879,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "penguin_id": "",
                         "DrGrandet": False,
                         "server": "CN",
-                        "expiring_medicine": 999 if use_medicine else 0,
+                        "medicine_expire_days": medicine_expire_days,
                     },
                 )
                 self.stages.append(stage)
