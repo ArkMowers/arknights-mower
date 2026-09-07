@@ -395,7 +395,7 @@ class OperationSolver(SceneGraphSolver):
             return True
         elif scene == Scene.OPERATOR_RECOVER_POTION:
             use_medicine = False
-            if config.conf.maa_expiring_medicine:
+            if config.conf.medicine_expire_days > 0:
                 if config.conf.expiring_medicine_on_weekend:
                     use_medicine = get_server_weekday() >= 5
                 else:

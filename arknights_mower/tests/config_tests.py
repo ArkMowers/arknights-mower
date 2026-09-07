@@ -338,10 +338,10 @@ class TestConfigPersistence(unittest.TestCase):
         self.conf_path.write_text(text, encoding="utf-8")
 
     def test_save_conf_writes_only_user_configured_keys(self):
-        with _patched_conf(self.conf_path, Conf(maa_expiring_medicine=False)):
+        with _patched_conf(self.conf_path, Conf(medicine_expire_days=3)):
             config_module.save_conf()
         written = self.conf_path.read_text(encoding="utf-8")
-        self.assertIn("maa_expiring_medicine", written)
+        self.assertIn("medicine_expire_days", written)
         # 未配置的默认字段不落盘
         self.assertNotIn("expiring_medicine_on_weekend", written)
         self.assertNotIn("maa_eat_stone", written)
@@ -356,6 +356,22 @@ class TestConfigPersistence(unittest.TestCase):
         written = self.conf_path.read_text(encoding="utf-8")
         self.assertNotIn("maa_eat_stone", written)
         self.assertNotIn("webview", written)
+
+    def test_medicine_expire_days_defaults_to_zero_when_unset(self):
+        with _patched_conf(self.conf_path, Conf()):
+            # 未配置 → 运行时默认 0（不使用过期理智药），且不被标记为已设置
+            self.assertEqual(config_module.conf.medicine_expire_days, 0)
+            self.assertNotIn(
+                "medicine_expire_days", config_module.conf.model_fields_set
+            )
+
+    def test_medicine_expire_days_round_trips_when_configured(self):
+        with _patched_conf(self.conf_path, Conf(medicine_expire_days=3)):
+            self.assertEqual(config_module.conf.medicine_expire_days, 3)
+            self.assertIn("medicine_expire_days", config_module.conf.model_fields_set)
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("medicine_expire_days", written)
 
     def test_legacy_key_migrates_to_new_key_when_configured(self):
         self._write_conf("exipring_medicine_on_weekend: true\n")
@@ -372,7 +388,7 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertNotIn("exipring_medicine_on_weekend", written)
 
     def test_legacy_key_not_migrated_when_absent(self):
-        self._write_conf("maa_expiring_medicine: false\n")
+        self._write_conf("maa_eat_stone: false\n")
         with _patched_conf(self.conf_path):
             config_module.load_conf()
             # 没配过旧键：新键用运行时默认值，且不被标记为已设置（因此不落盘）
