@@ -2,11 +2,65 @@
 
 name: 代码格式检查与测试
 on:
-  - push
-  - pull_request
+  push:
+    branches: [alpha, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Determine test scope
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      update: ${{ steps.filter.outputs.update }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+      - uses: dorny/paths-filter@v3
+        id: filter
+        # Manual runs and PRs reaching the API's 3,000-file limit run every check.
+        if: >-
+          github.event_name != 'workflow_dispatch' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.changed_files < 3000)
+        with:
+          base: ${{ github.ref_name }}
+          filters: |
+            code:
+              # One exclusion keeps docs-only changes out; other filters use OR.
+              - '!{*.md,{doc,plan,.github}/**/*.md,ui/README.md,{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}}'
+            update:
+              # Updater, shared runtime helpers and their regression tests.
+              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download}*.py'
+              - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
+              - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
+              - 'arknights_mower/{__init__,__main__}.py'
+              - 'arknights_mower/{utils,views,tests}/__init__.py'
+              - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new}.py'
+              # Resource payloads covered by content-hash regressions.
+              - 'arknights_mower/{data,models}/**'
+              - 'ui/public/{depot,avatar,building_skill}/**'
+              - 'ui/src/pages/basement_skill/{skill,buffer}.json'
+              # Installation dependencies, build contracts and CI itself.
+              - 'requirements*.{in,txt}'
+              - '{pyproject.toml,uv.lock,uv.toml,.python-version,.node-version,.nvmrc,.npmrc}'
+              - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
+              - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
+              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb}.py'
+              - 'scripts/tests/**'
+              - '.github/{workflows,actions}/**'
+
+  # Skip only an explicit docs-only result. If filtering fails, run the checks.
   ruff:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,16 +75,22 @@ jobs:
         run: python -m ruff format --check .
 
   prettier:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - name: Prettier check
         run: npx --yes prettier@latest --check "ui/**/*.js" "ui/**/*.vue"
 
   actionlint:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +98,8 @@ jobs:
         uses: rhysd/actionlint@v1.7.12
 
   unittest:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +120,8 @@ jobs:
   # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
   # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。
   recognition-equivalence:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +141,9 @@ jobs:
 
   update-compatibility:
     name: Update compatibility (${{ matrix.os }})
+    needs: changes
+    # Run on relevant paths; missing scope (manual runs/errors) stays fail-open.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.update != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +157,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
