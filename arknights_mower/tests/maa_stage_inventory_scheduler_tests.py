@@ -39,6 +39,16 @@ def _conf(
     )
 
 
+def _mall_conf(*, squad=1, credit_fight_enabled=True, ignore_blacklist=False):
+    return SimpleNamespace(
+        maa_mall_buy="招聘许可,技巧概要·卷2",
+        maa_mall_blacklist="加急许可,碳,碳素,家具零件",
+        maa_credit_fight=credit_fight_enabled,
+        credit_fight=SimpleNamespace(squad=squad),
+        maa_mall_ignore_blacklist_when_full=ignore_blacklist,
+    )
+
+
 class MaaFightMedicineExpireDaysTests(unittest.TestCase):
     """#263：Fight 下发 medicine_expire_days，替换已弃用的 expiring_medicine。"""
 
@@ -94,6 +104,38 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
         )
         task_config = call.args[1]
         self.assertEqual(task_config["medicine_expire_days"], 3)
+
+
+class MaaMallFormationIndexTests(unittest.TestCase):
+    """#261：Mall 下发协议字段 formation_index，替换非协议字段 select_formation。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _append_mall(self, **overrides):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.stages = []
+        solver.credit_fight = None
+        with patch.object(base_schedule.config, "conf", _mall_conf(**overrides)):
+            solver.append_maa_task("Mall")
+        return solver.MAA.append_task.call_args
+
+    def test_mall_uses_formation_index_and_drops_select_formation(self):
+        call = self._append_mall(squad=1)
+        task_type, task_config = call.args
+        self.assertEqual(task_type, "Mall")
+        self.assertIn("formation_index", task_config)
+        self.assertNotIn("select_formation", task_config)
+
+    def test_mall_formation_index_is_squad_without_mapping(self):
+        # 0 = 当前编队，1–4 指定对应编队，直接透传 squad
+        for squad in (0, 1, 2, 3, 4):
+            task_config = self._append_mall(squad=squad).args[1]
+            self.assertEqual(task_config["formation_index"], squad)
+
+    def test_mall_formation_index_clamps_out_of_range(self):
+        # 钳制到 0–4，防御未来配置越界（不做 -1 变换）
+        self.assertEqual(self._append_mall(squad=9).args[1]["formation_index"], 4)
+        self.assertEqual(self._append_mall(squad=-3).args[1]["formation_index"], 0)
 
 
 class MaaStageInventorySchedulerTests(unittest.TestCase):
