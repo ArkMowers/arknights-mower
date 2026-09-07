@@ -11,7 +11,9 @@ const {
   maa_mall_ignore_blacklist_when_full,
   maa_enable,
   maa_credit_fight,
-  credit_fight
+  credit_fight,
+  visit_friend_enable,
+  visit_friend_mode
 } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
@@ -66,6 +68,11 @@ const squads = [
   { label: '第四编队', value: 4 }
 ]
 
+const visit_friend_mode_options = [
+  { label: 'mower', value: 'mower' },
+  { label: 'MAA', value: 'maa' }
+]
+
 const show_map = ref(false)
 </script>
 
@@ -84,6 +91,14 @@ const show_map = ref(false)
       </n-form-item>
       <n-form-item label="编队">
         <n-select :options="squads" v-model:value="credit_fight.squad" />
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="visit_friend_enable">
+          <div class="item">访问好友</div>
+        </n-checkbox>
+      </n-form-item>
+      <n-form-item v-if="visit_friend_enable" label="处理方式">
+        <n-select :options="visit_friend_mode_options" v-model:value="visit_friend_mode" />
       </n-form-item>
       <!--<n-form-item label="干员">
         <n-select

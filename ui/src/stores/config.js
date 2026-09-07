@@ -113,7 +113,8 @@ export const useConfigStore = defineStore('config', () => {
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const mumu12IPC = ref(false)
-  const visit_friend = ref(true)
+  const visit_friend_enable = ref(true)
+  const visit_friend_mode = ref('maa')
   const credit_fight = ref({})
   const custom_screenshot = ref({})
   const hot_update_enable = ref(false)
@@ -443,7 +444,8 @@ export const useConfigStore = defineStore('config', () => {
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     mumu12IPC.value = response.data.mumu12IPC
-    visit_friend.value = response.data.visit_friend
+    visit_friend_enable.value = response.data.visit_friend_enable ?? true
+    visit_friend_mode.value = response.data.visit_friend_mode ?? 'maa'
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
     workshop_settings.value = response.data.workshop_settings
@@ -563,7 +565,8 @@ export const useConfigStore = defineStore('config', () => {
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
-      visit_friend: visit_friend.value,
+      visit_friend_enable: visit_friend_enable.value,
+      visit_friend_mode: visit_friend_mode.value,
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
       workshop_settings: workshop_settings.value,
@@ -729,7 +732,8 @@ export const useConfigStore = defineStore('config', () => {
     sign_in,
     droidcast,
     mumu12IPC,
-    visit_friend,
+    visit_friend_enable,
+    visit_friend_mode,
     credit_fight,
     custom_screenshot,
     hot_update_enable,
