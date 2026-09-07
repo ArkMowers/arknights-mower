@@ -20,6 +20,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      update: ${{ steps.filter.outputs.update }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'push'
@@ -31,14 +32,29 @@ jobs:
           (github.event_name != 'pull_request' || github.event.pull_request.changed_files < 3000)
         with:
           base: ${{ github.ref_name }}
-          predicate-quantifier: every
           filters: |
             code:
-              - '**'
-              - '!*.md'
-              - '!{doc,plan,.github}/**/*.md'
-              - '!ui/README.md'
-              - '!{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}'
+              # One exclusion keeps docs-only changes out; other filters use OR.
+              - '!{*.md,{doc,plan,.github}/**/*.md,ui/README.md,{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}}'
+            update:
+              # Updater, shared runtime helpers and their regression tests.
+              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download}*.py'
+              - 'arknights_mower/utils/{config/**,path.py,log.py,zip_safe.py,git_rev.py}'
+              - 'arknights_mower/tests/{config,path,log,zip_safe,git_rev}_tests.py'
+              - 'arknights_mower/{__init__,__main__}.py'
+              - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new}.py'
+              # Resource payloads covered by content-hash regressions.
+              - 'arknights_mower/{data,models}/**'
+              - 'ui/public/{depot,avatar,building_skill}/**'
+              - 'ui/src/pages/basement_skill/{skill,buffer}.json'
+              # Installation dependencies, build contracts and CI itself.
+              - 'requirements*.{in,txt}'
+              - '{pyproject.toml,uv.lock,uv.toml,.python-version,.node-version,.nvmrc,.npmrc}'
+              - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
+              - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
+              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb}.py'
+              - 'scripts/tests/**'
+              - '.github/{workflows,actions}/**'
 
   # Skip only an explicit docs-only result. If filtering fails, run the checks.
   ruff:
@@ -125,7 +141,8 @@ jobs:
   update-compatibility:
     name: Update compatibility (${{ matrix.os }})
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    # Run on relevant paths; missing scope (manual runs/errors) stays fail-open.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.update != 'false' }}
     strategy:
       fail-fast: false
       matrix:
