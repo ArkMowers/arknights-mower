@@ -3852,8 +3852,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def append_maa_task(self, type):
         if type == "StartUp":
             self.MAA.append_task("StartUp", {"client_type": _maa_client_type()})
-        elif type == "Visit":
-            self.MAA.append_task(type)
         elif type == "Fight":
             self.maybe_switch_expired_activity_plan()
             conf = config.conf
@@ -3904,6 +3902,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.credit_fight is None,
                     "formation_index": max(0, min(4, conf.credit_fight.squad)),
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
+                    "visit_friends": conf.visit_friend_enable
+                    and conf.visit_friend_mode == "maa",
                 },
             )
         elif type == "Award":
@@ -4683,7 +4683,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return ReportSolver(self.device, self.recog).run()
 
     def visit_friend_plan_solver(self):
-        if config.conf.visit_friend:
+        if config.conf.visit_friend_enable and config.conf.visit_friend_mode == "mower":
             return CreditSolver(self.device, self.recog).run()
 
     def sign_in_plan_solver(self):

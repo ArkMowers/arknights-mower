@@ -433,6 +433,81 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertIn("expiring_medicine_on_weekend", written)
         self.assertNotIn("exipring_medicine_on_weekend", written)
 
+    def test_visit_friend_defaults_enable_true_and_mode_maa_when_unset(self):
+        with _patched_conf(self.conf_path, Conf()):
+            # 未配置 → 默认开启且交 MAA（visit_friend_mode=maa），且都不被标记为已设置
+            self.assertTrue(config_module.conf.visit_friend_enable)
+            self.assertEqual(config_module.conf.visit_friend_mode, "maa")
+            self.assertNotIn("visit_friend_enable", config_module.conf.model_fields_set)
+            self.assertNotIn("visit_friend_mode", config_module.conf.model_fields_set)
+
+    def test_visit_friend_round_trips_when_configured(self):
+        with _patched_conf(
+            self.conf_path, Conf(visit_friend_enable=False, visit_friend_mode="mower")
+        ):
+            self.assertFalse(config_module.conf.visit_friend_enable)
+            self.assertEqual(config_module.conf.visit_friend_mode, "mower")
+            self.assertIn("visit_friend_enable", config_module.conf.model_fields_set)
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("visit_friend_enable", written)
+        self.assertIn("visit_friend_mode", written)
+
+    def test_legacy_visit_friend_true_migrates_to_enable_true_and_mower(self):
+        # `visit_friend: true`（原语义：mower 原生访问好友）迁移为 visit_friend_enable=true，
+        # 并保留 mode=mower，避免非 MAA 用户在迁移后静默失去访问好友
+        self._write_conf("visit_friend: true\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertTrue(config_module.conf.visit_friend_enable)
+            self.assertEqual(config_module.conf.visit_friend_mode, "mower")
+            self.assertIn("visit_friend_enable", config_module.conf.model_fields_set)
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("visit_friend_enable", written)
+        self.assertIn("visit_friend_mode", written)
+        self.assertNotIn("visit_friend:", written)
+
+    def test_legacy_visit_friend_false_migrates_to_enable_false(self):
+        # `visit_friend: false`（用户显式关闭访问好友）迁移为 visit_friend_enable=false
+        self._write_conf("visit_friend: false\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertFalse(config_module.conf.visit_friend_enable)
+
+    def test_legacy_visit_friend_not_migrated_when_absent(self):
+        self._write_conf("maa_eat_stone: false\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            # 没配过旧键：新键用运行时默认（enable=true、mode=maa），且不被标记为已设置
+            self.assertTrue(config_module.conf.visit_friend_enable)
+            self.assertEqual(config_module.conf.visit_friend_mode, "maa")
+            self.assertNotIn("visit_friend_enable", config_module.conf.model_fields_set)
+
+    def test_new_visit_friend_enable_takes_precedence_when_both_present(self):
+        self._write_conf("visit_friend: true\nvisit_friend_enable: false\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            # 新旧键同时出现时以新键为准，不覆盖已配置的值
+            self.assertFalse(config_module.conf.visit_friend_enable)
+
+    def test_migrated_visit_friend_survives_round_trip(self):
+        self._write_conf("visit_friend: true\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertTrue(config_module.conf.visit_friend_enable)
+            self.assertEqual(config_module.conf.visit_friend_mode, "mower")
+
+    def test_conf_post_with_legacy_visit_friend_reconciles(self):
+        # 兼容：/conf POST 提交旧键名（旧前端整包）时，Conf 校验层统一迁移，不把新键重置成默认。
+        with _patched_conf(self.conf_path):
+            config_module.conf = config_module.Conf(**{"visit_friend": True})
+            self.assertTrue(config_module.conf.visit_friend_enable)
+            self.assertEqual(config_module.conf.visit_friend_mode, "mower")
+            self.assertIn("visit_friend_enable", config_module.conf.model_fields_set)
+
 
 if __name__ == "__main__":
     unittest.main()

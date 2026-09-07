@@ -41,13 +41,22 @@ def _conf(
     )
 
 
-def _mall_conf(*, squad=1, credit_fight_enabled=True, ignore_blacklist=False):
+def _mall_conf(
+    *,
+    squad=1,
+    credit_fight_enabled=True,
+    ignore_blacklist=False,
+    visit_friend_enable=True,
+    visit_friend_mode="maa",
+):
     return SimpleNamespace(
         maa_mall_buy="招聘许可,技巧概要·卷2",
         maa_mall_blacklist="加急许可,碳,碳素,家具零件",
         maa_credit_fight=credit_fight_enabled,
         credit_fight=SimpleNamespace(squad=squad),
         maa_mall_ignore_blacklist_when_full=ignore_blacklist,
+        visit_friend_enable=visit_friend_enable,
+        visit_friend_mode=visit_friend_mode,
     )
 
 
@@ -243,6 +252,87 @@ class MaaClientTypeTests(unittest.TestCase):
         call = self._append("Fight", 2)
         task_config = call.args[1]
         self.assertEqual(task_config["client_type"], "Bilibili")
+
+
+class MaaVisitFriendModeTests(unittest.TestCase):
+    """#262：visit_friend_enable + visit_friend_mode 控制访问好友交给 mower 还是 MAA。
+
+    开启且 mode=mower 时走原生 CreditSolver、Mall 不下发 visit_friends；开启且 mode=maa
+    时 Mall 下发 visit_friends: true 且原生跳过；关闭时两者都不做；Visit 死分支已移除。
+    """
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _append_mall(self, **overrides):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.stages = []
+        solver.credit_fight = None
+        with patch.object(base_schedule.config, "conf", _mall_conf(**overrides)):
+            solver.append_maa_task("Mall")
+        return solver.MAA.append_task.call_args
+
+    def test_mall_dispatches_visit_friends_when_enabled_and_maa(self):
+        # 开启且 mode=maa 时 Mall 下发 visit_friends: true，交给 MAA 处理
+        task_config = self._append_mall(
+            visit_friend_enable=True, visit_friend_mode="maa"
+        ).args[1]
+        self.assertEqual(task_config["visit_friends"], True)
+
+    def test_mall_dispatches_visit_friends_false_when_enabled_and_mower(self):
+        # 开启且 mode=mower 时 Mall 下发 visit_friends: false，访问好友走 mower 原生
+        task_config = self._append_mall(
+            visit_friend_enable=True, visit_friend_mode="mower"
+        ).args[1]
+        self.assertEqual(task_config["visit_friends"], False)
+
+    def test_mall_dispatches_visit_friends_false_when_disabled(self):
+        # 关闭时 Mall 下发 visit_friends: false（即使 mode=maa）
+        task_config = self._append_mall(
+            visit_friend_enable=False, visit_friend_mode="maa"
+        ).args[1]
+        self.assertEqual(task_config["visit_friends"], False)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _plan(self, enable, mode):
+        solver = BaseSchedulerSolver()
+        solver.device = MagicMock()
+        solver.recog = MagicMock()
+        with (
+            patch.object(
+                base_schedule.config,
+                "conf",
+                SimpleNamespace(visit_friend_enable=enable, visit_friend_mode=mode),
+            ),
+            patch.object(base_schedule, "CreditSolver") as credit,
+        ):
+            result = solver.visit_friend_plan_solver()
+        return result, credit
+
+    def test_enabled_mower_runs_native_credit_solver(self):
+        # 开启且 mode=mower 访问好友走原生 CreditSolver
+        result, credit = self._plan(True, "mower")
+        credit.assert_called_once()
+        self.assertTrue(result)
+
+    def test_enabled_maa_skips_native_credit_solver(self):
+        # 开启且 mode=maa 原生访问好友跳过，避免与 MAA 的 Mall.visit_friends 双跑
+        result, credit = self._plan(True, "maa")
+        credit.assert_not_called()
+        self.assertFalse(result)
+
+    def test_disabled_skips_native_credit_solver(self):
+        # 关闭时原生访问好友跳过（即使 mode=mower）
+        result, credit = self._plan(False, "mower")
+        credit.assert_not_called()
+        self.assertFalse(result)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def test_visit_type_is_dead_and_omits_append_task(self):
+        # Visit 死分支已移除：下发 Visit 不再有任何 append_task 调用（功能并入 Mall.visit_friends）
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.append_maa_task("Visit")
+        solver.MAA.append_task.assert_not_called()
 
 
 if __name__ == "__main__":

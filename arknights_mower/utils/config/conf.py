@@ -319,8 +319,10 @@ class RegularTaskPart(ConfModel):
     "多关卡物品库存比例规则"
     maa_depot_enable: bool = False
     "仓库物品混合读取"
-    visit_friend: bool = True
+    visit_friend_enable: bool = True
     "访问好友"
+    visit_friend_mode: str = "maa"
+    "访问好友处理方式：mower 原生 / maa 交 MAA"
     report_enable: bool = True
     "读取基报"
 
@@ -563,6 +565,15 @@ class Conf(
     def migrate_legacy_keys(cls, data):
         if not isinstance(data, dict):
             return data
+        # visit_friend(bool) 已退役：迁移为 visit_friend_enable(bool)。原 true 语义是 mower
+        # 原生访问好友，迁移保留该行为（mode=mower），避免非 MAA 用户在迁移后静默失去访问
+        # 好友；未配置过旧键的新用户才取默认 maa。
+        old_visit_friend = data.pop("visit_friend", None)
+        if old_visit_friend is not None:
+            if "visit_friend_enable" not in data:
+                data["visit_friend_enable"] = old_visit_friend
+            if "visit_friend_mode" not in data:
+                data["visit_friend_mode"] = "mower" if old_visit_friend else "maa"
         for old, new in _LEGACY_KEY_MIGRATIONS.items():
             if old not in data:
                 continue
