@@ -74,5 +74,6 @@ export function workshopRecommendationText(operator, unowned = false) {
         : operator.specialist
           ? `仅${materials.join('、')}`
           : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
-  return `${name}：${scope}，副产品概率加成 +${amount}%`
+  const extra = operator.name === '蚀清' ? '，副产物固定异铁组（收益仅次于九色鹿）' : ''
+  return `${name}：${scope}，副产品概率加成 +${amount}%${extra}`
 }
