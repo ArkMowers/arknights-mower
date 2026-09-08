@@ -511,6 +511,18 @@ def try_reorder(op_data, new_plan):
     return plan
 
 
+def next_workshop_task_time(tasks, earliest=None):
+    """Keep workshop jobs close together but outside the 1.5-second collision window."""
+    candidate = earliest if earliest is not None else datetime.now()
+    gap = timedelta(seconds=2)
+    for task in sorted(tasks, key=lambda task: task.time):
+        if task.time >= candidate + gap:
+            break
+        if abs(task.time - candidate) < gap:
+            candidate = task.time + gap
+    return candidate
+
+
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
@@ -588,7 +600,9 @@ def try_workshop_tasks(op_data, tasks):
             if match and valid:
                 logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
                 task = SchedulerTask(
-                    task_type=TaskTypes.WORKSHOP, meta_data=item.operator
+                    time=next_workshop_task_time(tasks),
+                    task_type=TaskTypes.WORKSHOP,
+                    meta_data=item.operator,
                 )
                 tasks.append(task)
             else:

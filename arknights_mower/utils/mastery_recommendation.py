@@ -347,10 +347,44 @@ def get_mastery_recommendations():
     return result
 
 
+def _workshop_lookahead_active(plan):
+    """Only a confirmed, unexpired training countdown unlocks one-skill lookahead."""
+    from datetime import datetime
+
+    if plan.get("status") != "training" or not plan.get("expires_at"):
+        return False
+    try:
+        deadline = datetime.fromisoformat(plan["expires_at"])
+        return deadline > datetime.now(tz=deadline.tzinfo)
+    except (TypeError, ValueError):
+        return False
+
+
+def _workshop_training_reserve(plan, recommendation):
+    """The current training step is already paid; retain subsequent steps' inputs."""
+    from collections import defaultdict
+
+    stages = recommendation.get("stages")
+    materials = (
+        [
+            material
+            for stage in stages[1:]
+            if stage["to_level"] - 7 <= plan.get("target_level", 3)
+            for material in stage.get("needed_materials", [])
+        ]
+        if stages
+        else recommendation.get("chain_needed_materials", [])
+    )
+    reserved = defaultdict(int)
+    for material in materials:
+        reserved[material["name"]] += material["count"]
+    return reserved
+
+
 def compute_workshop_config(
     fodder_operators=None, t5_operators=None, book_operators=None
 ):
-    """根据当前专精计划和仓库库存，计算合成配置（与前端自动合成配置逻辑一致）"""
+    """准备队首技能，确认正在训练后可提前一个技能；按钮与仓库扫描共用。"""
     if fodder_operators is None:
         fodder_operators = ["九色鹿"]
     if t5_operators is None:
@@ -366,9 +400,9 @@ def compute_workshop_config(
     # failed 计划不核算材料（不消耗；failed 已由扫描钩子 retry_failed_plans 先重置 idle）。
     from arknights_mower.utils.mastery_db import get_all_plans
 
-    planned_keys = [f"{p['char_id']}_{p['skill_index']}" for p in get_all_plans()]
+    plans = get_all_plans()
 
-    if planned_keys:
+    if plans:
         try:
             cultivate_path = get_path("@app/tmp/cultivate.json")
             if os.path.exists(cultivate_path):
@@ -379,9 +413,29 @@ def compute_workshop_config(
                     for idx, s in enumerate(char.get("skills", [])):
                         if s.get("level", 0) >= 3:
                             m3.add(f"{char.get('id')}_{idx}")
-                planned_keys = [k for k in planned_keys if k not in m3]
+                plans = [
+                    p for p in plans if f"{p['char_id']}_{p['skill_index']}" not in m3
+                ]
         except Exception:
             pass
+
+    # Starting/collecting a skill is not confirmation that training is underway.
+    current = next(
+        (
+            p
+            for p in plans
+            if p.get("status") in {"arranging", "training", "waiting_collect"}
+        ),
+        None,
+    )
+    lookahead = current is not None and _workshop_lookahead_active(current)
+    selected = (
+        next((p for p in plans if p.get("status", "idle") == "idle"), None)
+        if lookahead
+        else current or next(iter(plans), None)
+    )
+    if selected is None:
+        return []
 
     skill_data_path = _find_skill_data()
     with open(skill_data_path, "r", encoding="utf-8") as f:
@@ -412,28 +466,25 @@ def compute_workshop_config(
         if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
     }
 
-    if not planned_keys:
-        return None
-
     rec_result = get_mastery_recommendations()
     operators = rec_result.get("operators", [])
 
-    plan_set = set()
-    for key in planned_keys:
-        parts = key.rsplit("_", 1)
-        if len(parts) == 2:
-            try:
-                plan_set.add((parts[0], int(parts[1])))
-            except ValueError:
-                pass
+    plan_key = selected["char_id"], selected["skill_index"]
+    recommendations = {
+        (op["char_id"], r["skill_index"]): r
+        for op in operators
+        for r in op.get("recommendations", [])
+    }
+    reserved = {}
+    if lookahead:
+        current_rec = recommendations.get((current["char_id"], current["skill_index"]))
+        if current_rec is None:
+            return []  # Cannot safely spend stock without the active skill's costs.
+        reserved = _workshop_training_reserve(current, current_rec)
 
     raw_demand = defaultdict(int)
-    for op in operators:
-        for rec in op.get("recommendations", []):
-            if (op["char_id"], rec["skill_index"]) not in plan_set:
-                continue
-            for mat in rec.get("chain_needed_materials", []):
-                raw_demand[mat["name"]] += mat["count"]
+    for mat in recommendations.get(plan_key, {}).get("chain_needed_materials", []):
+        raw_demand[mat["name"]] += mat["count"]
 
     demand_t5_raw = {n: c for n, c in raw_demand.items() if n in t5_names}
     demand_t4_raw = {n: c for n, c in raw_demand.items() if n in t4_names}
@@ -456,7 +507,9 @@ def compute_workshop_config(
         id_by_name[info.get("name", "")] = iid
 
     def inv_of(name):
-        return inventory.get(id_by_name.get(name, ""), 0)
+        return max(
+            0, inventory.get(id_by_name.get(name, ""), 0) - reserved.get(name, 0)
+        )
 
     t4_indirect = defaultdict(int)
     for t5_name, t5_demand in demand_t5_raw.items():
@@ -536,14 +589,30 @@ def compute_workshop_config(
 
     from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
 
+    def protect_active_materials(tasks):
+        # The existing executor uses batch crafting, so a start-only lower limit
+        # cannot protect stock. Defer recipes consuming any reserved ingredient.
+        return [
+            {
+                **task,
+                "self_upper_limit": task["self_upper_limit"]
+                + reserved.get(task["item_names"][0], 0),
+            }
+            for task in tasks
+            if not any(
+                reserved.get(child, 0) > 0
+                for child in workshop_formula[task["item_names"][0]]["items"]
+            )
+        ]
+
     return allocate_workshop_items(
         [
-            ("fodder_operators", fodder_operators, t4_items),
-            ("t5_operators", t5_operators, t5_items),
-            ("book_operators", book_operators, book_items),
+            ("fodder_operators", fodder_operators, protect_active_materials(t4_items)),
+            ("t5_operators", t5_operators, protect_active_materials(t5_items)),
+            ("book_operators", book_operators, protect_active_materials(book_items)),
         ],
         fodder_items=fodder_items,
-        specialist_items=specialist_items,
+        specialist_items=protect_active_materials(specialist_items),
     )
 
 

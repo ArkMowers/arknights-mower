@@ -242,8 +242,8 @@ class TestComputeWorkshopConfigReadsDb(unittest.TestCase):
         book = [c for c in config if c["operator"] == "司霆惊蛰"]
         self.assertEqual(book[0]["items"], [])
 
-    def test_no_db_plans_returns_none(self):
-        # 无 DB 计划 → 无需求 → None（调用方保留默认合成配置）
+    def test_no_db_plans_clears_automatic_config(self):
+        # 无 DB 计划 → 空配置，避免继续合成旧计划或全量默认材料。
         with (
             patch("arknights_mower.utils.mastery_db.get_all_plans", return_value=[]),
             patch.object(
@@ -253,7 +253,7 @@ class TestComputeWorkshopConfigReadsDb(unittest.TestCase):
             ),
         ):
             config = rec.compute_workshop_config()
-        self.assertIsNone(config)
+        self.assertEqual(config, [])
 
 
 if __name__ == "__main__":

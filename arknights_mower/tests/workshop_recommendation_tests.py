@@ -918,6 +918,10 @@ def test_scheduler_prioritizes_existing_configs_and_respects_existing_mood_gate(
         "空爆",
     ]
     assert [entry.operator for entry in settings] == names
+    assert all(
+        (later.time - earlier.time).total_seconds() >= 2
+        for earlier, later in zip(tasks, tasks[1:])
+    )
 
 
 @pytest.mark.parametrize("minimum", [50, 80])

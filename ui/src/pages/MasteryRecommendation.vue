@@ -1101,9 +1101,7 @@ async function restorePreset() {
 async function autoWorkshop() {
   workshopLoading.value = true
   try {
-    const keys = Object.keys(plan.value).filter((k) => plan.value[k])
     const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, {
-      planned_skills: keys,
       fodder_operators: fodderOps.value,
       t5_operators: t5Ops.value,
       book_operators: bookOps.value
@@ -1113,14 +1111,16 @@ async function autoWorkshop() {
       message.warning('生成失败')
       return
     }
-    if (keys.length === 0) {
-      message.success('当前没有专精计划，已自动生成全量合成方案')
-    }
     configStore.workshop_settings = ws
 
     await new Promise((r) => setTimeout(r, 100))
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
     workshopT3Summary.value = resp.data?.t3_summary || []
+
+    if (!ws.length) {
+      message.info('当前没有可准备的专精材料，已清空自动合成配置')
+      return
+    }
 
     const tasksResp = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
     const tasks = tasksResp.data || []
@@ -1142,7 +1142,7 @@ async function autoWorkshop() {
       }
       const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
         task: {
-          time: new Date(Date.now() + 120000 + added.length * 600000).toISOString(),
+          time: new Date(Date.now() + added.length * 2000).toISOString(),
           plan: {},
           task_type: '加工材料',
           meta_data: op
@@ -1158,7 +1158,7 @@ async function autoWorkshop() {
     const parts = []
     if (added.length) parts.push(`已添加任务: ${added.join(', ')}`)
     if (skipped.length) parts.push(`已有任务: ${skipped.join(', ')}`)
-    message.success(`合成配置已生成${parts.length ? '，' + parts.join('；') : ''}`)
+    message.success(`已为下一待专精技能生成合成配置${parts.length ? '，' + parts.join('；') : ''}`)
   } catch (e) {
     message.error(`生成失败: ${e.message}`)
   } finally {
