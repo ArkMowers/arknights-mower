@@ -3903,7 +3903,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "series": 0,
                         "report_to_penguin": True,
                         "client_type": _maa_client_type(),
-                        "penguin_id": "",
+                        "penguin_id": conf.maa_penguin_id,
                         "DrGrandet": False,
                         "server": "CN",
                         "medicine_expire_days": medicine_expire_days,
@@ -4078,6 +4078,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # expected_collapsal_paradigms 仅 Sami + 策略 5 且列表非空时下发，
                         # 烧水字段仅策略 4 下发，勾选「只凹开局干员直升精二」时
                         # 撤销 collectible_mode_start_list，指路鳞的值内联 Mizuki 限制。
+                        # 月度小队/深入调查字段仅策略 6/7 下发（通信检查需先勾自动切换），
+                        # first_floor_foldartal 与 start_foldartal_list 仅 Sami + 策略 4
+                        # （板子列表另限生活至上分队），黑流树海字段仅刷襁褓动物模式下发，
+                        # find_playTime_target 仅界园刷常乐节点模式下发。
                         professional = conf.rogue.squad in _PROFESSIONAL_SQUADS
                         rogue_params = {
                             "theme": conf.maa_rg_theme,
@@ -4153,6 +4157,51 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     )
                                     for key in _COLLECTIBLE_START_KEYS
                                 }
+                        if conf.rogue.mode == 6:
+                            rogue_params["monthly_squad_auto_iterate"] = (
+                                conf.rogue.monthly_squad_auto_iterate
+                            )
+                            if conf.rogue.monthly_squad_auto_iterate:
+                                rogue_params["monthly_squad_check_comms"] = (
+                                    conf.rogue.monthly_squad_check_comms
+                                )
+                        if conf.rogue.mode == 7:
+                            rogue_params["deep_exploration_auto_iterate"] = (
+                                conf.rogue.deep_exploration_auto_iterate
+                            )
+                        if (
+                            conf.maa_rg_theme == "Sami"
+                            and conf.rogue.mode == 4
+                            and conf.rogue.first_floor_foldartal
+                        ):
+                            rogue_params["first_floor_foldartal"] = (
+                                conf.rogue.first_floor_foldartal
+                            )
+                        if (
+                            conf.maa_rg_theme == "Sami"
+                            and conf.rogue.mode == 4
+                            and conf.rogue.squad == "生活至上分队"
+                            and conf.rogue.start_foldartal_list
+                        ):
+                            rogue_params["start_foldartal_list"] = (
+                                conf.rogue.start_foldartal_list
+                            )
+                        if (
+                            conf.maa_rg_theme == "BlackFlow"
+                            and conf.rogue.mode == 30001
+                        ):
+                            # 协议固定刷襁褓动物策略，仅目标品种可选
+                            rogue_params["blackflow_strategy"] = "baby_animal"
+                            rogue_params["blackflow_cultivation_target"] = (
+                                conf.rogue.blackflow_cultivation_target
+                            )
+                        if (
+                            conf.maa_rg_theme == "JieGarden"
+                            and conf.rogue.mode == 20001
+                        ):
+                            rogue_params["find_playTime_target"] = (
+                                conf.rogue.find_playtime_target
+                            )
                         self.MAA.append_task("Roguelike", rogue_params)
                     elif conf.SSS:
                         copilot = get_path("@app/sss.json")

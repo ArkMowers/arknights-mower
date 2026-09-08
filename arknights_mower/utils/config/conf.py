@@ -179,6 +179,20 @@ class LongTaskPart(ConfModel):
         "烧水时是否启用购物"
         collectible_mode_squad: str = ""
         "烧水使用的分队（默认与 squad 同步）"
+        monthly_squad_auto_iterate: bool = False
+        "月度小队自动切换（仅策略 6 生效）"
+        monthly_squad_check_comms: bool = False
+        "将月度小队通信也作为切换依据（需勾选月度小队自动切换）"
+        deep_exploration_auto_iterate: bool = False
+        "深入调查自动切换（仅策略 7 生效）"
+        first_floor_foldartal: str = ""
+        "凹第一层远见板子（板子名，非空才生效，仅萨米刷开局）"
+        start_foldartal_list: list[str] = Field(default_factory=list)
+        "凹开局板子列表（最多 3 个，仅萨米刷开局且生活至上分队）"
+        blackflow_cultivation_target: str = "swaddled_cat"
+        "刷襁褓动物目标品种（swaddled_cat/swaddled_feathered_serpent/swaddled_dog/swaddled_cerberus）"
+        find_playtime_target: int = 1
+        "目标常乐节点子类型（1=令/2=黍/3=年，仅界园刷常乐节点）"
 
     class SSSConf(ConfModel):
         type: int = 1
@@ -331,6 +345,8 @@ class RegularTaskPart(ConfModel):
     "向一图流上报作战结果"
     maa_yituliu_id: str = ""
     "一图流上报 id（仅在开启上报时有效）"
+    maa_penguin_id: str = ""
+    "企鹅物流上报 id（可选，留空为匿名上报）"
     maa_weekly_plan: list[MaaDailyPlan] = [
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周一"},
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周二"},

@@ -22,9 +22,11 @@ import {
   elite_two_visible,
   is_field_enabled,
   modes_for_theme,
+  monthly_squad_check_comms_visible,
   only_elite_two_needs_reset,
   only_elite_two_visible,
-  rogue_themes
+  rogue_themes,
+  start_foldartal_visible
 } from '@/utils/roguelike_options'
 
 // 分队名与顺序对照 RoguelikeSettingsUserControlModel（主题分队 + 通用分队 + 高规格）；
@@ -340,6 +342,33 @@ const start_reward_values = computed({
     rogue.value.collectible_mode_start_list = Object.fromEntries(v.map((k) => [k, true]))
   }
 })
+
+// 凹开局板子输入（协议 start_foldartal_list，最多 3 个，与 MAA 模型一致）；逗号分隔。
+const start_foldartal_values = computed({
+  get: () => (rogue.value.start_foldartal_list ?? []).join(','),
+  set: (v) => {
+    rogue.value.start_foldartal_list = v
+      .split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+  }
+})
+
+// 黑流树海刷襁褓动物目标品种（对照协议枚举与 MAA 显示名）。
+const blackflow_target_options = [
+  { label: '襁褓中的猫', value: 'swaddled_cat' },
+  { label: '襁褓羽蛇', value: 'swaddled_feathered_serpent' },
+  { label: '襁褓中的狗', value: 'swaddled_dog' },
+  { label: '襁褓三头犬', value: 'swaddled_cerberus' }
+]
+
+// 界园刷常乐节点目标子类型（对照 MAA 显示名）。
+const find_playtime_options = [
+  { label: '令 - 掷地有声', value: 1 },
+  { label: '黍 - 种因得果', value: 2 },
+  { label: '年 - 三缺一', value: 3 }
+]
 </script>
 
 <template>
@@ -393,6 +422,34 @@ const start_reward_values = computed({
     </n-form-item>
     <n-form-item label="策略">
       <n-select :options="mode_options" v-model:value="rogue.mode" />
+    </n-form-item>
+    <n-form-item
+      v-if="is_field_enabled('monthly_squad_auto_iterate', maa_rg_theme, rogue.mode)"
+      :show-label="false"
+    >
+      <n-checkbox v-model:checked="rogue.monthly_squad_auto_iterate">月度小队自动切换</n-checkbox>
+    </n-form-item>
+    <n-form-item
+      v-if="
+        monthly_squad_check_comms_visible(
+          maa_rg_theme,
+          rogue.mode,
+          rogue.monthly_squad_auto_iterate
+        )
+      "
+      :show-label="false"
+    >
+      <n-checkbox v-model:checked="rogue.monthly_squad_check_comms"
+        >将月度小队通信也作为切换依据</n-checkbox
+      >
+    </n-form-item>
+    <n-form-item
+      v-if="is_field_enabled('deep_exploration_auto_iterate', maa_rg_theme, rogue.mode)"
+      :show-label="false"
+    >
+      <n-checkbox v-model:checked="rogue.deep_exploration_auto_iterate"
+        >深入调查自动切换</n-checkbox
+      >
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('refresh_trader_with_dice', maa_rg_theme, rogue.mode)"
@@ -453,6 +510,26 @@ const start_reward_values = computed({
       <n-select v-model:value="rogue.collectible_mode_squad" :options="collectible_squad_options" />
     </n-form-item>
     <n-form-item
+      v-if="is_field_enabled('first_floor_foldartal', maa_rg_theme, rogue.mode)"
+      label="第一层远见板子"
+    >
+      <n-input
+        v-model:value="rogue.first_floor_foldartal"
+        placeholder="板子名，留空不凹"
+        style="width: 200px"
+      />
+    </n-form-item>
+    <n-form-item
+      v-if="start_foldartal_visible(maa_rg_theme, rogue.mode, rogue.squad)"
+      label="凹开局板子"
+    >
+      <n-input
+        v-model:value="start_foldartal_values"
+        placeholder="多个用逗号分隔，最多 3 个"
+        style="width: 260px"
+      />
+    </n-form-item>
+    <n-form-item
       v-if="
         collectible_start_visible(
           maa_rg_theme,
@@ -465,6 +542,21 @@ const start_reward_values = computed({
       label="刷开局期望奖励"
     >
       <n-select multiple :options="start_reward_options" v-model:value="start_reward_values" />
+    </n-form-item>
+    <n-form-item
+      v-if="is_field_enabled('blackflow_cultivation_target', maa_rg_theme, rogue.mode)"
+      label="目标襁褓动物"
+    >
+      <n-select
+        v-model:value="rogue.blackflow_cultivation_target"
+        :options="blackflow_target_options"
+      />
+    </n-form-item>
+    <n-form-item
+      v-if="is_field_enabled('find_playtime_target', maa_rg_theme, rogue.mode)"
+      label="目标常乐节点"
+    >
+      <n-select v-model:value="rogue.find_playtime_target" :options="find_playtime_options" />
     </n-form-item>
   </n-form>
 </template>

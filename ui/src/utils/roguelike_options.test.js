@@ -8,10 +8,12 @@ import {
   is_field_enabled,
   mode_list,
   modes_for_theme,
+  monthly_squad_check_comms_visible,
   only_elite_two_needs_reset,
   only_elite_two_visible,
   professional_squads,
-  rogue_themes
+  rogue_themes,
+  start_foldartal_visible
 } from './roguelike_options'
 
 describe('roguelike_options', () => {
@@ -64,13 +66,20 @@ describe('roguelike_options', () => {
   it('字段条件覆盖协议注明的主题/模式限定字段', () => {
     expect(Object.keys(field_conditions).sort()).toEqual(
       [
+        'blackflow_cultivation_target',
         'collectible_mode_shopping',
         'collectible_mode_squad',
         'collectible_mode_start_list',
+        'deep_exploration_auto_iterate',
         'expected_collapsal_paradigms',
+        'find_playtime_target',
+        'first_floor_foldartal',
         'investment_with_more_score',
+        'monthly_squad_auto_iterate',
+        'monthly_squad_check_comms',
         'only_start_with_elite_two',
         'refresh_trader_with_dice',
+        'start_foldartal_list',
         'start_with_elite_two',
         'stop_at_final_boss',
         'stop_at_max_level',
@@ -149,6 +158,50 @@ describe('roguelike_options', () => {
     expect(is_field_enabled('investment_with_more_score', 'BlackFlow', 1)).toBe(false)
     expect(is_field_enabled('investment_with_more_score', 'Mizuki', 0)).toBe(false)
     expect(is_field_enabled('investment_with_more_score', 'Phantom', 4)).toBe(false)
+  })
+
+  it('月度小队字段仅策略 6 展示，通信检查需先勾自动切换', () => {
+    expect(is_field_enabled('monthly_squad_auto_iterate', 'Sami', 6)).toBe(true)
+    expect(is_field_enabled('monthly_squad_auto_iterate', 'Mizuki', 6)).toBe(true)
+    expect(is_field_enabled('monthly_squad_auto_iterate', 'Sami', 0)).toBe(false)
+    expect(is_field_enabled('monthly_squad_check_comms', 'Mizuki', 6)).toBe(true)
+    expect(is_field_enabled('monthly_squad_check_comms', 'Sami', 7)).toBe(false)
+    expect(monthly_squad_check_comms_visible('Mizuki', 6, true)).toBe(true)
+    expect(monthly_squad_check_comms_visible('Mizuki', 6, false)).toBe(false)
+    expect(monthly_squad_check_comms_visible('Sami', 0, true)).toBe(false)
+  })
+
+  it('deep_exploration_auto_iterate 仅策略 7 展示', () => {
+    expect(is_field_enabled('deep_exploration_auto_iterate', 'Sami', 7)).toBe(true)
+    expect(is_field_enabled('deep_exploration_auto_iterate', 'Mizuki', 7)).toBe(true)
+    expect(is_field_enabled('deep_exploration_auto_iterate', 'Sami', 6)).toBe(false)
+    expect(is_field_enabled('deep_exploration_auto_iterate', 'Sami', 0)).toBe(false)
+  })
+
+  it('first_floor_foldartal 仅萨米 + 策略 4 展示', () => {
+    expect(is_field_enabled('first_floor_foldartal', 'Sami', 4)).toBe(true)
+    expect(is_field_enabled('first_floor_foldartal', 'Sami', 0)).toBe(false)
+    expect(is_field_enabled('first_floor_foldartal', 'Mizuki', 4)).toBe(false)
+  })
+
+  it('start_foldartal_list 仅萨米 + 策略 4 + 生活至上分队展示', () => {
+    expect(is_field_enabled('start_foldartal_list', 'Sami', 4)).toBe(true)
+    expect(is_field_enabled('start_foldartal_list', 'Sarkaz', 4)).toBe(false)
+    expect(start_foldartal_visible('Sami', 4, '生活至上分队')).toBe(true)
+    expect(start_foldartal_visible('Sami', 4, '指挥分队')).toBe(false)
+    expect(start_foldartal_visible('Mizuki', 4, '生活至上分队')).toBe(false)
+  })
+
+  it('blackflow_cultivation_target 仅黑流树海刷襁褓动物展示', () => {
+    expect(is_field_enabled('blackflow_cultivation_target', 'BlackFlow', 30001)).toBe(true)
+    expect(is_field_enabled('blackflow_cultivation_target', 'BlackFlow', 0)).toBe(false)
+    expect(is_field_enabled('blackflow_cultivation_target', 'JieGarden', 20001)).toBe(false)
+  })
+
+  it('find_playtime_target 仅界园刷常乐节点展示', () => {
+    expect(is_field_enabled('find_playtime_target', 'JieGarden', 20001)).toBe(true)
+    expect(is_field_enabled('find_playtime_target', 'JieGarden', 0)).toBe(false)
+    expect(is_field_enabled('find_playtime_target', 'BlackFlow', 30001)).toBe(false)
   })
 
   it('professional_squads 为四支战术分队', () => {

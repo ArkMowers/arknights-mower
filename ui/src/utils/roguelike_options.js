@@ -66,7 +66,20 @@ export const field_conditions = {
   // 协议注明 refresh_trader_with_dice（指路鳞）仅支持主题 Mizuki
   refresh_trader_with_dice: (theme) => theme === 'Mizuki',
   // 协议注明 investment_with_more_score 仅在策略为 1（刷源石锭）且非黑流树海主题时生效
-  investment_with_more_score: (theme, mode) => mode === 1 && theme !== 'BlackFlow'
+  investment_with_more_score: (theme, mode) => mode === 1 && theme !== 'BlackFlow',
+  // 协议注明 monthly_squad_auto_iterate 与 monthly_squad_check_comms 仅模式 6（月度小队）下发
+  monthly_squad_auto_iterate: (theme, mode) => mode === 6,
+  monthly_squad_check_comms: (theme, mode) => mode === 6,
+  // 协议注明 deep_exploration_auto_iterate 仅模式 7（深入调查）下发
+  deep_exploration_auto_iterate: (theme, mode) => mode === 7,
+  // 协议注明 first_floor_foldartal 仅萨米刷开局模式有效（模型另限模式 4）
+  first_floor_foldartal: (theme, mode) => theme === 'Sami' && mode === 4,
+  // 协议注明 start_foldartal_list 仅萨米刷开局模式有效（模型另限生活至上分队）
+  start_foldartal_list: (theme, mode) => theme === 'Sami' && mode === 4,
+  // 协议注明 blackflow_cultivation_target 仅黑流树海刷襁褓动物模式使用
+  blackflow_cultivation_target: (theme, mode) => theme === 'BlackFlow' && mode === 30001,
+  // 协议注明 find_playTime_target 仅界园刷常乐节点模式下发
+  find_playtime_target: (theme, mode) => theme === 'JieGarden' && mode === 20001
 }
 
 // 当前主题/策略下某协议字段是否应展示（且应下发）。
@@ -104,6 +117,16 @@ export function collectible_start_visible(theme, mode, squad, only, start) {
 // only_start_with_elite_two=true 的组合，被 MAA 核心判定非法。
 export function only_elite_two_needs_reset(theme, mode, squad, start, only) {
   return only && (!start || !elite_two_visible(theme, mode, squad))
+}
+
+// 通信作为切换依据需先勾选月度小队自动切换（对照 XAML 的可视条件）。
+export function monthly_squad_check_comms_visible(theme, mode, auto) {
+  return is_field_enabled('monthly_squad_check_comms', theme, mode) && auto
+}
+
+// 凹开局板子仅生活至上分队可获得（对照 RoguelikeSquadIsFoldartal）。
+export function start_foldartal_visible(theme, mode, squad) {
+  return is_field_enabled('start_foldartal_list', theme, mode) && squad === '生活至上分队'
 }
 
 // 各主题肉鸽难度范围（对照：萨卡兹/水月/界园 0-18，其余 0-15）。
