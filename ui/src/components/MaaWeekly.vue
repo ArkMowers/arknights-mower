@@ -23,6 +23,7 @@ const {
   expiring_medicine_on_weekend,
   maa_report_to_yituliu,
   maa_yituliu_id,
+  maa_penguin_id,
   ap_fallback
 } = storeToRefs(store)
 
@@ -293,6 +294,14 @@ function cancelCopyDialogLongPress() {
             </n-checkbox>
           </n-flex>
           <n-flex align="center">
+            <span>企鹅物流 id</span>
+            <n-input
+              v-model:value="maa_penguin_id"
+              placeholder="企鹅物流 id（可选）"
+              style="width: 200px"
+            />
+          </n-flex>
+          <n-flex align="center">
             <n-checkbox v-model:checked="maa_report_to_yituliu">上报至一图流</n-checkbox>
             <n-input
               v-model:value="maa_yituliu_id"
@@ -312,6 +321,7 @@ function cancelCopyDialogLongPress() {
                 </n-a>
                 。
               </div>
+              <div>两个上报站点均凭 id 关联个人账号；企鹅物流 id 选填，留空仍会匿名上报。</div>
             </help-text>
           </n-flex>
           <n-flex>
