@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   loadWorkshopOperators,
+  loadWorkshopReference,
   selectedWorkshopOperators,
   syncWorkshopOperators,
   usesLegacyWorkshopDefaults,
@@ -162,7 +163,7 @@ describe('workshop owned defaults', () => {
     expect(workshopRecommendationText({ name: '九色鹿', causality: true })).toBe('九色鹿')
   })
 
-  it('shows every matching material and the exclusive scope for specialists', () => {
+  it('summarizes Humus materials as T3', () => {
     const materials = ['全新装置', '酮凝集组', '异铁组', '聚酸酯组', '糖组', '固源岩组']
     expect(
       workshopRecommendationText({
@@ -171,6 +172,31 @@ describe('workshop owned defaults', () => {
         materials,
         bonuses: Object.fromEntries(materials.map((name) => [name, 90]))
       })
-    ).toBe(`休谟斯：仅${materials.join('、')}，副产品概率加成 +90%`)
+    ).toBe('休谟斯：仅合成 T3 材料，副产品概率加成 +90%')
+  })
+})
+
+describe('workshop cultivation reference', () => {
+  it('marks only unowned operators, including deer', () => {
+    const deer = { name: '九色鹿', causality: true }
+    expect(workshopRecommendationText(deer)).toBe('九色鹿')
+    expect(workshopRecommendationText(deer, false)).toBe('九色鹿')
+    expect(workshopRecommendationText(deer, true)).toBe('九色鹿（未持有）')
+    expect(workshopRecommendationText({ name: '休谟斯', bonuses: { 糖组: 90 } }, true)).toBe(
+      '休谟斯（未持有）：仅合成 T3 材料，副产品概率加成 +90%'
+    )
+  })
+
+  it('loads references independently without syncing BOX or requesting defaults', async () => {
+    const http = {
+      get: vi.fn().mockResolvedValue({ data: { recommendations: data.recommendations } })
+    }
+    expect(await loadWorkshopReference(http, '/api')).toEqual(data.recommendations)
+    expect(http.get).toHaveBeenCalledExactlyOnceWith('/api/workshop-operators/reference')
+  })
+
+  it('rejects incomplete references', async () => {
+    const http = { get: vi.fn().mockResolvedValue({ data: {} }) }
+    await expect(loadWorkshopReference(http, '/api')).rejects.toThrow('不完整')
   })
 })

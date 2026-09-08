@@ -88,7 +88,7 @@ def test_supplemental_low_tier_tasks_require_an_available_unlocked_specialist(
         ),
     ):
         result = compute_default_workshop_config(["休谟斯"], [], [])
-    assert not any(entry["items"] for entry in result)
+    assert any(entry["items"] for entry in result) is (reason == "scheduled")
 
 
 @pytest.mark.parametrize("recipe_source", ["game", "legacy_composite"])

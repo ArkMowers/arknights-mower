@@ -41,6 +41,14 @@ export async function loadWorkshopOperators(http, baseUrl, minBonus = 80) {
   return data
 }
 
+export async function loadWorkshopReference(http, baseUrl) {
+  const { data } = await http.get(`${baseUrl}/workshop-operators/reference`)
+  if (workshopCategories.some((key) => !Array.isArray(data?.recommendations?.[key]))) {
+    throw new Error('加工站培养推荐数据不完整，请稍后重试')
+  }
+  return data.recommendations
+}
+
 export function usesLegacyWorkshopDefaults(settings) {
   const legacy = {
     fodder_operators: ['九色鹿'],
@@ -52,16 +60,19 @@ export function usesLegacyWorkshopDefaults(settings) {
   )
 }
 
-export function workshopRecommendationText(operator) {
-  if (operator.causality) return operator.name
+export function workshopRecommendationText(operator, unowned = false) {
+  const name = unowned ? `${operator.name}（未持有）` : operator.name
+  if (operator.causality) return name
   const materials = operator.materials || []
   const bonus = [...new Set(Object.values(operator.bonuses || {}))].sort((a, b) => a - b)
   const amount = bonus.length > 1 ? `${bonus[0]}～${bonus.at(-1)}` : bonus[0]
   const scope =
-    operator.material_scope === 't4'
-      ? '仅 T4 材料'
-      : operator.specialist
-        ? `仅${materials.join('、')}`
-        : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
-  return `${operator.name}：${scope}，副产品概率加成 +${amount}%`
+    operator.name === '休谟斯'
+      ? '仅合成 T3 材料'
+      : operator.material_scope === 't4'
+        ? '仅 T4 材料'
+        : operator.specialist
+          ? `仅${materials.join('、')}`
+          : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
+  return `${name}：${scope}，副产品概率加成 +${amount}%`
 }

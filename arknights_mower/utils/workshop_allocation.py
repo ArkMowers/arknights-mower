@@ -50,10 +50,9 @@ def scope_setting(entry, formulas):
 
 
 class WorkshopAllocation:
-    def __init__(self, available, formulas, blocked, min_bonus):
+    def __init__(self, available, formulas, min_bonus):
         self.available = available
         self.formulas = formulas
-        self.blocked = blocked
         self.min_bonus = min_bonus
         self.unlocked = {
             name: specialty_rules(effects)
@@ -136,8 +135,7 @@ class WorkshopAllocation:
             names = [
                 name
                 for name in dict.fromkeys(names)
-                if name not in self.blocked
-                and (name != "年" or category == "t5_operators")
+                if name != "年" or category == "t5_operators"
             ]
             for name in names:
                 self.result.setdefault(

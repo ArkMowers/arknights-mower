@@ -106,8 +106,7 @@ def test_ordinary_80_percent_operators_can_fill_multiple_categories(
     meta, ids = game
     result = workshop.recommend_workshop_operators(owned(ids, *names), meta)
     assert {key: set(value) for key, value in result["defaults"].items()} == expected
-    for key, operators in result["recommendations"].items():
-        assert {entry["name"] for entry in operators} == expected[key] - {"空爆"}
+    assert result["recommendations"] == workshop.workshop_reference(meta)
 
 
 def test_nian_is_not_used_for_non_t5_when_no_t5_recipe_is_requested(game):

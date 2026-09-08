@@ -157,7 +157,7 @@ def test_dorm_metadata_tracks_unlocks_without_adding_dorm_only_operators():
         assert result["defaults"]["book_operators"] == expected
         assert [
             entry["name"] for entry in result["recommendations"]["book_operators"]
-        ] == expected
+        ] == ["Z", "A"]  # Cultivation references use fully unlocked skills.
         configs = [
             {"operator": name, "items": [item("技巧概要·卷3")]} for name in ["A", "Z"]
         ]

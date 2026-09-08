@@ -73,9 +73,7 @@ def test_recommendation_uses_best_unscheduled_operator_and_deer_only_needs_owner
     assert result["nine_colored_deer"]["owned"] is True
 
 
-def test_auto_config_rechecks_schedule_and_applies_filter_without_box(
-    game, monkeypatch
-):
+def test_auto_config_respects_manual_selections_even_when_scheduled(game, monkeypatch):
     meta, ids = game
     available = workshop.available_operators(owned(ids, "号角", "空爆"), meta)
     groups = [("fodder_operators", ["号角", "空爆"], [item("炽合金块")])]
@@ -89,20 +87,28 @@ def test_auto_config_rechecks_schedule_and_applies_filter_without_box(
         ),
     )
     after = workshop.allocate_workshop_items(groups, available=available)
-    assert after == [{"operator": "空爆", "enabled": True, "items": [item("炽合金块")]}]
+    assert after == before
     with patch.object(
         workshop,
         "available_operators",
         side_effect=workshop.WorkshopRecommendationError("缺少 BOX"),
     ):
-        assert workshop.allocate_workshop_items(groups) == after
+        result = workshop.allocate_workshop_items(groups)
+        assert {entry["operator"] for entry in result} == {"号角", "空爆"}
+        assert all(entry["items"] == [item("炽合金块")] for entry in result)
 
 
-def test_blocked_deer_receives_no_material_or_fodder():
+def test_manually_selected_scheduled_deer_keeps_material_and_fodder():
     result = workshop.allocate_workshop_items(
         [("fodder_operators", ["九色鹿"], [item("炽合金块")])],
         available={},
         fodder_items=[item("碳素")],
         plan={"plan1": {"train": facility("九色鹿")}},
     )
-    assert result == []
+    assert result == [
+        {
+            "operator": "九色鹿",
+            "enabled": True,
+            "items": [item("碳素"), item("炽合金块")],
+        }
+    ]

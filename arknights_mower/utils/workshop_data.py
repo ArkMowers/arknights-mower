@@ -45,8 +45,31 @@ def owned_roster():
         return _read_roster(str(path), stat.st_mtime_ns, stat.st_size)
     except (OSError, ValueError):
         raise WorkshopRecommendationError(
-            "请先同步干员数据，再读取加工站推荐"
+            "请先同步干员数据，再使用加工站一键设置"
         ) from None
+
+
+def operator_metadata(metadata=None):
+    if metadata is not None:
+        return metadata
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    data = get_skill_data().get("workshop", {})
+    if data.get("version") != 1 or not isinstance(data.get("operators"), dict):
+        raise WorkshopRecommendationError("当前资源缺少加工站技能规则，请更新资源包")
+    return data["operators"]
+
+
+def fully_unlocked_operators(metadata=None):
+    """Read each operator's final skill upgrades without consulting the user's BOX."""
+    result = {}
+    for meta in operator_metadata(metadata).values():
+        elite, level = max(
+            ((v["elite"], v["level"]) for group in meta["groups"] for v in group),
+            default=(0, 1),
+        )
+        result[meta["name"]] = unlocked(meta, {"evolvePhase": elite, "level": level})
+    return result
 
 
 def unlocked(meta, char):

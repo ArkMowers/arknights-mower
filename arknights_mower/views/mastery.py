@@ -401,6 +401,21 @@ class WorkshopOperatorRecommendationsView(MethodView):
             return {"error": str(exc)}, 400
 
 
+class WorkshopOperatorReferenceView(MethodView):
+    decorators = [_require_token]
+
+    def get(self):
+        from arknights_mower.utils.workshop_recommendation import (
+            WorkshopRecommendationError,
+            workshop_reference,
+        )
+
+        try:
+            return {"recommendations": workshop_reference()}
+        except WorkshopRecommendationError as exc:
+            return {"error": str(exc)}, 400
+
+
 class MasteryRouteSettingsView(MethodView):
     decorators = [_require_token]
 
@@ -427,6 +442,10 @@ mastery_bp.add_url_rule(
     view_func=WorkshopOperatorRecommendationsView.as_view(
         "workshop_operator_recommendations"
     ),
+)
+mastery_bp.add_url_rule(
+    "/workshop-operators/reference",
+    view_func=WorkshopOperatorReferenceView.as_view("workshop_operator_reference"),
 )
 mastery_bp.add_url_rule(
     Routes.PLAN_ORDER, view_func=MasteryPlanOrderView.as_view("mastery_plan_order")

@@ -43,15 +43,12 @@ def test_curated_recommendations_have_independent_material_and_book_floors(
         key: [entry["name"] for entry in entries]
         for key, entries in result["recommendations"].items()
     }
-    assert recommended["fodder_operators"] == [
-        "九色鹿",
-        "蚀清",
-        "号角",
-        "休谟斯",
-        "熔泉",
-    ]
+    assert recommended["fodder_operators"][:2] == ["九色鹿", "蚀清"]
+    assert {"号角", "休谟斯", "熔泉"} <= set(recommended["fodder_operators"])
     assert recommended["t5_operators"] == ["年"]
-    assert set(recommended["book_operators"]) == {"子月", "赫拉格"}
+    assert {"子月", "赫拉格", "司霆惊蛰", "凯尔希·思衡托"} <= set(
+        recommended["book_operators"]
+    )
     sesa = result["recommendations"]["fodder_operators"][1]
     assert sesa["material_scope"] == "t4"
     assert set(sesa["bonuses"].values()) == {80}
@@ -70,14 +67,22 @@ def test_curated_recommendations_have_independent_material_and_book_floors(
         )  # One-click honors its configured floor.
 
 
-def test_curated_exceptions_still_require_ownership_unlock_and_schedule(game):
+def test_cultivation_references_ignore_ownership_unlock_and_schedule(game):
     meta, ids = game
+    expected = workshop.workshop_reference(meta)
+    missing = workshop.recommend_workshop_operators([], meta)
+    assert missing["recommendations"] == expected
+    assert all(not names for names in missing["defaults"].values())
     locked = workshop.recommend_workshop_operators(owned(ids, "蚀清", elite=1), meta)
-    assert locked["recommendations"]["fodder_operators"] == []
+    assert locked["recommendations"] == expected
+    assert locked["defaults"]["fodder_operators"] == []
     blocked = workshop.recommend_workshop_operators(
         owned(ids, "九色鹿", "蚀清"),
         meta,
         plan={"backup_plans": [{"plan": {"central": facility("蚀清", ["九色鹿"])}}]},
     )
-    assert all(not entries for entries in blocked["recommendations"].values())
+    assert blocked["recommendations"] == expected
     assert all(not entries for entries in blocked["defaults"].values())
+    assert set(blocked["owned_operators"]) == {"九色鹿", "蚀清"}
+    assert locked["owned_operators"] == ["蚀清"]
+    assert missing["owned_operators"] == []

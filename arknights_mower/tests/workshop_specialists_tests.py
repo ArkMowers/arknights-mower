@@ -30,11 +30,13 @@ def test_all_specialists_require_their_unlock_and_keep_matching_recipes(
         result = workshop.recommend_workshop_operators(
             owned(ids, name, elite=phase, level=1), meta, formulas
         )
-        entries = result["recommendations"][category]
+        entries = [
+            entry
+            for entry in result["recommendations"][category]
+            if entry["name"] == name
+        ]
         assert result["defaults"][category] == ([name] if phase == elite else [])
-        if phase < elite:
-            assert entries == []
-        elif bonus < 90:
+        if bonus < 90:
             assert entries == []  # Special materials use the same curated 90% floor.
         else:
             assert entries == [
@@ -66,7 +68,12 @@ def test_humus_90_percent_requires_original_cost_two_elite_materials(game):
     result = workshop.recommend_workshop_operators(owned(ids, "休谟斯", elite=1), meta)
     assert result["defaults"]["t5_operators"] == []
     assert result["defaults"]["book_operators"] == []
-    assert set(result["recommendations"]["fodder_operators"][0]["materials"]) == {
+    humus = next(
+        entry
+        for entry in result["recommendations"]["fodder_operators"]
+        if entry["name"] == "休谟斯"
+    )
+    assert set(humus["materials"]) == {
         "全新装置",
         "酮凝集组",
         "异铁组",

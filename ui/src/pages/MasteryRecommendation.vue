@@ -498,7 +498,7 @@
           一键设置先同步干员数据，再按最新 BOX
           填入已拥有、已解锁技能且副产品概率加成达到所设下限的干员，可继续手动增删。
           材料专属干员仅分配符合条件的材料，相关低阶材料也会生成合成配置。
-          主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时不参与自动推荐和自动合成配置。
+          主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时，一键设置会跳过这些干员。
         </n-text>
         <n-space align="center">
           <n-text>副产品概率加成至少</n-text>
@@ -519,11 +519,6 @@
             >一键设置</n-button
           >
         </n-space>
-        <n-alert v-if="workshopScheduleConflicts.length" type="warning">
-          以下已选干员被其他设施排班占用，生成自动合成配置时会跳过：{{
-            workshopScheduleConflicts.join('、')
-          }}
-        </n-alert>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
           <help-text>
@@ -547,19 +542,21 @@
           :disabled="workshopDefaultsLoading"
           select_placeholder="选择干员"
         />
-        <n-collapse v-if="workshopDefaults">
-          <n-collapse-item title="查看推荐的材料分工" name="workshop-materials">
+        <n-collapse v-if="workshopRecommendations">
+          <n-collapse-item title="值得培养的干员" name="workshop-materials">
             <n-space vertical>
               <div v-for="category in workshopCategoryLabels" :key="category.key">
                 <n-text strong>{{ category.label }}</n-text>
-                <div
-                  v-for="operator in workshopDefaults.recommendations[category.key]"
-                  :key="operator.name"
-                >
-                  <n-text depth="3">{{ workshopRecommendationText(operator) }}</n-text>
+                <div v-for="operator in workshopRecommendations[category.key]" :key="operator.name">
+                  <n-text depth="3">{{
+                    workshopRecommendationText(
+                      operator,
+                      workshopOwnedOperators !== null && !workshopOwnedOperators.has(operator.name)
+                    )
+                  }}</n-text>
                 </div>
-                <n-text v-if="!workshopDefaults.recommendations[category.key].length" depth="3"
-                  >暂无符合推荐门槛、技能和排班条件的干员</n-text
+                <n-text v-if="!workshopRecommendations[category.key].length" depth="3"
+                  >暂无推荐干员</n-text
                 >
               </div>
             </n-space>
@@ -584,6 +581,7 @@
 <script setup>
 import {
   loadWorkshopOperators,
+  loadWorkshopReference,
   syncWorkshopOperators,
   selectedWorkshopOperators,
   usesLegacyWorkshopDefaults,
@@ -687,14 +685,10 @@ const {
 } = storeToRefs(configStore)
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
-const workshopDefaults = ref(null)
+const workshopRecommendations = ref(null)
+const workshopOwnedOperators = ref(null)
 const workshopDefaultsLoading = ref(false)
 const workshopDefaultsError = ref('')
-const workshopScheduleConflicts = computed(() =>
-  [...new Set([...fodderOps.value, ...t5Ops.value, ...bookOps.value])].filter(
-    (name) => workshopDefaults.value?.blocked_operators?.[name]
-  )
-)
 const workshopCategoryLabels = [
   { key: 'fodder_operators', label: '非 T5 材料' },
   { key: 't5_operators', label: 'T5 材料' },
@@ -708,7 +702,10 @@ async function readWorkshopDefaults(apply = false, sync = false) {
   try {
     const load = sync ? syncWorkshopOperators : loadWorkshopOperators
     const data = await load(axios, import.meta.env.VITE_HTTP_URL, workshopMinBonus.value)
-    workshopDefaults.value = data
+    workshopRecommendations.value = data.recommendations
+    workshopOwnedOperators.value = Array.isArray(data.owned_operators)
+      ? new Set(data.owned_operators)
+      : null
     if (apply) {
       fodderOps.value = [...data.defaults.fodder_operators]
       t5Ops.value = [...data.defaults.t5_operators]
@@ -716,6 +713,15 @@ async function readWorkshopDefaults(apply = false, sync = false) {
     }
   } catch (e) {
     workshopDefaultsError.value = e.response?.data?.error || e.message || '加工站推荐读取失败'
+    workshopOwnedOperators.value = null
+    try {
+      workshopRecommendations.value = await loadWorkshopReference(
+        axios,
+        import.meta.env.VITE_HTTP_URL
+      )
+    } catch {
+      workshopRecommendations.value = null
+    }
   } finally {
     workshopDefaultsLoading.value = false
   }

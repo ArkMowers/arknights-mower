@@ -69,8 +69,8 @@ class WorkshopSelection:
         }
         return exclusive_specialists(bonuses, specialists)
 
-    def add_material(self, entries, bonuses, material, recipe):
-        exclusive = self.exclusive(bonuses, material, recipe)
+    def add_material(self, entries, bonuses, material, recipe, *, curated=False):
+        exclusive = set() if curated else self.exclusive(bonuses, material, recipe)
         for name, bonus in bonuses.items():
             if exclusive and name not in exclusive and name not in T4_PREFERRED:
                 continue
@@ -104,7 +104,7 @@ class WorkshopSelection:
             bonuses = self.qualifying_bonuses(
                 pool, material, recipe, threshold=threshold, curated=curated
             )
-            self.add_material(entries, bonuses, material, recipe)
+            self.add_material(entries, bonuses, material, recipe, curated=curated)
         return entries
 
     def priority(self, entry, category):
@@ -129,7 +129,7 @@ class WorkshopSelection:
             assigned.update(
                 name
                 for name, entry in entries.items()
-                if set(entry["bonuses"].values()) != {80}
+                if not curated and set(entry["bonuses"].values()) != {80}
             )
             selected[category] = sorted(
                 entries.values(), key=lambda entry: self.priority(entry, category)

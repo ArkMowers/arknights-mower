@@ -7,6 +7,8 @@ from arknights_mower.utils.workshop_allocation import (
 )
 from arknights_mower.utils.workshop_data import (
     WorkshopRecommendationError,
+    fully_unlocked_operators,
+    operator_metadata,
     owned_roster,
     scheduled_operators,
     unlocked,
@@ -34,6 +36,7 @@ __all__ = [
     "scope_workshop_items",
     "available_operators",
     "recommend_workshop_operators",
+    "workshop_reference",
     "allocate_workshop_items",
     "prioritize_workshop_settings",
     "validate_min_bonus",
@@ -43,15 +46,7 @@ __all__ = [
 def available_operators(roster=None, metadata=None):
     if roster is None:
         roster = owned_roster()
-    if metadata is None:
-        from arknights_mower.utils.mastery_recommendation import get_skill_data
-
-        data = get_skill_data().get("workshop", {})
-        if data.get("version") != 1 or not isinstance(data.get("operators"), dict):
-            raise WorkshopRecommendationError(
-                "当前资源缺少加工站技能规则，请更新资源包"
-            )
-        metadata = data["operators"]
+    metadata = operator_metadata(metadata)
     return {
         meta["name"]: unlocked(meta, char)
         for char in roster
@@ -114,11 +109,20 @@ def recommend_workshop_operators(
             key: [entry["name"] for entry in values]
             for key, values in selection.select().items()
         },
-        "recommendations": selection.select(curated=True),
+        "recommendations": workshop_reference(metadata, formulas),
+        "owned_operators": list(available),
         "blocked_operators": blocked,
         "nine_colored_deer": {"name": "九色鹿", "owned": "九色鹿" in available},
         "min_bonus": min_bonus,
     }
+
+
+def workshop_reference(metadata=None, formulas=None):
+    """All-game cultivation references, independent of BOX, schedules and choices."""
+    selection = WorkshopSelection(
+        fully_unlocked_operators(metadata), _formulas(formulas), 80
+    )
+    return selection.select(curated=True)
 
 
 def allocate_workshop_items(
@@ -139,9 +143,7 @@ def allocate_workshop_items(
     min_bonus = validate_min_bonus(min_bonus)
     formulas = _formulas(formulas)
     available = _manual_available(available)
-    allocator = WorkshopAllocation(
-        available, formulas, scheduled_operators(plan), min_bonus
-    )
+    allocator = WorkshopAllocation(available, formulas, min_bonus)
     settings = allocator.allocate(groups, fodder_items, specialist_items)
     return prioritize_workshop_settings(
         settings, available=available or {}, formulas=formulas
