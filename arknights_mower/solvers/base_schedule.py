@@ -224,25 +224,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.error = False
         self.handle_error(True)
 
-        scheduling(self.tasks)
-        check_dorm_ordering(self.tasks, self.op_data)
-        protect_support_swaps(self.tasks)
-        if len(self.tasks) > 0:
-            # 找到时间最近的一次单个任务
-            self.task = self.tasks[0]
-        else:
-            self.task = None
-        if self.task is not None:
-            if (self.task.time - datetime.now()).total_seconds() > 300:
-                self.task = None
-        if self.task is not None and datetime.now() < self.task.time:
+        while True:
+            scheduling(self.tasks)
+            check_dorm_ordering(self.tasks, self.op_data)
+            protect_support_swaps(self.tasks)
+            self.task = self.tasks[0] if self.tasks else None
+            if self.task is None:
+                break
             reschedule_time = (self.task.time - datetime.now()).total_seconds()
-            if reschedule_time > 0:
-                logger.info(
-                    f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始"
-                )
-                # 等待下一个任务开始也是任务间空闲，走唯一的休眠收口点维护 sleeping
-                self._idle_sleep(reschedule_time)
+            if reschedule_time > 300:
+                self.task = None
+                break
+            if reschedule_time <= 0:
+                break
+            logger.info(f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始")
+            # 休眠可能被新增任务唤醒；返回后重新排序、选择并检查到期时间。
+            self._idle_sleep(reschedule_time)
         if self.party_time is not None and self.party_time < datetime.now():
             self.party_time = None
         if self.free_clue is not None and self.free_clue != get_server_weekday():
@@ -566,9 +563,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.task is not None:
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
-            previous_time = self.task.time
             protect_support_swaps(self.tasks)
-            if self.task.time != previous_time and self.task.time > datetime.now():
+            if self.task.time > datetime.now() or not any(
+                task is self.task for task in self.tasks
+            ):
                 self.task = None
                 self.skip()
                 return True
@@ -1157,6 +1155,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             item_list = next(
                 (s.items for s in config.conf.workshop_settings if s.operator == agent)
             )
+            from arknights_mower.utils.workshop_recommendation import (
+                scope_workshop_items,
+            )
+
+            item_list = scope_workshop_items(agent, item_list, workshop_formula)
+            if not item_list:
+                logger.info(f"{agent}没有符合材料范围的加工配置，跳过")
+                return
             seen = set()
             group = defaultdict(dict)
             for item in item_list:

@@ -347,10 +347,44 @@ def get_mastery_recommendations():
     return result
 
 
+def _workshop_lookahead_active(plan):
+    """Only a confirmed, unexpired training countdown unlocks one-skill lookahead."""
+    from datetime import datetime
+
+    if plan.get("status") != "training" or not plan.get("expires_at"):
+        return False
+    try:
+        deadline = datetime.fromisoformat(plan["expires_at"])
+        return deadline > datetime.now(tz=deadline.tzinfo)
+    except (TypeError, ValueError):
+        return False
+
+
+def _workshop_training_reserve(plan, recommendation):
+    """The current training step is already paid; retain subsequent steps' inputs."""
+    from collections import defaultdict
+
+    stages = recommendation.get("stages")
+    materials = (
+        [
+            material
+            for stage in stages[1:]
+            if stage["to_level"] - 7 <= plan.get("target_level", 3)
+            for material in stage.get("needed_materials", [])
+        ]
+        if stages
+        else recommendation.get("chain_needed_materials", [])
+    )
+    reserved = defaultdict(int)
+    for material in materials:
+        reserved[material["name"]] += material["count"]
+    return reserved
+
+
 def compute_workshop_config(
     fodder_operators=None, t5_operators=None, book_operators=None
 ):
-    """根据当前专精计划和仓库库存，计算合成配置（与前端自动合成配置逻辑一致）"""
+    """准备队首技能，确认正在训练后可提前一个技能；按钮与仓库扫描共用。"""
     if fodder_operators is None:
         fodder_operators = ["九色鹿"]
     if t5_operators is None:
@@ -366,9 +400,9 @@ def compute_workshop_config(
     # failed 计划不核算材料（不消耗；failed 已由扫描钩子 retry_failed_plans 先重置 idle）。
     from arknights_mower.utils.mastery_db import get_all_plans
 
-    planned_keys = [f"{p['char_id']}_{p['skill_index']}" for p in get_all_plans()]
+    plans = get_all_plans()
 
-    if planned_keys:
+    if plans:
         try:
             cultivate_path = get_path("@app/tmp/cultivate.json")
             if os.path.exists(cultivate_path):
@@ -379,9 +413,29 @@ def compute_workshop_config(
                     for idx, s in enumerate(char.get("skills", [])):
                         if s.get("level", 0) >= 3:
                             m3.add(f"{char.get('id')}_{idx}")
-                planned_keys = [k for k in planned_keys if k not in m3]
+                plans = [
+                    p for p in plans if f"{p['char_id']}_{p['skill_index']}" not in m3
+                ]
         except Exception:
             pass
+
+    # Starting/collecting a skill is not confirmation that training is underway.
+    current = next(
+        (
+            p
+            for p in plans
+            if p.get("status") in {"arranging", "training", "waiting_collect"}
+        ),
+        None,
+    )
+    lookahead = current is not None and _workshop_lookahead_active(current)
+    selected = (
+        next((p for p in plans if p.get("status", "idle") == "idle"), None)
+        if lookahead
+        else current or next(iter(plans), None)
+    )
+    if selected is None:
+        return []
 
     skill_data_path = _find_skill_data()
     with open(skill_data_path, "r", encoding="utf-8") as f:
@@ -412,28 +466,25 @@ def compute_workshop_config(
         if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
     }
 
-    if not planned_keys:
-        return None
-
     rec_result = get_mastery_recommendations()
     operators = rec_result.get("operators", [])
 
-    plan_set = set()
-    for key in planned_keys:
-        parts = key.rsplit("_", 1)
-        if len(parts) == 2:
-            try:
-                plan_set.add((parts[0], int(parts[1])))
-            except ValueError:
-                pass
+    plan_key = selected["char_id"], selected["skill_index"]
+    recommendations = {
+        (op["char_id"], r["skill_index"]): r
+        for op in operators
+        for r in op.get("recommendations", [])
+    }
+    reserved = {}
+    if lookahead:
+        current_rec = recommendations.get((current["char_id"], current["skill_index"]))
+        if current_rec is None:
+            return []  # Cannot safely spend stock without the active skill's costs.
+        reserved = _workshop_training_reserve(current, current_rec)
 
     raw_demand = defaultdict(int)
-    for op in operators:
-        for rec in op.get("recommendations", []):
-            if (op["char_id"], rec["skill_index"]) not in plan_set:
-                continue
-            for mat in rec.get("chain_needed_materials", []):
-                raw_demand[mat["name"]] += mat["count"]
+    for mat in recommendations.get(plan_key, {}).get("chain_needed_materials", []):
+        raw_demand[mat["name"]] += mat["count"]
 
     demand_t5_raw = {n: c for n, c in raw_demand.items() if n in t5_names}
     demand_t4_raw = {n: c for n, c in raw_demand.items() if n in t4_names}
@@ -456,7 +507,9 @@ def compute_workshop_config(
         id_by_name[info.get("name", "")] = iid
 
     def inv_of(name):
-        return inventory.get(id_by_name.get(name, ""), 0)
+        return max(
+            0, inventory.get(id_by_name.get(name, ""), 0) - reserved.get(name, 0)
+        )
 
     t4_indirect = defaultdict(int)
     for t5_name, t5_demand in demand_t5_raw.items():
@@ -469,6 +522,35 @@ def compute_workshop_config(
     t4_total = defaultdict(int)
     for name in set(list(demand_t4_raw.keys()) + list(t4_indirect.keys())):
         t4_total[name] = demand_t4_raw.get(name, 0) + t4_indirect.get(name, 0)
+
+    # Low-tier specialists also need actual tasks (e.g. Foldbranch's 异铁组).
+    # Prefer game recipe quantities; legacy resources may only contain composite.
+    specialty_demand = defaultdict(int)
+    for name, count in demand_t3_plus.items():
+        formula = workshop_formula.get(name, {})
+        if formula.get("tab") == "精英材料" and 0 < formula.get("apCost", 0) < 4:
+            specialty_demand[name] += count
+    for name, demand in t4_total.items():
+        missing = max(0, demand - inv_of(name))
+        parent_id = id_by_name.get(name)
+        ingredients = (
+            skill_data.get("workshop", {}).get("recipe_ingredients", {}).get(parent_id)
+        )
+        if ingredients is None:
+            composite = skill_data.get("composite", {}).get(parent_id, {})
+            ingredients = {
+                child["id"]: child["count"] for child in composite.get("pathway", [])
+            }
+        for child_id, count in ingredients.items():
+            child_name = items.get(child_id, {}).get("name")
+            formula = workshop_formula.get(child_name, {})
+            if formula.get("tab") == "精英材料" and 0 < formula.get("apCost", 0) < 4:
+                specialty_demand[child_name] += missing * count
+    specialist_items = [
+        {"item_names": [name], "children_lower_limit": 0, "self_upper_limit": demand}
+        for name, demand in sorted(specialty_demand.items())
+        if demand > 0
+    ]
 
     t4_items = []
     for name, demand in sorted(t4_total.items()):
@@ -505,25 +587,39 @@ def compute_workshop_config(
         else []
     )
 
-    return (
+    from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
+
+    def protect_active_materials(tasks):
+        # The existing executor uses batch crafting, so a start-only lower limit
+        # cannot protect stock. Defer recipes consuming any reserved ingredient.
+        return [
+            {
+                **task,
+                "self_upper_limit": task["self_upper_limit"]
+                + reserved.get(task["item_names"][0], 0),
+            }
+            for task in tasks
+            if not any(
+                reserved.get(child, 0) > 0
+                for child in workshop_formula[task["item_names"][0]]["items"]
+            )
+        ]
+
+    return allocate_workshop_items(
         [
-            {"operator": op, "enabled": True, "items": fodder_items + t4_items}
-            if op == "九色鹿"
-            else {"operator": op, "enabled": True, "items": t4_items}
-            for op in fodder_operators
-        ]
-        + [{"operator": op, "enabled": True, "items": t5_items} for op in t5_operators]
-        + [
-            {"operator": op, "enabled": True, "items": book_items}
-            for op in book_operators
-        ]
+            ("fodder_operators", fodder_operators, protect_active_materials(t4_items)),
+            ("t5_operators", t5_operators, protect_active_materials(t5_items)),
+            ("book_operators", book_operators, protect_active_materials(book_items)),
+        ],
+        fodder_items=fodder_items,
+        specialist_items=protect_active_materials(specialist_items),
     )
 
 
 def compute_default_workshop_config(
     fodder_operators=None, t5_operators=None, book_operators=None
 ):
-    """无专精计划时的全量默认合成配置（包含全 T4+T5+技巧概要）"""
+    """默认 T4+T5+技巧概要配置，另为已解锁专属干员补入对应低阶配方。"""
     if fodder_operators is None:
         fodder_operators = ["九色鹿"]
     if t5_operators is None:
@@ -563,21 +659,21 @@ def compute_default_workshop_config(
             "self_upper_limit": 20,
         }
     ]
-    return (
+    specialist_items = [
+        {"item_names": [name], "children_lower_limit": 20, "self_upper_limit": 20}
+        for name, recipe in sorted(workshop_formula.items())
+        if recipe.get("tab") == "精英材料" and 0 < recipe.get("apCost", 0) < 4
+    ]
+    from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
+
+    return allocate_workshop_items(
         [
-            {"operator": op, "enabled": True, "items": fodder_items + default_t4}
-            if op == "九色鹿"
-            else {"operator": op, "enabled": True, "items": default_t4}
-            for op in fodder_operators
-        ]
-        + [
-            {"operator": op, "enabled": True, "items": default_t5}
-            for op in t5_operators
-        ]
-        + [
-            {"operator": op, "enabled": True, "items": default_book}
-            for op in book_operators
-        ]
+            ("fodder_operators", fodder_operators, default_t4),
+            ("t5_operators", t5_operators, default_t5),
+            ("book_operators", book_operators, default_book),
+        ],
+        fodder_items=fodder_items,
+        specialist_items=specialist_items,
     )
 
 

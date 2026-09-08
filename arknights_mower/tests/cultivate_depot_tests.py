@@ -52,9 +52,15 @@ def test_success_means_fresh_character_data_was_written(syncer):
 @pytest.mark.parametrize(
     "response",
     [
+        None,
+        [],
         {"code": 10001, "message": "登录已失效"},
         {"code": 0, "data": {}},
         {"code": 0, "data": None},
+        {"code": 0, "data": []},
+        {"code": 0, "data": {"characters": []}},
+        {"code": 0, "data": {"characters": [None]}},
+        {"code": 0, "data": {"characters": [{"id": ""}]}},
     ],
 )
 def test_invalid_remote_response_keeps_previous_roster(syncer, response):
@@ -63,6 +69,19 @@ def test_invalid_remote_response_keeps_previous_roster(syncer, response):
         get.return_value.json.return_value = response
         with pytest.raises(ValueError):
             syncer.start()
+    assert syncer.record_path.read_text() == '{"previous": true}'
+
+
+def test_sync_endpoint_rejects_empty_box_without_overwriting_saved_data(syncer):
+    import server
+
+    syncer.record_path.write_text('{"previous": true}')
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = {"code": 0, "data": {"characters": []}}
+        response = server.app.test_client().get("/cultivate-fetch")
+    assert response.status_code == 200
+    assert response.json["success"] is False
+    assert "同步干员数据" in response.json["message"]
     assert syncer.record_path.read_text() == '{"previous": true}'
 
 

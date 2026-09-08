@@ -17,7 +17,7 @@
           <template #icon><n-icon :component="SettingsIcon" /></template>
           通用专精路线预览
         </n-button>
-        <n-button size="small" @click="showWorkshopSettings = true">
+        <n-button size="small" @click="openWorkshopSettings">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           加工站干员设置
         </n-button>
@@ -264,6 +264,9 @@
           >技能: <n-text strong>{{ cd.rec?.skill_name }}</n-text> → 专精3级 |
           {{ formatTime(cd.rec?.total_time || 0) }}</n-text
         >
+        <n-text v-if="workshopTrainingWarning(cd.op?.name)" type="warning">{{
+          workshopTrainingWarning(cd.op?.name)
+        }}</n-text>
         <n-divider />
         <n-text depth="2"
           >将根据已拥有干员和排班表自动生成协助方案，添加后可通过「协助方案」查看或修改。</n-text
@@ -508,10 +511,39 @@
       v-model:show="showWorkshopSettings"
       preset="card"
       title="加工站干员设置"
-      style="width: min(500px, 95vw)"
+      style="width: min(600px, 95vw); max-height: 90vh"
+      content-style="overflow-y: auto; min-height: 0"
       :mask-closable="false"
+      :closable="!workshopDefaultsLoading"
+      :close-on-esc="!workshopDefaultsLoading"
     >
       <n-space vertical>
+        <n-alert v-if="workshopDefaultsError" type="warning">{{ workshopDefaultsError }}</n-alert>
+        <n-text depth="3">
+          一键设置先同步干员数据，再按最新 BOX
+          填入已拥有、已解锁技能且副产品概率加成达到所设下限的干员，可继续手动增删。
+          材料专属干员仅分配符合条件的材料，相关低阶材料也会生成合成配置。
+          主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时，一键设置会跳过这些干员。
+        </n-text>
+        <n-space align="center">
+          <n-text>副产品概率加成至少</n-text>
+          <n-input-number
+            :value="workshopMinBonus"
+            @update:value="workshopMinBonus = $event ?? 80"
+            :min="0"
+            :max="1000"
+            :precision="0"
+            :step="5"
+            :show-button="false"
+            :disabled="workshopDefaultsLoading"
+            :input-props="{ 'aria-label': '副产品概率加成下限' }"
+            style="width: 100px"
+            ><template #suffix>%</template></n-input-number
+          >
+          <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
+            >一键设置</n-button
+          >
+        </n-space>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
           <help-text>
@@ -520,18 +552,49 @@
         </div>
         <slick-operator-select
           v-model="fodderOps"
-          :disabled="false"
+          :disabled="workshopDefaultsLoading"
           select_placeholder="选择干员（九色鹿带垫刀材料）"
         />
         <n-text depth="3">T5 加工干员</n-text>
-        <slick-operator-select v-model="t5Ops" :disabled="false" select_placeholder="选择干员" />
+        <slick-operator-select
+          v-model="t5Ops"
+          :disabled="workshopDefaultsLoading"
+          select_placeholder="选择干员"
+        />
         <n-text depth="3">技巧概要加工干员</n-text>
-        <slick-operator-select v-model="bookOps" :disabled="false" select_placeholder="选择干员" />
+        <slick-operator-select
+          v-model="bookOps"
+          :disabled="workshopDefaultsLoading"
+          select_placeholder="选择干员"
+        />
+        <n-collapse v-if="workshopRecommendations">
+          <n-collapse-item title="值得培养的干员" name="workshop-materials">
+            <n-space vertical>
+              <div v-for="category in workshopCategoryLabels" :key="category.key">
+                <n-text strong>{{ category.label }}</n-text>
+                <div v-for="operator in workshopRecommendations[category.key]" :key="operator.name">
+                  <n-text depth="3">{{
+                    workshopRecommendationText(
+                      operator,
+                      workshopOwnedOperators !== null && !workshopOwnedOperators.has(operator.name)
+                    )
+                  }}</n-text>
+                </div>
+                <n-text v-if="!workshopRecommendations[category.key].length" depth="3"
+                  >暂无推荐干员</n-text
+                >
+              </div>
+            </n-space>
+          </n-collapse-item>
+        </n-collapse>
       </n-space>
       <template #footer>
         <n-space justify="end">
-          <n-button size="small" @click="resetWorkshopDefaults">恢复默认</n-button>
-          <n-button type="primary" size="small" @click="showWorkshopSettings = false"
+          <n-button
+            type="primary"
+            size="small"
+            @click="showWorkshopSettings = false"
+            :disabled="workshopDefaultsLoading"
             >保存</n-button
           >
         </n-space>
@@ -541,6 +604,15 @@
 </template>
 
 <script setup>
+import {
+  loadWorkshopOperators,
+  loadWorkshopReference,
+  syncWorkshopOperators,
+  selectedWorkshopOperators,
+  usesLegacyWorkshopDefaults,
+  workshopRecommendationText,
+  workshopTraineeWarning
+} from '@/utils/workshopOperators'
 import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
@@ -636,17 +708,68 @@ const idleFilterOptions = [
   { label: '非空闲', value: 'busy' }
 ]
 const {
+  workshop_min_bonus: workshopMinBonus,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
   book_operators: bookOps
 } = storeToRefs(configStore)
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
+const workshopRecommendations = ref(null)
+const workshopOwnedOperators = ref(null)
+const workshopDefaultsLoading = ref(false)
+const workshopDefaultsError = ref('')
+const workshopCategoryLabels = [
+  { key: 'fodder_operators', label: '非 T5 材料' },
+  { key: 't5_operators', label: 'T5 材料' },
+  { key: 'book_operators', label: '技巧概要' }
+]
 
-function resetWorkshopDefaults() {
-  fodderOps.value = ['九色鹿']
-  t5Ops.value = ['年']
-  bookOps.value = ['司霆惊蛰']
+async function readWorkshopDefaults(apply = false, sync = false) {
+  if (workshopDefaultsLoading.value) return
+  workshopDefaultsLoading.value = true
+  workshopDefaultsError.value = ''
+  try {
+    const load = sync ? syncWorkshopOperators : loadWorkshopOperators
+    const data = await load(axios, import.meta.env.VITE_HTTP_URL, workshopMinBonus.value)
+    workshopRecommendations.value = data.recommendations
+    workshopOwnedOperators.value = Array.isArray(data.owned_operators)
+      ? new Set(data.owned_operators)
+      : null
+    if (apply) {
+      fodderOps.value = [...data.defaults.fodder_operators]
+      t5Ops.value = [...data.defaults.t5_operators]
+      bookOps.value = [...data.defaults.book_operators]
+    }
+  } catch (e) {
+    workshopDefaultsError.value = e.response?.data?.error || e.message || '加工站推荐读取失败'
+    workshopOwnedOperators.value = null
+    try {
+      workshopRecommendations.value = await loadWorkshopReference(
+        axios,
+        import.meta.env.VITE_HTTP_URL
+      )
+    } catch {
+      workshopRecommendations.value = null
+    }
+  } finally {
+    workshopDefaultsLoading.value = false
+  }
+}
+
+async function openWorkshopSettings() {
+  showWorkshopSettings.value = true
+  await readWorkshopDefaults(
+    usesLegacyWorkshopDefaults({
+      fodder_operators: fodderOps.value,
+      t5_operators: t5Ops.value,
+      book_operators: bookOps.value
+    })
+  )
+}
+
+async function setWorkshopOperators() {
+  await readWorkshopDefaults(true, true)
 }
 const workshopT3Summary = ref([])
 
@@ -709,6 +832,9 @@ function getStatusType(status) {
 
 async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
+  if (!plan.value[k] && workshopTrainingWarning(op.name)) {
+    message.warning(workshopTrainingWarning(op.name))
+  }
   if (!plan.value[k] && trainingWarning(op.name)) {
     message.warning(trainingWarning(op.name))
   }
@@ -763,6 +889,12 @@ async function addAllToPlan(op, draft = false) {
     message.warning(trainingWarning(op.name))
   }
   const recs = op.recommendations
+  if (
+    recs.some((rec) => !plan.value[planKey(op.char_id, rec.skill_index)]) &&
+    workshopTrainingWarning(op.name)
+  ) {
+    message.warning(workshopTrainingWarning(op.name))
+  }
   if (draft) {
     // 计划弹窗内草稿：只动本地，保存时 POST
     for (const rec of recs) {
@@ -1012,9 +1144,7 @@ async function restorePreset() {
 async function autoWorkshop() {
   workshopLoading.value = true
   try {
-    const keys = Object.keys(plan.value).filter((k) => plan.value[k])
     const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, {
-      planned_skills: keys,
       fodder_operators: fodderOps.value,
       t5_operators: t5Ops.value,
       book_operators: bookOps.value
@@ -1024,14 +1154,16 @@ async function autoWorkshop() {
       message.warning('生成失败')
       return
     }
-    if (keys.length === 0) {
-      message.success('当前没有专精计划，已自动生成全量合成方案')
-    }
     configStore.workshop_settings = ws
 
     await new Promise((r) => setTimeout(r, 100))
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
     workshopT3Summary.value = resp.data?.t3_summary || []
+
+    if (!ws.length) {
+      message.info('当前没有可准备的专精材料，已清空自动合成配置')
+      return
+    }
 
     const tasksResp = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
     const tasks = tasksResp.data || []
@@ -1053,7 +1185,7 @@ async function autoWorkshop() {
       }
       const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
         task: {
-          time: new Date(Date.now() + 120000 + added.length * 600000).toISOString(),
+          time: new Date(Date.now() + added.length * 2000).toISOString(),
           plan: {},
           task_type: '加工材料',
           meta_data: op
@@ -1069,7 +1201,7 @@ async function autoWorkshop() {
     const parts = []
     if (added.length) parts.push(`已添加任务: ${added.join(', ')}`)
     if (skipped.length) parts.push(`已有任务: ${skipped.join(', ')}`)
-    message.success(`合成配置已生成${parts.length ? '，' + parts.join('；') : ''}`)
+    message.success(`已为下一待专精技能生成合成配置${parts.length ? '，' + parts.join('；') : ''}`)
   } catch (e) {
     message.error(`生成失败: ${e.message}`)
   } finally {
@@ -1317,15 +1449,14 @@ const routeOperatorSet = computed(() => {
   }
   return busy
 })
-const workshopOperators = computed(() => [
-  ...(fodderOps.value || []),
-  ...(t5Ops.value || []),
-  ...(bookOps.value || [])
-])
+const workshopOperators = computed(() => selectedWorkshopOperators(configStore))
+function workshopTrainingWarning(name) {
+  return workshopTraineeWarning(name, workshopOperators.value)
+}
 function isIdleOperator(op) {
   if (scheduledOperatorSet.value.has(op.name)) return false
   if (routeOperatorSet.value.has(op.name)) return false
-  if (workshopOperators.value.includes(op.name)) return false
+  if (workshopOperators.value.has(op.name)) return false
   if ((configStore.free_blacklist || []).includes(op.name)) return false
   return true
 }
@@ -1421,6 +1552,7 @@ function confirmSkill(op, rec) {
 async function doAddTask() {
   showConfirm.value = false
   const { op, rec } = cd
+  if (workshopTrainingWarning(op.name)) message.warning(workshopTrainingWarning(op.name))
   if (trainingWarning(op.name)) message.warning(trainingWarning(op.name))
   try {
     // #71：一键专精走 DB 计划创建 API（POST /mastery-plan），不再发原始 /task「技能专精」

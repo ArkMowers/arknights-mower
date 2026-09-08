@@ -15,7 +15,11 @@ from flask import Blueprint, abort, current_app, request
 from tzlocal import get_localzone
 
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    next_workshop_task_time,
+)
 
 task_bp = Blueprint("task", __name__)
 
@@ -63,7 +67,11 @@ def add_task():
                         task_type=task["task_type"],
                         meta_data=task["meta_data"],
                     )
-                    if base_scheduler.find_next_task(
+                    if new_task.type == TaskTypes.WORKSHOP:
+                        new_task.time = next_workshop_task_time(
+                            base_scheduler.tasks, task_time
+                        )
+                    elif base_scheduler.find_next_task(
                         compare_time=task_time, compare_type="="
                     ):
                         raise Exception("找到同时间任务请勿重复添加")
@@ -76,6 +84,10 @@ def add_task():
                             "系统会自动调度训练"
                         )
                     base_scheduler.tasks.append(new_task)
+                    if new_task.type == TaskTypes.WORKSHOP:
+                        from arknights_mower.utils import config
+
+                        config.wake_scheduler.set()
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
             raise Exception("添加任务失败！！请确保Mower正在运行")
