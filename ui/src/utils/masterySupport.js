@@ -3,20 +3,22 @@ const boosters = new Set(['阿斯卡纶', '烛煌', '斩业星熊'])
 
 export function masteryScheduleContext(primary, backups = []) {
   const blocked = new Set()
+  const scheduled = new Set()
   let centralBonus = 0
   for (const table of [primary, ...backups.map((b) => b.plan)]) {
     for (const [room, facility] of Object.entries(table || {})) {
-      if (room === 'train') continue
       for (const slot of facility?.plans || []) {
         for (const name of [slot.agent, ...(slot.replacement || [])]) {
           if (!name || ignored.has(name)) continue
+          scheduled.add(name)
+          if (room === 'train') continue
           blocked.add(name)
           if (room === 'central' && boosters.has(name)) centralBonus = 5
         }
       }
     }
   }
-  return { blocked, centralBonus }
+  return { blocked, scheduled, centralBonus }
 }
 
 export function supportEditableAfter(plan) {

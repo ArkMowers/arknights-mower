@@ -53,3 +53,16 @@ describe('专精排班范围', () => {
     expect([...blocked]).toEqual(['能天使', '教官', '备用干员'])
   })
 })
+
+for (const backup of [false, true]) {
+  it(`训练室${backup ? '备用' : '主'}排班的主力和替换仍属于非空闲`, () => {
+    const table = { train: room('逻各斯', ['艾丽妮']) }
+    const { scheduled, blocked } = masteryScheduleContext(
+      backup ? {} : table,
+      backup ? [{ plan: table }] : []
+    )
+    expect([...scheduled]).toEqual(['逻各斯', '艾丽妮'])
+    expect([...blocked]).toEqual([])
+    expect(masteryTraineeWarning('逻各斯', blocked)).toBe('')
+  })
+}

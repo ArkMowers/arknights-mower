@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_support_types import TrainingInputs, encode_supports
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skill_label import format_skill_label
 
@@ -199,9 +200,7 @@ def insert_plan(
                     skill_name,
                     target_level,
                     priority,
-                    json.dumps(support_plan, ensure_ascii=False)
-                    if support_plan
-                    else None,
+                    encode_supports(support_plan),
                 ),
             )
             conn.commit()
@@ -222,6 +221,7 @@ def add_plan_checked(
     char_name: Optional[str] = None,
     priority: int = 0,
     path: Optional[str] = None,
+    support_mode: str = "auto",
 ) -> tuple[int, Optional[str]]:
     """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级。
 
@@ -232,6 +232,8 @@ def add_plan_checked(
     """
     if target_level is None:
         target_level = DEFAULT_TARGET_LEVEL
+    if support_mode not in ("auto", "route"):
+        return -1, "协助方式无效（需 auto/route）"
     if type(skill_index) is not int or skill_index not in (0, 1, 2):
         return -1, "技能序号无效（需 0/1/2）"
     # bool 是 int 子类（True==1），JSON true 不得被当作 target=1 静默接受
@@ -248,15 +250,27 @@ def add_plan_checked(
     current_level = get_current_mastery_level(char_id, skill_index)
     if current_level is not None and current_level >= target_level:
         return -1, f"该干员技能已专{current_level}，无需再练到专{target_level}"
-    from arknights_mower.utils.mastery_support import SupportPlanError, plan_supports
+    from arknights_mower.utils.mastery_support import (
+        RosterUnavailableError,
+        SupportPlanError,
+        plan_supports,
+    )
 
     try:
-        support_plan = plan_supports(
-            char_id,
-            current_level or 0,
-            target_level,
-            buffer=get_route_settings(path).get("mastery_swap_buffer", 10),
+        support_plan = (
+            None
+            if support_mode == "route"
+            else plan_supports(
+                char_id,
+                current_level or 0,
+                target_level,
+                inputs=TrainingInputs(
+                    buffer=get_route_settings(path).get("mastery_swap_buffer", 10)
+                ),
+            )
         )
+    except RosterUnavailableError:
+        support_plan = None  # Keep the pre-existing manual route entry without BOX.
     except SupportPlanError as exc:
         return -1, str(exc)
     plan_id = insert_plan(
@@ -274,15 +288,13 @@ def add_plan_checked(
     return -1, "插入失败"
 
 
-def save_support_plan(
-    plan_id, support_plan, *, path=None, runtime=False, expected=None
-):
+def save_support_plan(plan_id, support_plan, *, runtime=False, expected=None):
     """Persist a route snapshot; UI edits cannot change a stage while it is executing."""
     column = "support_runtime" if runtime else "support_plan"
-    with _conn(path) as conn:
+    with _conn() as conn:
         guard = "" if runtime else " AND status IN ('idle','failed')"
         clear_runtime = "" if runtime else ", support_runtime=NULL"
-        parameters = [json.dumps(support_plan, ensure_ascii=False), plan_id]
+        parameters = [encode_supports(support_plan), plan_id]
         if not runtime and expected is not None:
             guard = " AND status=? AND support_plan IS ? AND support_runtime IS ?"
             parameters.extend(

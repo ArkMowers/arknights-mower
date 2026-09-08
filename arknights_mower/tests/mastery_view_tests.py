@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, call, patch
 
 from flask import Flask
 
+from arknights_mower.tests.mastery_plan_helpers import stub_support_planner
+
 # base_schedule 导入链（cultivate_depot→skland）在 skland 模块加载时调用
 # SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关）。与
 # base_scheduler_tests 同款 stub。refresh 测试的 lazy import 在 os.path.exists
@@ -126,12 +128,7 @@ class TestMasteryRouteView(unittest.TestCase):
 
 class TestMasteryPlanView(unittest.TestCase):
     def setUp(self):
-        planner = patch(
-            "arknights_mower.utils.mastery_support.plan_supports",
-            return_value={"version": 1, "stages": []},
-        )
-        planner.start()
-        self.addCleanup(planner.stop)
+        stub_support_planner(self)
         app = Flask(__name__)
         app.register_blueprint(mastery_bp)
         self.client = app.test_client()

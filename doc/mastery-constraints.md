@@ -46,6 +46,15 @@
 | `solvers/mastery.py` | 执行流：开始训练、确认开始、协助位安排、换人 | `run_mastery_task` / `run_swap_support` / `_start_new_training` / `_confirm_training_started` / `calc_swap_threshold` / `DEFAULT_ROUTES` |
 | `solvers/mastery_reader.py` | 共享读取器：读房、恢复矩阵、收取、通知、gate 辅助 | `read_room_state` / `reconcile_and_act` / `reconcile_short` / `collect_flow` |
 | `utils/mastery_db.py` | 计划/路线 DB、通知去重、`is_operator_busy` | `update_plan_status` / `get_active_plan` / `get_next_idle_plan` / `retry_failed_plans` / `should_notify` / `insert_plan` / `get_route` |
+| `utils/mastery_support.py` | 专精协助公共入口与职业通用预览 | `plan_supports` / `profession_training_routes` / `profession_reference_trainers` |
+| `utils/mastery_support_data.py` | BOX 缓存、排班排除与技能解锁 | `owned_roster` / `schedule_context` / `candidates` / `trainer_stats` |
+| `utils/mastery_optimizer.py` | 训练时长与连续阶段路线求解 | `stage_route` / `optimize_supports` |
+| `utils/mastery_support_types.py` | 计算输入、阶段参数、JSON 编解码与阶段查询 | `TrainingInputs` / `StageSpec` / `decode_supports` / `encode_supports` / `stage_for` |
+| `utils/mastery_support_edits.py` | 逐计划协助者编辑校验 | `edit_supports` |
+| `utils/mastery_rules.py` | 资源生成时编译训练技能规则 | `compile_buff` / `compile_training_data` |
+| `solvers/mastery_support_runtime.py` | 训练室主页预检与执行恢复 | `prepare_plan_supports` / `recover` |
+| `solvers/mastery_support_state.py` | 执行快照、换人任务及通知去重 | `save_runtime` / `record_work` / `schedule_support_swap` / `notify_support_failure` |
+| `solvers/mastery_support_swap.py` | 校验实际训练与执行协助换人 | `perform_swap` / `place_support` |
 | `utils/skill_label.py` | 技能名规范唯一格式化器 | `format_skill_label` / `normalize_skill_text` / `panel_skill_matches` |
 | `utils/mastery_recommendation.py` | 推荐 + 自动排程 + 仓库扫描联动 + 材料核算 | `get_mastery_recommendations` / `auto_schedule_mastery_tasks` / `compute_workshop_config` / `get_skill_data` |
 | `utils/scheduler_task.py` | 任务类型定义 | `TaskTypes.SKILL_UPGRADE / SWAP_SUPPORT / REFRESH_TIME` |
@@ -66,7 +75,7 @@
 5. **协助位只动在训练确认开始之后**；确认开始之前不得改协助位。（#16 §8）
 6. **协助位安排无守卫例外（2026-08-17 #103 删减半守卫）**：路线 operator 每次开始照常安排，**跨「收取 → 下一次开始」边界也不例外**——`arrange_support` 恒 True，收集级联不再传 False；「专三不换减半对象」由路线数据保证（level_3 路线 `swap_target=None`，见铁律 7），不靠「不动协助位」。（#63 → #103；详见 §7 C-15）
 7. **专三（当前步）永不换人**（调度侧与执行侧都要挡）：由 level_3 路线 `swap_target=None` 保证（#76 2026-08-15 用户定案删显式 `target_level==3` 守卫、靠路线数据；自定义路线若给专三填 swap_target 会打破该保证）。
-8. **通知共 8 类（①-⑧，完整清单见 §16.9）、各至多一次**，用 `mastery_notify` 表去重。（#61/#73/#79/#81）
+8. **通知共 9 类（①-⑨，完整清单见 §16.9）、各至多一次**，用 `mastery_notify` 表去重。（#61/#73/#79/#81）
 9. **ARRANGING 超时/失败必须置 `failed`**（不得置 `idle`，否则 infra 主循环每轮重派 idle 刷屏）；**不得在 ARRANGING 内重试**，重试只走仓库扫描 `retry_failed_plans()`。（#15/#19）
 10. **`enable_mastery=False` 时任何训练室动作/通知/守卫都不执行**（dispatch/reconcile/swap 直接返回）；但 N 小时仓库材料扫描 + DB 自动排程**保留**。（#55 ②）
 11. **排班永不写锁定训练位（idx1）**，与 `enable_mastery` 开关无关：`assistant_follows_schedule=False` 整房跳过，`True` 冻结 idx1=Current。（#59）
@@ -95,7 +104,7 @@
 - `failed → idle`：仅 `retry_failed_plans()`（清 `failed_reason`），且只从仓库扫描路径 `_auto_schedule_mastery_after_scan` 调用。（DB-06）
 
 ### 其它
-- 所有计划字段/状态改动必须走 `update_plan_status`（改优先级用 `update_plan_priority`）；**HTTP API 只能 insert/delete/reorder，不得直写 status**。（DB-02）
+- 所有计划字段/状态改动必须走 `update_plan_status`（改优先级用 `update_plan_priority`）；**HTTP API 可 insert/delete/reorder 和编辑协助方案，不得直写 status**。（DB-02）
 - 表结构演进走 `_ensure_tables` 的 DROP-or-ALTER 模式：缺 `target_level` 就 drop 表，缺 `optimal`/`half_off` 用 ALTER ADD COLUMN；不得用裸 CREATE TABLE 引入新必填列。（DB-07）
 
 ## 5. 共享读取器与恢复矩阵
@@ -136,7 +145,7 @@
 - 更新状态用的档位**只取主面板第 1 步读取值**（`panel.mastery_tier`），收集页不重读。（C-33）
 - 专3 邮件条件：命中计划（plan 非 None）且档位 == 3。（C-13）
 
-### 通知清单（8 类，①-⑧ 完整清单见 §16.9；`mastery_notify` 表，`INSERT OR IGNORE` 去重）
+### 通知清单（9 类，①-⑨ 完整清单见 §16.9；`mastery_notify` 表，`INSERT OR IGNORE` 去重）
 | 类型 | 触发 | dedup_key |
 |---|---|---|
 | ① blocked | 计划外训练占用训练室 | 倒计时结束时刻字符串（不可读 → `'unknown'`，训练未变不重发） |
@@ -146,7 +155,7 @@
 （NTFY-01/02、C-11）
 - 所有通知必须走 `should_notify`；`should_notify` **fail open**：DB 出错返回 True（宁可多发不可漏发）。（NTFY-03）
 - 新增通知类型必须刻意为之并沿用同样 key 约定，否则会过度/漏通知。
-- ✅ 通知已扩到 8 类（①-⑧ 完整清单见 §16.9）：#73 加 ④帮收（key=`{干员}:{技能}`）、⑤训练室受保护（key=`{协助位}:{训练位}`）、⑥已到target（key=plan id）；#79 加 ⑦协助位纠错失败、#81 加 ⑧换人失败放弃（均 key=plan id，WARNING），均已按本契约补 dedup key。
+- ✅ 通知已扩到 9 类（①-⑨ 完整清单见 §16.9）：#73 加 ④帮收（key=`{干员}:{技能}`）、⑤训练室受保护（key=`{协助位}:{训练位}`）、⑥已到target（key=plan id）；#79 加 ⑦协助位纠错失败、#81 加 ⑧换人失败放弃（均 key=plan id，WARNING），均已按本契约补 dedup key。
 
 ## 7. 减半换人（协助位）
 
@@ -230,6 +239,12 @@
 - **#76（2026-08-15）路线按「当前步目标级」加载**：`_get_plan_route(plan, step_level)` 用 step_level（确认后/换人前进房读主面板专精图标 = 当前步目标级，亮 N 颗=专N），step_level 缺省/读失败回退 `plan["target_level"]`（=旧行为，保守）。专三计划 专一→专二→专三 三步分别用 level_1/2/3 路线：专一/专二步正常减半换人，专三步由 level_3 swap_target=None 挡住（铁律 7）。三个消费点：`_arrange_support` / `_schedule_swap_if_needed`（确认开始后，`_confirm_training_started` 内读图标传参）、`run_swap_support`（SWAP 派发，进房读图标）。
 - `DEFAULT_ROUTES` 按 8 职业 × level_1..3 键控，每条必带 operator/efficiency/job_match/swap_target（swap_target=None 表示该级不换）。（RTE-02）
 
+### 逐计划方案与职业路线的适用范围
+
+自动方案按被训练干员的实际职业、分支、专精阶段与已解锁技能求解；排除资源转换/挂件及瞬间完成等动态技能。不新增心情识别、心情计算或心情告警。协助者在主排班/全部备用排班的非训练室设施（主力或 replacement）出现就排除。被训练干员在这些排班中出现仅提示警告；空闲筛选仍统计全部设施，包含训练室。任一中枢加速干员在上述中枢名单出现即启用 +5%，不看备用排班是否生效。
+
+职业路线预览只算职业共性，不含目标分支专属额外加成。默认与「计算最优」使用已拥有、已解锁教官；旁边全游戏推荐仅供参考。`support_plan` 为 NULL 的旧计划、无 BOX 回退计划及用户显式选择职业路线的计划，继续读取用户职业路线或原默认路线。
+
 ## 8. 排班集成（#59 gate）
 
 ### L0：先读再判（进房读屏幕，截图权威更新 DB）（#74，2026-08-14 改）
@@ -276,7 +291,11 @@
 
 ## 11. DB 契约
 
-- **计划字段**：id、char_id、char_name、skill_index、skill_name、target_level、status、priority、expires_at、failed_reason。
+- **计划字段**：id、char_id、char_name、skill_index、skill_name、target_level、status、priority、expires_at、failed_reason、swap_frozen、support_plan、support_runtime。
+- **协助方案列**：`support_plan` 与 `support_runtime` 为可空 JSON 文本，经 `ALTER ADD COLUMN` 迁移。新自动计划原子写入 `support_plan`；职业路线计划保持 NULL。执行快照单独保存，不覆盖用户后续阶段编辑；编解码统一走 `mastery_support_types`。
+- **协助方案更新**：`save_support_plan` 只更新方案/执行快照；编辑时比较 status、原 support_plan 和原 support_runtime，拒绝并发过期保存。idle/failed 可改全部阶段并清快照；运行中只改未开始阶段，保留本级快照。HTTP 不更新训练状态。
+- **创建兼容**：默认 `support_mode=auto`。无 BOX（文件缺失、损坏或无干员数据）时使用职业路线；显式 `route` 不依赖 BOX 或训练规则。已有 BOX 时的未拥有、未精二、缺训练规则、协助者不可用等错误不降级。两种 HTTP 载荷均校验 skill_index 为整数 0/1/2（排除 bool）。
+- **通知清理**：删除计划同步删除 `support_swap` 的 `{plan_id}:%` 记录，避免该计划的逐级通知残留。
 - **计划 id（#102 定案）**：`mastery_plan.id` 由 `INTEGER PRIMARY KEY AUTOINCREMENT` 生成，**单调递增、删除后不复用**——日志中的高 id 是历史编号，不代表现存计划数（删 1、2、4 后现存计划从 3 开始属正常）。**切勿改成普通 `INTEGER PRIMARY KEY`（rowid 别名）**：删掉最大行后 id 会被复用，使残留的 `plan_key=旧id` 队列任务 / `dedup_key=旧id` 通知去重行指向新计划。
 - **状态唯一写法** `update_plan_status`；优先级 `update_plan_priority`。（DB-02）
 - **`is_operator_busy`**（`mastery_db.py:302-325`）：
@@ -313,14 +332,16 @@
 
 | 端点 | 契约 |
 |---|---|
-| `GET /mastery-plan` | `{plans:[...], history:[...]}`；plans 每项含 id/char_id/name/skill_index/skill_name/target_level/status/priority/expires_at/failed_reason；history 含 char_id/name/skill_index/skill_name/target_level/status/failed_reason/time。⚠️ **#69 展示约定**：plans = `get_all_plans()`（非终态）**追接** `get_failed_plans()`（failed，带 failed_reason）——failed 计划也返回给前端显示，不"凭空消失"；执行循环仍只读非终态（#4 SM-09） |
-| `POST /mastery-plan` | 两种 body：`{'items':[{name, skill_index, target_level}]}` 或扁平 `{name: skill_index}`；扁平路径 skill_index 必须 ∈ {0,1,2} 否则 `invalid skill_index`；未知干员 → `{status:'error', reason:'operator not found'}`；成功 → `{status:'added', id}`。⚠️ **#65/B7 target_level 统一校验**（两路径都走 `add_plan_checked`）：缺省/默认 专三（与推荐一致）；越界（非 1/2/3，含非整数、布尔 `true`）→ `reason='目标专精等级无效: ...'`；干员 cultivate.json 当前等级 ≥ target → 拒绝（`reason='...已专N...'`，不落库；cultivate 读不到则跳过等级校验，执行层已到target检测兜底）。⚠️ bulk `items` 路径**不校验** skill_index ∈ (0,1,2)（open_risks）。✅ **2026-08-18 立即派发（方案 A）**：任一计划成功创建（added）后触发 `_dispatch_new_plans_immediately(chars=新增干员id)`——先刷新 cultivate.json（缺失/过期 >`maa_gap` 才拉，尊重间隔；**新增干员不在本地数据则强制拉一次**）、再复用扫描派发（`auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`）把**材料足够的 idle 计划**入队 now 的 `SKILL_UPGRADE` 并设 `wake_scheduler` 唤醒调度休眠（确认后真的开始训练）；材料不足不派发不唤醒。受 `enable_mastery` 门控；`base_scheduler` 未运行（None）→ 跳过。batch 多计划只派发一次（覆盖全部 added） |
+| `GET /mastery-plan` | `{plans:[...], history:[...]}`；plans 每项含 id/char_id/name/skill_index/skill_name/target_level/status/priority/expires_at/failed_reason/support_plan/support_runtime（后两项为解码后的 JSON 或 null）；history 含 char_id/name/skill_index/skill_name/target_level/status/failed_reason/time。⚠️ **#69 展示约定**：plans = `get_all_plans()`（非终态）**追接** `get_failed_plans()`（failed，带 failed_reason）——failed 计划也返回给前端显示，不"凭空消失"；执行循环仍只读非终态（#4 SM-09） |
+| `POST /mastery-plan` | 两种 body：`{'items':[{name, skill_index, target_level, support_mode?}]}` 或扁平 `{name: skill_index}`；两条路径 skill_index 必须为整数且 ∈ {0,1,2}（不接受 bool） 否则 `invalid skill_index`；未知干员 → `{status:'error', reason:'operator not found'}`；成功 → `{status:'added', id, support_mode}`，职业路线附 `warning`。⚠️ **#65/B7 target_level 统一校验**（两路径都走 `add_plan_checked`）：缺省/默认 专三（与推荐一致）；越界（非 1/2/3，含非整数、布尔 `true`）→ `reason='目标专精等级无效: ...'`；干员 cultivate.json 当前等级 ≥ target → 拒绝（`reason='...已专N...'`，不落库；cultivate 读不到则跳过等级校验，执行层已到target检测兜底）。⚠️ bulk `items` 路径**不校验** skill_index ∈ (0,1,2)（open_risks）。✅ **2026-08-18 立即派发（方案 A）**：任一计划成功创建（added）后触发 `_dispatch_new_plans_immediately(chars=新增干员id)`——先刷新 cultivate.json（缺失/过期 >`maa_gap` 才拉，尊重间隔；**新增干员不在本地数据则强制拉一次**）、再复用扫描派发（`auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`）把**材料足够的 idle 计划**入队 now 的 `SKILL_UPGRADE` 并设 `wake_scheduler` 唤醒调度休眠（确认后真的开始训练）；材料不足不派发不唤醒。受 `enable_mastery` 门控；`base_scheduler` 未运行（None）→ 跳过。batch 多计划只派发一次（覆盖全部 added） |
 | `DELETE /mastery-plan` | body 需 id（缺 → 400；**#113** 非数字 id / bool → 400）；`delete_plan` 失败 → 500。**#97 清理**：删除后顺带清该计划 `plan_key=计划ID`（#101 补位已并入同一键，无独立 fill-{id}）的队列任务（SKILL_UPGRADE/SWAP）+ `mastery_notify` 中 `dedup_key=str(id)` 的去重行——残留任务不再按 plan_key 派发到已删计划。**#147（2026-08-19）**：并同步清持久化队列——`saved_state` 快照里旧队列没清会让重启 `load_state` 复活已删计划的任务（plan_key 派发到已删计划 + blocked 通知重发），`_purge_plan_tasks` 清完活队列后取 `current_state()` 快照、剔除该 plan_key 任务再 `save_state_to_db(state)` 覆盖——**不用 `save_current_state()`**（它持久化含 `t is current` 占位的 live 队列，删除计划的任务正被派发时会把它写回快照，重启仍复活） |
 | `PATCH /mastery-plan/order` | body 是 `[{id, priority}]`；未知/缺失 id 容忍；**#113** id/priority 非整数（含 bool、数字字符串）→ 400；返回 `{'status':'ok'}` |
-| `GET /mastery-route` | `{routes, defaults}`，defaults = `solvers.mastery.DEFAULT_ROUTES` |
+| `GET /mastery-plan/supports` | 返回 `{operators:[{name, blocked}], central_bonus}`；列出已拥有干员并标记非训练室排班占用，允许无速度技能的自选教官；无 BOX 或训练规则缺失 → 400。方案本身由 GET /mastery-plan 返回，PATCH 执行最终校验 |
+| `PATCH /mastery-plan/supports` | body `{id, stages}`，提交全部阶段；校验身份、拥有、排班和阶段锁定，不以速度加成为准入条件。并发过期 → 409；校验失败 → 400；成功返回新方案 |
+| `GET /mastery-route` | `{routes, defaults, best_trainers, settings, defaults_error?}`；defaults 为已拥有且已解锁的通用职业路线，缺 BOX 则为空并提示同步；best_trainers 保留 DEFAULT_ROUTES 全游戏参考并标记拥有/解锁状态，独立于个人默认路线 |
 | `POST /mastery-route` | profession 非空（否则 400）；supports 接受 str 或 list；**#114 写入端校验：supports 须是合法 JSON 且形态是数组/包装对象/旧字典之一（level_N 值须为对象），否则 400 拒绝保存**；`is_default` 恒 0；optimal/half_off 透传，half_off 默认 True |
 
-API 只增删计划与调优先级，**不得直写 status**（状态由执行层 `update_plan_status` 写）。（DB-02）
+API 可增删计划、调优先级与编辑协助方案，**不得直写 status**（状态由执行层 `update_plan_status` 写）。（DB-02）
 
 > **#71 `/task` 契约（一键专精流接入 DB 计划架构）**：原始「技能专精」`/task`（旧流不带
 > operator/skill，dispatch 只认 DB 计划，提交即死路）被**明确拒绝**并指引
@@ -391,12 +412,15 @@ python -m pytest arknights_mower/tests/mastery_reader_tests.py \
   arknights_mower/tests/mastery_formula_tests.py \
   arknights_mower/tests/mastery_view_tests.py \
   arknights_mower/tests/mastery_task_contract_tests.py \
-  arknights_mower/tests/base_scheduler_tests.py -q
-python -m pytest arknights_mower/tests/*.py -q        # 全量
+  arknights_mower/tests/base_scheduler_tests.py \
+  arknights_mower/tests/mastery_support_*tests.py -q
+python -m pytest -q  # pytest.ini 自动发现 arknights_mower/tests 与 scripts/tests
 python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_mower/views/ arknights_mower/agent/
 ```
 
-- 全量 245 tests 通过（#71 新增 `mastery_task_contract_tests.py`；GBK 控制台 print/logging 报错或尾部日志关闭噪音为环境性，与本子系统无关）。
+- CI 与本地统一使用 pytest 自动发现 `*_tests.py` / `test_*.py`，兼容既有 unittest 类及 pytest 函数，不再逐文件列举 pytest 测试。新增文件无需修改 CI 命令。
+- `mastery_support_*tests.py` 按资源规则、求解、预览、DB、API、建计划、执行、换人、开训流程和编解码拆分；共享 fixture 与 DB 契约 planner stub 放在非测试辅助模块中。开训流程测试调用真实 `prepare_plan_supports` 和 `_read_slots_checked`，仅替换设备边界，覆盖返回主页前的 UNKNOWN/CONNECTING 与槽位读取失败。
+- 前端 `ui/src/utils/masterySupport.test.js` 验证主/备用排班的主力与替换范围、训练室人员仍为非空闲，以及非训练室被训练干员仅警告。前端改动后执行 `cd ui && npm test && npm run build`。
 - 改动涉及本子系统后，全仓 grep 确认无对已删符号（`refresh_skill_time`/`_calculate_swap_from_api`/`get_pending_plans`/`has_in_progress_plan`/`get_in_progress_plan`/`set_plan_status`/`_skill_upgrade_just_dispatched`）的新引用。
 
 ---
@@ -510,7 +534,12 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 - ⑦ **协助位纠错失败（#79，2026-08-15）**：run_swap_support 换人前确认协助位，陌生人纠错成 operator 失败 → 邮件「协助位 X 纠错失败，跳过减半换人」+ 不换人 + 排收取（key=plan id，WARNING）
 - ⑧ **换人失败放弃（#81，2026-08-15）**：run_swap_support 减半换人失败，原地重试 SWAP_RETRY_LIMIT 次仍失败 / 剩余不足 5h → 放弃 + 邮件「换人失败已放弃，减半收益可能丢失」，**不置 swap_frozen=1**（reconcile 下次进房重新补排，暂时性失败可被救回；key=plan id，WARNING，与⑦ 并列）
 
+- ⑨ **逐计划协助换人失败或减半时长不足**：`support_swap`，key=`{plan_id}:{level}`，WARNING；同计划同级至多一次。自动方案失败后置 `swap_frozen=1`，保留当前协助位并重排收取，本阶段不再尝试替换。没有可用减半教官属于正常 BOX 限制，不告警。此策略仅用于 `support_plan` 非空的计划；⑦/⑧ 保留旧职业路线行为。
+
 ### 16.10 开始训练术语流（草案 1-8，实现对齐）
+
+逐计划方案在确认开训之前增加只读预检：先从 TRAIN_MAIN 确认训练位身份，进入 TRAIN_SKILL_SELECT（219）读取技能档位；调用 back 返回后，等待场景再次确认为 TRAIN_MAIN（217），再调用 `prepare_plan_supports`。UNKNOWN/CONNECTING 期间只等待，不调用槽位读取。预检复用 `_read_slots_checked`，核对协助者、排班和上一阶段训练记录，保存本级快照；失败停止开训。随后重新进入技能页再读档位，变化则停止。此处 back 的起点是技能选择页，并非训练室主页。预检不换协助位、不读心情，铁律 5 保持不变。
+
 
 1. 左下角读干员名+技能名+专精图标记下。
 2. lit_zones 判当前等级：已专三 → 邮件⑥+标完成；非专三 → 记等级 → 点确认开始（对钩符号）。

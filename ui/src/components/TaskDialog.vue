@@ -25,6 +25,7 @@ const task_type = ref('空任务')
 const mastery_target_level = ref(1)
 const mastery_operator = ref('')
 const mastery_skill = ref(1)
+const mastery_support_mode = ref('auto')
 const workshop_operator = ref('')
 const msg = ref('')
 const error = ref(false)
@@ -84,6 +85,7 @@ function clear() {
   mastery_target_level.value = 1
   mastery_operator.value = ''
   mastery_skill.value = 1
+  mastery_support_mode.value = 'auto'
   msg.value = ''
 }
 
@@ -113,7 +115,8 @@ async function saveTasks() {
         {
           name: mastery_operator.value,
           skill_index: mastery_skill.value - 1,
-          target_level: mastery_target_level.value
+          target_level: mastery_target_level.value,
+          support_mode: mastery_support_mode.value
         }
       ]
     }
@@ -122,6 +125,7 @@ async function saveTasks() {
     if (results[0]?.status === 'added') {
       msg.value = `已添加 ${mastery_operator.value} 技能${mastery_skill.value} 专${mastery_target_level.value} 计划`
       error.value = false
+      if (results[0].warning) message.warning(results[0].warning)
     } else {
       msg.value = results[0]?.reason || '添加失败'
       error.value = true
@@ -234,8 +238,8 @@ const level_list = [
         />
         <help-text v-if="task_type == '技能专精'">
           <div>选择要专精的干员、技能与目标等级，将加入专精计划，由系统自动调度训练</div>
-          <div>协助位与中途换人由专精路线配置驱动（在专精计划页的路线设置中配置）</div>
-          <div>不支持阿斯卡纶</div>
+          <div>自动协助按已同步 BOX 生成方案；未同步 BOX 时使用职业路线。</div>
+          <div>使用职业路线时，可在通用专精路线预览中设置协助者。</div>
           <div>
             参考攻略：
             <n-button
@@ -303,6 +307,17 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
+      <div class="task_row" v-if="task_type == '技能专精'">
+        <label>协助方式：</label>
+        <n-select
+          v-model:value="mastery_support_mode"
+          style="width: 240px"
+          :options="[
+            { label: '自动协助（无 BOX 时使用职业路线）', value: 'auto' },
+            { label: '使用职业路线', value: 'route' }
+          ]"
+        />
+      </div>
       <div class="task_row" v-if="task_type == '加工材料'">
         <label>选择干员：</label>
         <n-select

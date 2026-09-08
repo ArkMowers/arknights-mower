@@ -26,58 +26,53 @@ GROUPS = {
 }
 
 
-def compile_buff(buff):
-    text = re.sub(r"<[^>]*>", "", buff["description"])
-    effects = []
-    if buff["roomType"] == "CONTROL":
-        if "专精技能训练速度+5%" in text:
-            effects.append({"kind": "control"})
-        return effects
-    if buff["roomType"] != "TRAINING":
-        return effects
-    # Cost-only skills do not affect the duration calculation.
-    if buff["buffId"].startswith("train_cost"):
-        return effects
-    targets = buff.get("targets", [])
-    # All current stage-specific speed descriptions use 专精技能至N级.
+def _environment_effect(text, buff_id):
+    match = re.search(
+        r"每名(.+?)干员为当前干员的专精技能训练速度\+(\d+)%（最多生效(\d+)名）", text
+    )
+    if not match or match[1] not in GROUPS:
+        raise ValueError(f"未识别的训练环境技能: {buff_id}")
+    return {
+        "kind": "environment",
+        "group": GROUPS[match[1]],
+        "bonus": int(match[2]),
+        "cap": int(match[3]),
+    }
+
+
+def _speed_effect(text, buff):
     stage = re.search(r"专精技能至([123])级", text)
     branch = re.search(r"分支为([^，]+)", text)
     extra = re.search(r"训练速度额外\+(\d+)%", text)
+    effect = {
+        "kind": "speed",
+        "bonus": buff.get("efficiency", 0),
+        "professions": buff.get("targets", []),
+    }
+    if extra:
+        effect["extra"] = int(extra[1])
+    if stage:
+        effect["stage"] = int(stage[1])
+        if not extra:  # The entire bonus is conditional, e.g. 望 at M3.
+            amount = re.search(r"训练速度\+(\d+)%", text)
+            effect.update(bonus=0, extra=int(amount[1]))
+    if branch:
+        if branch[1] not in BRANCHES:
+            raise ValueError(f"未识别的干员分支: {branch[1]}")
+        effect["branch"] = BRANCHES[branch[1]]
+    return effect
+
+
+def _training_effects(text, buff):
+    effects = []
     if "每名" in text and "最多生效" in text:
-        match = re.search(
-            r"每名(.+?)干员为当前干员的专精技能训练速度\+(\d+)%（最多生效(\d+)名）",
-            text,
-        )
-        if not match or match[1] not in GROUPS:
-            raise ValueError(f"未识别的训练环境技能: {buff['buffId']}")
-        effects.append(
-            {
-                "kind": "environment",
-                "group": GROUPS[match[1]],
-                "bonus": int(match[2]),
-                "cap": int(match[3]),
-            }
-        )
+        effects.append(_environment_effect(text, buff["buffId"]))
     elif "人间烟火" in text:
         effects.append(
             {"kind": "environment", "group": "fireworks", "bonus": 1, "cap": 10000}
         )
     elif "训练速度" in text:
-        bonus = buff.get("efficiency", 0)
-        effect = {"kind": "speed", "bonus": bonus, "professions": targets}
-        if extra:
-            effect["extra"] = int(extra[1])
-        if stage:
-            effect["stage"] = int(stage[1])
-            if not extra:  # e.g. 望: the entire bonus is conditional on M3.
-                amount = re.search(r"训练速度\+(\d+)%", text)
-                effect["bonus"] = 0
-                effect["extra"] = int(amount[1])
-        if branch:
-            if branch[1] not in BRANCHES:
-                raise ValueError(f"未识别的干员分支: {branch[1]}")
-            effect["branch"] = BRANCHES[branch[1]]
-        effects.append(effect)
+        effects.append(_speed_effect(text, buff))
     if "下次训练所需时间-50%" in text and "5小时" in text:
         effects.append({"kind": "halve"})
     if "武道" in text:
@@ -85,6 +80,15 @@ def compile_buff(buff):
     if not effects:
         raise ValueError(f"未识别的训练技能: {buff['buffId']} {text}")
     return effects
+
+
+def compile_buff(buff):
+    text = re.sub(r"<[^>]*>", "", buff["description"])
+    if buff["roomType"] == "CONTROL":
+        return [{"kind": "control"}] if "专精技能训练速度+5%" in text else []
+    if buff["roomType"] != "TRAINING" or buff["buffId"].startswith("train_cost"):
+        return []  # Cost-only skills do not affect training duration.
+    return _training_effects(text, buff)
 
 
 def compile_training_data(characters, building):

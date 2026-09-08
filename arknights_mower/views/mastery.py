@@ -23,6 +23,11 @@ from arknights_mower.utils.mastery_db import (
     update_plan_priority,
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
+from arknights_mower.utils.mastery_support_types import (
+    TrainingInputs,
+    decode_json,
+    decode_supports,
+)
 from arknights_mower.utils.path import get_path
 
 
@@ -168,6 +173,20 @@ def _dispatch_new_plans_immediately(chars=None):
         logger.exception(f"一键专精立即派发失败: {e}")
 
 
+def _added_plan_result(name, plan_id):
+    plan = get_plan_by_id(plan_id)
+    automatic = bool(plan and plan.get("support_plan"))
+    result = {
+        "key": name,
+        "status": "added",
+        "id": plan_id,
+        "support_mode": "auto" if automatic else "route",
+    }
+    if not automatic:
+        result["warning"] = "此计划使用职业路线，请在通用专精路线预览中确认协助者配置"
+    return result
+
+
 class MasteryPlanView(MethodView):
     decorators = [_require_token]
 
@@ -192,12 +211,8 @@ class MasteryPlanView(MethodView):
                     "priority": p["priority"],
                     "expires_at": p.get("expires_at"),
                     "failed_reason": p.get("failed_reason"),
-                    "support_plan": json.loads(p["support_plan"])
-                    if p.get("support_plan")
-                    else None,
-                    "support_runtime": json.loads(p["support_runtime"])
-                    if p.get("support_runtime")
-                    else None,
+                    "support_plan": decode_supports(p),
+                    "support_runtime": decode_json(p.get("support_runtime")),
                 }
             )
         history_list = []
@@ -268,9 +283,10 @@ class MasteryPlanView(MethodView):
                     target_level=target_level,
                     skill_name=skill_name,
                     char_name=name,
+                    support_mode=item.get("support_mode", "auto"),
                 )
                 if plan_id > 0:
-                    results.append({"key": name, "status": "added", "id": plan_id})
+                    results.append(_added_plan_result(name, plan_id))
                     added = True
                     added_char_ids.append(char_id)
                 else:
@@ -312,7 +328,7 @@ class MasteryPlanView(MethodView):
                     char_name=name,
                 )
                 if plan_id > 0:
-                    results.append({"key": name, "status": "added", "id": plan_id})
+                    results.append(_added_plan_result(name, plan_id))
                     added = True
                     added_char_ids.append(char_id)
                 else:
@@ -351,7 +367,7 @@ class MasteryPlanSupportsView(MethodView):
 
         try:
             owned = {c["id"] for c in owned_roster()}
-            blocked, central, _ = schedule_context()
+            blocked, central = schedule_context()
             return {
                 "operators": [
                     {"name": m["name"], "blocked": sorted(blocked.get(m["name"], []))}
@@ -428,9 +444,11 @@ class MasteryRouteView(MethodView):
             recommendations.update(
                 profession_training_routes(
                     PROF_MAP,
-                    roster=roster,
-                    metadata=metadata,
-                    buffer=settings["mastery_swap_buffer"],
+                    inputs=TrainingInputs(
+                        roster=roster,
+                        metadata=metadata,
+                        buffer=settings["mastery_swap_buffer"],
+                    ),
                 )
             )
         except SupportPlanError as exc:

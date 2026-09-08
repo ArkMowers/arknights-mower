@@ -416,7 +416,7 @@
       <template #footer>
         <n-space justify="end" align="center">
           <n-button
-            @click="resetRoute"
+            @click="calculateOptimalRoutes"
             :disabled="routeSaving || store.loading"
             :loading="routeCalculating"
             >计算最优</n-button
@@ -743,6 +743,9 @@ async function toggleSkillPlan(op, rec, draft = false) {
       const body = { items: [{ name: op.name, skill_index: rec.skill_index }] }
       const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
       const results = r.data?.results || []
+      for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
+        message.warning(warning)
+      }
       if (results[0]?.status === 'added') {
         plan.value[k] = true
         // #65：target_level 由服务端默认专三（与推荐一致）
@@ -783,6 +786,9 @@ async function addAllToPlan(op, draft = false) {
       items: toAdd.map((rec) => ({ name: op.name, skill_index: rec.skill_index }))
     })
     const results = r.data?.results || []
+    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
+      message.warning(warning)
+    }
     const errs = []
     results.forEach((res, i) => {
       const rec = toAdd[i]
@@ -839,6 +845,9 @@ async function savePlanFn() {
   if (toAdd.length) {
     const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items: toAdd })
     const results = r.data?.results || []
+    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
+      message.warning(warning)
+    }
     const err = results.filter((x) => x.status === 'error')
     if (err.length) {
       message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
@@ -1254,7 +1263,7 @@ async function saveRouteAndClose() {
   }
 }
 
-async function resetRoute() {
+async function calculateOptimalRoutes() {
   if (routeCalculating.value || routeSaving.value || store.loading) return
   routeCalculating.value = true
   try {
@@ -1293,10 +1302,10 @@ const allOperatorList = ref([])
 const supportSchedule = computed(() =>
   masteryScheduleContext(planStore.plan, planStore.backup_plans)
 )
-const scheduledOperatorSet = computed(() => supportSchedule.value.blocked)
+const scheduledOperatorSet = computed(() => supportSchedule.value.scheduled)
 const autoCentralBonus = computed(() => supportSchedule.value.centralBonus)
 function trainingWarning(name) {
-  return masteryTraineeWarning(name, scheduledOperatorSet.value)
+  return masteryTraineeWarning(name, supportSchedule.value.blocked)
 }
 
 const showSupports = ref(false)
@@ -1429,6 +1438,9 @@ async function doAddTask() {
       items: [{ name: op.name, skill_index: rec.skill_index }]
     })
     const results = r.data?.results || []
+    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
+      message.warning(warning)
+    }
     if (results[0]?.status === 'added') {
       message.success(`${op.name} ${rec.skill_name} 专精任务已添加！`)
       await refreshPlanFromServer()
