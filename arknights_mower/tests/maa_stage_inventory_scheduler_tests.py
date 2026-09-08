@@ -1,5 +1,6 @@
 import sys
 import unittest
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -418,6 +419,368 @@ class MaaVisitFriendModeTests(unittest.TestCase):
         solver.MAA = MagicMock()
         solver.append_maa_task("Visit")
         solver.MAA.append_task.assert_not_called()
+
+
+def _rg_conf(
+    *,
+    theme="Sami",
+    mode=0,
+    squad="",
+    difficulty=-1,
+    stop_at_final_boss=False,
+    stop_at_max_level=False,
+    investment_enabled=True,
+    stop_when_investment_full=False,
+    investment_with_more_score=False,
+    collectible_mode_shopping=False,
+    collectible_mode_squad="",
+    refresh_trader_with_dice=False,
+    start_with_elite_two=False,
+    only_start_with_elite_two=False,
+    collectible_mode_start_list=None,
+    expected_collapsal_paradigms=("目空一些", "睁眼瞎"),
+):
+    """Roguelike 长任务走 maa_plan_solver 的 conf，构造 .RG 分支所需的最小实例。"""
+    return SimpleNamespace(
+        maa_gap=4,
+        RG=True,
+        SSS=False,
+        RCL=False,
+        RA=False,
+        SF=False,
+        maa_rg_sleep_min="12:00",
+        maa_rg_sleep_max="12:00",
+        maa_rg_theme=theme,
+        rogue=SimpleNamespace(
+            squad=squad,
+            roles="",
+            core_char="",
+            use_support=False,
+            use_nonfriend_support=False,
+            start_with_elite_two=start_with_elite_two,
+            only_start_with_elite_two=only_start_with_elite_two,
+            mode=mode,
+            refresh_trader_with_dice=refresh_trader_with_dice,
+            expected_collapsal_paradigms=list(expected_collapsal_paradigms),
+            difficulty=difficulty,
+            stop_at_final_boss=stop_at_final_boss,
+            stop_at_max_level=stop_at_max_level,
+            investment_enabled=investment_enabled,
+            stop_when_investment_full=stop_when_investment_full,
+            investment_with_more_score=investment_with_more_score,
+            collectible_mode_shopping=collectible_mode_shopping,
+            collectible_mode_squad=collectible_mode_squad,
+            collectible_mode_start_list=collectible_mode_start_list or {},
+        ),
+    )
+
+
+class MaaRoguelikeTests(unittest.TestCase):
+    """#264：Roguelike 下发补齐通用字段；协议注明「仅某主题/某模式」的字段按条件省略。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def _run_rogue(self, **overrides):
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock()
+        solver.last_execution = {"maa": None}
+        solver.credit_fight = None
+        solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(days=1))]
+        mock_maa = MagicMock()
+        # running() 立即返回 False：MAA 运行循环一次都不进，只断言 append_task 参数。
+        mock_maa.running.return_value = False
+
+        def _init_maa():
+            solver.MAA = mock_maa
+
+        with (
+            patch.object(base_schedule.config, "conf", _rg_conf(**overrides)),
+            patch.object(solver, "back_to_index"),
+            patch.object(solver, "initialize_maa", side_effect=_init_maa),
+            patch.object(solver, "append_maa_task"),
+            patch.object(solver, "rest_until_next_task"),
+            patch.object(solver, "maa_stop"),
+            patch.object(base_schedule, "get_server_weekday", return_value=1),
+            patch.object(base_schedule, "send_message"),
+        ):
+            solver.maa_plan_solver()
+        return mock_maa.append_task.call_args
+
+    def test_rogue_sends_common_fields_with_protocol_defaults(self):
+        # 默认值对照活文档：difficulty=-1、investment_enabled=True；这里 mode=0、主题 Sami
+        # 满足 stop_at_final_boss/stop_at_max_level 的条件（如实下发配置值），
+        # 投资/指路鳞字段按协议在 investment_enabled 时整体下发（值内联条件，此处为 False），
+        # 烧水/直升字段不满足各自条件，不进入任务参数。
+        call = self._run_rogue(theme="Sami")
+        task_type, task_config = call.args
+        self.assertEqual(task_type, "Roguelike")
+        self.assertEqual(task_config["difficulty"], -1)
+        self.assertIs(task_config["stop_at_final_boss"], False)
+        self.assertEqual(task_config["stop_at_max_level"], False)
+        self.assertEqual(task_config["investment_enabled"], True)
+        self.assertIs(task_config["stop_when_investment_full"], False)
+        self.assertIs(task_config["investment_with_more_score"], False)
+        self.assertIs(task_config["refresh_trader_with_dice"], False)
+        self.assertNotIn("collectible_mode_shopping", task_config)
+        self.assertNotIn("collectible_mode_squad", task_config)
+        self.assertNotIn("start_with_elite_two", task_config)
+        self.assertNotIn("only_start_with_elite_two", task_config)
+
+    def test_rogue_includes_stop_at_final_boss_for_non_phantom(self):
+        # Phantom 之外的主题下发 stop_at_final_boss（协议：除 Phantom 外均适用）
+        task_config = self._run_rogue(theme="Mizuki", stop_at_final_boss=True).args[1]
+        self.assertIs(task_config["stop_at_final_boss"], True)
+
+    def test_rogue_omits_stop_at_final_boss_for_phantom(self):
+        # Phantom 主题不适用：不下发 stop_at_final_boss（stop_at_max_level 无主题限制仍下发）
+        task_config = self._run_rogue(theme="Phantom").args[1]
+        self.assertNotIn("stop_at_final_boss", task_config)
+        self.assertIn("stop_at_max_level", task_config)
+
+    def test_rogue_omits_stop_at_levels_outside_mode0(self):
+        # stop_at_final_boss/stop_at_max_level 仅在策略为 0（刷等级）时下发（MAA 的 Mode==Exp 分支）
+        for theme, mode in (
+            ("Sami", 1),
+            ("Sami", 4),
+            ("Mizuki", 5),
+            ("BlackFlow", 30001),
+        ):
+            task_config = self._run_rogue(
+                theme=theme, mode=mode, stop_at_final_boss=True, stop_at_max_level=True
+            ).args[1]
+            self.assertNotIn("stop_at_final_boss", task_config)
+            self.assertNotIn("stop_at_max_level", task_config)
+
+    def test_rogue_includes_expected_collapsal_for_sami_mode5(self):
+        # 协议注明 expected_collapsal_paradigms 仅在主题为 Sami 且策略为 5 时有效：
+        # 该组合下如实下发配置的坍缩范式列表。
+        task_config = self._run_rogue(
+            theme="Sami", mode=5, expected_collapsal_paradigms=("目空一些", "一抹黑")
+        ).args[1]
+        self.assertEqual(
+            task_config["expected_collapsal_paradigms"], ["目空一些", "一抹黑"]
+        )
+
+    def test_rogue_omits_expected_collapsal_outside_sami_mode5(self):
+        # Sami+其它策略、其它主题都不适用：不下发 expected_collapsal_paradigms
+        # （与 stop_at_final_boss 的 Phantom 处理一致，字段隐藏即不进入任务参数）。
+        for theme, mode in (("Sami", 0), ("Sami", 6), ("Mizuki", 5), ("Phantom", 5)):
+            task_config = self._run_rogue(theme=theme, mode=mode).args[1]
+            self.assertNotIn("expected_collapsal_paradigms", task_config)
+
+    def test_rogue_omits_expected_collapsal_when_list_empty(self):
+        # Sami + 策略 5 但坍缩范式列表为空：不下发 expected_collapsal_paradigms
+        task_config = self._run_rogue(
+            theme="Sami", mode=5, expected_collapsal_paradigms=()
+        ).args[1]
+        self.assertNotIn("expected_collapsal_paradigms", task_config)
+
+    def test_rogue_forwards_blackflow_theme_and_mode_30001(self):
+        # 主题 BlackFlow 与模式 30001 原样转发（新增枚举穿透后端）；
+        # 策略非 0 时 stop_at_final_boss/stop_at_max_level 不下发。
+        task_config = self._run_rogue(theme="BlackFlow", mode=30001).args[1]
+        self.assertEqual(task_config["theme"], "BlackFlow")
+        self.assertEqual(task_config["mode"], 30001)
+        self.assertNotIn("stop_at_final_boss", task_config)
+        self.assertNotIn("stop_at_max_level", task_config)
+
+    def test_rogue_forwards_theme_gated_modes(self):
+        # 主题限定模式原样转发：Sarkaz 的 10001 与 JieGarden 的 20001（后端只透传数值）
+        sarkaz = self._run_rogue(theme="Sarkaz", mode=10001).args[1]
+        self.assertEqual(sarkaz["theme"], "Sarkaz")
+        self.assertEqual(sarkaz["mode"], 10001)
+        jiegarden = self._run_rogue(theme="JieGarden", mode=20001).args[1]
+        self.assertEqual(jiegarden["theme"], "JieGarden")
+        self.assertEqual(jiegarden["mode"], 20001)
+
+    def test_rogue_forwards_elite_two_fields_for_mizuki_sami_mode4(self):
+        # 协议注明 start_with_elite_two 仅适用于模式 4，MAA 另限主题 Mizuki/Sami 且直升值
+        # 需与战术分队类同步（RoguelikeSquadIsProfessional）；只凹仅受模式/主题限制。
+        task_config = self._run_rogue(
+            theme="Mizuki",
+            mode=4,
+            squad="突击战术分队",
+            start_with_elite_two=True,
+            only_start_with_elite_two=True,
+        ).args[1]
+        self.assertIs(task_config["start_with_elite_two"], True)
+        self.assertIs(task_config["only_start_with_elite_two"], True)
+        # 非战术分队时直升下发 False、只凹仍为 True（协议值语义如此；start=false 与 only=true
+        # 的组合会被 MAA 核心判定非法，由前端联动在直升不可见时清除只凹，见 only_elite_two_needs_reset）
+        task_config = self._run_rogue(
+            theme="Sami",
+            mode=4,
+            squad="指挥分队",
+            start_with_elite_two=True,
+            only_start_with_elite_two=True,
+        ).args[1]
+        self.assertIs(task_config["start_with_elite_two"], False)
+        self.assertIs(task_config["only_start_with_elite_two"], True)
+
+    def test_rogue_omits_elite_two_fields_outside_mode4(self):
+        # 策略 4 之外：不下发 start_with_elite_two/only_start_with_elite_two
+        for theme, mode in (
+            ("Mizuki", 0),
+            ("Sami", 5),
+            ("BlackFlow", 30001),
+        ):
+            task_config = self._run_rogue(
+                theme=theme,
+                mode=mode,
+                squad="突击战术分队",
+                start_with_elite_two=True,
+                only_start_with_elite_two=True,
+            ).args[1]
+            self.assertNotIn("start_with_elite_two", task_config)
+            self.assertNotIn("only_start_with_elite_two", task_config)
+
+    def test_rogue_forwards_elite_two_fields_false_on_other_themes_mode4(self):
+        # 策略 4 且主题非 Mizuki/Sami：两个键仍下发但值为 False（与 MAA 一致，
+        # 勾选值不会在 Phantom/萨卡兹/界园/黑流树海上生效）
+        for theme in ("Phantom", "Sarkaz", "JieGarden", "BlackFlow"):
+            task_config = self._run_rogue(
+                theme=theme,
+                mode=4,
+                squad="突击战术分队",
+                start_with_elite_two=True,
+                only_start_with_elite_two=True,
+            ).args[1]
+            self.assertIs(task_config["start_with_elite_two"], False)
+            self.assertIs(task_config["only_start_with_elite_two"], False)
+
+    def test_rogue_forwards_common_configured_fields(self):
+        # 通用字段配置后如实下发（难度、投资开关、等级停止）
+        task_config = self._run_rogue(
+            difficulty=2,
+            investment_enabled=False,
+            stop_at_max_level=True,
+        ).args[1]
+        self.assertEqual(task_config["difficulty"], 2)
+        self.assertEqual(task_config["investment_enabled"], False)
+        self.assertIs(task_config["stop_at_max_level"], True)
+
+    def test_rogue_forwards_collectible_fields_for_mode4(self):
+        # 协议注明 collectible_mode_* 仅用于策略 4（刷开局）：配置后如实下发，
+        # collectible_mode_squad 填了分队名则不再跟随 squad。
+        task_config = self._run_rogue(
+            mode=4,
+            collectible_mode_shopping=True,
+            collectible_mode_squad="指挥分队",
+        ).args[1]
+        self.assertIs(task_config["collectible_mode_shopping"], True)
+        self.assertEqual(task_config["collectible_mode_squad"], "指挥分队")
+
+    def test_rogue_omits_collectible_fields_outside_mode4(self):
+        # 策略 4 之外的组合不下发 collectible_mode_*
+        for theme, mode in (
+            ("Sami", 0),
+            ("Sami", 1),
+            ("Sami", 5),
+            ("Mizuki", 6),
+            ("BlackFlow", 30001),
+        ):
+            task_config = self._run_rogue(
+                theme=theme,
+                mode=mode,
+                collectible_mode_shopping=True,
+                collectible_mode_squad="指挥分队",
+            ).args[1]
+            self.assertNotIn("collectible_mode_shopping", task_config)
+            self.assertNotIn("collectible_mode_squad", task_config)
+
+    def test_rogue_forwards_collectible_start_list_for_mode4(self):
+        # 协议注明 collectible_mode_start_list 仅在策略为 4 时有效：未勾「只凹」时
+        # 下发完整奖励表，未配置的键为 False（与 MAA 一致）
+        task_config = self._run_rogue(
+            mode=4, collectible_mode_start_list={"hot_water": True, "key": True}
+        ).args[1]
+        self.assertEqual(
+            task_config["collectible_mode_start_list"],
+            {
+                "hot_water": True,
+                "shield": False,
+                "ingot": False,
+                "hope": False,
+                "random": False,
+                "key": True,
+                "dice": False,
+                "ideas": False,
+                "ticket": False,
+            },
+        )
+
+    def test_rogue_omits_collectible_start_list_when_only_start_elite_two(self):
+        # MAA：勾选「只凹开局干员直升精二」（战术分队类 + 非 Phantom 主题）时不下发奖励表
+        task_config = self._run_rogue(
+            theme="Sami",
+            mode=4,
+            squad="突击战术分队",
+            start_with_elite_two=True,
+            only_start_with_elite_two=True,
+            collectible_mode_start_list={"hot_water": True},
+        ).args[1]
+        self.assertNotIn("collectible_mode_start_list", task_config)
+
+    def test_rogue_omits_collectible_start_list_outside_mode4(self):
+        # 策略 4 之外不下发 collectible_mode_start_list
+        for theme, mode in (("Sami", 0), ("Sami", 1), ("Mizuki", 6)):
+            task_config = self._run_rogue(
+                theme=theme, mode=mode, collectible_mode_start_list={"hot_water": True}
+            ).args[1]
+            self.assertNotIn("collectible_mode_start_list", task_config)
+
+    def test_rogue_forwards_stop_when_investment_full_for_mode1(self):
+        # MAA 在 investment_enabled 时下发投资类字段，值内联策略 1（刷源石锭）限制，主题不限
+        for theme in ("Sami", "BlackFlow"):
+            task_config = self._run_rogue(
+                theme=theme, mode=1, stop_when_investment_full=True
+            ).args[1]
+            self.assertIs(task_config["stop_when_investment_full"], True)
+
+    def test_rogue_false_value_outside_mode1_when_investment_enabled(self):
+        # 投资开启但策略不是 1：stop_when_investment_full 仍下发，值为 False（与 MAA 一致）
+        for theme, mode in (("Sami", 0), ("Sami", 4), ("Sarkaz", 10001)):
+            task_config = self._run_rogue(
+                theme=theme, mode=mode, stop_when_investment_full=True
+            ).args[1]
+            self.assertIs(task_config["stop_when_investment_full"], False)
+
+    def test_rogue_omits_stop_when_investment_fields_when_investment_disabled(self):
+        # 未投资源石锭时不下发 stop_when_investment_full 与 investment_with_more_score
+        task_config = self._run_rogue(
+            mode=1, investment_enabled=False, stop_when_investment_full=True
+        ).args[1]
+        self.assertNotIn("stop_when_investment_full", task_config)
+        self.assertNotIn("investment_with_more_score", task_config)
+
+    def test_rogue_forwards_investment_with_more_score_for_mode1(self):
+        # investment_with_more_score 仅在策略 1 且主题非 BlackFlow 时值为 True
+        task_config = self._run_rogue(
+            theme="Sami", mode=1, investment_with_more_score=True
+        ).args[1]
+        self.assertIs(task_config["investment_with_more_score"], True)
+        task_config = self._run_rogue(
+            theme="BlackFlow", mode=1, investment_with_more_score=True
+        ).args[1]
+        self.assertIs(task_config["investment_with_more_score"], False)
+        task_config = self._run_rogue(
+            theme="Sami", mode=0, investment_with_more_score=True
+        ).args[1]
+        self.assertIs(task_config["investment_with_more_score"], False)
+
+    def test_rogue_forwards_refresh_trader_for_mizuki(self):
+        # 协议注明 refresh_trader_with_dice（指路鳞）仅支持主题 Mizuki
+        task_config = self._run_rogue(
+            theme="Mizuki", refresh_trader_with_dice=True
+        ).args[1]
+        self.assertIs(task_config["refresh_trader_with_dice"], True)
+
+    def test_rogue_forwards_refresh_trader_false_outside_mizuki(self):
+        # 指路鳞键始终下发，值内联 Mizuki 限制：其他主题为 False（与 MAA 一致）
+        for theme in ("Sami", "Sarkaz", "Phantom"):
+            task_config = self._run_rogue(
+                theme=theme, refresh_trader_with_dice=True
+            ).args[1]
+            self.assertIs(task_config["refresh_trader_with_dice"], False)
 
 
 if __name__ == "__main__":

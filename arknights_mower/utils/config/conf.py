@@ -146,6 +146,12 @@ class LongTaskPart(ConfModel):
         "开局干员使用助战"
         use_nonfriend_support: bool = False
         "开局干员使用非好友助战"
+        start_with_elite_two: bool = False
+        "凹开局干员直升精二（仅刷开局策略下的水月/萨米主题，且开局分队为战术分队类）"
+        only_start_with_elite_two: bool = False
+        "只凹开局干员直升精二，不进行作战（仅在刷开局策略且已勾直升时生效）"
+        collectible_mode_start_list: dict[str, bool] = Field(default_factory=dict)
+        "刷开局期望的奖励（键值见协议，仅刷开局策略生效）"
         mode: int = 1
         "策略"
         refresh_trader_with_dice: bool = False
@@ -157,6 +163,22 @@ class LongTaskPart(ConfModel):
             "一抹黑",
         ]
         "需要刷的坍缩范式"
+        difficulty: int = -1
+        "肉鸽难度（-1 = 不指定难度；2147483647 = 主题最高难度）"
+        stop_at_final_boss: bool = False
+        "打到第 5 层险路恶敌节点前停止（Phantom 主题不适用）"
+        stop_at_max_level: bool = False
+        "肉鸽等级刷满后停止"
+        investment_enabled: bool = True
+        "是否投资源石锭"
+        stop_when_investment_full: bool = False
+        "源石锭投资满时停止"
+        investment_with_more_score: bool = False
+        "投资模式启用购物、招募、进2层"
+        collectible_mode_shopping: bool = False
+        "烧水时是否启用购物"
+        collectible_mode_squad: str = ""
+        "烧水使用的分队（默认与 squad 同步）"
 
     class SSSConf(ConfModel):
         type: int = 1
