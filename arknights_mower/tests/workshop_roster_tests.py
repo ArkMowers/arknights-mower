@@ -5,6 +5,13 @@ import json
 import pytest
 from flask import Flask
 
+from arknights_mower.tests.workshop_fixtures import (
+    empty_schedule as empty_schedule,
+)
+from arknights_mower.tests.workshop_fixtures import (
+    game as game,
+)
+from arknights_mower.tests.workshop_fixtures import owned
 from arknights_mower.utils import workshop_recommendation as workshop
 from arknights_mower.views.mastery import mastery_bp
 
@@ -62,3 +69,30 @@ def test_invalid_refresh_does_not_reuse_cached_valid_candidates(roster_endpoint)
     assert client.get("/workshop-operators/recommendations").status_code == 200
     path.write_text(json.dumps({"data": {"characters": []}}))
     assert client.get("/workshop-operators/recommendations").status_code == 400
+
+
+@pytest.mark.parametrize(
+    "name,elite,bonus,category",
+    [
+        ("缇缇", 0, 75, "t5_operators"),
+        ("缇缇", 1, 75, "t5_operators"),
+        ("休谟斯", 0, 50, "fodder_operators"),
+    ],
+)
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+def test_lower_threshold_uses_current_skill_before_specialty_unlock(
+    roster_endpoint, game, name, elite, bonus, category, offset
+):
+    _, ids = game
+    path, client = roster_endpoint
+    path.write_text(
+        json.dumps({"data": {"characters": owned(ids, name, elite=elite, level=1)}})
+    )
+    response = client.get(
+        f"/workshop-operators/recommendations?min_bonus={bonus + offset}"
+    )
+    assert response.status_code == 200
+    expected = {key: [] for key in workshop.CATEGORIES}
+    if offset <= 0:
+        expected[category] = [name]
+    assert response.json["defaults"] == expected

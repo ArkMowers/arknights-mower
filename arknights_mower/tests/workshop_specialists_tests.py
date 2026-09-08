@@ -17,6 +17,30 @@ from arknights_mower.tests.workshop_fixtures import (
     game as game,
 )
 from arknights_mower.utils import workshop_recommendation as workshop
+from arknights_mower.utils.workshop_selection import WorkshopSelection
+
+
+@pytest.mark.parametrize(
+    "name,elite,bonus,cost", [("缇缇", 1, 75, 8), ("休谟斯", 0, 50, 2)]
+)
+def test_material_scope_does_not_require_future_bonus_or_specialty(
+    game, name, elite, bonus, cost
+):
+    from arknights_mower.data import workshop_formula
+
+    meta, ids = game
+    available = workshop.available_operators(owned(ids, name, elite=elite), meta)
+    selection = WorkshopSelection(available, workshop_formula, min_bonus=bonus)
+    entries = [entry for rows in selection.select().values() for entry in rows]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert set(entry["materials"]) == {
+        material
+        for material, formula in workshop_formula.items()
+        if formula.get("tab") == "精英材料" and formula.get("apCost") == cost
+    }
+    assert set(entry["bonuses"].values()) == {bonus}
+    assert not entry.get("specialist")
 
 
 @pytest.mark.parametrize("name,elite,material,cost,bonus", SPECIALISTS)

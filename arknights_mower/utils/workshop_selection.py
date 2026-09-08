@@ -28,7 +28,8 @@ class WorkshopSelection:
         self.unlocked = {
             name: specialty_rules(effects) for name, effects in eligible.items()
         }
-        self.specialties = operator_specialties(self.unlocked)
+        # Keep material assignments separate from current skill eligibility.
+        self.material_scopes = operator_specialties(self.unlocked)
         self.recipes = {category: [] for category in CATEGORIES}
         for material, recipe in sorted(formulas.items()):
             category = recipe_category(recipe)
@@ -38,12 +39,11 @@ class WorkshopSelection:
     def bonus(self, name, material, recipe):
         if not operator_recipe_allowed(name, recipe):
             return None
-        bonus = recipe_bonus(self.eligible[name], material, recipe)
-        if name in self.specialties and (
-            not matches_specialty(self.unlocked[name], material, recipe) or bonus < 80
+        if name in self.material_scopes and not matches_specialty(
+            self.material_scopes[name], material, recipe
         ):
             return None
-        return bonus
+        return recipe_bonus(self.eligible[name], material, recipe)
 
     def qualifying_bonuses(self, pool, material, recipe, *, threshold, curated):
         bonuses = {}
