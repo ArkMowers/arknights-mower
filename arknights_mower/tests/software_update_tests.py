@@ -26,13 +26,21 @@ from arknights_mower.utils.software_update_worker import Worker, extract_archive
 from arknights_mower.views.software_update import software_update_bp
 
 
-def release(version, prerelease=False, draft=False, system="macos", arch="arm64"):
+def release(
+    version,
+    prerelease=False,
+    draft=False,
+    system="macos",
+    arch="arm64",
+    published_at="2026-09-01T00:00:00Z",
+):
     extension = {"windows": "zip", "linux": "tar.gz", "macos": "dmg"}[system]
     name = f"arknights-mower_{version.lstrip('v')}_{system}_{arch}.{extension}"
     return {
         "tag_name": version,
         "prerelease": prerelease,
         "draft": draft,
+        "published_at": published_at,
         "html_url": update.RELEASES_URL,
         "body": "Release notes",
         "assets": [
@@ -77,6 +85,149 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         ]
         self.assertEqual(sorted(versions, key=update.version_key), versions)
 
+    def test_published_time_beats_legacy_version_numbers_and_creation_time(self):
+        legacy = release("2025.2.1", published_at="2025-02-13T08:03:09Z")
+        stable = release("v4.1.5", published_at="2026-04-08T15:38:59Z")
+        legacy["created_at"] = "2027-01-01T00:00:00Z"
+        stable["created_at"] = "2024-01-01T00:00:00Z"
+        for data in ([legacy, stable], [stable, legacy]):
+            with self.subTest(first=data[0]["tag_name"]):
+                self.assertIs(update.choose_release(data, "stable"), stable)
+
+    def test_stable_channel_uses_github_latest_without_scanning_old_releases(self):
+        latest = release("v4.1.5")
+        latest["assets"] = []
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "github", return_value=latest) as api,
+        ):
+            result = update.check("stable")
+        self.assertEqual(result["version"], "v4.1.5")
+        self.assertFalse(result["available"])
+        api.assert_called_once()
+        self.assertEqual(api.call_args.args[0], "/releases/latest")
+
+    def test_missing_latest_is_reported_without_falling_back_to_an_old_release(self):
+        response = update.requests.Response()
+        response.status_code = 404
+        error = update.requests.HTTPError(response=response)
+        with (
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "github", side_effect=error) as api,
+        ):
+            with self.assertRaisesRegex(ValueError, "暂无已发布的 Latest"):
+                update.check("stable")
+        api.assert_called_once()
+
+    def test_publication_timestamps_use_timezone_and_ignore_invalid_dates(self):
+        older = release("v4.2.0", published_at="2026-09-09T08:00:00+08:00")
+        latest = release("v4.1.6", published_at="2026-09-09T01:00:00Z")
+        invalid = [
+            release("v5.0.0", published_at=value)
+            for value in (None, "", "invalid", "2026-09-10T00:00:00", 123)
+        ]
+        for item in invalid:
+            item["created_at"] = "2027-01-01T00:00:00Z"
+        self.assertIs(
+            update.choose_release([older, latest, *invalid], "stable"), latest
+        )
+        with self.assertRaisesRegex(ValueError, "有效发布时间"):
+            update.choose_release(invalid, "stable")
+
+    def test_checks_do_not_require_assets_for_older_or_installed_versions(self):
+        for (system, arch), (channel, version) in product(
+            [("windows", "x64"), ("macos", "arm64"), ("linux", "x64")],
+            [("stable", "v4.1.5"), ("beta", "v4.1.6-alpha.4")],
+        ):
+            data = release(version, prerelease=channel == "beta")
+            data["assets"] = []
+            with (
+                self.subTest(system=system, channel=channel),
+                patch.object(update, "__version__", "4.1.6-alpha.4"),
+                patch.object(runtime, "frozen", return_value=True),
+                patch.object(update, "platform_asset", return_value=(system, arch)),
+                patch.object(
+                    update,
+                    "github",
+                    return_value=data if channel == "stable" else [data],
+                ),
+                patch.object(update, "choose_asset") as asset,
+            ):
+                result = update.check(channel)
+                self.assertTrue(result["ok"])
+                self.assertFalse(result["available"])
+                self.assertEqual(result["version"], version)
+                self.assertEqual(result["check_id"], "")
+                self.assertEqual(
+                    runtime.read_json(runtime.state_dir() / "last-check.json")[
+                        "version"
+                    ],
+                    version,
+                )
+                asset.assert_not_called()
+
+    def test_next_prerelease_and_stable_release_are_installable_on_each_platform(self):
+        for (system, arch), (channel, version) in product(
+            [("windows", "x64"), ("macos", "arm64"), ("linux", "x64")],
+            [("beta", "v4.1.6-alpha.5"), ("stable", "v4.1.6")],
+        ):
+            target = release(
+                version,
+                prerelease=channel == "beta",
+                system=system,
+                arch=arch,
+                published_at="2026-09-10T00:00:00Z",
+            )
+            legacy = release("2025.2.1", published_at="2025-02-13T08:03:09Z")
+            with (
+                self.subTest(system=system, channel=channel),
+                patch.object(update, "__version__", "4.1.6-alpha.4"),
+                patch.object(runtime, "frozen", return_value=True),
+                patch.object(update, "platform_asset", return_value=(system, arch)),
+                patch.object(
+                    update,
+                    "github",
+                    return_value=target if channel == "stable" else [legacy, target],
+                ),
+            ):
+                result = update.check(channel)
+                self.assertTrue(result["available"])
+                self.assertEqual(result["version"], version)
+                self.assertEqual(
+                    update._checks[result["check_id"]]["asset"]["name"],
+                    target["assets"][0]["name"],
+                )
+
+    def test_newer_publication_does_not_allow_automatic_downgrade(self):
+        older_version = release("v4.1.5", published_at="2027-01-01T00:00:00Z")
+        older_version["assets"] = []
+        with (
+            patch.object(update, "__version__", "4.1.6"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "github", return_value=older_version),
+        ):
+            self.assertFalse(update.check("stable")["available"])
+
+    def test_later_pages_are_checked_even_when_first_page_has_a_candidate(self):
+        first_page = [release("v4.1.6-alpha.4", prerelease=True)] * 100
+        target = release(
+            "v4.1.6-alpha.5", prerelease=True, published_at="2026-09-10T00:00:00Z"
+        )
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("macos", "arm64")),
+            patch.object(update, "github", side_effect=[first_page, [target]]) as api,
+        ):
+            result = update.check("beta")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["version"], "v4.1.6-alpha.5")
+        self.assertEqual(
+            [call.args[0] for call in api.call_args_list],
+            ["/releases?per_page=100&page=1", "/releases?per_page=100&page=2"],
+        )
+
     def test_each_platform_selects_its_exact_asset(self):
         for system, arch in [
             ("macos", "arm64"),
@@ -96,8 +247,9 @@ class ReleaseDiscoveryTests(unittest.TestCase):
 
     def test_missing_platform_or_hash_is_not_installable(self):
         with patch.object(update, "platform_asset", return_value=("windows", "x64")):
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError) as missing:
                 update.choose_asset(release("v4.2.0"))
+            self.assertNotIn("macOS", str(missing.exception))
             data = release("v4.2.0", system="windows", arch="x64")
             data["assets"][0]["digest"] = None
             with self.assertRaises(ValueError):
