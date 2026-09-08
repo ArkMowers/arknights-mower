@@ -117,9 +117,9 @@ jobs:
       - run: |
           ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
           ./venv/bin/python3 -m unittest discover -s scripts/tests -p "*_tests.py"
-      - name: 专精协助方案与干员同步回归测试
+      - name: 专精协助、加工站选人与干员同步回归测试
         run: |
-          ./venv/bin/python3 -m pytest arknights_mower/tests/mastery_support_tests.py arknights_mower/tests/cultivate_depot_tests.py -q
+          ./venv/bin/python3 -m pytest arknights_mower/tests/mastery_support_tests.py arknights_mower/tests/workshop_recommendation_tests.py arknights_mower/tests/cultivate_depot_tests.py -q
 
   # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
   # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。
