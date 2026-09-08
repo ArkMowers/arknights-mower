@@ -382,6 +382,21 @@ class MasteryRouteView(MethodView):
         return {"status": "ok"}
 
 
+class WorkshopOperatorRecommendationsView(MethodView):
+    decorators = [_require_token]
+
+    def get(self):
+        from arknights_mower.utils.workshop_recommendation import (
+            WorkshopRecommendationError,
+            recommend_workshop_operators,
+        )
+
+        try:
+            return recommend_workshop_operators()
+        except WorkshopRecommendationError as exc:
+            return {"error": str(exc)}, 400
+
+
 class MasteryRouteSettingsView(MethodView):
     decorators = [_require_token]
 
@@ -403,6 +418,12 @@ class MasteryHistoryView(MethodView):
 
 
 mastery_bp.add_url_rule(Routes.PLAN, view_func=MasteryPlanView.as_view("mastery_plan"))
+mastery_bp.add_url_rule(
+    "/workshop-operators/recommendations",
+    view_func=WorkshopOperatorRecommendationsView.as_view(
+        "workshop_operator_recommendations"
+    ),
+)
 mastery_bp.add_url_rule(
     Routes.PLAN_ORDER, view_func=MasteryPlanOrderView.as_view("mastery_plan_order")
 )

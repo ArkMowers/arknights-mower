@@ -938,6 +938,8 @@ class Arknights数据处理器:
     def 提取专精数据(self):
         import time as _time
 
+        from arknights_mower.utils.workshop_rules import compile_workshop_data
+
         t0 = _time.time()
 
         characters = {}
@@ -1048,6 +1050,7 @@ class Arknights数据处理器:
             "characters": characters,
             "items": items,
             "composite": composite,
+            "workshop": compile_workshop_data(self.干员表, self.基建表),
         }
 
         output_path = "./arknights_mower/data/skill_data.json"

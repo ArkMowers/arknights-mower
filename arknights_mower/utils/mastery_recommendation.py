@@ -505,18 +505,15 @@ def compute_workshop_config(
         else []
     )
 
-    return (
+    from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
+
+    return allocate_workshop_items(
         [
-            {"operator": op, "enabled": True, "items": fodder_items + t4_items}
-            if op == "九色鹿"
-            else {"operator": op, "enabled": True, "items": t4_items}
-            for op in fodder_operators
-        ]
-        + [{"operator": op, "enabled": True, "items": t5_items} for op in t5_operators]
-        + [
-            {"operator": op, "enabled": True, "items": book_items}
-            for op in book_operators
-        ]
+            ("fodder_operators", fodder_operators, t4_items),
+            ("t5_operators", t5_operators, t5_items),
+            ("book_operators", book_operators, book_items),
+        ],
+        fodder_items=fodder_items,
     )
 
 
@@ -563,21 +560,15 @@ def compute_default_workshop_config(
             "self_upper_limit": 20,
         }
     ]
-    return (
+    from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
+
+    return allocate_workshop_items(
         [
-            {"operator": op, "enabled": True, "items": fodder_items + default_t4}
-            if op == "九色鹿"
-            else {"operator": op, "enabled": True, "items": default_t4}
-            for op in fodder_operators
-        ]
-        + [
-            {"operator": op, "enabled": True, "items": default_t5}
-            for op in t5_operators
-        ]
-        + [
-            {"operator": op, "enabled": True, "items": default_book}
-            for op in book_operators
-        ]
+            ("fodder_operators", fodder_operators, default_t4),
+            ("t5_operators", t5_operators, default_t5),
+            ("book_operators", book_operators, default_book),
+        ],
+        fodder_items=fodder_items,
     )
 
 

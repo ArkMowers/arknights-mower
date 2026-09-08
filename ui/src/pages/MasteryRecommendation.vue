@@ -17,7 +17,7 @@
           <template #icon><n-icon :component="SettingsIcon" /></template>
           专精路线
         </n-button>
-        <n-button size="small" @click="showWorkshopSettings = true">
+        <n-button size="small" @click="openWorkshopSettings">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           加工站干员设置
         </n-button>
@@ -483,10 +483,24 @@
       v-model:show="showWorkshopSettings"
       preset="card"
       title="加工站干员设置"
-      style="width: min(500px, 95vw)"
+      style="width: min(600px, 95vw); max-height: 90vh"
+      content-style="overflow-y: auto; min-height: 0"
       :mask-closable="false"
+      :closable="!workshopDefaultsLoading"
+      :close-on-esc="!workshopDefaultsLoading"
     >
       <n-space vertical>
+        <n-alert v-if="workshopDefaultsError" type="warning">{{ workshopDefaultsError }}</n-alert>
+        <n-text depth="3">
+          默认按已读取的 BOX
+          填入已拥有、已解锁技能的干员；按具体材料比较副产品概率，保留并列最优和材料专属干员，可继续手动增删。
+          主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时不参与自动推荐和自动合成配置。
+        </n-text>
+        <n-alert v-if="workshopScheduleConflicts.length" type="warning">
+          以下已选干员被其他设施排班占用，生成自动合成配置时会跳过：{{
+            workshopScheduleConflicts.join('、')
+          }}
+        </n-alert>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
           <help-text>
@@ -495,18 +509,53 @@
         </div>
         <slick-operator-select
           v-model="fodderOps"
-          :disabled="false"
+          :disabled="workshopDefaultsLoading"
           select_placeholder="选择干员（九色鹿带垫刀材料）"
         />
         <n-text depth="3">T5 加工干员</n-text>
-        <slick-operator-select v-model="t5Ops" :disabled="false" select_placeholder="选择干员" />
+        <slick-operator-select
+          v-model="t5Ops"
+          :disabled="workshopDefaultsLoading"
+          select_placeholder="选择干员"
+        />
         <n-text depth="3">技巧概要加工干员</n-text>
-        <slick-operator-select v-model="bookOps" :disabled="false" select_placeholder="选择干员" />
+        <slick-operator-select
+          v-model="bookOps"
+          :disabled="workshopDefaultsLoading"
+          select_placeholder="选择干员"
+        />
+        <n-collapse v-if="workshopDefaults">
+          <n-collapse-item title="查看推荐的材料分工" name="workshop-materials">
+            <n-space vertical>
+              <div v-for="category in workshopCategoryLabels" :key="category.key">
+                <n-text strong>{{ category.label }}</n-text>
+                <div
+                  v-for="operator in workshopDefaults.recommendations[category.key]"
+                  :key="operator.name"
+                >
+                  <n-text depth="3">{{ workshopRecommendationText(operator) }}</n-text>
+                </div>
+                <n-text v-if="!workshopDefaults.defaults[category.key].length" depth="3"
+                  >暂无符合技能和排班条件的干员</n-text
+                >
+              </div>
+              <n-text depth="3"
+                >推荐计入材料类别、具体材料和配方原始消耗条件；宿舍、情报储备等动态加成需满足实际条件，此处不预设。</n-text
+              >
+            </n-space>
+          </n-collapse-item>
+        </n-collapse>
       </n-space>
       <template #footer>
         <n-space justify="end">
-          <n-button size="small" @click="resetWorkshopDefaults">恢复默认</n-button>
-          <n-button type="primary" size="small" @click="showWorkshopSettings = false"
+          <n-button size="small" @click="resetWorkshopDefaults" :loading="workshopDefaultsLoading"
+            >恢复默认</n-button
+          >
+          <n-button
+            type="primary"
+            size="small"
+            @click="showWorkshopSettings = false"
+            :disabled="workshopDefaultsLoading"
             >保存</n-button
           >
         </n-space>
@@ -516,6 +565,11 @@
 </template>
 
 <script setup>
+import {
+  loadWorkshopOperators,
+  usesLegacyWorkshopDefaults,
+  workshopRecommendationText
+} from '@/utils/workshopOperators'
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert,
@@ -612,11 +666,52 @@ const {
 } = storeToRefs(configStore)
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
+const workshopDefaults = ref(null)
+const workshopDefaultsLoading = ref(false)
+const workshopDefaultsError = ref('')
+const workshopScheduleConflicts = computed(() =>
+  [...new Set([...fodderOps.value, ...t5Ops.value, ...bookOps.value])].filter(
+    (name) => workshopDefaults.value?.blocked_operators?.[name]
+  )
+)
+const workshopCategoryLabels = [
+  { key: 'fodder_operators', label: '非 T5 材料' },
+  { key: 't5_operators', label: 'T5 材料' },
+  { key: 'book_operators', label: '技巧概要' }
+]
 
-function resetWorkshopDefaults() {
-  fodderOps.value = ['九色鹿']
-  t5Ops.value = ['年']
-  bookOps.value = ['司霆惊蛰']
+async function readWorkshopDefaults(apply = false) {
+  if (workshopDefaultsLoading.value) return
+  workshopDefaultsLoading.value = true
+  workshopDefaultsError.value = ''
+  try {
+    const data = await loadWorkshopOperators(axios, import.meta.env.VITE_HTTP_URL)
+    workshopDefaults.value = data
+    if (apply) {
+      fodderOps.value = [...data.defaults.fodder_operators]
+      t5Ops.value = [...data.defaults.t5_operators]
+      bookOps.value = [...data.defaults.book_operators]
+    }
+  } catch (e) {
+    workshopDefaultsError.value = e.response?.data?.error || e.message || '加工站推荐读取失败'
+  } finally {
+    workshopDefaultsLoading.value = false
+  }
+}
+
+async function openWorkshopSettings() {
+  showWorkshopSettings.value = true
+  await readWorkshopDefaults(
+    usesLegacyWorkshopDefaults({
+      fodder_operators: fodderOps.value,
+      t5_operators: t5Ops.value,
+      book_operators: bookOps.value
+    })
+  )
+}
+
+async function resetWorkshopDefaults() {
+  await readWorkshopDefaults(true)
 }
 const workshopT3Summary = ref([])
 
