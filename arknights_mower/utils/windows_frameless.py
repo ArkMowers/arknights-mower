@@ -1,10 +1,11 @@
-"""Small WinForms adaptation that restores OS-owned frameless resizing.
+"""Small WinForms adaptation that restores OS-owned frameless window behaviour.
 
 pywebview 5.1 sets ``FormBorderStyle.None`` for frameless windows, which removes
-the native resize frame. This module keeps the window border visually absent,
-but restores the standard sizing styles and returns native non-client hit-test
-codes at the window edges. Windows still owns the resize loop, DPI handling,
-cursor feedback, snapping, and multi-monitor interaction.
+the native resize frame and the caption styles. This module keeps the window
+border and caption visually absent, but restores the standard sizing and caption
+styles, and returns native non-client hit-test codes at the window edges.
+Windows still owns the resize loop, the minimize/maximize/snap transitions, DPI
+handling, cursor feedback, and multi-monitor interaction.
 """
 
 import ctypes
@@ -75,9 +76,16 @@ _RESIZE_EDGE_HIT_TEST = {
 
 
 def frameless_window_style(style: int) -> int:
-    """Keep native window operations without restoring the painted caption shell."""
-    return (style & ~_WS_CAPTION) | (
-        _WS_THICKFRAME | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX | _WS_SYSMENU
+    """Restore the caption styles the shell needs to animate window motion.
+
+    DWM plays the minimize, maximize/restore and snap transitions only for a
+    window that still carries ``WS_CAPTION`` next to the minimize/maximize box
+    styles; with the caption bit cleared the window just jumps. The painted
+    caption itself never appears, because ``WM_NCCALCSIZE`` returns 0 and leaves
+    the client area covering the whole window.
+    """
+    return style | (
+        _WS_CAPTION | _WS_THICKFRAME | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX | _WS_SYSMENU
     )
 
 
@@ -138,6 +146,13 @@ class _MINMAXINFO(ctypes.Structure):
         ("ptMaxPosition", _POINT),
         ("ptMinTrackSize", _POINT),
         ("ptMaxTrackSize", _POINT),
+    ]
+
+
+class _NCCALCSIZE_PARAMS(ctypes.Structure):
+    _fields_ = [
+        ("rgrc", _RECT * 3),
+        ("lppos", ctypes.c_void_p),
     ]
 
 
@@ -317,6 +332,13 @@ def _install_hook(
             return int(metric_for_dpi(metric, get_dpi_for_window(hwnd)))
         return int(user32.GetSystemMetrics(metric))
 
+    def frame_thickness() -> tuple[int, int]:
+        """Width and height of the resize frame the shell draws, per DPI."""
+        return (
+            system_metric(sm_cxsizeframe) + system_metric(sm_cxpaddedborder),
+            system_metric(sm_cysizeframe) + system_metric(sm_cxpaddedborder),
+        )
+
     def hit_test(l_param: int) -> int:
         rect = _RECT()
         if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
@@ -324,14 +346,13 @@ def _install_hook(
 
         x = ctypes.c_short(l_param & 0xFFFF).value
         y = ctypes.c_short((l_param >> 16) & 0xFFFF).value
-        border_x = system_metric(sm_cxsizeframe) + system_metric(sm_cxpaddedborder)
-        border_y = system_metric(sm_cysizeframe) + system_metric(sm_cxpaddedborder)
+        frame_x, frame_y = frame_thickness()
 
         maximized = bool(user32.IsZoomed(hwnd))
-        left = not maximized and rect.left <= x < rect.left + border_x
-        right = not maximized and rect.right - border_x <= x < rect.right
-        top = not maximized and rect.top <= y < rect.top + border_y
-        bottom = not maximized and rect.bottom - border_y <= y < rect.bottom
+        left = not maximized and rect.left <= x < rect.left + frame_x
+        right = not maximized and rect.right - frame_x <= x < rect.right
+        top = not maximized and rect.top <= y < rect.top + frame_y
+        bottom = not maximized and rect.bottom - frame_y <= y < rect.bottom
 
         if top and left:
             return _RESIZE_EDGE_HIT_TEST["top-left"]
@@ -358,6 +379,25 @@ def _install_hook(
         if in_titlebar and after_sidebar_control and before_controls:
             return htcaption
         return htclient
+
+    def inset_maximized_client(l_param: int) -> None:
+        """Keep the maximized client area on the work area.
+
+        The shell grows a maximized caption window by one resize frame on every
+        side, so that the frame itself hangs over the screen edges and the
+        taskbar and the client area lands on the work area. Here the client
+        normally covers the whole window, so that growth would push the WebView
+        over the taskbar instead; pull the client back in by the same frame.
+        """
+        if not user32.IsZoomed(hwnd):
+            return
+        params = ctypes.cast(l_param, ctypes.POINTER(_NCCALCSIZE_PARAMS)).contents
+        frame_x, frame_y = frame_thickness()
+        rect = params.rgrc[0]
+        rect.left += frame_x
+        rect.top += frame_y
+        rect.right -= frame_x
+        rect.bottom -= frame_y
 
     def constrain_maximized_bounds(l_param: int) -> None:
         minmax = ctypes.cast(l_param, ctypes.POINTER(_MINMAXINFO)).contents
@@ -406,9 +446,12 @@ def _install_hook(
                     )
                 restore_pending = False
                 return 0
-            # Keep the WebView client flush with the real outer window. DWM
-            # still owns clipping, shadow and the single outer corner.
+            # Keep the WebView client flush with the real outer window, except
+            # when maximized, where the shell's frame growth has to be taken
+            # back out. DWM still owns clipping, shadow and the outer corner.
             if message == wm_nccalcsize:
+                if w_param:  # TRUE: lParam is NCCALCSIZE_PARAMS, not a plain RECT
+                    inset_maximized_client(l_param)
                 return 0
             if message == wm_nchittest:
                 result = hit_test(l_param)

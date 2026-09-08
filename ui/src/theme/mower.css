@@ -25,7 +25,6 @@ html[data-mower-theme='dark'] .provider {
 }
 
 .provider .n-card:not(.n-card--embedded),
-.provider .n-checkbox-box,
 .provider .mower-surface-panel {
   box-shadow: none;
 }
@@ -52,6 +51,19 @@ html[data-mower-theme='dark']
   box-shadow:
     0 1px 2px 0 rgba(0, 0, 0, 0.4),
     0 0 0 3px rgba(99, 226, 183, 0.2);
+}
+
+/* 复选框盒体加一档极轻的投影，形状与实色按钮的阴影一致（暖墨色比黑色浅，所以透明度
+   调高一档，看上去才和按钮同重）：本主题里复选框填充是近乎白色的控件色，只有一圈最轻
+   的描边，单靠描边在卡片上还是偏平，加一层极轻的投影让方块立得住。
+   选择器刻意不带 .provider 前缀——naive-ui 把弹窗和气泡 teleport 到 body，那些位置的
+   复选框不在 .provider 里，加前缀会漏掉它们。 */
+.n-checkbox-box {
+  box-shadow: 0 1px 2px 0 rgba(55, 49, 43, 0.07);
+}
+
+html[data-mower-theme='dark'] .n-checkbox-box {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
 }
 
 .provider .n-data-table,
