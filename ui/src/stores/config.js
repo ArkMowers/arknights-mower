@@ -57,6 +57,7 @@ export const useConfigStore = defineStore('config', () => {
   const rescue_threshold = ref(75)
   const favorite = ref([])
   const workshop_settings = ref([])
+  const workshop_min_bonus = ref(80)
   const fodder_operators = ref(['九色鹿'])
   const t5_operators = ref(['年'])
   const book_operators = ref(['司霆惊蛰'])
@@ -459,6 +460,7 @@ export const useConfigStore = defineStore('config', () => {
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
     workshop_settings.value = response.data.workshop_settings
+    workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
@@ -585,6 +587,7 @@ export const useConfigStore = defineStore('config', () => {
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
       workshop_settings: workshop_settings.value,
+      workshop_min_bonus: workshop_min_bonus.value,
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
@@ -697,6 +700,7 @@ export const useConfigStore = defineStore('config', () => {
     rescue_threshold,
     favorite,
     workshop_settings,
+    workshop_min_bonus,
     fodder_operators,
     t5_operators,
     book_operators,

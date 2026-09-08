@@ -54,7 +54,17 @@ describe('workshop owned defaults', () => {
   it('reads the existing BOX recommendation once and retains multiple operators', async () => {
     const http = { get: vi.fn().mockResolvedValue({ data }) }
     expect(await loadWorkshopOperators(http, '/api')).toEqual(data)
-    expect(http.get).toHaveBeenCalledExactlyOnceWith('/api/workshop-operators/recommendations')
+    expect(http.get).toHaveBeenCalledExactlyOnceWith('/api/workshop-operators/recommendations', {
+      params: { min_bonus: 80 }
+    })
+  })
+
+  it('sends the selected bonus threshold for one-click setup', async () => {
+    const http = { get: vi.fn().mockResolvedValue({ data }) }
+    await loadWorkshopOperators(http, '/api', 90)
+    expect(http.get).toHaveBeenCalledExactlyOnceWith('/api/workshop-operators/recommendations', {
+      params: { min_bonus: 90 }
+    })
   })
 
   it.each([
@@ -92,5 +102,17 @@ describe('workshop owned defaults', () => {
       })
     ).toBe('号角：炽合金块，副产品概率加成 +100%')
     expect(workshopRecommendationText({ name: '九色鹿', causality: true })).toBe('九色鹿')
+  })
+
+  it('shows every matching material and the exclusive scope for specialists', () => {
+    const materials = ['全新装置', '酮凝集组', '异铁组', '聚酸酯组', '糖组', '固源岩组']
+    expect(
+      workshopRecommendationText({
+        name: '休谟斯',
+        specialist: true,
+        materials,
+        bonuses: Object.fromEntries(materials.map((name) => [name, 90]))
+      })
+    ).toBe(`休谟斯：仅${materials.join('、')}，副产品概率加成 +90%`)
   })
 })

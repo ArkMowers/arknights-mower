@@ -470,6 +470,35 @@ def compute_workshop_config(
     for name in set(list(demand_t4_raw.keys()) + list(t4_indirect.keys())):
         t4_total[name] = demand_t4_raw.get(name, 0) + t4_indirect.get(name, 0)
 
+    # Low-tier specialists also need actual tasks (e.g. Foldbranch's 异铁组).
+    # Prefer game recipe quantities; legacy resources may only contain composite.
+    specialty_demand = defaultdict(int)
+    for name, count in demand_t3_plus.items():
+        formula = workshop_formula.get(name, {})
+        if formula.get("tab") == "精英材料" and 0 < formula.get("apCost", 0) < 4:
+            specialty_demand[name] += count
+    for name, demand in t4_total.items():
+        missing = max(0, demand - inv_of(name))
+        parent_id = id_by_name.get(name)
+        ingredients = (
+            skill_data.get("workshop", {}).get("recipe_ingredients", {}).get(parent_id)
+        )
+        if ingredients is None:
+            composite = skill_data.get("composite", {}).get(parent_id, {})
+            ingredients = {
+                child["id"]: child["count"] for child in composite.get("pathway", [])
+            }
+        for child_id, count in ingredients.items():
+            child_name = items.get(child_id, {}).get("name")
+            formula = workshop_formula.get(child_name, {})
+            if formula.get("tab") == "精英材料" and 0 < formula.get("apCost", 0) < 4:
+                specialty_demand[child_name] += missing * count
+    specialist_items = [
+        {"item_names": [name], "children_lower_limit": 0, "self_upper_limit": demand}
+        for name, demand in sorted(specialty_demand.items())
+        if demand > 0
+    ]
+
     t4_items = []
     for name, demand in sorted(t4_total.items()):
         if demand > 0:
@@ -514,13 +543,14 @@ def compute_workshop_config(
             ("book_operators", book_operators, book_items),
         ],
         fodder_items=fodder_items,
+        specialist_items=specialist_items,
     )
 
 
 def compute_default_workshop_config(
     fodder_operators=None, t5_operators=None, book_operators=None
 ):
-    """无专精计划时的全量默认合成配置（包含全 T4+T5+技巧概要）"""
+    """默认 T4+T5+技巧概要配置，另为已解锁专属干员补入对应低阶配方。"""
     if fodder_operators is None:
         fodder_operators = ["九色鹿"]
     if t5_operators is None:
@@ -560,6 +590,11 @@ def compute_default_workshop_config(
             "self_upper_limit": 20,
         }
     ]
+    specialist_items = [
+        {"item_names": [name], "children_lower_limit": 20, "self_upper_limit": 20}
+        for name, recipe in sorted(workshop_formula.items())
+        if recipe.get("tab") == "精英材料" and 0 < recipe.get("apCost", 0) < 4
+    ]
     from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
 
     return allocate_workshop_items(
@@ -569,6 +604,7 @@ def compute_default_workshop_config(
             ("book_operators", book_operators, default_book),
         ],
         fodder_items=fodder_items,
+        specialist_items=specialist_items,
     )
 
 

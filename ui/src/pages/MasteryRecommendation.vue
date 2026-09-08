@@ -496,11 +496,31 @@
         <n-alert v-if="workshopDefaultsError" type="warning">{{ workshopDefaultsError }}</n-alert>
         <n-text depth="3">
           默认按已读取的 BOX
-          填入已拥有、已解锁技能的干员；按具体材料比较副产品概率，保留并列最优和材料专属干员，可继续手动增删。
+          填入已拥有、已解锁技能且副产品概率加成达到所设下限的干员，可继续手动增删。
+          材料专属干员仅分配符合条件的材料，相关低阶材料也会生成合成配置。
           主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时不参与自动推荐和自动合成配置。
-          年仅参与 T5 材料的自动推荐与合成配置。 自动填写按 T5、技巧概要、非 T5
-          的顺序分配，每位干员只进入一个分类。
+          年、缇缇保留给 T5；80% 加成干员可同时填入符合条件的多个分类，其他干员按 T5、技巧概要、非
+          T5 的顺序分配。
         </n-text>
+        <n-space align="center">
+          <n-text>副产品概率加成至少</n-text>
+          <n-input-number
+            :value="workshopMinBonus"
+            @update:value="workshopMinBonus = $event ?? 80"
+            :min="0"
+            :max="1000"
+            :precision="0"
+            :step="5"
+            :show-button="false"
+            :disabled="workshopDefaultsLoading"
+            :input-props="{ 'aria-label': '副产品概率加成下限' }"
+            style="width: 100px"
+            ><template #suffix>%</template></n-input-number
+          >
+          <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
+            >一键设置</n-button
+          >
+        </n-space>
         <n-alert v-if="workshopScheduleConflicts.length" type="warning">
           以下已选干员被其他设施排班占用，生成自动合成配置时会跳过：{{
             workshopScheduleConflicts.join('、')
@@ -553,9 +573,6 @@
       </n-space>
       <template #footer>
         <n-space justify="end">
-          <n-button size="small" @click="resetWorkshopDefaults" :loading="workshopDefaultsLoading"
-            >恢复默认</n-button
-          >
           <n-button
             type="primary"
             size="small"
@@ -667,6 +684,7 @@ const idleFilterOptions = [
   { label: '非空闲', value: 'busy' }
 ]
 const {
+  workshop_min_bonus: workshopMinBonus,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
   book_operators: bookOps
@@ -692,7 +710,11 @@ async function readWorkshopDefaults(apply = false) {
   workshopDefaultsLoading.value = true
   workshopDefaultsError.value = ''
   try {
-    const data = await loadWorkshopOperators(axios, import.meta.env.VITE_HTTP_URL)
+    const data = await loadWorkshopOperators(
+      axios,
+      import.meta.env.VITE_HTTP_URL,
+      workshopMinBonus.value
+    )
     workshopDefaults.value = data
     if (apply) {
       fodderOps.value = [...data.defaults.fodder_operators]
@@ -717,7 +739,7 @@ async function openWorkshopSettings() {
   )
 }
 
-async function resetWorkshopDefaults() {
+async function setWorkshopOperators() {
   await readWorkshopDefaults(true)
 }
 const workshopT3Summary = ref([])

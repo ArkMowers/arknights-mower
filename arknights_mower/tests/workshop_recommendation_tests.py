@@ -112,6 +112,7 @@ def test_empty_upgrade_replaces_previous_skill_and_level_gate_is_exact():
             [{"id": "char_test", "evolvePhase": elite, "level": level}],
             meta,
             {"T4": recipe()},
+            min_bonus=40,
         )
         assert result["defaults"]["fodder_operators"] == expected
 
@@ -135,8 +136,8 @@ def test_owned_unlocked_pool_keeps_all_ties_and_material_specialists(game):
         for entry in result["recommendations"]["fodder_operators"]
     }
     assert scopes["号角"] == ["炽合金块"]
-    assert scopes["空爆"] == ["聚酸酯块"]
-    assert result["defaults"]["t5_operators"] == ["年"]
+    assert scopes["空爆"] == ["炽合金块", "聚酸酯块"]
+    assert set(result["defaults"]["t5_operators"]) == {"年", "空爆", "苏苏洛"}
     assert result["defaults"]["book_operators"] == ["赫拉格"]
     assert result["nine_colored_deer"]["owned"] is False
     locked = workshop.recommend_workshop_operators(
@@ -171,8 +172,8 @@ def test_deer_keeps_fodder_priority_and_manual_reference_when_unowned(game):
         (
             ["年", "凯尔希", "空爆", "号角"],
             {
-                "t5_operators": {"年"},
-                "book_operators": {"凯尔希"},
+                "t5_operators": {"年", "空爆"},
+                "book_operators": set(),
                 "fodder_operators": {"空爆", "号角"},
             },
         ),
@@ -180,28 +181,26 @@ def test_deer_keeps_fodder_priority_and_manual_reference_when_unowned(game):
             ["凯尔希", "空爆", "号角"],
             {
                 "t5_operators": {"空爆"},
-                "book_operators": {"凯尔希"},
-                "fodder_operators": {"号角"},
+                "book_operators": set(),
+                "fodder_operators": {"号角", "空爆"},
             },
         ),
         (
             ["凯尔希"],
             {
-                "t5_operators": {"凯尔希"},
+                "t5_operators": set(),
                 "book_operators": set(),
                 "fodder_operators": set(),
             },
         ),
     ],
 )
-def test_automatic_categories_are_exclusive_and_use_remaining_operators(
+def test_ordinary_80_percent_operators_can_fill_multiple_categories(
     game, names, expected
 ):
     meta, ids = game
     result = workshop.recommend_workshop_operators(owned(ids, *names), meta)
     assert {key: set(value) for key, value in result["defaults"].items()} == expected
-    flattened = [name for names in result["defaults"].values() for name in names]
-    assert len(flattened) == len(set(flattened))
     for key, operators in result["recommendations"].items():
         assert {entry["name"] for entry in operators} == expected[key]
 
@@ -283,7 +282,7 @@ def test_recommendation_uses_best_unscheduled_operator_and_deer_only_needs_owner
         "backup_plans": [{"plan": {"central": facility("Free", ["年"])}}],
     }
     result = workshop.recommend_workshop_operators(roster, meta, plan=plan)
-    assert set(result["defaults"]["fodder_operators"]) == {"九色鹿", "号角"}
+    assert set(result["defaults"]["fodder_operators"]) == {"九色鹿", "号角", "空爆"}
     assert result["defaults"]["t5_operators"] == ["空爆"]
     plan["backup_plans"][0]["plan"]["train"] = facility("九色鹿")
     result = workshop.recommend_workshop_operators(roster, meta, plan=plan)
@@ -362,6 +361,7 @@ def test_allocator_matches_specific_recipes_and_merges_same_operator(game):
     mapping = {entry["operator"]: entry["items"] for entry in result}
     assert mapping["号角"] == [item("炽合金块")]
     assert mapping["空爆"] == [
+        item("炽合金块"),
         item("聚酸酯块"),
         item("双极纳米片"),
         item("技巧概要·卷3"),
@@ -452,3 +452,342 @@ def test_endpoint_is_read_only_and_reports_missing_box_or_resource():
         )
     assert response.status_code == 200
     assert response.json["defaults"] == {key: [] for key in workshop.CATEGORIES}
+
+
+SPECIALISTS = [
+    ("贾维", 2, "改量装置", 4, 90),
+    ("奥斯塔", 2, "聚酸酯块", 4, 90),
+    ("泥岩", 2, "提纯源岩", 4, 90),
+    ("熔泉", 2, "异铁块", 4, 90),
+    ("号角", 2, "炽合金块", 4, 100),
+    ("维荻", 1, "酮阵列", 4, 80),
+    ("特克诺", 2, "晶体电子单元", 8, 80),
+    ("折桠", 2, "异铁组", 2, 90),
+    ("谬因", 2, "提纯源岩", 4, 90),
+    ("休谟斯", 1, "糖组", 2, 90),
+    ("缇缇", 2, "双极纳米片", 8, 80),
+]
+
+
+@pytest.mark.parametrize("name,elite,material,cost,bonus", SPECIALISTS)
+def test_all_specialists_require_their_unlock_and_keep_matching_recipes(
+    game, name, elite, material, cost, bonus
+):
+    meta, ids = game
+    formulas = {material: recipe(cost), "无关材料": recipe(cost)}
+    category = workshop.recipe_category(recipe(cost))
+    for phase in [elite - 1, elite]:
+        result = workshop.recommend_workshop_operators(
+            owned(ids, name, elite=phase, level=1), meta, formulas
+        )
+        entries = result["recommendations"][category]
+        if phase < elite:
+            assert entries == []
+        else:
+            assert entries == [
+                {
+                    "name": name,
+                    # Humus matches original cost 2, regardless of material family.
+                    "materials": sorted(formulas)
+                    if name in {"休谟斯", "缇缇"}
+                    else [material],
+                    "bonuses": {n: bonus for n in formulas}
+                    if name in {"休谟斯", "缇缇"}
+                    else {material: bonus},
+                    "causality": False,
+                    "specialist": True,
+                }
+            ]
+
+
+def test_humus_90_percent_requires_original_cost_two_elite_materials(game):
+    meta, ids = game
+    effects = workshop.available_operators(owned(ids, "休谟斯", elite=1), meta)[
+        "休谟斯"
+    ]
+    assert workshop.recipe_bonus(effects, "糖", recipe(1)) == 50
+    assert workshop.recipe_bonus(effects, "糖组", recipe(2)) == 90
+    assert workshop.recipe_bonus(effects, "糖聚块", recipe(4)) == 50
+    assert workshop.recipe_bonus(effects, "技巧概要·卷3", recipe(2, "技巧概要")) == 50
+    assert workshop.recipe_bonus(effects, "碳素", recipe(2, "基建材料")) == 0
+    result = workshop.recommend_workshop_operators(owned(ids, "休谟斯", elite=1), meta)
+    assert result["defaults"]["t5_operators"] == []
+    assert result["defaults"]["book_operators"] == []
+    assert set(result["recommendations"]["fodder_operators"][0]["materials"]) == {
+        "全新装置",
+        "酮凝集组",
+        "异铁组",
+        "聚酸酯组",
+        "糖组",
+        "固源岩组",
+    }
+
+
+def test_80_percent_specialist_is_added_in_all_matching_categories(
+    game,
+):
+    meta, ids = game
+    result = workshop.recommend_workshop_operators(owned(ids, "特克诺", "年"), meta)
+    assert set(result["defaults"]["t5_operators"]) == {"年", "特克诺"}
+    assert result["defaults"]["fodder_operators"] == ["特克诺"]
+    available = workshop.available_operators(owned(ids, "特克诺", "年"), meta)
+    result = workshop.allocate_workshop_items(
+        [
+            (
+                "t5_operators",
+                ["年", "特克诺"],
+                [item("晶体电子单元"), item("双极纳米片")],
+            )
+        ],
+        available=available,
+    )
+    assert result[1]["items"] == [item("晶体电子单元")]
+    assert result[0]["items"] == [item("晶体电子单元"), item("双极纳米片")]
+
+
+@pytest.mark.parametrize("missing_box", [False, True])
+@pytest.mark.parametrize("name,elite,material,cost,bonus", SPECIALISTS)
+def test_specialist_alone_never_gets_unrelated_materials_even_without_box(
+    game, missing_box, name, elite, material, cost, bonus
+):
+    meta, ids = game
+    available = workshop.available_operators(owned(ids, name), meta)
+    category = workshop.recipe_category(recipe(cost))
+    with patch.object(
+        workshop,
+        "available_operators",
+        return_value=available,
+        side_effect=workshop.WorkshopRecommendationError("缺少 BOX")
+        if missing_box
+        else None,
+    ):
+        result = workshop.allocate_workshop_items(
+            [(category, [name], [item(material), item("糖"), item("技巧概要·卷3")])]
+        )
+    assert result[0]["items"] == [item(material)]
+
+
+def test_defaults_generate_low_tier_specialties_without_giving_them_to_generalists(
+    game,
+):
+    from arknights_mower.utils.mastery_recommendation import (
+        compute_default_workshop_config,
+    )
+
+    meta, ids = game
+    names = [row[0] for row in SPECIALISTS]
+    roster = owned(ids, *names, "年", "空爆", "九色鹿")
+    defaults = workshop.recommend_workshop_operators(roster, meta)["defaults"]
+    flattened = [name for group in defaults.values() for name in group]
+    assert set(names) <= set(flattened)
+    assert all(flattened.count(name) == 1 for name in names if name != "特克诺")
+    assert flattened.count("特克诺") == 2
+    with patch.object(
+        workshop,
+        "available_operators",
+        return_value=workshop.available_operators(roster, meta),
+    ):
+        result = compute_default_workshop_config(**defaults)
+    materials = {
+        entry["operator"]: {n for task in entry["items"] for n in task["item_names"]}
+        for entry in result
+    }
+    assert materials["折桠"] == {"异铁组"}
+    assert materials["维荻"] == {"酮凝集", "酮凝集组", "酮阵列"}
+    assert materials["休谟斯"] == {
+        "全新装置",
+        "酮凝集组",
+        "异铁组",
+        "聚酸酯组",
+        "糖组",
+        "固源岩组",
+    }
+    assert materials["特克诺"] == {"晶体电子单元", "晶体电路"}
+    assert "异铁组" not in materials["九色鹿"] | materials["空爆"]
+
+
+@pytest.mark.parametrize("reason", ["unowned", "locked", "scheduled", "missing_box"])
+def test_supplemental_low_tier_tasks_require_an_available_unlocked_specialist(
+    game, reason
+):
+    from arknights_mower.utils.mastery_recommendation import (
+        compute_default_workshop_config,
+    )
+
+    meta, ids = game
+    roster = (
+        []
+        if reason == "unowned"
+        else owned(ids, "休谟斯", elite=0 if reason == "locked" else 1)
+    )
+    with (
+        patch.object(
+            workshop,
+            "available_operators",
+            return_value=workshop.available_operators(roster, meta),
+            side_effect=workshop.WorkshopRecommendationError("缺少 BOX")
+            if reason == "missing_box"
+            else None,
+        ),
+        patch.object(
+            workshop,
+            "scheduled_operators",
+            return_value={"休谟斯": ["train"]} if reason == "scheduled" else {},
+        ),
+    ):
+        result = compute_default_workshop_config(["休谟斯"], [], [])
+    assert not any(entry["items"] for entry in result)
+
+
+@pytest.mark.parametrize("recipe_source", ["game", "legacy_composite"])
+def test_plan_specialties_include_direct_and_indirect_t3_with_counts_and_stock(
+    game, tmp_path, recipe_source
+):
+    from arknights_mower.utils import mastery_recommendation as rec
+
+    meta, ids = game
+    data = json.loads((Path(__file__).parents[1] / "data/skill_data.json").read_text())
+    if recipe_source == "game":
+        data["composite"] = {}
+    else:
+        data["workshop"].pop("recipe_ingredients")
+        data["composite"] = {
+            "30044": {
+                "pathway": [
+                    {"id": "30043", "count": 2},
+                    {"id": "30063", "count": 1},
+                    {"id": "30033", "count": 1},
+                ]
+            }
+        }
+    skill_path = tmp_path / "skill_data.json"
+    skill_path.write_text(json.dumps(data))
+    iron_id = next(i for i, v in data["items"].items() if v["name"] == "异铁块")
+    path = tmp_path / "cultivate.json"
+    path.write_text(json.dumps({"data": {"items": [{"id": iron_id, "count": 1}]}}))
+    recommendations = {
+        "operators": [
+            {
+                "char_id": "char_test",
+                "recommendations": [
+                    {
+                        "skill_index": 0,
+                        "chain_needed_materials": [
+                            {"name": "异铁块", "count": 4},
+                            {"name": "异铁组", "count": 3},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    with (
+        patch(
+            "arknights_mower.utils.mastery_db.get_all_plans",
+            return_value=[{"char_id": "char_test", "skill_index": 0}],
+        ),
+        patch.object(rec, "get_path", return_value=path),
+        patch.object(
+            rec,
+            "_find_skill_data",
+            return_value=skill_path,
+        ),
+        patch.object(rec, "get_mastery_recommendations", return_value=recommendations),
+        patch.object(
+            workshop,
+            "available_operators",
+            return_value=workshop.available_operators(
+                owned(ids, "折桠", "休谟斯"), meta
+            ),
+        ),
+    ):
+        result = rec.compute_workshop_config(["折桠", "休谟斯"], [], [])
+    assert result[0]["items"] == [
+        {"item_names": ["异铁组"], "children_lower_limit": 0, "self_upper_limit": 9}
+    ]
+    assert {
+        task["item_names"][0]: task["self_upper_limit"] for task in result[1]["items"]
+    } == {"异铁组": 9, "全新装置": 3, "聚酸酯组": 3}
+
+
+def test_resource_compiler_keeps_actual_ingredient_counts_for_elite_materials():
+    building = {
+        "buffs": {},
+        "workshopFormulas": {
+            "iron": {
+                "formulaType": "F_EVOLVE",
+                "itemId": "30044",
+                "count": 1,
+                "costs": [
+                    {"id": "30043", "count": 2},
+                    {"id": "30063", "count": 1},
+                    {"id": "30033", "count": 1},
+                ],
+            },
+            "furniture": {
+                "formulaType": "F_FURNITURE",
+                "itemId": "3401",
+                "count": 12,
+                "costs": [],
+            },
+        },
+    }
+    result = compile_workshop_data({}, building)
+    assert result["recipe_ingredients"] == {
+        "30044": {"30043": 2, "30063": 1, "30033": 1}
+    }
+
+
+@pytest.mark.parametrize(
+    "minimum,expected",
+    [
+        (80, {"年", "号角", "空爆", "凯尔希·思衡托", "缇缇", "休谟斯"}),
+        (90, {"年", "号角", "休谟斯"}),
+        (100, {"年", "号角"}),
+        (101, set()),
+    ],
+)
+def test_one_click_threshold_keeps_all_qualifying_operators(game, minimum, expected):
+    meta, ids = game
+    roster = owned(ids, "年", "号角", "空爆", "凯尔希·思衡托", "缇缇", "休谟斯")
+    result = workshop.recommend_workshop_operators(roster, meta, min_bonus=minimum)
+    assert set().union(*map(set, result["defaults"].values())) == expected
+    assert result["min_bonus"] == minimum
+    if minimum == 80:
+        assert all("凯尔希·思衡托" in names for names in result["defaults"].values())
+        assert "缇缇" in result["defaults"]["t5_operators"]
+        assert "缇缇" not in result["defaults"]["fodder_operators"]
+        effects = workshop.available_operators(roster, meta)["缇缇"]
+        assert workshop.recipe_bonus(effects, "双极纳米片", recipe(8)) == 80
+        assert {
+            "kind": "cost_reduction",
+            "categories": ["material"],
+            "original_cost": 8,
+            "reduction": 4,
+        } in effects
+
+
+def test_threshold_is_saved_with_config_and_validated_by_endpoint(game):
+    from pydantic import ValidationError
+
+    from arknights_mower.utils.config.conf import RIICPart
+
+    assert RIICPart().workshop_min_bonus == 80
+    stored = RIICPart(workshop_min_bonus=90).model_dump_json()
+    assert RIICPart.model_validate_json(stored).workshop_min_bonus == 90
+    with pytest.raises(ValidationError):
+        RIICPart(workshop_min_bonus=-1)
+    app = Flask(__name__)
+    app.register_blueprint(mastery_bp)
+    client = app.test_client()
+    with patch.object(workshop, "available_operators", return_value={}):
+        for value in ["-1", "1001", "nan", "80.5", "abc"]:
+            assert (
+                client.get(
+                    f"/workshop-operators/recommendations?min_bonus={value}"
+                ).status_code
+                == 400
+            )
+        response = client.get("/workshop-operators/recommendations?min_bonus=90")
+    assert response.status_code == 200
+    assert response.json["min_bonus"] == 90

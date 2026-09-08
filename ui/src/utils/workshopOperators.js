@@ -14,8 +14,10 @@ export function workshopTraineeWarning(name, operators) {
     : ''
 }
 
-export async function loadWorkshopOperators(http, baseUrl) {
-  const { data } = await http.get(`${baseUrl}/workshop-operators/recommendations`)
+export async function loadWorkshopOperators(http, baseUrl, minBonus = 80) {
+  const { data } = await http.get(`${baseUrl}/workshop-operators/recommendations`, {
+    params: { min_bonus: minBonus }
+  })
   if (
     !data?.defaults ||
     !data?.recommendations ||
@@ -47,5 +49,8 @@ export function workshopRecommendationText(operator) {
   const materials = operator.materials || []
   const bonus = [...new Set(Object.values(operator.bonuses || {}))].sort((a, b) => a - b)
   const amount = bonus.length > 1 ? `${bonus[0]}～${bonus.at(-1)}` : bonus[0]
-  return `${operator.name}：${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}，副产品概率加成 +${amount}%`
+  const scope = operator.specialist
+    ? `仅${materials.join('、')}`
+    : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
+  return `${operator.name}：${scope}，副产品概率加成 +${amount}%`
 }

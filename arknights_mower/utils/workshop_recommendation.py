@@ -2,6 +2,7 @@
 
 import json
 from functools import lru_cache
+from pathlib import Path
 
 CATEGORIES = ("fodder_operators", "t5_operators", "book_operators")
 ASSIGNMENT_ORDER = ("t5_operators", "book_operators", "fodder_operators")
@@ -95,13 +96,10 @@ def recipe_category(recipe):
     return None
 
 
-def recipe_bonus(effects, name, recipe):
-    category = "book" if recipe.get("tab") == "技巧概要" else "material"
-    return sum(
-        rule["bonus"]
-        for rule in effects
-        if rule["kind"] == "byproduct"
-        and category in rule["categories"]
+def rule_matches(rule, name, recipe):
+    category = {"技巧概要": "book", "精英材料": "material"}.get(recipe.get("tab"))
+    return (
+        category in rule.get("categories", [])
         and (
             "original_cost" not in rule or rule["original_cost"] == recipe.get("apCost")
         )
@@ -110,9 +108,79 @@ def recipe_bonus(effects, name, recipe):
     )
 
 
+def matches_specialty(rules, name, recipe):
+    return any(rule_matches(rule, name, recipe) for rule in rules)
+
+
+def recipe_bonus(effects, name, recipe):
+    return sum(
+        rule["bonus"]
+        for rule in effects
+        if rule["kind"] == "byproduct" and rule_matches(rule, name, recipe)
+    )
+
+
+def specialty_rules(effects):
+    """Material/cost conditions whose combined fixed bonus reaches at least 80%."""
+    from arknights_mower.data import workshop_formula
+
+    return [
+        rule
+        for rule in effects
+        if rule["kind"] in {"byproduct", "cost_reduction"}
+        and any(key in rule for key in ("item", "family", "original_cost"))
+        and any(
+            recipe.get("tab") == "精英材料"
+            and rule_matches(rule, material, recipe)
+            and recipe_bonus(
+                [
+                    r
+                    for r in effects
+                    if not any(key in r for key in ("item", "family", "original_cost"))
+                ]
+                if rule["kind"] == "cost_reduction"
+                else effects,
+                material,
+                recipe,
+            )
+            >= 80
+            for material, recipe in workshop_formula.items()
+        )
+    ]
+
+
+@lru_cache(maxsize=1)
+def _bundled_specialties():
+    # Keep manual selections scoped even without BOX or with an older resource pack.
+    path = Path(__file__).parents[1] / "data/skill_data.json"
+    operators = json.loads(path.read_text(encoding="utf-8"))["workshop"]["operators"]
+    result = {}
+    for meta in operators.values():
+        rules = []
+        for group in meta["groups"]:
+            for version in group:
+                effects = unlocked(
+                    meta, {"evolvePhase": version["elite"], "level": version["level"]}
+                )
+                for rule in specialty_rules(effects):
+                    if rule not in rules:
+                        rules.append(rule)
+        if rules:
+            result[meta["name"]] = rules
+    return result
+
+
+def operator_specialties(unlocked_specialties):
+    return {
+        **_bundled_specialties(),
+        **{name: rules for name, rules in unlocked_specialties.items() if rules},
+    }
+
+
 def recommend_workshop_operators(
-    roster=None, metadata=None, formulas=None, *, plan=None
+    roster=None, metadata=None, formulas=None, *, plan=None, min_bonus=80
 ):
+    min_bonus = validate_min_bonus(min_bonus)
     if formulas is None:
         from arknights_mower.data import workshop_formula
 
@@ -122,6 +190,10 @@ def recommend_workshop_operators(
     eligible = {
         name: effects for name, effects in available.items() if name not in blocked
     }
+    unlocked_specialties = {
+        name: specialty_rules(effects) for name, effects in eligible.items()
+    }
+    specialties = operator_specialties(unlocked_specialties)
     selected = {category: {} for category in CATEGORIES}
     recipes = {category: [] for category in CATEGORIES}
     for material, recipe in sorted(formulas.items()):
@@ -136,22 +208,37 @@ def recommend_workshop_operators(
             if name not in assigned and (name != "年" or category == "t5_operators")
         }
         for material, recipe in recipes[category]:
-            bonuses = {
-                name: recipe_bonus(effects, material, recipe)
-                for name, effects in pool.items()
-            }
-            highest = max(bonuses.values(), default=0)
+            bonuses = {}
+            for name, effects in pool.items():
+                bonus = recipe_bonus(effects, material, recipe)
+                if name in specialties and (
+                    not matches_specialty(unlocked_specialties[name], material, recipe)
+                    or bonus < 80
+                ):
+                    continue
+                bonuses[name] = bonus
             for name, bonus in bonuses.items():
                 deer = category == "fodder_operators" and name == "九色鹿"
-                if not deer and (bonus <= 0 or bonus != highest):
+                specialist = (
+                    matches_specialty(unlocked_specialties[name], material, recipe)
+                    and bonus >= 80
+                )
+                if not deer and (bonus <= 0 or bonus < min_bonus):
                     continue
                 entry = selected[category].setdefault(
                     name,
                     {"name": name, "materials": [], "bonuses": {}, "causality": deer},
                 )
+                if specialist:
+                    entry["specialist"] = True
                 entry["materials"].append(material)
                 entry["bonuses"][material] = bonus
-        assigned.update(selected[category])
+        # 80% operators may serve multiple categories within their valid scopes.
+        assigned.update(
+            name
+            for name, entry in selected[category].items()
+            if set(entry["bonuses"].values()) != {80}
+        )
     recommendations = {}
     for category, entries in selected.items():
         recommendations[category] = sorted(
@@ -174,27 +261,57 @@ def recommend_workshop_operators(
             "name": "九色鹿",
             "owned": "九色鹿" in available,
         },
+        "min_bonus": min_bonus,
     }
 
 
-def allocate_workshop_items(
-    groups, *, fodder_items=(), available=None, formulas=None, plan=None
-):
-    """Keep tied best operators per recipe, plus Nine-Colored Deer's fodder workflow.
+def validate_min_bonus(value):
+    try:
+        number = int(value)
+        if isinstance(value, (bool, float)) or not 0 <= number <= 1000:
+            raise ValueError
+        return number
+    except (ValueError, TypeError, OverflowError):
+        raise WorkshopRecommendationError(
+            "副产品概率加成下限须为 0～1000 的整数"
+        ) from None
 
-    Missing rules/BOX keep legacy manual assignment usable. Duplicate operator
-    entries are merged because the workshop executor consumes only its first entry.
+
+def allocate_workshop_items(
+    groups,
+    *,
+    fodder_items=(),
+    specialist_items=(),
+    available=None,
+    formulas=None,
+    plan=None,
+    min_bonus=None,
+):
+    """Keep tied best operators and matching specialists, plus the deer workflow.
+
+    Specialist-only low-tier recipes require an owned, unlocked specialist.
+    Missing rules/BOX keep legacy manual assignment usable within known specialties.
+    Duplicate entries are merged because the executor consumes only its first entry.
     """
     if formulas is None:
         from arknights_mower.data import workshop_formula
 
         formulas = workshop_formula
+    if min_bonus is None:
+        from arknights_mower.utils import config
+
+        min_bonus = getattr(config.conf, "workshop_min_bonus", 80)
+    min_bonus = validate_min_bonus(min_bonus)
     if available is None:
         try:
             available = available_operators()
         except WorkshopRecommendationError:
             available = None
     blocked = scheduled_operators(plan)
+    unlocked_specialties = {
+        name: specialty_rules(effects) for name, effects in (available or {}).items()
+    }
+    specialties = operator_specialties(unlocked_specialties)
     result = {}
     use_deer_fodder = False
     for category, names, items in groups:
@@ -207,21 +324,47 @@ def allocate_workshop_items(
         use_deer_fodder |= category == "fodder_operators" and "九色鹿" in names
         for name in names:
             result.setdefault(name, {"operator": name, "enabled": True, "items": []})
-        for item in items:
+        tasks = [(item, False) for item in items]
+        if category == "fodder_operators":
+            tasks.extend((item, True) for item in specialist_items)
+        for item, specialist_only in tasks:
             for material in item["item_names"]:
                 recipe = formulas.get(material, {})
+                matching_specialists = {
+                    name
+                    for name in names
+                    if matches_specialty(
+                        unlocked_specialties.get(name, []), material, recipe
+                    )
+                    and recipe_bonus(available.get(name, []), material, recipe) >= 80
+                }
+                candidates = [
+                    name
+                    for name in names
+                    if (
+                        name not in specialties
+                        or matches_specialty(specialties[name], material, recipe)
+                    )
+                    and (not specialist_only or name in matching_specialists)
+                ]
                 bonuses = (
                     {
                         name: recipe_bonus(available.get(name, []), material, recipe)
-                        for name in names
+                        for name in candidates
                     }
                     if available is not None
                     else {}
                 )
                 highest = max(bonuses.values(), default=0)
-                for name in names:
+                for name in candidates:
                     deer = name == "九色鹿" and category == "fodder_operators"
-                    if available is None or deer or bonuses[name] == highest:
+                    if (
+                        available is None
+                        or deer
+                        or name in matching_specialists
+                        or bonuses.get(name, 0) >= max(1, min_bonus)
+                        or bonuses[name] == highest
+                    ):
                         result[name]["items"].append({**item, "item_names": [material]})
     if use_deer_fodder:
         result["九色鹿"]["items"] = list(fodder_items) + result["九色鹿"]["items"]

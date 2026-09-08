@@ -9,6 +9,18 @@ def compile_workshop_buff(buff):
     text = re.sub(r"<[^>]*>", "", buff["description"])
     if "累积40点因果必定产出一次副产品" in text:
         return [{"kind": "causality"}]
+    reduction = re.match(
+        r"进驻加工站加工精英材料时，心情消耗为(\d+)的配方全部-(\d+)心情消耗", text
+    )
+    if reduction:
+        return [
+            {
+                "kind": "cost_reduction",
+                "categories": ["material"],
+                "original_cost": int(reduction[1]),
+                "reduction": int(reduction[2]),
+            }
+        ]
     # Read the fixed part; dorm/storage-dependent extras remain conditional.
     match = re.match(
         r"进驻加工站加工(?:原始心情消耗为(\d+)的)?"
@@ -65,4 +77,14 @@ def compile_workshop_data(characters, building):
                 groups.append(versions)
         if groups:
             operators[cid] = {"name": char["name"], "groups": groups}
-    return {"version": 1, "operators": operators}
+    # Preserve actual ingredient quantities; workshop_formula only stores names.
+    recipe_ingredients = {
+        formula["itemId"]: {cost["id"]: cost["count"] for cost in formula["costs"]}
+        for formula in building.get("workshopFormulas", {}).values()
+        if formula["formulaType"] == "F_EVOLVE" and formula["count"] == 1
+    }
+    return {
+        "version": 1,
+        "operators": operators,
+        "recipe_ingredients": recipe_ingredients,
+    }

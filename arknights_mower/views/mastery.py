@@ -392,7 +392,11 @@ class WorkshopOperatorRecommendationsView(MethodView):
         )
 
         try:
-            return recommend_workshop_operators()
+            return recommend_workshop_operators(
+                min_bonus=request.args.get(
+                    "min_bonus", getattr(config.conf, "workshop_min_bonus", 80)
+                )
+            )
         except WorkshopRecommendationError as exc:
             return {"error": str(exc)}, 400
 
