@@ -4,6 +4,17 @@ function normalizeMatch(value) {
   return value
 }
 
+export async function syncMasteryRouteDefaults(http, baseUrl) {
+  const synced = await http.get(`${baseUrl}/cultivate-fetch`)
+  if (!synced.data?.success) {
+    throw new Error(synced.data?.message || '干员数据同步失败，请稍后重试')
+  }
+  const { data } = await http.get(`${baseUrl}/mastery-route`)
+  if (data?.defaults_error) throw new Error(data.defaults_error)
+  if (!data?.defaults) throw new Error('未获取到专精路线，请稍后重试')
+  return data
+}
+
 function normalizeSupports(supports) {
   if (!Array.isArray(supports)) return []
   return supports.filter(Boolean).map((support) => ({
@@ -96,4 +107,44 @@ export function normalizeMasteryRouteDefaults(defaults) {
   }
 
   return result
+}
+
+// Saved manual choices take priority. Unsaved personal defaults are persisted only
+// when the user explicitly saves, even if they have not edited an individual row.
+export function prepareMasteryRoutes(routes, defaults, professions) {
+  const merged = {
+    _defaultFlags: defaults,
+    _jsonDefaults: normalizeMasteryRouteDefaults(defaults)
+  }
+  const suggestedProfessions = []
+  for (const route of routes) {
+    const parsed = parseMasteryRoute(route)
+    if (professions.includes(parsed.profession)) merged[parsed.profession] = parsed
+  }
+  for (const profession of professions) {
+    if (merged[profession] || !merged._jsonDefaults[profession]?.length) continue
+    merged[profession] = {
+      profession,
+      supports: merged._jsonDefaults[profession].map((support) => ({ ...support })),
+      optimal: false,
+      half_off: !!defaults[profession]?.half_off
+    }
+    suggestedProfessions.push(profession)
+  }
+  return { routes: merged, suggestedProfessions }
+}
+
+export function completeMasterySupports(supports, defaults = []) {
+  const rows = normalizeSupports(supports)
+  const fallback = normalizeSupports(defaults)
+  return [1, 2, 3].map((level) => ({
+    name: '',
+    skill_level: level,
+    efficiency: 0,
+    swap: false,
+    swap_name: '',
+    match: 'no',
+    ...(rows.find((row) => row.skill_level === level && row.name) ||
+      fallback.find((row) => row.skill_level === level))
+  }))
 }

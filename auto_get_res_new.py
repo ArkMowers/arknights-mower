@@ -938,6 +938,7 @@ class Arknights数据处理器:
     def 提取专精数据(self):
         import time as _time
 
+        from arknights_mower.utils.mastery_rules import compile_training_data
         from arknights_mower.utils.workshop_rules import compile_workshop_data
 
         t0 = _time.time()
@@ -1050,6 +1051,7 @@ class Arknights数据处理器:
             "characters": characters,
             "items": items,
             "composite": composite,
+            "training": compile_training_data(self.干员表, self.基建表),
             "workshop": compile_workshop_data(self.干员表, self.基建表),
         }
 

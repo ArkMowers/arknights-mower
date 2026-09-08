@@ -3,7 +3,12 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
-import { confirmForceUpdate } from '@/utils/softwareUpdate'
+import {
+  confirmForceUpdate,
+  confirmSoftwareInstall,
+  isVersionDowngrade,
+  softwarePackageVersion
+} from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 
@@ -187,7 +192,35 @@ async function checkUpdate() {
   }
 }
 
-async function install(manual = false, force = false, target = null) {
+async function requestInstall(manual = false) {
+  if (running.value || checking.value || blocked.value) return
+  let selection
+  if (manual) {
+    const file = packageFiles.value[0]?.file
+    if (!file) return
+    const version = softwarePackageVersion(file.name)
+    selection = {
+      file,
+      version: version || file.name,
+      downgrade: isVersionDowngrade(version, info.value.version)
+    }
+  } else {
+    // Automatic checks are shared across instances without an in-memory check ID.
+    // Resolve a fresh target before asking the user to confirm that target.
+    if (!checked.value?.check_id) await checkUpdate()
+    if (!checked.value?.available || !checked.value?.check_id) return
+    selection = { ...checked.value }
+  }
+  confirmSoftwareInstall(
+    dialogs,
+    info.value.version,
+    selection,
+    info.value.instances.length,
+    (confirmed) => install(manual, false, null, confirmed)
+  )
+}
+
+async function install(manual = false, force = false, target = null, selection = {}) {
   if (running.value) return
   busy.value = true
   error.value = ''
@@ -197,8 +230,9 @@ async function install(manual = false, force = false, target = null) {
     let response
     if (manual) {
       const form = new FormData()
-      form.append('file', packageFiles.value[0].file)
+      form.append('file', selection.file)
       form.append('background', String(background.value))
+      form.append('confirm_downgrade', String(selection.confirm_downgrade === true))
       uploading.value = true
       try {
         response = await axios.post(`${base}/manual`, form, {
@@ -211,16 +245,13 @@ async function install(manual = false, force = false, target = null) {
         uploading.value = false
       }
     } else {
-      if (!target && !checked.value?.check_id) {
-        await checkUpdate()
-        if ((!force && !checked.value?.available) || !checked.value?.check_id) return
-      }
       response = await axios.post(
         `${base}/start`,
         {
-          check_id: (target || checked.value).check_id,
+          check_id: (target || selection).check_id,
           background: background.value,
-          force
+          force,
+          confirm_downgrade: selection.confirm_downgrade === true
         },
         { headers }
       )
@@ -260,11 +291,23 @@ async function cancelUpdate() {
   }
 }
 
-function requestForceUpdate() {
-  if (!info.value?.force_supported || running.value || checking.value || !checked.value?.check_id)
+async function requestForceUpdate() {
+  if (!info.value?.force_supported || running.value || checking.value || !checked.value) return
+  if (!checked.value.check_id) await checkUpdate()
+  if (!checked.value?.check_id) return
+  const selection = { ...checked.value, force: true }
+  if (selection.downgrade) {
+    confirmSoftwareInstall(
+      dialogs,
+      info.value.version,
+      selection,
+      info.value.instances.length,
+      (confirmed) => install(false, true, null, confirmed)
+    )
     return
-  confirmForceUpdate(dialogs, checked.value.version, info.value.instances.length, () =>
-    install(false, true)
+  }
+  confirmForceUpdate(dialogs, selection.version, info.value.instances.length, () =>
+    install(false, true, null, selection)
   )
 }
 
@@ -312,7 +355,7 @@ onUnmounted(() => {
           @update:checked="setAutoUpdate"
           >自动更新</n-checkbox
         >
-        <span class="hint">发现更新后自动安装，重启同一安装目录下所有运行实例</span>
+        <span class="hint">升级自动安装并重启全部实例；回退需点击安装并确认</span>
       </n-form-item>
       <n-form-item :show-label="false">
         <div class="restart-option">
@@ -337,8 +380,10 @@ onUnmounted(() => {
       <n-form-item label="最新版本">
         <div class="version-row">
           <span class="version">{{ checked?.version || '—' }}</span>
-          <n-tag v-if="checked?.available === true" type="warning">可更新</n-tag>
-          <n-tag v-else-if="checked?.available === false" type="success">已是最新</n-tag>
+          <n-tag v-if="checked?.available === true" type="warning">{{
+            checked.downgrade ? '可回退' : '可更新'
+          }}</n-tag>
+          <n-tag v-else-if="checked?.available === false" type="success">已与渠道一致</n-tag>
         </div>
       </n-form-item>
       <n-form-item label="更新渠道">
@@ -359,28 +404,20 @@ onUnmounted(() => {
           <n-button size="small" :loading="checking" :disabled="running" @click="checkUpdate">
             检查更新
           </n-button>
-          <n-popconfirm
-            style="max-width: min(360px, calc(100vw - 32px))"
-            @positive-click="install(false)"
+          <n-button
+            size="small"
+            type="primary"
+            :disabled="blocked || running || checking || !checked?.available"
+            :loading="busy"
+            @click="requestInstall(false)"
           >
-            <template #trigger>
-              <n-button
-                size="small"
-                type="primary"
-                :disabled="blocked || running || checking || !checked?.available"
-                :loading="busy"
-              >
-                下载并安装
-              </n-button>
-            </template>
-            将保存任务并重启同一安装目录下的
-            {{ info?.instances.length || 0 }} 个实例。安装失败时尝试恢复原版本。
-          </n-popconfirm>
+            {{ checked?.downgrade ? '回退并安装' : '下载并安装' }}
+          </n-button>
           <n-button
             v-if="source"
             size="small"
             type="warning"
-            :disabled="!info?.force_supported || running || checking || !checked?.check_id"
+            :disabled="!info?.force_supported || running || checking || !checked"
             :loading="busy"
             @click="requestForceUpdate"
           >
@@ -432,18 +469,16 @@ onUnmounted(() => {
             </n-upload-dragger>
           </n-upload>
           <n-progress v-if="uploading" type="line" :percentage="uploadPercent" processing />
-          <n-popconfirm
+          <n-button
             v-if="packageFiles[0]?.file"
-            style="max-width: min(360px, calc(100vw - 32px))"
-            @positive-click="install(true)"
+            size="small"
+            type="primary"
+            :disabled="blocked || running"
+            :loading="busy"
+            @click="requestInstall(true)"
           >
-            <template #trigger>
-              <n-button size="small" type="primary" :disabled="blocked || running" :loading="busy">
-                安装并重启
-              </n-button>
-            </template>
-            将安装选中的 Release 包并重启同一安装目录下所有运行实例。请从官方发布页下载安装包。
-          </n-popconfirm>
+            安装并重启
+          </n-button>
         </n-space>
         <span v-else>—</span>
       </n-form-item>

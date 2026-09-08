@@ -22,6 +22,7 @@ from flask import Flask
 
 import arknights_mower.views.task as task_module
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+from arknights_mower.tests.mastery_plan_helpers import stub_support_planner
 from arknights_mower.utils.mastery_db import add_plan_checked, get_all_plans
 from arknights_mower.utils.scheduler_task import TaskTypes
 from arknights_mower.views.task import task_bp
@@ -226,6 +227,7 @@ class TestPlanApiDispatchLink(unittest.TestCase):
     """
 
     def setUp(self):
+        stub_support_planner(self)
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.db_path = self.tmp.name
         self.tmp.close()
