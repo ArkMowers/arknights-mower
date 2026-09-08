@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from threading import RLock, Thread, current_thread
 from urllib.parse import quote
@@ -31,7 +32,7 @@ CHANNELS = [
     {
         "value": "stable",
         "label": "正式版",
-        "description": "跟随正式 Release，适合希望减少变动的日常使用者。",
+        "description": "跟随 GitHub 标记为 Latest 的正式 Release，适合希望减少变动的日常使用者。",
     },
     {
         "value": "beta",
@@ -386,16 +387,24 @@ def check_source_version(reference, branch=None):
 
 
 def choose_release(releases, channel):
-    candidates = [
-        r
-        for r in releases
-        if not r.get("draft")
-        and bool(r.get("prerelease")) == (channel == "beta")
-        and VERSION_RE.fullmatch(r.get("tag_name", ""))
-    ]
+    candidates = []
+    for release in releases:
+        if (
+            release.get("draft")
+            or bool(release.get("prerelease")) != (channel == "beta")
+            or not VERSION_RE.fullmatch(release.get("tag_name", ""))
+        ):
+            continue
+        try:
+            published = datetime.fromisoformat(release.get("published_at"))
+        except (TypeError, ValueError):
+            continue
+        if published.tzinfo is None:
+            continue
+        candidates.append((published, version_key(release["tag_name"]), release))
     if not candidates:
-        raise ValueError("所选渠道暂无已发布版本")
-    return max(candidates, key=lambda r: version_key(r["tag_name"]))
+        raise ValueError("所选渠道暂无带有效发布时间的已发布版本")
+    return max(candidates, key=lambda item: item[:2])[2]
 
 
 def choose_asset(release):
@@ -405,9 +414,10 @@ def choose_asset(release):
     name = f"arknights-mower_{version}_{system}_{arch}.{extension}"
     asset = next((a for a in release.get("assets", []) if a["name"] == name), None)
     if not asset:
-        raise ValueError(
-            f"此 Release 没有适配当前平台的 {name}；macOS 旧版 ZIP 请手动安装"
-        )
+        message = f"此 Release 没有适配当前平台的 {name}"
+        if system == "macos":
+            message += "；macOS 旧版 ZIP 请手动安装"
+        raise ValueError(message)
     digest = asset.get("digest") or ""
     if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest):
         raise ValueError("Release 缺少 SHA-256 校验值；请下载安装包后手动上传")
@@ -608,21 +618,26 @@ def check(channel, proxy=None):
             url=f"https://github.com/{REPO}/commits/" + quote(branch, safe=""),
         )
     else:
-        # Fetch pages until both channel types have a candidate (not /latest,
-        # which deliberately omits prereleases). Keep pagination bounded.
-        releases = []
-        for page in range(1, 6):
-            batch = github(f"/releases?per_page=100&page={page}", proxy)
-            releases.extend(batch)
-            if (
-                any(
-                    not r.get("draft")
-                    and bool(r.get("prerelease")) == (channel == "beta")
-                    for r in batch
-                )
-                or len(batch) < 100
-            ):
-                break
+        if channel == "stable":
+            # Respect GitHub's Latest selection instead of comparing legacy
+            # calendar versions (2025.x) numerically with current versions (4.x).
+            try:
+                releases = [github("/releases/latest", proxy)]
+            except requests.HTTPError as error:
+                if error.response is not None and error.response.status_code == 404:
+                    raise ValueError("正式版渠道暂无已发布的 Latest Release") from error
+                raise
+        else:
+            # /latest omits prereleases. Read every page before comparing their
+            # publication times; creation time and API order are not sufficient.
+            releases = []
+            page = 1
+            while True:
+                batch = github(f"/releases?per_page=100&page={page}", proxy)
+                releases.extend(batch)
+                if len(batch) < 100:
+                    break
+                page += 1
         release = choose_release(releases, channel)
         plan.update(
             version=release["tag_name"],
@@ -632,8 +647,6 @@ def check(channel, proxy=None):
         if deployment == "source":
             commit = github("/commits/" + quote(release["tag_name"], safe=""), proxy)
             plan.update(ref="refs/tags/" + release["tag_name"], commit=commit["sha"])
-        else:
-            plan["asset"] = choose_asset(release)
     if deployment == "source":
         current = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -647,6 +660,10 @@ def check(channel, proxy=None):
         )
     else:
         available = version_key(plan["version"]) > version_key(__version__)
+        # Checking an older channel release is not an installation request.
+        # It may predate portable packages, but should still display normally.
+        if available:
+            plan["asset"] = choose_asset(release)
     plan["available"] = available
     plan["force_available"] = deployment == "source" and (
         available or current == plan["commit"]

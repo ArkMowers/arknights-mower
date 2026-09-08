@@ -188,6 +188,7 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           python -m unittest -v \
+            arknights_mower.tests.software_update_tests.ReleaseDiscoveryTests \
             arknights_mower.tests.update_runtime_tests \
             arknights_mower.tests.update_compat_tests \
             arknights_mower.tests.res_version_tests \
