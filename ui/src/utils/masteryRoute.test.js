@@ -166,3 +166,25 @@ describe('mastery route contracts', () => {
     })
   })
 })
+
+it('provides three editable stages without inventing an owned trainer', async () => {
+  const { completeMasterySupports } = await import('./masteryRoute')
+  const rows = completeMasterySupports([])
+  expect(rows.map((row) => row.skill_level)).toEqual([1, 2, 3])
+  expect(rows.every((row) => row.name === '' && row.efficiency === 0)).toBe(true)
+  rows.forEach((row, i) => {
+    row.name = `教官${i + 1}`
+  })
+  const restored = parseMasteryRoute(buildMasteryRoutePayload('近卫', { supports: rows }))
+  expect(restored.supports.map((row) => row.name)).toEqual(['教官1', '教官2', '教官3'])
+})
+
+it('fills only missing stages and keeps saved manual values independent', async () => {
+  const { completeMasterySupports } = await import('./masteryRoute')
+  const saved = [{ skill_level: 2, name: '赤冬', efficiency: 75, match: true }]
+  const rows = completeMasterySupports(saved)
+  expect(rows.map((row) => row.skill_level)).toEqual([1, 2, 3])
+  expect(rows[1]).toMatchObject({ name: '赤冬', efficiency: 75, match: 'yes' })
+  rows[1].name = '其他'
+  expect(saved[0].name).toBe('赤冬')
+})

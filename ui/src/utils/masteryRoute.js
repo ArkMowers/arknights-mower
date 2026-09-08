@@ -133,3 +133,16 @@ export function prepareMasteryRoutes(routes, defaults, professions) {
   }
   return { routes: merged, suggestedProfessions }
 }
+
+export function completeMasterySupports(supports) {
+  const rows = normalizeSupports(supports)
+  return [1, 2, 3].map((level) => ({
+    name: '',
+    skill_level: level,
+    efficiency: 0,
+    swap: false,
+    swap_name: '',
+    match: 'no',
+    ...rows.find((row) => row.skill_level === level)
+  }))
+}

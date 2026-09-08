@@ -328,18 +328,14 @@
       <n-tabs class="mastery-route-tabs" type="segment" v-model:value="settingsTab">
         <n-tab-pane v-for="prof in profKeys" :key="prof" :name="prof" :tab="prof">
           <n-scrollbar style="max-height: 60vh">
-            <n-dynamic-input
-              v-model:value="routeSettings[prof].supports"
-              :on-create="() => newSupport(prof)"
-              :max="3"
-            >
-              <template #create-button-default>添加专精工具人</template>
+            <n-dynamic-input v-model:value="routeSettings[prof].supports" :min="3" :max="3">
               <!-- 空插槽会回退到默认增删按钮，保留隐藏节点以覆盖默认操作。 -->
               <template #action><span hidden /></template>
               <template #default="{ value }">
                 <div class="support-outer">
                   <n-select
                     v-model:value="value.skill_level"
+                    disabled
                     :options="level_list"
                     style="width: 80px"
                   />
@@ -590,6 +586,7 @@ import { pinyin_match } from '@/utils/common'
 import {
   buildMasteryRoutePayload,
   prepareMasteryRoutes,
+  completeMasterySupports,
   syncMasteryRouteDefaults
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
@@ -1103,7 +1100,9 @@ const bestTrainers = ref({})
 const defaultsError = ref('')
 
 const routeSettings = reactive(
-  Object.fromEntries(profKeys.map((p) => [p, { supports: [], half_off: true }]))
+  Object.fromEntries(
+    profKeys.map((p) => [p, { supports: completeMasterySupports([]), half_off: true }])
+  )
 )
 let _autoSaveReady = false
 let _routeSaveChain = Promise.resolve()
@@ -1170,23 +1169,14 @@ watch(
   }
 )
 
-function newSupport(p) {
-  const rows = routeSettings[p].supports
-  const level = [1, 2, 3].find((level) => !rows.some((s) => s.skill_level === level))
-  if (!level) return null
-  const suggestion = defaultsCache.value?._jsonDefaults?.[p]?.find((s) => s.skill_level === level)
-  if (suggestion) return { ...suggestion }
-  return { name: '', skill_level: level, efficiency: 0, swap: false, swap_name: '', match: 'no' }
-}
-
 function applyRoute(d) {
   for (const p of profKeys) {
     if (d[p]) {
-      routeSettings[p].supports = (d[p].supports || []).filter(Boolean).map((s) => ({ ...s }))
+      routeSettings[p].supports = completeMasterySupports(d[p].supports)
       routeSettings[p].optimal = !!d[p].optimal
       routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
     } else {
-      routeSettings[p].supports = []
+      routeSettings[p].supports = completeMasterySupports([])
       routeSettings[p].optimal = false
       routeSettings[p].half_off = false
     }

@@ -25,6 +25,67 @@ from .mastery_support_state import (
 )
 
 
+def _observed_support(solver):
+    from arknights_mower.solvers.mastery_reader import _read_slots_checked
+
+    support, trainee, _, reliable = _read_slots_checked(solver)
+    if not reliable:
+        raise SupportPlanError("无法确认当前训练室协助者，请重试")
+    check_schedule_name(support, schedule_context()[0])
+    return support, trainee
+
+
+def _stage_trainers(options, route, level):
+    first = options.get(route["operator"], {}).get(level)
+    if first is None:
+        raise SupportPlanError("计划协助者已不可用或已加入非训练室排班，请修改协助方案")
+    swap = options.get(route.get("swap_target"), {}).get(level)
+    return first, swap
+
+
+def _follow_schedule(trainers, options, level, support):
+    from arknights_mower.utils import config
+
+    first, swap = trainers
+    if config.conf.assistant_follows_schedule:
+        first = options.get(support, {}).get(level)
+        if first is None:
+            raise SupportPlanError("协助位跟随排班时，需要先安排可用协助者")
+        swap = None
+    return first, swap
+
+
+def _carried_halving(plan, level, occupants):
+    support, trainee = occupants
+    previous = decode_json(plan.get("support_runtime")) or {}
+    if not (
+        trainee == plan.get("char_name")
+        and previous.get("level") == level - 1
+        and previous.get("working_operator") == support
+        and previous.get("working_halves")
+        and previous.get("working_since")
+    ):
+        return None
+    started = datetime.fromisoformat(previous["working_since"])
+    ended = datetime.now()
+    if previous.get("working_until"):
+        ended = min(ended, datetime.fromisoformat(previous["working_until"]))
+    return support if (ended - started).total_seconds() > 5 * 3600 else None
+
+
+def _prepare_stage(first, swap, spec, carry):
+    selected = stage_route(first, swap, spec) or stage_route(first, None, spec)
+    selected.update(
+        manual=spec.manual,
+        activate_with=carry,
+        half_inherited=bool(carry),
+        working_operator=None,
+        first_halves=first["halves"],
+        swap_halves=swap["halves"] if swap else False,
+    )
+    return selected
+
+
 def prepare_plan_supports(solver, plan, level):
     """Validate the stage and carried halving without changing occupants."""
     saved = decode_supports(plan)
@@ -38,74 +99,18 @@ def prepare_plan_supports(solver, plan, level):
         include_dynamic=route.get("manual", False),
         inputs=TrainingInputs(schedule=schedule_context()),
     )
-    first = options.get(route["operator"], {}).get(level)
-    if first is None:
-        raise SupportPlanError("计划协助者已不可用或已加入非训练室排班，请修改协助方案")
-    swap = options.get(route.get("swap_target"), {}).get(level)
-    previous = decode_json(plan.get("support_runtime"))
-    from arknights_mower.solvers.mastery_reader import _read_slots_checked
-
-    support, trainee, _, reliable = _read_slots_checked(solver)
-    if not reliable:
-        raise SupportPlanError("无法确认当前训练室协助者，请重试")
-    check_schedule_name(support, schedule_context()[0])
-    from arknights_mower.utils import config
-
-    follows = config.conf.assistant_follows_schedule
-    if follows:
-        first = options.get(support, {}).get(level)
-        if first is None:
-            raise SupportPlanError("协助位跟随排班时，需要先安排可用协助者")
-        swap = None
-    carry = None
-    if (
-        reliable
-        and trainee == plan.get("char_name")
-        and previous
-        and previous.get("level") == level - 1
-        and previous.get("working_operator") == support
-        and previous.get("working_halves")
-        and previous.get("working_since")
-    ):
-        elapsed = (
-            datetime.now() - datetime.fromisoformat(previous["working_since"])
-        ).total_seconds()
-        # Completion can have been waiting for collection: only count actual training time.
-        until = previous.get("working_until")
-        if until:
-            elapsed = min(
-                elapsed,
-                (
-                    datetime.fromisoformat(until)
-                    - datetime.fromisoformat(previous["working_since"])
-                ).total_seconds(),
-            )
-        if elapsed > 5 * 3600:
-            carry = support
-    work = BASE_HOURS[level] * (0.5 if carry else 1)
-    manual = route.get("manual", False)
-    selected = stage_route(
-        first,
-        swap,
-        StageSpec(
-            level, work, central, route.get("mastery_swap_buffer", 10), manual=manual
-        ),
+    trainers = _stage_trainers(options, route, level)
+    occupants = _observed_support(solver)
+    first, swap = _follow_schedule(trainers, options, level, occupants[0])
+    carry = _carried_halving(plan, level, occupants)
+    spec = StageSpec(
+        level,
+        BASE_HOURS[level] * (0.5 if carry else 1),
+        central,
+        route.get("mastery_swap_buffer", 10),
+        manual=route.get("manual", False),
     )
-    if selected is None:
-        selected = stage_route(
-            first,
-            None,
-            StageSpec(level, work, central, route.get("mastery_swap_buffer", 10)),
-        )
-    selected.update(
-        manual=manual,
-        activate_with=carry,
-        half_inherited=bool(carry),
-        working_operator=None,
-        first_halves=first["halves"],
-        swap_halves=swap["halves"] if swap else False,
-    )
-    save_runtime(plan, selected)
+    save_runtime(plan, _prepare_stage(first, swap, spec, carry))
 
 
 def recover(solver, plan, room):

@@ -16,29 +16,17 @@ from arknights_mower.utils.mastery_support import (
 
 from .mastery_support_state import (
     enqueue_support_swap,
+    finish_support_swap,
     notify_support_failure,
     record_work,
     refresh_end,
     save_runtime,
     schedule_support_swap,
+    stop_support_swap,
 )
-
-
-def select_swap_support(work_seconds, current_rate, stats, settings):
-    """Return (candidate, delay_seconds). A slower alternate may need a later handoff."""
-    central, buffer = settings
-    minimum = (300 + max(1, buffer)) * 60
-    for candidate in stats:
-        dest_rate = rate(candidate["efficiency"], central)
-        available_seconds = work_seconds / dest_rate
-        if available_seconds <= 0 or (
-            candidate["halves"] and available_seconds < 301 * 60
-        ):
-            continue
-        tail = min(available_seconds, minimum)
-        delay = max(0, (work_seconds - tail * dest_rate) / current_rate)
-        return candidate, delay
-    return None, 0
+from .mastery_support_state import (
+    select_swap_support as select_swap_support,
+)
 
 
 def confirm_training_panel(solver, plan, level):
@@ -89,12 +77,7 @@ class SwapExecution:
     route: dict
 
     def collect(self, freeze=False):
-        from arknights_mower.solvers.mastery import _schedule_collect_after_swap
-        from arknights_mower.utils.mastery_db import update_plan_status
-
-        if freeze:
-            update_plan_status(self.plan["id"], "training", swap_frozen=1)
-        _schedule_collect_after_swap(self.solver, self.plan, tier=self.level)
+        finish_support_swap(self.solver, self.plan, self.level, freeze)
 
     def restore_first(self, first, central):
         if first is None:
@@ -213,16 +196,37 @@ def _matches_training(plan, panel):
     )
 
 
+def _prepare_swap_execution(solver, plan, panel):
+    level = getattr(panel, "mastery_tier", None)
+    if panel and panel.countdown_state == "zero":
+        finish_support_swap(solver, plan, level)
+        return None
+    if not _matches_training(plan, panel):
+        stop_support_swap(
+            solver,
+            plan,
+            level,
+            "训练室面板读取失败或与计划不符，停止换人并安排收取检查",
+        )
+        return None
+    route = stage_for(plan, level)
+    if not route:
+        stop_support_swap(
+            solver, plan, level, "当前阶段缺少协助方案，停止换人并安排收取检查"
+        )
+        return None
+    return SwapExecution(solver, plan, level, route)
+
+
 def perform_swap(solver, plan, panel, support):
     """The caller must have confirmed a reliable slot read before entering."""
     from arknights_mower.utils.csleep import MowerExit
 
-    if not _matches_training(plan, panel):
+    execution = _prepare_swap_execution(solver, plan, panel)
+    if execution is None:
         return
-    route = stage_for(plan, panel.mastery_tier)
-    if not route:
-        return
-    execution = SwapExecution(solver, plan, panel.mastery_tier, route)
+    route = execution.route
+
     if support == route.get("swap_target"):
         refresh_end(plan, execution.level, panel.countdown)
         return execution.collect()

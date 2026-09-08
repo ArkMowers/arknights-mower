@@ -1194,13 +1194,12 @@ def run_swap_support(solver):
     # （#80）、空位一步定夺（#101）。只在倒计时 active（训练确认）时动协助位——
     # 00:00:00 收取边界不动（铁律 6）；读失败（reliable=False，OCR 坏名等）不动作
     # （稳为先：读不到就不动，防基于不可靠读撤销已减半）。
-    support_slot, _, _, reliable = _read_slots_checked(solver)
     if plan.get("support_plan"):
-        from arknights_mower.solvers.mastery_support_swap import perform_swap
+        from arknights_mower.solvers.mastery_support_dispatch import run_planned_swap
 
-        if reliable:
-            perform_swap(solver, plan, panel, support_slot)
+        run_planned_swap(solver, plan, panel)
         return
+    support_slot, _, _, reliable = _read_slots_checked(solver)
     if operator and reliable and support_slot not in (operator, swap_target):
         # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）且
         # 剩余不足 5h+缓冲 → 不纠不换——她们本身是最优加成，路线干员+减半收益在这里

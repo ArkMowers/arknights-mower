@@ -99,3 +99,38 @@ def enqueue_support_swap(solver, plan, at, name):
     )
     task.plan_key = str(plan["id"])
     solver.tasks.append(task)
+
+
+def finish_support_swap(solver, plan, level, freeze=False):
+    from arknights_mower.solvers.mastery import _schedule_collect_after_swap
+    from arknights_mower.utils.mastery_db import update_plan_status
+
+    try:
+        if freeze:
+            update_plan_status(plan["id"], "training", swap_frozen=1)
+    finally:
+        _schedule_collect_after_swap(solver, plan, tier=level)
+
+
+def stop_support_swap(solver, plan, level, reason):
+    try:
+        notify_support_failure(plan, level, reason)
+    finally:
+        finish_support_swap(solver, plan, level, freeze=True)
+
+
+def select_swap_support(work_seconds, current_rate, stats, settings):
+    """Return (candidate, delay_seconds). A slower alternate may need a later handoff."""
+    central, buffer = settings
+    minimum = (300 + max(1, buffer)) * 60
+    for candidate in stats:
+        dest_rate = rate(candidate["efficiency"], central)
+        available_seconds = work_seconds / dest_rate
+        if available_seconds <= 0 or (
+            candidate["halves"] and available_seconds < 301 * 60
+        ):
+            continue
+        tail = min(available_seconds, minimum)
+        delay = max(0, (work_seconds - tail * dest_rate) / current_rate)
+        return candidate, delay
+    return None, 0
