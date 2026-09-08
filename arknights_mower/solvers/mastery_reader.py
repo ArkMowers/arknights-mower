@@ -926,6 +926,10 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
         return False
     # 当前步目标级 = 主面板专精图标（亮 N 颗=专N，#76），读不到回退 target_level
     step_level = room.panel.mastery_tier or None
+    if plan.get("support_plan"):
+        from arknights_mower.solvers.mastery_support_runtime import recover
+
+        return recover(solver, plan, room)
     from arknights_mower.solvers.mastery import (
         _get_plan_route,
         _schedule_swap_if_needed,

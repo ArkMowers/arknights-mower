@@ -2357,7 +2357,11 @@ def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate
 
     try:
-        cultivate().start()
+        if not cultivate().start():
+            return {
+                "success": False,
+                "message": "未同步到干员数据，请检查森空岛账号及官服/B服选择",
+            }
         return {"success": True, "message": "数据拉取成功"}
     except Exception as e:
         return {"success": False, "message": str(e)}

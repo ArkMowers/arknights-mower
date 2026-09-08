@@ -15,9 +15,11 @@ from arknights_mower.utils.mastery_db import (
     get_all_plans,
     get_all_routes,
     get_failed_plans,
+    get_plan_by_id,
     get_route_settings,
     save_route,
     save_route_settings,
+    save_support_plan,
     update_plan_priority,
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
@@ -190,6 +192,12 @@ class MasteryPlanView(MethodView):
                     "priority": p["priority"],
                     "expires_at": p.get("expires_at"),
                     "failed_reason": p.get("failed_reason"),
+                    "support_plan": json.loads(p["support_plan"])
+                    if p.get("support_plan")
+                    else None,
+                    "support_runtime": json.loads(p["support_runtime"])
+                    if p.get("support_runtime")
+                    else None,
                 }
             )
         history_list = []
@@ -231,6 +239,15 @@ class MasteryPlanView(MethodView):
             for item in items:
                 name = item.get("name", "")
                 skill_index = item.get("skill_index", 0)
+                if type(skill_index) is not int or skill_index not in (0, 1, 2):
+                    results.append(
+                        {
+                            "key": name,
+                            "status": "error",
+                            "reason": "invalid skill_index",
+                        }
+                    )
+                    continue
                 target_level = item.get("target_level")
                 char_id = name_to_id.get(name)
                 if char_id is None:
@@ -321,6 +338,54 @@ class MasteryPlanView(MethodView):
         return {"error": "delete failed"}, 500
 
 
+class MasteryPlanSupportsView(MethodView):
+    decorators = [_require_token]
+
+    def get(self):
+        from arknights_mower.utils.mastery_support import (
+            SupportPlanError,
+            owned_roster,
+            schedule_context,
+            training_data,
+        )
+
+        try:
+            owned = {c["id"] for c in owned_roster()}
+            blocked, central, _ = schedule_context()
+            return {
+                "operators": [
+                    {"name": m["name"], "blocked": sorted(blocked.get(m["name"], []))}
+                    for cid, m in training_data().items()
+                    if cid in owned
+                ],
+                "central_bonus": central,
+            }
+        except SupportPlanError as exc:
+            return {"error": str(exc)}, 400
+
+    def patch(self):
+        from arknights_mower.utils.mastery_support import (
+            SupportPlanError,
+            edit_supports,
+        )
+
+        data = request.json
+        if not isinstance(data, dict) or type(data.get("id")) is not int:
+            return {"error": "无效的计划 ID"}, 400
+        plan = get_plan_by_id(data["id"])
+        if not plan:
+            return {"error": "计划不存在"}, 404
+        if plan["status"] not in ("idle", "failed", "training"):
+            return {"error": "计划当前正在切换状态，请稍后再试"}, 409
+        try:
+            supports = edit_supports(plan, data.get("stages"))
+        except SupportPlanError as exc:
+            return {"error": str(exc)}, 400
+        if not save_support_plan(plan["id"], supports, expected=plan):
+            return {"error": "计划执行状态或协助方案已变化，请刷新后重试"}, 409
+        return {"status": "ok", "support_plan": supports}
+
+
 class MasteryPlanOrderView(MethodView):
     decorators = [_require_token]
 
@@ -344,13 +409,39 @@ class MasteryRouteView(MethodView):
     decorators = [_require_token]
 
     def get(self):
-        from arknights_mower.solvers.mastery import DEFAULT_ROUTES
+        from arknights_mower.solvers.mastery import DEFAULT_ROUTES, PROF_MAP
+        from arknights_mower.utils.mastery_support import (
+            SupportPlanError,
+            owned_roster,
+            profession_reference_trainers,
+            profession_training_routes,
+            training_data,
+        )
 
         routes = get_all_routes()
+        settings = get_route_settings()
+        recommendations = {"defaults": {}}
+        metadata, roster = {}, None
+        try:
+            metadata = training_data()
+            roster = owned_roster()
+            recommendations.update(
+                profession_training_routes(
+                    PROF_MAP,
+                    roster=roster,
+                    metadata=metadata,
+                    buffer=settings["mastery_swap_buffer"],
+                )
+            )
+        except SupportPlanError as exc:
+            recommendations["defaults_error"] = str(exc)
+        recommendations["best_trainers"] = profession_reference_trainers(
+            DEFAULT_ROUTES, PROF_MAP, roster=roster, metadata=metadata
+        )
         return {
             "routes": routes,
-            "defaults": DEFAULT_ROUTES,
-            "settings": get_route_settings(),
+            **recommendations,
+            "settings": settings,
         }
 
     def post(self):
@@ -403,6 +494,10 @@ class MasteryHistoryView(MethodView):
 
 
 mastery_bp.add_url_rule(Routes.PLAN, view_func=MasteryPlanView.as_view("mastery_plan"))
+mastery_bp.add_url_rule(
+    "/mastery-plan/supports",
+    view_func=MasteryPlanSupportsView.as_view("mastery_plan_supports"),
+)
 mastery_bp.add_url_rule(
     Routes.PLAN_ORDER, view_func=MasteryPlanOrderView.as_view("mastery_plan_order")
 )

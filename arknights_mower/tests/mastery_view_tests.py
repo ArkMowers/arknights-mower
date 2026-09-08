@@ -126,6 +126,12 @@ class TestMasteryRouteView(unittest.TestCase):
 
 class TestMasteryPlanView(unittest.TestCase):
     def setUp(self):
+        planner = patch(
+            "arknights_mower.utils.mastery_support.plan_supports",
+            return_value={"version": 1, "stages": []},
+        )
+        planner.start()
+        self.addCleanup(planner.stop)
         app = Flask(__name__)
         app.register_blueprint(mastery_bp)
         self.client = app.test_client()

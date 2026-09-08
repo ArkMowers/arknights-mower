@@ -1,12 +1,97 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   buildMasteryRoutePayload,
   normalizeMasteryRouteDefaults,
-  parseMasteryRoute
+  parseMasteryRoute,
+  prepareMasteryRoutes,
+  syncMasteryRouteDefaults
 } from './masteryRoute.js'
 
 describe('mastery route contracts', () => {
+  it('waits for roster sync before asking for fresh defaults', async () => {
+    let finishSync
+    const sync = new Promise((resolve) => {
+      finishSync = resolve
+    })
+    const fresh = {
+      defaults: { 重装: { supports: [{ name: '望', skill_level: 3, efficiency: 70 }] } }
+    }
+    const http = { get: vi.fn().mockReturnValueOnce(sync).mockResolvedValueOnce({ data: fresh }) }
+    const calculating = syncMasteryRouteDefaults(http, '/api')
+    expect(http.get.mock.calls).toEqual([['/api/cultivate-fetch']])
+    finishSync({ data: { success: true } })
+    expect(await calculating).toEqual(fresh)
+    expect(http.get.mock.calls).toEqual([['/api/cultivate-fetch'], ['/api/mastery-route']])
+  })
+
+  it('does not calculate from stale roster data when sync fails', async () => {
+    const http = {
+      get: vi.fn().mockResolvedValue({ data: { success: false, message: '登录已过期' } })
+    }
+    await expect(syncMasteryRouteDefaults(http, '')).rejects.toThrow('登录已过期')
+    expect(http.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops when the sync request fails', async () => {
+    const http = { get: vi.fn().mockRejectedValue(new Error('连接超时')) }
+    await expect(syncMasteryRouteDefaults(http, '')).rejects.toThrow('连接超时')
+    expect(http.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces missing training rules instead of applying incomplete defaults', async () => {
+    const http = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { success: true } })
+        .mockResolvedValueOnce({ data: { defaults: {}, defaults_error: '请更新资源包' } })
+    }
+    await expect(syncMasteryRouteDefaults(http, '')).rejects.toThrow('请更新资源包')
+  })
+
+  const personalDefaults = {
+    近卫: {
+      supports: [{ name: '杜宾', skill_level: 1, efficiency: 25, match: false }],
+      half_off: false
+    }
+  }
+
+  it('prepares untouched personal defaults for explicit save and reload', () => {
+    const { routes, suggestedProfessions } = prepareMasteryRoutes([], personalDefaults, ['近卫'])
+    const payloads = suggestedProfessions.map((p) => buildMasteryRoutePayload(p, routes[p]))
+    expect(payloads).toHaveLength(1)
+    expect(JSON.parse(payloads[0].supports)[0].name).toBe('杜宾')
+    expect(payloads[0].half_off).toBe(false)
+    const reloaded = prepareMasteryRoutes(payloads, personalDefaults, ['近卫'])
+    expect(reloaded.suggestedProfessions).toEqual([])
+    expect(reloaded.routes.近卫.supports).toEqual(routes.近卫.supports)
+  })
+
+  it('keeps saved manual choices even when absent from the owned defaults', () => {
+    const manual = buildMasteryRoutePayload('近卫', {
+      supports: [{ name: '赤冬', skill_level: 1, efficiency: 75 }],
+      half_off: false
+    })
+    const result = prepareMasteryRoutes([manual], personalDefaults, ['近卫'])
+    expect(result.routes.近卫.supports[0].name).toBe('赤冬')
+    expect(result.suggestedProfessions).toEqual([])
+  })
+
+  it('does not mutate the reset source when editing a suggested route', () => {
+    const { routes } = prepareMasteryRoutes([], personalDefaults, ['近卫'])
+    routes.近卫.supports[0].name = '赤冬'
+    expect(routes._jsonDefaults.近卫[0].name).toBe('杜宾')
+    expect(personalDefaults.近卫.supports[0].name).toBe('杜宾')
+  })
+
+  it('does not invent trainers when the roster is missing or has no eligible operators', () => {
+    for (const defaults of [{}, { 近卫: { supports: [], half_off: false } }]) {
+      const result = prepareMasteryRoutes([], defaults, ['近卫'])
+      expect(result.routes.近卫).toBeUndefined()
+      expect(result.suggestedProfessions).toEqual([])
+    }
+  })
+
   it('buildMasteryRoutePayload preserves route flags and an empty support list', () => {
     const payload = buildMasteryRoutePayload('近卫', {
       supports: [],

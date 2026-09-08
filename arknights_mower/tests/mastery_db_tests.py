@@ -30,6 +30,12 @@ from arknights_mower.utils.mastery_recommendation import get_current_mastery_lev
 
 class TestMasteryDb(unittest.TestCase):
     def setUp(self):
+        planner = patch(
+            "arknights_mower.utils.mastery_support.plan_supports",
+            return_value={"version": 1, "stages": []},
+        )
+        planner.start()
+        self.addCleanup(planner.stop)
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.db_path = self.tmp.name
         self.tmp.close()

@@ -5,6 +5,8 @@
 > 代码：fork `NiceAfternoon/arknights-mower`，分支 `feat/mastery-rewrite`。
 >
 > 改动涉及本子系统的任何代码前，先读「§3 铁律」；改完跑「§15 验证」。
+>
+> 2026-09-08：新增计划采用[每计划协助方案](mastery-supports.md)。其排班排除、中枢推导和失败冻结规则优先于下文旧职业路线的换人说明；截图权威、开训入口和训练位保护继续适用。本版本不增加心情识别与检查。
 
 ## 目录
 1. 这是什么 / 适用边界
@@ -546,4 +548,3 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
   重读后若与安排前不同则刷新 DB（同值跳过写，#82 同款）——安排前的倒计时基于旧效率，
   不是最终完成时间。
 - 日志 INFO 用同一 msg 字符串（一起修正）。
-

@@ -626,6 +626,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     """
     from arknights_mower.solvers.mastery_reader import _read_slot_mastery_tier
     from arknights_mower.utils.mastery_db import update_plan_status
+    from arknights_mower.utils.mastery_support import SupportPlanError
 
     _log_transition(
         plan,
@@ -635,6 +636,15 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         目标=plan["target_level"],
     )
     update_plan_status(plan["id"], "arranging")
+    if plan.get("support_plan"):
+        from arknights_mower.utils.mastery_db import get_plan_by_id
+
+        # Editors use a status/runtime guard. Re-read after claiming arranging so
+        # an edit saved immediately before dispatch cannot be lost to a stale row.
+        latest = get_plan_by_id(plan["id"])
+        if latest is None:
+            return
+        plan.update(latest)
 
     skill_index = plan["skill_index"] + 1  # 0-indexed to 1-indexed for display
     deadline = datetime.now() + ARRANGING_DEADLINE
@@ -643,6 +653,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     tracker = _SceneTracker()
     checked_slot = False
     checked_target = False
+    support_prepared = False
     # #72：数星星前的身份/归属确认。只在 TRAIN_MAIN 训练位校验通过并主动点开技能
     # 选择页时置位；未置位就出现 219（重启停在技能选择页 / 手动进入）→ 219 分支保守退出。
     identity_confirmed = False
@@ -750,9 +761,30 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                     )
                     _exit_occupied(solver, plan, None, trigger="档位读取失败")
                     return
+                if support_prepared and tier + 1 != step_level:
+                    _exit_failed(solver, plan, "协助方案校验后专精档位发生变化，请重试")
+                    return
+                if plan.get("support_plan") and not support_prepared:
+                    from arknights_mower.solvers.mastery_support_runtime import prepare
+
+                    solver.back()  # validate the assistant route from the room panel
+                    try:
+                        prepare(solver, plan, tier + 1)
+                    except SupportPlanError as exc:
+                        _exit_failed(solver, plan, str(exc), step_level=tier + 1)
+                        return
+                    support_prepared = True
+                    step_level = tier + 1
+                    checked_target = (
+                        False  # re-read stage after validating the assistant route
+                    )
+                    continue
             height = (skill_index - 1) * 0.3 + 0.32
             solver.ctap((solver.recog.w * 0.33, solver.recog.h * height))
         elif scene == Scene.TRAIN_SKILL_UPGRADE:
+            if plan.get("support_plan") and not support_prepared:
+                _exit_failed(solver, plan, "尚未完成协助方案校验，停止开训")
+                return
             tracker.mark_upgrade()
             # #53 实机：确认按钮在 (1574,896)-(1870,968)，旧坐标 (0.87w,0.9h)=(1670,972)
             # 会点到按钮下方、把弹窗关掉退回技能选择页死循环。用 skill_confirm 模板
@@ -890,6 +922,12 @@ def _confirm_training_started(
                 # #90 §16.10 第7步「以当前读取为准」：协助位安排（换效率干员）后倒计时
                 # 会变，重读一次——换人/收取/邮件完成时间都以此为准；读不到回退安排前值。
                 fresh_execute_time = _re_read_train_countdown(solver) or execute_time
+                if plan.get("support_plan"):
+                    from arknights_mower.solvers.mastery_support_runtime import (
+                        refresh_end,
+                    )
+
+                    refresh_end(plan, step_level, fresh_execute_time)
                 # §16.10：排了换人任务则不排收取；等 SWAP_SUPPORT 完成后重读倒计时再排收取。
                 # #90：返回 SWAP 任务触发时刻（None=不换人），邮件完成时间据此分两情况。
                 swap_time = _schedule_swap_if_needed(
@@ -960,9 +998,26 @@ def _arrange_support(solver, plan, step_level=None):
     logger.info(f"安排协助位：{support_name}")
     logger.debug(f"[mastery] 协助位判定 id={plan['id']} 期望={support_name} 动作=安排")
     try:
-        solver.choose_train([support_name, "Current"])
+        if plan.get("support_plan"):
+            from arknights_mower.solvers.mastery_support_runtime import place
+
+            plan["swap_frozen"] = 0
+            place(solver, plan, step_level, support_name)
+        else:
+            solver.choose_train([support_name, "Current"])
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=ok")
     except Exception as e:
+        from arknights_mower.utils.csleep import MowerExit
+
+        if isinstance(e, MowerExit):
+            raise
+        if plan.get("support_plan"):
+            from arknights_mower.solvers.mastery_support_runtime import warning
+            from arknights_mower.utils.mastery_db import update_plan_status
+
+            warning(plan, step_level, f"安排协助者失败：{e}，停止本级自动换人")
+            plan["swap_frozen"] = 1
+            update_plan_status(plan["id"], "training", swap_frozen=1)
         logger.warning(f"安排协助位失败: {e}")
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=失败 err={e}")
 
@@ -1002,6 +1057,11 @@ def _schedule_swap_if_needed(
 
     if config.conf.assistant_follows_schedule:
         return None
+
+    if plan.get("support_plan"):
+        from arknights_mower.solvers.mastery_support_runtime import schedule
+
+        return schedule(solver, plan, execute_time, step_level)
 
     route = _get_plan_route(plan, step_level)
     if not route or not route.get("swap_target"):
@@ -1125,6 +1185,11 @@ def run_swap_support(solver):
     # 00:00:00 收取边界不动（铁律 6）；读失败（reliable=False，OCR 坏名等）不动作
     # （稳为先：读不到就不动，防基于不可靠读撤销已减半）。
     support_slot, _, _, reliable = _read_slots_checked(solver)
+    if plan.get("support_plan"):
+        from arknights_mower.solvers.mastery_support_runtime import perform_swap
+
+        perform_swap(solver, plan, panel, support_slot, reliable)
+        return
     if operator and reliable and support_slot not in (operator, swap_target):
         # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）且
         # 剩余不足 5h+缓冲 → 不纠不换——她们本身是最优加成，路线干员+减半收益在这里
@@ -1505,6 +1570,10 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
     一个专三计划 专一→专二→专三 三步分别用 level_1/2/3 路线。step_level 缺省/读失败
     （None/0）时回退 plan["target_level"]（=旧行为，保守）。
     """
+    if plan.get("support_plan"):
+        from arknights_mower.utils.mastery_support import stage_for
+
+        return stage_for(plan, step_level or plan["target_level"])
     try:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 

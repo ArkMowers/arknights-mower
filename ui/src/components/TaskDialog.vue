@@ -6,9 +6,13 @@ import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { useConfigStore } from '@/stores/config'
 import axios from 'axios'
+import { useMessage } from 'naive-ui'
+import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
+const message = useMessage()
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans, operators } = storeToRefs(plan_store)
+const masterySchedule = computed(() => masteryScheduleContext(plan_store.plan, backup_plans.value))
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
@@ -102,6 +106,8 @@ async function saveTasks() {
       error.value = true
       return
     }
+    const warning = masteryTraineeWarning(mastery_operator.value, masterySchedule.value.blocked)
+    if (warning) message.warning(warning)
     const body = {
       items: [
         {
