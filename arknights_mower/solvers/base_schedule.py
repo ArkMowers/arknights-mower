@@ -113,6 +113,28 @@ def _maa_client_type() -> str:
     return "Official" if config.conf.package_type == 1 else "Bilibili"
 
 
+# 战术分队类（对照 RoguelikeSquadIsProfessional），凹开局直升精二仅对这类分队下发
+_PROFESSIONAL_SQUADS = (
+    "突击战术分队",
+    "堡垒战术分队",
+    "远程战术分队",
+    "破坏战术分队",
+)
+
+# 刷开局期望奖励键，与协议 collectible_mode_start_list 的九项一致
+_COLLECTIBLE_START_KEYS = (
+    "hot_water",
+    "shield",
+    "ingot",
+    "hope",
+    "random",
+    "key",
+    "dice",
+    "ideas",
+    "ticket",
+)
+
+
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -4050,22 +4072,88 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.recog.update()
                     self.back_to_index()
                     if conf.RG:
-                        self.MAA.append_task(
-                            "Roguelike",
-                            {
-                                "theme": conf.maa_rg_theme,
-                                "squad": conf.rogue.squad,
-                                "roles": conf.rogue.roles,
-                                "core_char": conf.rogue.core_char,
-                                "use_support": conf.rogue.use_support,
-                                "use_nonfriend_support": conf.rogue.use_nonfriend_support,
-                                "mode": conf.rogue.mode,
-                                "refresh_trader_with_dice": conf.rogue.refresh_trader_with_dice,
-                                "starts_count": 9999999,
-                                "investments_count": 9999999,
-                                "expected_collapsal_paradigms": conf.rogue.expected_collapsal_paradigms,
-                            },
-                        )
+                        # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
+                        # investment_enabled 时下发（值内联各自的策略/主题限制，与 MAA 一致），
+                        # stop_at_final_boss 除 Phantom 外可用且仅策略 0 下发，
+                        # expected_collapsal_paradigms 仅 Sami + 策略 5 且列表非空时下发，
+                        # 烧水字段仅策略 4 下发，勾选「只凹开局干员直升精二」时
+                        # 撤销 collectible_mode_start_list，指路鳞的值内联 Mizuki 限制。
+                        professional = conf.rogue.squad in _PROFESSIONAL_SQUADS
+                        rogue_params = {
+                            "theme": conf.maa_rg_theme,
+                            "squad": conf.rogue.squad,
+                            "roles": conf.rogue.roles,
+                            "core_char": conf.rogue.core_char,
+                            "use_support": conf.rogue.use_support,
+                            "use_nonfriend_support": conf.rogue.use_nonfriend_support,
+                            "mode": conf.rogue.mode,
+                            "starts_count": 9999999,
+                            "investments_count": 9999999,
+                            "difficulty": conf.rogue.difficulty,
+                            "investment_enabled": conf.rogue.investment_enabled,
+                            "refresh_trader_with_dice": (
+                                conf.maa_rg_theme == "Mizuki"
+                                and conf.rogue.refresh_trader_with_dice
+                            ),
+                        }
+                        if conf.rogue.investment_enabled:
+                            rogue_params["investment_with_more_score"] = (
+                                conf.maa_rg_theme != "BlackFlow"
+                                and conf.rogue.investment_with_more_score
+                                and conf.rogue.mode == 1
+                            )
+                            rogue_params["stop_when_investment_full"] = (
+                                conf.rogue.stop_when_investment_full
+                                and conf.rogue.mode == 1
+                            )
+                        if conf.maa_rg_theme != "Phantom" and conf.rogue.mode == 0:
+                            rogue_params["stop_at_final_boss"] = (
+                                conf.rogue.stop_at_final_boss
+                            )
+                        if conf.rogue.mode == 0:
+                            rogue_params["stop_at_max_level"] = (
+                                conf.rogue.stop_at_max_level
+                            )
+                        if (
+                            conf.maa_rg_theme == "Sami"
+                            and conf.rogue.mode == 5
+                            and conf.rogue.expected_collapsal_paradigms
+                        ):
+                            rogue_params["expected_collapsal_paradigms"] = (
+                                conf.rogue.expected_collapsal_paradigms
+                            )
+                        if conf.rogue.mode == 4:
+                            rogue_params["collectible_mode_shopping"] = (
+                                conf.rogue.collectible_mode_shopping
+                            )
+                            rogue_params["collectible_mode_squad"] = (
+                                conf.rogue.collectible_mode_squad
+                            )
+                            # 协议值语义：直升需与战术分队类同步，只凹仅受主题/策略限制
+                            rogue_params["start_with_elite_two"] = (
+                                conf.rogue.start_with_elite_two
+                                and professional
+                                and conf.maa_rg_theme in ("Mizuki", "Sami")
+                            )
+                            rogue_params["only_start_with_elite_two"] = (
+                                conf.rogue.only_start_with_elite_two
+                                and conf.maa_rg_theme in ("Mizuki", "Sami")
+                            )
+                            # 勾选「只凹开局干员直升精二」时不刷奖励，撤销下发
+                            elite_two_only = (
+                                conf.rogue.only_start_with_elite_two
+                                and conf.rogue.start_with_elite_two
+                                and conf.maa_rg_theme != "Phantom"
+                                and professional
+                            )
+                            if not elite_two_only:
+                                rogue_params["collectible_mode_start_list"] = {
+                                    key: conf.rogue.collectible_mode_start_list.get(
+                                        key, False
+                                    )
+                                    for key in _COLLECTIBLE_START_KEYS
+                                }
+                        self.MAA.append_task("Roguelike", rogue_params)
                     elif conf.SSS:
                         copilot = get_path("@app/sss.json")
                         if (

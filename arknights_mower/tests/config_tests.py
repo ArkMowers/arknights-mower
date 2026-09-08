@@ -414,6 +414,80 @@ class TestConfigPersistence(unittest.TestCase):
         # 未配置的默认字段仍不落盘
         self.assertNotIn("maa_eat_stone", written)
 
+    def test_rogue_new_fields_default_without_injection(self):
+        # #264：Roguelike 通用字段未配置时用协议默认值，且不被标记为已设置（不落盘）
+        with _patched_conf(self.conf_path, Conf()):
+            rogue = config_module.conf.rogue
+            self.assertEqual(rogue.difficulty, -1)
+            self.assertFalse(rogue.stop_at_final_boss)
+            self.assertFalse(rogue.stop_at_max_level)
+            self.assertTrue(rogue.investment_enabled)
+            self.assertFalse(rogue.stop_when_investment_full)
+            self.assertFalse(rogue.investment_with_more_score)
+            self.assertFalse(rogue.collectible_mode_shopping)
+            self.assertEqual(rogue.collectible_mode_squad, "")
+            self.assertFalse(rogue.start_with_elite_two)
+            self.assertFalse(rogue.only_start_with_elite_two)
+            self.assertEqual(rogue.collectible_mode_start_list, {})
+            self.assertEqual(
+                rogue.expected_collapsal_paradigms,
+                ["目空一些", "睁眼瞎", "图像损坏", "一抹黑"],
+            )
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        for field in (
+            "difficulty",
+            "stop_at_final_boss",
+            "investment_enabled",
+            "expected_collapsal_paradigms",
+        ):
+            self.assertNotIn(field, written)
+
+    def test_rogue_new_fields_round_trip_when_configured(self):
+        # #264：Roguelike 通用字段配置后如实读回并落盘（collectible_mode_squad 默认与 squad 同步）
+        with _patched_conf(
+            self.conf_path,
+            Conf(
+                rogue={
+                    "difficulty": 2,
+                    "stop_at_final_boss": True,
+                    "stop_at_max_level": True,
+                    "investment_enabled": False,
+                    "stop_when_investment_full": True,
+                    "investment_with_more_score": True,
+                    "collectible_mode_shopping": True,
+                    "collectible_mode_squad": "指挥分队",
+                    "start_with_elite_two": True,
+                    "only_start_with_elite_two": True,
+                    "collectible_mode_start_list": {"hot_water": True},
+                    "expected_collapsal_paradigms": ["目空一些", "一抹黑"],
+                }
+            ),
+        ):
+            rogue = config_module.conf.rogue
+            self.assertEqual(rogue.difficulty, 2)
+            self.assertTrue(rogue.stop_at_final_boss)
+            self.assertTrue(rogue.stop_at_max_level)
+            self.assertFalse(rogue.investment_enabled)
+            self.assertTrue(rogue.stop_when_investment_full)
+            self.assertTrue(rogue.investment_with_more_score)
+            self.assertTrue(rogue.collectible_mode_shopping)
+            self.assertEqual(rogue.collectible_mode_squad, "指挥分队")
+            self.assertTrue(rogue.start_with_elite_two)
+            self.assertTrue(rogue.only_start_with_elite_two)
+            self.assertEqual(rogue.collectible_mode_start_list, {"hot_water": True})
+            self.assertEqual(rogue.expected_collapsal_paradigms, ["目空一些", "一抹黑"])
+            config_module.save_conf()
+        written = self.conf_path.read_text(encoding="utf-8")
+        self.assertIn("difficulty", written)
+        self.assertIn("stop_at_final_boss", written)
+        self.assertIn("collectible_mode_squad", written)
+        self.assertIn("start_with_elite_two", written)
+        self.assertIn("only_start_with_elite_two", written)
+        self.assertIn("collectible_mode_start_list", written)
+        self.assertIn("expected_collapsal_paradigms", written)
+        self.assertIn("investment_with_more_score", written)
+
     def test_legacy_key_migrates_to_new_key_when_configured(self):
         self._write_conf("exipring_medicine_on_weekend: true\n")
         with _patched_conf(self.conf_path):

@@ -128,6 +128,14 @@ class MaaErrorNoExitTests(unittest.TestCase):
                 mode=0,
                 refresh_trader_with_dice=False,
                 expected_collapsal_paradigms=[],
+                difficulty=-1,
+                stop_at_final_boss=False,
+                stop_at_max_level=False,
+                investment_enabled=True,
+                stop_when_investment_full=False,
+                investment_with_more_score=False,
+                collectible_mode_shopping=False,
+                collectible_mode_squad="",
             ),
         )
         mock_maa = MagicMock()
