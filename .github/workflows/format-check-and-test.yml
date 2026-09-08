@@ -111,11 +111,11 @@ jobs:
       - run: |
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
+          ./venv/bin/pip install pytest
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
-      - run: |
-          ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
-          ./venv/bin/python3 -m unittest discover -s scripts/tests -p "*_tests.py"
+      - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
+        run: ./venv/bin/python3 -m pytest -q
 
   # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
   # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。

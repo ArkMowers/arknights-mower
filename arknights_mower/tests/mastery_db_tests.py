@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from arknights_mower.tests.mastery_plan_helpers import stub_support_planner
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
     delete_plan,
@@ -30,6 +31,7 @@ from arknights_mower.utils.mastery_recommendation import get_current_mastery_lev
 
 class TestMasteryDb(unittest.TestCase):
     def setUp(self):
+        stub_support_planner(self)
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.db_path = self.tmp.name
         self.tmp.close()

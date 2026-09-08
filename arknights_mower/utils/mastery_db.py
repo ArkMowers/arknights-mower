@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_support_types import TrainingInputs, encode_supports
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skill_label import format_skill_label
 
@@ -21,6 +22,8 @@ _PLAN_SCHEMA = (
     "priority INTEGER NOT NULL DEFAULT 0,"
     "expires_at TEXT,"
     "swap_frozen INTEGER DEFAULT 0,"
+    "support_plan TEXT,"
+    "support_runtime TEXT,"
     "created_at TEXT DEFAULT (datetime('now','localtime'))"
     ")"
 )
@@ -101,6 +104,10 @@ def _ensure_tables(conn: sqlite3.Connection, path: str):
     conn.execute(_PLAN_SCHEMA)
     conn.execute(_ROUTE_SCHEMA)
     conn.execute(_NOTIFY_SCHEMA)
+    plan_cols = {row[1] for row in conn.execute("PRAGMA table_info(mastery_plan)")}
+    for column in ("support_plan", "support_runtime"):
+        if column not in plan_cols:
+            conn.execute(f"ALTER TABLE mastery_plan ADD COLUMN {column} TEXT")
     route_cols = {row[1] for row in conn.execute("PRAGMA table_info(mastery_route)")}
     if "optimal" not in route_cols:
         conn.execute(
@@ -173,6 +180,7 @@ def insert_plan(
     char_name: Optional[str] = None,
     priority: int = 0,
     path: Optional[str] = None,
+    support_plan: Optional[dict] = None,
 ) -> int:
     # #63：技能名存规范格式 `{序数}技能·真名`；占位/缺名时用真名懒填充再格式化。
     if not skill_name or _is_placeholder_skill_name(skill_name):
@@ -183,9 +191,17 @@ def insert_plan(
     try:
         with _conn(path) as conn:
             cursor = conn.execute(
-                "INSERT INTO mastery_plan (char_id, char_name, skill_index, skill_name, target_level, priority) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (char_id, char_name, skill_index, skill_name, target_level, priority),
+                "INSERT INTO mastery_plan (char_id, char_name, skill_index, skill_name, target_level, priority, support_plan) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    char_id,
+                    char_name,
+                    skill_index,
+                    skill_name,
+                    target_level,
+                    priority,
+                    encode_supports(support_plan),
+                ),
             )
             conn.commit()
             return cursor.lastrowid
@@ -205,6 +221,7 @@ def add_plan_checked(
     char_name: Optional[str] = None,
     priority: int = 0,
     path: Optional[str] = None,
+    support_mode: str = "auto",
 ) -> tuple[int, Optional[str]]:
     """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级。
 
@@ -215,6 +232,10 @@ def add_plan_checked(
     """
     if target_level is None:
         target_level = DEFAULT_TARGET_LEVEL
+    if support_mode not in ("auto", "route"):
+        return -1, "协助方式无效（需 auto/route）"
+    if type(skill_index) is not int or skill_index not in (0, 1, 2):
+        return -1, "技能序号无效（需 0/1/2）"
     # bool 是 int 子类（True==1），JSON true 不得被当作 target=1 静默接受
     if (
         isinstance(target_level, bool)
@@ -229,6 +250,29 @@ def add_plan_checked(
     current_level = get_current_mastery_level(char_id, skill_index)
     if current_level is not None and current_level >= target_level:
         return -1, f"该干员技能已专{current_level}，无需再练到专{target_level}"
+    from arknights_mower.utils.mastery_support import (
+        RosterUnavailableError,
+        SupportPlanError,
+        plan_supports,
+    )
+
+    try:
+        support_plan = (
+            None
+            if support_mode == "route"
+            else plan_supports(
+                char_id,
+                current_level or 0,
+                target_level,
+                inputs=TrainingInputs(
+                    buffer=get_route_settings(path).get("mastery_swap_buffer", 10)
+                ),
+            )
+        )
+    except RosterUnavailableError:
+        support_plan = None  # Keep the pre-existing manual route entry without BOX.
+    except SupportPlanError as exc:
+        return -1, str(exc)
     plan_id = insert_plan(
         char_id=char_id,
         skill_index=skill_index,
@@ -237,10 +281,37 @@ def add_plan_checked(
         char_name=char_name,
         priority=priority,
         path=path,
+        support_plan=support_plan,
     )
     if plan_id > 0:
         return plan_id, None
     return -1, "插入失败"
+
+
+def save_support_plan(plan_id, support_plan, *, runtime=False, expected=None):
+    """Persist a route snapshot; UI edits cannot change a stage while it is executing."""
+    column = "support_runtime" if runtime else "support_plan"
+    with _conn() as conn:
+        guard = "" if runtime else " AND status IN ('idle','failed')"
+        clear_runtime = "" if runtime else ", support_runtime=NULL"
+        parameters = [encode_supports(support_plan), plan_id]
+        if not runtime and expected is not None:
+            guard = " AND status=? AND support_plan IS ? AND support_runtime IS ?"
+            parameters.extend(
+                [
+                    expected["status"],
+                    expected.get("support_plan"),
+                    expected.get("support_runtime"),
+                ]
+            )
+            if expected["status"] not in ("idle", "failed"):
+                clear_runtime = ""
+        cursor = conn.execute(
+            f"UPDATE mastery_plan SET {column}=?{clear_runtime} WHERE id=?{guard}",
+            parameters,
+        )
+        conn.commit()
+        return cursor.rowcount == 1
 
 
 def get_all_plans(path: Optional[str] = None) -> list[dict]:
@@ -382,6 +453,12 @@ def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
             # 避免孤儿 dedup 残留；重加同计划（新 id）本就会重新通知，这里是卫生清理。
             conn.execute(
                 "DELETE FROM mastery_notify WHERE dedup_key=?", (str(plan_id),)
+            )
+            prefix = f"{plan_id}:"
+            conn.execute(
+                "DELETE FROM mastery_notify WHERE notify_type='support_swap' "
+                "AND substr(dedup_key, 1, ?) = ?",
+                (len(prefix), prefix),
             )
             conn.commit()
             return True

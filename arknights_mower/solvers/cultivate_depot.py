@@ -22,7 +22,8 @@ class cultivate:
 
     def start(self):
         if not config.conf.skland_info:
-            return
+            return False
+        updated = False
         item = config.conf.skland_info[0]
         self.save_param(get_cred_by_token(log(item)))
         for i in get_binding_list(self.sign_token):
@@ -35,11 +36,18 @@ class cultivate:
                     headers=get_sign_header(ingame, "get", body, self.sign_token),
                 ).json()
 
+                if resp.get("code") != 0 or not isinstance(
+                    (resp.get("data") or {}).get("characters"), list
+                ):
+                    raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
+
                 def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
 
                 # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
                 atomic_write(self.record_path, dump)
+                updated = True
+        return updated
 
     def save_param(self, cred_resp):
         header["cred"] = cred_resp["cred"]
