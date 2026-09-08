@@ -3828,14 +3828,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             from asst.asst import Asst
             from asst.utils import InstanceOptionType, Message
 
-            logger.info("Maa Python模块导入成功")
+            logger.info("MAA Python模块导入成功")
         except Exception as e:
             save_exception(e)
-            logger.exception(f"Maa Python模块导入失败：{str(e)}")
-            raise Exception("Maa Python模块导入失败")
+            logger.exception(f"MAA Python模块导入失败：{str(e)}")
+            raise Exception("MAA Python模块导入失败")
 
         try:
-            logger.debug("开始更新Maa活动关卡导航……")
+            logger.debug("开始更新MAA活动关卡导航……")
             ota_tasks_url = (
                 "https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
             )
@@ -3849,9 +3849,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 res = response.content.decode("utf-8")
             with open(ota_tasks_path, "w", encoding="utf-8") as f:
                 f.write(res)
-            logger.info("Maa活动关卡导航更新成功")
+            logger.info("MAA活动关卡导航更新成功")
         except Exception as e:
-            logger.error(f"Maa活动关卡导航更新失败：{str(e)}")
+            logger.error(f"MAA活动关卡导航更新失败：{str(e)}")
             save_exception(e)
 
         Asst.load(path=path, incremental_path=path / "cache")
@@ -3965,7 +3965,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if stage_drop["details"] and not self.drop_send:
             send_message(
                 maa_template.render(stage_drop=stage_drop),
-                "Maa停止",
+                "MAA停止",
             )
             self.drop_send = True
 
@@ -4027,7 +4027,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         self.sleep(5)
                 if hard_stop:
-                    hard_stop_msg = "Maa任务未完成，等待3分钟"
+                    hard_stop_msg = "MAA任务未完成，等待3分钟"
                     logger.info(hard_stop_msg)
                     send_message(hard_stop_msg)
                     self.sleep(180)
@@ -4043,13 +4043,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         logger.info("记录首次信用作战")
                         self.maa_stop(False)
                 else:
-                    send_message("Maa单次任务停止")
+                    send_message("MAA单次任务停止")
                     if (
                         self.find_next_task(datetime.now() + timedelta(minutes=15))
                         is None
                     ):
                         logger.debug(
-                            "Maa单次任务结束15分钟内没有其他任务，新增单次任务防止漏单"
+                            "MAA单次任务结束15分钟内没有其他任务，新增单次任务防止漏单"
                         )
                         self.tasks.insert(0, SchedulerTask(time=datetime.now()))
             conf = config.conf
@@ -4264,13 +4264,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             if self.MAA is not None:
                 self.maa_stop()
-                logger.info("停止maa")
+                logger.info("停止MAA")
             raise
         except Exception as e:
             save_exception(e)
             logger.exception(e)
             self.MAA = None
-            send_message(str(e), "Maa调用出错！", level="ERROR")
+            send_message(str(e), "MAA调用出错！", level="ERROR")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
                 # 参照 rest_until_next_task：休眠前重置场景计时，避免 check_freeze

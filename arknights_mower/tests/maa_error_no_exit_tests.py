@@ -44,7 +44,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
         # 出错的 MAA 实例被释放
         self.assertIsNone(solver.MAA)
         # 仍然通知用户（原有错误通知保留）
-        send_message.assert_any_call("MAA 连接失败", "Maa调用出错！", level="ERROR")
+        send_message.assert_any_call("MAA 连接失败", "MAA调用出错！", level="ERROR")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_task_dispatch_failure_does_not_exit_game(self):
@@ -69,7 +69,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
 
         solver.device.exit.assert_not_called()
         solver.device.check_current_focus.assert_not_called()
-        send_message.assert_any_call("任务下发失败", "Maa调用出错！", level="ERROR")
+        send_message.assert_any_call("任务下发失败", "MAA调用出错！", level="ERROR")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_error_path_resets_scene_timer_before_idle_sleep(self):

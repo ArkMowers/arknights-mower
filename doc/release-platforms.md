@@ -189,9 +189,9 @@ Fedora 的 `webkit2gtk4.1 + gi-girepository` 覆盖 WebKit2 与 GObject 内省�
 - Linux x64 / ARM64 独立包包含构建机对应架构的 ADB、其动态依赖和许可证；构建机需安装 `adb` 与 `patchelf`。独立包优先使用内置 ADB，源码部署依次使用 `MOWER_ADB_BIN` 或系统 `PATH` 中的 `adb`，都不存在时留空。
 - Windows 不额外打包 ADB；如果包内已有 `platform-tools/adb.exe` 则作为默认值，否则留空。
 
-内置 ADB 的配置保存为 `@internal/platform-tools/adb`（Windows 为 `adb.exe`），使用时解析到当前程序资源目录。这样从 DMG 移入 Applications 或移动 Linux 安装目录后，无需重新填写内置 ADB 路径。Maa 连接、预设读取、程序和资源的检查 / 更新均解析这些目录别名，配置文件保留原别名。已有绝对路径、普通相对路径、命令名称和空字符串原样保留；需要随程序移动时，可手动将内置 ADB 配置改为上述别名。
+内置 ADB 的配置保存为 `@internal/platform-tools/adb`（Windows 为 `adb.exe`），使用时解析到当前程序资源目录。这样从 DMG 移入 Applications 或移动 Linux 安装目录后，无需重新填写内置 ADB 路径。MAA 连接、预设读取、程序和资源的检查 / 更新均解析这些目录别名，配置文件保留原别名。已有绝对路径、普通相对路径、命令名称和空字符串原样保留；需要随程序移动时，可手动将内置 ADB 配置改为上述别名。
 
-更新 Mower 本身会替换程序和包内 ADB，保留全局数据目录中的 `MAA`；只有执行 Maa 下载 / 更新时才修改 Maa 的安装内容。
+更新 Mower 本身会替换程序和包内 ADB，保留全局数据目录中的 `MAA`；只有执行 MAA 下载 / 更新时才修改 MAA 的安装内容。
 
 上述配置用于直接部署。Docker 继续沿用现有镜像构建和 entrypoint 写入路径的行为。
 

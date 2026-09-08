@@ -15,9 +15,9 @@ const {
 const mobile = inject('mobile')
 
 const maa_long_task_options = [
-  { label: '集成战略 (Maa)', value: 'rogue' },
-  { label: '保全派驻 (Maa)', value: 'sss' },
-  { label: '生息演算 (Maa)', value: 'rcl' },
+  { label: '集成战略 (MAA)', value: 'rogue' },
+  { label: '保全派驻 (MAA)', value: 'sss' },
+  { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
   { label: '隐秘战线', value: 'sf' }
 ]

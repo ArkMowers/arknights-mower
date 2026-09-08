@@ -10,7 +10,7 @@
 - 支持活动结束或定时切换周计划 [(#952)](https://github.com/ArkMowers/arknights-mower/pull/952) @ALEXsun0
 - 恢复刷理智表格计划并新增库存选关 [(#949)](https://github.com/ArkMowers/arknights-mower/pull/949) @ALEXsun0
 - 资源包更新支持免重启与自动更新 [(#945)](https://github.com/ArkMowers/arknights-mower/pull/945) @ALEXsun0
-- 新增 Maa 资源检查与更新 [(#946)](https://github.com/ArkMowers/arknights-mower/pull/946) @ALEXsun0
+- 新增 MAA 资源检查与更新 [(#946)](https://github.com/ArkMowers/arknights-mower/pull/946) @ALEXsun0
 - 新增手动添加仓库扫描任务 [(#937)](https://github.com/ArkMowers/arknights-mower/pull/937) @NiceAfternoon
 - 新增多平台 MAA 下载与更新功能 [(#932)](https://github.com/ArkMowers/arknights-mower/pull/932) @ALEXsun0
 
@@ -19,10 +19,10 @@
 - 仓库扫描遇到 MEMENTO 纪念品崩溃 [(#956)](https://github.com/ArkMowers/arknights-mower/pull/956) @NiceAfternoon
 - 多开实例共用资源包 [(#951)](https://github.com/ArkMowers/arknights-mower/pull/951) @ALEXsun0
 - 修复无人机加速面板首次点击未生效时误消费跑单任务 [(#948)](https://github.com/ArkMowers/arknights-mower/pull/948) @NiceAfternoon
-- 刷新并缓存 Maa 更新版本 [(#947)](https://github.com/ArkMowers/arknights-mower/pull/947) @ALEXsun0
+- 刷新并缓存 MAA 更新版本 [(#947)](https://github.com/ArkMowers/arknights-mower/pull/947) @ALEXsun0
 - 修复训练位已是计划干员时保护逻辑仍阻止开始训练 [(#943)](https://github.com/ArkMowers/arknights-mower/pull/943) @NiceAfternoon
 - 修复低优替班轮休时重复占用床位导致大组无法下班的问题 [(#942)](https://github.com/ArkMowers/arknights-mower/pull/942) @NiceAfternoon
-- Windows Maa 改为提示手动更新 [(#944)](https://github.com/ArkMowers/arknights-mower/pull/944) @ALEXsun0
+- Windows MAA 改为提示手动更新 [(#944)](https://github.com/ArkMowers/arknights-mower/pull/944) @ALEXsun0
 - 修复场景图导航缓存不刷新导致空转刷日志的问题 [(#941)](https://github.com/ArkMowers/arknights-mower/pull/941) @NiceAfternoon
 - 修复排班组纠错把已在岗成员计入纠错任务导致反复重排 [(#940)](https://github.com/ArkMowers/arknights-mower/pull/940) @NiceAfternoon
 - 修复 WebView 启动失败时异常被静默吞掉无法记录 [(#939)](https://github.com/ArkMowers/arknights-mower/pull/939) @NiceAfternoon
@@ -118,7 +118,7 @@
 - 修复专精计划页显示无效的三星筛选项 (@NiceAfternoon)
 - 修复任务接口未校验 Webview Token (@NiceAfternoon)
 - 修复错误的创建专精任务，应该使用MasterySync正确地创建任务 ([#906](https://github.com/ArkMowers/arknights-mower/pull/906) @GodofTheFallen)
-- 修复 Maa 连通性检测误报 ([#901](https://github.com/ArkMowers/arknights-mower/pull/901) @ALEXsun0)
+- 修复 MAA 连通性检测误报 ([#901](https://github.com/ArkMowers/arknights-mower/pull/901) @ALEXsun0)
 - 最小化修复mower无法停止问题 ([#892](https://github.com/ArkMowers/arknights-mower/pull/892) @ALEXsun0)
 - 修复启动前 MAA 连通性检查时序 ([#889](https://github.com/ArkMowers/arknights-mower/pull/889) @ALEXsun0)
 - 统一任务间休眠收口，修复休息期间 /status 的 sleeping 状态 ([#884](https://github.com/ArkMowers/arknights-mower/pull/884) @djkcyl)
@@ -222,7 +222,7 @@
 - 扩展颜色识别范围 (@citydirector)
 - Update get_number (@citydirector)
 - #622 (@Shawnsdaddy)
-- maa 调用退回主界面 (@Shawnsdaddy)
+- MAA 调用退回主界面 (@Shawnsdaddy)
 - fix 函数名typo (@Shawnsdaddy)
 - #394 add new feature (@Shawnsdaddy)
 - fix config not first load (@Shawnsdaddy)
@@ -251,7 +251,7 @@
 - 重新格式化了一下 (@Suzuran-ley)
 - Revert "bugfix" (@Anyk00)
 - 加工站任务防卡死 (@Shawnsdaddy)
-- maa运行中截图 (@Shawnsdaddy)
+- MAA运行中截图 (@Shawnsdaddy)
 - 扫描前刷新一次仓库 (@Shawnsdaddy)
 - 如果有下班任务，则跳过纠错 (@Shawnsdaddy)
 - 识别干员使用多线程加速 (@Anyk00)
@@ -267,7 +267,7 @@
 - fix typo (@Shawnsdaddy)
 - #743 加入任务流 (@Shawnsdaddy)
 - #743 仓库数据存入数据库 (@Shawnsdaddy)
-- 添加maa连续战斗次数智能化，提高战斗效率 (@qiuming2022)
+- 添加MAA连续战斗次数智能化，提高战斗效率 (@qiuming2022)
 - 自动合成材料的初步实现 (@Shawnsdaddy)
 
 **Full Changelog**: [2025.5.3.3...v4.1.6-alpha.1](https://github.com/ArkMowers/arknights-mower/compare/2025.5.3.3...v4.1.6-alpha.1)
@@ -298,7 +298,7 @@
 
 * 修复 mower 无法停止的问题（`/stop` 状态快照缺失字段导致接口报错） [#892](https://github.com/ArkMowers/arknights-mower/pull/892) [@ALEXsun0](https://github.com/ALEXsun0)
 
-* 修复 Maa 连通性检测误报，补充启动前检查测试 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
+* 修复 MAA 连通性检测误报，补充启动前检查测试 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
 
 * 修复专精调度、导航、日志等问题（训练时间读取真实倒计时、level 3 不再换人、导航失败、新增 AP fallback） [#902](https://github.com/ArkMowers/arknights-mower/pull/902) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
 
@@ -617,7 +617,7 @@
 - 修复不养闲人任务合并(Anyk00)
 - 修复邮件发送时机(Anyk00)
 - 修复重启游戏bug+优化添加专精任务(Anyk00)
-- Maa导航api更新(Outsider225)
+- MAA导航api更新(Outsider225)
 
 ## 2025.3.1
 - 新干员适配
@@ -625,7 +625,7 @@
 
 ## 2025.2.3
 - 修复了2.2的亿点点bug
-- 邮件发送改为maa停止后
+- 邮件发送改为MAA停止后
 - 读取时间失败不再显示error
 
 ## 2025.2.2
@@ -642,7 +642,7 @@
 - UI新增急救心情阈值(anykk00)
 - 替换组心情监视(anykk00)
 - 无人机上限提升
-- UI更新+maa领取奖励(anykk00)
+- UI更新+MAA领取奖励(anykk00)
 - 联网增加30秒timeout时间，防止Mower卡死
 - 释放不会增加过时任务【czt635】
 - 宿舍移位优化（增加vip重排+自定义优先级）
@@ -670,7 +670,7 @@
 - 正在激活的副表提醒【911804553】
 - 强制弹性模式
 - 弹性模式bug修复【1249033051】
-- 新版maa调用修复【2768543172等】
+- 新版MAA调用修复【2768543172等】
 - 保全导航超重绝缘水泥修复【1772532975】
 - 反馈log添加版本信息+排班表
 
@@ -789,5 +789,5 @@
 - 新增功能：信用作战指定编队
 - 基建逻辑优化：仅回满干员在同组无用尽的情况下会提前上班，移除仅回满干员心情上限 -0.5
 - 使用优化：UI 路径改动
-- 使用优化：调用 Maa 刷日常时可以手动停止 Maa
+- 使用优化：调用 MAA 刷日常时可以手动停止 MAA
 - 使用优化：工具人数据加入缓存
