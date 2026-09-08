@@ -35,6 +35,8 @@ def query_mumu_adb_port(simulator) -> Optional[str]:
     try:
         out = subprocess.run(
             [manager, "info", "-v", "all"],
+            # 端口发现会反复执行；仅重定向输出不会隐藏 Windows 控制台。
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
             capture_output=True,
             text=True,
             encoding="utf-8",
