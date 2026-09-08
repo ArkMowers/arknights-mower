@@ -46,9 +46,16 @@
 | `utils/mastery_db.py` | 计划/路线 DB、通知去重、`is_operator_busy` | `update_plan_status` / `get_active_plan` / `get_next_idle_plan` / `retry_failed_plans` / `should_notify` / `insert_plan` / `get_route` |
 | `utils/skill_label.py` | 技能名规范唯一格式化器 | `format_skill_label` / `normalize_skill_text` / `panel_skill_matches` |
 | `utils/mastery_recommendation.py` | 推荐 + 自动排程 + 仓库扫描联动 + 材料核算 | `get_mastery_recommendations` / `auto_schedule_mastery_tasks` / `compute_workshop_config` / `get_skill_data` |
+| `utils/workshop_data.py` | BOX 有效性校验、缓存、技能解锁及排班占用 | `parse_roster` / `owned_roster` / `unlocked` / `scheduled_operators` |
+| `utils/workshop_rules.py` | 资源生成时编译加工站规则及配方原料数量 | `compile_workshop_buff` / `compile_workshop_data` |
+| `utils/workshop_recipes.py` | 配方范围、固定加成、专属材料及优先级 | `recipe_bonus` / `operator_recipe_allowed` / `scope_workshop_items` |
+| `utils/workshop_selection.py` | 自动名单与展示推荐分别按门槛筛选 | `WorkshopSelection.select` |
+| `utils/workshop_allocation.py` | 配方任务分配、已有配置范围过滤及排序 | `WorkshopAllocation.allocate` / `scope_setting` / `setting_priority` |
+| `utils/workshop_recommendation.py` | 加工站公共入口与手动名单兼容 | `recommend_workshop_operators` / `allocate_workshop_items` / `prioritize_workshop_settings` |
+| `solvers/cultivate_depot.py` | 同步 BOX，校验成功后原子替换旧数据 | `cultivate.start` |
 | `utils/scheduler_task.py` | 任务类型定义 | `TaskTypes.SKILL_UPGRADE / SWAP_SUPPORT / REFRESH_TIME` |
 | `solvers/base_schedule.py` | 排班集成：gate L0/L1、dispatch、`resting`、仓库扫描钩子 | `agent_arrange_room`（train gate）/ `infra_main`（dispatch）/ `_auto_schedule_mastery_after_scan` / `_is_mastery_busy` |
-| `views/mastery.py` | HTTP API（token 保护） | `GET/POST/DELETE /mastery-plan`、`PATCH /mastery-plan/order`、`GET/POST /mastery-route` |
+| `views/mastery.py` | HTTP API（token 保护） | `GET/POST/DELETE /mastery-plan`、`PATCH /mastery-plan/order`、`GET/POST /mastery-route`、`GET /workshop-operators/recommendations` |
 | `agent/tools/mastery_plan.py` | agent 工具：新增计划 | `add_mastery_plan` |
 
 **依赖关系**：`mastery.py`（执行）→ `mastery_reader.py`（读）→ `mastery_db.py`（数据）；`base_schedule.py` 是调度中枢，通过 dispatch 调 `mastery.py`、通过 gate 调 `mastery_reader.py`。
@@ -301,6 +308,8 @@
   `@app/tmp/matery_plan.json`（原文件是全仓库无写入者的孤儿文件，UI/API/agent 新增计划
   不在里面 → 扫描自动开始失效）。completed/failed 计划不核算材料（不消耗；failed 由
   扫描钩子 `retry_failed_plans` 先重置 idle）。扫描开始路径、材料核算与实际计划一致。（R-09 已替换）
+- **加工站 BOX 与空候选不同**：缺少文件、无效 JSON、缺少/为空的 `data.characters` 或干员记录结构错误均拒绝推荐并提示同步，前端不替换/保存原名单。有效且非空的 BOX 没有符合持有、解锁、排班和门槛条件的干员时，正常返回空候选，允许一键设置应用。同步写入使用同一校验，失败保留旧 BOX；成功响应必须对应新数据已写入。
+- **加工站备料范围**：按钮和仓库扫描统一读取 DB 队列。未开训仅准备队首技能的完整剩余链；状态为 training 且倒计时未到期时，允许提前准备下一个 idle 技能，并预留当前技能后续档位的材料。到期时间仅作备料调度门控，不授权训练室动作；训练执行仍以截图为准。无待准备技能时返回空配置，不回退为全材料囤货。详细分工、材料保护和任务两秒避碰见 [加工站干员设置](workshop-operators.md)。
 - **`PROF_MAP`（EN→CN，8 职业）在两个模块重复定义**（`mastery_recommendation.py:707` 与 `mastery.py:183`），必须保持同步，否则路线/协助位查找静默分歧。（R-16）
 - 技能名产出用 `format_skill_label`，保证规范格式。（R-05）
 - 阶段展示 `from_level=stage+7 / to_level=stage+8`，末阶段 to_level 到 10 —— 纯展示约定，消费者不得把 to_level 当真实等级。（open_risks）
@@ -315,6 +324,7 @@
 | `POST /mastery-plan` | 两种 body：`{'items':[{name, skill_index, target_level}]}` 或扁平 `{name: skill_index}`；扁平路径 skill_index 必须 ∈ {0,1,2} 否则 `invalid skill_index`；未知干员 → `{status:'error', reason:'operator not found'}`；成功 → `{status:'added', id}`。⚠️ **#65/B7 target_level 统一校验**（两路径都走 `add_plan_checked`）：缺省/默认 专三（与推荐一致）；越界（非 1/2/3，含非整数、布尔 `true`）→ `reason='目标专精等级无效: ...'`；干员 cultivate.json 当前等级 ≥ target → 拒绝（`reason='...已专N...'`，不落库；cultivate 读不到则跳过等级校验，执行层已到target检测兜底）。⚠️ bulk `items` 路径**不校验** skill_index ∈ (0,1,2)（open_risks）。✅ **2026-08-18 立即派发（方案 A）**：任一计划成功创建（added）后触发 `_dispatch_new_plans_immediately(chars=新增干员id)`——先刷新 cultivate.json（缺失/过期 >`maa_gap` 才拉，尊重间隔；**新增干员不在本地数据则强制拉一次**）、再复用扫描派发（`auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`）把**材料足够的 idle 计划**入队 now 的 `SKILL_UPGRADE` 并设 `wake_scheduler` 唤醒调度休眠（确认后真的开始训练）；材料不足不派发不唤醒。受 `enable_mastery` 门控；`base_scheduler` 未运行（None）→ 跳过。batch 多计划只派发一次（覆盖全部 added） |
 | `DELETE /mastery-plan` | body 需 id（缺 → 400；**#113** 非数字 id / bool → 400）；`delete_plan` 失败 → 500。**#97 清理**：删除后顺带清该计划 `plan_key=计划ID`（#101 补位已并入同一键，无独立 fill-{id}）的队列任务（SKILL_UPGRADE/SWAP）+ `mastery_notify` 中 `dedup_key=str(id)` 的去重行——残留任务不再按 plan_key 派发到已删计划。**#147（2026-08-19）**：并同步清持久化队列——`saved_state` 快照里旧队列没清会让重启 `load_state` 复活已删计划的任务（plan_key 派发到已删计划 + blocked 通知重发），`_purge_plan_tasks` 清完活队列后取 `current_state()` 快照、剔除该 plan_key 任务再 `save_state_to_db(state)` 覆盖——**不用 `save_current_state()`**（它持久化含 `t is current` 占位的 live 队列，删除计划的任务正被派发时会把它写回快照，重启仍复活） |
 | `PATCH /mastery-plan/order` | body 是 `[{id, priority}]`；未知/缺失 id 容忍；**#113** id/priority 非整数（含 bool、数字字符串）→ 400；返回 `{'status':'ok'}` |
+| `GET /workshop-operators/recommendations` | 只读；`min_bonus` 为 0～1000 的整数，默认读取配置（初始 80）。成功返回 `defaults`、`recommendations`、`blocked_operators`、`nine_colored_deer`、`min_bonus`；BOX/资源无效或门槛非法返回 HTTP 400 `{error}`，不返回可应用的默认名单；有效 BOX 的空候选仍为 HTTP 200 |
 | `GET /mastery-route` | `{routes, defaults}`，defaults = `solvers.mastery.DEFAULT_ROUTES` |
 | `POST /mastery-route` | profession 非空（否则 400）；supports 接受 str 或 list；**#114 写入端校验：supports 须是合法 JSON 且形态是数组/包装对象/旧字典之一（level_N 值须为对象），否则 400 拒绝保存**；`is_default` 恒 0；optimal/half_off 透传，half_off 默认 True |
 
@@ -332,6 +342,13 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
 > 复用扫描派发 `_dispatch_scan_start_tasks`）经 SKILL_UPGRADE dispatch 真正开始训练——
 > 不再等下次仓库扫描（2026-08-18 新增）。契约测试：`mastery_task_contract_tests.py`
 > （/task 拒绝 + 前端源码契约）。
+
+加工站联动还使用 `server.py` 的现有路由（不属于上述带 `_require_token` 的蓝图）：
+
+| 端点 | 契约 |
+|---|---|
+| `GET /cultivate-fetch` | 同步成功且非空有效 BOX 已原子写入才返回 `{success:true,message}`；账号/服务器不匹配或远端数据无效返回 `{success:false,message}`，保留旧文件。一键设置等待成功后再读推荐，失败保留原名单 |
+| `POST /workshop-auto-config` | 接受三个加工分类的名单，按 DB 队列生成 `{workshop_settings,t3_summary:[]}`；忽略旧 `planned_skills` 草稿字段，无待准备计划时 settings 为空。只返回配置，不直接派发加工任务 |
 
 ## 14. 待办 / 已知风险（实机校准等）
 
@@ -390,11 +407,11 @@ python -m pytest arknights_mower/tests/mastery_reader_tests.py \
   arknights_mower/tests/mastery_view_tests.py \
   arknights_mower/tests/mastery_task_contract_tests.py \
   arknights_mower/tests/base_scheduler_tests.py -q
-python -m pytest arknights_mower/tests/*.py -q        # 全量
+python -m pytest -q  # pytest.ini 自动发现 arknights_mower/tests 与 scripts/tests
 python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_mower/views/ arknights_mower/agent/
 ```
 
-- 全量 245 tests 通过（#71 新增 `mastery_task_contract_tests.py`；GBK 控制台 print/logging 报错或尾部日志关闭噪音为环境性，与本子系统无关）。
+- CI 与本地统一使用 pytest 自动发现 `*_tests.py` / `test_*.py`，兼容既有 unittest 类及 pytest 函数。加工站 BOX 接口、同步失败保留数据、配方分工、备料和调度测试无需逐文件加入 CI；可用 `python -m pytest -q -k "workshop or cultivate_depot"` 运行专项。
 - 改动涉及本子系统后，全仓 grep 确认无对已删符号（`refresh_skill_time`/`_calculate_swap_from_api`/`get_pending_plans`/`has_in_progress_plan`/`get_in_progress_plan`/`set_plan_status`/`_skill_upgrade_just_dispatched`）的新引用。
 
 ---

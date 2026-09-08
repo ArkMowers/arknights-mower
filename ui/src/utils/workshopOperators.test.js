@@ -86,6 +86,29 @@ describe('workshop owned defaults', () => {
     expect(http.get).toHaveBeenCalledTimes(1)
   })
 
+  it('propagates invalid BOX errors even after the sync endpoint reports success', async () => {
+    const error = {
+      response: { status: 400, data: { error: '请先同步干员数据，再读取加工站推荐' } }
+    }
+    const http = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { success: true } })
+        .mockRejectedValueOnce(error)
+    }
+    await expect(syncWorkshopOperators(http, '/api')).rejects.toBe(error)
+    expect(http.get).toHaveBeenCalledTimes(2)
+  })
+
+  it('accepts an empty candidate list from a valid BOX', async () => {
+    const empty = {
+      defaults: { fodder_operators: [], t5_operators: [], book_operators: [] },
+      recommendations: { fodder_operators: [], t5_operators: [], book_operators: [] }
+    }
+    const http = { get: vi.fn().mockResolvedValue({ data: empty }) }
+    expect(await loadWorkshopOperators(http, '/api')).toEqual(empty)
+  })
+
   it('reads the existing BOX recommendation once and retains multiple operators', async () => {
     const http = { get: vi.fn().mockResolvedValue({ data }) }
     expect(await loadWorkshopOperators(http, '/api')).toEqual(data)

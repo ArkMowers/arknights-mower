@@ -23,6 +23,10 @@ def compile_workshop_buff(buff):
                 "reduction": int(reduction[2]),
             }
         ]
+    return _compile_byproduct(text)
+
+
+def _compile_byproduct(text):
     # Read the fixed part; dorm/storage-dependent extras remain conditional.
     match = re.match(
         r"进驻加工站加工(?:原始心情消耗为(\d+)的)?"
@@ -33,6 +37,10 @@ def compile_workshop_buff(buff):
         return []
     if match[2] in {"基建材料", "芯片"}:
         return []
+    return [_byproduct_rule(match)]
+
+
+def _byproduct_rule(match):
     categories = {
         "任意类材料": ["material", "book"],
         "精英材料": ["material"],
@@ -53,30 +61,32 @@ def compile_workshop_buff(buff):
             rule["family"] = {"酮凝集": "酮"}.get(family, family)
         else:
             rule["item"] = scope
-    return [rule]
+    return rule
 
 
-def compile_workshop_data(characters, building):
-    rules = {
-        key: compile_workshop_buff(buff) for key, buff in building["buffs"].items()
-    }
+def _compile_groups(char, rules):
+    groups = []
+    for group in char.get("buffChar", []):
+        versions = [
+            {
+                "elite": int(str(ref["cond"]["phase"]).removeprefix("PHASE_")),
+                "level": ref["cond"]["level"],
+                "effects": rules.get(ref["buffId"], []),
+            }
+            for ref in group["buffData"]
+        ]
+        # Empty upgrades replace their predecessor too.
+        if any(version["effects"] for version in versions):
+            groups.append(versions)
+    return groups
+
+
+def _compile_operators(characters, building, rules):
     operators = {}
     for cid, char in characters.items():
         if not cid.startswith("char_") or char.get("isNotObtainable"):
             continue
-        groups = []
-        for group in building.get("chars", {}).get(cid, {}).get("buffChar", []):
-            versions = [
-                {
-                    "elite": int(str(ref["cond"]["phase"]).removeprefix("PHASE_")),
-                    "level": ref["cond"]["level"],
-                    "effects": rules.get(ref["buffId"], []),
-                }
-                for ref in group["buffData"]
-            ]
-            # Empty upgrades replace their predecessor too.
-            if any(v["effects"] for v in versions):
-                groups.append(versions)
+        groups = _compile_groups(building.get("chars", {}).get(cid, {}), rules)
         # Dorm skills break workshop ties, but must not add dorm-only operators.
         if any(
             effect["kind"] != "dormitory"
@@ -85,6 +95,13 @@ def compile_workshop_data(characters, building):
             for effect in version["effects"]
         ):
             operators[cid] = {"name": char["name"], "groups": groups}
+    return operators
+
+
+def compile_workshop_data(characters, building):
+    rules = {
+        key: compile_workshop_buff(buff) for key, buff in building["buffs"].items()
+    }
     # Preserve actual ingredient quantities; workshop_formula only stores names.
     recipe_ingredients = {
         formula["itemId"]: {cost["id"]: cost["count"] for cost in formula["costs"]}
@@ -93,6 +110,6 @@ def compile_workshop_data(characters, building):
     }
     return {
         "version": 1,
-        "operators": operators,
+        "operators": _compile_operators(characters, building, rules),
         "recipe_ingredients": recipe_ingredients,
     }

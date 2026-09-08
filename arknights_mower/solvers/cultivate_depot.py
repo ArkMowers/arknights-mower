@@ -11,6 +11,7 @@ from arknights_mower.utils.skland import (
     log,
     request_with_retry,
 )
+from arknights_mower.utils.workshop_data import parse_roster
 
 
 class cultivate:
@@ -36,10 +37,9 @@ class cultivate:
                     headers=get_sign_header(ingame, "get", body, self.sign_token),
                 ).json()
 
-                if resp.get("code") != 0 or not isinstance(
-                    (resp.get("data") or {}).get("characters"), list
-                ):
+                if isinstance(resp, dict) and resp.get("code") != 0:
                     raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
+                parse_roster(resp)
 
                 def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
