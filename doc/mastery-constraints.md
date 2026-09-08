@@ -339,7 +339,7 @@
 | `PATCH /mastery-plan/order` | body 是 `[{id, priority}]`；未知/缺失 id 容忍；**#113** id/priority 非整数（含 bool、数字字符串）→ 400；返回 `{'status':'ok'}` |
 | `GET /mastery-plan/supports` | 返回 `{operators:[{name, blocked}], central_bonus}`；列出已拥有干员并标记非训练室排班占用，允许无速度技能的自选教官；无 BOX 或训练规则缺失 → 400。方案本身由 GET /mastery-plan 返回，PATCH 执行最终校验 |
 | `PATCH /mastery-plan/supports` | body `{id, stages}`，提交全部阶段；校验身份、拥有、排班和阶段锁定，不以速度加成为准入条件。并发过期 → 409；校验失败 → 400；成功返回新方案 |
-| `GET /mastery-route` | `{routes, defaults, best_trainers, settings, defaults_error?}`；defaults 为已拥有且已解锁的通用职业路线，缺 BOX 则为空并提示同步；best_trainers 保留 DEFAULT_ROUTES 全游戏参考并标记拥有/解锁状态，独立于个人默认路线 |
+| `GET /mastery-route` | `{routes, defaults, best_trainers, settings, defaults_error?}`；defaults 为已拥有且已解锁的通用职业路线，缺 BOX 则提供原 DEFAULT_ROUTES 完整三级路线并提示同步；best_trainers 保留 DEFAULT_ROUTES 全游戏参考并标记拥有/解锁状态，独立于个人默认路线 |
 | `POST /mastery-route` | profession 非空（否则 400）；supports 接受 str 或 list；**#114 写入端校验：supports 须是合法 JSON 且形态是数组/包装对象/旧字典之一（level_N 值须为对象），否则 400 拒绝保存**；`is_default` 恒 0；optimal/half_off 透传，half_off 默认 True |
 
 API 可增删计划、调优先级与编辑协助方案，**不得直写 status**（状态由执行层 `update_plan_status` 写）。（DB-02）

@@ -134,8 +134,9 @@ export function prepareMasteryRoutes(routes, defaults, professions) {
   return { routes: merged, suggestedProfessions }
 }
 
-export function completeMasterySupports(supports) {
+export function completeMasterySupports(supports, defaults = []) {
   const rows = normalizeSupports(supports)
+  const fallback = normalizeSupports(defaults)
   return [1, 2, 3].map((level) => ({
     name: '',
     skill_level: level,
@@ -143,6 +144,7 @@ export function completeMasterySupports(supports) {
     swap: false,
     swap_name: '',
     match: 'no',
-    ...rows.find((row) => row.skill_level === level)
+    ...(rows.find((row) => row.skill_level === level && row.name) ||
+      fallback.find((row) => row.skill_level === level))
   }))
 }

@@ -427,7 +427,9 @@ class MasteryRouteView(MethodView):
     def get(self):
         from arknights_mower.solvers.mastery import DEFAULT_ROUTES, PROF_MAP
         from arknights_mower.utils.mastery_support import (
+            RosterUnavailableError,
             SupportPlanError,
+            legacy_profession_routes,
             owned_roster,
             profession_reference_trainers,
             profession_training_routes,
@@ -439,8 +441,8 @@ class MasteryRouteView(MethodView):
         recommendations = {"defaults": {}}
         metadata, roster = {}, None
         try:
-            metadata = training_data()
             roster = owned_roster()
+            metadata = training_data()
             recommendations.update(
                 profession_training_routes(
                     PROF_MAP,
@@ -450,6 +452,11 @@ class MasteryRouteView(MethodView):
                         buffer=settings["mastery_swap_buffer"],
                     ),
                 )
+            )
+        except RosterUnavailableError:
+            recommendations.update(legacy_profession_routes(DEFAULT_ROUTES))
+            recommendations["defaults_error"] = (
+                "未读取到 BOX，已显示原默认最佳路线；同步干员数据后可计算个人路线"
             )
         except SupportPlanError as exc:
             recommendations["defaults_error"] = str(exc)

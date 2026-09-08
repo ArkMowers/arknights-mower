@@ -317,7 +317,8 @@
         defaultsError
       }}</n-alert>
       <n-text depth="3">
-        此处预览各职业的通用路线，默认按已拥有且已解锁的训练技能生成，不计分支专属加成。手动下拉可选全部干员。
+        此处预览各职业的通用路线，默认按已拥有且已解锁的训练技能生成；无 BOX
+        时展示原默认最佳路线。不计分支专属加成。手动下拉可选全部干员。
         添加具体干员的训练计划时，会按其职业和分支独立计算，符合条件的分支加成协助者也会参与计算，因此实际路线可能与预览不同。
       </n-text>
       <MasteryProfessionTrainers
@@ -1172,11 +1173,11 @@ watch(
 function applyRoute(d) {
   for (const p of profKeys) {
     if (d[p]) {
-      routeSettings[p].supports = completeMasterySupports(d[p].supports)
+      routeSettings[p].supports = completeMasterySupports(d[p].supports, d._jsonDefaults?.[p])
       routeSettings[p].optimal = !!d[p].optimal
       routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
     } else {
-      routeSettings[p].supports = completeMasterySupports([])
+      routeSettings[p].supports = completeMasterySupports([], d._jsonDefaults?.[p])
       routeSettings[p].optimal = false
       routeSettings[p].half_off = false
     }

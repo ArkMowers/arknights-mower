@@ -188,3 +188,38 @@ it('fills only missing stages and keeps saved manual values independent', async 
   rows[1].name = '其他'
   expect(saved[0].name).toBe('赤冬')
 })
+
+it('uses legacy defaults for missing stages while preserving saved manual choices', async () => {
+  const { completeMasterySupports } = await import('./masteryRoute.js')
+  const defaults = {
+    近卫: {
+      half_off: true,
+      level_1: { operator: '赤冬', efficiency: 75, job_match: true, swap_target: '艾丽妮' },
+      level_2: { operator: '燧石', efficiency: 75, job_match: true, swap_target: '艾丽妮' },
+      level_3: { operator: '百炼嘉维尔', efficiency: 95, job_match: true, swap_target: null }
+    }
+  }
+  const { routes } = prepareMasteryRoutes([], defaults, ['近卫'])
+  expect(routes.近卫.half_off).toBe(true)
+  const fallback = routes._jsonDefaults.近卫
+  const original = completeMasterySupports([], fallback)
+  expect(original.map((row) => row.name)).toEqual(['赤冬', '燧石', '百炼嘉维尔'])
+  expect(original[0]).toMatchObject({
+    efficiency: 75,
+    swap: true,
+    swap_name: '艾丽妮',
+    match: 'yes'
+  })
+  const partial = completeMasterySupports(
+    [
+      { name: '杜宾', skill_level: 2, efficiency: 30, swap: false },
+      { name: '', skill_level: 3, efficiency: 0 }
+    ],
+    fallback
+  )
+  expect(partial.map((row) => row.name)).toEqual(['赤冬', '杜宾', '百炼嘉维尔'])
+  expect(partial[1]).toMatchObject({ efficiency: 30, swap: false })
+  expect(JSON.parse(buildMasteryRoutePayload('近卫', { supports: partial }).supports)).toHaveLength(
+    3
+  )
+})

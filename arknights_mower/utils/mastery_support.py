@@ -154,3 +154,27 @@ def profession_reference_trainers(routes, professions, *, roster, metadata):
                 "unlocked": has_skill,
             }
     return result
+
+
+def legacy_profession_routes(routes):
+    """Use the original complete profession routes when BOX is unavailable."""
+    return {
+        "defaults": {
+            profession: {
+                "supports": [
+                    {
+                        "name": entry["operator"],
+                        "skill_level": level,
+                        "efficiency": entry["efficiency"],
+                        "swap": bool(entry.get("swap_target")),
+                        "swap_name": entry.get("swap_target") or "",
+                        "match": bool(entry.get("job_match")),
+                    }
+                    for level in BASE_HOURS
+                    if (entry := stages.get(f"level_{level}"))
+                ],
+                "half_off": any(entry.get("swap_target") for entry in stages.values()),
+            }
+            for profession, stages in routes.items()
+        }
+    }
