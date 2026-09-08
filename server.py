@@ -518,6 +518,10 @@ def _serve_resource(base_dir: Path, relative: str):
 @app.before_request
 def serve_resource_overlay():
     """图片与本实例当前加载的数据使用同一个完整资源版本。"""
+    # /depot/readdepot 等 API 与图片共用路径前缀，只接管静态文件路由。
+    if request.endpoint not in {"static", "serve_index"}:
+        return None
+
     from arknights_mower.utils.resource_pkg import resource_ui_path
 
     path = request.path.lstrip("/")
