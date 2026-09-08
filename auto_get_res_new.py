@@ -992,6 +992,7 @@ class Arknights数据处理器:
                 "name": char_info.get("name", char_id),
                 "rarity": rarity,
                 "profession": char_info.get("profession", ""),
+                "subProfessionId": char_info["subProfessionId"],
                 "skills": skills,
             }
             skill_count += len(skills)
