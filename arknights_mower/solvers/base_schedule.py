@@ -1046,6 +1046,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # （受保护时发节流提醒邮件）。fix_plan 拿 op_data 缓存比对静态计划，专精
             # 活跃/受保护时缓存与计划必然错位，不弹会每轮生成训练室纠错（反复进出）。
             self._suppress_train_correction(fix_plan)
+            # Prefer replacements after all correction passes; if none are available,
+            # retain the original correction's recall instead of blocking it.
+            from arknights_mower.utils.resting_correction import (
+                prefer_resting_replacements,
+            )
+
+            prefer_resting_replacements(self.op_data, fix_plan, _is_mastery_busy)
             if len(fix_plan.keys()) > 0:
                 # 如果5分钟之内有任务则跳过心情读取
                 next_task = self.find_next_task()
