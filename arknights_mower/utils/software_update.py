@@ -163,6 +163,7 @@ def check_on_launch():
         )
         if (
             result["available"]
+            and not result.get("downgrade", False)
             and current["auto_update"]
             and automatic_check_key(current) == automatic_check_key(settings)
             and not recent_restart
@@ -641,6 +642,7 @@ def check(channel, proxy=None):
         release = choose_release(releases, channel)
         plan.update(
             version=release["tag_name"],
+            downgrade=version_key(release["tag_name"]) < version_key(__version__),
             notes=release.get("body") or "暂无更新说明",
             url=release["html_url"],
         )
@@ -655,13 +657,11 @@ def check(channel, proxy=None):
             encoding="utf-8",
             timeout=10,
         ).strip()
-        available = current != plan["commit"] and (
-            channel == "dev" or version_key(plan["version"]) > version_key(__version__)
-        )
+        available = current != plan["commit"]
     else:
-        available = version_key(plan["version"]) > version_key(__version__)
-        # Checking an older channel release is not an installation request.
-        # It may predate portable packages, but should still display normally.
+        # A maintainer may withdraw a broken release or move Latest backwards.
+        # Follow the selected channel, but never reinstall the same version.
+        available = version_key(plan["version"]) != version_key(__version__)
         if available:
             plan["asset"] = choose_asset(release)
     plan["available"] = available
@@ -675,12 +675,15 @@ def check(channel, proxy=None):
         "checked_at": time.time(),
         "check_id": check_id if available or plan["force_available"] else "",
         "available": available,
+        "downgrade": plan.get("downgrade", False),
         "version": plan["version"],
         "notes": plan["notes"],
         "url": plan["url"],
-        "message": "发现可用更新"
+        "message": (
+            "发现可回退版本，请确认后安装" if plan.get("downgrade") else "发现可用更新"
+        )
         if available
-        else "当前版本已是所选渠道最新版本，或比该渠道更新",
+        else "当前版本已与所选渠道一致",
     }
     runtime.write_json(
         runtime.state_dir() / "last-check.json",
@@ -689,18 +692,29 @@ def check(channel, proxy=None):
     return result
 
 
-def submit(check_id, background=False, *, force=False):
+def require_downgrade_confirmation(plan, confirmed):
+    if not isinstance(confirmed, bool):
+        raise ValueError("回退确认必须是布尔值")
+    if plan.get("downgrade") and not confirmed:
+        raise ValueError("回退到旧版本需要二次确认，请确认回退后再安装")
+
+
+def submit(check_id, background=False, *, force=False, confirm_downgrade=False):
     plan = _checks.get(check_id)
     if not plan or time.time() - plan["created_at"] > 1800:
         raise ValueError("版本检查已过期，请重新检查更新")
     if not force and not plan.get("available", True):
         raise ValueError("当前没有可用更新")
     if force and not plan.get("force_available", True):
-        raise ValueError("强制更新不支持切换到更旧的发布版本")
-    return start_job(plan, background, force=force)
+        raise ValueError("当前检查结果不支持强制更新")
+    require_downgrade_confirmation(plan, confirm_downgrade)
+    return start_job(plan, background, force=force, confirm_downgrade=confirm_downgrade)
 
 
-def start_job(plan, background=False, uploaded=None, *, force=False):
+def start_job(
+    plan, background=False, uploaded=None, *, force=False, confirm_downgrade=False
+):
+    require_downgrade_confirmation(plan, confirm_downgrade)
     with runtime.submission_lock(runtime.state_dir()):
         return _start_job(plan, background, uploaded, force=force)
 
@@ -861,11 +875,10 @@ def manual_plan(filename, proxy=""):
         raise ValueError("安装包的系统或架构与当前运行程序不匹配")
     if extension != {"windows": "zip", "linux": "tar.gz", "macos": "dmg"}[system]:
         raise ValueError("当前系统不支持此安装包格式；macOS 请使用 DMG")
-    if version_key(version) <= version_key(__version__):
-        raise ValueError("安装包版本不高于当前版本；为保护配置，不支持直接降级")
     return {
         "deployment": "release",
         "manual": True,
+        "downgrade": version_key(version) < version_key(__version__),
         "channel": "beta" if "-" in version else "stable",
         "proxy": validate_proxy(proxy),
         "version": "v" + version,
@@ -874,10 +887,11 @@ def manual_plan(filename, proxy=""):
     }
 
 
-def upload_package(upload, proxy="", background=False):
+def upload_package(upload, proxy="", background=False, *, confirm_downgrade=False):
     if not upload:
         raise ValueError("请选择 Release 安装包")
     plan = manual_plan(upload.filename, proxy)
+    require_downgrade_confirmation(plan, confirm_downgrade)
     state = runtime.state_dir()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = state / f"upload-{uuid4().hex}"
@@ -890,6 +904,8 @@ def upload_package(upload, proxy="", background=False):
                     raise ValueError("安装包超过 2 GiB 限制")
                 stream.write(chunk)
         plan["asset"]["size"] = size
-        return start_job(plan, background, uploaded=temporary)
+        return start_job(
+            plan, background, uploaded=temporary, confirm_downgrade=confirm_downgrade
+        )
     finally:
         temporary.unlink(missing_ok=True)

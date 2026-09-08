@@ -86,19 +86,26 @@ def start():
         raise ValueError("后台启动选项必须是布尔值")
     if not isinstance(data.get("force", False), bool):
         raise ValueError("强制更新选项必须是布尔值")
+    if not isinstance(data.get("confirm_downgrade", False), bool):
+        raise ValueError("回退确认必须是布尔值")
     return updater.submit(
         data.get("check_id"),
         data.get("background", False),
         force=data.get("force", False),
+        confirm_downgrade=data.get("confirm_downgrade", False),
     )
 
 
 @software_update_bp.post("/manual")
 @result
 def manual():
+    confirmed = request.form.get("confirm_downgrade", "false")
+    if confirmed not in {"true", "false"}:
+        raise ValueError("请明确确认是否回退版本")
     return updater.upload_package(
         request.files.get("file"),
         background=request.form.get("background", "false") == "true",
+        confirm_downgrade=confirmed == "true",
     )
 
 

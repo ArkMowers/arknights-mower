@@ -98,7 +98,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         latest = release("v4.1.5")
         latest["assets"] = []
         with (
-            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch.object(update, "__version__", "4.1.5"),
             patch.object(runtime, "frozen", return_value=True),
             patch.object(update, "github", return_value=latest) as api,
         ):
@@ -135,7 +135,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "有效发布时间"):
             update.choose_release(invalid, "stable")
 
-    def test_checks_do_not_require_assets_for_older_or_installed_versions(self):
+    def test_checks_do_not_reinstall_the_same_version_or_require_its_assets(self):
         for (system, arch), (channel, version) in product(
             [("windows", "x64"), ("macos", "arm64"), ("linux", "x64")],
             [("stable", "v4.1.5"), ("beta", "v4.1.6-alpha.4")],
@@ -144,7 +144,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             data["assets"] = []
             with (
                 self.subTest(system=system, channel=channel),
-                patch.object(update, "__version__", "4.1.6-alpha.4"),
+                patch.object(update, "__version__", version.lstrip("v") + "+abcdef"),
                 patch.object(runtime, "frozen", return_value=True),
                 patch.object(update, "platform_asset", return_value=(system, arch)),
                 patch.object(
@@ -167,10 +167,16 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                 )
                 asset.assert_not_called()
 
-    def test_next_prerelease_and_stable_release_are_installable_on_each_platform(self):
-        for (system, arch), (channel, version) in product(
+    def test_channel_targets_can_upgrade_or_downgrade_on_each_platform(self):
+        for (system, arch), (channel, current, version) in product(
             [("windows", "x64"), ("macos", "arm64"), ("linux", "x64")],
-            [("beta", "v4.1.6-alpha.5"), ("stable", "v4.1.6")],
+            [
+                ("beta", "4.1.6-alpha.4", "v4.1.6-alpha.5"),
+                ("stable", "4.1.6-alpha.4", "v4.1.6"),
+                ("stable", "4.1.6-alpha.4", "v4.1.5"),
+                ("stable", "4.1.6", "v4.1.5"),
+                ("beta", "4.1.6-alpha.5", "v4.1.6-alpha.4"),
+            ],
         ):
             target = release(
                 version,
@@ -181,8 +187,8 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             )
             legacy = release("2025.2.1", published_at="2025-02-13T08:03:09Z")
             with (
-                self.subTest(system=system, channel=channel),
-                patch.object(update, "__version__", "4.1.6-alpha.4"),
+                self.subTest(system=system, channel=channel, target=version),
+                patch.object(update, "__version__", current),
                 patch.object(runtime, "frozen", return_value=True),
                 patch.object(update, "platform_asset", return_value=(system, arch)),
                 patch.object(
@@ -195,19 +201,81 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                 self.assertTrue(result["available"])
                 self.assertEqual(result["version"], version)
                 self.assertEqual(
+                    result["downgrade"],
+                    update.version_key(version) < update.version_key(current),
+                )
+                self.assertEqual(
                     update._checks[result["check_id"]]["asset"]["name"],
                     target["assets"][0]["name"],
                 )
 
-    def test_newer_publication_does_not_allow_automatic_downgrade(self):
-        older_version = release("v4.1.5", published_at="2027-01-01T00:00:00Z")
-        older_version["assets"] = []
+    def test_source_release_can_follow_an_older_latest_commit(self):
+        target = release("v4.1.5")
         with (
-            patch.object(update, "__version__", "4.1.6"),
-            patch.object(runtime, "frozen", return_value=True),
-            patch.object(update, "github", return_value=older_version),
+            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch.object(runtime, "frozen", return_value=False),
+            patch.object(update, "github", side_effect=[target, {"sha": "a" * 40}]),
+            patch.object(subprocess, "check_output", return_value="b" * 40),
         ):
-            self.assertFalse(update.check("stable")["available"])
+            result = update.check("stable")
+        self.assertTrue(result["available"])
+        self.assertEqual(update._checks[result["check_id"]]["commit"], "a" * 40)
+
+    def test_auto_update_waits_for_rollback_confirmation_without_reinstall_loop(self):
+        for channel, current, version in [
+            ("stable", "4.1.6-alpha.4", "v4.1.5"),
+            ("beta", "4.1.6-alpha.5", "v4.1.6-alpha.4"),
+        ]:
+            target = release(version, prerelease=channel == "beta")
+            update.save_settings(
+                {"channel": channel, "auto_update": True, "background": True}
+            )
+            marker = runtime.state_dir() / "auto-check.json"
+            marker.unlink(missing_ok=True)
+            with (
+                self.subTest(channel=channel),
+                patch.dict(os.environ, {"MOWER_RESTART_JOB": ""}),
+                patch.object(runtime, "frozen", return_value=True),
+                patch.object(update, "platform_asset", return_value=("macos", "arm64")),
+                patch.object(
+                    update,
+                    "github",
+                    return_value=target if channel == "stable" else [target],
+                ) as api,
+                patch.object(update, "start_job", return_value={"ok": True}) as start,
+            ):
+                with patch.object(update, "__version__", current):
+                    self.assertTrue(update.check_on_launch())
+                    start.assert_not_called()
+                    cached = runtime.read_json(runtime.state_dir() / "last-check.json")
+                    self.assertTrue(cached["available"])
+                    self.assertTrue(cached["downgrade"])
+                    self.assertIn("确认后安装", cached["message"])
+                    # The clicked install action refreshes the display-only cache.
+                    result = update.check(channel)
+                    with self.assertRaisesRegex(ValueError, "二次确认"):
+                        update.submit(result["check_id"], True)
+                    start.assert_not_called()
+                    update.submit(result["check_id"], True, confirm_downgrade=True)
+                    start.assert_called_once_with(
+                        update._checks[result["check_id"]],
+                        True,
+                        force=False,
+                        confirm_downgrade=True,
+                    )
+
+                # Simulate the installed target, and bypass the one-minute
+                # throttle so the second check really exercises version equality.
+                marker.unlink()
+                with patch.object(update, "__version__", version.lstrip("v")):
+                    self.assertTrue(update.check_on_launch())
+                self.assertEqual(api.call_count, 3)
+                start.assert_called_once()
+                self.assertFalse(
+                    runtime.read_json(runtime.state_dir() / "last-check.json")[
+                        "available"
+                    ]
+                )
 
     def test_later_pages_are_checked_even_when_first_page_has_a_candidate(self):
         first_page = [release("v4.1.6-alpha.4", prerelease=True)] * 100
@@ -344,11 +412,12 @@ class ManualPackageTests(unittest.TestCase):
     def test_valid_upload_preserves_restart_option(self):
         data = b"fixture package"
 
-        def submit(plan, background, uploaded):
+        def submit(plan, background, uploaded, *, confirm_downgrade=False):
             self.assertTrue(plan["manual"])
             self.assertEqual(plan["asset"], {"name": self.name, "size": len(data)})
             self.assertEqual(background, selected_background)
             self.assertEqual(uploaded.read_bytes(), data)
+            self.assertFalse(confirm_downgrade)
             return {"ok": True}
 
         with (
@@ -368,17 +437,64 @@ class ManualPackageTests(unittest.TestCase):
             network.assert_not_called()
             self.assertEqual(list(Path(temporary).glob("upload-*")), [])
 
-    def test_wrong_arch_old_version_and_unrelated_packages_are_rejected(self):
+    def test_wrong_arch_and_unrelated_packages_are_rejected(self):
         for name in [
             "mower.zip",
             "hot_update.zip",
             "resource.zip",
             "arknights-mower_4.2.0_windows_x64.zip",
-            "arknights-mower_4.0.0_macos_arm64.dmg",
             "arknights-mower_4.2.0_macos_arm64.zip",
         ]:
             with self.subTest(name=name), self.assertRaises(ValueError):
                 update.manual_plan(name)
+
+    def test_older_and_same_version_uploads_are_submitted_offline(self):
+        for (system, arch, suffix), version in product(
+            [
+                ("windows", "x64", "zip"),
+                ("linux", "x64", "tar.gz"),
+                ("macos", "arm64", "dmg"),
+            ],
+            ["4.1.5", "4.1.6-alpha.4"],
+        ):
+            name = f"arknights-mower_{version}_{system}_{arch}.{suffix}"
+            with (
+                self.subTest(system=system, version=version),
+                tempfile.TemporaryDirectory() as directory,
+                patch.object(runtime, "state_dir", return_value=Path(directory)),
+                patch.object(update, "__version__", "4.1.6-alpha.4"),
+                patch.object(update, "platform_asset", return_value=(system, arch)),
+                patch.object(update, "github") as network,
+                patch.object(update, "start_job", return_value={"ok": True}) as start,
+            ):
+                result = update.upload_package(
+                    FileStorage(stream=io.BytesIO(b"fixture"), filename=name),
+                    confirm_downgrade=version == "4.1.5",
+                )
+                self.assertTrue(result["ok"])
+                self.assertEqual(start.call_args.args[0]["version"], "v" + version)
+                self.assertTrue(start.call_args.args[0]["manual"])
+                self.assertEqual(
+                    start.call_args.kwargs["confirm_downgrade"], version == "4.1.5"
+                )
+                network.assert_not_called()
+                self.assertEqual(list(Path(directory).glob("upload-*")), [])
+
+    def test_unconfirmed_rollback_upload_is_rejected_before_reading_or_staging(self):
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch.object(runtime, "state_dir") as state,
+            patch.object(update, "start_job") as start,
+        ):
+            upload = FileStorage(
+                stream=Mock(), filename="arknights-mower_4.1.5_macos_arm64.dmg"
+            )
+            for value in (False, "true", "false", 1, None):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    update.upload_package(upload, confirm_downgrade=value)
+            upload.stream.read.assert_not_called()
+            state.assert_not_called()
+            start.assert_not_called()
 
     def test_source_cannot_apply_binary_over_git_checkout(self):
         with (
@@ -470,7 +586,88 @@ class AdmissionAndRoutesTests(unittest.TestCase):
                     headers={"X-Mower-Update": "1"},
                 )
                 self.assertEqual(response.status_code, 200)
-                submit.assert_called_with("fixture", True, force=value)
+                submit.assert_called_with(
+                    "fixture", True, force=value, confirm_downgrade=False
+                )
+
+    def test_online_rollback_confirmation_is_enforced_and_cannot_be_forced(self):
+        plan = {
+            "created_at": time.time(),
+            "downgrade": True,
+            "available": True,
+            "deployment": "source",
+        }
+        with (
+            patch.dict(update._checks, {"rollback": plan}, clear=True),
+            patch.object(update, "start_job", return_value={"ok": True}) as start,
+        ):
+            for force, value in product((False, True), (False, "true", 1, None)):
+                response = self.client.post(
+                    "/software-update/start",
+                    json={
+                        "check_id": "rollback",
+                        "force": force,
+                        "confirm_downgrade": value,
+                    },
+                    headers={"X-Mower-Update": "1"},
+                )
+                self.assertEqual(response.status_code, 400)
+            start.assert_not_called()
+            response = self.client.post(
+                "/software-update/start",
+                json={"check_id": "rollback", "confirm_downgrade": True},
+                headers={"X-Mower-Update": "1"},
+            )
+            self.assertEqual(response.status_code, 200)
+            start.assert_called_once_with(
+                plan, False, force=False, confirm_downgrade=True
+            )
+
+    def test_job_admission_requires_boolean_rollback_confirmation(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(runtime, "state_dir", return_value=Path(temporary)),
+            patch.object(update, "_start_job", return_value={"ok": True}) as start,
+        ):
+            plan = {"downgrade": True}
+            for force, value in product((False, True), (False, "true", 1, None)):
+                with (
+                    self.subTest(force=force, value=value),
+                    self.assertRaises(ValueError),
+                ):
+                    update.start_job(plan, force=force, confirm_downgrade=value)
+            start.assert_not_called()
+            self.assertTrue(update.start_job(plan, confirm_downgrade=True)["ok"])
+            start.assert_called_once()
+
+    def test_manual_route_requires_explicit_rollback_confirmation(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(runtime, "state_dir", return_value=Path(temporary)),
+            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch.object(update, "platform_asset", return_value=("macos", "arm64")),
+            patch.object(update, "start_job", return_value={"ok": True}) as start,
+        ):
+            for value in (None, "false", "1", "True", "", "true"):
+                data = {
+                    "file": (
+                        io.BytesIO(b"fixture package"),
+                        "arknights-mower_4.1.5_macos_arm64.dmg",
+                    )
+                }
+                if value is not None:
+                    data["confirm_downgrade"] = value
+                response = self.client.post(
+                    "/software-update/manual",
+                    data=data,
+                    headers={"X-Mower-Update": "1"},
+                )
+                self.assertEqual(response.status_code, 200 if value == "true" else 400)
+                if value != "true":
+                    start.assert_not_called()
+            start.assert_called_once()
+            self.assertTrue(start.call_args.kwargs["confirm_downgrade"])
 
     def test_force_cannot_bypass_tools_or_apply_to_release(self):
         with (
