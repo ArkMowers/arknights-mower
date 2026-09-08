@@ -55,7 +55,10 @@ export const render_op_label = (option) => {
       h(NAvatar, {
         src: 'avatar/' + option.value + '.webp',
         round: true,
-        size: 'small'
+        size: 'small',
+        style: {
+          flexShrink: 0
+        }
       }),
       option.label
     ]
