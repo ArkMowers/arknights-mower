@@ -125,11 +125,14 @@ function createMowerTheme(palette) {
       caretColor: palette.primary
     },
     Checkbox: {
-      border: transparentBorder,
-      borderChecked: transparentBorder,
-      borderDisabled: transparentBorder,
-      borderDisabledChecked: transparentBorder,
-      borderFocus: transparentBorder,
+      // 复选框填充是近乎白色的控件色，和卡片几乎没有对比，只有一档最轻的可见描边
+      // （与普通按钮同一档）才立得住边界。五个状态给同一圈描边：naive-ui 的悬停规则
+      // 取的是 borderChecked，勾选态若留透明描边，鼠标移上去描边会突然消失。
+      border: defaultBorder,
+      borderChecked: defaultBorder,
+      borderDisabled: defaultBorder,
+      borderDisabledChecked: defaultBorder,
+      borderFocus: defaultBorder,
       boxShadowFocus: palette.focusShadow,
       borderRadius: '3px',
       color: palette.control,
