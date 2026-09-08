@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   loadWorkshopOperators,
   selectedWorkshopOperators,
+  syncWorkshopOperators,
   usesLegacyWorkshopDefaults,
   workshopRecommendationText,
   workshopTraineeWarning
@@ -51,6 +52,40 @@ describe('training plan workshop warnings', () => {
 })
 
 describe('workshop owned defaults', () => {
+  it('waits for a successful roster update before loading fresh workshop choices', async () => {
+    let finishSync
+    const sync = new Promise((resolve) => {
+      finishSync = resolve
+    })
+    const http = { get: vi.fn().mockReturnValueOnce(sync).mockResolvedValueOnce({ data }) }
+    const setting = syncWorkshopOperators(http, '/api', 90)
+    expect(http.get.mock.calls).toEqual([['/api/cultivate-fetch']])
+    finishSync({ data: { success: true } })
+    expect(await setting).toEqual(data)
+    expect(http.get.mock.calls).toEqual([
+      ['/api/cultivate-fetch'],
+      ['/api/workshop-operators/recommendations', { params: { min_bonus: 90 } }]
+    ])
+  })
+
+  it.each([
+    { success: false, message: '登录已过期' },
+    { success: false, message: '未同步到干员数据' },
+    {}
+  ])('does not replace selections using stale BOX when sync fails', async (response) => {
+    const http = { get: vi.fn().mockResolvedValue({ data: response }) }
+    await expect(syncWorkshopOperators(http, '/api')).rejects.toThrow(
+      response.message || '干员数据同步失败'
+    )
+    expect(http.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops setup if the roster update request fails', async () => {
+    const http = { get: vi.fn().mockRejectedValue(new Error('连接超时')) }
+    await expect(syncWorkshopOperators(http, '/api')).rejects.toThrow('连接超时')
+    expect(http.get).toHaveBeenCalledTimes(1)
+  })
+
   it('reads the existing BOX recommendation once and retains multiple operators', async () => {
     const http = { get: vi.fn().mockResolvedValue({ data }) }
     expect(await loadWorkshopOperators(http, '/api')).toEqual(data)

@@ -2293,3 +2293,36 @@ class TestDroneAccelerate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWorkshopMaterialScope(unittest.TestCase):
+    def test_stale_queued_tasks_do_not_enter_processing_for_forbidden_recipes(self):
+        from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+        for name, material in [
+            ("九色鹿", "糖组"),
+            ("蚀清", "双极纳米片"),
+            ("莱伊", "糖聚块"),
+        ]:
+            with self.subTest(operator=name):
+                solver = object.__new__(BaseSchedulerSolver)
+                settings = [
+                    RIICPart.WorkShopSetting(
+                        operator=name, items=[WorkShopItem(item_names=[material])]
+                    )
+                ]
+                with (
+                    patch.object(
+                        base_schedule.config.conf, "workshop_settings", settings
+                    ),
+                    patch.object(base_schedule, "cultivateDepotSolver"),
+                    patch.object(
+                        base_schedule, "get_inventory_counts", return_value={}
+                    ),
+                    patch.object(base_schedule, "save_exception") as errors,
+                    patch.object(solver, "factory_scene") as scene,
+                ):
+                    solver.generate_product(name)
+                scene.assert_not_called()
+                errors.assert_not_called()
+                self.assertEqual(settings[0].items[0].item_names, [material])

@@ -495,11 +495,13 @@
       <n-space vertical>
         <n-alert v-if="workshopDefaultsError" type="warning">{{ workshopDefaultsError }}</n-alert>
         <n-text depth="3">
-          默认按已读取的 BOX
+          一键设置先同步干员数据，再按最新 BOX
           填入已拥有、已解锁技能且副产品概率加成达到所设下限的干员，可继续手动增删。
-          材料专属干员仅分配符合条件的材料，相关低阶材料也会生成合成配置。 按加成从高到低使用；80%
-          并列时优先蜜莓，T5 其次为缇缇。
-          专属干员加成达到该材料的最高值时，仅向同种材料的专属干员分配，通用干员不再合成该材料。
+          材料专属干员仅分配符合条件的材料，相关低阶材料也会生成合成配置。
+          九色鹿、蚀清的材料合成仅限 T4，依次优先使用；莱伊仅用于非 T4。
+          其余按加成从高到低使用，同加成时优先有已解锁宿舍技能的干员；80% 并列时优先蜜莓，T5
+          其次为缇缇。 除上述 T4
+          优先干员外，专属干员加成达到该材料的最高值时，仅向同种材料的专属干员分配，通用干员不再合成该材料。
           主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时不参与自动推荐和自动合成配置。
           年、缇缇保留给 T5；80% 加成干员可同时填入符合条件的多个分类，其他干员按 T5、技巧概要、非
           T5 的顺序分配。
@@ -562,12 +564,14 @@
                 >
                   <n-text depth="3">{{ workshopRecommendationText(operator) }}</n-text>
                 </div>
-                <n-text v-if="!workshopDefaults.defaults[category.key].length" depth="3"
-                  >暂无符合技能和排班条件的干员</n-text
+                <n-text v-if="!workshopDefaults.recommendations[category.key].length" depth="3"
+                  >暂无符合推荐门槛、技能和排班条件的干员</n-text
                 >
               </div>
               <n-text depth="3"
-                >推荐计入材料类别、具体材料和配方原始消耗条件；宿舍、情报储备等动态加成需满足实际条件，此处不预设。</n-text
+                >推荐展示九色鹿、蚀清，以及材料加成至少 90% 或技巧概要加成至少 80%
+                的干员，包含特殊材料加成。
+                一键设置仍按上方自定义下限填写。宿舍、情报储备等动态加成需满足实际条件，此处不预设。</n-text
               >
             </n-space>
           </n-collapse-item>
@@ -591,6 +595,7 @@
 <script setup>
 import {
   loadWorkshopOperators,
+  syncWorkshopOperators,
   selectedWorkshopOperators,
   usesLegacyWorkshopDefaults,
   workshopRecommendationText,
@@ -707,16 +712,13 @@ const workshopCategoryLabels = [
   { key: 'book_operators', label: '技巧概要' }
 ]
 
-async function readWorkshopDefaults(apply = false) {
+async function readWorkshopDefaults(apply = false, sync = false) {
   if (workshopDefaultsLoading.value) return
   workshopDefaultsLoading.value = true
   workshopDefaultsError.value = ''
   try {
-    const data = await loadWorkshopOperators(
-      axios,
-      import.meta.env.VITE_HTTP_URL,
-      workshopMinBonus.value
-    )
+    const load = sync ? syncWorkshopOperators : loadWorkshopOperators
+    const data = await load(axios, import.meta.env.VITE_HTTP_URL, workshopMinBonus.value)
     workshopDefaults.value = data
     if (apply) {
       fodderOps.value = [...data.defaults.fodder_operators]
@@ -742,7 +744,7 @@ async function openWorkshopSettings() {
 }
 
 async function setWorkshopOperators() {
-  await readWorkshopDefaults(true)
+  await readWorkshopDefaults(true, true)
 }
 const workshopT3Summary = ref([])
 

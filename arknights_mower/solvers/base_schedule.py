@@ -1147,6 +1147,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             item_list = next(
                 (s.items for s in config.conf.workshop_settings if s.operator == agent)
             )
+            from arknights_mower.utils.workshop_recommendation import (
+                scope_workshop_items,
+            )
+
+            item_list = scope_workshop_items(agent, item_list, workshop_formula)
+            if not item_list:
+                logger.info(f"{agent}没有符合材料范围的加工配置，跳过")
+                return
             seen = set()
             group = defaultdict(dict)
             for item in item_list:

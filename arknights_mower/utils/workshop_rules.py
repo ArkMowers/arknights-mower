@@ -4,6 +4,8 @@ import re
 
 
 def compile_workshop_buff(buff):
+    if buff.get("roomType") == "DORMITORY":
+        return [{"kind": "dormitory"}]
     if buff.get("roomType") != "WORKSHOP":
         return []
     text = re.sub(r"<[^>]*>", "", buff["description"])
@@ -75,7 +77,13 @@ def compile_workshop_data(characters, building):
             # Empty upgrades replace their predecessor too.
             if any(v["effects"] for v in versions):
                 groups.append(versions)
-        if groups:
+        # Dorm skills break workshop ties, but must not add dorm-only operators.
+        if any(
+            effect["kind"] != "dormitory"
+            for group in groups
+            for version in group
+            for effect in version["effects"]
+        ):
             operators[cid] = {"name": char["name"], "groups": groups}
     # Preserve actual ingredient quantities; workshop_formula only stores names.
     recipe_ingredients = {

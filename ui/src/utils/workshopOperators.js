@@ -14,6 +14,14 @@ export function workshopTraineeWarning(name, operators) {
     : ''
 }
 
+export async function syncWorkshopOperators(http, baseUrl, minBonus = 80) {
+  const synced = await http.get(`${baseUrl}/cultivate-fetch`)
+  if (!synced.data?.success) {
+    throw new Error(synced.data?.message || '干员数据同步失败，请稍后重试')
+  }
+  return loadWorkshopOperators(http, baseUrl, minBonus)
+}
+
 export async function loadWorkshopOperators(http, baseUrl, minBonus = 80) {
   const { data } = await http.get(`${baseUrl}/workshop-operators/recommendations`, {
     params: { min_bonus: minBonus }
@@ -49,8 +57,11 @@ export function workshopRecommendationText(operator) {
   const materials = operator.materials || []
   const bonus = [...new Set(Object.values(operator.bonuses || {}))].sort((a, b) => a - b)
   const amount = bonus.length > 1 ? `${bonus[0]}～${bonus.at(-1)}` : bonus[0]
-  const scope = operator.specialist
-    ? `仅${materials.join('、')}`
-    : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
+  const scope =
+    operator.material_scope === 't4'
+      ? '仅 T4 材料'
+      : operator.specialist
+        ? `仅${materials.join('、')}`
+        : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
   return `${operator.name}：${scope}，副产品概率加成 +${amount}%`
 }
