@@ -153,16 +153,17 @@ def _swap_candidates(execution, options):
     ]
 
 
-def _current_rate(options, support, level, central):
+def _current_rate(options, support, level):
     current = options.get(support, {}).get(level)
     if support and current is None:
         raise SupportPlanError("当前协助者不在可用名单中，停止自动换人")
-    return rate(current["efficiency"], central) if current else 1 + central / 100
+    # Count central acceleration only on the destination when validating a handoff.
+    return rate(current["efficiency"]) if current else 1
 
 
 def _apply_swap(execution, support, options, central):
     route, level = execution.route, execution.level
-    speed = _current_rate(options, support, level, central)
+    speed = _current_rate(options, support, level)
     stats = _swap_candidates(execution, options)
     swapping = bool(route.get("swap_target")) and level < execution.plan["target_level"]
     correcting = support != route["operator"]

@@ -65,7 +65,8 @@ def schedule_support_swap(solver, plan, end, level):
         return None
     if route.get("working_operator") != route["operator"]:
         return None
-    current_rate = rate(route["efficiency"], route["central_bonus"])
+    # Scheduled central staff may be absent: preserve the legacy conservative ratio.
+    current_rate = rate(route["efficiency"])
     tail_rate = rate(route["swap_efficiency"], route["central_bonus"])
     target_seconds = (300 + route["mastery_swap_buffer"]) * 60
     now = datetime.now()

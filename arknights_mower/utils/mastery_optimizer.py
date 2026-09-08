@@ -14,7 +14,9 @@ def _duration(first, reducer, spec):
         return spec.work / speed, None
     tail = (300 + max(1, spec.buffer)) / 60
     tail_speed = rate(reducer["efficiency"], spec.central)
-    remaining_work = spec.work - tail * tail_speed
+    # Match runtime handoff timing: central counts on the destination only.
+    # Overall duration still uses nominal speeds on both legs.
+    remaining_work = spec.work - tail * tail_speed * speed / rate(first["efficiency"])
     if not spec.manual and (
         remaining_work <= 0 or first["efficiency"] <= reducer["efficiency"]
     ):

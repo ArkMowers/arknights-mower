@@ -74,6 +74,7 @@ from arknights_mower.utils.scheduler_task import (
     check_dorm_ordering,
     find_next_task,
     plan_metadata,
+    protect_support_swaps,
     scheduling,
     try_add_release_dorm,
     try_reorder,
@@ -225,6 +226,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         scheduling(self.tasks)
         check_dorm_ordering(self.tasks, self.op_data)
+        protect_support_swaps(self.tasks)
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
@@ -562,6 +564,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.back()
             return
         if self.task is not None:
+            # Navigation/reconnection may have consumed the margin since run().
+            # Recheck at a safe boundary, before any staff arrangement has started.
+            previous_time = self.task.time
+            protect_support_swaps(self.tasks)
+            if self.task.time != previous_time and self.task.time > datetime.now():
+                self.task = None
+                self.skip()
+                return True
             try:
                 if self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
@@ -676,7 +686,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.仓库扫描()
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
-                del self.tasks[0]
+                self.tasks[:] = [t for t in self.tasks if t is not self.task]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
             except MowerExit:
@@ -1589,6 +1599,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             adj_0_task, adj_task = adj_tasks
         except TypeError:
             return None
+        # A mastery handoff is a fixed deadline, never a drone target.
+        run_orders = [
+            t for t in adj_tasks if t.type == TaskTypes.RUN_ORDER and t.meta_data
+        ]
+        if len(run_orders) != 2:
+            return run_orders[0].meta_data if len(run_orders) == 1 else None
         adjust_0_room = adj_0_task.meta_data
         adjust_room = adj_task.meta_data
         # 如果加速房间为跑单房间，则优先使用
@@ -2378,7 +2394,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         action_required_task = scheduling(self.tasks)
         # logger.error(f"action_required_task:{action_required_task}")
         logger.debug(f"room:{room}")
-        logger.debug(any(task.meta_data == room for task in action_required_task))
+        logger.debug(self.get_run_order_adjust_room(action_required_task) == room)
         # while  action_required_task is not None and any(task.meta_data == room for task in action_required_task):
 
         # 设置为每次循环都验证一次当前房间 是否适合加速
