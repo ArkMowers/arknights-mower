@@ -92,15 +92,15 @@ def parse_resource_version(value: str) -> datetime:
             tzinfo=timezone.utc
         )
     except (TypeError, ValueError):
-        raise MaaUpdateError("Maa 资源版本格式无效") from None
+        raise MaaUpdateError("MAA 资源版本格式无效") from None
 
 
 def _resource_info_from_payload(payload: Any) -> dict[str, str]:
     if not isinstance(payload, dict):
-        raise MaaUpdateError("Maa 资源版本文件格式无效")
+        raise MaaUpdateError("MAA 资源版本文件格式无效")
     version = payload.get("last_updated")
     if not isinstance(version, str) or not version.strip():
-        raise MaaUpdateError("Maa 资源版本文件缺少 last_updated")
+        raise MaaUpdateError("MAA 资源版本文件缺少 last_updated")
     version = version.strip()
     parse_resource_version(version)
     activity = payload.get("activity")
@@ -139,7 +139,7 @@ def get_github_resource_release(
     except MaaUpdateError:
         raise
     except (requests.RequestException, ValueError):
-        raise MaaUpdateError("获取最新 Maa 资源版本失败") from None
+        raise MaaUpdateError("获取最新 MAA 资源版本失败") from None
     return MaaResourceRelease(
         version=info["version"],
         source="github",
@@ -201,7 +201,7 @@ def get_mirrorchyan_resource_release(
         raise MaaUpdateError(_MIRRORCHYAN_ERRORS[7001])
     version = data.get("version_name")
     if not isinstance(version, str):
-        raise MaaUpdateError("Mirror酱返回的 Maa 资源版本无效")
+        raise MaaUpdateError("Mirror酱返回的 MAA 资源版本无效")
     version = version.strip()
     remote_time = parse_resource_version(version)
     available = not current_version or remote_time > parse_resource_version(
@@ -246,7 +246,7 @@ def get_maa_resource_release(
             session=client,
         )
     if source != "github":
-        raise MaaUpdateError("未知的 Maa 资源更新源")
+        raise MaaUpdateError("未知的 MAA 资源更新源")
     release = get_github_resource_release(client)
     return replace(
         release,
@@ -289,19 +289,19 @@ def download_resource_archive(
                         "downloading",
                         downloaded,
                         total,
-                        f"正在通过 {'Mirror酱' if release.source == 'mirrorchyan' else 'GitHub'}下载 Maa 资源包",
+                        f"正在通过 {'Mirror酱' if release.source == 'mirrorchyan' else 'GitHub'}下载 MAA 资源包",
                     )
     except requests.RequestException:
-        raise MaaUpdateError("下载 Maa 资源包失败") from None
+        raise MaaUpdateError("下载 MAA 资源包失败") from None
     finally:
         if part_path.exists() and downloaded == 0:
             part_path.unlink()
     if release.size and downloaded != release.size:
         part_path.unlink(missing_ok=True)
-        raise MaaUpdateError(f"Maa 资源包下载不完整：{downloaded}/{release.size} 字节")
+        raise MaaUpdateError(f"MAA 资源包下载不完整：{downloaded}/{release.size} 字节")
     if release.sha256 and digest.hexdigest().lower() != release.sha256.lower():
         part_path.unlink(missing_ok=True)
-        raise MaaUpdateError("Maa 资源包 SHA-256 校验失败")
+        raise MaaUpdateError("MAA 资源包 SHA-256 校验失败")
     os.replace(part_path, destination)
     return downloaded
 
@@ -323,16 +323,16 @@ def _resource_relative_path(info: ZipInfo) -> PurePosixPath | None:
 def _inspect_resource_archive(archive: ZipFile) -> tuple[str, list[ZipInfo]]:
     infos = archive.infolist()
     if len(infos) > MAX_RESOURCE_FILES:
-        raise MaaUpdateError("Maa 资源包文件数量异常")
+        raise MaaUpdateError("MAA 资源包文件数量异常")
     if sum(info.file_size for info in infos) > MAX_RESOURCE_SIZE:
-        raise MaaUpdateError("Maa 资源包解压后体积异常")
+        raise MaaUpdateError("MAA 资源包解压后体积异常")
     resource_infos: list[ZipInfo] = []
     version_infos: list[ZipInfo] = []
     for info in infos:
         if is_unsafe_zip_member(info.filename):
-            raise MaaUpdateError("Maa 资源包包含非法路径")
+            raise MaaUpdateError("MAA 资源包包含非法路径")
         if _zip_info_is_symlink(info):
-            raise MaaUpdateError("Maa 资源包包含不支持的符号链接")
+            raise MaaUpdateError("MAA 资源包包含不支持的符号链接")
         relative = _resource_relative_path(info)
         if relative is None or not relative.parts:
             continue
@@ -340,21 +340,21 @@ def _inspect_resource_archive(archive: ZipFile) -> tuple[str, list[ZipInfo]]:
         if relative == PurePosixPath("version.json"):
             version_infos.append(info)
     if len(version_infos) != 1:
-        raise MaaUpdateError("Maa 资源包缺少唯一的 resource/version.json")
+        raise MaaUpdateError("MAA 资源包缺少唯一的 resource/version.json")
     try:
         payload = json.loads(archive.read(version_infos[0]).decode("utf-8"))
         version = _resource_info_from_payload(payload)["version"]
     except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
-        raise MaaUpdateError("Maa 资源包中的 version.json 无效") from None
+        raise MaaUpdateError("MAA 资源包中的 version.json 无效") from None
     return version, resource_infos
 
 
 def _ensure_current_resource_tree_safe(current_resource: Path) -> None:
     if current_resource.is_symlink():
-        raise MaaUpdateError("Maa resource 目录不能是符号链接")
+        raise MaaUpdateError("MAA resource 目录不能是符号链接")
     for path in current_resource.rglob("*"):
         if path.is_symlink():
-            raise MaaUpdateError("Maa resource 目录包含不支持的符号链接")
+            raise MaaUpdateError("MAA resource 目录包含不支持的符号链接")
 
 
 def merge_resource_archive(
@@ -365,12 +365,12 @@ def merge_resource_archive(
 ) -> str:
     """把增量资源覆盖到旧资源副本，返回包内资源版本。"""
     if not current_resource.is_dir():
-        raise MaaUpdateError("Maa 安装目录中没有 resource 文件夹")
+        raise MaaUpdateError("MAA 安装目录中没有 resource 文件夹")
     _ensure_current_resource_tree_safe(current_resource)
     try:
         shutil.copytree(current_resource, staged_resource)
     except OSError as e:
-        raise MaaUpdateError(f"复制现有 Maa 资源失败：{e}") from e
+        raise MaaUpdateError(f"复制现有 MAA 资源失败：{e}") from e
     try:
         with ZipFile(archive_path) as archive:
             version, infos = _inspect_resource_archive(archive)
@@ -400,12 +400,12 @@ def merge_resource_archive(
                     "merging",
                     file_index,
                     len(files),
-                    "正在合并 Maa 增量资源",
+                    "正在合并 MAA 增量资源",
                 )
     except BadZipFile:
-        raise MaaUpdateError("Maa 资源包不是有效的 ZIP") from None
+        raise MaaUpdateError("MAA 资源包不是有效的 ZIP") from None
     except (OSError, RuntimeError) as e:
-        raise MaaUpdateError(f"合并 Maa 资源包失败：{e}") from e
+        raise MaaUpdateError(f"合并 MAA 资源包失败：{e}") from e
     try:
         payload = json.loads(
             (staged_resource / "version.json").read_text(encoding="utf-8")
@@ -414,7 +414,7 @@ def merge_resource_archive(
     except (OSError, json.JSONDecodeError, MaaUpdateError):
         staged_info = {"version": "", "release_note": ""}
     if staged_info["version"] != version:
-        raise MaaUpdateError("合并后的 Maa 资源版本校验失败")
+        raise MaaUpdateError("合并后的 MAA 资源版本校验失败")
     return version
 
 
@@ -426,21 +426,21 @@ def install_maa_resource_update(
     session: requests.Session | None = None,
     callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """检查并原子合并 MaaResource；Windows 由 Maa 主程序负责。"""
+    """检查并原子合并 MaaResource；Windows 由 MAA 主程序负责。"""
     system = system.lower()
     if system not in {"darwin", "linux"}:
-        raise MaaUpdateError("当前平台请在 Maa 主程序中更新 Maa 资源")
+        raise MaaUpdateError("当前平台请在 MAA 主程序中更新 MAA 资源")
     target_path = Path(target).expanduser()
     if not has_maa_installation(target_path):
-        raise MaaUpdateError("请先下载并设置有效的 Maa 目录")
+        raise MaaUpdateError("请先下载并设置有效的 MAA 目录")
     resource_path = target_path / "resource"
     if not resource_path.is_dir():
-        raise MaaUpdateError("Maa 安装目录中没有 resource 文件夹")
+        raise MaaUpdateError("MAA 安装目录中没有 resource 文件夹")
     if source not in {"github", "mirrorchyan"}:
-        raise MaaUpdateError("未知的 Maa 资源更新源")
+        raise MaaUpdateError("未知的 MAA 资源更新源")
 
     current = read_maa_resource_info(target_path)
-    _emit(callback, "checking", 0, 0, "正在检查 Maa 资源更新")
+    _emit(callback, "checking", 0, 0, "正在检查 MAA 资源更新")
     client = session or requests.Session()
     release = get_maa_resource_release(
         source,
@@ -479,12 +479,12 @@ def install_maa_resource_update(
             callback=callback,
         )
         if merged_version != release.version:
-            raise MaaUpdateError("下载包与 Maa 资源版本信息不一致")
-        _emit(callback, "installing", 0, 0, "正在切换 Maa 资源并保留回滚副本")
+            raise MaaUpdateError("下载包与 MAA 资源版本信息不一致")
+        _emit(callback, "installing", 0, 0, "正在切换 MAA 资源并保留回滚副本")
         try:
             backup = replace_with_backup(staged_resource, resource_path, work_dir)
         except OSError as e:
-            raise MaaUpdateError(f"替换 Maa 资源目录失败：{e}") from e
+            raise MaaUpdateError(f"替换 MAA 资源目录失败：{e}") from e
         installed = read_maa_resource_info(target_path)
         if installed["version"] != release.version:
             failed_resource = work_dir / "failed-resource"
@@ -495,8 +495,8 @@ def install_maa_resource_update(
                 if previous_backup.exists():
                     os.replace(previous_backup, backup)
             except OSError as e:
-                raise MaaUpdateError(f"Maa 资源版本校验失败且回滚失败：{e}") from e
-            raise MaaUpdateError("更新后重新读取 Maa 资源版本失败，已回滚")
+                raise MaaUpdateError(f"MAA 资源版本校验失败且回滚失败：{e}") from e
+            raise MaaUpdateError("更新后重新读取 MAA 资源版本失败，已回滚")
 
     return {
         "updated": True,

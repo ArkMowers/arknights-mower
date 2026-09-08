@@ -41,7 +41,7 @@ faq_tool_def = {
 FAQ_LIST = [
     {
         "keywords": ["dll", "maa", "dll was not found", "dll加载失败", "dll报错"],
-        "question": "无法调用maa,提示缺少dll",
+        "question": "无法调用MAA,提示缺少dll",
         "answer": "可以使用最新版下崽器替换更新dll，使用时确保Mower 已经后台关闭,或者群文件有替换攻略",
     },
     {
@@ -65,7 +65,7 @@ FAQ_LIST = [
     {
         "keywords": ["模拟器", "路径", "连接", "adb"],
         "question": "mower怎么设置模拟器路径和连接地址（mumu模拟器简化版）",
-        "answer": 'mower设置。ADB路径可以直接从maa中抄取。\n地址是[模拟器地址\\adb.exe]\n如D:\\Program Files\\Netease\\MuMu Player 12\\shell\\adb.exe。\nADB连接地址格式为127.0.0.1:（），括号内容为选用模拟器的端口号\n*以下为几个常见模拟器的默认端口：\n- 蓝叠模拟器 5555\n- 夜神模拟器 62001\n- MuMu模拟器/MuMu模拟器X 7555\n- MuMu12模拟器16384\n- 逍遥模拟器 21503\n- 雷电模拟器 5555 或emulator-5554\n大部分模拟器自带的多开器也有查询每个实例端口的功能\n*怎么查看ADB连接地址(较详):\n在win10系统中，直接win+R键，然后输入cmd，回车，接着将目录切换至adb.exe所在的文件夹。\n具体操作：当前目录与adb.exe所在的文件夹同盘符时\n输入"cd 具体的文件夹名"并回车，具体的文件夹名可右键文件资源管理器地址栏中直接复制。输入"adb devices"并回车，即可显示ADB地址。(如图)\n当前目录与adb.exe所在的文件夹不同盘符时，需首先输入盘符名，如\nD: ，再继续操作。',
+        "answer": 'mower设置。ADB路径可以直接从MAA中抄取。\n地址是[模拟器地址\\adb.exe]\n如D:\\Program Files\\Netease\\MuMu Player 12\\shell\\adb.exe。\nADB连接地址格式为127.0.0.1:（），括号内容为选用模拟器的端口号\n*以下为几个常见模拟器的默认端口：\n- 蓝叠模拟器 5555\n- 夜神模拟器 62001\n- MuMu模拟器/MuMu模拟器X 7555\n- MuMu12模拟器16384\n- 逍遥模拟器 21503\n- 雷电模拟器 5555 或emulator-5554\n大部分模拟器自带的多开器也有查询每个实例端口的功能\n*怎么查看ADB连接地址(较详):\n在win10系统中，直接win+R键，然后输入cmd，回车，接着将目录切换至adb.exe所在的文件夹。\n具体操作：当前目录与adb.exe所在的文件夹同盘符时\n输入"cd 具体的文件夹名"并回车，具体的文件夹名可右键文件资源管理器地址栏中直接复制。输入"adb devices"并回车，即可显示ADB地址。(如图)\n当前目录与adb.exe所在的文件夹不同盘符时，需首先输入盘符名，如\nD: ，再继续操作。',
     },
     {
         "keywords": ["无法", "模拟器", "启动", "设备"],

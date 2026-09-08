@@ -30,14 +30,14 @@ try:
     version = asst.get_version()
     asst.set_instance_option(2, params["maa_touch_option"])
     if asst.connect(params["maa_adb_path"], params["adb"], params["maa_conn_preset"]):
-        result = {"status": "success", "message": f"Maa {version} 连接成功"}
+        result = {"status": "success", "message": f"MAA {version} 连接成功"}
     else:
         result = {
             "status": "connection_failed",
-            "message": "连接失败，请检查Maa日志！",
+            "message": "连接失败，请检查MAA日志！",
         }
 except Exception as e:
-    result = {"status": "error", "message": "Maa测试异常：" + str(e)}
+    result = {"status": "error", "message": "MAA测试异常：" + str(e)}
 
 print(json.dumps(result, ensure_ascii=True))
 """
@@ -80,10 +80,10 @@ def run_maa_check(params: dict) -> dict[str, str]:
         if asst.connect(
             params["maa_adb_path"], params["adb"], params["maa_conn_preset"]
         ):
-            return {"status": "success", "message": f"Maa {version} 连接成功"}
-        return {"status": "connection_failed", "message": "连接失败，请检查Maa日志！"}
+            return {"status": "success", "message": f"MAA {version} 连接成功"}
+        return {"status": "connection_failed", "message": "连接失败，请检查MAA日志！"}
     except Exception as e:
-        return {"status": "error", "message": "Maa测试异常：" + str(e)}
+        return {"status": "error", "message": "MAA测试异常：" + str(e)}
     finally:
         # Only needed while loading `asst`; drop it so a process that re-runs the
         # check (or the test runner) does not leak the MAA dir onto sys.path.
@@ -139,7 +139,7 @@ def parse_maa_check_output(
         except json.JSONDecodeError:
             pass
 
-    message = "Maa测试进程异常退出"
+    message = "MAA测试进程异常退出"
     if returncode is not None:
         message += f"：{returncode}"
     if stderr.strip():
@@ -150,5 +150,5 @@ def parse_maa_check_output(
 def maa_check_timeout_result(timeout: int = MAA_CHECK_TIMEOUT) -> dict[str, str]:
     return {
         "status": "timeout",
-        "message": f"Maa连通性测试超时（{timeout}秒），已终止测试进程",
+        "message": f"MAA连通性测试超时（{timeout}秒），已终止测试进程",
     }

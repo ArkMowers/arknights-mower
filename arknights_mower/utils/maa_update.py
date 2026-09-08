@@ -3,7 +3,7 @@
 运行库使用官方 macOS runtime 包；Python API 则通过 HTTP Range 读取 Windows
 arm64 ZIP 的中央目录，只提取其中的 ``Python`` 目录，避免下载完整 Windows 包。
 Linux 按当前架构下载单个官方 ``tar.gz`` 完整包。
-Windows 未安装 Maa 时按当前架构下载完整包，已有安装则提示用户打开 Maa 手动更新。
+Windows 未安装 MAA 时按当前架构下载完整包，已有安装则提示用户打开 MAA 手动更新。
 """
 
 from __future__ import annotations
@@ -180,7 +180,7 @@ def is_maa_version_newer(latest: str, installed: str) -> bool:
     try:
         return Version(latest.strip()) > Version(installed.strip())
     except (AttributeError, InvalidVersion):
-        raise MaaUpdateError("Maa 版本号格式无效，请检查安装目录") from None
+        raise MaaUpdateError("MAA 版本号格式无效，请检查安装目录") from None
 
 
 def parse_release(
@@ -1280,7 +1280,7 @@ def _find_maa_core_library(target: Path | str) -> Path | None:
 
 
 def has_maa_installation(target: Path | str) -> bool:
-    """根据 Maa 核心或 Windows 入口文件判断目录内是否已有 Maa。"""
+    """根据 MAA 核心或 Windows 入口文件判断目录内是否已有 MAA。"""
     path = Path(target).expanduser()
     known_names = {
         name.lower() for name in (*MAA_CORE_LIBRARY_NAMES, "MAA.exe", "MAA.Updater.exe")
@@ -1359,7 +1359,7 @@ def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
 
 
 def clear_loaded_maa_cache(target: Path | str) -> None:
-    """释放 Mower 进程内已经读取的 Maa 实例、模块和导入路径。"""
+    """释放 Mower 进程内已经读取的 MAA 实例、模块和导入路径。"""
     main_module = sys.modules.get("arknights_mower.__main__")
     scheduler = getattr(main_module, "base_scheduler", None)
     if scheduler is not None:
@@ -1404,9 +1404,9 @@ def install_latest_maa(
     """下载或更新 MAA，切换成功后把原目录保留为同级 ``.old``。"""
     target_path = Path(target).expanduser()
     if not target_path.name or target_path == target_path.parent:
-        raise MaaUpdateError("Maa 目录无效")
+        raise MaaUpdateError("MAA 目录无效")
     if target_path.exists() and not target_path.is_dir():
-        raise MaaUpdateError("Maa 目录指向的不是文件夹")
+        raise MaaUpdateError("MAA 目录指向的不是文件夹")
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     client = session or requests.Session()
@@ -1421,7 +1421,7 @@ def install_latest_maa(
     elif system == "windows":
         arch = normalize_windows_arch(machine)
         if installed_before:
-            raise MaaUpdateError("已检测到 Windows Maa，请手动打开 Maa 进行更新")
+            raise MaaUpdateError("已检测到 Windows MAA，请手动打开 MAA 进行更新")
     else:
         arch = ""
     if source not in {"github", "mirrorchyan"}:
@@ -1554,12 +1554,12 @@ def install_latest_maa(
             0,
             0,
             (
-                "正在安装已下载的 Windows Maa 完整包"
+                "正在安装已下载的 Windows MAA 完整包"
                 if system == "windows"
                 else (
-                    "正在备份旧版本并完成 Maa 更新"
+                    "正在备份旧版本并完成 MAA 更新"
                     if installed_before
-                    else "正在安装已下载的 Maa"
+                    else "正在安装已下载的 MAA"
                 )
             ),
         )

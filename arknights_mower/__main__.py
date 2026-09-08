@@ -229,7 +229,7 @@ def simulate(saved, restart_after_mood_read=False):
                     if config.conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()
 
-                    # 应该在maa任务之后
+                    # 应该在MAA任务之后
                     def _is_depotscan():
                         path = get_path("@app/tmp/depotresult.csv")
                         if os.path.exists(path):

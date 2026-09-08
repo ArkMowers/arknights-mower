@@ -43,14 +43,14 @@ class TestMaaCheck(unittest.TestCase):
         result = parse_maa_check_output("", "  <no Python frame>\n", 1)
 
         self.assertEqual(result["status"], "error")
-        self.assertIn("Maa测试进程异常退出：1", result["message"])
+        self.assertIn("MAA测试进程异常退出：1", result["message"])
 
     def test_timeout_has_distinct_status(self):
         self.assertEqual(
             maa_check_timeout_result(5),
             {
                 "status": "timeout",
-                "message": "Maa连通性测试超时（5秒），已终止测试进程",
+                "message": "MAA连通性测试超时（5秒），已终止测试进程",
             },
         )
 

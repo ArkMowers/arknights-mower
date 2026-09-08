@@ -779,11 +779,11 @@ class BaseSolver:
                         logger.info("生息演算导航完成（ra/start_button）")
                         return
                     logger.info("匹配到 continue_button（非当前模式预期）")
-                    send_message("生息演算（Maa）导航失败：未正确选择模式")
-                    raise Exception("生息演算（Maa）导航失败：未正确选择模式")
+                    send_message("生息演算（MAA）导航失败：未正确选择模式")
+                    raise Exception("生息演算（MAA）导航失败：未正确选择模式")
                 self.sleep(1)
             else:
-                raise Exception("生息演算（Maa）导航失败：未识别到开始/继续按钮")
+                raise Exception("生息演算（MAA）导航失败：未识别到开始/继续按钮")
 
         # RelaunchAnchor 主题
         elif theme == "RelaunchAnchor":

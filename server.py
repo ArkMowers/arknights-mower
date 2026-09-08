@@ -409,13 +409,13 @@ def _run_maa_resource_update(
             clear_loaded_maa_cache(result["target"])
         result["installed"] = read_maa_resource_info(result["target"])
     except Exception as e:
-        logger.exception(f"Maa 资源更新失败：{e}")
+        logger.exception(f"MAA 资源更新失败：{e}")
         with maa_resource_update_lock:
             maa_resource_update_job.update(
                 {
                     "status": "error",
                     "phase": "error",
-                    "message": f"Maa 资源更新失败：{e}",
+                    "message": f"MAA 资源更新失败：{e}",
                     "progress": None,
                     "result": None,
                     "thread": None,
@@ -425,9 +425,9 @@ def _run_maa_resource_update(
 
     source_label = "Mirror酱" if result["source"] == "mirrorchyan" else "GitHub"
     if result["updated"]:
-        message = f"Maa 资源 {result['version']} 已通过 {source_label}更新完成"
+        message = f"MAA 资源 {result['version']} 已通过 {source_label}更新完成"
     else:
-        message = f"Maa 资源 {result['version']} 已是最新版本"
+        message = f"MAA 资源 {result['version']} 已是最新版本"
     with maa_resource_update_lock:
         maa_resource_update_job.update(
             {
@@ -1124,7 +1124,7 @@ def get_maa_adb_version():
             logger.exception(e)
             return {
                 "status": "error",
-                "message": f"Maa测试启动失败：{e}",
+                "message": f"MAA测试启动失败：{e}",
             }
         maa_check_job.update(
             {
@@ -1255,12 +1255,12 @@ def check_maa_update():
     payload = request.get_json(silent=True) or {}
     target_text = str(payload.get("maa_path") or config.conf.maa_path or "").strip()
     if not target_text:
-        return {"ok": False, "message": "请先设置 Maa 目录"}
+        return {"ok": False, "message": "请先设置 MAA 目录"}
     target = str(Path(resolve_config_path(target_text)).expanduser())
     if not has_maa_installation(target):
-        return {"ok": False, "message": "当前目录未检测到 Maa，请使用下载功能"}
+        return {"ok": False, "message": "当前目录未检测到 MAA，请使用下载功能"}
     if __system__ == "windows":
-        return {"ok": False, "message": "请手动打开 Maa 检查并完成更新"}
+        return {"ok": False, "message": "请手动打开 MAA 检查并完成更新"}
     if __system__ not in {"darwin", "linux"}:
         return {"ok": False, "message": "当前平台不使用 Mower 的 MAA 更新功能"}
 
@@ -1278,7 +1278,7 @@ def check_maa_update():
         )
         installed_version = read_installed_version(target, fresh=True)
         if not installed_version:
-            raise MaaUpdateError("未读取到已安装的 Maa 版本，请检查 Maa 目录")
+            raise MaaUpdateError("未读取到已安装的 MAA 版本，请检查 MAA 目录")
         release = (
             get_mirrorchyan_release(
                 mirror_token,
@@ -1312,9 +1312,9 @@ def check_maa_update():
         "installed_version": installed_version,
         "latest": release.as_dict(),
         "message": (
-            f"发现 Maa {channel_label}新版本 {release.tag}（{source_label}）"
+            f"发现 MAA {channel_label}新版本 {release.tag}（{source_label}）"
             if available
-            else f"当前 Maa 已是最新{channel_label}"
+            else f"当前 MAA 已是最新{channel_label}"
         ),
     }
 
@@ -1348,14 +1348,14 @@ def start_maa_update():
     except MaaUpdateError as e:
         return {"ok": False, "message": str(e)}
     if not target:
-        return {"ok": False, "message": "请先设置 Maa 目录"}
+        return {"ok": False, "message": "请先设置 MAA 目录"}
     target = str(Path(resolve_config_path(target)).expanduser())
     installed = has_maa_installation(target)
     operation = "更新" if installed else "下载"
     if __system__ == "windows" and installed:
         return {
             "ok": False,
-            "message": "已检测到 Windows Maa，请手动打开 Maa 进行更新",
+            "message": "已检测到 Windows MAA，请手动打开 MAA 进行更新",
         }
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": f"未知的 MAA {operation}源"}
@@ -1373,7 +1373,7 @@ def start_maa_update():
 
     with maa_maintenance_lock:
         if _job_running(maa_resource_update_job):
-            return {"ok": False, "message": "Maa 资源更新正在进行中"}
+            return {"ok": False, "message": "MAA 资源更新正在进行中"}
         if active_job():
             return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}
         with maa_update_lock:
@@ -1403,7 +1403,7 @@ def start_maa_update():
                 ):
                     return {
                         "ok": False,
-                        "message": "请先检查 Maa 更新，发现新版本后再更新",
+                        "message": "请先检查 MAA 更新，发现新版本后再更新",
                     }
             thread = Thread(
                 target=_run_maa_update,
@@ -1444,7 +1444,7 @@ def get_maa_mirrorchyan_status():
     )
 
     if __system__ not in {"darwin", "linux", "windows"}:
-        return {"ok": False, "message": "当前系统不支持 Mirror酱下载或更新 Maa"}
+        return {"ok": False, "message": "当前系统不支持 Mirror酱下载或更新 MAA"}
     payload = request.get_json(silent=True) or {}
     mirror_token = str(
         payload.get("mirror_token") or config.conf.maa_mirrorchyan_token or ""
@@ -1532,16 +1532,16 @@ def get_maa_resource_update_info():
         "job": _maa_resource_update_snapshot(),
     }
     if __system__ == "windows" and installed:
-        result["message"] = "请在 Maa 主程序中更新 Maa 资源"
+        result["message"] = "请在 MAA 主程序中更新 MAA 资源"
         return result
     if not configured_target:
-        result["message"] = "请先设置 Maa 目录"
+        result["message"] = "请先设置 MAA 目录"
         return result
     if not installed:
-        result["message"] = "请先下载并设置有效的 Maa 目录"
+        result["message"] = "请先下载并设置有效的 MAA 目录"
         return result
     if not supported:
-        result["message"] = "当前平台不使用 Mower 的 Maa 资源更新功能"
+        result["message"] = "当前平台不使用 Mower 的 MAA 资源更新功能"
         return result
     return result
 
@@ -1557,20 +1557,20 @@ def check_maa_resource_update():
 
     _clear_update_check(maa_resource_update_check, maa_resource_update_check_lock)
     if __system__ not in {"darwin", "linux"}:
-        return {"ok": False, "message": "请在 Maa 主程序中检查并更新 Maa 资源"}
+        return {"ok": False, "message": "请在 MAA 主程序中检查并更新 MAA 资源"}
     payload = request.get_json(silent=True) or {}
     target_text = str(payload.get("maa_path") or config.conf.maa_path or "").strip()
     if not target_text:
-        return {"ok": False, "message": "请先设置 Maa 目录"}
+        return {"ok": False, "message": "请先设置 MAA 目录"}
     target = str(Path(resolve_config_path(target_text)).expanduser())
     if not has_maa_installation(target):
-        return {"ok": False, "message": "请先下载并设置有效的 Maa 目录"}
+        return {"ok": False, "message": "请先下载并设置有效的 MAA 目录"}
     source = str(payload.get("source") or "github").strip()
     mirror_token = str(
         payload.get("mirror_token") or config.conf.maa_mirrorchyan_token or ""
     ).strip()
     if source not in {"github", "mirrorchyan"}:
-        return {"ok": False, "message": "未知的 Maa 资源更新源"}
+        return {"ok": False, "message": "未知的 MAA 资源更新源"}
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
 
@@ -1602,9 +1602,9 @@ def check_maa_resource_update():
         "current": current,
         "latest": release.as_dict(),
         "message": (
-            f"发现 Maa 资源新版本 {release.version}（{source_label}）"
+            f"发现 MAA 资源新版本 {release.version}（{source_label}）"
             if release.available
-            else "当前 Maa 资源已是最新版本"
+            else "当前 MAA 资源已是最新版本"
         ),
     }
 
@@ -1619,7 +1619,7 @@ def start_maa_resource_update():
     from arknights_mower.utils.maa_update import MaaUpdateError, has_maa_installation
 
     if __system__ not in {"darwin", "linux"}:
-        return {"ok": False, "message": "请在 Maa 主程序中更新 Maa 资源"}
+        return {"ok": False, "message": "请在 MAA 主程序中更新 MAA 资源"}
     payload = request.get_json(silent=True) or {}
     target = str(payload.get("maa_path") or config.conf.maa_path or "").strip()
     source = str(payload.get("source") or "github").strip()
@@ -1627,12 +1627,12 @@ def start_maa_resource_update():
         payload.get("mirror_token") or config.conf.maa_mirrorchyan_token or ""
     ).strip()
     if not target:
-        return {"ok": False, "message": "请先设置 Maa 目录"}
+        return {"ok": False, "message": "请先设置 MAA 目录"}
     target = str(Path(resolve_config_path(target)).expanduser())
     if not has_maa_installation(target):
-        return {"ok": False, "message": "请先下载并设置有效的 Maa 目录"}
+        return {"ok": False, "message": "请先下载并设置有效的 MAA 目录"}
     if source not in {"github", "mirrorchyan"}:
-        return {"ok": False, "message": "未知的 Maa 资源更新源"}
+        return {"ok": False, "message": "未知的 MAA 资源更新源"}
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
     if source == "mirrorchyan" and mirror_token != config.conf.maa_mirrorchyan_token:
@@ -1641,14 +1641,14 @@ def start_maa_resource_update():
 
     with maa_maintenance_lock:
         if mower_thread and mower_thread.is_alive():
-            return {"ok": False, "message": "请先停止 Mower，再更新 Maa 资源"}
+            return {"ok": False, "message": "请先停止 Mower，再更新 MAA 资源"}
         if active_job():
             return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}
         if _job_running(maa_update_job):
             return {"ok": False, "message": "MAA 下载或更新正在进行中"}
         with maa_resource_update_lock:
             if _job_running(maa_resource_update_job):
-                return {"ok": False, "message": "Maa 资源更新正在进行中"}
+                return {"ok": False, "message": "MAA 资源更新正在进行中"}
             check_id = str(payload.get("check_id") or "")
             current_version = read_maa_resource_info(target)["version"]
             checked_latest = _checked_latest_version(
@@ -1672,7 +1672,7 @@ def start_maa_resource_update():
             ):
                 return {
                     "ok": False,
-                    "message": "请先检查 Maa 资源更新，发现新版本后再更新",
+                    "message": "请先检查 MAA 资源更新，发现新版本后再更新",
                 }
             thread = Thread(
                 target=_run_maa_resource_update,
@@ -1685,7 +1685,7 @@ def start_maa_resource_update():
                     "id": uuid4().hex,
                     "status": "running",
                     "phase": "checking",
-                    "message": "正在检查 Maa 资源更新",
+                    "message": "正在检查 MAA 资源更新",
                     "current": 0,
                     "total": 0,
                     "progress": None,
