@@ -555,6 +555,26 @@ class Worker:
                     timeout=120,
                     cancellable=False,
                 )
+            except subprocess.CalledProcessError:
+                # Git removes the worktree registration even when Windows still
+                # holds a directory handle after taskkill. Retrying git remove
+                # then fails with "not a working tree"; clean only our staging
+                # directory and give those handles a bounded time to close.
+                if sys.platform == "win32" and self.source_stage.is_dir():
+                    deadline = time.monotonic() + 5
+                    while self.source_stage.exists():
+                        try:
+                            shutil.rmtree(self.source_stage)
+                        except OSError as exc:
+                            if (
+                                getattr(exc, "winerror", None) not in {5, 32, 33}
+                                or time.monotonic() >= deadline
+                            ):
+                                traceback.print_exc()
+                                break
+                            time.sleep(0.1)
+                else:
+                    traceback.print_exc()
             except Exception:
                 traceback.print_exc()
         for path in (

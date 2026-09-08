@@ -15,6 +15,7 @@ import time
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.software_update_worker import Worker
@@ -24,6 +25,16 @@ from arknights_mower.utils.software_update_worker import Worker
     shutil.which("git") and shutil.which("npm"), "requires Git and npm"
 )
 class SourceTransactionTests(unittest.TestCase):
+    def wait_for_ready_instances(self, state):
+        deadline = time.monotonic() + 10
+        while True:
+            records = runtime.instances(state)
+            if len(records) == 3 and all(record.get("ready") for record in records):
+                return records
+            if time.monotonic() >= deadline:
+                self.fail(f"three fixture instances did not become ready: {records}")
+            time.sleep(0.05)
+
     def transaction(
         self,
         fail_build=False,
@@ -204,16 +215,11 @@ class SourceTransactionTests(unittest.TestCase):
                     )
                     original.append(process)
                     threading.Thread(target=process.wait, daemon=True).start()
-                deadline = time.monotonic() + 10
-                while (
-                    len(runtime.instances(state)) != 3 and time.monotonic() < deadline
-                ):
-                    time.sleep(0.05)
-                self.assertEqual(len(runtime.instances(state)), 3)
+                records = self.wait_for_ready_instances(state)
                 # On Windows a venv python.exe can be a launcher that re-execs
                 # the real interpreter, so Popen.pid differs from the registered
                 # os.getpid(). Compare registered pids, not Popen pids.
-                original_pids = {r["pid"] for r in runtime.instances(state)}
+                original_pids = {r["pid"] for r in records}
                 work = directory / "job"
                 job = {
                     "id": "transaction",
@@ -284,12 +290,9 @@ class SourceTransactionTests(unittest.TestCase):
                 )
                 worker.execute()
                 replacements = worker.new_processes + worker.recovery_processes
-                deadline = time.monotonic() + 10
-                while (
-                    len(runtime.instances(state)) != 3 and time.monotonic() < deadline
-                ):
-                    time.sleep(0.05)
-                records = sorted(runtime.instances(state), key=lambda row: row["name"])
+                records = sorted(
+                    self.wait_for_ready_instances(state), key=lambda row: row["name"]
+                )
                 self.assertEqual(len(records), 3)
                 self.assertEqual(
                     [row["running"] for row in records], [True, False, True]
@@ -421,6 +424,28 @@ class SourceTransactionTests(unittest.TestCase):
 
     def test_failure_after_dependency_install_restores_original_environment(self):
         self.transaction(fail_install=True)
+
+
+class SourceReadinessTests(unittest.TestCase):
+    def test_registration_count_does_not_imply_fixture_readiness(self):
+        pending = [{"ready": False} for _ in range(3)]
+        ready = [{"ready": True, "fixture_version": "old"} for _ in range(3)]
+        transaction = SourceTransactionTests()
+        with (
+            patch.object(runtime, "instances", side_effect=[pending, ready]),
+            patch.object(time, "sleep") as sleep,
+        ):
+            self.assertEqual(transaction.wait_for_ready_instances(None), ready)
+        sleep.assert_called_once_with(0.05)
+
+    def test_readiness_wait_times_out_instead_of_accepting_partial_records(self):
+        transaction = SourceTransactionTests()
+        with (
+            patch.object(runtime, "instances", return_value=[{"ready": False}] * 3),
+            patch.object(time, "monotonic", side_effect=[0, 11]),
+        ):
+            with self.assertRaisesRegex(AssertionError, "did not become ready"):
+                transaction.wait_for_ready_instances(None)
 
 
 if __name__ == "__main__":

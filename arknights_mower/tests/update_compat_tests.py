@@ -49,6 +49,57 @@ class UpdateCompatibilityTests(unittest.TestCase):
             "restart_job": "compat",
         }
 
+    def test_windows_worktree_cleanup_retries_released_directory_handle(self):
+        worker = installer.Worker(self.job_path)
+        worker.job["git"] = "git"
+        worker.source_stage.mkdir()
+        (worker.source_stage / "fixture").write_text("temporary")
+        worker.run_command = Mock(side_effect=subprocess.CalledProcessError(255, "git"))
+        remove_tree = installer.shutil.rmtree
+        locked = PermissionError("directory handle still open")
+        locked.winerror = 32
+        attempts = 0
+
+        def remove(path):
+            nonlocal attempts
+            self.assertEqual(path, worker.source_stage)
+            attempts += 1
+            if attempts == 1:
+                raise locked
+            remove_tree(path)
+
+        with (
+            patch.object(installer.sys, "platform", "win32"),
+            patch.object(installer.shutil, "rmtree", side_effect=remove),
+            patch.object(installer.time, "sleep") as sleep,
+        ):
+            worker.cleanup_preparation()
+        self.assertEqual(attempts, 2)
+        self.assertFalse(worker.source_stage.exists())
+        self.assertTrue(self.root.exists())
+        worker.run_command.assert_called_once()
+        sleep.assert_called_once_with(0.1)
+
+    def test_windows_worktree_cleanup_is_bounded_and_reports_permanent_lock(self):
+        worker = installer.Worker(self.job_path)
+        worker.job["git"] = "git"
+        worker.source_stage.mkdir()
+        worker.run_command = Mock(side_effect=subprocess.CalledProcessError(255, "git"))
+        locked = PermissionError("directory stays open")
+        locked.winerror = 32
+        with (
+            patch.object(installer.sys, "platform", "win32"),
+            patch.object(installer.shutil, "rmtree", side_effect=locked) as remove,
+            patch.object(installer.time, "monotonic", side_effect=[0, 6]),
+            patch.object(installer.time, "sleep") as sleep,
+            patch.object(installer.traceback, "print_exc") as report,
+        ):
+            worker.cleanup_preparation()
+        remove.assert_called_once_with(worker.source_stage)
+        sleep.assert_not_called()
+        report.assert_called_once()
+        self.assertTrue(worker.source_stage.exists())
+
     def test_settings_apis_report_unreadable_registration_without_server_error(self):
         app = Flask(__name__)
         app.register_blueprint(software_update_bp)

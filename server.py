@@ -518,6 +518,10 @@ def _serve_resource(base_dir: Path, relative: str):
 @app.before_request
 def serve_resource_overlay():
     """图片与本实例当前加载的数据使用同一个完整资源版本。"""
+    # /depot/readdepot 等 API 与图片共用路径前缀，只接管静态文件路由。
+    if request.endpoint not in {"static", "serve_index"}:
+        return None
+
     from arknights_mower.utils.resource_pkg import resource_ui_path
 
     path = request.path.lstrip("/")
@@ -580,12 +584,56 @@ def gzip_static(response):
 
 @app.errorhandler(404)
 def not_found(e):
-    if (path := request.path).startswith("/docs"):
+    path = request.path
+    static_route = request.endpoint in {None, "static", "serve_index"}
+    if not static_route or request.method not in {"GET", "HEAD"}:
+        return {"error": "Not Found"}, 404
+
+    if path == "/docs" or path.startswith("/docs/"):
         try:
-            return send_from_directory("ui/dist" + path, "index.html")
+            return send_from_directory(
+                app.static_folder, path.strip("/") + "/index.html"
+            )
         except NotFound:
             return "<h1>404 Not Found</h1>", 404
-    return send_from_directory("ui/dist", "index.html")
+
+    # 与 Vue 路由表保持一致（routes.test.js 校验）；源码部署兼容尚未重建的 dist。
+    manifest = Path(app.static_folder) / "frontend-routes.json"
+    if not manifest.is_file():
+        manifest = get_path("@internal/ui/public/frontend-routes.json")
+    try:
+        pages = {
+            p.rstrip("/").lower() or "/"
+            for p in json.loads(manifest.read_text("utf-8"))
+        }
+    except (OSError, ValueError):
+        pages = set()
+    if (path.rstrip("/").lower() or "/") in pages:
+        return send_from_directory(app.static_folder, "index.html")
+
+    # 未知 API 和缺失资源必须保留 404，不能用首页掩盖错误。
+    root = path.strip("/").split("/", 1)[0]
+    api_roots = {
+        rule.rule.strip("/").split("/", 1)[0]
+        for rule in app.url_map.iter_rules()
+        if rule.endpoint not in {"static", "serve_index"}
+    }
+    resource_roots = {
+        "assets",
+        "avatar",
+        "depot",
+        "building_skill",
+        "basement_skill",
+        "screenshots",
+    }
+    navigation = any(
+        mime == "text/html" and quality > 0
+        for mime, quality in request.accept_mimetypes
+    ) and request.headers.get("Sec-Fetch-Dest", "") in {"", "document", "iframe"}
+    if navigation and root not in api_roots | resource_roots and not Path(path).suffix:
+        # 保留 Vue 的未知页面提示；接口客户端和静态资源请求不进入该兜底。
+        return send_from_directory(app.static_folder, "index.html")
+    return {"error": "Not Found"}, 404
 
 
 @app.route("/conf", methods=["GET", "POST"])
