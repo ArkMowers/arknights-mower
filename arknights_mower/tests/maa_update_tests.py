@@ -679,7 +679,7 @@ class TestInstallAndBackup(unittest.TestCase):
                 "get_latest_release",
                 side_effect=AssertionError("未设置目录时不应请求更新信息"),
             ),
-            self.assertRaisesRegex(mu.MaaUpdateError, "Maa 目录无效"),
+            self.assertRaisesRegex(mu.MaaUpdateError, "MAA 目录无效"),
         ):
             mu.install_latest_maa("")
 
@@ -864,9 +864,9 @@ class TestInstallAndBackup(unittest.TestCase):
             patch.object(
                 mu,
                 "get_latest_release",
-                side_effect=AssertionError("已安装 Maa 时不应请求下载信息"),
+                side_effect=AssertionError("已安装 MAA 时不应请求下载信息"),
             ),
-            self.assertRaisesRegex(mu.MaaUpdateError, "手动打开 Maa 进行更新"),
+            self.assertRaisesRegex(mu.MaaUpdateError, "手动打开 MAA 进行更新"),
         ):
             mu.install_latest_maa(
                 self.target,

@@ -262,7 +262,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
 
         data = response.get_json()
         self.assertFalse(data["ok"])
-        self.assertIn("先检查 Maa 更新", data["message"])
+        self.assertIn("先检查 MAA 更新", data["message"])
 
     def test_maa_update_start_accepts_matching_successful_check(self):
         target = str(Path(self.target).expanduser())
@@ -393,7 +393,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
 
         data = response.get_json()
         self.assertFalse(data["ok"])
-        self.assertIn("先检查 Maa 资源更新", data["message"])
+        self.assertIn("先检查 MAA 资源更新", data["message"])
 
     def test_resource_info_returns_cached_latest_version(self):
         target = str(Path(self.target).expanduser())

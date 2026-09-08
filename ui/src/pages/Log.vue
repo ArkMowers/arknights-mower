@@ -121,7 +121,7 @@ function stop_maa() {
 
 const stop_options = [
   {
-    label: '停止Maa',
+    label: '停止MAA',
     key: 'maa'
   }
 ]

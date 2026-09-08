@@ -367,5 +367,5 @@ class TestInstallMaaResource(unittest.TestCase):
         self.assertFalse((self.resource / "new.txt").exists())
 
     def test_windows_keeps_resource_update_in_maa(self):
-        with self.assertRaisesRegex(mru.MaaUpdateError, "Maa 主程序"):
+        with self.assertRaisesRegex(mru.MaaUpdateError, "MAA 主程序"):
             mru.install_maa_resource_update(self.target, system="windows")

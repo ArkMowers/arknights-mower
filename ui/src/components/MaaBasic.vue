@@ -55,7 +55,7 @@ async function test_maa() {
         return
       }
     }
-    maa_msg.value = data.message || '测试失败，请检查Maa日志！'
+    maa_msg.value = data.message || '测试失败，请检查MAA日志！'
   } catch (error) {
     maa_msg.value = `测试失败：${error.message}`
   } finally {
@@ -479,7 +479,7 @@ async function poll_maa_update() {
     }
   } catch (error) {
     maa_update_job.value.status = 'error'
-    maa_update_job.value.message = `读取 Maa ${maa_job_operation_label.value}进度失败：${error.message}`
+    maa_update_job.value.message = `读取 MAA ${maa_job_operation_label.value}进度失败：${error.message}`
   }
 }
 
@@ -514,12 +514,12 @@ async function get_maa_update_info() {
     maa_backup_path.value = data.backup || ''
     maa_update_info_msg.value = data.ok
       ? ''
-      : data.message || `读取 Maa ${maa_managed_operation_label.value}版本失败`
+      : data.message || `读取 MAA ${maa_managed_operation_label.value}版本失败`
     apply_maa_update_job(data.job, data.job?.result?.target === data.target)
     if (maa_update_job.value.status === 'running') poll_maa_update()
   } catch (error) {
     if (request_id !== maa_update_info_request_id) return
-    maa_update_info_msg.value = `读取 Maa ${maa_managed_operation_label.value}版本失败：${error.message}`
+    maa_update_info_msg.value = `读取 MAA ${maa_managed_operation_label.value}版本失败：${error.message}`
   }
 }
 
@@ -549,7 +549,7 @@ async function poll_maa_resource_update() {
     }
   } catch (error) {
     maa_resource_update_job.value.status = 'error'
-    maa_resource_update_job.value.message = `读取 Maa 资源更新进度失败：${error.message}`
+    maa_resource_update_job.value.message = `读取 MAA 资源更新进度失败：${error.message}`
   }
 }
 
@@ -569,7 +569,7 @@ async function get_maa_resource_update_info() {
       maa_resource_release_note.value = data.latest.release_note || ''
     }
     maa_resource_backup_path.value = data.backup || ''
-    maa_resource_update_info_msg.value = data.ok ? '' : data.message || '读取 Maa 资源版本失败'
+    maa_resource_update_info_msg.value = data.ok ? '' : data.message || '读取 MAA 资源版本失败'
     if (data.job?.target === data.target) {
       apply_maa_resource_update_job(data.job)
       if (maa_resource_update_job.value.status === 'running') poll_maa_resource_update()
@@ -588,7 +588,7 @@ async function get_maa_resource_update_info() {
     }
   } catch (error) {
     if (request_id !== maa_resource_update_info_request_id) return
-    maa_resource_update_info_msg.value = `读取 Maa 资源版本失败：${error.message}`
+    maa_resource_update_info_msg.value = `读取 MAA 资源版本失败：${error.message}`
   }
 }
 
@@ -598,7 +598,7 @@ async function check_maa_update() {
   maa_update_info_msg.value = ''
   if (maa_path_missing.value) {
     maa_update_check.value.status = 'error'
-    maa_update_check.value.message = '请先设置 Maa 目录'
+    maa_update_check.value.message = '请先设置 MAA 目录'
     return
   }
   if (maa_update_source.value === 'mirrorchyan') {
@@ -610,7 +610,7 @@ async function check_maa_update() {
     }
   }
   maa_update_check.value.status = 'checking'
-  maa_update_check.value.message = '正在检查 Maa 更新……'
+  maa_update_check.value.message = '正在检查 MAA 更新……'
   try {
     const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/maa-update/check`, {
       maa_path: maa_path.value,
@@ -621,7 +621,7 @@ async function check_maa_update() {
     const data = response.data
     if (!data.ok) {
       maa_update_check.value.status = 'error'
-      maa_update_check.value.message = data.message || '检查 Maa 更新失败'
+      maa_update_check.value.message = data.message || '检查 MAA 更新失败'
       return
     }
     maa_installed_version.value = data.installed_version || maa_installed_version.value
@@ -631,15 +631,15 @@ async function check_maa_update() {
       status: 'success',
       message:
         !available && maa_update_versions_equal.value
-          ? '当前 Maa 已是最新版本'
-          : data.message || (available ? '发现 Maa 新版本' : '当前 Maa 已是最新版本'),
+          ? '当前 MAA 已是最新版本'
+          : data.message || (available ? '发现 MAA 新版本' : '当前 MAA 已是最新版本'),
       available,
       id: available ? data.check_id || '' : ''
     }
   } catch (error) {
     maa_update_check.value.status = 'error'
     maa_update_check.value.message =
-      error.response?.data?.message || `检查 Maa 更新失败：${error.message}`
+      error.response?.data?.message || `检查 MAA 更新失败：${error.message}`
   }
 }
 
@@ -650,7 +650,7 @@ async function check_maa_resource_update() {
   maa_resource_update_info_msg.value = ''
   if (maa_path_missing.value) {
     maa_resource_update_check.value.status = 'error'
-    maa_resource_update_check.value.message = '请先设置 Maa 目录'
+    maa_resource_update_check.value.message = '请先设置 MAA 目录'
     return
   }
   if (maa_update_source.value === 'mirrorchyan') {
@@ -663,7 +663,7 @@ async function check_maa_resource_update() {
     }
   }
   maa_resource_update_check.value.status = 'checking'
-  maa_resource_update_check.value.message = '正在检查 Maa 资源更新……'
+  maa_resource_update_check.value.message = '正在检查 MAA 资源更新……'
   try {
     const response = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/maa-resource-update/check`,
@@ -676,7 +676,7 @@ async function check_maa_resource_update() {
     const data = response.data
     if (!data.ok) {
       maa_resource_update_check.value.status = 'error'
-      maa_resource_update_check.value.message = data.message || '检查 Maa 资源更新失败'
+      maa_resource_update_check.value.message = data.message || '检查 MAA 资源更新失败'
       return
     }
     maa_resource_current_version.value = data.current?.version || maa_resource_current_version.value
@@ -687,15 +687,15 @@ async function check_maa_resource_update() {
       status: 'success',
       message:
         !available && maa_resource_versions_equal.value
-          ? '当前 Maa 资源已是最新版本'
-          : data.message || (available ? '发现 Maa 资源新版本' : '当前 Maa 资源已是最新版本'),
+          ? '当前 MAA 资源已是最新版本'
+          : data.message || (available ? '发现 MAA 资源新版本' : '当前 MAA 资源已是最新版本'),
       available,
       id: available ? data.check_id || '' : ''
     }
   } catch (error) {
     maa_resource_update_check.value.status = 'error'
     maa_resource_update_check.value.message =
-      error.response?.data?.message || `检查 Maa 资源更新失败：${error.message}`
+      error.response?.data?.message || `检查 MAA 资源更新失败：${error.message}`
   }
 }
 
@@ -711,7 +711,7 @@ async function start_maa_update() {
   }
   if (maa_path_missing.value) {
     maa_update_job.value.status = 'error'
-    maa_update_job.value.message = '请先设置 Maa 目录'
+    maa_update_job.value.message = '请先设置 MAA 目录'
     return
   }
   if (maa_update_source.value === 'mirrorchyan') {
@@ -759,7 +759,7 @@ async function start_maa_resource_update() {
   }
   if (maa_path_missing.value) {
     maa_resource_update_job.value.status = 'error'
-    maa_resource_update_job.value.message = '请先设置 Maa 目录'
+    maa_resource_update_job.value.message = '请先设置 MAA 目录'
     return
   }
   if (maa_update_source.value === 'mirrorchyan') {
@@ -783,7 +783,7 @@ async function start_maa_resource_update() {
     )
     if (!response.data.ok) {
       maa_resource_update_job.value.status = 'error'
-      maa_resource_update_job.value.message = response.data.message || 'Maa 资源更新启动失败'
+      maa_resource_update_job.value.message = response.data.message || 'MAA 资源更新启动失败'
       return
     }
     reset_maa_resource_update_check(false)
@@ -792,7 +792,7 @@ async function start_maa_resource_update() {
   } catch (error) {
     maa_resource_update_job.value.status = 'error'
     maa_resource_update_job.value.message =
-      error.response?.data?.message || `Maa 资源更新启动失败：${error.message}`
+      error.response?.data?.message || `MAA 资源更新启动失败：${error.message}`
   }
 }
 
@@ -830,17 +830,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card title="Maa设置">
-    <template #header>Maa设置<help-text>刷理智、信用相关、领奖励、肉鸽保全等</help-text></template>
+  <n-card title="MAA设置">
+    <template #header>MAA设置<help-text>刷理智、信用相关、领奖励、肉鸽保全等</help-text></template>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
       label-width="96"
       label-align="left"
     >
-      <n-form-item label="Maa目录">
+      <n-form-item label="MAA目录">
         <template #label>
-          Maa目录
+          MAA目录
           <help-text
             >@app/MAA 表示全局 Mower 数据目录下的 MAA，所有实例共用，更新 Mower
             时保留。也可以选择自定义目录。</help-text
@@ -870,9 +870,9 @@ onUnmounted(() => {
         <div class="update-title">
           {{
             maa_update_platform === 'windows'
-              ? 'Windows 下载 Maa'
+              ? 'Windows 下载 MAA'
               : `${maa_update_platform === 'linux' ? 'Linux' : 'macOS'} ${
-                  maa_installed ? '更新 Maa' : '下载 Maa'
+                  maa_installed ? '更新 MAA' : '下载 MAA'
                 }`
           }}
         </div>
@@ -882,13 +882,13 @@ onUnmounted(() => {
               maa_latest_version || '尚未检查'
             }}
           </span>
-          <span v-if="maa_update_platform === 'windows'">已安装：未检测到 Maa</span>
+          <span v-if="maa_update_platform === 'windows'">已安装：未检测到 MAA</span>
           <span v-else>已安装：{{ maa_installed_version || '未知/手动安装' }}</span>
         </div>
         <div class="update-option">
           <span class="update-option-label">自动检查更新</span>
           <n-switch v-model:value="maa_auto_check_update" />
-          <span class="update-hint">进入此页面或更新配置后自动检查 Maa 本体与 Maa 资源。</span>
+          <span class="update-hint">进入此页面或更新配置后自动检查 MAA 本体与 MAA 资源。</span>
         </div>
         <div class="update-option">
           <span class="update-option-label">{{ maa_managed_operation_label }}通道</span>
@@ -930,7 +930,7 @@ onUnmounted(() => {
             </n-a>
           </div>
           <div v-if="maa_update_platform === 'windows'" class="update-hint">
-            未检测到 Maa，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
+            未检测到 MAA，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
             {{ maa_update_arch }} 完整包并安装到设定目录。
           </div>
           <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
@@ -944,7 +944,7 @@ onUnmounted(() => {
           </div>
         </template>
         <div v-else-if="maa_update_platform === 'windows'" class="update-hint">
-          未检测到 Maa，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows
+          未检测到 MAA，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows
           {{ maa_update_arch }} 完整包并安装到设定目录。
         </div>
         <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
@@ -957,7 +957,7 @@ onUnmounted(() => {
           universal runtime 包；Python API 仅从同版本 Windows arm64 包按需下载 Python 文件夹。
         </div>
         <div v-if="!maa_installed && maa_backup_path" class="update-hint">
-          这是 Maa 下载安装，不会作为已有 Maa 的覆盖更新流程。若目标目录已有其他内容，原目录将保存在
+          这是 MAA 下载安装，不会作为已有 MAA 的覆盖更新流程。若目标目录已有其他内容，原目录将保存在
           {{ maa_backup_path }}。
         </div>
         <div v-else-if="maa_backup_path" class="update-hint">
@@ -994,7 +994,7 @@ onUnmounted(() => {
             :disabled="maa_updating || maa_resource_updating || maa_update_checking"
             @click="check_maa_update"
           >
-            检查 Maa 更新
+            检查 MAA 更新
           </n-button>
           <n-button
             type="primary"
@@ -1004,10 +1004,10 @@ onUnmounted(() => {
           >
             {{
               maa_update_platform === 'windows'
-                ? '下载 Maa'
+                ? '下载 MAA'
                 : maa_installed
-                  ? '更新 Maa'
-                  : '下载 Maa'
+                  ? '更新 MAA'
+                  : '下载 MAA'
             }}
           </n-button>
         </n-space>
@@ -1016,21 +1016,21 @@ onUnmounted(() => {
     <template v-else-if="maa_update_platform === 'linux' && maa_update_info_msg">
       <n-divider />
       <div class="maa-updater">
-        <div class="update-title">Linux {{ maa_installed ? '更新 Maa' : '下载 Maa' }}</div>
+        <div class="update-title">Linux {{ maa_installed ? '更新 MAA' : '下载 MAA' }}</div>
         <div class="update-error">{{ maa_update_info_msg }}</div>
       </div>
     </template>
     <template v-else-if="maa_update_platform === 'windows'">
       <n-divider />
       <div class="maa-updater">
-        <div class="update-title">Windows 更新 Maa</div>
+        <div class="update-title">Windows 更新 MAA</div>
         <div class="update-meta">
-          <span>已安装：{{ maa_installed_version || '已检测到 Maa' }}</span>
+          <span>已安装：{{ maa_installed_version || '已检测到 MAA' }}</span>
         </div>
         <div class="update-hint">
-          已检测到 Windows Maa，请手动打开 Maa，并在 Maa
-          设置中完成程序及资源更新。更新源、版本通道和 Mirror酱 CDK 以 Maa 内的配置为准，Mower
-          不会覆盖 Maa 目录。
+          已检测到 Windows MAA，请手动打开 MAA，并在 MAA
+          设置中完成程序及资源更新。更新源、版本通道和 Mirror酱 CDK 以 MAA 内的配置为准，Mower
+          不会覆盖 MAA 目录。
         </div>
       </div>
     </template>
@@ -1038,7 +1038,7 @@ onUnmounted(() => {
       <n-divider />
       <div class="maa-updater">
         <div class="update-title">
-          {{ maa_update_platform === 'linux' ? 'Linux' : 'macOS' }} 更新 Maa 资源
+          {{ maa_update_platform === 'linux' ? 'Linux' : 'macOS' }} 更新 MAA 资源
         </div>
         <div class="update-meta">
           <span>当前资源：{{ maa_resource_current_version || '未知' }}</span>
@@ -1048,7 +1048,7 @@ onUnmounted(() => {
           最新活动资源：{{ maa_resource_release_note }}
         </div>
         <div class="update-hint">
-          Maa 资源更新不区分正式版与公测版，将使用上方选择的
+          MAA 资源更新不区分正式版与公测版，将使用上方选择的
           {{ maa_update_source === 'mirrorchyan' ? 'Mirror酱' : 'GitHub' }}
           更新源。资源包会增量合并到 resource 目录，不会替换 MaaCore 与 Python。
         </div>
@@ -1090,7 +1090,7 @@ onUnmounted(() => {
             :disabled="maa_resource_updating || maa_updating || maa_resource_update_checking"
             @click="check_maa_resource_update"
           >
-            检查 Maa 资源更新
+            检查 MAA 资源更新
           </n-button>
           <n-button
             type="primary"
@@ -1098,7 +1098,7 @@ onUnmounted(() => {
             :disabled="maa_resource_update_action_disabled"
             @click="start_maa_resource_update"
           >
-            更新 Maa 资源
+            更新 MAA 资源
           </n-button>
         </n-space>
       </div>
