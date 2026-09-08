@@ -514,10 +514,13 @@ def try_reorder(op_data, new_plan):
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_recommendation import (
+        prioritize_workshop_settings,
+    )
 
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
-        for item in config.conf.workshop_settings:
+        for item in prioritize_workshop_settings(config.conf.workshop_settings):
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue

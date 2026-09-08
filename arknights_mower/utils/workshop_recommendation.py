@@ -177,6 +177,62 @@ def operator_specialties(unlocked_specialties):
     }
 
 
+def exclusive_specialists(bonuses, specialists):
+    """Reserve a recipe for its specialists only when one reaches the best bonus."""
+    return (
+        specialists
+        if specialists
+        and max(bonuses[name] for name in specialists) == max(bonuses.values())
+        else set()
+    )
+
+
+def operator_priority(name, bonus, *, t5=False):
+    # These preferences only break 80% ties; a larger bonus always comes first.
+    preference = 2
+    if bonus == 80:
+        if name == "蜜莓":
+            preference = 0
+        elif name == "缇缇" and t5:
+            preference = 1
+    return -bonus, preference
+
+
+def prioritize_workshop_settings(settings, *, available=None, formulas=None):
+    """Order configurations for execution without changing their material limits."""
+    if available is None:
+        try:
+            available = available_operators()
+        except WorkshopRecommendationError:
+            return list(settings)
+    if formulas is None:
+        from arknights_mower.data import workshop_formula
+
+        formulas = workshop_formula
+
+    def priority(entry):
+        entry = entry.model_dump() if hasattr(entry, "model_dump") else entry
+        name = entry["operator"]
+        bonus = max(
+            (
+                recipe_bonus(
+                    available.get(name, []), material, formulas.get(material, {})
+                )
+                for item in entry["items"]
+                for material in item["item_names"]
+            ),
+            default=0,
+        )
+        t5 = any(
+            recipe_category(formulas.get(material, {})) == "t5_operators"
+            for item in entry["items"]
+            for material in item["item_names"]
+        )
+        return operator_priority(name, bonus, t5=t5)
+
+    return sorted(settings, key=priority)
+
+
 def recommend_workshop_operators(
     roster=None, metadata=None, formulas=None, *, plan=None, min_bonus=80
 ):
@@ -216,7 +272,20 @@ def recommend_workshop_operators(
                     or bonus < 80
                 ):
                     continue
+                if name != "九色鹿" and (bonus <= 0 or bonus < min_bonus):
+                    continue
                 bonuses[name] = bonus
+            matching_specialists = {
+                name
+                for name, bonus in bonuses.items()
+                if matches_specialty(
+                    [r for r in unlocked_specialties[name] if r["kind"] == "byproduct"],
+                    material,
+                    recipe,
+                )
+                and bonus >= 80
+            }
+            exclusive = exclusive_specialists(bonuses, matching_specialists)
             for name, bonus in bonuses.items():
                 deer = category == "fodder_operators" and name == "九色鹿"
                 specialist = (
@@ -225,12 +294,16 @@ def recommend_workshop_operators(
                 )
                 if not deer and (bonus <= 0 or bonus < min_bonus):
                     continue
+                if exclusive and name not in exclusive and not deer:
+                    continue
                 entry = selected[category].setdefault(
                     name,
                     {"name": name, "materials": [], "bonuses": {}, "causality": deer},
                 )
                 if specialist:
                     entry["specialist"] = True
+                if exclusive and name not in exclusive:
+                    continue
                 entry["materials"].append(material)
                 entry["bonuses"][material] = bonus
         # 80% operators may serve multiple categories within their valid scopes.
@@ -244,8 +317,11 @@ def recommend_workshop_operators(
         recommendations[category] = sorted(
             entries.values(),
             key=lambda entry: (
-                not entry["causality"],
-                -max(entry["bonuses"].values(), default=0),
+                *operator_priority(
+                    entry["name"],
+                    max(entry["bonuses"].values(), default=0),
+                    t5=category == "t5_operators",
+                ),
                 entry["name"] != PREFERRED[category],
                 entry["name"],
             ),
@@ -287,7 +363,7 @@ def allocate_workshop_items(
     plan=None,
     min_bonus=None,
 ):
-    """Keep tied best operators and matching specialists, plus the deer workflow.
+    """Reserve specialist recipes, then prioritize retained candidates by bonus.
 
     Specialist-only low-tier recipes require an owned, unlocked specialist.
     Missing rules/BOX keep legacy manual assignment usable within known specialties.
@@ -356,7 +432,26 @@ def allocate_workshop_items(
                     else {}
                 )
                 highest = max(bonuses.values(), default=0)
+                # Cost savings alone (e.g. Titi's T5 skill) do not reserve materials.
+                exclusive = exclusive_specialists(
+                    bonuses,
+                    {
+                        name
+                        for name in matching_specialists
+                        if matches_specialty(
+                            [
+                                r
+                                for r in unlocked_specialties[name]
+                                if r["kind"] == "byproduct"
+                            ],
+                            material,
+                            recipe,
+                        )
+                    },
+                )
                 for name in candidates:
+                    if exclusive and name not in exclusive:
+                        continue
                     deer = name == "九色鹿" and category == "fodder_operators"
                     if (
                         available is None
@@ -368,4 +463,8 @@ def allocate_workshop_items(
                         result[name]["items"].append({**item, "item_names": [material]})
     if use_deer_fodder:
         result["九色鹿"]["items"] = list(fodder_items) + result["九色鹿"]["items"]
-    return list(result.values())
+    if available is None:
+        return list(result.values())
+    return prioritize_workshop_settings(
+        result.values(), available=available, formulas=formulas
+    )

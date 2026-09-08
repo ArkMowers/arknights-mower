@@ -136,7 +136,7 @@ def test_owned_unlocked_pool_keeps_all_ties_and_material_specialists(game):
         for entry in result["recommendations"]["fodder_operators"]
     }
     assert scopes["号角"] == ["炽合金块"]
-    assert scopes["空爆"] == ["炽合金块", "聚酸酯块"]
+    assert scopes["空爆"] == ["聚酸酯块"]
     assert set(result["defaults"]["t5_operators"]) == {"年", "空爆", "苏苏洛"}
     assert result["defaults"]["book_operators"] == ["赫拉格"]
     assert result["nine_colored_deer"]["owned"] is False
@@ -361,7 +361,6 @@ def test_allocator_matches_specific_recipes_and_merges_same_operator(game):
     mapping = {entry["operator"]: entry["items"] for entry in result}
     assert mapping["号角"] == [item("炽合金块")]
     assert mapping["空爆"] == [
-        item("炽合金块"),
         item("聚酸酯块"),
         item("双极纳米片"),
         item("技巧概要·卷3"),
@@ -378,8 +377,9 @@ def test_fodder_is_only_added_to_deer_and_other_best_operators_remain(game):
         fodder_items=[item("碳素")],
         available=workshop.available_operators(owned(ids, "九色鹿", "年"), meta),
     )
-    assert result[0]["items"] == [item("碳素"), item("炽合金块")]
-    assert result[1]["items"] == [item("双极纳米片")]
+    mapping = {entry["operator"]: entry["items"] for entry in result}
+    assert mapping["九色鹿"] == [item("碳素"), item("炽合金块")]
+    assert mapping["年"] == [item("双极纳米片")]
 
 
 @pytest.mark.parametrize("missing_rules", [False, True])
@@ -791,3 +791,161 @@ def test_threshold_is_saved_with_config_and_validated_by_endpoint(game):
         response = client.get("/workshop-operators/recommendations?min_bonus=90")
     assert response.status_code == 200
     assert response.json["min_bonus"] == 90
+
+
+def test_highest_bonus_precedes_honeyberry_then_titi_in_t5(game):
+    meta, ids = game
+    roster = owned(ids, "空爆", "缇缇", "蜜莓", "年", "号角")
+    recommendations = workshop.recommend_workshop_operators(roster, meta)
+    assert recommendations["defaults"]["t5_operators"] == ["年", "蜜莓", "缇缇", "空爆"]
+    assert recommendations["defaults"]["fodder_operators"] == ["号角", "蜜莓", "空爆"]
+    result = workshop.allocate_workshop_items(
+        [("t5_operators", ["空爆", "缇缇", "蜜莓", "年"], [item("双极纳米片")])],
+        available=workshop.available_operators(roster, meta),
+    )
+    assert [entry["operator"] for entry in result] == ["年", "蜜莓", "缇缇", "空爆"]
+    # Titi's mood savings do not make ordinary T5 recipes exclusive to her.
+    assert all(entry["items"] == [item("双极纳米片")] for entry in result)
+
+
+def test_unlocked_80_percent_is_required_for_honeyberry_preference(game):
+    meta, ids = game
+    roster = owned(ids, "蜜莓", elite=0) + owned(ids, "空爆", "缇缇")
+    result = workshop.allocate_workshop_items(
+        [("t5_operators", ["蜜莓", "空爆", "缇缇"], [item("双极纳米片")])],
+        available=workshop.available_operators(roster, meta),
+        min_bonus=75,
+    )
+    assert [entry["operator"] for entry in result] == ["缇缇", "空爆", "蜜莓"]
+
+
+def test_best_specialists_exclude_generalists_but_keep_same_material_specialists(game):
+    meta, ids = game
+    names = ["蜜莓", "熔泉", "折桠", "休谟斯", "维荻", "九色鹿"]
+    result = workshop.allocate_workshop_items(
+        [
+            (
+                "fodder_operators",
+                names,
+                [item("异铁组"), item("酮凝集组"), item("糖聚块")],
+            )
+        ],
+        available=workshop.available_operators(owned(ids, *names), meta),
+    )
+    mapping = {
+        entry["operator"]: {n for task in entry["items"] for n in task["item_names"]}
+        for entry in result
+    }
+    assert {name for name, materials in mapping.items() if "异铁组" in materials} == {
+        "熔泉",
+        "折桠",
+        "休谟斯",
+    }
+    assert {name for name, materials in mapping.items() if "酮凝集组" in materials} == {
+        "休谟斯",
+        "维荻",
+    }
+    assert mapping["蜜莓"] == {"糖聚块"}
+    assert mapping["九色鹿"] == {"糖聚块"}
+    assert [entry["operator"] for entry in result].index("休谟斯") < [
+        entry["operator"] for entry in result
+    ].index("维荻")
+
+
+@pytest.mark.parametrize("with_nian", [True, False])
+def test_specialist_reservation_never_overrides_a_higher_generic_bonus(game, with_nian):
+    meta, ids = game
+    names = ["蜜莓", "特克诺"] + (["年"] if with_nian else [])
+    roster = owned(ids, *names)
+    result = workshop.allocate_workshop_items(
+        [("t5_operators", names, [item("晶体电子单元")])],
+        available=workshop.available_operators(roster, meta),
+    )
+    if with_nian:
+        assert result[0]["operator"] == "年"
+        assert result[0]["items"] == [item("晶体电子单元")]
+    else:
+        assert [entry["operator"] for entry in result if entry["items"]] == ["特克诺"]
+    recommended = workshop.recommend_workshop_operators(
+        roster, meta, {"晶体电子单元": recipe(8), "糖聚块": recipe()}
+    )
+    assert "蜜莓" in recommended["defaults"]["fodder_operators"]
+    if not with_nian:
+        assert recommended["defaults"]["t5_operators"] == ["特克诺"]
+
+
+@pytest.mark.parametrize("nian_mood", [24, 20])
+def test_scheduler_prioritizes_existing_configs_and_respects_existing_mood_gate(
+    game, nian_mood
+):
+    from types import SimpleNamespace
+
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils import scheduler_task
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    meta, ids = game
+    names = ["空爆", "缇缇", "蜜莓", "年"]
+    settings = [
+        RIICPart.WorkShopSetting(
+            operator=name, items=[WorkShopItem(**item("双极纳米片"))]
+        )
+        for name in names
+    ]
+    available = workshop.available_operators(owned(ids, *names), meta)
+    operators = {
+        name: SimpleNamespace(mood=nian_mood if name == "年" else 24) for name in names
+    }
+    inventory = {
+        "双极纳米片": 0,
+        **{name: 100 for name in workshop_formula["双极纳米片"]["items"]},
+    }
+    tasks = []
+    with (
+        patch.object(config.conf, "workshop_settings", settings),
+        patch.object(scheduler_task, "get_inventory_counts", return_value=inventory),
+        patch.object(workshop, "available_operators", return_value=available),
+    ):
+        scheduler_task.try_workshop_tasks(SimpleNamespace(operators=operators), tasks)
+    assert [task.meta_data for task in tasks] == (["年"] if nian_mood > 22 else []) + [
+        "蜜莓",
+        "缇缇",
+        "空爆",
+    ]
+    assert [entry.operator for entry in settings] == names
+
+
+@pytest.mark.parametrize("minimum", [50, 80])
+def test_full_roster_config_orders_every_shared_recipe_by_bonus(game, minimum):
+    from collections import defaultdict
+
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_recommendation import (
+        compute_default_workshop_config,
+    )
+
+    meta, ids = game
+    roster = owned(ids, *ids)
+    available = workshop.available_operators(roster, meta)
+    defaults = workshop.recommend_workshop_operators(roster, meta, min_bonus=minimum)[
+        "defaults"
+    ]
+    with (
+        patch.object(workshop, "available_operators", return_value=available),
+        patch.object(config.conf, "workshop_min_bonus", minimum),
+    ):
+        result = compute_default_workshop_config(**defaults)
+    recipe_bonuses = defaultdict(list)
+    for entry in result:
+        for task in entry["items"]:
+            for material in task["item_names"]:
+                recipe_bonuses[material].append(
+                    workshop.recipe_bonus(
+                        available[entry["operator"]],
+                        material,
+                        workshop_formula[material],
+                    )
+                )
+    assert all(
+        bonuses == sorted(bonuses, reverse=True) for bonuses in recipe_bonuses.values()
+    )
