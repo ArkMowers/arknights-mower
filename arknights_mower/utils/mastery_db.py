@@ -454,9 +454,11 @@ def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
             conn.execute(
                 "DELETE FROM mastery_notify WHERE dedup_key=?", (str(plan_id),)
             )
+            prefix = f"{plan_id}:"
             conn.execute(
-                "DELETE FROM mastery_notify WHERE notify_type='support_swap' AND dedup_key IN (?,?,?)",
-                tuple(f"{plan_id}:{level}" for level in (1, 2, 3)),
+                "DELETE FROM mastery_notify WHERE notify_type='support_swap' "
+                "AND substr(dedup_key, 1, ?) = ?",
+                (len(prefix), prefix),
             )
             conn.commit()
             return True

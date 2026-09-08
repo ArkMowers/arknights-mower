@@ -58,7 +58,7 @@
 
 `mastery_support` 保留规划/预览入口，数据与候选过滤在 `mastery_support_data`，路线求解在 `mastery_optimizer`，方案编辑在 `mastery_support_edits`；共享输入、阶段参数和 JSON 编解码集中在 `mastery_support_types`。执行分为 `mastery_support_runtime`（预检与恢复）、`mastery_support_state`（快照与任务）及 `mastery_support_swap`（校验与换人）。
 
-`GET/PATCH /mastery-plan/supports` 读取/修改逐计划方案，DB 的 `support_plan` 与 `support_runtime` 分离，使用原状态及快照比较防止编辑覆盖正在执行的阶段。`support_swap` 是第九类去重通知，key 为 `{plan_id}:{level}`；删除计划时一并清理。两种建计划载荷均校验技能序号为整数 0/1/2。
+`GET/PATCH /mastery-plan/supports` 读取/修改逐计划方案，DB 的 `support_plan` 与 `support_runtime` 分离，使用原状态及快照比较防止编辑覆盖正在执行的阶段。`support_swap` 是第九类去重通知，key 为 `{plan_id}:{level}`；读取不到有效等级时仅为告警回退到执行快照等级，两者均无效则使用 `unknown` 并显示「专精阶段未知」，不改变训练室动作判断。删除计划时清理该计划的全部协助通知，包括旧版 `:None` 记录。两种建计划载荷均校验技能序号为整数 0/1/2。
 
 ## 性能与验证边界
 

@@ -296,7 +296,7 @@
 - **协助方案列**：`support_plan` 与 `support_runtime` 为可空 JSON 文本，经 `ALTER ADD COLUMN` 迁移。新自动计划原子写入 `support_plan`；职业路线计划保持 NULL。执行快照单独保存，不覆盖用户后续阶段编辑；编解码统一走 `mastery_support_types`。
 - **协助方案更新**：`save_support_plan` 只更新方案/执行快照；编辑时比较 status、原 support_plan 和原 support_runtime，拒绝并发过期保存。idle/failed 可改全部阶段并清快照；运行中只改未开始阶段，保留本级快照。HTTP 不更新训练状态。
 - **创建兼容**：默认 `support_mode=auto`。无 BOX（文件缺失、损坏或无干员数据）时使用职业路线；显式 `route` 不依赖 BOX 或训练规则。已有 BOX 时的未拥有、未精二、缺训练规则、协助者不可用等错误不降级。两种 HTTP 载荷均校验 skill_index 为整数 0/1/2（排除 bool）。
-- **通知清理**：删除计划同步删除 `support_swap` 的 `{plan_id}:%` 记录，避免该计划的逐级通知残留。
+- **通知清理**：删除计划同步删除 `support_swap` 中以 `{plan_id}:` 为完整前缀的记录，包括旧版 `:None` 与阶段未知的 `:unknown`，不影响其他计划或通知类型。
 - **计划 id（#102 定案）**：`mastery_plan.id` 由 `INTEGER PRIMARY KEY AUTOINCREMENT` 生成，**单调递增、删除后不复用**——日志中的高 id 是历史编号，不代表现存计划数（删 1、2、4 后现存计划从 3 开始属正常）。**切勿改成普通 `INTEGER PRIMARY KEY`（rowid 别名）**：删掉最大行后 id 会被复用，使残留的 `plan_key=旧id` 队列任务 / `dedup_key=旧id` 通知去重行指向新计划。
 - **状态唯一写法** `update_plan_status`；优先级 `update_plan_priority`。（DB-02）
 - **`is_operator_busy`**（`mastery_db.py:302-325`）：
@@ -535,7 +535,7 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 - ⑦ **协助位纠错失败（#79，2026-08-15）**：run_swap_support 换人前确认协助位，陌生人纠错成 operator 失败 → 邮件「协助位 X 纠错失败，跳过减半换人」+ 不换人 + 排收取（key=plan id，WARNING）
 - ⑧ **换人失败放弃（#81，2026-08-15）**：run_swap_support 减半换人失败，原地重试 SWAP_RETRY_LIMIT 次仍失败 / 剩余不足 5h → 放弃 + 邮件「换人失败已放弃，减半收益可能丢失」，**不置 swap_frozen=1**（reconcile 下次进房重新补排，暂时性失败可被救回；key=plan id，WARNING，与⑦ 并列）
 
-- ⑨ **逐计划协助换人失败或减半时长不足**：`support_swap`，key=`{plan_id}:{level}`，WARNING；同计划同级至多一次。自动方案失败后置 `swap_frozen=1`，保留当前协助位并重排收取，本阶段不再尝试替换。没有可用减半教官属于正常 BOX 限制，不告警。此策略仅用于 `support_plan` 非空的计划；⑦/⑧ 保留旧职业路线行为。
+- ⑨ **逐计划协助换人失败或减半时长不足**：`support_swap`，key=`{plan_id}:{level}`，WARNING；同计划同级至多一次。告警等级优先使用本次读取的有效等级，缺失时使用 `support_runtime.level`；两者均无效时使用 `unknown` 并显示「专精阶段未知」。快照回退仅用于告警文案和去重，不作为训练室动作依据。自动方案失败后置 `swap_frozen=1`，保留当前协助位并重排收取，本阶段不再尝试替换。没有可用减半教官属于正常 BOX 限制，不告警。此策略仅用于 `support_plan` 非空的计划；⑦/⑧ 保留旧职业路线行为。
 
 ### 16.10 开始训练术语流（草案 1-8，实现对齐）
 

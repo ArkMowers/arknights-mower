@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from arknights_mower.utils.mastery_support import (
     SupportPlanError,
+    decode_json,
     encode_supports,
     rate,
     stage_for,
@@ -18,14 +19,27 @@ def save_runtime(plan, runtime):
     plan["support_runtime"] = encode_supports(runtime)
 
 
+def _notification_level(plan, level):
+    """Use cached progress only for notification identity, never device actions."""
+    if type(level) is int and level in (1, 2, 3):
+        return level
+    try:
+        runtime = decode_json(plan.get("support_runtime"))
+    except SupportPlanError:
+        return None
+    saved = runtime.get("level") if isinstance(runtime, dict) else None
+    return saved if type(saved) is int and saved in (1, 2, 3) else None
+
+
 def notify_support_failure(plan, level, message):
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
-    if should_notify("support_swap", f"{plan['id']}:{level}"):
-        send_message(
-            f"{plan.get('char_name', '')} 专{level}：{message}", level="WARNING"
-        )
+    level = _notification_level(plan, level)
+    stage = f"专{level}" if level is not None else "专精阶段未知"
+    key = level if level is not None else "unknown"
+    if should_notify("support_swap", f"{plan['id']}:{key}"):
+        send_message(f"{plan.get('char_name', '')} {stage}：{message}", level="WARNING")
 
 
 def record_work(plan, level, name, until=None):
