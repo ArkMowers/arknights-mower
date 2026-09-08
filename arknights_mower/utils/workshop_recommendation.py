@@ -4,6 +4,7 @@ import json
 from functools import lru_cache
 
 CATEGORIES = ("fodder_operators", "t5_operators", "book_operators")
+ASSIGNMENT_ORDER = ("t5_operators", "book_operators", "fodder_operators")
 PREFERRED = {
     "fodder_operators": "九色鹿",
     "t5_operators": "年",
@@ -122,24 +123,35 @@ def recommend_workshop_operators(
         name: effects for name, effects in available.items() if name not in blocked
     }
     selected = {category: {} for category in CATEGORIES}
+    recipes = {category: [] for category in CATEGORIES}
     for material, recipe in sorted(formulas.items()):
         category = recipe_category(recipe)
-        if category is None:
-            continue
-        bonuses = {
-            name: recipe_bonus(effects, material, recipe)
+        if category is not None:
+            recipes[category].append((material, recipe))
+    assigned = set()
+    for category in ASSIGNMENT_ORDER:
+        pool = {
+            name: effects
             for name, effects in eligible.items()
+            if name not in assigned and (name != "年" or category == "t5_operators")
         }
-        highest = max(bonuses.values(), default=0)
-        for name, bonus in bonuses.items():
-            deer = category == "fodder_operators" and name == "九色鹿"
-            if not deer and (bonus <= 0 or bonus != highest):
-                continue
-            entry = selected[category].setdefault(
-                name, {"name": name, "materials": [], "bonuses": {}, "causality": deer}
-            )
-            entry["materials"].append(material)
-            entry["bonuses"][material] = bonus
+        for material, recipe in recipes[category]:
+            bonuses = {
+                name: recipe_bonus(effects, material, recipe)
+                for name, effects in pool.items()
+            }
+            highest = max(bonuses.values(), default=0)
+            for name, bonus in bonuses.items():
+                deer = category == "fodder_operators" and name == "九色鹿"
+                if not deer and (bonus <= 0 or bonus != highest):
+                    continue
+                entry = selected[category].setdefault(
+                    name,
+                    {"name": name, "materials": [], "bonuses": {}, "causality": deer},
+                )
+                entry["materials"].append(material)
+                entry["bonuses"][material] = bonus
+        assigned.update(selected[category])
     recommendations = {}
     for category, entries in selected.items():
         recommendations[category] = sorted(
@@ -186,7 +198,12 @@ def allocate_workshop_items(
     result = {}
     use_deer_fodder = False
     for category, names, items in groups:
-        names = [name for name in dict.fromkeys(names) if name not in blocked]
+        # Reserve Nian for T5 even when an older saved list includes her elsewhere.
+        names = [
+            name
+            for name in dict.fromkeys(names)
+            if name not in blocked and (name != "年" or category == "t5_operators")
+        ]
         use_deer_fodder |= category == "fodder_operators" and "九色鹿" in names
         for name in names:
             result.setdefault(name, {"operator": name, "enabled": True, "items": []})

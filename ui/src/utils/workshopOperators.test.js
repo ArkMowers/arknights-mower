@@ -10,7 +10,7 @@ import {
 const data = {
   defaults: {
     fodder_operators: ['空爆', '苏苏洛', '号角'],
-    t5_operators: ['空爆', '苏苏洛'],
+    t5_operators: ['年'],
     book_operators: ['赫拉格']
   },
   recommendations: { fodder_operators: [], t5_operators: [], book_operators: [] }

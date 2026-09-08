@@ -118,7 +118,7 @@ def test_empty_upgrade_replaces_previous_skill_and_level_gate_is_exact():
 
 def test_owned_unlocked_pool_keeps_all_ties_and_material_specialists(game):
     meta, ids = game
-    roster = owned(ids, "空爆", "苏苏洛", "号角", "赫拉格")
+    roster = owned(ids, "年", "空爆", "苏苏洛", "号角", "赫拉格")
     result = workshop.recommend_workshop_operators(
         roster,
         meta,
@@ -136,7 +136,7 @@ def test_owned_unlocked_pool_keeps_all_ties_and_material_specialists(game):
     }
     assert scopes["号角"] == ["炽合金块"]
     assert scopes["空爆"] == ["聚酸酯块"]
-    assert set(result["defaults"]["t5_operators"]) == {"空爆", "苏苏洛"}
+    assert result["defaults"]["t5_operators"] == ["年"]
     assert result["defaults"]["book_operators"] == ["赫拉格"]
     assert result["nine_colored_deer"]["owned"] is False
     locked = workshop.recommend_workshop_operators(
@@ -150,18 +150,68 @@ def test_deer_keeps_fodder_priority_and_manual_reference_when_unowned(game):
     result = workshop.recommend_workshop_operators(
         owned(ids, "九色鹿", "年", elite=0), meta
     )
-    assert result["defaults"]["fodder_operators"][:2] == ["九色鹿", "年"]
+    assert result["defaults"]["fodder_operators"] == ["九色鹿"]
     assert result["defaults"]["t5_operators"] == ["年"]
     assert result["nine_colored_deer"] == {
         "name": "九色鹿",
         "owned": True,
     }
     missing = workshop.recommend_workshop_operators(owned(ids, "年"), meta)
-    assert missing["defaults"]["fodder_operators"] == ["年"]
+    assert missing["defaults"]["fodder_operators"] == []
+    assert missing["defaults"]["t5_operators"] == ["年"]
     assert missing["nine_colored_deer"] == {
         "name": "九色鹿",
         "owned": False,
     }
+
+
+@pytest.mark.parametrize(
+    "names,expected",
+    [
+        (
+            ["年", "凯尔希", "空爆", "号角"],
+            {
+                "t5_operators": {"年"},
+                "book_operators": {"凯尔希"},
+                "fodder_operators": {"空爆", "号角"},
+            },
+        ),
+        (
+            ["凯尔希", "空爆", "号角"],
+            {
+                "t5_operators": {"空爆"},
+                "book_operators": {"凯尔希"},
+                "fodder_operators": {"号角"},
+            },
+        ),
+        (
+            ["凯尔希"],
+            {
+                "t5_operators": {"凯尔希"},
+                "book_operators": set(),
+                "fodder_operators": set(),
+            },
+        ),
+    ],
+)
+def test_automatic_categories_are_exclusive_and_use_remaining_operators(
+    game, names, expected
+):
+    meta, ids = game
+    result = workshop.recommend_workshop_operators(owned(ids, *names), meta)
+    assert {key: set(value) for key, value in result["defaults"].items()} == expected
+    flattened = [name for names in result["defaults"].values() for name in names]
+    assert len(flattened) == len(set(flattened))
+    for key, operators in result["recommendations"].items():
+        assert {entry["name"] for entry in operators} == expected[key]
+
+
+def test_nian_is_not_used_for_non_t5_when_no_t5_recipe_is_requested(game):
+    meta, ids = game
+    result = workshop.recommend_workshop_operators(
+        owned(ids, "年"), meta, {"炽合金块": recipe()}
+    )
+    assert all(not names for names in result["defaults"].values())
 
 
 def test_book_upgrade_does_not_stack_or_select_locked_trainer(game):
@@ -233,7 +283,7 @@ def test_recommendation_uses_best_unscheduled_operator_and_deer_only_needs_owner
         "backup_plans": [{"plan": {"central": facility("Free", ["年"])}}],
     }
     result = workshop.recommend_workshop_operators(roster, meta, plan=plan)
-    assert set(result["defaults"]["fodder_operators"]) == {"九色鹿", "号角", "空爆"}
+    assert set(result["defaults"]["fodder_operators"]) == {"九色鹿", "号角"}
     assert result["defaults"]["t5_operators"] == ["空爆"]
     plan["backup_plans"][0]["plan"]["train"] = facility("九色鹿")
     result = workshop.recommend_workshop_operators(roster, meta, plan=plan)
@@ -245,15 +295,15 @@ def test_auto_config_rechecks_schedule_and_applies_filter_without_box(
     game, monkeypatch
 ):
     meta, ids = game
-    available = workshop.available_operators(owned(ids, "年", "空爆"), meta)
-    groups = [("fodder_operators", ["年", "空爆"], [item("炽合金块")])]
+    available = workshop.available_operators(owned(ids, "号角", "空爆"), meta)
+    groups = [("fodder_operators", ["号角", "空爆"], [item("炽合金块")])]
     before = workshop.allocate_workshop_items(groups, available=available)
     assert before[0]["items"] == [item("炽合金块")]
     monkeypatch.setattr(
         config,
         "plan",
         PlanModel.model_validate(
-            {"backup_plans": [{"plan": {"meeting": facility("年")}}]}
+            {"backup_plans": [{"plan": {"meeting": facility("号角")}}]}
         ),
     )
     after = workshop.allocate_workshop_items(groups, available=available)
@@ -329,7 +379,39 @@ def test_fodder_is_only_added_to_deer_and_other_best_operators_remain(game):
         available=workshop.available_operators(owned(ids, "九色鹿", "年"), meta),
     )
     assert result[0]["items"] == [item("碳素"), item("炽合金块")]
-    assert result[1]["items"] == [item("炽合金块"), item("双极纳米片")]
+    assert result[1]["items"] == [item("双极纳米片")]
+
+
+@pytest.mark.parametrize("missing_rules", [False, True])
+def test_old_lists_reserve_nian_for_t5_in_generated_config(game, missing_rules):
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_recommendation import (
+        compute_default_workshop_config,
+    )
+
+    meta, ids = game
+    available = workshop.available_operators(owned(ids, "年", "空爆", "赫拉格"), meta)
+    with patch.object(
+        workshop,
+        "available_operators",
+        return_value=available,
+        side_effect=workshop.WorkshopRecommendationError("旧资源")
+        if missing_rules
+        else None,
+    ):
+        config = compute_default_workshop_config(
+            ["年", "空爆"], ["年"], ["年", "赫拉格"]
+        )
+    materials = {
+        entry["operator"]: {
+            name for item in entry["items"] for name in item["item_names"]
+        }
+        for entry in config
+    }
+    assert "双极纳米片" in materials["年"]
+    assert all(workshop_formula[name]["apCost"] >= 8 for name in materials["年"])
+    assert "炽合金块" in materials["空爆"]
+    assert "技巧概要·卷3" in materials["赫拉格"]
 
 
 def test_default_config_merges_duplicate_operator_even_without_new_resources():
@@ -342,7 +424,7 @@ def test_default_config_merges_duplicate_operator_even_without_new_resources():
         "available_operators",
         side_effect=workshop.WorkshopRecommendationError("旧资源"),
     ):
-        result = compute_default_workshop_config(["年"], ["年"], ["年"])
+        result = compute_default_workshop_config(["凯尔希"], ["凯尔希"], ["凯尔希"])
     assert len(result) == 1
     materials = {name for entry in result[0]["items"] for name in entry["item_names"]}
     assert {"炽合金块", "双极纳米片", "技巧概要·卷3"} <= materials
