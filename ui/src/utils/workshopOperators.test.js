@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   loadWorkshopOperators,
+  selectedWorkshopOperators,
   usesLegacyWorkshopDefaults,
-  workshopRecommendationText
+  workshopRecommendationText,
+  workshopTraineeWarning
 } from './workshopOperators'
 
 const data = {
@@ -13,6 +15,40 @@ const data = {
   },
   recommendations: { fodder_operators: [], t5_operators: [], book_operators: [] }
 }
+
+describe('training plan workshop warnings', () => {
+  it('includes selections in every category and enabled manual synthesis configurations', () => {
+    const operators = selectedWorkshopOperators({
+      fodder_operators: ['九色鹿', '年', 'Free'],
+      t5_operators: ['年'],
+      book_operators: ['赫拉格'],
+      workshop_settings: [
+        { operator: '号角', enabled: true },
+        { operator: '空爆' },
+        { operator: '苏苏洛', enabled: false },
+        { operator: '九色鹿' },
+        { operator: 'Current' },
+        { operator: '' }
+      ]
+    })
+    expect([...operators]).toEqual(['九色鹿', '年', '赫拉格', '号角', '空爆'])
+    expect(workshopTraineeWarning('年', operators)).toBe(
+      '年 已在合成计划中被选为加工站干员，专精期间可能影响合成，请留意。'
+    )
+    expect(workshopTraineeWarning('号角', operators)).toContain('可能影响合成')
+    expect(workshopTraineeWarning('苏苏洛', operators)).toBe('')
+    expect(workshopTraineeWarning('未选中的干员', operators)).toBe('')
+    expect(workshopTraineeWarning(undefined, operators)).toBe('')
+  })
+
+  it('uses current selections and does not treat recommendations as selected operators', () => {
+    const settings = { fodder_operators: ['九色鹿'], recommendations: data.recommendations }
+    expect(selectedWorkshopOperators(settings).has('九色鹿')).toBe(true)
+    settings.fodder_operators = []
+    expect([...selectedWorkshopOperators(settings)]).toEqual([])
+    expect([...selectedWorkshopOperators()]).toEqual([])
+  })
+})
 
 describe('workshop owned defaults', () => {
   it('reads the existing BOX recommendation once and retains multiple operators', async () => {

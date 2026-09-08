@@ -1,5 +1,19 @@
 export const workshopCategories = ['fodder_operators', 't5_operators', 'book_operators']
 
+export function selectedWorkshopOperators(settings = {}) {
+  const names = workshopCategories.flatMap((key) => settings[key] || [])
+  for (const entry of settings.workshop_settings || []) {
+    if (entry?.enabled !== false) names.push(entry?.operator)
+  }
+  return new Set(names.filter((name) => name && name !== 'Free' && name !== 'Current'))
+}
+
+export function workshopTraineeWarning(name, operators) {
+  return name && operators.has(name)
+    ? `${name} 已在合成计划中被选为加工站干员，专精期间可能影响合成，请留意。`
+    : ''
+}
+
 export async function loadWorkshopOperators(http, baseUrl) {
   const { data } = await http.get(`${baseUrl}/workshop-operators/recommendations`)
   if (

@@ -258,6 +258,9 @@
           >技能: <n-text strong>{{ cd.rec?.skill_name }}</n-text> → 专精3级 |
           {{ formatTime(cd.rec?.total_time || 0) }}</n-text
         >
+        <n-text v-if="workshopTrainingWarning(cd.op?.name)" type="warning">{{
+          workshopTrainingWarning(cd.op?.name)
+        }}</n-text>
         <n-divider />
         <n-text depth="2">训练室换班:</n-text>
         <n-space :size="4" style="margin-top: 4px">
@@ -567,8 +570,10 @@
 <script setup>
 import {
   loadWorkshopOperators,
+  selectedWorkshopOperators,
   usesLegacyWorkshopDefaults,
-  workshopRecommendationText
+  workshopRecommendationText,
+  workshopTraineeWarning
 } from '@/utils/workshopOperators'
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
@@ -774,6 +779,9 @@ function getStatusType(status) {
 
 async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
+  if (!plan.value[k] && workshopTrainingWarning(op.name)) {
+    message.warning(workshopTrainingWarning(op.name))
+  }
   if (plan.value[k]) {
     // 删除计划
     const info = planStatus.value[k]
@@ -818,6 +826,12 @@ async function toggleSkillPlan(op, rec, draft = false) {
 
 async function addAllToPlan(op, draft = false) {
   const recs = op.recommendations
+  if (
+    recs.some((rec) => !plan.value[planKey(op.char_id, rec.skill_index)]) &&
+    workshopTrainingWarning(op.name)
+  ) {
+    message.warning(workshopTrainingWarning(op.name))
+  }
   if (draft) {
     // 计划弹窗内草稿：只动本地，保存时 POST
     for (const rec of recs) {
@@ -1379,15 +1393,14 @@ const routeOperatorSet = computed(() => {
   }
   return busy
 })
-const workshopOperators = computed(() => [
-  ...(fodderOps.value || []),
-  ...(t5Ops.value || []),
-  ...(bookOps.value || [])
-])
+const workshopOperators = computed(() => selectedWorkshopOperators(configStore))
+function workshopTrainingWarning(name) {
+  return workshopTraineeWarning(name, workshopOperators.value)
+}
 function isIdleOperator(op) {
   if (scheduledOperatorSet.value.has(op.name)) return false
   if (routeOperatorSet.value.has(op.name)) return false
-  if (workshopOperators.value.includes(op.name)) return false
+  if (workshopOperators.value.has(op.name)) return false
   if ((configStore.free_blacklist || []).includes(op.name)) return false
   return true
 }
@@ -1501,6 +1514,7 @@ function confirmSkill(op, rec) {
 async function doAddTask() {
   showConfirm.value = false
   const { op, rec } = cd
+  if (workshopTrainingWarning(op.name)) message.warning(workshopTrainingWarning(op.name))
   try {
     // #71：一键专精走 DB 计划创建 API（POST /mastery-plan），不再发原始 /task「技能专精」
     // （死流：server 只认 DB 计划）。target_level 由服务端默认专三，与确认弹窗「→ 专精3级」一致。
