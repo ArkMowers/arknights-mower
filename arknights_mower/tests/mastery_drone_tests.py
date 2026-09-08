@@ -95,7 +95,10 @@ def test_dispatch_removes_its_own_task_after_queue_reordering(clock):
     def execute(_):
         solver.tasks.insert(0, new_task)
 
-    with patch("arknights_mower.solvers.mastery.run_swap_support", side_effect=execute):
+    with (
+        patch.object(base_schedule, "datetime", scheduler.datetime),
+        patch("arknights_mower.solvers.mastery.run_swap_support", side_effect=execute),
+    ):
         solver.infra_main()
     assert any(t is new_task for t in solver.tasks)
     assert any(t is order for t in solver.tasks)
