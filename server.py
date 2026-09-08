@@ -23,6 +23,7 @@ from arknights_mower.utils import config, network_settings
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.log_stream import LogStream
 from arknights_mower.utils.maa_check import (
     MAA_CHECK_TIMEOUT,
     maa_check_command,
@@ -46,6 +47,7 @@ mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
 
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
+app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25}
 sock = Sock(app)
 CORS(app)
 network_settings.start_proxy_sync()
@@ -65,8 +67,7 @@ if token := config.conf.webview.token:
     app.token = token
 
 mower_thread = None
-log_lines = []
-ws_connections = []
+log_stream = LogStream()
 
 
 def _mower_busy_response():
@@ -446,15 +447,9 @@ def _run_maa_resource_update(
 
 
 def read_log():
-    global log_lines
-    global ws_connections
-
     while True:
         msg = config.log_queue.get()
-        log_lines.append(msg)
-        log_lines = log_lines[-100:]
-        for ws in ws_connections:
-            ws.send(json.dumps({"type": "log", "data": msg}))
+        log_stream.publish(msg)
 
 
 Thread(target=read_log, daemon=True).start()
@@ -814,7 +809,6 @@ def get_status():
 @require_token
 def start(start_type):
     global mower_thread
-    global log_lines
 
     if active_job():
         return "false"
@@ -847,9 +841,8 @@ def start(start_type):
         )
         # /task 路由（views/task.py）独立判定「mower 正在运行」，须与本模块同步
         set_mower_thread(mower_thread)
+        log_stream.clear()
         mower_thread.start()
-
-        log_lines = []
 
         return "true"
 
@@ -890,26 +883,7 @@ def stop_maa():
 
 @sock.route("/log")
 def log(ws):
-    global ws_connections
-    global log_lines
-
-    ws.send(
-        json.dumps(
-            {
-                "type": "log",
-                "data": "\n".join(log_lines),  # 发送完整日志
-            }
-        )
-    )
-    ws_connections.append(ws)
-
-    from simple_websocket import ConnectionClosed
-
-    try:
-        while True:
-            ws.receive()
-    except ConnectionClosed:
-        ws_connections.remove(ws)
+    log_stream.serve(ws)
 
 
 @app.route("/screenshots/<path:filename>")
@@ -961,11 +935,7 @@ def _request_title_refresh():
         conn.send(("title", current))
     except Exception:
         logger.exception("通知 WebView 刷新窗口标题失败")
-    for ws in list(ws_connections):
-        try:
-            ws.send(json.dumps({"type": "resource_updated"}))
-        except Exception:
-            logger.exception("广播资源版本变更给前端失败")
+    log_stream.broadcast({"type": "resource_updated"})
 
 
 def conn_send(text):

@@ -65,7 +65,7 @@ class MasteryRestartTests(unittest.TestCase):
             patch.object(server, "active_job", return_value=False),
             patch.object(server, "_job_running", return_value=False),
             patch.object(server, "mower_thread", None),
-            patch.object(server, "log_lines", []),
+            patch.object(server, "log_stream"),
             patch.object(server, "get_path", return_value=self.db_path.parent),
             patch.object(server.config, "stop_mower"),
             patch.object(server, "load_state", side_effect=ValueError("old snapshot")),
