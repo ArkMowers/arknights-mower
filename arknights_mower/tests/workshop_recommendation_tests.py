@@ -178,9 +178,9 @@ def test_endpoint_is_read_only_and_reports_missing_box_or_resource():
     "minimum,expected",
     [
         (80, {"年", "号角", "空爆", "凯尔希·思衡托", "缇缇", "休谟斯"}),
-        (90, {"年", "号角", "休谟斯"}),
-        (100, {"年", "号角"}),
-        (101, set()),
+        (90, {"年", "号角", "休谟斯", "凯尔希·思衡托"}),
+        (100, {"年", "号角", "凯尔希·思衡托"}),
+        (101, {"凯尔希·思衡托"}),
     ],
 )
 def test_one_click_threshold_keeps_all_qualifying_operators(game, minimum, expected):
@@ -189,6 +189,12 @@ def test_one_click_threshold_keeps_all_qualifying_operators(game, minimum, expec
     result = workshop.recommend_workshop_operators(roster, meta, min_bonus=minimum)
     assert set().union(*map(set, result["defaults"].values())) == expected
     assert result["min_bonus"] == minimum
+    if minimum > 80:
+        assert result["defaults"]["book_operators"] == ["凯尔希·思衡托"]
+        assert all(
+            "凯尔希·思衡托" not in result["defaults"][category]
+            for category in ("fodder_operators", "t5_operators")
+        )
     if minimum == 80:
         assert all("凯尔希·思衡托" in names for names in result["defaults"].values())
         assert "缇缇" in result["defaults"]["t5_operators"]
