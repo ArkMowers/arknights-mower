@@ -2,7 +2,7 @@
 import axios from 'axios'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import {
   createInventoryItemOption,
@@ -21,7 +21,8 @@ const {
   maa_stage_inventory_enable,
   maa_stage_limit_rules,
   maa_stage_ratio_rules,
-  maa_weekly_plan
+  maa_weekly_plan,
+  maa_weekly_plan_active
 } = storeToRefs(store)
 
 const loading = ref(false)
@@ -33,6 +34,7 @@ const inventory = ref({})
 const inventoryUpdatedAt = ref('')
 const activityRatioSuggestion = ref(null)
 const limitStageToAdd = ref(null)
+const activePlanLabel = computed(() => maa_weekly_plan_active.value || '当前方案')
 
 const currentWeekdayIndex = computed(() => {
   const day = new Date().getDay()
@@ -281,7 +283,7 @@ function applyActivityRatioSuggestion() {
   message.success('已添加当前活动关卡与掉落物绑定')
 }
 
-onMounted(loadInventoryRuleData)
+watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
 </script>
 
 <template>
@@ -294,10 +296,21 @@ onMounted(loadInventoryRuleData)
     <n-spin :show="loading">
       <n-card class="overview-card" size="small">
         <n-flex justify="space-between" align="center" :wrap="true">
-          <div>
-            <div class="overview-title">启用库存选关</div>
+          <div class="overview-copy">
+            <n-flex align="center" :size="8" :wrap="true">
+              <div class="overview-title">启用库存选关</div>
+              <n-tag
+                type="info"
+                size="small"
+                :bordered="false"
+                class="plan-scope-tag"
+                :title="activePlanLabel"
+              >
+                方案 · {{ activePlanLabel }}
+              </n-tag>
+            </n-flex>
             <n-text depth="3">
-              只有先在列表计划或表格计划中选中的关卡才会刷取；库存规则不会自动加入关卡。
+              当前只显示并编辑此方案的库存规则；切换方案时同步切换，且只作用于已选关卡。
             </n-text>
           </div>
           <n-space align="center">
@@ -320,7 +333,7 @@ onMounted(loadInventoryRuleData)
       </n-card>
 
       <n-alert v-if="selectedStageValues.size === 0" type="info" :closable="false" class="top-gap">
-        请先在“列表计划”或“表格计划”中选择关卡，再配置库存上限或比例。
+        请先在方案“{{ activePlanLabel }}”的列表计划或表格计划中选择关卡，再配置库存上限或比例。
       </n-alert>
 
       <n-tabs type="segment" animated class="top-gap">
@@ -348,7 +361,7 @@ onMounted(loadInventoryRuleData)
 
           <n-empty
             v-if="maa_stage_limit_rules.length === 0"
-            description="尚未设置物品上限"
+            :description="`方案“${activePlanLabel}”尚未设置物品上限`"
             class="empty-block"
           />
 
@@ -455,7 +468,7 @@ onMounted(loadInventoryRuleData)
 
           <n-empty
             v-if="maa_stage_ratio_rules.length === 0"
-            description="尚未设置关卡比例"
+            :description="`方案“${activePlanLabel}”尚未设置关卡比例`"
             class="empty-block"
           />
 
@@ -627,9 +640,23 @@ onMounted(loadInventoryRuleData)
 }
 
 .overview-title {
-  margin-bottom: 4px;
   font-size: 18px;
   font-weight: 650;
+  text-wrap: balance;
+}
+
+.overview-copy {
+  min-width: 0;
+}
+
+.plan-scope-tag {
+  max-width: min(280px, 60vw);
+}
+
+.plan-scope-tag :deep(.n-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .add-toolbar {
