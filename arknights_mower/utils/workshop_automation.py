@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RIICPart
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.workshop_config import (
     initialize_manual_settings,
     restore_manual_settings,
@@ -124,14 +125,47 @@ def update_workshop_config(**operators):
 
 
 def restore_if_no_plans():
-    from arknights_mower.utils.mastery_db import get_all_plans
+    from arknights_mower.utils.mastery_db import (
+        complete_satisfied_idle_plans,
+        get_all_plans,
+    )
+    from arknights_mower.utils.workshop_data import (
+        WorkshopRecommendationError,
+        owned_roster,
+    )
 
     with workshop_lock:
-        if not config.conf.workshop_auto_active or get_all_plans():
+        if not config.conf.workshop_auto_active:
+            return
+        plans = get_all_plans()
+        waiting = {
+            (p["char_id"], p["skill_index"]) for p in plans if p.get("status") == "idle"
+        }
+        if waiting:
+            try:
+                roster = owned_roster()
+            except WorkshopRecommendationError:
+                roster = []
+            levels = {
+                (char["id"], index): skill.get("level")
+                for char in roster
+                if isinstance(char.get("skills"), list)
+                for index, skill in enumerate(char["skills"])
+                if (char["id"], index) in waiting and isinstance(skill, dict)
+            }
+            if completed := complete_satisfied_idle_plans(levels):
+                logger.info(
+                    f"同步数据确认{completed}条待开始专精计划已达目标，标记完成"
+                )
+                plans = get_all_plans()
+                if plans:
+                    update_workshop_config()
+        if plans:
             return
         conf = config.conf.model_copy(deep=True)
         restore_manual_settings(conf)
         save_conf(conf)
+        logger.info("专精备料已结束，恢复手动合成配置并作废旧加工任务")
 
 
 def stamp_workshop_task(task):
@@ -158,6 +192,7 @@ class WorkshopSnapshot:
 
 def workshop_task_snapshot(task):
     with workshop_lock:
+        restore_if_no_plans()
         if not workshop_task_current(task):
             return None
         # Bind at acquisition, including RELEASE_DORM and direct/unmarked calls.

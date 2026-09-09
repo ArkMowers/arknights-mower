@@ -619,11 +619,13 @@ def next_workshop_task_time(tasks, earliest=None):
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_automation import restore_if_no_plans
     from arknights_mower.utils.workshop_limits import batch_limit
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
 
+    restore_if_no_plans()
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
         for item in prioritize_workshop_settings(config.conf.workshop_settings):
@@ -670,7 +672,8 @@ def try_workshop_tasks(op_data, tasks):
                 if not match:
                     logger.info(f"{item.operator}材料设置不符合要求: 请检查合成数量")
             if match and valid:
-                logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
+                source = "专精备料" if item.source == "mastery" else "手动配置"
+                logger.info(f"{item.operator}满足使用条件，生成加工站任务（{source}）")
                 task = SchedulerTask(
                     time=next_workshop_task_time(tasks),
                     task_type=TaskTypes.WORKSHOP,

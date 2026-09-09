@@ -525,6 +525,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if snapshot is None:
             logger.info("加工配置已更新，跳过旧的自动加工任务")
             return
+        operator = self.op_data.operators.get(task.meta_data)
+        if (
+            operator is not None
+            and 0 <= operator.mood < 1
+            and not operator.current_room.startswith("dorm")
+        ):
+            logger.info(f"{task.meta_data}心情不足1点，跳过加工任务")
+            return
         try:
             self.enter_room("factory")
             current_agent = [
@@ -1164,6 +1172,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """
 
         from arknights_mower.utils.workshop_automation import (
+            restore_if_no_plans,
             workshop_task_snapshot,
         )
         from arknights_mower.utils.workshop_config import workshop_lock
@@ -1180,12 +1189,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 snapshot = workshop_task_snapshot(task)
             if snapshot is None or not snapshot.is_current():
                 return
-            cultivateDepotSolver().start()
-            if not snapshot.is_current():
-                return
             settings = snapshot.settings
-            unknown_cnt = 0
-            inventory_data = get_inventory_counts()
             is_9colored = agent == "九色鹿"
             if agent not in [s.operator for s in settings]:
                 logger.info(f"当前干员{agent}不在加工站配置中")
@@ -1199,8 +1203,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if not item_list:
                 logger.info(f"{agent}没有符合材料范围的加工配置，跳过")
                 return
+            operator = self.op_data.operators[agent]
+            mood_budget = max(0, min(24, operator.mood))
+            if mood_budget < 1:
+                logger.info(f"{agent}心情不足1点，跳过加工任务")
+                return
+            cultivateDepotSolver().start()
+            restore_if_no_plans()
+            if not snapshot.is_current():
+                return
+            mood_rules, mood_rules_known = operator_mood_rules(agent)
+            unknown_cnt = 0
+            inventory_data = get_inventory_counts()
             seen = set()
             group = defaultdict(dict)
+            recipe_moods = {}
             for item in item_list:
                 for name in item.item_names:
                     if name in seen:
@@ -1214,6 +1231,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         logger.warning("跳过心情大于4消耗的材料")
                     else:
                         group[metadata["tab"]][name] = item
+                        recipe_moods[name] = mood_cost(
+                            name, metadata, mood_rules, mood_rules_known
+                        )
             blocked_materials = set()
 
             def available_groups():
@@ -1225,6 +1245,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             name: setting
                             for name, setting in entries.items()
                             if name not in blocked_materials
+                            and recipe_moods[name] <= mood_budget
                             and batch_limit(
                                 name, workshop_formula[name], setting, inventory_data
                             )
@@ -1236,11 +1257,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             tab_queue = deque(available_groups().items())
             reset_scan = True
             if not tab_queue:
-                logger.info(f"{agent}的材料已达上限或可用原料不足，跳过加工")
+                logger.info(
+                    f"{agent}当前心情{mood_budget:.2f}，没有可加工材料，跳过加工"
+                )
                 return
-            operator = self.op_data.operators[agent]
-            mood_budget = max(0, min(24, operator.mood))
-            mood_rules, mood_rules_known = operator_mood_rules(agent)
             tab_pos = {
                 "基建材料": (self.recog.w * 0.1, self.recog.h * 0.18),
                 "精英材料": (self.recog.w * 0.1, self.recog.h * 0.31),
@@ -1301,9 +1321,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             continue
                         ap_cost = current_material["apCost"]
                         material_tab = current_material["tab"]
-                        per_craft_mood = mood_cost(
-                            current_name, current_material, mood_rules, mood_rules_known
-                        )
+                        per_craft_mood = recipe_moods[current_name]
                         batch_count = min(
                             batch_count, int(mood_budget // per_craft_mood)
                         )
@@ -1410,12 +1428,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                         inventory_data = get_inventory_counts()
                         blocked_materials.clear()
-                        tasks.insert(0, "select")
-                        tab_queue = deque(available_groups().items())
-                        reset_scan = True
                         mood_budget = max(0, mood_budget - batches * per_craft_mood)
                         operator.mood = mood_budget
                         operator.time_stamp = datetime.now()
+                        tab_queue = deque(available_groups().items())
+                        if not tab_queue:
+                            logger.info(
+                                f"{agent}当前心情{mood_budget:.2f}，已无可加工材料，结束加工"
+                            )
+                            break
+                        tasks.insert(0, "select")
+                        reset_scan = True
                 elif scene == Scene.FACTORY_FORMULA:
                     if tasks[0] in ["enter", "process"]:
                         self.back()

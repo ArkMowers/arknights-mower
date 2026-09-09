@@ -541,6 +541,19 @@
           <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
             >一键设置</n-button
           >
+          <n-space align="center" :size="6">
+            <n-switch
+              v-model:value="workshopLowPriorityRest"
+              size="small"
+              aria-label="加工干员低优先休息"
+            />
+            <n-text>低优先休息</n-text>
+            <help-text>
+              加工名单、加工配置及备份中的干员优先使用空余床位，需要休息的普通干员可接管其床位。
+              心情大于 22 的普通替班干员不会踢出正在休息的加工干员，加工干员之间不互踢。
+              关闭后按原有宿舍优先级安排。
+            </help-text>
+          </n-space>
         </n-space>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
@@ -712,6 +725,7 @@ const idleFilterOptions = [
 ]
 const {
   workshop_min_bonus: workshopMinBonus,
+  workshop_low_priority_rest: workshopLowPriorityRest,
   workshop_deer_fodder: deerFodder,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,

@@ -75,6 +75,7 @@ export const useConfigStore = defineStore('config', () => {
   ]
   const workshop_deer_fodder = ref(defaultDeerFodder())
   const workshop_min_bonus = ref(80)
+  const workshop_low_priority_rest = ref(true)
   const fodder_operators = ref(['九色鹿'])
   const t5_operators = ref(['年'])
   const book_operators = ref(['司霆惊蛰'])
@@ -479,6 +480,7 @@ export const useConfigStore = defineStore('config', () => {
     load_workshop_config(response.data)
     workshop_deer_fodder.value = response.data.workshop_deer_fodder ?? defaultDeerFodder()
     workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
+    workshop_low_priority_rest.value = response.data.workshop_low_priority_rest ?? true
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
@@ -608,6 +610,7 @@ export const useConfigStore = defineStore('config', () => {
       workshop_manual_settings_revision: workshop_manual_settings_revision.value,
       workshop_deer_fodder: workshop_deer_fodder.value,
       workshop_min_bonus: workshop_min_bonus.value,
+      workshop_low_priority_rest: workshop_low_priority_rest.value,
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
@@ -734,6 +737,7 @@ export const useConfigStore = defineStore('config', () => {
     apply_workshop_response,
     workshop_deer_fodder,
     workshop_min_bonus,
+    workshop_low_priority_rest,
     fodder_operators,
     t5_operators,
     book_operators,

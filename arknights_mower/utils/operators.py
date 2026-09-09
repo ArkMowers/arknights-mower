@@ -921,8 +921,10 @@ class Dormitory:
 
 class Operator:
     def is_workshop(self):
-        """Configured crafters use spare beds, independently of shift priority."""
+        """Whether this crafter uses the optional lowest dorm recovery priority."""
         conf = config.conf
+        if not conf.workshop_low_priority_rest:
+            return False
         names = (
             *getattr(conf, "fodder_operators", ()),
             *getattr(conf, "t5_operators", ()),
