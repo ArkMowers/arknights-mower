@@ -1,11 +1,13 @@
 """家具资源投影与整套保留数量；生成期不依赖游戏或资源加载器。"""
 
 import json
+import unicodedata
 from collections import Counter
 
 
 def normalize_name(name):
-    return "".join(name.split())
+    """统一 ™/TM、全角/半角等兼容字符，再移除 OCR 空白。"""
+    return "".join(unicodedata.normalize("NFKC", name).split())
 
 
 def build_furniture_data(building_data):
@@ -33,7 +35,7 @@ def build_furniture_data(building_data):
 
 
 def furniture_keep_counts(data):
-    """精确名称匹配；同名家具、不可分解或未知数量不参与自动分解。"""
+    """归一化后精确匹配；同名家具、不可分解或未知数量不参与自动分解。"""
     furnitures, themes = data["furnitures"], data["themes"]
     if not furnitures or not isinstance(themes, dict):
         raise ValueError("家具资源为空或格式无效")

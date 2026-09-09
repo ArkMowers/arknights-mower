@@ -9,6 +9,7 @@ import pytest
 from arknights_mower.utils.furniture_data import (
     build_furniture_data,
     furniture_keep_counts,
+    normalize_name,
 )
 from arknights_mower.utils.res_version import (
     RES_PACKAGE_DATA,
@@ -109,6 +110,7 @@ def test_bundled_data_contains_multi_piece_sets_and_is_hashed(tmp_path):
     assert counts["柔和顶灯"] == 5
     assert counts["复古吊灯"] == 6
     assert "管道置物架" not in counts
+    assert counts[normalize_name("便携TM计算器")] == 1
     assert rel in RES_PACKAGE_DATA
     dest = tmp_path / rel
     dest.parent.mkdir(parents=True)
@@ -119,3 +121,21 @@ def test_bundled_data_contains_multi_piece_sets_and_is_hashed(tmp_path):
     changed["furnitures"][next(iter(changed["furnitures"]))]["quantity"] = 100
     dest.write_text(json.dumps(changed))
     assert content_hash(tmp_path, paths) != before
+
+
+@pytest.mark.parametrize(
+    "ocr_name", ["便携TM计算器", "便携ＴＭ计算器", "便携 TM 计算器"]
+)
+def test_trademark_and_ocr_text_resolve_to_same_furniture(ocr_name):
+    assert normalize_name(ocr_name) == normalize_name("便携™计算器")
+
+
+def test_compatibility_normalization_keeps_ambiguity_check():
+    data = build_furniture_data(source())
+    data["furnitures"]["chair"]["name"] = "便携™计算器"
+    data["furnitures"]["lamp"]["name"] = "便携TM计算器"
+    assert normalize_name("便携™计算器") not in furniture_keep_counts(data)
+
+
+def test_normalization_does_not_remove_distinguishing_name_characters():
+    assert normalize_name("简易便椅（左）") != normalize_name("简易便椅（右）")

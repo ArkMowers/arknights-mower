@@ -389,3 +389,30 @@ def test_multi_digit_stock_is_used_in_both_detail_checks(monkeypatch, solver):
     ]
     assert furniture.FurnitureDismantler(solver).process((0.37, 0.21), 12)
     assert [c.args[1] for c in details.call_args_list] == [12, 12]
+
+
+def test_trademark_ocr_name_reaches_safe_batch_processing(monkeypatch, solver):
+    import json
+    from pathlib import Path
+
+    from arknights_mower.utils.furniture_data import furniture_keep_counts
+
+    data = json.loads(
+        (Path(__file__).resolve().parents[1] / "data/furniture.json").read_text()
+    )
+    runner = furniture.FurnitureDismantler(solver)
+    runner.keep_counts = furniture_keep_counts(data)
+    monkeypatch.setattr(
+        furniture,
+        "furniture_details",
+        lambda img, expected_count=1: ("便携TM计算器", 2),
+    )
+    monkeypatch.setattr(furniture, "furniture_batch", lambda img: 1)
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    solver.factory_scene.side_effect = [
+        Scene.FACTORY_DASHBOARD,
+        Scene.FACTORY_DASHBOARD,
+        Scene.FACTORY_PRODUCT_COLLECT,
+    ]
+    assert runner.process((0.37, 0.21), 2)
+    assert solver.tap.call_args_list[-1] == call((0.88 * 1920, 0.9 * 1080), interval=2)
