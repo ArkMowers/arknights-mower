@@ -870,6 +870,16 @@ class TestBaseScheduler(unittest.TestCase):
         return read_room
 
     def _build_resting_solver(self):
+        for field in (
+            "fodder_operators",
+            "t5_operators",
+            "book_operators",
+            "workshop_settings",
+        ):
+            self.enterContext(patch.object(base_schedule.config.conf, field, []))
+        self.enterContext(
+            patch.object(base_schedule.config.conf, "workshop_manual_backup", None)
+        )
         plan_config = {
             # 会客室真实容量为 2，办公室为 1。大组 = 会客室 2 名主力 + 办公室 1 名主力。
             "meeting": [Room("伊内丝", "大组", ["陈"]), Room("银灰", "大组", ["初雪"])],
@@ -2016,7 +2026,7 @@ class TestScanDispatchMastery(unittest.TestCase):
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_auto_schedule_mastery_after_scan_gates_on_enable_mastery(self):
         # §16.11 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
-        # 照跑，只有派发受 enable_mastery 门控。三个钩子无条件被调 + dispatch 不被调
+        # 照跑；加工配置钩子在 OFF 时仅恢复手动配置。三个钩子被调 + dispatch 不被调
         # 钉死结构——把门误提到钩子前（failed 计划永不重置、idle 永不重排）套件会红。
         solver = self._solver()
         with (
@@ -2032,7 +2042,7 @@ class TestScanDispatchMastery(unittest.TestCase):
                 },
             ) as mock_auto,
             patch(
-                "arknights_mower.utils.mastery_recommendation.compute_workshop_config",
+                "arknights_mower.utils.workshop_automation.update_workshop_config",
                 return_value=None,
             ) as mock_workshop,
             patch.object(
@@ -2063,7 +2073,7 @@ class TestScanDispatchMastery(unittest.TestCase):
                 },
             ),
             patch(
-                "arknights_mower.utils.mastery_recommendation.compute_workshop_config",
+                "arknights_mower.utils.workshop_automation.update_workshop_config",
                 return_value=None,
             ),
             patch(

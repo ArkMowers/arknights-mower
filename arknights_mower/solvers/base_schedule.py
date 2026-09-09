@@ -518,6 +518,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def craft_material(self):
         task = self.task
+        from arknights_mower.utils.workshop_automation import workshop_task_current
+
+        if not workshop_task_current(task):
+            logger.info("加工配置已更新，跳过旧的自动加工任务")
+            return
         try:
             self.enter_room("factory")
             current_agent = [
@@ -575,6 +580,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     from arknights_mower.solvers.mastery import run_mastery_task
 
                     run_mastery_task(self)
+                    from arknights_mower.utils.workshop_automation import (
+                        restore_if_no_plans,
+                    )
+
+                    restore_if_no_plans()
                 elif self.task.type == TaskTypes.SWAP_SUPPORT:
                     from arknights_mower.solvers.mastery import run_swap_support
 
@@ -1727,7 +1737,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _high_done = False
         _low_used = set()
         for op in self.total_agent:
-            if op.is_high():
+            if op.is_high() and not op.is_workshop():
                 if _high_done:
                     continue
                 if (
@@ -1789,6 +1799,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     @staticmethod
     def _resting_tier(op):
+        if op.is_workshop():
+            return 3
         if op.is_high() and op.resting_priority == "high":
             return BaseSchedulerSolver._REST_TIER_HIGH
         if op.is_high():
@@ -2893,7 +2905,52 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         if train_support in free_list:
             free_list.remove(train_support)
+        if any(
+            name in self.op_data.operators
+            and not self.op_data.operators[name].is_workshop()
+            and self.op_data.operators[name].current_mood() <= 22
+            for name in free_list
+        ):
+            # The game sorts by mood, so list ordering alone cannot put crafters
+            # behind replacements. Exclude them from this free-slot selection.
+            free_list = [
+                name
+                for name in free_list
+                if name not in self.op_data.operators
+                or not self.op_data.operators[name].is_workshop()
+            ]
         return free_list
+
+    def preserve_resting_crafters(self, agents, room):
+        """Resolve Free placeholders before UI selection can evict a crafter.
+
+        Reserve each qualifying replacement once. A generic Free selection must
+        not substitute an almost-full replacement for a recovering crafter.
+        """
+        if not room.startswith("dorm") or "Free" not in agents:
+            return
+        replacements = sorted(
+            (
+                self.op_data.operators[name]
+                for name in self.get_free_list(agents)
+                if name in self.op_data.operators
+                and not self.op_data.operators[name].is_workshop()
+                and self.op_data.operators[name].current_mood() <= 22
+            ),
+            key=lambda op: op.current_mood(),
+        )
+        for index, name in enumerate(agents):
+            if name != "Free":
+                continue
+            current = self.op_data.get_current_operator(room, index)
+            if (
+                current is None
+                or not current.is_workshop()
+                or current.current_mood() >= current.upper_limit
+                or current.name in agents
+            ):
+                continue
+            agents[index] = replacements.pop(0).name if replacements else current.name
 
     def choose_agent(
         self, agents: list[str], room: str, fast_mode=True, train_index=0
@@ -2914,6 +2971,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
+        self.preserve_resting_crafters(agents, room)
         current_list = set()
         for idx, n in enumerate(agents):
             if n not in current_list:
@@ -4885,7 +4943,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             from arknights_mower.utils.mastery_recommendation import (
                 auto_schedule_mastery_tasks,
-                compute_workshop_config,
             )
 
             res = auto_schedule_mastery_tasks()
@@ -4902,30 +4959,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if config.conf.enable_mastery:
                 self._dispatch_scan_start_tasks(res.get("scheduled", []))
 
-            new_settings = compute_workshop_config(
-                fodder_operators=config.conf.fodder_operators,
-                t5_operators=config.conf.t5_operators,
-                book_operators=config.conf.book_operators,
-            )
-            if new_settings is not None:
-                from arknights_mower.utils.config.conf import (
-                    RIICPart,
-                    WorkShopItem,
-                )
+            from arknights_mower.utils.workshop_automation import update_workshop_config
 
-                ws_list = []
-                for s in new_settings:
-                    items = [WorkShopItem(**item) for item in s.get("items", [])]
-                    ws_list.append(
-                        RIICPart.WorkShopSetting(
-                            operator=s["operator"],
-                            enabled=s.get("enabled", True),
-                            items=items,
-                        )
-                    )
-                config.conf.workshop_settings = ws_list
-                config.save_conf()
-                logger.info("自动更新合成配置完成")
+            update_workshop_config()
         except Exception as e:
             logger.exception(f"自动安排专精/合成配置失败: {e}")
 

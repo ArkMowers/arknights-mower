@@ -1,7 +1,7 @@
 <template>
   <div class="home-container">
     <div class="page-header">
-      <h1 class="page-title">专精推荐</h1>
+      <h1 class="page-title">自动专精</h1>
       <n-space align="center" :size="8">
         <n-button size="small" @click="openPlanModal">
           <template #icon><n-icon :component="ListIcon" /></template>
@@ -25,8 +25,6 @@
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
-        <n-button size="small" @click="savePreset">保存合成配置</n-button>
-        <n-button size="small" @click="restorePreset">还原合成配置</n-button>
         <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
           <template #icon><n-icon :component="RefreshIcon" /></template>
           刷新
@@ -546,9 +544,7 @@
         </n-space>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
-          <help-text>
-            选择 九色鹿 时会自动添加 碳素，碳素组，家具零件_碳素组 作为垫刀材料
-          </help-text>
+          <help-text>九色鹿使用下方独立设置中的垫刀素材。</help-text>
         </div>
         <slick-operator-select
           v-model="fodderOps"
@@ -567,8 +563,15 @@
           :disabled="workshopDefaultsLoading"
           select_placeholder="选择干员"
         />
-        <n-collapse v-if="workshopRecommendations">
-          <n-collapse-item title="值得培养的干员" name="workshop-materials">
+        <n-collapse>
+          <n-collapse-item title="九色鹿垫刀素材设置" name="deer-fodder">
+            <workshop-deer-fodder v-model="deerFodder" :disabled="workshopDefaultsLoading" />
+          </n-collapse-item>
+          <n-collapse-item
+            v-if="workshopRecommendations"
+            title="值得培养的干员"
+            name="workshop-materials"
+          >
             <n-space vertical>
               <div v-for="category in workshopCategoryLabels" :key="category.key">
                 <n-text strong>{{ category.label }}</n-text>
@@ -709,6 +712,7 @@ const idleFilterOptions = [
 ]
 const {
   workshop_min_bonus: workshopMinBonus,
+  workshop_deer_fodder: deerFodder,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
   book_operators: bookOps
@@ -1108,39 +1112,6 @@ const filteredPlanOperators = computed(() => {
   return list
 })
 
-async function savePreset() {
-  try {
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-preset`, {
-      settings: configStore.workshop_settings,
-      fodder_operators: fodderOps.value,
-      t5_operators: t5Ops.value,
-      book_operators: bookOps.value
-    })
-    message.success('当前合成配置已保存为默认')
-  } catch (e) {
-    message.error('保存失败: ' + e.message)
-  }
-}
-async function restorePreset() {
-  try {
-    const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/workshop-preset`)
-    const data = r.data
-    if (data && (data.settings?.length || data.length)) {
-      configStore.workshop_settings = data.settings || data
-      if (data.fodder_operators) fodderOps.value = data.fodder_operators
-      if (data.t5_operators) t5Ops.value = data.t5_operators
-      if (data.book_operators) bookOps.value = data.book_operators
-      await new Promise((res) => setTimeout(res, 100))
-      await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
-      message.success('合成配置已还原')
-    } else {
-      message.warning('暂无已保存的合成配置')
-    }
-  } catch (e) {
-    message.error('还原失败: ' + e.message)
-  }
-}
-
 async function autoWorkshop() {
   workshopLoading.value = true
   try {
@@ -1154,14 +1125,14 @@ async function autoWorkshop() {
       message.warning('生成失败')
       return
     }
+    configStore.workshop_settings_generation = resp.data.workshop_generation
     configStore.workshop_settings = ws
-
-    await new Promise((r) => setTimeout(r, 100))
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
     workshopT3Summary.value = resp.data?.t3_summary || []
 
-    if (!ws.length) {
-      message.info('当前没有可准备的专精材料，已清空自动合成配置')
+    if (!resp.data.automatic || !ws.length) {
+      message.info(
+        resp.data.restored ? '专精材料已准备完毕，已恢复手动合成配置' : '当前没有可准备的专精材料'
+      )
       return
     }
 
@@ -1188,6 +1159,7 @@ async function autoWorkshop() {
           time: new Date(Date.now() + added.length * 2000).toISOString(),
           plan: {},
           task_type: '加工材料',
+          workshop_generation: resp.data.workshop_generation,
           meta_data: op
         }
       })

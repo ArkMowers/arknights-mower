@@ -2,6 +2,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -382,6 +383,11 @@ class WorkShopItem(ConfModel):
     "自己上限"
 
 
+class WorkshopDeerFodderItem(WorkShopItem):
+    children_lower_limit: int = Field(default=0, ge=0, le=999999)
+    self_upper_limit: int = Field(default=9999, ge=0, le=999999)
+
+
 class RIICPart(ConfModel):
     class RunOrderGrandetModeConf(ConfModel):
         enable: bool = True
@@ -398,6 +404,8 @@ class RIICPart(ConfModel):
         "干员"
         enabled: bool = True
         "启用"
+        source: Literal["manual", "mastery", "stockpile"] = "manual"
+        "配置来源；旧配置按手动配置保留"
 
     drone_count_limit: int = 100
     "无人机使用阈值"
@@ -429,6 +437,20 @@ class RIICPart(ConfModel):
     "替换组心情监视"
     workshop_settings: list[WorkShopSetting] = []
     "工作室设置"
+    workshop_manual_backup: list[WorkShopSetting] | None = None
+    "自动专精接管前的手动加工配置；None 表示未接管，空列表也是有效备份"
+    workshop_preset_migrated: bool = False
+    "旧版手动保存的加工配置是否已接续"
+    workshop_generation: int = 0
+    "加工配置接管版本，防止旧页面和旧任务覆盖恢复后的配置"
+    workshop_deer_fodder: list[WorkshopDeerFodderItem] = [
+        {
+            "item_names": ["碳素", "碳素组", "家具零件_碳素组"],
+            "children_lower_limit": 0,
+            "self_upper_limit": 9999,
+        }
+    ]
+    "九色鹿垫刀素材，独立于自动生成的配置"
     workshop_min_bonus: int = Field(default=80, ge=0, le=1000)
     "加工站一键设置的副产品概率加成下限（百分比）"
     t5_operators: list[str] = ["年"]
