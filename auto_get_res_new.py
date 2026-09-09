@@ -1137,6 +1137,12 @@ class Arknights数据处理器:
                 "apCost": 配方信息.get("apCost") / 360000,
                 "goldCost": 配方信息.get("goldCost"),
                 "items": 子类材料,
+                "output_name": self.物品表["items"][物品ID]["name"],
+                "output_count": 配方信息["count"],
+                "costs": {
+                    self.物品表["items"][i["id"]]["name"]: i["count"]
+                    for i in 配方信息["costs"]
+                },
             }
         with open(
             "./arknights_mower/data/workshop_formula.json", "w", encoding="utf8"
