@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick } from 'vue'
 import SoftwareUpdate from './SoftwareUpdate.vue'
+import { pendingSoftwarePackage } from '@/stores/updateUpload'
 
 const state = vi.hoisted(() => ({ mounted: [], unmounted: [], client: null, warning: vi.fn() }))
 
@@ -66,6 +67,7 @@ describe('offline software package installation', () => {
   afterEach(() => {
     state.unmounted.forEach((callback) => callback())
     scope.stop()
+    pendingSoftwarePackage.value = null
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -78,6 +80,23 @@ describe('offline software package installation', () => {
     component.dropSoftwarePackage({ dataTransfer: { files: [file] } })
     await nextTick()
   }
+
+  it('consumes a global drop before mounting without triggering an online check or install', async () => {
+    const file = new File(['offline'], '任意改名 (1).bin')
+    pendingSoftwarePackage.value = file
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    await Promise.all(state.mounted.map((callback) => callback()))
+    expect(pendingSoftwarePackage.value).toBeNull()
+    expect(component.packageFiles.value[0].file).toBe(file)
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(state.warning).not.toHaveBeenCalled()
+    const replacement = new File(['replacement'], 'new.zip')
+    pendingSoftwarePackage.value = replacement
+    await nextTick()
+    expect(component.packageFiles.value[0].file).toBe(replacement)
+    expect(pendingSoftwarePackage.value).toBeNull()
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
 
   it.each([true, false])(
     'inspects local contents before confirming, install=%s',

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
+import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import { confirmForceUpdate, confirmSoftwareInstall } from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
@@ -324,6 +325,15 @@ watch(channel, () => {
   checked.value = null
   lastCheckAt = 0
 })
+watch(
+  pendingSoftwarePackage,
+  (file) => {
+    if (!file) return
+    selectSoftwarePackage(file)
+    pendingSoftwarePackage.value = null
+  },
+  { immediate: true }
+)
 onMounted(async () => {
   try {
     await loadInfo()
