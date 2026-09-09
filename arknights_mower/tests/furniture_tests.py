@@ -32,7 +32,9 @@ def known_furniture(monkeypatch):
         furniture, "load_furniture_keep_counts", lambda: {"测试家具": 1}
     )
     monkeypatch.setattr(
-        furniture, "furniture_details", lambda img, expected_count=1: ("测试家具", 3)
+        furniture,
+        "furniture_details",
+        lambda img, expected_count=1, expected_batch=None: ("测试家具", 3),
     )
     monkeypatch.setattr(furniture, "furniture_batch", lambda img: 2)
 
@@ -211,7 +213,7 @@ def test_incomplete_sets_and_unknown_names_never_touch_max(
     monkeypatch.setattr(
         furniture,
         "furniture_details",
-        lambda img, expected_count=1: ("测试家具", stock),
+        lambda img, expected_count=1, expected_batch=None: ("测试家具", stock),
     )
     solver.factory_scene.return_value = Scene.FACTORY_DASHBOARD
     assert runner.process((0.37, 0.21), stock) is False
@@ -228,7 +230,9 @@ def test_set_surplus_reduces_max_and_checks_final_batch(monkeypatch, solver):
     runner = furniture.FurnitureDismantler(solver)
     runner.keep_counts = {"测试家具": 4}
     monkeypatch.setattr(
-        furniture, "furniture_details", lambda img, expected_count=1: ("测试家具", 7)
+        furniture,
+        "furniture_details",
+        lambda img, expected_count=1, expected_batch=None: ("测试家具", 7),
     )
     monkeypatch.setattr(furniture, "furniture_batch", MagicMock(side_effect=[6, 3]))
     monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
@@ -309,7 +313,7 @@ def test_returning_to_wrong_page_stops_before_next_selection(monkeypatch, solver
     runner.process.assert_called_once_with((0.37, 0.21), 2)
 
 
-@pytest.mark.parametrize("text,score", [("3/1", 0.8), ("3/2", 1), ("?", 1)])
+@pytest.mark.parametrize("text,score", [("3/1", 0.8), ("3/?", 1), ("?", 1)])
 def test_details_reject_uncertain_stock(monkeypatch, solver, text, score):
     monkeypatch.setattr(
         furniture.rapidocr,
@@ -388,7 +392,7 @@ def test_multi_digit_stock_is_used_in_both_detail_checks(monkeypatch, solver):
         Scene.FACTORY_PRODUCT_COLLECT,
     ]
     assert furniture.FurnitureDismantler(solver).process((0.37, 0.21), 12)
-    assert [c.args[1] for c in details.call_args_list] == [12, 12]
+    assert [c.args[1:] for c in details.call_args_list] == [(12,), (12, 11)]
 
 
 def test_trademark_ocr_name_reaches_safe_batch_processing(monkeypatch, solver):
@@ -405,7 +409,7 @@ def test_trademark_ocr_name_reaches_safe_batch_processing(monkeypatch, solver):
     monkeypatch.setattr(
         furniture,
         "furniture_details",
-        lambda img, expected_count=1: ("便携TM计算器", 2),
+        lambda img, expected_count=1, expected_batch=None: ("便携TM计算器", 2),
     )
     monkeypatch.setattr(furniture, "furniture_batch", lambda img: 1)
     monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
@@ -416,3 +420,39 @@ def test_trademark_ocr_name_reaches_safe_batch_processing(monkeypatch, solver):
     ]
     assert runner.process((0.37, 0.21), 2)
     assert solver.tap.call_args_list[-1] == call((0.88 * 1920, 0.9 * 1080), interval=2)
+
+
+@pytest.mark.parametrize("stock,batch", [(3, 2), (4, 3), (12, 11), (100, 99)])
+def test_detail_consumption_tracks_selected_batch(monkeypatch, solver, stock, batch):
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        MagicMock(
+            side_effect=[([title(10, 10, "桌子")], 0), ([[f"{stock}/{batch}", 1]], 0)]
+        ),
+    )
+    assert REAL_FURNITURE_DETAILS(solver.recog.img, stock, batch) == ("桌子", stock)
+
+
+def test_recipe_can_open_with_a_remembered_batch(monkeypatch, solver):
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        MagicMock(side_effect=[([title(10, 10, "桌子")], 0), ([["3/2", 1]], 0)]),
+    )
+    assert REAL_FURNITURE_DETAILS(solver.recog.img, 3) == ("桌子", 3)
+
+
+@pytest.mark.parametrize("consumed", [0, 1, 3])
+def test_detail_rejects_consumption_different_from_target(
+    monkeypatch, solver, consumed
+):
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        MagicMock(
+            side_effect=[([title(10, 10, "桌子")], 0), ([[f"3/{consumed}", 1]], 0)]
+        ),
+    )
+    with pytest.raises(ValueError, match="消耗数量与加工份数不一致"):
+        REAL_FURNITURE_DETAILS(solver.recog.img, 3, 2)

@@ -35,23 +35,48 @@ def read_precise_text(img):
     return normalize_name("".join(text for text, _ in result))
 
 
-def furniture_details(img, expected_count=1):
+def furniture_details(img, expected_count=1, expected_batch=None):
     # 名称长短差异很大，先定位文字，避免「桌子」等短名称被大块留白干扰。
+    name_img = crop_relative(img, 0.36, 0.265, 0.59, 0.31)
     result, _ = rapidocr.engine(
-        crop_relative(img, 0.36, 0.265, 0.59, 0.31),
+        name_img,
         use_det=True,
         use_cls=False,
         use_rec=True,
     )
-    if not result or len(result) != 1 or result[0][2] < 0.9:
+    if not result:
         raise ValueError("家具名称无法可靠确认")
-    name = normalize_name(result[0][1])
-    # 数量右对齐，按列表读到的位数扩展，避免将多位库存裁成个位。
-    left = 0.474 - 0.012 * (len(str(expected_count)) - 1)
-    stock = read_precise_text(crop_relative(img, left, 0.413, 0.514, 0.446))
-    if not (match := re.fullmatch(r"(\d+)[/／]1", stock)):
+    if len(result) == 1 and result[0][2] >= 0.9:
+        name = normalize_name(result[0][1])
+    else:
+        # 引号可能被拆成单独文字框；对整行白色字形重新识别，不拼接误读碎片。
+        points = [point for box, _, _ in result for point in box]
+        left = max(0, int(min(point[0] for point in points)) - 12)
+        right = min(name_img.shape[1], int(max(point[0] for point in points)) + 12)
+        mask = cv2.inRange(name_img[:, left:right], (200, 200, 200), (255, 255, 255))
+        x, y, width, height = cv2.boundingRect(mask)
+        if not width or not height:
+            raise ValueError("家具名称无法可靠确认")
+        text_img = cv2.copyMakeBorder(
+            mask[y : y + height, x : x + width],
+            6,
+            6,
+            6,
+            6,
+            cv2.BORDER_CONSTANT,
+            value=0,
+        )
+        name = read_precise_text(text_img)
+    # 数量右对齐：分子为库存，分母随加工份数改变，MAX 后可能是 12/11。
+    batch_digits = len(str(expected_batch)) if expected_batch is not None else 1
+    left = 0.476 - 0.010 * (len(str(expected_count)) + batch_digits - 2)
+    stock = read_precise_text(crop_relative(img, left, 0.414, 0.511, 0.443))
+    if not (match := re.fullmatch(r"(\d+)[/／](\d+)", stock)):
         raise ValueError("无法确认家具库存")
-    return name, int(match[1])
+    owned, consumed = map(int, match.groups())
+    if consumed < 1 or (expected_batch is not None and consumed != expected_batch):
+        raise ValueError("家具消耗数量与加工份数不一致")
+    return name, owned
 
 
 def furniture_batch(img):
@@ -217,7 +242,7 @@ class FurnitureDismantler:
             self.tap(0.84, 0.68, interval=0.2)
         # 验证实际份数，防止减号漏点或界面变化损坏整套家具。
         if furniture_batch(solver.recog.img) != target or furniture_details(
-            solver.recog.img, expected_count
+            solver.recog.img, expected_count, target
         ) != (name, stock):
             raise RuntimeError("无法确认保留完整套装，未提交加工")
         if not keep_one_enabled(solver.recog.img) or not solver.item_valid():
