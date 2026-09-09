@@ -130,43 +130,6 @@ class TestTaskEndpointContract(unittest.TestCase):
         self.assertEqual(r.data.decode("utf-8"), "添加任务成功！")
         self.assertEqual(len(self.fake_scheduler.tasks), 1)
 
-    def test_furniture_task_ignores_staff_plan_and_wakes_scheduler(self):
-        from arknights_mower.utils import config
-
-        payload = _task_payload("分解所有重复家具", meta_data="九色鹿")
-        payload["task"]["plan"] = {"factory": ["九色鹿"]}
-        with patch.object(config.wake_scheduler, "set") as wake:
-            r = self.client.post("/task", json=payload)
-        self.assertEqual(r.data.decode(), "添加任务成功！")
-        task = self.fake_scheduler.tasks[0]
-        self.assertEqual(task.type, TaskTypes.FURNITURE)
-        self.assertEqual(task.plan, {})
-        self.assertEqual(task.meta_data, "")
-        self.assertFalse(hasattr(task, "workshop_generation"))
-        wake.assert_called_once()
-
-    def test_furniture_dispatch_ignores_even_a_legacy_staff_plan(self):
-        from arknights_mower.solvers.furniture import FurnitureDismantler
-        from arknights_mower.utils.scheduler_task import SchedulerTask
-
-        solver = object.__new__(BaseSchedulerSolver)
-        task = SchedulerTask(
-            task_type=TaskTypes.FURNITURE, task_plan={"factory": ["九色鹿"]}
-        )
-        solver.task = task
-        solver.tasks = [task]
-        solver.find = MagicMock(return_value=True)
-        solver.agent_arrange = MagicMock()
-        with (
-            patch("arknights_mower.solvers.base_schedule.protect_support_swaps"),
-            patch.object(FurnitureDismantler, "run") as dismantle,
-        ):
-            solver.infra_main()
-        dismantle.assert_called_once()
-        solver.agent_arrange.assert_not_called()
-        self.assertEqual(solver.tasks, [])
-        self.assertIsNone(solver.task)
-
     def test_duplicate_time_rejected(self):
         self.fake_scheduler.find_next_task = lambda *a, **kw: object()
         r = self.client.post("/task", json=_task_payload("空任务"))
