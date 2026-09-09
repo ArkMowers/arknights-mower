@@ -68,7 +68,6 @@ def test_scheduler_prioritizes_existing_configs_and_respects_existing_mood_gate(
         name: SimpleNamespace(mood=nian_mood if name == "年" else 24) for name in names
     }
     inventory = {
-        "龙门币": 10000,
         "双极纳米片": 0,
         **{name: 100 for name in workshop_formula["双极纳米片"]["items"]},
     }

@@ -29,8 +29,6 @@ def recipe_quantities(name, metadata):
         or any(not isinstance(n, int) or n <= 0 for n in costs.values())
     ):
         return None
-    if gold := metadata.get("goldCost", 0):
-        costs = {**costs, "龙门币": gold}
     return recipe["output_name"], count, costs
 
 
@@ -47,11 +45,7 @@ def batch_limit(name, metadata, setting, inventory):
             99,
             (setting.self_upper_limit - inventory[output]) // count,
             *(
-                (
-                    inventory[child]
-                    - (0 if child == "龙门币" else setting.children_lower_limit)
-                )
-                // required
+                (inventory[child] - setting.children_lower_limit) // required
                 for child, required in costs.items()
             ),
         ),

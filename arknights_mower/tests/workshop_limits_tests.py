@@ -54,7 +54,6 @@ def inventory(monkeypatch, tmp_path):
     ],
 )
 def test_batch_budget(name, stock, upper, lower, expected):
-    stock = {"龙门币": 99999, **stock}
     setting = WorkShopItem(self_upper_limit=upper, children_lower_limit=lower)
     assert (
         workshop_limits.batch_limit(name, workshop_formula[name], setting, stock)
@@ -66,35 +65,23 @@ def test_furniture_recipes_share_real_output_stock():
     name = "家具零件_碳素组"
     output, count, _ = workshop_limits.recipe_quantities(name, workshop_formula[name])
     assert output == "家具零件"
-    stock = {output: 100, "碳素组": 8, "龙门币": 99999}
+    stock = {output: 100, "碳素组": 8}
     setting = WorkShopItem(self_upper_limit=100 + 2 * count - 1, children_lower_limit=0)
     assert (
         workshop_limits.batch_limit(name, workshop_formula[name], setting, stock) == 1
     )
 
 
-@pytest.mark.parametrize(
-    "gold,expected", [(None, 0), (399, 0), (400, 1), (799, 1), (800, 2)]
-)
-def test_batch_is_limited_by_gold_without_applying_material_reserve(gold, expected):
+@pytest.mark.parametrize("gold", [None, 0])
+def test_gold_is_assumed_sufficient_and_is_not_counted(gold):
     name = "聚合剂"
     recipe = workshop_formula[name]
-    stock = {name: 0, **{child: 1001 for child in recipe["items"]}}
+    stock = {name: 0, **{child: 10 for child in recipe["items"]}}
     if gold is not None:
         stock["龙门币"] = gold
-    setting = WorkShopItem(self_upper_limit=100, children_lower_limit=999)
-    assert workshop_limits.batch_limit(name, recipe, setting, stock) == expected
-
-
-def test_confirmed_crafting_deducts_gold(game, inventory):
-    solver, state, base = game
-    inventory.save_inventory_counts({"龙门币": 600})
-    solver.generate_product("蜜莓")
-    solver.generate_product("空爆")
-    base.save_exception.assert_not_called()
-    assert state.crafts == [("切削原液", 2)]
-    assert inventory.get_inventory_counts()["龙门币"] == 0
-    assert inventory.get_inventory_counts()["切削原液"] == 5
+    setting = WorkShopItem(self_upper_limit=3, children_lower_limit=0)
+    assert workshop_limits.batch_limit(name, recipe, setting, stock) == 3
+    assert "龙门币" not in workshop_limits.batch_delta(name, recipe, 3)
 
 
 @pytest.mark.parametrize("name", list(workshop_formula))
@@ -224,7 +211,6 @@ def game(monkeypatch, inventory):
 
     inventory.save_inventory_counts(
         {
-            "龙门币": 99999,
             "切削原液": 3,
             "化合切削液": 158,
             "晶体元件": 50,
@@ -282,10 +268,9 @@ def test_unconfirmed_completion_blocks_following_operators_from_reusing_unknown_
     solver.generate_product("蜜莓")
     assert "切削原液" not in inventory.get_inventory_counts()
     assert "化合切削液" not in inventory.get_inventory_counts()
-    assert "龙门币" not in inventory.get_inventory_counts()
     state.timeout = False
     solver.generate_product("空爆")
-    assert state.crafts == [("切削原液", 3)]
+    assert state.crafts == [("切削原液", 3), ("异铁块", 1)]
     assert base.send_message.call_count == 1
 
 
@@ -356,7 +341,7 @@ def test_unlocked_costs_limit_actual_button_clicks(
     output, _, costs = workshop_limits.recipe_quantities(
         material, workshop_formula[material]
     )
-    inventory.save_inventory_counts({output: 0, **{child: 99999 for child in costs}})
+    inventory.save_inventory_counts({output: 0, **{child: 999 for child in costs}})
     solver.op_data.operators[agent] = SimpleNamespace(mood=24)
     state.remaining = expected
     solver.generate_product(agent)
