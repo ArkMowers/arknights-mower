@@ -9,7 +9,10 @@ CHANGELOG_FILE = get_path("@internal/CHANGELOG.md")
 LAST_SEEN_VERSION_KEY = "last_seen_app_version"
 LAST_ACKNOWLEDGED_VERSION_KEY = "last_acknowledged_update_version"
 PENDING_FROM_VERSION_KEY = "pending_update_from_version"
-VERSION_HEADER_RE = re.compile(r"^##\s+v?([0-9A-Za-z.+_-]+)\s*$")
+# Release 生成器会在版本号后附加发布日期，同时兼容旧版无日期标题。
+VERSION_HEADER_RE = re.compile(
+    r"^##\s+v?([0-9A-Za-z.+_-]+)(?:\s+-\s+\d{4}-\d{2}-\d{2})?\s*$"
+)
 
 
 class UpdateNoticeManager:
