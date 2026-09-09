@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 from flask import Flask
 from werkzeug.datastructures import FileStorage
 
+from arknights_mower.tests.software_package_tests import make_release_package
 from arknights_mower.utils import software_update as update
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.software_update_worker import Worker, extract_archive
@@ -378,122 +379,93 @@ class ReleaseDiscoveryTests(unittest.TestCase):
 
 class ManualPackageTests(unittest.TestCase):
     def setUp(self):
-        self.frozen = patch.object(runtime, "frozen", return_value=True)
-        self.platform = patch.object(
-            update, "platform_asset", return_value=("macos", "arm64")
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.state = Path(temporary.name).resolve()
+        for target, name, value in (
+            (runtime, "frozen", True),
+            (runtime, "state_dir", self.state),
+            (update, "platform_asset", ("windows", "x64")),
+        ):
+            mocked = patch.object(target, name, return_value=value)
+            mocked.start()
+            self.addCleanup(mocked.stop)
+        version = patch.object(update, "__version__", "4.1.6-alpha.4")
+        version.start()
+        self.addCleanup(version.stop)
+        checks = patch.dict(update._checks, {}, clear=True)
+        checks.start()
+        self.addCleanup(checks.stop)
+        for target in (
+            "requests.sessions.Session.request",
+            "arknights_mower.utils.software_update.github",
+        ):
+            network = patch(
+                target, side_effect=AssertionError("manual install must stay offline")
+            )
+            network.start()
+            self.addCleanup(network.stop)
+
+    def upload(self, version="4.2.0", name="任意改名 (1).bin"):
+        return FileStorage(
+            stream=io.BytesIO(make_release_package(version)), filename=name
         )
-        self.frozen.start()
-        self.platform.start()
-        self.addCleanup(self.frozen.stop)
-        self.addCleanup(self.platform.stop)
-        self.name = "arknights-mower_4.2.0_macos_arm64.dmg"
 
-    def test_manual_package_is_offline_without_checksum(self):
-        with patch.object(update, "github") as network:
-            plan = update.manual_plan(self.name)
-            self.assertTrue(plan["manual"])
-            self.assertEqual(plan["asset"], {"name": self.name})
-            network.assert_not_called()
+    def test_preview_uses_package_version_and_does_not_start_worker(self):
+        with patch.object(subprocess, "Popen") as process:
+            result = update.inspect_upload(
+                self.upload("4.1.5", "arknights-mower_99.0.0.zip")
+            )
+        self.assertEqual(result["version"], "v4.1.5")
+        self.assertTrue(result["downgrade"])
+        plan = update._checks[result["check_id"]]
+        self.assertEqual(plan["asset"]["name"], "package.zip")
+        staged = Path(plan["_upload"])
+        self.assertTrue(staged.is_file())
+        self.assertEqual(
+            hashlib.sha256(staged.read_bytes()).hexdigest(), plan["asset"]["sha256"]
+        )
+        process.assert_not_called()
 
-    def test_windows_and_linux_manual_packages(self):
-        for system, arch, suffix in [
-            ("windows", "x64", "zip"),
-            ("linux", "x64", "tar.gz"),
-            ("linux", "arm64", "tar.gz"),
-        ]:
-            name = f"arknights-mower_4.2.0_{system}_{arch}.{suffix}"
-            with (
-                self.subTest(system=system, arch=arch),
-                patch.object(update, "platform_asset", return_value=(system, arch)),
-            ):
-                plan = update.manual_plan(name)
-                self.assertEqual(plan["asset"]["name"], name)
+    def test_confirmation_and_discard_are_bound_to_the_preview(self):
+        result = update.inspect_upload(self.upload("4.1.5"))
+        plan = update._checks[result["check_id"]]
+        staged = Path(plan["_upload"])
+        with patch.object(update, "start_job", return_value={"ok": True}) as start:
+            with self.assertRaisesRegex(ValueError, "二次确认"):
+                update.submit(result["check_id"])
+            start.assert_not_called()
+            update.submit(result["check_id"], True, confirm_downgrade=True)
+            start.assert_called_once_with(
+                plan, True, uploaded=staged, force=False, confirm_downgrade=True
+            )
+        update.discard_upload(result["check_id"])
+        self.assertFalse(staged.exists())
+        with self.assertRaisesRegex(ValueError, "过期"):
+            update.submit(result["check_id"], confirm_downgrade=True)
 
-    def test_valid_upload_preserves_restart_option(self):
-        data = b"fixture package"
-
-        def submit(plan, background, uploaded, *, confirm_downgrade=False):
-            self.assertTrue(plan["manual"])
-            self.assertEqual(plan["asset"], {"name": self.name, "size": len(data)})
-            self.assertEqual(background, selected_background)
-            self.assertEqual(uploaded.read_bytes(), data)
-            self.assertFalse(confirm_downgrade)
-            return {"ok": True}
-
-        with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch.object(runtime, "state_dir", return_value=Path(temporary)),
-            patch.object(update, "github") as network,
-            patch.object(update, "start_job", side_effect=submit) as start,
-        ):
-            for selected_background in (True, False):
-                with self.subTest(background=selected_background):
-                    result = update.upload_package(
-                        FileStorage(stream=io.BytesIO(data), filename=self.name),
-                        background=selected_background,
-                    )
-                    self.assertTrue(result["ok"])
-            self.assertEqual(start.call_count, 2)
-            network.assert_not_called()
-            self.assertEqual(list(Path(temporary).glob("upload-*")), [])
-
-    def test_wrong_arch_and_unrelated_packages_are_rejected(self):
-        for name in [
-            "mower.zip",
-            "hot_update.zip",
-            "resource.zip",
-            "arknights-mower_4.2.0_windows_x64.zip",
-            "arknights-mower_4.2.0_macos_arm64.zip",
-        ]:
-            with self.subTest(name=name), self.assertRaises(ValueError):
-                update.manual_plan(name)
-
-    def test_older_and_same_version_uploads_are_submitted_offline(self):
-        for (system, arch, suffix), version in product(
-            [
-                ("windows", "x64", "zip"),
-                ("linux", "x64", "tar.gz"),
-                ("macos", "arm64", "dmg"),
-            ],
-            ["4.1.5", "4.1.6-alpha.4"],
-        ):
-            name = f"arknights-mower_{version}_{system}_{arch}.{suffix}"
-            with (
-                self.subTest(system=system, version=version),
-                tempfile.TemporaryDirectory() as directory,
-                patch.object(runtime, "state_dir", return_value=Path(directory)),
-                patch.object(update, "__version__", "4.1.6-alpha.4"),
-                patch.object(update, "platform_asset", return_value=(system, arch)),
-                patch.object(update, "github") as network,
-                patch.object(update, "start_job", return_value={"ok": True}) as start,
-            ):
+    def test_same_version_and_confirmed_older_uploads_work_offline(self):
+        for version in ("4.1.5", "4.1.6-alpha.4"):
+            with patch.object(update, "start_job", return_value={"ok": True}) as start:
                 result = update.upload_package(
-                    FileStorage(stream=io.BytesIO(b"fixture"), filename=name),
-                    confirm_downgrade=version == "4.1.5",
+                    self.upload(version), confirm_downgrade=version == "4.1.5"
                 )
                 self.assertTrue(result["ok"])
                 self.assertEqual(start.call_args.args[0]["version"], "v" + version)
-                self.assertTrue(start.call_args.args[0]["manual"])
-                self.assertEqual(
-                    start.call_args.kwargs["confirm_downgrade"], version == "4.1.5"
-                )
-                network.assert_not_called()
-                self.assertEqual(list(Path(directory).glob("upload-*")), [])
+        self.assertEqual(list((self.state / "uploads").iterdir()), [])
 
-    def test_unconfirmed_rollback_upload_is_rejected_before_reading_or_staging(self):
-        with (
-            patch.object(update, "__version__", "4.1.6-alpha.4"),
-            patch.object(runtime, "state_dir") as state,
-            patch.object(update, "start_job") as start,
-        ):
-            upload = FileStorage(
-                stream=Mock(), filename="arknights-mower_4.1.5_macos_arm64.dmg"
-            )
-            for value in (False, "true", "false", 1, None):
-                with self.subTest(value=value), self.assertRaises(ValueError):
-                    update.upload_package(upload, confirm_downgrade=value)
-            upload.stream.read.assert_not_called()
-            state.assert_not_called()
+    def test_invalid_or_oversized_uploads_leave_no_preview_or_worker(self):
+        with patch.object(update, "start_job") as start:
+            with self.assertRaises(ValueError):
+                update.inspect_upload(
+                    FileStorage(stream=io.BytesIO(b"broken"), filename="mower.zip")
+                )
+            with (
+                patch.object(update, "MAX_PACKAGE_BYTES", 8),
+                self.assertRaisesRegex(ValueError, "2 GiB"),
+            ):
+                update.inspect_upload(self.upload())
+            self.assertEqual(list((self.state / "uploads").iterdir()), [])
             start.assert_not_called()
 
     def test_source_cannot_apply_binary_over_git_checkout(self):
@@ -501,66 +473,31 @@ class ManualPackageTests(unittest.TestCase):
             patch.object(runtime, "frozen", return_value=False),
             self.assertRaisesRegex(ValueError, "源码部署"),
         ):
-            update.manual_plan(self.name)
+            update.inspect_upload(self.upload())
 
-    def test_oversized_package_does_not_submit_or_leave_upload(self):
+    def test_offline_upload_stages_integrity_hash_and_restart_option(self):
+        root = self.state / "install"
+        (root / "_internal").mkdir(parents=True)
+        (root / "mower").write_text("fixture executable")
         with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch.object(runtime, "state_dir", return_value=Path(temporary)),
-            patch.object(update, "MAX_PACKAGE_BYTES", 8),
-            patch.object(update, "start_job") as start,
-        ):
-            upload = FileStorage(
-                stream=io.BytesIO(b"invalid package"), filename=self.name
-            )
-            with self.assertRaisesRegex(ValueError, "2 GiB"):
-                update.upload_package(upload)
-            start.assert_not_called()
-            self.assertEqual(list(Path(temporary).glob("upload-*")), [])
-
-    def test_submission_failure_removes_upload(self):
-        with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch.object(runtime, "state_dir", return_value=Path(temporary)),
-            patch.object(update, "start_job", side_effect=ValueError("busy")),
-        ):
-            with self.assertRaisesRegex(ValueError, "busy"):
-                update.upload_package(
-                    FileStorage(stream=io.BytesIO(b"package"), filename=self.name)
-                )
-            self.assertEqual(list(Path(temporary).glob("upload-*")), [])
-
-    def test_release_silent_restart_is_saved_in_detached_job(self):
-        with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch.object(runtime, "state_dir", return_value=Path(temporary) / "state"),
-            patch.object(
-                runtime,
-                "installation_root",
-                return_value=(Path(temporary) / "install").resolve(),
-            ),
-            patch.object(sys, "executable", str(Path(temporary) / "install/mower")),
+            patch.object(runtime, "installation_root", return_value=root),
+            patch.object(sys, "executable", str(root / "mower")),
             patch.object(update, "info", return_value={"blockers": []}),
-            patch.object(update.network_settings, "apply_http_proxy"),
-            patch.object(
-                update.network_settings, "get_settings", return_value={"http_proxy": ""}
-            ),
-            patch.object(update.github_download, "get_proxy", return_value=""),
             patch.object(subprocess, "Popen", return_value=Mock(pid=12345)) as process,
         ):
-            root = Path(temporary) / "install"
-            (root / "_internal").mkdir(parents=True)
-            (root / "mower").write_text("fixture executable")
-            result = update.start_job(
-                {"deployment": "release", "channel": "beta", "version": "v4.2.0"},
-                background=True,
-            )
-            self.assertTrue(result["ok"])
-            job_path = Path(process.call_args.args[0][-1])
-            self.assertTrue(runtime.read_json(job_path)["background"])
-            self.assertTrue(
-                runtime.read_json(Path(temporary) / "state/settings.json")["background"]
-            )
+            result = update.upload_package(self.upload(), background=True)
+        self.assertTrue(result["ok"])
+        job_path = Path(process.call_args.args[0][-1])
+        job = runtime.read_json(job_path)
+        self.assertTrue(job["background"])
+        self.assertTrue(job["manual"])
+        self.assertNotIn("_upload", job)
+        staged = job_path.parent / job["asset"]["name"]
+        self.assertEqual(
+            hashlib.sha256(staged.read_bytes()).hexdigest(), job["asset"]["sha256"]
+        )
+        self.assertTrue(runtime.read_json(self.state / "settings.json")["background"])
+        self.assertEqual(list((self.state / "uploads").iterdir()), [])
 
 
 class AdmissionAndRoutesTests(unittest.TestCase):
@@ -568,6 +505,51 @@ class AdmissionAndRoutesTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.app.register_blueprint(software_update_bp)
         self.client = self.app.test_client()
+
+    def test_manual_preview_route_reads_contents_before_confirmation(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(runtime, "state_dir", return_value=Path(temporary)),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "__version__", "4.1.6-alpha.4"),
+            patch(
+                "requests.sessions.Session.request",
+                side_effect=AssertionError("offline"),
+            ),
+            patch.object(update, "start_job", return_value={"ok": True}) as start,
+        ):
+            headers = {"X-Mower-Update": "1"}
+            result = self.client.post(
+                "/software-update/manual/inspect",
+                data={
+                    "file": (io.BytesIO(make_release_package("4.1.5")), "arbitrary.bin")
+                },
+                headers=headers,
+            )
+            self.assertEqual(result.status_code, 200)
+            preview = result.get_json()
+            self.assertEqual(preview["version"], "v4.1.5")
+            start.assert_not_called()
+            data = {"check_id": preview["check_id"]}
+            self.assertEqual(
+                self.client.post(
+                    "/software-update/start", json=data, headers=headers
+                ).status_code,
+                400,
+            )
+            data["confirm_downgrade"] = True
+            self.assertEqual(
+                self.client.post(
+                    "/software-update/start", json=data, headers=headers
+                ).status_code,
+                200,
+            )
+            start.assert_called_once()
+            self.client.post(
+                "/software-update/manual/discard", json=data, headers=headers
+            )
+            self.assertEqual(list((Path(temporary) / "uploads").iterdir()), [])
 
     def test_force_route_requires_explicit_boolean_and_forwards_it(self):
         with patch.object(update, "submit", return_value={"ok": True}) as submit:
@@ -646,14 +628,14 @@ class AdmissionAndRoutesTests(unittest.TestCase):
             patch.object(runtime, "frozen", return_value=True),
             patch.object(runtime, "state_dir", return_value=Path(temporary)),
             patch.object(update, "__version__", "4.1.6-alpha.4"),
-            patch.object(update, "platform_asset", return_value=("macos", "arm64")),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
             patch.object(update, "start_job", return_value={"ok": True}) as start,
         ):
             for value in (None, "false", "1", "True", "", "true"):
                 data = {
                     "file": (
-                        io.BytesIO(b"fixture package"),
-                        "arknights-mower_4.1.5_macos_arm64.dmg",
+                        io.BytesIO(make_release_package("4.1.5")),
+                        "renamed (1).bin",
                     )
                 }
                 if value is not None:
@@ -691,7 +673,7 @@ class AdmissionAndRoutesTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as temporary,
             patch.object(runtime, "frozen", return_value=True),
             patch.object(runtime, "state_dir", return_value=Path(temporary)),
-            patch.object(update, "platform_asset", return_value=("macos", "arm64")),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
             patch.object(update, "github") as network,
             patch.object(update, "start_job", return_value={"ok": True}) as start,
         ):
@@ -699,8 +681,8 @@ class AdmissionAndRoutesTests(unittest.TestCase):
                 "/software-update/manual",
                 data={
                     "file": (
-                        io.BytesIO(b"fixture package"),
-                        "arknights-mower_4.2.0_macos_arm64.dmg",
+                        io.BytesIO(make_release_package()),
+                        "renamed (1).bin",
                     ),
                 },
                 headers={"X-Mower-Update": "1"},
@@ -970,20 +952,29 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual((self.root / "MAA/user-data").read_text(), "keep MAA")
 
     def test_checksum_failure_happens_before_shutdown(self):
-        self.job.update(
-            deployment="release",
-            background=False,
-            asset={"name": "package.zip", "sha256": "a" * 64},
-        )
-        (self.work / "package.zip").write_bytes(b"bad")
-        worker = self.worker()
-        worker.stop_instances = Mock()
-        worker.execute()
-        worker.stop_instances.assert_not_called()
-        self.assertEqual(
-            runtime.read_json(self.state / "status.json")["status"], "failed"
-        )
-        self.assertFalse((self.state / "active").exists())
+        for manual in (False, True):
+            with (
+                self.subTest(manual=manual),
+                patch(
+                    "requests.sessions.Session.request",
+                    side_effect=AssertionError("offline"),
+                ),
+            ):
+                self.job.update(
+                    deployment="release",
+                    background=False,
+                    manual=manual,
+                    asset={"name": "package.zip", "sha256": "a" * 64},
+                )
+                (self.work / "package.zip").write_bytes(b"changed after inspection")
+                worker = self.worker()
+                worker.stop_instances = Mock()
+                worker.execute()
+                worker.stop_instances.assert_not_called()
+                result = runtime.read_json(self.state / "status.json")
+                self.assertEqual(result["status"], "failed")
+                self.assertIn("SHA-256", result["message"])
+                self.assertFalse((self.state / "active").exists())
 
     def test_missing_manual_package_fails_without_network_or_shutdown(self):
         self.job.update(

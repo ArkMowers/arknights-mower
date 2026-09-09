@@ -1,38 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  confirmForceUpdate,
-  confirmSoftwareInstall,
-  confirmSourceVersion,
-  isVersionDowngrade,
-  softwarePackageVersion
-} from './softwareUpdate'
+import { confirmForceUpdate, confirmSoftwareInstall, confirmSourceVersion } from './softwareUpdate'
 
 describe('release rollback confirmation', () => {
-  it.each([
-    ['4.1.5', '4.1.6-alpha.4', true],
-    ['4.1.6-alpha.4', '4.1.6-alpha.5', true],
-    ['4.1.6-alpha.4', '4.1.6', true],
-    ['4.1.6-alpha.4', '4.1.6-beta.1', true],
-    ['4.1.6-beta.1', '4.1.6-rc.1', true],
-    ['4.1.6-alpha.12', '4.1.6-alpha.4', false],
-    ['4.1.6', '4.1.6-alpha.4', false],
-    ['v4.1.6-alpha.4', '4.1.6-alpha.4+abcdef', false],
-    ['4.2.0-alpha.1', '4.1.6', false],
-    ['invalid', '4.1.6', false]
-  ])('classifies %s relative to %s as downgrade=%s', (target, current, expected) => {
-    expect(isVersionDowngrade(target, current)).toBe(expected)
-  })
-
-  it.each([
-    ['arknights-mower_4.1.5_windows_x64.zip', '4.1.5'],
-    ['arknights-mower_4.1.6-alpha.4_macos_arm64.dmg', '4.1.6-alpha.4'],
-    ['arknights-mower_4.1.6_linux_x64.tar.gz', '4.1.6'],
-    ['resource.zip', undefined],
-    ['mower.zip', undefined]
-  ])('identifies the version of uploaded and dropped package %s', (filename, expected) => {
-    expect(softwarePackageVersion(filename)).toBe(expected)
-  })
-
   it.each([false, true])(
     'only installs a rollback after confirmation (force=%s)',
     async (force) => {

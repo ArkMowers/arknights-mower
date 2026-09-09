@@ -1,32 +1,11 @@
-function versionKey(value) {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?(?:\+.*)?$/.exec(value || '')
-  if (!match) return null
-  return [
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-    match[4] ? { alpha: 0, beta: 1, rc: 2 }[match[4]] : 3,
-    Number(match[5] || 0)
-  ]
-}
-
-export function isVersionDowngrade(version, currentVersion) {
-  const target = versionKey(version)
-  const current = versionKey(currentVersion)
-  if (!target || !current) return false
-  for (let i = 0; i < target.length; i++) {
-    if (target[i] !== current[i]) return target[i] < current[i]
-  }
-  return false
-}
-
-export function softwarePackageVersion(filename) {
-  return /^arknights-mower_(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)_(?:windows|linux|macos)_(?:x64|arm64)\.(?:zip|tar\.gz|dmg)$/.exec(
-    filename || ''
-  )?.[1]
-}
-
-export function confirmSoftwareInstall(dialogs, currentVersion, selection, instanceCount, install) {
+export function confirmSoftwareInstall(
+  dialogs,
+  currentVersion,
+  selection,
+  instanceCount,
+  install,
+  cancel = () => {}
+) {
   const target = { ...selection }
   return dialogs.warning({
     title: target.downgrade ? '确认回退版本？' : '确认安装并重启？',
@@ -34,6 +13,9 @@ export function confirmSoftwareInstall(dialogs, currentVersion, selection, insta
     positiveText: target.downgrade ? '确认回退' : '确认安装',
     negativeText: '取消',
     autoFocus: false,
+    onNegativeClick: cancel,
+    onClose: cancel,
+    onMaskClick: cancel,
     onPositiveClick: () => install({ ...target, confirm_downgrade: target.downgrade === true })
   })
 }

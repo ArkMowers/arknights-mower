@@ -1,5 +1,6 @@
 """Release discovery, upload validation and detached update job submission."""
 
+import hashlib
 import importlib.util
 import os
 import platform
@@ -46,9 +47,6 @@ CHANNELS = [
     },
 ]
 VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?(?:\+.*)?$")
-ASSET_RE = re.compile(
-    r"^arknights-mower_(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)_(windows|linux|macos)_(x64|arm64)\.(zip|tar\.gz|dmg)$"
-)
 _checks = {}
 _auto_check_lock = RLock()
 _auto_check_thread = None
@@ -708,7 +706,24 @@ def submit(check_id, background=False, *, force=False, confirm_downgrade=False):
     if force and not plan.get("force_available", True):
         raise ValueError("当前检查结果不支持强制更新")
     require_downgrade_confirmation(plan, confirm_downgrade)
-    return start_job(plan, background, force=force, confirm_downgrade=confirm_downgrade)
+    uploaded = Path(plan["_upload"]) if plan.get("_upload") else None
+    if uploaded is None:
+        return start_job(
+            plan, background, force=force, confirm_downgrade=confirm_downgrade
+        )
+    try:
+        if not uploaded.is_file():
+            raise ValueError("已检查的安装包已过期或已使用，请重新上传")
+        return start_job(
+            plan,
+            background,
+            uploaded=uploaded,
+            force=force,
+            confirm_downgrade=confirm_downgrade,
+        )
+    finally:
+        if not uploaded.exists():
+            discard_upload(check_id)
 
 
 def start_job(
@@ -753,7 +768,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
     previous_settings = get_settings()
     try:
         job = {
-            **plan,
+            **{key: value for key, value in plan.items() if key != "_upload"},
             **tools,
             "id": job_id,
             "root": str(root),
@@ -860,52 +875,87 @@ def cancel(job_id):
     return cancel_update(runtime.state_dir(), job_id)
 
 
-def manual_plan(filename, proxy=""):
+def manual_plan(package, proxy=""):
+    from .software_update_package import inspect_package
+
     if not runtime.frozen():
-        raise ValueError(
-            "Release 安装包用于独立包部署；源码部署请选择正式版、公测版或开发版进行 Git 更新"
-        )
-    match = ASSET_RE.fullmatch(filename or "")
-    if not match:
-        raise ValueError(
-            "请上传官方 Release 安装包，保留原始文件名；不接受热更包、资源包或 Source code 压缩包"
-        )
-    version, system, arch, extension = match.groups()
-    if (system, arch) != platform_asset():
-        raise ValueError("安装包的系统或架构与当前运行程序不匹配")
-    if extension != {"windows": "zip", "linux": "tar.gz", "macos": "dmg"}[system]:
-        raise ValueError("当前系统不支持此安装包格式；macOS 请使用 DMG")
+        raise ValueError("Release 安装包用于独立包部署；源码部署请使用 Git 更新")
+    metadata = inspect_package(package, *platform_asset())
+    version = metadata["version"]
     return {
         "deployment": "release",
         "manual": True,
+        "available": True,
         "downgrade": version_key(version) < version_key(__version__),
         "channel": "beta" if "-" in version else "stable",
         "proxy": validate_proxy(proxy),
         "version": "v" + version,
-        "asset": {"name": filename},
+        "asset": {"name": "package." + metadata["format"]},
         "created_at": time.time(),
     }
 
 
-def upload_package(upload, proxy="", background=False, *, confirm_downgrade=False):
+def inspect_upload(upload, proxy=""):
+    if not runtime.frozen():
+        raise ValueError("Release 安装包用于独立包部署；源码部署请使用 Git 更新")
     if not upload:
         raise ValueError("请选择 Release 安装包")
-    plan = manual_plan(upload.filename, proxy)
-    require_downgrade_confirmation(plan, confirm_downgrade)
-    state = runtime.state_dir()
-    state.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = state / f"upload-{uuid4().hex}"
+    uploads = runtime.state_dir() / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Clean abandoned previews on the next upload. Active inspections have no
+    # ready marker and are not removed while a slow upload is still in progress.
+    for previous in uploads.iterdir():
+        marker = previous / "ready"
+        if marker.is_file() and time.time() - marker.stat().st_mtime > 1800:
+            shutil.rmtree(previous, ignore_errors=True)
+    directory = uploads / uuid4().hex
+    directory.mkdir(mode=0o700)
+    package = directory / "package"
     try:
+        digest = hashlib.sha256()
         size = 0
-        with temporary.open("wb") as stream:
+        with package.open("wb") as stream:
             while chunk := upload.stream.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_PACKAGE_BYTES:
                     raise ValueError("安装包超过 2 GiB 限制")
+                digest.update(chunk)
                 stream.write(chunk)
-        plan["asset"]["size"] = size
-        return start_job(
-            plan, background, uploaded=temporary, confirm_downgrade=confirm_downgrade
+        plan = manual_plan(package, proxy)
+        canonical = package.with_name(plan["asset"]["name"])
+        package.rename(canonical)
+        plan.update(_upload=str(canonical))
+        plan["asset"].update(size=size, sha256=digest.hexdigest())
+        check_id = remember_check(plan)
+        (directory / "ready").touch()
+        return {
+            "ok": True,
+            "check_id": check_id,
+            "version": plan["version"],
+            "downgrade": plan["downgrade"],
+            "manual": True,
+            "message": "安装包完整性检查通过，请确认安装",
+        }
+    except Exception:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
+
+
+def discard_upload(check_id):
+    with runtime.submission_lock(runtime.state_dir()):
+        plan = _checks.get(check_id)
+        if plan and plan.get("_upload"):
+            _checks.pop(check_id, None)
+            shutil.rmtree(Path(plan["_upload"]).parent, ignore_errors=True)
+    return {"ok": True}
+
+
+def upload_package(upload, proxy="", background=False, *, confirm_downgrade=False):
+    """Compatibility entry point; inspection always precedes installation."""
+    result = inspect_upload(upload, proxy)
+    try:
+        return submit(
+            result["check_id"], background, confirm_downgrade=confirm_downgrade
         )
     finally:
-        temporary.unlink(missing_ok=True)
+        discard_upload(result["check_id"])

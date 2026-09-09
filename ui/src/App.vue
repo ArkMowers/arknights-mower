@@ -73,7 +73,6 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
-              <GlobalUpdateDrop v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
               <n-modal
@@ -271,7 +270,6 @@ import {
   watch
 } from 'vue'
 import Feedback from '@/components/Feedback.vue'
-import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
 import {
   mowerDarkCssVariables,

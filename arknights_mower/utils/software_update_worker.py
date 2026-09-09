@@ -645,7 +645,7 @@ class Worker:
                         raise ValueError("安装包超过 2 GiB 限制")
                     out.write(chunk)
                     self.status.update(current=size, total=asset.get("size", 0))
-        if not manual:
+        if not manual or asset.get("sha256"):
             digest = hashlib.sha256()
             with package.open("rb") as stream:
                 while chunk := stream.read(1024 * 1024):
