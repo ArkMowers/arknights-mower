@@ -32,6 +32,7 @@ class TaskTypes(Enum):
     SWAP_SUPPORT = ("换协助位", "换协助位", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)
     WORKSHOP = ("加工材料", "加工材料", 2)
+    FURNITURE = ("分解所有重复家具", "分解所有重复家具", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)

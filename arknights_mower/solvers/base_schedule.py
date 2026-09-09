@@ -600,6 +600,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     from arknights_mower.solvers.mastery import run_swap_support
 
                     run_swap_support(self)
+                elif self.task.type == TaskTypes.FURNITURE:
+                    from arknights_mower.solvers.furniture import FurnitureDismantler
+
+                    FurnitureDismantler(self).run()
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:

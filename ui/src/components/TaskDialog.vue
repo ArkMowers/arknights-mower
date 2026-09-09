@@ -32,6 +32,7 @@ const error = ref(false)
 const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
+  { label: '分解所有重复家具', value: '分解所有重复家具' },
   { label: '仓库扫描', value: '仓库扫描' },
   { label: '空任务', value: '空任务' }
 ]
@@ -139,8 +140,8 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
-  } else if (task_type.value == '仓库扫描') {
-    // 仓库扫描任务无需房间 plan：到点由调度器触发基地仓库扫描
+  } else if (['仓库扫描', '分解所有重复家具'].includes(task_type.value)) {
+    // 独立任务不携带房间排班。
     task.plan = {}
   }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task })).data
@@ -205,7 +206,7 @@ const level_list = [
           :options="taskTypeOptions"
           placeholder="任务类别"
           class="dropdown-select"
-          style="width: 120px"
+          style="width: 190px"
         />
         <n-select
           v-if="task_type == '技能专精'"
@@ -307,6 +308,9 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
+      <n-text v-if="task_type == '分解所有重复家具'" depth="3">
+        进入加工站家具页，从上到下分解所有重复家具，每种保留1件。无需选择干员，不消耗心情。
+      </n-text>
       <div class="task_row" v-if="task_type == '技能专精'">
         <label>协助方式：</label>
         <n-select
