@@ -101,6 +101,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -115,7 +116,7 @@ jobs:
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
-        run: ./venv/bin/python3 -m pytest -q
+        run: ./venv/bin/python3 -m pytest -v -o faulthandler_timeout=60
 
   # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
   # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。

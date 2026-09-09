@@ -19,6 +19,18 @@ class MaaErrorNoExitTests(unittest.TestCase):
     只释放 MAA（self.MAA = None）、记录错误、通知用户、本轮跳过，交给下个调度周期。
     """
 
+    def setUp(self):
+        # 未预期的异常必须使测试失败，不能进入真实休眠或被吞掉后假通过。
+        # 检查预期异常的用例在自己的 with 中覆盖这两个 mock。
+        self.unexpected_idle = self.enterContext(
+            patch.object(BaseSchedulerSolver, "_idle_sleep")
+        )
+        self.unexpected_error = self.enterContext(
+            patch.object(base_schedule, "save_exception")
+        )
+        self.addCleanup(self.unexpected_idle.assert_not_called)
+        self.addCleanup(self.unexpected_error.assert_not_called)
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_initialize_maa_failure_does_not_exit_game(self):
         # 初始化连不上 MAA（initialize_maa 抛错）→ 异常路径不得关闭游戏
@@ -184,6 +196,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
                 "conf",
                 SimpleNamespace(
                     maa_gap=4,
+                    maa_restore_theme_enable=False,
                     RG=False,
                     SSS=False,
                     RCL=False,
@@ -197,7 +210,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
             patch.object(solver, "initialize_maa", side_effect=_init_maa),
             patch.object(solver, "append_maa_task"),
             patch.object(solver, "sleep"),
-            patch.object(solver, "rest_until_next_task"),
+            patch.object(solver, "rest_until_next_task") as rest,
             patch.object(base_schedule, "get_server_weekday", return_value=1),
             patch.object(base_schedule, "send_message"),
         ):
@@ -205,6 +218,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
 
         solver.device.exit.assert_not_called()
         solver.device.check_current_focus.assert_not_called()
+        rest.assert_called_once()
 
 
 if __name__ == "__main__":
