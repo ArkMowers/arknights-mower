@@ -31,3 +31,13 @@ def test_real_panel_ocr(monkeypatch, ocr, fixture, name, stock, batch):
     assert furniture.furniture_details(img, stock, batch) == (name, stock)
     if batch is not None:
         assert furniture.furniture_batch(img) == batch
+
+
+def test_real_list_quantity_ignores_hallucinated_blank_text(monkeypatch, ocr):
+    monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
+    path = Path(__file__).parent / "fixtures/furniture/list_quantity.png"
+    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    cards = furniture.furniture_cards(img)
+    assert [count for _, count in cards] == [1, 1, 1, 1]
+    assert cards[0][0][0] < cards[1][0][0]
+    assert cards[2][0][0] < cards[3][0][0]

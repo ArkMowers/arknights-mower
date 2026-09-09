@@ -123,10 +123,25 @@ def furniture_cards(img):
         # 列表底部可能仅露出标题，留到下次滚动后处理。
         if y + 0.215 > 0.98:
             continue
-        quantity = read_text(
-            crop_relative(img, x - 0.005, y + 0.16, x + 0.09, y + 0.215)
-        )
+        quantity_img = crop_relative(img, x - 0.005, y + 0.16, x + 0.09, y + 0.215)
+        quantity = read_text(quantity_img)
         match = re.fullmatch(r"(\d+)[/／]1", quantity)
+        if not match:
+            # 大块留白可能被 OCR 误读为汉字，提取白色数量字形后再严格识别。
+            mask = cv2.inRange(quantity_img, (200, 200, 200), (255, 255, 255))
+            tx, ty, tw, th = cv2.boundingRect(mask)
+            if tw and th:
+                number = cv2.copyMakeBorder(
+                    mask[ty : ty + th, tx : tx + tw],
+                    6,
+                    6,
+                    6,
+                    6,
+                    cv2.BORDER_CONSTANT,
+                    value=0,
+                )
+                quantity = read_precise_text(number)
+                match = re.fullmatch(r"(\d+)[/／]1", quantity)
         if not match:
             raise ValueError(f"无法读取家具数量：{quantity!r}")
         # 点击配方标题；家具素材缩略图不是选择配方的按钮。
