@@ -79,3 +79,70 @@ describe('workshop config autosave', () => {
     replies.shift()()
   })
 })
+
+describe('weekly plan inventory config', () => {
+  it('sends source rules before switching and replaces them with target rules', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+
+    store.maa_weekly_plan_active = '活动'
+    store.maa_weekly_plan_options = ['活动', '常规']
+    store.maa_stage_inventory_enable = true
+    store.maa_stage_limit_rules = [
+      {
+        stage: 'ACT-1',
+        operator: 'and',
+        enabled: true,
+        items: [{ item_id: '30012', item_name: '固源岩', limit: 100 }]
+      }
+    ]
+    const targetInventory = {
+      enabled: false,
+      limit_rules: [
+        {
+          stage: '1-7',
+          operator: 'and',
+          enabled: true,
+          items: [{ item_id: '30011', item_name: '源岩', limit: 300 }]
+        }
+      ],
+      ratio_rules: []
+    }
+    axios.post.mockResolvedValue({
+      data: {
+        active: '常规',
+        plan: [],
+        inventory_config: targetInventory,
+        activity_fallbacks: {},
+        activity_fallback_switch_times: {},
+        activity_plan_end_times: {}
+      }
+    })
+
+    await store.update_weekly_plan_active('常规')
+
+    expect(axios.post).toHaveBeenCalledTimes(1)
+    expect(axios.post.mock.calls[0][0]).toContain('/weekly-plans/active')
+    expect(axios.post.mock.calls[0][1]).toMatchObject({
+      active: '常规',
+      source_inventory_config: {
+        enabled: true,
+        limit_rules: [
+          {
+            stage: 'ACT-1',
+            items: [{ item_id: '30012', limit: 100 }]
+          }
+        ],
+        ratio_rules: []
+      }
+    })
+    expect(store.maa_weekly_plan_active).toBe('常规')
+    expect(store.maa_stage_inventory_enable).toBe(false)
+    expect(store.maa_stage_limit_rules).toEqual(targetInventory.limit_rules)
+  })
+})

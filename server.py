@@ -655,6 +655,42 @@ def load_config():
         return data
     else:
         req = dict(request.json or {})
+        requested_plan_key = str(req.pop("maa_weekly_plan_active", "")).strip()
+        from arknights_mower.utils.config.weekly_plan_loader import (
+            get_weekly_plan_manager,
+        )
+
+        manager = get_weekly_plan_manager()
+        active_plan_key = manager.get_active_plan_key()
+        inventory_fields = {
+            "enabled": "maa_stage_inventory_enable",
+            "limit_rules": "maa_stage_limit_rules",
+            "ratio_rules": "maa_stage_ratio_rules",
+        }
+        if any(field in req for field in inventory_fields.values()):
+            plans = manager.get_plans()
+            plan_key = (
+                requested_plan_key
+                if requested_plan_key in plans
+                else active_plan_key
+                if not requested_plan_key
+                else ""
+            )
+            if plan_key:
+                inventory_config = manager.get_inventory_config(plan_key)
+                for key, field in inventory_fields.items():
+                    if field in req:
+                        inventory_config[key] = req[field]
+                if not manager.set_inventory_config(plan_key, inventory_config):
+                    return {"error": "Invalid weekly plan inventory config"}, 400
+
+            # 方案刚在另一请求中切换或删除时，迟到的旧方案自动保存只更新仍存在的
+            # 原方案；写入全局运行时配置前恢复当前方案规则，避免串到新方案。
+            runtime_plan_key = manager.get_active_plan_key()
+            if plan_key != runtime_plan_key:
+                active_inventory_config = manager.get_inventory_config(runtime_plan_key)
+                for key, field in inventory_fields.items():
+                    req[field] = active_inventory_config[key]
         req["maa_weekly_plan"] = [
             item.model_dump() for item in config.conf.maa_weekly_plan
         ]
@@ -2336,6 +2372,7 @@ def get_weekly_plans():
     manager = get_weekly_plan_manager()
     return {
         "plans": manager.get_plans(),
+        "inventory_config": manager.get_inventory_config(manager.get_active_plan_key()),
         "activity_fallbacks": manager.get_activity_fallbacks(),
         "activity_fallback_switch_times": (
             manager.get_activity_fallback_switch_times()
@@ -2382,15 +2419,29 @@ def update_active_weekly_plan():
     try:
         req = request.json or {}
         manager = get_weekly_plan_manager()
+        source_key = manager.get_active_plan_key()
 
         active_key = str(req.get("active", "")).strip()
         if not active_key:
             return {"error": "Plan key cannot be empty"}, 400
 
+        if "source_inventory_config" in req and not manager.set_inventory_config(
+            source_key, req.get("source_inventory_config")
+        ):
+            return {"error": "Invalid source plan inventory config"}, 400
+
         plan_data = req.get("plan")
 
         if plan_data is not None:
-            if not manager.create_or_update_plan(active_key, plan_data):
+            if "inventory_config" in req:
+                updated = manager.create_or_update_plan(
+                    active_key,
+                    plan_data,
+                    inventory_config=req.get("inventory_config"),
+                )
+            else:
+                updated = manager.create_or_update_plan(active_key, plan_data)
+            if not updated:
                 return {"error": f"Failed to create or update plan '{active_key}'"}, 400
         else:
             if not manager.set_active_plan(active_key):
@@ -2400,6 +2451,7 @@ def update_active_weekly_plan():
         return {
             "active": active_key,
             "plan": new_plan,
+            "inventory_config": manager.get_inventory_config(active_key),
             "activity_fallbacks": manager.get_activity_fallbacks(),
             "activity_fallback_switch_times": (
                 manager.get_activity_fallback_switch_times()
@@ -2430,6 +2482,7 @@ def delete_weekly_plan(key):
         return {
             "active": active_key,
             "plan": plan_data,
+            "inventory_config": manager.get_inventory_config(active_key),
         }
     except Exception as e:
         logger.exception(f"Failed to delete weekly plan: {e}")

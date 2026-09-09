@@ -156,6 +156,7 @@ export const useConfigStore = defineStore('config', () => {
   const syncingWeeklyPlan = ref(false)
   const skipNextWeeklyPlanSync = ref(false)
   let weeklyPlanSyncTimer = null
+  let configSaveRequest = Promise.resolve()
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -253,6 +254,20 @@ export const useConfigStore = defineStore('config', () => {
     )
   }
 
+  function buildWeeklyPlanInventoryConfig() {
+    return {
+      enabled: maa_stage_inventory_enable.value,
+      limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
+      ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value)
+    }
+  }
+
+  function applyWeeklyPlanInventoryConfig(rawConfig = {}) {
+    maa_stage_inventory_enable.value = rawConfig.enabled === true
+    maa_stage_limit_rules.value = normalizeStageLimitRules(rawConfig.limit_rules)
+    maa_stage_ratio_rules.value = normalizeStageRatioRules(rawConfig.ratio_rules)
+  }
+
   function applyWeeklyPlanMetadata(data = {}) {
     maa_weekly_plan_activity_fallbacks.value =
       data.activity_fallbacks && typeof data.activity_fallbacks === 'object'
@@ -270,6 +285,7 @@ export const useConfigStore = defineStore('config', () => {
       ? listResponse.data.plans
       : []
     applyWeeklyPlanMetadata(listResponse.data)
+    applyWeeklyPlanInventoryConfig(listResponse.data.inventory_config)
 
     if (!maa_weekly_plan_active.value) {
       await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
@@ -286,11 +302,19 @@ export const useConfigStore = defineStore('config', () => {
       throw new Error('周计划方案不能为空')
     }
 
+    // Finish any autosave for the source plan before changing the active key,
+    // so an older /conf request cannot write its inventory rules into the target.
+    await configSaveRequest.catch(() => {})
     syncingWeeklyPlan.value = true
     try {
-      const payload = { active: activeKey }
+      const currentInventoryConfig = buildWeeklyPlanInventoryConfig()
+      const payload = {
+        active: activeKey,
+        source_inventory_config: currentInventoryConfig
+      }
       if (plan !== undefined) {
         payload.plan = normalizeWeeklyPlan(plan)
+        payload.inventory_config = currentInventoryConfig
       }
       const response = await axios.post(
         `${import.meta.env.VITE_HTTP_URL}/weekly-plans/active`,
@@ -302,6 +326,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.from(
         new Set([...maa_weekly_plan_options.value, response.data.active])
       )
+      applyWeeklyPlanInventoryConfig(response.data.inventory_config)
       applyWeeklyPlanMetadata(response.data)
       return response.data
     } finally {
@@ -322,6 +347,7 @@ export const useConfigStore = defineStore('config', () => {
       throw new Error('周计划方案不能为空')
     }
 
+    await configSaveRequest.catch(() => {})
     syncingWeeklyPlan.value = true
     try {
       const response = await axios.delete(
@@ -330,6 +356,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_active.value = response.data.active
       skipNextWeeklyPlanSync.value = true
       maa_weekly_plan.value = normalizeWeeklyPlan(response.data.plan)
+      applyWeeklyPlanInventoryConfig(response.data.inventory_config)
       const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
       maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
         ? listResponse.data.plans
@@ -401,9 +428,11 @@ export const useConfigStore = defineStore('config', () => {
     ap_fallback.value = Number(response.data.ap_fallback) || 0
     maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
     maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
-    maa_stage_inventory_enable.value = response.data.maa_stage_inventory_enable === true
-    maa_stage_limit_rules.value = normalizeStageLimitRules(response.data.maa_stage_limit_rules)
-    maa_stage_ratio_rules.value = normalizeStageRatioRules(response.data.maa_stage_ratio_rules)
+    applyWeeklyPlanInventoryConfig({
+      enabled: response.data.maa_stage_inventory_enable,
+      limit_rules: response.data.maa_stage_limit_rules,
+      ratio_rules: response.data.maa_stage_ratio_rules
+    })
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
@@ -526,6 +555,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_yituliu_id: maa_yituliu_id.value,
       maa_penguin_id: maa_penguin_id.value,
       ap_fallback: ap_fallback.value,
+      maa_weekly_plan_active: maa_weekly_plan_active.value,
       maa_stage_inventory_enable: maa_stage_inventory_enable.value,
       maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
       maa_stage_ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value),
@@ -656,7 +686,6 @@ export const useConfigStore = defineStore('config', () => {
     },
     { deep: true }
   )
-  let configSaveRequest = Promise.resolve()
   function save_config() {
     // Track nested edits synchronously for watchEffect; serialize the latest
     // draft and revision when this queued request actually starts.

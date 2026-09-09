@@ -16,6 +16,27 @@ def _activity_stage(stage_id: str, end: int) -> dict:
     }
 
 
+def _inventory_config(stage: str, item_id: str, limit: int) -> dict:
+    return {
+        "enabled": True,
+        "limit_rules": [
+            {
+                "stage": stage,
+                "operator": "and",
+                "enabled": True,
+                "items": [
+                    {
+                        "item_id": item_id,
+                        "item_name": item_id,
+                        "limit": limit,
+                    }
+                ],
+            }
+        ],
+        "ratio_rules": [],
+    }
+
+
 class WeeklyPlanManagerTests(unittest.TestCase):
     def setUp(self):
         self.manager = object.__new__(WeeklyPlanManager)
@@ -308,6 +329,108 @@ class WeeklyPlanManagerTests(unittest.TestCase):
                 yaml.safe_load(path.read_text("utf-8"))["activity_fallback_end_times"],
                 {"活动": 200},
             )
+
+    def test_legacy_inventory_rules_migrate_only_to_active_plan(self):
+        data = {"plans": {"活动": [], "常规": []}}
+        legacy = _inventory_config("ACT-1", "30012", 100)
+        with (
+            patch.object(
+                self.manager, "_read_state", return_value={"active_weekly_plan": "活动"}
+            ),
+            patch.object(
+                self.manager, "_runtime_inventory_config", return_value=legacy
+            ),
+        ):
+            changed = self.manager._ensure_inventory_configs(data)
+
+        self.assertTrue(changed)
+        self.assertEqual(data["inventory_configs"]["活动"], legacy)
+        self.assertEqual(
+            data["inventory_configs"]["常规"],
+            {"enabled": False, "limit_rules": [], "ratio_rules": []},
+        )
+
+    def test_inventory_rules_are_saved_independently_per_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "weekly_plans.yml"
+            path.write_text(
+                yaml.safe_dump(
+                    {"plans": {"活动": [], "常规": []}},
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            activity = _inventory_config("ACT-1", "30012", 100)
+            regular = _inventory_config("1-7", "30011", 300)
+            with patch.object(WeeklyPlanManager, "WEEKLY_PLANS_FILE", path):
+                self.assertTrue(self.manager.set_inventory_config("活动", activity))
+                self.assertTrue(self.manager.set_inventory_config("常规", regular))
+                self.assertEqual(self.manager.get_inventory_config("活动"), activity)
+                self.assertEqual(self.manager.get_inventory_config("常规"), regular)
+
+            saved = yaml.safe_load(path.read_text("utf-8"))["inventory_configs"]
+            self.assertEqual(saved["活动"], activity)
+            self.assertEqual(saved["常规"], regular)
+
+    def test_switching_plan_syncs_its_inventory_rules_to_runtime(self):
+        from arknights_mower.utils import config
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "weekly_plans.yml"
+            regular = _inventory_config("1-7", "30011", 300)
+            path.write_text(
+                yaml.safe_dump(
+                    {
+                        "plans": {"活动": [], "常规": []},
+                        "inventory_configs": {
+                            "活动": _inventory_config("ACT-1", "30012", 100),
+                            "常规": regular,
+                        },
+                    },
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(WeeklyPlanManager, "WEEKLY_PLANS_FILE", path),
+                patch.object(config, "conf", config.Conf()),
+            ):
+                self.assertTrue(self.manager.sync_active_plan_to_config("常规"))
+                self.assertTrue(config.conf.maa_stage_inventory_enable)
+                self.assertEqual(
+                    [rule.model_dump() for rule in config.conf.maa_stage_limit_rules],
+                    regular["limit_rules"],
+                )
+                self.assertEqual(config.conf.maa_stage_ratio_rules, [])
+
+    def test_deleting_plan_removes_its_inventory_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "weekly_plans.yml"
+            path.write_text(
+                yaml.safe_dump(
+                    {
+                        "plans": {"活动": [], "常规": []},
+                        "inventory_configs": {
+                            "活动": _inventory_config("ACT-1", "30012", 100),
+                            "常规": _inventory_config("1-7", "30011", 300),
+                        },
+                    },
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(WeeklyPlanManager, "WEEKLY_PLANS_FILE", path),
+                patch.object(self.manager, "get_active_plan_key", return_value="活动"),
+            ):
+                self.assertTrue(self.manager.delete_plan("常规"))
+
+            saved = yaml.safe_load(path.read_text("utf-8"))
+            self.assertNotIn("常规", saved["plans"])
+            self.assertNotIn("常规", saved["inventory_configs"])
 
 
 if __name__ == "__main__":
