@@ -646,7 +646,9 @@ def load_config():
         except Exception:
             logger.exception("Failed to sync active weekly plan before returning /conf")
             manager = None
-        data = config.conf.model_dump()
+        from arknights_mower.utils.workshop_config import read_user_config
+
+        data = read_user_config()
         data["runtime_platform"] = __system__
         if manager is not None:
             data["maa_weekly_plan_active"] = manager.get_active_plan_key()
@@ -656,8 +658,11 @@ def load_config():
         req["maa_weekly_plan"] = [
             item.model_dump() for item in config.conf.maa_weekly_plan
         ]
-        config.conf = config.Conf(**req)
-        config.save_conf()
+        from arknights_mower.utils.workshop_config import save_user_config
+
+        state = save_user_config(req)
+        if "workshop_manual_settings" in req or "workshop_settings_generation" in req:
+            return {"message": "New config saved!", **state}
         return "New config saved!"
 
 
@@ -690,6 +695,10 @@ def shop_list():
 def item_list():
     from arknights_mower.data import workshop_formula
 
+    if request.args.get("kind") == "deer-fodder":
+        from arknights_mower.utils.workshop_fodder import deer_fodder_materials
+
+        return deer_fodder_materials()
     return list(workshop_formula.keys())
 
 
@@ -2113,21 +2122,18 @@ def mastery_recommendation():
 def workshop_auto_config():
     import traceback
 
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_workshop_config,
-    )
+    from arknights_mower.utils.workshop_automation import update_workshop_config
 
     try:
         req = request.json or {}
-        fodder_ops = req.get("fodder_operators", ["九色鹿"])
-        t5_ops = req.get("t5_operators", ["年"])
-        book_ops = req.get("book_operators", ["司霆惊蛰"])
-        settings = compute_workshop_config(
+        fodder_ops = req.get("fodder_operators", config.conf.fodder_operators)
+        t5_ops = req.get("t5_operators", config.conf.t5_operators)
+        book_ops = req.get("book_operators", config.conf.book_operators)
+        return update_workshop_config(
             fodder_operators=fodder_ops,
             t5_operators=t5_ops,
             book_operators=book_ops,
         )
-        return {"workshop_settings": settings, "t3_summary": []}
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}, 500
 
@@ -2292,7 +2298,7 @@ def mastery_t3_debug():
     }
 
 
-@app.route("/workshop-preset", methods=["GET", "POST"])
+@app.route("/workshop-preset", methods=["GET"])
 def workshop_preset():
     import json as _json
 
@@ -2305,12 +2311,6 @@ def workshop_preset():
             except Exception:
                 pass
         return []
-    else:
-        data = request.json or []
-        preset_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(preset_path, "w", encoding="utf-8") as f:
-            _json.dump(data, f, ensure_ascii=False)
-        return {"success": True}
 
 
 @app.route("/cultivate-fetch")

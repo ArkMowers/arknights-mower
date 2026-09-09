@@ -350,6 +350,9 @@ class MasteryPlanView(MethodView):
             # #97：删计划清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill），
             # 否则残留任务仍会按 plan_key 派发到已删计划。
             _purge_plan_tasks(plan_id)
+            from arknights_mower.utils.workshop_automation import restore_if_no_plans
+
+            restore_if_no_plans()
             return {"status": "ok"}
         return {"error": "delete failed"}, 500
 

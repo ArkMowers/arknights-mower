@@ -16,6 +16,21 @@ from arknights_mower.utils import workshop_recommendation as workshop  # noqa: E
 
 @pytest.fixture
 def next_skill(monkeypatch, tmp_path):
+    from arknights_mower.utils import workshop_config
+
+    monkeypatch.setattr(config, "conf", config.Conf())
+    import server
+
+    monkeypatch.setattr(server.app, "token", "", raising=False)
+    monkeypatch.setattr(config, "save_conf", MagicMock())
+    monkeypatch.setattr(rec, "_skill_data_cache", None)
+    monkeypatch.setattr(workshop_config, "get_path", lambda _: tmp_path / "preset.json")
+    config.conf.enable_mastery = True
+    config.conf.workshop_settings = []
+    config.conf.workshop_manual_backup = None
+    config.conf.workshop_preset_migrated = False
+    config.conf.workshop_generation = 0
+    config.conf.workshop_deer_fodder = config.Conf().workshop_deer_fodder
     cultivate = tmp_path / "cultivate.json"
     cultivate.write_text(json.dumps({"data": {"characters": [], "items": []}}))
     skills = tmp_path / "skill_data.json"

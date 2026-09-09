@@ -691,6 +691,8 @@ class Operators:
             if dorm.name == "" or dorm.name not in self.operators:
                 continue
             op = self.operators[dorm.name]
+            if op.is_workshop():
+                continue
             if dorm.time is not None and dorm.time < time:
                 if op.is_high():
                     free_name.append(dorm.name)
@@ -720,10 +722,11 @@ class Operators:
             for dorm in self.dorm
             if dorm.name in self.operators
             and self.operators[dorm.name].is_high()
+            and not self.operators[dorm.name].is_workshop()
             and not (dorm.time is not None and dorm.time < time)
         )
 
-    def _slot_takable(self, dorm, protect_resting):
+    def _slot_takable(self, dorm, protect_resting, requester=None):
         """床位能否被接管；低优之间保护正在休息者，高优可接管低优床位。"""
         name = dorm.name
         if name == "" or name not in self.operators:
@@ -731,17 +734,25 @@ class Operators:
         op = self.operators[name]
         if dorm.time is not None and dorm.time < datetime.now():
             return True
+        if op.is_workshop() and requester is not None:
+            incoming = self.operators[requester]
+            return not incoming.is_workshop() and (
+                incoming.is_high() or incoming.current_mood() <= 22
+            )
         if not op.is_high():
             return not (protect_resting and op.is_resting())
         return False
 
     def _find_dorm_slot(self, name, used):
-        is_high = self.operators[name].resting_priority == "high"
+        is_high = (
+            self.operators[name].resting_priority == "high"
+            and not self.operators[name].is_workshop()
+        )
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
         if not is_high:
             for i in range(max_count, len(self.dorm)):
                 if i not in used and self._slot_takable(
-                    self.dorm[i], protect_resting=True
+                    self.dorm[i], protect_resting=True, requester=name
                 ):
                     return i
         return next(
@@ -749,7 +760,9 @@ class Operators:
                 i
                 for i, dorm in enumerate(self.dorm)
                 if i not in used
-                and self._slot_takable(dorm, protect_resting=not is_high)
+                and self._slot_takable(
+                    dorm, protect_resting=not is_high, requester=name
+                )
             ),
             None,
         )
@@ -907,6 +920,22 @@ class Dormitory:
 
 
 class Operator:
+    def is_workshop(self):
+        """Configured crafters use spare beds, independently of shift priority."""
+        conf = config.conf
+        names = (
+            *getattr(conf, "fodder_operators", ()),
+            *getattr(conf, "t5_operators", ()),
+            *getattr(conf, "book_operators", ()),
+        )
+        return self.name in names or any(
+            setting.operator == self.name
+            for setting in (
+                *getattr(conf, "workshop_settings", ()),
+                *(getattr(conf, "workshop_manual_backup", None) or ()),
+            )
+        )
+
     def __init__(
         self,
         name,

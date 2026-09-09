@@ -19,6 +19,14 @@ const data = {
 }
 
 describe('training plan workshop warnings', () => {
+  it('includes saved manual selections while the runtime config is automatic', () => {
+    const operators = selectedWorkshopOperators({
+      workshop_settings: [{ operator: '赫拉格', source: 'mastery' }],
+      workshop_manual_settings: [{ operator: '空爆' }, { operator: '年', enabled: false }]
+    })
+    expect([...operators]).toEqual(['赫拉格', '空爆'])
+  })
+
   it('includes selections in every category and enabled manual synthesis configurations', () => {
     const operators = selectedWorkshopOperators({
       fodder_operators: ['九色鹿', '年', 'Free'],

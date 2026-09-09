@@ -68,6 +68,18 @@ def add_task():
                         meta_data=task["meta_data"],
                     )
                     if new_task.type == TaskTypes.WORKSHOP:
+                        from arknights_mower.utils import config
+                        from arknights_mower.utils.workshop_automation import (
+                            stamp_workshop_task,
+                        )
+
+                        generation = task.get("workshop_generation")
+                        if (
+                            generation is not None
+                            and generation != config.conf.workshop_generation
+                        ):
+                            raise ValueError("加工配置已更新，请刷新后重试")
+                        stamp_workshop_task(new_task)
                         new_task.time = next_workshop_task_time(
                             base_scheduler.tasks, task_time
                         )

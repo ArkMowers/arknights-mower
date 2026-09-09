@@ -382,7 +382,12 @@ def _workshop_training_reserve(plan, recommendation):
 
 
 def compute_workshop_config(
-    fodder_operators=None, t5_operators=None, book_operators=None
+    fodder_operators=None,
+    t5_operators=None,
+    book_operators=None,
+    *,
+    plans=None,
+    recommendations=None,
 ):
     """准备队首技能，确认正在训练后可提前一个技能；按钮与仓库扫描共用。"""
     if fodder_operators is None:
@@ -400,7 +405,8 @@ def compute_workshop_config(
     # failed 计划不核算材料（不消耗；failed 已由扫描钩子 retry_failed_plans 先重置 idle）。
     from arknights_mower.utils.mastery_db import get_all_plans
 
-    plans = get_all_plans()
+    if plans is None:
+        plans = get_all_plans()
 
     if plans:
         try:
@@ -448,12 +454,9 @@ def compute_workshop_config(
                 return info.get("rarity", 0)
         return 0
 
-    fodder_list = ["碳素", "碳素组", "家具零件_碳素组"]
-    fodder_items = [
-        {"item_names": [f], "children_lower_limit": 0, "self_upper_limit": 9999}
-        for f in fodder_list
-        if f in workshop_formula
-    ]
+    from arknights_mower.utils.workshop_fodder import deer_fodder_items
+
+    fodder_items = deer_fodder_items()
 
     t4_names = {
         n: e
@@ -466,7 +469,11 @@ def compute_workshop_config(
         if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
     }
 
-    rec_result = get_mastery_recommendations()
+    rec_result = (
+        recommendations
+        if recommendations is not None
+        else get_mastery_recommendations()
+    )
     operators = rec_result.get("operators", [])
 
     plan_key = selected["char_id"], selected["skill_index"]
@@ -638,12 +645,9 @@ def compute_default_workshop_config(
         for n, e in workshop_formula.items()
         if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
     }
-    fodder_list = ["碳素", "碳素组", "家具零件_碳素组"]
-    fodder_items = [
-        {"item_names": [f], "children_lower_limit": 0, "self_upper_limit": 9999}
-        for f in fodder_list
-        if f in workshop_formula
-    ]
+    from arknights_mower.utils.workshop_fodder import deer_fodder_items
+
+    fodder_items = deer_fodder_items()
     default_t4 = [
         {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
         for n in sorted(t4_names)

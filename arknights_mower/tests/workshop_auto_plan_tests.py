@@ -71,14 +71,18 @@ def test_depot_scan_uses_same_next_skill_config_and_clears_finished_queue(
     monkeypatch.setattr(
         rec, "auto_schedule_mastery_tasks", lambda: {"scheduled": [], "skipped": []}
     )
-    monkeypatch.setattr(config.conf, "enable_mastery", False)
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "workshop_settings", [])
     save = MagicMock()
     monkeypatch.setattr(config, "save_conf", save)
     solver = object.__new__(BaseSchedulerSolver)
+    solver._dispatch_scan_start_tasks = MagicMock()
     solver._auto_schedule_mastery_after_scan()
     actual = [entry.model_dump() for entry in config.conf.workshop_settings]
-    assert actual == rec.compute_workshop_config([], [], ["赫拉格"])
+    assert actual == [
+        {**entry, "source": "mastery"}
+        for entry in rec.compute_workshop_config([], [], ["赫拉格"])
+    ]
     if empty:
         assert actual == []
     else:

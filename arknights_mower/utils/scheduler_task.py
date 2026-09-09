@@ -697,6 +697,11 @@ def try_workshop_tasks(op_data, tasks):
                     task_type=TaskTypes.WORKSHOP,
                     meta_data=item.operator,
                 )
+                from arknights_mower.utils.workshop_automation import (
+                    stamp_workshop_task,
+                )
+
+                stamp_workshop_task(task)
                 tasks.append(task)
             else:
                 logger.debug("数据不满足条件，跳过加工站任务生成")
