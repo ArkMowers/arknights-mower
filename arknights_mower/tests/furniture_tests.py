@@ -314,7 +314,7 @@ def test_details_reject_uncertain_stock(monkeypatch, solver, text, score):
     monkeypatch.setattr(
         furniture.rapidocr,
         "engine",
-        MagicMock(side_effect=[([["测试家具", 1]], 0), ([[text, score]], 0)]),
+        MagicMock(side_effect=[([title(10, 10, "测试家具")], 0), ([[text, score]], 0)]),
     )
     with pytest.raises(ValueError):
         REAL_FURNITURE_DETAILS(solver.recog.img)
@@ -325,7 +325,9 @@ def test_detail_stock_parser_accepts_multiple_digits(monkeypatch, solver, stock)
     monkeypatch.setattr(
         furniture.rapidocr,
         "engine",
-        MagicMock(side_effect=[([["测试家具", 1]], 0), ([[f"{stock}/1", 1]], 0)]),
+        MagicMock(
+            side_effect=[([title(10, 10, "测试家具")], 0), ([[f"{stock}/1", 1]], 0)]
+        ),
     )
     assert REAL_FURNITURE_DETAILS(solver.recog.img, stock) == ("测试家具", stock)
 
@@ -349,3 +351,41 @@ def test_empty_or_clipped_batch_is_rejected(solver):
     solver.recog.img[:] = [255, 220, 0]
     with pytest.raises(ValueError, match="为空或被裁切"):
         REAL_FURNITURE_BATCH(solver.recog.img)
+
+
+@pytest.mark.parametrize("name", ["桌子", "货物垫板", "街头涂鸦"])
+def test_names_are_detected_before_recognition(monkeypatch, solver, name):
+    engine = MagicMock(side_effect=[([title(10, 10, name)], 0), ([["2/1", 1]], 0)])
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (name, 2)
+    assert engine.call_args_list[0].kwargs["use_det"] is True
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        [title(0, 0, "桌子"), title(50, 0, "另一名称")],
+        [[[[0, 0]] * 4, "桌子", 0.8]],
+    ],
+)
+def test_uncertain_name_detection_never_uses_partial_text(monkeypatch, solver, result):
+    engine = MagicMock(return_value=(result, 0))
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    with pytest.raises(ValueError, match="家具名称无法可靠确认"):
+        REAL_FURNITURE_DETAILS(solver.recog.img, 2)
+    engine.assert_called_once()
+
+
+def test_multi_digit_stock_is_used_in_both_detail_checks(monkeypatch, solver):
+    details = MagicMock(return_value=("测试家具", 12))
+    monkeypatch.setattr(furniture, "furniture_details", details)
+    monkeypatch.setattr(furniture, "furniture_batch", lambda img: 11)
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    solver.factory_scene.side_effect = [
+        Scene.FACTORY_DASHBOARD,
+        Scene.FACTORY_DASHBOARD,
+        Scene.FACTORY_PRODUCT_COLLECT,
+    ]
+    assert furniture.FurnitureDismantler(solver).process((0.37, 0.21), 12)
+    assert [c.args[1] for c in details.call_args_list] == [12, 12]

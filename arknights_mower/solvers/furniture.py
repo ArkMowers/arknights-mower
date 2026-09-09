@@ -36,7 +36,16 @@ def read_precise_text(img):
 
 
 def furniture_details(img, expected_count=1):
-    name = read_precise_text(crop_relative(img, 0.36, 0.265, 0.59, 0.335))
+    # 名称长短差异很大，先定位文字，避免「桌子」等短名称被大块留白干扰。
+    result, _ = rapidocr.engine(
+        crop_relative(img, 0.36, 0.265, 0.59, 0.31),
+        use_det=True,
+        use_cls=False,
+        use_rec=True,
+    )
+    if not result or len(result) != 1 or result[0][2] < 0.9:
+        raise ValueError("家具名称无法可靠确认")
+    name = normalize_name(result[0][1])
     # 数量右对齐，按列表读到的位数扩展，避免将多位库存裁成个位。
     left = 0.474 - 0.012 * (len(str(expected_count)) - 1)
     stock = read_precise_text(crop_relative(img, left, 0.413, 0.514, 0.446))
@@ -208,7 +217,7 @@ class FurnitureDismantler:
             self.tap(0.84, 0.68, interval=0.2)
         # 验证实际份数，防止减号漏点或界面变化损坏整套家具。
         if furniture_batch(solver.recog.img) != target or furniture_details(
-            solver.recog.img
+            solver.recog.img, expected_count
         ) != (name, stock):
             raise RuntimeError("无法确认保留完整套装，未提交加工")
         if not keep_one_enabled(solver.recog.img) or not solver.item_valid():
