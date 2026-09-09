@@ -19,6 +19,7 @@ def ocr():
     [
         ("stock_3_2", "洗衣间地毯", 3, 2),
         ("stock_4_3", "长桌", 4, 3),
+        ("stock_17_16", "专业键盘架", 17, 16),
         ("quoted_name", "“全是兔兔”糖果机", 1, None),
         ("rabbit_name", "兔兔拍立得相机", 1, None),
         ("short_quoted_name", "“食为天”", 1, None),
