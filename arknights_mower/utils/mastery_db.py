@@ -339,6 +339,25 @@ def get_plan_by_id(plan_id: int, path: Optional[str] = None) -> Optional[dict]:
         return None
 
 
+def complete_satisfied_idle_plans(levels, path: Optional[str] = None) -> int:
+    """Close waiting plans whose target is already reached in the synchronized BOX."""
+    known = [
+        (char_id, index, level)
+        for (char_id, index), level in levels.items()
+        if type(level) is int and 1 <= level <= 3
+    ]
+    if not known:
+        return 0
+    with _conn(path) as conn:
+        cursor = conn.executemany(
+            "UPDATE mastery_plan SET status='completed' "
+            "WHERE status='idle' AND char_id=? AND skill_index=? AND target_level<=?",
+            known,
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
 def get_active_plan(path: Optional[str] = None) -> Optional[dict]:
     try:
         with _conn(path) as conn:

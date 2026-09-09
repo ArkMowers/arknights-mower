@@ -286,6 +286,102 @@ def test_mood_budget_limits_clicks_before_game_can_clamp_quantity(game, inventor
     assert inventory.get_inventory_counts()["切削原液"] == 6
 
 
+@pytest.mark.parametrize("mood", [0, 0.5, 3])
+def test_insufficient_mood_skips_all_unaffordable_recipes_without_scanning(game, mood):
+    solver, state, base = game
+    solver.op_data.operators["蜜莓"].mood = mood
+    solver.item_list = MagicMock(wraps=solver.item_list)
+    solver.factory_scene = MagicMock(wraps=solver.factory_scene)
+    solver.generate_product("蜜莓")
+    base.save_exception.assert_not_called()
+    solver.item_list.assert_not_called()
+    solver.factory_scene.assert_not_called()
+    assert state.crafts == []
+
+
+@pytest.mark.parametrize(
+    "mood,expected", [(3, [("固源岩", 3)]), (7, [("切削原液", 1), ("固源岩", 3)])]
+)
+def test_remaining_mood_selects_only_affordable_materials_and_stops_without_rescan(
+    game, inventory, mood, expected
+):
+    solver, state, base = game
+    solver.op_data.operators["蜜莓"].mood = mood
+    config.conf.workshop_settings[0].items.append(
+        WorkShopItem(item_names=["固源岩"], self_upper_limit=10, children_lower_limit=0)
+    )
+    inventory.save_inventory_counts({"固源岩": 0, "源岩": 99})
+    solver.item_list = MagicMock(wraps=solver.item_list)
+    solver.generate_product("蜜莓")
+    base.save_exception.assert_not_called()
+    assert state.crafts == expected
+    assert solver.op_data.operators["蜜莓"].mood == 0
+    assert solver.item_list.call_count == len(expected)
+
+
+@pytest.mark.parametrize("known_exhausted", [True, False])
+def test_exhausted_operator_skips_before_entry_or_immediately_after_existing_mood_read(
+    game, monkeypatch, known_exhausted
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver, state, base = game
+    solver.task = SchedulerTask(task_type=TaskTypes.WORKSHOP, meta_data="蜜莓")
+    solver.op_data.operators = {
+        "蜜莓": SimpleNamespace(
+            mood=0 if known_exhausted else 24, current_room="", current_index=-1
+        ),
+        "特克诺": SimpleNamespace(mood=24, current_room="factory", current_index=0),
+    }
+
+    def arrange(plan):
+        if plan == {"factory": ["蜜莓"]}:
+            solver.op_data.operators["蜜莓"].mood = 0
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
+    solver.factory_scene = MagicMock(wraps=solver.factory_scene)
+    sync = MagicMock()
+    monkeypatch.setattr(
+        base, "cultivateDepotSolver", lambda: SimpleNamespace(start=sync)
+    )
+    solver.craft_material()
+    base.save_exception.assert_not_called()
+    sync.assert_not_called()
+    solver.factory_scene.assert_not_called()
+    assert state.crafts == []
+    if known_exhausted:
+        solver.enter_room.assert_not_called()
+        solver.agent_arrange.assert_not_called()
+    else:
+        assert [call.args[0] for call in solver.agent_arrange.call_args_list] == [
+            {"factory": ["蜜莓"]},
+            {"factory": ["特克诺"]},
+        ]
+
+
+@pytest.mark.parametrize("old_mood,room", [(0, "dormitory_1"), (-1, "")])
+def test_resting_or_unknown_mood_is_refreshed_by_existing_entry_read(
+    game, old_mood, room
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver, state, base = game
+    solver.task = SchedulerTask(task_type=TaskTypes.WORKSHOP, meta_data="蜜莓")
+    solver.op_data.operators = {
+        "蜜莓": SimpleNamespace(mood=old_mood, current_room=room, current_index=2),
+    }
+
+    def arrange(plan):
+        solver.op_data.operators["蜜莓"].mood = 24
+        solver.op_data.operators["蜜莓"].current_room = "factory"
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
+    solver.craft_material()
+    base.save_exception.assert_not_called()
+    solver.agent_arrange.assert_called_once_with({"factory": ["蜜莓"]})
+    assert state.crafts == [("切削原液", 3), ("异铁块", 1)]
+
+
 def test_count_and_byproducts_do_not_require_new_ocr(game):
     solver, state, base = game
     solver.get_number = MagicMock(side_effect=AssertionError("Unexpected number OCR"))

@@ -470,6 +470,8 @@ class RIICPart(ConfModel):
     "九色鹿垫刀素材，独立于自动生成的配置"
     workshop_min_bonus: int = Field(default=80, ge=0, le=1000)
     "加工站一键设置的副产品概率加成下限（百分比）"
+    workshop_low_priority_rest: bool = True
+    "加工干员使用最低宿舍恢复优先级，覆盖床位分配与实际选人"
     t5_operators: list[str] = ["年"]
     "自动专精 T5 加工干员"
     book_operators: list[str] = ["司霆惊蛰"]

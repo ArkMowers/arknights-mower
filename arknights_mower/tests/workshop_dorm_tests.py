@@ -141,6 +141,10 @@ def test_every_crafting_selection_is_dynamic_and_below_ordinary_replacements(
     assert BaseSchedulerSolver._resting_tier(op) > BaseSchedulerSolver._resting_tier(
         regular
     )
+    config.conf.workshop_low_priority_rest = False
+    assert BaseSchedulerSolver._resting_tier(op) == BaseSchedulerSolver._REST_TIER_HIGH
+    config.conf.workshop_low_priority_rest = True
+    assert op.is_workshop()
     setattr(config.conf, field, [] if field != "workshop_manual_backup" else None)
     assert not op.is_workshop()
 
@@ -177,3 +181,21 @@ def test_one_tired_replacement_does_not_evict_two_crafters(dorm_solver):
     dorm_solver.task = MagicMock(plan={"dormitory_1": agents})
     dorm_solver.preserve_resting_crafters(agents, "dormitory_1")
     assert agents[3:] == ["红", "年"]
+
+
+def test_disabling_crafter_priority_restores_bed_allocation_and_ui_selection(
+    dorm_solver,
+):
+    config.conf.workshop_low_priority_rest = False
+    occupy(dorm_solver, "空爆", 3)
+    # Both are ordinary low-priority replacements again: occupied beds stay protected.
+    assert dorm_solver.op_data.assign_dorm("红") is None
+    agents = ["塑心", "冰酿", "银灰", "Free", "伊内丝"]
+    dorm_solver.task = MagicMock(plan={"dormitory_1": agents})
+    dorm_solver.preserve_resting_crafters(agents, "dormitory_1")
+    assert agents[3] == "Free"
+    # Actual free-slot selection must also retain crafters, even with tired replacements.
+    dorm_solver.op_data.operators["空爆"].current_room = ""
+    assert "空爆" in dorm_solver.get_free_list(agents)
+    config.conf.workshop_low_priority_rest = True
+    assert "空爆" not in dorm_solver.get_free_list(agents)
