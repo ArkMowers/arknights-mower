@@ -9,6 +9,7 @@ from arknights_mower.tests.workshop_plan_fixtures import next_skill as next_skil
 from arknights_mower.utils import config, mastery_db
 from arknights_mower.utils import mastery_recommendation as rec
 from arknights_mower.utils import workshop_automation as auto
+from arknights_mower.utils import workshop_config as state
 from arknights_mower.utils.config.conf import RIICPart
 
 _real_save_conf = config.save_conf
@@ -45,14 +46,14 @@ def test_real_scan_retains_manual_carbon_without_plans(next_skill, scan, enabled
     config.conf.enable_mastery = enabled
     scan()
     assert config.conf.workshop_settings == [manual_setting()]
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
 
 
 def test_disabled_mastery_does_not_take_over_even_with_plans(next_skill, scan):
     config.conf.enable_mastery = False
     scan()
     assert config.conf.workshop_settings == [manual_setting()]
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
 
 
 def test_repeated_button_scan_and_restart_never_replace_original_backup(
@@ -76,7 +77,7 @@ def test_repeated_button_scan_and_restart_never_replace_original_backup(
     next_skill.plans.clear()
     scan()
     assert config.conf.workshop_settings == [manual_setting()]
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
     assert config.conf.workshop_generation > first_generation
 
 
@@ -105,7 +106,7 @@ def test_restore_only_when_whole_queue_materials_are_ready(
         )
     )
     scan()
-    assert (config.conf.workshop_manual_backup is None) == restored
+    assert (not config.conf.workshop_auto_active) == restored
     if restored:
         assert config.conf.workshop_settings == [manual_setting()]
 
@@ -117,7 +118,7 @@ def test_legacy_preset_is_the_first_backup_and_is_imported_only_once(
 ):
     saved = [] if empty else [manual_setting().model_dump()]
     data = {"settings": saved, "t5_operators": ["年"]} if legacy_object else saved
-    auto.get_path("").write_text(json.dumps(data))
+    state.get_path("").write_text(json.dumps(data))
     # This may already be an old unmarked automatic config; never save it over
     # the explicitly saved legacy preset.
     config.conf.workshop_settings = [RIICPart.WorkShopSetting(operator="赫拉格")]
@@ -139,7 +140,7 @@ def test_empty_original_config_is_a_valid_snapshot(next_skill):
     next_skill.plans.clear()
     auto.update_workshop_config()
     assert config.conf.workshop_settings == []
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
 
 
 def test_missing_recommendation_is_not_completion(next_skill, scan, monkeypatch):
@@ -161,7 +162,7 @@ def test_failed_save_leaves_both_manual_config_and_backup_untouched(
         auto.update_workshop_config()
     assert config.conf is previous
     assert config.conf.workshop_settings == [manual_setting()]
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
 
 
 def test_stale_autosaves_cannot_reset_backup_or_resurrect_generated_config(
@@ -180,7 +181,7 @@ def test_stale_autosaves_cannot_reset_backup_or_resurrect_generated_config(
     next_skill.plans.clear()
     scan()
     assert client.post("/conf", json=old_auto).status_code == 200
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
     assert config.conf.workshop_settings == [manual_setting()]
 
 
@@ -191,7 +192,7 @@ def test_disabling_mastery_restores_in_the_same_config_save(next_skill, scan):
     req = config.conf.model_dump()
     req.update(enable_mastery=False, workshop_manual_backup=[])
     assert server.app.test_client().post("/conf", json=req).status_code == 200
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
     assert config.conf.workshop_settings == [manual_setting()]
 
 
@@ -233,15 +234,15 @@ def test_backup_and_source_survive_real_config_file_reload(
     auto.update_workshop_config()
     config.load_conf()
     assert config.conf.workshop_settings == [manual_setting()]
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active
 
 
 def test_corrupt_legacy_backup_does_not_overwrite_either_file_or_settings(next_skill):
     config.conf.workshop_settings = [manual_setting()]
-    path = auto.get_path("")
+    path = state.get_path("")
     path.write_text("not-json")
     with pytest.raises(ValueError):
         auto.update_workshop_config()
     assert path.read_text() == "not-json"
     assert config.conf.workshop_settings == [manual_setting()]
-    assert config.conf.workshop_manual_backup is None
+    assert not config.conf.workshop_auto_active

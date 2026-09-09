@@ -438,7 +438,24 @@ class RIICPart(ConfModel):
     workshop_settings: list[WorkShopSetting] = []
     "工作室设置"
     workshop_manual_backup: list[WorkShopSetting] | None = None
-    "自动专精接管前的手动加工配置；None 表示未接管，空列表也是有效备份"
+    "独立保存、可编辑的手动加工表单；None 表示尚未初始化"
+    workshop_auto_active: bool = False
+    "自动专精是否正在接管运行配置"
+    workshop_manual_revision: int = 0
+    "手动表单版本，与自动运行配置版本独立"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_workshop_active(cls, data):
+        if (
+            isinstance(data, dict)
+            and "workshop_auto_active" not in data
+            and data.get("workshop_manual_backup") is not None
+        ):
+            data = dict(data)
+            data["workshop_auto_active"] = True
+        return data
+
     workshop_preset_migrated: bool = False
     "旧版手动保存的加工配置是否已接续"
     workshop_generation: int = 0

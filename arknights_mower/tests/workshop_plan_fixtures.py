@@ -16,7 +16,7 @@ from arknights_mower.utils import workshop_recommendation as workshop  # noqa: E
 
 @pytest.fixture
 def next_skill(monkeypatch, tmp_path):
-    from arknights_mower.utils import workshop_automation
+    from arknights_mower.utils import workshop_config
 
     monkeypatch.setattr(config, "conf", config.Conf())
     import server
@@ -24,9 +24,7 @@ def next_skill(monkeypatch, tmp_path):
     monkeypatch.setattr(server.app, "token", "", raising=False)
     monkeypatch.setattr(config, "save_conf", MagicMock())
     monkeypatch.setattr(rec, "_skill_data_cache", None)
-    monkeypatch.setattr(
-        workshop_automation, "get_path", lambda _: tmp_path / "preset.json"
-    )
+    monkeypatch.setattr(workshop_config, "get_path", lambda _: tmp_path / "preset.json")
     config.conf.enable_mastery = True
     config.conf.workshop_settings = []
     config.conf.workshop_manual_backup = None

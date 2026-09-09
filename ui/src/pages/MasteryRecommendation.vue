@@ -1125,8 +1125,7 @@ async function autoWorkshop() {
       message.warning('生成失败')
       return
     }
-    configStore.workshop_settings_generation = resp.data.workshop_generation
-    configStore.workshop_settings = ws
+    configStore.apply_workshop_response(resp.data)
     workshopT3Summary.value = resp.data?.t3_summary || []
 
     if (!resp.data.automatic || !ws.length) {

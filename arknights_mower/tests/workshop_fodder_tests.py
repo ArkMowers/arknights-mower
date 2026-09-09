@@ -6,6 +6,7 @@ from arknights_mower.tests.workshop_plan_fixtures import next_skill as next_skil
 from arknights_mower.utils import config
 from arknights_mower.utils import mastery_recommendation as rec
 from arknights_mower.utils import workshop_automation as auto
+from arknights_mower.utils import workshop_config as state
 from arknights_mower.utils.config.conf import WorkshopDeerFodderItem
 from arknights_mower.utils.workshop_fodder import deer_fodder_items
 
@@ -103,5 +104,5 @@ def test_old_browser_config_save_does_not_reset_independent_fodder(next_skill):
     config.conf.workshop_deer_fodder = [custom_fodder()]
     req = config.conf.model_dump()
     req.pop("workshop_deer_fodder")
-    auto.save_user_config(req)
+    state.save_user_config(req)
     assert config.conf.workshop_deer_fodder == [custom_fodder()]

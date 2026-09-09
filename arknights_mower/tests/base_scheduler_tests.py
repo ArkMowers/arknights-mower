@@ -1154,6 +1154,7 @@ class TestBaseScheduler(unittest.TestCase):
         room_state = MagicMock()
         mood_data = [{"agent": "艾雅法拉", "mood": 20.1234}]
         with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(BaseSchedulerSolver, "back"),
             patch.object(
@@ -1217,6 +1218,7 @@ class TestBaseScheduler(unittest.TestCase):
         room_state = MagicMock()
         mood_data = [{"agent": "艾雅法拉", "mood": 20.0}]
         with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(BaseSchedulerSolver, "back"),
             patch.object(

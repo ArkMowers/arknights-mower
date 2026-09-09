@@ -2,7 +2,10 @@ export const workshopCategories = ['fodder_operators', 't5_operators', 'book_ope
 
 export function selectedWorkshopOperators(settings = {}) {
   const names = workshopCategories.flatMap((key) => settings[key] || [])
-  for (const entry of settings.workshop_settings || []) {
+  for (const entry of [
+    ...(settings.workshop_settings || []),
+    ...(settings.workshop_manual_settings || [])
+  ]) {
     if (entry?.enabled !== false) names.push(entry?.operator)
   }
   return new Set(names.filter((name) => name && name !== 'Free' && name !== 'Current'))

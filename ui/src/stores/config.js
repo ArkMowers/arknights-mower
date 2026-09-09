@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { defineStore } from 'pinia'
 import { inject, ref, watch, watchEffect } from 'vue'
+import { createWorkshopState } from '@/utils/workshopConfig'
 
 export const useConfigStore = defineStore('config', () => {
   const defaultLaunchCommand =
@@ -56,8 +57,14 @@ export const useConfigStore = defineStore('config', () => {
   const fia_threshold = ref(90)
   const rescue_threshold = ref(75)
   const favorite = ref([])
-  const workshop_settings = ref([])
-  const workshop_settings_generation = ref(0)
+  const {
+    workshop_settings,
+    workshop_settings_generation,
+    workshop_manual_settings,
+    workshop_manual_settings_revision,
+    load_workshop_config,
+    apply_workshop_response
+  } = createWorkshopState()
   const defaultDeerFodder = () => [
     {
       item_names: ['碳素', '碳素组', '家具零件_碳素组'],
@@ -468,8 +475,7 @@ export const useConfigStore = defineStore('config', () => {
     visit_friend_mode.value = response.data.visit_friend_mode ?? 'maa'
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
-    workshop_settings_generation.value = response.data.workshop_generation ?? 0
-    workshop_settings.value = response.data.workshop_settings
+    load_workshop_config(response.data)
     workshop_deer_fodder.value = response.data.workshop_deer_fodder ?? defaultDeerFodder()
     workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
@@ -597,8 +603,8 @@ export const useConfigStore = defineStore('config', () => {
       visit_friend_mode: visit_friend_mode.value,
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
-      workshop_settings: workshop_settings.value,
-      workshop_settings_generation: workshop_settings_generation.value,
+      workshop_manual_settings: workshop_manual_settings.value,
+      workshop_manual_settings_revision: workshop_manual_settings_revision.value,
       workshop_deer_fodder: workshop_deer_fodder.value,
       workshop_min_bonus: workshop_min_bonus.value,
       fodder_operators: fodder_operators.value,
@@ -642,15 +648,15 @@ export const useConfigStore = defineStore('config', () => {
   )
   let configSaveRequest = Promise.resolve()
   function save_config() {
-    const payload = JSON.parse(JSON.stringify(build_config()))
+    // Track nested edits synchronously for watchEffect; serialize the latest
+    // draft and revision when this queued request actually starts.
+    JSON.stringify(build_config())
     configSaveRequest = configSaveRequest
       .catch(() => {})
-      .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, payload))
-      .then((response) => {
-        if (response.data?.workshop_generation > workshop_settings_generation.value) {
-          workshop_settings_generation.value = response.data.workshop_generation
-          workshop_settings.value = response.data.workshop_settings
-        }
+      .then(async () => {
+        const payload = JSON.parse(JSON.stringify(build_config()))
+        const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, payload)
+        apply_workshop_response(response.data, payload.workshop_manual_settings)
         return response
       })
     return configSaveRequest
@@ -721,6 +727,9 @@ export const useConfigStore = defineStore('config', () => {
     favorite,
     workshop_settings,
     workshop_settings_generation,
+    workshop_manual_settings,
+    workshop_manual_settings_revision,
+    apply_workshop_response,
     workshop_deer_fodder,
     workshop_min_bonus,
     fodder_operators,

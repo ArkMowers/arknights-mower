@@ -58,6 +58,8 @@
 | `solvers/mastery_support_swap.py` | 校验实际训练与执行协助换人 | `perform_swap` / `place_support` |
 | `utils/skill_label.py` | 技能名规范唯一格式化器 | `format_skill_label` / `normalize_skill_text` / `panel_skill_matches` |
 | `utils/mastery_recommendation.py` | 推荐 + 自动排程 + 仓库扫描联动 + 材料核算 | `get_mastery_recommendations` / `auto_schedule_mastery_tasks` / `compute_workshop_config` / `get_skill_data` |
+| `utils/workshop_config.py` | 独立手动表单、旧预设迁移与版本保存 | `read_user_config` / `save_user_config` |
+| `utils/workshop_automation.py` | 专精接管、材料齐备恢复与运行快照 | `update_workshop_config` / `restore_if_no_plans` / `workshop_task_snapshot` |
 | `utils/workshop_data.py` | BOX 校验、缓存、实际/培养后技能及一键设置排班排除 | `parse_roster` / `owned_roster` / `unlocked` / `fully_unlocked_operators` / `scheduled_operators` |
 | `utils/workshop_rules.py` | 资源生成时编译加工站规则及配方原料数量 | `compile_workshop_buff` / `compile_workshop_data` |
 | `utils/workshop_recipes.py` | 配方范围、固定加成、专属材料及优先级 | `recipe_bonus` / `operator_recipe_allowed` / `scope_workshop_items` |
@@ -374,7 +376,7 @@ API 可增删计划、调优先级与编辑协助方案，**不得直写 status*
 | 端点 | 契约 |
 |---|---|
 | `GET /cultivate-fetch` | 同步成功且非空有效 BOX 已原子写入才返回 `{success:true,message}`；账号/服务器不匹配或远端数据无效返回 `{success:false,message}`，保留旧文件。一键设置等待成功后再读推荐，失败保留原名单 |
-| `POST /workshop-auto-config` | 接受三个加工分类的名单，按 DB 队列接管加工配置并自动保存手动备份，返回 `{workshop_settings,workshop_generation,automatic,restored,t3_summary:[]}`；忽略旧 `planned_skills` 草稿字段，无计划／材料全部准备完毕时恢复手动配置，等待或数据不全时保留备份。不直接派发加工任务 |
+| `POST /workshop-auto-config` | 接受三个加工分类的名单，按 DB 队列接管加工配置并自动保存手动备份，返回运行配置、运行版本、独立手动表单及其版本，并包含 `{automatic,restored,t3_summary:[]}`；忽略旧 `planned_skills` 草稿字段，已接管后无计划／材料全部准备完毕时恢复最新手动表单；未接管时迁移旧预设不改变运行配置，等待或数据不全时保留备份。不直接派发加工任务 |
 
 ## 14. 待办 / 已知风险（实机校准等）
 

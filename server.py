@@ -646,7 +646,9 @@ def load_config():
         except Exception:
             logger.exception("Failed to sync active weekly plan before returning /conf")
             manager = None
-        data = config.conf.model_dump()
+        from arknights_mower.utils.workshop_config import read_user_config
+
+        data = read_user_config()
         data["runtime_platform"] = __system__
         if manager is not None:
             data["maa_weekly_plan_active"] = manager.get_active_plan_key()
@@ -656,17 +658,11 @@ def load_config():
         req["maa_weekly_plan"] = [
             item.model_dump() for item in config.conf.maa_weekly_plan
         ]
-        from arknights_mower.utils.workshop_automation import save_user_config
+        from arknights_mower.utils.workshop_config import save_user_config
 
-        save_user_config(req)
-        if "workshop_settings_generation" in req:
-            return {
-                "message": "New config saved!",
-                "workshop_generation": config.conf.workshop_generation,
-                "workshop_settings": [
-                    s.model_dump() for s in config.conf.workshop_settings
-                ],
-            }
+        state = save_user_config(req)
+        if "workshop_manual_settings" in req or "workshop_settings_generation" in req:
+            return {"message": "New config saved!", **state}
         return "New config saved!"
 
 

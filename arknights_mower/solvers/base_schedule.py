@@ -518,9 +518,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def craft_material(self):
         task = self.task
-        from arknights_mower.utils.workshop_automation import workshop_task_current
+        from arknights_mower.utils.workshop_automation import workshop_task_snapshot
 
-        if not workshop_task_current(task):
+        settings = workshop_task_snapshot(task)
+        if settings is None:
             logger.info("加工配置已更新，跳过旧的自动加工任务")
             return
         try:
@@ -543,7 +544,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug(f"当前工厂干员: {current_agent}")
             logger.debug(f"当前加工干员位置: {agent_room}")
             self.agent_arrange({"factory": [task.meta_data]})
-            self.generate_product(task.meta_data)
+            self.generate_product(task.meta_data, task=task, settings=settings)
             if len(current_agent) > 0 and current_agent[0] != task.meta_data:
                 new_plan = {"factory": current_agent}
                 if agent_room and agent_index >= 0:
@@ -1147,24 +1148,34 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             send_message(msg, level="WARNING")
 
-    def generate_product(self, agent: str):
+    def generate_product(self, agent: str, *, task=None, settings=None):
         """
         Process materials in a factory with specified operators
         Args:
             agent: List of operators that need two production cycles
         """
 
+        from arknights_mower.utils.workshop_automation import (
+            workshop_task_current,
+            workshop_task_snapshot,
+        )
+        from arknights_mower.utils.workshop_config import workshop_lock
+
         try:
+            if settings is None:
+                settings = workshop_task_snapshot(task)
+            if settings is None or not workshop_task_current(task):
+                return
             cultivateDepotSolver().start()
+            if not workshop_task_current(task):
+                return
             unknown_cnt = 0
             inventory_data = get_inventory_counts()
             is_9colored = agent == "九色鹿"
-            if agent not in [s.operator for s in config.conf.workshop_settings]:
+            if agent not in [s.operator for s in settings]:
                 logger.info(f"当前干员{agent}不在加工站配置中")
                 return
-            item_list = next(
-                (s.items for s in config.conf.workshop_settings if s.operator == agent)
-            )
+            item_list = next((s.items for s in settings if s.operator == agent))
             from arknights_mower.utils.workshop_recommendation import (
                 scope_workshop_items,
             )
@@ -1212,6 +1223,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             gap = 0
             start_time = datetime.now()
             while tasks:
+                if not workshop_task_current(task):
+                    break
                 if datetime.now() - start_time > timedelta(
                     minutes=5
                 ):  # 检测是否超过 5 分钟
@@ -1302,7 +1315,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.op_data.operators[agent].time_stamp = datetime.now()
                             logger.debug("设置加工站干员心情为0，别问我，我懒得算了")
                             continue
-                        self.tap(produce_btn, interval=2)
+                        # Keep the final check and submission together. Scans and
+                        # navigation do not hold this lock or block settings saves.
+                        with workshop_lock:
+                            if not workshop_task_current(task):
+                                break
+                            self.tap(produce_btn, interval=2)
                         max_wait = 10
                         sleep_time = 0
                         while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
