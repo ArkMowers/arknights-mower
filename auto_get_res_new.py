@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from skimage.feature import hog
 
+from arknights_mower.utils.furniture_data import build_furniture_data
 from arknights_mower.utils.image import loadimg, thres2
 from arknights_mower.utils.res_version import (
     content_hash,
@@ -1149,6 +1150,12 @@ class Arknights数据处理器:
         ) as json_file:
             json.dump(配方类别, json_file, ensure_ascii=False, indent=4)
 
+    def 获取家具套装(self):
+        with open("./arknights_mower/data/furniture.json", "w", encoding="utf-8") as f:
+            json.dump(
+                build_furniture_data(self.基建表), f, ensure_ascii=False, indent=2
+            )
+
     def generate_version_info(self):
         """生成资源包 version.json：res_version=日期+内容哈希，加 activity/gacha/last_updated。"""
         version_info = {
@@ -1231,6 +1238,7 @@ print("训练训练室干员名的模型,完成")
 数据处理器.load_recruit_resource()
 
 数据处理器.获取加工站配方类别()
+数据处理器.获取家具套装()
 
 数据处理器.提取专精数据()
 print("提取专精数据,完成")

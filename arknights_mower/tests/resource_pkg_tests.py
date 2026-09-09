@@ -117,6 +117,7 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         for package in [
             resource_zip(remove=rp._RESOURCE_MARKER),
             resource_zip(remove=RES_PACKAGE_DATA[0]),
+            resource_zip(remove="arknights_mower/data/furniture.json"),
             resource_zip(manifest={"schema_version": 2}),
             resource_zip(manifest={"mower_version": ">=5"}),
         ]:

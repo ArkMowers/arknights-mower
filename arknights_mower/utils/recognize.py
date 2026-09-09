@@ -376,7 +376,7 @@ class Recognizer:
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
+        elif self.find("factory_formula") or self.find("factory_furniture"):
             self.scene = Scene.FACTORY_FORMULA
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
@@ -677,8 +677,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
-            # 这是一个filter ，鉴于自动的话不会动，用来识别界面
+        elif self.find("factory_formula") or self.find("factory_furniture"):
+            # 家具分类选中后变为浅色，需要单独的模板。
             self.scene = Scene.FACTORY_FORMULA
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
