@@ -66,6 +66,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
             base.Scene.FACTORY_PRODUCT_COLLECT,
             base.Scene.FACTORY_PRODUCT_COLLECT,
             base.Scene.FACTORY_DASHBOARD,
+            base.Scene.FACTORY_FORMULA,
         ]
     )
     submitted = []
@@ -107,10 +108,14 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         "cultivateDepotSolver",
         lambda: SimpleNamespace(start=lambda: cancel("scan")),
     )
+    stock = {"技巧概要·卷3": 0, "技巧概要·卷2": 100, "碳素组": 0, "碳": 100}
+    monkeypatch.setattr(base, "get_inventory_counts", lambda: dict(stock))
     monkeypatch.setattr(
         base,
-        "get_inventory_counts",
-        lambda: {"技巧概要·卷3": 0, "技巧概要·卷2": 100, "碳素组": 0, "碳": 100},
+        "apply_workshop_inventory",
+        lambda delta: stock.update(
+            {name: stock.get(name, 0) + n for name, n in delta.items()}
+        ),
     )
     errors = MagicMock()
     monkeypatch.setattr(base, "save_exception", errors)

@@ -619,6 +619,7 @@ def next_workshop_task_time(tasks, earliest=None):
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_limits import batch_limit
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
@@ -646,18 +647,7 @@ def try_workshop_tasks(op_data, tasks):
                 for material in item.items:
                     for name in material.item_names:
                         metadata = workshop_formula[name]
-                        if name.startswith("家具零件"):
-                            name = "家具零件"
-                        if (
-                            name in inventory_data
-                            and inventory_data[name] < material.self_upper_limit
-                            and all(
-                                child_name in inventory_data
-                                and inventory_data[child_name]
-                                > material.children_lower_limit
-                                for child_name in metadata["items"]
-                            )
-                        ):
+                        if batch_limit(name, metadata, material, inventory_data) > 0:
                             if metadata["apCost"] < 4 or metadata["tab"] == "基建材料":
                                 base_material_match = True
                             elif (
@@ -674,18 +664,7 @@ def try_workshop_tasks(op_data, tasks):
                 for material in item.items:
                     for name in material.item_names:
                         metadata = workshop_formula[name]
-                        if name.startswith("家具零件"):
-                            name = "家具零件"
-                        if (
-                            name in inventory_data
-                            and inventory_data[name] < material.self_upper_limit
-                            and all(
-                                child_name in inventory_data
-                                and inventory_data[child_name]
-                                > material.children_lower_limit
-                                for child_name in metadata["items"]
-                            )
-                        ):
+                        if batch_limit(name, metadata, material, inventory_data) > 0:
                             match = True
                             break
                 if not match:

@@ -1,6 +1,5 @@
 import copy
 import json
-import math
 import os
 import pathlib
 import sys
@@ -37,7 +36,9 @@ from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.player_info import PlayerInfoClient
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.record import (
+    apply_workshop_inventory,
     get_inventory_counts,
+    invalidate_workshop_inventory,
     save_exception,
     save_log,
 )
@@ -1166,6 +1167,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             workshop_task_snapshot,
         )
         from arknights_mower.utils.workshop_config import workshop_lock
+        from arknights_mower.utils.workshop_limits import (
+            batch_delta,
+            batch_limit,
+            deer_batch_limit,
+            recipe_quantities,
+        )
+        from arknights_mower.utils.workshop_mood import mood_cost, operator_mood_rules
 
         try:
             if snapshot is None:
@@ -1202,22 +1210,37 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         continue
                     seen.add(name)
                     metadata = workshop_formula[name]
-                    if (
-                        name in inventory_data
-                        and inventory_data[name] < item.self_upper_limit
-                        and all(
-                            child_name in inventory_data
-                            and inventory_data[child_name] > item.children_lower_limit
-                            for child_name in metadata["items"]
-                        )
-                    ):
-                        if is_9colored and workshop_formula[name]["apCost"] > 4:
-                            logger.warning("跳过心情大于4消耗的材料")
-                        else:
-                            group[workshop_formula[name]["tab"]][name] = item
+                    if is_9colored and metadata["apCost"] > 4:
+                        logger.warning("跳过心情大于4消耗的材料")
                     else:
-                        logger.debug(f"{agent}的加工站配置中材料{name}不满足条件，跳过")
-            tab_queue = deque(group.items())
+                        group[metadata["tab"]][name] = item
+            blocked_materials = set()
+
+            def available_groups():
+                return {
+                    tab: eligible
+                    for tab, entries in group.items()
+                    if (
+                        eligible := {
+                            name: setting
+                            for name, setting in entries.items()
+                            if name not in blocked_materials
+                            and batch_limit(
+                                name, workshop_formula[name], setting, inventory_data
+                            )
+                            > 0
+                        }
+                    )
+                }
+
+            tab_queue = deque(available_groups().items())
+            reset_scan = True
+            if not tab_queue:
+                logger.info(f"{agent}的材料已达上限或可用原料不足，跳过加工")
+                return
+            operator = self.op_data.operators[agent]
+            mood_budget = max(0, min(24, operator.mood))
+            mood_rules, mood_rules_known = operator_mood_rules(agent)
             tab_pos = {
                 "基建材料": (self.recog.w * 0.1, self.recog.h * 0.18),
                 "精英材料": (self.recog.w * 0.1, self.recog.h * 0.31),
@@ -1225,6 +1248,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 "芯片": (self.recog.w * 0.1, self.recog.h * 0.57),
             }
             current_material = None
+            current_name = None
             tasks = ["enter", "select", "process"]
             inf_material = "基建材料"
             gap = 0
@@ -1263,9 +1287,32 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
-                        tap_count = 99
+                        inventory_data = get_inventory_counts()
+                        batch_count = batch_limit(
+                            current_name,
+                            current_material,
+                            group[current_material["tab"]][current_name],
+                            inventory_data,
+                        )
+                        if batch_count == 0:
+                            tasks.insert(0, "select")
+                            tab_queue = deque(available_groups().items())
+                            reset_scan = True
+                            continue
                         ap_cost = current_material["apCost"]
                         material_tab = current_material["tab"]
+                        per_craft_mood = mood_cost(
+                            current_name, current_material, mood_rules, mood_rules_known
+                        )
+                        batch_count = min(
+                            batch_count, int(mood_budget // per_craft_mood)
+                        )
+                        if batch_count == 0:
+                            blocked_materials.add(current_name)
+                            tasks.insert(0, "select")
+                            tab_queue = deque(available_groups().items())
+                            reset_scan = True
+                            continue
                         is_crit = ap_cost == 4 and material_tab == "精英材料"
                         if is_9colored:
                             mood = self.op_data.operators[agent].mood
@@ -1278,7 +1325,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 if mood >= 4:
                                     if not is_crit:
                                         tasks.insert(0, "select")
-                                        tab_queue = deque(group.items())
+                                        tab_queue = deque(available_groups().items())
+                                        reset_scan = True
                                         logger.info(
                                             "检测到九色鹿即将暴击，即将切换成暴击用材料"
                                         )
@@ -1290,30 +1338,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if gap >= 5:
                                 if is_crit:
                                     tasks.insert(0, "select")
-                                    tab_queue = deque(group.items())
+                                    tab_queue = deque(available_groups().items())
+                                    reset_scan = True
                                     logger.info("切换成垫刀材料")
                                     continue
-                            if gap <= mood:
-                                # 系统自带一次，少一次，一共减少2
-                                tap_count = math.ceil(gap / ap_cost) - 2
-                        max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
-                        produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
-                        if tap_count != 99:
-                            logger.info(
-                                f"开始加工九色鹿{tap_count + 1 if tap_count > 0 else 1}次 x {ap_cost} 心情消耗"
+                            batch_count = min(
+                                batch_count, deer_batch_limit(gap, ap_cost)
                             )
-                            for _ in range(int(tap_count)):
-                                self.tap(add_btn, interval=0.1)
-                        else:
-                            self.tap(max_btn, interval=0.5)
+                        produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
+                        batch_count = int(batch_count)
+                        logger.info(
+                            f"{agent}加工{current_name}：库存"
+                            f"{inventory_data[recipe_quantities(current_name, current_material)[0]]}，"
+                            f"上限{group[material_tab][current_name].self_upper_limit}，"
+                            f"本批最多{batch_count}次"
+                        )
+                        # The selected formula starts at one, as in the deer logic.
+                        # Never use MAX: mood can allow more than the stock deficit.
+                        for _ in range(batch_count - 1):
+                            self.tap(add_btn, interval=0.1)
                         if self.find("factory_warning") or not self.item_valid():
                             if (
                                 not self.item_valid()
                                 and self.find("factory_warning") is None
                             ):
                                 # 材料不够重新选择
+                                blocked_materials.add(current_name)
                                 tasks.insert(0, "select")
-                                tab_queue = deque(group.items())
+                                tab_queue = deque(available_groups().items())
+                                reset_scan = True
                                 logger.info("检测到当前材料用完，切换其他材料")
                                 continue
                             tasks = []
@@ -1322,45 +1375,59 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.op_data.operators[agent].time_stamp = datetime.now()
                             logger.debug("设置加工站干员心情为0，别问我，我懒得算了")
                             continue
-                        # Keep the final check and submission together. Scans and
-                        # navigation do not hold this lock or block settings saves.
-                        with workshop_lock:
-                            if not snapshot.is_current():
-                                break
-                            self.tap(produce_btn, interval=2)
-                        max_wait = 10
-                        sleep_time = 0
-                        while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
-                            self.sleep()
-                            sleep_time += 1
-                            if sleep_time > max_wait:
-                                break
-                        self.recog.save_screencap("workshop")
-                        if is_9colored:
-                            # 更新心情
-                            tap = (
-                                tap_count + 1
-                                if tap_count > 0 and tap_count != 99
-                                else 1
+                        batches = batch_count
+                        output, _, costs = recipe_quantities(
+                            current_name, current_material
+                        )
+                        try:
+                            # Only submission holds the config lock; result reads don't.
+                            with workshop_lock:
+                                if not snapshot.is_current():
+                                    break
+                                self.tap(produce_btn, interval=2)
+                            for _ in range(11):
+                                if (
+                                    self.factory_scene()
+                                    == Scene.FACTORY_PRODUCT_COLLECT
+                                ):
+                                    break
+                                self.sleep()
+                            else:
+                                raise ValueError("未确认加工完成")
+                            self.recog.save_screencap("workshop")
+                            delta = batch_delta(current_name, current_material, batches)
+                            apply_workshop_inventory(delta)
+                        except Exception:
+                            invalidate_workshop_inventory([output, *costs])
+                            send_message(
+                                f"{agent}加工{current_name}后未能确认加工完成，"
+                                "已暂停相关材料的加工，请重新读取仓库。",
+                                level="WARNING",
                             )
-                            cost = tap * ap_cost if tap_count != 99 else 24
-                            logger.debug(f"九色鹿心情消耗{cost}")
-                            self.op_data.operators[agent].mood -= cost
+                            raise
+                        logger.info(
+                            f"{agent}加工{current_name}完成{batches}次，库存变化{delta}"
+                        )
+                        inventory_data = get_inventory_counts()
+                        blocked_materials.clear()
+                        tasks.insert(0, "select")
+                        tab_queue = deque(available_groups().items())
+                        reset_scan = True
+                        mood_budget = max(0, mood_budget - batches * per_craft_mood)
+                        operator.mood = mood_budget
+                        operator.time_stamp = datetime.now()
                 elif scene == Scene.FACTORY_FORMULA:
                     if tasks[0] in ["enter", "process"]:
                         self.back()
                     else:
-                        if list(tab_queue) == list(group.items()):
+                        if reset_scan:
                             # 重新切换材料则重头开始
                             self.tap(tab_pos["芯片"], interval=0.2)
                             self.tap(tab_pos[inf_material], interval=0.2)
                             logger.debug("切换到基建材料页")
+                            reset_scan = False
                         if not tab_queue:
                             logger.info("没有任何材料满足条件，任务结束")
-                            send_message(
-                                f"找不到任何满足{agent}的加工站材料，请及时更新设置",
-                                level="WARNING",
-                            )
                             tasks = []
                             continue
                         tab, item_list = tab_queue.popleft()
@@ -1413,6 +1480,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                             interval=0.5,
                                         )
                                         current_material = workshop_formula[item]
+                                        current_name = item
                                         item_list = []
                                         del tasks[0]
                                         break

@@ -99,10 +99,12 @@ def _compile_operators(characters, building, rules):
 
 
 def compile_workshop_data(characters, building):
+    from arknights_mower.utils.workshop_mood import compile_mood_buff
+
     rules = {
         key: compile_workshop_buff(buff) for key, buff in building["buffs"].items()
     }
-    # Preserve actual ingredient quantities; workshop_formula only stores names.
+    # Keep ingredient quantities indexed by item ID for automatic material planning.
     recipe_ingredients = {
         formula["itemId"]: {cost["id"]: cost["count"] for cost in formula["costs"]}
         for formula in building.get("workshopFormulas", {}).values()
@@ -111,5 +113,10 @@ def compile_workshop_data(characters, building):
     return {
         "version": 1,
         "operators": _compile_operators(characters, building, rules),
+        "mood_operators": _compile_operators(
+            characters,
+            building,
+            {key: compile_mood_buff(buff) for key, buff in building["buffs"].items()},
+        ),
         "recipe_ingredients": recipe_ingredients,
     }

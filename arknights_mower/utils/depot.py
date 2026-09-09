@@ -53,7 +53,18 @@ def 读取仓库():
         新物品json[entry[0]] = count
         db_dict[entry[2]] = count
     time = depotinfo[-1][0]
-    save_inventory_counts(db_dict)
+    scanned_counts = {
+        key_mapping[name][2]: count
+        for name, count in 最后一行物品.items()
+        if name in key_mapping
+    }
+    db_dict = save_inventory_counts(
+        db_dict,
+        scanned_counts=scanned_counts,
+        scanned_at=float(depotinfo[-1][0]),
+    )
+    新物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
+    新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
     sort = {
         "A常用": [
             "至纯源石",

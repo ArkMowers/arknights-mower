@@ -33,6 +33,8 @@ _DB_TABLE_STMTS = (
     "price INTEGER"
     ")",
     "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)",
+    "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
+    "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
     "CREATE TABLE IF NOT EXISTS log (time INTEGER,task TEXT,level TEXT,message TEXT)",
     "CREATE TABLE IF NOT EXISTS operation_history ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -501,16 +503,54 @@ def get_trading_history(start_date: str, end_date: str):
     return result_list
 
 
-def save_inventory_counts(inventorys: dict[str, int]):
-    data = [(name, count) for name, count in inventorys.items()]
+def save_inventory_counts(
+    inventorys: dict[str, int], *, scanned_counts=None, scanned_at=0
+):
     with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        effective = dict(inventorys)
+        protected = dict(
+            conn.execute(
+                "SELECT item_name, observed_at FROM workshop_inventory_updates"
+            )
+        )
+        if scanned_counts is not None:
+            current = dict(conn.execute("SELECT item_name, count FROM inventory"))
+            for name, observed_at in protected.items():
+                scanned = scanned_counts.get(name, 0)
+                if (
+                    scanned_at > observed_at
+                    and isinstance(scanned, int)
+                    and scanned >= 0
+                ):
+                    # A newer in-game scan can reconcile crafting, loot and spending.
+                    # Keep its marker: reopening the page must not restore cloud cache.
+                    effective[name] = scanned
+                    conn.execute(
+                        "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
+                        (scanned_at, name),
+                    )
+                elif name in current:
+                    effective[name] = current[name]
+                else:
+                    effective.pop(name, None)  # Preserve an unconfirmed/unknown count.
+        else:
+            conn.executemany(
+                "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
+                [
+                    (datetime.now().timestamp(), name)
+                    for name in effective
+                    if name in protected
+                ],
+            )
         cursor = conn.cursor()
         cursor.executemany(
             "INSERT INTO inventory (item_name, count) VALUES (?, ?) "
             "ON CONFLICT(item_name) DO UPDATE SET count = excluded.count",
-            data,
+            list(effective.items()),
         )
         conn.commit()
+        return effective
 
 
 def get_inventory_counts(item_names: list[str] | None = None):
@@ -523,6 +563,37 @@ def get_inventory_counts(item_names: list[str] | None = None):
             query = f"SELECT item_name, count FROM inventory WHERE item_name IN ({placeholders})"
             cursor.execute(query, item_names)
         return dict(cursor.fetchall())
+
+
+def apply_workshop_inventory(delta: dict[str, int]):
+    """Apply the main output and ingredient changes of one confirmed batch."""
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "UPDATE inventory SET count = MAX(0, count + ?) WHERE item_name = ?",
+            [(amount, name) for name, amount in delta.items()],
+        )
+        _mark_workshop_inventory(conn, delta)
+        conn.commit()
+
+
+def invalidate_workshop_inventory(names):
+    """An unconfirmed batch requires a depot read before these materials are reused."""
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "DELETE FROM inventory WHERE item_name = ?", [(name,) for name in names]
+        )
+        _mark_workshop_inventory(conn, names)
+        conn.commit()
+
+
+def _mark_workshop_inventory(conn, names):
+    conn.executemany(
+        "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
+        "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
+        [(name, datetime.now().timestamp()) for name in names],
+    )
 
 
 def save_log(message: str, task: str = "{}", level: str = "INFO"):
