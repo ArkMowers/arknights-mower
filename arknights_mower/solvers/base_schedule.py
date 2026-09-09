@@ -4222,6 +4222,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         hard_stop = True
                     else:
                         self.sleep(5)
+                # MAA 运行期间只保存截图，没有连续执行 Mower 场景识别。
+                self.recog.reset_after_external_control()
                 if hard_stop:
                     hard_stop_msg = "MAA任务未完成，等待3分钟"
                     logger.info(hard_stop_msg)
@@ -4265,7 +4267,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 while True:
                     self.MAA = None
                     self.initialize_maa()
-                    self.recog.update()
+                    self.recog.reset_after_external_control()
                     self.back_to_index()
                     if conf.RG:
                         # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
@@ -4440,6 +4442,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             maa_crash = False
                             self.maa_stop()
                             break
+                    self.recog.reset_after_external_control()
                     if maa_crash:
                         logger.error("MAA 肉鸽/保全/盐酸运行中断")
                         send_message("MAA 肉鸽/保全/盐酸运行中断", level="ERROR")

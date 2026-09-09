@@ -34,7 +34,7 @@ class Recognizer:
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
         self.last_scene = None
-        self.last_scene_time = time.time()
+        self.last_scene_time = datetime.now()
 
     def clear(self):
         self._screencap = None
@@ -91,6 +91,13 @@ class Recognizer:
             raise MowerExit
         self.clear()
 
+    def reset_after_external_control(self) -> None:
+        """外部任务交还控制权时，丢弃旧画面及非连续观测的场景停留计时。"""
+        self.update()
+        self.last_scene = None
+        self.last_scene_time = datetime.now()
+        self.loading_time = 0
+
     def color(self, x: int, y: int) -> tp.Pixel:
         """get the color of the pixel"""
         return self.img[y][x]
@@ -146,6 +153,8 @@ class Recognizer:
                 self.last_scene = None
                 self.last_scene_time = current_time
                 self.device.exit()
+                # 退出后旧场景已失效，导航必须重新获取画面。
+                self.clear()
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
