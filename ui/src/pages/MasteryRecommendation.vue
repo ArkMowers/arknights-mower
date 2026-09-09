@@ -1126,6 +1126,10 @@ async function autoWorkshop() {
       return
     }
     configStore.apply_workshop_response(resp.data)
+    if (resp.data.workshop_preset_warning) {
+      message.warning(resp.data.workshop_preset_warning)
+      return
+    }
     workshopT3Summary.value = resp.data?.t3_summary || []
 
     if (!resp.data.automatic || !ws.length) {

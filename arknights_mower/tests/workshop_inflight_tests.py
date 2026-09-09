@@ -12,10 +12,11 @@ from arknights_mower.utils import workshop_automation as auto
 from arknights_mower.utils import workshop_config as state
 
 
+@pytest.mark.parametrize("entry", ["workshop", "release", "direct"])
 @pytest.mark.parametrize("cancel_at", [None, "scan", "selection", "submit"])
 @pytest.mark.parametrize("cancel_by", ["disable", "delete"])
 def test_restore_during_real_crafting_never_submits_manual_recipe(
-    next_skill, monkeypatch, cancel_at, cancel_by
+    next_skill, monkeypatch, cancel_at, cancel_by, entry
 ):
     import server
     from arknights_mower.solvers import base_schedule as base
@@ -25,13 +26,26 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     manual.operator = "赫拉格"
     config.conf.workshop_settings = [manual]
     auto.update_workshop_config()
-    task = SchedulerTask(task_type=TaskTypes.WORKSHOP, meta_data="赫拉格")
-    auto.stamp_workshop_task(task)
+    task = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM if entry == "release" else TaskTypes.WORKSHOP,
+        meta_data="赫拉格",
+        task_plan={"dormitory_1": ["Free"]} if entry == "release" else {},
+    )
+    if entry == "workshop":
+        auto.stamp_workshop_task(task)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.task = task
+    solver.tasks = [task]
     solver.recog = MagicMock(w=1920, h=1080)
     solver.op_data = SimpleNamespace(
-        operators={"赫拉格": SimpleNamespace(current_room="factory", current_index=0)}
+        operators={
+            "赫拉格": SimpleNamespace(
+                current_room="dormitory_1" if entry == "release" else "factory",
+                current_index=0,
+                mood=24,
+                is_high=lambda: False,
+            )
+        }
     )
     for method in [
         "enter_room",
@@ -39,6 +53,8 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         "back",
         "back_to_infrastructure",
         "swipe_noinertia",
+        "backup_plan_solver",
+        "plan_metadata",
     ]:
         setattr(solver, method, MagicMock())
     solver.factory_scene = MagicMock(
@@ -68,7 +84,8 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         else:
             next_skill.plans.clear()
             auto.restore_if_no_plans()
-        assert not auto.workshop_task_current(task)
+        if entry == "workshop":
+            assert not auto.workshop_task_current(task)
         assert config.conf.workshop_settings == [manual]
 
     def items():
@@ -97,7 +114,12 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     )
     errors = MagicMock()
     monkeypatch.setattr(base, "save_exception", errors)
-    solver.craft_material()
+    if entry == "release":
+        solver.infra_main()
+    elif entry == "direct":
+        solver.generate_product("赫拉格")
+    else:
+        solver.craft_material()
     errors.assert_not_called()
     assert submitted.count(produce_btn) == (1 if cancel_at is None else 0)
     if cancel_at == "scan":
@@ -111,6 +133,6 @@ def test_running_task_uses_a_deep_snapshot(next_skill):
     task = SchedulerTask(task_type=TaskTypes.WORKSHOP, meta_data="赫拉格")
     auto.stamp_workshop_task(task)
     snapshot = auto.workshop_task_snapshot(task)
-    original = snapshot[0].items[0].item_names[:]
+    original = snapshot.settings[0].items[0].item_names[:]
     config.conf.workshop_settings[0].items[0].item_names[:] = ["碳素组"]
-    assert snapshot[0].items[0].item_names == original
+    assert snapshot.settings[0].items[0].item_names == original

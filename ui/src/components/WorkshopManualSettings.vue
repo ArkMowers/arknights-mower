@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
-defineProps({ operators: Array, item_list: Array })
+defineProps({ operators: Array, item_list: Array, migrationWarning: String })
 const settings = defineModel({ type: Array, default: () => [] })
 
 const showSettingModal = ref(false)
@@ -39,6 +39,9 @@ function createNewItem() {
 </script>
 
 <template>
+  <n-alert v-if="migrationWarning" type="warning" style="margin-bottom: 12px">
+    {{ migrationWarning }}
+  </n-alert>
   <n-form-item>
     <template #label>
       <span>无缝合成材料设置</span>

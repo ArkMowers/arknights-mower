@@ -53,6 +53,7 @@ const {
   leifeng_mode,
   item_list,
   workshop_manual_settings,
+  workshop_preset_warning,
   ai_type,
   ai_key
 } = storeToRefs(config_store)
@@ -750,6 +751,7 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <WorkshopManualSettings
               v-model="workshop_manual_settings"
+              :migration-warning="workshop_preset_warning"
               :operators="operators"
               :item_list="item_list"
             />

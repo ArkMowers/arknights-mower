@@ -241,8 +241,8 @@ def test_corrupt_legacy_backup_does_not_overwrite_either_file_or_settings(next_s
     config.conf.workshop_settings = [manual_setting()]
     path = state.get_path("")
     path.write_text("not-json")
-    with pytest.raises(ValueError):
-        auto.update_workshop_config()
+    result = auto.update_workshop_config()
+    assert result["workshop_preset_warning"]
     assert path.read_text() == "not-json"
     assert config.conf.workshop_settings == [manual_setting()]
     assert not config.conf.workshop_auto_active

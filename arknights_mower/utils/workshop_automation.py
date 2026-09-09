@@ -2,8 +2,10 @@
 
 import json
 from collections import Counter
+from dataclasses import dataclass
 
 from arknights_mower.utils import config
+from arknights_mower.utils.config.conf import RIICPart
 from arknights_mower.utils.workshop_config import (
     initialize_manual_settings,
     restore_manual_settings,
@@ -79,7 +81,13 @@ def update_workshop_config(**operators):
 
     with workshop_lock:
         conf = config.conf.model_copy(deep=True)
-        initialize_manual_settings(conf)
+        warning = initialize_manual_settings(conf)
+        if warning:
+            return {
+                **workshop_state(conf, warning),
+                "restored": False,
+                "t3_summary": [],
+            }
         plans = get_all_plans() if conf.enable_mastery else []
         ready = not plans
         settings = None
@@ -139,8 +147,22 @@ def workshop_task_current(task):
     )
 
 
+@dataclass(frozen=True)
+class WorkshopSnapshot:
+    settings: list[RIICPart.WorkShopSetting]
+    generation: int
+
+    def is_current(self):
+        return self.generation == config.conf.workshop_generation
+
+
 def workshop_task_snapshot(task):
     with workshop_lock:
         if not workshop_task_current(task):
             return None
-        return [entry.model_copy(deep=True) for entry in config.conf.workshop_settings]
+        # Bind at acquisition, including RELEASE_DORM and direct/unmarked calls.
+        # A stale queued WORKSHOP task must still fail before acquiring a new epoch.
+        return WorkshopSnapshot(
+            [entry.model_copy(deep=True) for entry in config.conf.workshop_settings],
+            config.conf.workshop_generation,
+        )

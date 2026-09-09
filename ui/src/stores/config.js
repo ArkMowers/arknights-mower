@@ -62,6 +62,7 @@ export const useConfigStore = defineStore('config', () => {
     workshop_settings_generation,
     workshop_manual_settings,
     workshop_manual_settings_revision,
+    workshop_preset_warning,
     load_workshop_config,
     apply_workshop_response
   } = createWorkshopState()
@@ -729,6 +730,7 @@ export const useConfigStore = defineStore('config', () => {
     workshop_settings_generation,
     workshop_manual_settings,
     workshop_manual_settings_revision,
+    workshop_preset_warning,
     apply_workshop_response,
     workshop_deer_fodder,
     workshop_min_bonus,

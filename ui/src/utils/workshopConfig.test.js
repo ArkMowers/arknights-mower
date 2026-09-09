@@ -11,6 +11,33 @@ const initial = {
 }
 
 describe('manual workshop editor', () => {
+  it('keeps migration errors local while the manual table remains editable', () => {
+    const state = createWorkshopState()
+    state.load_workshop_config({ ...initial, workshop_preset_warning: '旧合成配置无法读取' })
+    expect(state.workshop_preset_warning.value).toBe('旧合成配置无法读取')
+    state.workshop_manual_settings.value = []
+    state.apply_workshop_response(
+      {
+        ...initial,
+        workshop_manual_settings: [],
+        workshop_manual_revision: 1,
+        workshop_preset_warning: ''
+      },
+      []
+    )
+    expect(state.workshop_manual_settings.value).toEqual([])
+    expect(state.workshop_preset_warning.value).toBe('')
+  })
+
+  it('accepts a migration warning from automatic configuration without replacing the manual draft', () => {
+    const state = createWorkshopState()
+    state.load_workshop_config(initial)
+    state.workshop_manual_settings.value = []
+    state.apply_workshop_response({ ...initial, workshop_preset_warning: '旧合成配置无法读取' })
+    expect(state.workshop_preset_warning.value).toBe('旧合成配置无法读取')
+    expect(state.workshop_manual_settings.value).toEqual([])
+  })
+
   it('shows the saved table even while a different runtime table is active', () => {
     const state = createWorkshopState()
     state.load_workshop_config({ ...initial, workshop_settings: automatic })

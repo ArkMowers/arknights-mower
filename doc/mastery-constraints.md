@@ -376,7 +376,7 @@ API 可增删计划、调优先级与编辑协助方案，**不得直写 status*
 | 端点 | 契约 |
 |---|---|
 | `GET /cultivate-fetch` | 同步成功且非空有效 BOX 已原子写入才返回 `{success:true,message}`；账号/服务器不匹配或远端数据无效返回 `{success:false,message}`，保留旧文件。一键设置等待成功后再读推荐，失败保留原名单 |
-| `POST /workshop-auto-config` | 接受三个加工分类的名单，按 DB 队列接管加工配置并自动保存手动备份，返回运行配置、运行版本、独立手动表单及其版本，并包含 `{automatic,restored,t3_summary:[]}`；忽略旧 `planned_skills` 草稿字段，已接管后无计划／材料全部准备完毕时恢复最新手动表单；未接管时迁移旧预设不改变运行配置，等待或数据不全时保留备份。不直接派发加工任务 |
+| `POST /workshop-auto-config` | 接受三个加工分类的名单，按 DB 队列接管加工配置并自动保存手动备份，返回运行配置、运行版本、独立手动表单及其版本，并包含 `{automatic,restored,t3_summary:[],workshop_preset_warning}`；旧预设损坏只返回加工范围的警告，不影响 `/conf` 读取或保存；忽略旧 `planned_skills` 草稿字段，已接管后无计划／材料全部准备完毕时恢复最新手动表单；未接管时迁移旧预设不改变运行配置，等待或数据不全时保留备份。不直接派发加工任务 |
 
 ## 14. 待办 / 已知风险（实机校准等）
 

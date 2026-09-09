@@ -7,8 +7,10 @@ export function createWorkshopState() {
   const workshop_settings_generation = ref(0)
   const workshop_manual_settings = ref([])
   const workshop_manual_settings_revision = ref(0)
+  const workshop_preset_warning = ref('')
 
   function load_workshop_config(data) {
+    workshop_preset_warning.value = data.workshop_preset_warning ?? ''
     workshop_settings.value = clone(data.workshop_settings || [])
     workshop_settings_generation.value = data.workshop_generation ?? 0
     workshop_manual_settings.value = clone(
@@ -18,6 +20,9 @@ export function createWorkshopState() {
   }
 
   function apply_workshop_response(data, submittedManual) {
+    if (typeof data?.workshop_preset_warning === 'string') {
+      workshop_preset_warning.value = data.workshop_preset_warning
+    }
     if (data?.workshop_generation >= workshop_settings_generation.value) {
       workshop_settings_generation.value = data.workshop_generation
       workshop_settings.value = clone(data.workshop_settings)
@@ -49,6 +54,7 @@ export function createWorkshopState() {
     workshop_settings_generation,
     workshop_manual_settings,
     workshop_manual_settings_revision,
+    workshop_preset_warning,
     load_workshop_config,
     apply_workshop_response
   }

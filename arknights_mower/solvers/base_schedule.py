@@ -520,8 +520,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         task = self.task
         from arknights_mower.utils.workshop_automation import workshop_task_snapshot
 
-        settings = workshop_task_snapshot(task)
-        if settings is None:
+        snapshot = workshop_task_snapshot(task)
+        if snapshot is None:
             logger.info("加工配置已更新，跳过旧的自动加工任务")
             return
         try:
@@ -544,7 +544,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug(f"当前工厂干员: {current_agent}")
             logger.debug(f"当前加工干员位置: {agent_room}")
             self.agent_arrange({"factory": [task.meta_data]})
-            self.generate_product(task.meta_data, task=task, settings=settings)
+            self.generate_product(task.meta_data, snapshot=snapshot)
             if len(current_agent) > 0 and current_agent[0] != task.meta_data:
                 new_plan = {"factory": current_agent}
                 if agent_room and agent_index >= 0:
@@ -1148,7 +1148,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             send_message(msg, level="WARNING")
 
-    def generate_product(self, agent: str, *, task=None, settings=None):
+    def generate_product(self, agent: str, *, task=None, snapshot=None):
         """
         Process materials in a factory with specified operators
         Args:
@@ -1156,19 +1156,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """
 
         from arknights_mower.utils.workshop_automation import (
-            workshop_task_current,
             workshop_task_snapshot,
         )
         from arknights_mower.utils.workshop_config import workshop_lock
 
         try:
-            if settings is None:
-                settings = workshop_task_snapshot(task)
-            if settings is None or not workshop_task_current(task):
+            if snapshot is None:
+                snapshot = workshop_task_snapshot(task)
+            if snapshot is None or not snapshot.is_current():
                 return
             cultivateDepotSolver().start()
-            if not workshop_task_current(task):
+            if not snapshot.is_current():
                 return
+            settings = snapshot.settings
             unknown_cnt = 0
             inventory_data = get_inventory_counts()
             is_9colored = agent == "九色鹿"
@@ -1223,7 +1223,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             gap = 0
             start_time = datetime.now()
             while tasks:
-                if not workshop_task_current(task):
+                if not snapshot.is_current():
                     break
                 if datetime.now() - start_time > timedelta(
                     minutes=5
@@ -1318,7 +1318,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # Keep the final check and submission together. Scans and
                         # navigation do not hold this lock or block settings saves.
                         with workshop_lock:
-                            if not workshop_task_current(task):
+                            if not snapshot.is_current():
                                 break
                             self.tap(produce_btn, interval=2)
                         max_wait = 10

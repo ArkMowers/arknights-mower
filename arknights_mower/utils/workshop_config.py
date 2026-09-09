@@ -28,22 +28,41 @@ def settings(entries, source=None):
     return result
 
 
+def _manual_form(conf):
+    if conf.workshop_manual_backup is not None:
+        return conf.workshop_manual_backup
+    return settings(
+        [s for s in conf.workshop_settings if s.source != "mastery"], "manual"
+    )
+
+
+def _import_legacy_preset(conf):
+    path = get_path("@app/tmp/workshop_preset.json")
+    if conf.workshop_manual_backup is None and path.exists():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        entries = data.get("settings") if isinstance(data, dict) else data
+        if not isinstance(entries, list):
+            raise ValueError("已保存的合成配置格式错误")
+        conf.workshop_manual_backup = settings(entries, "manual")
+        # Repairing a previously unreadable file may replace a form already open.
+        conf.workshop_manual_revision += 1
+    conf.workshop_preset_migrated = True
+
+
 def initialize_manual_settings(conf):
     # Persist False too: an initialized form is not a legacy active snapshot.
     conf.workshop_auto_active = conf.workshop_auto_active
     if not conf.workshop_preset_migrated:
-        path = get_path("@app/tmp/workshop_preset.json")
-        if conf.workshop_manual_backup is None and path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            entries = data.get("settings") if isinstance(data, dict) else data
-            if not isinstance(entries, list):
-                raise ValueError("已保存的合成配置格式错误，保留现有配置及备份")
-            conf.workshop_manual_backup = settings(entries, "manual")
-        conf.workshop_preset_migrated = True
+        try:
+            _import_legacy_preset(conf)
+        except (OSError, ValueError, TypeError):
+            return (
+                "旧合成配置无法读取，原文件和现有配置已保留。"
+                "修复旧文件或修改下方设置后，可继续自动备料。"
+            )
     if conf.workshop_manual_backup is None:
-        conf.workshop_manual_backup = settings(
-            [s for s in conf.workshop_settings if s.source != "mastery"], "manual"
-        )
+        conf.workshop_manual_backup = _manual_form(conf)
+    return ""
 
 
 def restore_manual_settings(conf):
@@ -67,24 +86,23 @@ def save_conf(conf):
         raise
 
 
-def workshop_state(conf):
+def workshop_state(conf, warning=""):
     return {
         "workshop_settings": [s.model_dump() for s in conf.workshop_settings],
         "workshop_generation": conf.workshop_generation,
-        "workshop_manual_settings": [
-            s.model_dump() for s in conf.workshop_manual_backup or []
-        ],
+        "workshop_manual_settings": [s.model_dump() for s in _manual_form(conf)],
         "workshop_manual_revision": conf.workshop_manual_revision,
         "automatic": conf.workshop_auto_active,
+        "workshop_preset_warning": warning,
     }
 
 
 def read_user_config():
     with workshop_lock:
         conf = config.conf.model_copy(deep=True)
-        initialize_manual_settings(conf)
+        warning = initialize_manual_settings(conf)
         save_conf(conf)
-        return {**conf.model_dump(), **workshop_state(conf)}
+        return {**conf.model_dump(), **workshop_state(conf, warning)}
 
 
 def _edit_manual(conf, req):
@@ -93,8 +111,9 @@ def _edit_manual(conf, req):
     if req.get("workshop_manual_settings_revision") != conf.workshop_manual_revision:
         return True
     incoming = settings(req["workshop_manual_settings"], "manual")
-    if incoming != conf.workshop_manual_backup:
+    if incoming != _manual_form(conf):
         conf.workshop_manual_backup = incoming
+        conf.workshop_preset_migrated = True
         conf.workshop_manual_revision += 1
         if not conf.workshop_auto_active:
             conf.workshop_settings = settings(incoming)
@@ -113,6 +132,7 @@ def _edit_legacy(conf, req):
     if incoming != conf.workshop_settings:
         conf.workshop_settings = incoming
         conf.workshop_manual_backup = settings(incoming, "manual")
+        conf.workshop_preset_migrated = True
         conf.workshop_manual_revision += 1
         conf.workshop_generation += 1
 
@@ -120,7 +140,7 @@ def _edit_legacy(conf, req):
 def save_user_config(req):
     with workshop_lock:
         state = config.conf.model_copy(deep=True)
-        initialize_manual_settings(state)
+        warning = initialize_manual_settings(state)
         conflict = _edit_manual(state, req)
         if "workshop_manual_settings" not in req:
             _edit_legacy(state, req)
@@ -132,4 +152,6 @@ def save_user_config(req):
         if not conf.enable_mastery:
             restore_manual_settings(conf)
         save_conf(conf)
-        return {**workshop_state(conf), "workshop_manual_conflict": conflict}
+        if conf.workshop_preset_migrated:
+            warning = ""
+        return {**workshop_state(conf, warning), "workshop_manual_conflict": conflict}
