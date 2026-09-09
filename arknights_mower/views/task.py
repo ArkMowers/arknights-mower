@@ -67,9 +67,6 @@ def add_task():
                         task_type=task["task_type"],
                         meta_data=task["meta_data"],
                     )
-                    if new_task.type == TaskTypes.FURNITURE:
-                        new_task.plan = {}
-                        new_task.meta_data = ""
                     if new_task.type == TaskTypes.WORKSHOP:
                         from arknights_mower.utils import config
                         from arknights_mower.utils.workshop_automation import (
@@ -99,7 +96,7 @@ def add_task():
                             "系统会自动调度训练"
                         )
                     base_scheduler.tasks.append(new_task)
-                    if new_task.type in (TaskTypes.WORKSHOP, TaskTypes.FURNITURE):
+                    if new_task.type == TaskTypes.WORKSHOP:
                         from arknights_mower.utils import config
 
                         config.wake_scheduler.set()

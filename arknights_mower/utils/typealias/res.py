@@ -34,7 +34,6 @@ Res = Literal[
     "episode",
     "factory_accelerate",
     "factory_collect",
-    "factory_furniture",
     "friend_list",
     "friend_visit",
     "hypergryph",
