@@ -278,6 +278,10 @@ class MaaPart(ConfModel):
         default_factory=lambda: "CompatMac" if sys.platform == "darwin" else "General"
     )
     maa_touch_option: str = "maatouch"
+    maa_restore_theme_enable: bool = False
+    "MAA 任务结束后恢复游戏主界面主题，需要 MAA v6.17.3 或更高版本"
+    maa_restore_theme: str = ""
+    "要恢复的游戏主题名称"
 
 
 class RecruitPart(ConfModel):

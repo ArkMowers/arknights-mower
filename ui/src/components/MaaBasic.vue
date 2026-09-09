@@ -14,11 +14,16 @@ const {
   maa_mirrorchyan_token,
   maa_update_channel,
   maa_auto_check_update,
+  maa_restore_theme_enable,
+  maa_restore_theme,
   maa_conn_preset,
   maa_touch_option
 } = storeToRefs(store)
 
 import { folder_dialog } from '@/utils/dialog'
+import { getMaaThemeOptions } from '@/utils/maa_theme_options'
+
+const maa_theme_options = computed(() => getMaaThemeOptions(maa_restore_theme.value))
 
 async function select_maa_dir() {
   const folder_path = await folder_dialog()
@@ -856,7 +861,25 @@ onUnmounted(() => {
       <n-form-item label="触控模式">
         <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
       </n-form-item>
+      <n-form-item label="恢复主题">
+        <n-checkbox v-model:checked="maa_restore_theme_enable">任务结束后恢复主题</n-checkbox>
+      </n-form-item>
+      <n-form-item v-if="maa_restore_theme_enable" label="目标主题">
+        <n-select
+          :value="maa_restore_theme || null"
+          :options="maa_theme_options"
+          filterable
+          clearable
+          placeholder="请选择要恢复的主题"
+          @update:value="maa_restore_theme = $event ?? ''"
+        />
+      </n-form-item>
     </n-form>
+    <p>
+      恢复主题需要 MAA v6.17.3 或更高版本。在本轮 MAA 日常及大型任务结束后、休息前，恢复到指定主题。
+      下拉列表包含国服游戏主题，请选择账号已解锁的主题；清空选择后不恢复。
+      手动停止、异常退出或调度时间不足时跳过。
+    </p>
     <n-divider />
     <div class="misc-container">
       <n-button :loading="maa_testing" :disabled="maa_testing" @click="test_maa">

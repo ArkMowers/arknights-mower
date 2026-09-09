@@ -10,6 +10,7 @@ from typing import Literal, Optional
 
 import cv2
 import requests
+from packaging.version import InvalidVersion, Version
 
 from arknights_mower.data import (
     agent_list,
@@ -4165,10 +4166,78 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             self.drop_send = True
 
+    def restore_maa_theme(self):
+        """本轮 MAA 任务收尾时恢复指定主题，为下次调度预留时间。"""
+        conf = config.conf
+        if not conf.maa_restore_theme_enable or self.MAA is None:
+            return
+        theme = conf.maa_restore_theme.strip()
+        if not theme:
+            logger.warning("未选择目标主题，跳过恢复主题")
+            return
+        if config.stop_maa.is_set() or config.stop_mower.is_set():
+            return
+
+        queued = False
+        try:
+            version = self.MAA.get_version()
+            try:
+                supported = Version(version) >= Version("6.17.3")
+            except InvalidVersion:
+                supported = False
+            if not supported:
+                logger.warning(
+                    f"恢复主题需要 MAA v6.17.3 或更高版本，当前为 {version}，跳过恢复"
+                )
+                return
+
+            deadline = min(
+                datetime.now() + timedelta(seconds=120),
+                self.tasks[0].time - timedelta(seconds=5),
+            )
+            if (deadline - datetime.now()).total_seconds() < 10:
+                logger.info("距离下次调度时间过近，跳过恢复主题")
+                return
+
+            # 大型任务可能被调度器中断；清空原队列后只运行恢复任务。
+            self.MAA.stop()
+            if config.stop_maa.is_set() or config.stop_mower.is_set():
+                return
+            task_id = self.MAA.append_task("SwitchTheme", {"themes": [theme]})
+            if not task_id:
+                logger.warning("添加恢复主题任务失败，请检查 MAA 核心及配套资源版本")
+                return
+            queued = True
+            if not self.MAA.start():
+                logger.warning("恢复主题任务启动失败")
+                return
+            logger.info(f"开始恢复游戏主题：{theme}")
+            while self.MAA.running():
+                if config.stop_maa.is_set():
+                    logger.info("收到停止指令，停止恢复主题")
+                    return
+                if (
+                    datetime.now() >= deadline
+                    or (self.tasks[0].time - datetime.now()).total_seconds() <= 5
+                ):
+                    logger.warning("恢复主题超时或即将开始下次调度，停止恢复")
+                    return
+                csleep(1)
+            logger.info("恢复主题任务结束，具体切换结果请查看 MAA 日志")
+        except MowerExit:
+            raise
+        except Exception:
+            logger.exception("恢复主题失败，继续原定调度")
+        finally:
+            if queued:
+                self.MAA.stop()
+                self.recog.reset_after_external_control()
+
     def maa_plan_solver(self, tasks="All", one_time=False):
         """清日常"""
         try:
             self.drop_send = False
+            restore_theme = False
             conf = config.conf
             if (
                 not one_time
@@ -4222,6 +4291,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         hard_stop = True
                     else:
                         self.sleep(5)
+                # MAA 运行期间只保存截图，没有连续执行 Mower 场景识别。
+                self.recog.reset_after_external_control()
+                restore_theme = not hard_stop
                 if hard_stop:
                     hard_stop_msg = "MAA任务未完成，等待3分钟"
                     logger.info(hard_stop_msg)
@@ -4263,9 +4335,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info("准备开始：肉鸽/保全/盐酸")
                 send_message("启动 肉鸽/保全/盐酸")
                 while True:
+                    restore_theme = False
                     self.MAA = None
                     self.initialize_maa()
-                    self.recog.update()
+                    self.recog.reset_after_external_control()
                     self.back_to_index()
                     if conf.RG:
                         # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
@@ -4439,7 +4512,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         ):
                             maa_crash = False
                             self.maa_stop()
+                            restore_theme = True
                             break
+                    self.recog.reset_after_external_control()
                     if maa_crash:
                         logger.error("MAA 肉鸽/保全/盐酸运行中断")
                         send_message("MAA 肉鸽/保全/盐酸运行中断", level="ERROR")
@@ -4455,6 +4530,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     sf_solver = SecretFront(self.device, self.recog)
                     sf_solver.run(self.tasks[0].time - datetime.now())
 
+            if restore_theme:
+                self.restore_maa_theme()
             self.rest_until_next_task()
             self.MAA = None
         except MowerExit:
