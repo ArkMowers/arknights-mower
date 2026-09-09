@@ -306,11 +306,23 @@ def test_returning_to_wrong_page_stops_before_next_selection(monkeypatch, solver
     monkeypatch.setattr(
         furniture,
         "list_fingerprint",
-        lambda img: np.full((10, 10), next(levels), np.uint8),
+        lambda img: np.full((10, 10), next(levels, 50), np.uint8),
     )
     with pytest.raises(RuntimeError, match="位置发生变化"):
         runner.run()
     runner.process.assert_called_once_with((0.37, 0.21), 2)
+
+
+def test_return_animation_can_settle_without_changing_list(monkeypatch, solver):
+    runner = furniture.FurnitureDismantler(solver)
+    levels = iter([50, 0])
+    monkeypatch.setattr(
+        furniture,
+        "list_fingerprint",
+        lambda img: np.full((10, 10), next(levels), np.uint8),
+    )
+    runner.wait_list_position(np.zeros((10, 10), np.uint8))
+    solver.sleep.assert_called_once_with(0.5)
 
 
 @pytest.mark.parametrize("text,score", [("3/1", 0.8), ("3/?", 1), ("?", 1)])
@@ -363,6 +375,30 @@ def test_names_are_detected_before_recognition(monkeypatch, solver, name):
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (name, 2)
     assert engine.call_args_list[0].kwargs["use_det"] is True
+
+
+@pytest.mark.parametrize(
+    "candidate,score,expected",
+    [("“桌子”", 1, "“桌子”"), ("另一张桌子", 1, "桌子"), ("“桌子”", 0.8, "桌子")],
+)
+def test_name_retry_only_restores_confident_quotes(
+    monkeypatch, solver, candidate, score, expected
+):
+    furniture.crop_relative(solver.recog.img, 0.36, 0.265, 0.59, 0.31)[10:20, 10:40] = (
+        255
+    )
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        MagicMock(
+            side_effect=[
+                ([title(10, 10, "桌子")], 0),
+                ([[candidate, score]], 0),
+                ([["2/1", 1]], 0),
+            ]
+        ),
+    )
+    assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (expected, 2)
 
 
 @pytest.mark.parametrize(

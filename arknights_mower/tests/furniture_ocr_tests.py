@@ -23,6 +23,8 @@ def ocr():
         ("quoted_name", "“全是兔兔”糖果机", 1, None),
         ("rabbit_name", "兔兔拍立得相机", 1, None),
         ("short_quoted_name", "“食为天”", 1, None),
+        ("missing_quotes", "“梅雨时山水”", 2, None),
+        ("missing_quotes_bed", "“新绿季浅睡”", 2, None),
     ],
 )
 def test_real_panel_ocr(monkeypatch, ocr, fixture, name, stock, batch):

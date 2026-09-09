@@ -46,17 +46,18 @@ def furniture_details(img, expected_count=1, expected_batch=None):
     )
     if not result:
         raise ValueError("家具名称无法可靠确认")
-    if len(result) == 1 and result[0][2] >= 0.9:
-        name = normalize_name(result[0][1])
-    else:
-        # 引号可能被拆成单独文字框；对整行白色字形重新识别，不拼接误读碎片。
-        points = [point for box, _, _ in result for point in box]
-        left = max(0, int(min(point[0] for point in points)) - 12)
-        right = min(name_img.shape[1], int(max(point[0] for point in points)) + 12)
-        mask = cv2.inRange(name_img[:, left:right], (200, 200, 200), (255, 255, 255))
-        x, y, width, height = cv2.boundingRect(mask)
-        if not width or not height:
-            raise ValueError("家具名称无法可靠确认")
+    name = (
+        normalize_name(result[0][1])
+        if len(result) == 1 and result[0][2] >= 0.9
+        else None
+    )
+    # 引号可能被拆框或在高置信度结果中漏读，重新识别完整白色字形。
+    points = [point for box, _, _ in result for point in box]
+    left = max(0, int(min(point[0] for point in points)) - 12)
+    right = min(name_img.shape[1], int(max(point[0] for point in points)) + 12)
+    mask = cv2.inRange(name_img[:, left:right], (200, 200, 200), (255, 255, 255))
+    x, y, width, height = cv2.boundingRect(mask)
+    if width and height:
         text_img = cv2.copyMakeBorder(
             mask[y : y + height, x : x + width],
             6,
@@ -66,7 +67,17 @@ def furniture_details(img, expected_count=1, expected_batch=None):
             cv2.BORDER_CONSTANT,
             value=0,
         )
-        name = read_precise_text(text_img)
+        try:
+            candidate = read_precise_text(text_img)
+        except ValueError:
+            if name is None:
+                raise
+        else:
+            # 对已有可靠结果仅接受 OCR 实际读出的完整外围引号，不改写正文。
+            if name is None or candidate in {f"“{name}”", f'"{name}"'}:
+                name = candidate
+    if name is None:
+        raise ValueError("家具名称无法可靠确认")
     # 数量右对齐：分子为库存，分母随加工份数改变，MAX 后可能是 12/11。
     batch_digits = len(str(expected_batch)) if expected_batch is not None else 1
     left = 0.476 - 0.010 * (len(str(expected_count)) + batch_digits - 2)
@@ -200,6 +211,16 @@ class FurnitureDismantler:
             self.solver.sleep()
         raise RuntimeError(f"家具分解未进入预期界面：{expected}")
 
+    def wait_list_position(self, previous):
+        # 场景标记可能先于切换动画恢复；短暂重截图后仍须匹配原列表位置。
+        for attempt in range(4):
+            current = list_fingerprint(self.solver.recog.img)
+            if np.mean(cv2.absdiff(previous, current)) < 1.5:
+                return
+            if attempt < 3:
+                self.solver.sleep(0.5)
+        raise RuntimeError("返回家具列表后位置发生变化，停止以避免选错配方")
+
     def open_formula(self, reset=True):
         solver = self.solver
         for _ in range(30):
@@ -288,12 +309,8 @@ class FurnitureDismantler:
                 completed = self.process(position, count)
                 # 跳过的家具没有消耗，保持当前列表位置继续下一项。
                 self.open_formula(reset=completed)
-                if (
-                    not completed
-                    and np.mean(cv2.absdiff(page, list_fingerprint(solver.recog.img)))
-                    >= 1.5
-                ):
-                    raise RuntimeError("返回家具列表后位置发生变化，停止以避免选错配方")
+                if not completed:
+                    self.wait_list_position(page)
                 if completed:
                     processed += 1
                     logger.info(f"已完成第{processed}批重复家具分解")
