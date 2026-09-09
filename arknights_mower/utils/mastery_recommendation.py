@@ -9,6 +9,9 @@ from arknights_mower.utils.resource_pkg import (
 )
 from arknights_mower.utils.skill_label import format_skill_label
 
+# 肉鸽赠送干员不支持训练室专精，即使 BOX 包含精二和技能数据。
+UNTRAINABLE_CHAR_IDS = frozenset({"char_4195_radian", "char_4230_mcnist"})
+
 
 def _find_skill_data():
     candidates = [
@@ -200,7 +203,7 @@ def get_mastery_recommendations():
         char_id = char.get("id", "")
         evolve_phase = char.get("evolvePhase", 0)
 
-        if evolve_phase < 2:
+        if evolve_phase < 2 or char_id in UNTRAINABLE_CHAR_IDS:
             continue
 
         char_info = char_table.get(char_id)

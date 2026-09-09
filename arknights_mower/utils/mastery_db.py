@@ -244,9 +244,12 @@ def add_plan_checked(
     ):
         return -1, f"目标专精等级无效: {target_level}（需 1/2/3）"
     from arknights_mower.utils.mastery_recommendation import (
+        UNTRAINABLE_CHAR_IDS,
         get_current_mastery_level,
     )
 
+    if char_id in UNTRAINABLE_CHAR_IDS:
+        return -1, "该干员为肉鸽赠送干员，无法在训练室专精技能"
     current_level = get_current_mastery_level(char_id, skill_index)
     if current_level is not None and current_level >= target_level:
         return -1, f"该干员技能已专{current_level}，无需再练到专{target_level}"
