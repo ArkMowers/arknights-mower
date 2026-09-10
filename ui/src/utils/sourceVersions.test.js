@@ -76,13 +76,25 @@ describe('source remote and PR selection', () => {
     const histories = []
     const axios = {
       get: vi.fn(() => new Promise((resolve) => histories.push(resolve))),
-      post: vi
-        .fn()
-        .mockResolvedValue({ data: { ok: true, check_id: 'fork', source_repo: 'personal/mower' } })
+      post: vi.fn().mockImplementation(async (url) => ({
+        data: url.endsWith('/source/remote')
+          ? {
+              ok: true,
+              source_url: 'https://github.com/personal/mower.git',
+              remotes: [
+                {
+                  value: 'https://github.com/personal/mower.git',
+                  label: 'https://github.com/personal/mower.git'
+                }
+              ]
+            }
+          : { ok: true, check_id: 'fork', source_repo: 'personal/mower' }
+      }))
     }
     const view = state(axios)
     const old = view.loadHistory()
     const fork = view.selectRemote('https://github.com/personal/mower')
+    await vi.waitFor(() => expect(histories).toHaveLength(2))
     histories[1]({ data: { ok: true, branch: 'main', commits: [], source_repo: 'personal/mower' } })
     await fork
     histories[0]({
@@ -92,8 +104,8 @@ describe('source remote and PR selection', () => {
     expect(view.history.value.source_repo).toBe('personal/mower')
     expect(view.branch.value).toBe('main')
     await view.checkVersion()
-    expect(axios.post.mock.calls[0][1]).toEqual({
-      remote: 'https://github.com/personal/mower',
+    expect(axios.post.mock.calls.find(([url]) => url.endsWith('/source/check'))[1]).toEqual({
+      remote: 'https://github.com/personal/mower.git',
       branch: 'main',
       reference: 'main'
     })

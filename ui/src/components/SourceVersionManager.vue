@@ -17,6 +17,7 @@ const emit = defineEmits(['install'])
 const dialogs = useDialog()
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
 const {
+  savedRemotes,
   mode,
   pulls,
   pullNumber,
@@ -37,7 +38,7 @@ const {
 } = useSourceVersions(inject('axios'), base, props.initialBranch, props.initialRemote)
 const force = ref(false)
 const remoteOptions = computed(() => {
-  const options = [...props.remotes]
+  const options = [...(savedRemotes.value.length ? savedRemotes.value : props.remotes)]
   if (remote.value && !options.some((item) => item.value === remote.value))
     options.push({ value: remote.value, label: remote.value })
   return options
@@ -98,12 +99,12 @@ function confirm() {
             tag
             size="small"
             :disabled="running || checking"
-            placeholder="选择远端，或输入 GitHub fork 地址后回车"
+            placeholder="选择已填写的仓库，或输入 GitHub 地址后回车"
             :input-props="{ 'aria-label': '源码远端仓库' }"
             @update:value="selectRemote"
           />
         </n-form-item>
-        <p class="hint">支持公开 GitHub 仓库地址或 owner/repo</p>
+        <p class="hint">支持公开 GitHub 仓库地址或 owner/repo，填写后仅记在本机</p>
         <n-form-item label="选择方式">
           <n-radio-group
             :value="mode"

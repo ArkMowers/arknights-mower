@@ -20,7 +20,7 @@
 
 ## 源码部署
 
-使用源码 Python 启动 `manager.py` 或 `webview_ui.py`，Windows、macOS、Linux 均可识别，不通过系统名称或 `python.exe` 后缀判断部署类型。需要 Git、Node.js/npm。源码版本管理支持选择本地已配置的 GitHub 远端，或填写公开的个人 fork 地址；无需修改 `origin`。仅当目标提交的 `.gitattributes` 使用 LFS 时才要求 Git LFS；普通 Git 仓库不依赖它。macOS 桌面启动会补充 Homebrew/MacPorts 的常见工具目录，更新命令和恢复实例沿用检测到的 PATH。支持普通 Git 检出和 Git worktree。
+使用源码 Python 启动 `manager.py` 或 `webview_ui.py`，Windows、macOS、Linux 均可识别，不通过系统名称或 `python.exe` 后缀判断部署类型。需要 Git、Node.js/npm。源码版本管理支持填写公开的个人 fork 地址，或选择自己此前填写的仓库；无需修改 `origin`。仅当目标提交的 `.gitattributes` 使用 LFS 时才要求 Git LFS；普通 Git 仓库不依赖它。macOS 桌面启动会补充 Homebrew/MacPorts 的常见工具目录，更新命令和恢复实例沿用检测到的 PATH。支持普通 Git 检出和 Git worktree。
 
 正式版、公测版继续从官方 Release 的 tag 获取提交；开发版跟随源码版本管理中应用的仓库和分支，未选择时使用 `origin` / `alpha`。分支检查会固定仓库 URL 和提交 SHA，Git 与 Git LFS 使用同一来源。PR 更新为单次手动操作，不改变后续检查使用的仓库、分支或渠道。
 
@@ -64,7 +64,7 @@ Python 环境不要求叫 `.venv` / `venv`，也不要求放在源码目录内�
 
 ### 源码版本管理与回滚
 
-展开软件更新卡片内的 **源码版本管理**，可查看当前分支 / 分离 HEAD 和提交，选择远端仓库及其分支。远端仓库可从本地 `origin`、`upstream`、`fork` 等已配置项中选择，也可输入 `https://github.com/用户名/仓库`、`owner/repo` 或 GitHub SSH 地址后回车。切换仓库时读取其默认分支；仅浏览不会写入 Git 配置或更改自动更新来源。当前分支/提交查询使用公开 GitHub API，不支持私有仓库认证。**目标版本** 使用一个可输入的选项框，可选择最近 20 次提交，也可手动输入完整 / 短 SHA、分支或 tag 后回车确认。浏览与检查不会切换代码或停止实例。
+展开软件更新卡片内的 **源码版本管理**，可查看当前分支 / 分离 HEAD 和提交，选择远端仓库及其分支。远端仓库默认仅显示“默认仓库”，不自动枚举本地 Git remote。用户可输入 `https://github.com/用户名/仓库`、`owner/repo` 或 GitHub SSH 地址后回车；输入有效地址后，在该安装的本地设置中保存最近 10 个仓库供下次选择，发布包不包含个人填写记录。切换仓库时读取其默认分支；仅浏览不会写入 Git 配置或更改自动更新来源。当前分支/提交查询使用公开 GitHub API，不支持私有仓库认证。**目标版本** 使用一个可输入的选项框，可选择最近 20 次提交，也可手动输入完整 / 短 SHA、分支或 tag 后回车确认。浏览与检查不会切换代码或停止实例。
 
 点击 **检查版本** 后，界面显示解析出的完整 SHA、提交说明、作者和日期。安装目标固定到该 SHA，不会因为分支或 tag 后来移动而换成其他版本。**切换并重启** 会再次确认仓库、目标提交、同一安装目录下的实例数量；可单独勾选强制覆盖本地源码修改，取消确认不执行任何切换。
 

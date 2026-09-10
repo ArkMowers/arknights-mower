@@ -1,6 +1,8 @@
 import { ref, watch } from 'vue'
 
 export function useSourceVersions(axios, base, initialBranch = 'alpha', initialRemote = 'origin') {
+  const savedRemotes = ref([])
+  let remoteRequest = 0
   const mode = ref('branch')
   const pulls = ref([])
   const pullNumber = ref(null)
@@ -60,13 +62,37 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
     }
   }
 
-  function selectRemote(value) {
+  async function selectRemote(value) {
+    const request = ++remoteRequest
+    historyRequest++
     remote.value = value
     branch.value = ''
     reference.value = ''
     history.value = null
     pulls.value = []
     pullNumber.value = null
+    error.value = ''
+    if (value !== 'origin') {
+      loading.value = true
+      try {
+        const { data } = await axios.post(
+          `${base}/source/remote`,
+          { remote: value },
+          {
+            headers: { 'X-Mower-Update': '1' }
+          }
+        )
+        if (request !== remoteRequest) return
+        if (!data.ok) throw new Error(data.message)
+        savedRemotes.value = data.remotes
+        remote.value = data.source_url
+      } catch (err) {
+        if (request === remoteRequest) error.value = message(err)
+        return
+      } finally {
+        if (request === remoteRequest) loading.value = false
+      }
+    }
     return refresh()
   }
 
@@ -135,6 +161,7 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
   }
 
   return {
+    savedRemotes,
     mode,
     pulls,
     pullNumber,

@@ -65,6 +65,13 @@ def check():
     return updater.check(data.get("channel"))
 
 
+@software_update_bp.post("/source/remote")
+@result
+def remember_source_remote():
+    data = request.get_json()
+    return updater.remember_source_remote(data.get("remote"))
+
+
 @software_update_bp.get("/source/history")
 @result
 def source_history():

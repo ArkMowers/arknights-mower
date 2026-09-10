@@ -103,9 +103,7 @@ class SourceRemoteTests(unittest.TestCase):
                 update.resolve_source_remote(value)["source_url"],
                 "git@github.com:personal/mower.git",
             )
-        self.assertEqual(
-            [r["value"] for r in update.source_remotes()], ["origin", "personal"]
-        )
+        self.assertEqual([r["value"] for r in update.source_remotes()], ["origin"])
         with self.assertRaisesRegex(ValueError, "不存在"):
             update.resolve_source_remote("missing")
 
@@ -361,3 +359,59 @@ class SourceRemoteTests(unittest.TestCase):
         for key in ("channel", "source_remote", "source_branch", "auto_check"):
             self.assertEqual(saved[key], original[key])
         self.assertFalse(saved["auto_update"])
+
+    def test_only_user_entered_remotes_are_remembered_per_installation(self):
+        self.assertEqual(
+            update.source_remotes(), [{"value": "origin", "label": "默认仓库"}]
+        )
+        before = update.get_settings()
+        update.remember_source_remote("personal/mower")
+        result = update.remember_source_remote("https://github.com/personal/mower.git")
+        self.assertEqual(
+            [r["value"] for r in result["remotes"]],
+            ["origin", "https://github.com/personal/mower.git"],
+        )
+        for key in (
+            "source_remote",
+            "source_branch",
+            "channel",
+            "auto_check",
+            "auto_update",
+        ):
+            self.assertEqual(update.get_settings()[key], before[key])
+        with patch.object(
+            runtime, "state_dir", return_value=self.root / "other-installation"
+        ):
+            self.assertEqual(
+                update.source_remotes(), [{"value": "origin", "label": "默认仓库"}]
+            )
+        for index in range(12):
+            update.remember_source_remote(f"personal/repo-{index}")
+        self.assertEqual(len(update.get_settings()["source_remote_history"]), 10)
+
+    def test_invalid_or_unauthorized_remote_input_is_not_saved(self):
+        for value in (
+            "fork",
+            "--upload-pack=x",
+            "https://token@github.com/personal/mower",
+        ):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                update.remember_source_remote(value)
+        app = Flask(__name__)
+        app.token = "fixture"
+        app.register_blueprint(software_update_bp)
+        client = app.test_client()
+        response = client.post(
+            "/software-update/source/remote", json={"remote": "personal/mower"}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(update.get_settings()["source_remote_history"], [])
+        response = client.post(
+            "/software-update/source/remote",
+            json={"remote": "personal/mower"},
+            headers={"token": "fixture", "X-Mower-Update": "1"},
+        )
+        self.assertTrue(response.json["ok"])
+        self.assertEqual(
+            response.json["source_url"], "https://github.com/personal/mower.git"
+        )

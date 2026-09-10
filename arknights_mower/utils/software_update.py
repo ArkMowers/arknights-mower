@@ -97,6 +97,7 @@ def get_settings():
         "auto_update": saved.get("auto_update", False),
         "source_branch": saved.get("source_branch", "alpha"),
         "source_remote": saved.get("source_remote", "origin"),
+        "source_remote_history": saved.get("source_remote_history", []),
     }
 
 
@@ -346,26 +347,25 @@ def resolve_source_remote(remote=None):
 
 
 def source_remotes():
-    """List supported local remotes without contacting GitHub or changing Git config."""
-    git = shutil.which("git", path=source_tool_path())
-    if not git or not (runtime.installation_root() / ".git").exists():
-        return []
-    names = subprocess.check_output(
-        [git, "remote"],
-        cwd=runtime.installation_root(),
-        text=True,
-        encoding="utf-8",
-        stderr=subprocess.PIPE,
-        timeout=10,
-    ).splitlines()
-    result = []
-    for name in names:
-        try:
-            remote = resolve_source_remote(name)
-        except (ValueError, OSError, subprocess.SubprocessError):
-            continue
-        result.append({"value": name, "label": f"{name} · {remote['source_repo']}"})
-    return result
+    """Only show defaults and addresses explicitly entered for this installation."""
+    return [{"value": "origin", "label": "默认仓库"}] + [
+        {"value": url, "label": url} for url in get_settings()["source_remote_history"]
+    ]
+
+
+def remember_source_remote(value):
+    if runtime.frozen():
+        raise ValueError("远端仓库选择仅支持源码部署")
+    selected = normalize_source_url(value)
+    url = selected["source_url"]
+    with runtime.submission_lock(runtime.state_dir()):
+        settings = get_settings()
+        history = settings["source_remote_history"]
+        settings["source_remote_history"] = [url] + [
+            item for item in history if item.lower() != url.lower()
+        ][:9]
+        runtime.write_json(runtime.state_dir() / "settings.json", settings)
+    return {"ok": True, **selected, "remotes": source_remotes()}
 
 
 def source_repository():
@@ -690,12 +690,7 @@ def info():
                 "请通过 webview_ui.py / Mower 桌面程序启动；直接运行 Flask 或容器请使用原部署工具更新"
             )
     settings = get_settings()
-    remotes = []
-    if deployment == "source":
-        try:
-            remotes = source_remotes()
-        except (OSError, subprocess.SubprocessError):
-            pass
+    remotes = source_remotes() if deployment == "source" else []
     return {
         "ok": True,
         "version": __version__,
