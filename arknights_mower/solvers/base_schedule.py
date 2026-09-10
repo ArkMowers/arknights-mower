@@ -519,6 +519,69 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tasks.sort(key=lambda task: task.time)
 
     def craft_material(self):
+        first_task = self.task
+        restore_plan = {}
+        last_agent = None
+        try:
+            while True:
+                try:
+                    agent = self._craft_material(restore_plan)
+                    if agent is not None:
+                        last_agent = agent
+                except MowerExit:
+                    raise
+                except Exception as e:
+                    last_agent = None
+                    save_exception(e)
+                    logger.error(f"工厂任务失败: {e}")
+                    logger.exception(e)
+                    break
+                # 首个任务仍由 infra_main 收尾，后续任务按对象身份移除。
+                if self.task is not first_task:
+                    self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                if first_task.type != TaskTypes.WORKSHOP or first_task.plan:
+                    break
+                next_task = self._next_workshop_task(first_task)
+                if next_task is None:
+                    break
+                logger.info(f"连续加工，直接切换至{next_task.meta_data}")
+                self.task = next_task
+        finally:
+            self.task = first_task
+
+        if restore_plan and (
+            len(restore_plan) > 1 or restore_plan["factory"] != [last_agent]
+        ):
+            try:
+                logger.info("本轮加工结束，统一恢复干员位置")
+                self.agent_arrange(restore_plan)
+            except MowerExit:
+                raise
+            except Exception as e:
+                save_exception(e)
+                logger.error(f"加工后恢复干员失败: {e}")
+                logger.exception(e)
+
+    def _next_workshop_task(self, first_task):
+        # 每次交接重新检查队列，兼容新增/删除任务和专精换人保护。
+        tasks = getattr(self, "tasks", [])
+        protect_support_swaps(tasks)
+        pending = sorted(
+            (task for task in tasks if task is not first_task),
+            key=lambda task: task.time,
+        )
+        if not pending:
+            return None
+        task = pending[0]
+        if (
+            task.type == TaskTypes.WORKSHOP
+            and not task.plan
+            and task.time <= datetime.now()
+        ):
+            return task
+        return None
+
+    def _craft_material(self, restore_plan):
         task = self.task
         from arknights_mower.utils.workshop_automation import workshop_task_snapshot
 
@@ -534,39 +597,31 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ):
             logger.info(f"{task.meta_data}心情不足1点，跳过加工任务")
             return
-        try:
-            self.enter_room("factory")
-            current_agent = [
+        self.enter_room("factory")
+        if "factory" not in restore_plan:
+            restore_plan["factory"] = [
                 key
                 for key, value in self.op_data.operators.items()
                 if value.current_room == "factory"
-            ]
-            agent_room = (
-                self.op_data.operators[task.meta_data].current_room
-                if task.meta_data in self.op_data.operators
-                else ""
-            )
-            agent_index = (
-                self.op_data.operators[task.meta_data].current_index
-                if task.meta_data in self.op_data.operators
-                else -1
-            )
-            logger.debug(f"当前工厂干员: {current_agent}")
-            logger.debug(f"当前加工干员位置: {agent_room}")
-            self.agent_arrange({"factory": [task.meta_data]})
-            self.generate_product(task.meta_data, snapshot=snapshot)
-            if len(current_agent) > 0 and current_agent[0] != task.meta_data:
-                new_plan = {"factory": current_agent}
-                if agent_room and agent_index >= 0:
-                    new_plan[agent_room] = ["Current"] * len(
-                        self.op_data.plan[agent_room]
-                    )
-                    new_plan[agent_room][agent_index] = task.meta_data
-                self.agent_arrange(new_plan)
-        except Exception as e:
-            save_exception(e)
-            logger.error(f"工厂任务失败: {e}")
-            logger.exception(e)
+            ] or [task.meta_data]
+            # 原本无人时沿用单次加工行为，首位加工干员作为最终留驻干员。
+        agent_room = operator.current_room if operator is not None else ""
+        agent_index = operator.current_index if operator is not None else -1
+        logger.debug(f"本轮加工前工厂干员: {restore_plan['factory']}")
+        logger.debug(f"当前加工干员位置: {agent_room}")
+        if (
+            restore_plan["factory"]
+            and task.meta_data not in restore_plan["factory"]
+            and agent_room
+            and agent_room != "factory"
+            and agent_index >= 0
+        ):
+            restore_plan.setdefault(
+                agent_room, ["Current"] * len(self.op_data.plan[agent_room])
+            )[agent_index] = task.meta_data
+        self.agent_arrange({"factory": [task.meta_data]})
+        self.generate_product(task.meta_data, snapshot=snapshot)
+        return task.meta_data
 
     def plan_metadata(self):
         self.tasks = plan_metadata(self.op_data, self.tasks)
