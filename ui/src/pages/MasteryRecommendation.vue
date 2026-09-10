@@ -503,6 +503,19 @@
             </help-text>
           </n-space>
         </n-space>
+        <n-space align="center" :size="6">
+          <n-switch
+            :value="workshopProtectT2"
+            :disabled="workshopPolicySaving"
+            @update:value="setWorkshopMaterialPolicy"
+            size="small"
+            aria-label="不使用装置/固源岩进行合成"
+          />
+          <n-text>不使用装置/固源岩进行合成</n-text>
+          <help-text>
+            仅保留 T2 装置、固源岩，其他等级照常合成。开启后，材料预算也不使用这两种原料。
+          </help-text>
+        </n-space>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
           <help-text>九色鹿使用下方独立设置中的垫刀素材。</help-text>
@@ -675,11 +688,26 @@ const idleFilterOptions = [
 const {
   workshop_min_bonus: workshopMinBonus,
   workshop_low_priority_rest: workshopLowPriorityRest,
+  workshop_protect_t2_device_rock: workshopProtectT2,
   workshop_deer_fodder: deerFodder,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
   book_operators: bookOps
 } = storeToRefs(configStore)
+const workshopPolicySaving = ref(false)
+async function setWorkshopMaterialPolicy(value) {
+  workshopProtectT2.value = value
+  workshopPolicySaving.value = true
+  try {
+    await configStore.save_config()
+    await store.fetchRecommendations()
+    await refreshT3Summary()
+  } catch (error) {
+    message.error(`合成设置保存失败：${error.message || error}`)
+  } finally {
+    workshopPolicySaving.value = false
+  }
+}
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
 const workshopRecommendations = ref(null)

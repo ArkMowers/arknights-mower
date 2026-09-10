@@ -190,8 +190,16 @@ def get_mastery_recommendations():
 
     from arknights_mower.data import workshop_formula
     from arknights_mower.utils.mastery_materials import MaterialBudget
+    from arknights_mower.utils.workshop_material_policy import (
+        protected_workshop_materials,
+    )
 
-    material_budget = MaterialBudget(skill_data, inventory, workshop_formula)
+    material_budget = MaterialBudget(
+        skill_data,
+        inventory,
+        workshop_formula,
+        blocked_materials=protected_workshop_materials(),
+    )
     operators = []
     skill_name_cache = {}
 

@@ -5,7 +5,9 @@ from math import ceil
 
 
 class MaterialBudget:
-    def __init__(self, skill_data, inventory, workshop_formula=None):
+    def __init__(
+        self, skill_data, inventory, workshop_formula=None, *, blocked_materials=()
+    ):
         self.items = skill_data.get("items", {})
         self.inventory = {key: max(0, int(value)) for key, value in inventory.items()}
         ids = {item["name"]: key for key, item in self.items.items()}
@@ -26,6 +28,12 @@ class MaterialBudget:
                     {ids[child]: count for child, count in costs.items()},
                     max(1, int(recipe.get("output_count", 1))),
                 )
+        blocked_ids = {ids[name] for name in blocked_materials if name in ids}
+        self.recipes = {
+            key: recipe
+            for key, recipe in self.recipes.items()
+            if not blocked_ids.intersection(recipe[0])
+        }
         self.depths = {}
         for key in self.recipes:
             self._depth(key, set())
@@ -201,6 +209,9 @@ def plan_material_summary(planned_keys):
     from arknights_mower.utils.mastery_db import get_all_plans, get_failed_plans
     from arknights_mower.utils.mastery_recommendation import get_skill_data
     from arknights_mower.utils.path import get_path
+    from arknights_mower.utils.workshop_material_policy import (
+        protected_workshop_materials,
+    )
 
     with open(get_path("@app/tmp/cultivate.json"), encoding="utf-8") as stream:
         box = json.load(stream).get("data", {})
@@ -234,4 +245,9 @@ def plan_material_summary(planned_keys):
             materials.extend(level.get("materials", []))
         entries.append((key, materials))
     inventory = {item["id"]: int(item.get("count", 0)) for item in box.get("items", [])}
-    return MaterialBudget(skills, inventory, workshop_formula).calculate_plan(entries)
+    return MaterialBudget(
+        skills,
+        inventory,
+        workshop_formula,
+        blocked_materials=protected_workshop_materials(),
+    ).calculate_plan(entries)
