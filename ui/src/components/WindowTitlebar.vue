@@ -12,17 +12,19 @@
     data-window-shell
   >
     <div
-      class="window-titlebar__brand pywebview-drag-region"
+      class="window-titlebar__brand"
       data-window-drag-region
       aria-hidden="true"
+      @mousedown.left="onDragStart"
       @dblclick.stop="onToggleMaximize"
     >
       <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" />
     </div>
 
     <div
-      class="window-titlebar__drag-region pywebview-drag-region"
+      class="window-titlebar__drag-region"
       data-window-drag-region
+      @mousedown.left="onDragStart"
       @dblclick.stop="onToggleMaximize"
     >
       <span class="window-titlebar__identity" :title="title">
@@ -83,11 +85,12 @@
 </template>
 
 <script setup>
+import { onBeforeUnmount } from 'vue'
 import { WINDOW_RESIZE_EDGES } from '@/window-shell/adapter.js'
 
 const resizeEdges = WINDOW_RESIZE_EDGES
 
-defineProps({
+const props = defineProps({
   active: { type: Boolean, required: true },
   title: { type: String, required: true },
   version: { type: String, required: true },
@@ -103,8 +106,52 @@ defineProps({
   onControl: { type: Function, required: true },
   onToggleMaximize: { type: Function, required: true },
   resizable: { type: Boolean, required: true },
-  onResize: { type: Function, required: true }
+  onResize: { type: Function, required: true },
+  onMove: { type: Function, required: true }
 })
+
+// A press on the title bar is handed to the shell only once the pointer actually
+// moves. The shell's move loop then owns the mouse until the button comes up, so
+// starting it on the press itself would swallow the second click of a double
+// click and take maximise-on-double-click away with it.
+const DRAG_THRESHOLD = 4
+let dragOriginX = 0
+let dragOriginY = 0
+let dragArmed = false
+
+function stopWatchingDrag() {
+  dragArmed = false
+  window.removeEventListener('mousemove', watchDrag)
+  window.removeEventListener('mouseup', stopWatchingDrag)
+  window.removeEventListener('blur', stopWatchingDrag)
+}
+
+function watchDrag(event) {
+  if (!dragArmed) return
+  if (!(event.buttons & 1)) {
+    // The button is already up: the press this move belongs to is over, so drop
+    // the arming instead of handing a hover over to the shell as a caption drag.
+    stopWatchingDrag()
+    return
+  }
+  const moved =
+    Math.abs(event.screenX - dragOriginX) >= DRAG_THRESHOLD ||
+    Math.abs(event.screenY - dragOriginY) >= DRAG_THRESHOLD
+  if (!moved) return
+  stopWatchingDrag()
+  props.onMove()
+}
+
+function onDragStart(event) {
+  dragOriginX = event.screenX
+  dragOriginY = event.screenY
+  dragArmed = true
+  window.addEventListener('mousemove', watchDrag)
+  window.addEventListener('mouseup', stopWatchingDrag)
+  window.addEventListener('blur', stopWatchingDrag)
+}
+
+onBeforeUnmount(stopWatchingDrag)
 </script>
 
 <style scoped>

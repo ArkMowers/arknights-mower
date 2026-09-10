@@ -33,6 +33,7 @@
       :on-toggle-maximize="windowShell.toggleMaximize"
       :resizable="windowShellPlatform === 'windows' && !windowShellState.maximized"
       :on-resize="windowShell.startResize"
+      :on-move="windowShell.startMove"
     />
     <n-dialog-provider>
       <n-message-provider>
