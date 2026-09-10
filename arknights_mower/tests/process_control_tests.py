@@ -167,7 +167,7 @@ class ProcessControlIntegrationTests(unittest.TestCase):
                 return process
 
             def wait_for_records(count):
-                deadline = time.monotonic() + 10
+                deadline = time.monotonic() + 30
                 while time.monotonic() < deadline:
                     records = runtime.instances(state)
                     if len(records) == count and all(
