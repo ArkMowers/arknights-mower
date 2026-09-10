@@ -109,6 +109,18 @@ def manual():
     )
 
 
+@software_update_bp.post("/manual/inspect")
+@result
+def inspect_manual():
+    return updater.inspect_upload(request.files.get("file"))
+
+
+@software_update_bp.post("/manual/discard")
+@result
+def discard_manual():
+    return updater.discard_upload(request.get_json().get("check_id"))
+
+
 @software_update_bp.get("/progress")
 def progress():
     from arknights_mower.utils.software_update_progress import PROGRESS_HTML

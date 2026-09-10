@@ -3,12 +3,7 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
-import {
-  confirmForceUpdate,
-  confirmSoftwareInstall,
-  isVersionDowngrade,
-  softwarePackageVersion
-} from '@/utils/softwareUpdate'
+import { confirmForceUpdate, confirmSoftwareInstall } from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 
@@ -56,6 +51,7 @@ let disposed = false
 let pendingSince = 0
 let lastCheckAt = 0
 let settingsRequest = Promise.resolve()
+let previewCheckId = ''
 
 function saveSettings() {
   const settings = {
@@ -69,7 +65,8 @@ function saveSettings() {
     .then(async () => {
       const { data } = await axios.post(`${base}/settings`, settings, { headers })
       if (!data.ok) throw new Error(data.message)
-      if (settings.auto_check) await axios.post(`${base}/auto-check`, {}, { headers })
+      if (settings.auto_check && !packageFiles.value.length)
+        await axios.post(`${base}/auto-check`, {}, { headers })
     })
   settingsRequest.catch((err) => {
     error.value = errorMessage(err)
@@ -193,16 +190,37 @@ async function checkUpdate() {
 }
 
 async function requestInstall(manual = false) {
-  if (running.value || checking.value || blocked.value) return
+  if (running.value || (!manual && checking.value) || blocked.value) return
   let selection
   if (manual) {
     const file = packageFiles.value[0]?.file
     if (!file) return
-    const version = softwarePackageVersion(file.name)
-    selection = {
-      file,
-      version: version || file.name,
-      downgrade: isVersionDowngrade(version, info.value.version)
+    busy.value = true
+    uploading.value = true
+    uploadPercent.value = 0
+    error.value = ''
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await axios.post(`${base}/manual/inspect`, form, {
+        headers,
+        onUploadProgress: (event) => {
+          if (event.total) uploadPercent.value = Math.round((event.loaded / event.total) * 100)
+        }
+      })
+      if (!data.ok) throw new Error(data.message)
+      if (disposed) {
+        discardPreview(data.check_id)
+        return
+      }
+      selection = data
+      previewCheckId = data.check_id
+    } catch (err) {
+      error.value = errorMessage(err)
+      return
+    } finally {
+      busy.value = false
+      uploading.value = false
     }
   } else {
     // Automatic checks are shared across instances without an in-memory check ID.
@@ -216,46 +234,37 @@ async function requestInstall(manual = false) {
     info.value.version,
     selection,
     info.value.instances.length,
-    (confirmed) => install(manual, false, null, confirmed)
+    (confirmed) => {
+      previewCheckId = ''
+      return install(false, null, confirmed)
+    },
+    () => discardPreview(selection.manual ? selection.check_id : '')
   )
 }
 
-async function install(manual = false, force = false, target = null, selection = {}) {
+function discardPreview(checkId) {
+  if (!checkId) return
+  if (previewCheckId === checkId) previewCheckId = ''
+  return axios.post(`${base}/manual/discard`, { check_id: checkId }, { headers }).catch(() => {})
+}
+
+async function install(force = false, target = null, selection = {}) {
   if (running.value) return
   busy.value = true
   error.value = ''
   uploadPercent.value = 0
   try {
     await settingsRequest
-    let response
-    if (manual) {
-      const form = new FormData()
-      form.append('file', selection.file)
-      form.append('background', String(background.value))
-      form.append('confirm_downgrade', String(selection.confirm_downgrade === true))
-      uploading.value = true
-      try {
-        response = await axios.post(`${base}/manual`, form, {
-          headers,
-          onUploadProgress: (event) => {
-            if (event.total) uploadPercent.value = Math.round((event.loaded / event.total) * 100)
-          }
-        })
-      } finally {
-        uploading.value = false
-      }
-    } else {
-      response = await axios.post(
-        `${base}/start`,
-        {
-          check_id: (target || selection).check_id,
-          background: background.value,
-          force,
-          confirm_downgrade: selection.confirm_downgrade === true
-        },
-        { headers }
-      )
-    }
+    const response = await axios.post(
+      `${base}/start`,
+      {
+        check_id: (target || selection).check_id,
+        background: background.value,
+        force,
+        confirm_downgrade: selection.confirm_downgrade === true
+      },
+      { headers }
+    )
     if (!response.data.ok) throw new Error(response.data.message)
     if (target) {
       autoUpdate.value = false
@@ -270,6 +279,7 @@ async function install(manual = false, force = false, target = null, selection =
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
+    if (selection.manual) discardPreview(selection.check_id)
     busy.value = false
   }
 }
@@ -302,12 +312,12 @@ async function requestForceUpdate() {
       info.value.version,
       selection,
       info.value.instances.length,
-      (confirmed) => install(false, true, null, confirmed)
+      (confirmed) => install(true, null, confirmed)
     )
     return
   }
   confirmForceUpdate(dialogs, selection.version, info.value.instances.length, () =>
-    install(false, true, null, selection)
+    install(true, null, selection)
   )
 }
 
@@ -327,7 +337,8 @@ watch(
 onMounted(async () => {
   try {
     await loadInfo()
-    if (autoCheck.value) await axios.post(`${base}/auto-check`, {}, { headers })
+    if (autoCheck.value && !packageFiles.value.length)
+      await axios.post(`${base}/auto-check`, {}, { headers })
   } catch (err) {
     error.value = errorMessage(err)
   }
@@ -335,6 +346,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   disposed = true
+  discardPreview(previewCheckId)
   clearTimeout(timer)
 })
 </script>
@@ -448,7 +460,7 @@ onUnmounted(() => {
           :blocked="blocked"
           :force-supported="info.force_supported"
           :instance-count="info.instances.length"
-          @install="(target) => install(false, target.force, target)"
+          @install="(target) => install(target.force, target)"
         />
       </n-form-item>
       <n-form-item label="手动应用">
@@ -460,15 +472,23 @@ onUnmounted(() => {
             v-model:file-list="packageFiles"
             :default-upload="false"
             :max="1"
-            accept=".zip,.gz,.dmg"
             :disabled="running"
           >
             <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="dropSoftwarePackage">
               <div>点击或拖入 Release 安装包</div>
-              <div class="hint">Windows ZIP / Linux tar.gz / macOS DMG，保留原始文件名</div>
+              <div class="hint">离线读取包内版本并校验完整性，文件名可任意修改</div>
             </n-upload-dragger>
           </n-upload>
-          <n-progress v-if="uploading" type="line" :percentage="uploadPercent" processing />
+          <template v-if="uploading">
+            <n-progress
+              type="line"
+              :percentage="uploadPercent < 100 ? uploadPercent : undefined"
+              processing
+            />
+            <span class="hint">{{
+              uploadPercent < 100 ? '正在上传安装包' : '正在读取包内版本并校验完整性'
+            }}</span>
+          </template>
           <n-button
             v-if="packageFiles[0]?.file"
             size="small"

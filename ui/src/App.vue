@@ -73,9 +73,9 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
-              <GlobalUpdateDrop v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
+              <GlobalUpdateDrop v-if="loaded" />
               <n-modal
                 v-model:show="showUpdateNoticeModal"
                 preset="card"
