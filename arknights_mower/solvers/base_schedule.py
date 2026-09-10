@@ -935,7 +935,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for key in plan:
             need_fix = False
             _current_room = self.op_data.get_current_room(key, True)
-            for idx, name in enumerate(_current_room):
+            # 训练室读取固定两格；纠错只管理排班中明确配置的槽位。
+            for idx, name in enumerate(_current_room[: len(plan[key])]):
                 # 如果是空房间
                 if name == "":
                     if not need_fix:
