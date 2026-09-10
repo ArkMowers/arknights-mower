@@ -415,17 +415,6 @@
           </template>
         </draggable>
         <n-text v-if="!planEntries.length" depth="3">未添加计划</n-text>
-        <n-card v-if="planEntries.length" size="small">
-          <n-spin :show="materialsLoading">
-            <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
-            <MasteryMaterials
-              v-else
-              :summary="planMaterials"
-              expand-crafting
-              title="计划剩余总材料消耗"
-            />
-          </n-spin>
-        </n-card>
         <n-divider />
         <n-scrollbar style="max-height: 50vh">
           <div v-for="op in filteredPlanOperators" :key="op.char_id" class="plan-op-row">
@@ -825,7 +814,7 @@ async function warnMaterialShortage(additions) {
       message.warning(
         summary.craftable
           ? '计划总需求超出成品库存，可由现有材料合成；仍可加入计划。'
-          : '计划总材料不足（含技巧概要），缺口可在专精计划中查看；仍可加入计划。'
+          : '计划总材料不足（含技巧概要），缺口可在主页查看；仍可加入计划。'
       )
     }
   } catch {
