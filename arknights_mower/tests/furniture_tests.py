@@ -127,7 +127,7 @@ def test_process_uses_max_once_and_confirms_result_without_operator_access(
         call((0.88 * 1920, 0.9 * 1080), interval=2),
     ]
     solver.back.assert_called_once()
-    solver.recog.save_screencap.assert_called_once_with("furniture")
+    assert solver.recog.save_screencap.call_args_list == [call("furniture")] * 2
     solver.agent_arrange.assert_not_called()
     assert "op_data" not in solver._mock_children
 
@@ -384,9 +384,9 @@ def test_names_are_detected_before_recognition(monkeypatch, solver, name):
 def test_name_retry_only_restores_confident_quotes(
     monkeypatch, solver, candidate, score, expected
 ):
-    furniture.crop_relative(solver.recog.img, 0.36, 0.265, 0.59, 0.31)[10:20, 10:40] = (
-        255
-    )
+    furniture.crop_relative(solver.recog.img, ((0.36, 0.265), (0.59, 0.31)))[
+        10:20, 10:40
+    ] = 255
     monkeypatch.setattr(
         furniture.rapidocr,
         "engine",
@@ -435,10 +435,15 @@ def test_trademark_ocr_name_reaches_safe_batch_processing(monkeypatch, solver):
     import json
     from pathlib import Path
 
-    from arknights_mower.utils.furniture_data import furniture_keep_counts
+    from arknights_mower.utils.furniture_data import (
+        FURNITURE_DATA_PATH,
+        furniture_keep_counts,
+    )
 
     data = json.loads(
-        (Path(__file__).resolve().parents[1] / "data/furniture.json").read_text()
+        (Path(__file__).resolve().parents[2] / FURNITURE_DATA_PATH).read_text(
+            encoding="utf-8"
+        )
     )
     runner = furniture.FurnitureDismantler(solver)
     runner.keep_counts = furniture_keep_counts(data)
@@ -492,3 +497,88 @@ def test_detail_rejects_consumption_different_from_target(
     )
     with pytest.raises(ValueError, match="消耗数量与加工份数不一致"):
         REAL_FURNITURE_DETAILS(solver.recog.img, 3, 2)
+
+
+@pytest.mark.parametrize(
+    "owned,read_stock,keep,cap,expected",
+    [
+        (6, 8, 5, 99, 1),
+        (4, 8, 5, 99, None),
+        (6, 6, 5, 99, 1),
+        (150, 150, 5, 99, 95),
+        (150, 150, 100, 99, None),
+    ],
+)
+def test_real_batch_model_preserves_set_despite_high_stock_or_cap(
+    monkeypatch, solver, owned, read_stock, keep, cap, expected
+):
+    runner = furniture.FurnitureDismantler(solver)
+    runner.keep_counts = {"测试家具": keep}
+    monkeypatch.setattr(
+        furniture, "furniture_details", lambda *a: ("测试家具", read_stock)
+    )
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    actual = [min(owned - 1, cap)]
+    submitted = []
+
+    def tap(point, **kwargs):
+        if point == (0.84 * 1920, 0.68 * 1080):
+            actual[0] = max(1, actual[0] - 1)
+        if point == (0.88 * 1920, 0.9 * 1080):
+            submitted.append(actual[0])
+            assert owned - actual[0] >= keep
+
+    solver.tap.side_effect = tap
+    monkeypatch.setattr(furniture, "furniture_batch", lambda img: actual[0])
+    solver.factory_scene.side_effect = [Scene.FACTORY_DASHBOARD] * 2 + [
+        Scene.FACTORY_PRODUCT_COLLECT
+    ]
+    assert runner.process((0.37, 0.21), read_stock) is (expected is not None)
+    assert submitted == ([] if expected is None else [expected])
+
+
+def test_conflicting_keep_switch_states_never_count_as_enabled(monkeypatch, solver):
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        lambda *a, **k: (
+            [title(20, 20, "至少保留1件"), title(200, 20, "ON"), title(300, 20, "OFF")],
+            0,
+        ),
+    )
+    with pytest.raises(ValueError, match="开关状态"):
+        furniture.keep_one_enabled(solver.recog.img)
+
+
+@pytest.mark.parametrize("retry_text,score", [("2/1", 1), ("2/1", 0.8), ("2/2", 1)])
+def test_quantity_retry_uses_visible_glyphs_and_rejects_uncertainty(
+    monkeypatch, solver, retry_text, score
+):
+    solver.recog.img[335:350, 665:715] = 255
+    engine = MagicMock(
+        side_effect=[
+            ([title(260, 42)], 0),
+            ([["時2/1", 1]], 0),
+            ([[retry_text, score]], 0),
+        ]
+    )
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    if retry_text == "2/1" and score >= 0.9:
+        assert furniture.furniture_cards(solver.recog.img)[0][1] == 2
+    else:
+        with pytest.raises(ValueError):
+            furniture.furniture_cards(solver.recog.img)
+    assert engine.call_count == 3
+    assert np.any(engine.call_args.args[0])
+
+
+def test_low_confidence_keep_switch_never_enables_processing(monkeypatch, solver):
+    state = title(200, 20, "ON")
+    state[2] = 0.4
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        lambda *a, **k: ([title(20, 20, "至少保留1件"), state], 0),
+    )
+    with pytest.raises(ValueError, match="保留开关识别置信度不足"):
+        furniture.keep_one_enabled(solver.recog.img)

@@ -41,6 +41,14 @@ jobs:
               - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download}*.py'
               - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
               - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
+              # Furniture safety and native OCR run on all three desktop platforms.
+              - 'arknights_mower/{solvers,utils,tests}/furniture*.py'
+              - 'arknights_mower/solvers/base_schedule.py'
+              - 'arknights_mower/utils/{screenshot,workshop_ui,rapidocr,scheduler_task}.py'
+              - 'arknights_mower/views/task.py'
+              - 'arknights_mower/tests/{scheduler_wakeup,screenshot,workshop_inflight}_tests.py'
+              - 'arknights_mower/tests/fixtures/furniture/**'
+
               - 'arknights_mower/{__init__,__main__}.py'
               - 'arknights_mower/{utils,views,tests}/__init__.py'
               - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new}.py'
@@ -171,7 +179,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install zbar
       - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt pytest
       - name: Require transaction tools
         shell: bash
         run: |
@@ -199,3 +207,16 @@ jobs:
             arknights_mower.tests.software_update_progress_tests \
             arknights_mower.tests.process_control_tests \
             arknights_mower.tests.software_update_transaction_tests
+      - name: Verify furniture, OCR, scheduling and screenshot behavior on each OS
+        shell: bash
+        env:
+          PYTHONUTF8: "0"
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m pytest -q -o faulthandler_timeout=60 \
+            arknights_mower/tests/furniture_tests.py \
+            arknights_mower/tests/furniture_data_tests.py \
+            arknights_mower/tests/furniture_ocr_tests.py \
+            arknights_mower/tests/scheduler_wakeup_tests.py \
+            arknights_mower/tests/screenshot_tests.py \
+            arknights_mower/tests/workshop_inflight_tests.py

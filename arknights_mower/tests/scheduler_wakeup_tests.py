@@ -78,7 +78,7 @@ def scheduler(monkeypatch):
             action, state.on_sleep = state.on_sleep, None
             action()
 
-    def add_workshop(delay=0):
+    def add_workshop(delay=0, task_type="加工材料", plan=None):
         at = Clock.now() + timedelta(seconds=delay)
         response = app.test_client().post(
             "/task",
@@ -87,8 +87,8 @@ def scheduler(monkeypatch):
                     "time": at.replace(tzinfo=timezone.utc).isoformat(
                         timespec="milliseconds"
                     ),
-                    "plan": {},
-                    "task_type": "加工材料",
+                    "plan": plan or {},
+                    "task_type": task_type,
                     "meta_data": "蜜莓",
                 }
             },
@@ -96,6 +96,10 @@ def scheduler(monkeypatch):
         assert response.get_data(as_text=True) == "添加任务成功！"
 
     state.add_workshop = add_workshop
+    from arknights_mower.solvers.furniture import FurnitureDismantler
+
+    state.dismantle = MagicMock()
+    monkeypatch.setattr(FurnitureDismantler, "run", state.dismantle)
     monkeypatch.setattr(base_schedule, "csleep", sleep)
     return state
 
@@ -183,3 +187,42 @@ def test_dispatch_rechecks_deadline_and_membership(scheduler, change):
     assert solver.infra_main() is True
     solver.agent_arrange.assert_not_called()
     assert solver.task is None
+
+
+@pytest.mark.parametrize("delay", [0, 9])
+def test_furniture_wake_waits_for_its_own_deadline_and_ignores_staff(scheduler, delay):
+    scheduler.on_sleep = lambda: scheduler.add_workshop(
+        delay=delay, task_type="分解所有重复家具", plan={"factory": ["九色鹿"]}
+    )
+    scheduler.solver.run()
+    scheduler.dismantle.assert_called_once_with()
+    scheduler.solver.agent_arrange.assert_not_called()
+    scheduler.solver.craft_material.assert_not_called()
+    assert scheduler.clock.now() == scheduler.shift.time - timedelta(
+        seconds=239 - delay
+    )
+    assert all(t.type != TaskTypes.FURNITURE for t in scheduler.solver.tasks)
+    assert not scheduler.wake.is_set()
+
+
+def test_furniture_http_contract_discards_operator_metadata(scheduler):
+    scheduler.add_workshop(
+        delay=9, task_type="分解所有重复家具", plan={"factory": ["九色鹿"]}
+    )
+    task = next(t for t in scheduler.solver.tasks if t.type == TaskTypes.FURNITURE)
+    assert task.plan == {}
+    assert task.meta_data == ""
+    assert not hasattr(task, "workshop_generation")
+    assert scheduler.wake.is_set()
+
+
+def test_furniture_dispatch_ignores_legacy_staff_plan(scheduler):
+    task = SchedulerTask(
+        task_type=TaskTypes.FURNITURE, task_plan={"factory": ["九色鹿"]}
+    )
+    scheduler.solver.task = task
+    scheduler.solver.tasks = [task]
+    scheduler.solver.infra_main()
+    scheduler.dismantle.assert_called_once_with()
+    scheduler.solver.agent_arrange.assert_not_called()
+    assert scheduler.solver.tasks == []

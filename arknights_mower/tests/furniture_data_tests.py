@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from arknights_mower.utils.furniture_data import (
+    FURNITURE_DATA_PATH,
     build_furniture_data,
     furniture_keep_counts,
     normalize_name,
@@ -103,8 +104,8 @@ def test_missing_theme_member_is_rejected():
 
 def test_bundled_data_contains_multi_piece_sets_and_is_hashed(tmp_path):
     root = Path(__file__).resolve().parents[2]
-    rel = "arknights_mower/data/furniture.json"
-    data = json.loads((root / rel).read_text())
+    rel = FURNITURE_DATA_PATH
+    data = json.loads((root / rel).read_text(encoding="utf-8"))
     counts = furniture_keep_counts(data)
     assert counts["瓷色壁灯"] == 2
     assert counts["柔和顶灯"] == 5
@@ -139,3 +140,37 @@ def test_compatibility_normalization_keeps_ambiguity_check():
 
 def test_normalization_does_not_remove_distinguishing_name_characters():
     assert normalize_name("简易便椅（左）") != normalize_name("简易便椅（右）")
+
+
+def test_generation_validates_before_touching_previous_file(tmp_path):
+    from arknights_mower.utils.furniture_data import write_furniture_data
+
+    path = tmp_path / "家具.json"
+    path.write_bytes(b"previous")
+    invalid = source()
+    invalid["customData"]["furnitures"]["chair"]["quantity"] = -1
+    with pytest.raises(ValueError):
+        write_furniture_data(path, invalid)
+    assert path.read_bytes() == b"previous"
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_generation_writes_utf8_and_keeps_old_file_on_replace_failure(
+    tmp_path, monkeypatch
+):
+    from arknights_mower.utils import update_runtime
+    from arknights_mower.utils.furniture_data import write_furniture_data
+
+    path = tmp_path / "家具.json"
+    write_furniture_data(path, source())
+    previous = path.read_bytes()
+    assert json.loads(previous.decode("utf-8")) == build_furniture_data(source())
+
+    def fail(*args):
+        raise OSError("simulated locked file")
+
+    monkeypatch.setattr(update_runtime, "replace_with_retry", fail)
+    with pytest.raises(OSError):
+        write_furniture_data(path, source())
+    assert path.read_bytes() == previous
+    assert list(tmp_path.iterdir()) == [path]

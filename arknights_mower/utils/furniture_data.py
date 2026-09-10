@@ -4,6 +4,16 @@ import json
 import unicodedata
 from collections import Counter
 
+FURNITURE_DATA_PATH = "arknights_mower/data/furniture.json"
+
+
+def write_furniture_data(path, building_data):
+    """先完成校验，再原子替换；复用支持 Windows 临时占用重试的写入器。"""
+    from arknights_mower.utils.update_runtime import write_json
+
+    data = build_furniture_data(building_data)
+    write_json(path, data, indent=2)
+
 
 def normalize_name(name):
     """统一 ™/TM、全角/半角等兼容字符，再移除 OCR 空白。"""
@@ -55,7 +65,8 @@ def furniture_keep_counts(data):
         for key, count in theme["counts"].items():
             if key not in counts or type(count) is not int or count < 1:
                 raise ValueError(f"套装家具 {key} 数量无效")
-            # 兼容同一家具在多个主题中出现，按需求最多的一套保留。
+            # 当前资源两者相等；作为上游数据变化的防御性核对，取较大值。
+            # 同一家具将来若出现在多个主题，也按需求最多的一套保留。
             counts[key] = max(counts[key], count)
     names = Counter(normalize_name(value["name"]) for value in furnitures.values())
     return {
@@ -71,5 +82,5 @@ def load_furniture_keep_counts():
     # 每次任务从当前整包版本读取，旧包缺少本文件时由资源选择器回退内置包。
     from arknights_mower.utils.resource_pkg import resource_pkg_path
 
-    path = resource_pkg_path("arknights_mower/data/furniture.json")
+    path = resource_pkg_path(FURNITURE_DATA_PATH)
     return furniture_keep_counts(json.loads(path.read_text(encoding="utf-8")))

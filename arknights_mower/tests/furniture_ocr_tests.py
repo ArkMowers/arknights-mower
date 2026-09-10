@@ -1,17 +1,20 @@
-"""实机 OCR 回归：仅保留名称、库存和份数像素，不含账号信息。"""
+"""生产 OCR 配置下的实机文字带与去账号面板回归。"""
 
 from pathlib import Path
 
 import cv2
 import pytest
-from rapidocr_onnxruntime import RapidOCR
 
 from arknights_mower.solvers import furniture
 
 
 @pytest.fixture(scope="module")
 def ocr():
-    return RapidOCR()
+    from unittest.mock import patch
+
+    with patch.object(furniture.rapidocr, "engine", None):
+        furniture.rapidocr.initialize_ocr()
+        yield furniture.rapidocr.engine
 
 
 @pytest.mark.parametrize(
@@ -36,7 +39,7 @@ def test_real_panel_ocr(monkeypatch, ocr, fixture, name, stock, batch):
         assert furniture.furniture_batch(img) == batch
 
 
-def test_real_list_quantity_ignores_hallucinated_blank_text(monkeypatch, ocr):
+def test_real_list_quantities_and_row_order(monkeypatch, ocr):
     monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
     path = Path(__file__).parent / "fixtures/furniture/list_quantity.png"
     img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
@@ -44,3 +47,21 @@ def test_real_list_quantity_ignores_hallucinated_blank_text(monkeypatch, ocr):
     assert [count for _, count in cards] == [1, 1, 1, 1]
     assert cards[0][0][0] < cards[1][0][0]
     assert cards[2][0][0] < cards[3][0][0]
+
+
+@pytest.mark.parametrize(
+    "fixture,name,stock,batch,enabled",
+    [
+        ("panel_on", "简约高脚椅", 4, 1, True),
+        ("panel_off", "桌子", 2, 2, False),
+    ],
+)
+def test_full_panel_geometry_and_keep_switch(
+    monkeypatch, ocr, fixture, name, stock, batch, enabled
+):
+    monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
+    path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
+    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    assert furniture.furniture_details(img, stock, batch) == (name, stock)
+    assert furniture.furniture_batch(img) == batch
+    assert furniture.keep_one_enabled(img) is enabled
