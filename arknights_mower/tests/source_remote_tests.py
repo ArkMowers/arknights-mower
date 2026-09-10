@@ -84,6 +84,8 @@ class SourceRemoteTests(unittest.TestCase):
             return {"default_branch": "main"}
         if path.startswith("/branches?"):
             return [{"name": "main"}, {"name": "feature/fork"}]
+        if path.startswith("/branches/"):
+            return {"commit": {"sha": "b" * 40, "commit": {}}}
         if path.startswith("/commits?"):
             return [self.target]
         if path.startswith("/contents/"):
@@ -300,12 +302,11 @@ class SourceRemoteTests(unittest.TestCase):
         self.assertEqual(update.get_settings(), previous)
         self.assertEqual(checked["source_prs"][0]["number"], 7)
 
-    def test_prs_that_are_closed_draft_conflicting_or_pending_cannot_be_selected(self):
+    def test_prs_that_are_closed_draft_or_conflicting_cannot_be_selected(self):
         for change in (
             {"state": "closed"},
             {"draft": True},
             {"mergeable": False},
-            {"mergeable": None},
         ):
             with (
                 self.subTest(change=change),
@@ -315,6 +316,59 @@ class SourceRemoteTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     update.check_source_pull(7, "personal")
                 self.assertFalse(update._checks)
+
+    def test_branch_head_uses_branch_endpoint_and_validates_sha(self):
+        with patch.object(
+            update, "github", return_value={"commit": {"sha": "b" * 40, "commit": {}}}
+        ) as github:
+            self.assertEqual(
+                update.source_branch_head("feature/test", "personal/mower", ""),
+                "b" * 40,
+            )
+            github.assert_called_once_with(
+                "/branches/feature%2Ftest", "", repo="personal/mower"
+            )
+            github.return_value = {"commit": {"sha": "invalid", "commit": {}}}
+            with self.assertRaisesRegex(ValueError, "SHA 无效"):
+                update.source_branch_head("alpha", "personal/mower", "")
+
+    def test_unknown_mergeability_retries_then_uses_local_merge(self):
+        with (
+            patch.dict(self.pull, {"mergeable": None}),
+            patch.object(update, "github", side_effect=self.github) as github,
+            patch.object(update.time, "sleep") as sleep,
+        ):
+            checked = update.check_source_pull(7, "personal")
+        self.assertEqual(checked["sha"], "d" * 40)
+        self.assertEqual(
+            sum(call.args[0] == "/pulls/7" for call in github.call_args_list), 3
+        )
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.5, 1.0])
+
+    def test_unknown_mergeability_can_finish_or_close_during_retry(self):
+        for result in (
+            {**self.pull, "head": {"sha": "c" * 40}},
+            {**self.pull, "state": "closed"},
+        ):
+            with (
+                patch.object(
+                    update,
+                    "github",
+                    side_effect=[{**self.pull, "mergeable": None}, result],
+                ) as github,
+                patch.object(update.time, "sleep"),
+            ):
+                if result["state"] == "closed":
+                    with self.assertRaisesRegex(ValueError, "PR #7.*已关闭"):
+                        update.mergeable_source_pull(7, "personal/mower", "")
+                else:
+                    self.assertEqual(
+                        update.mergeable_source_pull(7, "personal/mower", "")["head"][
+                            "sha"
+                        ],
+                        "c" * 40,
+                    )
+                self.assertEqual(github.call_count, 2)
 
     def test_pr_status_and_head_are_rechecked_before_instance_scan(self):
         with patch.object(update, "github", side_effect=self.github):
