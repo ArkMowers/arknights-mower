@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -531,6 +532,68 @@ def check_source_pull(number, remote=None):
     return checked
 
 
+def check_source_pulls(numbers, remote=None):
+    if not isinstance(numbers, list) or not 1 <= len(numbers) <= 10:
+        raise ValueError("请选择 1 至 10 个 PR")
+    if any(type(number) is not int or number <= 0 for number in numbers):
+        raise ValueError("请选择有效的 PR 编号")
+    if len(set(numbers)) != len(numbers):
+        raise ValueError("不能重复选择同一个 PR")
+    if len(numbers) == 1:
+        return check_source_pull(numbers[0], remote)
+    current, _, proxy = source_repository()
+    selected = resolve_source_remote(remote)
+    pulls = [
+        mergeable_source_pull(number, selected["source_repo"], proxy)
+        for number in numbers
+    ]
+    if len({(pull["base"]["ref"], pull["base"]["sha"]) for pull in pulls}) != 1:
+        raise ValueError("请选择同一目标分支的 PR；若分支刚更新，请刷新后重试")
+    plan = {
+        "deployment": "source",
+        "operation": "source-pr",
+        **selected,
+        "channel": "dev",
+        "source_branch": normalize_source_ref(pulls[0]["base"]["ref"]),
+        "base_commit": pulls[0]["base"]["sha"],
+        "source_prs": [
+            {"number": number, "sha": pull["head"]["sha"], "title": pull["title"]}
+            for number, pull in zip(numbers, pulls)
+        ],
+        "merge_date": f"@{int(time.time())} +0000",
+        "created_at": time.time(),
+        "available": True,
+        "force_available": True,
+        "url": f"https://github.com/{selected['source_repo']}/pulls",
+        "notes": "\n".join(
+            f"#{number} {pull['title']}" for number, pull in zip(numbers, pulls)
+        ),
+    }
+    from .source_pr_merge import merge_source_pulls
+
+    git = shutil.which("git", path=source_tool_path())
+    if not git:
+        raise ValueError("未找到 Git，无法检查多个 PR 的合并结果")
+    with tempfile.TemporaryDirectory(prefix="mower-pr-check-") as directory:
+        commit = merge_source_pulls(
+            git, selected["source_url"], plan, directory, runtime.launch_environment({})
+        )
+    plan.update(commit=commit, version="PR@" + commit[:7])
+    return {
+        "ok": True,
+        "check_id": remember_check(plan),
+        "current_commit": current,
+        **selected,
+        "source_prs": plan["source_prs"],
+        "sha": commit,
+        "version": plan["version"],
+        "url": plan["url"],
+        "message": plan["notes"],
+        "author": "Mower 合并预览",
+        "date": "",
+    }
+
+
 def choose_release(releases, channel):
     candidates = []
     for release in releases:
@@ -887,6 +950,19 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         raise ValueError("强制更新选项必须是布尔值")
     if force and (plan["deployment"] != "source" or uploaded is not None):
         raise ValueError("强制更新仅支持源码部署")
+    if plan.get("source_prs"):
+        network_settings.apply_http_proxy()
+        proxy = network_settings.get_effective_settings()["http_proxy"]
+        for selected_pull in plan["source_prs"]:
+            pull = mergeable_source_pull(
+                selected_pull["number"], plan["source_repo"], proxy
+            )
+            if (
+                pull["head"]["sha"] != selected_pull["sha"]
+                or pull["base"]["sha"] != plan["base_commit"]
+                or pull["base"]["ref"] != plan["source_branch"]
+            ):
+                raise ValueError("PR 提交或目标分支已改变，请重新检查并确认更新")
     if plan.get("source_pr"):
         # Recheck status and head immediately before admission; a previously
         # confirmed PR may have closed, conflicted or received another push.
@@ -980,6 +1056,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
                 shutil.copy2(socks.__file__, work / "socks.py")
             for name in (
                 "software_update_worker.py",
+                "source_pr_merge.py",
                 "software_update_progress.py",
                 "update_runtime.py",
                 "github_download.py",

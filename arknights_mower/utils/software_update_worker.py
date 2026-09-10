@@ -15,6 +15,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import time
 import traceback
@@ -24,6 +25,7 @@ from pathlib import Path, PurePosixPath
 
 if __package__:
     from .github_download import download_url
+    from .source_pr_merge import merge_source_pulls
     from .update_runtime import (
         InstanceScanError,
         detached_options,
@@ -38,6 +40,7 @@ if __package__:
     )
 else:
     from github_download import download_url
+    from source_pr_merge import merge_source_pulls
     from update_runtime import (
         InstanceScanError,
         detached_options,
@@ -379,17 +382,39 @@ class Worker:
             },
         )
         self.report("downloading", "获取目标源码")
-        self.run_command(
-            [
-                self.job["git"],
-                "fetch",
-                "--no-tags",
-                self.job.get("source_url", "origin"),
-                self.job["ref"],
-            ]
-        )
-        if self.git_output("rev-parse", "FETCH_HEAD^{commit}") != self.job["commit"]:
-            raise ValueError("远端版本已改变，请重新检查更新")
+        if self.job.get("source_prs"):
+            self.report("downloading", "获取并复核所选 PR 的合并结果")
+            with tempfile.TemporaryDirectory(
+                prefix="pr-merge-", dir=self.work
+            ) as directory:
+                commit = merge_source_pulls(
+                    self.job["git"],
+                    self.job["source_url"],
+                    self.job,
+                    directory,
+                    self.env,
+                    run=self.run_command,
+                )
+                if commit != self.job["commit"]:
+                    raise ValueError("PR 合并结果已改变，请重新检查并确认更新")
+                self.run_command(
+                    [self.job["git"], "fetch", "--no-tags", directory, commit]
+                )
+        else:
+            self.run_command(
+                [
+                    self.job["git"],
+                    "fetch",
+                    "--no-tags",
+                    self.job.get("source_url", "origin"),
+                    self.job["ref"],
+                ]
+            )
+            if (
+                self.git_output("rev-parse", "FETCH_HEAD^{commit}")
+                != self.job["commit"]
+            ):
+                raise ValueError("远端版本已改变，请重新检查更新")
         try:
             self.git_output(
                 "cat-file",
@@ -408,13 +433,21 @@ class Worker:
                 raise ValueError(
                     "目标版本使用 Git LFS，请安装 Git LFS 并确保启动环境可以运行 git lfs；当前实例尚未停止"
                 ) from exc
+            commits = (
+                (
+                    [self.job["base_commit"]]
+                    + [pull["sha"] for pull in self.job["source_prs"]]
+                )
+                if self.job.get("source_prs")
+                else [self.job["commit"]]
+            )
             self.run_command(
                 [
                     self.job["git"],
                     "lfs",
                     "fetch",
                     self.job.get("source_url", "origin"),
-                    self.job["commit"],
+                    *commits,
                 ]
             )
 

@@ -99,6 +99,8 @@ def source_pulls():
 @result
 def source_pull_check():
     data = request.get_json()
+    if "numbers" in data:
+        return updater.check_source_pulls(data["numbers"], data.get("remote"))
     return updater.check_source_pull(data.get("number"), data.get("remote"))
 
 

@@ -1,11 +1,19 @@
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 export function useSourceVersions(axios, base, initialBranch = 'alpha', initialRemote = 'origin') {
   const savedRemotes = ref([])
   let remoteRequest = 0
   const mode = ref('branch')
   const pulls = ref([])
-  const pullNumber = ref(null)
+  let nextPullId = 1
+  const pullRows = ref([{ id: nextPullId++, number: null }])
+  const pullNumbers = computed(() => pullRows.value.map((row) => row.number))
+  const canCheckPulls = computed(
+    () =>
+      pullNumbers.value.length > 0 &&
+      pullNumbers.value.every(Number.isInteger) &&
+      new Set(pullNumbers.value).size === pullNumbers.value.length
+  )
   const remote = ref(initialRemote)
   const branch = ref(initialBranch)
   const reference = ref(initialBranch)
@@ -19,7 +27,7 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
   const message = (err) => err.response?.data?.message || err.message || '操作失败，请重试'
 
   watch(
-    [mode, pullNumber, remote, branch, reference],
+    [mode, pullNumbers, remote, branch, reference],
     () => {
       checked.value = null
       checkRequest++
@@ -70,7 +78,7 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
     reference.value = ''
     history.value = null
     pulls.value = []
-    pullNumber.value = null
+    pullRows.value = [{ id: nextPullId++, number: null }]
     error.value = ''
     if (value !== 'origin') {
       loading.value = true
@@ -132,12 +140,25 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
     return refresh()
   }
 
-  function selectPull(value) {
-    pullNumber.value = value
-    return checkVersion()
+  function addPull(afterId) {
+    if (pullRows.value.length >= 10) return
+    const index = pullRows.value.findIndex((row) => row.id === afterId)
+    pullRows.value.splice(index + 1, 0, { id: nextPullId++, number: null })
+  }
+
+  function removePull(id) {
+    if (pullRows.value.length <= 1) return
+    pullRows.value = pullRows.value.filter((row) => row.id !== id)
+  }
+
+  function selectPull(value, id = pullRows.value[0].id) {
+    pullRows.value = pullRows.value.map((row) => (row.id === id ? { ...row, number: value } : row))
+    // Multiple selections are checked together once the user finishes editing.
+    if (pullRows.value.length === 1) return checkVersion()
   }
 
   async function checkVersion() {
+    if (mode.value === 'pr' && !canCheckPulls.value) return
     const request = ++checkRequest
     checked.value = null
     checking.value = true
@@ -146,7 +167,7 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
       const { data } = await axios.post(
         mode.value === 'pr' ? `${base}/source/pr/check` : `${base}/source/check`,
         mode.value === 'pr'
-          ? { remote: remote.value, number: pullNumber.value }
+          ? { remote: remote.value, numbers: [...pullNumbers.value] }
           : { remote: remote.value, reference: reference.value, branch: branch.value },
         { headers: { 'X-Mower-Update': '1' } }
       )
@@ -164,7 +185,10 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
     savedRemotes,
     mode,
     pulls,
-    pullNumber,
+    pullRows,
+    canCheckPulls,
+    addPull,
+    removePull,
     selectMode,
     selectPull,
     refresh,

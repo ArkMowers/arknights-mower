@@ -20,7 +20,10 @@ const {
   savedRemotes,
   mode,
   pulls,
-  pullNumber,
+  pullRows,
+  canCheckPulls,
+  addPull,
+  removePull,
   selectMode,
   selectPull,
   refresh,
@@ -85,7 +88,7 @@ function confirm() {
 <template>
   <n-collapse @update:expanded-names="expand">
     <n-collapse-item title="源码版本管理" name="source">
-      <n-space vertical :size="12" class="source-versions">
+      <div class="source-versions">
         <p v-if="mode === 'branch'" class="hint">可以选择最近20次提交，或手动输入SHA/tag</p>
         <p v-if="history" class="current version">
           当前检出：{{ history.current_branch || '分离 HEAD' }} ·
@@ -146,23 +149,47 @@ function confirm() {
             :input-props="{ 'aria-label': '源码目标版本' }"
           />
         </n-form-item>
-        <n-form-item v-if="mode === 'pr'" label="开放 PR">
-          <n-select
-            :value="pullNumber"
-            :options="pullOptions"
-            filterable
-            size="small"
-            :loading="loading"
-            :disabled="running || loading || checking"
-            placeholder="选择 PR 后检查是否可合并"
-            :input-props="{ 'aria-label': '源码开放 PR' }"
-            @update:value="selectPull"
-          />
-        </n-form-item>
+        <div v-if="mode === 'pr'" class="pull-list">
+          <div v-for="(row, index) in pullRows" :key="row.id" class="pull-row">
+            <n-form-item label="开放 PR">
+              <n-select
+                :value="row.number"
+                :options="
+                  pullOptions.filter(
+                    (option) =>
+                      option.value === row.number ||
+                      !pullRows.some((other) => other.number === option.value)
+                  )
+                "
+                filterable
+                size="small"
+                :loading="loading"
+                :disabled="running || loading || checking"
+                placeholder="选择 PR 后检查是否可合并"
+                :input-props="{ 'aria-label': `源码开放 PR ${index + 1}` }"
+                @update:value="(value) => selectPull(value, row.id)"
+              />
+            </n-form-item>
+            <n-button
+              size="small"
+              :disabled="running || checking || pullRows.length === 1"
+              :aria-label="`移除 PR ${index + 1}`"
+              @click="removePull(row.id)"
+              >−</n-button
+            >
+            <n-button
+              size="small"
+              :disabled="running || checking || pullRows.length >= 10"
+              :aria-label="`在 PR ${index + 1} 后添加`"
+              @click="addPull(row.id)"
+              >＋</n-button
+            >
+          </div>
+        </div>
         <p class="hint">
           {{
             mode === 'pr'
-              ? '仅支持开放且无合并冲突的 PR，更新到源分支提交。后续检查仍跟随原来的仓库、分支和渠道。'
+              ? '支持同一目标分支的多个开放 PR，按所选顺序试合并，通过后才能安装。后续检查仍跟随原来的仓库、分支和渠道。'
               : '提交切换任务后记住所选仓库和分支，供后续开发版检查使用。'
           }}
         </p>
@@ -176,7 +203,7 @@ function confirm() {
           <n-button
             size="small"
             :loading="checking"
-            :disabled="running || checking || (mode === 'pr' ? !pullNumber : !reference.trim())"
+            :disabled="running || checking || (mode === 'pr' ? !canCheckPulls : !reference.trim())"
             @click="checkVersion"
             >检查版本</n-button
           >
@@ -188,7 +215,13 @@ function confirm() {
         <div v-if="checked" class="target" aria-live="polite">
           <p class="version">
             目标仓库：{{ checked.source_repo
-            }}{{ checked.source_pr ? ` · PR #${checked.source_pr}` : '' }}
+            }}{{
+              checked.source_prs
+                ? ` · PR ${checked.source_prs.map((pull) => '#' + pull.number).join('、')}`
+                : checked.source_pr
+                  ? ` · PR #${checked.source_pr}`
+                  : ''
+            }}
           </p>
           <a :href="checked.url" target="_blank" rel="noopener noreferrer" class="version">{{
             checked.sha
@@ -199,14 +232,31 @@ function confirm() {
         <p class="hint">
           提交切换任务时会关闭软件自动更新。配置和数据库不随代码回滚，旧版本兼容性取决于所选提交。
         </p>
-      </n-space>
+      </div>
     </n-collapse-item>
   </n-collapse>
 </template>
 
 <style scoped>
 .source-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
+  min-width: 0;
+}
+.pull-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pull-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pull-row > .n-form-item {
+  flex: 1;
   min-width: 0;
 }
 .hint {

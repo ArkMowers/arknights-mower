@@ -128,7 +128,7 @@ describe('source remote and PR selection', () => {
     await view.selectPull(7)
     expect(axios.post).toHaveBeenCalledExactlyOnceWith(
       '/software-update/source/pr/check',
-      { remote: 'origin', number: 7 },
+      { remote: 'origin', numbers: [7] },
       { headers: { 'X-Mower-Update': '1' } }
     )
     expect(view.checked.value.source_pr).toBe(7)
@@ -159,5 +159,51 @@ describe('source remote and PR selection', () => {
     await conflict
     expect(view.checked.value).toBeNull()
     expect(view.error.value).toContain('合并冲突')
+  })
+})
+
+describe('multiple source PR rows', () => {
+  it('adds stable rows, removes rows and invalidates stale merge checks', async () => {
+    let finish
+    const axios = {
+      get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }),
+      post: vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          })
+      )
+    }
+    const view = state(axios)
+    await view.selectMode('pr')
+    const first = view.pullRows.value[0].id
+    view.addPull(first)
+    const second = view.pullRows.value[1].id
+    await view.selectPull(7, first)
+    expect(view.canCheckPulls.value).toBe(false)
+    await view.checkVersion()
+    expect(axios.post).not.toHaveBeenCalled()
+    await view.selectPull(8, second)
+    expect(view.canCheckPulls.value).toBe(true)
+    const checking = view.checkVersion()
+    expect(axios.post.mock.calls[0][1]).toEqual({ remote: 'origin', numbers: [7, 8] })
+    view.removePull(first)
+    expect(view.pullRows.value).toEqual([{ id: second, number: 8 }])
+    finish({ data: { ok: true, check_id: 'stale-combination' } })
+    await checking
+    expect(view.checked.value).toBeNull()
+    view.removePull(second)
+    expect(view.pullRows.value).toHaveLength(1)
+    view.addPull(second)
+    expect(view.pullRows.value[1].id).not.toBe(first)
+  })
+
+  it('rejects duplicate selections and limits rows to ten', async () => {
+    const view = state({ get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }) })
+    await view.selectMode('pr')
+    for (let i = 0; i < 12; i++) view.addPull(view.pullRows.value.at(-1).id)
+    expect(view.pullRows.value).toHaveLength(10)
+    for (const row of view.pullRows.value) await view.selectPull(7, row.id)
+    expect(view.canCheckPulls.value).toBe(false)
   })
 })
