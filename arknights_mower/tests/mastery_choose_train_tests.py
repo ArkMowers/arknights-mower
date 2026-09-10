@@ -9,9 +9,92 @@ from unittest.mock import MagicMock
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 
 choose_train = BaseSchedulerSolver.choose_train
+
+
+class TestUnscheduledTrainingRoom(unittest.TestCase):
+    def make_operators(self, support="", trainee="号角", plan=None):
+        data = object.__new__(Operators)
+        data.plan = {} if plan is None else plan
+        data.operators = {
+            name: types.SimpleNamespace(
+                name=name, current_room="train", current_index=index
+            )
+            for index, name in enumerate([support, trainee])
+            if name
+        }
+        return data
+
+    def test_room_slots_do_not_depend_on_schedule(self):
+        for plan in (
+            {},
+            {"train": []},
+            {"train": [types.SimpleNamespace(agent="暴雨")]},
+        ):
+            with self.subTest(plan=plan):
+                data = self.make_operators(plan=plan)
+                self.assertEqual(data.get_current_room("train", True), ["", "号角"])
+                self.assertIsNone(data.get_current_room("train"))
+                self.assertEqual(
+                    data.get_current_room("train", current_index=[1]), ["", "号角"]
+                )
+                self.assertEqual(data.plan, plan)
+
+    def test_empty_and_occupied_room_keep_both_slots(self):
+        self.assertEqual(
+            self.make_operators(trainee="").get_current_room("train", True), ["", ""]
+        )
+        self.assertEqual(
+            self.make_operators(support="暴雨").get_current_room("train"),
+            ["暴雨", "号角"],
+        )
+
+    def test_other_rooms_still_use_schedule_size(self):
+        data = self.make_operators(
+            plan={"central": [types.SimpleNamespace(agent="阿米娅")]}
+        )
+        self.assertEqual(data.get_current_room("central", True), [""])
+        with self.assertRaises(KeyError):
+            data.get_current_room("missing", True)
+
+    def test_real_assistant_selection_without_train_schedule(self):
+        for old_support in ("", "褐果"):
+            with self.subTest(old_support=old_support):
+                solver = make_solver(
+                    [
+                        Scene.INFRA_DETAILS,
+                        Scene.INFRA_ARRANGE_ORDER,
+                        Scene.INFRA_DETAILS,
+                    ],
+                    [
+                        [{"agent": old_support}, {"agent": "号角"}],
+                        [{"agent": "暴雨"}, {"agent": "号角"}],
+                    ],
+                )
+                solver.op_data = self.make_operators(support=old_support)
+                solver.choose_agent = types.MethodType(
+                    BaseSchedulerSolver.choose_agent, solver
+                )
+                solver.detect_arrange_order.return_value = ("技能", False)
+                solver.verify_agent.return_value = True
+
+                def scan(agents, **kwargs):
+                    self.assertEqual(agents, ["暴雨"])
+                    agents.remove("暴雨")
+                    return ["暴雨"], []
+
+                solver.scan_agent.side_effect = scan
+                choose_train(solver, ["暴雨", "Current"])
+                solver.verify_agent.assert_called_once_with(["暴雨"], "train")
+                solver.tap_confirm.assert_called_once_with("train")
+                solver.choose_train_ope.assert_not_called()
+                self.assertEqual(solver.op_data.plan, {})
+                if not old_support:
+                    # 协助位为空时不得把训练位当成原协助者点击取消。
+                    solver.tap.assert_not_called()
 
 
 def make_solver(scenes, scan_results):
