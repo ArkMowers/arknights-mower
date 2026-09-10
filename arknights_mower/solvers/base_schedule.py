@@ -73,7 +73,6 @@ from arknights_mower.utils.resource_pkg import refresh_resource_at_boundary
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
-    check_dorm_ordering,
     find_next_task,
     plan_metadata,
     protect_support_swaps,
@@ -228,7 +227,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         while True:
             scheduling(self.tasks)
-            check_dorm_ordering(self.tasks, self.op_data)
             protect_support_swaps(self.tasks)
             self.task = self.tasks[0] if self.tasks else None
             if self.task is None:
@@ -3111,7 +3109,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             agents[index] = replacements.pop(0).name if replacements else current.name
 
     def choose_agent(
-        self, agents: list[str], room: str, fast_mode=True, train_index=0
+        self,
+        agents: list[str],
+        room: str,
+        fast_mode=True,
+        train_index=0,
+        preserve_dorm_occupants=False,
     ) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
@@ -3129,7 +3132,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
-        self.preserve_resting_crafters(agents, room)
+        if not preserve_dorm_occupants:
+            self.preserve_resting_crafters(agents, room)
         current_list = set()
         for idx, n in enumerate(agents):
             if n not in current_list:
@@ -3139,7 +3143,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
                 __agent = self.op_data.operators[agents[idx]]
                 if (
-                    __agent.mood == __agent.upper_limit
+                    not preserve_dorm_occupants
+                    and __agent.mood == __agent.upper_limit
                     and not __agent.room.startswith("dorm")
                     and not self.op_data.is_dorm_replacement_for_slot(
                         __agent.name, room, idx
@@ -3647,6 +3652,60 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             )
 
+    def ensure_dorm_recovery_order(self, room, agents):
+        """先确认单回目标的入驻顺序，再由原任务恢复完整阵容。
+
+        中间名单只用于这次点击，不能覆盖持久化任务中的完整恢复名单。
+        目标及清空结果均识别成功后才记录；留在同一宿舍期间不重复清房。
+        """
+        from arknights_mower.utils.dorm_recovery import (
+            recovery_order_plan,
+            recovery_target,
+        )
+
+        if not room.startswith("dorm") or self.task.type == TaskTypes.FIAMMETTA:
+            return False
+        pending = getattr(self.task, "dorm_recovery_restore", [])
+        retained = recovery_order_plan(self.op_data, room, agents)
+        if retained is None:
+            return room in pending
+        target = recovery_target(self.op_data, room, agents)
+        vip_index = next(
+            i for i, slot in enumerate(self.op_data.plan[room]) if slot.agent == "Free"
+        )
+        # 一轮下班先替班接岗、再分床；不要为即将被下一条分床任务换走的
+        # 原占位者额外清房。以队列中明确的目标覆盖为准，不猜测未来排班。
+        for task in self.tasks:
+            upcoming = task.plan.get(room, [])
+            if (
+                task is not self.task
+                and self.task.time <= task.time <= self.task.time + timedelta(seconds=1)
+                and len(upcoming) > vip_index
+                and upcoming[vip_index] not in ("Current", "Free", "", target.name)
+            ):
+                return room in pending
+        if room not in pending:
+            pending.append(room)
+        self.task.dorm_recovery_restore = pending
+        current = self.op_data.get_current_room(room, True)
+        expected = retained + [""] * (len(agents) - len(retained))
+        if current != expected:
+            logger.info(f"宿舍单回排序：{room} 保留目标 {target.name}，暂留 {retained}")
+            for attempt in range(5):
+                if self.find("confirm_blue") is not None:
+                    break
+                if attempt == 4:
+                    raise Exception("未成功进入干员选择界面")
+                self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
+            self.choose_agent(retained.copy(), room, preserve_dorm_occupants=True)
+            self.tap_confirm(room, {})
+            current = [item["agent"] for item in self.get_agent_from_room(room)]
+            if current != expected:
+                raise Exception("宿舍单回排序确认失败，保留原任务重试")
+        target.dorm_recovery_room = room if target.mood < 24 else ""
+        logger.info(f"宿舍单回排序确认：{room} 目标 {target.name}，恢复原位")
+        return True
+
     def agent_arrange_room(
         self, new_plan, room, plan, skip_enter=False, get_time=False
     ):
@@ -3767,6 +3826,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if plan[room] != self.op_data.get_current_room(room):
                             self.refresh_run_order_time(room)
                 checked = True
+                recovery_ordered = self.ensure_dorm_recovery_order(room, plan[room])
                 current_room = self.op_data.get_current_room(room, True)
                 same = len(plan[room]) == len(current_room)
                 if same:
@@ -3809,13 +3869,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 raise Exception("未成功进入干员选择界面")
                             self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
-                        self.choose_agent(plan[room], room, choose_error <= 0)
+                        if recovery_ordered:
+                            self.choose_agent(
+                                plan[room],
+                                room,
+                                choose_error <= 0,
+                                preserve_dorm_occupants=True,
+                            )
+                        else:
+                            self.choose_agent(plan[room], room, choose_error <= 0)
                         self.tap_confirm(room, new_plan)
                     read_time_index = []
-                    if get_time:
+                    if get_time or recovery_ordered:
                         read_time_index = self.op_data.get_refresh_index(
                             room, plan[room]
                         )
+                        if recovery_ordered:
+                            read_time_index = [
+                                i
+                                for i, slot in enumerate(self.op_data.plan[room])
+                                if slot.agent == "Free"
+                            ]
                     if len(new_plan) > 1:
                         self.op_data.operators["菲亚梅塔"].time_stamp = None
                         self.op_data.operators[plan[room][0]].time_stamp = None
@@ -3831,6 +3905,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                 finished = True
                 skip_enter = False
+                if room in getattr(self.task, "dorm_recovery_restore", []):
+                    self.task.dorm_recovery_restore.remove(room)
                 # 如果完成则移除该任务
                 del plan[room]
                 # back to 基地主界面
