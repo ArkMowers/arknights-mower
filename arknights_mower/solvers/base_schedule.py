@@ -961,7 +961,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         need_fix = True
                     fix_plan[key][idx] = plan[key][idx].agent
         # 最后如果有任何高效组心情没有记录 或者高效组在宿舍
-        miss_list = {k: v for (k, v) in self.op_data.operators.items() if v.not_valid()}
+        miss_list = {
+            k: v
+            for k, v in self.op_data.operators.items()
+            if v.not_valid() and not self.op_data.is_group_standby(k)
+        }
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
             logger.debug(f"高效组心情没有记录{str(miss_list)}")
@@ -1855,10 +1859,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _low_used = set()
         for op in self.total_agent:
             if op.is_high() and not op.is_workshop():
-                if _high_done:
+                can_standby = op.group and self.op_data.group_standby_candidates(
+                    self.op_data.groups[op.group]
+                )
+                if _high_done and not can_standby:
                     continue
                 if (
-                    current_resting + len(_replacement) >= self.ideal_resting_count
+                    not can_standby
+                    and current_resting + len(_replacement) >= self.ideal_resting_count
                     and self.op_data.available_free() == 0
                 ):
                     _high_done = True
@@ -1869,6 +1877,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             if (
                 op.is_resting()
+                or self.op_data.is_group_standby(op.name)
                 or op.current_room in ["factory"]
                 or (op.current_room in ["train"] and has_active_mastery)
                 or op.room in ["factory"]

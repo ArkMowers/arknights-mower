@@ -412,7 +412,10 @@ def plan_metadata(op_data, tasks):
         (
             v
             for v in op_data.operators.values()
-            if v.is_high() and not v.room.startswith("dorm") and not v.is_resting()
+            if v.is_high()
+            and not v.room.startswith("dorm")
+            and not v.is_resting()
+            and not op_data.is_group_standby(v.name)
         ),
         key=lambda x: x.current_mood() - x.lower_limit,
     )
