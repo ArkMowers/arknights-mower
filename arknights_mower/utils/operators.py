@@ -192,6 +192,8 @@ class Operators:
                     return "菲亚梅塔必须安排在宿舍"
                 if data.agent == "Free" and not room.startswith("dorm"):
                     return f"Free只能安排在宿舍 房间->{room}, 干员->{data.agent}"
+                if data.group and data.agent in ["Free", "菲亚梅塔"]:
+                    return f"{data.agent}不能参与宿舍绑组换班"
                 if data.agent in self.operators and data.agent != "Free":
                     return f"高效组干员不可重复 房间->{room},{self.operators[data.agent].room}, 干员->{data.agent}"
                 self.add(
@@ -344,9 +346,16 @@ class Operators:
                     return f"{key} 分组无法排班,替换组数量不够"
                 else:
                     _replacement.append(_candidate)
-                if self.operators[name].workaholic:
+                if self.operators[name].workaholic or self.operators[
+                    name
+                ].room.startswith("dorm"):
                     continue
                 total_count += 1
+            if (
+                any(self.operators[n].room.startswith("dorm") for n in self.groups[key])
+                and not total_count
+            ):
+                return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
             if total_count > len(self.dorm):
                 return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于总宿舍数{len(self.dorm)}"
         # 设定令夕模式的心情阈值
@@ -381,11 +390,14 @@ class Operators:
         for name in ["夕", "令"]:
             if (
                 name in self.operators
+                and not self.operators[name].room.startswith("dorm")
                 and self.operators[name].group != ""
                 and self.operators[name].group not in finished
             ):
                 for group_name in self.groups[self.operators[name].group]:
-                    if group_name not in ["夕", "令"]:
+                    if group_name not in ["夕", "令"] and not self.operators[
+                        group_name
+                    ].room.startswith("dorm"):
                         if self.config.ling_xi in [1, 2]:
                             self.set_mood_limit(group_name, lower_limit=12)
                         elif self.config.ling_xi == 0:
@@ -642,7 +654,7 @@ class Operators:
             operator.current_index = exist.current_index
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
-        if operator.exhaust_require:
+        if operator.exhaust_require and not operator.room.startswith("dorm"):
             self.exhaust_agent.add(operator.name)
             if operator.group != "":
                 self.exhaust_group.add(operator.group)
@@ -654,16 +666,62 @@ class Operators:
                 self.groups[operator.group].append(operator.name)
         if operator.workaholic:
             self.workaholic_agent.add(operator.name)
-        if operator.rest_in_full:
+        if operator.rest_in_full and not operator.room.startswith("dorm"):
             if operator.group != "":
                 self.rest_in_full_group.add(operator.group)
+
+    def group_is_resting(self, group):
+        """宿舍常驻成员不参与组的工作／休息状态判断。"""
+        return any(
+            not self.operators[name].room.startswith("dorm")
+            and not self.operators[name].workaholic
+            and self.operators[name].is_resting()
+            for name in self.groups.get(group, [])
+        )
+
+    def is_dorm_replacement(self, name):
+        """已在固定宿舍岗位上的替班不能被其他岗位借走。"""
+        op = self.operators[name]
+        slots = self.plan.get(op.current_room, [])
+        if not op.is_resting() or not 0 <= op.current_index < len(slots):
+            return False
+        slot = slots[op.current_index]
+        return bool(slot.group and slot.agent != "Free" and name in slot.replacement)
+
+    def replacement_candidates(self, operator):
+        """仅绑组宿舍的替班按心情排序；菲亚梅塔充能名单保留原顺序。"""
+        candidates = list(operator.replacement)
+        if (
+            not operator.room.startswith("dorm")
+            or not operator.group
+            or operator.name == "菲亚梅塔"
+        ):
+            return candidates
+        now = datetime.now()
+
+        def mood_order(name):
+            candidate = self.operators.get(name)
+            if (
+                candidate is None
+                or candidate.time_stamp is None
+                or not 0 <= candidate.mood <= 24
+            ):
+                return (1, 0)
+            return (0, candidate.current_mood(now))
+
+        return sorted(candidates, key=mood_order)
 
     def average_mood(self):
         total_mood = 0
         current_mood = 0
         count = 0
         for k, v in self.operators.items():
-            if not v.is_resting() and v.operator_type != "low" and not v.workaholic:
+            if (
+                not v.is_resting()
+                and not v.room.startswith("dorm")
+                and v.operator_type != "low"
+                and not v.workaholic
+            ):
                 current_mood += v.current_mood() - v.lower_limit
                 total_mood += v.upper_limit - v.lower_limit
                 count += 1
