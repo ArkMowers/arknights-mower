@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -96,6 +97,8 @@ def get_settings():
         "auto_check": saved.get("auto_check", False),
         "auto_update": saved.get("auto_update", False),
         "source_branch": saved.get("source_branch", "alpha"),
+        "source_remote": saved.get("source_remote", "origin"),
+        "source_remote_history": saved.get("source_remote_history", []),
     }
 
 
@@ -124,7 +127,13 @@ def save_settings(data):
 def automatic_check_key(settings):
     return {
         key: settings[key]
-        for key in ("channel", "source_branch", "auto_check", "auto_update")
+        for key in (
+            "channel",
+            "source_branch",
+            "source_remote",
+            "auto_check",
+            "auto_update",
+        )
     }
 
 
@@ -249,10 +258,10 @@ def platform_asset():
 validate_proxy = network_settings.normalize_http_proxy
 
 
-def github(path, proxy=""):
+def github(path, proxy="", *, repo=REPO):
     proxies = {"http": proxy, "https": proxy} if proxy else None
     response = requests.get(
-        API + path,
+        f"https://api.github.com/repos/{repo}" + path,
         timeout=30,
         proxies=proxies,
         headers={
@@ -266,7 +275,7 @@ def github(path, proxy=""):
     return response.json()
 
 
-def source_commit_info(commit):
+def source_commit_info(commit, repo=REPO):
     sha = commit.get("sha", "")
     if not isinstance(sha, str) or not re.fullmatch(r"[a-fA-F0-9]{40}", sha):
         raise ValueError("GitHub 返回的提交 SHA 无效")
@@ -277,8 +286,87 @@ def source_commit_info(commit):
         "message": details.get("message") or "无提交说明",
         "author": author.get("name") or "",
         "date": author.get("date") or "",
-        "url": f"https://github.com/{REPO}/commit/{sha.lower()}",
+        "url": f"https://github.com/{repo}/commit/{sha.lower()}",
     }
+
+
+def normalize_source_url(value):
+    """Accept a GitHub repository URL or owner/repo, never Git command syntax."""
+    if not isinstance(value, str) or len(value) > 512:
+        raise ValueError("请填写 GitHub 仓库地址或本地远端名称")
+    value = value.strip()
+    match = re.fullmatch(
+        r"(?:(https://github\.com/|git@github\.com:|ssh://git@github\.com/))?"
+        r"([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/?",
+        value,
+        re.I,
+    )
+    if not match:
+        raise ValueError(
+            "请填写有效的 GitHub 仓库地址，不接受凭据、其他站点或 Git 命令"
+        )
+    prefix, owner, name = match.groups()
+    name = name.removesuffix(".git")
+    if not name or name in (".", ".."):
+        raise ValueError("GitHub 仓库名称无效")
+    repo = f"{owner}/{name}"
+    url = (
+        f"git@github.com:{repo}.git"
+        if prefix and prefix.lower().startswith(("git@", "ssh://"))
+        else f"https://github.com/{repo}.git"
+    )
+    return {"source_repo": repo, "source_url": url}
+
+
+def resolve_source_remote(remote=None):
+    if runtime.frozen():
+        raise ValueError("远端仓库选择仅支持源码部署")
+    remote = get_settings()["source_remote"] if remote is None else remote
+    if not isinstance(remote, str) or not remote.strip():
+        raise ValueError("请选择远端仓库或填写个人 fork 地址")
+    remote = remote.strip()
+    if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", remote):
+        git = shutil.which("git", path=source_tool_path())
+        if not git:
+            raise ValueError("未找到 Git，请检查启动环境的 PATH")
+        try:
+            url = subprocess.check_output(
+                [git, "remote", "get-url", remote],
+                cwd=runtime.installation_root(),
+                text=True,
+                encoding="utf-8",
+                stderr=subprocess.PIPE,
+                timeout=10,
+            ).strip()
+        except subprocess.CalledProcessError as error:
+            raise ValueError(
+                "所选本地远端不存在，请选择其他远端或填写 GitHub fork 地址"
+            ) from error
+    else:
+        url = remote
+    return {"source_remote": remote, **normalize_source_url(url)}
+
+
+def source_remotes():
+    """Only show defaults and addresses explicitly entered for this installation."""
+    return [{"value": "origin", "label": "默认仓库"}] + [
+        {"value": url, "label": url} for url in get_settings()["source_remote_history"]
+    ]
+
+
+def remember_source_remote(value):
+    if runtime.frozen():
+        raise ValueError("远端仓库选择仅支持源码部署")
+    selected = normalize_source_url(value)
+    url = selected["source_url"]
+    with runtime.submission_lock(runtime.state_dir()):
+        settings = get_settings()
+        history = settings["source_remote_history"]
+        settings["source_remote_history"] = [url] + [
+            item for item in history if item.lower() != url.lower()
+        ][:9]
+        runtime.write_json(runtime.state_dir() / "settings.json", settings)
+    return {"ok": True, **selected, "remotes": source_remotes()}
 
 
 def source_repository():
@@ -303,18 +391,24 @@ def source_repository():
     return current, branch, proxy
 
 
-def source_history(branch=None):
-    branch = normalize_source_ref(branch or get_settings()["source_branch"])
+def source_history(branch=None, remote=None):
     current, current_branch, proxy = source_repository()
+    selected = resolve_source_remote(remote)
+    repo = selected["source_repo"]
+    branch = normalize_source_ref(
+        github("", proxy, repo=repo)["default_branch"]
+        if branch == ""
+        else branch or get_settings()["source_branch"]
+    )
     branches = []
     for page in range(1, 4):
-        rows = github(f"/branches?per_page=100&page={page}", proxy)
+        rows = github(f"/branches?per_page=100&page={page}", proxy, repo=repo)
         branches.extend(row["name"] for row in rows)
         if len(rows) < 100:
             break
     try:
         commits = github(
-            "/commits?sha=" + quote(branch, safe="") + "&per_page=20", proxy
+            "/commits?sha=" + quote(branch, safe="") + "&per_page=20", proxy, repo=repo
         )
     except requests.HTTPError as error:
         if error.response is not None and error.response.status_code in (404, 422):
@@ -326,23 +420,26 @@ def source_history(branch=None):
         "branches": branches,
         "current_branch": current_branch,
         "current_commit": current,
-        "commits": [source_commit_info(commit) for commit in commits],
+        "commits": [source_commit_info(commit, repo) for commit in commits],
+        **selected,
     }
 
 
-def check_source_version(reference, branch=None):
+def check_source_version(reference, branch=None, remote=None):
     reference = normalize_source_ref(reference)
     branch = normalize_source_ref(branch or get_settings()["source_branch"])
     current, _, proxy = source_repository()
+    selected = resolve_source_remote(remote)
+    repo = selected["source_repo"]
     try:
-        github("/branches/" + quote(branch, safe=""), proxy)
+        github("/branches/" + quote(branch, safe=""), proxy, repo=repo)
     except requests.HTTPError as error:
         if error.response is not None and error.response.status_code == 404:
             raise ValueError("所选远端分支不存在，请刷新分支列表") from error
         raise
     try:
         target = source_commit_info(
-            github("/commits/" + quote(reference, safe=""), proxy)
+            github("/commits/" + quote(reference, safe=""), proxy, repo=repo), repo
         )
     except requests.HTTPError as error:
         if error.response is not None and error.response.status_code in (404, 422):
@@ -352,6 +449,7 @@ def check_source_version(reference, branch=None):
         protocol = github(
             "/contents/arknights_mower/utils/update_runtime.py?ref=" + target["sha"],
             proxy,
+            repo=repo,
         )
         if protocol.get("type") != "file":
             raise ValueError("目标版本未包含可用的实例恢复模块")
@@ -364,6 +462,7 @@ def check_source_version(reference, branch=None):
     plan = {
         "deployment": "source",
         "operation": "source-version",
+        **selected,
         "channel": "dev",
         "source_branch": branch,
         "ref": target["sha"],  # Pin the resolved commit, even if the branch/tag moves.
@@ -381,7 +480,107 @@ def check_source_version(reference, branch=None):
         "check_id": check_id,
         "current_commit": current,
         **target,
+        **selected,
         "version": plan["version"],
+    }
+
+
+def source_pulls(remote=None):
+    _, _, proxy = source_repository()
+    selected = resolve_source_remote(remote)
+    pulls = []
+    for page in range(1, 4):
+        rows = github(
+            f"/pulls?state=open&per_page=100&page={page}",
+            proxy,
+            repo=selected["source_repo"],
+        )
+        pulls.extend(
+            {"number": row["number"], "title": row["title"]}
+            for row in rows
+            if not row.get("draft")
+        )
+        if len(rows) < 100:
+            break
+    return {"ok": True, "pulls": pulls, **selected}
+
+
+def mergeable_source_pull(number, repo, proxy):
+    if type(number) is not int or number <= 0:
+        raise ValueError("请选择有效的 PR 编号")
+    pull = github(f"/pulls/{number}", proxy, repo=repo)
+    if pull.get("state") != "open" or pull.get("draft"):
+        raise ValueError("该 PR 已关闭、已合并或仍为草稿，无法选择更新")
+    if pull.get("mergeable") is None:
+        raise ValueError("GitHub 正在计算 PR 是否可合并，请稍后重新检查")
+    if pull.get("mergeable") is not True:
+        raise ValueError("该 PR 存在合并冲突，暂不能用于更新")
+    return pull
+
+
+def check_source_pull(number, remote=None):
+    return check_source_pulls([number], remote)
+
+
+def check_source_pulls(numbers, remote=None):
+    if not isinstance(numbers, list) or not 1 <= len(numbers) <= 10:
+        raise ValueError("请选择 1 至 10 个 PR")
+    if any(type(number) is not int or number <= 0 for number in numbers):
+        raise ValueError("请选择有效的 PR 编号")
+    if len(set(numbers)) != len(numbers):
+        raise ValueError("不能重复选择同一个 PR")
+    current, _, proxy = source_repository()
+    selected = resolve_source_remote(remote)
+    pulls = [
+        mergeable_source_pull(number, selected["source_repo"], proxy)
+        for number in numbers
+    ]
+    if len({(pull["base"]["ref"], pull["base"]["sha"]) for pull in pulls}) != 1:
+        raise ValueError("请选择同一目标分支的 PR；若分支刚更新，请刷新后重试")
+    plan = {
+        "deployment": "source",
+        "operation": "source-pr",
+        **selected,
+        "channel": "dev",
+        "source_branch": normalize_source_ref(pulls[0]["base"]["ref"]),
+        "base_commit": pulls[0]["base"]["sha"],
+        "source_prs": [
+            {"number": number, "sha": pull["head"]["sha"], "title": pull["title"]}
+            for number, pull in zip(numbers, pulls)
+        ],
+        "merge_date": f"@{int(time.time())} +0000",
+        "created_at": time.time(),
+        "available": True,
+        "force_available": True,
+        "url": f"https://github.com/{selected['source_repo']}/pulls",
+        "notes": "\n".join(
+            f"#{number} {pull['title']}" for number, pull in zip(numbers, pulls)
+        ),
+    }
+    from .source_pr_merge import merge_source_pulls
+
+    git = shutil.which("git", path=source_tool_path())
+    if not git:
+        raise ValueError("未找到 Git，无法检查 PR 的合并结果")
+    with tempfile.TemporaryDirectory(prefix="mower-pr-check-") as directory:
+        commit = merge_source_pulls(
+            git, selected["source_url"], plan, directory, runtime.launch_environment({})
+        )
+    plan.update(commit=commit, version="PR@" + commit[:7])
+    return {
+        "ok": True,
+        "check_id": remember_check(plan),
+        "current_commit": current,
+        **selected,
+        "source_prs": plan["source_prs"],
+        "source_branch": plan["source_branch"],
+        "base_commit": plan["base_commit"],
+        "sha": commit,
+        "version": plan["version"],
+        "url": plan["url"],
+        "message": plan["notes"],
+        "author": "Mower 合并预览",
+        "date": "",
     }
 
 
@@ -492,25 +691,6 @@ def source_tools(root):
         if not pip_available
         else None
     )
-    origin = (
-        subprocess.check_output(
-            [git, "remote", "get-url", "origin"],
-            cwd=root,
-            text=True,
-            encoding="utf-8",
-            timeout=10,
-        )
-        .strip()
-        .removesuffix(".git")
-        .rstrip("/")
-        .lower()
-    )
-    if origin not in (
-        f"https://github.com/{REPO}".lower(),
-        f"git@github.com:{REPO}".lower(),
-        f"ssh://git@github.com/{REPO}".lower(),
-    ):
-        raise ValueError("源码更新仅支持 origin 指向 ArkMowers/arknights-mower 的安装")
     return {
         "git": git,
         "npm": npm,
@@ -563,9 +743,11 @@ def info():
                 "请通过 webview_ui.py / Mower 桌面程序启动；直接运行 Flask 或容器请使用原部署工具更新"
             )
     settings = get_settings()
+    remotes = source_remotes() if deployment == "source" else []
     return {
         "ok": True,
         "version": __version__,
+        "source_remotes": remotes,
         "deployment": deployment,
         "platform": sys.platform,
         "root": str(root),
@@ -608,13 +790,19 @@ def check(channel, proxy=None):
         if deployment != "source":
             raise ValueError("开发版仅支持源码部署")
         branch = normalize_source_ref(get_settings()["source_branch"])
-        commit = github("/commits/" + quote(branch, safe=""), proxy)
+        selected = resolve_source_remote()
+        commit = github(
+            "/commits/" + quote(branch, safe=""), proxy, repo=selected["source_repo"]
+        )
         plan.update(
-            ref="refs/heads/" + branch,
+            **selected,
+            source_branch=branch,
+            ref=commit["sha"],
             commit=commit["sha"],
             version=branch + "@" + commit["sha"][:7],
             notes=commit["commit"]["message"],
-            url=f"https://github.com/{REPO}/commits/" + quote(branch, safe=""),
+            url=f"https://github.com/{selected['source_repo']}/commits/"
+            + quote(branch, safe=""),
         )
     else:
         if channel == "stable":
@@ -646,7 +834,12 @@ def check(channel, proxy=None):
         )
         if deployment == "source":
             commit = github("/commits/" + quote(release["tag_name"], safe=""), proxy)
-            plan.update(ref="refs/tags/" + release["tag_name"], commit=commit["sha"])
+            plan.update(
+                ref="refs/tags/" + release["tag_name"],
+                commit=commit["sha"],
+                source_url=f"https://github.com/{REPO}.git",
+                source_repo=REPO,
+            )
     if deployment == "source":
         current = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -683,6 +876,14 @@ def check(channel, proxy=None):
         if available
         else "当前版本已与所选渠道一致",
     }
+    if deployment == "source":
+        result.update(
+            {
+                key: plan[key]
+                for key in ("source_url", "source_repo", "source_branch")
+                if key in plan
+            }
+        )
     runtime.write_json(
         runtime.state_dir() / "last-check.json",
         {key: value for key, value in result.items() if key != "check_id"},
@@ -739,6 +940,30 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         raise ValueError("强制更新选项必须是布尔值")
     if force and (plan["deployment"] != "source" or uploaded is not None):
         raise ValueError("强制更新仅支持源码部署")
+    if plan.get("source_prs"):
+        network_settings.apply_http_proxy()
+        proxy = network_settings.get_effective_settings()["http_proxy"]
+        for selected_pull in plan["source_prs"]:
+            pull = mergeable_source_pull(
+                selected_pull["number"], plan["source_repo"], proxy
+            )
+            if (
+                pull["head"]["sha"] != selected_pull["sha"]
+                or pull["base"]["sha"] != plan["base_commit"]
+                or pull["base"]["ref"] != plan["source_branch"]
+            ):
+                raise ValueError("PR 提交或目标分支已改变，请重新检查并确认更新")
+    if plan.get("source_pr"):
+        # Recheck status and head immediately before admission; a previously
+        # confirmed PR may have closed, conflicted or received another push.
+        network_settings.apply_http_proxy()
+        pull = mergeable_source_pull(
+            plan["source_pr"],
+            plan["source_repo"],
+            network_settings.get_effective_settings()["http_proxy"],
+        )
+        if pull["head"]["sha"] != plan["commit"]:
+            raise ValueError("PR 提交已改变，请重新检查并确认更新")
     details = info()
     if details["blockers"] and not (force and details.get("force_supported", False)):
         raise ValueError("；".join(details["blockers"]))
@@ -783,8 +1008,14 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         job_path = work / "job.json"
         runtime.write_json(job_path, job)
         settings = {**get_settings(), **{k: job[k] for k in ("channel", "background")}}
+        if plan.get("operation") == "source-pr":
+            settings["auto_update"] = False
+            settings["channel"] = previous_settings["channel"]
         if plan.get("operation") == "source-version":
             settings.update(auto_update=False, source_branch=plan["source_branch"])
+            if plan.get("source_url"):
+                # Remember the confirmed URL, not a local alias that may be retargeted.
+                settings["source_remote"] = plan["source_url"]
         runtime.write_json(state / "settings.json", settings)
         runtime.write_json(
             state / "status.json",
@@ -815,6 +1046,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
                 shutil.copy2(socks.__file__, work / "socks.py")
             for name in (
                 "software_update_worker.py",
+                "source_pr_merge.py",
                 "software_update_progress.py",
                 "update_runtime.py",
                 "github_download.py",

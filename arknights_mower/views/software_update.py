@@ -65,17 +65,43 @@ def check():
     return updater.check(data.get("channel"))
 
 
+@software_update_bp.post("/source/remote")
+@result
+def remember_source_remote():
+    data = request.get_json()
+    return updater.remember_source_remote(data.get("remote"))
+
+
 @software_update_bp.get("/source/history")
 @result
 def source_history():
-    return updater.source_history(request.args.get("branch"))
+    return updater.source_history(
+        request.args.get("branch"), request.args.get("remote")
+    )
 
 
 @software_update_bp.post("/source/check")
 @result
 def source_check():
     data = request.get_json()
-    return updater.check_source_version(data.get("reference"), data.get("branch"))
+    return updater.check_source_version(
+        data.get("reference"), data.get("branch"), data.get("remote")
+    )
+
+
+@software_update_bp.get("/source/pulls")
+@result
+def source_pulls():
+    return updater.source_pulls(request.args.get("remote"))
+
+
+@software_update_bp.post("/source/pr/check")
+@result
+def source_pull_check():
+    data = request.get_json()
+    if "numbers" in data:
+        return updater.check_source_pulls(data["numbers"], data.get("remote"))
+    return updater.check_source_pull(data.get("number"), data.get("remote"))
 
 
 @software_update_bp.post("/start")

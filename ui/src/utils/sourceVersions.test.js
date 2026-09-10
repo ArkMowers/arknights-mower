@@ -19,14 +19,14 @@ describe('source version selection', () => {
     const view = state(axios)
     await view.selectBranch('dev')
     expect(axios.get).toHaveBeenCalledWith('/software-update/source/history', {
-      params: { branch: 'dev' }
+      params: { branch: 'dev', remote: 'origin' }
     })
     expect(view.reference.value).toBe('dev')
     view.reference.value = 'aaaaaaa'
     await view.checkVersion()
     expect(axios.post).toHaveBeenCalledWith(
       '/software-update/source/check',
-      { branch: 'dev', reference: 'aaaaaaa' },
+      { branch: 'dev', reference: 'aaaaaaa', remote: 'origin' },
       { headers: { 'X-Mower-Update': '1' } }
     )
     expect(view.checked.value.check_id).toBe('pinned')
@@ -68,5 +68,142 @@ describe('source version selection', () => {
     expect(view.checked.value).toBeNull()
     expect(view.error.value).toBe('目标版本不支持恢复')
     expect(view.checking.value).toBe(false)
+  })
+})
+
+describe('source remote and PR selection', () => {
+  it('ignores responses from a previous repository and checks the selected fork', async () => {
+    const histories = []
+    const axios = {
+      get: vi.fn(() => new Promise((resolve) => histories.push(resolve))),
+      post: vi.fn().mockImplementation(async (url) => ({
+        data: url.endsWith('/source/remote')
+          ? {
+              ok: true,
+              source_url: 'https://github.com/personal/mower.git',
+              remotes: [
+                {
+                  value: 'https://github.com/personal/mower.git',
+                  label: 'https://github.com/personal/mower.git'
+                }
+              ]
+            }
+          : { ok: true, check_id: 'fork', source_repo: 'personal/mower' }
+      }))
+    }
+    const view = state(axios)
+    const old = view.loadHistory()
+    const fork = view.selectRemote('https://github.com/personal/mower')
+    await vi.waitFor(() => expect(histories).toHaveLength(2))
+    histories[1]({ data: { ok: true, branch: 'main', commits: [], source_repo: 'personal/mower' } })
+    await fork
+    histories[0]({
+      data: { ok: true, branch: 'alpha', commits: [], source_repo: 'official/mower' }
+    })
+    await old
+    expect(view.history.value.source_repo).toBe('personal/mower')
+    expect(view.branch.value).toBe('main')
+    await view.checkVersion()
+    expect(axios.post.mock.calls.find(([url]) => url.endsWith('/source/check'))[1]).toEqual({
+      remote: 'https://github.com/personal/mower.git',
+      branch: 'main',
+      reference: 'main'
+    })
+  })
+
+  it('lists open PRs and checks selected mergeability without changing saved settings', async () => {
+    const axios = {
+      get: vi
+        .fn()
+        .mockResolvedValue({ data: { ok: true, pulls: [{ number: 7, title: 'Feature' }] } }),
+      post: vi.fn().mockResolvedValue({
+        data: { ok: true, source_pr: 7, check_id: 'pr', sha: 'a'.repeat(40) }
+      })
+    }
+    const view = state(axios)
+    await view.selectMode('pr')
+    expect(axios.get).toHaveBeenCalledWith('/software-update/source/pulls', {
+      params: { remote: 'origin' }
+    })
+    await view.selectPull(7)
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      '/software-update/source/pr/check',
+      { remote: 'origin', numbers: [7] },
+      { headers: { 'X-Mower-Update': '1' } }
+    )
+    expect(view.checked.value.source_pr).toBe(7)
+    expect(view.branch.value).toBe('alpha')
+  })
+
+  it('rejects stale PR checks after changing mode and cannot install conflicting PRs', async () => {
+    let finish
+    const axios = {
+      get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [], branch: 'alpha' } }),
+      post: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          })
+      )
+    }
+    const view = state(axios)
+    await view.selectMode('pr')
+    const pending = view.selectPull(7)
+    await view.selectMode('branch')
+    finish({ data: { ok: true, check_id: 'stale' } })
+    await pending
+    expect(view.checked.value).toBeNull()
+    await view.selectMode('pr')
+    const conflict = view.selectPull(8)
+    finish({ data: { ok: false, message: '该 PR 存在合并冲突' } })
+    await conflict
+    expect(view.checked.value).toBeNull()
+    expect(view.error.value).toContain('合并冲突')
+  })
+})
+
+describe('multiple source PR rows', () => {
+  it('adds stable rows, removes rows and invalidates stale merge checks', async () => {
+    let finish
+    const axios = {
+      get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }),
+      post: vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          })
+      )
+    }
+    const view = state(axios)
+    await view.selectMode('pr')
+    const first = view.pullRows.value[0].id
+    view.addPull(first)
+    const second = view.pullRows.value[1].id
+    await view.selectPull(7, first)
+    expect(view.canCheckPulls.value).toBe(false)
+    await view.checkVersion()
+    expect(axios.post).not.toHaveBeenCalled()
+    await view.selectPull(8, second)
+    expect(view.canCheckPulls.value).toBe(true)
+    const checking = view.checkVersion()
+    expect(axios.post.mock.calls[0][1]).toEqual({ remote: 'origin', numbers: [7, 8] })
+    view.removePull(first)
+    expect(view.pullRows.value).toEqual([{ id: second, number: 8 }])
+    finish({ data: { ok: true, check_id: 'stale-combination' } })
+    await checking
+    expect(view.checked.value).toBeNull()
+    view.removePull(second)
+    expect(view.pullRows.value).toHaveLength(1)
+    view.addPull(second)
+    expect(view.pullRows.value[1].id).not.toBe(first)
+  })
+
+  it('rejects duplicate selections and limits rows to ten', async () => {
+    const view = state({ get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }) })
+    await view.selectMode('pr')
+    for (let i = 0; i < 12; i++) view.addPull(view.pullRows.value.at(-1).id)
+    expect(view.pullRows.value).toHaveLength(10)
+    for (const row of view.pullRows.value) await view.selectPull(7, row.id)
+    expect(view.canCheckPulls.value).toBe(false)
   })
 })
