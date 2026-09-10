@@ -187,6 +187,19 @@ class TestComputeWorkshopConfigReadsDb(unittest.TestCase):
     def test_db_plan_drives_book_demand(self):
         # DB 计划 (char_A, 1) → 推荐链材料 技巧概要·卷3×5 → 合成配置 book 上限=5
         mats = [{"name": "技巧概要·卷3", "count": 5}]
+        cultivate_path, skill_path = _write_inventory_files(self.tmp.name, "3303", 0)
+        with open(skill_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "items": {
+                        "3303": {"name": "技巧概要·卷3"},
+                        "3302": {"name": "技巧概要·卷2"},
+                    }
+                },
+                f,
+            )
+        with open(cultivate_path, "w", encoding="utf-8") as f:
+            json.dump({"data": {"items": [{"id": "3302", "count": 15}]}}, f)
         with (
             patch(
                 "arknights_mower.utils.mastery_db.get_all_plans",
@@ -200,7 +213,7 @@ class TestComputeWorkshopConfigReadsDb(unittest.TestCase):
             patch.object(
                 rec,
                 "get_path",
-                return_value=os.path.join(self.tmp.name, "no_cultivate.json"),
+                return_value=cultivate_path,
             ),
         ):
             config = rec.compute_workshop_config()
@@ -240,7 +253,7 @@ class TestComputeWorkshopConfigReadsDb(unittest.TestCase):
             config = rec.compute_workshop_config()
         self.assertIsNotNone(config)
         book = [c for c in config if c["operator"] == "司霆惊蛰"]
-        self.assertEqual(book[0]["items"], [])
+        self.assertEqual(book, [])
 
     def test_no_db_plans_clears_automatic_config(self):
         # 无 DB 计划 → 空配置，避免继续合成旧计划或全量默认材料。

@@ -32,7 +32,7 @@ def test_box_completed_head_is_skipped_before_selecting_next_skill(next_skill):
             {
                 "data": {
                     "characters": [{"id": "char_b", "skills": [{"level": 3}]}],
-                    "items": [],
+                    "items": [{"id": "3302", "count": 300}],
                 }
             }
         )
