@@ -2,19 +2,27 @@
   <div v-if="summary" class="mastery-materials">
     <n-space align="center" justify="space-between" :size="8">
       <n-text strong>{{ title }}</n-text>
-      <n-tag :type="summary.craftable ? 'success' : 'warning'" size="small" :bordered="false">
+      <n-tag :type="summary.craftable ? 'success' : 'error'" size="small" :bordered="false">
         {{ materialStatus(summary) }}
       </n-tag>
     </n-space>
     <n-text v-if="!summary.materials.length" depth="3">无需继续准备材料</n-text>
     <template v-else>
+      <div v-if="missingSkills.length" class="missing-materials">
+        <n-text type="error">缺料技能</n-text>
+        <n-space :size="4" wrap>
+          <n-tag v-for="skill in missingSkills" :key="skill.key" size="small" type="error">
+            {{ skill.name }} {{ skill.skill_name }}
+          </n-tag>
+        </n-space>
+      </div>
       <n-text depth="3" class="inventory-hint">数量：库存 / 需要</n-text>
       <div class="material-grid">
         <div v-for="material in summary.materials" :key="material.id" class="material-row">
           <n-avatar :src="'/depot/' + material.name + '.webp'" :size="28" :bordered="false" />
           <div>
             <div>{{ material.name }}</div>
-            <n-text :type="material.owned >= material.required ? 'success' : 'warning'">
+            <n-text :type="material.owned < material.required ? 'error' : undefined">
               {{ material.owned }} / {{ material.required }}
             </n-text>
           </div>
@@ -33,7 +41,7 @@
                 <n-avatar :src="'/depot/' + material.name + '.webp'" :size="24" :bordered="false" />
                 <div>
                   <div>{{ material.name }}</div>
-                  <n-text :type="material.owned >= material.required ? 'success' : 'warning'">
+                  <n-text :type="material.owned < material.required ? 'error' : undefined">
                     {{ material.owned }} / {{ material.required }}
                   </n-text>
                 </div>
@@ -43,17 +51,17 @@
         </n-collapse-item>
       </n-collapse>
       <div v-if="blueMissing.length" class="missing-materials">
-        <n-text type="warning">仍缺蓝材料（T3）</n-text>
+        <n-text type="error">仍缺蓝材料（T3）</n-text>
         <n-space :size="4" wrap>
-          <n-tag v-for="material in blueMissing" :key="material.id" size="small" type="warning">
+          <n-tag v-for="material in blueMissing" :key="material.id" size="small" type="error">
             {{ material.name }} ×{{ material.count }}
           </n-tag>
         </n-space>
       </div>
       <div v-if="otherMissing.length" class="missing-materials">
-        <n-text type="warning">其他缺少材料</n-text>
+        <n-text type="error">其他缺少材料</n-text>
         <n-space :size="4" wrap>
-          <n-tag v-for="material in otherMissing" :key="material.id" size="small" type="warning">
+          <n-tag v-for="material in otherMissing" :key="material.id" size="small" type="error">
             {{ material.name }} ×{{ material.count }}
           </n-tag>
         </n-space>
@@ -69,6 +77,7 @@ import { materialStatus } from '@/utils/masteryMaterials'
 const props = defineProps({
   summary: Object,
   expandCrafting: Boolean,
+  missingSkills: { type: Array, default: () => [] },
   title: { type: String, default: '材料消耗与库存' }
 })
 const craftingGroups = computed(() => {

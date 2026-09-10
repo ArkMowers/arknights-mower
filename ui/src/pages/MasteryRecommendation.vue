@@ -117,6 +117,7 @@
           <MasteryMaterials
             v-else
             :summary="planMaterials"
+            :missing-skills="missingPlanSkills"
             expand-crafting
             title="计划剩余总材料消耗"
           />
@@ -167,7 +168,7 @@
                   </n-space>
                   <n-space :size="4">
                     <n-tag
-                      :type="rec.material_summary?.craftable ? 'success' : 'warning'"
+                      :type="rec.material_summary?.craftable ? 'success' : 'error'"
                       size="small"
                     >
                       {{ materialStatus(rec.material_summary) }}
@@ -1458,6 +1459,10 @@ function visibleRecs(op) {
 }
 
 const planMaterials = ref(null)
+const missingPlanSkills = computed(() => {
+  const keys = new Set(planMaterials.value?.missing_skills || [])
+  return planEntries.value.filter((entry) => keys.has(entry.key))
+})
 const materialsLoading = ref(false)
 const materialsError = ref('')
 let materialRequest = 0
@@ -1465,7 +1470,7 @@ let materialTimer
 
 async function refreshT3Summary() {
   const request = ++materialRequest
-  const keys = Object.keys(plan.value).filter((key) => plan.value[key])
+  const keys = planEntries.value.map((entry) => entry.key)
   if (!keys.length) {
     planMaterials.value = null
     materialsLoading.value = false

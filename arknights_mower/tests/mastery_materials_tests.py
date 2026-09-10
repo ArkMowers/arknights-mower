@@ -179,7 +179,7 @@ def test_lower_tiers_are_shown_when_they_can_complete_crafting():
     result = budget({"t3": 1}, {"t2": 4, "t1": 3})
     assert result["craftable"]
     assert [(r["id"], r["required"]) for r in result["crafting"]] == [
-        ("t2", 5),
+        ("t2", 4),
         ("t1", 3),
     ]
 
@@ -194,3 +194,70 @@ def test_chip_conversion_recipes_do_not_break_mastery_budgeting():
 
 def test_empty_plan_does_not_require_box_data():
     assert plan_material_summary([])["materials"] == []
+
+
+def test_missing_skills_follow_plan_order_and_share_inventory():
+    calculator = MaterialBudget(resources(), {"t3": 5, "t5": 1})
+    entries = [
+        ("first", [{"id": "t3", "count": 4}]),
+        ("second", [{"id": "t3", "count": 4}]),
+        ("stocked", [{"id": "t5", "count": 1}]),
+    ]
+    result = calculator.calculate_plan(entries)
+    assert result["missing_skills"] == ["second"]
+    assert result["missing"][0]["count"] == 3
+    assert {row["id"] for row in result["materials"]} == {"t3", "t5"}
+    assert calculator.calculate_plan([entries[1], entries[0], entries[2]])[
+        "missing_skills"
+    ] == ["first"]
+
+
+def test_book_shortages_are_displayed_without_listing_skills():
+    result = MaterialBudget(resources(), {}).calculate_plan(
+        [("books_only", [{"id": "3303", "count": 2}])]
+    )
+    assert result["missing_skills"] == []
+    assert not result["craftable"]
+    assert [(row["id"], row["count"]) for row in result["missing"]] == [("3303", 2)]
+
+
+def test_mixed_shortages_only_list_skills_lacking_elite_materials():
+    result = MaterialBudget(resources(), {"t3": 3}).calculate_plan(
+        [
+            ("craftable", [{"id": "t4", "count": 1}]),
+            ("books_only", [{"id": "3303", "count": 2}]),
+            ("elite_missing", [{"id": "t4", "count": 1}]),
+        ]
+    )
+    assert result["missing_skills"] == ["elite_missing"]
+    assert {row["id"]: row["count"] for row in result["missing"]} == {
+        "3303": 2,
+        "t3": 3,
+    }
+
+
+@pytest.mark.parametrize(
+    "stock,expected_missing,expected_spent",
+    [
+        ({"t2": 4, "t1": 3}, 2, {"t2": 4, "t1": 3}),
+        ({"t2": 8, "t1": 3}, 2, {"t2": 5}),
+        ({"t2": 10, "t1": 0}, 1, {"t2": 10}),
+        ({"t2": 4, "t1": 2}, 3, {}),
+    ],
+)
+def test_lower_tier_consumption_is_capped_and_remaining_shortage_stays_blue(
+    stock, expected_missing, expected_spent
+):
+    result = budget({"t3": 3}, stock)
+    assert [(row["id"], row["count"]) for row in result["missing"]] == [
+        ("t3", expected_missing)
+    ]
+    spent = {row["id"]: row["required"] for row in result["crafting"]}
+    assert spent == expected_spent
+    assert all(count <= stock.get(item, 0) for item, count in spent.items())
+
+
+def test_lower_tier_direct_and_crafting_consumption_are_both_displayed():
+    result = budget({"t3": 1, "t2": 2}, {"t2": 7})
+    assert result["craftable"]
+    assert [(row["id"], row["required"]) for row in result["crafting"]] == [("t2", 7)]

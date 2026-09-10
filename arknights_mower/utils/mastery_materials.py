@@ -41,9 +41,10 @@ class MaterialBudget:
         return self.depths[key]
 
     def _consume(self, key, count, stock, trace=None):
-        if trace is not None:
-            trace[key] += count
         used = min(stock.get(key, 0), count)
+        if trace is not None and used:
+            # Show inventory actually spent, not intermediates made during crafting.
+            trace[key] += used
         stock[key] = stock.get(key, 0) - used
         count -= used
         if not count:
@@ -132,6 +133,7 @@ class MaterialBudget:
         known_rows = {row["id"]: row for row in rows}
         for key, count in lower_demand.items():
             if key in known_rows:
+                known_rows[key]["required"] += count
                 continue
             item = self.items.get(key, {})
             rows.append(
@@ -162,10 +164,36 @@ class MaterialBudget:
             "craftable": not missing,
         }
 
+    def calculate_plan(self, entries):
+        """Attribute new elite-material shortages in plan order using shared stock."""
+        demand = Counter()
+        previous_missing = {}
+        missing_skills = []
+        summary = self.calculate([])
+        for key, materials in entries:
+            for material in materials:
+                demand[material["id"]] += material["count"]
+            # Aggregate first: each pass is bounded by material types, not plan length.
+            summary = self.calculate(
+                [{"id": item, "count": count} for item, count in demand.items()]
+            )
+            missing = {
+                row["id"]: row["count"]
+                for row in summary["missing"]
+                if not row["id"].startswith("330")
+            }
+            if any(
+                count > previous_missing.get(item, 0) for item, count in missing.items()
+            ):
+                missing_skills.append(key)
+            previous_missing = missing
+        summary["missing_skills"] = missing_skills
+        return summary
+
 
 def plan_material_summary(planned_keys):
     if not planned_keys:
-        return MaterialBudget({}, {}).calculate([])
+        return MaterialBudget({}, {}).calculate_plan([])
 
     import json
 
@@ -183,8 +211,8 @@ def plan_material_summary(planned_keys):
         key = f"{plan['char_id']}_{plan['skill_index']}"
         if key not in saved or plan["target_level"] > saved[key]["target_level"]:
             saved[key] = plan
-    materials = []
-    for key in set(planned_keys):
+    entries = []
+    for key in dict.fromkeys(planned_keys):
         char_id, skill_index = key.rsplit("_", 1)
         skill_index = int(skill_index)
         char = characters.get(char_id)
@@ -201,7 +229,9 @@ def plan_material_summary(planned_keys):
             if isinstance(runtime, str):
                 runtime = json.loads(runtime)
             current = max(current, runtime.get("level") or current + 1)
+        materials = []
         for level in definitions[skill_index].get("levels", [])[current:target]:
             materials.extend(level.get("materials", []))
+        entries.append((key, materials))
     inventory = {item["id"]: int(item.get("count", 0)) for item in box.get("items", [])}
-    return MaterialBudget(skills, inventory, workshop_formula).calculate(materials)
+    return MaterialBudget(skills, inventory, workshop_formula).calculate_plan(entries)
