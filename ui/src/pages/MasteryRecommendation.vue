@@ -81,8 +81,7 @@
         style="min-width: 100px"
       />
       <n-checkbox v-model:checked="showOnlyPlanned">只看计划</n-checkbox>
-      <n-checkbox v-model:checked="filterAchievable">材料充足</n-checkbox>
-      <n-checkbox v-model:checked="decomposeT3">缺料拆解为T3</n-checkbox>
+      <n-checkbox v-model:checked="filterAchievable">材料充足或可合成</n-checkbox>
     </n-space>
 
     <n-divider />
@@ -112,18 +111,16 @@
     <n-empty v-else-if="displayList.length === 0" :description="emptyText" />
 
     <div v-else class="mastery-list">
-      <!-- 计划内 T3 缺料汇总 -->
-      <n-card
-        v-if="plannedT3Summary.length"
-        size="small"
-        title="计划缺料汇总（T3）"
-        style="margin-bottom: 8px"
-      >
-        <n-space :size="4" wrap>
-          <n-tag v-for="m in plannedT3Summary" :key="m.id" type="warning" size="small">
-            {{ m.name }} x{{ m.count }}
-          </n-tag>
-        </n-space>
+      <n-card v-if="planEntries.length" size="small" style="margin-bottom: 12px">
+        <n-spin :show="materialsLoading">
+          <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
+          <MasteryMaterials
+            v-else
+            :summary="planMaterials"
+            expand-crafting
+            title="计划剩余总材料消耗"
+          />
+        </n-spin>
       </n-card>
 
       <n-collapse accordion>
@@ -169,8 +166,11 @@
                     >
                   </n-space>
                   <n-space :size="4">
-                    <n-tag :type="rec.full_chain_achievable ? 'success' : 'warning'" size="small">
-                      {{ rec.full_chain_achievable ? '材料充足' : '材料不足' }}
+                    <n-tag
+                      :type="rec.material_summary?.craftable ? 'success' : 'warning'"
+                      size="small"
+                    >
+                      {{ materialStatus(rec.material_summary) }}
                     </n-tag>
                     <n-button
                       size="tiny"
@@ -196,48 +196,7 @@
                   >总训练时间: {{ formatTime(rec.total_time) }} |
                   {{ rec.remaining_levels }}级专精</n-text
                 >
-                <n-text depth="3" class="section-label">所需材料:</n-text>
-                <n-grid :x-gap="8" :y-gap="4" cols="3 m:4 l:5 xl:6" responsive="screen">
-                  <n-gi v-for="mat in rec.chain_needed_materials" :key="mat.id">
-                    <n-thing>
-                      <template #avatar>
-                        <n-avatar
-                          :src="'/depot/' + mat.name + '.webp'"
-                          :size="24"
-                          fallback-src="/depot/源岩.webp"
-                        />
-                      </template>
-                      <template #header>
-                        <n-text :depth="chainHas(rec, mat.id) ? 1 : 3" style="font-size: 11px">{{
-                          mat.name
-                        }}</n-text>
-                      </template>
-                      <template #description>
-                        <n-text
-                          :type="chainHas(rec, mat.id) ? 'success' : 'error'"
-                          style="font-size: 11px"
-                          >x{{ mat.count }}</n-text
-                        >
-                      </template>
-                    </n-thing>
-                  </n-gi>
-                </n-grid>
-                <div v-if="currentMissing(rec).length" class="missing-section">
-                  <n-text depth="3" type="error" style="font-size: 11px"
-                    >缺少{{ decomposeT3 ? '(T3拆解)' : '' }}:</n-text
-                  >
-                  <n-space :size="2">
-                    <n-tag v-for="m in currentMissing(rec)" :key="m.id" type="error" size="small">
-                      {{ m.name }}x{{ decomposeT3 ? m.count : m.count }}
-                      <n-text
-                        v-if="decomposeT3 && m.total"
-                        depth="3"
-                        style="font-size: 10px; margin-left: 2px"
-                        >(需{{ m.total }}有{{ m.owned }})</n-text
-                      >
-                    </n-tag>
-                  </n-space>
-                </div>
+                <MasteryMaterials :summary="rec.material_summary" />
               </n-space>
             </n-card>
           </div>
@@ -273,20 +232,7 @@
           trainingWarning(cd.op?.name)
         }}</n-text>
         <n-divider />
-        <n-text :type="cd.rec?.full_chain_achievable ? 'success' : 'warning'"
-          >材料: {{ cd.rec?.full_chain_achievable ? '充足 ✓' : '不足 ✗' }}</n-text
-        >
-        <n-text v-if="currentMissing(cd.rec).length" style="margin-top: 4px">
-          缺少:
-          <n-tag
-            v-for="m in currentMissing(cd.rec)"
-            :key="m.id"
-            type="error"
-            size="small"
-            style="margin-left: 4px"
-            >{{ m.name }}x{{ m.count }}</n-tag
-          >
-        </n-text>
+        <MasteryMaterials :summary="cd.rec?.material_summary" />
       </n-space>
       <template #footer>
         <n-space justify="end">
@@ -440,6 +386,7 @@
       preset="card"
       title="专精计划"
       style="width: min(600px, 95vw)"
+      content-style="max-height: 75vh; overflow-y: auto"
       :mask-closable="false"
       @update:show="onPlanModalShow"
     >
@@ -468,6 +415,17 @@
           </template>
         </draggable>
         <n-text v-if="!planEntries.length" depth="3">未添加计划</n-text>
+        <n-card v-if="planEntries.length" size="small">
+          <n-spin :show="materialsLoading">
+            <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
+            <MasteryMaterials
+              v-else
+              :summary="planMaterials"
+              expand-crafting
+              title="计划剩余总材料消耗"
+            />
+          </n-spin>
+        </n-card>
         <n-divider />
         <n-scrollbar style="max-height: 50vh">
           <div v-for="op in filteredPlanOperators" :key="op.char_id" class="plan-op-row">
@@ -630,7 +588,9 @@ import {
   workshopTraineeWarning
 } from '@/utils/workshopOperators'
 import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import MasteryMaterials from '@/components/MasteryMaterials.vue'
+import { materialStatus } from '@/utils/masteryMaterials'
 import {
   NAlert,
   NAvatar,
@@ -715,7 +675,6 @@ const filterRarity = ref([])
 const filterProfession = ref([])
 const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
-const decomposeT3 = ref(false)
 // 空闲状态三态：all=全部 idle=空闲 busy=非空闲
 const idleFilter = ref('all')
 const idleFilterOptions = [
@@ -848,8 +807,35 @@ function getStatusType(status) {
   return map[status] || 'default'
 }
 
+async function warnMaterialShortage(additions) {
+  const keys = [
+    ...new Set([...Object.keys(plan.value).filter((key) => plan.value[key]), ...additions])
+  ]
+  try {
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/mastery-t3-summary`,
+      {
+        planned_skills: keys
+      },
+      { timeout: 5000 }
+    )
+    const summary = response.data?.material_summary
+    if (!summary) throw new Error('材料数据不可用')
+    if (!summary.available) {
+      message.warning(
+        summary.craftable
+          ? '计划总需求超出成品库存，可由现有材料合成；仍可加入计划。'
+          : '计划总材料不足（含技巧概要），缺口可在专精计划中查看；仍可加入计划。'
+      )
+    }
+  } catch {
+    message.warning('暂时无法核对总材料库存，仍可加入计划，请稍后刷新查看。')
+  }
+}
+
 async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
+  if (!plan.value[k]) await warnMaterialShortage([k])
   if (!plan.value[k] && workshopTrainingWarning(op.name)) {
     message.warning(workshopTrainingWarning(op.name))
   }
@@ -907,6 +893,10 @@ async function addAllToPlan(op, draft = false) {
     message.warning(trainingWarning(op.name))
   }
   const recs = op.recommendations
+  const additions = recs
+    .map((rec) => planKey(op.char_id, rec.skill_index))
+    .filter((key) => !plan.value[key])
+  if (additions.length) await warnMaterialShortage(additions)
   if (
     recs.some((rec) => !plan.value[planKey(op.char_id, rec.skill_index)]) &&
     workshopTrainingWarning(op.name)
@@ -1466,7 +1456,7 @@ const displayList = computed(() => {
     list = list
       .map((op) => ({
         ...op,
-        recommendations: op.recommendations.filter((r) => r.full_chain_achievable)
+        recommendations: op.recommendations.filter((r) => r.material_summary?.craftable)
       }))
       .filter((op) => op.recommendations.length > 0)
   return list
@@ -1478,39 +1468,55 @@ function visibleRecs(op) {
   return op.recommendations
 }
 
-const plannedT3Summary = ref([])
+const planMaterials = ref(null)
+const materialsLoading = ref(false)
+const materialsError = ref('')
+let materialRequest = 0
+let materialTimer
 
 async function refreshT3Summary() {
-  const keys = Object.keys(plan.value).filter((k) => plan.value[k])
+  const request = ++materialRequest
+  const keys = Object.keys(plan.value).filter((key) => plan.value[key])
   if (!keys.length) {
-    plannedT3Summary.value = []
+    planMaterials.value = null
+    materialsLoading.value = false
     return
   }
+  materialsLoading.value = true
+  materialsError.value = ''
   try {
-    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-t3-summary`, {
+    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-t3-summary`, {
       planned_skills: keys
     })
-    plannedT3Summary.value = r.data?.t3_summary || []
-  } catch {
-    plannedT3Summary.value = []
+    if (request !== materialRequest) return
+    if (response.data.error) throw new Error(response.data.error)
+    planMaterials.value = response.data.material_summary
+  } catch (error) {
+    if (request === materialRequest) {
+      planMaterials.value = null
+      materialsError.value = error.response?.data?.error || '材料计算失败，请刷新后重试'
+    }
+  } finally {
+    if (request === materialRequest) materialsLoading.value = false
   }
 }
 
 watch(
-  plan,
+  [plan, planStatus, () => store.recommendations],
   () => {
-    if (store.recommendations.length) refreshT3Summary()
+    ++materialRequest
+    clearTimeout(materialTimer)
+    materialsLoading.value = !!Object.values(plan.value).some(Boolean)
+    materialTimer = setTimeout(refreshT3Summary, 200)
   },
   { deep: true }
 )
+onUnmounted(() => {
+  ++materialRequest
+  clearTimeout(materialTimer)
+})
 
 // ─── 工具函数 ───
-function chainHas(rec, matId) {
-  return !rec.chain_missing_materials?.some((m) => m.id === matId)
-}
-function currentMissing(rec) {
-  return decomposeT3.value ? rec.chain_missing_t3 || [] : rec.chain_missing_materials || []
-}
 function formatTime(s) {
   const h = Math.floor(s / 3600),
     m = Math.floor((s % 3600) / 60)
@@ -1541,6 +1547,7 @@ function confirmSkill(op, rec) {
 async function doAddTask() {
   showConfirm.value = false
   const { op, rec } = cd
+  await warnMaterialShortage([planKey(op.char_id, rec.skill_index)])
   if (workshopTrainingWarning(op.name)) message.warning(workshopTrainingWarning(op.name))
   if (trainingWarning(op.name)) message.warning(trainingWarning(op.name))
   try {

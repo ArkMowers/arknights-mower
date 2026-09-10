@@ -188,6 +188,10 @@ def get_mastery_recommendations():
         if count > 0:
             inventory[item_id] = count
 
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_materials import MaterialBudget
+
+    material_budget = MaterialBudget(skill_data, inventory, workshop_formula)
     operators = []
     skill_name_cache = {}
 
@@ -320,6 +324,7 @@ def get_mastery_recommendations():
                     "remaining_levels": end_stage - start_stage,
                     "total_time": total_time,
                     "full_chain_achievable": full_chain_achievable,
+                    "material_summary": material_budget.calculate(chain_needed_list),
                     "chain_needed_materials": chain_needed_list,
                     "chain_missing_materials": chain_missing_list,
                     "chain_missing_t3": chain_missing_t3,
