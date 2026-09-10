@@ -380,7 +380,13 @@ class Worker:
         )
         self.report("downloading", "获取目标源码")
         self.run_command(
-            [self.job["git"], "fetch", "--no-tags", "origin", self.job["ref"]]
+            [
+                self.job["git"],
+                "fetch",
+                "--no-tags",
+                self.job.get("source_url", "origin"),
+                self.job["ref"],
+            ]
         )
         if self.git_output("rev-parse", "FETCH_HEAD^{commit}") != self.job["commit"]:
             raise ValueError("远端版本已改变，请重新检查更新")
@@ -403,7 +409,13 @@ class Worker:
                     "目标版本使用 Git LFS，请安装 Git LFS 并确保启动环境可以运行 git lfs；当前实例尚未停止"
                 ) from exc
             self.run_command(
-                [self.job["git"], "lfs", "fetch", "origin", self.job["commit"]]
+                [
+                    self.job["git"],
+                    "lfs",
+                    "fetch",
+                    self.job.get("source_url", "origin"),
+                    self.job["commit"],
+                ]
             )
 
     def ensure_installer(self):
@@ -915,7 +927,7 @@ class Worker:
         )
 
     def restart(self, records, verify=True):
-        if self.job.get("operation") == "source-version":
+        if self.job.get("operation") in ("source-version", "source-pr"):
             self.clear_source_runtime_snapshots(records)
         self.report("restarting", "恢复实例，等待网页服务就绪")
         processes = []

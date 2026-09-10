@@ -98,6 +98,14 @@ describe('offline software package installation', () => {
     expect(state.client.post).not.toHaveBeenCalled()
   })
 
+  it('keeps the default update channel after a manual PR installation', async () => {
+    await mount(new File(['offline'], 'package.zip'))
+    expect(component.channel.value).toBe('beta')
+    await component.install(false, { check_id: 'pr', source_pr: 7 })
+    expect(component.channel.value).toBe('beta')
+    expect(component.autoUpdate.value).toBe(false)
+  })
+
   it.each([true, false])(
     'inspects local contents before confirming, install=%s',
     async (confirm) => {

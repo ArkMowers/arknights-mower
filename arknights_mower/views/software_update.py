@@ -68,14 +68,31 @@ def check():
 @software_update_bp.get("/source/history")
 @result
 def source_history():
-    return updater.source_history(request.args.get("branch"))
+    return updater.source_history(
+        request.args.get("branch"), request.args.get("remote")
+    )
 
 
 @software_update_bp.post("/source/check")
 @result
 def source_check():
     data = request.get_json()
-    return updater.check_source_version(data.get("reference"), data.get("branch"))
+    return updater.check_source_version(
+        data.get("reference"), data.get("branch"), data.get("remote")
+    )
+
+
+@software_update_bp.get("/source/pulls")
+@result
+def source_pulls():
+    return updater.source_pulls(request.args.get("remote"))
+
+
+@software_update_bp.post("/source/pr/check")
+@result
+def source_pull_check():
+    data = request.get_json()
+    return updater.check_source_pull(data.get("number"), data.get("remote"))
 
 
 @software_update_bp.post("/start")

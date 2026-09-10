@@ -6,6 +6,8 @@ import { confirmSourceVersion } from '@/utils/softwareUpdate'
 
 const props = defineProps({
   initialBranch: { type: String, default: 'alpha' },
+  initialRemote: { type: String, default: 'origin' },
+  remotes: { type: Array, default: () => [] },
   running: Boolean,
   blocked: Boolean,
   forceSupported: Boolean,
@@ -15,6 +17,14 @@ const emit = defineEmits(['install'])
 const dialogs = useDialog()
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
 const {
+  mode,
+  pulls,
+  pullNumber,
+  selectMode,
+  selectPull,
+  refresh,
+  remote,
+  selectRemote,
   branch,
   reference,
   history,
@@ -22,15 +32,26 @@ const {
   loading,
   checking,
   error,
-  loadHistory,
   selectBranch,
   checkVersion
-} = useSourceVersions(inject('axios'), base, props.initialBranch)
+} = useSourceVersions(inject('axios'), base, props.initialBranch, props.initialRemote)
 const force = ref(false)
+const remoteOptions = computed(() => {
+  const options = [...props.remotes]
+  if (remote.value && !options.some((item) => item.value === remote.value))
+    options.push({ value: remote.value, label: remote.value })
+  return options
+})
 const branchOptions = computed(() =>
-  [...new Set([branch.value, ...(history.value?.branches || [])])].map((value) => ({
+  [...new Set([branch.value, ...(history.value?.branches || [])])].filter(Boolean).map((value) => ({
     label: value,
     value
+  }))
+)
+const pullOptions = computed(() =>
+  pulls.value.map((pull) => ({
+    label: `#${pull.number} · ${pull.title}`,
+    value: pull.number
   }))
 )
 const commits = computed(() =>
@@ -48,7 +69,7 @@ const canInstall = computed(
 )
 
 function expand(names) {
-  if (names.includes('source') && !history.value && !loading.value) loadHistory()
+  if (names.includes('source') && !history.value && !loading.value) refresh()
 }
 
 function confirm() {
@@ -64,23 +85,49 @@ function confirm() {
   <n-collapse @update:expanded-names="expand">
     <n-collapse-item title="源码版本管理" name="source">
       <n-space vertical :size="12" class="source-versions">
-        <p class="hint">可以选择最近20次提交，或手动输入SHA/tag</p>
+        <p v-if="mode === 'branch'" class="hint">可以选择最近20次提交，或手动输入SHA/tag</p>
         <p v-if="history" class="current version">
           当前检出：{{ history.current_branch || '分离 HEAD' }} ·
           {{ history.current_commit.slice(0, 12) }}
         </p>
-        <n-form-item label="远端分支">
+        <n-form-item label="远端仓库">
+          <n-select
+            :value="remote"
+            :options="remoteOptions"
+            filterable
+            tag
+            size="small"
+            :disabled="running || checking"
+            placeholder="选择远端，或输入 GitHub fork 地址后回车"
+            :input-props="{ 'aria-label': '源码远端仓库' }"
+            @update:value="selectRemote"
+          />
+        </n-form-item>
+        <p class="hint">支持公开 GitHub 仓库地址或 owner/repo</p>
+        <n-form-item label="选择方式">
+          <n-radio-group
+            :value="mode"
+            size="small"
+            :disabled="running || checking"
+            @update:value="selectMode"
+          >
+            <n-radio-button value="branch">分支 / 提交</n-radio-button>
+            <n-radio-button value="pr">开放 PR</n-radio-button>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item v-if="mode === 'branch'" label="远端分支">
           <n-select
             :value="branch"
             :options="branchOptions"
             filterable
+            tag
             size="small"
             :disabled="running || checking"
             :input-props="{ 'aria-label': '源码远端分支' }"
             @update:value="selectBranch"
           />
         </n-form-item>
-        <n-form-item label="目标版本">
+        <n-form-item v-if="mode === 'branch'" label="目标版本">
           <n-select
             v-model:value="reference"
             :options="commits"
@@ -98,21 +145,37 @@ function confirm() {
             :input-props="{ 'aria-label': '源码目标版本' }"
           />
         </n-form-item>
+        <n-form-item v-if="mode === 'pr'" label="开放 PR">
+          <n-select
+            :value="pullNumber"
+            :options="pullOptions"
+            filterable
+            size="small"
+            :loading="loading"
+            :disabled="running || loading || checking"
+            placeholder="选择 PR 后检查是否可合并"
+            :input-props="{ 'aria-label': '源码开放 PR' }"
+            @update:value="selectPull"
+          />
+        </n-form-item>
+        <p class="hint">
+          {{
+            mode === 'pr'
+              ? '仅支持开放且无合并冲突的 PR，更新到源分支提交。后续检查仍跟随原来的仓库、分支和渠道。'
+              : '提交切换任务后记住所选仓库和分支，供后续开发版检查使用。'
+          }}
+        </p>
         <n-checkbox v-model:checked="force" :disabled="running || !forceSupported">
           强制覆盖本地源码改动（不备份）
         </n-checkbox>
         <n-space>
-          <n-button
-            size="small"
-            :loading="loading"
-            :disabled="running || checking"
-            @click="loadHistory"
+          <n-button size="small" :loading="loading" :disabled="running || checking" @click="refresh"
             >刷新列表</n-button
           >
           <n-button
             size="small"
             :loading="checking"
-            :disabled="running || checking || !reference.trim()"
+            :disabled="running || checking || (mode === 'pr' ? !pullNumber : !reference.trim())"
             @click="checkVersion"
             >检查版本</n-button
           >
@@ -122,6 +185,10 @@ function confirm() {
         </n-space>
         <n-alert v-if="error" type="error" role="alert">{{ error }}</n-alert>
         <div v-if="checked" class="target" aria-live="polite">
+          <p class="version">
+            目标仓库：{{ checked.source_repo
+            }}{{ checked.source_pr ? ` · PR #${checked.source_pr}` : '' }}
+          </p>
           <a :href="checked.url" target="_blank" rel="noopener noreferrer" class="version">{{
             checked.sha
           }}</a>

@@ -224,6 +224,8 @@ jobs:
             arknights_mower.tests.software_update_tests.ReleaseDiscoveryTests \
             arknights_mower.tests.software_update_tests.ManualPackageTests \
             arknights_mower.tests.software_package_tests \
+            arknights_mower.tests.source_version_tests \
+            arknights_mower.tests.source_remote_tests \
             arknights_mower.tests.update_runtime_tests \
             arknights_mower.tests.update_compat_tests \
             arknights_mower.tests.res_version_tests \

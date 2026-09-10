@@ -30,6 +30,14 @@ class SourceVersionTests(unittest.TestCase):
                 update, "source_repository", return_value=("b" * 40, "alpha", "")
             ),
             patch.dict(update._checks, {}, clear=True),
+            patch.object(
+                update,
+                "resolve_source_remote",
+                return_value={
+                    "source_remote": "origin",
+                    **update.normalize_source_url(update.REPO),
+                },
+            ),
         ):
             context.start()
             self.addCleanup(context.stop)
@@ -41,7 +49,7 @@ class SourceVersionTests(unittest.TestCase):
             },
         }
 
-    def github(self, path, proxy):
+    def github(self, path, proxy, *, repo=update.REPO):
         if path.startswith("/branches?"):
             return [{"name": "alpha"}, {"name": "feature/中文"}]
         if path.startswith("/branches/"):
@@ -86,7 +94,7 @@ class SourceVersionTests(unittest.TestCase):
             self.assertTrue(start.call_args.kwargs["force"])
 
     def test_unsupported_target_is_rejected_without_creating_install_plan(self):
-        def github(path, proxy):
+        def github(path, proxy, *, repo=update.REPO):
             if path.startswith("/contents/"):
                 response = requests.Response()
                 response.status_code = 404
@@ -128,9 +136,7 @@ class SourceVersionTests(unittest.TestCase):
         ):
             result = update.check("dev", proxy="")
         self.assertIn("/commits/feature%2F", github.call_args.args[0])
-        self.assertEqual(
-            update._checks[result["check_id"]]["ref"], "refs/heads/feature/中文"
-        )
+        self.assertEqual(update._checks[result["check_id"]]["ref"], "a" * 40)
 
     def test_read_and_check_routes_require_existing_authorization(self):
         app = Flask(__name__)
@@ -164,6 +170,7 @@ class SourceVersionTests(unittest.TestCase):
             "operation": "source-version",
             "channel": "dev",
             "source_branch": "feature/中文",
+            "source_url": "https://github.com/personal/mower.git",
             "version": "commit@aaaaaaa",
         }
         with (
@@ -194,6 +201,9 @@ class SourceVersionTests(unittest.TestCase):
         self.assertFalse(saved["auto_update"])
         self.assertTrue(saved["auto_check"])
         self.assertEqual(saved["source_branch"], "feature/中文")
+        self.assertEqual(
+            saved["source_remote"], "https://github.com/personal/mower.git"
+        )
         self.assertEqual(saved["channel"], "dev")
 
 

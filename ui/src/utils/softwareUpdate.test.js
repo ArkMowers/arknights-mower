@@ -93,10 +93,17 @@ describe('source version confirmation', () => {
     async (force) => {
       const dialogs = { warning: vi.fn() }
       const install = vi.fn()
-      const target = { sha: 'a'.repeat(40), check_id: 'selected', force }
+      const target = {
+        sha: 'a'.repeat(40),
+        check_id: 'selected',
+        force,
+        source_repo: 'personal/mower',
+        source_pr: 7
+      }
       confirmSourceVersion(dialogs, target, 3, install)
       const options = dialogs.warning.mock.calls[0][0]
       expect(options.content).toContain(target.sha)
+      expect(options.content).toContain('personal/mower 的 PR #7')
       expect(options.content).toContain('3 个实例')
       expect(options.content).toContain('关闭软件自动更新')
       expect(options.content).toContain('专精计划和数据库记录保留')

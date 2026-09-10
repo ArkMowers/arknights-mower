@@ -1,6 +1,10 @@
 import { ref, watch } from 'vue'
 
-export function useSourceVersions(axios, base, initialBranch = 'alpha') {
+export function useSourceVersions(axios, base, initialBranch = 'alpha', initialRemote = 'origin') {
+  const mode = ref('branch')
+  const pulls = ref([])
+  const pullNumber = ref(null)
+  const remote = ref(initialRemote)
   const branch = ref(initialBranch)
   const reference = ref(initialBranch)
   const history = ref(null)
@@ -13,7 +17,7 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha') {
   const message = (err) => err.response?.data?.message || err.message || '操作失败，请重试'
 
   watch(
-    [branch, reference],
+    [mode, pullNumber, remote, branch, reference],
     () => {
       checked.value = null
       checkRequest++
@@ -25,18 +29,45 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha') {
   async function loadHistory() {
     const request = ++historyRequest
     const selected = branch.value
+    const selectedRemote = remote.value
     loading.value = true
     error.value = ''
     try {
-      const { data } = await axios.get(`${base}/source/history`, { params: { branch: selected } })
-      if (request !== historyRequest || selected !== branch.value) return
+      const { data } = await axios.get(`${base}/source/history`, {
+        params: { branch: selected, remote: selectedRemote }
+      })
+      if (
+        request !== historyRequest ||
+        selected !== branch.value ||
+        selectedRemote !== remote.value
+      )
+        return
       if (!data.ok) throw new Error(data.message)
       history.value = data
+      if (!selected) {
+        branch.value = data.branch
+        reference.value = data.branch
+      }
     } catch (err) {
-      if (request === historyRequest && selected === branch.value) error.value = message(err)
+      if (
+        request === historyRequest &&
+        selected === branch.value &&
+        selectedRemote === remote.value
+      )
+        error.value = message(err)
     } finally {
       if (request === historyRequest) loading.value = false
     }
+  }
+
+  function selectRemote(value) {
+    remote.value = value
+    branch.value = ''
+    reference.value = ''
+    history.value = null
+    pulls.value = []
+    pullNumber.value = null
+    return refresh()
   }
 
   function selectBranch(value) {
@@ -46,6 +77,40 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha') {
     return loadHistory()
   }
 
+  async function loadPulls() {
+    const request = ++historyRequest
+    const selectedRemote = remote.value
+    loading.value = true
+    checked.value = null
+    error.value = ''
+    try {
+      const { data } = await axios.get(`${base}/source/pulls`, {
+        params: { remote: selectedRemote }
+      })
+      if (request !== historyRequest || selectedRemote !== remote.value) return
+      if (!data.ok) throw new Error(data.message)
+      pulls.value = data.pulls
+    } catch (err) {
+      if (request === historyRequest) error.value = message(err)
+    } finally {
+      if (request === historyRequest) loading.value = false
+    }
+  }
+
+  function refresh() {
+    return mode.value === 'pr' ? loadPulls() : loadHistory()
+  }
+
+  function selectMode(value) {
+    mode.value = value
+    return refresh()
+  }
+
+  function selectPull(value) {
+    pullNumber.value = value
+    return checkVersion()
+  }
+
   async function checkVersion() {
     const request = ++checkRequest
     checked.value = null
@@ -53,11 +118,10 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha') {
     error.value = ''
     try {
       const { data } = await axios.post(
-        `${base}/source/check`,
-        {
-          reference: reference.value,
-          branch: branch.value
-        },
+        mode.value === 'pr' ? `${base}/source/pr/check` : `${base}/source/check`,
+        mode.value === 'pr'
+          ? { remote: remote.value, number: pullNumber.value }
+          : { remote: remote.value, reference: reference.value, branch: branch.value },
         { headers: { 'X-Mower-Update': '1' } }
       )
       if (request !== checkRequest) return
@@ -71,6 +135,14 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha') {
   }
 
   return {
+    mode,
+    pulls,
+    pullNumber,
+    selectMode,
+    selectPull,
+    refresh,
+    remote,
+    selectRemote,
     branch,
     reference,
     history,
