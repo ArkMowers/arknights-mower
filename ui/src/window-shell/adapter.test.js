@@ -12,6 +12,7 @@ function makeBridge(platform = 'windows') {
     maximize: vi.fn(async () => true),
     restore: vi.fn(async () => true),
     close: vi.fn(async () => true),
+    start_move: vi.fn(async () => true),
     start_resize: vi.fn(async () => true),
     get_platform: vi.fn(async () => ({ protocol: PROTOCOL, event: EVENT, platform })),
     get_window_state: vi.fn(async () => ({
@@ -146,5 +147,82 @@ describe('window shell adapter', () => {
     await expect(adapter.startResize('unexpected')).resolves.toBe(false)
     expect(bridge.start_resize).toHaveBeenCalledOnce()
     expect(bridge.start_resize).toHaveBeenCalledWith('bottom-right')
+  })
+
+  it('reports a title bar drag as started without waiting for the drag to end', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeBridge()
+    // The shell's move loop holds the mouse until the button comes up, so the
+    // bridge call settles only after the user lets go.
+    let finishDrag
+    bridge.start_move = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finishDrag = resolve
+        })
+    )
+    desktopWindow.pywebview = { api: bridge }
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+    await adapter.initialize()
+
+    await expect(adapter.startMove()).resolves.toBe(true)
+    expect(bridge.start_move).toHaveBeenCalledOnce()
+    finishDrag(true)
+  })
+
+  it('still reports the handover when the shell refuses the drag', async () => {
+    // A refused handover must not turn into an unhandled rejection: the drag is
+    // already gone at that point, so the only thing left to do is say so.
+    const desktopWindow = makeWindow()
+    const bridge = makeBridge()
+    bridge.start_move = vi.fn(async () => {
+      throw new Error('no move loop here')
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+    await adapter.initialize()
+
+    await expect(adapter.startMove()).resolves.toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('reports a drag the bridge could not even start', async () => {
+    // A synchronous throw means nothing owns the drag, so this is a refusal and
+    // not a handover -- and it must not escape as an unhandled rejection.
+    const desktopWindow = makeWindow()
+    const bridge = makeBridge()
+    bridge.start_move = vi.fn(() => {
+      throw new Error('bridge is gone')
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+    await adapter.initialize()
+
+    await expect(adapter.startMove()).resolves.toBe(false)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('keeps the shell usable when the backend cannot drag the window', async () => {
+    // A missing start_move costs the drag and nothing else. Rejecting the whole
+    // contract instead would leave a frameless window with no title bar, no
+    // controls and no way to move it, so the shell comes up and names the gap.
+    const desktopWindow = makeWindow()
+    const bridge = makeBridge()
+    delete bridge.start_move
+    desktopWindow.pywebview = { api: bridge }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+
+    await expect(adapter.initialize()).resolves.toBe(true)
+    expect(adapter.active.value).toBe(true)
+    expect(adapter.controls.value).toHaveLength(3)
+    await expect(adapter.startMove()).resolves.toBe(false)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

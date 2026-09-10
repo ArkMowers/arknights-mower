@@ -21,6 +21,11 @@ const REQUIRED_METHODS = [
   'get_window_state',
   'get_platform'
 ]
+// start_move is deliberately absent from that list. It is the one capability the
+// shell can do without: the controls and the resize grips still work, only the
+// drag is gone. Requiring it would reject the whole shell instead, and on a
+// frameless window that leaves no title bar, no controls and no drag at all.
+// initialize() warns when it is missing, so the gap is not silent.
 const CONTROL_METHODS = new Set(['minimize', 'maximize', 'restore', 'close'])
 const RESIZE_EDGES = new Set(WINDOW_RESIZE_EDGES)
 
@@ -175,6 +180,9 @@ export function createWindowShellAdapter({
       bridge = candidate
       platform.value = platformResult.platform
       state.value = { ...stateResult }
+      if (typeof candidate.start_move !== 'function') {
+        console.warn('window shell cannot drag the window: start_move is missing')
+      }
       active.value = true
       windowObject?.addEventListener?.(event, onNativeState)
       listeningEvent = event
@@ -207,6 +215,29 @@ export function createWindowShellAdapter({
   const restore = () => runControl('restore')
   const close = () => runControl('close')
   const toggleMaximize = () => (state.value.maximized ? restore() : maximize())
+
+  async function startMove() {
+    if (!active.value || !bridge) return false
+    let handover
+    try {
+      handover = bridge.start_move()
+    } catch (error) {
+      // The call never reached the shell, so nothing owns the drag.
+      console.warn('window shell drag handover failed', error)
+      return false
+    }
+    // The shell's move loop owns the mouse until the button comes up, so this
+    // settles only after the drag has already ended. Report the handover straight
+    // away, but do not let a late refusal disappear either: a title bar that hands
+    // the drag to nobody leaves the window unable to move at all.
+    Promise.resolve(handover).then(
+      (started) => {
+        if (started !== true) console.warn('window shell refused the drag handover')
+      },
+      (error) => console.warn('window shell drag handover failed', error)
+    )
+    return true
+  }
 
   async function startResize(edge) {
     if (!active.value || !bridge || !RESIZE_EDGES.has(edge) || state.value.maximized) {
@@ -247,6 +278,7 @@ export function createWindowShellAdapter({
     restore,
     close,
     toggleMaximize,
+    startMove,
     startResize,
     dispose
   }
