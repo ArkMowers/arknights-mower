@@ -261,3 +261,38 @@ def test_lower_tier_direct_and_crafting_consumption_are_both_displayed():
     result = budget({"t3": 1, "t2": 2}, {"t2": 7})
     assert result["craftable"]
     assert [(row["id"], row["required"]) for row in result["crafting"]] == [("t2", 7)]
+
+
+def test_craftable_materials_are_distinguished_from_unrelated_missing_materials():
+    result = budget({"t4": 1, "3303": 2}, {"t3": 3, "3302": 3})
+    assert not result["craftable"]
+    assert {row["id"]: row["craftable"] for row in result["materials"]} == {
+        "t4": True,
+        "3303": False,
+    }
+
+
+def test_lower_tier_crafting_marks_blue_and_high_materials_craftable():
+    result = budget({"t5": 1}, {"t4": 1, "t3": 2, "t2": 5})
+    assert result["craftable"]
+    assert all(row["craftable"] for row in result["materials"] + result["crafting"])
+    result = budget({"t5": 1}, {"t4": 1, "t3": 2, "t2": 4})
+    assert not result["materials"][0]["craftable"]
+    assert {row["id"]: row["craftable"] for row in result["crafting"]} == {
+        "t4": False,
+        "t3": False,
+    }
+
+
+def test_shared_ingredient_shortage_is_not_claimed_as_craftable_by_each_parent():
+    data = resources()
+    data["items"]["other_t4"] = {"name": "另一紫材料", "rarity": 4}
+    data["composite"]["other_t4"] = {"pathway": [{"id": "t3", "count": 3}]}
+    result = MaterialBudget(data, {"t3": 3}).calculate(
+        [
+            {"id": "t4", "count": 1},
+            {"id": "other_t4", "count": 1},
+        ]
+    )
+    assert all(not row["craftable"] for row in result["materials"])
+    assert result["missing"][0]["count"] == 3

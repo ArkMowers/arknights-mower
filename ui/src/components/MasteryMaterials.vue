@@ -2,7 +2,7 @@
   <div v-if="summary" class="mastery-materials">
     <n-space align="center" justify="space-between" :size="8">
       <n-text strong>{{ title }}</n-text>
-      <n-tag :type="summary.craftable ? 'success' : 'error'" size="small" :bordered="false">
+      <n-tag :type="materialStatusType(summary)" size="small" :bordered="false">
         {{ materialStatus(summary) }}
       </n-tag>
     </n-space>
@@ -22,7 +22,7 @@
           <n-avatar :src="'/depot/' + material.name + '.webp'" :size="28" :bordered="false" />
           <div>
             <div>{{ material.name }}</div>
-            <n-text :type="material.owned < material.required ? 'error' : undefined">
+            <n-text :type="materialQuantityType(material)">
               {{ material.owned }} / {{ material.required }}
             </n-text>
           </div>
@@ -41,7 +41,7 @@
                 <n-avatar :src="'/depot/' + material.name + '.webp'" :size="24" :bordered="false" />
                 <div>
                   <div>{{ material.name }}</div>
-                  <n-text :type="material.owned < material.required ? 'error' : undefined">
+                  <n-text :type="materialQuantityType(material)">
                     {{ material.owned }} / {{ material.required }}
                   </n-text>
                 </div>
@@ -72,7 +72,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { materialStatus } from '@/utils/masteryMaterials'
+import { materialStatus, materialStatusType, materialQuantityType } from '@/utils/masteryMaterials'
 
 const props = defineProps({
   summary: Object,

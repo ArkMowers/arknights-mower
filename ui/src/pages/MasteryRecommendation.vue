@@ -167,10 +167,7 @@
                     >
                   </n-space>
                   <n-space :size="4">
-                    <n-tag
-                      :type="rec.material_summary?.craftable ? 'success' : 'error'"
-                      size="small"
-                    >
+                    <n-tag :type="materialStatusType(rec.material_summary)" size="small">
                       {{ materialStatus(rec.material_summary) }}
                     </n-tag>
                     <n-button
@@ -593,7 +590,7 @@ import {
 import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
-import { materialStatus } from '@/utils/masteryMaterials'
+import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
 import {
   NAlert,
   NAvatar,

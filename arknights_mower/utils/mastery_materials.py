@@ -154,12 +154,28 @@ class MaterialBudget:
                     "direct": 0,
                 }
             )
+        # Propagate unresolved ingredient shortages upward through the shared
+        # budget, so unrelated craftable materials remain distinguishable.
+        missing_ids = {row["id"] for row in missing}
+        supply = {}
+        for row in sorted(rows, key=lambda row: self.depths.get(row["id"], 0)):
+            key = row["id"]
+            needs_crafting = row.get("to_craft", 0) > 0
+            row["craftable"] = not needs_crafting or (
+                key not in missing_ids
+                and all(
+                    supply.get(child, True)
+                    for child in self.recipes.get(key, ({}, 1))[0]
+                )
+            )
+            supply[key] = row["craftable"]
         direct_rows = [
             {
                 "id": key,
                 "name": self.items.get(key, {}).get("name", key),
                 "required": count,
                 "owned": self.inventory.get(key, 0),
+                "craftable": supply[key],
             }
             for key, count in direct.items()
             if count > 0
