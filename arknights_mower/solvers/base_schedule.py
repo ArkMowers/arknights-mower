@@ -935,7 +935,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for key in plan:
             need_fix = False
             _current_room = self.op_data.get_current_room(key, True)
-            for idx, name in enumerate(_current_room):
+            # 训练室读取固定两格；纠错只管理排班中明确配置的槽位。
+            for idx, name in enumerate(_current_room[: len(plan[key])]):
                 # 如果是空房间
                 if name == "":
                     if not need_fix:
@@ -3116,7 +3117,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if fast_mode:
             current_room = self.op_data.get_current_room(room, True)
             # 如果空位置进房间会被向前挤
-            current_room = sorted(current_room, key=lambda x: x == "")
+            # 训练室的协助位和训练位固定，空协助位不能让训练位前移。
+            if room != "train":
+                current_room = sorted(current_room, key=lambda x: x == "")
             differences = []
             for i in range(len(current_room)):
                 if current_room[i] not in agents:
@@ -3399,7 +3402,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("检测到产物收取提示")
             self.sleep(1)
         if room == "train":
-            length = len(self.op_data.plan.get(room, [None, None]))
+            length = 2
         else:
             length = len(self.op_data.plan[room])
         if length > 3:
