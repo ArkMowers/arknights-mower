@@ -508,14 +508,32 @@ def source_pulls(remote=None):
 def mergeable_source_pull(number, repo, proxy):
     if type(number) is not int or number <= 0:
         raise ValueError("请选择有效的 PR 编号")
-    pull = github(f"/pulls/{number}", proxy, repo=repo)
-    if pull.get("state") != "open" or pull.get("draft"):
-        raise ValueError("该 PR 已关闭、已合并或仍为草稿，无法选择更新")
-    if pull.get("mergeable") is None:
-        raise ValueError("GitHub 正在计算 PR 是否可合并，请稍后重新检查")
-    if pull.get("mergeable") is not True:
-        raise ValueError("该 PR 存在合并冲突，暂不能用于更新")
+    for attempt in range(3):
+        pull = github(f"/pulls/{number}", proxy, repo=repo)
+        if pull.get("state") != "open" or pull.get("draft"):
+            raise ValueError(f"PR #{number} 已关闭、已合并或仍为草稿，无法选择更新")
+        if pull.get("mergeable") is not None:
+            break
+        if attempt < 2:
+            time.sleep(0.5 * (attempt + 1))
+    if pull.get("mergeable") is False:
+        raise ValueError(f"PR #{number} 存在合并冲突，暂不能用于更新")
+    # GitHub computes this asynchronously. Unknown is not a conflict: the
+    # isolated Git merge still has to succeed before an install can be admitted.
     return pull
+
+
+def source_pull_target(pull, repo):
+    base = pull["base"]
+    return (
+        (base.get("repo") or {}).get("full_name", repo).casefold(),
+        normalize_source_ref(base["ref"]),
+    )
+
+
+def source_branch_head(branch, repo, proxy):
+    result = github("/branches/" + quote(branch, safe=""), proxy, repo=repo)
+    return source_commit_info(result["commit"], repo)["sha"]
 
 
 def check_source_pull(number, remote=None):
@@ -535,15 +553,23 @@ def check_source_pulls(numbers, remote=None):
         mergeable_source_pull(number, selected["source_repo"], proxy)
         for number in numbers
     ]
-    if len({(pull["base"]["ref"], pull["base"]["sha"]) for pull in pulls}) != 1:
-        raise ValueError("请选择同一目标分支的 PR；若分支刚更新，请刷新后重试")
+    targets = {source_pull_target(pull, selected["source_repo"]) for pull in pulls}
+    if (
+        len(targets) != 1
+        or next(iter(targets))[0] != selected["source_repo"].casefold()
+    ):
+        raise ValueError("请选择同一仓库、同一目标分支的 PR")
+    _, branch = next(iter(targets))
+    # A PR's base.sha can lag behind its target branch, independently for each
+    # PR. Resolve the shared branch once instead of comparing those snapshots.
+    base_commit = source_branch_head(branch, selected["source_repo"], proxy)
     plan = {
         "deployment": "source",
         "operation": "source-pr",
         **selected,
         "channel": "dev",
-        "source_branch": normalize_source_ref(pulls[0]["base"]["ref"]),
-        "base_commit": pulls[0]["base"]["sha"],
+        "source_branch": branch,
+        "base_commit": base_commit,
         "source_prs": [
             {"number": number, "sha": pull["head"]["sha"], "title": pull["title"]}
             for number, pull in zip(numbers, pulls)
@@ -947,12 +973,15 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             pull = mergeable_source_pull(
                 selected_pull["number"], plan["source_repo"], proxy
             )
-            if (
-                pull["head"]["sha"] != selected_pull["sha"]
-                or pull["base"]["sha"] != plan["base_commit"]
-                or pull["base"]["ref"] != plan["source_branch"]
-            ):
+            if pull["head"]["sha"] != selected_pull["sha"] or source_pull_target(
+                pull, plan["source_repo"]
+            ) != (plan["source_repo"].casefold(), plan["source_branch"]):
                 raise ValueError("PR 提交或目标分支已改变，请重新检查并确认更新")
+        if (
+            source_branch_head(plan["source_branch"], plan["source_repo"], proxy)
+            != plan["base_commit"]
+        ):
+            raise ValueError("目标分支已更新，请重新检查并确认更新")
     if plan.get("source_pr"):
         # Recheck status and head immediately before admission; a previously
         # confirmed PR may have closed, conflicted or received another push.

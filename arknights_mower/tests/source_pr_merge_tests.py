@@ -173,12 +173,35 @@ class SourcePullMergeTests(unittest.TestCase):
                 "mergeable_source_pull",
                 side_effect=lambda number, *_: api_pulls[number],
             ),
+            patch.object(
+                update,
+                "github",
+                return_value={"commit": {"sha": self.base, "commit": {}}},
+            ) as branch_api,
             patch.dict(update._checks, {}, clear=True),
         ):
+            # Same branch, independently stale PR base snapshots.
+            api_pulls[1]["base"]["sha"] = "a" * 40
+            api_pulls[2]["base"]["sha"] = "b" * 40
             result = update.check_source_pulls([1, 2], "personal/mower")
             plan = update._checks[result["check_id"]]
             self.assertEqual([p["number"] for p in plan["source_prs"]], [1, 2])
             self.assertEqual(result["sha"], plan["commit"])
+            self.assertEqual(plan["base_commit"], self.base)
+            branch_api.assert_called_once_with(
+                "/branches/alpha", "", repo="personal/mower"
+            )
+            with patch.object(update, "info", side_effect=RuntimeError("admission")):
+                with self.assertRaisesRegex(RuntimeError, "admission"):
+                    update._start_job(plan)
+            branch_api.return_value = {"commit": {"sha": "f" * 40, "commit": {}}}
+            with (
+                patch.object(update, "info") as info,
+                self.assertRaisesRegex(ValueError, "目标分支已更新"),
+            ):
+                update._start_job(plan)
+            info.assert_not_called()
+            branch_api.return_value = {"commit": {"sha": self.base, "commit": {}}}
             for number in (1, 2):
                 original = copy.deepcopy(api_pulls[number])
                 api_pulls[number]["head"]["sha"] = self.base
@@ -192,6 +215,17 @@ class SourcePullMergeTests(unittest.TestCase):
             api_pulls[2]["base"]["ref"] = "other"
             with self.assertRaisesRegex(ValueError, "同一目标分支"):
                 update.check_source_pulls([1, 2])
+            api_pulls[2]["base"].update(
+                ref="alpha", repo={"full_name": "another/mower"}
+            )
+            with self.assertRaisesRegex(ValueError, "同一仓库"):
+                update.check_source_pulls([1, 2])
+            with (
+                patch.object(update, "info") as info,
+                self.assertRaisesRegex(ValueError, "已改变"),
+            ):
+                update._start_job(plan)
+            info.assert_not_called()
 
     def test_invalid_selection_does_not_start_network_or_git(self):
         with patch.object(update, "source_repository") as source:
