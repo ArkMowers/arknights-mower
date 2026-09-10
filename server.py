@@ -11,7 +11,7 @@ from pathlib import Path
 from threading import RLock, Thread
 from uuid import uuid4
 
-from flask import Flask, abort, request, send_file, send_from_directory
+from flask import Flask, abort, g, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from werkzeug.exceptions import NotFound
@@ -20,6 +20,7 @@ from werkzeug.security import safe_join
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config, network_settings
+from arknights_mower.utils.config_backup import backup_lock
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
@@ -35,6 +36,7 @@ from arknights_mower.utils.path import get_path, resolve_config_path
 from arknights_mower.utils.resource_pkg import register_resource_reload
 from arknights_mower.utils.resource_update_job import ResourceUpdateJob
 from arknights_mower.utils.update_runtime import active_job
+from arknights_mower.views.config_backup import config_backup_bp
 from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
@@ -489,6 +491,29 @@ def require_token(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+@app.before_request
+def serialize_configuration_requests():
+    # Export/restore must not interleave with form saves, plan edits or startup.
+    if request.path in {
+        "/conf",
+        "/plan",
+        "/import",
+        "/sss-copilot",
+        "/network/settings",
+        "/software-update/settings",
+    } or request.path.startswith(
+        ("/config-backup/", "/weekly-plans", "/mastery-", "/workshop-", "/start/")
+    ):
+        backup_lock.acquire()
+        g.configuration_locked = True
+
+
+@app.teardown_request
+def release_configuration_lock(error):
+    if g.pop("configuration_locked", False):
+        backup_lock.release()
 
 
 @app.route("/<path:path>")
@@ -2546,4 +2571,13 @@ app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
 app.register_blueprint(software_update_bp)
 app.register_blueprint(network_bp)
+app.register_blueprint(config_backup_bp)
+app.config["CONFIG_BACKUP_MAINTENANCE_LOCK"] = maa_maintenance_lock
+app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(
+    (mower_thread and mower_thread.is_alive())
+    or active_job()
+    or _job_running(maa_update_job)
+    or _job_running(maa_resource_update_job)
+    or resource_update.running()
+)
 app.register_blueprint(process_control_bp)
