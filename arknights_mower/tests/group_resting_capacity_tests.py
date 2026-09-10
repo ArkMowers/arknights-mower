@@ -1,4 +1,4 @@
-"""深海一高优、六低优：接管替班或待命，且正常往返不产生叫回纠错。"""
+"""深海一高优、六候补：显式启用待命，原低优保持原有行为。"""
 
 import sys
 from datetime import datetime, timedelta
@@ -11,8 +11,9 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
+from arknights_mower.utils.config.plan import PlanModel  # noqa: E402
 from arknights_mower.utils.log import logger  # noqa: E402
-from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.operators import Operator, build_global_plan  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     TaskTypes,
@@ -86,7 +87,14 @@ def solver(monkeypatch):
     instance = object.__new__(BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
-            rooms, PlanConfig("", "", ",".join(DEEP[1:]), ope_resting_priority=DEEP[0])
+            rooms,
+            PlanConfig(
+                "",
+                "",
+                "",
+                resting_standby=",".join(DEEP[1:]),
+                ope_resting_priority=DEEP[0],
+            ),
         ),
         "backup_plans": [],
     }
@@ -153,7 +161,10 @@ def test_deep_group_one_empty_bed_round_trip_without_correction(solver, occupant
     expected_standby = set(DEEP[1:]) if occupants != "replacement" else set()
     assert {name for name in DEEP if data.is_group_standby(name)} == expected_standby
     assert data.operators[DEEP[0]].is_resting()
-    assert [data.operators[n].resting_priority for n in DEEP] == ["high", *["low"] * 6]
+    assert [data.operators[n].resting_priority for n in DEEP] == [
+        "high",
+        *["standby"] * 6,
+    ]
     if occupants != "replacement":
         assert all(data.operators[name].is_resting() for name in OTHERS)
         assert [(bed.position, bed.name, bed.time) for bed in data.dorm[1:]] == before
@@ -299,3 +310,133 @@ def test_ordinary_low_cannot_evict_resting_main_or_another_replacement(solver):
     assert data.assign_dorm(COVERS[0]) is None
     shift_off(solver)
     assert data.assign_dorm(COVERS[0]) is None
+
+
+@pytest.mark.parametrize("occupants", ["replacement", "high", "low"])
+def test_legacy_low_priority_requires_beds_and_cannot_take_resting_replacements(
+    solver, occupants
+):
+    conf = solver.global_plan["default_plan"].config
+    conf.resting_standby = []
+    conf.resting_priority = DEEP[1:]
+    assert solver.initialize_operators() is None
+    occupy_beds(solver, occupants)
+    data = solver.op_data
+    data.operators[DEEP[0]].mood = 0
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    plan, replacements = {}, []
+    solver.get_resting_plan(data.groups["深海"], replacements, plan, 0)
+    assert plan == {}
+    assert replacements == []
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+    assert all(data.operators[name].resting_priority == "low" for name in DEEP[1:])
+
+
+@pytest.mark.parametrize(
+    "name,invalid",
+    [
+        (COVERS[0], "replacement"),
+        (OTHERS[0], "ungrouped"),
+        ("塑心", "dorm"),
+        (DEEP[1], "workaholic"),
+        (DEEP[1], "exhaust_require"),
+        (DEEP[1], "rest_in_full"),
+        (DEEP[1], "workshop"),
+    ],
+)
+def test_candidate_setting_only_applies_to_eligible_grouped_main(solver, name, invalid):
+    conf = solver.global_plan["default_plan"].config
+    conf.resting_standby = [name]
+    if invalid in ("workaholic", "exhaust_require", "rest_in_full"):
+        setattr(conf, invalid, [name])
+    elif invalid == "workshop":
+        config.conf.t5_operators = [name]
+    assert solver.initialize_operators() is None
+    assert solver.op_data.operators[name].resting_priority != "standby"
+    assert not solver.op_data._can_group_standby(solver.op_data.operators[name])
+
+
+def test_normal_low_gets_last_spare_bed_before_candidate(solver):
+    occupy_beds(solver, "high")
+    data = solver.op_data
+    normal = data.operators[DEEP[1]]
+    normal.resting_priority = "low"
+    room, index = data.dorm[1].position
+    names = ["Current"] * 5
+    names[index] = "Free"
+    apply_plan(solver, {room: names})
+    beds = data.assign_dorm_group(DEEP)
+    assert {bed.name for bed in beds} == {DEEP[0], DEEP[1]}
+    assert data.operators[DEEP[2]].resting_priority == "standby"
+
+
+def test_priority_rearrangement_preserves_explicit_candidates(solver):
+    before = solver.op_data.groups["深海"].copy()
+    solver.rearrange_resting_priority("深海")
+    assert solver.op_data.groups["深海"] == before
+    assert all(
+        solver.op_data.operators[name].resting_priority == "standby"
+        for name in DEEP[1:]
+    )
+    assert solver.op_data.operators[DEEP[0]].resting_priority == "high"
+
+
+def test_normal_low_controls_return_before_candidate_when_no_high_member(solver):
+    data = solver.op_data
+    data.operators[DEEP[0]].resting_priority = "low"
+    shift_off(solver)
+    now = datetime.now()
+    for bed in data.dorm:
+        if bed.name in DEEP:
+            bed.time = now + (
+                timedelta(hours=8) if bed.name == DEEP[0] else timedelta(minutes=10)
+            )
+    tasks = plan_metadata(data, [])
+    back = next(task for task in tasks if DEEP[0] in task.plan.get("central", []))
+    assert back.time > now + timedelta(hours=7)
+
+
+def test_normal_low_precedes_candidate_in_resting_and_dorm_order(solver):
+    data = solver.op_data
+    data.operators[DEEP[1]].resting_priority = "low"
+    data.operators[DEEP[1]].mood = 20
+    data.operators[DEEP[2]].mood = 1
+    assert solver._resting_tier(data.operators[DEEP[1]]) < solver._resting_tier(
+        data.operators[DEEP[2]]
+    )
+    shift_off(solver)
+    names = [bed.name for bed in data.dorm]
+    assert names.index(DEEP[1]) < names.index(DEEP[2])
+
+
+def test_candidate_config_round_trip_and_backup_merge(solver, monkeypatch):
+    raw = {
+        "plan1": {
+            room: {
+                "plans": [
+                    {
+                        "agent": slot.agent,
+                        "group": slot.group,
+                        "replacement": slot.replacement,
+                    }
+                    for slot in slots
+                ]
+            }
+            for room, slots in solver.global_plan["default_plan"].plan.items()
+        },
+        "conf": {"resting_priority": DEEP[1]},
+        "backup_plans": [{"conf": {"resting_standby": DEEP[2]}}],
+    }
+    old = PlanModel(**raw)
+    assert old.conf.resting_standby == ""
+    old.conf.resting_standby = DEEP[1]
+    loaded = PlanModel.model_validate_json(old.model_dump_json())
+    monkeypatch.setattr(config, "plan", loaded)
+    solver.global_plan = build_global_plan()
+    assert solver.initialize_operators() is None
+    assert solver.op_data.operators[DEEP[1]].resting_priority == "standby"
+    assert solver.op_data.operators[DEEP[2]].resting_priority == "high"
+    assert solver.op_data.swap_plan([True], refresh=True) is None
+    assert solver.op_data.operators[DEEP[2]].resting_priority == "standby"
+    assert solver.op_data.swap_plan([False], refresh=True) is None
+    assert solver.op_data.operators[DEEP[2]].resting_priority == "high"

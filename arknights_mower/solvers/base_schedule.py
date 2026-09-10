@@ -1921,14 +1921,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     _REST_TIER_HIGH = 0
     _REST_TIER_MARKED_LOW = 1
-    _REST_TIER_REPLACEMENT = 2
+    _REST_TIER_STANDBY = 2
+    _REST_TIER_REPLACEMENT = 3
 
     @staticmethod
     def _resting_tier(op):
         if op.is_workshop():
-            return 3
+            return 4
         if op.is_high() and op.resting_priority == "high":
             return BaseSchedulerSolver._REST_TIER_HIGH
+        if op.is_high() and op.resting_priority == "standby":
+            return BaseSchedulerSolver._REST_TIER_STANDBY
         if op.is_high():
             return BaseSchedulerSolver._REST_TIER_MARKED_LOW
         return BaseSchedulerSolver._REST_TIER_REPLACEMENT
@@ -1977,6 +1980,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def rearrange_resting_priority(self, group):
         operators = self.op_data.groups[group]
+        if any(
+            self.op_data.operators[name].resting_priority == "standby"
+            for name in operators
+        ):
+            operators = [
+                name
+                for name in operators
+                if self.op_data.operators[name].resting_priority != "standby"
+            ]
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         fia_plan, fia_room = self.check_fia()
         # 排序

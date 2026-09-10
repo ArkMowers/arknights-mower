@@ -11,6 +11,7 @@ export const usePlanStore = defineStore('plan', () => {
   const rest_in_full = ref([])
   const ope_resting_priority = ref([])
   const resting_priority = ref([])
+  const resting_standby = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
   const refresh_drained = ref([])
@@ -57,6 +58,7 @@ export const usePlanStore = defineStore('plan', () => {
     'exhaust_require',
     'rest_in_full',
     'resting_priority',
+    'resting_standby',
     'workaholic',
     'free_blacklist',
     'refresh_trading',
@@ -144,6 +146,7 @@ export const usePlanStore = defineStore('plan', () => {
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
     resting_priority.value = str2list(response.data.conf.resting_priority)
+    resting_standby.value = str2list(response.data.conf.resting_standby)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
     refresh_drained.value = str2list(response.data.conf.refresh_drained)
@@ -193,6 +196,7 @@ export const usePlanStore = defineStore('plan', () => {
         rest_in_full: list2str(rest_in_full.value),
         ope_resting_priority: list2str(ope_resting_priority.value),
         resting_priority: list2str(resting_priority.value),
+        resting_standby: list2str(resting_standby.value),
         workaholic: list2str(workaholic.value),
         refresh_trading: list2str(refresh_trading.value),
         refresh_drained: list2str(refresh_drained.value)
@@ -264,6 +268,7 @@ export const usePlanStore = defineStore('plan', () => {
     exhaust_require,
     rest_in_full,
     resting_priority,
+    resting_standby,
     ope_resting_priority,
     workaholic,
     refresh_trading,

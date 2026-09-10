@@ -28,6 +28,7 @@ def build_global_plan():
         rest_in_full=config.plan.conf.rest_in_full,
         exhaust_require=config.plan.conf.exhaust_require,
         resting_priority=config.plan.conf.resting_priority,
+        resting_standby=config.plan.conf.resting_standby,
         ling_xi=config.plan.conf.ling_xi,
         workaholic=config.plan.conf.workaholic,
         free_blacklist=conf.free_blacklist,
@@ -74,6 +75,7 @@ def build_global_plan():
             workaholic=i["conf"]["workaholic"],
             free_blacklist=i["conf"]["free_blacklist"],
             ope_resting_priority=i["conf"]["ope_resting_priority"],
+            resting_standby=i["conf"].get("resting_standby", ""),
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
@@ -657,14 +659,25 @@ class Operators:
         if operator.rest_in_full:
             if operator.group != "":
                 self.rest_in_full_group.add(operator.group)
+        if (
+            self.config.is_resting_standby(operator.name)
+            and operator.is_high()
+            and operator.group
+            and not operator.room.startswith("dorm")
+            and not operator.workaholic
+            and not operator.exhaust_require
+            and not operator.rest_in_full
+            and not operator.is_workshop()
+        ):
+            operator.resting_priority = "standby"
 
     @staticmethod
     def _can_group_standby(op):
-        """仅普通低优主力可随组离岗待命；用尽、回满和加工干员仍需床位。"""
+        """仅显式配置的主班绑组候补可待命；原低优及特殊恢复规则不变。"""
         return (
             op.is_high()
             and bool(op.group)
-            and op.resting_priority == "low"
+            and op.resting_priority == "standby"
             and not op.room.startswith("dorm")
             and not op.workaholic
             and not op.exhaust_require
@@ -788,14 +801,8 @@ class Operators:
     def _find_dorm_slot(self, name, used, *, group_resting=False):
         operator = self.operators[name]
         is_high = operator.resting_priority == "high" and not operator.is_workshop()
-        # 整组轮休时，低优主力也能接管普通替班床位；低优仍决定选床顺序。
-        # 单独休息的普通替班不获得接管权限，其他正在休息的主力仍受保护。
-        can_take_over = is_high or (
-            group_resting
-            and operator.is_high()
-            and bool(operator.group)
-            and not operator.is_workshop()
-        )
+        # 仅显式候补在随组下班时可接管普通替班；原低优保护规则不变。
+        can_take_over = is_high or (group_resting and self._can_group_standby(operator))
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
         if not is_high:
             for i in range(max_count, len(self.dorm)):
@@ -816,8 +823,8 @@ class Operators:
         )
 
     def group_standby_candidates(self, names):
-        """有需要恢复的高优成员带组时，可在缺床情况下待命的低优成员。"""
-        # 高优确实需要恢复心情时才允许同组低优待命，避免满心情高优在选人
+        """有需要恢复的高优成员带组时，可在缺床情况下待命的候补成员。"""
+        # 高优确实需要恢复心情时才允许同组候补待命，避免满心情高优在选人
         # 阶段被释放后，整组既没有恢复心情者，也没有回班计时来源。
         anchor_groups = {
             op.group
@@ -839,7 +846,7 @@ class Operators:
         }
 
     def assign_dorm_group(self, names):
-        """先保障必需床位；随组低优有床则休息，无床则离岗待命。"""
+        """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
         used = set()
         assignments = []
         optional = self.group_standby_candidates(names)
@@ -847,7 +854,7 @@ class Operators:
         ordered_names = sorted(
             names,
             key=lambda name: (
-                name in optional,
+                self.operators[name].resting_priority == "standby",
                 self.operators[name].resting_priority == "high",
             ),
         )

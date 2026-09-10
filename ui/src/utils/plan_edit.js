@@ -4,6 +4,7 @@ export const OPERATOR_CONF_FIELDS = [
   'exhaust_require',
   'workaholic',
   'resting_priority',
+  'resting_standby',
   'refresh_trading',
   'refresh_drained',
   'free_blacklist',

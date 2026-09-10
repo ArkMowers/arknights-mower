@@ -12,6 +12,7 @@ const plan_store = usePlanStore()
 const {
   ling_xi,
   resting_priority,
+  resting_standby,
   exhaust_require,
   rest_in_full,
   workaholic,
@@ -119,6 +120,7 @@ function create_sub_plan() {
       ling_xi: ling_xi.value,
       rest_in_full: [],
       resting_priority: [],
+      resting_standby: [],
       workaholic: [],
       refresh_trading: [],
       refresh_drained: [],
@@ -146,6 +148,7 @@ const current_conf = ref({
   ling_xi: ling_xi.value,
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
+  resting_standby: resting_standby.value,
   workaholic: workaholic.value,
   exhaust_require: exhaust_require.value,
   refresh_trading: refresh_trading.value
@@ -157,6 +160,7 @@ watchEffect(() => {
       ling_xi: ling_xi.value,
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
+      resting_standby: resting_standby.value,
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
       refresh_trading: refresh_trading.value,
@@ -175,6 +179,7 @@ watchEffect(() => {
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
+    resting_standby.value = current_conf.value.resting_standby
     workaholic.value = current_conf.value.workaholic
     refresh_trading.value = current_conf.value.refresh_trading
     free_blacklist.value = current_conf.value.free_blacklist
@@ -236,6 +241,7 @@ function replace_main_conf() {
     exhaust_require: exhaust_require.value,
     workaholic: workaholic.value,
     resting_priority: resting_priority.value,
+    resting_standby: resting_standby.value,
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
     free_blacklist: free_blacklist.value,
@@ -494,6 +500,22 @@ function movePlanForward() {
     <n-form-item>
       <template #label><span>宿舍低优先级干员</span><help-text>请查阅文档</help-text></template>
       <slick-operator-select v-model="current_conf.resting_priority"></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>宿舍休息候补干员</span>
+        <help-text>
+          <p>
+            仅对主班排班中已绑组的干员生效，休息优先级低于「宿舍低优先级干员」。
+            整组下班时，有床则休息，无床则撤下待命，随组回班；待命期间不恢复心情。
+          </p>
+          <p>
+            仅建议在同组存在心情消耗极高的干员时填写，其他情况请使用原有休息优先级。
+            组内需保留能入宿舍休息的高优干员；零心情工作干员继续在岗，不属于休息队列。
+          </p>
+        </help-text>
+      </template>
+      <slick-operator-select v-model="current_conf.resting_standby"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label>

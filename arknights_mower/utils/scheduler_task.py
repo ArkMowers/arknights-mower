@@ -453,8 +453,15 @@ def plan_metadata(op_data, tasks):
         ]
         if len(_high_dorms) == 0:
             high_dorms = [
-                dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+                dorm
+                for dorm in dorms
+                if op_data.operators[dorm.name].is_high()
+                and op_data.operators[dorm.name].resting_priority != "standby"
             ]
+            if not high_dorms:
+                high_dorms = [
+                    dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+                ]
         else:
             high_dorms = _high_dorms
         rest_in_full_dorms = [
@@ -561,6 +568,8 @@ def try_reorder(op_data, new_plan):
             _op = op_data.operators[name]
             if _op.operator_type == "high" and _op.resting_priority == "high":
                 return "high"
+            elif _op.operator_type == "high" and _op.resting_priority == "standby":
+                return "standby"
             elif _op.operator_type == "high":
                 return "normal"
         return "low"
@@ -580,8 +589,9 @@ def try_reorder(op_data, new_plan):
         priority_order = {
             "high": length,
             "normal": length + 1,
-            "low": length + 2,
-        }  # **先排 priority_list，再按 high > normal > low**
+            "standby": length + 2,
+            "low": length + 3,
+        }  # 先排显式名单，再按高优 > 原低优 > 候补 > 普通替班。
         return (
             priority_list.index(_op["name"])
             if _op["name"] in priority_list and _op["name"] != ""

@@ -13,6 +13,7 @@ const empty_conf = {
   exhaust_require: [],
   workaholic: [],
   resting_priority: [],
+  resting_standby: [],
   refresh_trading: [],
   refresh_drained: [],
   free_blacklist: [],
@@ -58,6 +59,16 @@ function make_state() {
 }
 
 describe('apply_operator_replace 覆盖范围', () => {
+  it('替换主副表的宿舍休息候补名单，并纳入已使用干员集合', () => {
+    const state = make_state()
+    state.main_conf.resting_standby = ['乌尔比安']
+    state.backup_plans[0].conf.resting_standby = ['乌尔比安']
+    expect(collect_plan_operators(state)).toContain('乌尔比安')
+    apply_operator_replace(state, '乌尔比安', '斯卡蒂')
+    expect(state.main_conf.resting_standby).toEqual(['斯卡蒂'])
+    expect(state.backup_plans[0].conf.resting_standby).toEqual(['斯卡蒂'])
+    expect(collect_plan_operators(state)).not.toContain('乌尔比安')
+  })
   it('替换主表 agent + replacement', () => {
     const state = make_state()
     apply_operator_replace(state, '能天使', '风笛')
