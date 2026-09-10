@@ -88,6 +88,24 @@ class SourcePullMergeTests(unittest.TestCase):
         self.assertEqual(self.command("rev-parse", "HEAD"), self.base)
         self.assertEqual(self.command("status", "--porcelain"), "")
 
+    def test_single_pr_includes_latest_target_branch_changes(self):
+        (self.repo / "upstream.txt").write_text("new upstream change\n")
+        self.command("add", ".")
+        self.command("commit", "-m", "target branch advances after PR")
+        latest = self.command("rev-parse", "HEAD")
+        plan = {**self.plan, "base_commit": latest, "source_prs": self.pulls[:1]}
+        commit = self.merge(plan)
+        self.assertEqual(
+            self.command("show", f"{commit}:shared.txt", cwd=self.home / "preview"),
+            "one",
+        )
+        self.assertEqual(
+            self.command("show", f"{commit}:upstream.txt", cwd=self.home / "preview"),
+            "new upstream change",
+        )
+        self.assertEqual(self.command("rev-parse", "HEAD"), latest)
+        self.assertNotEqual(commit, self.pulls[0]["sha"])
+
     def test_conflicts_and_changed_heads_do_not_touch_running_checkout(self):
         plan = {**self.plan, "source_prs": [self.pulls[0], self.pulls[2]]}
         with self.assertRaisesRegex(ValueError, "PR #3.*合并冲突"):

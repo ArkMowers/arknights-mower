@@ -45,6 +45,12 @@ class SourceRemoteTests(unittest.TestCase):
         ):
             context.start()
             self.addCleanup(context.stop)
+        merger = patch(
+            "arknights_mower.utils.source_pr_merge.merge_source_pulls",
+            return_value="d" * 40,
+        )
+        merger.start()
+        self.addCleanup(merger.stop)
         self.target = {
             "sha": "a" * 40,
             "commit": {"message": "fork change", "author": {}},
@@ -56,7 +62,7 @@ class SourceRemoteTests(unittest.TestCase):
             "draft": False,
             "mergeable": True,
             "head": {"sha": "a" * 40},
-            "base": {"ref": "main"},
+            "base": {"ref": "main", "sha": "b" * 40},
         }
 
     def command(self, *args, cwd=None):
@@ -286,11 +292,13 @@ class SourceRemoteTests(unittest.TestCase):
             checked = update.check_source_pull(7, "personal")
         self.assertEqual([p["number"] for p in listed["pulls"]], [7])
         plan = update._checks[checked["check_id"]]
-        self.assertEqual(plan["ref"], "refs/pull/7/head")
+        self.assertEqual(plan["source_prs"][0]["sha"], "a" * 40)
+        self.assertEqual(plan["base_commit"], "b" * 40)
+        self.assertEqual(plan["commit"], "d" * 40)
         self.assertEqual(plan["source_url"], "git@github.com:personal/mower.git")
         self.assertEqual(plan["operation"], "source-pr")
         self.assertEqual(update.get_settings(), previous)
-        self.assertEqual(checked["source_pr"], 7)
+        self.assertEqual(checked["source_prs"][0]["number"], 7)
 
     def test_prs_that_are_closed_draft_conflicting_or_pending_cannot_be_selected(self):
         for change in (

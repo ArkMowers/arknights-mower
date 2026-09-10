@@ -519,17 +519,7 @@ def mergeable_source_pull(number, repo, proxy):
 
 
 def check_source_pull(number, remote=None):
-    _, _, proxy = source_repository()
-    selected = resolve_source_remote(remote)
-    pull = mergeable_source_pull(number, selected["source_repo"], proxy)
-    # Use the base repository's PR ref; it remains available for fork PRs.
-    checked = check_source_version(
-        pull["head"]["sha"], pull["base"]["ref"], selected["source_url"]
-    )
-    plan = _checks[checked["check_id"]]
-    plan.update(operation="source-pr", source_pr=number, ref=f"refs/pull/{number}/head")
-    checked.update(source_pr=number, pull_title=pull["title"])
-    return checked
+    return check_source_pulls([number], remote)
 
 
 def check_source_pulls(numbers, remote=None):
@@ -539,8 +529,6 @@ def check_source_pulls(numbers, remote=None):
         raise ValueError("请选择有效的 PR 编号")
     if len(set(numbers)) != len(numbers):
         raise ValueError("不能重复选择同一个 PR")
-    if len(numbers) == 1:
-        return check_source_pull(numbers[0], remote)
     current, _, proxy = source_repository()
     selected = resolve_source_remote(remote)
     pulls = [
@@ -573,7 +561,7 @@ def check_source_pulls(numbers, remote=None):
 
     git = shutil.which("git", path=source_tool_path())
     if not git:
-        raise ValueError("未找到 Git，无法检查多个 PR 的合并结果")
+        raise ValueError("未找到 Git，无法检查 PR 的合并结果")
     with tempfile.TemporaryDirectory(prefix="mower-pr-check-") as directory:
         commit = merge_source_pulls(
             git, selected["source_url"], plan, directory, runtime.launch_environment({})
@@ -585,6 +573,8 @@ def check_source_pulls(numbers, remote=None):
         "current_commit": current,
         **selected,
         "source_prs": plan["source_prs"],
+        "source_branch": plan["source_branch"],
+        "base_commit": plan["base_commit"],
         "sha": commit,
         "version": plan["version"],
         "url": plan["url"],

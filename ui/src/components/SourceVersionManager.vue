@@ -189,7 +189,7 @@ function confirm() {
         <p class="hint">
           {{
             mode === 'pr'
-              ? '支持同一目标分支的多个开放 PR，按所选顺序试合并，通过后才能安装。后续检查仍跟随原来的仓库、分支和渠道。'
+              ? '先更新到 PR 目标分支的最新版本，再按所选顺序合并 PR，通过后才能安装。多个 PR 需指向同一分支。后续检查仍跟随原来的仓库、分支和渠道。'
               : '提交切换任务后记住所选仓库和分支，供后续开发版检查使用。'
           }}
         </p>
@@ -213,6 +213,9 @@ function confirm() {
         </n-space>
         <n-alert v-if="error" type="error" role="alert">{{ error }}</n-alert>
         <div v-if="checked" class="target" aria-live="polite">
+          <p v-if="checked.base_commit" class="version">
+            基于 {{ checked.source_branch }} · {{ checked.base_commit.slice(0, 12) }}
+          </p>
           <p class="version">
             目标仓库：{{ checked.source_repo
             }}{{
