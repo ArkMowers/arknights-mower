@@ -4,13 +4,14 @@ from flask import current_app, request
 
 
 def _get_store():
-    from arknights_mower.utils.log import screenshot_store
+    from arknights_mower.utils.log import get_screenshot_store
 
-    return screenshot_store
+    return get_screenshot_store()
 
 
 def latest_screenshot_response():
-    frame = _get_store().latest()
+    store = _get_store()
+    frame = store.latest() if store is not None else None
     if frame is None:
         response = current_app.response_class(status=204)
     else:

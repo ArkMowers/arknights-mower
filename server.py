@@ -953,9 +953,10 @@ def get_latest_screenshot():
     """
     返回最新截图的路径
     """
-    from arknights_mower.utils.log import screenshot_store
+    from arknights_mower.utils.log import get_screenshot_store
 
-    return screenshot_store.last_saved()
+    store = get_screenshot_store()
+    return store.last_saved() if store is not None else ""
 
 
 def _webview_conn():

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
 from queue import Queue
+from threading import Lock
 
 import colorlog
 
@@ -125,17 +126,39 @@ def start_mp_listener(queue) -> None:
     mp_listener.start()
 
 
-screenshot_folder = get_path("@app/screenshot")
-screenshot_store = ScreenshotStore(
-    screenshot_folder, lambda: config.conf.screenshot, logger
-)
-screenshot_cleanup = screenshot_store.cleanup
-screenshot_store.start()
-atexit.register(screenshot_store.close)
+_store_instance: ScreenshotStore | None = None
+_store_lock = Lock()
+
+
+def _store() -> ScreenshotStore:
+    """返回本进程的截图存储，第一次提交截图时才建立后台线程。
+
+    与 fhlr 同样不在导入时建立：导入本模块的进程（测试、开发服务器、各种抓图
+    脚本）不应顺带拿到写盘与过期清理线程。清理线程启动时会先扫一遍历史截图，
+    多份清理线程并发删除同一批文件时，Windows 会让其中一次以 WinError 5 失败
+    并记一条清理错误。
+    """
+    global _store_instance
+    with _store_lock:
+        if _store_instance is None:
+            store = ScreenshotStore(
+                get_path("@app/screenshot"),
+                lambda: config.conf.screenshot,
+                logger,
+            )
+            store.start()
+            atexit.register(store.close)
+            _store_instance = store
+        return _store_instance
+
+
+def get_screenshot_store() -> ScreenshotStore | None:
+    """本进程已建立的截图存储；还没提交过截图时返回 None。"""
+    return _store_instance
 
 
 def save_screenshot(img: bytes, sub_folder=None) -> None:
-    filename = screenshot_store.submit(img, sub_folder)
+    filename = _store().submit(img, sub_folder)
     logger.debug(filename)
 
 
