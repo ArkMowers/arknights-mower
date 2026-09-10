@@ -349,6 +349,14 @@ def test_dorm_candidate_order_uses_predicted_current_mood(solver):
     assert shift_off(solver)[0]["dormitory_1"][0] == "泥岩"
 
 
+def test_dorm_candidates_compare_current_mood_without_subtracting_limit(solver):
+    set_resident_candidates(solver, ["黑角", "泥岩"])
+    solver.op_data.operators["黑角"].mood = 10
+    solver.op_data.operators["黑角"].lower_limit = 9
+    solver.op_data.operators["泥岩"].mood = 8
+    assert shift_off(solver)[0]["dormitory_1"][0] == "泥岩"
+
+
 @pytest.mark.parametrize("unavailable", ["working", "busy", "reserved"])
 def test_lowest_mood_dorm_candidate_must_still_be_available(
     solver, monkeypatch, unavailable
@@ -458,6 +466,22 @@ def test_fia_working_target_does_not_compare_resident_mood(solver, monkeypatch):
     resident.current_mood.assert_not_called()
 
 
+@pytest.mark.parametrize("lower_limit,selected", [(0, False), (2, True), (6, True)])
+def test_fia_keeps_group_comparison_relative_to_lower_limit(
+    solver, monkeypatch, lower_limit, selected
+):
+    for name, mood in [("伊内丝", 10), ("银灰", 8), ("讯使", 24)]:
+        solver.op_data.operators[name].mood = mood
+    solver.op_data.operators["伊内丝"].lower_limit = lower_limit
+    monkeypatch.setattr(config.conf, "fia_fool", True)
+    monkeypatch.setattr(solver, "check_fia", lambda: (["伊内丝"], "dormitory_1"))
+    solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    solver.plan_fia()
+    assert bool(solver.tasks[0].plan) is selected
+    if selected:
+        assert solver.tasks[0].plan["dormitory_1"] == ["伊内丝", "菲亚梅塔"]
+
+
 @pytest.mark.parametrize("ling_xi", [1, 2])
 @pytest.mark.parametrize("room", ["central", "dormitory_1"])
 def test_ling_xi_group_mood_limits_exclude_dorm_residents(solver, ling_xi, room):
@@ -503,3 +527,68 @@ def test_fia_keeps_original_priority_instead_of_dorm_candidate_mood_sort(
     assert solver.tasks[0].plan["dormitory_1"] == ["伊内丝", "菲亚梅塔"]
     assert candidates == ["伊内丝", "讯使"]
     solver.op_data.replacement_candidates.assert_not_called()
+
+
+@pytest.fixture
+def legacy_solver(solver):
+    solver.global_plan["default_plan"].plan["dormitory_1"][0].group = ""
+    solver.op_data.plan["dormitory_1"][0].group = ""
+    solver.op_data.operators["塑心"].group = ""
+    solver.op_data.groups["联动"].remove("塑心")
+    return solver
+
+
+def test_ungrouped_dorm_does_not_run_group_correction(legacy_solver, monkeypatch):
+    from arknights_mower.utils import resting_correction
+
+    correction = MagicMock(side_effect=AssertionError("dorm groups are disabled"))
+    monkeypatch.setattr(resting_correction, "correct_group_dorms", correction)
+    assert not legacy_solver.op_data.has_dorm_groups()
+    assert legacy_solver.agent_get_mood() is None
+    assert legacy_solver.tasks == []
+    correction.assert_not_called()
+
+
+def test_ungrouped_absent_resident_keeps_legacy_average_mood(legacy_solver):
+    data = legacy_solver.op_data
+    data.operators["塑心"].current_room = ""
+    assert data.average_mood() == pytest.approx(39 / 96)
+
+
+def test_ungrouped_resident_keeps_legacy_exhaust_flag(legacy_solver):
+    legacy_solver.global_plan["default_plan"].config.exhaust_require = ["塑心"]
+    assert legacy_solver.initialize_operators() is None
+    assert "塑心" in legacy_solver.op_data.exhaust_agent
+    assert not legacy_solver.op_data.has_dorm_groups()
+
+
+def test_ungrouped_fixed_slot_keeps_legacy_full_mood_release(
+    legacy_solver, monkeypatch
+):
+    agents = ["黑角", "冰酿", "陈", "红", "初雪"]
+    monkeypatch.setattr(
+        legacy_solver, "preserve_resting_crafters", lambda agents, room: None
+    )
+    monkeypatch.setattr(
+        legacy_solver.op_data,
+        "get_current_room",
+        MagicMock(side_effect=RuntimeError("before UI")),
+    )
+    with pytest.raises(RuntimeError, match="before UI"):
+        legacy_solver.choose_agent(agents, "dormitory_1")
+    assert agents == ["Free", "冰酿", "Free", "Free", "Free"]
+
+
+@pytest.mark.parametrize("operation", ["shift", "priority"])
+def test_normal_group_keeps_legacy_in_place_order(legacy_solver, operation):
+    data = legacy_solver.op_data
+    original = data.groups["联动"]
+    for name, mood in [("伊内丝", 10), ("银灰", 8), ("讯使", 3)]:
+        data.operators[name].mood = mood
+    if operation == "shift":
+        plan, _ = shift_off(legacy_solver)
+        assert "dormitory_1" not in plan
+    else:
+        legacy_solver.rearrange_resting_priority("联动")
+    assert data.groups["联动"] is original
+    assert original == ["讯使", "银灰", "伊内丝"]

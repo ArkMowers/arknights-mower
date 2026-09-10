@@ -1089,7 +1089,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             prefer_resting_replacements(self.op_data, fix_plan, _is_mastery_busy)
         from arknights_mower.utils.resting_correction import correct_group_dorms
 
-        correct_group_dorms(self.op_data, fix_plan, _is_mastery_busy)
+        if self.op_data.has_dorm_groups():
+            correct_group_dorms(self.op_data, fix_plan, _is_mastery_busy)
         if len(fix_plan.keys()) > 0:
             # 如果5分钟之内有任务则跳过心情读取
             next_task = self.find_next_task()
@@ -1983,11 +1984,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return False
 
     def rearrange_resting_priority(self, group):
-        operators = [
-            name
-            for name in self.op_data.groups[group]
-            if not self.op_data.operators[name].room.startswith("dorm")
-        ]
+        operators = self.op_data.groups[group]
+        if any(
+            self.op_data.operators[name].room.startswith("dorm") for name in operators
+        ):
+            operators = [
+                name
+                for name in operators
+                if not self.op_data.operators[name].room.startswith("dorm")
+            ]
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         fia_plan, fia_room = self.check_fia()
         # 排序
@@ -2019,13 +2024,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def get_resting_plan(self, agents, exist_replacement, plan, current_resting):
         # 宿舍成员只跟随换班，不以自身心情抢占组内替班或休息优先级。
-        agents = list(agents)
         dorm_agents = [
             name
             for name in agents
             if self.op_data.operators[name].room.startswith("dorm")
         ]
-        agents = [name for name in agents if name not in dorm_agents]
+        if dorm_agents:
+            agents = [name for name in agents if name not in dorm_agents]
         __replacement = []
         __plan = {}
         required = 0
@@ -3136,7 +3141,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if (
                     __agent.mood == __agent.upper_limit
                     and not __agent.room.startswith("dorm")
-                    and self.op_data.plan[room][idx].agent == "Free"
+                    and not self.op_data.is_dorm_replacement_for_slot(
+                        __agent.name, room, idx
+                    )
                 ):
                     agents[idx] = "Free"
                     __agent.depletion_rate = 0

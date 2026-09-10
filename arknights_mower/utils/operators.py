@@ -654,7 +654,9 @@ class Operators:
             operator.current_index = exist.current_index
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
-        if operator.exhaust_require and not operator.room.startswith("dorm"):
+        if operator.exhaust_require and not (
+            operator.group and operator.room.startswith("dorm")
+        ):
             self.exhaust_agent.add(operator.name)
             if operator.group != "":
                 self.exhaust_group.add(operator.group)
@@ -666,9 +668,17 @@ class Operators:
                 self.groups[operator.group].append(operator.name)
         if operator.workaholic:
             self.workaholic_agent.add(operator.name)
-        if operator.rest_in_full and not operator.room.startswith("dorm"):
+        if operator.rest_in_full and not (
+            operator.group and operator.room.startswith("dorm")
+        ):
             if operator.group != "":
                 self.rest_in_full_group.add(operator.group)
+
+    def has_dorm_groups(self):
+        """仅实际填写了宿舍组名的配置启用宿舍绑组处理。"""
+        return any(
+            op.group and op.room.startswith("dorm") for op in self.operators.values()
+        )
 
     def group_is_resting(self, group):
         """宿舍常驻成员不参与组的工作／休息状态判断。"""
@@ -682,11 +692,21 @@ class Operators:
     def is_dorm_replacement(self, name):
         """已在固定宿舍岗位上的替班不能被其他岗位借走。"""
         op = self.operators[name]
-        slots = self.plan.get(op.current_room, [])
-        if not op.is_resting() or not 0 <= op.current_index < len(slots):
+        return self.is_dorm_replacement_for_slot(
+            name, op.current_room, op.current_index
+        )
+
+    def is_dorm_replacement_for_slot(self, name, room, index):
+        """按目标位置识别绑组宿舍替班，也用于尚未入驻时的选人保护。"""
+        slots = self.plan.get(room, [])
+        if not room.startswith("dorm") or not 0 <= index < len(slots):
             return False
-        slot = slots[op.current_index]
-        return bool(slot.group and slot.agent != "Free" and name in slot.replacement)
+        slot = slots[index]
+        return bool(
+            slot.group
+            and slot.agent not in ("Free", "菲亚梅塔")
+            and name in slot.replacement
+        )
 
     def replacement_candidates(self, operator):
         """仅绑组宿舍的替班按心情排序；菲亚梅塔充能名单保留原顺序。"""
@@ -707,6 +727,7 @@ class Operators:
                 or not 0 <= candidate.mood <= 24
             ):
                 return (1, 0)
+            # 与菲亚梅塔共用当前心情估算；宿舍替班按绝对心情排序，不扣下限。
             return (0, candidate.current_mood(now))
 
         return sorted(candidates, key=mood_order)
@@ -718,7 +739,7 @@ class Operators:
         for k, v in self.operators.items():
             if (
                 not v.is_resting()
-                and not v.room.startswith("dorm")
+                and not (v.group and v.room.startswith("dorm"))
                 and v.operator_type != "low"
                 and not v.workaholic
             ):
