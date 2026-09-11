@@ -47,6 +47,7 @@ class PlanConfig:
         free_room: bool = False,
         refresh_drained: str = "",
         ope_resting_priority: str = "",
+        resting_standby: str = "",
     ):
         """排班的设置
 
@@ -65,6 +66,7 @@ class PlanConfig:
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
         self.resting_priority = to_list(resting_priority)
+        self.resting_standby = to_list(resting_standby)
         self.free_blacklist = to_list(free_blacklist)
         # 0 为均衡模式
         # 1 为感知信息模式
@@ -92,6 +94,9 @@ class PlanConfig:
     def is_resting_priority(self, agent_name) -> bool:
         return agent_name in self.resting_priority
 
+    def is_resting_standby(self, agent_name) -> bool:
+        return agent_name in self.resting_standby
+
     def is_free_blacklist(self, agent_name) -> bool:
         return agent_name in self.free_blacklist
 
@@ -118,6 +123,7 @@ class PlanConfig:
             "exhaust_require",
             "workaholic",
             "resting_priority",
+            "resting_standby",
             "free_blacklist",
             "refresh_trading_config",
             "refresh_drained",

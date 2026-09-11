@@ -1022,7 +1022,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         miss_list = {
             k: v
             for k, v in self.op_data.operators.items()
-            if v.not_valid() and not (v.group and v.room.startswith("dorm"))
+            if v.not_valid()
+            and not (v.group and v.room.startswith("dorm"))
+            and not self.op_data.is_group_standby(k)
         }
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
@@ -1926,10 +1928,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _low_used = set()
         for op in self.total_agent:
             if op.is_high() and not op.is_workshop():
-                if _high_done:
+                can_standby = op.group and self.op_data.group_standby_candidates(
+                    self.op_data.groups[op.group]
+                )
+                if _high_done and not can_standby:
                     continue
                 if (
-                    current_resting + len(_replacement) >= self.ideal_resting_count
+                    not can_standby
+                    and current_resting + len(_replacement) >= self.ideal_resting_count
                     and self.op_data.available_free() == 0
                 ):
                     _high_done = True
@@ -1940,6 +1946,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             if (
                 op.is_resting()
+                or self.op_data.is_group_standby(op.name)
                 or op.current_room in ["factory"]
                 or (op.current_room in ["train"] and has_active_mastery)
                 or op.room in ["factory"]
@@ -1983,14 +1990,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     _REST_TIER_HIGH = 0
     _REST_TIER_MARKED_LOW = 1
-    _REST_TIER_REPLACEMENT = 2
+    _REST_TIER_STANDBY = 2
+    _REST_TIER_REPLACEMENT = 3
 
     @staticmethod
     def _resting_tier(op):
         if op.is_workshop():
-            return 3
+            return 4
         if op.is_high() and op.resting_priority == "high":
             return BaseSchedulerSolver._REST_TIER_HIGH
+        if op.is_high() and op.resting_priority == "standby":
+            return BaseSchedulerSolver._REST_TIER_STANDBY
         if op.is_high():
             return BaseSchedulerSolver._REST_TIER_MARKED_LOW
         return BaseSchedulerSolver._REST_TIER_REPLACEMENT
@@ -2047,12 +2057,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def rearrange_resting_priority(self, group):
         operators = self.op_data.groups[group]
         if any(
-            self.op_data.operators[name].room.startswith("dorm") for name in operators
+            self.op_data.operators[name].room.startswith("dorm")
+            or self.op_data.operators[name].resting_priority == "standby"
+            for name in operators
         ):
             operators = [
                 name
                 for name in operators
                 if not self.op_data.operators[name].room.startswith("dorm")
+                and self.op_data.operators[name].resting_priority != "standby"
             ]
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         fia_plan, fia_room = self.check_fia()
