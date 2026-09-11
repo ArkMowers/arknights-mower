@@ -619,16 +619,27 @@ def next_workshop_task_time(tasks, earliest=None):
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
-    from arknights_mower.utils.workshop_automation import restore_if_no_plans
+    from arknights_mower.utils.workshop_automation import (
+        restore_if_no_plans,
+        workshop_task_current,
+    )
     from arknights_mower.utils.workshop_limits import batch_limit
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
 
     restore_if_no_plans()
+    # 跑单/专精换人可能将加工推迟到五分钟之后，不能把它当作没有待办。
+    pending_operators = {
+        task.meta_data
+        for task in tasks
+        if task.type == TaskTypes.WORKSHOP and workshop_task_current(task)
+    }
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
         for item in prioritize_workshop_settings(config.conf.workshop_settings):
+            if item.operator in pending_operators:
+                continue
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
@@ -685,6 +696,7 @@ def try_workshop_tasks(op_data, tasks):
 
                 stamp_workshop_task(task)
                 tasks.append(task)
+                pending_operators.add(item.operator)
             else:
                 logger.debug("数据不满足条件，跳过加工站任务生成")
     else:
