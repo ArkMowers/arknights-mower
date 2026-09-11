@@ -122,6 +122,7 @@ async function testConnection() {
 }
 
 onMounted(load)
+defineExpose({ save })
 onBeforeUnmount(() => {
   clearTimeout(timer)
   void save()

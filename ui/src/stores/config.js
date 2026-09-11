@@ -157,6 +157,8 @@ export const useConfigStore = defineStore('config', () => {
   const skipNextWeeklyPlanSync = ref(false)
   let weeklyPlanSyncTimer = null
   let configSaveRequest = Promise.resolve()
+  let weeklyPlanSaveRequest = Promise.resolve()
+  const autosave_paused = ref(false)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -334,11 +336,15 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  async function sync_active_weekly_plan() {
+  function sync_active_weekly_plan() {
     if (!maa_weekly_plan_active.value) {
       return
     }
-    return update_weekly_plan_active(maa_weekly_plan_active.value, maa_weekly_plan.value)
+    weeklyPlanSaveRequest = update_weekly_plan_active(
+      maa_weekly_plan_active.value,
+      maa_weekly_plan.value
+    )
+    return weeklyPlanSaveRequest
   }
 
   async function delete_weekly_plan(key) {
@@ -673,7 +679,12 @@ export const useConfigStore = defineStore('config', () => {
         skipNextWeeklyPlanSync.value = false
         return
       }
-      if (!loaded.value || syncingWeeklyPlan.value || !maa_weekly_plan_active.value) {
+      if (
+        !loaded.value ||
+        autosave_paused.value ||
+        syncingWeeklyPlan.value ||
+        !maa_weekly_plan_active.value
+      ) {
         return
       }
       if (weeklyPlanSyncTimer) {
@@ -701,13 +712,25 @@ export const useConfigStore = defineStore('config', () => {
     return configSaveRequest
   }
 
+  async function flush_pending_saves() {
+    if (weeklyPlanSyncTimer) {
+      clearTimeout(weeklyPlanSyncTimer)
+      weeklyPlanSyncTimer = null
+      await sync_active_weekly_plan()
+    }
+    await weeklyPlanSaveRequest
+    await save_config()
+  }
+
   watchEffect(() => {
-    if (loaded.value) {
+    if (loaded.value && !autosave_paused.value) {
       save_config().catch((error) => console.error('配置保存失败', error))
     }
   })
 
   return {
+    autosave_paused,
+    flush_pending_saves,
     adb,
     load_config,
     save_config,
