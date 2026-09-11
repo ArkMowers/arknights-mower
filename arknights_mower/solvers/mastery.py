@@ -626,7 +626,16 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     """
     from arknights_mower.solvers.mastery_reader import _read_slot_mastery_tier
     from arknights_mower.utils.mastery_db import update_plan_status
+    from arknights_mower.utils.mastery_recommendation import (
+        get_mastery_requirement_error,
+    )
     from arknights_mower.utils.mastery_support import SupportPlanError
+
+    requirement_error = get_mastery_requirement_error(plan["char_id"])
+    if requirement_error:
+        logger.warning(f"[mastery] 暂不开始训练：{requirement_error}")
+        update_plan_status(plan["id"], "failed", failed_reason=requirement_error)
+        return
 
     _log_transition(
         plan,

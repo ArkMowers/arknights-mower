@@ -246,10 +246,14 @@ def add_plan_checked(
     from arknights_mower.utils.mastery_recommendation import (
         UNTRAINABLE_CHAR_IDS,
         get_current_mastery_level,
+        get_mastery_requirement_error,
     )
 
     if char_id in UNTRAINABLE_CHAR_IDS:
         return -1, "该干员为肉鸽赠送干员，无法在训练室专精技能"
+    requirement_error = get_mastery_requirement_error(char_id)
+    if requirement_error:
+        return -1, requirement_error
     current_level = get_current_mastery_level(char_id, skill_index)
     if current_level is not None and current_level >= target_level:
         return -1, f"该干员技能已专{current_level}，无需再练到专{target_level}"
