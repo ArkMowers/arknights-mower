@@ -101,7 +101,6 @@ async function importConfig() {
     )
     if (!data.ok) throw new Error(data.message)
     result.value = data
-    axios.defaults.headers.common.token = data.token || ''
     showConfirm.value = false
     showResult.value = true
     // Keep old stores paused until the page reloads with the imported values.
@@ -116,11 +115,8 @@ async function importConfig() {
 
 function reload() {
   restoreBrowserSettings(selected.value.browser_settings)
-  const url = new URL(window.location.href)
-  if (result.value.token) url.searchParams.set('token', result.value.token)
-  else url.searchParams.delete('token')
   sessionStorage.setItem('mower-config-imported', '1')
-  window.location.replace(url.href)
+  window.location.reload()
 }
 </script>
 
@@ -132,7 +128,8 @@ function reload() {
         专精计划与训练员配置、加工站配置、保全派驻作业、窗口与页面偏好，以及共享网络设置、软件更新设置和森空岛设备信息。
       </n-text>
       <n-text depth="3">
-        备份包含账号、密码和密钥，请妥善保管。导入会覆盖当前实例配置及共享设置，导入前会自动备份现有配置。
+        导入时保留当前管理页面端口、访问令牌和网络代理，仍可从原入口访问；其余配置按备份恢复。
+        备份包含账号、密码和密钥，请妥善保管。导入前会自动备份现有配置。
         不包含程序文件、其他实例、日志、统计记录和仓库识别数据。
       </n-text>
       <n-space>
@@ -154,7 +151,7 @@ function reload() {
     <n-modal
       v-model:show="showConfirm"
       preset="dialog"
-      title="导入全部配置"
+      title="导入配置"
       positive-text="确认导入"
       negative-text="取消"
       :loading="busy"
@@ -165,8 +162,8 @@ function reload() {
       :positive-button-props="{ disabled: busy }"
       @positive-click="importConfig"
     >
-      将使用「{{ filename }}」覆盖当前配置。请先停止 Mower；导入前会自动生成恢复备份。
-      导入完成后需要刷新页面，窗口、端口等启动设置重启 Mower 后生效。
+      将使用「{{ filename }}」恢复配置，保留当前管理页面端口、访问令牌和网络代理。 请先停止
+      Mower；导入前会自动生成恢复备份。导入后从原入口刷新页面，窗口设置重启 Mower 后生效。
     </n-modal>
     <n-modal
       v-model:show="showResult"

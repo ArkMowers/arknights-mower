@@ -13,7 +13,6 @@ from yamlcore import CoreLoader
 from arknights_mower.utils import config, network_settings, update_runtime
 from arknights_mower.utils.config.conf import RegularTaskPart
 from arknights_mower.utils.config.weekly_plan_loader import WeeklyPlanManager
-from arknights_mower.utils.github_download import normalize_proxy
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.workshop_config import workshop_lock
 
@@ -109,6 +108,17 @@ def _object(value, label):
     return value
 
 
+def _conf_for_import(raw):
+    data = dict(_object(raw, "主配置"))
+    webview = _object(data.get("webview", {}), "窗口设置")
+    data["webview"] = {
+        **webview,
+        "port": config.conf.webview.port,
+        "token": config.conf.webview.token,
+    }
+    return data
+
+
 def validate_configuration(backup):
     _object(backup, "备份")
     if (
@@ -130,7 +140,7 @@ def validate_configuration(backup):
     # Reject non-JSON values, NaN and oversized backups before touching storage.
     if len(serialize_backup(backup).encode("utf-8")) > MAX_BACKUP_BYTES:
         raise ValueError("备份文件不能超过 16 MB")
-    conf = config.Conf(**_object(data["conf"], "主配置"))
+    conf = config.Conf(**_conf_for_import(data["conf"]))
     plan = config.PlanModel(**_object(data["plan"], "排班配置"))
     for name in (
         "state",
@@ -178,9 +188,6 @@ def validate_configuration(backup):
                         raise ValueError("活动回退方案必须是字符串")
                 elif type(value) is not int or value < 0:
                     raise ValueError("活动切换时间必须是非负整数")
-    if data["network"] is not None:
-        network_settings.normalize_http_proxy(data["network"].get("http_proxy", ""))
-        normalize_proxy(data["network"].get("github_proxy", ""))
     if data["software_update"] is not None:
         update = data["software_update"]
         if update.get("channel", "stable") not in {"stable", "beta", "dev"}:
@@ -229,10 +236,11 @@ def _replace_mastery(conn, mastery):
 
 
 def import_configuration(backup):
-    conf, plan = validate_configuration(backup)
     from arknights_mower.utils.mastery_db import _conn
 
     with backup_lock, workshop_lock:
+        conf, plan = validate_configuration(backup)
+        imported_conf = _conf_for_import(backup["data"]["conf"])
         paths = configuration_paths()
         previous = {
             name: path.read_text(encoding="utf-8") if path.exists() else None
@@ -261,7 +269,11 @@ def import_configuration(backup):
                 ).fetchone():
                     conn.execute("DELETE FROM saved_state")
                 for name, path in paths.items():
-                    value = backup["data"][name]
+                    # Access and proxy settings belong to the destination. Do not
+                    # create, replace or remove network.json, even for null backups.
+                    if name == "network":
+                        continue
+                    value = imported_conf if name == "conf" else backup["data"][name]
                     if value is None:
                         path.unlink(missing_ok=True)
                     else:
@@ -290,5 +302,4 @@ def import_configuration(backup):
             skland_module.skland_cache.clear()
             skland_module._device_id = ""
             skland_module._device_id_failed = False
-        network_settings.apply_http_proxy()
         return str(recovery)

@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, abort, current_app, request, send_file
 
-from arknights_mower.utils import config
 from arknights_mower.utils.config_backup import (
     MAX_BACKUP_BYTES,
     backup_lock,
@@ -76,14 +75,9 @@ def import_backup():
                 "ok": False,
                 "message": "配置写入失败，请检查磁盘空间和目录权限；导入前备份保存在 config-backups 目录",
             }, 500
-        token = config.conf.webview.token
-        if token:
-            current_app.token = token
-        elif hasattr(current_app, "token"):
-            del current_app.token
         return {
             "ok": True,
-            "message": "全部配置已导入。请刷新页面；窗口、端口等启动设置重启 Mower 后生效。",
+            "message": "配置已导入，当前管理页面端口、访问令牌和网络代理保持不变。请刷新页面；窗口设置重启 Mower 后生效。",
             "recovery_path": recovery,
-            "token": token,
+            "token": getattr(current_app, "token", ""),
         }

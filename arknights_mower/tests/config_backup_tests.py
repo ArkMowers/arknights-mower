@@ -107,7 +107,9 @@ def test_full_round_trip_includes_optional_files_secrets_and_mastery(storage):
     for name in values:
         paths[name].unlink()
     recovery = backup.import_configuration(original)
-    assert backup.export_configuration()["data"] == original["data"]
+    expected = copy.deepcopy(original["data"])
+    expected["network"] = None  # The destination has no proxy configuration.
+    assert backup.export_configuration()["data"] == expected
     assert (
         json.loads(open(recovery, encoding="utf-8").read())["data"]["conf"]["account"]
         == "changed"
@@ -132,6 +134,66 @@ def test_import_into_instance_without_database(storage):
     assert backup.export_configuration()["data"] == original["data"]
 
 
+@pytest.mark.parametrize("has_local_network", [False, True])
+@pytest.mark.parametrize("has_backup_network", [False, True])
+def test_import_preserves_access_and_network_settings(
+    storage, monkeypatch, has_local_network, has_backup_network
+):
+    config.conf.webview.port = 18080
+    config.conf.webview.token = "local-token"
+    config.save_conf()
+    network_path = backup.configuration_paths()["network"]
+    local_network = {"http_proxy": "http://127.0.0.1:7890", "github_proxy": ""}
+    if has_local_network:
+        write_json(network_path, local_network)
+    previous_bytes = network_path.read_bytes() if has_local_network else None
+    incoming = backup.export_configuration()
+    incoming["data"]["conf"]["webview"].update(
+        port=19090, token="backup-token", scale=1.25, tray=False
+    )
+    incoming["data"]["conf"]["account"] = "restored"
+    incoming["data"]["plan"]["conf"]["ling_xi"] = 2
+    incoming["data"]["network"] = (
+        {"http_proxy": "http://127.0.0.1:8888", "github_proxy": "https://example.com"}
+        if has_backup_network
+        else None
+    )
+    original_input = copy.deepcopy(incoming)
+    proxy_changes = []
+    monkeypatch.setattr(
+        backup.network_settings, "apply_http_proxy", lambda: proxy_changes.append(True)
+    )
+    recovery = backup.import_configuration(incoming)
+    assert incoming == original_input
+    assert config.conf.webview.port == 18080
+    assert config.conf.webview.token == "local-token"
+    assert config.conf.webview.scale == 1.25
+    assert config.conf.webview.tray is False
+    assert config.conf.account == "restored"
+    assert config.plan.conf.ling_xi == 2
+    assert not proxy_changes
+    if has_local_network:
+        assert network_path.read_bytes() == previous_bytes
+    else:
+        assert not network_path.exists()
+    config.load_conf()  # The same access settings must also survive a restart.
+    assert config.conf.webview.port == 18080
+    assert config.conf.webview.token == "local-token"
+    with open(recovery, encoding="utf-8") as stream:
+        before = json.load(stream)["data"]
+    assert before["conf"]["webview"]["token"] == "local-token"
+    assert before["network"] == (local_network if has_local_network else None)
+
+
+def test_import_ignores_values_of_preserved_network_fields(storage):
+    incoming = backup.export_configuration()
+    incoming["data"]["conf"]["webview"].update(port="unused", token=None)
+    incoming["data"]["network"] = {"http_proxy": "unused"}
+    before = config.conf.webview.model_dump()
+    backup.import_configuration(incoming)
+    assert config.conf.webview.model_dump() == before
+
+
 def test_browser_preferences_are_preserved_in_recovery_backup(storage):
     incoming = backup.export_configuration()
     incoming["browser_settings"] = {"sc_preview": "true"}
@@ -148,7 +210,7 @@ def test_browser_preferences_are_preserved_in_recovery_backup(storage):
         lambda value: value["data"].pop("plan"),
         lambda value: value["data"].update(conf={"screenshot_interval": "invalid"}),
         lambda value: value["data"].update(weekly_plans={"plans": {"bad": [7]}}),
-        lambda value: value["data"].update(network={"http_proxy": "invalid"}),
+        lambda value: value["data"].update(network=[]),
         lambda value: value["data"]["mastery"]["mastery_plan"][0].update(
             unknown="invalid"
         ),
@@ -203,7 +265,7 @@ def client(storage):
     return app.test_client()
 
 
-def test_routes_auth_busy_validation_and_token_refresh(client):
+def test_routes_auth_busy_validation_and_existing_token_stays_valid(client):
     headers = {"token": "old-token", "X-Mower-Settings": "1"}
     assert client.get("/config-backup/export").status_code == 403
     exported = client.get("/config-backup/export", headers=headers)
@@ -238,12 +300,26 @@ def test_routes_auth_busy_validation_and_token_refresh(client):
     data["data"]["conf"]["webview"]["token"] = "new-token"
     imported = client.post("/config-backup/import", json=data, headers=headers)
     assert imported.status_code == 200
-    assert imported.get_json()["token"] == "new-token"
-    assert client.get("/config-backup/export", headers=headers).status_code == 403
+    assert imported.get_json()["token"] == "old-token"
+    assert client.application.token == "old-token"
+    assert client.get("/config-backup/export", headers=headers).status_code == 200
     assert (
         client.get("/config-backup/export", headers={"token": "new-token"}).status_code
-        == 200
+        == 403
     )
+
+
+def test_import_does_not_enable_authentication_on_open_instance(client):
+    del client.application.token
+    incoming = backup.export_configuration()
+    incoming["data"]["conf"]["webview"]["token"] = "backup-token"
+    response = client.post(
+        "/config-backup/import", json=incoming, headers={"X-Mower-Settings": "1"}
+    )
+    assert response.status_code == 200
+    assert not hasattr(client.application, "token")
+    assert config.conf.webview.token == ""
+    assert client.get("/config-backup/export").status_code == 200
 
 
 def test_oversized_import_is_rejected(client, monkeypatch):
