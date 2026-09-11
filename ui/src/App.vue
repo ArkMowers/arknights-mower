@@ -666,7 +666,7 @@ onMounted(async () => {
     )
     .catch((error) => console.error('failed to request automatic software check', error))
 
-  await load_plan()
+  await load_plan({ resetDormOrder: false })
 
   try {
     const notice = await loadUpdateNotice()
@@ -748,7 +748,9 @@ onMounted(async () => {
   }
 
   await resourceUpdateRequest
-  if (start_automatically.value && !auto_start_handled.value) {
+  const importedConfig = sessionStorage.getItem('mower-config-imported') === '1'
+  sessionStorage.removeItem('mower-config-imported')
+  if (start_automatically.value && !auto_start_handled.value && !importedConfig) {
     start()
   }
 })

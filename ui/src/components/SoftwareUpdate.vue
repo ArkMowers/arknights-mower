@@ -52,6 +52,7 @@ let pendingSince = 0
 let lastCheckAt = 0
 let settingsRequest = Promise.resolve()
 let previewCheckId = ''
+defineExpose({ flushSettings: () => settingsRequest })
 
 function saveSettings() {
   const settings = {

@@ -1,5 +1,6 @@
 """Allocate recipe tasks and sort scoped copies of saved workshop settings."""
 
+from arknights_mower.utils.workshop_material_policy import protected_workshop_materials
 from arknights_mower.utils.workshop_recipes import (
     T4_PREFERRED,
     exclusive_specialists,
@@ -37,7 +38,7 @@ def setting_priority(entry, available, formulas):
 
 def scope_setting(entry, formulas):
     name = entry.operator if hasattr(entry, "model_dump") else entry["operator"]
-    if name not in (*T4_PREFERRED, "莱伊"):
+    if not protected_workshop_materials() and name not in (*T4_PREFERRED, "莱伊"):
         return entry
     items = scope_workshop_items(
         name, entry.items if hasattr(entry, "model_dump") else entry["items"], formulas

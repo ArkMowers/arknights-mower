@@ -175,9 +175,12 @@ import { ref } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
 import SoftwareUpdate from '../components/SoftwareUpdate.vue'
 import NetworkSettings from '../components/NetworkSettings.vue'
+import ConfigBackup from '../components/ConfigBackup.vue'
 import WorkshopManualSettings from '../components/WorkshopManualSettings.vue'
 
 const idleAction = ref('') // 'idle' | 'home' | 'exit' | 'close'
+const networkSettings = ref(null)
+const softwareUpdate = ref(null)
 
 const idleOptions = [
   { label: '无操作', value: 'idle' },
@@ -790,11 +793,17 @@ if (return_home_when_idle.value) {
       </div>
     </div>
     <div class="settings-network">
-      <NetworkSettings />
+      <NetworkSettings ref="networkSettings" />
     </div>
     <div class="settings-updates">
-      <div><SoftwareUpdate /></div>
+      <div><SoftwareUpdate ref="softwareUpdate" /></div>
       <div><ResourceUpdate /></div>
+    </div>
+    <div class="settings-network">
+      <ConfigBackup
+        :save-network="() => networkSettings.save()"
+        :save-updates="() => softwareUpdate.flushSettings()"
+      />
     </div>
     <div class="settings-network">
       <ProcessControl v-if="runtime_platform !== 'android'" />

@@ -3,6 +3,8 @@
 import json
 from threading import RLock
 
+from pydantic import BaseModel
+
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RIICPart
 from arknights_mower.utils.path import get_path
@@ -137,6 +139,18 @@ def _edit_legacy(conf, req):
         conf.workshop_generation += 1
 
 
+def _merge_model_fields(model, updates):
+    data = model.model_dump()
+    for name, value in updates.items():
+        current = getattr(model, name, None)
+        data[name] = (
+            _merge_model_fields(current, value)
+            if isinstance(current, BaseModel) and isinstance(value, dict)
+            else value
+        )
+    return data
+
+
 def save_user_config(req):
     with workshop_lock:
         state = config.conf.model_copy(deep=True)
@@ -148,7 +162,9 @@ def save_user_config(req):
         for key in _STATE_FIELDS:
             editable[key] = getattr(state, key)
         editable.setdefault("workshop_deer_fodder", state.workshop_deer_fodder)
-        conf = config.Conf(**editable)
+        # Web forms only submit fields they expose. Keep all other settings,
+        # including values restored from a full configuration backup.
+        conf = config.Conf(**_merge_model_fields(state, editable))
         if not conf.enable_mastery:
             restore_manual_settings(conf)
         save_conf(conf)
