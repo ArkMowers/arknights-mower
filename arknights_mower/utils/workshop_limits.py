@@ -4,6 +4,8 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from arknights_mower.utils.workshop_material_policy import workshop_recipe_allowed
+
 
 @lru_cache(maxsize=1)
 def _bundled_recipes():
@@ -33,6 +35,8 @@ def recipe_quantities(name, metadata):
 
 
 def batch_limit(name, metadata, setting, inventory):
+    if not workshop_recipe_allowed(metadata):
+        return 0
     quantities = recipe_quantities(name, metadata)
     if quantities is None:
         return 0

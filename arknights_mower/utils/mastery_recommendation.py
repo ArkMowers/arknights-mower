@@ -188,6 +188,18 @@ def get_mastery_recommendations():
         if count > 0:
             inventory[item_id] = count
 
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_materials import MaterialBudget
+    from arknights_mower.utils.workshop_material_policy import (
+        protected_workshop_materials,
+    )
+
+    material_budget = MaterialBudget(
+        skill_data,
+        inventory,
+        workshop_formula,
+        blocked_materials=protected_workshop_materials(),
+    )
     operators = []
     skill_name_cache = {}
 
@@ -320,6 +332,7 @@ def get_mastery_recommendations():
                     "remaining_levels": end_stage - start_stage,
                     "total_time": total_time,
                     "full_chain_achievable": full_chain_achievable,
+                    "material_summary": material_budget.calculate(chain_needed_list),
                     "chain_needed_materials": chain_needed_list,
                     "chain_missing_materials": chain_missing_list,
                     "chain_missing_t3": chain_missing_t3,
@@ -363,23 +376,30 @@ def _workshop_lookahead_active(plan):
         return False
 
 
+def _remaining_mastery_materials(plan, recommendation):
+    """Remaining costs through the plan target, excluding an already-paid step."""
+    stages = recommendation.get("stages")
+    if stages is None:
+        return recommendation.get("chain_needed_materials", [])
+    paid_level = 0
+    if plan.get("status") in ("training", "waiting_collect"):
+        runtime = plan.get("support_runtime") or {}
+        if isinstance(runtime, str):
+            runtime = json.loads(runtime)
+        paid_level = runtime.get("level") or recommendation.get("current_level", 0) + 1
+    return [
+        material
+        for stage in stages
+        if paid_level < stage["to_level"] - 7 <= plan.get("target_level", 3)
+        for material in stage.get("needed_materials", [])
+    ]
+
+
 def _workshop_training_reserve(plan, recommendation):
-    """The current training step is already paid; retain subsequent steps' inputs."""
     from collections import defaultdict
 
-    stages = recommendation.get("stages")
-    materials = (
-        [
-            material
-            for stage in stages[1:]
-            if stage["to_level"] - 7 <= plan.get("target_level", 3)
-            for material in stage.get("needed_materials", [])
-        ]
-        if stages
-        else recommendation.get("chain_needed_materials", [])
-    )
     reserved = defaultdict(int)
-    for material in materials:
+    for material in _remaining_mastery_materials(plan, recommendation):
         reserved[material["name"]] += material["count"]
     return reserved
 
@@ -493,7 +513,10 @@ def compute_workshop_config(
         reserved = _workshop_training_reserve(current, current_rec)
 
     raw_demand = defaultdict(int)
-    for mat in recommendations.get(plan_key, {}).get("chain_needed_materials", []):
+    selected_rec = recommendations.get(plan_key)
+    if selected_rec is None:
+        return []
+    for mat in _remaining_mastery_materials(selected, selected_rec):
         raw_demand[mat["name"]] += mat["count"]
 
     demand_t5_raw = {n: c for n, c in raw_demand.items() if n in t5_names}
@@ -520,6 +543,35 @@ def compute_workshop_config(
         return max(
             0, inventory.get(id_by_name.get(name, ""), 0) - reserved.get(name, 0)
         )
+
+    from arknights_mower.utils.mastery_materials import MaterialBudget
+    from arknights_mower.utils.workshop_material_policy import (
+        protected_workshop_materials,
+    )
+
+    budget = MaterialBudget(
+        skill_data,
+        inventory,
+        workshop_formula,
+        blocked_materials=protected_workshop_materials(),
+    )
+    summary = budget.calculate(
+        [
+            {
+                "id": id_by_name.get(name, name),
+                "count": raw_demand.get(name, 0) + reserved.get(name, 0),
+            }
+            for name in raw_demand.keys() | reserved.keys()
+        ]
+    )
+    if not summary["craftable"]:
+        from arknights_mower.utils.log import logger
+
+        logger.info(
+            f"专精计划 {selected['char_id']} 技能{selected['skill_index'] + 1} "
+            "材料仍不足，暂不合成，等待后续仓库扫描"
+        )
+        return []
 
     t4_indirect = defaultdict(int)
     for t5_name, t5_demand in demand_t5_raw.items():
@@ -692,7 +744,7 @@ def auto_schedule_mastery_tasks():
     # 的孤儿文件，只靠它的话新装/绕过前端新增的计划永远不在 plan_set，扫描自动开始失效。
     from arknights_mower.utils.mastery_db import get_all_plans
 
-    plan_set = {(p["char_id"], p["skill_index"]) for p in get_all_plans()}
+    plan_set = {(p["char_id"], p["skill_index"]): p for p in get_all_plans()}
     if not plan_set:
         return result
 
@@ -730,14 +782,20 @@ def auto_schedule_mastery_tasks():
         for rec in op.get("recommendations", []):
             if (op["char_id"], rec["skill_index"]) not in plan_set:
                 continue
-            if rec.get("current_level", 0) >= 3:
+            plan = plan_set[(op["char_id"], rec["skill_index"])]
+            if rec.get("current_level", 0) >= plan.get("target_level", 3):
                 continue
 
+            from collections import Counter
+
+            needed = Counter()
+            for mat in _remaining_mastery_materials(plan, rec):
+                needed[mat["name"]] += mat["count"]
             all_materials_sufficient = True
-            for mat in rec.get("chain_needed_materials", []):
-                mat_id = name_to_id.get(mat["name"], "")
+            for name, count in needed.items():
+                mat_id = name_to_id.get(name, "")
                 owned = inventory.get(mat_id, 0)
-                if owned < mat["count"]:
+                if owned < count:
                     all_materials_sufficient = False
                     break
 

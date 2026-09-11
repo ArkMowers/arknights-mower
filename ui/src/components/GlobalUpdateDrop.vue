@@ -25,6 +25,8 @@ const selected = ref(null)
 const busy = ref(false)
 const result = ref(null)
 const progress = ref(0)
+const reading = ref(false)
+let disposed = false
 let depth = 0
 
 function resetDrag() {
@@ -54,8 +56,8 @@ function over(event) {
     return
   }
   event.preventDefault()
-  event.dataTransfer.dropEffect = busy.value ? 'none' : 'copy'
-  dragging.value = !busy.value
+  event.dataTransfer.dropEffect = busy.value || reading.value ? 'none' : 'copy'
+  dragging.value = !busy.value && !reading.value
 }
 
 function leave() {
@@ -68,13 +70,17 @@ async function drop(event) {
   if (event.defaultPrevented || !isUpdateFileDrag(event) || localDropzone(event)) return
   event.preventDefault()
   event.stopPropagation()
-  if (busy.value || resources.installing) {
-    messages.warning('正在安装更新包，请等待完成')
+  if (busy.value || reading.value || resources.installing) {
+    messages.warning('正在读取或安装更新包，请等待完成')
     return
   }
+  reading.value = true
   try {
     const file = droppedUpdateFile(event)
-    if (updatePackageKind(file) === 'software') {
+    const kind = await updatePackageKind(file)
+    if (disposed) return
+    if (!kind) throw new Error('未识别到 Mower 软件包、资源包或热更包')
+    if (kind === 'software') {
       pendingSoftwarePackage.value = file
       show.value = false
       await router.push('/mowersettings')
@@ -85,13 +91,14 @@ async function drop(event) {
       show.value = true
     }
   } catch (error) {
-    pendingSoftwarePackage.value = null
-    messages.error(error.message)
+    if (!disposed) messages.error(error.message)
+  } finally {
+    reading.value = false
   }
 }
 
 async function installResource() {
-  if (busy.value || !selected.value) return
+  if (busy.value || reading.value || !selected.value) return
   busy.value = true
   result.value = null
   try {
@@ -136,6 +143,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', resetDrag)
 })
 onUnmounted(() => {
+  disposed = true
   window.removeEventListener('dragenter', enter)
   window.removeEventListener('dragover', over)
   window.removeEventListener('dragleave', leave)
@@ -149,9 +157,9 @@ onUnmounted(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="dragging" class="global-update-drop" aria-live="polite">
+    <div v-if="dragging || reading" class="global-update-drop" aria-live="polite">
       <div class="global-update-drop__content">
-        <strong>松开文件，准备更新</strong>
+        <strong>{{ reading ? '正在读取更新包内容…' : '松开文件，准备更新' }}</strong>
         <span>资源包 / 热更包 ZIP · Mower 软件安装包 ZIP、tar.gz、DMG</span>
         <span>一次一个文件，确认后安装</span>
       </div>
@@ -177,7 +185,12 @@ onUnmounted(() => {
         <n-button :disabled="busy" @click="show = false">{{
           result?.ok ? '完成' : '取消'
         }}</n-button>
-        <n-button v-if="!result?.ok" type="primary" :loading="busy" @click="installResource"
+        <n-button
+          v-if="!result?.ok"
+          type="primary"
+          :disabled="reading"
+          :loading="busy"
+          @click="installResource"
           >确认安装</n-button
         >
       </n-space>

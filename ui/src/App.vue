@@ -33,6 +33,7 @@
       :on-toggle-maximize="windowShell.toggleMaximize"
       :resizable="windowShellPlatform === 'windows' && !windowShellState.maximized"
       :on-resize="windowShell.startResize"
+      :on-move="windowShell.startMove"
     />
     <n-dialog-provider>
       <n-message-provider>
@@ -73,9 +74,9 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
-              <GlobalUpdateDrop v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
+              <GlobalUpdateDrop v-if="loaded" />
               <n-modal
                 v-model:show="showUpdateNoticeModal"
                 preset="card"
@@ -665,7 +666,7 @@ onMounted(async () => {
     )
     .catch((error) => console.error('failed to request automatic software check', error))
 
-  await load_plan()
+  await load_plan({ resetDormOrder: false })
 
   try {
     const notice = await loadUpdateNotice()
@@ -747,7 +748,9 @@ onMounted(async () => {
   }
 
   await resourceUpdateRequest
-  if (start_automatically.value && !auto_start_handled.value) {
+  const importedConfig = sessionStorage.getItem('mower-config-imported') === '1'
+  sessionStorage.removeItem('mower-config-imported')
+  if (start_automatically.value && !auto_start_handled.value && !importedConfig) {
     start()
   }
 })

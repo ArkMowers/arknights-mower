@@ -28,6 +28,7 @@ def build_global_plan():
         rest_in_full=config.plan.conf.rest_in_full,
         exhaust_require=config.plan.conf.exhaust_require,
         resting_priority=config.plan.conf.resting_priority,
+        resting_standby=config.plan.conf.resting_standby,
         ling_xi=config.plan.conf.ling_xi,
         workaholic=config.plan.conf.workaholic,
         free_blacklist=conf.free_blacklist,
@@ -74,6 +75,7 @@ def build_global_plan():
             workaholic=i["conf"]["workaholic"],
             free_blacklist=i["conf"]["free_blacklist"],
             ope_resting_priority=i["conf"]["ope_resting_priority"],
+            resting_standby=i["conf"].get("resting_standby", ""),
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
@@ -192,6 +194,8 @@ class Operators:
                     return "菲亚梅塔必须安排在宿舍"
                 if data.agent == "Free" and not room.startswith("dorm"):
                     return f"Free只能安排在宿舍 房间->{room}, 干员->{data.agent}"
+                if data.group and data.agent in ["Free", "菲亚梅塔"]:
+                    return f"{data.agent}不能参与宿舍绑组换班"
                 if data.agent in self.operators and data.agent != "Free":
                     return f"高效组干员不可重复 房间->{room},{self.operators[data.agent].room}, 干员->{data.agent}"
                 self.add(
@@ -344,9 +348,16 @@ class Operators:
                     return f"{key} 分组无法排班,替换组数量不够"
                 else:
                     _replacement.append(_candidate)
-                if self.operators[name].workaholic:
+                if self.operators[name].workaholic or self.operators[
+                    name
+                ].room.startswith("dorm"):
                     continue
                 total_count += 1
+            if (
+                any(self.operators[n].room.startswith("dorm") for n in self.groups[key])
+                and not total_count
+            ):
+                return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
             if total_count > len(self.dorm):
                 return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于总宿舍数{len(self.dorm)}"
         # 设定令夕模式的心情阈值
@@ -381,11 +392,14 @@ class Operators:
         for name in ["夕", "令"]:
             if (
                 name in self.operators
+                and not self.operators[name].room.startswith("dorm")
                 and self.operators[name].group != ""
                 and self.operators[name].group not in finished
             ):
                 for group_name in self.groups[self.operators[name].group]:
-                    if group_name not in ["夕", "令"]:
+                    if group_name not in ["夕", "令"] and not self.operators[
+                        group_name
+                    ].room.startswith("dorm"):
                         if self.config.ling_xi in [1, 2]:
                             self.set_mood_limit(group_name, lower_limit=12)
                         elif self.config.ling_xi == 0:
@@ -425,7 +439,9 @@ class Operators:
             for k, v in self.operators.items()
             if v.current_room == room
         }
-        res = [obj.agent for obj in self.plan[room]]
+        # 训练室的两个槽位由设施决定，自动专精不要求静态排班配置该房间。
+        # 只读取缓存，不向排班表补人，避免常规排班接管自动专精。
+        res = [""] * 2 if room == "train" else [obj.agent for obj in self.plan[room]]
         not_found = False
         for idx, op in enumerate(res):
             if idx in room_data:
@@ -509,6 +525,8 @@ class Operators:
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
+        if mood >= 24:
+            agent.dorm_recovery_room = ""
         # 如果是高效组且没有记录时间，则返还index
         if to_dorm:
             idx, dorm = self.get_dorm_by_name(name)
@@ -640,9 +658,12 @@ class Operators:
             operator.depletion_rate = exist.depletion_rate
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
+            operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
-        if operator.exhaust_require:
+        if operator.exhaust_require and not (
+            operator.group and operator.room.startswith("dorm")
+        ):
             self.exhaust_agent.add(operator.name)
             if operator.group != "":
                 self.exhaust_group.add(operator.group)
@@ -654,16 +675,130 @@ class Operators:
                 self.groups[operator.group].append(operator.name)
         if operator.workaholic:
             self.workaholic_agent.add(operator.name)
-        if operator.rest_in_full:
+        if operator.rest_in_full and not (
+            operator.group and operator.room.startswith("dorm")
+        ):
             if operator.group != "":
                 self.rest_in_full_group.add(operator.group)
+        if (
+            self.config.is_resting_standby(operator.name)
+            and operator.is_high()
+            and operator.group
+            and not operator.room.startswith("dorm")
+            and not operator.workaholic
+            and not operator.exhaust_require
+            and not operator.rest_in_full
+            and not operator.is_workshop()
+        ):
+            operator.resting_priority = "standby"
+
+    @staticmethod
+    def _can_group_standby(op):
+        """仅显式配置的主班绑组候补可待命；原低优及特殊恢复规则不变。"""
+        return (
+            op.is_high()
+            and bool(op.group)
+            and op.resting_priority == "standby"
+            and not op.room.startswith("dorm")
+            and not op.workaholic
+            and not op.exhaust_require
+            and not op.rest_in_full
+            and not op.is_workshop()
+        )
+
+    def is_group_standby(self, name):
+        """从实际阵容识别随组待命，重启后也无需额外状态文件。"""
+        op = self.operators[name]
+        if not self._can_group_standby(op) or op.current_room:
+            return False
+        cover = self.get_current_operator(op.room, op.index)
+        if (
+            cover is None
+            or cover.name not in op.replacement
+            or cover.name in TRADE_ORDER_AGENTS
+        ):
+            return False
+        return any(
+            member.is_high()
+            and member.resting_priority == "high"
+            and not member.room.startswith("dorm")
+            and not member.workaholic
+            and not member.is_workshop()
+            and member.is_resting()
+            and self.get_dorm_by_name(member.name)[0] is not None
+            for member in (self.operators[n] for n in self.groups.get(op.group, []))
+        )
+
+    def has_dorm_groups(self):
+        """仅实际填写了宿舍组名的配置启用宿舍绑组处理。"""
+        return any(
+            op.group and op.room.startswith("dorm") for op in self.operators.values()
+        )
+
+    def group_is_resting(self, group):
+        """宿舍常驻成员不参与组的工作／休息状态判断。"""
+        return any(
+            not self.operators[name].room.startswith("dorm")
+            and not self.operators[name].workaholic
+            and self.operators[name].is_resting()
+            for name in self.groups.get(group, [])
+        )
+
+    def is_dorm_replacement(self, name):
+        """已在固定宿舍岗位上的替班不能被其他岗位借走。"""
+        op = self.operators[name]
+        return self.is_dorm_replacement_for_slot(
+            name, op.current_room, op.current_index
+        )
+
+    def is_dorm_replacement_for_slot(self, name, room, index):
+        """按目标位置识别绑组宿舍替班，也用于尚未入驻时的选人保护。"""
+        slots = self.plan.get(room, [])
+        if not room.startswith("dorm") or not 0 <= index < len(slots):
+            return False
+        slot = slots[index]
+        return bool(
+            slot.group
+            and slot.agent not in ("Free", "菲亚梅塔")
+            and name in slot.replacement
+        )
+
+    def replacement_candidates(self, operator):
+        """仅绑组宿舍的替班按心情排序；菲亚梅塔充能名单保留原顺序。"""
+        candidates = list(operator.replacement)
+        if (
+            not operator.room.startswith("dorm")
+            or not operator.group
+            or operator.name == "菲亚梅塔"
+        ):
+            return candidates
+        now = datetime.now()
+
+        def mood_order(name):
+            candidate = self.operators.get(name)
+            if (
+                candidate is None
+                or candidate.time_stamp is None
+                or not 0 <= candidate.mood <= 24
+            ):
+                return (1, 0)
+            # 与菲亚梅塔共用当前心情估算；宿舍替班按绝对心情排序，不扣下限。
+            return (0, candidate.current_mood(now))
+
+        return sorted(candidates, key=mood_order)
 
     def average_mood(self):
         total_mood = 0
         current_mood = 0
         count = 0
         for k, v in self.operators.items():
-            if not v.is_resting() and v.operator_type != "low" and not v.workaholic:
+            if (
+                not v.is_resting()
+                and not (v.group and v.room.startswith("dorm"))
+                and v.operator_type != "low"
+                and not v.workaholic
+                and not self.is_group_standby(k)
+            ):
                 current_mood += v.current_mood() - v.lower_limit
                 total_mood += v.upper_limit - v.lower_limit
                 count += 1
@@ -743,16 +878,16 @@ class Operators:
             return not (protect_resting and op.is_resting())
         return False
 
-    def _find_dorm_slot(self, name, used):
-        is_high = (
-            self.operators[name].resting_priority == "high"
-            and not self.operators[name].is_workshop()
-        )
+    def _find_dorm_slot(self, name, used, *, group_resting=False):
+        operator = self.operators[name]
+        is_high = operator.resting_priority == "high" and not operator.is_workshop()
+        # 仅显式候补在随组下班时可接管普通替班；原低优保护规则不变。
+        can_take_over = is_high or (group_resting and self._can_group_standby(operator))
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
         if not is_high:
             for i in range(max_count, len(self.dorm)):
                 if i not in used and self._slot_takable(
-                    self.dorm[i], protect_resting=True, requester=name
+                    self.dorm[i], protect_resting=not can_take_over, requester=name
                 ):
                     return i
         return next(
@@ -761,25 +896,54 @@ class Operators:
                 for i, dorm in enumerate(self.dorm)
                 if i not in used
                 and self._slot_takable(
-                    dorm, protect_resting=not is_high, requester=name
+                    dorm, protect_resting=not can_take_over, requester=name
                 )
             ),
             None,
         )
 
+    def group_standby_candidates(self, names):
+        """有需要恢复的高优成员带组时，可在缺床情况下待命的候补成员。"""
+        # 高优确实需要恢复心情时才允许同组候补待命，避免满心情高优在选人
+        # 阶段被释放后，整组既没有恢复心情者，也没有回班计时来源。
+        anchor_groups = {
+            op.group
+            for op in (self.operators[n] for n in names)
+            if op.group
+            and op.is_high()
+            and op.resting_priority == "high"
+            and not op.workaholic
+            and not op.is_workshop()
+            and not op.room.startswith("dorm")
+            and 0 <= op.mood < op.upper_limit
+            and op.current_mood() < op.upper_limit
+        }
+        return {
+            name
+            for name in names
+            if self.operators[name].group in anchor_groups
+            and self._can_group_standby(self.operators[name])
+        }
+
     def assign_dorm_group(self, names):
-        """先为整组模拟预留互不重复的床位；全部成功后才一次性写入。"""
+        """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
         used = set()
         assignments = []
-        # 低优可选床位更受限，先为低优预留；高优随后可使用剩余空位或接管低优。
+        optional = self.group_standby_candidates(names)
+        # 可待命者最后分床；其余成员沿用低优先选床顺序。
         ordered_names = sorted(
             names,
-            key=lambda name: self.operators[name].resting_priority == "high",
+            key=lambda name: (
+                self.operators[name].resting_priority == "standby",
+                self.operators[name].resting_priority == "high",
+            ),
         )
         for name in ordered_names:
-            index = self._find_dorm_slot(name, used)
+            index = self._find_dorm_slot(name, used, group_resting=True)
             if index is None:
-                logger.debug(f"没有足够宿舍位可安排整组{names}")
+                if name in optional:
+                    continue
+                logger.debug(f"没有足够宿舍位可安排整组必需休息成员{names}")
                 return None
             used.add(index)
             assignments.append((name, index))
@@ -791,6 +955,8 @@ class Operators:
             room.name = name
             room.time = None
             rooms.append(room)
+        for name in optional - {name for name, _ in assignments}:
+            logger.debug(f"{name}随组下班待命，不占用其他主力的休息床位")
         return rooms
 
     def assign_dorm(self, name, is_new=False, used=None):
@@ -972,6 +1138,7 @@ class Operator:
         self.group = group
         self.replacement = replacement
         self.resting_priority = resting_priority
+        self.dorm_recovery_room = ""
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
@@ -993,6 +1160,7 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
+            self.dorm_recovery_room = ""
             self._current_room = value
             if Operators.current_room_changed_callback and (
                 self.refresh_order_room[0] or self.refresh_drained

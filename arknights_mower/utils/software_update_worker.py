@@ -15,6 +15,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import time
 import traceback
@@ -24,6 +25,7 @@ from pathlib import Path, PurePosixPath
 
 if __package__:
     from .github_download import download_url
+    from .source_pr_merge import merge_source_pulls
     from .update_runtime import (
         InstanceScanError,
         detached_options,
@@ -38,6 +40,7 @@ if __package__:
     )
 else:
     from github_download import download_url
+    from source_pr_merge import merge_source_pulls
     from update_runtime import (
         InstanceScanError,
         detached_options,
@@ -379,11 +382,39 @@ class Worker:
             },
         )
         self.report("downloading", "获取目标源码")
-        self.run_command(
-            [self.job["git"], "fetch", "--no-tags", "origin", self.job["ref"]]
-        )
-        if self.git_output("rev-parse", "FETCH_HEAD^{commit}") != self.job["commit"]:
-            raise ValueError("远端版本已改变，请重新检查更新")
+        if self.job.get("source_prs"):
+            self.report("downloading", "获取并复核所选 PR 的合并结果")
+            with tempfile.TemporaryDirectory(
+                prefix="pr-merge-", dir=self.work
+            ) as directory:
+                commit = merge_source_pulls(
+                    self.job["git"],
+                    self.job["source_url"],
+                    self.job,
+                    directory,
+                    self.env,
+                    run=self.run_command,
+                )
+                if commit != self.job["commit"]:
+                    raise ValueError("PR 合并结果已改变，请重新检查并确认更新")
+                self.run_command(
+                    [self.job["git"], "fetch", "--no-tags", directory, commit]
+                )
+        else:
+            self.run_command(
+                [
+                    self.job["git"],
+                    "fetch",
+                    "--no-tags",
+                    self.job.get("source_url", "origin"),
+                    self.job["ref"],
+                ]
+            )
+            if (
+                self.git_output("rev-parse", "FETCH_HEAD^{commit}")
+                != self.job["commit"]
+            ):
+                raise ValueError("远端版本已改变，请重新检查更新")
         try:
             self.git_output(
                 "cat-file",
@@ -402,8 +433,22 @@ class Worker:
                 raise ValueError(
                     "目标版本使用 Git LFS，请安装 Git LFS 并确保启动环境可以运行 git lfs；当前实例尚未停止"
                 ) from exc
+            commits = (
+                (
+                    [self.job["base_commit"]]
+                    + [pull["sha"] for pull in self.job["source_prs"]]
+                )
+                if self.job.get("source_prs")
+                else [self.job["commit"]]
+            )
             self.run_command(
-                [self.job["git"], "lfs", "fetch", "origin", self.job["commit"]]
+                [
+                    self.job["git"],
+                    "lfs",
+                    "fetch",
+                    self.job.get("source_url", "origin"),
+                    *commits,
+                ]
             )
 
     def ensure_installer(self):
@@ -645,7 +690,7 @@ class Worker:
                         raise ValueError("安装包超过 2 GiB 限制")
                     out.write(chunk)
                     self.status.update(current=size, total=asset.get("size", 0))
-        if not manual:
+        if not manual or asset.get("sha256"):
             digest = hashlib.sha256()
             with package.open("rb") as stream:
                 while chunk := stream.read(1024 * 1024):
@@ -915,7 +960,7 @@ class Worker:
         )
 
     def restart(self, records, verify=True):
-        if self.job.get("operation") == "source-version":
+        if self.job.get("operation") in ("source-version", "source-pr"):
             self.clear_source_runtime_snapshots(records)
         self.report("restarting", "恢复实例，等待网页服务就绪")
         processes = []

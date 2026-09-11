@@ -624,7 +624,9 @@ function set_facility(e) {
           </td>
           <td class="select-label">
             <span>组</span>
-            <help-text>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</help-text>
+            <help-text>
+              可以将有联动基建技能的干员或者心情掉率相等的干员编入同组。宿舍常驻干员填写同组并设置替换后，会在该组下班时由替班接替宿舍原位，回班时恢复本人；不额外占用休息位。仅绑组宿舍的多个替班优先选择已知心情最低的可用干员，无心情数据时按配置顺序选择，已入驻的有效替班保持不变。组内需有可轮休的非宿舍干员，Free和菲亚梅塔不参与此功能，菲亚梅塔沿用原有充能规则。
+            </help-text>
           </td>
           <td class="table-space group">
             <n-input

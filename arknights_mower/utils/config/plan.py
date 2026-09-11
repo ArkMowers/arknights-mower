@@ -14,6 +14,8 @@ class PlanConf(BaseModel):
     "回满"
     resting_priority: str = ""
     "低优先级"
+    resting_standby: str = ""
+    "宿舍休息候补干员，仅对主班绑组干员生效"
     workaholic: str = ""
     "0心情工作（主力宿舍黑名单）"
     refresh_trading: str = ""

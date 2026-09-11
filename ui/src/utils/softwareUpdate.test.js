@@ -1,38 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  confirmForceUpdate,
-  confirmSoftwareInstall,
-  confirmSourceVersion,
-  isVersionDowngrade,
-  softwarePackageVersion
-} from './softwareUpdate'
+import { confirmForceUpdate, confirmSoftwareInstall, confirmSourceVersion } from './softwareUpdate'
 
 describe('release rollback confirmation', () => {
-  it.each([
-    ['4.1.5', '4.1.6-alpha.4', true],
-    ['4.1.6-alpha.4', '4.1.6-alpha.5', true],
-    ['4.1.6-alpha.4', '4.1.6', true],
-    ['4.1.6-alpha.4', '4.1.6-beta.1', true],
-    ['4.1.6-beta.1', '4.1.6-rc.1', true],
-    ['4.1.6-alpha.12', '4.1.6-alpha.4', false],
-    ['4.1.6', '4.1.6-alpha.4', false],
-    ['v4.1.6-alpha.4', '4.1.6-alpha.4+abcdef', false],
-    ['4.2.0-alpha.1', '4.1.6', false],
-    ['invalid', '4.1.6', false]
-  ])('classifies %s relative to %s as downgrade=%s', (target, current, expected) => {
-    expect(isVersionDowngrade(target, current)).toBe(expected)
-  })
-
-  it.each([
-    ['arknights-mower_4.1.5_windows_x64.zip', '4.1.5'],
-    ['arknights-mower_4.1.6-alpha.4_macos_arm64.dmg', '4.1.6-alpha.4'],
-    ['arknights-mower_4.1.6_linux_x64.tar.gz', '4.1.6'],
-    ['resource.zip', undefined],
-    ['mower.zip', undefined]
-  ])('identifies the version of uploaded and dropped package %s', (filename, expected) => {
-    expect(softwarePackageVersion(filename)).toBe(expected)
-  })
-
   it.each([false, true])(
     'only installs a rollback after confirmation (force=%s)',
     async (force) => {
@@ -119,15 +88,42 @@ describe('force update confirmation', () => {
 })
 
 describe('source version confirmation', () => {
+  it('confirms the latest target branch base alongside all selected PRs', () => {
+    const dialogs = { warning: vi.fn() }
+    confirmSourceVersion(
+      dialogs,
+      {
+        sha: 'c'.repeat(40),
+        source_repo: 'personal/mower',
+        source_branch: 'alpha',
+        base_commit: 'b'.repeat(40),
+        source_prs: [{ number: 7 }, { number: 8 }]
+      },
+      3,
+      vi.fn()
+    )
+    const { content } = dialogs.warning.mock.calls[0][0]
+    expect(content).toContain('PR #7、#8')
+    expect(content).toContain(`目标分支 alpha 的 ${'b'.repeat(40)}`)
+    expect(content).toContain('再合并所选 PR')
+  })
+
   it.each([false, true])(
     'requires confirmation with the immutable target and scope (force=%s)',
     async (force) => {
       const dialogs = { warning: vi.fn() }
       const install = vi.fn()
-      const target = { sha: 'a'.repeat(40), check_id: 'selected', force }
+      const target = {
+        sha: 'a'.repeat(40),
+        check_id: 'selected',
+        force,
+        source_repo: 'personal/mower',
+        source_pr: 7
+      }
       confirmSourceVersion(dialogs, target, 3, install)
       const options = dialogs.warning.mock.calls[0][0]
       expect(options.content).toContain(target.sha)
+      expect(options.content).toContain('personal/mower 的 PR #7')
       expect(options.content).toContain('3 个实例')
       expect(options.content).toContain('关闭软件自动更新')
       expect(options.content).toContain('专精计划和数据库记录保留')

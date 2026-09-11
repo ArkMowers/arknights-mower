@@ -103,6 +103,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     or cover.is_high()
                     or candidate in reserved | resting
                     or candidate in TRADE_ORDER_AGENTS
+                    or op_data.is_dorm_replacement(candidate)
                     or not _can_move(cover, room, requested, resting)
                     or is_busy(candidate)
                 ):
@@ -118,5 +119,83 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
         for index, name in enumerate(slots):
             if name not in PLACEHOLDERS and name == current[room][index]:
                 slots[index] = "Current"
+        if all(name == "Current" for name in slots):
+            del fix_plan[room]
+
+
+def correct_group_dorms(op_data, fix_plan, is_busy):
+    """按非宿舍成员的轮休状态恢复宿舍原位，兼容重启和部分执行失败。"""
+    for group, names in op_data.groups.items():
+        residents = [
+            op_data.operators[n]
+            for n in names
+            if op_data.operators[n].room.startswith("dorm")
+        ]
+        if not residents:
+            continue
+        # 纠错已经决定叫回工作成员时，宿舍成员也必须回班。
+        recalling = any(
+            not op_data.operators[n].room.startswith("dorm")
+            and not op_data.operators[n].workaholic
+            and _requested(
+                fix_plan, op_data.operators[n].room, op_data.operators[n].index
+            )
+            == n
+            for n in names
+        )
+        resting = op_data.group_is_resting(group) and not recalling
+        changes = {}
+        for op in residents:
+            desired = op.name
+            if resting:
+                actual = op_data.get_current_operator(op.room, op.index)
+                candidates = op_data.replacement_candidates(op)
+                if actual and actual.name in candidates:
+                    candidates.remove(actual.name)
+                    candidates.insert(0, actual.name)
+                reserved = {
+                    name
+                    for room, slots in fix_plan.items()
+                    for index, name in enumerate(slots)
+                    if (room, index) != (op.room, op.index)
+                } | set(changes.values())
+                desired = next(
+                    (
+                        name
+                        for name in candidates
+                        if (
+                            name not in TRADE_ORDER_AGENTS
+                            and name not in reserved
+                            and not is_busy(name)
+                            and not op_data.operators[name].is_high()
+                            and (
+                                actual is not None
+                                and actual.name == name
+                                or not op_data.is_dorm_replacement(name)
+                                and (
+                                    not op_data.operators[name].current_room
+                                    or op_data.operators[name].is_resting()
+                                )
+                            )
+                        )
+                    ),
+                    None,
+                )
+                if desired is None:
+                    # 部分执行失败后没有可用替班，先保留原宿舍干员；
+                    # 不抢占其他岗位，也不绕过训练室保护把整组叫回。
+                    logger.debug(f"{op.name}宿舍替班暂不可用，保留本人并等待后续纠错")
+                    desired = op.name
+            changes[op.room, op.index] = desired
+        for (room, index), name in changes.items():
+            current = op_data.get_current_operator(room, index)
+            if room not in fix_plan:
+                if current and current.name == name:
+                    continue
+                fix_plan[room] = ["Current"] * len(op_data.plan[room])
+            fix_plan[room][index] = (
+                "Current" if current and current.name == name else name
+            )
+    for room, slots in list(fix_plan.items()):
         if all(name == "Current" for name in slots):
             del fix_plan[room]

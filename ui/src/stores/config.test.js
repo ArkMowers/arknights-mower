@@ -13,6 +13,30 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
+  it('defaults T2 protection off and saves it without changing manual materials', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.workshop_protect_t2_device_rock).toBe(false)
+    const manual = [{ operator: '空爆', items: [{ item_names: ['固源岩组', '异铁组'] }] }]
+    store.workshop_manual_settings = manual
+    axios.post.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
+    store.workshop_protect_t2_device_rock = true
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    expect(axios.post.mock.calls[1][1]).toMatchObject({
+      workshop_protect_t2_device_rock: true,
+      workshop_manual_settings: manual
+    })
+    loaded.value = false
+  })
+
   it('saves turning off crafter recovery priority without changing workshop selections', async () => {
     pinia = createPinia()
     setActivePinia(pinia)

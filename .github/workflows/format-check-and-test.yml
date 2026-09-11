@@ -21,6 +21,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       update: ${{ steps.filter.outputs.update }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'push'
@@ -38,7 +39,7 @@ jobs:
               - '!{*.md,{doc,plan,.github}/**/*.md,ui/README.md,{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}}'
             update:
               # Updater, shared runtime helpers and their regression tests.
-              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download}*.py'
+              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source}*.py'
               - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
               - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
               # Furniture safety and native OCR run on all three desktop platforms.
@@ -64,6 +65,12 @@ jobs:
               - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb}.py'
               - 'scripts/tests/**'
               - '.github/{workflows,actions}/**'
+            frontend:
+              # Shared components and build inputs can affect update/drop flows.
+              - 'ui/**'
+              - '{.node-version,.nvmrc,.npmrc}'
+              - '.github/workflows/format-check-and-test.yml'
+              - '.github/actions/**'
 
   # Skip only an explicit docs-only result. If filtering fails, run the checks.
   ruff:
@@ -95,6 +102,31 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - name: Prettier check
         run: npx --yes prettier@latest --check "ui/**/*.js" "ui/**/*.vue"
+
+  frontend:
+    name: Frontend tests and build
+    needs: changes
+    # Keep browser-independent regressions on one runner, not the native matrix.
+    # Manual runs and unavailable scope still run this check.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.frontend != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Run frontend regressions
+        run: npm test
+      - name: Build production frontend
+        run: npm run build
 
   actionlint:
     needs: changes
@@ -199,6 +231,10 @@ jobs:
           python -m unittest -v \
             arknights_mower.tests.software_update_tests.ReleaseDiscoveryTests \
             arknights_mower.tests.software_update_tests.ManualPackageTests \
+            arknights_mower.tests.software_package_tests \
+            arknights_mower.tests.source_version_tests \
+            arknights_mower.tests.source_remote_tests \
+            arknights_mower.tests.source_pr_merge_tests \
             arknights_mower.tests.update_runtime_tests \
             arknights_mower.tests.update_compat_tests \
             arknights_mower.tests.res_version_tests \
