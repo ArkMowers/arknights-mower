@@ -448,7 +448,7 @@ if (return_home_when_idle.value) {
                 <template #suffix>毫秒</template>
               </n-input-number>
             </n-form-item>
-            <n-form-item :show-feedback="screenshot === 0">
+            <n-form-item v-if="runtime_platform !== 'android'" :show-feedback="screenshot === 0">
               <template #label>
                 <span>截图保存时间</span>
                 <help-text>默认保留 1 小时，可填小数。</help-text>

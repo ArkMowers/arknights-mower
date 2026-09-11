@@ -171,8 +171,8 @@ describe('weekly plan inventory config', () => {
   })
 })
 
-describe('native Android idle action ownership', () => {
-  it('omits hidden idle fields only on Android', () => {
+describe('native Android setting ownership', () => {
+  it('omits native idle and screenshot fields only on Android', () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const app = createApp({})
@@ -181,16 +181,19 @@ describe('native Android idle action ownership', () => {
     store = app.runWithContext(() => useConfigStore())
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
     store.return_home_when_idle = true
+    store.screenshot = 2.5
     store.runtime_platform = 'android'
     expect(store.build_config()).not.toHaveProperty('return_home_when_idle')
     expect(store.build_config()).not.toHaveProperty('exit_game_when_idle')
     expect(store.build_config()).not.toHaveProperty('close_simulator_when_idle')
+    expect(store.build_config()).not.toHaveProperty('screenshot')
     for (const platform of ['linux', 'windows', 'darwin']) {
       store.runtime_platform = platform
       expect(store.build_config()).toMatchObject({
         return_home_when_idle: true,
         exit_game_when_idle: false,
-        close_simulator_when_idle: false
+        close_simulator_when_idle: false,
+        screenshot: 2.5
       })
     }
   })

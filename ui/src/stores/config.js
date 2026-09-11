@@ -616,7 +616,7 @@ export const useConfigStore = defineStore('config', () => {
       rcl: rcl.value,
       rogue: rogue.value,
       sss: sss.value,
-      screenshot: screenshot.value,
+      ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
       screenshot_interval: screenshot_interval.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,
