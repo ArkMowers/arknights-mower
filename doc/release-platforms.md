@@ -1,6 +1,6 @@
 `.github/workflows/release-build.yml` 是正式版与 alpha 测试版共用的跨平台
 构建和 GitHub Release 流程。它使用 PyInstaller 6.22.2 构建 Windows x64、
-Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物。
+Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 Android 宿主使用的 Mower 程序热更新包。
 
 ## 发布入口
 
@@ -52,6 +52,7 @@ Release 正文和带当前版本块的 `CHANGELOG.md`，并将后者放入打包
 
 | 平台 | runner | PyInstaller spec | 产物 | 架构与运行检查 |
 | --- | --- | --- | --- | --- |
+| Android ARM64 | `ubuntu-24.04` | 无（复用宿主运行环境） | `.zip` | 程序包结构与宿主协议检查 |
 | Windows x64 | `windows-latest` | `webui_zip.spec` | `.zip` | PE x64 |
 | Linux x64 | `ubuntu-24.04` | `webui_zip_for_linux.spec` | `.tar.gz` | `file` x86-64、`ldd`、GUI 冒烟 |
 | Linux ARM64 | `ubuntu-24.04-arm` | `webui_zip_for_linux.spec` | `.tar.gz` | `file` aarch64、`ldd`、GUI 冒烟 |
@@ -61,6 +62,7 @@ Release 正文和带当前版本块的 `CHANGELOG.md`，并将后者放入打包
 产物统一使用以下名称：
 
 ```text
+arknights-mower_<version>_android_arm64.zip
 arknights-mower_<version>_windows_x64.zip
 arknights-mower_<version>_linux_x64.tar.gz
 arknights-mower_<version>_linux_arm64.tar.gz
@@ -68,7 +70,7 @@ arknights-mower_<version>_macos_x64.dmg
 arknights-mower_<version>_macos_arm64.dmg
 ```
 
-Release 任务在全部平台构建成功后附加五个产物，并生成统一的 SHA-256 清单
+Release 任务在全部平台构建成功后附加六个 Mower 产物，并生成统一的 SHA-256 清单
 `SHA256SUMS`。
 
 ## 构建检查
@@ -123,8 +125,7 @@ Windows ARM64 继续暂缓，避免它阻塞其他平台的 Release。
 
 ## 分发边界
 
-这套流程只创建当前仓库的分支提交、tag 和 GitHub Release，不包含 OTA、
-多仓库分发或镜像推送。现有 `.github/workflows/python-publish.yml` 仍是独立的
+这套流程只创建当前仓库的分支提交、tag 和 GitHub Release。Android 热更新包由本仓库构建；发布时从 Android 仓库读取并附带兼容的现有 APK 和 Python 接口，不向外部仓库写入内容，详见 [Android 发行兼容](android-distribution.md)。现有 `.github/workflows/python-publish.yml` 仍是独立的
 PyPI 发布流程，发布准备任务不会显式调用它。
 
 ## Linux 独立包的窗口后端与宿主依赖

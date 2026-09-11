@@ -54,7 +54,7 @@ jobs:
               - '{pyproject.toml,uv.lock,uv.toml,.python-version,.node-version,.nvmrc,.npmrc}'
               - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
               - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
-              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb}.py'
+              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,sync_android_release}.py'
               - 'scripts/tests/**'
               - '.github/{workflows,actions}/**'
             frontend:

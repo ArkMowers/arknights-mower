@@ -231,6 +231,7 @@ async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
 }
 
 function schedule_mirrorchyan_cdk_check(token) {
+  if (runtime_platform.value === 'android') return
   if (mirrorchyan_cdk_timer) window.clearTimeout(mirrorchyan_cdk_timer)
   mirrorchyan_cdk_request_id++
   const normalized_token = String(token || '').trim()
@@ -285,7 +286,8 @@ function versions_are_equal(left, right, normalizer = (value) => String(value ||
 watch(
   maa_mirrorchyan_token,
   (token, previousToken = '') => {
-    if (token.trim() && !previousToken.trim()) maa_update_source.value = 'mirrorchyan'
+    if (runtime_platform.value !== 'android' && token.trim() && !previousToken.trim())
+      maa_update_source.value = 'mirrorchyan'
     if (token !== previousToken && maa_update_source.value === 'mirrorchyan') {
       reset_maa_update_check()
       reset_maa_resource_update_check()
@@ -517,7 +519,10 @@ async function get_maa_update_info() {
       reset_mirrorchyan_cdk_status()
     }
     if (!maa_update_source_initialized) {
-      maa_update_source.value = data.default_source === 'mirrorchyan' ? 'mirrorchyan' : 'github'
+      maa_update_source.value =
+        runtime_platform.value !== 'android' && data.default_source === 'mirrorchyan'
+          ? 'mirrorchyan'
+          : 'github'
       maa_update_source_initialized = true
     }
     if (data.latest?.tag) maa_latest_version.value = data.latest.tag
@@ -941,7 +946,7 @@ onUnmounted(() => {
           <n-radio-group v-model:value="maa_update_source">
             <n-space>
               <n-radio value="github">GitHub</n-radio>
-              <n-radio value="mirrorchyan">Mirror酱</n-radio>
+              <n-radio v-if="runtime_platform !== 'android'" value="mirrorchyan">Mirror酱</n-radio>
             </n-space>
           </n-radio-group>
         </div>
@@ -989,7 +994,7 @@ onUnmounted(() => {
           {{ maa_update_arch }} 完整包并安装到设定目录。
         </div>
         <div v-else-if="maa_update_platform === 'android'" class="update-hint">
-          使用 MAA 官方 Android ARM64 组件，Python
+          使用 MAA 官方 Android ARM64 组件，暂不支持 Mirror酱。Python
           接口由应用维护。更新后停止并重新启动手机服务生效。
         </div>
         <div v-else-if="maa_update_platform === 'linux'" class="update-hint">

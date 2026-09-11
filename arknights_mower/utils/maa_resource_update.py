@@ -158,6 +158,8 @@ def get_mirrorchyan_resource_release(
     session: requests.Session | None = None,
 ) -> MaaResourceRelease:
     """通过 Mirror酱检查 MaaResource 增量更新。"""
+    if os.environ.get("MOWER_ANDROID") == "1":
+        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         raise MaaUpdateError("请填写 Mirror酱 CDK")

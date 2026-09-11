@@ -407,6 +407,8 @@ def get_mirrorchyan_cdk_status(
     now: float | None = None,
 ) -> MirrorChyanCdkStatus:
     """查询 Mirror酱 CDK 状态及有效期，不在错误中回显 CDK。"""
+    if os.environ.get("MOWER_ANDROID") == "1" or system == "android":
+        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         return MirrorChyanCdkStatus(
@@ -520,9 +522,7 @@ def get_mirrorchyan_release(
 ) -> MaaRelease:
     """通过 Mirror酱取得当前系统所需的 MAA 完整包。"""
     if os.environ.get("MOWER_ANDROID") == "1" or system == "android":
-        from mower_android.managed import get_mirror_release
-
-        return get_mirror_release(token, session, channel)
+        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         raise MaaUpdateError("请填写 Mirror酱 CDK")
