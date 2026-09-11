@@ -147,6 +147,9 @@ jobs:
           ./venv/bin/pip install pytest
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
+      - name: Android host compatibility
+        # Android embeds Linux CPython; test its host contract without APK signing.
+        run: ./venv/bin/python3 -m unittest -v arknights_mower.tests.android_distribution_tests arknights_mower.tests.android_component_tests
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
         run: ./venv/bin/python3 -m pytest -v -o faulthandler_timeout=60
 

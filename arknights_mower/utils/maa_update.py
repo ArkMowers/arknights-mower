@@ -26,7 +26,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 import requests
@@ -267,10 +267,8 @@ def get_latest_release(
 ) -> MaaRelease:
     """按 MAA 正式版 / 公测版通道读取 GitHub Release 信息。"""
     client = session or requests.Session()
-    if os.environ.get("MOWER_ANDROID") == "1" or system == "android":
-        from mower_android.managed import get_release
-
-        return get_release(session, channel)
+    if os.environ.get("MOWER_ANDROID") == "1":
+        system, machine = "android", "arm64"
     channel = normalize_update_channel(channel)
     for url_template in MAA_VERSION_API_URLS:
         try:
@@ -292,6 +290,17 @@ def get_latest_release(
         release_payload.setdefault("tag_name", version)
         if release_payload.get("tag_name") != version:
             continue
+        if system == "android":
+            # Select the SAME channel version as desktop, then obtain the official
+            # Android component and its GitHub digest from that exact release.
+            response = client.get(
+                f"https://api.github.com/repos/{MAA_REPOSITORY}/releases/tags/{quote(version, safe='')}",
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            release_payload = response.json()
+            if release_payload.get("tag_name") != version:
+                raise MaaUpdateError("MAA 渠道版本与组件发布版本不一致")
         return parse_release(
             release_payload,
             system=system,

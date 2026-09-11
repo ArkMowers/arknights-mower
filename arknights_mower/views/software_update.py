@@ -1,6 +1,5 @@
 """Authenticated desktop software-update API."""
 
-import os
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -28,11 +27,11 @@ def authorize():
         origin = request.headers.get("Origin")
         if origin and urlparse(origin).netloc != request.host:
             abort(403)
-    if os.environ.get("MOWER_ANDROID") == "1":
-        return {
-            "ok": False,
-            "message": "Android 使用独立 APK 发行版，请使用 Android 更新入口；不支持 Git 或桌面源码部署",
-        }, 409
+
+
+def get_updater():
+    """An embedded host may supply its Release installer without changing the UI."""
+    return current_app.extensions.get("software_update_provider", updater)
 
 
 def result(function):
@@ -49,39 +48,39 @@ def result(function):
 @software_update_bp.get("/info")
 @result
 def info():
-    return updater.info()
+    return get_updater().info()
 
 
 @software_update_bp.get("/status")
 @result
 def status():
-    return updater.status()
+    return get_updater().status()
 
 
 @software_update_bp.post("/settings")
 @result
 def settings():
-    return updater.save_settings(request.get_json())
+    return get_updater().save_settings(request.get_json())
 
 
 @software_update_bp.post("/check")
 @result
 def check():
     data = request.get_json()
-    return updater.check(data.get("channel"))
+    return get_updater().check(data.get("channel"))
 
 
 @software_update_bp.post("/source/remote")
 @result
 def remember_source_remote():
     data = request.get_json()
-    return updater.remember_source_remote(data.get("remote"))
+    return get_updater().remember_source_remote(data.get("remote"))
 
 
 @software_update_bp.get("/source/history")
 @result
 def source_history():
-    return updater.source_history(
+    return get_updater().source_history(
         request.args.get("branch"), request.args.get("remote")
     )
 
@@ -90,7 +89,7 @@ def source_history():
 @result
 def source_check():
     data = request.get_json()
-    return updater.check_source_version(
+    return get_updater().check_source_version(
         data.get("reference"), data.get("branch"), data.get("remote")
     )
 
@@ -98,7 +97,7 @@ def source_check():
 @software_update_bp.get("/source/pulls")
 @result
 def source_pulls():
-    return updater.source_pulls(request.args.get("remote"))
+    return get_updater().source_pulls(request.args.get("remote"))
 
 
 @software_update_bp.post("/source/pr/check")
@@ -106,8 +105,8 @@ def source_pulls():
 def source_pull_check():
     data = request.get_json()
     if "numbers" in data:
-        return updater.check_source_pulls(data["numbers"], data.get("remote"))
-    return updater.check_source_pull(data.get("number"), data.get("remote"))
+        return get_updater().check_source_pulls(data["numbers"], data.get("remote"))
+    return get_updater().check_source_pull(data.get("number"), data.get("remote"))
 
 
 @software_update_bp.post("/start")
@@ -120,7 +119,7 @@ def start():
         raise ValueError("强制更新选项必须是布尔值")
     if not isinstance(data.get("confirm_downgrade", False), bool):
         raise ValueError("回退确认必须是布尔值")
-    return updater.submit(
+    return get_updater().submit(
         data.get("check_id"),
         data.get("background", False),
         force=data.get("force", False),
@@ -134,7 +133,7 @@ def manual():
     confirmed = request.form.get("confirm_downgrade", "false")
     if confirmed not in {"true", "false"}:
         raise ValueError("请明确确认是否回退版本")
-    return updater.upload_package(
+    return get_updater().upload_package(
         request.files.get("file"),
         background=request.form.get("background", "false") == "true",
         confirm_downgrade=confirmed == "true",
@@ -144,13 +143,13 @@ def manual():
 @software_update_bp.post("/manual/inspect")
 @result
 def inspect_manual():
-    return updater.inspect_upload(request.files.get("file"))
+    return get_updater().inspect_upload(request.files.get("file"))
 
 
 @software_update_bp.post("/manual/discard")
 @result
 def discard_manual():
-    return updater.discard_upload(request.get_json().get("check_id"))
+    return get_updater().discard_upload(request.get_json().get("check_id"))
 
 
 @software_update_bp.get("/progress")
@@ -167,10 +166,10 @@ def progress():
 @software_update_bp.post("/cancel")
 @result
 def cancel():
-    return updater.cancel(request.get_json().get("id"))
+    return get_updater().cancel(request.get_json().get("id"))
 
 
 @software_update_bp.post("/auto-check")
 @result
 def auto_check():
-    return updater.request_auto_check()
+    return get_updater().request_auto_check()

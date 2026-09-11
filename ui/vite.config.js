@@ -11,9 +11,6 @@ import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
-  // The packaged WebUI is served by the phone itself. Never depend on an
-  // untracked .env file or bake a development backend into a production APK.
-  define: command === 'build' ? { 'import.meta.env.VITE_HTTP_URL': JSON.stringify('') } : {},
   plugins: [
     Inspect(),
     vue(),

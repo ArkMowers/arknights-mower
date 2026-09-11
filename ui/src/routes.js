@@ -27,12 +27,6 @@ export const routes = [
         name: 'mowersettings'
       },
       {
-        path: 'android-settings',
-        component: () => import('@/pages/AndroidSettings.vue'),
-        meta: { title: '后台与系统' },
-        name: 'android-settings'
-      },
-      {
         path: 'maasettings',
         component: () => import('@/pages/maasettings.vue'),
         meta: { title: 'MAA设置' },

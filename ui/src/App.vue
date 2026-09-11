@@ -318,7 +318,7 @@ function handleMenuClick(key) {
   }
 }
 import { RouterLink } from 'vue-router'
-const menuOptions = computed(() => [
+const menuOptions = [
   {
     label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
@@ -339,17 +339,7 @@ const menuOptions = computed(() => [
         label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => 'MAA设置' }),
         icon: renderIcon(RoseOutline),
         key: 'go-to-maasetting'
-      },
-      ...(config_store.runtime_platform === 'android'
-        ? [
-            {
-              label: () =>
-                h(RouterLink, { to: '/android-settings' }, { default: () => '后台与系统' }),
-              icon: renderIcon(Settings),
-              key: 'go-to-android-settings'
-            }
-          ]
-        : [])
+      }
     ]
   },
   {
@@ -451,7 +441,7 @@ const menuOptions = computed(() => [
     icon: renderIcon(BulbOutline),
     key: 'chatbot'
   }
-])
+]
 
 import { darkTheme, dateZhCN, zhCN } from 'naive-ui'
 

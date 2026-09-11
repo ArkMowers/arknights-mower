@@ -64,3 +64,37 @@ class AndroidUpdateTests(unittest.TestCase):
                     tar.addfile(info, io.BytesIO(b"{}"))
             with self.assertRaisesRegex(MaaUpdateError, "Android"):
                 extract_linux_package(package, dest, android=True)
+
+    def test_android_uses_same_channel_version_even_without_prerelease_flag(self):
+        from unittest.mock import Mock
+
+        from arknights_mower.utils.maa_update import (
+            MAA_VERSION_API_URLS,
+            get_latest_release,
+        )
+
+        for channel in ("stable", "beta"):
+            with self.subTest(channel=channel):
+                selected = self.payload(["MAAComponent-v6.17.5-android-arm64.tar.gz"])
+                selected["prerelease"] = False
+                client = Mock()
+                channel_response, release_response = Mock(), Mock()
+                channel_response.json.return_value = {
+                    "version": "v6.17.5",
+                    "details": {"tag_name": "v6.17.5", "assets": []},
+                }
+                release_response.json.return_value = selected
+                client.get.side_effect = [channel_response, release_response]
+                release = get_latest_release(
+                    client, system="android", machine="arm64", channel=channel
+                )
+                self.assertEqual(release.tag, "v6.17.5")
+                self.assertEqual(
+                    client.get.call_args_list[0].args[0],
+                    MAA_VERSION_API_URLS[0].format(channel=channel),
+                )
+                self.assertTrue(
+                    client.get.call_args_list[1]
+                    .args[0]
+                    .endswith("/releases/tags/v6.17.5")
+                )

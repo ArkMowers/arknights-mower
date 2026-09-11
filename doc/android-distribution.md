@@ -1,15 +1,9 @@
-# Android 独立发行版兼容
+# Android 发行兼容
 
-Android 壳在应用内提供 Linux CPython、共享 WebUI，以及独立的 Android MaaCore/后台游戏服务。APK 构建和发布由 [Arknights Mower Android 仓库](https://github.com/ALEXsun0/arknights-mower-android) 负责，上游不新增 APK 签名密钥或原生构建任务。
+Windows、macOS、Linux 沿用现有实现。Android 宿主设置 `MOWER_ANDROID=1`，提供 `mower_android` 中的设备控制、配置接管与 MAA 适配器；Python 在 Linux 用户空间运行，Android 动态库由原生服务加载。
 
-宿主设置 `MOWER_ANDROID=1`，并提供 `mower_android` 适配包与 `/android/*` API。桌面运行不加载这些适配器：
+MAA 四端共用正式／公测渠道版本接口。Android 从相同目标版本选择官方 ARM64 组件，缺失时明确失败，不回退 Linux 包。核心、资源的安装与生效方式由宿主处理。
 
-- `managed.normalize` 接管 ADB、模拟器、MAA路径和访问令牌；导入桌面配置时保留排班与任务设置。
-- `device.AndroidDevice` 和 `maa.Asst` 将截图、输入和原生MAA调用交给Android宿主。Android的Bionic动态库不在Linux CPython进程内直接加载。
-- MAA更新选择官方Android ARM64组件；缺少资产时拒绝，不能回退到Linux ARM64。Mirror酱无Android核心资产时显示原因；资源更新继续支持MaaResource。
-- 共享WebUI显示“后台与系统”及Android独立更新页，隐藏桌面连接路径和Git源码版本管理。普通发行包只显示正式/公测渠道，Debug包可修改发行仓库；宿主API必须独立验证渠道、包名、签名与兼容协议，不能依赖前端隐藏。
-- 支持APK、官方Android核心tar.gz和兼容MAA Python接口ZIP的选择/拖拽导入。APK由系统安装器确认，核心重启服务后生效，Python适配器在新实例创建时生效。它们不是桌面源码ZIP。
+软件更新共用 `SoftwareUpdate` 页面和 `/software-update/*` API。宿主可在 `app.extensions["software_update_provider"]` 注册实现相同接口的 Release 安装器。未注册时继续使用现有桌面更新器。安装器返回 `deployment="release"`，通过可选能力字段说明是否支持自动更新、静默重启和安装提示；默认值保持桌面行为。认证与同源检查共用原有蓝图。
 
-未设置该环境标记时，桌面更新API、Git源码部署与原连接设置保持原行为。直接向Android环境的`/software-update/*`发请求会在执行Git检查前拒绝；Android发行版使用自己的`/android/update/*`接口。
-
-调试用宿主无需依靠`platform.system()`伪装成Android：Python实际运行在Linux用户空间，`MOWER_ANDROID`用于区分产品发行方式和控制器选择，底层Python平台信息保持真实。
+手机的唤醒、静音、后台恢复等设置全部由原生应用提供，不在 Mower WebUI 增加页面。APK、MAA Python 兼容包和官方核心的构建发布由 [独立仓库](https://github.com/ALEXsun0/arknights-mower-android) 负责。上游 CI 验证 Android 适配协议、渠道版本一致性和组件选择，并保留三端桌面回归测试。
