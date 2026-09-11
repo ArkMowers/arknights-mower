@@ -50,6 +50,8 @@ describe('manual update helpers', () => {
 
 describe('content-based update routing', () => {
   it.each([
+    [['mower-android.json', 'mower/arknights_mower/data/version.json'], 'android.zip', 'software'],
+    [['maa-python.json', 'maa.py'], 'adapter.zip', 'software'],
     [['mower/_internal/arknights_mower/__init__.py'], 'resources.zip', 'software'],
     [['Mower.app/Contents/Resources/arknights_mower/__init__.py'], 'renamed.zip (1)', 'software'],
     [['arknights_mower/data/version.json'], 'arknights-mower_4.9.9.zip', 'resource'],

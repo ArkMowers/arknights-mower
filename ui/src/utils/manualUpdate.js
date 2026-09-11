@@ -64,6 +64,7 @@ export async function updatePackageKind(file) {
       if (++count > 100000) throw new Error('更新包文件数量过多')
       if (entry.directory) continue
       const path = entry.filename
+      software ||= ['maa-python.json', 'mower-android.json'].includes(path)
       software ||= /(^|\/)(_internal|Contents\/Resources)\/arknights_mower\/__init__\.py$/.test(
         path
       )

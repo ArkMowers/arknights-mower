@@ -241,7 +241,10 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
+              >设备连接由 Android 应用管理。</n-alert
+            >
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>ADB路径</span>
                 <help-text>
@@ -255,7 +258,7 @@ if (return_home_when_idle.value) {
               <n-input v-model:value="maa_adb_path" />
               <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
             </n-form-item>
-            <n-form-item>
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>ADB连接地址</span>
                 <help-text>
@@ -266,7 +269,7 @@ if (return_home_when_idle.value) {
               </template>
               <n-input v-model:value="adb" />
             </n-form-item>
-            <n-form-item label="触控方案">
+            <n-form-item label="触控方案" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="touch_method">
                 <n-space>
                   <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
@@ -274,14 +277,14 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="模拟器">
+            <n-form-item label="模拟器" v-if="runtime_platform !== 'android'">
               <n-select
                 v-model:value="simulator.name"
                 :options="simulator_types"
                 @update:value="onSelectionChange"
               />
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>模拟器文件夹</span>
                 <help-text>
@@ -292,7 +295,7 @@ if (return_home_when_idle.value) {
               <n-input v-model:value="simulator.simulator_folder" />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>多开编号</span>
                 <help-text>
@@ -301,12 +304,15 @@ if (return_home_when_idle.value) {
               </template>
               <n-input v-model:value="simulator.index" />
             </n-form-item>
-            <n-form-item label="模拟器启动时间" v-if="simulator.name">
+            <n-form-item
+              label="模拟器启动时间"
+              v-if="runtime_platform !== 'android' && simulator.name"
+            >
               <n-input-number v-model:value="simulator.wait_time">
                 <template #suffix>秒</template>
               </n-input-number>
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>模拟器老板键</span>
                 <help-text>
@@ -332,16 +338,21 @@ if (return_home_when_idle.value) {
                 placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
               />
             </n-form-item>
-            <n-form-item label="启动游戏">
+            <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && tap_to_launch_game.mode == 'tap'"
+              label="点击坐标"
+            >
               <span class="coord-label">X:</span>
               <n-input-number v-model:value="tap_to_launch_game.x" />
               <span class="coord-label">Y:</span>
               <n-input-number v-model:value="tap_to_launch_game.y" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && tap_to_launch_game.mode == 'custom'"
+            >
               <template #label>
                 <span>启动命令</span>
                 <help-text>
@@ -357,7 +368,7 @@ if (return_home_when_idle.value) {
               />
               <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
             </n-form-item>
-            <n-form-item>
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>任务结束后</span>
                 <help-text>
@@ -371,7 +382,11 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item
               :show-label="false"
-              v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
+              v-if="
+                runtime_platform !== 'android' &&
+                simulator.name == 'MuMu12' &&
+                close_simulator_when_idle
+              "
             >
               <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
                 关闭MuMu模拟器12时结束adb进程
@@ -384,7 +399,7 @@ if (return_home_when_idle.value) {
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
-            <n-form-item label="截图方案">
+            <n-form-item label="截图方案" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="screenshot_method">
                 <n-flex>
                   <n-radio value="adb_gzip">
@@ -402,7 +417,7 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="旋转截图" v-if="droidcast.enable">
+            <n-form-item label="旋转截图" v-if="runtime_platform !== 'android' && droidcast.enable">
               <n-radio-group v-model:value="droidcast.rotate">
                 <n-flex>
                   <n-radio :value="false">不旋转</n-radio>
@@ -410,13 +425,19 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="截图命令" v-if="custom_screenshot.enable">
+            <n-form-item
+              label="截图命令"
+              v-if="runtime_platform !== 'android' && custom_screenshot.enable"
+            >
               <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
               <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
                 测试
               </n-button>
             </n-form-item>
-            <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && custom_screenshot.enable && tested"
+              :show-label="false"
+            >
               <n-flex vertical>
                 <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
                 <div>（截图用时{{ elapsed }}ms）</div>
@@ -485,7 +506,7 @@ if (return_home_when_idle.value) {
                 应用
               </n-button>
             </n-form-item>
-            <n-form-item :show-label="false">
+            <n-form-item v-if="runtime_platform !== 'android'" :show-label="false">
               <n-checkbox
                 v-if="runtime_platform === 'darwin'"
                 v-model:checked="hide_macos_menu_bar"
@@ -785,7 +806,7 @@ if (return_home_when_idle.value) {
       />
     </div>
     <div class="settings-network">
-      <ProcessControl />
+      <ProcessControl v-if="runtime_platform !== 'android'" />
     </div>
   </div>
 </template>
