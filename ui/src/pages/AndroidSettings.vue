@@ -131,6 +131,10 @@ onMounted(async () => {
   timer = setInterval(() => refresh(), 10000)
 })
 onUnmounted(() => clearInterval(timer))
+function refreshStatus() {
+  error.value = ''
+  refresh(!dirty.value)
+}
 </script>
 
 <template>
@@ -141,14 +145,7 @@ onUnmounted(() => clearInterval(timer))
         <h1>后台与系统</h1>
         <p>为手机上的罗德岛，安排安静、稳定的后台环境。</p>
       </div>
-      <n-button
-        :disabled="busy"
-        @click="
-          error = ''
-          refresh(!dirty)
-        "
-        >刷新状态</n-button
-      >
+      <n-button :disabled="busy" @click="refreshStatus">刷新状态</n-button>
     </div>
     <n-alert v-if="error" type="error" class="feedback" title="操作未完成">{{ error }}</n-alert>
     <n-alert v-if="notice" type="info" class="feedback">{{ notice }}</n-alert>

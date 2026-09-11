@@ -122,6 +122,11 @@ onUnmounted(() => {
   disposed = true
   clearInterval(timer)
 })
+function selectFile(event) {
+  selected.value = event.target.files[0]
+  result.value = null
+  progress.value = 0
+}
 </script>
 <template>
   <n-card id="software-update" title="Mower Android 更新" class="android-update">
@@ -185,11 +190,7 @@ onUnmounted(() => {
           accept=".apk,.zip,.tar.gz"
           aria-label="选择 Android 更新包"
           :disabled="busy"
-          @change="
-            selected = $event.target.files[0]
-            result = null
-            progress = 0
-          "
+          @change="selectFile"
         />
       </div>
       <div v-if="selected">

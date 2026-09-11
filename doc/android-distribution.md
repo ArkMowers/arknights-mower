@@ -1,6 +1,6 @@
 # Android 独立发行版兼容
 
-Android 壳在应用内提供 Linux CPython、共享 WebUI，以及独立的 Android MaaCore/后台游戏服务。APK 构建和发布由 [Mower Android 仓库](https://github.com/ALEXsun0/mower-android) 负责，上游不新增 APK 签名密钥或原生构建任务。
+Android 壳在应用内提供 Linux CPython、共享 WebUI，以及独立的 Android MaaCore/后台游戏服务。APK 构建和发布由 [Arknights Mower Android 仓库](https://github.com/ALEXsun0/arknights-mower-android) 负责，上游不新增 APK 签名密钥或原生构建任务。
 
 宿主设置 `MOWER_ANDROID=1`，并提供 `mower_android` 适配包与 `/android/*` API。桌面运行不加载这些适配器：
 
