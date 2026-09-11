@@ -54,7 +54,7 @@ def installation_identity(target):
 
 class BackupCheckpoint:
     def __init__(self, target):
-        self.target = Path(target).expanduser().resolve()
+        self.target = Path(target).expanduser().absolute()
         with _update_lock:
             self.installation = installation_identity(self.target)
             self.backups = {

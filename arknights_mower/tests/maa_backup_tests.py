@@ -182,3 +182,18 @@ class MaaBackupTests(unittest.TestCase):
         self.assertTrue(self.old.exists())
         instance.running()
         self.assertFalse(self.old.exists())
+
+    def test_configured_symlink_does_not_select_another_paths_sibling_backup(self):
+        alias = self.root / "configured-maa"
+        try:
+            alias.symlink_to(self.target, target_is_directory=True)
+        except OSError:
+            self.skipTest("symlinks unavailable on this host")
+        saved = self.root / "configured-maa.old"
+        saved.mkdir()
+        instance = backup.VerifiedAsst(FakeAsst, alias, Mock())
+        instance.start()
+        self.finish(instance)
+        self.assertFalse(saved.exists())
+        self.assertTrue(self.old.exists())
+        self.assertTrue(self.settings.exists())
