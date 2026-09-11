@@ -412,7 +412,10 @@ def plan_metadata(op_data, tasks):
         (
             v
             for v in op_data.operators.values()
-            if v.is_high() and not v.room.startswith("dorm") and not v.is_resting()
+            if v.is_high()
+            and not v.room.startswith("dorm")
+            and not v.is_resting()
+            and not op_data.is_group_standby(v.name)
         ),
         key=lambda x: x.current_mood() - x.lower_limit,
     )
@@ -450,8 +453,15 @@ def plan_metadata(op_data, tasks):
         ]
         if len(_high_dorms) == 0:
             high_dorms = [
-                dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+                dorm
+                for dorm in dorms
+                if op_data.operators[dorm.name].is_high()
+                and op_data.operators[dorm.name].resting_priority != "standby"
             ]
+            if not high_dorms:
+                high_dorms = [
+                    dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+                ]
         else:
             high_dorms = _high_dorms
         rest_in_full_dorms = [
@@ -558,6 +568,8 @@ def try_reorder(op_data, new_plan):
             _op = op_data.operators[name]
             if _op.operator_type == "high" and _op.resting_priority == "high":
                 return "high"
+            elif _op.operator_type == "high" and _op.resting_priority == "standby":
+                return "standby"
             elif _op.operator_type == "high":
                 return "normal"
         return "low"
@@ -577,8 +589,9 @@ def try_reorder(op_data, new_plan):
         priority_order = {
             "high": length,
             "normal": length + 1,
-            "low": length + 2,
-        }  # **先排 priority_list，再按 high > normal > low**
+            "standby": length + 2,
+            "low": length + 3,
+        }  # 先排显式名单，再按高优 > 原低优 > 候补 > 普通替班。
         return (
             priority_list.index(_op["name"])
             if _op["name"] in priority_list and _op["name"] != ""
@@ -619,16 +632,27 @@ def next_workshop_task_time(tasks, earliest=None):
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
-    from arknights_mower.utils.workshop_automation import restore_if_no_plans
+    from arknights_mower.utils.workshop_automation import (
+        restore_if_no_plans,
+        workshop_task_current,
+    )
     from arknights_mower.utils.workshop_limits import batch_limit
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
 
     restore_if_no_plans()
+    # 跑单/专精换人可能将加工推迟到五分钟之后，不能把它当作没有待办。
+    pending_operators = {
+        task.meta_data
+        for task in tasks
+        if task.type == TaskTypes.WORKSHOP and workshop_task_current(task)
+    }
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
         for item in prioritize_workshop_settings(config.conf.workshop_settings):
+            if item.operator in pending_operators:
+                continue
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
@@ -685,6 +709,7 @@ def try_workshop_tasks(op_data, tasks):
 
                 stamp_workshop_task(task)
                 tasks.append(task)
+                pending_operators.add(item.operator)
             else:
                 logger.debug("数据不满足条件，跳过加工站任务生成")
     else:
