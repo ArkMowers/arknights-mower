@@ -2,7 +2,11 @@
 import { inject, nextTick, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { readBrowserSettings, restoreBrowserSettings } from '@/utils/configBackup'
+import {
+  consumeImportResult,
+  readBrowserSettings,
+  reloadImportedConfiguration
+} from '@/utils/configBackup'
 
 const props = defineProps({
   saveNetwork: { type: Function, required: true },
@@ -18,8 +22,8 @@ const error = ref('')
 const selected = ref(null)
 const filename = ref('')
 const showConfirm = ref(false)
-const result = ref(null)
-const showResult = ref(false)
+const result = ref(consumeImportResult())
+const pendingReload = ref(false)
 
 function message(err) {
   return err.response?.data?.message || err.message || '操作失败，请重试'
@@ -102,21 +106,22 @@ async function importConfig() {
     if (!data.ok) throw new Error(data.message)
     result.value = data
     showConfirm.value = false
-    showResult.value = true
+    pendingReload.value = true
     // Keep old stores paused until the page reloads with the imported values.
+    reload()
   } catch (err) {
-    error.value = message(err)
+    error.value = pendingReload.value
+      ? `配置已导入，但自动刷新未完成，请重试刷新页面：${message(err)}`
+      : message(err)
     showConfirm.value = false
-    resumeSaving()
+    if (!pendingReload.value) resumeSaving()
   } finally {
     busy.value = false
   }
 }
 
 function reload() {
-  restoreBrowserSettings(selected.value.browser_settings)
-  sessionStorage.setItem('mower-config-imported', '1')
-  window.location.reload()
+  reloadImportedConfiguration(selected.value.browser_settings, result.value)
 }
 </script>
 
@@ -128,15 +133,16 @@ function reload() {
         专精计划与训练员配置、加工站配置、保全派驻作业、窗口与页面偏好，以及共享网络设置、软件更新设置和森空岛设备信息。
       </n-text>
       <n-text depth="3">
-        导入时保留当前管理页面端口、访问令牌和网络代理，仍可从原入口访问；其余配置按备份恢复。
+        导入时保留当前管理页面端口、访问令牌和网络代理，以及需要重启生效的托盘和窗口尺寸。
+        其余配置按备份恢复，并自动刷新页面加载，无需重启 Mower。
         备份包含账号、密码和密钥，请妥善保管。导入前会自动备份现有配置。
         不包含程序文件、其他实例、日志、统计记录和仓库识别数据。
       </n-text>
       <n-space>
-        <n-button :loading="busy" :disabled="busy || showResult" @click="exportConfig">
+        <n-button :loading="busy" :disabled="busy || pendingReload" @click="exportConfig">
           导出全部配置
         </n-button>
-        <n-button :disabled="busy || showResult" @click="input.click()">导入配置</n-button>
+        <n-button :disabled="busy || pendingReload" @click="input.click()">导入配置</n-button>
         <input
           ref="input"
           type="file"
@@ -147,6 +153,13 @@ function reload() {
         />
       </n-space>
       <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
+      <n-alert v-if="result" type="success" title="配置已导入" aria-live="polite">
+        <n-space vertical>
+          <n-text>{{ result.message }}</n-text>
+          <n-text depth="3" class="recovery-path">导入前备份：{{ result.recovery_path }}</n-text>
+          <n-button v-if="pendingReload" @click="reload">重试刷新页面</n-button>
+        </n-space>
+      </n-alert>
     </n-space>
     <n-modal
       v-model:show="showConfirm"
@@ -163,23 +176,8 @@ function reload() {
       @positive-click="importConfig"
     >
       将使用「{{ filename }}」恢复配置，保留当前管理页面端口、访问令牌和网络代理。 请先停止
-      Mower；导入前会自动生成恢复备份。导入后从原入口刷新页面，窗口设置重启 Mower 后生效。
-    </n-modal>
-    <n-modal
-      v-model:show="showResult"
-      preset="dialog"
-      type="success"
-      title="配置已导入"
-      positive-text="刷新页面"
-      :closable="false"
-      :mask-closable="false"
-      :close-on-esc="false"
-      @positive-click="reload"
-    >
-      <n-space vertical>
-        <n-text>{{ result?.message }}</n-text>
-        <n-text depth="3" class="recovery-path">导入前备份：{{ result?.recovery_path }}</n-text>
-      </n-space>
+      Mower；导入前会自动生成恢复备份。托盘和窗口尺寸保持不变，导入成功后自动刷新页面加载新配置，
+      无需重启 Mower，且此次刷新不会自动开始任务。
     </n-modal>
   </n-card>
 </template>

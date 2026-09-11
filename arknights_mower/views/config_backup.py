@@ -77,7 +77,7 @@ def import_backup():
             }, 500
         return {
             "ok": True,
-            "message": "配置已导入，当前管理页面端口、访问令牌和网络代理保持不变。请刷新页面；窗口设置重启 Mower 后生效。",
+            "message": "配置已导入。当前管理页面端口、访问令牌、网络代理、托盘及窗口尺寸保持不变。",
             "recovery_path": recovery,
             "token": getattr(current_app, "token", ""),
         }

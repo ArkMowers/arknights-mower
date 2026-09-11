@@ -1,6 +1,7 @@
 import copy
 import json
 import sqlite3
+import threading
 
 import pytest
 from flask import Flask
@@ -109,6 +110,7 @@ def test_full_round_trip_includes_optional_files_secrets_and_mastery(storage):
     recovery = backup.import_configuration(original)
     expected = copy.deepcopy(original["data"])
     expected["network"] = None  # The destination has no proxy configuration.
+    expected["gui"] = None  # Native window geometry is not imported.
     assert backup.export_configuration()["data"] == expected
     assert (
         json.loads(open(recovery, encoding="utf-8").read())["data"]["conf"]["account"]
@@ -121,9 +123,10 @@ def test_full_round_trip_includes_optional_files_secrets_and_mastery(storage):
 
 def test_absent_optional_configuration_clears_destination(storage):
     original = backup.export_configuration()
-    write_json(config.gui_path, {"ratio": {"width": 1, "height": 1}})
+    path = backup.configuration_paths()["sss"]
+    write_json(path, {"type": "SSS", "stages": []})
     backup.import_configuration(original)
-    assert not config.gui_path.exists()
+    assert not path.exists()
 
 
 def test_import_into_instance_without_database(storage):
@@ -132,6 +135,35 @@ def test_import_into_instance_without_database(storage):
     storage("@app/tmp").rmdir()
     backup.import_configuration(original)
     assert backup.export_configuration()["data"] == original["data"]
+
+
+@pytest.mark.parametrize("has_weekly_file", [False, True])
+def test_import_reinitializes_weekly_plans_without_restart(
+    storage, monkeypatch, has_weekly_file
+):
+    from arknights_mower.utils.config import app_state, weekly_plan_loader
+
+    monkeypatch.setattr(app_state, "STATE_FILE", config.app_state_path)
+    monkeypatch.setattr(
+        weekly_plan_loader.WeeklyPlanManager,
+        "WEEKLY_PLANS_FILE",
+        config.weekly_plans_path,
+    )
+    monkeypatch.setattr(weekly_plan_loader, "_weekly_plan_manager", None)
+    old_manager = weekly_plan_loader.get_weekly_plan_manager()
+    incoming = backup.export_configuration()
+    daily = {"weekday": "周一", "stage": ["1-7"], "medicine": 2}
+    incoming["data"]["conf"]["maa_weekly_plan"] = [daily]
+    incoming["data"]["weekly_plans"] = (
+        {"plans": {"default": [daily]}} if has_weekly_file else None
+    )
+    backup.import_configuration(incoming)
+    manager = weekly_plan_loader.get_weekly_plan_manager()
+    assert manager is not old_manager
+    assert manager.get_active_plan_key() == "默认"
+    assert manager.get_plan("默认")[0]["stage"] == ["1-7"]
+    assert config.conf.maa_weekly_plan[0].stage == ["1-7"]
+    assert manager.set_inventory_config("默认", manager.get_inventory_config("默认"))
 
 
 @pytest.mark.parametrize("has_local_network", [False, True])
@@ -160,15 +192,23 @@ def test_import_preserves_access_and_network_settings(
     )
     original_input = copy.deepcopy(incoming)
     proxy_changes = []
+    import_thread = threading.get_ident()
+
+    def record_proxy_change():
+        # Server imports start an independent periodic proxy sync thread.
+        # Assert that this import itself does not reapply proxy settings.
+        if threading.get_ident() == import_thread:
+            proxy_changes.append(True)
+
     monkeypatch.setattr(
-        backup.network_settings, "apply_http_proxy", lambda: proxy_changes.append(True)
+        backup.network_settings, "apply_http_proxy", record_proxy_change
     )
     recovery = backup.import_configuration(incoming)
     assert incoming == original_input
     assert config.conf.webview.port == 18080
     assert config.conf.webview.token == "local-token"
     assert config.conf.webview.scale == 1.25
-    assert config.conf.webview.tray is False
+    assert config.conf.webview.tray is True
     assert config.conf.account == "restored"
     assert config.plan.conf.ling_xi == 2
     assert not proxy_changes
@@ -185,9 +225,39 @@ def test_import_preserves_access_and_network_settings(
     assert before["network"] == (local_network if has_local_network else None)
 
 
+@pytest.mark.parametrize("has_local_gui", [False, True])
+@pytest.mark.parametrize("has_backup_gui", [False, True])
+@pytest.mark.parametrize("local_tray", [False, True])
+def test_import_preserves_restart_only_settings(
+    storage, has_local_gui, has_backup_gui, local_tray
+):
+    config.conf.webview.tray = local_tray
+    config.save_conf()
+    if has_local_gui:
+        write_json(config.gui_path, {"ratio": {"width": 0.6, "height": 0.7}})
+    previous = config.gui_path.read_bytes() if has_local_gui else None
+    incoming = backup.export_configuration()
+    incoming["data"]["conf"]["webview"].update(tray=not local_tray, scale=1.5)
+    incoming["data"]["conf"].update(theme="dark", start_automatically=True)
+    incoming["data"]["gui"] = (
+        {"ratio": {"width": 0.9, "height": 1}} if has_backup_gui else None
+    )
+    backup.import_configuration(incoming)
+    assert config.conf.webview.tray is local_tray
+    config.load_conf()
+    assert config.conf.webview.tray is local_tray
+    # These are applied by the frontend on page load, without a process restart.
+    assert config.conf.webview.scale == 1.5
+    assert config.conf.theme == "dark"
+    assert config.conf.start_automatically is True
+    assert (
+        config.gui_path.read_bytes() if config.gui_path.exists() else None
+    ) == previous
+
+
 def test_import_ignores_values_of_preserved_network_fields(storage):
     incoming = backup.export_configuration()
-    incoming["data"]["conf"]["webview"].update(port="unused", token=None)
+    incoming["data"]["conf"]["webview"].update(port="unused", token=None, tray="unused")
     incoming["data"]["network"] = {"http_proxy": "unused"}
     before = config.conf.webview.model_dump()
     backup.import_configuration(incoming)

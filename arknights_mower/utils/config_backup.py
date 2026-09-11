@@ -115,6 +115,8 @@ def _conf_for_import(raw):
         **webview,
         "port": config.conf.webview.port,
         "token": config.conf.webview.token,
+        # The launcher reads tray/close behavior only when the process starts.
+        "tray": config.conf.webview.tray,
     }
     return data
 
@@ -269,9 +271,10 @@ def import_configuration(backup):
                 ).fetchone():
                     conn.execute("DELETE FROM saved_state")
                 for name, path in paths.items():
-                    # Access and proxy settings belong to the destination. Do not
-                    # create, replace or remove network.json, even for null backups.
-                    if name == "network":
+                    # Keep destination connectivity and native window geometry.
+                    # Geometry is only loaded when creating the window; a page
+                    # refresh cannot apply it. Never create/delete these files.
+                    if name in {"network", "gui"}:
                         continue
                     value = imported_conf if name == "conf" else backup["data"][name]
                     if value is None:
@@ -296,6 +299,12 @@ def import_configuration(backup):
                         )
                 raise
         config.conf, config.plan = conf, plan
+        if weekly_module := sys.modules.get(
+            "arknights_mower.utils.config.weekly_plan_loader"
+        ):
+            # Recreate missing/legacy presets and sync the imported active plan
+            # on the next request, as at startup, without restarting the server.
+            weekly_module._weekly_plan_manager = None
         if scheduler_module := sys.modules.get("arknights_mower.__main__"):
             scheduler_module.base_scheduler = None
         if skland_module := sys.modules.get("arknights_mower.utils.skland"):
