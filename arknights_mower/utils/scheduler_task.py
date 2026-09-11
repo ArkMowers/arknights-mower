@@ -8,6 +8,10 @@ from typing import Literal
 from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
+from arknights_mower.utils.furniture_task import (
+    FURNITURE_EXIT_SECONDS,
+    FURNITURE_RUN_SECONDS,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
@@ -158,6 +162,8 @@ def _avoid_swap_with_orders(tasks, swap, timing):
 
 
 def _ordinary_task_minutes(task, execution_time):
+    if task.type == TaskTypes.FURNITURE:
+        return (FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS) / 60
     minutes = max(1, len(task.plan) * execution_time)
     if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
         minutes = max(minutes, 3)
@@ -247,6 +253,10 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                             if task_time == 0
                             else task_time
                         )
+                        if tasks[j].type == TaskTypes.FURNITURE:
+                            estimate_time = _ordinary_task_minutes(
+                                tasks[j], execution_time
+                            )
                         if (
                             timedelta(minutes=total_execution_time + estimate_time)
                             + time_now

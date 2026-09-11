@@ -1,5 +1,6 @@
 """家具分解的保留策略、列表遍历和异常停止，不连接游戏。"""
 
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
@@ -23,6 +24,8 @@ def solver():
         save_screencap=MagicMock(),
     )
     result.factory_scene.return_value = Scene.FACTORY_FORMULA
+    result.tasks = []
+    result.task = None
     return result
 
 
@@ -145,13 +148,100 @@ def test_unsafe_or_disabled_recipe_never_submits(monkeypatch, solver, keep, vali
 def test_missing_result_never_retries_submission(monkeypatch, solver):
     monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
     solver.factory_scene.return_value = Scene.FACTORY_DASHBOARD
-    with pytest.raises(RuntimeError, match="未进入预期界面"):
+    with pytest.raises(furniture.FurnitureSafetyError, match="未进入预期界面"):
         furniture.FurnitureDismantler(solver).process((0.37, 0.21), 3)
     assert (
         sum(c.args[0] == (0.88 * 1920, 0.9 * 1080) for c in solver.tap.call_args_list)
         == 1
     )
     solver.back.assert_not_called()
+
+
+@pytest.mark.parametrize("when", ["minus", "before_submit"])
+def test_new_due_task_stops_batch_without_submitting(monkeypatch, solver, when):
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    solver.factory_scene.return_value = Scene.FACTORY_DASHBOARD
+    runner = furniture.FurnitureDismantler(solver)
+    runner.keep_counts = {"测试家具": 3 if when == "minus" else 1}
+    stock = 6 if when == "minus" else 3
+    monkeypatch.setattr(furniture, "furniture_batch", lambda img: stock - 1)
+    monkeypatch.setattr(
+        furniture,
+        "furniture_details",
+        lambda img, *args: ("测试家具", stock),
+    )
+
+    def add_due_task(*args, **kwargs):
+        solver.tasks.append(SimpleNamespace(time=datetime.now()))
+
+    if when == "minus":
+
+        def tap(point, **kwargs):
+            if point == (
+                1920 * furniture.MINUS_BUTTON[0],
+                1080 * furniture.MINUS_BUTTON[1],
+            ):
+                add_due_task()
+
+        solver.tap.side_effect = tap
+    else:
+        solver.recog.save_screencap.side_effect = add_due_task
+    with pytest.raises(furniture.FurnitureDeadlineReached):
+        runner.process((0.37, 0.21), stock)
+    assert all(
+        c.args[0] != (1920 * 0.88, 1080 * 0.9) for c in solver.tap.call_args_list
+    )
+
+
+def test_submission_connection_failure_is_terminal(monkeypatch, solver):
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    solver.factory_scene.return_value = Scene.FACTORY_DASHBOARD
+
+    def tap(point, **kwargs):
+        if point == (1920 * 0.88, 1080 * 0.9):
+            raise ConnectionError("提交后连接中断")
+
+    solver.tap.side_effect = tap
+    with pytest.raises(furniture.FurnitureSafetyError, match="提交结果无法确认"):
+        furniture.FurnitureDismantler(solver).process((0.37, 0.21), 3)
+    assert (
+        sum(c.args[0] == (1920 * 0.88, 1080 * 0.9) for c in solver.tap.call_args_list)
+        == 1
+    )
+
+
+def test_due_task_stops_before_opening_furniture_page(solver):
+    solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(seconds=30))]
+    runner = furniture.FurnitureDismantler(solver)
+    runner.run()
+    solver.enter_room.assert_not_called()
+    solver.tap.assert_not_called()
+    solver.back_to_infrastructure.assert_called_once_with()
+
+
+def test_total_budget_includes_navigation_and_exits_normally(monkeypatch, solver):
+    elapsed = 0
+    monkeypatch.setattr(furniture, "monotonic", lambda: elapsed)
+    runner = furniture.FurnitureDismantler(solver)
+
+    def open_formula():
+        nonlocal elapsed
+        elapsed = furniture.FURNITURE_RUN_SECONDS
+
+    runner.open_formula = open_formula
+    runner.process = MagicMock()
+    runner.run()
+    runner.process.assert_not_called()
+    solver.swipe_noinertia.assert_not_called()
+    solver.back_to_infrastructure.assert_called_once_with()
+
+
+def test_exit_connection_failure_does_not_restart_scan(monkeypatch, solver):
+    solver.tasks = [SimpleNamespace(time=datetime.now())]
+    solver.back_to_infrastructure.side_effect = ConnectionError("返回失败")
+    with pytest.raises(furniture.FurnitureSafetyError, match="不重新分解"):
+        furniture.FurnitureDismantler(solver).run()
+    solver.tap.assert_not_called()
 
 
 def test_scan_resets_after_reordering_then_scrolls_until_bottom(monkeypatch, solver):

@@ -1,15 +1,23 @@
 """加工站家具分解：按资源保留完整一套，不安排干员。"""
 
 import re
+from datetime import datetime, timedelta
 from time import monotonic
 
 import cv2
 import numpy as np
 
 from arknights_mower.utils import rapidocr
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.furniture_data import (
     load_furniture_keep_counts,
     normalize_name,
+)
+from arknights_mower.utils.furniture_task import (
+    FURNITURE_EXIT_SECONDS,
+    FURNITURE_RUN_SECONDS,
+    FurnitureNavigationError,
+    FurnitureSafetyError,
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
@@ -225,34 +233,55 @@ def same_list(previous, current):
     return np.mean(cv2.absdiff(previous, current)) < LIST_CHANGE_THRESHOLD
 
 
+class FurnitureDeadlineReached(RuntimeError):
+    """在下一次提交前结束扫描，将执行权交还调度器。"""
+
+
 class FurnitureDismantler:
     def __init__(self, solver):
         self.solver = solver
         self.keep_counts = load_furniture_keep_counts()
+        self.started = None
+
+    def check_deadline(self):
+        if (
+            self.started is not None
+            and monotonic() - self.started >= FURNITURE_RUN_SECONDS
+        ):
+            raise FurnitureDeadlineReached("家具分解达到30分钟运行上限")
+        # 每次重新读取队列，包含扫描期间新增、提前或已经到期的任务。
+        deadline = datetime.now() + timedelta(seconds=FURNITURE_EXIT_SECONDS)
+        for task in list(self.solver.tasks):
+            if task is not self.solver.task and task.time <= deadline:
+                raise FurnitureDeadlineReached("其他任务即将到期，提前结束家具分解")
 
     def tap(self, x, y, interval=0.5):
         self.solver.tap(scale_point(self.solver.recog, (x, y)), interval=interval)
 
-    def wait_scene(self, expected):
+    def wait_scene(self, expected, *, submitted=False):
         for _ in range(20):
+            if not submitted:
+                self.check_deadline()
             if self.solver.factory_scene() == expected:
                 return
             self.solver.sleep()
-        raise RuntimeError(f"家具分解未进入预期界面：{expected}")
+        raise FurnitureNavigationError(f"家具分解未进入预期界面：{expected}")
 
     def wait_list_position(self, previous):
         # 场景标记可能先于切换动画恢复；短暂重截图后仍须匹配原列表位置。
         for attempt in range(4):
+            self.check_deadline()
             current = list_fingerprint(self.solver.recog.img)
             if same_list(previous, current):
                 return
             if attempt < 3:
                 self.solver.sleep(0.5)
-        raise RuntimeError("返回家具列表后位置发生变化，停止以避免选错配方")
+        raise FurnitureSafetyError("返回家具列表后位置发生变化，停止以避免选错配方")
 
     def open_formula(self, reset=True):
         solver = self.solver
         for _ in range(30):
+            self.check_deadline()
             scene = solver.factory_scene()
             if scene == Scene.FACTORY_FORMULA:
                 # 切换分类重置列表位置，兼容分解后列表自动重排或移除条目。
@@ -277,10 +306,11 @@ class FurnitureDismantler:
                 self.tap(*CONFIRM_OPERATOR)
             else:
                 solver.sleep()
-        raise RuntimeError("未能打开加工站家具页面")
+        raise FurnitureNavigationError("未能打开加工站家具页面")
 
     def process(self, position, expected_count):
         solver = self.solver
+        self.check_deadline()
         self.tap(*position)
         self.wait_scene(Scene.FACTORY_DASHBOARD)
         try:
@@ -296,12 +326,12 @@ class FurnitureDismantler:
             logger.info(f"跳过{name}：现有{stock}件，完整一套需要{keep}件")
             return False
         if not keep_one_enabled(solver.recog.img):
-            raise RuntimeError("至少保留1件未开启，停止家具分解")
+            raise FurnitureSafetyError("至少保留1件未开启，停止家具分解")
         self.tap(*MAX_BUTTON)  # 最多（MAX）
         self.wait_scene(Scene.FACTORY_DASHBOARD)
         maximum = furniture_batch(solver.recog.img)
         if not 0 < maximum < stock:
-            raise RuntimeError("家具 MAX 份数异常，未提交加工")
+            raise FurnitureSafetyError("家具 MAX 份数异常，未提交加工")
         # ON 的 MAX 至多为真实库存 - 1。无论库存是否被 OCR 稳定高读，
         # 至少再减少 keep - 1 份，才能独立保证真实剩余量不少于 keep。
         # MAX 若受单次加工上限限制，只会多留家具，不能因此减少保护数量。
@@ -310,36 +340,60 @@ class FurnitureDismantler:
             logger.info(f"跳过{name}：MAX 份数不足以确认完整套装之外的余量")
             return False
         for _ in range(maximum - target):
+            self.check_deadline()
             self.tap(*MINUS_BUTTON, interval=0.2)
         # 验证实际份数，防止减号漏点或界面变化损坏整套家具。
         if furniture_batch(solver.recog.img) != target or furniture_details(
             solver.recog.img, expected_count, target
         ) != (name, stock):
-            raise RuntimeError("无法确认保留完整套装，未提交加工")
+            raise FurnitureSafetyError("无法确认保留完整套装，未提交加工")
         if not keep_one_enabled(solver.recog.img) or not solver.item_valid():
-            raise RuntimeError("家具分解数量或保留状态异常，未提交加工")
+            raise FurnitureSafetyError("家具分解数量或保留状态异常，未提交加工")
         solver.recog.save_screencap("furniture")
-        self.tap(*SUBMIT_BUTTON, interval=2)
-        # 提交只点一次，确认结果后才处理下一个家具。
-        self.wait_scene(Scene.FACTORY_PRODUCT_COLLECT)
+        self.check_deadline()
+        try:
+            self.tap(*SUBMIT_BUTTON, interval=2)
+            # 提交只点一次；先确认结果，再在下一边界检查调度期限。
+            self.wait_scene(Scene.FACTORY_PRODUCT_COLLECT, submitted=True)
+        except MowerExit:
+            raise
+        except Exception as error:
+            raise FurnitureSafetyError(
+                f"家具提交结果无法确认，停止自动重试：{error}"
+            ) from error
         solver.recog.save_screencap("furniture")
         solver.back()
         logger.info(f"{name}分解{target}件，至少保留{keep}件组成完整一套")
         return True
 
     def run(self):
+        self.started = monotonic()
+        try:
+            self.scan()
+        except FurnitureDeadlineReached as error:
+            logger.info(f"{error}；本次任务结束，剩余家具可在空闲时重新添加任务处理")
+        try:
+            self.solver.back_to_infrastructure()
+        except MowerExit:
+            raise
+        except Exception as error:
+            raise FurnitureSafetyError(
+                "家具任务已结束，返回基建失败，不重新分解"
+            ) from error
+
+    def scan(self):
         solver = self.solver
         logger.info("开始分解重复家具，每种保留完整一套所需数量")
         self.open_formula()
-        started = monotonic()
         processed = 0
         bottom_checks = 0
-        while monotonic() - started < 30 * 60:
+        while True:
             self.wait_scene(Scene.FACTORY_FORMULA)
             cards = furniture_cards(solver.recog.img)
             completed = False
             page = list_fingerprint(solver.recog.img)
             for position, count in cards:
+                self.check_deadline()
                 if count <= 1:
                     continue
                 completed = self.process(position, count)
@@ -355,6 +409,7 @@ class FurnitureDismantler:
                 bottom_checks = 0
                 continue
             previous = list_fingerprint(solver.recog.img)
+            self.check_deadline()
             solver.swipe_noinertia(
                 (solver.recog.w * 0.5, solver.recog.h * 0.88),
                 (0, -solver.recog.h * 0.5),
@@ -366,6 +421,4 @@ class FurnitureDismantler:
             bottom_checks = bottom_checks + 1 if unchanged else 0
             if bottom_checks >= 2:
                 logger.info(f"重复家具分解完成，共加工{processed}批，已保留完整套装")
-                solver.back_to_infrastructure()
                 return
-        raise RuntimeError("家具分解超过30分钟，停止本轮处理")

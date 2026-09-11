@@ -608,8 +608,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     run_swap_support(self)
                 elif self.task.type == TaskTypes.FURNITURE:
                     from arknights_mower.solvers.furniture import FurnitureDismantler
+                    from arknights_mower.utils.furniture_task import (
+                        FurnitureNavigationError,
+                    )
 
-                    FurnitureDismantler(self).run()
+                    try:
+                        FurnitureDismantler(self).run()
+                    except (MowerExit, FurnitureNavigationError, ConnectionError):
+                        raise
+                    except Exception:
+                        # 保护失败、识别异常及提交结果不明都只执行一次。
+                        # 先移除再交给通用异常记录，避免下一轮重跑同一任务。
+                        self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                        raise
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:

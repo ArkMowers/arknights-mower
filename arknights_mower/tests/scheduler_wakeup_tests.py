@@ -12,10 +12,16 @@ from flask import Flask
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower import __main__ as main  # noqa: E402
-from arknights_mower.solvers import base_schedule  # noqa: E402
+from arknights_mower.solvers import base_schedule, furniture  # noqa: E402
 from arknights_mower.utils import config, scheduler_task  # noqa: E402
+from arknights_mower.utils.furniture_task import (  # noqa: E402
+    FurnitureNavigationError,
+    FurnitureSafetyError,
+)
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 from arknights_mower.views import task as task_view  # noqa: E402
+
+REAL_FURNITURE_RUN = furniture.FurnitureDismantler.run
 
 
 @pytest.fixture
@@ -56,6 +62,7 @@ def scheduler(monkeypatch):
     monkeypatch.setattr(config.conf, "enable_mastery", False)
     monkeypatch.setattr(base_schedule, "datetime", Clock)
     monkeypatch.setattr(scheduler_task, "datetime", Clock)
+    monkeypatch.setattr(furniture, "datetime", Clock)
     monkeypatch.setattr(
         scheduler_task.NewsChecker, "get_update_time", lambda: (None, None)
     )
@@ -226,3 +233,124 @@ def test_furniture_dispatch_ignores_legacy_staff_plan(scheduler):
     scheduler.dismantle.assert_called_once_with()
     scheduler.solver.agent_arrange.assert_not_called()
     assert scheduler.solver.tasks == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FurnitureSafetyError("无法确认保留完整套装"),
+        ValueError("保留开关识别置信度不足"),
+        RuntimeError("OCR 执行失败"),
+    ],
+)
+def test_failed_furniture_task_is_removed_before_next_dispatch(
+    scheduler, monkeypatch, error
+):
+    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+    scheduler.dismantle.side_effect = error
+    scheduler.on_sleep = lambda: scheduler.add_workshop(task_type="分解所有重复家具")
+    scheduler.solver.run()
+    assert all(t.type != TaskTypes.FURNITURE for t in scheduler.solver.tasks)
+    assert any(t is scheduler.shift for t in scheduler.solver.tasks)
+    scheduler.solver.run()
+    scheduler.dismantle.assert_called_once_with()
+    scheduler.solver.agent_arrange.assert_called_once_with(scheduler.shift.plan, False)
+    assert scheduler.clock.now() == scheduler.shift.time
+
+
+def test_pre_submission_navigation_failure_remains_retryable(scheduler, monkeypatch):
+    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+    scheduler.dismantle.side_effect = [FurnitureNavigationError("未进入家具页面"), None]
+    scheduler.on_sleep = lambda: scheduler.add_workshop(task_type="分解所有重复家具")
+    scheduler.solver.run()
+    assert any(t.type == TaskTypes.FURNITURE for t in scheduler.solver.tasks)
+    scheduler.solver.run()
+    assert scheduler.dismantle.call_count == 2
+    assert all(t.type != TaskTypes.FURNITURE for t in scheduler.solver.tasks)
+
+
+@pytest.mark.parametrize(
+    "error", [base_schedule.MowerExit(), ConnectionError("导航断线")]
+)
+def test_furniture_preserves_stop_and_pre_submission_connection_signals(
+    scheduler, monkeypatch, error
+):
+    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+    task = SchedulerTask(scheduler.clock.now(), task_type=TaskTypes.FURNITURE)
+    scheduler.solver.tasks.insert(0, task)
+    scheduler.solver.task = task
+    scheduler.dismantle.side_effect = error
+    with pytest.raises(type(error)):
+        scheduler.solver.infra_main()
+    assert any(t is task for t in scheduler.solver.tasks)
+
+
+@pytest.mark.parametrize("other_type", [TaskTypes.SWAP_SUPPORT, TaskTypes.RUN_ORDER])
+def test_furniture_budget_defers_scan_before_fixed_deadline(
+    scheduler, monkeypatch, other_type
+):
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    now = scheduler.clock.now()
+    task = SchedulerTask(now, task_type=TaskTypes.FURNITURE)
+    fixed = SchedulerTask(now + timedelta(minutes=3), task_type=other_type)
+    tasks = [task, fixed]
+    scheduler_task.scheduling(tasks, time_now=now)
+    assert fixed.time == now + timedelta(minutes=3)
+    assert task.time > fixed.time
+    assert scheduler_task._ordinary_task_minutes(task, 0.75) == 31
+
+
+@pytest.mark.parametrize("insert_swap", [False, True])
+def test_long_furniture_scan_yields_before_shift_or_new_swap(
+    scheduler, monkeypatch, insert_swap
+):
+    from arknights_mower.solvers import mastery
+
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    start = scheduler.clock.now()
+    solver = scheduler.solver
+    task = SchedulerTask(start, task_type=TaskTypes.FURNITURE)
+    solver.tasks.insert(0, task)
+    solver.task = task
+    swap = SchedulerTask(start + timedelta(minutes=3), task_type=TaskTypes.SWAP_SUPPORT)
+    dispatch_swap = MagicMock(side_effect=lambda solver: solver.skip())
+    monkeypatch.setattr(mastery, "run_swap_support", dispatch_swap)
+    runner = furniture.FurnitureDismantler(solver)
+    runner.open_formula = MagicMock()
+    solver.factory_scene = MagicMock(return_value=furniture.Scene.FACTORY_FORMULA)
+    solver.back_to_infrastructure = MagicMock()
+    page = 0
+
+    def swipe(*args, **kwargs):
+        nonlocal page
+        page += 1
+        scheduler.clock.current += timedelta(seconds=10)
+        if insert_swap and page == 1:
+            solver.tasks.append(swap)
+
+    solver.swipe_noinertia = MagicMock(side_effect=swipe)
+    monkeypatch.setattr(
+        furniture, "monotonic", lambda: (scheduler.clock.now() - start).total_seconds()
+    )
+    monkeypatch.setattr(furniture, "furniture_cards", lambda img: [((0.4, 0.2), 1)])
+    monkeypatch.setattr(furniture, "list_fingerprint", lambda img: page)
+    monkeypatch.setattr(furniture, "same_list", lambda a, b: a == b)
+    scheduler.dismantle.side_effect = lambda: REAL_FURNITURE_RUN(runner)
+    solver.infra_main()
+    next_task = swap if insert_swap else scheduler.shift
+    assert scheduler.clock.now() == next_task.time - timedelta(minutes=1)
+    assert page == (12 if insert_swap else 18)
+    assert all(t is not task for t in solver.tasks)
+    assert any(t is scheduler.shift for t in solver.tasks)
+    solver.back_to_infrastructure.assert_called_once_with()
+    solver.agent_arrange.assert_not_called()
+    solver.error = False
+    solver.handle_error(force=True)
+    assert any(t is scheduler.shift for t in solver.tasks)
+    if insert_swap:
+        solver.run()
+        dispatch_swap.assert_called_once_with(solver)
+        assert scheduler.clock.now() == swap.time
+    solver.run()
+    solver.agent_arrange.assert_called_once_with(scheduler.shift.plan, False)
+    assert scheduler.clock.now() == scheduler.shift.time
