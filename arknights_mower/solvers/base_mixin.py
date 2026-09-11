@@ -425,8 +425,13 @@ class BaseMixin:
 
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
         self.recog.update()
-        time_in_seconds = self.read_time(cord, upperLimit, use_digit_reader)
+        time_in_seconds = self.read_time(
+            cord, upperLimit, use_digit_reader=use_digit_reader
+        )
         if time_in_seconds is None:
+            logger.warning(
+                "订单/设施倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
+            )
             return datetime.now()
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time

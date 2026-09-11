@@ -58,6 +58,9 @@ class MaaBackupTests(unittest.TestCase):
     def finish(self, instance, messages=(10001, 10002, 3)):
         instance._asst.messages = list(messages)
         self.assertFalse(instance.running())
+        if instance._cleanup_thread is not None:
+            instance._cleanup_thread.join(3)
+            self.assertFalse(instance._cleanup_thread.is_alive())
 
     def test_success_removes_core_and_resource_backups_for_desktop_layouts(self):
         for library in ("libMaaCore.so", "libMaaCore.dylib", "MaaCore.dll"):
@@ -124,6 +127,9 @@ class MaaBackupTests(unittest.TestCase):
             release.set()
             thread.join()
         self.assertFalse(instance.running())
+        if instance._cleanup_thread is not None:
+            instance._cleanup_thread.join(3)
+            self.assertFalse(instance._cleanup_thread.is_alive())
         self.assertFalse(self.old.exists())
 
     def test_cleanup_failure_does_not_fail_task_or_prevent_retry(self):
@@ -133,6 +139,9 @@ class MaaBackupTests(unittest.TestCase):
             self.finish(instance)
         self.assertTrue(self.old.exists())
         self.assertFalse(instance.running())
+        if instance._cleanup_thread is not None:
+            instance._cleanup_thread.join(3)
+            self.assertFalse(instance._cleanup_thread.is_alive())
         self.assertFalse(self.old.exists())
 
     def test_android_uses_verified_host_identity_and_old_hosts_remain_usable(self):
@@ -141,7 +150,13 @@ class MaaBackupTests(unittest.TestCase):
         )
         with (
             patch.dict(os.environ, {"MOWER_ANDROID": "1"}),
-            patch.dict("sys.modules", {"mower_android.backup_cleanup": host}),
+            patch.dict(
+                "sys.modules",
+                {
+                    "mower_android": SimpleNamespace(backup_cleanup=host),
+                    "mower_android.backup_cleanup": host,
+                },
+            ),
         ):
             instance = self.asst()
             instance.start()
@@ -150,7 +165,10 @@ class MaaBackupTests(unittest.TestCase):
             self.assertTrue(self.old.exists())  # the host owns Android storage
         with (
             patch.dict(os.environ, {"MOWER_ANDROID": "1"}),
-            patch.dict("sys.modules", {"mower_android.backup_cleanup": None}),
+            patch.dict(
+                "sys.modules",
+                {"mower_android": None, "mower_android.backup_cleanup": None},
+            ),
         ):
             instance = self.asst()
             instance.start()
@@ -163,6 +181,7 @@ class MaaBackupTests(unittest.TestCase):
         for message in (10001, 10002, 3):
             instance._message(message, b"{}", None)
         instance.stop()
+        instance._cleanup_thread.join(3)
         self.assertFalse(self.old.exists())
 
     def test_unreadable_backup_metadata_does_not_prevent_tasks(self):
@@ -179,8 +198,11 @@ class MaaBackupTests(unittest.TestCase):
             instance._message(message, b"{}", None)
         with patch.object(backup.shutil, "rmtree", side_effect=PermissionError):
             instance.stop()
+            if instance._cleanup_thread is not None:
+                instance._cleanup_thread.join(3)
         self.assertTrue(self.old.exists())
         instance.running()
+        instance._cleanup_thread.join(3)
         self.assertFalse(self.old.exists())
 
     def test_configured_symlink_does_not_select_another_paths_sibling_backup(self):
@@ -197,3 +219,24 @@ class MaaBackupTests(unittest.TestCase):
         self.assertFalse(saved.exists())
         self.assertTrue(self.old.exists())
         self.assertTrue(self.settings.exists())
+
+    def test_slow_cleanup_never_blocks_task_status_or_stop(self):
+        instance = self.asst()
+        entered, release = threading.Event(), threading.Event()
+
+        def slow_cleanup():
+            entered.set()
+            release.wait(5)
+            return True
+
+        instance._retire = slow_cleanup
+        instance.start()
+        instance._asst.messages = [10001, 10002, 3]
+        try:
+            self.assertFalse(instance.running())
+            self.assertTrue(entered.wait(2))
+            self.assertTrue(instance.stop())
+            self.assertTrue(instance._cleanup_thread.is_alive())
+        finally:
+            release.set()
+            instance._cleanup_thread.join(3)

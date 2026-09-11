@@ -138,13 +138,19 @@ class VerifiedAsst:
         self._asst = asst_type(callback=self._callback)
         self._retired = False
         self._verified = False
+        self._cleanup_thread = None
+        self._cleanup_lock = threading.Lock()
         if os.environ.get("MOWER_ANDROID") == "1":
             # Older APKs remain usable; storage cleanup is an optional host hook.
             try:
-                from mower_android.backup_cleanup import capture_current, confirm_task
+                from mower_android import backup_cleanup as host
 
-                component = capture_current()
-                self._retire = lambda: confirm_task(component)
+                component = (
+                    host.capture_task(self._asst)
+                    if hasattr(host, "capture_task")
+                    else host.capture_current()
+                )
+                self._retire = lambda: host.confirm_task(component)
             except (ImportError, OSError, RuntimeError):
                 self._retire = lambda: False
         else:
@@ -171,14 +177,24 @@ class VerifiedAsst:
 
     def _cleanup(self, verified=False):
         self._verified = self._verified or verified or self._outcome.successful
-        if not self._retired and self._verified:
-            try:
-                self._retired = self._retire()
-            except Exception:
-                # Cleanup must never turn a successful game task into a failure.
-                logging.getLogger(__name__).warning(
-                    "MAA 任务已完成，旧备份清理暂不可用"
-                )
+        if self._retired or not self._verified:
+            return
+        with self._cleanup_lock:
+            if self._cleanup_thread is not None and self._cleanup_thread.is_alive():
+                return
+
+            def retire():
+                try:
+                    self._retired = self._retire()
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "MAA 任务已完成，旧备份清理暂不可用"
+                    )
+
+            self._cleanup_thread = threading.Thread(
+                target=retire, name="maa-backup-cleanup", daemon=True
+            )
+            self._cleanup_thread.start()
 
     def running(self):
         running = self._asst.running()
