@@ -632,16 +632,27 @@ def next_workshop_task_time(tasks, earliest=None):
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
-    from arknights_mower.utils.workshop_automation import restore_if_no_plans
+    from arknights_mower.utils.workshop_automation import (
+        restore_if_no_plans,
+        workshop_task_current,
+    )
     from arknights_mower.utils.workshop_limits import batch_limit
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
 
     restore_if_no_plans()
+    # 跑单/专精换人可能将加工推迟到五分钟之后，不能把它当作没有待办。
+    pending_operators = {
+        task.meta_data
+        for task in tasks
+        if task.type == TaskTypes.WORKSHOP and workshop_task_current(task)
+    }
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
         for item in prioritize_workshop_settings(config.conf.workshop_settings):
+            if item.operator in pending_operators:
+                continue
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
@@ -698,6 +709,7 @@ def try_workshop_tasks(op_data, tasks):
 
                 stamp_workshop_task(task)
                 tasks.append(task)
+                pending_operators.add(item.operator)
             else:
                 logger.debug("数据不满足条件，跳过加工站任务生成")
     else:
@@ -783,70 +795,6 @@ def add_release_dorm(tasks, op_data, name):
             )
             tasks.append(task)
             logger.info(name + " 新增释放宿舍任务")
-            logger.debug(str(task))
-
-
-def check_dorm_ordering(tasks, op_data):
-    # 仅当下班的时候才触发宿舍排序任务
-    plan = op_data.plan
-    if len(tasks) == 0:
-        return
-    if tasks[0].type == TaskTypes.SHIFT_OFF and tasks[0].meta_data == "":
-        extra_plan = {}
-        other_plan = {}
-        working_agent = []
-        for room, v in tasks[0].plan.items():
-            if not room.startswith("dorm"):
-                working_agent.extend(v)
-        for room, v in tasks[0].plan.items():
-            # 非宿舍则不需要清空
-            if room.startswith("dorm"):
-                # 是否检查过vip位置
-                pass_first_free = False
-                clear = False
-                for idx, agent in enumerate(v):
-                    # 如果当前位置为VIP，且有人员变动，则清除后续人员
-                    if pass_first_free and clear:
-                        if agent == "Current":
-                            current = next(
-                                (
-                                    obj
-                                    for obj in op_data.operators.values()
-                                    if obj.current_room == room
-                                    and obj.current_index == idx
-                                ),
-                                None,
-                            )
-                            if current:
-                                if current.name not in working_agent:
-                                    v[idx] = current.name
-                                else:
-                                    logger.debug(f"检测到干员{current.name}已经上班")
-                                    v[idx] = "Free"
-                        if room not in extra_plan:
-                            extra_plan[room] = copy.deepcopy(v)
-                        # 新生成移除任务 --> 换成移除
-                        extra_plan[room][idx] = ""
-                    if "Free" == plan[room][idx].agent and not pass_first_free:
-                        pass_first_free = True
-                        if agent != "Current":
-                            clear = True
-            else:
-                other_plan[room] = v
-        tasks[0].meta_data = "宿舍排序完成"
-        if extra_plan:
-            for k, v in other_plan.items():
-                del tasks[0].plan[k]
-                extra_plan[k] = v
-            for k, v in extra_plan.items():
-                extra_plan[k] = [item for item in v if item != ""]
-            logger.info("新增排序任务任务")
-            task = SchedulerTask(
-                task_plan=extra_plan,
-                time=tasks[0].time - timedelta(seconds=1),
-                task_type=TaskTypes.RE_ORDER,
-            )
-            tasks.insert(0, task)
             logger.debug(str(task))
 
 

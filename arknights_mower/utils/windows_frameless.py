@@ -33,6 +33,8 @@ _WS_SYSMENU = 0x00080000
 _WS_CAPTION = 0x00C00000
 
 _WM_NCLBUTTONDOWN = 0x00A1
+_HTCLIENT = 1
+_HTCAPTION = 2
 
 _SWP_NOMOVE = 0x0002
 _SWP_NOZORDER = 0x0004
@@ -80,9 +82,16 @@ def frameless_window_style(style: int) -> int:
 
     DWM plays the minimize, maximize/restore and snap transitions only for a
     window that still carries ``WS_CAPTION`` next to the minimize/maximize box
-    styles; with the caption bit cleared the window just jumps. The painted
-    caption itself never appears, because ``WM_NCCALCSIZE`` returns 0 and leaves
-    the client area covering the whole window.
+    styles; with the caption bit cleared the window just jumps.
+
+    The caption those styles ask for is not free. This window has a non-client
+    area in exactly one place -- the resize frame ``inset_maximized_client`` takes
+    back out of a maximized window -- and while the window is maximized that band
+    hangs over the screen edge, which is why no caption is ever seen. Move a
+    maximized window without restoring it first and the band is dragged into view,
+    with a second title bar painted into it directly above the page's own; that is
+    the doubled title bar this module now avoids by handing the drag to the
+    shell's own move loop, which restores the window instead of moving it.
     """
     return style | (
         _WS_CAPTION | _WS_THICKFRAME | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX | _WS_SYSMENU
@@ -92,11 +101,50 @@ def frameless_window_style(style: int) -> int:
 def begin_windows_resize(window: Any, edge: str) -> bool:
     """Start the native sizing loop from an in-window HTML edge grip."""
     hit_test = _RESIZE_EDGE_HIT_TEST.get(edge)
-    if not is_windows() or hit_test is None:
+    if hit_test is None:
+        return False
+    return _begin_windows_drag(window, hit_test)
+
+
+def begin_windows_move(window: Any) -> bool:
+    """Start the native move loop from the in-window HTML title bar.
+
+    Dragging the title bar inside the page can only move the window with
+    ``SetWindowPos``, which never reaches the shell's own move handling: edge
+    snapping, restoring a maximized window by dragging it away from the screen
+    edge, shake, and the snap layout flyout all live in that loop. Handing the
+    press back with the caption hit code gives the drag back to the shell.
+
+    The loop owns the mouse until the button comes up, so callers must not wait
+    for this call to return.
+    """
+    return _begin_windows_drag(window, _HTCAPTION)
+
+
+def _begin_windows_drag(window: Any, hit_code: int) -> bool:
+    """Hand a press that landed inside the page back to the shell at *hit_code*."""
+    if not is_windows():
         return False
 
     form = _winforms_window(window)
-    hwnd = int(form.Handle.ToInt64())
+    hwnd = _winforms_hwnd(window)
+
+    def start_native_drag() -> bool:
+        return _hand_press_to_shell(hwnd, hit_code)
+
+    return _run_on_ui_thread(form, start_native_drag)
+
+
+def _hand_press_to_shell(hwnd: int, hit_code: int) -> bool:
+    """Replay the press at the cursor as the non-client message the shell tracks.
+
+    ``ReleaseCapture`` first, because the page already holds the capture from its
+    own mouse-down; without it the shell's loop never sees the movement.
+
+    The message only starts the loop for the active window; the shell activates
+    the window from the same press that armed the page, so by the time the page
+    hands the press over ``WM_ACTIVATE`` has already been through.
+    """
     user32 = _user32()
     user32.ReleaseCapture.argtypes = []
     user32.ReleaseCapture.restype = wintypes.BOOL
@@ -109,21 +157,22 @@ def begin_windows_resize(window: Any, edge: str) -> bool:
         wintypes.LPARAM,
     ]
     user32.SendMessageW.restype = ctypes.c_ssize_t
+    point = _POINT()
+    if not user32.GetCursorPos(ctypes.byref(point)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    user32.ReleaseCapture()
+    position = ((point.y & 0xFFFF) << 16) | (point.x & 0xFFFF)
+    user32.SendMessageW(hwnd, _WM_NCLBUTTONDOWN, hit_code, position)
+    return True
 
-    def start_native_resize() -> bool:
-        point = _POINT()
-        if not user32.GetCursorPos(ctypes.byref(point)):
-            raise ctypes.WinError(ctypes.get_last_error())
-        user32.ReleaseCapture()
-        position = ((point.y & 0xFFFF) << 16) | (point.x & 0xFFFF)
-        user32.SendMessageW(hwnd, _WM_NCLBUTTONDOWN, hit_test, position)
-        return True
 
+def _run_on_ui_thread(form: Any, action: Any) -> bool:
+    """Run *action* on the WinForms UI thread; that thread owns the window."""
     if form.InvokeRequired:
         from System import Boolean, Func
 
-        return bool(form.Invoke(Func[Boolean](start_native_resize)))
-    return start_native_resize()
+        return bool(form.Invoke(Func[Boolean](action)))
+    return action()
 
 
 class _POINT(ctypes.Structure):
@@ -309,13 +358,16 @@ def _install_hook(
     wm_ncdestroy = 0x0082
     wm_size = 0x0005
     wm_windowposchanged = 0x0047
+    wm_cancelmode = 0x001F
+    wm_entersizemove = 0x0231
+    wm_exitsizemove = 0x0232
     wm_restore_normal_rect = 0x8001  # WM_APP + 1
 
     size_restored = 0
     size_maximized = 2
 
-    htclient = 1
-    htcaption = 2
+    htclient = _HTCLIENT
+    htcaption = _HTCAPTION
 
     sm_cxsizeframe = 32
     sm_cysizeframe = 33
@@ -421,6 +473,7 @@ def _install_hook(
     normal_rect: _RECT | None = None
     was_maximized = False
     restore_pending = False
+    shell_owns_modal_loop = False
 
     @wnd_proc_type
     def window_proc(
@@ -429,7 +482,7 @@ def _install_hook(
         w_param: int,
         l_param: int,
     ) -> int:
-        nonlocal normal_rect, restore_pending, was_maximized
+        nonlocal normal_rect, restore_pending, was_maximized, shell_owns_modal_loop
         try:
             if message == wm_restore_normal_rect:
                 if normal_rect is not None:
@@ -468,10 +521,24 @@ def _install_hook(
                 if w_param == size_maximized:
                     was_maximized = True
                 elif w_param == size_restored and was_maximized:
-                    restore_pending = True
                     was_maximized = False
-                    user32.PostMessageW(hwnd, wm_restore_normal_rect, 0, 0)
+                    # Dragging a maximized window away from the screen edge
+                    # restores it from inside the shell's move loop, and the
+                    # restore arrives after WM_ENTERSIZEMOVE (the order the loop
+                    # itself uses, read off the message journal). Forcing the
+                    # remembered rect would fight the drag, so while the shell
+                    # owns the loop let it keep the geometry it picked and let
+                    # that position become the remembered one.
+                    if not shell_owns_modal_loop:
+                        restore_pending = True
+                        user32.PostMessageW(hwnd, wm_restore_normal_rect, 0, 0)
                 return result
+            if message == wm_entersizemove:
+                shell_owns_modal_loop = True
+            elif message in (wm_exitsizemove, wm_cancelmode):
+                # WM_CANCELMODE is the loop's own way out when it is cancelled
+                # instead of finished, so the latch cannot outlive its loop.
+                shell_owns_modal_loop = False
             if message == wm_windowposchanged:
                 result = call_window_proc(
                     original_proc, message_hwnd, message, w_param, l_param

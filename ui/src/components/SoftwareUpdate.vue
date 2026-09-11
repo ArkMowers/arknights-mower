@@ -52,6 +52,7 @@ let pendingSince = 0
 let lastCheckAt = 0
 let settingsRequest = Promise.resolve()
 let previewCheckId = ''
+defineExpose({ flushSettings: () => settingsRequest })
 
 function saveSettings() {
   const settings = {
@@ -268,7 +269,7 @@ async function install(force = false, target = null, selection = {}) {
     if (!response.data.ok) throw new Error(response.data.message)
     if (target) {
       autoUpdate.value = false
-      channel.value = 'dev'
+      if (!target.source_pr && !target.source_prs) channel.value = 'dev'
     }
     sessionStorage.setItem(pendingKey, response.data.id)
     pendingSince = Date.now()
@@ -456,6 +457,8 @@ onUnmounted(() => {
       <n-form-item v-if="source" :show-label="false">
         <SourceVersionManager
           :initial-branch="info.settings.source_branch"
+          :initial-remote="info.settings.source_remote"
+          :remotes="info.source_remotes"
           :running="running || checking"
           :blocked="blocked"
           :force-supported="info.force_supported"

@@ -344,6 +344,12 @@ class SourceCheckoutTests(unittest.TestCase):
 
     def test_current_source_version_can_only_be_reinstalled_with_explicit_force(self):
         self.worker()
+        self.command(
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/ArkMowers/arknights-mower.git",
+        )
         with (
             patch.object(runtime, "installation_root", return_value=self.root),
             patch.object(runtime, "state_dir", return_value=self.folder / "state"),

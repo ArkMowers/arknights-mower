@@ -194,6 +194,8 @@ class Operators:
                     return "菲亚梅塔必须安排在宿舍"
                 if data.agent == "Free" and not room.startswith("dorm"):
                     return f"Free只能安排在宿舍 房间->{room}, 干员->{data.agent}"
+                if data.group and data.agent in ["Free", "菲亚梅塔"]:
+                    return f"{data.agent}不能参与宿舍绑组换班"
                 if data.agent in self.operators and data.agent != "Free":
                     return f"高效组干员不可重复 房间->{room},{self.operators[data.agent].room}, 干员->{data.agent}"
                 self.add(
@@ -346,9 +348,16 @@ class Operators:
                     return f"{key} 分组无法排班,替换组数量不够"
                 else:
                     _replacement.append(_candidate)
-                if self.operators[name].workaholic:
+                if self.operators[name].workaholic or self.operators[
+                    name
+                ].room.startswith("dorm"):
                     continue
                 total_count += 1
+            if (
+                any(self.operators[n].room.startswith("dorm") for n in self.groups[key])
+                and not total_count
+            ):
+                return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
             if total_count > len(self.dorm):
                 return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于总宿舍数{len(self.dorm)}"
         # 设定令夕模式的心情阈值
@@ -383,11 +392,14 @@ class Operators:
         for name in ["夕", "令"]:
             if (
                 name in self.operators
+                and not self.operators[name].room.startswith("dorm")
                 and self.operators[name].group != ""
                 and self.operators[name].group not in finished
             ):
                 for group_name in self.groups[self.operators[name].group]:
-                    if group_name not in ["夕", "令"]:
+                    if group_name not in ["夕", "令"] and not self.operators[
+                        group_name
+                    ].room.startswith("dorm"):
                         if self.config.ling_xi in [1, 2]:
                             self.set_mood_limit(group_name, lower_limit=12)
                         elif self.config.ling_xi == 0:
@@ -427,7 +439,9 @@ class Operators:
             for k, v in self.operators.items()
             if v.current_room == room
         }
-        res = [obj.agent for obj in self.plan[room]]
+        # 训练室的两个槽位由设施决定，自动专精不要求静态排班配置该房间。
+        # 只读取缓存，不向排班表补人，避免常规排班接管自动专精。
+        res = [""] * 2 if room == "train" else [obj.agent for obj in self.plan[room]]
         not_found = False
         for idx, op in enumerate(res):
             if idx in room_data:
@@ -511,6 +525,8 @@ class Operators:
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
+        if mood >= 24:
+            agent.dorm_recovery_room = ""
         # 如果是高效组且没有记录时间，则返还index
         if to_dorm:
             idx, dorm = self.get_dorm_by_name(name)
@@ -642,9 +658,12 @@ class Operators:
             operator.depletion_rate = exist.depletion_rate
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
+            operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
-        if operator.exhaust_require:
+        if operator.exhaust_require and not (
+            operator.group and operator.room.startswith("dorm")
+        ):
             self.exhaust_agent.add(operator.name)
             if operator.group != "":
                 self.exhaust_group.add(operator.group)
@@ -656,7 +675,9 @@ class Operators:
                 self.groups[operator.group].append(operator.name)
         if operator.workaholic:
             self.workaholic_agent.add(operator.name)
-        if operator.rest_in_full:
+        if operator.rest_in_full and not (
+            operator.group and operator.room.startswith("dorm")
+        ):
             if operator.group != "":
                 self.rest_in_full_group.add(operator.group)
         if (
@@ -708,6 +729,64 @@ class Operators:
             for member in (self.operators[n] for n in self.groups.get(op.group, []))
         )
 
+    def has_dorm_groups(self):
+        """仅实际填写了宿舍组名的配置启用宿舍绑组处理。"""
+        return any(
+            op.group and op.room.startswith("dorm") for op in self.operators.values()
+        )
+
+    def group_is_resting(self, group):
+        """宿舍常驻成员不参与组的工作／休息状态判断。"""
+        return any(
+            not self.operators[name].room.startswith("dorm")
+            and not self.operators[name].workaholic
+            and self.operators[name].is_resting()
+            for name in self.groups.get(group, [])
+        )
+
+    def is_dorm_replacement(self, name):
+        """已在固定宿舍岗位上的替班不能被其他岗位借走。"""
+        op = self.operators[name]
+        return self.is_dorm_replacement_for_slot(
+            name, op.current_room, op.current_index
+        )
+
+    def is_dorm_replacement_for_slot(self, name, room, index):
+        """按目标位置识别绑组宿舍替班，也用于尚未入驻时的选人保护。"""
+        slots = self.plan.get(room, [])
+        if not room.startswith("dorm") or not 0 <= index < len(slots):
+            return False
+        slot = slots[index]
+        return bool(
+            slot.group
+            and slot.agent not in ("Free", "菲亚梅塔")
+            and name in slot.replacement
+        )
+
+    def replacement_candidates(self, operator):
+        """仅绑组宿舍的替班按心情排序；菲亚梅塔充能名单保留原顺序。"""
+        candidates = list(operator.replacement)
+        if (
+            not operator.room.startswith("dorm")
+            or not operator.group
+            or operator.name == "菲亚梅塔"
+        ):
+            return candidates
+        now = datetime.now()
+
+        def mood_order(name):
+            candidate = self.operators.get(name)
+            if (
+                candidate is None
+                or candidate.time_stamp is None
+                or not 0 <= candidate.mood <= 24
+            ):
+                return (1, 0)
+            # 与菲亚梅塔共用当前心情估算；宿舍替班按绝对心情排序，不扣下限。
+            return (0, candidate.current_mood(now))
+
+        return sorted(candidates, key=mood_order)
+
     def average_mood(self):
         total_mood = 0
         current_mood = 0
@@ -715,6 +794,7 @@ class Operators:
         for k, v in self.operators.items():
             if (
                 not v.is_resting()
+                and not (v.group and v.room.startswith("dorm"))
                 and v.operator_type != "low"
                 and not v.workaholic
                 and not self.is_group_standby(k)
@@ -1058,6 +1138,7 @@ class Operator:
         self.group = group
         self.replacement = replacement
         self.resting_priority = resting_priority
+        self.dorm_recovery_room = ""
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
@@ -1079,6 +1160,7 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
+            self.dorm_recovery_room = ""
             self._current_room = value
             if Operators.current_room_changed_callback and (
                 self.refresh_order_room[0] or self.refresh_drained

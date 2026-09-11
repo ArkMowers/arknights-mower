@@ -135,11 +135,11 @@ export const usePlanStore = defineStore('plan', () => {
     return plan1
   }
 
-  async function load_plan() {
+  async function load_plan({ resetDormOrder = true } = {}) {
     const config_store = useConfigStore()
     const { dorm_order } = storeToRefs(config_store)
     // 新排班表重置宿舍优先级
-    dorm_order.value = []
+    if (resetDormOrder) dorm_order.value = []
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
@@ -233,10 +233,20 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   const loaded = inject('loaded')
+  const autosave_paused = ref(false)
+  let planSaveRequest = Promise.resolve()
+
+  function save_plan() {
+    const payload = JSON.parse(JSON.stringify(build_plan()))
+    planSaveRequest = planSaveRequest
+      .catch(() => {})
+      .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, payload))
+    return planSaveRequest
+  }
 
   watchEffect(() => {
-    if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
+    if (loaded.value && !autosave_paused.value) {
+      save_plan().catch((error) => console.error('排班保存失败', error))
     }
   })
 
@@ -262,6 +272,8 @@ export const usePlanStore = defineStore('plan', () => {
   })
 
   return {
+    autosave_paused,
+    save_plan,
     load_plan,
     load_operators,
     ling_xi,

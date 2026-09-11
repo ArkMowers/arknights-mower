@@ -204,6 +204,24 @@ class WindowShellBridge:
         self._window.confirm_close = False
         return self._call_window("destroy")
 
+    def start_move(self) -> bool:
+        """Hand a title bar press to the shell so it runs the drag itself.
+
+        The call returns only once the user lets go of the button, because the
+        shell's move loop owns the mouse for the whole drag.
+        """
+        if self._platform != "windows":
+            return False
+        try:
+            from arknights_mower.utils.windows_frameless import (
+                begin_windows_move,
+            )
+
+            return begin_windows_move(self._window)
+        except Exception:
+            logger.exception("Desktop window move could not start")
+            return False
+
     def start_resize(self, edge: str) -> bool:
         if self._platform != "windows":
             return False
@@ -288,6 +306,7 @@ def attach_window_shell(
         bridge.maximize,
         bridge.restore,
         bridge.close,
+        bridge.start_move,
         bridge.start_resize,
         bridge.get_window_state,
         bridge.get_platform,

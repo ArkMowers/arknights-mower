@@ -122,6 +122,30 @@ def test_partial_group_at_work_does_not_wake_resting_member(solver):
     assert solver.op_data.operators["歌蕾蒂娅"].is_resting()
 
 
+@pytest.mark.parametrize("configured_slots", [0, 1])
+@pytest.mark.parametrize("trainee_present", [False, True])
+def test_correction_leaves_unconfigured_training_slot_alone(
+    solver, configured_slots, trainee_present
+):
+    solver.op_data.plan["train"] = solver.op_data.plan["train"][:configured_slots]
+    if not configured_slots:
+        del solver.op_data.operators["逻各斯"]
+    if trainee_present:
+        trainee = Operator("号角", "", time_stamp=datetime.now())
+        trainee.current_room, trainee.current_index = "train", 1
+        solver.op_data.operators[trainee.name] = trainee
+    # 不依赖专精保护抑制纠错，也不得为用户未配置的训练位生成安排。
+    solver._suppress_train_correction = lambda plan: None
+    solver.agent_get_mood()
+    for task in solver.tasks:
+        if configured_slots:
+            assert task.plan.get("train", ["逻各斯"]) == ["逻各斯"]
+        else:
+            assert "train" not in task.plan
+    if trainee_present:
+        assert solver.op_data.operators["号角"].current_room == "train"
+
+
 def test_completed_rest_allows_normal_group_return(solver):
     solver.op_data.dorm[0].time = datetime.now() - timedelta(seconds=1)
     solver.op_data.operators["歌蕾蒂娅"].mood = 24

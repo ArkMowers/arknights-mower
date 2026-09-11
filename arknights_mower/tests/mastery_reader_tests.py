@@ -694,7 +694,8 @@ class TestReadRoomState(unittest.TestCase):
             {"agent": "训练干员", "mood": 15.5678},
         ]
         solver.get_agent_from_room.return_value = scan
-        room, mood = reader.read_room_state(solver, want_mood=True)
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            room, mood = reader.read_room_state(solver, want_mood=True)
         self.assertEqual(room.state, "waiting_collect")
         self.assertEqual(room.support_slot, "支援干员")
         self.assertEqual(room.train_slot, "训练干员")
@@ -709,7 +710,8 @@ class TestReadRoomState(unittest.TestCase):
             {"agent": "训练干员", "mood": 15.5678},
         ]
         solver.get_agent_from_room.return_value = scan
-        room, mood = reader.read_room_state(solver, want_mood=True)
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            room, mood = reader.read_room_state(solver, want_mood=True)
         self.assertEqual(room.state, "training")
         self.assertEqual(room.support_slot, "支援干员")
         self.assertEqual(room.train_slot, "训练干员")

@@ -88,15 +88,42 @@ describe('force update confirmation', () => {
 })
 
 describe('source version confirmation', () => {
+  it('confirms the latest target branch base alongside all selected PRs', () => {
+    const dialogs = { warning: vi.fn() }
+    confirmSourceVersion(
+      dialogs,
+      {
+        sha: 'c'.repeat(40),
+        source_repo: 'personal/mower',
+        source_branch: 'alpha',
+        base_commit: 'b'.repeat(40),
+        source_prs: [{ number: 7 }, { number: 8 }]
+      },
+      3,
+      vi.fn()
+    )
+    const { content } = dialogs.warning.mock.calls[0][0]
+    expect(content).toContain('PR #7、#8')
+    expect(content).toContain(`目标分支 alpha 的 ${'b'.repeat(40)}`)
+    expect(content).toContain('再合并所选 PR')
+  })
+
   it.each([false, true])(
     'requires confirmation with the immutable target and scope (force=%s)',
     async (force) => {
       const dialogs = { warning: vi.fn() }
       const install = vi.fn()
-      const target = { sha: 'a'.repeat(40), check_id: 'selected', force }
+      const target = {
+        sha: 'a'.repeat(40),
+        check_id: 'selected',
+        force,
+        source_repo: 'personal/mower',
+        source_pr: 7
+      }
       confirmSourceVersion(dialogs, target, 3, install)
       const options = dialogs.warning.mock.calls[0][0]
       expect(options.content).toContain(target.sha)
+      expect(options.content).toContain('personal/mower 的 PR #7')
       expect(options.content).toContain('3 个实例')
       expect(options.content).toContain('关闭软件自动更新')
       expect(options.content).toContain('专精计划和数据库记录保留')
