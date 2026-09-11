@@ -647,6 +647,60 @@ class TestReadRoomState(unittest.TestCase):
         room = reader.read_room_state(solver)
         self.assertEqual(room.state, "empty")
 
+    def _with_idle_marker(self, solver):
+        """面板读空时「空闲中」标记命中（scope 内真实返回矩形，非命中返回 None）。"""
+
+        def fake_find(res, *args, **kwargs):
+            if res == "training_idle":
+                return ((658, 976), (758, 1016))
+            return None
+
+        solver.find.side_effect = fake_find
+        return solver
+
+    def test_idle_marker_skips_countdown_retry(self):
+        # 面板读不出归属 + 「空闲中」标记 → 直接判空闲，不进 read_time 的 5 次重试
+        # （空闲房每次进房白等约 2.5 秒，结论一样）。
+        # 两种面板读法都要覆盖：真读空（""）与 OCR 失败哨兵（read_screen 返回 limit+1
+        # =25，经 _parse_panel_text 变 skill_name="25"——实机空闲房走的是这条）。
+        for panel_text in ("", 25):
+            with self.subTest(panel_text=panel_text):
+                solver = self._with_idle_marker(
+                    self._solver(None, panel_text=panel_text, tier_columns=())
+                )
+                room = reader.read_room_state(solver)
+                self.assertEqual(room.state, "empty")
+                self.assertEqual(room.panel.countdown_state, "failed")
+                solver.read_time.assert_not_called()
+
+    def test_no_idle_marker_keeps_countdown_read(self):
+        # 面板读不出归属但没有标记 → 原路径：照常读倒计时（三态由 read_time 给）
+        solver = self._solver(None, panel_text=25, tier_columns=())
+        solver.find.side_effect = lambda res, *a, **k: None
+        room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "empty")
+        solver.read_time.assert_called()
+
+    def test_idle_marker_ignored_when_panel_readable(self):
+        # 面板读出干员名 → 不采信标记，照旧走状态矩阵（§16.2：倒计时空 + 名/图标可读
+        # 一般是倒计时 OCR 出错，仍原地重试，不直接下结论为空闲）
+        solver = self._with_idle_marker(
+            self._solver(7200, panel_text="[测试干员]测试技能", tier_columns=())
+        )
+        room = reader.read_room_state(solver)
+        solver.read_time.assert_called()
+        self.assertEqual(room.panel.countdown_state, "active")
+
+    def test_idle_marker_ignored_when_mastery_icon_lit(self):
+        # 面板名不可读但专精图标亮着 → 训练位有人，不采信标记（真机：训练中/待收取
+        # 面板名读失败时靠这条兜底）
+        solver = self._with_idle_marker(
+            self._solver(None, panel_text=25, tier_columns=(0, 1, 2))
+        )
+        room = reader.read_room_state(solver)
+        solver.read_time.assert_called()
+        self.assertGreater(room.panel.mastery_tier, 0)
+
     def test_zero_countdown_is_waiting_collect(self):
         # §16.8 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
         solver = self._solver(0)
