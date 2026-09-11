@@ -593,9 +593,15 @@ export const useConfigStore = defineStore('config', () => {
         y: tap_to_launch_game.value.y,
         command: tap_to_launch_game.value.command || defaultLaunchCommand
       },
-      exit_game_when_idle: exit_game_when_idle.value,
-      return_home_when_idle: return_home_when_idle.value,
-      close_simulator_when_idle: close_simulator_when_idle.value,
+      // Android edits these original Mower options in its native settings.
+      // Hidden WebUI drafts must not overwrite a newer native selection.
+      ...(runtime_platform.value === 'android'
+        ? {}
+        : {
+            exit_game_when_idle: exit_game_when_idle.value,
+            return_home_when_idle: return_home_when_idle.value,
+            close_simulator_when_idle: close_simulator_when_idle.value
+          }),
       maa_conn_preset: maa_conn_preset.value,
       maa_touch_option: maa_touch_option.value,
       maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
