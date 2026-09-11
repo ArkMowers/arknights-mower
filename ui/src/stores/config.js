@@ -581,7 +581,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
       maa_gap: maa_gap.value,
       simulator: simulator.value,
-      theme: theme.value,
+      ...(runtime_platform.value === 'android' ? {} : { theme: theme.value }),
       resting_threshold: resting_threshold.value / 100,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,

@@ -34,6 +34,7 @@ class AndroidPackageTests(unittest.TestCase):
                 self.assertEqual(meta["runtime_api"], 1)
                 self.assertEqual(meta["version"], "4.2.0")
                 self.assertIn("mower/ui/dist/index.html", z.namelist())
+                self.assertEqual(z.read("mower/CHANGELOG.md"), b"payload")
                 self.assertIn("mower/arknights_mower/models/model.bin", z.namelist())
                 self.assertFalse(
                     any(
@@ -51,6 +52,23 @@ class AndroidPackageTests(unittest.TestCase):
             (root / "ui/dist/index.html").unlink()
             with self.assertRaisesRegex(ValueError, "missing build input"):
                 package(root, root / "out", "4.2.0", "a" * 40)
+
+    def test_missing_or_empty_changelog_cannot_publish_an_update(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("payload")
+            (root / "arknights_mower/__init__.py").write_text('__version__ = "4.2.0"\n')
+            changelog = root / "CHANGELOG.md"
+            changelog.unlink()
+            with self.assertRaisesRegex(ValueError, "missing build input: CHANGELOG"):
+                package(root, root / "out", "4.2.0", "a" * 40)
+            changelog.write_text(" \n\t")
+            with self.assertRaisesRegex(ValueError, "empty build input: CHANGELOG"):
+                package(root, root / "out", "4.2.0", "a" * 40)
+            self.assertFalse((root / "out").exists())
 
 
 def release(tag, date, api=1, prerelease=False):

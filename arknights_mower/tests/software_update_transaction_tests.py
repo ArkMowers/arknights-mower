@@ -378,6 +378,10 @@ class SourceTransactionTests(unittest.TestCase):
                     )
                 else:
                     self.assertEqual(status["status"], "succeeded")
+                    self.assertTrue(worker.verified_restart)
+                    self.assertFalse(
+                        any(backup.exists() for _, backup in worker.backups)
+                    )
                     self.assertEqual(command(git, "rev-parse", "HEAD"), target_commit)
                     self.assertEqual((ui / "dist/index.html").read_text(), "new")
                     self.assertTrue(

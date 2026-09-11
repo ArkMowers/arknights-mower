@@ -33,6 +33,7 @@ import requests
 from packaging.version import InvalidVersion, Version
 
 from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.maa_backup import update_transaction
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
 MAA_REPOSITORY = "MaaAssistantArknights/MaaAssistantArknights"
@@ -1440,6 +1441,7 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
     gc.collect()
 
 
+@update_transaction
 def install_latest_maa(
     target: Path | str,
     callback: ProgressCallback | None = None,

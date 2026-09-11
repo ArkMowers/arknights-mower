@@ -39,7 +39,7 @@ jobs:
               - '!{*.md,{doc,plan,.github}/**/*.md,ui/README.md,{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}}'
             update:
               # Updater, shared runtime helpers and their regression tests.
-              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source}*.py'
+              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source,backup}*.py'
               - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
               - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
               - 'arknights_mower/{__init__,__main__}.py'
@@ -226,6 +226,9 @@ jobs:
           python -m unittest -v \
             arknights_mower.tests.software_update_tests.ReleaseDiscoveryTests \
             arknights_mower.tests.software_update_tests.ManualPackageTests \
+            arknights_mower.tests.software_update_tests.WorkerTests \
+            arknights_mower.tests.maa_backup_tests \
+            arknights_mower.tests.update_backup_tests \
             arknights_mower.tests.software_package_tests \
             arknights_mower.tests.source_version_tests \
             arknights_mower.tests.source_remote_tests \

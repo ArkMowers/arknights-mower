@@ -521,7 +521,7 @@ if (return_home_when_idle.value) {
                 <help-text>重启生效。多开管理器启动的实例统一使用管理器托盘。</help-text>
               </n-checkbox>
             </n-form-item>
-            <n-form-item label="显示主题">
+            <n-form-item label="显示主题" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="theme">
                 <n-space>
                   <n-radio value="light">亮色</n-radio>

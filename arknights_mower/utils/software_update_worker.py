@@ -264,6 +264,7 @@ class Worker:
         self.source_stage = self.work / "source"
         self.stage_attempted = False
         self.payload_ready = False
+        self.verified_restart = False
         self.dependencies_changed = True
         self.wheels = None
         self.progress_servers = []
@@ -1016,6 +1017,8 @@ class Worker:
             except InstanceScanError:
                 ready = set()  # Retry within the existing readiness deadline.
             if requested <= ready:
+                if verify and requested:
+                    self.verified_restart = True
                 return
             if any(p.poll() is not None for p in processes):
                 break
@@ -1111,6 +1114,20 @@ class Worker:
             self.progress_servers.close()
             self.progress_servers = []
 
+    def cleanup_verified_backups(self):
+        if not self.verified_restart:
+            return
+        paths = {backup for _, backup in self.backups}
+        paths.add(self.bundle_backup)
+        for path in paths:
+            try:
+                if path.is_symlink() or path.is_file():
+                    path.unlink()
+                elif path.is_dir():
+                    shutil.rmtree(path)
+            except OSError as exc:
+                print(f"新版本已验证，回退备份暂无法清理：{exc}", flush=True)
+
     def execute(self):
         finished = threading.Event()
 
@@ -1143,6 +1160,12 @@ class Worker:
             self.close_progress_servers()
             self.restart(self.original)
             self.report("done", "更新成功，实例已恢复", "succeeded")
+            try:
+                self.cleanup_verified_backups()
+            except Exception:
+                # The healthy replacement is committed. A cleanup failure must
+                # never roll back over a running process or a partially removed backup.
+                traceback.print_exc()
         except Exception as exc:
             cancelled = isinstance(exc, UpdateCancelled) or (
                 self.cancellable and (self.state / "active/cancel.json").exists()
