@@ -340,11 +340,16 @@ const menuOptions = computed(() => [
         icon: renderIcon(RoseOutline),
         key: 'go-to-maasetting'
       },
-      ...(config_store.runtime_platform === 'android' ? [{
-        label: () => h(RouterLink, { to: '/android-settings' }, { default: () => '后台与系统' }),
-        icon: renderIcon(Settings),
-        key: 'go-to-android-settings'
-      }] : [])
+      ...(config_store.runtime_platform === 'android'
+        ? [
+            {
+              label: () =>
+                h(RouterLink, { to: '/android-settings' }, { default: () => '后台与系统' }),
+              icon: renderIcon(Settings),
+              key: 'go-to-android-settings'
+            }
+          ]
+        : [])
     ]
   },
   {

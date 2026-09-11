@@ -242,189 +242,194 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <AndroidConnection v-if="runtime_platform === 'android'" />
             <template v-else>
-            <n-form-item>
-              <template #label>
-                <span>ADB路径</span>
-                <help-text>
-                  <div>MuMu12：<code>模拟器路径\\shell\\adb.exe</code></div>
-                  <div>
-                    macOS 和 Linux 安装包自带 ADB。默认的 @internal/platform-tools/adb
-                    随程序位置解析，也可以手动选择其他 ADB。
-                  </div>
-                </help-text>
-              </template>
-              <n-input v-model:value="maa_adb_path" />
-              <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>ADB连接地址</span>
-                <help-text>
-                  <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
-                  <div>夜神：<code>127.0.0.1:62001</code></div>
-                  <div>蓝叠Air：<code>127.0.0.1:5555</code></div>
-                </help-text>
-              </template>
-              <n-input v-model:value="adb" />
-            </n-form-item>
-            <n-form-item label="触控方案">
-              <n-radio-group v-model:value="touch_method">
-                <n-space>
-                  <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
-                  <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
-                </n-space>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="模拟器">
-              <n-select
-                v-model:value="simulator.name"
-                :options="simulator_types"
-                @update:value="onSelectionChange"
-              />
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>模拟器文件夹</span>
-                <help-text>
-                  <div>夜神：写到bin文件夹</div>
-                  <div>MuMu12: 写到nx_main文件夹</div>
-                </help-text>
-              </template>
-              <n-input v-model:value="simulator.simulator_folder" />
-              <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>多开编号</span>
-                <help-text>
-                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
-                </help-text>
-              </template>
-              <n-input v-model:value="simulator.index" />
-            </n-form-item>
-            <n-form-item label="模拟器启动时间" v-if="simulator.name">
-              <n-input-number v-model:value="simulator.wait_time">
-                <template #suffix>秒</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>模拟器老板键</span>
-                <help-text>
-                  <div>启动模拟器后按此快捷键</div>
-                  <div>若不需要此功能，请留空</div>
-                  <div>加号分隔按键，不要空格</div>
-                  <div>
-                    按键名参考
-                    <n-button
-                      text
-                      tag="a"
-                      href="https://pyautogui.readthedocs.io/en/latest/keyboard.html#keyboard-keys"
-                      target="_blank"
-                      type="primary"
-                    >
-                      KEYBOARD_KEYS
-                    </n-button>
-                  </div>
-                </help-text>
-              </template>
-              <n-input
-                v-model:value="simulator.hotkey"
-                placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
-              />
-            </n-form-item>
-            <n-form-item label="启动游戏">
-              <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
-            </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
-              <span class="coord-label">X:</span>
-              <n-input-number v-model:value="tap_to_launch_game.x" />
-              <span class="coord-label">Y:</span>
-              <n-input-number v-model:value="tap_to_launch_game.y" />
-            </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
-              <template #label>
-                <span>启动命令</span>
-                <help-text>
-                  <div>
-                    在 Android shell 中执行，支持 <code>{package}</code> 和 <code>{activity}</code>
-                  </div>
-                </help-text>
-              </template>
-              <n-input
-                v-model:value="tap_to_launch_game.command"
-                type="textarea"
-                :autosize="true"
-              />
-              <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>任务结束后</span>
-                <help-text>
-                  <div>返回首页：降低功耗</div>
-                  <div>退出游戏：降低功耗</div>
-                  <div>关闭模拟器：减少空闲时的资源占用、避免模拟器长时间运行出现问题</div>
-                </help-text>
-              </template>
+              <n-form-item>
+                <template #label>
+                  <span>ADB路径</span>
+                  <help-text>
+                    <div>MuMu12：<code>模拟器路径\\shell\\adb.exe</code></div>
+                    <div>
+                      macOS 和 Linux 安装包自带 ADB。默认的 @internal/platform-tools/adb
+                      随程序位置解析，也可以手动选择其他 ADB。
+                    </div>
+                  </help-text>
+                </template>
+                <n-input v-model:value="maa_adb_path" />
+                <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
+              </n-form-item>
+              <n-form-item>
+                <template #label>
+                  <span>ADB连接地址</span>
+                  <help-text>
+                    <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
+                    <div>夜神：<code>127.0.0.1:62001</code></div>
+                    <div>蓝叠Air：<code>127.0.0.1:5555</code></div>
+                  </help-text>
+                </template>
+                <n-input v-model:value="adb" />
+              </n-form-item>
+              <n-form-item label="触控方案">
+                <n-radio-group v-model:value="touch_method">
+                  <n-space>
+                    <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
+                    <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
+                  </n-space>
+                </n-radio-group>
+              </n-form-item>
+              <n-form-item label="模拟器">
+                <n-select
+                  v-model:value="simulator.name"
+                  :options="simulator_types"
+                  @update:value="onSelectionChange"
+                />
+              </n-form-item>
+              <n-form-item v-if="simulator.name">
+                <template #label>
+                  <span>模拟器文件夹</span>
+                  <help-text>
+                    <div>夜神：写到bin文件夹</div>
+                    <div>MuMu12: 写到nx_main文件夹</div>
+                  </help-text>
+                </template>
+                <n-input v-model:value="simulator.simulator_folder" />
+                <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
+              </n-form-item>
+              <n-form-item v-if="simulator.name">
+                <template #label>
+                  <span>多开编号</span>
+                  <help-text>
+                    <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
+                  </help-text>
+                </template>
+                <n-input v-model:value="simulator.index" />
+              </n-form-item>
+              <n-form-item label="模拟器启动时间" v-if="simulator.name">
+                <n-input-number v-model:value="simulator.wait_time">
+                  <template #suffix>秒</template>
+                </n-input-number>
+              </n-form-item>
+              <n-form-item v-if="simulator.name">
+                <template #label>
+                  <span>模拟器老板键</span>
+                  <help-text>
+                    <div>启动模拟器后按此快捷键</div>
+                    <div>若不需要此功能，请留空</div>
+                    <div>加号分隔按键，不要空格</div>
+                    <div>
+                      按键名参考
+                      <n-button
+                        text
+                        tag="a"
+                        href="https://pyautogui.readthedocs.io/en/latest/keyboard.html#keyboard-keys"
+                        target="_blank"
+                        type="primary"
+                      >
+                        KEYBOARD_KEYS
+                      </n-button>
+                    </div>
+                  </help-text>
+                </template>
+                <n-input
+                  v-model:value="simulator.hotkey"
+                  placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
+                />
+              </n-form-item>
+              <n-form-item label="启动游戏">
+                <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
+              </n-form-item>
+              <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
+                <span class="coord-label">X:</span>
+                <n-input-number v-model:value="tap_to_launch_game.x" />
+                <span class="coord-label">Y:</span>
+                <n-input-number v-model:value="tap_to_launch_game.y" />
+              </n-form-item>
+              <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
+                <template #label>
+                  <span>启动命令</span>
+                  <help-text>
+                    <div>
+                      在 Android shell 中执行，支持 <code>{package}</code> 和
+                      <code>{activity}</code>
+                    </div>
+                  </help-text>
+                </template>
+                <n-input
+                  v-model:value="tap_to_launch_game.command"
+                  type="textarea"
+                  :autosize="true"
+                />
+                <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
+              </n-form-item>
+              <n-form-item>
+                <template #label>
+                  <span>任务结束后</span>
+                  <help-text>
+                    <div>返回首页：降低功耗</div>
+                    <div>退出游戏：降低功耗</div>
+                    <div>关闭模拟器：减少空闲时的资源占用、避免模拟器长时间运行出现问题</div>
+                  </help-text>
+                </template>
 
-              <n-select v-model:value="idleAction" :options="idleOptions" />
-            </n-form-item>
-            <n-form-item
-              :show-label="false"
-              v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
-            >
-              <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
-                关闭MuMu模拟器12时结束adb进程
-                <help-text>
-                  <div>运行命令<code>taskkill /f /t /im adb.exe</code></div>
-                  <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
-                </help-text>
-              </n-checkbox>
-            </n-form-item>
+                <n-select v-model:value="idleAction" :options="idleOptions" />
+              </n-form-item>
+              <n-form-item
+                :show-label="false"
+                v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
+              >
+                <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
+                  关闭MuMu模拟器12时结束adb进程
+                  <help-text>
+                    <div>运行命令<code>taskkill /f /t /im adb.exe</code></div>
+                    <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
+                  </help-text>
+                </n-checkbox>
+              </n-form-item>
             </template>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
             <template v-if="runtime_platform !== 'android'">
-            <n-form-item label="截图方案">
-              <n-radio-group v-model:value="screenshot_method">
-                <n-flex>
-                  <n-radio value="adb_gzip">
-                    ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
-                  </n-radio>
-                  <n-radio value="droidcast">
-                    DroidCast<help-text>有损压缩，速度更快</help-text>
-                  </n-radio>
-                  <n-radio v-if="simulator.name === 'MuMu12'" value="mumu12IPC">
-                    MuMu 截图增强<help-text>如果选择，则强制使用MuMu自带的触控方案</help-text>
-                  </n-radio>
-                  <n-radio value="custom">
-                    自定义命令<help-text>向<code>STDOUT</code>打印图像</help-text>
-                  </n-radio>
+              <n-form-item label="截图方案">
+                <n-radio-group v-model:value="screenshot_method">
+                  <n-flex>
+                    <n-radio value="adb_gzip">
+                      ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
+                    </n-radio>
+                    <n-radio value="droidcast">
+                      DroidCast<help-text>有损压缩，速度更快</help-text>
+                    </n-radio>
+                    <n-radio v-if="simulator.name === 'MuMu12'" value="mumu12IPC">
+                      MuMu 截图增强<help-text>如果选择，则强制使用MuMu自带的触控方案</help-text>
+                    </n-radio>
+                    <n-radio value="custom">
+                      自定义命令<help-text>向<code>STDOUT</code>打印图像</help-text>
+                    </n-radio>
+                  </n-flex>
+                </n-radio-group>
+              </n-form-item>
+              <n-form-item label="旋转截图" v-if="droidcast.enable">
+                <n-radio-group v-model:value="droidcast.rotate">
+                  <n-flex>
+                    <n-radio :value="false">不旋转</n-radio>
+                    <n-radio :value="true">旋转180度</n-radio>
+                  </n-flex>
+                </n-radio-group>
+              </n-form-item>
+              <n-form-item label="截图命令" v-if="custom_screenshot.enable">
+                <n-input
+                  v-model:value="custom_screenshot.command"
+                  type="textarea"
+                  :autosize="true"
+                />
+                <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
+                  测试
+                </n-button>
+              </n-form-item>
+              <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
+                <n-flex vertical>
+                  <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
+                  <div>（截图用时{{ elapsed }}ms）</div>
                 </n-flex>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="旋转截图" v-if="droidcast.enable">
-              <n-radio-group v-model:value="droidcast.rotate">
-                <n-flex>
-                  <n-radio :value="false">不旋转</n-radio>
-                  <n-radio :value="true">旋转180度</n-radio>
-                </n-flex>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="截图命令" v-if="custom_screenshot.enable">
-              <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
-              <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
-                测试
-              </n-button>
-            </n-form-item>
-            <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
-              <n-flex vertical>
-                <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
-                <div>（截图用时{{ elapsed }}ms）</div>
-              </n-flex>
-            </n-form-item>
+              </n-form-item>
             </template>
             <n-form-item label="截图最短间隔">
               <n-input-number v-model:value="screenshot_interval" :precision="0">
@@ -779,7 +784,9 @@ if (return_home_when_idle.value) {
       <NetworkSettings />
     </div>
     <div class="settings-updates">
-      <div><AndroidSoftwareUpdate v-if="runtime_platform === 'android'" /><SoftwareUpdate v-else /></div>
+      <div>
+        <AndroidSoftwareUpdate v-if="runtime_platform === 'android'" /><SoftwareUpdate v-else />
+      </div>
       <div><ResourceUpdate /></div>
     </div>
     <div class="settings-network">
