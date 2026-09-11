@@ -5,6 +5,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from arknights_mower.utils.workshop_data import unlocked
+from arknights_mower.utils.workshop_material_policy import (
+    protected_workshop_materials,
+    workshop_recipe_allowed,
+)
 
 T4_PREFERRED = ("九色鹿", "蚀清")
 
@@ -27,7 +31,8 @@ def operator_recipe_allowed(name, recipe, *, fodder=False):
 
 def scope_workshop_items(name, items, formulas=None):
     """Filter saved tasks too; copy changed items without altering user settings."""
-    if name not in (*T4_PREFERRED, "莱伊"):
+    protected = protected_workshop_materials()
+    if not protected and name not in (*T4_PREFERRED, "莱伊"):
         return list(items)
     if formulas is None:
         from arknights_mower.data import workshop_formula
@@ -40,6 +45,7 @@ def scope_workshop_items(name, items, formulas=None):
             material
             for material in data["item_names"]
             if operator_recipe_allowed(name, formulas.get(material, {}), fodder=True)
+            and workshop_recipe_allowed(formulas.get(material, {}), protected)
         ]
         if materials:
             result.append(

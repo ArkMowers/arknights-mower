@@ -116,7 +116,12 @@ def test_plan_specialties_include_direct_and_indirect_t3_with_counts_and_stock(
     skill_path.write_text(json.dumps(data))
     iron_id = next(i for i, v in data["items"].items() if v["name"] == "异铁块")
     path = tmp_path / "cultivate.json"
-    path.write_text(json.dumps({"data": {"items": [{"id": iron_id, "count": 1}]}}))
+    stock = [{"id": iron_id, "count": 1}] + [
+        {"id": key, "count": 300}
+        for key, item in data["items"].items()
+        if item.get("rarity") == 2
+    ]
+    path.write_text(json.dumps({"data": {"items": stock}}))
     recommendations = {
         "operators": [
             {
