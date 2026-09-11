@@ -3438,6 +3438,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     ed = ret[0][1][0]  # 终点
                     self.swipe_noinertia(st, (ed[0] - st[0], 0))
                     right_swipe += 1
+        # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
+        # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
+        if last_special_filter != "ALL":
+            self.profession_filter("ALL")
+            last_special_filter = "ALL"
+            right_swipe = 0
         # 排序
         if len(agents) != 1:
             # 左移
@@ -3731,7 +3737,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             )
 
-    def ensure_dorm_recovery_order(self, room, agents):
+    def ensure_dorm_recovery_order(self, room, agents, fast_mode=True):
         """先确认单回目标的入驻顺序，再由原任务恢复完整阵容。
 
         中间名单只用于这次点击，不能覆盖持久化任务中的完整恢复名单。
@@ -3776,7 +3782,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if attempt == 4:
                     raise Exception("未成功进入干员选择界面")
                 self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
-            self.choose_agent(retained.copy(), room, preserve_dorm_occupants=True)
+            self.choose_agent(
+                retained.copy(), room, fast_mode, preserve_dorm_occupants=True
+            )
             self.tap_confirm(room, {})
             current = [item["agent"] for item in self.get_agent_from_room(room)]
             if current != expected:
@@ -3905,7 +3913,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if plan[room] != self.op_data.get_current_room(room):
                             self.refresh_run_order_time(room)
                 checked = True
-                recovery_ordered = self.ensure_dorm_recovery_order(room, plan[room])
+                recovery_ordered = self.ensure_dorm_recovery_order(
+                    room, plan[room], fast_mode=choose_error <= 0
+                )
                 current_room = self.op_data.get_current_room(room, True)
                 same = len(plan[room]) == len(current_room)
                 if same:
