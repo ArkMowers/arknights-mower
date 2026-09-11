@@ -30,6 +30,7 @@ export function isUpdateFileDrag(event) {
       (file) =>
         !file.type ||
         [
+          'application/vnd.android.package-archive',
           'application/zip',
           'application/x-zip-compressed',
           'application/gzip',
@@ -64,6 +65,7 @@ export async function updatePackageKind(file) {
       if (++count > 100000) throw new Error('更新包文件数量过多')
       if (entry.directory) continue
       const path = entry.filename
+      software ||= ['AndroidManifest.xml', 'maa-python.json'].includes(path)
       software ||= /(^|\/)(_internal|Contents\/Resources)\/arknights_mower\/__init__\.py$/.test(
         path
       )

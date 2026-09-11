@@ -1,4 +1,5 @@
 <script setup>
+import AndroidConnection from './AndroidConnection.vue'
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 const axios = inject('axios')
@@ -10,6 +11,7 @@ const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
 const {
+  runtime_platform,
   maa_path,
   maa_mirrorchyan_token,
   maa_update_channel,
@@ -85,6 +87,11 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
 
 const maa_update_supported = ref(false)
 const maa_update_platform = ref('')
+const maa_update_platform_label = computed(() =>
+  runtime_platform.value === 'android'
+    ? 'Android'
+    : ({ linux: 'Linux', darwin: 'macOS', windows: 'Windows' }[maa_update_platform.value] || '')
+)
 const maa_update_arch = ref('')
 const maa_update_source = ref('github')
 let maa_update_source_initialized = false
@@ -843,6 +850,8 @@ onUnmounted(() => {
       label-width="96"
       label-align="left"
     >
+      <AndroidConnection v-if="runtime_platform === 'android'" /><div v-if="runtime_platform === 'android'" style="margin-bottom: 16px"><router-link to="/mowersettings#software-update">导入官方 Android MAA 核心 / 兼容 Python 接口包</router-link></div>
+      <template v-else>
       <n-form-item label="MAA目录">
         <template #label>
           MAA目录
@@ -861,6 +870,7 @@ onUnmounted(() => {
       <n-form-item label="触控模式">
         <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
       </n-form-item>
+      </template>
       <n-form-item label="恢复主题">
         <n-checkbox v-model:checked="maa_restore_theme_enable">任务结束后恢复主题</n-checkbox>
       </n-form-item>
@@ -894,7 +904,7 @@ onUnmounted(() => {
           {{
             maa_update_platform === 'windows'
               ? 'Windows 下载 MAA'
-              : `${maa_update_platform === 'linux' ? 'Linux' : 'macOS'} ${
+              : `${maa_update_platform_label} ${
                   maa_installed ? '更新 MAA' : '下载 MAA'
                 }`
           }}
@@ -927,7 +937,7 @@ onUnmounted(() => {
           <n-radio-group v-model:value="maa_update_source">
             <n-space>
               <n-radio value="github">GitHub</n-radio>
-              <n-radio value="mirrorchyan">Mirror酱</n-radio>
+              <n-radio v-if="runtime_platform !== 'android'" value="mirrorchyan">Mirror酱</n-radio>
             </n-space>
           </n-radio-group>
         </div>
@@ -956,12 +966,15 @@ onUnmounted(() => {
             未检测到 MAA，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
             {{ maa_update_arch }} 完整包并安装到设定目录。
           </div>
-          <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
+          <div v-else-if="maa_update_platform === 'android'" class="update-hint">
+          使用 MAA 官方 Android ARM64 组件，Python 接口由应用维护。更新后停止并重新启动手机服务生效。
+        </div>
+        <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
             {{ maa_installed ? '更新' : '下载' }}时按当前架构取得一份
             {{ maa_update_channel_label }} Linux {{ maa_update_arch }} 完整包，其中已包含
             MaaCore、resource 与 Python。
           </div>
-          <div v-else class="update-hint">
+          <div v-else-if="maa_update_platform === 'darwin'" class="update-hint">
             {{ maa_installed ? '更新' : '下载' }}时将取得 {{ maa_update_channel_label }} macOS GUI
             包并从 DMG 分离运行库与 resource，同时下载同版本的 Windows arm64 包提取 Python 文件夹。
           </div>
@@ -970,12 +983,15 @@ onUnmounted(() => {
           未检测到 MAA，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows
           {{ maa_update_arch }} 完整包并安装到设定目录。
         </div>
+        <div v-else-if="maa_update_platform === 'android'" class="update-hint">
+          使用 MAA 官方 Android ARM64 组件，Python 接口由应用维护。更新后停止并重新启动手机服务生效。
+        </div>
         <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
           GitHub {{ maa_installed ? '更新' : '下载' }}按当前架构取得一份
           {{ maa_update_channel_label }} Linux {{ maa_update_arch }} tar.gz 完整包，其中已包含
           MaaCore、resource 与 Python。
         </div>
-        <div v-else class="update-hint">
+        <div v-else-if="maa_update_platform === 'darwin'" class="update-hint">
           GitHub {{ maa_installed ? '更新' : '下载' }}使用 {{ maa_update_channel_label }} macOS
           universal runtime 包；Python API 仅从同版本 Windows arm64 包按需下载 Python 文件夹。
         </div>
@@ -1036,10 +1052,10 @@ onUnmounted(() => {
         </n-space>
       </div>
     </template>
-    <template v-else-if="maa_update_platform === 'linux' && maa_update_info_msg">
+    <template v-else-if="['linux', 'android'].includes(maa_update_platform) && maa_update_info_msg">
       <n-divider />
       <div class="maa-updater">
-        <div class="update-title">Linux {{ maa_installed ? '更新 MAA' : '下载 MAA' }}</div>
+        <div class="update-title">{{ maa_update_platform_label }} {{ maa_installed ? '更新 MAA' : '下载 MAA' }}</div>
         <div class="update-error">{{ maa_update_info_msg }}</div>
       </div>
     </template>
@@ -1061,7 +1077,7 @@ onUnmounted(() => {
       <n-divider />
       <div class="maa-updater">
         <div class="update-title">
-          {{ maa_update_platform === 'linux' ? 'Linux' : 'macOS' }} 更新 MAA 资源
+          {{ maa_update_platform_label }} 更新 MAA 资源
         </div>
         <div class="update-meta">
           <span>当前资源：{{ maa_resource_current_version || '未知' }}</span>
@@ -1074,6 +1090,9 @@ onUnmounted(() => {
           MAA 资源更新不区分正式版与公测版，将使用上方选择的
           {{ maa_update_source === 'mirrorchyan' ? 'Mirror酱' : 'GitHub' }}
           更新源。资源包会增量合并到 resource 目录，不会替换 MaaCore 与 Python。
+          <template v-if="runtime_platform === 'android'">
+            安卓版会自动准备 OCR 模型，完成后停止并重新启动手机服务生效。
+          </template>
         </div>
         <div v-if="maa_resource_backup_path" class="update-hint">
           更新前的资源保存在

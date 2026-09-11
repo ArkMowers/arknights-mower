@@ -1,5 +1,6 @@
 """Authenticated desktop software-update API."""
 
+import os
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -27,6 +28,11 @@ def authorize():
         origin = request.headers.get("Origin")
         if origin and urlparse(origin).netloc != request.host:
             abort(403)
+    if os.environ.get("MOWER_ANDROID") == "1":
+        return {
+            "ok": False,
+            "message": "Android 使用独立 APK 发行版，请使用 Android 更新入口；不支持 Git 或桌面源码部署",
+        }, 409
 
 
 def result(function):

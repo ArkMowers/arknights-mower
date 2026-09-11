@@ -656,6 +656,10 @@ class Conf(
     @model_validator(mode="before")
     @classmethod
     def migrate_legacy_keys(cls, data):
+        if isinstance(data, dict) and os.environ.get("MOWER_ANDROID") == "1":
+            from mower_android.managed import normalize
+
+            data = normalize(data)
         if not isinstance(data, dict):
             return data
         # visit_friend(bool) 已退役：迁移为 visit_friend_enable(bool)。原 true 语义是 mower

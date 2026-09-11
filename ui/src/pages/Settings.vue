@@ -1,4 +1,6 @@
 <script setup lang="jsx">
+import AndroidConnection from '@/components/AndroidConnection.vue'
+import AndroidSoftwareUpdate from '@/components/AndroidSoftwareUpdate.vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
@@ -238,6 +240,8 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
+            <AndroidConnection v-if="runtime_platform === 'android'" />
+            <template v-else>
             <n-form-item>
               <template #label>
                 <span>ADB路径</span>
@@ -378,9 +382,11 @@ if (return_home_when_idle.value) {
                 </help-text>
               </n-checkbox>
             </n-form-item>
+            </template>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
+            <template v-if="runtime_platform !== 'android'">
             <n-form-item label="截图方案">
               <n-radio-group v-model:value="screenshot_method">
                 <n-flex>
@@ -419,6 +425,7 @@ if (return_home_when_idle.value) {
                 <div>（截图用时{{ elapsed }}ms）</div>
               </n-flex>
             </n-form-item>
+            </template>
             <n-form-item label="截图最短间隔">
               <n-input-number v-model:value="screenshot_interval" :precision="0">
                 <template #suffix>毫秒</template>
@@ -482,7 +489,7 @@ if (return_home_when_idle.value) {
                 应用
               </n-button>
             </n-form-item>
-            <n-form-item :show-label="false">
+            <n-form-item v-if="runtime_platform !== 'android'" :show-label="false">
               <n-checkbox
                 v-if="runtime_platform === 'darwin'"
                 v-model:checked="hide_macos_menu_bar"
@@ -772,7 +779,7 @@ if (return_home_when_idle.value) {
       <NetworkSettings />
     </div>
     <div class="settings-updates">
-      <div><SoftwareUpdate /></div>
+      <div><AndroidSoftwareUpdate v-if="runtime_platform === 'android'" /><SoftwareUpdate v-else /></div>
       <div><ResourceUpdate /></div>
     </div>
     <div class="settings-network">

@@ -4016,6 +4016,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         #     process_itemlist(d)
 
     def initialize_maa(self):
+        if os.environ.get("MOWER_ANDROID") == "1":
+            from mower_android.maa import Asst
+
+            globals()["Message"] = int
+            config.stop_maa.clear()
+            self.MAA = Asst(callback=self.log_maa)
+            self.stages = []
+            if not self.MAA.connect():
+                raise RuntimeError("安卓 MAA 引擎未连接")
+            return
         config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
