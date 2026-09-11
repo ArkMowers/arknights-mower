@@ -5,6 +5,7 @@ import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import { confirmForceUpdate, confirmSoftwareInstall } from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
+import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 
 const axios = inject('axios')
@@ -466,6 +467,12 @@ onUnmounted(() => {
           @install="(target) => install(target.force, target)"
         />
       </n-form-item>
+      <SoftwareComponentUpdates
+        v-for="component in info?.component_updates || []"
+        :key="component.endpoint"
+        :component="component"
+        :disabled="running"
+      />
       <n-form-item label="手动应用">
         <span v-if="source" class="hint"
           >Release 安装包用于独立包部署，源码部署请使用上方在线更新。</span
