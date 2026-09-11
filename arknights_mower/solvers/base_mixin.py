@@ -642,7 +642,9 @@ class BaseMixin:
         self.recog.update()
         try:
             if use_digit_reader:
-                time_str = self.digit_reader.get_time(self.recog.gray)
+                gray = self.recog.gray
+                height, width = gray.shape[:2]
+                time_str = self.digit_reader.get_time(gray, height, width)
             else:
                 time_str = self.read_screen(self.recog.img, type="time", cord=cord)
             logger.debug(time_str)
@@ -654,7 +656,8 @@ class BaseMixin:
                 raise Exception("超过读取上限")
             else:
                 return res
-        except Exception:
+        except Exception as exc:
+            logger.debug(f"倒计时读取失败（{type(exc).__name__}）：{exc}")
             if error_count > 3:
                 logger.debug(f"读取失败{error_count}次超过上限")
                 return None

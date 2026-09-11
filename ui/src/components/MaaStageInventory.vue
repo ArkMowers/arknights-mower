@@ -431,7 +431,12 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
                 @update:value="(value) => updateItem(item, value)"
               />
               <span class="inventory-number">{{ displayInventoryCount(item) }}</span>
-              <n-input-number v-model:value="item.limit" :min="0" :precision="0" placeholder="0" />
+              <mower-input-number
+                v-model:value="item.limit"
+                :min="0"
+                :precision="0"
+                placeholder="0"
+              />
               <n-button
                 quaternary
                 type="error"
@@ -537,7 +542,7 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
                 @update:value="(value) => updateItem(member, value)"
               />
               <span class="inventory-number">{{ displayInventoryCount(member) }}</span>
-              <n-input-number v-model:value="member.ratio" :min="0" placeholder="0" />
+              <mower-input-number v-model:value="member.ratio" :min="0" placeholder="0" />
               <n-tag v-if="memberScore(member) === null" size="small" :bordered="false">
                 不参与
               </n-tag>

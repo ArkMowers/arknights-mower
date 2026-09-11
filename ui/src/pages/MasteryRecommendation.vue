@@ -297,13 +297,13 @@
                         style="width: 178px"
                       />
                       <label class="ml" style="font-size: 13px">训练速度</label>
-                      <n-input-number
+                      <mower-input-number
                         v-model:value="value.efficiency"
                         :min="0"
                         :max="100"
                         style="width: 80px"
                         :show-button="false"
-                        ><template #suffix>%</template></n-input-number
+                        ><template #suffix>%</template></mower-input-number
                       >
                     </div>
                     <div class="task-col">
@@ -345,7 +345,7 @@
         </n-text>
       </div>
       <n-text depth="2" style="margin-top: 10px">减半换人缓冲时间（分钟）</n-text>
-      <n-input-number
+      <mower-input-number
         v-model:value="masterySettings.mastery_swap_buffer"
         :min="0"
         :max="60"
@@ -470,7 +470,7 @@
         </n-text>
         <n-space align="center">
           <n-text>副产品概率加成至少</n-text>
-          <n-input-number
+          <mower-input-number
             :value="workshopMinBonus"
             @update:value="workshopMinBonus = $event ?? 80"
             :min="0"
@@ -481,7 +481,7 @@
             :disabled="workshopDefaultsLoading"
             :input-props="{ 'aria-label': '副产品概率加成下限' }"
             style="width: 100px"
-            ><template #suffix>%</template></n-input-number
+            ><template #suffix>%</template></mower-input-number
           >
           <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
             >一键设置</n-button
@@ -606,7 +606,6 @@ import {
   NGrid,
   NIcon,
   NInput,
-  NInputNumber,
   NModal,
   NScrollbar,
   NSelect,

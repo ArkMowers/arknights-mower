@@ -113,9 +113,9 @@ const show_map = ref(false)
       </n-form-item>
       <n-form-item label="部署">
         <div style="width: 40px; text-align: right">X</div>
-        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
+        <mower-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
         <div style="width: 40px; text-align: right">Y</div>
-        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
+        <mower-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
         <n-select
           style="width: 250px; margin-right: 8px"
           :options="deploy_directions"

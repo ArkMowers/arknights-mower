@@ -100,3 +100,9 @@ def test_real_read_still_updates_sample_and_depletion_from_measurements(room_rea
     assert target.mood == 19.5
     assert target.depletion_rate == 1.5
     solver.read_accurate_mood.assert_called_once()
+
+
+def test_room_countdown_uses_its_row_crop_instead_of_fixed_order_region(room_reader):
+    solver, target, clock = room_reader
+    solver.get_agent_from_room("central", read_time_index=[0])
+    solver.double_read_time.assert_called_once_with(((1650, 270), (1780, 305)))

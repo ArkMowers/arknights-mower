@@ -3603,9 +3603,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    data["time"] = self.double_read_time(
-                        time_p[i], use_digit_reader=True
-                    )
+                    # 房间干员倒计时随行号变化；订单模板只识别无人机界面的固定区域。
+                    data["time"] = self.double_read_time(time_p[i])
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
