@@ -1,5 +1,6 @@
 import json
 import os
+from functools import lru_cache
 from typing import Optional
 
 from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
@@ -76,30 +77,50 @@ def get_skill_real_name(char_id: str, skill_index: int):
     return None
 
 
-def get_current_mastery_level(char_id: str, skill_index: int) -> Optional[int]:
-    """cultivate.json 中干员技能当前专精等级；文件缺失/干员不在/读失败 → None。
+@lru_cache(maxsize=2)
+def _read_cultivate_characters(path, mtime_ns, size):
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return {char["id"]: char for char in data.get("data", {}).get("characters", [])}
 
-    #65/B7：计划创建校验当前等级用。与 get_mastery_recommendations 同读
-    cultivate.json 的 skills[i].level；推荐层把缺失当 0，本函数缺失/读不到
-    返回 None 跳过校验（创建不误拒，执行层已到target检测按截图兜底）。
-    """
-    cultivate_path = get_path("@app/tmp/cultivate.json")
-    if not os.path.exists(cultivate_path):
-        return None
+
+def _get_cultivate_character(char_id):
+    # 批量添加计划时共用 BOX 快照；同步文件变化后自动失效。
+    path = get_path("@app/tmp/cultivate.json")
     try:
-        with open(cultivate_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        stat = os.stat(path)
+        return _read_cultivate_characters(
+            str(path), stat.st_mtime_ns, stat.st_size
+        ).get(char_id)
     except Exception:
         return None
-    for char in data.get("data", {}).get("characters", []):
-        if char.get("id") != char_id:
-            continue
-        skills = char.get("skills", [])
-        if not 0 <= skill_index < len(skills):
-            return None
-        level = skills[skill_index].get("level")
-        return level if isinstance(level, int) else None
+
+
+def get_current_mastery_level(char_id: str, skill_index: int) -> Optional[int]:
+    """读取 skills[i].level（专精 0～3），不是基础技能等级；缺失时返回 None。"""
+    char = _get_cultivate_character(char_id)
+    if char is None:
+        return None
+    skills = char.get("skills", [])
+    if not 0 <= skill_index < len(skills):
+        return None
+    level = skills[skill_index].get("level")
+    return level if type(level) is int else None
+
+
+def _mastery_requirement_error(char):
+    level = char.get("mainSkillLevel")
+    if type(level) is not int or level < 1:
+        return "无法确认基础技能等级，请先同步干员数据"
+    if level < 7:
+        return f"基础技能仅 {level} 级，需手动升至 7 级并同步干员数据后再添加专精计划"
     return None
+
+
+def get_mastery_requirement_error(char_id):
+    """校验已有 BOX 中的真实基础技能等级；未读取 BOX 的旧手动入口保持兼容。"""
+    char = _get_cultivate_character(char_id)
+    return _mastery_requirement_error(char) if char is not None else None
 
 
 def _decompose_to_t3(materials, composite, item_table, inventory):
@@ -350,7 +371,8 @@ def get_mastery_recommendations():
                     "sub_profession": "",
                     "elite": evolve_phase,
                     "level": char.get("level", 1),
-                    "main_skill_level": char.get("mainSkillLevel", 7),
+                    "main_skill_level": char.get("mainSkillLevel"),
+                    "mastery_error": _mastery_requirement_error(char),
                     "potential": char.get("potentialRank", 0) + 1,
                     "recommendations": recommendations,
                 }
@@ -503,6 +525,7 @@ def compute_workshop_config(
     recommendations = {
         (op["char_id"], r["skill_index"]): r
         for op in operators
+        if not op.get("mastery_error")
         for r in op.get("recommendations", [])
     }
     reserved = {}
@@ -779,6 +802,8 @@ def auto_schedule_mastery_tasks():
             pass
 
     for op in operators:
+        if op.get("mastery_error"):
+            continue
         for rec in op.get("recommendations", []):
             if (op["char_id"], rec["skill_index"]) not in plan_set:
                 continue

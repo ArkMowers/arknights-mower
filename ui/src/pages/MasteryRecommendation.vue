@@ -150,6 +150,7 @@
                 quaternary
                 type="warning"
                 @click.stop="addAllToPlan(op)"
+                :disabled="!!op.mastery_error"
                 v-if="!allPlanned(op)"
                 >全加计划</n-button
               >
@@ -163,7 +164,8 @@
                   <n-space align="center" :size="8">
                     <n-text strong>{{ rec.skill_name }}</n-text>
                     <n-text depth="3" style="font-size: 12px"
-                      >Lv{{ rec.current_level + 7 }} → 专精3级</n-text
+                      >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} →
+                      专三</n-text
                     >
                   </n-space>
                   <n-space :size="4">
@@ -174,10 +176,15 @@
                       size="tiny"
                       :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                       @click.stop="toggleSkillPlan(op, rec)"
+                      :disabled="!!op.mastery_error && !isSkillPlanned(op.char_id, rec.skill_index)"
                     >
                       {{ isSkillPlanned(op.char_id, rec.skill_index) ? '已计划' : '加计划' }}
                     </n-button>
-                    <n-button type="primary" size="tiny" @click.stop="confirmSkill(op, rec)"
+                    <n-button
+                      type="primary"
+                      size="tiny"
+                      :disabled="!!op.mastery_error"
+                      @click.stop="confirmSkill(op, rec)"
                       >一键专精</n-button
                     >
                     <n-button
@@ -190,6 +197,7 @@
                 </n-space>
               </template>
               <n-space vertical :size="4">
+                <n-text v-if="op.mastery_error" type="warning">{{ op.mastery_error }}</n-text>
                 <n-text depth="2"
                   >总训练时间: {{ formatTime(rec.total_time) }} |
                   {{ rec.remaining_levels }}级专精</n-text
@@ -425,7 +433,13 @@
               />
               <n-text strong style="font-size: 13px">{{ op.name }}</n-text>
               <n-text depth="3" style="font-size: 11px">{{ op.rarity }}★</n-text>
-              <n-button size="tiny" quaternary @click="addAllToPlan(op, true)">全加</n-button>
+              <n-button
+                size="tiny"
+                quaternary
+                :disabled="!!op.mastery_error"
+                @click="addAllToPlan(op, true)"
+                >全加</n-button
+              >
             </n-space>
             <n-space :size="4" style="margin-left: 8px">
               <n-button
@@ -434,6 +448,7 @@
                 size="tiny"
                 :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                 @click="toggleSkillPlan(op, rec, true)"
+                :disabled="!!op.mastery_error && !isSkillPlanned(op.char_id, rec.skill_index)"
               >
                 {{ rec.skill_name }}
               </n-button>
@@ -639,6 +654,7 @@ import {
   syncMasteryRouteDefaults
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
+import { masteryLevelLabel } from '@/utils/masteryLevel'
 
 const ListIcon = List
 const SettingsIcon = Settings
@@ -850,6 +866,10 @@ async function warnMaterialShortage(additions) {
 
 async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
+  if (!plan.value[k] && op.mastery_error) {
+    message.warning(op.mastery_error)
+    return
+  }
   if (!plan.value[k]) await warnMaterialShortage([k])
   if (!plan.value[k] && workshopTrainingWarning(op.name)) {
     message.warning(workshopTrainingWarning(op.name))
@@ -904,6 +924,10 @@ async function toggleSkillPlan(op, rec, draft = false) {
 }
 
 async function addAllToPlan(op, draft = false) {
+  if (op.mastery_error) {
+    message.warning(op.mastery_error)
+    return
+  }
   if (trainingWarning(op.name)) {
     message.warning(trainingWarning(op.name))
   }
@@ -1408,7 +1432,7 @@ async function calculateOptimalRoutes() {
 }
 
 // ─── 显示列表 ───
-const allOperatorList = ref([])
+const allOperatorList = computed(() => store.recommendations)
 
 // ─── 空闲干员筛选 ───
 // 空闲 = 不在排班表（主/副表槽位 + 候补 replacement）& 不在专精路线配置（协助位 name/换人 swap_name）
@@ -1558,6 +1582,10 @@ const showConfirm = ref(false)
 const cd = reactive({ op: null, rec: null })
 
 function confirmSkill(op, rec) {
+  if (op.mastery_error) {
+    message.warning(op.mastery_error)
+    return
+  }
   cd.op = op
   cd.rec = rec
   showConfirm.value = true
@@ -1602,13 +1630,6 @@ onMounted(async () => {
       console.error('mount: loadRoute failed', e)
     }
   }
-  allOperatorList.value = store.recommendations.map((op) => ({
-    char_id: op.char_id,
-    name: op.name,
-    rarity: op.rarity,
-    profession: op.profession,
-    recommendations: op.recommendations
-  }))
   await refreshT3Summary()
 })
 
