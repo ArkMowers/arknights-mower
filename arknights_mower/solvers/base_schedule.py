@@ -1972,6 +1972,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
+                    # 回班时间和岗位依赖生效排班；副表可能改变用尽、回满或组员岗位。
+                    # 已生成的宿舍任务不能继续沿用切换前的急救预测。
+                    if any(
+                        task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM)
+                        for task in self.tasks
+                    ):
+                        self.plan_metadata()
                     if append_empty_task and not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
             return new_task
@@ -3509,8 +3516,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
+                # 估算值只用于本次读数，保留与原采样时间配对的心情，避免重复扣减。
                 high_no_time = self.op_data.update_detail(
-                    _name, _mood, room, i, update_time
+                    _name, _mood if update_time else agent.mood, room, i, update_time
                 )
                 data["depletion_rate"] = agent.depletion_rate
                 if high_no_time is not None and high_no_time not in read_time_index:
