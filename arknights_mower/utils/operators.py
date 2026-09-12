@@ -6,6 +6,12 @@ from evalidate import Expr, base_eval_model
 
 from arknights_mower.utils import config
 from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
+from arknights_mower.utils.resting_priority import (
+    RestingTier,
+    resting_key,
+    resting_mood,
+    resting_tier,
+)
 
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
@@ -528,6 +534,10 @@ class Operators:
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
+        if current_room == "train" and current_index == 0:
+            agent.resting_from_train = True
+        elif (current_room and not to_dorm) or mood >= 24:
+            agent.resting_from_train = False
         if mood >= 24:
             agent.dorm_recovery_room = ""
         # 如果是高效组且没有记录时间，则返还index
@@ -609,7 +619,7 @@ class Operators:
     def get_refresh_index(self, room, plan):
         ret = []
         if room.startswith("dorm") and self.config.free_room:
-            return [i for i, x in enumerate(self.plan[room]) if x == "Free"]
+            return [i for i, slot in enumerate(self.plan[room]) if slot.agent == "Free"]
         for idx, dorm in enumerate(self.dorm):
             if dorm.position[0] == room:
                 for i, _name in enumerate(plan):
@@ -662,6 +672,7 @@ class Operators:
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
             operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
+            operator.resting_from_train = getattr(exist, "resting_from_train", False)
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
         if operator.exhaust_require and not (
@@ -829,13 +840,11 @@ class Operators:
             if dorm.name == "" or dorm.name not in self.operators:
                 continue
             op = self.operators[dorm.name]
-            if op.is_workshop():
-                continue
             if dorm.time is not None and dorm.time < time:
                 if op.is_high():
                     free_name.append(dorm.name)
                 continue
-            if op.resting_priority == "high":
+            if resting_tier(self, op.name) <= RestingTier.MAIN:
                 count_high += 1
             else:
                 count_low += 1
@@ -852,7 +861,7 @@ class Operators:
         return available_high if free_type == "high" else available_low
 
     def active_high_resting_count(self, time=None):
-        """当前不能被其他主力直接接管的主力床位数。"""
+        """正在轮休的主班人数；被加工开关降级的人员不计入。"""
         if time is None:
             time = datetime.now()
         return sum(
@@ -860,50 +869,67 @@ class Operators:
             for dorm in self.dorm
             if dorm.name in self.operators
             and self.operators[dorm.name].is_high()
-            and not self.operators[dorm.name].is_workshop()
+            and resting_tier(self, dorm.name) != RestingTier.IDLE
             and not (dorm.time is not None and dorm.time < time)
         )
 
     def _slot_takable(self, dorm, protect_resting, requester=None):
-        """床位能否被接管；低优之间保护正在休息者，高优可接管低优床位。"""
+        """按严格层级接管；主班免额外心情门槛，同级恢复者不互踢。"""
         name = dorm.name
         if name == "" or name not in self.operators:
             return True
         op = self.operators[name]
+        # 已预留、尚未执行入驻的床位不能被本轮后续组重复分配。
+        if (op.current_room, op.current_index) != dorm.position:
+            return False
         if dorm.time is not None and dorm.time < datetime.now():
             return True
-        if op.is_workshop() and requester is not None:
-            incoming = self.operators[requester]
-            return not incoming.is_workshop() and (
-                incoming.is_high() or incoming.current_mood() <= 22
-            )
-        if not op.is_high():
-            return not (protect_resting and op.is_resting())
-        return False
+        tier = resting_tier(self, name)
+        if requester is None:
+            return False
+        incoming_tier = resting_tier(self, requester)
+        if incoming_tier >= tier:
+            return False
+        if incoming_tier <= RestingTier.LOW_MAIN:
+            return True
+        if tier == RestingTier.IDLE:
+            return resting_mood(self.operators[requester]) <= 22
+        return (
+            incoming_tier == RestingTier.STANDBY
+            and tier == RestingTier.REPLACEMENT
+            and not protect_resting
+        )
 
     def _find_dorm_slot(self, name, used, *, group_resting=False):
         operator = self.operators[name]
-        is_high = operator.resting_priority == "high" and not operator.is_workshop()
-        # 仅显式候补在随组下班时可接管普通替班；原低优保护规则不变。
+        if resting_tier(self, name) == RestingTier.EXCLUDED:
+            return None
+        is_high = resting_tier(self, name) <= RestingTier.MAIN
+        # 候补接管普通替班只用于随组分床；主班跨级接管由共享判定处理。
         can_take_over = is_high or (group_resting and self._can_group_standby(operator))
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
+        order = list(range(len(self.dorm)))
         if not is_high:
-            for i in range(max_count, len(self.dorm)):
-                if i not in used and self._slot_takable(
-                    self.dorm[i], protect_resting=not can_take_over, requester=name
-                ):
-                    return i
-        return next(
-            (
-                i
-                for i, dorm in enumerate(self.dorm)
-                if i not in used
-                and self._slot_takable(
-                    dorm, protect_resting=not can_take_over, requester=name
-                )
-            ),
-            None,
-        )
+            order = order[max_count:] + order[:max_count]
+        candidates = [
+            i
+            for i in order
+            if i not in used
+            and self._slot_takable(
+                self.dorm[i], protect_resting=not can_take_over, requester=name
+            )
+        ]
+        now = datetime.now()
+
+        def takeover_cost(index):
+            bed = self.dorm[index]
+            if not bed.name or (bed.time is not None and bed.time <= now):
+                return (0, 0, 0)
+            tier, mood = resting_key(self, bed.name, now)
+            # 先使用空位，再接管层级最低、同级心情最高的占位者。
+            return (1, -tier, -mood)
+
+        return min(candidates, key=takeover_cost, default=None)
 
     def group_standby_candidates(self, names):
         """有需要恢复的高优成员带组时，可在缺床情况下待命的候补成员。"""
@@ -939,6 +965,7 @@ class Operators:
             key=lambda name: (
                 self.operators[name].resting_priority == "standby",
                 self.operators[name].resting_priority == "high",
+                resting_key(self, name),
             ),
         )
         for name in ordered_names:
@@ -1142,6 +1169,7 @@ class Operator:
         self.replacement = replacement
         self.resting_priority = resting_priority
         self.dorm_recovery_room = ""
+        self.resting_from_train = False
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
