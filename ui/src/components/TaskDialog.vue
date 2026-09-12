@@ -32,7 +32,7 @@ const error = ref(false)
 const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
-  { label: '分解所有重复家具', value: '分解所有重复家具' },
+  { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
   { label: '仓库扫描', value: '仓库扫描' },
   { label: '空任务', value: '空任务' }
 ]
@@ -204,9 +204,10 @@ const level_list = [
         <n-select
           v-model:value="task_type"
           :options="taskTypeOptions"
+          :consistent-menu-width="false"
           placeholder="任务类别"
           class="dropdown-select"
-          style="width: 190px"
+          :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
         />
         <n-select
           v-if="task_type == '技能专精'"
