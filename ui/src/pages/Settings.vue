@@ -808,10 +808,7 @@ if (return_home_when_idle.value) {
       <div><ResourceUpdate /></div>
     </div>
     <div class="settings-network">
-      <ConfigBackup
-        :save-network="() => networkSettings.save()"
-        :save-updates="() => softwareUpdate.flushSettings()"
-      />
+      <ConfigBackup />
     </div>
     <div class="settings-network">
       <ProcessControl v-if="runtime_platform !== 'android'" />

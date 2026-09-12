@@ -721,14 +721,14 @@ export const useConfigStore = defineStore('config', () => {
     return configSaveRequest
   }
 
-  async function flush_pending_saves() {
+  async function flush_config_saves() {
     if (weeklyPlanSyncTimer) {
       clearTimeout(weeklyPlanSyncTimer)
       weeklyPlanSyncTimer = null
       await sync_active_weekly_plan()
     }
     await weeklyPlanSaveRequest
-    await save_config()
+    await configSaveRequest
   }
 
   watchEffect(() => {
@@ -739,7 +739,7 @@ export const useConfigStore = defineStore('config', () => {
 
   return {
     autosave_paused,
-    flush_pending_saves,
+    flush_config_saves,
     adb,
     load_config,
     save_config,

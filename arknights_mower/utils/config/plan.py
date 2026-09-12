@@ -127,3 +127,12 @@ class PlanModel(BaseModel):
     plan1: Plan1 = Plan1()
     conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []
+
+
+def parse_plan_document(data) -> PlanModel:
+    """Reject unrelated JSON instead of silently constructing an empty plan."""
+    if not isinstance(data, dict) or not isinstance(data.get("plan1"), dict):
+        raise ValueError("排班文件必须包含 plan1 主排班")
+    if data.get("default", "plan1") != "plan1":
+        raise ValueError("不支持的主排班名称")
+    return PlanModel(**data)

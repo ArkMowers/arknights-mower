@@ -94,7 +94,7 @@ def migrate_app_config_paths():
     """新路径缺失且旧路径存在 → os.replace 搬过去；两边都在 → 不动。
 
     os.replace 失败（Windows 上 AV/另一进程瞬时锁住旧文件，或双进程并发首次迁移
-    的 TOCTOU）时记 warning 跳过——旧文件保留在旧路径，不拖垮整个启动。
+    的 TOCTOU）时检查目标是否已由另一进程迁移；否则中止启动，防止生成默认配置遮蔽旧文件。
     """
     for old, new in _CONFIG_PATH_PAIRS:
         if new.exists() or not old.exists():
@@ -103,7 +103,11 @@ def migrate_app_config_paths():
             new.parent.mkdir(parents=True, exist_ok=True)
             os.replace(old, new)
         except (FileNotFoundError, PermissionError) as exc:
-            logger.warning("迁移配置 %s → %s 失败，保留旧文件：%s", old, new, exc)
+            if not new.is_file():
+                raise OSError(
+                    f"迁移配置 {old} → {new} 失败；已停止启动以保留原配置，请检查目录权限或文件占用"
+                ) from exc
+            logger.info("配置已由另一进程迁移：%s", new)
 
 
 migrate_app_config_paths()
@@ -154,7 +158,8 @@ def load_plan():
         plan = PlanModel()
         save_plan()
         return
-    with plan_path.open("r", encoding="utf-8") as f:
+    # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
+    with plan_path.open("r", encoding="utf-8-sig") as f:
         plan = PlanModel(**json.load(f))
 
 

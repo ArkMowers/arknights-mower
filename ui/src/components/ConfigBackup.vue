@@ -1,20 +1,14 @@
 <script setup>
-import { inject, nextTick, ref } from 'vue'
+import { inject, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import {
-  consumeImportResult,
-  readBrowserSettings,
-  reloadImportedConfiguration
-} from '@/utils/configBackup'
+import { createSaveCoordinator } from '@/utils/configPersistence'
+import { consumeImportResult, reloadImportedConfiguration } from '@/utils/configBackup'
 
-const props = defineProps({
-  saveNetwork: { type: Function, required: true },
-  saveUpdates: { type: Function, required: true }
-})
 const axios = inject('axios')
 const configStore = useConfigStore()
 const planStore = usePlanStore()
+const saves = createSaveCoordinator(configStore, planStore)
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/config-backup`
 const input = ref(null)
 const busy = ref(false)
@@ -25,46 +19,36 @@ const showConfirm = ref(false)
 const result = ref(consumeImportResult())
 const pendingReload = ref(false)
 
-function message(err) {
+async function message(err) {
+  // Axios keeps JSON error responses as Blob when downloading a ZIP.
+  if (err.response?.data instanceof Blob) {
+    try {
+      const body = JSON.parse(await err.response.data.text())
+      if (body.message) return body.message
+    } catch {
+      /* Fall back to the transport error. */
+    }
+  }
   return err.response?.data?.message || err.message || '操作失败，请重试'
-}
-
-async function flushSettings() {
-  configStore.autosave_paused = true
-  planStore.autosave_paused = true
-  await nextTick()
-  await configStore.flush_pending_saves()
-  await planStore.save_plan()
-  if (!(await props.saveNetwork())) throw new Error('网络设置尚未保存，请先检查上方网络设置')
-  await props.saveUpdates()
-}
-
-function resumeSaving() {
-  configStore.autosave_paused = false
-  planStore.autosave_paused = false
 }
 
 async function exportConfig() {
   busy.value = true
   error.value = ''
   try {
-    await flushSettings()
-    const { data } = await axios.get(`${base}/export`)
-    data.browser_settings = readBrowserSettings()
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    )
+    await saves.drain()
+    const { data } = await axios.get(`${base}/export`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
     const link = document.createElement('a')
     link.href = url
-    link.download = `mower-config-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+    link.download = `mower-config-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`
     document.body.appendChild(link)
     link.click()
     link.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (err) {
-    error.value = message(err)
+    error.value = await message(err)
   } finally {
-    resumeSaving()
     busy.value = false
   }
 }
@@ -78,16 +62,12 @@ async function selectFile(event) {
   selected.value = null
   try {
     if (file.size > 16 * 1024 * 1024) throw new Error('备份文件不能超过 16 MB')
-    const backup = JSON.parse(await file.text())
-    if (backup?.format !== 'arknights-mower-config' || backup.version !== 1 || !backup.data) {
-      throw new Error('请选择 Mower 导出的完整配置 JSON 文件')
-    }
-    selected.value = backup
+    if (!/\.zip$/i.test(file.name)) throw new Error('请选择包含 config 文件夹的 ZIP 备份')
+    selected.value = file
     filename.value = file.name
     showConfirm.value = true
   } catch (err) {
-    error.value =
-      err instanceof SyntaxError ? '无法解析 JSON 文件，请重新选择完整配置备份' : message(err)
+    error.value = await message(err)
   } finally {
     busy.value = false
   }
@@ -97,12 +77,12 @@ async function importConfig() {
   busy.value = true
   error.value = ''
   try {
-    await flushSettings()
-    const { data } = await axios.post(
-      `${base}/import`,
-      { ...selected.value, current_browser_settings: readBrowserSettings() },
-      { headers: { 'X-Mower-Settings': '1' } }
-    )
+    await saves.pauseAndDrain()
+    const form = new FormData()
+    form.append('backup', selected.value)
+    const { data } = await axios.post(`${base}/import`, form, {
+      headers: { 'X-Mower-Settings': '1' }
+    })
     if (!data.ok) throw new Error(data.message)
     result.value = data
     showConfirm.value = false
@@ -111,17 +91,17 @@ async function importConfig() {
     reload()
   } catch (err) {
     error.value = pendingReload.value
-      ? `配置已导入，但自动刷新未完成，请重试刷新页面：${message(err)}`
-      : message(err)
+      ? `配置已导入，但自动刷新未完成，请重试刷新页面：${await message(err)}`
+      : await message(err)
     showConfirm.value = false
-    if (!pendingReload.value) resumeSaving()
+    if (!pendingReload.value) saves.resume()
   } finally {
     busy.value = false
   }
 }
 
 function reload() {
-  reloadImportedConfiguration(selected.value.browser_settings, result.value)
+  reloadImportedConfiguration(result.value)
 }
 </script>
 
@@ -129,24 +109,24 @@ function reload() {
   <n-card title="配置导出与导入">
     <n-space vertical :size="16">
       <n-text>
-        备份当前实例的全部 Mower 配置：Mower 与 MAA 设置、主排班及备用排班、所有周计划与库存规则、
-        专精计划与训练员配置、加工站配置、保全派驻作业、窗口与页面偏好，以及共享网络设置、软件更新设置和森空岛设备信息。
+        将当前实例的 config 文件夹打包为 ZIP，保留 conf.yml、plan.json、周计划等配置原文件， 不包含
+        state.json。主排班和所有备用排班均包含在 plan.json 中。
       </n-text>
       <n-text depth="3">
         导入时保留当前管理页面端口、访问令牌和网络代理，以及需要重启生效的托盘和窗口尺寸。
         其余配置按备份恢复，并自动刷新页面加载，无需重启 Mower。
-        备份包含账号、密码和密钥，请妥善保管。导入前会自动备份现有配置。
-        不包含程序文件、其他实例、日志、统计记录和仓库识别数据。
+        备份包含账号、密码和密钥，请妥善保管。导入前会自动备份现有配置。 config
+        文件夹以外的数据（包括数据库、其他实例及浏览器偏好）不在备份中。
       </n-text>
       <n-space>
         <n-button :loading="busy" :disabled="busy || pendingReload" @click="exportConfig">
-          导出全部配置
+          导出配置
         </n-button>
         <n-button :disabled="busy || pendingReload" @click="input.click()">导入配置</n-button>
         <input
           ref="input"
           type="file"
-          accept=".json,application/json"
+          accept=".zip,application/zip"
           aria-label="选择完整配置备份"
           hidden
           @change="selectFile"

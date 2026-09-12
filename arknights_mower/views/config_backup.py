@@ -1,19 +1,19 @@
-"""Full configuration download and restore endpoints."""
+"""Configuration-directory ZIP download and restore endpoints."""
 
-import json
 import sqlite3
 from datetime import datetime
 from io import BytesIO
 from urllib.parse import urlparse
 
+import yaml
 from flask import Blueprint, abort, current_app, request, send_file
 
 from arknights_mower.utils.config_backup import (
     MAX_BACKUP_BYTES,
+    LocalConfigError,
     backup_lock,
-    export_configuration,
+    export_archive,
     import_configuration,
-    serialize_backup,
 )
 
 config_backup_bp = Blueprint("config_backup", __name__, url_prefix="/config-backup")
@@ -32,17 +32,24 @@ def authorize():
         origin = request.headers.get("Origin")
         if origin and urlparse(origin).netloc != request.host:
             abort(403)
-        if request.content_length and request.content_length > MAX_BACKUP_BYTES:
+        limit = MAX_BACKUP_BYTES + (
+            65536 if request.mimetype == "multipart/form-data" else 0
+        )
+        if request.content_length and request.content_length > limit:
             abort(413)
 
 
 @config_backup_bp.get("/export")
 def export_backup():
+    try:
+        raw = export_archive()
+    except LocalConfigError as exc:
+        return {"ok": False, "message": str(exc)}, 409
     result = send_file(
-        BytesIO(serialize_backup(export_configuration()).encode("utf-8")),
-        mimetype="application/json",
+        BytesIO(raw),
+        mimetype="application/zip",
         as_attachment=True,
-        download_name=f"mower-config-{datetime.now():%Y%m%d-%H%M%S}.json",
+        download_name=f"mower-config-{datetime.now():%Y%m%d-%H%M%S}.zip",
         max_age=0,
     )
     result.headers["Cache-Control"] = "no-store"
@@ -58,16 +65,22 @@ def import_backup():
                 "message": "请先停止 Mower，并等待更新任务结束后再导入配置",
             }, 409
         try:
-            raw = request.stream.read(MAX_BACKUP_BYTES + 1)
+            if request.mimetype == "multipart/form-data":
+                uploaded = request.files.get("backup")
+                if uploaded is None:
+                    raise ValueError("缺少备份文件")
+                raw = uploaded.stream.read(MAX_BACKUP_BYTES + 1)
+            else:
+                raw = request.stream.read(MAX_BACKUP_BYTES + 1)
             if len(raw) > MAX_BACKUP_BYTES:
                 abort(413)
-            backup = json.loads(raw)
-            recovery = import_configuration(backup)
-        except (ValueError, TypeError, RecursionError):
-            # Validation errors may contain passwords/keys; never echo input.
+            recovery = import_configuration(raw)
+        except LocalConfigError as exc:
+            return {"ok": False, "message": str(exc)}, 409
+        except (ValueError, TypeError, RecursionError, yaml.YAMLError):
             return {
                 "ok": False,
-                "message": "备份格式不正确、内容不完整或配置值无效，请选择 Mower 导出的完整配置 JSON 文件",
+                "message": "备份格式不正确或配置值无效，请选择包含 config 文件夹的 ZIP 备份（需要 conf.yml 和 plan.json）",
             }, 400
         except (OSError, sqlite3.Error):
             current_app.logger.exception("配置导入写入失败")
@@ -79,5 +92,4 @@ def import_backup():
             "ok": True,
             "message": "配置已导入。当前管理页面端口、访问令牌、网络代理、托盘及窗口尺寸保持不变。",
             "recovery_path": recovery,
-            "token": getattr(current_app, "token", ""),
         }

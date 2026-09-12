@@ -1,317 +1,306 @@
-"""Versioned, data-only backups of the current instance and shared settings."""
+"""Back up and restore the current instance's config directory as a ZIP."""
 
 import json
 import sqlite3
+import stat
 import sys
-from datetime import datetime, timezone
+from contextlib import closing, nullcontext
+from datetime import datetime
+from io import BytesIO
+from pathlib import PurePosixPath
 from threading import RLock
 from uuid import uuid4
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
+from zlib import error as ZlibError
 
 import yaml
 from yamlcore import CoreLoader
 
-from arknights_mower.utils import config, network_settings, update_runtime
+from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RegularTaskPart
-from arknights_mower.utils.config.weekly_plan_loader import WeeklyPlanManager
+from arknights_mower.utils.config.plan import parse_plan_document
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.workshop_config import workshop_lock
 
-FORMAT = "arknights-mower-config"
-VERSION = 1
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
-MASTERY_TABLES = ("mastery_plan", "mastery_route")
-BROWSER_SETTINGS = {
-    "sc_preview",
-    "reportDataOrder",
-    "maa-weekly-plan-editor-mode",
-    "maa-weekly-plan-table-stage-order",
-    "maa-weekly-plan-table-stage-order-version",
-}
+IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "state.json"}
 
 
-def configuration_paths():
-    # Fixed destinations: a backup never supplies filesystem paths or SQL.
-    return {
-        "conf": config.conf_path,
-        "plan": config.plan_path,
-        "weekly_plans": config.weekly_plans_path,
-        "state": config.app_state_path,
-        "gui": config.gui_path,
-        "network": network_settings.settings_path(),
-        "software_update": update_runtime.state_dir() / "settings.json",
-        "skland_device_id": get_path("@app/config/skland_device_id.json", space=""),
-        "sss": get_path("@app/sss.json"),
-        "workshop_preset": get_path("@app/tmp/workshop_preset.json"),
-    }
+class LocalConfigError(ValueError):
+    """The destination directory cannot be backed up safely."""
 
 
-def _read(path):
-    if not path.exists():
+EXPORT_EXCLUDED_FILES = {"state.json"}
+
+
+def _local_snapshot():
+    """Read originals and index file/directory names with one directory walk."""
+    root = config.conf_path.parent
+    files, names = {}, {}
+    total = 0
+    if root.is_symlink():
+        raise LocalConfigError("本机 config 目录是符号链接，请改用普通目录后重试")
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise LocalConfigError("本机 config 目录包含符号链接，请移除链接后重试")
+        name = path.relative_to(root).as_posix()
+        names[name.casefold()] = name
+        if not path.is_file() or name.casefold() in EXPORT_EXCLUDED_FILES:
+            continue
+        if len(files) >= MAX_ARCHIVE_ENTRIES:
+            raise LocalConfigError("本机配置文件数量超过 1024 个，请整理后重试")
+        with path.open("rb") as stream:
+            content = stream.read(MAX_BACKUP_BYTES - total + 1)
+        total += len(content)
+        if total > MAX_BACKUP_BYTES:
+            raise LocalConfigError("本机配置内容超过 16 MB，无法生成备份")
+        files[name] = content
+    return files, names
+
+
+def _archive_bytes(files):
+    output = BytesIO()
+    with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("config/", b"")
+        for name, content in files.items():
+            archive.writestr(f"config/{name}", content)
+    raw = output.getvalue()
+    if len(raw) > MAX_BACKUP_BYTES:
+        raise LocalConfigError("本机配置生成的 ZIP 超过 16 MB，无法导出或生成恢复备份")
+    return raw
+
+
+def _write_bytes(path, content):
+    config.atomic_write(path, lambda stream: stream.buffer.write(content))
+
+
+def export_archive():
+    with backup_lock, workshop_lock:
+        files, _ = _local_snapshot()
+        return _archive_bytes(files)
+
+
+def read_archive(raw):
+    """Read bounded regular files without extracting ZIP paths to the filesystem."""
+    if len(raw) > MAX_BACKUP_BYTES:
+        raise ValueError("备份文件不能超过 16 MB")
+    try:
+        with ZipFile(BytesIO(raw)) as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_ARCHIVE_ENTRIES + sum(
+                info.filename == "config/" for info in infos
+            ):
+                raise ValueError("压缩包文件数量过多")
+            if sum(info.file_size for info in infos) > MAX_BACKUP_BYTES:
+                raise ValueError("解压后的配置不能超过 16 MB")
+            files, seen, kinds = {}, set(), {}
+            for info in infos:
+                name = info.filename
+                parts = name.rstrip("/").split("/")
+                mode = info.external_attr >> 16
+                if (
+                    name.rstrip("/").casefold() in seen
+                    or "\\" in name
+                    or any(
+                        part in {"", ".", ".."}
+                        or any(c in part for c in ':<>"|?*')
+                        or any(ord(c) < 32 for c in part)
+                        or part.endswith((" ", "."))
+                        or part.split(".")[0].upper()
+                        in {
+                            "CON",
+                            "PRN",
+                            "AUX",
+                            "NUL",
+                            *(f"COM{i}" for i in range(1, 10)),
+                            *(f"LPT{i}" for i in range(1, 10)),
+                        }
+                        for part in parts
+                    )
+                    or parts[0] != "config"
+                    or (
+                        len(parts) > 2 and parts[1].casefold() in IMPORT_PRESERVED_FILES
+                    )
+                    or info.flag_bits & 1
+                    or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR))
+                    or "\x00" in info.orig_filename
+                ):
+                    raise ValueError("压缩包包含无效路径、重复文件或链接")
+                seen.add(name.rstrip("/").casefold())
+                for index in range(1, len(parts) + 1):
+                    path = "/".join(parts[:index])
+                    key = path.casefold()
+                    is_dir = index < len(parts) or info.is_dir()
+                    if key in kinds and kinds[key] != (path, is_dir):
+                        raise ValueError("压缩包中的文件与目录或大小写冲突")
+                    kinds[key] = (path, is_dir)
+                if info.is_dir():
+                    continue
+                if len(parts) < 2:
+                    raise ValueError("配置文件必须位于 config 目录内")
+                relative = PurePosixPath(*parts[1:]).as_posix()
+                files[relative] = archive.read(info)
+            # Also reject file/directory collisions before any writes.
+            for name in files:
+                if any(
+                    parent.as_posix() in files for parent in PurePosixPath(name).parents
+                ):
+                    raise ValueError("压缩包中的文件与目录冲突")
+            return files
+    except (BadZipFile, RuntimeError, NotImplementedError, ZlibError) as exc:
+        raise ValueError("请选择包含 config 文件夹的 ZIP 备份") from exc
+
+
+def _object_file(files, name, *, optional=False):
+    if optional and name not in files:
         return None
-    text = path.read_text(encoding="utf-8")
-    return (
+    if name not in files:
+        raise ValueError(f"备份缺少 {name}")
+    text = files[name].decode("utf-8-sig")
+    value = (
         yaml.load(text, Loader=CoreLoader)
-        if path.suffix == ".yml"
+        if name.endswith(".yml")
         else json.loads(text)
     )
-
-
-def _mastery_snapshot():
-    path = get_path("@app/tmp/data.db")
-    result = {table: [] for table in MASTERY_TABLES}
-    if not path.exists():
-        return result
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    try:
-        conn.execute("BEGIN")
-        tables = {
-            row[0]
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
-        for table in MASTERY_TABLES:
-            if table in tables:
-                result[table] = [
-                    dict(row) for row in conn.execute(f"SELECT * FROM {table}")
-                ]
-        return result
-    finally:
-        conn.close()
-
-
-def export_configuration():
-    with backup_lock, workshop_lock:
-        data = {name: _read(path) for name, path in configuration_paths().items()}
-        # Include defaults and fields which have no control in the web UI.
-        data["conf"] = {**(data["conf"] or {}), **config.conf.model_dump(mode="json")}
-        data["plan"] = {
-            **(data["plan"] or {}),
-            **config.plan.model_dump(mode="json", exclude_none=True),
-        }
-        data["mastery"] = _mastery_snapshot()
-        return {
-            "format": FORMAT,
-            "version": VERSION,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "data": data,
-        }
-
-
-def serialize_backup(backup):
-    return json.dumps(backup, ensure_ascii=False, indent=2, allow_nan=False)
-
-
-def _object(value, label):
     if not isinstance(value, dict):
-        raise ValueError(f"{label} 必须是对象")
+        raise ValueError(f"{name} 必须包含配置对象")
     return value
 
 
-def _conf_for_import(raw):
-    data = dict(_object(raw, "主配置"))
-    webview = _object(data.get("webview", {}), "窗口设置")
+def plan_from_archive(files):
+    return parse_plan_document(_object_file(files, "plan.json"))
+
+
+def _validate_configuration(files):
+    data = _object_file(files, "conf.yml")
+    webview = data.get("webview", {})
+    if not isinstance(webview, dict):
+        raise ValueError("窗口设置格式错误")
     data["webview"] = {
         **webview,
         "port": config.conf.webview.port,
         "token": config.conf.webview.token,
-        # The launcher reads tray/close behavior only when the process starts.
         "tray": config.conf.webview.tray,
     }
-    return data
-
-
-def validate_configuration(backup):
-    _object(backup, "备份")
-    if (
-        backup.get("format") != FORMAT
-        or type(backup.get("version")) is not int
-        or backup["version"] != VERSION
-    ):
-        raise ValueError("不是受支持的 Mower 完整配置备份（需要版本 1）")
-    data = _object(backup.get("data"), "备份内容")
-    for key in ("browser_settings", "current_browser_settings"):
-        settings = _object(backup.get(key, {}), "页面偏好")
-        if not set(settings) <= BROWSER_SETTINGS or any(
-            value is not None and not isinstance(value, str)
-            for value in settings.values()
-        ):
-            raise ValueError("页面偏好格式错误")
-    if set(data) != {*configuration_paths(), "mastery"}:
-        raise ValueError("备份配置项目不完整或包含不支持的项目")
-    # Reject non-JSON values, NaN and oversized backups before touching storage.
-    if len(serialize_backup(backup).encode("utf-8")) > MAX_BACKUP_BYTES:
-        raise ValueError("备份文件不能超过 16 MB")
-    conf = config.Conf(**_conf_for_import(data["conf"]))
-    plan = config.PlanModel(**_object(data["plan"], "排班配置"))
-    for name in (
-        "state",
-        "gui",
-        "network",
-        "software_update",
-        "skland_device_id",
-        "sss",
-    ):
-        if data[name] is not None:
-            _object(data[name], name)
-    if data["workshop_preset"] is not None and not isinstance(
-        data["workshop_preset"], (dict, list)
-    ):
-        raise ValueError("加工站预设格式错误")
-    state = data["state"] or {}
-    if "active_weekly_plan" in state and not isinstance(
-        state["active_weekly_plan"], str
-    ):
-        raise ValueError("当前周计划名称必须是字符串")
-    if data["weekly_plans"] is not None:
-        weekly = _object(data["weekly_plans"], "周计划")
-        plans = _object(weekly.get("plans"), "周计划方案")
+    conf = config.Conf(**data)
+    plan = plan_from_archive(files)
+    if plan != config.plan:
+        conf.dorm_order = ""
+        data["dorm_order"] = ""
+    weekly = _object_file(files, "weekly_plans.yml", optional=True)
+    if weekly is not None:
+        plans = weekly.get("plans")
+        if not isinstance(plans, dict):
+            raise ValueError("周计划格式错误")
         for name, entries in plans.items():
             if (
                 not isinstance(name, str)
                 or not name.strip()
                 or not isinstance(entries, list)
             ):
-                raise ValueError("周计划名称或内容格式错误")
+                raise ValueError("周计划方案格式错误")
             for entry in entries:
-                RegularTaskPart.MaaDailyPlan(**_object(entry, "周计划条目"))
-        for name, rules in _object(
-            weekly.get("inventory_configs", {}), "库存选关配置"
-        ).items():
-            WeeklyPlanManager._normalize_inventory_config(_object(rules, name))
+                RegularTaskPart.MaaDailyPlan(**entry)
+        from arknights_mower.utils.config.weekly_plan_loader import WeeklyPlanManager
+
+        inventory = weekly.get("inventory_configs", {})
+        if not isinstance(inventory, dict):
+            raise ValueError("库存选关配置格式错误")
+        for rules in inventory.values():
+            if not isinstance(rules, dict):
+                raise ValueError("库存选关规则格式错误")
+            WeeklyPlanManager._normalize_inventory_config(rules)
         for key in (
             "activity_fallbacks",
             "activity_fallback_end_times",
             "activity_fallback_switch_times",
         ):
-            for value in _object(weekly.get(key, {}), key).values():
+            mapping = weekly.get(key, {})
+            if not isinstance(mapping, dict):
+                raise ValueError("活动回退配置格式错误")
+            for value in mapping.values():
                 if key == "activity_fallbacks":
                     if not isinstance(value, str):
                         raise ValueError("活动回退方案必须是字符串")
                 elif type(value) is not int or value < 0:
                     raise ValueError("活动切换时间必须是非负整数")
-    if data["software_update"] is not None:
-        update = data["software_update"]
-        if update.get("channel", "stable") not in {"stable", "beta", "dev"}:
-            raise ValueError("软件更新渠道无效")
-        for key in ("background", "auto_check", "auto_update"):
-            if key in update and not isinstance(update[key], bool):
-                raise ValueError("软件更新开关必须是布尔值")
-        if "source_branch" in update:
-            from arknights_mower.utils.software_update import normalize_source_ref
-
-            normalize_source_ref(update["source_branch"])
-    mastery = _object(data["mastery"], "专精配置")
-    if set(mastery) != set(MASTERY_TABLES):
-        raise ValueError("专精配置不完整")
-    # Validate table columns and constraints in an isolated, empty database.
-    from arknights_mower.utils.mastery_db import _PLAN_SCHEMA, _ROUTE_SCHEMA
-
-    conn = sqlite3.connect(":memory:")
-    try:
-        conn.execute(_PLAN_SCHEMA)
-        conn.execute(_ROUTE_SCHEMA)
-        _replace_mastery(conn, mastery)
-    except sqlite3.Error as exc:
-        raise ValueError("专精配置的字段或数据格式错误") from exc
-    finally:
-        conn.close()
-    return conf, plan
+    return data, conf, plan
 
 
-def _replace_mastery(conn, mastery):
-    for table in MASTERY_TABLES:
-        rows = mastery[table]
-        if not isinstance(rows, list):
-            raise ValueError("专精配置必须是列表")
-        columns = [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
-        conn.execute(f"DELETE FROM {table}")
-        for row in rows:
-            _object(row, "专精配置条目")
-            if not row or not set(row) <= set(columns):
-                raise ValueError("专精配置包含不支持的字段")
-            selected = [column for column in columns if column in row]
-            conn.execute(
-                f"INSERT INTO {table} ({','.join(selected)}) VALUES ({','.join('?' for _ in selected)})",
-                [row[column] for column in selected],
-            )
-
-
-def import_configuration(backup):
-    from arknights_mower.utils.mastery_db import _conn
-
+def import_configuration(raw):
     with backup_lock, workshop_lock:
-        conf, plan = validate_configuration(backup)
-        imported_conf = _conf_for_import(backup["data"]["conf"])
-        if plan != config.plan:
-            conf.dorm_order = ""
-            imported_conf["dorm_order"] = ""
-        paths = configuration_paths()
-        previous = {
-            name: path.read_text(encoding="utf-8") if path.exists() else None
-            for name, path in paths.items()
-        }
+        files = read_archive(raw)
+        data, conf, plan = _validate_configuration(files)
+        root = config.conf_path.parent
+        previous, local_names = _local_snapshot()
+        # Reject destination path collisions before backup or write.
+        for name in files:
+            for part in (PurePosixPath(name), *PurePosixPath(name).parents):
+                normalized = part.as_posix()
+                existing = local_names.get(normalized.casefold())
+                if existing is not None and existing != normalized:
+                    raise ValueError("配置路径与本机文件的大小写冲突")
+            target = root / name
+            if target.is_dir() or any(
+                parent.is_file() for parent in target.parents if parent != root
+            ):
+                raise ValueError("配置文件与现有目录结构冲突")
         recovery = (
             get_path("@app/config-backups")
-            / f"before-import-{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex[:8]}.json"
+            / f"before-import-{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex[:8]}.zip"
         )
-        previous_backup = export_configuration()
-        previous_backup["browser_settings"] = backup.get("current_browser_settings", {})
-        config.atomic_write(
-            recovery, lambda f: f.write(serialize_backup(previous_backup))
-        )
+        _write_bytes(recovery, _archive_bytes(previous))
+        contents = dict(files)
+        contents["conf.yml"] = yaml.safe_dump(
+            data, allow_unicode=True, sort_keys=False
+        ).encode("utf-8")
         written = []
-        # Preserve reports and inventory; stale scheduler snapshots refer to the
-        # replaced plans and must be rebuilt on the next start.
-        database_path = get_path("@app/tmp/data.db")
-        database_path.parent.mkdir(parents=True, exist_ok=True)
-        with _conn(str(database_path)) as conn:
+        database = get_path("@app/tmp/data.db")
+        transaction = (
+            closing(sqlite3.connect(database))
+            if database.is_file()
+            else nullcontext(None)
+        )
+        with transaction as conn:
             try:
-                conn.execute("BEGIN IMMEDIATE")
-                _replace_mastery(conn, backup["data"]["mastery"])
-                if conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
-                ).fetchone():
-                    conn.execute("DELETE FROM saved_state")
-                for name, path in paths.items():
-                    # Keep destination connectivity and native window geometry.
-                    # Geometry is only loaded when creating the window; a page
-                    # refresh cannot apply it. Never create/delete these files.
-                    if name in {"network", "gui"}:
+                if conn is not None:
+                    conn.execute("BEGIN IMMEDIATE")
+                    if conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
+                    ).fetchone():
+                        conn.execute("DELETE FROM saved_state")
+                for name in sorted(set(previous) | set(contents)):
+                    if name.casefold() in IMPORT_PRESERVED_FILES:
                         continue
-                    value = imported_conf if name == "conf" else backup["data"][name]
-                    if value is None:
-                        path.unlink(missing_ok=True)
+                    target = root / name
+                    if name in contents:
+                        content = contents[name]
+                        _write_bytes(target, content)
                     else:
-                        # JSON is also valid YAML; preserve every original key.
-                        text = json.dumps(
-                            value, ensure_ascii=False, indent=2, allow_nan=False
-                        )
-                        config.atomic_write(path, lambda f, text=text: f.write(text))
+                        target.unlink()
                     written.append(name)
-                conn.commit()
+                if conn is not None:
+                    conn.commit()
             except Exception:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
                 for name in reversed(written):
-                    old = previous[name]
-                    if old is None:
-                        paths[name].unlink(missing_ok=True)
+                    target = root / name
+                    if name in previous:
+                        content = previous[name]
+                        _write_bytes(target, content)
                     else:
-                        config.atomic_write(
-                            paths[name], lambda f, old=old: f.write(old)
-                        )
+                        target.unlink(missing_ok=True)
                 raise
         config.conf, config.plan = conf, plan
-        if weekly_module := sys.modules.get(
-            "arknights_mower.utils.config.weekly_plan_loader"
-        ):
-            # Recreate missing/legacy presets and sync the imported active plan
-            # on the next request, as at startup, without restarting the server.
-            weekly_module._weekly_plan_manager = None
-        if scheduler_module := sys.modules.get("arknights_mower.__main__"):
-            scheduler_module.base_scheduler = None
-        if skland_module := sys.modules.get("arknights_mower.utils.skland"):
-            skland_module.skland_cache.clear()
-            skland_module._device_id = ""
-            skland_module._device_id_failed = False
+        if module := sys.modules.get("arknights_mower.utils.config.weekly_plan_loader"):
+            module._weekly_plan_manager = None
+        if module := sys.modules.get("arknights_mower.__main__"):
+            module.base_scheduler = None
+        if module := sys.modules.get("arknights_mower.utils.skland"):
+            module.skland_cache.clear()
+            module._device_id = ""
+            module._device_id_failed = False
         return str(recovery)
