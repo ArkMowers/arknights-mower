@@ -19,7 +19,6 @@ from unittest.mock import patch
 
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.software_update_worker import Worker
-from arknights_mower.utils.source_pr_merge import merge_source_pulls
 
 
 @unittest.skipUnless(
@@ -48,7 +47,6 @@ class SourceTransactionTests(unittest.TestCase):
         unchanged=False,
         fail_install=False,
         selected_source=False,
-        combined_prs=False,
     ):
         with tempfile.TemporaryDirectory(prefix="mower-transaction-中文 ") as temporary:
             directory = Path(temporary)
@@ -246,26 +244,10 @@ class SourceTransactionTests(unittest.TestCase):
                     "operation": "source-version" if downgrade else "update",
                 }
                 if selected_source:
+                    # Simulate GitHub generating a test merge in its own repo.
+                    # The PR forked before the latest target-branch change.
                     remote = directory / "origin.git"
-                    command(
-                        git, "update-ref", "refs/pull/7/head", target_commit, cwd=remote
-                    )
-                    command(
-                        git,
-                        "remote",
-                        "set-url",
-                        "origin",
-                        str(directory / "unavailable-origin"),
-                    )
-                    job.update(
-                        source_url=remote.as_uri(),
-                        ref="refs/pull/7/head",
-                        operation="source-pr",
-                    )
-                if combined_prs:
-                    # A second PR branched from the original version. Its empty
-                    # commit still requires a real merge commit beside PR #7.
-                    sibling = command(
+                    head = command(
                         git,
                         "-c",
                         "user.name=Fixture",
@@ -278,27 +260,51 @@ class SourceTransactionTests(unittest.TestCase):
                         "-p",
                         initial_commit,
                         "-m",
-                        "second PR",
+                        "PR head",
                         cwd=remote,
                     )
-                    command(git, "update-ref", "refs/pull/8/head", sibling, cwd=remote)
-                    job.update(
-                        source_branch="alpha",
-                        base_commit=target_commit,
-                        source_prs=[
-                            {"number": 7, "sha": target_commit},
-                            {"number": 8, "sha": sibling},
-                        ],
-                        merge_date="@1700000000 +0000",
-                    )
-                    target_commit = merge_source_pulls(
+                    base = target_commit
+                    target_commit = command(
                         git,
-                        job["source_url"],
-                        job,
-                        directory / "merge-preview",
-                        os.environ,
+                        "-c",
+                        "user.name=Fixture",
+                        "-c",
+                        "user.email=fixture@example.invalid",
+                        "-c",
+                        "commit.gpgsign=false",
+                        "commit-tree",
+                        base + "^{tree}",
+                        "-p",
+                        base,
+                        "-p",
+                        head,
+                        "-m",
+                        "GitHub test merge",
+                        cwd=remote,
                     )
-                    job["commit"] = target_commit
+                    command(
+                        git,
+                        "update-ref",
+                        "refs/pull/7/merge",
+                        target_commit,
+                        cwd=remote,
+                    )
+                    command(
+                        git,
+                        "remote",
+                        "set-url",
+                        "origin",
+                        str(directory / "unavailable-origin"),
+                    )
+                    job.update(
+                        source_url=remote.as_uri(),
+                        ref="refs/pull/7/merge",
+                        operation="source-pr",
+                        source_pr=7,
+                        base_commit=base,
+                        head_commit=head,
+                        commit=target_commit,
+                    )
                 runtime.write_json(work / "job.json", job)
                 worker = Worker(work / "job.json")
                 run_command = worker.run_command
@@ -448,9 +454,6 @@ class SourceTransactionTests(unittest.TestCase):
 
     def test_selected_pr_source_restores_three_instances_without_using_origin(self):
         self.transaction(selected_source=True)
-
-    def test_combined_prs_restore_three_instances(self):
-        self.transaction(selected_source=True, combined_prs=True)
 
     def test_build_failure_rolls_back_code_environment_and_ui(self):
         self.transaction(fail_build=True)

@@ -88,7 +88,7 @@ describe('force update confirmation', () => {
 })
 
 describe('source version confirmation', () => {
-  it('confirms the latest target branch base alongside all selected PRs', () => {
+  it('confirms the latest target branch base alongside the selected PR', () => {
     const dialogs = { warning: vi.fn() }
     confirmSourceVersion(
       dialogs,
@@ -97,15 +97,15 @@ describe('source version confirmation', () => {
         source_repo: 'personal/mower',
         source_branch: 'alpha',
         base_commit: 'b'.repeat(40),
-        source_prs: [{ number: 7 }, { number: 8 }]
+        source_pr: 7
       },
       3,
       vi.fn()
     )
     const { content } = dialogs.warning.mock.calls[0][0]
-    expect(content).toContain('PR #7、#8')
+    expect(content).toContain('PR #7')
     expect(content).toContain(`目标分支 alpha 的 ${'b'.repeat(40)}`)
-    expect(content).toContain('再合并所选 PR')
+    expect(content).toContain('所选 PR 的 GitHub 合并结果')
   })
 
   it.each([false, true])(
