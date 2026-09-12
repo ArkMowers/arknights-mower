@@ -161,12 +161,19 @@ class BaseMixin:
 
     def detect_arrange_order(self, current_room):
         y = 70
-        hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        order = self._arrange_order_x(current_room)
+        left, right = min(order.values()), max(order.values()) + 5
+        # 只转换排序箭头覆盖区域，坐标与检测顺序仍由原房型映射决定。
+        region = self.recog.img[y : y + 13, left:right]
+        if region.size == 0:
+            return None
+        hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
-        for name, x in self._arrange_order_x(current_room).items():
-            if np.count_nonzero(mask[y : y + 3, x : x + 5]):
+        for name, x in order.items():
+            x -= left
+            if np.count_nonzero(mask[:3, x : x + 5]):
                 return (name, False)
-            if np.count_nonzero(mask[y + 10 : y + 13, x : x + 5]):
+            if np.count_nonzero(mask[10:13, x : x + 5]):
                 return (name, True)
 
     def switch_arrange_order(self, name, current_room, ascending=False):
@@ -613,49 +620,45 @@ class BaseMixin:
         return room
 
     def adjust_room(self, _room):
-        # 定义屏幕范围
-        screen_min_x = 0
-        screen_max_x = 1920
-
-        # 检查是否有点在屏幕范围内
-        any_point_in_view = any(screen_min_x <= p[0] <= screen_max_x for p in _room)
-
-        if any_point_in_view:
-            logger.debug(
-                f"At least one point of {_room} is within screen range [0, 1920]. No movement needed."
-            )
-            for i in range(4):
-                _room[i, 0] = max(_room[i, 0], 0)
-                _room[i, 0] = min(_room[i, 0], self.recog.w)
-                _room[i, 1] = max(_room[i, 1], 0)
-                _room[i, 1] = min(_room[i, 1], self.recog.h)
-            return _room
-
-        # 如果所有点都超出屏幕范围，则计算需要的移动距离
-        min_x = min(p[0] for p in _room)
-        max_x = max(p[0] for p in _room)
+        """只返回当前画面可点击的矩形；拖动后交由下一次尝试重新定位。"""
+        rectangle = np.array(_room, dtype=float, copy=True)
+        width, height = self.recog.w, self.recog.h
+        if (
+            rectangle.shape != (4, 2)
+            or not np.isfinite(rectangle).all()
+            or width <= 1
+            or height <= 1
+        ):
+            self.sleep(0.5)
+            return None
+        min_x, min_y = rectangle.min(axis=0)
+        max_x, max_y = rectangle.max(axis=0)
+        if min_x >= max_x or min_y >= max_y:
+            self.sleep(0.5)
+            return None
+        if max(min_x, 0) < min(max_x, width - 1) and max(min_y, 0) < min(
+            max_y, height - 1
+        ):
+            rectangle[:, 0] = np.clip(rectangle[:, 0], 0, width - 1)
+            rectangle[:, 1] = np.clip(rectangle[:, 1], 0, height - 1)
+            return rectangle
 
         dx = 0
-        start = (960, 540)
-        if min_x < screen_min_x:
-            # 左边超出，向右移动
-            dx = screen_min_x - min_x
-            logger.debug(f"Moving right by {dx} to bring room into view.")
-        elif max_x > screen_max_x:
-            # 右边超出，向左移动
-            dx = screen_max_x - max_x
-            logger.debug(f"Moving left by {-dx} to bring room into view.")
-
-        # 如果需要移动，则移动视图
-        if dx != 0:
-            movement = (dx, 0)  # 仅水平移动
-            self.swipe_noinertia(start, movement, interval=0.5)
-            # 更新 _room 的所有点位置
-            for i in range(len(_room)):
-                _room[i][0] += dx
-
-        # 返回修正后的 _room
-        return _room
+        if max_x <= 0:
+            dx = -min_x
+        elif min_x >= width - 1:
+            dx = width - 1 - max_x
+        # 水平无惯性拖动会先向下偏移40像素，整条路径都应留在屏内。
+        if dx and height > 40:
+            start = (width // 2, min(height // 2, height - 41))
+            end_x = int(np.clip(start[0] + dx, 0, width - 1))
+            if end_x != start[0]:
+                logger.debug("房间在屏外，拖动地图后重新识别实际位置")
+                self.swipe_noinertia(start, (end_x - start[0], 0), interval=0.5)
+                return None
+        # 纵向不可见或没有有效水平路径时，不把边缘线当成房间点击。
+        self.sleep(0.5)
+        return None
 
     def enter_room(self, room):
         """从基建首页进入房间"""
@@ -667,9 +670,11 @@ class BaseMixin:
                 elif pos := self.find("control_central"):
                     _room = segment.base(self.recog.img, pos)[room]
                     logger.debug(
-                        f"进入房间 {room}，第{enter_times + 1}轮第{retry_times + 1}次点击"
+                        f"进入房间 {room}，第{enter_times + 1}轮第{retry_times + 1}次尝试"
                     )
-                    self.tap(self.adjust_room(_room))
+                    visible_room = self.adjust_room(_room)
+                    if visible_room is not None:
+                        self.tap(visible_room)
                 elif self.detect_room() == room:
                     return
                 else:

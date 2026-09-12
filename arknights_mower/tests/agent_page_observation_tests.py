@@ -9,7 +9,9 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_mixin  # noqa: E402
 from arknights_mower.solvers.base_mixin import BaseMixin  # noqa: E402
+from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
+from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
 
 def page(names=("砾", "苍苔", "杜林", "芬"), offset=0):
@@ -192,6 +194,60 @@ def test_observation_copies_page_coordinates(monkeypatch):
     assert (
         observed.consume(solver.recog, full_scan=True, train=False)[0][1][0][0] == 630
     )
+
+
+@pytest.mark.parametrize("interval", [0, -0.1])
+def test_real_swipe_without_wait_invalidates_seed_without_capture(
+    monkeypatch, interval
+):
+    solver = solver_for(monkeypatch, [page()] * 3)
+    observed = observe(solver)
+    solver.device = MagicMock()
+    monkeypatch.setattr(config, "stop_mower", MagicMock(is_set=lambda: False))
+    solver.sleep.reset_mock()
+
+    BaseSolver.swipe_noinertia(solver, (650, 540), (500, 0), interval=interval)
+
+    solver.device.swipe_ext.assert_called_once()
+    solver.sleep.assert_not_called()
+    assert solver.recog._img is None
+    assert solver.recog.captures == 2
+    assert observed.consume(solver.recog, full_scan=True, train=False) is None
+    solver.recog.img
+    assert solver.recog.captures == 3
+
+
+def test_real_swipe_stop_before_input_does_not_capture_or_wait(monkeypatch):
+    solver = solver_for(monkeypatch, [page()] * 2)
+    observe(solver)
+    image = solver.recog._img
+    solver.device = MagicMock()
+    monkeypatch.setattr(config, "stop_mower", MagicMock(is_set=lambda: True))
+    solver.sleep.reset_mock()
+
+    with pytest.raises(MowerExit):
+        BaseSolver.swipe_noinertia(solver, (650, 540), (500, 0), interval=0)
+
+    solver.device.swipe_ext.assert_not_called()
+    solver.sleep.assert_not_called()
+    assert solver.recog._img is image
+    assert solver.recog.captures == 2
+
+
+def test_real_swipe_propagates_input_stop_without_wait(monkeypatch):
+    solver = solver_for(monkeypatch, [page()] * 2)
+    observe(solver)
+    solver.device = MagicMock()
+    solver.device.swipe_ext.side_effect = MowerExit
+    monkeypatch.setattr(config, "stop_mower", MagicMock(is_set=lambda: False))
+    solver.sleep.reset_mock()
+
+    with pytest.raises(MowerExit):
+        BaseSolver.swipe_noinertia(solver, (650, 540), (500, 0), interval=0)
+
+    solver.device.swipe_ext.assert_called_once()
+    solver.sleep.assert_not_called()
+    assert solver.recog.captures == 2
 
 
 def test_empty_verification_still_consumes_observation(monkeypatch):

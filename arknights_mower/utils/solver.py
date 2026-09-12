@@ -366,6 +366,8 @@ class BaseSolver:
         self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:
             self.sleep(interval)
+        else:
+            self.recog.update()
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""
