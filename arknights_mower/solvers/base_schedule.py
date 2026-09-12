@@ -3556,6 +3556,28 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.reset_room_time(room)
         raise Exception("未成功进入房间")
 
+    def scroll_room_operators(self, *, bottom):
+        """滚动房间详情名单；弹窗或滚动不生效时交回原有房间重试。"""
+        point = (1800, 930 if bottom else 138)
+        direction = -1 if bottom else 1
+        self.recog.update()
+        for attempt in range(7):
+            if self.find("confirm") or self.find("double_confirm/main"):
+                raise RecognizeError("读取房间名单时出现确认弹窗，返回场景导航处理")
+            if not self.find("room_detail"):
+                raise RecognizeError("读取房间名单时已离开房间详情，重新定位")
+            if self.get_color(point)[0] <= 51:
+                return
+            if attempt == 6:
+                break
+            self.swipe(
+                (self.recog.w * 0.8, self.recog.h * 0.5),
+                (0, direction * self.recog.h * 0.45),
+                duration=500,
+                interval=1,
+            )
+        raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
+
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
@@ -3584,13 +3606,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             length = len(self.op_data.plan[room])
         if length > 3:
-            while self.get_color((1800, 138))[0] > 51:
-                self.swipe(
-                    (self.recog.w * 0.8, self.recog.h * 0.5),
-                    (0, self.recog.h * 0.45),
-                    duration=500,
-                    interval=1,
-                )
+            self.scroll_room_operators(bottom=False)
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
         name_p = [tuple(zip(name_x, y)) for y in name_y]
@@ -3605,13 +3621,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                while self.get_color((1800, 930))[0] > 51:
-                    self.swipe(
-                        (self.recog.w * 0.8, self.recog.h * 0.5),
-                        (0, -self.recog.h * 0.45),
-                        duration=500,
-                        interval=1,
-                    )
+                self.scroll_room_operators(bottom=True)
                 swiped = True
             data = {}
             if self.find("infra_no_operator", scope=name_p[i]):
