@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 from threading import RLock
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
+from zlib import error as ZlibError
 
 import yaml
 from yamlcore import CoreLoader
@@ -24,43 +25,61 @@ from arknights_mower.utils.workshop_config import workshop_lock
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
-PRESERVED_FILES = {"network.json", "gui.yml", "state.json"}
+IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "state.json"}
 
 
-def _local_files():
+class LocalConfigError(ValueError):
+    """The destination directory cannot be backed up safely."""
+
+
+EXPORT_EXCLUDED_FILES = {"state.json"}
+
+
+def _local_snapshot():
+    """Read originals and index file/directory names with one directory walk."""
     root = config.conf_path.parent
-    files = {}
+    files, names = {}, {}
+    total = 0
     if root.is_symlink():
-        raise ValueError("配置目录不能是符号链接")
+        raise LocalConfigError("本机 config 目录是符号链接，请改用普通目录后重试")
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
-            raise ValueError("配置目录包含符号链接")
-        if path.is_file():
-            files[path.relative_to(root).as_posix()] = path
-    return files
+            raise LocalConfigError("本机 config 目录包含符号链接，请移除链接后重试")
+        name = path.relative_to(root).as_posix()
+        names[name.casefold()] = name
+        if not path.is_file() or name.casefold() in EXPORT_EXCLUDED_FILES:
+            continue
+        if len(files) >= MAX_ARCHIVE_ENTRIES:
+            raise LocalConfigError("本机配置文件数量超过 1024 个，请整理后重试")
+        with path.open("rb") as stream:
+            content = stream.read(MAX_BACKUP_BYTES - total + 1)
+        total += len(content)
+        if total > MAX_BACKUP_BYTES:
+            raise LocalConfigError("本机配置内容超过 16 MB，无法生成备份")
+        files[name] = content
+    return files, names
+
+
+def _archive_bytes(files):
+    output = BytesIO()
+    with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("config/", b"")
+        for name, content in files.items():
+            archive.writestr(f"config/{name}", content)
+    raw = output.getvalue()
+    if len(raw) > MAX_BACKUP_BYTES:
+        raise LocalConfigError("本机配置生成的 ZIP 超过 16 MB，无法导出或生成恢复备份")
+    return raw
+
+
+def _write_bytes(path, content):
+    config.atomic_write(path, lambda stream: stream.buffer.write(content))
 
 
 def export_archive():
     with backup_lock, workshop_lock:
-        files = _local_files()
-        if len(files) > MAX_ARCHIVE_ENTRIES:
-            raise ValueError("配置文件数量过多")
-        output = BytesIO()
-        total = 0
-        with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
-            archive.writestr("config/", b"")
-            for name, path in files.items():
-                if name.casefold() == "state.json":
-                    continue
-                content = path.read_bytes()
-                total += len(content)
-                if total > MAX_BACKUP_BYTES:
-                    raise ValueError("配置内容不能超过 16 MB")
-                archive.writestr(f"config/{name}", content)
-        raw = output.getvalue()
-        if len(raw) > MAX_BACKUP_BYTES:
-            raise ValueError("备份文件不能超过 16 MB")
-        return raw
+        files, _ = _local_snapshot()
+        return _archive_bytes(files)
 
 
 def read_archive(raw):
@@ -70,7 +89,9 @@ def read_archive(raw):
     try:
         with ZipFile(BytesIO(raw)) as archive:
             infos = archive.infolist()
-            if len(infos) > MAX_ARCHIVE_ENTRIES + 1:
+            if len(infos) > MAX_ARCHIVE_ENTRIES + sum(
+                info.filename == "config/" for info in infos
+            ):
                 raise ValueError("压缩包文件数量过多")
             if sum(info.file_size for info in infos) > MAX_BACKUP_BYTES:
                 raise ValueError("解压后的配置不能超过 16 MB")
@@ -99,7 +120,9 @@ def read_archive(raw):
                         for part in parts
                     )
                     or parts[0] != "config"
-                    or (len(parts) > 2 and parts[1].casefold() in PRESERVED_FILES)
+                    or (
+                        len(parts) > 2 and parts[1].casefold() in IMPORT_PRESERVED_FILES
+                    )
                     or info.flag_bits & 1
                     or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR))
                     or "\x00" in info.orig_filename
@@ -126,7 +149,7 @@ def read_archive(raw):
                 ):
                     raise ValueError("压缩包中的文件与目录冲突")
             return files
-    except (BadZipFile, RuntimeError, NotImplementedError) as exc:
+    except (BadZipFile, RuntimeError, NotImplementedError, ZlibError) as exc:
         raise ValueError("请选择包含 config 文件夹的 ZIP 备份") from exc
 
 
@@ -211,12 +234,8 @@ def import_configuration(raw):
         files = read_archive(raw)
         data, conf, plan = _validate_configuration(files)
         root = config.conf_path.parent
-        local = _local_files()
-        # Reject collisions with destination directories/symlinks before backup or write.
-        local_names = {}
-        for path in root.rglob("*"):
-            name = path.relative_to(root).as_posix()
-            local_names[name.casefold()] = name
+        previous, local_names = _local_snapshot()
+        # Reject destination path collisions before backup or write.
         for name in files:
             for part in (PurePosixPath(name), *PurePosixPath(name).parents):
                 normalized = part.as_posix()
@@ -228,13 +247,11 @@ def import_configuration(raw):
                 parent.is_file() for parent in target.parents if parent != root
             ):
                 raise ValueError("配置文件与现有目录结构冲突")
-        previous = {name: path.read_bytes() for name, path in local.items()}
         recovery = (
             get_path("@app/config-backups")
             / f"before-import-{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex[:8]}.zip"
         )
-        recovery_bytes = export_archive()
-        config.atomic_write(recovery, lambda f: f.buffer.write(recovery_bytes))
+        _write_bytes(recovery, _archive_bytes(previous))
         contents = dict(files)
         contents["conf.yml"] = yaml.safe_dump(
             data, allow_unicode=True, sort_keys=False
@@ -254,15 +271,13 @@ def import_configuration(raw):
                         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
                     ).fetchone():
                         conn.execute("DELETE FROM saved_state")
-                for name in sorted(set(local) | set(contents)):
-                    if name.casefold() in PRESERVED_FILES:
+                for name in sorted(set(previous) | set(contents)):
+                    if name.casefold() in IMPORT_PRESERVED_FILES:
                         continue
                     target = root / name
                     if name in contents:
                         content = contents[name]
-                        config.atomic_write(
-                            target, lambda f, content=content: f.buffer.write(content)
-                        )
+                        _write_bytes(target, content)
                     else:
                         target.unlink()
                     written.append(name)
@@ -275,9 +290,7 @@ def import_configuration(raw):
                     target = root / name
                     if name in previous:
                         content = previous[name]
-                        config.atomic_write(
-                            target, lambda f, content=content: f.buffer.write(content)
-                        )
+                        _write_bytes(target, content)
                     else:
                         target.unlink(missing_ok=True)
                 raise

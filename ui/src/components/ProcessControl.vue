@@ -1,11 +1,14 @@
 <script setup>
-import { inject, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { inject, onMounted, onUnmounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { createSaveCoordinator } from '@/utils/configPersistence'
 
 const axios = inject('axios')
 const config = useConfigStore()
 const plan = usePlanStore()
+const saves = createSaveCoordinator(config, plan)
+const savesPaused = saves.paused
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/process-control`
 const info = ref(null)
 const busy = ref(false)
@@ -51,6 +54,7 @@ async function poll(pending) {
       return
     }
     if (pending.action === 'stop') {
+      busy.value = false
       message.value = '当前实例连接已关闭，可关闭此页面'
       sessionStorage.removeItem(pendingKey)
       return
@@ -61,20 +65,24 @@ async function poll(pending) {
 }
 
 async function submit(action) {
+  if (busy.value || savesPaused.value) return
+  let mayHaveSubmitted = false
   busy.value = true
   failed.value = false
   try {
-    // Drain edits already scheduled by autosave. A restart must not write a
-    // stale browser snapshot over configuration restored directly on disk.
-    await nextTick()
-    await config.flush_pending_saves()
-    await plan.flush_pending_saves()
+    await saves.pauseAndDrain()
+    // Once submitted, a lost response does not prove the restart was rejected.
+    // Keep autosave paused until a fresh page reads the destination's config.
+    mayHaveSubmitted = true
     const { data } = await axios.post(
       `${base}/action`,
       { action },
       { headers: { 'X-Mower-Control': '1' } }
     )
-    if (!data.ok) throw new Error(data.message)
+    if (!data.ok) {
+      mayHaveSubmitted = false
+      throw new Error(data.message)
+    }
     const pending = { id: data.id, action, startedAt: Date.now() }
     sessionStorage.setItem(pendingKey, JSON.stringify(pending))
     message.value = data.message
@@ -83,21 +91,33 @@ async function submit(action) {
     busy.value = false
     failed.value = true
     message.value = errorMessage(error)
+    if (!mayHaveSubmitted || (error.response?.status >= 400 && error.response.status < 500)) {
+      saves.resume()
+    }
   }
+}
+
+function reload() {
+  window.location.reload()
 }
 
 onMounted(async () => {
   try {
+    const pending = JSON.parse(sessionStorage.getItem(pendingKey) || 'null')
+    if (pending) {
+      // Re-entering Settings attaches to the same persisted operation, even
+      // while the old server is offline and /info is temporarily unavailable.
+      saves.pause({ pendingOperation: true })
+      busy.value = true
+      await poll(pending)
+      return
+    }
     const { data } = await axios.get(`${base}/info`)
     if (!data.ok) throw new Error(data.message)
     info.value = data
     if (data.message) message.value = data.message
-    const pending = JSON.parse(sessionStorage.getItem(pendingKey) || 'null')
-    if (pending) {
-      busy.value = true
-      await poll(pending)
-    }
   } catch (error) {
+    busy.value = false
     failed.value = true
     message.value = errorMessage(error)
   }
@@ -122,7 +142,9 @@ onUnmounted(() => {
           @positive-click="submit('restart')"
         >
           <template #trigger>
-            <n-button size="small" :disabled="busy || !info?.supported">重启 Mower 进程</n-button>
+            <n-button size="small" :disabled="busy || savesPaused || !info?.supported"
+              >重启 Mower 进程</n-button
+            >
           </template>
           重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
         </n-popconfirm>
@@ -131,13 +153,21 @@ onUnmounted(() => {
           @positive-click="submit('stop')"
         >
           <template #trigger>
-            <n-button size="small" type="error" secondary :disabled="busy || !info?.supported"
+            <n-button
+              size="small"
+              type="error"
+              secondary
+              :disabled="busy || savesPaused || !info?.supported"
               >结束 Mower 进程</n-button
             >
           </template>
           正常停止当前任务并结束此实例，网页连接将断开。
         </n-popconfirm>
       </n-space>
+      <n-alert v-if="savesPaused" type="info">
+        进程操作期间已暂停配置自动保存。操作结束或等待失败后，请刷新页面重新读取配置再编辑。
+        <n-button v-if="!busy" size="small" @click="reload">刷新页面</n-button>
+      </n-alert>
       <n-alert v-if="message" :type="failed ? 'error' : 'info'" aria-live="polite">{{
         message
       }}</n-alert>

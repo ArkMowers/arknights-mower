@@ -1,12 +1,14 @@
 <script setup>
-import { inject, nextTick, ref } from 'vue'
+import { inject, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { createSaveCoordinator } from '@/utils/configPersistence'
 import { consumeImportResult, reloadImportedConfiguration } from '@/utils/configBackup'
 
 const axios = inject('axios')
 const configStore = useConfigStore()
 const planStore = usePlanStore()
+const saves = createSaveCoordinator(configStore, planStore)
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/config-backup`
 const input = ref(null)
 const busy = ref(false)
@@ -17,31 +19,24 @@ const showConfirm = ref(false)
 const result = ref(consumeImportResult())
 const pendingReload = ref(false)
 
-function message(err) {
-  return err.response?.data?.message || err.message || '操作失败，请重试'
-}
-
-async function flushSettings(pause = false) {
-  await nextTick()
-  if (pause) {
-    configStore.autosave_paused = true
-    planStore.autosave_paused = true
-    await nextTick()
+async function message(err) {
+  // Axios keeps JSON error responses as Blob when downloading a ZIP.
+  if (err.response?.data instanceof Blob) {
+    try {
+      const body = JSON.parse(await err.response.data.text())
+      if (body.message) return body.message
+    } catch {
+      /* Fall back to the transport error. */
+    }
   }
-  await configStore.flush_pending_saves()
-  await planStore.flush_pending_saves()
-}
-
-function resumeSaving() {
-  configStore.autosave_paused = false
-  planStore.autosave_paused = false
+  return err.response?.data?.message || err.message || '操作失败，请重试'
 }
 
 async function exportConfig() {
   busy.value = true
   error.value = ''
   try {
-    await flushSettings()
+    await saves.drain()
     const { data } = await axios.get(`${base}/export`, { responseType: 'blob' })
     const url = URL.createObjectURL(data)
     const link = document.createElement('a')
@@ -52,7 +47,7 @@ async function exportConfig() {
     link.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (err) {
-    error.value = message(err)
+    error.value = await message(err)
   } finally {
     busy.value = false
   }
@@ -72,7 +67,7 @@ async function selectFile(event) {
     filename.value = file.name
     showConfirm.value = true
   } catch (err) {
-    error.value = message(err)
+    error.value = await message(err)
   } finally {
     busy.value = false
   }
@@ -82,7 +77,7 @@ async function importConfig() {
   busy.value = true
   error.value = ''
   try {
-    await flushSettings(true)
+    await saves.pauseAndDrain()
     const form = new FormData()
     form.append('backup', selected.value)
     const { data } = await axios.post(`${base}/import`, form, {
@@ -96,10 +91,10 @@ async function importConfig() {
     reload()
   } catch (err) {
     error.value = pendingReload.value
-      ? `配置已导入，但自动刷新未完成，请重试刷新页面：${message(err)}`
-      : message(err)
+      ? `配置已导入，但自动刷新未完成，请重试刷新页面：${await message(err)}`
+      : await message(err)
     showConfirm.value = false
-    if (!pendingReload.value) resumeSaving()
+    if (!pendingReload.value) saves.resume()
   } finally {
     busy.value = false
   }

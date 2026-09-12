@@ -152,7 +152,7 @@ def test_preserves_access_gui_and_state(storage, local_exists, in_archive):
     config.conf.webview.token = "local-token"
     config.conf.webview.tray = False
     config.save_conf()
-    for name in backup.PRESERVED_FILES:
+    for name in backup.IMPORT_PRESERVED_FILES:
         if local_exists:
             (config.conf_path.parent / name).write_bytes(b"local bytes")
     files = {
@@ -160,14 +160,14 @@ def test_preserves_access_gui_and_state(storage, local_exists, in_archive):
     }
     if in_archive:
         files.update(
-            {name: b"ignored invalid bytes" for name in backup.PRESERVED_FILES}
+            {name: b"ignored invalid bytes" for name in backup.IMPORT_PRESERVED_FILES}
         )
     backup.import_configuration(incoming(**files))
     config.load_conf()
     assert config.conf.webview.port == 18080
     assert config.conf.webview.token == "local-token"
     assert config.conf.webview.tray is False
-    for name in backup.PRESERVED_FILES:
+    for name in backup.IMPORT_PRESERVED_FILES:
         path = config.conf_path.parent / name
         assert path.exists() == local_exists
         if local_exists:
@@ -407,3 +407,93 @@ def test_plan_entry_keeps_runtime_plan_on_write_failure(
     assert "文件写入失败" in result.get_data(as_text=True)
     assert config.plan is previous
     assert config.plan_path.read_bytes() == previous_bytes
+
+
+@pytest.mark.parametrize("endpoint", ["/config-backup/import", "/import"])
+def test_damaged_compression_reports_import_error_without_writes(
+    client, plan_client, monkeypatch, endpoint
+):
+    from zlib import error as ZlibError
+
+    raw = backup.export_archive()
+    previous = backup._local_snapshot()[0]
+
+    def damaged(*args, **kwargs):
+        raise ZlibError("damaged deflate stream")
+
+    monkeypatch.setattr(ZipFile, "read", damaged)
+    if endpoint == "/import":
+        response = post_plan_file(plan_client, raw, "backup.zip", "application/zip")
+        assert response.status_code == 200
+        assert "排班表导入失败" in response.get_data(as_text=True)
+    else:
+        response = client.post(
+            endpoint, data=raw, headers={"token": "old-token", "X-Mower-Settings": "1"}
+        )
+        assert response.status_code == 400
+        assert "备份格式不正确" in response.json["message"]
+    assert backup._local_snapshot()[0] == previous
+    assert not config.conf_path.parent.parent.joinpath("config-backups").exists()
+
+
+def test_incomplete_plan_image_reports_import_error_without_clearing_plan(
+    plan_client, monkeypatch
+):
+    from zlib import error as ZlibError
+
+    from PIL import Image
+
+    from arknights_mower.utils import qrcode
+
+    image = BytesIO()
+    Image.new("RGB", (1, 1), "white").save(image, format="PNG")
+    previous = config.plan_path.read_bytes()
+    plan = config.plan
+
+    def damaged(*args):
+        raise ZlibError("incomplete compressed QR data")
+
+    monkeypatch.setattr(qrcode, "decode", damaged)
+    response = post_plan_file(plan_client, image.getvalue(), "plan.png", "image/png")
+    assert response.status_code == 200
+    assert "排班表导入失败" in response.get_data(as_text=True)
+    assert config.plan is plan
+    assert config.plan_path.read_bytes() == previous
+
+
+def test_local_directory_failure_is_not_reported_as_invalid_backup(client, monkeypatch):
+    raw = backup.export_archive()
+    previous = config.conf_path.read_bytes()
+
+    def linked_directory():
+        raise backup.LocalConfigError("本机 config 目录包含符号链接，请移除链接后重试")
+
+    monkeypatch.setattr(backup, "_local_snapshot", linked_directory)
+    headers = {"token": "old-token", "X-Mower-Settings": "1"}
+    exported = client.get("/config-backup/export", headers=headers)
+    imported = client.post("/config-backup/import", data=raw, headers=headers)
+    for response in (exported, imported):
+        assert response.status_code == 409
+        assert "本机 config" in response.json["message"]
+        assert "符号链接" in response.json["message"]
+        assert "备份格式不正确" not in response.json["message"]
+    assert config.conf_path.read_bytes() == previous
+
+
+def test_import_preserves_running_access_settings_when_disk_was_replaced(storage):
+    config.conf.webview.port = 18080
+    config.conf.webview.token = "running-token"
+    config.conf.webview.tray = False
+    config.conf_path.write_text(
+        "webview: {port: 19090, token: disk-token, tray: true}\n", encoding="utf-8"
+    )
+    raw = incoming(
+        **{
+            "conf.yml": "account: imported\nwebview: {port: 20000, token: archive-token, tray: true}\n"
+        }
+    )
+    backup.import_configuration(raw)
+    config.load_conf()
+    assert config.conf.webview.port == 18080
+    assert config.conf.webview.token == "running-token"
+    assert config.conf.webview.tray is False

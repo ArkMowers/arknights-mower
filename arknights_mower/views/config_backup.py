@@ -10,6 +10,7 @@ from flask import Blueprint, abort, current_app, request, send_file
 
 from arknights_mower.utils.config_backup import (
     MAX_BACKUP_BYTES,
+    LocalConfigError,
     backup_lock,
     export_archive,
     import_configuration,
@@ -42,8 +43,8 @@ def authorize():
 def export_backup():
     try:
         raw = export_archive()
-    except ValueError as exc:
-        return {"ok": False, "message": str(exc)}, 400
+    except LocalConfigError as exc:
+        return {"ok": False, "message": str(exc)}, 409
     result = send_file(
         BytesIO(raw),
         mimetype="application/zip",
@@ -74,6 +75,8 @@ def import_backup():
             if len(raw) > MAX_BACKUP_BYTES:
                 abort(413)
             recovery = import_configuration(raw)
+        except LocalConfigError as exc:
+            return {"ok": False, "message": str(exc)}, 409
         except (ValueError, TypeError, RecursionError, yaml.YAMLError):
             return {
                 "ok": False,

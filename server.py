@@ -10,6 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from threading import RLock, Thread
 from uuid import uuid4
+from zlib import error as ZlibError
 
 from flask import Flask, abort, g, request, send_file, send_from_directory
 from flask_cors import CORS
@@ -1057,6 +1058,12 @@ def open_folder_dialog():
     return conn_send("folder")
 
 
+def _upload_matches(upload, extension, mimetype):
+    return upload.mimetype == mimetype or (upload.filename or "").lower().endswith(
+        extension
+    )
+
+
 @app.route("/import", methods=["POST"])
 @require_token
 def import_from_image():
@@ -1064,9 +1071,7 @@ def import_from_image():
     try:
         from arknights_mower.utils.config.plan import parse_plan_document
 
-        if img.mimetype == "application/zip" or (img.filename or "").lower().endswith(
-            ".zip"
-        ):
+        if _upload_matches(img, ".zip", "application/zip"):
             from arknights_mower.utils.config_backup import (
                 MAX_BACKUP_BYTES,
                 plan_from_archive,
@@ -1076,9 +1081,7 @@ def import_from_image():
             imported_plan = plan_from_archive(
                 read_archive(img.stream.read(MAX_BACKUP_BYTES + 1))
             )
-        elif img.mimetype == "application/json" or (
-            img.filename or ""
-        ).lower().endswith(".json"):
+        elif _upload_matches(img, ".json", "application/json"):
             imported_plan = parse_plan_document(json.load(img))
         else:
             from PIL import Image
@@ -1087,7 +1090,7 @@ def import_from_image():
 
             img = Image.open(img)
             imported_plan = parse_plan_document(qrcode.decode(img))
-    except (ValueError, TypeError, RecursionError, OSError):
+    except (ValueError, TypeError, RecursionError, OSError, ZlibError):
         return "排班表导入失败：请选择有效的排班 JSON、排班图片或包含 config 文件夹的 ZIP 备份"
     previous_plan = config.plan
     try:
