@@ -26,7 +26,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+from arknights_mower.data import agent_list
 from arknights_mower.utils import config
+from arknights_mower.utils.image import cropimg, rgb2gray, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -34,6 +36,7 @@ from arknights_mower.utils.skill_label import (
     _resolve_operator_char_id,
     format_skill_label,
     is_placeholder_skill_name,
+    normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
 )
@@ -304,6 +307,28 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
         logger.debug(f"面板 OCR 失败: {e}")
         return RoomPanel()
     operator_name, skill_name = _parse_panel_text(text)
+    if operator_name and operator_name not in agent_list:
+        # Sparse white glyphs can disappear in the recognizer even with a high
+        # confidence score (e.g. 八 in 八幡海铃). Retry the same pixels with the
+        # background removed; never infer the occupant from the requested plan.
+        try:
+            region = cropimg(img, PANEL_REGION)
+            gray = rgb2gray(region) if region.ndim == 3 else region
+            retry_text = solver.read_screen(thres2(gray, 180), type="text")
+            retry_name, retry_skill = _parse_panel_text(retry_text)
+            if (
+                retry_name in agent_list
+                and skill_name
+                and normalize_skill_text(retry_skill)
+                == normalize_skill_text(skill_name)
+            ):
+                logger.info(
+                    f"训练室面板二次识别纠正姓名：{operator_name} → {retry_name}，"
+                    f"技能：{retry_skill}"
+                )
+                operator_name, skill_name = retry_name, retry_skill
+        except Exception as e:
+            logger.debug(f"训练室面板二次识别失败: {e}")
     return RoomPanel(operator_name=operator_name, skill_name=skill_name)
 
 
