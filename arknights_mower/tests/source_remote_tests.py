@@ -85,12 +85,6 @@ class SourceRemoteTests(unittest.TestCase):
             return [self.target]
         if path.startswith("/contents/"):
             return {"type": "file"}
-        if path == "/git/commits/" + "d" * 40:
-            return {
-                **self.target,
-                "sha": "d" * 40,
-                "parents": [{"sha": "b" * 40}, {"sha": "a" * 40}],
-            }
         return self.target
 
     def test_url_formats_and_local_remote_choices(self):
@@ -278,17 +272,17 @@ class SourceRemoteTests(unittest.TestCase):
             [call.args[0] for call in run.call_args_list],
         )
         # Exercise GitHub's PR ref form and a subsequent head change locally.
-        self.command("update-ref", "refs/pull/7/merge", target, cwd=fork)
-        worker.job["ref"] = "refs/pull/7/merge"
+        self.command("update-ref", "refs/pull/7/head", target, cwd=fork)
+        worker.job["ref"] = "refs/pull/7/head"
         worker.prepare_source()
         self.assertEqual(self.command("rev-parse", "FETCH_HEAD"), target)
-        self.command("update-ref", "refs/pull/7/merge", old, cwd=fork)
+        self.command("update-ref", "refs/pull/7/head", old, cwd=fork)
         with self.assertRaisesRegex(ValueError, "远端版本已改变"):
             worker.prepare_source()
         self.assertEqual(self.command("rev-parse", "HEAD"), old)
         self.assertFalse(worker.stopped)
 
-    def test_open_pr_selection_pins_merge_and_preserves_default_source(self):
+    def test_open_pr_selection_pins_head_and_preserves_default_source(self):
         previous = update.get_settings()
         with patch.object(update, "github", side_effect=self.github):
             listed = update.source_pulls("personal")
@@ -297,8 +291,8 @@ class SourceRemoteTests(unittest.TestCase):
         plan = update._checks[checked["check_id"]]
         self.assertEqual(plan["head_commit"], "a" * 40)
         self.assertEqual(plan["base_commit"], "b" * 40)
-        self.assertEqual(plan["commit"], "d" * 40)
-        self.assertEqual(plan["ref"], "refs/pull/7/merge")
+        self.assertEqual(plan["commit"], "a" * 40)
+        self.assertEqual(plan["ref"], "refs/pull/7/head")
         self.assertEqual(plan["source_url"], "git@github.com:personal/mower.git")
         self.assertEqual(plan["operation"], "source-pr")
         self.assertEqual(update.get_settings(), previous)

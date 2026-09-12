@@ -244,8 +244,8 @@ class SourceTransactionTests(unittest.TestCase):
                     "operation": "source-version" if downgrade else "update",
                 }
                 if selected_source:
-                    # Simulate GitHub generating a test merge in its own repo.
                     # The PR forked before the latest target-branch change.
+                    # No GitHub-generated merge ref is available.
                     remote = directory / "origin.git"
                     head = command(
                         git,
@@ -264,31 +264,7 @@ class SourceTransactionTests(unittest.TestCase):
                         cwd=remote,
                     )
                     base = target_commit
-                    target_commit = command(
-                        git,
-                        "-c",
-                        "user.name=Fixture",
-                        "-c",
-                        "user.email=fixture@example.invalid",
-                        "-c",
-                        "commit.gpgsign=false",
-                        "commit-tree",
-                        base + "^{tree}",
-                        "-p",
-                        base,
-                        "-p",
-                        head,
-                        "-m",
-                        "GitHub test merge",
-                        cwd=remote,
-                    )
-                    command(
-                        git,
-                        "update-ref",
-                        "refs/pull/7/merge",
-                        target_commit,
-                        cwd=remote,
-                    )
+                    command(git, "update-ref", "refs/pull/7/head", head, cwd=remote)
                     command(
                         git,
                         "remote",
@@ -298,12 +274,13 @@ class SourceTransactionTests(unittest.TestCase):
                     )
                     job.update(
                         source_url=remote.as_uri(),
-                        ref="refs/pull/7/merge",
+                        ref="refs/pull/7/head",
+                        source_branch="alpha",
                         operation="source-pr",
                         source_pr=7,
                         base_commit=base,
                         head_commit=head,
-                        commit=target_commit,
+                        commit=head,
                     )
                 runtime.write_json(work / "job.json", job)
                 worker = Worker(work / "job.json")
@@ -388,7 +365,15 @@ class SourceTransactionTests(unittest.TestCase):
                     self.assertFalse(
                         any(backup.exists() for _, backup in worker.backups)
                     )
-                    self.assertEqual(command(git, "rev-parse", "HEAD"), target_commit)
+                    self.assertEqual(
+                        command(git, "rev-parse", "HEAD"),
+                        worker.job["commit"] if selected_source else target_commit,
+                    )
+                    if selected_source:
+                        self.assertEqual(
+                            command(git, "show", "-s", "--format=%P", "HEAD").split(),
+                            [base, head],
+                        )
                     self.assertEqual((ui / "dist/index.html").read_text(), "new")
                     self.assertTrue(
                         all(row["fixture_version"] == target_version for row in records)

@@ -105,7 +105,9 @@ describe('source version confirmation', () => {
     const { content } = dialogs.warning.mock.calls[0][0]
     expect(content).toContain('PR #7')
     expect(content).toContain(`目标分支 alpha 的 ${'b'.repeat(40)}`)
-    expect(content).toContain('所选 PR 的 GitHub 合并结果')
+    expect(content).toContain('合并所选 PR')
+    expect(content).toContain(`PR 提交为 ${'c'.repeat(40)}，合并成功后安装`)
+    expect(content).not.toContain('将切换到提交')
   })
 
   it.each([false, true])(
