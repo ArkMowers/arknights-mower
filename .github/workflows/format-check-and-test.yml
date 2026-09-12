@@ -56,6 +56,7 @@ jobs:
               - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
               - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,sync_android_release}.py'
               - 'scripts/tests/**'
+              - 'arknights_mower/tests/android*_tests.py'
               - '.github/{workflows,actions}/**'
             frontend:
               # Shared components and build inputs can affect update/drop flows.
@@ -147,9 +148,6 @@ jobs:
           ./venv/bin/pip install pytest
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
-      - name: Android host compatibility
-        # Android embeds Linux CPython; test its host contract without APK signing.
-        run: ./venv/bin/python3 -m unittest -v arknights_mower.tests.android_distribution_tests arknights_mower.tests.android_component_tests
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
         run: ./venv/bin/python3 -m pytest -v -o faulthandler_timeout=60
 
@@ -241,3 +239,47 @@ jobs:
             arknights_mower.tests.software_update_progress_tests \
             arknights_mower.tests.process_control_tests \
             arknights_mower.tests.software_update_transaction_tests
+
+  android-compatibility:
+    name: Android update compatibility (ARM64)
+    needs: changes
+    # Android embeds Linux ARM64 CPython; this checks the host contract, not an APK.
+    # Include frontend changes because this job builds the actual update archive.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && (needs.changes.outputs.update != 'false' || needs.changes.outputs.frontend != 'false') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      MOWER_DATA_DIR: ${{ github.workspace }}/.cache/android-tests
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install system libraries and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libzbar0 libgl1 libglib2.0-0
+          python -m pip install -r requirements.txt
+          python -c "import os, platform; from pathlib import Path; assert platform.machine() == 'aarch64'; Path(os.environ['MOWER_DATA_DIR']).mkdir(parents=True, exist_ok=True)"
+      - name: Test Android update routes, official MAA assets and packaging
+        run: |
+          python -m unittest -v \
+            arknights_mower.tests.android_distribution_tests \
+            arknights_mower.tests.android_component_tests \
+            scripts.tests.android_release_tests
+      - name: Build shared WebUI
+        working-directory: ui
+        run: npm ci && npm run build
+      - name: Package and validate Android update
+        run: |
+          python scripts/inject_version.py 0.0.0-alpha.0
+          python scripts/package_android.py 0.0.0-alpha.0
+          python scripts/check_android_package.py dist/arknights-mower_0.0.0-alpha.0_android_arm64.zip --version 0.0.0-alpha.0 --revision "$(git rev-parse HEAD)"

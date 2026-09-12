@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts.check_android_package import check
 from scripts.package_android import REQUIRED, package
 from scripts.sync_android_release import REPO, candidates, download, sync
 
@@ -183,3 +184,45 @@ class AndroidReleaseSyncTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AndroidArchiveValidationTests(unittest.TestCase):
+    def fixture(self, root, changes=None):
+        for name in REQUIRED:
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("payload")
+        (root / "arknights_mower/__init__.py").write_text('__version__ = "4.2.0"\n')
+        original = package(root, root / "out", "4.2.0", "a" * 40)
+        if not changes:
+            return original
+        edited = root / "edited.zip"
+        with zipfile.ZipFile(original) as source, zipfile.ZipFile(edited, "w") as dest:
+            files = {name: source.read(name) for name in source.namelist()}
+            files.update(changes)
+            for name, contents in files.items():
+                dest.writestr(name, contents)
+        return edited
+
+    def test_real_package_passes_validation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            check(self.fixture(Path(temp)), "4.2.0", "a" * 40)
+
+    def test_bad_payload_cannot_be_published(self):
+        cases = [
+            {"mower/CHANGELOG.md": " "},
+            {"mower/server.py": "def invalid("},
+            {"mower/arknights_mower/utils/git_revision": "b" * 40},
+            {"mower/arknights_mower/__init__.py": '__version__ = "4.2.1"'},
+            {"mower/mower_android/host.py": "payload"},
+            {"../outside": "payload"},
+            {"mower-android.json": "{}"},
+        ]
+        for changes in cases:
+            with (
+                self.subTest(changes=list(changes)),
+                tempfile.TemporaryDirectory() as temp,
+            ):
+                archive = self.fixture(Path(temp), changes)
+                with self.assertRaises((ValueError, SyntaxError)):
+                    check(archive, "4.2.0", "a" * 40)
