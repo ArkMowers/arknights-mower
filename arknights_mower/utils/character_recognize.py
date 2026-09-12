@@ -108,10 +108,16 @@ def operator_list(img, draw=False, full_scan=True):
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(im, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            # 空白或裁切卡片只保留位置，不阻断同页其他干员的识别。
+            return ""
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
+        if im.shape[0] > tpl.shape[0] or im.shape[1] > tpl.shape[1]:
+            # 异常轮廓不能截断后猜名字，也不能让模板赋值失败拖累整页。
+            return ""
         tpl[: im.shape[0], : im.shape[1]] = im
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
         return _match_name_template(False, tpl.shape, tpl.tobytes())

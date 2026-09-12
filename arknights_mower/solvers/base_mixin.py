@@ -587,6 +587,8 @@ class BaseMixin:
         """
         retry = 0
         open_threshold = 1650
+        poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
+        max_attempts = round(2.5 / poll_interval) + 1
         if profession:
             logger.info(f"打开 {profession} 筛选")
         else:
@@ -604,34 +606,27 @@ class BaseMixin:
             (confirm_btn := self.find("confirm_train")) is not None
             and confirm_btn[0][0] > open_threshold
         ):
-            if retry >= 6:
+            if retry >= max_attempts:
                 raise Exception("打开职业筛选失败")
-            if retry and self.low_frame_rate_mode:
-                self.sleep(0.5)
+            if retry:
+                self.sleep(poll_interval)
             else:
                 self.tap((1860, 60), interval=0.1)
             retry += 1
-        retry = 0
         # 点击一次ALL先
         self.tap(label_pos_map["ALL"], interval=0.1)
-        if self.low_frame_rate_mode:
-            # 等待刚刚点击的筛选生效，避免用切换前的高亮误判已恢复原职业。
-            self._wait_for_profession_filter(label_pos_map["ALL"])
-            if profession != "ALL":
-                self.tap(label_pos_map[profession], interval=0.1)
-                self._wait_for_profession_filter(label_pos_map[profession])
-            return
-        while self.get_color(label_pos_map[profession])[2] < 240:
-            logger.debug(f"配色为： {self.get_color(label_pos_map[profession])[2]}")
+        # 两种模式都先确认 ALL 已生效，不能用切换前的职业高亮提前返回。
+        self._wait_for_profession_filter(label_pos_map["ALL"])
+        if profession != "ALL":
             self.tap(label_pos_map[profession], interval=0.1)
-            retry += 1
-            if retry > 5:
-                raise Exception("打开职业筛选失败")
+            self._wait_for_profession_filter(label_pos_map[profession])
 
     def _wait_for_profession_filter(self, position):
-        for attempt in range(6):
+        # 普通设备收到反馈即继续；仅未生效时轮询，两种模式保留相同的等待预算。
+        poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
+        for attempt in range(round(2.5 / poll_interval) + 1):
             if attempt:
-                self.sleep(0.5)
+                self.sleep(poll_interval)
             if self.get_color(position)[2] >= 240:
                 return
         raise AgentSelectionNotReady("职业筛选尚未生效，返回房间重试")
@@ -640,6 +635,8 @@ class BaseMixin:
         """仅收起筛选侧栏，保留当前职业。"""
         retry = 0
         open_threshold = 1650
+        poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
+        max_attempts = round(2.5 / poll_interval) + 1
         while (
             (confirm_btn := self.find("confirm_blue")) is not None
             and confirm_btn[0][0] < open_threshold
@@ -647,10 +644,10 @@ class BaseMixin:
             (confirm_btn := self.find("confirm_train")) is not None
             and confirm_btn[0][0] < open_threshold
         ):
-            if retry >= 6:
+            if retry >= max_attempts:
                 raise Exception("关闭职业筛选失败")
-            if retry and self.low_frame_rate_mode:
-                self.sleep(0.5)
+            if retry:
+                self.sleep(poll_interval)
             else:
                 self.tap((1860, 60), interval=0.1)
             retry += 1
