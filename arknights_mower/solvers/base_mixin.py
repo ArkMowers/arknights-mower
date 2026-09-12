@@ -210,11 +210,12 @@ class BaseMixin:
                 else operator_list_train(self.recog.img)
             )
             actual = [name for name, _ in ret[: len(agent)]]
+            logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
             matches = actual == agent if ordered else sorted(actual) == sorted(agent)
             if matches and actual == previous:
                 return actual
             previous = actual if matches else None
-        logger.warning(f"干员名单未稳定：预期{agent}，实际{actual}")
+        logger.warning(f"等待后干员名单仍未通过校验：预期{agent}，最后读取{actual}")
         return None
 
     def verify_agent(

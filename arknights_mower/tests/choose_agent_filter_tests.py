@@ -49,6 +49,14 @@ def test_already_selected_mixed_roster_still_reorders(monkeypatch):
     solver.scan_agent.assert_not_called()
 
 
+def test_correct_order_does_not_clear_and_reselect(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+    assert selected == RESIDENTS
+    solver.tap.assert_not_called()
+    solver.scan_agent.assert_not_called()
+
+
 def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
     solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
     original_order = solver.switch_arrange_order.side_effect

@@ -3459,7 +3459,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     click_order.append(exists.index(a))
                 else:
                     raise Exception("检测到干员选择错误，重新选择")
-            if click_order:
+            if click_order and exists != agents:
                 # 清空
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                 for p_idx in click_order:
