@@ -141,13 +141,38 @@ class BaseMixin:
             ascending = ascending == "true"
         name_y = 60
         x = self._arrange_order_x(current_room)[name]
-        self.tap((x, name_y), interval=0.5)
-        while True:
+        before = None
+        for attempt in range(6):
+            if attempt:
+                self.sleep(0.5)
             self.recog.update()
-            n, s = self.detect_arrange_order(current_room)
-            if n == name and s == ascending:
+            before = self.detect_arrange_order(current_room)
+            if before is not None:
                 break
+        if before is None:
+            logger.error("无法读取干员排序状态，已暂停排班，保留当前选择")
+            raise MowerExit
+        # 即使排序方式相同，也要刷新已选干员置顶；每次点击必须等到
+        # 箭头实际变化后才能继续，不能把点击前的同方向旧帧当作完成。
+        for _ in range(2):
             self.tap((x, name_y), interval=0.5)
+            previous = None
+            for attempt in range(6):
+                if attempt:
+                    self.sleep(0.5)
+                self.recog.update()
+                actual = self.detect_arrange_order(current_room)
+                if actual is not None and actual != before and actual == previous:
+                    break
+                previous = actual
+            else:
+                logger.error("干员排序点击后尚未确认画面变化，已暂停排班，避免连续切换")
+                raise MowerExit
+            if actual == (name, ascending):
+                return
+            before = actual
+        logger.error("干员排序未到达目标状态，已暂停排班，保留当前选择")
+        raise MowerExit
 
     def scan_agent(
         self,
@@ -196,6 +221,7 @@ class BaseMixin:
     ):
         """等待排序后的名单连续两帧符合预期，不在旧画面上继续点击。"""
         previous = None
+        stable = False
         actual = []
         for attempt in range(6):
             if attempt:
@@ -203,20 +229,36 @@ class BaseMixin:
             self.recog.update()
             if self.find("connecting"):
                 previous = None
+                stable = False
                 continue
-            ret = (
-                operator_list(self.recog.img, full_scan=full_scan)
-                if not train
-                else operator_list_train(self.recog.img)
-            )
+            try:
+                ret = (
+                    operator_list(self.recog.img, full_scan=full_scan)
+                    if not train
+                    else operator_list_train(self.recog.img)
+                )
+            except MowerExit:
+                raise
+            except Exception as e:
+                logger.debug(f"选人名单读取失败，等待下一帧：{e}")
+                previous = None
+                stable = False
+                continue
             actual = [name for name, _ in ret[: len(agent)]]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
+            stable = len(actual) == len(agent) and all(actual) and actual == previous
             matches = actual == agent if ordered else sorted(actual) == sorted(agent)
-            if matches and actual == previous:
+            if matches and stable:
                 return actual
-            previous = actual if matches else None
-        logger.warning(f"等待后干员名单仍未通过校验：预期{agent}，最后读取{actual}")
-        return None
+            previous = actual
+        if stable:
+            logger.warning(f"干员名单已稳定但不符合预期：预期{agent}，实际{actual}")
+            return None
+        logger.error(
+            f"干员名单仍在变化或识别不全，已暂停排班，保留当前选择："
+            f"预期{agent}，最后读取{actual}"
+        )
+        raise MowerExit
 
     def verify_agent(
         self,
