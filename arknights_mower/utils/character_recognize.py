@@ -89,10 +89,21 @@ def operator_list(img, draw=False, full_scan=True):
     logger.debug(name_p)
 
     op_name = []
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # 名字只占两条横带；遮罩分割后的 line1 不可用于名字识别。
+    gray_rows = (
+        {
+            y0: cv2.cvtColor(
+                img[y0:y1, 600 : 1920 if full_scan else 1860], cv2.COLOR_RGB2GRAY
+            )
+            for y0, y1 in name_y
+        }
+        if name_p
+        else {}
+    )
 
     def process_name_region(p):
-        im = cropimg(gray, p)
+        (x0, y0), (x1, _) = p
+        im = gray_rows[y0][:, x0 - 600 : x1 - 600]
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(im, kernel, iterations=1)

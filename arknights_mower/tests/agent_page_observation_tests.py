@@ -133,15 +133,23 @@ def test_connecting_breaks_seed_continuity(monkeypatch):
     assert solver.recog.captures == 5
 
 
-def test_rewind_keeps_end_checks_then_seeds_unordered_verification(monkeypatch):
+def test_filter_reset_seeds_verification_but_requires_fresh_frame(monkeypatch):
     targets = ["苍苔", "砾"]
-    solver = solver_for(monkeypatch, [page()] * 9)
+    solver = solver_for(monkeypatch, [page()] * 4)
+    solver.profession_filter = MagicMock(side_effect=lambda *_: solver.recog.update())
     count, observed = solver.swipe_left(0, "ALL", return_page=True)
-    assert count == 0 and solver.recog.captures == 8
+    # 入口面板状态读取一帧，切筛选后仍完整读取两帧，不复用入口旧图。
+    assert count == 0 and solver.recog.captures == 3
+    assert [call.args[0] for call in solver.profession_filter.call_args_list] == [
+        "PIONEER",
+        "ALL",
+    ]
+    solver.swipe_noinertia.assert_not_called()
     assert solver.wait_for_arranged_agents(
         targets, ordered=False, observation=observed
     ) == ["砾", "苍苔"]
-    assert solver.recog.captures == 9
+    assert solver.recog.captures == 4
+    assert observed.image is None
 
 
 def test_final_verification_keeps_order_requirement(monkeypatch):

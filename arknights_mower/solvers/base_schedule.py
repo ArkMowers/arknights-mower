@@ -3275,6 +3275,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         free_num = agent.count("Free")
         for i in range(agent.count("Free")):
             agent.remove("Free")
+        single_visible_target = (
+            room.startswith("room") and free_num == 0 and len(agent) == 1
+        )
         index_change = False
         pre_order = ["技能", False]
         right_swipe = 0
@@ -3320,13 +3323,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.op_data.operators[agent[0]].room.startswith("dormitory")
                 ):
                     arrange_type = ("心情", "true")
-                # 如果重新排序则滑到最左边
+                # 如果重新排序则复位到列表起点
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
                     self.switch_arrange_order(arrange_type[0], room, arrange_type[1])
-                    # 滑倒最左边
+                    # 排序后的动画沿用原等待
                     self.sleep(interval=0.5)
                     if not siege:
-                        right_swipe = self.swipe_left(right_swipe, last_special_filter)
+                        if single_visible_target and len(agent) == 1:
+                            # 单个生产房目标已经可见时先选择，最终仍复位并校验完整名单。
+                            changed, ret = self.scan_agent(
+                                agent, full_scan=last_special_filter == "ALL"
+                            )
+                            if changed:
+                                selected.extend(changed)
+                                logger.info(
+                                    f"排序后已在当前页选中目标{changed}，继续最终名单校验"
+                                )
+                                break
+                        right_swipe, observation = self.swipe_left(
+                            right_swipe, last_special_filter, return_page=True
+                        )
                     pre_order = arrange_type
             first_time = False
             if (
@@ -3389,7 +3405,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if free_num == len(agents):
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
             if not first_time:
-                # 滑动到最左边
+                # 通过筛选复位到列表起点
                 right_swipe = self.swipe_left(right_swipe, last_special_filter)
             if last_special_filter != "ALL":
                 self.profession_filter("ALL")

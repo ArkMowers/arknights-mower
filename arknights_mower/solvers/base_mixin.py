@@ -474,37 +474,39 @@ class BaseMixin:
                 logger.exception(e)
                 raise e
 
-    @timed_step("rewind")
+    @timed_step("filter_reset")
     def swipe_left(
         self, right_swipe, special_filter, *, train=False, return_page=False
     ):
-        # 2500 像素的屏外拖动在 Android 会被裁到边缘，不能按请求距离或
-        # “右移三次只回拉两次”推算归零。回拉使用屏内路径，并读取实际结果。
-        full_scan = special_filter in (None, "ALL")
-        # 回拉途中不用逐页找人。计数只用于减少中途识别，不能作为到头凭据；
-        # 保留至少一次末端实测，短滑、排序后计数归零仍按实际页面处理。
-        bulk = min(max(right_swipe - 1, 0), 8)
-        for _ in range(bulk):
-            self.swipe_noinertia((650, 540), (1100, 0), interval=0)
-        page = self.wait_for_agent_page(full_scan=full_scan, train=train)
-        # 排序/筛选可能将计数归零却保留列表偏移；完整卡片也可能恰好
-        # 对齐在中间页。因此即使计数为零，也必须实际回拉确认。
-        for attempt in range(12 - bulk):
-            self.swipe_noinertia((650, 540), (1100, 0))
-            actual = self.wait_for_agent_page(
-                full_scan=full_scan, train=train, before=page
-            )
-            if self.same_agent_page(actual, page):
-                if train or actual[0][1][0][0] <= 650:
-                    if return_page:
-                        return 0, self.observe_agent_page(
-                            actual, full_scan=full_scan, train=train
-                        )
-                    return 0
-                raise AgentSelectionNotReady("回拉后列表仍被裁切且未推进，返回房间重试")
-            logger.debug(f"选人列表回拉第{attempt + 1}次，首张完整卡片：{actual[0]}")
-            page = actual
-        raise AgentSelectionNotReady("未能确认干员列表回到左端，返回房间重试")
+        # 保留旧接口供选人调用；实际通过切换职业筛选复位，不再反向拖动。
+        # 即使计数为零也要真正切换，重复点击当前筛选不能证明列表已归零。
+        confirm_buttons = [
+            button
+            for resource in ("confirm_blue", "confirm_train")
+            if (button := self.find(resource))
+        ]
+        filter_was_closed = bool(confirm_buttons) and all(
+            button[0][0] > 1650 for button in confirm_buttons
+        )
+        profession = special_filter or "ALL"
+        temporary = (
+            next(label for label in self.profession_labels if label != "ALL")
+            if profession == "ALL"
+            else "ALL"
+        )
+        self.profession_filter(temporary)
+        self.profession_filter(profession)
+        if filter_was_closed:
+            # 只恢复明确读到的入口状态，不以职业推断侧栏是否展开。
+            self._close_profession_filter()
+        full_scan = profession == "ALL"
+        actual = self.wait_for_agent_page(full_scan=full_scan, train=train)
+        if not actual or (not train and actual[0][1][0][0] > 650):
+            raise AgentSelectionNotReady("筛选复位后列表仍被裁切，返回房间重试")
+        logger.debug(f"职业筛选已复位选人列表，首张完整卡片：{actual[0]}")
+        if return_page:
+            return 0, self.observe_agent_page(actual, full_scan=full_scan, train=train)
+        return 0
 
     def profession_filter(self, profession=None):
         """
@@ -521,17 +523,7 @@ class BaseMixin:
         else:
             logger.info("关闭职业筛选")
             self.profession_filter("ALL")
-            while (
-                (confirm_btn := self.find("confirm_blue")) is not None
-                and confirm_btn[0][0] < open_threshold
-            ) or (
-                (confirm_btn := self.find("confirm_train")) is not None
-                and confirm_btn[0][0] < open_threshold
-            ):
-                self.tap((1860, 60), 0.1)
-                retry += 1
-                if retry > 5:
-                    raise Exception("关闭职业筛选失败")
+            self._close_profession_filter()
             return
         x = 1918
         label_pos = [(x, 135 + i * 110) for i in range(9)]
@@ -556,6 +548,22 @@ class BaseMixin:
             retry += 1
             if retry > 5:
                 raise Exception("打开职业筛选失败")
+
+    def _close_profession_filter(self):
+        """仅收起筛选侧栏，保留当前职业。"""
+        retry = 0
+        open_threshold = 1650
+        while (
+            (confirm_btn := self.find("confirm_blue")) is not None
+            and confirm_btn[0][0] < open_threshold
+        ) or (
+            (confirm_btn := self.find("confirm_train")) is not None
+            and confirm_btn[0][0] < open_threshold
+        ):
+            self.tap((1860, 60), 0.1)
+            retry += 1
+            if retry > 5:
+                raise Exception("关闭职业筛选失败")
 
     def detect_room_number(self, img) -> int:
         score = []

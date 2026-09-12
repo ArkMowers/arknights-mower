@@ -586,6 +586,10 @@ if (return_home_when_idle.value) {
                 </n-checkbox>
               </n-flex>
             </n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
+              Android 推荐保持「跑单前置延时」5 分钟、「葛朗台缓冲时间」15
+              秒；前者为导航选人留余量，后者为确认入驻留余量。两项均可自行修改；设备较慢时可适当增加。
+            </n-alert>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>
