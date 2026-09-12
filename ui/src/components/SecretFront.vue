@@ -27,9 +27,9 @@ const target_options = [
     label-align="left"
   >
     <n-form-item label="超时时长">
-      <n-input-number v-model:value="ra_timeout">
+      <mower-input-number v-model:value="ra_timeout">
         <template #suffix>秒</template>
-      </n-input-number>
+      </mower-input-number>
     </n-form-item>
     <n-form-item label="选择路线">
       <n-select v-model:value="sf_target" :options="target_options" />

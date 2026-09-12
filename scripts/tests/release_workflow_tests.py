@@ -40,6 +40,15 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
     def test_workflow_name_covers_release_types(self):
         self.assertEqual(self.workflow["name"], "Release & Prerelease")
 
+    def test_android_packages_the_generated_release_changelog(self):
+        job = self.jobs["build-android"]
+        download = find_step(job, "Download release metadata")
+        self.assertEqual(download["with"]["path"], "release-metadata")
+        copy = find_step(job, "Overwrite changelog with generated")
+        self.assertEqual(copy["run"], "cp release-metadata/CHANGELOG.md CHANGELOG.md")
+        package = find_step(job, "Package Mower without the Android host")
+        self.assertLess(job["steps"].index(copy), job["steps"].index(package))
+
     def test_stable_alpha_tag_and_reusable_triggers(self):
         triggers = self.workflow["on"]
         self.assertEqual(

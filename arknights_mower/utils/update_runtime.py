@@ -285,6 +285,20 @@ class RuntimeRegistration:
         atexit.register(self.close)
         self.thread = threading.Thread(target=self._heartbeat, daemon=True)
         self.thread.start()
+        threading.Thread(
+            target=self._retry_backups, name="mower-backup-cleanup", daemon=True
+        ).start()
+
+    def _retry_backups(self):
+        try:
+            from .software_update_worker import retry_backup_cleanup
+
+            retry_backup_cleanup(self.directory, self.record["root"])
+        except Exception:
+            # This optional maintenance cannot prevent registration or startup.
+            import logging
+
+            logging.getLogger(__name__).warning("历史更新备份暂无法清理")
 
     def publish(self):
         self.record.update(running=bool(self.running()), heartbeat=time.time())

@@ -27,6 +27,7 @@ REQUIRED = (
     "server.py",
     "LICENSE",
     "requirements.txt",
+    "CHANGELOG.md",
 )
 
 
@@ -38,6 +39,8 @@ def package(root: Path, output: Path, version: str, revision: str) -> Path:
     for name in REQUIRED:
         if not (root / name).is_file():
             raise ValueError(f"missing build input: {name}")
+    if not (root / "CHANGELOG.md").read_text(encoding="utf-8").strip():
+        raise ValueError("empty build input: CHANGELOG.md")
     source = (root / "arknights_mower/__init__.py").read_text()
     if f'__version__ = "{version}"' not in source:
         raise ValueError("package version does not match injected Mower version")

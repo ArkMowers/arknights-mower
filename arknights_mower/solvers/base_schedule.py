@@ -3603,9 +3603,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    data["time"] = self.double_read_time(
-                        time_p[i], use_digit_reader=True
-                    )
+                    # 房间干员倒计时随行号变化；订单模板只识别无人机界面的固定区域。
+                    data["time"] = self.double_read_time(time_p[i])
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
@@ -4213,12 +4212,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         #     process_itemlist(d)
 
     def initialize_maa(self):
+        from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
+
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
 
             globals()["Message"] = int
             config.stop_maa.clear()
-            self.MAA = Asst(callback=self.log_maa)
+            self.MAA = VerifiedAsst(Asst, config.conf.maa_path, self.log_maa)
             self.stages = []
             if not self.MAA.connect():
                 raise RuntimeError("安卓 MAA 引擎未连接")
@@ -4261,9 +4262,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.error(f"MAA活动关卡导航更新失败：{str(e)}")
             save_exception(e)
 
-        Asst.load(path=path, incremental_path=path / "cache")
+        @update_transaction
+        def create_verified_asst():
+            Asst.load(path=path, incremental_path=path / "cache")
+            return VerifiedAsst(Asst, path, self.log_maa)
 
-        self.MAA = Asst(callback=self.log_maa)
+        self.MAA = create_verified_asst()
         self.stages = []
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option

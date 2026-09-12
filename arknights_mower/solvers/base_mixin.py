@@ -425,8 +425,13 @@ class BaseMixin:
 
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
         self.recog.update()
-        time_in_seconds = self.read_time(cord, upperLimit, use_digit_reader)
+        time_in_seconds = self.read_time(
+            cord, upperLimit, use_digit_reader=use_digit_reader
+        )
         if time_in_seconds is None:
+            logger.warning(
+                "订单/设施倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
+            )
             return datetime.now()
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time
@@ -637,7 +642,9 @@ class BaseMixin:
         self.recog.update()
         try:
             if use_digit_reader:
-                time_str = self.digit_reader.get_time(self.recog.gray)
+                gray = self.recog.gray
+                height, width = gray.shape[:2]
+                time_str = self.digit_reader.get_time(gray, height, width)
             else:
                 time_str = self.read_screen(self.recog.img, type="time", cord=cord)
             logger.debug(time_str)
@@ -649,7 +656,8 @@ class BaseMixin:
                 raise Exception("超过读取上限")
             else:
                 return res
-        except Exception:
+        except Exception as exc:
+            logger.debug(f"倒计时读取失败（{type(exc).__name__}）：{exc}")
             if error_count > 3:
                 logger.debug(f"读取失败{error_count}次超过上限")
                 return None

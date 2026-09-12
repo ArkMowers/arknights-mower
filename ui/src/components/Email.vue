@@ -76,7 +76,7 @@ const levels = [
           </n-radio-group>
         </n-form-item>
         <n-form-item label="端口号" v-if="custom_smtp_server.enable">
-          <n-input-number v-model:value="custom_smtp_server.ssl_port" />
+          <mower-input-number v-model:value="custom_smtp_server.ssl_port" />
         </n-form-item>
         <n-form-item>
           <template #label>
@@ -131,7 +131,7 @@ const levels = [
               <p>发送邮件的任务时间会自动转化成当地时间</p>
             </help-text>
           </template>
-          <n-input-number v-model:value="timezone_offset" />
+          <mower-input-number v-model:value="timezone_offset" />
         </n-form-item>
       </n-form>
       <n-divider />

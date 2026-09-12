@@ -25,7 +25,7 @@
         <div class="fodder-limits">
           <label>
             <n-text depth="3">子材料库存下限</n-text>
-            <n-input-number
+            <mower-input-number
               size="large"
               :value="item.children_lower_limit"
               @update:value="item.children_lower_limit = $event ?? 0"
@@ -39,7 +39,7 @@
           </label>
           <label>
             <n-text depth="3">成品库存上限</n-text>
-            <n-input-number
+            <mower-input-number
               size="large"
               :value="item.self_upper_limit"
               @update:value="item.self_upper_limit = $event ?? 0"

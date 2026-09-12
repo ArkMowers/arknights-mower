@@ -19,6 +19,7 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 import requests
 
 from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.maa_backup import update_transaction
 from arknights_mower.utils.maa_update import (
     MaaUpdateError,
     backup_path_for,
@@ -420,6 +421,7 @@ def merge_resource_archive(
     return version
 
 
+@update_transaction
 def install_maa_resource_update(
     target: Path | str,
     source: str = "github",
