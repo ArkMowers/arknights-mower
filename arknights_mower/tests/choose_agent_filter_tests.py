@@ -113,8 +113,16 @@ def selection_solver(monkeypatch, residents=None):
     solver.sleep = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())
     solver.swipe_noinertia = MagicMock()
     # 本组模拟筛选和选择结果；真实翻页与延迟帧在 agent_page_search_tests 中验证。
-    solver.swipe_agent_page = MagicMock(return_value=1)
-    solver.swipe_left = MagicMock(return_value=0)
+    solver.swipe_agent_page = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            (1, None) if kwargs.get("return_page") else 1
+        )
+    )
+    solver.swipe_left = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            (0, None) if kwargs.get("return_page") else 0
+        )
+    )
 
     def visible(names):
         return [

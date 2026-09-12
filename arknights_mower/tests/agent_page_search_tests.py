@@ -184,12 +184,14 @@ def test_training_free_search_checks_next_page_when_first_page_has_no_target():
     solver.profession_filter = MagicMock()
     solver.get_free_list = MagicMock(return_value=["砾"])
     solver.scan_agent = MagicMock(side_effect=[([], page()), (["砾"], page())])
-    solver.swipe_agent_page = MagicMock(return_value=1)
+    solver.swipe_agent_page = MagicMock(return_value=(1, None))
     solver.swipe_left = MagicMock(return_value=0)
     solver.ctap = MagicMock()
     solver.verify_agent = MagicMock(return_value=True)
     solver.choose_train_ope("Free")
-    solver.swipe_agent_page.assert_called_once_with(page(), ["Free"], train=True)
+    solver.swipe_agent_page.assert_called_once_with(
+        page(), ["Free"], train=True, return_page=True
+    )
     solver.verify_agent.assert_called_once_with(["砾"], "train", train=True)
 
 

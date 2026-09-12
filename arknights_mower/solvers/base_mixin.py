@@ -1,5 +1,6 @@
 import lzma
 import pickle
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import perf_counter
 
@@ -40,6 +41,31 @@ PREFIX_NAME_WIDTH_MARGIN = 30
 
 class AgentSelectionNotReady(RuntimeError):
     """当前页面不足以继续选人；交由排班原有重试恢复，不结束任务线程。"""
+
+
+@dataclass
+class AgentPageObservation:
+    """相邻操作间的一次性稳定观测，消费后仍须读取新画面复核。"""
+
+    page: tuple
+    recognizer: object
+    image: object
+    full_scan: bool
+    train: bool
+
+    def consume(self, recognizer, *, full_scan, train):
+        valid = (
+            self.image is not None
+            and self.recognizer is recognizer
+            and getattr(recognizer, "_img", None) is self.image
+            and self.full_scan == full_scan
+            and self.train == train
+        )
+        page = self.page if valid else None
+        # 包括模式不符在内，尝试消费即失效，不跨输入或房间保留坐标。
+        self.page = ()
+        self.recognizer = self.image = None
+        return page
 
 
 # #85：排序列→x 坐标单一来源（detect_arrange_order / switch_arrange_order 共用；
@@ -232,10 +258,27 @@ class BaseMixin:
 
         return read
 
-    def wait_for_agent_page(self, *, full_scan=True, train=False, before=None):
+    def observe_agent_page(self, page, *, full_scan=True, train=False):
+        return AgentPageObservation(
+            tuple(
+                (name, tuple(tuple(point) for point in scope)) for name, scope in page
+            ),
+            self.recog,
+            getattr(self.recog, "_img", None),
+            full_scan,
+            train,
+        )
+
+    def wait_for_agent_page(
+        self, *, full_scan=True, train=False, before=None, observation=None
+    ):
         """先复核当前页；滑动后不把连续两张相同的旧画面当成新页。"""
         read = self.agent_page_reader(full_scan=full_scan, train=train)
-        previous = None
+        previous = (
+            observation.consume(self.recog, full_scan=full_scan, train=train)
+            if observation is not None
+            else None
+        )
         stable = False
         ret = []
         for attempt in range(6):
@@ -271,7 +314,9 @@ class BaseMixin:
             return ret
         raise AgentSelectionNotReady("干员页面仍在移动或名字识别不全，返回房间重试")
 
-    def swipe_agent_page(self, page, agent, *, full_scan=True, train=False):
+    def swipe_agent_page(
+        self, page, agent, *, full_scan=True, train=False, return_page=False
+    ):
         """保留两列重叠，确认翻页生效；未推进时只做一次短距离复核。"""
         columns = sorted({scope[0][0] for _, scope in page})
         if len(columns) < 2:
@@ -286,6 +331,10 @@ class BaseMixin:
                 full_scan=full_scan, train=train, before=page
             )
             if not self.same_agent_page(actual, page):
+                if return_page:
+                    return attempt + 1, self.observe_agent_page(
+                        actual, full_scan=full_scan, train=train
+                    )
                 return attempt + 1
             logger.debug(f"翻页第{attempt + 1}次未确认推进，仍需查找：{agent}")
         raise AgentSelectionNotReady(
@@ -300,9 +349,12 @@ class BaseMixin:
         max_agent_count=-1,
         full_scan=True,
         train=False,
+        observation=None,
     ):
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
-        ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
+        ret = self.wait_for_agent_page(
+            full_scan=full_scan, train=train, observation=observation
+        )
         select_name = []
         while True:
             target = next(((name, scope) for name, scope in ret if name in agent), None)
@@ -321,13 +373,18 @@ class BaseMixin:
 
     @timed_step("verify")
     def wait_for_arranged_agents(
-        self, agent, *, ordered=True, full_scan=True, train=False
+        self, agent, *, ordered=True, full_scan=True, train=False, observation=None
     ):
         """等待排序后的名单连续两帧符合预期，不在旧画面上继续点击。"""
+        page = (
+            observation.consume(self.recog, full_scan=full_scan, train=train)
+            if observation is not None
+            else None
+        )
         if not agent:
             return []
         read = self.agent_page_reader(full_scan=full_scan, train=train)
-        previous = None
+        previous = page[: len(agent)] if page else None
         stable = False
         actual = []
         for attempt in range(6):
@@ -382,10 +439,13 @@ class BaseMixin:
         max_agent_count=-1,
         full_scan=True,
         train=False,
+        observation=None,
     ):
         try:
             return (
-                self.wait_for_arranged_agents(agent, full_scan=full_scan, train=train)
+                self.wait_for_arranged_agents(
+                    agent, full_scan=full_scan, train=train, observation=observation
+                )
                 is not None
             )
         except (MowerExit, AgentSelectionNotReady):
@@ -408,7 +468,9 @@ class BaseMixin:
                 raise e
 
     @timed_step("rewind")
-    def swipe_left(self, right_swipe, special_filter, *, train=False):
+    def swipe_left(
+        self, right_swipe, special_filter, *, train=False, return_page=False
+    ):
         # 2500 像素的屏外拖动在 Android 会被裁到边缘，不能按请求距离或
         # “右移三次只回拉两次”推算归零。回拉使用屏内路径，并读取实际结果。
         full_scan = special_filter in (None, "ALL")
@@ -427,6 +489,10 @@ class BaseMixin:
             )
             if self.same_agent_page(actual, page):
                 if train or actual[0][1][0][0] <= 650:
+                    if return_page:
+                        return 0, self.observe_agent_page(
+                            actual, full_scan=full_scan, train=train
+                        )
                     return 0
                 raise AgentSelectionNotReady("回拉后列表仍被裁切且未推进，返回房间重试")
             logger.debug(f"选人列表回拉第{attempt + 1}次，首张完整卡片：{actual[0]}")
