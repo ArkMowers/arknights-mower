@@ -167,7 +167,7 @@ class BaseMixin:
             for attempt in range(6):
                 if attempt:
                     self.sleep(0.5)
-                # tap(interval=0.5) 和 sleep 已刷新截图，不重复截同一帧。
+                # tap/sleep 已使识别缓存失效，后续按需获取画面。
                 actual = self.detect_arrange_order(current_room)
                 logger.debug(
                     f"排序复核：点击前{before}，当前{actual}，目标{(name, ascending)}"
