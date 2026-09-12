@@ -71,6 +71,16 @@ def write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
+def test_importing_changed_plan_resets_dorm_priority(storage):
+    data = backup.export_configuration()
+    data["data"]["plan"]["conf"]["ling_xi"] = 2
+    assert config.plan.conf.ling_xi != 2
+    backup.import_configuration(data)
+    assert config.plan.conf.ling_xi == 2
+    assert config.conf.dorm_order == ""
+    assert json.loads(config.conf_path.read_text())["dorm_order"] == ""
+
+
 def test_full_round_trip_includes_optional_files_secrets_and_mastery(storage):
     config.conf.ai_key = "test-secret"
     config.conf.maa_eat_stone = True  # Not included in the web form.

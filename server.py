@@ -744,9 +744,15 @@ def load_plan_from_json():
     if request.method == "GET":
         return config.plan.model_dump(exclude_none=True)
     else:
-        config.plan = config.PlanModel(**request.json)
+        plan = config.PlanModel(**request.json)
+        changed = plan != config.plan
+        config.plan = plan
         config.save_plan()
-        return "New plan saved。"
+        # 排班实际改变后丢弃旧床位顺序；相同内容的自动保存不重置手动排序。
+        if changed and config.conf.dorm_order:
+            config.conf.dorm_order = ""
+            config.save_conf()
+        return {"message": "New plan saved。", "dorm_order_reset": changed}
 
 
 @app.route("/operator")
