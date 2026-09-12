@@ -630,6 +630,16 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         get_mastery_requirement_error,
     )
     from arknights_mower.utils.mastery_support import SupportPlanError
+    from arknights_mower.utils.mastery_support_data import training_room_group_error
+
+    group_error = training_room_group_error()
+    if group_error:
+        from arknights_mower.utils.email import send_message
+
+        logger.warning(f"[mastery] 暂不开始训练：{group_error}")
+        update_plan_status(plan["id"], "failed", failed_reason=group_error)
+        send_message(f"{_plan_fail_label(plan)} {group_error}", level="ERROR")
+        return
 
     requirement_error = get_mastery_requirement_error(plan["char_id"])
     if requirement_error:
@@ -1193,6 +1203,15 @@ def run_swap_support(solver):
             logger.debug(f"主面板读取失败: {e}")
     countdown_active = bool(panel is not None and panel.countdown_state == "active")
     step_level = panel.mastery_tier if panel is not None else None
+
+    from arknights_mower.utils.mastery_support_data import training_room_group_error
+
+    if group_error := training_room_group_error():
+        from arknights_mower.solvers.mastery_support_state import stop_support_swap
+
+        stop_support_swap(solver, plan, step_level, group_error)
+        solver.back()
+        return
 
     route = _get_plan_route(plan, step_level)
     operator = route.get("operator") if route else None

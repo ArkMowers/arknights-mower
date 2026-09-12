@@ -24,7 +24,7 @@ from arknights_mower.utils.mastery_support_types import StageSpec
 from arknights_mower.utils.scene import Scene
 
 
-def scene_solver(transient, readable):
+def scene_solver(transient, readable, support_name="艾丽妮"):
     solver = MagicMock()
     solver.recog.w, solver.recog.h = 1920, 1080
     current = [Scene.TRAIN_MAIN]
@@ -57,7 +57,7 @@ def scene_solver(transient, readable):
         assert solver.choose_train.call_count == solver.ctap.call_count == 0
         events.append("read")
         current[0] = Scene.INFRA_DETAILS if readable else Scene.TRAIN_MAIN
-        return [{"agent": "艾丽妮"}, {"agent": "能天使"}]
+        return [{"agent": support_name}, {"agent": "能天使"}]
 
     def select_skill(*args):
         assert current[0] == Scene.TRAIN_SKILL_SELECT
@@ -79,8 +79,9 @@ def scene_solver(transient, readable):
     "transient", [Scene.TRAIN_MAIN, Scene.UNKNOWN, Scene.CONNECTING]
 )
 @pytest.mark.parametrize("readable", [True, False])
+@pytest.mark.parametrize("scheduled_occupant", [False, True])
 def test_start_waits_for_main_before_real_preparation(
-    database, context_game, transient, readable
+    database, context_game, transient, readable, scheduled_occupant
 ):
     _, ids = context_game
     stage = support.stage_route(stat("艾丽妮", 30, True), None, StageSpec(1, 8))
@@ -88,8 +89,14 @@ def test_start_waits_for_main_before_real_preparation(
         ids["能天使"], 0, 3, char_name="能天使", support_plan={"stages": [stage]}
     )
     plan = db.get_plan_by_id(pid)
-    solver, events = scene_solver(transient, readable)
+    solver, events = scene_solver(
+        transient, readable, "赫默" if scheduled_occupant else "艾丽妮"
+    )
     with (
+        patch(
+            "arknights_mower.solvers.mastery_support_runtime.schedule_context",
+            return_value=({"赫默": {"room_3_2"}} if scheduled_occupant else {}, 0),
+        ),
         patch.object(mastery, "_read_train_countdown3", return_value=("failed", None)),
         patch(
             "arknights_mower.solvers.mastery_reader._read_slot_mastery_tier",

@@ -49,6 +49,7 @@ def database(tmp_path, monkeypatch):
 @pytest.fixture
 def context_game(game, monkeypatch):
     data, ids = game
+    monkeypatch.setattr("arknights_mower.utils.config.plan", {})
     monkeypatch.setattr(support_data, "training_data", lambda: data)
     roster = [owned(ids[n]) for n in ("能天使", "假日威龙陈", "芬", "艾丽妮", "逻各斯")]
     monkeypatch.setattr(support_data, "owned_roster", lambda: roster)
