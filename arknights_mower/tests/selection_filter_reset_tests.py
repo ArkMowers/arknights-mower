@@ -15,7 +15,7 @@ from arknights_mower.utils.solver import BaseSolver
 @pytest.mark.parametrize("count", [0, 1, 3, 100])
 @pytest.mark.parametrize("profession", [None, "ALL", "MEDIC", "SPECIAL"])
 @pytest.mark.parametrize("train", [False, True])
-def test_reset_switches_away_and_restores_filter_at_every_count(
+def test_reset_finishes_at_all_without_restoring_old_profession(
     count, profession, train
 ):
     solver = BaseMixin()
@@ -24,12 +24,11 @@ def test_reset_switches_away_and_restores_filter_at_every_count(
     solver.wait_for_agent_page = MagicMock(return_value=page())
     solver.swipe_noinertia = MagicMock()
     assert solver.swipe_left(count, profession, train=train) == 0
-    restored = profession or "ALL"
-    temporary = "PIONEER" if restored == "ALL" else "ALL"
-    assert solver.profession_filter.call_args_list == [call(temporary), call(restored)]
-    solver.wait_for_agent_page.assert_called_once_with(
-        full_scan=restored == "ALL", train=train
+    expected = (
+        [call("PIONEER"), call("ALL")] if profession in (None, "ALL") else [call("ALL")]
     )
+    assert solver.profession_filter.call_args_list == expected
+    solver.wait_for_agent_page.assert_called_once_with(full_scan=True, train=train)
     solver.swipe_noinertia.assert_not_called()
 
 
@@ -55,7 +54,7 @@ def test_training_layout_keeps_its_own_first_column_rule():
     solver.wait_for_agent_page = MagicMock(return_value=page(offset=160))
     solver.swipe_noinertia = MagicMock()
     assert solver.swipe_left(0, "MEDIC", train=True) == 0
-    solver.wait_for_agent_page.assert_called_once_with(full_scan=False, train=True)
+    solver.wait_for_agent_page.assert_called_once_with(full_scan=True, train=True)
     solver.swipe_noinertia.assert_not_called()
 
 
@@ -67,7 +66,7 @@ def test_stop_in_filter_transition_prevents_further_input(stop_at):
     solver.wait_for_agent_page = MagicMock()
     solver.swipe_noinertia = MagicMock()
     with pytest.raises(MowerExit):
-        solver.swipe_left(100, "MEDIC")
+        solver.swipe_left(100, "ALL")
     assert solver.profession_filter.call_count == stop_at + 1
     solver.wait_for_agent_page.assert_not_called()
     solver.swipe_noinertia.assert_not_called()
@@ -137,10 +136,8 @@ def test_real_filter_restores_panel_and_invalidates_pre_reset_observation(
     )
     count, observed = solver.swipe_left(0, profession, train=train, return_page=True)
     assert count == 0 and active["offset"] == 0
-    assert active["changes"] == (
-        ["PIONEER", "ALL"] if profession == "ALL" else ["ALL", "MEDIC"]
-    )
-    assert active["label"] == profession
+    assert active["changes"] == (["PIONEER", "ALL"] if profession == "ALL" else ["ALL"])
+    assert active["label"] == "ALL"
     assert active["opened"] is opened
     panel_taps = [
         item for item in solver.device.tap.call_args_list if item.args[0] == (1860, 60)
@@ -155,9 +152,9 @@ def test_real_filter_restores_panel_and_invalidates_pre_reset_observation(
     )
     assert observed.page == new
     captures = solver.recog.captures
-    assert solver.scan_agent(
-        ["砾"], full_scan=profession == "ALL", train=train, observation=observed
-    )[0] == ["砾"]
+    assert solver.scan_agent(["砾"], full_scan=True, train=train, observation=observed)[
+        0
+    ] == ["砾"]
     assert solver.recog.captures == captures + 1
     solver.swipe_noinertia.assert_not_called()
 

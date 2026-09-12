@@ -3343,6 +3343,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe, observation = self.swipe_left(
                             right_swipe, last_special_filter, return_page=True
                         )
+                        last_special_filter = "ALL"
                     pre_order = arrange_type
             first_time = False
             if (
@@ -3407,6 +3408,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if not first_time:
                 # 通过筛选复位到列表起点
                 right_swipe = self.swipe_left(right_swipe, last_special_filter)
+                last_special_filter = "ALL"
             if last_special_filter != "ALL":
                 self.profession_filter("ALL")
                 last_special_filter = "ALL"
@@ -3443,13 +3445,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         return_page=True,
                     )
                     right_swipe += moved
-        # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
-        # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
-        if last_special_filter != "ALL":
-            self.profession_filter("ALL")
-            last_special_filter = "ALL"
-            right_swipe = 0
-        # 排序
+        # 排序后通过复位统一切到 ALL，再读取完整已选名单。
+        # 不提前切一次 ALL，否则复位还会额外切换其他职业再返回。
         verified = False
         if len(agents) != 1:
             self.switch_arrange_order("技能", room)
@@ -3457,6 +3454,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             right_swipe, observation = self.swipe_left(
                 right_swipe, last_special_filter, return_page=True
             )
+            last_special_filter = "ALL"
             exists = self.wait_for_arranged_agents(
                 agents, ordered=False, observation=observation
             )
