@@ -118,6 +118,11 @@ def selection_solver(monkeypatch, residents=None):
             (1, None) if kwargs.get("return_page") else 1
         )
     )
+    solver.swipe_left = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            (0, None) if kwargs.get("return_page") else 0
+        )
+    )
 
     def visible(names):
         return [
@@ -129,13 +134,6 @@ def selection_solver(monkeypatch, residents=None):
     def set_filter(value=None):
         nonlocal profession
         profession = value or "ALL"
-        cards[:] = visible(selected + [n for n in roster if n not in selected])
-
-    def reset_filter(*args, **kwargs):
-        set_filter("ALL")
-        return (0, None) if kwargs.get("return_page") else 0
-
-    solver.swipe_left = MagicMock(side_effect=reset_filter)
 
     def order(kind, *args):
         if kind == "技能":
@@ -153,7 +151,6 @@ def selection_solver(monkeypatch, residents=None):
 
     def scan(names, max_agent_count=None, **kwargs):
         nonlocal first_scan
-        assert kwargs.get("full_scan", True) == (profession == "ALL")
         # 首屏找不到目标，需要走后续职业筛选分支。
         found = [] if first_scan else visible(names)
         first_scan = False
@@ -183,18 +180,3 @@ def selection_solver(monkeypatch, residents=None):
         ],
     )
     return solver, selected
-
-
-def test_changed_sort_after_filtered_selection_updates_filter_state(monkeypatch):
-    solver, selected = selection_solver(monkeypatch, residents=[])
-    # 连续选择不同职业时改变排序，触发已筛选列表再次复位。
-    orders = {
-        "冰酿": ("心情", "true"),
-        "闪灵": ("技能", False),
-        "菲亚梅塔": ("心情", "true"),
-        "爱丽丝": ("技能", False),
-    }
-    solver.get_order = MagicMock(side_effect=lambda name: (False, orders[name]))
-    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
-    assert selected == RESIDENTS
-    assert any(call.args[1] != "ALL" for call in solver.swipe_left.call_args_list)

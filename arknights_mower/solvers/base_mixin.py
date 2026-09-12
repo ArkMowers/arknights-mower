@@ -489,22 +489,23 @@ class BaseMixin:
             button[0][0] > 1650 for button in confirm_buttons
         )
         profession = special_filter or "ALL"
-        if profession == "ALL":
-            temporary = next(
-                label for label in self.profession_labels if label != "ALL"
-            )
-            self.profession_filter(temporary)
-        # 指定职业切到 ALL 已经完成复位，不为归零再切回原职业。
-        self.profession_filter("ALL")
+        temporary = (
+            next(label for label in self.profession_labels if label != "ALL")
+            if profession == "ALL"
+            else "ALL"
+        )
+        self.profession_filter(temporary)
+        self.profession_filter(profession)
         if filter_was_closed:
             # 只恢复明确读到的入口状态，不以职业推断侧栏是否展开。
             self._close_profession_filter()
-        actual = self.wait_for_agent_page(full_scan=True, train=train)
+        full_scan = profession == "ALL"
+        actual = self.wait_for_agent_page(full_scan=full_scan, train=train)
         if not actual or (not train and actual[0][1][0][0] > 650):
             raise AgentSelectionNotReady("筛选复位后列表仍被裁切，返回房间重试")
         logger.debug(f"职业筛选已复位选人列表，首张完整卡片：{actual[0]}")
         if return_page:
-            return 0, self.observe_agent_page(actual, full_scan=True, train=train)
+            return 0, self.observe_agent_page(actual, full_scan=full_scan, train=train)
         return 0
 
     def profession_filter(self, profession=None):
