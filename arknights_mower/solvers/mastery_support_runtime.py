@@ -9,7 +9,6 @@ from arknights_mower.utils.mastery_support import (
     SupportPlanError,
     TrainingInputs,
     candidates,
-    check_schedule_name,
     decode_json,
     decode_supports,
     schedule_context,
@@ -31,7 +30,8 @@ def _observed_support(solver):
     support, trainee, _, reliable = _read_slots_checked(solver)
     if not reliable:
         raise SupportPlanError("无法确认当前训练室协助者，请重试")
-    check_schedule_name(support, schedule_context()[0])
+    # This is the existing occupant, not necessarily the planned assistant.
+    # candidates() filters the assistants used by _stage_trainers/_follow_schedule.
     return support, trainee
 
 

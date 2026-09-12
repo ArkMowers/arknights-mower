@@ -14,6 +14,13 @@ from arknights_mower.utils.scheduler_task import TaskTypes
 START = datetime(2026, 7, 31, 12, 0, 0)
 
 
+def setUpModule():
+    # Arrangement scenarios define their own room state; never read user schedules.
+    schedule_patch = patch.object(config_mod, "plan", {})
+    schedule_patch.start()
+    unittest.addModuleCleanup(schedule_patch.stop)
+
+
 def make_plan(**overrides):
     plan = {
         "id": 1,
