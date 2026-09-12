@@ -770,11 +770,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     self.overtake_room()
                 elif self.task.type == TaskTypes.CLUE_PARTY:
-                    self.party_time = None
-                    self.last_clue = None
-                    self.clue_new()
-                    self.last_clue = datetime.now()
-                    self.skip(["collect_notification"])
+                    self._run_clue_flow()
+                elif self.task.type == TaskTypes.CLUE:
+                    # 手动触发的会客室任务，与定时触发走同一条路径
+                    self._run_clue_flow()
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     self.plan_run_order(self.task.meta_data)
                     self.skip(["todo_task", "collect_notification"])
@@ -2290,6 +2289,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tap((1840, 140))
             self.todo_task = True
 
+    def _run_clue_flow(self):
+        """跑一次完整会客室流程。
+
+        定时趴体（线索交流结束后触发）和手动「线索任务」共用这一条路径。
+        先清掉缓存的线索交流结束时间，让 clue_new() 从界面上重新读取；跑完
+        刷新 last_clue，把下一次定时触发顺延一小时。
+        """
+        self.party_time = None
+        self.clue_new()
+        self.last_clue = datetime.now()
+        self.skip(["collect_notification"])
+
     def clue_new(self):
         try:
             logger.info("基建：线索")
@@ -2396,26 +2407,47 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if scene == Scene.INFRA_DETAILS:
                     logger.info("INFRA_DETAILS")
                     if ctm.task == "message_board":
+                        # 左下角 (680, 1000) 在这个界面上有两处用途：一是信息板入口
+                        # 没露出来时按它唤出入口，二是关掉领取信用后的确认页
+                        bottom_left = (680, 1000)
+
+                        # 线索交流提示占住右上角一小块，会挡住会客室界面，先点掉
                         if self.find("clue/title_party"):
                             self.tap_element("clue/title_party")
-                        self.tap((680, 1000))
 
-                        board_pos = None
-                        for _ in range(3):
-                            self.recog.update()
-                            board_pos = self.find("clue/message_board")
-                            if board_pos:
-                                break
-                            self.sleep(0.5)
+                        # 提示关掉后入口可能已经露出来了，先匹配一次。
+                        # tap_element 不会重新抓帧，这里得先取一帧再匹配，否则
+                        # 找的还是关提示之前那张图
+                        self.recog.update()
+                        board_pos = self.find("clue/message_board")
+
+                        if board_pos is None:
+                            # 入口没露出来：按左下角把它唤出，再匹配几次等动画走完
+                            self.tap(bottom_left)
+                            for _ in range(3):
+                                self.recog.update()
+                                board_pos = self.find("clue/message_board")
+                                if board_pos:
+                                    break
+                                self.sleep(0.5)
 
                         if board_pos:
                             logger.info("打开会客室信息板")
                             self.tap(board_pos)
-                            self.sleep(0.5)
 
-                            for _ in range(3):
+                            # 用信息板页面自己的场景判断有没有进去，好处是日志里
+                            # 会留下一条 get_scene: Scene 229。不能用 room/meeting：
+                            # 它匹配的是会客室顶栏，信息板页面上同样可见，会在刚
+                            # 进入时就把人退出来
+                            opened = False
+                            for _ in range(6):
+                                self.sleep(0.5)
                                 self.recog.update()
+                                if self.scene() == Scene.CLUE_MESSAGE_BOARD:
+                                    opened = True
+                                    break
 
+                            if opened:
                                 if collect := self.find("clue/message_board_collect"):
                                     logger.info("领取信息板信用")
                                     self.tap(collect)
@@ -2423,16 +2455,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                         self.sleep(0.5)
                                         self.recog.update()
                                         if not self.find("clue/message_board_collect"):
-                                            self.tap((680, 1000))
+                                            # 领取后弹「领取物资」确认页，点任意位置关掉
+                                            self.tap(bottom_left)
                                             break
-                                    break
 
-                                if self.find("room/meeting"):
-                                    self.back()
-                                    break
-
-                                self.tap((680, 1000))
-                                self.sleep(0.5)
+                                self.back()
+                                # 等淡出结束、确实回到房间详情页再往下走，否则后续的
+                                # tap((330, 1000)) 会打在还在淡出的信息板上
+                                for _ in range(4):
+                                    self.recog.update()
+                                    if self.scene() == Scene.INFRA_DETAILS:
+                                        break
+                                    self.sleep(0.5)
+                            else:
+                                # 没进去就不按返回：可能只是板子还没淡入完，下一轮循环
+                                # 识别到 Scene.CLUE_MESSAGE_BOARD 时会把它退掉
+                                logger.info("信息板未打开，跳过")
+                        else:
+                            logger.info("未找到信息板入口，跳过")
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
                         if pos := self.find("clue/check_party"):
@@ -2461,6 +2501,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         # 点击左下角，关闭进驻信息，进入线索界面
                         self.tap((330, 1000))
+
+                elif scene == Scene.CLUE_MESSAGE_BOARD:
+                    # 停在信息板页面上：退回房间详情，后面的任务都在那里继续。
+                    # 兜底用——message_board 分支正常会自己退出来，这里接住
+                    # 淡出中途被识别成信息板、或者上一次没退干净的情况
+                    logger.info("CLUE_MESSAGE_BOARD")
+                    self.back()
 
                 elif scene == Scene.INFRA_CONFIDENTIAL:
                     logger.info("INFRA_CONFIDENTIAL")
@@ -3455,6 +3502,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     ed = ret[0][1][0]  # 终点
                     self.swipe_noinertia(st, (ed[0] - st[0], 0))
                     right_swipe += 1
+        # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
+        # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
+        if last_special_filter != "ALL":
+            self.profession_filter("ALL")
+            last_special_filter = "ALL"
+            right_swipe = 0
         # 排序
         if len(agents) != 1:
             # 左移
@@ -3620,9 +3673,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    data["time"] = self.double_read_time(
-                        time_p[i], use_digit_reader=True
-                    )
+                    # 房间干员倒计时随行号变化；订单模板只识别无人机界面的固定区域。
+                    data["time"] = self.double_read_time(time_p[i])
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
@@ -3748,7 +3800,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             )
 
-    def ensure_dorm_recovery_order(self, room, agents):
+    def ensure_dorm_recovery_order(self, room, agents, fast_mode=True):
         """先确认单回目标的入驻顺序，再由原任务恢复完整阵容。
 
         中间名单只用于这次点击，不能覆盖持久化任务中的完整恢复名单。
@@ -3793,7 +3845,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if attempt == 4:
                     raise Exception("未成功进入干员选择界面")
                 self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
-            self.choose_agent(retained.copy(), room, preserve_dorm_occupants=True)
+            self.choose_agent(
+                retained.copy(), room, fast_mode, preserve_dorm_occupants=True
+            )
             self.tap_confirm(room, {})
             current = [item["agent"] for item in self.get_agent_from_room(room)]
             if current != expected:
@@ -3922,7 +3976,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if plan[room] != self.op_data.get_current_room(room):
                             self.refresh_run_order_time(room)
                 checked = True
-                recovery_ordered = self.ensure_dorm_recovery_order(room, plan[room])
+                recovery_ordered = self.ensure_dorm_recovery_order(
+                    room, plan[room], fast_mode=choose_error <= 0
+                )
                 current_room = self.op_data.get_current_room(room, True)
                 same = len(plan[room]) == len(current_room)
                 if same:
@@ -4230,6 +4286,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         #     process_itemlist(d)
 
     def initialize_maa(self):
+        from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
+
+        if os.environ.get("MOWER_ANDROID") == "1":
+            from mower_android.maa import Asst
+
+            globals()["Message"] = int
+            config.stop_maa.clear()
+            self.MAA = VerifiedAsst(Asst, config.conf.maa_path, self.log_maa)
+            self.stages = []
+            if not self.MAA.connect():
+                raise RuntimeError("安卓 MAA 引擎未连接")
+            return
         config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
@@ -4268,9 +4336,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.error(f"MAA活动关卡导航更新失败：{str(e)}")
             save_exception(e)
 
-        Asst.load(path=path, incremental_path=path / "cache")
+        @update_transaction
+        def create_verified_asst():
+            Asst.load(path=path, incremental_path=path / "cache")
+            return VerifiedAsst(Asst, path, self.log_maa)
 
-        self.MAA = Asst(callback=self.log_maa)
+        self.MAA = create_verified_asst()
         self.stages = []
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option

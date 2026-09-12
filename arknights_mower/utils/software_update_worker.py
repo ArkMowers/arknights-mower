@@ -264,6 +264,7 @@ class Worker:
         self.source_stage = self.work / "source"
         self.stage_attempted = False
         self.payload_ready = False
+        self.verified_restart = False
         self.dependencies_changed = True
         self.wheels = None
         self.progress_servers = []
@@ -1016,6 +1017,8 @@ class Worker:
             except InstanceScanError:
                 ready = set()  # Retry within the existing readiness deadline.
             if requested <= ready:
+                if verify and requested:
+                    self.verified_restart = True
                 return
             if any(p.poll() is not None for p in processes):
                 break
@@ -1111,6 +1114,36 @@ class Worker:
             self.progress_servers.close()
             self.progress_servers = []
 
+    def cleanup_verified_backups(self):
+        if not self.verified_restart:
+            return
+        paths = {backup for _, backup in self.backups}
+        paths.add(self.bundle_backup)
+        entries = []
+        for path in paths:
+            try:
+                value = path.lstat()
+                entries.append(
+                    {
+                        "path": str(path.absolute()),
+                        "identity": [value.st_dev, value.st_ino],
+                    }
+                )
+            except FileNotFoundError:
+                pass
+        if not entries:
+            return
+        write_json(
+            self.work / "cleanup.json",
+            {
+                "verified": True,
+                "root": str(self.root.absolute()),
+                "id": self.job["id"],
+                "paths": entries,
+            },
+        )
+        retry_backup_cleanup(self.state, self.root, [self.work / "cleanup.json"])
+
     def execute(self):
         finished = threading.Event()
 
@@ -1143,6 +1176,12 @@ class Worker:
             self.close_progress_servers()
             self.restart(self.original)
             self.report("done", "更新成功，实例已恢复", "succeeded")
+            try:
+                self.cleanup_verified_backups()
+            except Exception:
+                # The healthy replacement is committed. A cleanup failure must
+                # never roll back over a running process or a partially removed backup.
+                traceback.print_exc()
         except Exception as exc:
             cancelled = isinstance(exc, UpdateCancelled) or (
                 self.cancellable and (self.state / "active/cancel.json").exists()
@@ -1182,6 +1221,63 @@ class Worker:
                 )
             shutil.rmtree(self.state / "active", ignore_errors=True)
             write_json(self.state / "status.json", self.status)
+
+
+def retry_backup_cleanup(directory, root, manifests=None):
+    """Retry only explicitly committed update backups, including after a restart."""
+    root = Path(root).absolute()
+    try:
+        with submission_lock(Path(directory) / "backup-cleanup"):
+            for manifest in (
+                manifests
+                if manifests is not None
+                else (Path(directory) / "jobs").glob("*/cleanup.json")
+            ):
+                record = read_json(manifest, {})
+                if record.get("verified") is not True or record.get("root") != str(
+                    root
+                ):
+                    continue
+                remaining = []
+                for entry in record.get("paths", []):
+                    path = Path(entry["path"])
+                    # A recorded queue never authorizes deleting arbitrary user data.
+                    source_backup = (
+                        path.parent == manifest.parent
+                        and path.name.startswith("runtime-")
+                        and path.name.removeprefix("runtime-")
+                        .removesuffix(".backup")
+                        .isdigit()
+                        and path.name.endswith(".backup")
+                    )
+                    bundle_backup = path == root.with_name(
+                        f"{root.name}.backup-{record['id']}"
+                    )
+                    if not source_backup and not bundle_backup:
+                        continue
+                    try:
+                        value = path.lstat()
+                        if [value.st_dev, value.st_ino] != entry["identity"]:
+                            continue
+                        if path.is_symlink() or path.is_file():
+                            path.unlink()
+                        elif path.is_dir():
+                            shutil.rmtree(path)
+                    except FileNotFoundError:
+                        pass
+                    except OSError as exc:
+                        remaining.append(entry)
+                        print(
+                            f"新版本已验证，回退备份暂无法清理，下次启动重试：{exc}",
+                            flush=True,
+                        )
+                if remaining:
+                    write_json(manifest, {**record, "paths": remaining})
+                else:
+                    manifest.unlink(missing_ok=True)
+    except (OSError, ValueError, KeyError, TypeError):
+        # Invalid/inaccessible records must not affect the healthy program.
+        traceback.print_exc()
 
 
 def main(job_path):

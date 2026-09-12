@@ -825,6 +825,40 @@ class WorkerTests(unittest.TestCase):
             runtime.read_json(self.state / "status.json")["status"], "succeeded"
         )
 
+    def test_cleanup_failure_after_verified_restart_never_rolls_back(self):
+        self.job.update(deployment="release")
+        worker = self.worker()
+        worker.prepare_package = Mock()
+        worker.stop_instances = Mock()
+        worker.install_package = Mock()
+        worker.restart = Mock()
+        worker.verified_restart = True
+        worker.cleanup_verified_backups = Mock(side_effect=PermissionError("locked"))
+        worker.rollback = Mock()
+        worker.execute()
+        worker.rollback.assert_not_called()
+        self.assertEqual(
+            runtime.read_json(self.state / "status.json")["status"], "succeeded"
+        )
+
+    def test_failed_restart_never_discards_rollback_files(self):
+        self.job.update(deployment="release")
+        worker = self.worker()
+        worker.prepare_package = Mock()
+        worker.stop_instances = Mock()
+        worker.install_package = Mock(
+            side_effect=lambda: setattr(worker, "switched", True)
+        )
+        worker.restart = Mock(side_effect=[RuntimeError("not ready"), None])
+        worker.cleanup_verified_backups = Mock()
+        worker.rollback = Mock()
+        worker.execute()
+        worker.rollback.assert_called_once()
+        worker.cleanup_verified_backups.assert_not_called()
+        self.assertEqual(
+            runtime.read_json(self.state / "status.json")["status"], "failed"
+        )
+
     def test_release_restart_option_controls_instances_and_manager(self):
         records = [
             {

@@ -9,13 +9,13 @@ from arknights_mower.utils.mastery_support import (
     SupportPlanError,
     TrainingInputs,
     candidates,
-    check_schedule_name,
     decode_json,
     decode_supports,
     schedule_context,
     stage_for,
     stage_route,
 )
+from arknights_mower.utils.mastery_support_types import DEFAULT_SWAP_BUFFER_MINUTES
 
 from .mastery_support_state import (
     enqueue_support_swap,
@@ -31,7 +31,8 @@ def _observed_support(solver):
     support, trainee, _, reliable = _read_slots_checked(solver)
     if not reliable:
         raise SupportPlanError("无法确认当前训练室协助者，请重试")
-    check_schedule_name(support, schedule_context()[0])
+    # This is the existing occupant, not necessarily the planned assistant.
+    # candidates() filters the assistants used by _stage_trainers/_follow_schedule.
     return support, trainee
 
 
@@ -107,7 +108,10 @@ def prepare_plan_supports(solver, plan, level):
         level,
         BASE_HOURS[level] * (0.5 if carry else 1),
         central,
-        route.get("mastery_swap_buffer", 10),
+        route.get(
+            "configured_swap_buffer",
+            route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
+        ),
         manual=route.get("manual", False),
     )
     save_runtime(plan, _prepare_stage(first, swap, spec, carry))

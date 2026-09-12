@@ -66,6 +66,53 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         server.maa_resource_update_job.update({"thread": None, "status": "idle"})
         self.temp.cleanup()
 
+    def test_android_saved_mirror_config_uses_official_default_and_rejects_requests(
+        self,
+    ):
+        with (
+            patch.dict("os.environ", {"MOWER_ANDROID": "1"}),
+            patch.object(server, "__system__", "linux"),
+            patch.object(server.config.conf, "maa_mirrorchyan_token", "saved-token"),
+            patch.object(server, "_mower_busy_response", return_value=None),
+            patch.object(server, "active_job", return_value=False),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.read_installed_version",
+                return_value="v6.17.5",
+            ),
+            patch("arknights_mower.utils.maa_update._request_mirrorchyan") as network,
+        ):
+            response = self.client.get(
+                "/maa-update/info",
+                query_string={"maa_path": self.target},
+                headers=self.headers,
+            )
+            self.assertEqual(response.json["default_source"], "github")
+            for route in (
+                "/maa-update/check",
+                "/maa-update/start",
+                "/maa-resource-update/check",
+                "/maa-resource-update/start",
+                "/maa-update/mirrorchyan-status",
+            ):
+                with self.subTest(route=route):
+                    response = self.client.post(
+                        route,
+                        json={
+                            "maa_path": self.target,
+                            "source": "mirrorchyan",
+                            "channel": "beta",
+                            "mirror_token": "saved-token",
+                        },
+                        headers=self.headers,
+                    )
+                    self.assertFalse(response.json["ok"])
+                    self.assertIn("Android 暂不支持 Mirror酱", response.json["message"])
+            network.assert_not_called()
+
     def test_portable_maa_path_is_resolved_consistently_by_all_update_routes(self):
         from arknights_mower.utils import path
 

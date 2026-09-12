@@ -22,6 +22,7 @@ from arknights_mower.solvers.mastery_reader import (
     read_main_panel,
 )
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_support_types import DEFAULT_SWAP_BUFFER_MINUTES
 from arknights_mower.utils.scene import Scene
 
 ARRANGING_DEADLINE = timedelta(minutes=5)
@@ -278,10 +279,16 @@ def validate_route_supports(supports_json: str) -> str | None:
 
 def get_route_config(profession_cn: str, level: int) -> dict | None:
     from arknights_mower.utils.mastery_db import get_route, get_route_settings
+    from arknights_mower.utils.mastery_support_types import (
+        configured_swap_buffer,
+        swap_buffer_minutes,
+    )
 
     # #91 修订：central_bonus（0/5）+ 缓冲统一从全局设置行读（默认 0 / 10），自定义与
     # DEFAULT_ROUTES 回退共用同一值——旧代码 hardcode 5、conf 值被忽略。
     settings = get_route_settings()
+    configured = configured_swap_buffer(settings)
+    buffer = swap_buffer_minutes(level, configured, central=settings["central_bonus"])
     route_data = get_route(profession_cn)
     if route_data:
         parsed = json.loads(route_data["supports"])
@@ -289,7 +296,8 @@ def get_route_config(profession_cn: str, level: int) -> dict | None:
         if config_entry is not None:
             config_entry.update(
                 central_bonus=settings["central_bonus"],
-                mastery_swap_buffer=settings["mastery_swap_buffer"],
+                mastery_swap_buffer=buffer,
+                configured_swap_buffer=configured,
             )
             return config_entry
 
@@ -300,7 +308,8 @@ def get_route_config(profession_cn: str, level: int) -> dict | None:
             config_entry = dict(entry)
             config_entry.update(
                 central_bonus=settings["central_bonus"],
-                mastery_swap_buffer=settings["mastery_swap_buffer"],
+                mastery_swap_buffer=buffer,
+                configured_swap_buffer=configured,
             )
             return config_entry
     return None
@@ -335,9 +344,7 @@ def _fmt_completion_time(dt: datetime) -> str:
 
 
 def _swap_speed_totals(job_match, efficiency, central_bonus) -> tuple[float, float]:
-    """换人公式速率口径（#142 保守）：swap_total 含中枢（减半对象）、current_total 不含
-    （路线协助干员）。calc_swap_threshold / _swap_worthwhileness 共用——改口径只改一处。
-    """
+    """排期采用保守速率：当前协助者不计中枢，减半干员计入中枢。"""
     swap_total = 100 + 5 + (30 if job_match else 0) + central_bonus
     current_total = 100 + efficiency + 5
     return swap_total, current_total
@@ -348,7 +355,7 @@ def calc_swap_threshold(
     swap_job_match: bool,
     central_bonus: int,
     remaining_minutes: float,
-    buffer: int = 10,
+    buffer: int = DEFAULT_SWAP_BUFFER_MINUTES,
 ) -> tuple[bool, float]:
     """计算是否应该换入减半对象。
 
@@ -366,18 +373,16 @@ def calc_swap_threshold(
     """
     target_minutes = 300 + buffer  # 5小时 + 缓冲
 
-    # #142（用户拍板保守口径）：中枢 +5% 只给减半对象（swap_total），不给路线协助干员
-    # （current_total）。中枢加成干员（阿斯卡纶/烛煌/斩业星熊）不一定在上班，屏幕倒计时
-    # 反映实际速度而公式用固定 central_bonus——静态设置与实际对不上时，换人时机偏晚。
-    # 保守口径让换人**只早不晚**：艾丽妮累计 ≥ 5h 稳定触发下一级减半（代价是中枢真开着
-    # 时换人提前几分钟、邮件完成时间差 ~10 分钟，无害）。
+    # 排期继续保守提前；最后检查按同一中枢设置计算两边速度。
     swap_total, current_total = _swap_speed_totals(
         swap_job_match, current_efficiency, central_bonus
     )
 
     threshold = target_minutes * swap_total / current_total
 
-    real_time_after_swap = remaining_minutes * current_total / swap_total
+    real_time_after_swap = (
+        remaining_minutes * (current_total + central_bonus) / swap_total
+    )
     if real_time_after_swap < 301:
         return False, threshold
 
@@ -626,7 +631,26 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     """
     from arknights_mower.solvers.mastery_reader import _read_slot_mastery_tier
     from arknights_mower.utils.mastery_db import update_plan_status
+    from arknights_mower.utils.mastery_recommendation import (
+        get_mastery_requirement_error,
+    )
     from arknights_mower.utils.mastery_support import SupportPlanError
+    from arknights_mower.utils.mastery_support_data import training_room_group_error
+
+    group_error = training_room_group_error()
+    if group_error:
+        from arknights_mower.utils.email import send_message
+
+        logger.warning(f"[mastery] 暂不开始训练：{group_error}")
+        update_plan_status(plan["id"], "failed", failed_reason=group_error)
+        send_message(f"{_plan_fail_label(plan)} {group_error}", level="ERROR")
+        return
+
+    requirement_error = get_mastery_requirement_error(plan["char_id"])
+    if requirement_error:
+        logger.warning(f"[mastery] 暂不开始训练：{requirement_error}")
+        update_plan_status(plan["id"], "failed", failed_reason=requirement_error)
+        return
 
     _log_transition(
         plan,
@@ -955,7 +979,11 @@ def _confirm_training_started(
                 if swap_time is not None:
                     route = _get_plan_route(plan, step_level)
                     swap_target = route.get("swap_target") if route else None
-                    buffer = route.get("mastery_swap_buffer", 10) if route else 10
+                    buffer = (
+                        route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES)
+                        if route
+                        else DEFAULT_SWAP_BUFFER_MINUTES
+                    )
                     completion = swap_time + timedelta(minutes=300 + buffer)
                     swap_clause = (
                         f"，将于 {_fmt_completion_time(swap_time)} 换入{swap_target}"
@@ -1078,7 +1106,7 @@ def _schedule_swap_if_needed(
         return None
 
     central_bonus = route.get("central_bonus", 0)
-    buffer = route.get("mastery_swap_buffer", 10)
+    buffer = route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES)
 
     remaining = (execute_time - datetime.now()).total_seconds() / 60
     should_swap, threshold = calc_swap_threshold(
@@ -1185,6 +1213,15 @@ def run_swap_support(solver):
     countdown_active = bool(panel is not None and panel.countdown_state == "active")
     step_level = panel.mastery_tier if panel is not None else None
 
+    from arknights_mower.utils.mastery_support_data import training_room_group_error
+
+    if group_error := training_room_group_error():
+        from arknights_mower.solvers.mastery_support_state import stop_support_swap
+
+        stop_support_swap(solver, plan, step_level, group_error)
+        solver.back()
+        return
+
     route = _get_plan_route(plan, step_level)
     operator = route.get("operator") if route else None
     swap_target = route.get("swap_target") if route else None
@@ -1212,7 +1249,7 @@ def run_swap_support(solver):
             and panel.countdown is not None
         ):
             remaining_min = (panel.countdown - datetime.now()).total_seconds() / 60
-            buffer_min = route.get("mastery_swap_buffer", 10)
+            buffer_min = route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES)
             if remaining_min < 300 + buffer_min:
                 logger.info(
                     f"[mastery] #107 协助位保护：{support_slot} 剩余不足 "
@@ -1244,7 +1281,7 @@ def run_swap_support(solver):
                         route.get("job_match", False),
                         route.get("central_bonus", 0),
                         remaining,
-                        route.get("mastery_swap_buffer", 10),
+                        route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
                     )
                     place_swap_target = should_swap
                 if place_swap_target:
@@ -1500,7 +1537,7 @@ def _notify_swap_giveup(solver, plan):
 
 
 def _swap_worthwhileness(remaining_minutes, route) -> bool:
-    """「值不值得换」纯判定：换后真实剩余 ≥ 301 才值得（calc_swap_threshold 同式）。
+    """最后检查两边都计入中枢，预计剩余 ≥ 301 分钟才值得换人。
 
     与 calc_swap_threshold 的 real_time_after_swap 守卫一致；供 run_swap_support
     纠错/换人前用当前倒计时判定（#80：纠错不触发不该发生的减半换人）。
@@ -1510,7 +1547,9 @@ def _swap_worthwhileness(remaining_minutes, route) -> bool:
         route["efficiency"],
         route.get("central_bonus", 0),
     )
-    real_time_after_swap = remaining_minutes * current_total / swap_total
+    real_time_after_swap = (
+        remaining_minutes * (current_total + route.get("central_bonus", 0)) / swap_total
+    )
     return real_time_after_swap >= 301
 
 
@@ -1590,7 +1629,15 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
         char_data = get_skill_data().get("characters", {}).get(plan["char_id"], {})
         prof_en = char_data.get("profession", "")
         prof_cn = PROF_MAP.get(prof_en, prof_en)
-        return get_route_config(prof_cn, step_level or plan["target_level"])
+        from arknights_mower.utils.mastery_support_types import route_swap_buffer
+
+        level = step_level or plan["target_level"]
+        route = get_route_config(prof_cn, level)
+        if route:
+            # Legacy plans have no verified halving record; use the longer M2
+            # margin unless inheritance is explicitly known.
+            route["mastery_swap_buffer"] = route_swap_buffer(route, level)
+        return route
     except Exception as e:
         logger.error(f"获取路线配置失败: {e}")
         return None

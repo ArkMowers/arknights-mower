@@ -237,10 +237,18 @@ export const usePlanStore = defineStore('plan', () => {
   let planSaveRequest = Promise.resolve()
 
   function save_plan() {
+    const configStore = useConfigStore()
     const payload = JSON.parse(JSON.stringify(build_plan()))
     planSaveRequest = planSaveRequest
       .catch(() => {})
       .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, payload))
+      .then((response) => {
+        if (response.data?.dorm_order_reset) {
+          // 同步后端的重置，防止下一次配置自动保存又写回旧优先级。
+          configStore.dorm_order = []
+        }
+        return response
+      })
     return planSaveRequest
   }
 

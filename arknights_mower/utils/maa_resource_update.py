@@ -19,6 +19,7 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 import requests
 
 from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.maa_backup import update_transaction
 from arknights_mower.utils.maa_update import (
     MaaUpdateError,
     backup_path_for,
@@ -158,6 +159,8 @@ def get_mirrorchyan_resource_release(
     session: requests.Session | None = None,
 ) -> MaaResourceRelease:
     """通过 Mirror酱检查 MaaResource 增量更新。"""
+    if os.environ.get("MOWER_ANDROID") == "1":
+        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         raise MaaUpdateError("请填写 Mirror酱 CDK")
@@ -418,6 +421,7 @@ def merge_resource_archive(
     return version
 
 
+@update_transaction
 def install_maa_resource_update(
     target: Path | str,
     source: str = "github",

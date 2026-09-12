@@ -139,7 +139,7 @@ watch(
             />
           </n-form-item>
           <n-form-item label="单次最大组装轮数">
-            <n-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
+            <mower-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
           </n-form-item>
         </template>
       </n-form>

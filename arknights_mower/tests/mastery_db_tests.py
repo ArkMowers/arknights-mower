@@ -288,20 +288,44 @@ class TestMasteryDb(unittest.TestCase):
         # #91 修订：无设置行 → 中枢加成默认 0（不是 5）、缓冲默认 10
         self.assertEqual(
             get_route_settings(path=self.db_path),
-            {"central_bonus": 0, "mastery_swap_buffer": 10},
+            {
+                "central_bonus": 0,
+                "mastery_swap_buffer": 10,
+                "mastery_swap_buffers": {
+                    "no_central": 10,
+                    "central": 15,
+                    "central_unhalved_m2": 30,
+                },
+            },
         )
 
     def test_route_settings_save_and_read(self):
         save_route_settings(central_bonus=5, mastery_swap_buffer=15, path=self.db_path)
         self.assertEqual(
             get_route_settings(path=self.db_path),
-            {"central_bonus": 5, "mastery_swap_buffer": 15},
+            {
+                "central_bonus": 5,
+                "mastery_swap_buffer": 15,
+                "mastery_swap_buffers": {
+                    "no_central": 15,
+                    "central": 15,
+                    "central_unhalved_m2": 15,
+                },
+            },
         )
         # 再存回 0 也生效
         save_route_settings(central_bonus=0, mastery_swap_buffer=10, path=self.db_path)
         self.assertEqual(
             get_route_settings(path=self.db_path),
-            {"central_bonus": 0, "mastery_swap_buffer": 10},
+            {
+                "central_bonus": 0,
+                "mastery_swap_buffer": 10,
+                "mastery_swap_buffers": {
+                    "no_central": 10,
+                    "central": 10,
+                    "central_unhalved_m2": 10,
+                },
+            },
         )
 
     def test_get_all_routes_excludes_settings_row(self):

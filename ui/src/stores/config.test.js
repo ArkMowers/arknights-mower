@@ -170,3 +170,34 @@ describe('weekly plan inventory config', () => {
     expect(store.maa_stage_limit_rules).toEqual(targetInventory.limit_rules)
   })
 })
+
+describe('native Android setting ownership', () => {
+  it('omits native idle, screenshot and theme fields only on Android', () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    store.return_home_when_idle = true
+    store.screenshot = 2.5
+    store.theme = 'dark'
+    store.runtime_platform = 'android'
+    expect(store.build_config()).not.toHaveProperty('return_home_when_idle')
+    expect(store.build_config()).not.toHaveProperty('exit_game_when_idle')
+    expect(store.build_config()).not.toHaveProperty('close_simulator_when_idle')
+    expect(store.build_config()).not.toHaveProperty('screenshot')
+    expect(store.build_config()).not.toHaveProperty('theme')
+    for (const platform of ['linux', 'windows', 'darwin']) {
+      store.runtime_platform = platform
+      expect(store.build_config()).toMatchObject({
+        return_home_when_idle: true,
+        exit_game_when_idle: false,
+        close_simulator_when_idle: false,
+        screenshot: 2.5,
+        theme: 'dark'
+      })
+    }
+  })
+})

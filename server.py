@@ -346,7 +346,11 @@ def _run_maa_update(
 
     operation = "更新" if result["operation"] == "update" else "下载"
     channel_label = "公测版" if result["channel"] == "beta" else "正式版"
-    if result["platform"] == "linux":
+    if result["platform"] == "android":
+        success_message = result.get(
+            "message", "Android MAA 组件已更新，重启服务后生效"
+        )
+    elif result["platform"] == "linux":
         source_label = "Mirror酱" if result["source"] == "mirrorchyan" else "GitHub"
         success_message = (
             f"MAA {result['version']} {channel_label}已通过 {source_label}{operation}完成；"
@@ -409,6 +413,11 @@ def _run_maa_resource_update(
             callback=_set_maa_resource_update_progress,
         )
         if result["updated"]:
+            if os.environ.get("MOWER_ANDROID") == "1":
+                from mower_android.managed import pack_component
+
+                pack_component(result["target"])
+                result["restart_required"] = True
             clear_loaded_maa_cache(result["target"])
         result["installed"] = read_maa_resource_info(result["target"])
     except Exception as e:
@@ -429,6 +438,8 @@ def _run_maa_resource_update(
     source_label = "Mirror酱" if result["source"] == "mirrorchyan" else "GitHub"
     if result["updated"]:
         message = f"MAA 资源 {result['version']} 已通过 {source_label}更新完成"
+        if result.get("restart_required"):
+            message += "，重启安卓服务后生效"
     else:
         message = f"MAA 资源 {result['version']} 已是最新版本"
     with maa_resource_update_lock:
@@ -733,9 +744,26 @@ def load_plan_from_json():
     if request.method == "GET":
         return config.plan.model_dump(exclude_none=True)
     else:
-        config.plan = config.PlanModel(**request.json)
-        config.save_plan()
-        return "New plan saved。"
+        from arknights_mower.utils.workshop_config import workshop_lock
+
+        plan = config.PlanModel(**request.json)
+        with workshop_lock:
+            previous_plan = config.plan
+            previous_dorm_order = config.conf.dorm_order
+            changed = plan != previous_plan
+            config.plan = plan
+            try:
+                config.save_plan()
+                # 排班实际改变后丢弃旧床位顺序；相同内容的自动保存不重置手动排序。
+                if changed and previous_dorm_order:
+                    config.conf.dorm_order = ""
+                    config.save_conf()
+            except Exception:
+                # 任一步写盘失败都恢复比较基准，重试仍需重置并通知前端。
+                config.plan = previous_plan
+                config.conf.dorm_order = previous_dorm_order
+                raise
+        return {"message": "New plan saved。", "dorm_order_reset": changed}
 
 
 @app.route("/operator")
@@ -978,9 +1006,10 @@ def get_latest_screenshot():
     """
     返回最新截图的路径
     """
-    from arknights_mower.utils.log import screenshot_store
+    from arknights_mower.utils.log import get_screenshot_store
 
-    return screenshot_store.last_saved()
+    store = get_screenshot_store()
+    return store.last_saved() if store is not None else ""
 
 
 def _webview_conn():
@@ -1254,7 +1283,8 @@ def get_maa_update_info():
         "channel": channel,
         "default_source": (
             "mirrorchyan"
-            if str(config.conf.maa_mirrorchyan_token or "").strip()
+            if os.environ.get("MOWER_ANDROID") != "1"
+            and str(config.conf.maa_mirrorchyan_token or "").strip()
             else "github"
         ),
         "target": target_text,
@@ -1310,6 +1340,11 @@ def check_maa_update():
     ).strip()
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": "未知的 MAA 更新源"}
+    if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
+        return {
+            "ok": False,
+            "message": "Android 暂不支持 Mirror酱，请使用 GitHub 官方源",
+        }
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
     try:
@@ -1399,6 +1434,11 @@ def start_maa_update():
         }
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": f"未知的 MAA {operation}源"}
+    if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
+        return {
+            "ok": False,
+            "message": "Android 暂不支持 Mirror酱，请使用 GitHub 官方源",
+        }
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
     config_changed = False
@@ -1611,6 +1651,11 @@ def check_maa_resource_update():
     ).strip()
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": "未知的 MAA 资源更新源"}
+    if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
+        return {
+            "ok": False,
+            "message": "Android 暂不支持 Mirror酱，请使用 GitHub 官方源",
+        }
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
 
@@ -1673,6 +1718,11 @@ def start_maa_resource_update():
         return {"ok": False, "message": "请先下载并设置有效的 MAA 目录"}
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": "未知的 MAA 资源更新源"}
+    if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
+        return {
+            "ok": False,
+            "message": "Android 暂不支持 Mirror酱，请使用 GitHub 官方源",
+        }
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
     if source == "mirrorchyan" and mirror_token != config.conf.maa_mirrorchyan_token:

@@ -199,6 +199,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
+        elif self.find("clue/message_board_page"):
+            self.scene = Scene.CLUE_MESSAGE_BOARD
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("infra_overview_in"):
@@ -863,6 +865,8 @@ class Recognizer:
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
             "clue_next_black": ((1600, 850), (1920, 1030)),
+            # 会客室信息板页面：底栏「访问人次」固定在左下角
+            "clue/message_board_page": ((0, 960), (540, 1080)),
             "loading": (736, 333),
             "loading2": (630, 240),
             "loading3": (1681, 1000),

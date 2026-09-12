@@ -34,6 +34,7 @@ const taskTypeOptions = [
   { label: '加工任务', value: '加工材料' },
   { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
   { label: '仓库扫描', value: '仓库扫描' },
+  { label: '线索任务', value: '线索任务' },
   { label: '空任务', value: '空任务' }
 ]
 const workshopOperatorOptions = computed(() => {
@@ -140,7 +141,7 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
-  } else if (['仓库扫描', '分解所有重复家具'].includes(task_type.value)) {
+  } else if (['仓库扫描', '分解所有重复家具', '线索任务'].includes(task_type.value)) {
     // 独立任务不携带房间排班。
     task.plan = {}
   }

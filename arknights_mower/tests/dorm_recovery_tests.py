@@ -204,6 +204,27 @@ def test_intermediate_confirmation_failure_keeps_restore_plan_and_no_success_mar
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
 
 
+def test_compact_selection_failure_retries_with_full_selection(solver):
+    choose = solver.choose_agent.side_effect
+    modes = []
+
+    def fail_fast_selection(agents, room, fast_mode=True, **kwargs):
+        modes.append(fast_mode)
+        if fast_mode:
+            assert solver.task.plan == {ROOM: FINAL}
+            assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
+            raise RuntimeError("检测到干员选择错误，重新选择")
+        return choose(agents, room, fast_mode, **kwargs)
+
+    solver.choose_agent.side_effect = fail_fast_selection
+    arrange(solver)
+    assert modes == [True, False, False]
+    assert solver.confirms == [["杜林", "琴柳", "银灰", "", ""], FINAL]
+    assert solver.physical == FINAL
+    assert solver.task.plan == {}
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
+
+
 def test_read_failure_keeps_restore_plan_then_retry_does_not_clear_twice(solver):
     read = solver.get_agent_from_room.side_effect
     calls = 0

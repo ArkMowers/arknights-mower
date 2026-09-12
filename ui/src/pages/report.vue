@@ -19,9 +19,9 @@
   </n-dropdown>
   <n-card title="收益系数输入" v-show="isShow">
     <div>
-      <span>赤金<n-input-number v-model:value="value_coefficient_gold" /></span>
-      <span>订单<n-input-number v-model:value="value_coefficient_lmb" /></span>
-      <span>经验<n-input-number v-model:value="value_coefficient_exp" /></span>
+      <span>赤金<mower-input-number v-model:value="value_coefficient_gold" /></span>
+      <span>订单<mower-input-number v-model:value="value_coefficient_lmb" /></span>
+      <span>经验<mower-input-number v-model:value="value_coefficient_exp" /></span>
     </div>
     <div class="button_class">
       <n-button type="tertiary" @click="isShow = false">取消</n-button>

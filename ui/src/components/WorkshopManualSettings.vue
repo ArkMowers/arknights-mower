@@ -117,7 +117,7 @@ function createNewItem() {
             </div>
             <div style="display: flex; flex-direction: row; align-self: center">
               <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
-              <n-input-number
+              <mower-input-number
                 v-model:value="value.self_upper_limit"
                 :min="0"
                 placeholder="自身上限"
@@ -128,7 +128,7 @@ function createNewItem() {
             </div>
             <div style="display: flex; flex-direction: row; align-self: center">
               <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
-              <n-input-number
+              <mower-input-number
                 v-model:value="value.children_lower_limit"
                 :min="0"
                 placeholder="子项下限"

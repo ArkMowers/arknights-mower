@@ -295,6 +295,7 @@ Res = Literal[
     "clue/icon_notification",
     "clue/message_board",
     "clue/message_board_collect",
+    "clue/message_board_page",
     "clue/label_give_away",
     "clue/receive",
     "clue/summary",

@@ -194,6 +194,44 @@ def classify_room_state(scene, countdown_state, identity_present, icon_lit) -> s
 # --- 读取原语 ---
 
 
+def _idle_marker_visible(solver) -> bool:
+    """主页面左下角是否显示「空闲中」标记（训练位没在专精）。
+
+    模板与 scope/阈值见 recognize.find 的 training_idle 分支（#875 入库）。只做模板
+    匹配，不额外截图——用的是最近一次 recog.update() 的画面，与同一次读出的面板文本、
+    专精图标同源。
+
+    读不到/异常一律返回 False（不采信），调用方退回原路径。
+    """
+    try:
+        return bool(solver.find("training_idle"))
+    except Exception as e:
+        logger.debug(f"空闲标记读取失败: {e}")
+        return False
+
+
+def _idle_confirmed(solver, panel) -> bool:
+    """面板读不出归属 + 「空闲中」标记可见 → 确认房间空闲。
+
+    §16.2 的空闲签名是「倒计时空 + 无名无亮点」，但要靠倒计时读空去反推：`read_time`
+    内部最多重试 5 次、每次重新截图，空闲房 5 次都读不到，白等约 2.5 秒才得出同一个
+    结论。「空闲中」标记是游戏自己给出的直接证据（空闲 = 没在专精 且 没有待收取，
+    与房间里有谁无关），面板又读不出归属 → 训练位确定为空，不必再靠倒计时反推。
+
+    读出了 `[干员名]技能名`（与 `_classify_panel` 的 identity_present 同一判据）或任一
+    专精亮点，就不采信标记，照旧走状态矩阵：§16.2 规定这种组合一般是倒计时 OCR 出错，
+    仍要原地重试 5 次，不直接下结论。
+
+    不能用 `panel.skill_name` 单独判——`read_screen` 读空时返回哨兵 `limit + 1`（=25），
+    经 `_parse_panel_text` 会变成 `skill_name="25"`，单判会让空闲格永远走不到这里。
+    """
+    if panel.operator_name and panel.skill_name:
+        return False
+    if panel.mastery_tier:
+        return False
+    return _idle_marker_visible(solver)
+
+
 def _read_train_countdown3(solver):
     """三态倒计时读取（§16.8）：返回 (state, end_time)。
 
@@ -276,6 +314,11 @@ def read_main_panel(solver, img=None) -> RoomPanel:
         img = solver.recog.img
     panel = _read_panel_text(solver, img)
     panel.mastery_tier = _count_lit_mastery_icons(solver, img)
+    if _idle_confirmed(solver, panel):
+        # 面板读不出归属 + 空闲中标记 → 房间确定空闲，跳过倒计时重试（见 _idle_confirmed）
+        logger.debug("[mastery] 面板读不出归属且检测到空闲中标记，跳过倒计时重试")
+        panel.countdown_state = "failed"
+        return panel
     state, countdown = _read_train_countdown3(solver)
     panel.countdown_state = state
     panel.countdown = countdown

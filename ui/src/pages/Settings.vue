@@ -241,7 +241,10 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
+              >设备连接由 Android 应用管理。</n-alert
+            >
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>ADB路径</span>
                 <help-text>
@@ -255,7 +258,7 @@ if (return_home_when_idle.value) {
               <n-input v-model:value="maa_adb_path" />
               <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
             </n-form-item>
-            <n-form-item>
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>ADB连接地址</span>
                 <help-text>
@@ -266,7 +269,7 @@ if (return_home_when_idle.value) {
               </template>
               <n-input v-model:value="adb" />
             </n-form-item>
-            <n-form-item label="触控方案">
+            <n-form-item label="触控方案" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="touch_method">
                 <n-space>
                   <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
@@ -274,14 +277,14 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="模拟器">
+            <n-form-item label="模拟器" v-if="runtime_platform !== 'android'">
               <n-select
                 v-model:value="simulator.name"
                 :options="simulator_types"
                 @update:value="onSelectionChange"
               />
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>模拟器文件夹</span>
                 <help-text>
@@ -292,7 +295,7 @@ if (return_home_when_idle.value) {
               <n-input v-model:value="simulator.simulator_folder" />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>多开编号</span>
                 <help-text>
@@ -301,12 +304,15 @@ if (return_home_when_idle.value) {
               </template>
               <n-input v-model:value="simulator.index" />
             </n-form-item>
-            <n-form-item label="模拟器启动时间" v-if="simulator.name">
-              <n-input-number v-model:value="simulator.wait_time">
+            <n-form-item
+              label="模拟器启动时间"
+              v-if="runtime_platform !== 'android' && simulator.name"
+            >
+              <mower-input-number v-model:value="simulator.wait_time">
                 <template #suffix>秒</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>模拟器老板键</span>
                 <help-text>
@@ -332,16 +338,21 @@ if (return_home_when_idle.value) {
                 placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
               />
             </n-form-item>
-            <n-form-item label="启动游戏">
+            <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && tap_to_launch_game.mode == 'tap'"
+              label="点击坐标"
+            >
               <span class="coord-label">X:</span>
-              <n-input-number v-model:value="tap_to_launch_game.x" />
+              <mower-input-number v-model:value="tap_to_launch_game.x" />
               <span class="coord-label">Y:</span>
-              <n-input-number v-model:value="tap_to_launch_game.y" />
+              <mower-input-number v-model:value="tap_to_launch_game.y" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && tap_to_launch_game.mode == 'custom'"
+            >
               <template #label>
                 <span>启动命令</span>
                 <help-text>
@@ -357,7 +368,7 @@ if (return_home_when_idle.value) {
               />
               <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
             </n-form-item>
-            <n-form-item>
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>任务结束后</span>
                 <help-text>
@@ -371,7 +382,11 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item
               :show-label="false"
-              v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
+              v-if="
+                runtime_platform !== 'android' &&
+                simulator.name == 'MuMu12' &&
+                close_simulator_when_idle
+              "
             >
               <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
                 关闭MuMu模拟器12时结束adb进程
@@ -384,7 +399,7 @@ if (return_home_when_idle.value) {
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
-            <n-form-item label="截图方案">
+            <n-form-item label="截图方案" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="screenshot_method">
                 <n-flex>
                   <n-radio value="adb_gzip">
@@ -402,7 +417,7 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="旋转截图" v-if="droidcast.enable">
+            <n-form-item label="旋转截图" v-if="runtime_platform !== 'android' && droidcast.enable">
               <n-radio-group v-model:value="droidcast.rotate">
                 <n-flex>
                   <n-radio :value="false">不旋转</n-radio>
@@ -410,31 +425,37 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="截图命令" v-if="custom_screenshot.enable">
+            <n-form-item
+              label="截图命令"
+              v-if="runtime_platform !== 'android' && custom_screenshot.enable"
+            >
               <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
               <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
                 测试
               </n-button>
             </n-form-item>
-            <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && custom_screenshot.enable && tested"
+              :show-label="false"
+            >
               <n-flex vertical>
                 <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
                 <div>（截图用时{{ elapsed }}ms）</div>
               </n-flex>
             </n-form-item>
             <n-form-item label="截图最短间隔">
-              <n-input-number v-model:value="screenshot_interval" :precision="0">
+              <mower-input-number v-model:value="screenshot_interval" :precision="0">
                 <template #suffix>毫秒</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
-            <n-form-item :show-feedback="screenshot === 0">
+            <n-form-item v-if="runtime_platform !== 'android'" :show-feedback="screenshot === 0">
               <template #label>
                 <span>截图保存时间</span>
                 <help-text>默认保留 1 小时，可填小数。</help-text>
               </template>
-              <n-input-number v-model:value="screenshot" :min="0">
+              <mower-input-number v-model:value="screenshot" :min="0">
                 <template #suffix>小时</template>
-              </n-input-number>
+              </mower-input-number>
               <template v-if="screenshot === 0" #feedback>
                 <span role="status">
                   已关闭截图保存，实时预览仍可用。后续调试、跑单等截图不会保存，排查问题时可能缺少截图记录。设为正数可恢复保存。
@@ -454,14 +475,22 @@ if (return_home_when_idle.value) {
                   <tr v-for="(value, key) in waiting_scene">
                     <td>{{ scene_name[key] }}</td>
                     <td>
-                      <n-input-number v-model:value="value[0]" :show-button="false" :precision="0">
+                      <mower-input-number
+                        v-model:value="value[0]"
+                        :show-button="false"
+                        :precision="0"
+                      >
                         <template #suffix>秒</template>
-                      </n-input-number>
+                      </mower-input-number>
                     </td>
                     <td>
-                      <n-input-number v-model:value="value[1]" :show-button="false" :precision="0">
+                      <mower-input-number
+                        v-model:value="value[1]"
+                        :show-button="false"
+                        :precision="0"
+                      >
                         <template #suffix>次</template>
-                      </n-input-number>
+                      </mower-input-number>
                     </td>
                   </tr>
                 </tbody>
@@ -485,7 +514,7 @@ if (return_home_when_idle.value) {
                 应用
               </n-button>
             </n-form-item>
-            <n-form-item :show-label="false">
+            <n-form-item v-if="runtime_platform !== 'android'" :show-label="false">
               <n-checkbox
                 v-if="runtime_platform === 'darwin'"
                 v-model:checked="hide_macos_menu_bar"
@@ -500,7 +529,7 @@ if (return_home_when_idle.value) {
                 <help-text>重启生效。多开管理器启动的实例统一使用管理器托盘。</help-text>
               </n-checkbox>
             </n-form-item>
-            <n-form-item label="显示主题">
+            <n-form-item label="显示主题" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="theme">
                 <n-space>
                   <n-radio value="light">亮色</n-radio>
@@ -516,9 +545,9 @@ if (return_home_when_idle.value) {
                   <div>清理智、日常/周常任务领取、借助战打OF-1</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="maa_gap">
+              <mower-input-number v-model:value="maa_gap">
                 <template #suffix>小时</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
           </n-form>
         </n-card>
@@ -565,9 +594,9 @@ if (return_home_when_idle.value) {
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="run_order_delay">
+              <mower-input-number v-model:value="run_order_delay">
                 <template #suffix>分钟</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
@@ -577,9 +606,9 @@ if (return_home_when_idle.value) {
                 <span>葛朗台缓冲时间</span>
                 <help-text>推荐范围：15-30</help-text>
               </template>
-              <n-input-number v-model:value="run_order_grandet_mode.buffer_time">
+              <mower-input-number v-model:value="run_order_grandet_mode.buffer_time">
                 <template #suffix>秒</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
             <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
@@ -606,7 +635,7 @@ if (return_home_when_idle.value) {
                   <div>如加速制造，推荐大于 贸易站数*10</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="drone_count_limit" />
+              <mower-input-number v-model:value="drone_count_limit" />
             </n-form-item>
             <n-form-item>
               <template #label>
@@ -615,9 +644,9 @@ if (return_home_when_idle.value) {
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="drone_interval">
+              <mower-input-number v-model:value="drone_interval">
                 <template #suffix>小时</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
             <n-form-item label="搓玉补货房间">
               <n-select
@@ -645,9 +674,9 @@ if (return_home_when_idle.value) {
                   :max="80"
                   :format-tooltip="(v) => `${v}%`"
                 />
-                <n-input-number v-model:value="resting_threshold" :step="5" :min="50" :max="80">
+                <mower-input-number v-model:value="resting_threshold" :step="5" :min="50" :max="80">
                   <template #suffix>%</template>
-                </n-input-number>
+                </mower-input-number>
               </div>
             </n-form-item>
             <n-form-item :show-label="false">
@@ -664,9 +693,9 @@ if (return_home_when_idle.value) {
                   <div>将不养闲人任务合并至下一个指定间隔内的任务</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="merge_interval">
+              <mower-input-number v-model:value="merge_interval">
                 <template #suffix>分钟</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="fia_fool">
@@ -720,9 +749,9 @@ if (return_home_when_idle.value) {
                   :max="90"
                   :format-tooltip="(v) => `${v}%`"
                 />
-                <n-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
+                <mower-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
                   <template #suffix>%</template>
-                </n-input-number>
+                </mower-input-number>
               </div>
             </n-form-item>
             <n-form-item>
@@ -740,9 +769,9 @@ if (return_home_when_idle.value) {
                   :max="90"
                   :format-tooltip="(v) => `${v}%`"
                 />
-                <n-input-number v-model:value="rescue_threshold" :step="5" :min="0" :max="90">
+                <mower-input-number v-model:value="rescue_threshold" :step="5" :min="0" :max="90">
                   <template #suffix>%</template>
-                </n-input-number>
+                </mower-input-number>
               </div>
             </n-form-item>
             <n-form-item>
@@ -785,7 +814,7 @@ if (return_home_when_idle.value) {
       />
     </div>
     <div class="settings-network">
-      <ProcessControl />
+      <ProcessControl v-if="runtime_platform !== 'android'" />
     </div>
   </div>
 </template>

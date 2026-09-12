@@ -548,13 +548,58 @@ jobs:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}
           path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}.dmg
 
+  build-android:
+    name: Package Android Mower update
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+      - name: Download release metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata
+      - name: Overwrite changelog with generated
+        run: cp release-metadata/CHANGELOG.md CHANGELOG.md
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Inject version from tag
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+      - name: Build shared WebUI
+        working-directory: ui
+        run: npm ci && npm run build
+      - name: Package Mower without the Android host
+        run: python scripts/package_android.py "${{ needs.prepare.outputs.version }}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arknights-mower_${{ needs.prepare.outputs.version }}_android_arm64
+          path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_android_arm64.zip
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [prepare, build-windows, build-linux, build-macos]
+    needs: [prepare, build-windows, build-linux, build-macos, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Download release metadata
         uses: actions/download-artifact@v4
         with:
@@ -567,6 +612,14 @@ jobs:
           path: release-assets
           pattern: arknights-mower_*
           merge-multiple: true
+
+      - name: Reuse compatible Android host release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_CHANNEL: ${{ needs.prepare.outputs.prerelease == 'true' && 'beta' || 'stable' }}
+        run: |
+          python scripts/sync_android_release.py --channel "$ANDROID_CHANNEL" \
+            --output release-assets --body release-metadata/body.md
 
       - name: Generate SHA-256 manifest
         run: |
@@ -581,6 +634,8 @@ jobs:
           files: |
             release-assets/arknights-mower_*
             release-assets/SHA256SUMS
+            release-assets/mower-android-*.apk
+            release-assets/mower-maa-python-*.zip
           body_path: release-metadata/body.md
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           draft: false

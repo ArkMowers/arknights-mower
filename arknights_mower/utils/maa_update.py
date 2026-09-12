@@ -26,13 +26,14 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 import requests
 from packaging.version import InvalidVersion, Version
 
 from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.maa_backup import update_transaction
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
 MAA_REPOSITORY = "MaaAssistantArknights/MaaAssistantArknights"
@@ -130,7 +131,17 @@ def _asset_from_payload(payload: dict[str, Any]) -> ReleaseAsset:
     size = payload.get("size")
     if not isinstance(name, str) or not isinstance(url, str):
         raise MaaUpdateError("MAA Release 资源信息不完整")
-    return ReleaseAsset(name=name, url=url, size=int(size or 0))
+    digest = payload.get("digest", "")
+    checksum = (
+        digest[7:].lower()
+        if isinstance(digest, str) and digest.startswith("sha256:")
+        else ""
+    )
+    if checksum and (
+        len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum)
+    ):
+        raise MaaUpdateError("MAA Release SHA-256 信息无效")
+    return ReleaseAsset(name=name, url=url, size=int(size or 0), sha256=checksum)
 
 
 def normalize_linux_arch(machine: str | None = None) -> str:
@@ -202,6 +213,11 @@ def parse_release(
     if system == "darwin":
         expected_runtime = f"MAA-{tag.strip()}-macos-runtime-universal.zip"
         expected_python = f"MAA-{tag.strip()}-win-arm64.zip"
+    elif system == "android":
+        if normalize_linux_arch(machine) != "aarch64":
+            raise MaaUpdateError("安卓版仅支持 ARM64")
+        expected_runtime = f"MAAComponent-{tag.strip()}-android-arm64.tar.gz"
+        expected_python = None
     elif system == "linux":
         arch = normalize_linux_arch(machine)
         expected_runtime = f"MAA-{tag.strip()}-linux-{arch}.tar.gz"
@@ -225,6 +241,8 @@ def parse_release(
             python_payload = item
 
     if runtime_payload is None:
+        if system == "android":
+            raise MaaUpdateError("官方发布中没有 Android ARM64 组件包")
         if system == "linux":
             raise MaaUpdateError(f"MAA 最新 Release 中没有 Linux {arch} 完整包")
         if system == "windows":
@@ -250,6 +268,8 @@ def get_latest_release(
 ) -> MaaRelease:
     """按 MAA 正式版 / 公测版通道读取 GitHub Release 信息。"""
     client = session or requests.Session()
+    if os.environ.get("MOWER_ANDROID") == "1":
+        system, machine = "android", "arm64"
     channel = normalize_update_channel(channel)
     for url_template in MAA_VERSION_API_URLS:
         try:
@@ -271,6 +291,17 @@ def get_latest_release(
         release_payload.setdefault("tag_name", version)
         if release_payload.get("tag_name") != version:
             continue
+        if system == "android":
+            # Select the SAME channel version as desktop, then obtain the official
+            # Android component and its GitHub digest from that exact release.
+            response = client.get(
+                f"https://api.github.com/repos/{MAA_REPOSITORY}/releases/tags/{quote(version, safe='')}",
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            release_payload = response.json()
+            if release_payload.get("tag_name") != version:
+                raise MaaUpdateError("MAA 渠道版本与组件发布版本不一致")
         return parse_release(
             release_payload,
             system=system,
@@ -377,6 +408,8 @@ def get_mirrorchyan_cdk_status(
     now: float | None = None,
 ) -> MirrorChyanCdkStatus:
     """查询 Mirror酱 CDK 状态及有效期，不在错误中回显 CDK。"""
+    if os.environ.get("MOWER_ANDROID") == "1" or system == "android":
+        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         return MirrorChyanCdkStatus(
@@ -489,6 +522,8 @@ def get_mirrorchyan_release(
     channel: str = "stable",
 ) -> MaaRelease:
     """通过 Mirror酱取得当前系统所需的 MAA 完整包。"""
+    if os.environ.get("MOWER_ANDROID") == "1" or system == "android":
+        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         raise MaaUpdateError("请填写 Mirror酱 CDK")
@@ -865,6 +900,7 @@ def extract_linux_package(
     archive_path: Path,
     destination: Path,
     callback: ProgressCallback | None = None,
+    android: bool = False,
 ) -> None:
     """安全解压 Linux ``tar.gz`` 完整包，并兼容可选的单层版本根目录。"""
     try:
@@ -905,6 +941,14 @@ def extract_linux_package(
     except (tarfile.TarError, OSError) as e:
         raise MaaUpdateError(f"MAA Linux 完整包解压失败：{e}") from e
 
+    if android:
+        if (
+            not (destination / "libMaaCore.so").is_file()
+            or not (destination / "libMaaAndroidNativeControlUnit.so").is_file()
+            or not (destination / "resource").is_dir()
+        ):
+            raise MaaUpdateError("Android 组件缺少核心、原生控制器或资源")
+        return
     required = (
         destination / "libMaaCore.so",
         destination / "resource",
@@ -1316,6 +1360,10 @@ def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
     ``fresh`` 会把 MaaCore 临时复制到同目录的唯一文件名后再加载，避开
     macOS 等平台按动态库路径复用旧映像的缓存。
     """
+    if os.environ.get("MOWER_ANDROID") == "1":
+        from mower_android.managed import installed_version
+
+        return installed_version(target)
     library_path = _find_maa_core_library(target)
     if library_path is None:
         return ""
@@ -1360,6 +1408,8 @@ def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
 
 def clear_loaded_maa_cache(target: Path | str) -> None:
     """释放 Mower 进程内已经读取的 MAA 实例、模块和导入路径。"""
+    if os.environ.get("MOWER_ANDROID") == "1":
+        return  # Native core is isolated in the Android service; restart activates updates.
     main_module = sys.modules.get("arknights_mower.__main__")
     scheduler = getattr(main_module, "base_scheduler", None)
     if scheduler is not None:
@@ -1391,6 +1441,7 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
     gc.collect()
 
 
+@update_transaction
 def install_latest_maa(
     target: Path | str,
     callback: ProgressCallback | None = None,
@@ -1402,6 +1453,12 @@ def install_latest_maa(
     channel: str = "stable",
 ) -> dict[str, Any]:
     """下载或更新 MAA，切换成功后把原目录保留为同级 ``.old``。"""
+    if os.environ.get("MOWER_ANDROID") == "1":
+        from mower_android.managed import install_update
+
+        return install_update(
+            target, callback, session, source, mirror_token, system, machine, channel
+        )
     target_path = Path(target).expanduser()
     if not target_path.name or target_path == target_path.parent:
         raise MaaUpdateError("MAA 目录无效")

@@ -85,7 +85,8 @@ def schedule_support_swap(solver, plan, end, level):
     target_seconds = (300 + route["mastery_swap_buffer"]) * 60
     now = datetime.now()
     left = (end - now).total_seconds()
-    if route.get("swap_halves", True) and left * current_rate / tail_rate < 301 * 60:
+    check_rate = rate(route["efficiency"], route["central_bonus"])
+    if route.get("swap_halves", True) and left * check_rate / tail_rate < 301 * 60:
         return None
     at = now + timedelta(
         seconds=max(0, left - target_seconds * tail_rate / current_rate)
@@ -133,9 +134,13 @@ def stop_support_swap(solver, plan, level, reason):
         finish_support_swap(solver, plan, level, freeze=True)
 
 
-def select_swap_support(work_seconds, current_rate, stats, settings):
-    """Return (candidate, delay_seconds). A slower alternate may need a later handoff."""
+def select_swap_support(
+    work_seconds, current_rate, stats, settings, *, schedule_rate=None
+):
+    """Validate with nominal rates, while keeping conservative handoff timing."""
     central, buffer = settings
+    schedule_rate = current_rate if schedule_rate is None else schedule_rate
+    remaining = work_seconds / current_rate
     minimum = (300 + max(1, buffer)) * 60
     for candidate in stats:
         dest_rate = rate(candidate["efficiency"], central)
@@ -144,7 +149,8 @@ def select_swap_support(work_seconds, current_rate, stats, settings):
             candidate["halves"] and available_seconds < 301 * 60
         ):
             continue
-        tail = min(available_seconds, minimum)
-        delay = max(0, (work_seconds - tail * dest_rate) / current_rate)
+        # The more permissive final check must not postpone an already-due swap.
+        # A slower alternate still uses the original conservative scheduling rate.
+        delay = max(0, remaining - minimum * dest_rate / schedule_rate)
         return candidate, delay
     return None, 0

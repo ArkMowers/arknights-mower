@@ -581,7 +581,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
       maa_gap: maa_gap.value,
       simulator: simulator.value,
-      theme: theme.value,
+      ...(runtime_platform.value === 'android' ? {} : { theme: theme.value }),
       resting_threshold: resting_threshold.value / 100,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,
@@ -593,9 +593,15 @@ export const useConfigStore = defineStore('config', () => {
         y: tap_to_launch_game.value.y,
         command: tap_to_launch_game.value.command || defaultLaunchCommand
       },
-      exit_game_when_idle: exit_game_when_idle.value,
-      return_home_when_idle: return_home_when_idle.value,
-      close_simulator_when_idle: close_simulator_when_idle.value,
+      // Android edits these original Mower options in its native settings.
+      // Hidden WebUI drafts must not overwrite a newer native selection.
+      ...(runtime_platform.value === 'android'
+        ? {}
+        : {
+            exit_game_when_idle: exit_game_when_idle.value,
+            return_home_when_idle: return_home_when_idle.value,
+            close_simulator_when_idle: close_simulator_when_idle.value
+          }),
       maa_conn_preset: maa_conn_preset.value,
       maa_touch_option: maa_touch_option.value,
       maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
@@ -610,7 +616,7 @@ export const useConfigStore = defineStore('config', () => {
       rcl: rcl.value,
       rogue: rogue.value,
       sss: sss.value,
-      screenshot: screenshot.value,
+      ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
       screenshot_interval: screenshot_interval.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,

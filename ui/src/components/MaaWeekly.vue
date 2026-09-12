@@ -268,7 +268,7 @@ function cancelCopyDialogLongPress() {
         <n-flex vertical :size="8">
           <n-flex class="weekly-plan-toolbar" align="center">
             <span>使用还剩</span>
-            <n-input-number
+            <mower-input-number
               v-model:value="medicine_expire_days"
               :min="0"
               :max="999"
@@ -277,7 +277,7 @@ function cancelCopyDialogLongPress() {
               style="width: 90px"
             >
               <template #suffix>天</template>
-            </n-input-number>
+            </mower-input-number>
             <span>过期的理智药</span>
             <help-text>
               <div>
@@ -329,7 +329,7 @@ function cancelCopyDialogLongPress() {
           </n-flex>
           <n-flex>
             <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
-            <n-input-number
+            <mower-input-number
               v-model:value="ap_fallback"
               :min="0"
               :max="999"
@@ -338,7 +338,7 @@ function cancelCopyDialogLongPress() {
               style="width: 90px"
             >
               <template #suffix>体力</template>
-            </n-input-number>
+            </mower-input-number>
           </n-flex>
         </n-flex>
       </n-form-item>
@@ -378,24 +378,24 @@ function cancelCopyDialogLongPress() {
                 />
               </td>
               <td class="number-column">
-                <n-input-number
+                <mower-input-number
                   v-model:value="plan.medicine"
                   :min="0"
                   :max="999"
                   :show-button="false"
                 >
                   <template #suffix>药</template>
-                </n-input-number>
+                </mower-input-number>
               </td>
               <td class="number-column">
-                <n-input-number
+                <mower-input-number
                   v-model:value="plan.sanity_threshold"
                   :min="0"
                   :max="210"
                   :show-button="false"
                 >
                   <template #suffix>理智</template>
-                </n-input-number>
+                </mower-input-number>
               </td>
             </tr>
           </tbody>

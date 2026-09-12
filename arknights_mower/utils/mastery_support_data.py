@@ -44,6 +44,33 @@ def check_schedule_name(name, blocked):
         )
 
 
+def training_room_group_error(plan=None):
+    """Protect training-room groups declared in primary and backup schedules."""
+    if plan is None:
+        from arknights_mower.utils import config
+
+        plan = config.plan
+    if hasattr(plan, "model_dump"):
+        plan = plan.model_dump(exclude_none=True)
+    base = plan.get(plan.get("default", "plan1"), {})
+    tables = [("主排班", base)] + [
+        (f"备用排班「{p.get('name', '未命名')}」", p.get("plan", {}))
+        for p in plan.get("backup_plans", [])
+    ]
+    conflicts = []
+    for label, table in tables:
+        for slot in (table.get("train") or {}).get("plans", []):
+            name, group = slot.get("agent", ""), slot.get("group", "").strip()
+            if name not in IGNORED_NAMES and group:
+                conflicts.append(f"{label}：{name}（组名：{group}）")
+    if conflicts:
+        return (
+            f"训练室排班含绑组干员：{'；'.join(conflicts)}。"
+            "已阻止自动专精换人，请先解除训练室干员绑组后重试"
+        )
+    return None
+
+
 @lru_cache(maxsize=2)
 def _read_roster(path, mtime, size):
     with open(path, encoding="utf-8") as f:

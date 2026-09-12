@@ -40,6 +40,15 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
     def test_workflow_name_covers_release_types(self):
         self.assertEqual(self.workflow["name"], "Release & Prerelease")
 
+    def test_android_packages_the_generated_release_changelog(self):
+        job = self.jobs["build-android"]
+        download = find_step(job, "Download release metadata")
+        self.assertEqual(download["with"]["path"], "release-metadata")
+        copy = find_step(job, "Overwrite changelog with generated")
+        self.assertEqual(copy["run"], "cp release-metadata/CHANGELOG.md CHANGELOG.md")
+        package = find_step(job, "Package Mower without the Android host")
+        self.assertLess(job["steps"].index(copy), job["steps"].index(package))
+
     def test_stable_alpha_tag_and_reusable_triggers(self):
         triggers = self.workflow["on"]
         self.assertEqual(
@@ -78,7 +87,14 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
     def test_all_build_jobs_exist_once(self):
         self.assertEqual(
             set(self.jobs),
-            {"prepare", "build-windows", "build-linux", "build-macos", "release"},
+            {
+                "prepare",
+                "build-windows",
+                "build-linux",
+                "build-macos",
+                "build-android",
+                "release",
+            },
         )
 
     def test_release_waits_for_all_builds(self):
@@ -86,7 +102,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("if", release)
         self.assertEqual(
             set(release["needs"]),
-            {"prepare", "build-windows", "build-linux", "build-macos"},
+            {"prepare", "build-windows", "build-linux", "build-macos", "build-android"},
         )
 
     def test_version_is_validated_and_controls_release_type(self):
@@ -125,7 +141,12 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             prepare_checkout["with"]["ref"],
             "${{ inputs.tag_name || github.ref_name }}",
         )
-        for job_name in ("build-windows", "build-linux", "build-macos"):
+        for job_name in (
+            "build-windows",
+            "build-linux",
+            "build-macos",
+            "build-android",
+        ):
             checkout = find_step(self.jobs[job_name], "Checkout repository")
             self.assertEqual(checkout["with"]["ref"], TAG_NAME)
 
@@ -148,6 +169,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
 
     def test_artifact_names_match_release_paths(self):
         expected = {
+            "build-android": f"arknights-mower_{VERSION}_android_arm64",
             "build-windows": f"arknights-mower_{VERSION}_windows_x64",
             "build-linux": f"arknights-mower_{VERSION}_linux_${{{{ matrix.arch }}}}",
             "build-macos": f"arknights-mower_{VERSION}_macos_${{{{ matrix.arch }}}}",
@@ -175,6 +197,20 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("release-assets/arknights-mower_*", publish["with"]["files"])
         self.assertIn("release-assets/SHA256SUMS", publish["with"]["files"])
 
+    def test_android_reuses_host_assets_without_building_an_apk(self):
+        commands = all_run_commands(self.workflow)
+        self.assertNotIn("gradlew", commands)
+        self.assertNotIn("assembleRelease", commands)
+        step = find_step(self.jobs["release"], "Reuse compatible Android host release")
+        self.assertIn("sync_android_release.py", step["run"])
+        self.assertIn("'beta' || 'stable'", step["env"]["ANDROID_CHANNEL"])
+        files = find_step(self.jobs["release"], "Publish GitHub Release")["with"][
+            "files"
+        ]
+        self.assertIn("release-assets/mower-android-*.apk", files)
+        self.assertIn("release-assets/mower-maa-python-*.zip", files)
+        self.assertNotIn("MAAComponent", files)
+
     def test_sha256_manifest_step(self):
         manifest = find_step(self.jobs["release"], "Generate SHA-256 manifest")
         self.assertIn("sha256sum", manifest["run"])
@@ -193,7 +229,12 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
 
     def test_builds_share_version_injection(self):
         command = f'python scripts/inject_version.py "{VERSION}"'
-        for job_name in ("build-windows", "build-linux", "build-macos"):
+        for job_name in (
+            "build-windows",
+            "build-linux",
+            "build-macos",
+            "build-android",
+        ):
             step = find_step(self.jobs[job_name], "Inject version from tag")
             self.assertEqual(step["run"], command, msg=f"{job_name} inject step")
 
@@ -208,7 +249,11 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--arch x64", job["steps"][pe_index]["run"])
 
     def test_builds_prune_opencv_between_install_and_pyinstaller(self):
-        for job_name in ("build-windows", "build-linux", "build-macos"):
+        for job_name in (
+            "build-windows",
+            "build-linux",
+            "build-macos",
+        ):
             job = self.jobs[job_name]
             names = [step.get("name") for step in job["steps"]]
             install_index = names.index("Install Python dependencies")

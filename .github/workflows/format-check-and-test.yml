@@ -39,7 +39,7 @@ jobs:
               - '!{*.md,{doc,plan,.github}/**/*.md,ui/README.md,{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}}'
             update:
               # Updater, shared runtime helpers and their regression tests.
-              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source}*.py'
+              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source,backup}*.py'
               - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
               - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
               # Furniture safety and native OCR run on all three desktop platforms.
@@ -62,7 +62,7 @@ jobs:
               - '{pyproject.toml,uv.lock,uv.toml,.python-version,.node-version,.nvmrc,.npmrc}'
               - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
               - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
-              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb}.py'
+              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,sync_android_release}.py'
               - 'scripts/tests/**'
               - '.github/{workflows,actions}/**'
             frontend:
@@ -155,6 +155,9 @@ jobs:
           ./venv/bin/pip install pytest
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
+      - name: Android host compatibility
+        # Android embeds Linux CPython; test its host contract without APK signing.
+        run: ./venv/bin/python3 -m unittest -v arknights_mower.tests.android_distribution_tests arknights_mower.tests.android_component_tests
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
         run: ./venv/bin/python3 -m pytest -v -o faulthandler_timeout=60
 
@@ -231,6 +234,9 @@ jobs:
           python -m unittest -v \
             arknights_mower.tests.software_update_tests.ReleaseDiscoveryTests \
             arknights_mower.tests.software_update_tests.ManualPackageTests \
+            arknights_mower.tests.software_update_tests.WorkerTests \
+            arknights_mower.tests.maa_backup_tests \
+            arknights_mower.tests.update_backup_tests \
             arknights_mower.tests.software_package_tests \
             arknights_mower.tests.source_version_tests \
             arknights_mower.tests.source_remote_tests \

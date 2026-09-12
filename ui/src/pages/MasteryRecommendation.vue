@@ -150,6 +150,7 @@
                 quaternary
                 type="warning"
                 @click.stop="addAllToPlan(op)"
+                :disabled="!!op.mastery_error"
                 v-if="!allPlanned(op)"
                 >全加计划</n-button
               >
@@ -163,7 +164,8 @@
                   <n-space align="center" :size="8">
                     <n-text strong>{{ rec.skill_name }}</n-text>
                     <n-text depth="3" style="font-size: 12px"
-                      >Lv{{ rec.current_level + 7 }} → 专精3级</n-text
+                      >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} →
+                      专三</n-text
                     >
                   </n-space>
                   <n-space :size="4">
@@ -174,10 +176,15 @@
                       size="tiny"
                       :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                       @click.stop="toggleSkillPlan(op, rec)"
+                      :disabled="!!op.mastery_error && !isSkillPlanned(op.char_id, rec.skill_index)"
                     >
                       {{ isSkillPlanned(op.char_id, rec.skill_index) ? '已计划' : '加计划' }}
                     </n-button>
-                    <n-button type="primary" size="tiny" @click.stop="confirmSkill(op, rec)"
+                    <n-button
+                      type="primary"
+                      size="tiny"
+                      :disabled="!!op.mastery_error"
+                      @click.stop="confirmSkill(op, rec)"
                       >一键专精</n-button
                     >
                     <n-button
@@ -190,6 +197,7 @@
                 </n-space>
               </template>
               <n-space vertical :size="4">
+                <n-text v-if="op.mastery_error" type="warning">{{ op.mastery_error }}</n-text>
                 <n-text depth="2"
                   >总训练时间: {{ formatTime(rec.total_time) }} |
                   {{ rec.remaining_levels }}级专精</n-text
@@ -297,13 +305,13 @@
                         style="width: 178px"
                       />
                       <label class="ml" style="font-size: 13px">训练速度</label>
-                      <n-input-number
+                      <mower-input-number
                         v-model:value="value.efficiency"
                         :min="0"
                         :max="100"
                         style="width: 80px"
                         :show-button="false"
-                        ><template #suffix>%</template></n-input-number
+                        ><template #suffix>%</template></mower-input-number
                       >
                     </div>
                     <div class="task-col">
@@ -345,15 +353,36 @@
         </n-text>
       </div>
       <n-text depth="2" style="margin-top: 10px">减半换人缓冲时间（分钟）</n-text>
-      <n-input-number
-        v-model:value="masterySettings.mastery_swap_buffer"
-        :min="0"
-        :max="60"
-        size="small"
-        style="width: 120px; margin-top: 4px"
-      />
+      <div
+        v-for="item in masteryBufferFields"
+        :key="item.key"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 8px;
+        "
+      >
+        <n-text depth="2">{{ item.label }}</n-text>
+        <mower-input-number
+          :value="masterySettings.mastery_swap_buffers[item.key]"
+          @update:value="
+            (value) =>
+              (masterySettings.mastery_swap_buffers[item.key] =
+                value ?? DEFAULT_MASTERY_SWAP_BUFFERS[item.key])
+          "
+          :min="0"
+          :max="60"
+          clearable
+          size="small"
+          style="width: 120px; flex-shrink: 0"
+        />
+      </div>
       <n-text depth="3" style="font-size: 11px; margin-top: 2px">
-        减半对象需在位时间 = 5小时 + 缓冲时间，缓冲越大越保守
+        默认{{
+          autoCentralBonus ? '分别为 15、30' : '为 10'
+        }}分钟，可自行调整；清空单项恢复该项默认值。
       </n-text>
       <template #footer>
         <n-space justify="end" align="center">
@@ -425,7 +454,13 @@
               />
               <n-text strong style="font-size: 13px">{{ op.name }}</n-text>
               <n-text depth="3" style="font-size: 11px">{{ op.rarity }}★</n-text>
-              <n-button size="tiny" quaternary @click="addAllToPlan(op, true)">全加</n-button>
+              <n-button
+                size="tiny"
+                quaternary
+                :disabled="!!op.mastery_error"
+                @click="addAllToPlan(op, true)"
+                >全加</n-button
+              >
             </n-space>
             <n-space :size="4" style="margin-left: 8px">
               <n-button
@@ -434,6 +469,7 @@
                 size="tiny"
                 :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                 @click="toggleSkillPlan(op, rec, true)"
+                :disabled="!!op.mastery_error && !isSkillPlanned(op.char_id, rec.skill_index)"
               >
                 {{ rec.skill_name }}
               </n-button>
@@ -470,7 +506,7 @@
         </n-text>
         <n-space align="center">
           <n-text>副产品概率加成至少</n-text>
-          <n-input-number
+          <mower-input-number
             :value="workshopMinBonus"
             @update:value="workshopMinBonus = $event ?? 80"
             :min="0"
@@ -481,7 +517,7 @@
             :disabled="workshopDefaultsLoading"
             :input-props="{ 'aria-label': '副产品概率加成下限' }"
             style="width: 100px"
-            ><template #suffix>%</template></n-input-number
+            ><template #suffix>%</template></mower-input-number
           >
           <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
             >一键设置</n-button
@@ -606,7 +642,6 @@ import {
   NGrid,
   NIcon,
   NInput,
-  NInputNumber,
   NModal,
   NScrollbar,
   NSelect,
@@ -636,9 +671,12 @@ import {
   buildMasteryRoutePayload,
   prepareMasteryRoutes,
   completeMasterySupports,
-  syncMasteryRouteDefaults
+  syncMasteryRouteDefaults,
+  DEFAULT_MASTERY_SWAP_BUFFERS,
+  normalizeMasterySwapBuffers
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
+import { masteryLevelLabel } from '@/utils/masteryLevel'
 
 const ListIcon = List
 const SettingsIcon = Settings
@@ -850,6 +888,10 @@ async function warnMaterialShortage(additions) {
 
 async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
+  if (!plan.value[k] && op.mastery_error) {
+    message.warning(op.mastery_error)
+    return
+  }
   if (!plan.value[k]) await warnMaterialShortage([k])
   if (!plan.value[k] && workshopTrainingWarning(op.name)) {
     message.warning(workshopTrainingWarning(op.name))
@@ -904,6 +946,10 @@ async function toggleSkillPlan(op, rec, draft = false) {
 }
 
 async function addAllToPlan(op, draft = false) {
+  if (op.mastery_error) {
+    message.warning(op.mastery_error)
+    return
+  }
   if (trainingWarning(op.name)) {
     message.warning(trainingWarning(op.name))
   }
@@ -1220,7 +1266,18 @@ const level_list = [
   { value: 3, label: '专三' }
 ]
 // 全局路线设置（#91 修订）：中枢加成（0/5）+ 换人缓冲时间，存路线配置设置行，不走 conf。
-const masterySettings = reactive({ central_bonus: 0, mastery_swap_buffer: 10 })
+const masterySettings = reactive({
+  central_bonus: 0,
+  mastery_swap_buffers: { ...DEFAULT_MASTERY_SWAP_BUFFERS }
+})
+const masteryBufferFields = computed(() =>
+  autoCentralBonus.value
+    ? [
+        { key: 'central', label: '中枢加成 +5%' },
+        { key: 'central_unhalved_m2', label: '中枢加成 +5%，专二未继承减半' }
+      ]
+    : [{ key: 'no_central', label: '无中枢加成' }]
+)
 
 const defaultsCache = ref(null)
 const bestTrainers = ref({})
@@ -1290,7 +1347,7 @@ for (const profession of profKeys) {
 
 // #115：modal 级中枢加成/缓冲与逐职业路线同源走草稿语义——改了不保存关掉要还原
 watch(
-  () => [masterySettings.central_bonus, masterySettings.mastery_swap_buffer],
+  () => [masterySettings.central_bonus, ...Object.values(masterySettings.mastery_swap_buffers)],
   () => {
     if (_autoSaveReady) _dirtyMasterySettings = true
   }
@@ -1317,7 +1374,7 @@ async function loadRoute() {
   const settings = r.data?.settings || {}
   _autoSaveReady = false
   masterySettings.central_bonus = settings.central_bonus ?? 0
-  masterySettings.mastery_swap_buffer = settings.mastery_swap_buffer ?? 10
+  masterySettings.mastery_swap_buffers = normalizeMasterySwapBuffers(settings)
   bestTrainers.value = r.data?.best_trainers || {}
   defaultsError.value = r.data?.defaults_error || ''
   const { routes: merged, suggestedProfessions } = prepareMasteryRoutes(
@@ -1368,7 +1425,7 @@ async function saveRouteAndClose() {
       flushRouteSettings(),
       axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route/settings`, {
         central_bonus: autoCentralBonus.value,
-        mastery_swap_buffer: masterySettings.mastery_swap_buffer
+        mastery_swap_buffers: { ...masterySettings.mastery_swap_buffers }
       })
     ])
     _dirtyMasterySettings = false // 已落库，关弹窗不再触发「未保存还原」
@@ -1408,7 +1465,7 @@ async function calculateOptimalRoutes() {
 }
 
 // ─── 显示列表 ───
-const allOperatorList = ref([])
+const allOperatorList = computed(() => store.recommendations)
 
 // ─── 空闲干员筛选 ───
 // 空闲 = 不在排班表（主/副表槽位 + 候补 replacement）& 不在专精路线配置（协助位 name/换人 swap_name）
@@ -1558,6 +1615,10 @@ const showConfirm = ref(false)
 const cd = reactive({ op: null, rec: null })
 
 function confirmSkill(op, rec) {
+  if (op.mastery_error) {
+    message.warning(op.mastery_error)
+    return
+  }
   cd.op = op
   cd.rec = rec
   showConfirm.value = true
@@ -1602,13 +1663,6 @@ onMounted(async () => {
       console.error('mount: loadRoute failed', e)
     }
   }
-  allOperatorList.value = store.recommendations.map((op) => ({
-    char_id: op.char_id,
-    name: op.name,
-    rarity: op.rarity,
-    profession: op.profession,
-    recommendations: op.recommendations
-  }))
   await refreshT3Summary()
 })
 

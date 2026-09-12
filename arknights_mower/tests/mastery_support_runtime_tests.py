@@ -59,6 +59,44 @@ def test_preflight_preserves_planned_reducer_without_changing_occupants(
     solver.ctap.assert_not_called()
 
 
+@pytest.mark.parametrize("follow_schedule", [False, True])
+def test_preflight_still_rejects_scheduled_assistant_in_use(
+    context_game, follow_schedule
+):
+    _, ids = context_game
+    route = support.stage_route(stat("艾丽妮", 30, True), None, StageSpec(1, 8))
+    plan = {
+        "id": 1,
+        "char_id": ids["能天使"],
+        "char_name": "能天使",
+        "target_level": 3,
+        "support_plan": {"stages": [route]},
+    }
+    # In automatic mode the planned assistant conflicts. In follow-schedule mode
+    # the planned assistant is available, but the occupant to be retained conflicts.
+    blocked_name = "逻各斯" if follow_schedule else "艾丽妮"
+    solver = MagicMock()
+    with (
+        patch.object(
+            runtime, "schedule_context", return_value=({blocked_name: {"room_3_2"}}, 0)
+        ),
+        patch.object(runtime, "save_runtime") as persist,
+        patch(
+            "arknights_mower.solvers.mastery_reader._read_slots_checked",
+            return_value=("逻各斯", "能天使", None, True),
+        ),
+        patch(
+            "arknights_mower.utils.config.conf",
+            SimpleNamespace(assistant_follows_schedule=follow_schedule),
+        ),
+    ):
+        message = "协助位跟随排班" if follow_schedule else "计划协助者已不可用"
+        with pytest.raises(support.SupportPlanError, match=message):
+            runtime.prepare_plan_supports(solver, plan, 1)
+    persist.assert_not_called()
+    solver.choose_train.assert_not_called()
+
+
 def test_waiting_collection_time_does_not_earn_five_hour_credit(context_game):
     _, ids = context_game
     route = support.stage_route(stat("艾丽妮", 30, True), None, StageSpec(2, 16, 0, 10))

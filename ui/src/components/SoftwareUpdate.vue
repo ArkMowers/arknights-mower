@@ -5,6 +5,7 @@ import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import { confirmForceUpdate, confirmSoftwareInstall } from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
+import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 
 const axios = inject('axios')
@@ -361,7 +362,7 @@ onUnmounted(() => {
         >
         <span class="hint">打开 Mower 时检查所选渠道的软件更新</span>
       </n-form-item>
-      <n-form-item :show-label="false">
+      <n-form-item v-if="info?.capabilities?.auto_update !== false" :show-label="false">
         <n-checkbox
           :checked="autoUpdate"
           :disabled="!info || running"
@@ -370,7 +371,7 @@ onUnmounted(() => {
         >
         <span class="hint">升级自动安装并重启全部实例；回退需点击安装并确认</span>
       </n-form-item>
-      <n-form-item :show-label="false">
+      <n-form-item v-if="info?.capabilities?.silent_restart !== false" :show-label="false">
         <div class="restart-option">
           <n-checkbox
             v-model:checked="background"
@@ -449,7 +450,7 @@ onUnmounted(() => {
           <p v-for="message in info.blockers" :key="message">{{ message }}</p>
         </n-alert>
       </n-form-item>
-      <n-form-item :show-label="false">
+      <n-form-item v-if="info?.capabilities?.silent_restart !== false" :show-label="false">
         <span class="hint"
           >更新后重启同一安装目录下所有运行实例；原本运行中的任务重置运行缓存后重新开始。在线更新与上传安装均使用上方的重启方式。</span
         >
@@ -466,6 +467,12 @@ onUnmounted(() => {
           @install="(target) => install(target.force, target)"
         />
       </n-form-item>
+      <SoftwareComponentUpdates
+        v-for="component in info?.component_updates || []"
+        :key="component.endpoint"
+        :component="component"
+        :disabled="running"
+      />
       <n-form-item label="手动应用">
         <span v-if="source" class="hint"
           >Release 安装包用于独立包部署，源码部署请使用上方在线更新。</span
@@ -478,8 +485,10 @@ onUnmounted(() => {
             :disabled="running"
           >
             <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="dropSoftwarePackage">
-              <div>点击或拖入 Release 安装包</div>
-              <div class="hint">离线读取包内版本并校验完整性，文件名可任意修改</div>
+              <div>{{ info.manual_label || '点击或拖入 Release 安装包' }}</div>
+              <div class="hint">
+                {{ info.manual_hint || '离线读取包内版本并校验完整性，文件名可任意修改' }}
+              </div>
             </n-upload-dragger>
           </n-upload>
           <template v-if="uploading">
@@ -500,7 +509,7 @@ onUnmounted(() => {
             :loading="busy"
             @click="requestInstall(true)"
           >
-            安装并重启
+            {{ info.install_label || '安装并重启' }}
           </n-button>
         </n-space>
         <span v-else>—</span>
