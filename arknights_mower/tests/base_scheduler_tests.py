@@ -24,6 +24,7 @@ from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
     TaskTypes,
     find_next_task,
+    set_type_enum,
 )
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
@@ -2338,3 +2339,36 @@ class TestWorkshopMaterialScope(unittest.TestCase):
                 scene.assert_not_called()
                 errors.assert_not_called()
                 self.assertEqual(settings[0].items[0].item_names, [material])
+
+
+class TestManualClueTask(unittest.TestCase):
+    """手动「线索任务」由 infra_main 派发，与定时触发共用 clue_new()。
+
+    前端下拉提交的是显示名，set_type_enum 只按 display_value 匹配、对不上会静默
+    退化成空任务，所以名字契约和派发一起钉住。
+    """
+
+    def test_display_name_resolves_to_clue(self):
+        self.assertIs(set_type_enum("线索任务"), TaskTypes.CLUE)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_infra_main_dispatches_clue_task(self):
+        task = SchedulerTask(
+            time=datetime.now(), task_plan={}, task_type=TaskTypes.CLUE
+        )
+        solver = BaseSchedulerSolver()
+        solver.task = task
+        solver.tasks = [task]
+        # __init__ 被 stub 掉，party_time 的 setter 需要 op_data 存在才能走下去
+        solver.op_data = None
+        with (
+            patch.object(solver, "find", return_value=((0, 0), (10, 10))),
+            patch.object(solver, "clue_new") as clue_new,
+            patch.object(solver, "skip") as skip,
+        ):
+            solver.infra_main()
+        clue_new.assert_called_once_with()
+        self.assertIsNotNone(solver.last_clue)  # 手动触发同样刷新定时器
+        # 与定时触发共用同一条路径，收尾也要一致
+        skip.assert_any_call(["collect_notification"])
+        self.assertEqual(solver.tasks, [])  # 任务已消费

@@ -33,6 +33,7 @@ const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
   { label: '仓库扫描', value: '仓库扫描' },
+  { label: '线索任务', value: '线索任务' },
   { label: '空任务', value: '空任务' }
 ]
 const workshopOperatorOptions = computed(() => {
@@ -139,8 +140,9 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
-  } else if (task_type.value == '仓库扫描') {
-    // 仓库扫描任务无需房间 plan：到点由调度器触发基地仓库扫描
+  } else if (task_type.value == '仓库扫描' || task_type.value == '线索任务') {
+    // 这两类任务不需要房间 plan：仓库扫描到点触发基地仓库扫描，
+    // 线索任务到点触发一次完整会客室流程
     task.plan = {}
   }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task })).data
