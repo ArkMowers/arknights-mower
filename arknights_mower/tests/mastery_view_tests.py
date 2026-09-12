@@ -113,7 +113,30 @@ class TestMasteryRouteView(unittest.TestCase):
             json={"central_bonus": 5, "mastery_swap_buffer": 15},
         )
         self.assertEqual(response.status_code, 200)
-        save_mock.assert_called_once_with(central_bonus=5, mastery_swap_buffer=15)
+        save_mock.assert_called_once_with(
+            central_bonus=5, mastery_swap_buffer=15, mastery_swap_buffers=None
+        )
+
+    @patch("arknights_mower.views.mastery.save_route_settings")
+    def test_route_settings_post_forwards_independent_buffers(self, save_mock):
+        buffers = {"no_central": 0, "central": 5, "central_unhalved_m2": 7}
+        response = self.client.post(
+            "/mastery-route/settings",
+            json={"central_bonus": 5, "mastery_swap_buffers": buffers},
+        )
+        self.assertEqual(response.status_code, 200)
+        save_mock.assert_called_once_with(
+            central_bonus=5, mastery_swap_buffer=10, mastery_swap_buffers=buffers
+        )
+
+    @patch("arknights_mower.views.mastery.save_route_settings")
+    def test_route_settings_rejects_invalid_buffer_map(self, save_mock):
+        for buffers in ([], {"central": -1}, {"central": True}, {"unknown": 5}):
+            response = self.client.post(
+                "/mastery-route/settings", json={"mastery_swap_buffers": buffers}
+            )
+            self.assertEqual(response.status_code, 400)
+        save_mock.assert_not_called()
 
     @patch("arknights_mower.views.mastery.save_route_settings")
     def test_route_settings_post_keeps_zero_buffer(self, save_mock):
@@ -123,7 +146,9 @@ class TestMasteryRouteView(unittest.TestCase):
             json={"central_bonus": 0, "mastery_swap_buffer": 0},
         )
         self.assertEqual(response.status_code, 200)
-        save_mock.assert_called_once_with(central_bonus=0, mastery_swap_buffer=0)
+        save_mock.assert_called_once_with(
+            central_bonus=0, mastery_swap_buffer=0, mastery_swap_buffers=None
+        )
 
 
 class TestMasteryPlanView(unittest.TestCase):
