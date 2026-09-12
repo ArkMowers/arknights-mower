@@ -36,6 +36,11 @@ PREFIX_NAME_SCORE_RATIO = 0.9
 PREFIX_NAME_WIDTH_RATIO = 0.75
 PREFIX_NAME_WIDTH_MARGIN = 30
 
+
+class AgentSelectionNotReady(RuntimeError):
+    """当前页面不足以继续选人；交由排班原有重试恢复，不结束任务线程。"""
+
+
 # #85：排序列→x 坐标单一来源（detect_arrange_order / switch_arrange_order 共用；
 # 2026-08-16 实机校准取读坐标，工作房 5 列、宿舍/中枢 4 列无「效率」）
 _ARRANGE_ORDER_X = {
@@ -146,13 +151,13 @@ class BaseMixin:
         for attempt in range(6):
             if attempt:
                 self.sleep(0.5)
-            self.recog.update()
+            else:
+                self.recog.update()
             before = self.detect_arrange_order(current_room)
             if before is not None:
                 break
         if before is None:
-            logger.error("无法读取干员排序状态，已暂停排班，保留当前选择")
-            raise MowerExit
+            raise AgentSelectionNotReady("无法读取干员排序状态，返回房间重试")
         # 即使排序方式相同，也要刷新已选干员置顶；每次点击必须等到
         # 箭头实际变化后才能继续，不能把点击前的同方向旧帧当作完成。
         for _ in range(2):
@@ -161,19 +166,22 @@ class BaseMixin:
             for attempt in range(6):
                 if attempt:
                     self.sleep(0.5)
-                self.recog.update()
+                # tap(interval=0.5) 和 sleep 已刷新截图，不重复截同一帧。
                 actual = self.detect_arrange_order(current_room)
+                logger.debug(
+                    f"排序复核：点击前{before}，当前{actual}，目标{(name, ascending)}"
+                )
                 if actual is not None and actual != before and actual == previous:
                     break
                 previous = actual
             else:
-                logger.error("干员排序点击后尚未确认画面变化，已暂停排班，避免连续切换")
-                raise MowerExit
+                raise AgentSelectionNotReady(
+                    "干员排序点击后尚未确认画面变化，返回房间重试"
+                )
             if actual == (name, ascending):
                 return
             before = actual
-        logger.error("干员排序未到达目标状态，已暂停排班，保留当前选择")
-        raise MowerExit
+        raise AgentSelectionNotReady("干员排序未到达目标状态，返回房间重试")
 
     @staticmethod
     def same_agent_page(left, right):
@@ -230,13 +238,14 @@ class BaseMixin:
         stable = False
         ret = []
         for attempt in range(6):
+            started = perf_counter()
             if attempt:
                 self.sleep(0.5)
-            started = perf_counter()
-            self.recog.update()
+            else:
+                self.recog.update()
             connecting = self.find("connecting")
             logger.debug(
-                f"选人截图及连接检查耗时：{(perf_counter() - started) * 1000:.0f} ms"
+                f"选人等待及截图检查耗时：{(perf_counter() - started) * 1000:.0f} ms"
             )
             if connecting:
                 previous = None
@@ -259,15 +268,13 @@ class BaseMixin:
         if stable:
             # 滑动后仍是旧页：交给调用方确认手势未推进，不能当成新页跳过。
             return ret
-        logger.error("干员页面仍在移动或名字识别不全，已暂停排班，保留当前选择")
-        raise MowerExit
+        raise AgentSelectionNotReady("干员页面仍在移动或名字识别不全，返回房间重试")
 
     def swipe_agent_page(self, page, agent, *, full_scan=True, train=False):
         """保留两列重叠，确认翻页生效；未推进时只做一次短距离复核。"""
         columns = sorted({scope[0][0] for _, scope in page})
         if len(columns) < 2:
-            logger.error("可识别干员列不足，已暂停排班，避免跳过未读出的卡片")
-            raise MowerExit
+            raise AgentSelectionNotReady("可识别干员列不足，返回房间重试")
         start_x = columns[-2] if len(columns) > 2 else columns[-1]
         y = page[0][1][0][1]
         for attempt in range(2):
@@ -280,11 +287,10 @@ class BaseMixin:
             if not self.same_agent_page(actual, page):
                 return attempt + 1
             logger.debug(f"翻页第{attempt + 1}次未确认推进，仍需查找：{agent}")
-        logger.error(
+        raise AgentSelectionNotReady(
             f"两次滑动后整页干员及位置均未变化，可能已到末尾或手势未生效；"
-            f"已暂停排班，保留当前选择，仍需查找：{agent}"
+            f"返回房间重试，仍需查找：{agent}"
         )
-        raise MowerExit
 
     def scan_agent(
         self,
@@ -325,7 +331,8 @@ class BaseMixin:
         for attempt in range(6):
             if attempt:
                 self.sleep(0.5)
-            self.recog.update()
+            else:
+                self.recog.update()
             if self.find("connecting"):
                 previous = None
                 stable = False
@@ -360,11 +367,10 @@ class BaseMixin:
         if stable:
             logger.warning(f"干员名单已稳定但不符合预期：预期{agent}，实际{actual}")
             return None
-        logger.error(
-            f"干员名单或位置仍在变化、左侧裁切或识别不全，已暂停排班，保留当前选择："
+        raise AgentSelectionNotReady(
+            f"干员名单或位置仍在变化、左侧裁切或识别不全，返回房间重试："
             f"预期{agent}，最后读取{actual}"
         )
-        raise MowerExit
 
     def verify_agent(
         self,
@@ -380,7 +386,7 @@ class BaseMixin:
                 self.wait_for_arranged_agents(agent, full_scan=full_scan, train=train)
                 is not None
             )
-        except MowerExit:
+        except (MowerExit, AgentSelectionNotReady):
             raise
         except Exception as e:
             error_count += 1
@@ -414,12 +420,10 @@ class BaseMixin:
             if self.same_agent_page(actual, page):
                 if train or actual[0][1][0][0] <= 650:
                     return 0
-                logger.error("回拉后列表仍被裁切且未推进，已暂停排班，保留当前选择")
-                raise MowerExit
+                raise AgentSelectionNotReady("回拉后列表仍被裁切且未推进，返回房间重试")
             logger.debug(f"选人列表回拉第{attempt + 1}次，首张完整卡片：{actual[0]}")
             page = actual
-        logger.error("未能确认干员列表回到左端，已暂停排班，保留当前选择")
-        raise MowerExit
+        raise AgentSelectionNotReady("未能确认干员列表回到左端，返回房间重试")
 
     def profession_filter(self, profession=None):
         """
@@ -584,16 +588,34 @@ class BaseMixin:
 
         for enter_times in range(3):
             for retry_times in range(5):
-                if pos := self.find("control_central"):
+                if self.find("connecting"):
+                    self.sleep()
+                elif pos := self.find("control_central"):
                     _room = segment.base(self.recog.img, pos)[room]
+                    logger.debug(
+                        f"进入房间 {room}，第{enter_times + 1}轮第{retry_times + 1}次点击"
+                    )
                     self.tap(self.adjust_room(_room))
                 elif self.detect_room() == room:
                     return
                 else:
                     self.sleep()
-            if not pos:
+            # 最后一次点击也可能成功，检查其刷新后的画面再决定是否重试。
+            if (
+                not self.find("connecting")
+                and not self.find("control_central")
+                and self.detect_room() == room
+            ):
+                return
+            if enter_times < 2:
+                # 仍停在全局视角时，原逻辑会一直点击同一位置；退出基建
+                # 再重新进入，重新定位房间。此处不重启或关闭游戏。
+                logger.warning(
+                    f"未确认进入房间 {room}，返回首页后重新定位（{enter_times + 1}/2）"
+                )
+                self.back_to_index()
                 self.back_to_infrastructure()
-        raise Exception("未成功进入房间")
+        raise RuntimeError(f"未成功进入房间 {room}：重新定位后仍未确认房间画面")
 
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
         self.recog.update()

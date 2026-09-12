@@ -19,7 +19,7 @@ from arknights_mower.data import (
     stage_data_full,
     workshop_formula,
 )
-from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.solvers.base_mixin import AgentSelectionNotReady, BaseMixin
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -3088,8 +3088,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 found = True
                 break
             if right_swipe >= max_swipe:
-                logger.error("训练干员搜索达到上限，已暂停排班，保留当前选择")
-                raise MowerExit
+                raise AgentSelectionNotReady("训练干员搜索达到上限，返回房间重试")
             right_swipe += self.swipe_agent_page(ret, [ope], train=True)
         right_swipe = self.swipe_left(
             right_swipe, special_filter=profession, train=True
@@ -3398,8 +3397,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     break
                 else:
                     if right_swipe >= max_swipe:
-                        logger.error("空闲干员搜索达到上限，已暂停排班，保留当前选择")
-                        raise MowerExit
+                        raise AgentSelectionNotReady(
+                            "空闲干员搜索达到上限，返回房间重试"
+                        )
                     right_swipe += self.swipe_agent_page(
                         ret, free_list, full_scan=last_special_filter == "ALL"
                     )

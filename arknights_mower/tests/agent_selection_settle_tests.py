@@ -9,7 +9,10 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_mixin  # noqa: E402
-from arknights_mower.solvers.base_mixin import BaseMixin  # noqa: E402
+from arknights_mower.solvers.base_mixin import (  # noqa: E402
+    AgentSelectionNotReady,
+    BaseMixin,
+)
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 
 TARGET = ["多萝西", "淬羽赫默", "娜斯提"]
@@ -25,7 +28,7 @@ def reader(monkeypatch, frames):
         solver.recog.img = next(snapshots)
 
     solver.recog.update = MagicMock(side_effect=update)
-    solver.sleep = MagicMock()
+    solver.sleep = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())
     solver.find = MagicMock(return_value=False)
     solver.tap = MagicMock()
     monkeypatch.setattr(
@@ -55,7 +58,7 @@ def test_waits_for_delayed_selection_without_tapping_again(monkeypatch):
 @pytest.mark.parametrize("frame", [[], TARGET[:2], ["", "淬羽赫默", "娜斯提"]])
 def test_incomplete_names_pause_without_reselecting(monkeypatch, frame):
     solver = reader(monkeypatch, [frame] * 6)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.verify_agent(TARGET, "room_3_3")
     assert solver.recog.update.call_count == 6
     solver.tap.assert_not_called()
@@ -68,7 +71,7 @@ def test_stable_wrong_roster_is_a_selection_error(monkeypatch):
 
 def test_changing_names_pause_instead_of_triggering_reselection(monkeypatch):
     solver = reader(monkeypatch, [OLD, TARGET] * 3)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.verify_agent(TARGET, "room_3_3")
     solver.tap.assert_not_called()
 
@@ -76,7 +79,7 @@ def test_changing_names_pause_instead_of_triggering_reselection(monkeypatch):
 def test_connection_at_timeout_does_not_report_stable_wrong_roster(monkeypatch):
     solver = reader(monkeypatch, [OLD] * 6)
     solver.find.side_effect = [False] * 5 + [True]
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.verify_agent(TARGET, "room_3_3")
     solver.tap.assert_not_called()
 
@@ -84,7 +87,7 @@ def test_connection_at_timeout_does_not_report_stable_wrong_roster(monkeypatch):
 def test_ocr_errors_wait_without_sorting_or_clearing(monkeypatch):
     solver = reader(monkeypatch, [OLD] * 6)
     monkeypatch.setattr(base_mixin, "operator_list", MagicMock(side_effect=ValueError))
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.verify_agent(TARGET, "room_3_3")
     solver.tap.assert_not_called()
 
@@ -119,8 +122,8 @@ def sort_reader(frames):
     solver = BaseMixin()
     solver.recog = SimpleNamespace(update=MagicMock())
     solver.detect_arrange_order = MagicMock(side_effect=frames)
-    solver.tap = MagicMock()
-    solver.sleep = MagicMock()
+    solver.tap = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())
+    solver.sleep = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())
     return solver
 
 
@@ -142,14 +145,16 @@ def test_sort_waits_for_delayed_click_without_repeating_it():
 @pytest.mark.parametrize("frame", [None, ("技能", False)])
 def test_sort_pauses_when_click_cannot_be_acknowledged(frame):
     solver = sort_reader([("技能", False)] + [frame] * 6)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.switch_arrange_order("技能", "central")
     solver.tap.assert_called_once()
+    # 首次读取 + 点击后的截图 + 5 次等待截图，不再每次 sleep 后重复截屏。
+    assert solver.recog.update.call_count == 7
 
 
 def test_unknown_initial_sort_does_not_tap():
     solver = sort_reader([None] * 6)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.switch_arrange_order("技能", "central")
     solver.tap.assert_not_called()
 

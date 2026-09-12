@@ -10,7 +10,10 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_mixin  # noqa: E402
-from arknights_mower.solvers.base_mixin import BaseMixin  # noqa: E402
+from arknights_mower.solvers.base_mixin import (  # noqa: E402
+    AgentSelectionNotReady,
+    BaseMixin,
+)
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 
 
@@ -36,7 +39,7 @@ def reader(monkeypatch, frames):
         solver.recog.img = next(snapshots)
 
     solver.recog.update = MagicMock(side_effect=update)
-    solver.sleep = MagicMock()
+    solver.sleep = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())
     solver.find = MagicMock(return_value=False)
     solver.tap = MagicMock()
     solver.swipe_noinertia = MagicMock()
@@ -98,7 +101,7 @@ def test_free_slot_limit_does_not_overselect(monkeypatch):
 @pytest.mark.parametrize("frame", [[], page(("", "苍苔"))])
 def test_unreadable_page_pauses_without_tapping_or_swiping(monkeypatch, frame):
     solver = reader(monkeypatch, [frame] * 6)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.scan_agent(["砾"])
     solver.tap.assert_not_called()
     solver.swipe_noinertia.assert_not_called()
@@ -150,7 +153,7 @@ def test_failed_swipe_gets_only_one_short_confirmation(monkeypatch):
 def test_unchanged_page_does_not_start_another_blind_search(monkeypatch):
     before = page()
     solver = reader(monkeypatch, [before] * 12)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.swipe_agent_page(before, ["砾"])
     assert solver.recog.update.call_count == 12
     assert solver.swipe_noinertia.call_count == 2
@@ -160,7 +163,7 @@ def test_unchanged_page_does_not_start_another_blind_search(monkeypatch):
 def test_incomplete_last_frame_cannot_be_reported_as_end(monkeypatch):
     before = page()
     solver = reader(monkeypatch, [before] * 5 + [[]])
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.swipe_agent_page(before, ["砾"])
     solver.swipe_noinertia.assert_called_once()
 
@@ -220,7 +223,7 @@ def test_failed_pull_does_not_claim_list_is_at_left_edge():
     clipped = page(offset=160)
     solver.wait_for_agent_page = MagicMock(return_value=clipped)
     solver.swipe_noinertia = MagicMock()
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.swipe_left(3, "ALL")
     solver.swipe_noinertia.assert_called_once()
 
@@ -229,7 +232,7 @@ def test_visible_correct_roster_is_not_read_from_later_columns(monkeypatch):
     # 用户截图中梅尔/迷迭香列被裁掉，第一张完整卡片位于 x≈790。
     clipped = page(("槐琥", "酒神", "结城理"), offset=160)
     solver = reader(monkeypatch, [clipped] * 6)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.wait_for_arranged_agents(["迷迭香", "槐琥", "梅尔"], ordered=False)
     solver.tap.assert_not_called()
 
@@ -262,7 +265,7 @@ def test_moving_roster_is_neither_accepted_nor_reported_wrong(monkeypatch, corre
     solver = reader(
         monkeypatch, [page(names, offset) for offset in (20, 16, 12, 8, 4, 0)]
     )
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.wait_for_arranged_agents(targets)
     solver.tap.assert_not_called()
 
@@ -278,7 +281,7 @@ def test_clipped_last_frame_invalidates_wrong_roster(monkeypatch):
     targets = ["梅尔", "迷迭香", "槐琥"]
     wrong = page(("槐琥", "酒神", "结城理"))
     solver = reader(monkeypatch, [wrong] * 5 + [page(offset=160)])
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.wait_for_arranged_agents(targets)
 
 
@@ -293,7 +296,7 @@ def test_clipping_breaks_consecutive_matching_roster(monkeypatch):
 def test_missing_card_positions_cannot_confirm_selection(monkeypatch):
     targets = ["梅尔", "迷迭香", "槐琥"]
     solver = reader(monkeypatch, [[(name, None) for name in targets]] * 6)
-    with pytest.raises(MowerExit):
+    with pytest.raises(AgentSelectionNotReady):
         solver.wait_for_arranged_agents(targets)
     solver.tap.assert_not_called()
 
