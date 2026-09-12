@@ -3330,7 +3330,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.sleep(interval=0.5)
                     if not siege:
                         if single_visible_target and len(agent) == 1:
-                            # 单个生产房目标已经可见时先选择，最终仍复位并校验完整名单。
+                            # 单个生产房目标已经可见时先选择，最终刷新排序并校验完整名单。
                             changed, ret = self.scan_agent(
                                 agent, full_scan=last_special_filter == "ALL"
                             )
@@ -3453,13 +3453,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         verified = False
         if len(agents) != 1:
             self.switch_arrange_order("技能", room)
-            # 排序后再确认左端，避免排序保留旧偏移时读取后续卡片。
-            right_swipe, observation = self.swipe_left(
-                right_swipe, last_special_filter, return_page=True
-            )
-            exists = self.wait_for_arranged_agents(
-                agents, ordered=False, observation=observation
-            )
+            # 未翻页时先读取完整已选名单；校验成功无需再切筛选复位。
+            exists = None
+            if right_swipe == 0 and room.startswith("room"):
+                try:
+                    exists = self.wait_for_arranged_agents(agents, ordered=False)
+                except AgentSelectionNotReady:
+                    logger.debug("当前已选名单尚不能确认，筛选复位后再校验")
+            if exists is None:
+                right_swipe, observation = self.swipe_left(
+                    right_swipe, last_special_filter, return_page=True
+                )
+                exists = self.wait_for_arranged_agents(
+                    agents, ordered=False, observation=observation
+                )
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
@@ -3482,10 +3489,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if not verified:
             logger.debug("验证干员选择..")
             self.switch_arrange_order("技能", room)
-            _, observation = self.swipe_left(
-                right_swipe, last_special_filter, return_page=True
-            )
-            verified = self.verify_agent(agents, room, observation=observation)
+            if right_swipe == 0 and room.startswith("room"):
+                try:
+                    verified = self.verify_agent(agents, room)
+                except AgentSelectionNotReady:
+                    logger.debug("当前已选顺序尚不能确认，筛选复位后再校验")
+            if not verified:
+                _, observation = self.swipe_left(
+                    right_swipe, last_special_filter, return_page=True
+                )
+                verified = self.verify_agent(agents, room, observation=observation)
         finish_time = datetime.now()
         if finish_time - start_time > timedelta(seconds=15) * len(agents):
             # 如果超过5分钟，则所有里面的干员自动用职介筛选

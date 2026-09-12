@@ -1,4 +1,4 @@
-"""生产房单个待选目标可见时先选人，最终筛选复位与完整名单校验仍保留。"""
+"""生产房可见目标先选人，未翻页且完整名单正确时不再复位。"""
 
 import sys
 from types import SimpleNamespace
@@ -39,7 +39,9 @@ class LivePageRecognizer:
         return self._img
 
 
-def production_solver(monkeypatch, *, target_visible=True, final_missing=False):
+def production_solver(
+    monkeypatch, *, target_visible=True, final_missing=False, final_problem=None
+):
     solver = object.__new__(BaseSchedulerSolver)
     selected = ["鸿雪", "黑键"]
     state = {"phase": "initial", "sorts": 0}
@@ -70,6 +72,11 @@ def production_solver(monkeypatch, *, target_visible=True, final_missing=False):
             return after_sort if target_visible else missing
         if state["phase"] == "left":
             return page(("鸿雪", "但书", "暗索", "芬"))
+        if state["phase"] == "final":
+            if final_problem == "clipped":
+                return page(tuple(selected), offset=160)
+            if final_problem == "middle":
+                return page(("杜林", "芬"))
         return page(("鸿雪", "暗索") if final_missing else tuple(selected))
 
     solver.recog = LivePageRecognizer(provider, events)
@@ -91,6 +98,8 @@ def production_solver(monkeypatch, *, target_visible=True, final_missing=False):
             events.append(("filter", label, state["phase"], solver.recog.captures))
             if label == "ALL" and state["phase"] == "sorted":
                 state["phase"] = "left"
+            elif label == "ALL" and state["phase"] == "final":
+                state["phase"] = "final_reset"
         solver.recog.update()
 
     solver.profession_filter = MagicMock(side_effect=reset_filter)
@@ -122,7 +131,7 @@ def production_solver(monkeypatch, *, target_visible=True, final_missing=False):
     return solver, selected, events
 
 
-def test_sixth_column_target_is_selected_before_reset_but_final_validation_remains(
+def test_visible_target_and_correct_final_roster_do_not_reset_filter(
     monkeypatch,
 ):
     solver, selected, events = production_solver(monkeypatch)
@@ -131,13 +140,12 @@ def test_sixth_column_target_is_selected_before_reset_but_final_validation_remai
     selection = next(
         i for i, event in enumerate(events) if event[:2] == ("select", "但书")
     )
-    first_reset = next(i for i, event in enumerate(events) if event[0] == "filter")
-    assert selection < first_reset
-    assert events[selection][2][0][0] == 1705  # 第六列，未先复位到左端。
-    assert all(event[2] == "final" for event in events if event[0] == "filter")
+    assert not any(event[0] == "filter" for event in events)
+    assert events[selection][2][0][0] == 1705  # 第六列，无需先复位到左端。
     solver.swipe_noinertia.assert_not_called()
     assert selected == ["鸿雪", "但书"]
     assert solver.switch_arrange_order.call_count == 2
+    assert ("sort", 2) in events[selection + 1 :]
     solver.tap_confirm.assert_called_once()
 
 
@@ -232,4 +240,25 @@ def test_stop_after_sort_prevents_visible_target_device_tap(monkeypatch):
     assert ("sort", 1) in events
     solver.device.tap.assert_not_called()
     solver.swipe_noinertia.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+
+
+@pytest.mark.parametrize("problem", ["clipped", "middle"])
+def test_zero_swipes_still_reset_when_final_page_cannot_confirm_roster(
+    monkeypatch, problem
+):
+    solver, selected, events = production_solver(monkeypatch, final_problem=problem)
+    solver.choose_agent(["鸿雪", "但书"], "room_2_1")
+    assert selected == ["鸿雪", "但书"]
+    assert any(event[:3] == ("filter", "PIONEER", "final") for event in events)
+    assert any(event[:3] == ("filter", "ALL", "final") for event in events)
+    solver.swipe_noinertia.assert_not_called()
+
+
+def test_stop_during_current_roster_verification_does_not_reset(monkeypatch):
+    solver, _, events = production_solver(monkeypatch)
+    solver.wait_for_arranged_agents = MagicMock(side_effect=MowerExit)
+    with pytest.raises(MowerExit):
+        solver.choose_agent(["鸿雪", "但书"], "room_2_1")
+    assert not any(event[0] == "filter" for event in events)
     solver.tap_confirm.assert_not_called()
