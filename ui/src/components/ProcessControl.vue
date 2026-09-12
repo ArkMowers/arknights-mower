@@ -165,7 +165,7 @@ onUnmounted(() => {
         </n-popconfirm>
       </n-space>
       <n-alert v-if="savesPaused" type="info">
-        进程操作期间已暂停配置自动保存。操作结束或等待失败后，请刷新页面重新读取配置再编辑。
+        配置自动保存已暂停。配置导入或进程操作结束后，请刷新页面重新读取配置再编辑。
         <n-button v-if="!busy" size="small" @click="reload">刷新页面</n-button>
       </n-alert>
       <n-alert v-if="message" :type="failed ? 'error' : 'info'" aria-live="polite">{{

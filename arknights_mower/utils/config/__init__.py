@@ -158,7 +158,8 @@ def load_plan():
         plan = PlanModel()
         save_plan()
         return
-    with plan_path.open("r", encoding="utf-8") as f:
+    # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
+    with plan_path.open("r", encoding="utf-8-sig") as f:
         plan = PlanModel(**json.load(f))
 
 

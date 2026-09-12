@@ -289,7 +289,9 @@ class ProcessRestartPersistenceTests(unittest.TestCase):
             plan1={"central": {"plans": [{"agent": "阿米娅"}]}}
         ).model_dump(exclude_none=True)
         (config_dir / "conf.yml").write_text("account: original\n", encoding="utf-8")
-        (config_dir / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+        # Imported originals may include a BOM; actual startup must accept it too.
+        (config_dir / "plan.json").write_text(json.dumps(plan), encoding="utf-8-sig")
+        original_plan_bytes = (config_dir / "plan.json").read_bytes()
         launcher = tmp_path / "launcher.py"
         launcher.write_text(
             "import sys,time\nfrom pathlib import Path\n"
@@ -364,6 +366,7 @@ class ProcessRestartPersistenceTests(unittest.TestCase):
                 record = ready()
                 assert record["account"] == account
                 assert record["plan"] == plan
+                assert (config_dir / "plan.json").read_bytes() == original_plan_bytes
                 assert record["notice"] is False
                 assert (config_dir / "state.json").read_bytes() == acknowledged
         finally:

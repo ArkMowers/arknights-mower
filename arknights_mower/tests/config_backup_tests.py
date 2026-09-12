@@ -439,11 +439,13 @@ def test_damaged_compression_reports_import_error_without_writes(
 def test_incomplete_plan_image_reports_import_error_without_clearing_plan(
     plan_client, monkeypatch
 ):
+    import sys
+    from types import ModuleType
     from zlib import error as ZlibError
 
     from PIL import Image
 
-    from arknights_mower.utils import qrcode
+    from arknights_mower import utils
 
     image = BytesIO()
     Image.new("RGB", (1, 1), "white").save(image, format="PNG")
@@ -453,7 +455,12 @@ def test_incomplete_plan_image_reports_import_error_without_clearing_plan(
     def damaged(*args):
         raise ZlibError("incomplete compressed QR data")
 
-    monkeypatch.setattr(qrcode, "decode", damaged)
+    # This test covers the route's error handling, not native QR recognition.
+    # Keep it runnable in Linux CI without the optional system libzbar library.
+    qrcode = ModuleType("arknights_mower.utils.qrcode")
+    qrcode.decode = damaged
+    monkeypatch.setitem(sys.modules, qrcode.__name__, qrcode)
+    monkeypatch.setattr(utils, "qrcode", qrcode, raising=False)
     response = post_plan_file(plan_client, image.getvalue(), "plan.png", "image/png")
     assert response.status_code == 200
     assert "排班表导入失败" in response.get_data(as_text=True)
@@ -497,3 +504,17 @@ def test_import_preserves_running_access_settings_when_disk_was_replaced(storage
     assert config.conf.webview.port == 18080
     assert config.conf.webview.token == "running-token"
     assert config.conf.webview.tray is False
+
+
+@pytest.mark.parametrize("bom", [b"", b"\xef\xbb\xbf"])
+def test_imported_plan_encoding_survives_reload_without_rewriting_original(
+    storage, populated_plan, bom
+):
+    original = bom + json.dumps(
+        populated_plan.model_dump(exclude_none=True), ensure_ascii=False
+    ).encode("utf-8")
+    backup.import_configuration(incoming(**{"plan.json": original}))
+    for _ in range(2):
+        config.load_plan()
+        assert config.plan == populated_plan
+        assert config.plan_path.read_bytes() == original
