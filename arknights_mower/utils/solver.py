@@ -86,6 +86,10 @@ class BaseSolver:
                 logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
+            # transition() 既没点屏幕也没等待就返回时，缓存不会被清掉（清理写在
+            # sleep 里）。下一次 get_scene 仍返回旧场景，比如 tap_element 找不到
+            # 元素直接返回 False，while 就会一直空转下去。这里补上清理。
+            self.recog.update()
 
     @abstractmethod
     def transition(self) -> bool:
