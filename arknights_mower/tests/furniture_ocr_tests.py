@@ -65,3 +65,30 @@ def test_full_panel_geometry_and_keep_switch(
     assert furniture.furniture_details(img, stock, batch) == (name, stock)
     assert furniture.furniture_batch(img) == batch
     assert furniture.keep_one_enabled(img) is enabled
+
+
+@pytest.mark.parametrize("fixture,state", [("panel_on", "OFF"), ("panel_off", "ON")])
+def test_wrong_switch_ocr_cannot_override_slider_pixels(monkeypatch, fixture, state):
+    from arknights_mower.tests.furniture_tests import title
+
+    path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
+    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        lambda *args, **kwargs: (
+            [title(20, 20, "至少保留1件"), title(200, 20, state)],
+            0,
+        ),
+    )
+    with pytest.raises(ValueError, match="文字与画面冲突"):
+        furniture.keep_one_enabled(img)
+
+
+@pytest.mark.parametrize("width", [960, 1280, 1920, 2560])
+@pytest.mark.parametrize("fixture,enabled", [("panel_on", True), ("panel_off", False)])
+def test_visual_switch_state_scales_with_game_frame(width, fixture, enabled):
+    path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
+    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (width, round(width * 9 / 16)))
+    assert furniture.keep_switch_visual_state(img) is enabled

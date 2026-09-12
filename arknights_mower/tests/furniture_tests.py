@@ -23,6 +23,7 @@ def solver():
         img=np.zeros((1080, 1920, 3), dtype=np.uint8),
         save_screencap=MagicMock(),
     )
+    result.recog.img[300:315, 800:830] = 255
     result.factory_scene.return_value = Scene.FACTORY_FORMULA
     result.tasks = []
     result.task = None
@@ -101,6 +102,7 @@ def test_keep_one_reads_labeled_switch(monkeypatch, solver, state, expected):
         "engine",
         lambda *a, **kw: ([title(20, 20, "至少保留1件"), title(200, 20, state)], 0),
     )
+    monkeypatch.setattr(furniture, "keep_switch_visual_state", lambda img: expected)
     assert furniture.keep_one_enabled(solver.recog.img) is expected
 
 
@@ -319,12 +321,15 @@ def test_inventory_mismatch_never_touches_max(solver):
 def test_set_surplus_reduces_max_and_checks_final_batch(monkeypatch, solver):
     runner = furniture.FurnitureDismantler(solver)
     runner.keep_counts = {"测试家具": 4}
+    monkeypatch.setattr(furniture, "batch_image_changed", lambda *args: True)
     monkeypatch.setattr(
         furniture,
         "furniture_details",
         lambda img, expected_count=1, expected_batch=None: ("测试家具", 7),
     )
-    monkeypatch.setattr(furniture, "furniture_batch", MagicMock(side_effect=[6, 3]))
+    monkeypatch.setattr(
+        furniture, "furniture_batch", MagicMock(side_effect=[6, 5, 4, 3, 3])
+    )
     monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
     solver.factory_scene.side_effect = [
         Scene.FACTORY_DASHBOARD,
@@ -420,7 +425,13 @@ def test_details_reject_uncertain_stock(monkeypatch, solver, text, score):
     monkeypatch.setattr(
         furniture.rapidocr,
         "engine",
-        MagicMock(side_effect=[([title(10, 10, "测试家具")], 0), ([[text, score]], 0)]),
+        MagicMock(
+            side_effect=[
+                ([title(10, 10, "测试家具")], 0),
+                ([["测试家具", 1]], 0),
+                ([[text, score]], 0),
+            ]
+        ),
     )
     with pytest.raises(ValueError):
         REAL_FURNITURE_DETAILS(solver.recog.img)
@@ -432,7 +443,11 @@ def test_detail_stock_parser_accepts_multiple_digits(monkeypatch, solver, stock)
         furniture.rapidocr,
         "engine",
         MagicMock(
-            side_effect=[([title(10, 10, "测试家具")], 0), ([[f"{stock}/1", 1]], 0)]
+            side_effect=[
+                ([title(10, 10, "测试家具")], 0),
+                ([["测试家具", 1]], 0),
+                ([[f"{stock}/1", 1]], 0),
+            ]
         ),
     )
     assert REAL_FURNITURE_DETAILS(solver.recog.img, stock) == ("测试家具", stock)
@@ -461,7 +476,9 @@ def test_empty_or_clipped_batch_is_rejected(solver):
 
 @pytest.mark.parametrize("name", ["桌子", "货物垫板", "街头涂鸦"])
 def test_names_are_detected_before_recognition(monkeypatch, solver, name):
-    engine = MagicMock(side_effect=[([title(10, 10, name)], 0), ([["2/1", 1]], 0)])
+    engine = MagicMock(
+        side_effect=[([title(10, 10, name)], 0), ([[name, 1]], 0), ([["2/1", 1]], 0)]
+    )
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (name, 2)
     assert engine.call_args_list[0].kwargs["use_det"] is True
@@ -469,7 +486,7 @@ def test_names_are_detected_before_recognition(monkeypatch, solver, name):
 
 @pytest.mark.parametrize(
     "candidate,score,expected",
-    [("“桌子”", 1, "“桌子”"), ("另一张桌子", 1, "桌子"), ("“桌子”", 0.8, "桌子")],
+    [("“桌子”", 1, "“桌子”"), ("另一张桌子", 1, None), ("“桌子”", 0.8, None)],
 )
 def test_name_retry_only_restores_confident_quotes(
     monkeypatch, solver, candidate, score, expected
@@ -488,7 +505,11 @@ def test_name_retry_only_restores_confident_quotes(
             ]
         ),
     )
-    assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (expected, 2)
+    if expected is None:
+        with pytest.raises(ValueError):
+            REAL_FURNITURE_DETAILS(solver.recog.img, 2)
+    else:
+        assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (expected, 2)
 
 
 @pytest.mark.parametrize(
@@ -504,7 +525,7 @@ def test_uncertain_name_detection_never_uses_partial_text(monkeypatch, solver, r
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     with pytest.raises(ValueError, match="家具名称无法可靠确认"):
         REAL_FURNITURE_DETAILS(solver.recog.img, 2)
-    engine.assert_called_once()
+    assert engine.call_count == (2 if result else 1)
 
 
 def test_multi_digit_stock_is_used_in_both_detail_checks(monkeypatch, solver):
@@ -559,7 +580,11 @@ def test_detail_consumption_tracks_selected_batch(monkeypatch, solver, stock, ba
         furniture.rapidocr,
         "engine",
         MagicMock(
-            side_effect=[([title(10, 10, "桌子")], 0), ([[f"{stock}/{batch}", 1]], 0)]
+            side_effect=[
+                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
+                ([[f"{stock}/{batch}", 1]], 0),
+            ]
         ),
     )
     assert REAL_FURNITURE_DETAILS(solver.recog.img, stock, batch) == ("桌子", stock)
@@ -569,7 +594,13 @@ def test_recipe_can_open_with_a_remembered_batch(monkeypatch, solver):
     monkeypatch.setattr(
         furniture.rapidocr,
         "engine",
-        MagicMock(side_effect=[([title(10, 10, "桌子")], 0), ([["3/2", 1]], 0)]),
+        MagicMock(
+            side_effect=[
+                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
+                ([["3/2", 1]], 0),
+            ]
+        ),
     )
     assert REAL_FURNITURE_DETAILS(solver.recog.img, 3) == ("桌子", 3)
 
@@ -582,7 +613,11 @@ def test_detail_rejects_consumption_different_from_target(
         furniture.rapidocr,
         "engine",
         MagicMock(
-            side_effect=[([title(10, 10, "桌子")], 0), ([[f"3/{consumed}", 1]], 0)]
+            side_effect=[
+                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
+                ([[f"3/{consumed}", 1]], 0),
+            ]
         ),
     )
     with pytest.raises(ValueError, match="消耗数量与加工份数不一致"):
@@ -611,9 +646,25 @@ def test_real_batch_model_preserves_set_despite_high_stock_or_cap(
     actual = [min(owned - 1, cap)]
     submitted = []
 
+    def render():
+        region = furniture.crop_relative(solver.recog.img, furniture.BATCH_SCOPE)
+        region[:] = 0
+        furniture.cv2.putText(
+            region,
+            str(actual[0]),
+            (30, 75),
+            furniture.cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 220, 0),
+            3,
+        )
+
+    render()
+
     def tap(point, **kwargs):
         if point == (0.84 * 1920, 0.68 * 1080):
             actual[0] = max(1, actual[0] - 1)
+            render()
         if point == (0.88 * 1920, 0.9 * 1080):
             submitted.append(actual[0])
             assert owned - actual[0] >= keep
@@ -672,3 +723,114 @@ def test_low_confidence_keep_switch_never_enables_processing(monkeypatch, solver
     )
     with pytest.raises(ValueError, match="保留开关识别置信度不足"):
         furniture.keep_one_enabled(solver.recog.img)
+
+
+def test_clipped_name_cannot_match_a_shorter_known_name(monkeypatch, solver):
+    region = furniture.crop_relative(solver.recog.img, furniture.NAME_SCOPE)
+    region[:, -2:] = 255
+    engine = MagicMock(return_value=([title(10, 10, "复古吊扇")], 0))
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    with pytest.raises(ValueError, match="无法可靠确认"):
+        furniture.furniture_name(solver.recog.img)
+    engine.assert_called_once()
+
+
+def test_two_valid_resource_names_disagree_so_neither_is_accepted(monkeypatch, solver):
+    monkeypatch.setattr(
+        furniture.rapidocr,
+        "engine",
+        MagicMock(
+            side_effect=[
+                ([title(10, 10, "复古吊扇")], 0),
+                ([["复古吊灯", 1]], 0),
+            ]
+        ),
+    )
+    with pytest.raises(ValueError, match="两次识别冲突"):
+        furniture.furniture_name(solver.recog.img)
+
+
+def test_ocr_countdown_cannot_mask_an_ineffective_minus(monkeypatch, solver):
+    region = furniture.crop_relative(solver.recog.img, furniture.BATCH_SCOPE)
+    furniture.cv2.putText(
+        region, "2", (30, 75), furniture.cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 220, 0), 3
+    )
+    runner = furniture.FurnitureDismantler(solver)
+    runner.keep_counts = {"测试家具": 2}
+    reader = MagicMock(side_effect=[2, 1, 1])
+    monkeypatch.setattr(furniture, "furniture_batch", reader)
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    solver.factory_scene.return_value = Scene.FACTORY_DASHBOARD
+    with pytest.raises(furniture.FurnitureSafetyError, match="减号未产生"):
+        runner.process((0.37, 0.21), 3)
+    # The misleading second OCR result is never used after unchanged glyphs.
+    reader.assert_called_once()
+    assert call((0.88 * 1920, 0.9 * 1080), interval=2) not in solver.tap.call_args_list
+
+
+@pytest.mark.parametrize("change", ["none", "noise", "shift", "decrement"])
+def test_batch_glyph_comparison_rejects_noise_and_translation(solver, change):
+    before = solver.recog.img.copy()
+    region = furniture.crop_relative(before, furniture.BATCH_SCOPE)
+    furniture.cv2.putText(
+        region, "2", (30, 75), furniture.cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 220, 0), 3
+    )
+    after = before.copy()
+    target = furniture.crop_relative(after, furniture.BATCH_SCOPE)
+    if change == "noise":
+        target[5, 5] = (255, 220, 0)
+    elif change == "shift":
+        target[:] = np.roll(target, 1, axis=1)
+    elif change == "decrement":
+        target[:] = 0
+        furniture.cv2.putText(
+            target,
+            "1",
+            (30, 75),
+            furniture.cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 220, 0),
+            3,
+        )
+    assert furniture.batch_image_changed(before, after) is (change == "decrement")
+
+
+def test_final_verification_reads_a_fresh_frame(monkeypatch, solver):
+    changed = False
+
+    def sleep(interval=1):
+        nonlocal changed
+        if interval == 0.3:
+            changed = True
+
+    solver.sleep.side_effect = sleep
+    monkeypatch.setattr(
+        furniture,
+        "furniture_details",
+        lambda *args: ("另一家具" if changed else "测试家具", 3),
+    )
+    monkeypatch.setattr(furniture, "keep_one_enabled", lambda img: True)
+    solver.factory_scene.return_value = Scene.FACTORY_DASHBOARD
+    with pytest.raises(furniture.FurnitureSafetyError, match="无法确认保留"):
+        furniture.FurnitureDismantler(solver).process((0.37, 0.21), 3)
+    assert changed
+    assert call((0.88 * 1920, 0.9 * 1080), interval=2) not in solver.tap.call_args_list
+
+
+@pytest.mark.parametrize("score", [0.8, float("nan"), float("inf")])
+def test_low_or_invalid_quantity_confidence_requires_glyph_retry(monkeypatch, score):
+    img = np.zeros((35, 100, 3), dtype=np.uint8)
+    img[10:25, 20:65] = 255
+    engine = MagicMock(side_effect=[([["99/1", score]], 0), ([["2/1", 1]], 0)])
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    assert furniture.card_quantity(img) == 2
+    assert engine.call_count == 2
+
+
+@pytest.mark.parametrize("score", [0.8, float("nan"), float("inf")])
+def test_uncertain_recipe_title_cannot_authorize_a_click(monkeypatch, solver, score):
+    row = title(260, 42)
+    row[2] = score
+    monkeypatch.setattr(furniture.rapidocr, "engine", lambda *a, **k: ([row], 0))
+    with pytest.raises(ValueError, match="位置识别置信度不足"):
+        furniture.furniture_cards(solver.recog.img)

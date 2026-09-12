@@ -10,6 +10,7 @@ import numpy as np
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.furniture_data import (
+    conservative_keep_counts,
     load_furniture_keep_counts,
     normalize_name,
 )
@@ -54,7 +55,7 @@ def crop_relative(img, scope):
 def read_text(img, *, min_confidence=0):
     result, _ = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)
     if min_confidence and (
-        not result or any(score < min_confidence for _, score in result)
+        not result or any(not min_confidence <= score <= 1 for _, score in result)
     ):
         raise ValueError("家具文字识别置信度不足")
     return normalize_name("".join(text for text, _ in result or []))
@@ -96,26 +97,21 @@ def furniture_name(img):
         raise ValueError("家具名称无法可靠确认")
     name = (
         normalize_name(result[0][1])
-        if len(result) == 1 and result[0][2] >= MIN_TEXT_CONFIDENCE
+        if len(result) == 1 and MIN_TEXT_CONFIDENCE <= result[0][2] <= 1
         else None
     )
     # 引号可能被拆框或在高置信度结果中漏读，重新识别完整白色字形。
-    points = [point for box, _, _ in result for point in box]
-    left = max(0, int(min(point[0] for point in points)) - 12)
-    right = min(name_img.shape[1], int(max(point[0] for point in points)) + 12)
-    mask = cv2.inRange(name_img[:, left:right], (200, 200, 200), (255, 255, 255))
+    # 整个名称区域重读，不能用检测框把漏检的字切掉后再次确认残缺名称。
+    mask = cv2.inRange(name_img, (200, 200, 200), (255, 255, 255))
     try:
-        candidate = read_confident_text(glyph_image(mask))
+        candidate = read_confident_text(glyph_image(mask, reject_clipped=True))
     except ValueError as error:
-        if name is None:
-            raise ValueError("家具名称无法可靠确认") from error
-    else:
-        # 对已确认的单框名称只恢复完整外围引号；多框结果使用整行重识别。
-        if name is None or candidate in {f"“{name}”", f'"{name}"'}:
-            name = candidate
-    if name is None:
-        raise ValueError("家具名称无法可靠确认")
-    return name
+        raise ValueError("家具名称无法可靠确认") from error
+    if name is None or candidate == name or candidate in {f"“{name}”", f'"{name}"'}:
+        return candidate
+    if name in {f"“{candidate}”", f'"{candidate}"'}:
+        return name
+    raise ValueError("家具名称两次识别冲突")
 
 
 def furniture_details(img, expected_count=1, expected_batch=None):
@@ -132,20 +128,62 @@ def furniture_details(img, expected_count=1, expected_batch=None):
     return name, owned
 
 
-def furniture_batch(img):
+def batch_mask(img):
     # 加工份数为黄色大字；先提取文字，避免宽裁剪的留白影响 OCR。
     region = crop_relative(img, BATCH_SCOPE)
-    mask = cv2.inRange(
+    return cv2.inRange(
         cv2.cvtColor(region, cv2.COLOR_RGB2HSV), (20, 140, 140), (40, 255, 255)
     )
+
+
+def furniture_batch(img):
+    mask = batch_mask(img)
     text = read_confident_text(glyph_image(mask, 12, reject_clipped=True))
     if not re.fullmatch(r"\d+", text):
         raise ValueError("无法确认家具加工份数")
     return int(text)
 
 
+def batch_image_changed(before, after):
+    """只比较黄色字形；过滤抗锯齿/一像素抖动，不把截图噪声当作减号生效。"""
+    kernel = np.ones((3, 3), np.uint8)
+    a = cv2.resize(batch_mask(before), (326, 100), interpolation=cv2.INTER_NEAREST)
+    b = cv2.resize(batch_mask(after), (326, 100), interpolation=cv2.INTER_NEAREST)
+    if min(cv2.countNonZero(a), cv2.countNonZero(b)) < 30:
+        raise ValueError("加工份数字形不足以验证减号")
+    removed = cv2.countNonZero(
+        cv2.bitwise_and(a, cv2.bitwise_not(cv2.dilate(b, kernel)))
+    )
+    added = cv2.countNonZero(cv2.bitwise_and(b, cv2.bitwise_not(cv2.dilate(a, kernel))))
+    return removed + added >= 30
+
+
+def keep_switch_visual_state(img):
+    """文字以外再核对滑块左右位置和底色，OFF 误读为 ON 仍不能通过。"""
+    left = crop_relative(img, ((0.888, 0.741), (0.900, 0.761)))
+    right = crop_relative(img, ((0.934, 0.741), (0.946, 0.761)))
+    left_hsv = cv2.cvtColor(left, cv2.COLOR_RGB2HSV)
+    right_hsv = cv2.cvtColor(right, cv2.COLOR_RGB2HSV)
+
+    def ratio(region, low, high):
+        return np.mean(cv2.inRange(region, low, high) > 0)
+
+    white_left = ratio(left_hsv, (0, 0, 225), (179, 35, 255))
+    white_right = ratio(right_hsv, (0, 0, 225), (179, 35, 255))
+    yellow_left = ratio(left_hsv, (20, 120, 60), (40, 255, 255))
+    gray_right = ratio(right_hsv, (0, 0, 60), (179, 35, 220))
+    if yellow_left > 0.8 and white_right > 0.8:
+        return True
+    if white_left > 0.8 and gray_right > 0.8:
+        return False
+    raise ValueError("家具保留开关画面状态不明")
+
+
 def card_quantity(img):
-    quantity = read_text(img)
+    try:
+        quantity = read_confident_text(img)
+    except ValueError:
+        quantity = ""
     if not (match := re.fullmatch(r"(\d+)[/／]1", quantity)):
         # 留白误读时提取白色字形重试，仍须严格匹配消耗一个家具的配方。
         mask = cv2.inRange(img, (200, 200, 200), (255, 255, 255))
@@ -170,9 +208,11 @@ def furniture_cards(img):
     )
     cards = []
     found_title = False
-    for box, text, _ in result or []:
+    for box, text, score in result or []:
         if normalize_name(text) != "家具零件":
             continue
+        if not MIN_TEXT_CONFIDENCE <= score <= 1:
+            raise ValueError("家具配方位置识别置信度不足")
         found_title = True
         x = min(point[0] for point in box) / width + 0.2
         y = min(point[1] for point in box) / height + 0.1
@@ -210,14 +250,20 @@ def keep_one_enabled(img):
     entries = {}
     for box, text, score in result or []:
         text = normalize_name(text).upper()
-        if text in {"ON", "OFF", "至少保留1件"} and score < MIN_TEXT_CONFIDENCE:
+        if (
+            text in {"ON", "OFF", "至少保留1件"}
+            and not MIN_TEXT_CONFIDENCE <= score <= 1
+        ):
             raise ValueError("家具保留开关识别置信度不足")
         entries[text] = box
     if "至少保留1件" not in entries:
         raise ValueError("未识别到家具的至少保留1件开关")
     states = entries.keys() & {"ON", "OFF"}
     if len(states) == 1:
-        return "ON" in states
+        enabled = "ON" in states
+        if keep_switch_visual_state(img) != enabled:
+            raise ValueError("家具保留开关文字与画面冲突")
+        return enabled
     raise ValueError("无法确认家具保留开关状态")
 
 
@@ -240,7 +286,7 @@ class FurnitureDeadlineReached(RuntimeError):
 class FurnitureDismantler:
     def __init__(self, solver):
         self.solver = solver
-        self.keep_counts = load_furniture_keep_counts()
+        self.keep_counts = conservative_keep_counts(load_furniture_keep_counts())
         self.started = None
 
     def check_deadline(self):
@@ -339,9 +385,22 @@ class FurnitureDismantler:
         if target <= 0:
             logger.info(f"跳过{name}：MAX 份数不足以确认完整套装之外的余量")
             return False
+        current = maximum
         for _ in range(maximum - target):
             self.check_deadline()
+            previous = solver.recog.img.copy()
             self.tap(*MINUS_BUTTON, interval=0.2)
+            self.check_deadline()
+            current -= 1
+            try:
+                if not batch_image_changed(previous, solver.recog.img):
+                    raise FurnitureSafetyError("减号未产生可确认的份数变化，未提交加工")
+                if furniture_batch(solver.recog.img) != current:
+                    raise FurnitureSafetyError("减号前后份数不连续，未提交加工")
+            except ValueError as error:
+                raise FurnitureSafetyError("无法验证减号生效，未提交加工") from error
+        # 多取一帧重新读数量、名称和开关，不能复用最后一次点击的旧截图。
+        solver.sleep(0.3)
         # 验证实际份数，防止减号漏点或界面变化损坏整套家具。
         if furniture_batch(solver.recog.img) != target or furniture_details(
             solver.recog.img, expected_count, target

@@ -20,6 +20,32 @@ def normalize_name(name):
     return "".join(unicodedata.normalize("NFKC", name).split())
 
 
+def names_one_edit_apart(left, right):
+    """只用于提高保留量，不用近似名称放行未知家具。"""
+    if len(left) > len(right):
+        left, right = right, left
+    if len(right) - len(left) > 1:
+        return False
+    if len(left) == len(right):
+        return sum(a != b for a, b in zip(left, right)) <= 1
+    for index, (a, b) in enumerate(zip(left, right)):
+        if a != b:
+            return left[index:] == right[index + 1 :]
+    return True
+
+
+def conservative_keep_counts(counts):
+    """识别成只差一个字的另一合法家具时，仍按两者较大套装数量保护。"""
+    result = counts.copy()
+    for name, count in counts.items():
+        if count <= 1:
+            continue
+        for candidate, other in counts.items():
+            if other < count and names_one_edit_apart(name, candidate):
+                result[candidate] = max(result[candidate], count)
+    return result
+
+
 def build_furniture_data(building_data):
     custom = building_data["customData"]
     result = {

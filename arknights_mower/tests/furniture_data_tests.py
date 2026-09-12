@@ -174,3 +174,36 @@ def test_generation_writes_utf8_and_keeps_old_file_on_replace_failure(
         write_furniture_data(path, source())
     assert path.read_bytes() == previous
     assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.parametrize(
+    "left,right,expected",
+    [
+        ("复古吊灯", "复古吊扇", True),
+        ("便携TM计算器", "便携TM计算器", True),
+        ("吊灯", "大吊灯", True),
+        ("大吊灯", "吊灯", True),
+        ("吊灯", "壁纸", False),
+        ("吊灯", "大号吊灯", False),
+    ],
+)
+def test_conservative_name_distance(left, right, expected):
+    from arknights_mower.utils.furniture_data import names_one_edit_apart
+
+    assert names_one_edit_apart(left, right) is expected
+
+
+def test_confusable_resource_names_only_raise_keep_counts():
+    from arknights_mower.utils.furniture_data import conservative_keep_counts
+
+    counts = {
+        "复古吊灯": 6,
+        "复古吊扇": 1,
+        "简约高脚椅": 3,
+        "简易高脚椅": 2,
+        "便携TM计算器": 1,
+    }
+    protected = conservative_keep_counts(counts)
+    assert protected == {**counts, "复古吊扇": 6, "简易高脚椅": 3}
+    assert counts["复古吊扇"] == 1
+    assert "复古吊" not in protected
