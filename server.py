@@ -744,14 +744,25 @@ def load_plan_from_json():
     if request.method == "GET":
         return config.plan.model_dump(exclude_none=True)
     else:
+        from arknights_mower.utils.workshop_config import workshop_lock
+
         plan = config.PlanModel(**request.json)
-        changed = plan != config.plan
-        config.plan = plan
-        config.save_plan()
-        # 排班实际改变后丢弃旧床位顺序；相同内容的自动保存不重置手动排序。
-        if changed and config.conf.dorm_order:
-            config.conf.dorm_order = ""
-            config.save_conf()
+        with workshop_lock:
+            previous_plan = config.plan
+            previous_dorm_order = config.conf.dorm_order
+            changed = plan != previous_plan
+            config.plan = plan
+            try:
+                config.save_plan()
+                # 排班实际改变后丢弃旧床位顺序；相同内容的自动保存不重置手动排序。
+                if changed and previous_dorm_order:
+                    config.conf.dorm_order = ""
+                    config.save_conf()
+            except Exception:
+                # 任一步写盘失败都恢复比较基准，重试仍需重置并通知前端。
+                config.plan = previous_plan
+                config.conf.dorm_order = previous_dorm_order
+                raise
         return {"message": "New plan saved。", "dorm_order_reset": changed}
 
 

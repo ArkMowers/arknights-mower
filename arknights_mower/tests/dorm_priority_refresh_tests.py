@@ -1,8 +1,10 @@
 """排班改变后重新生成优先级，历史失效床位不再阻断启动。"""
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
 from arknights_mower.utils import config
 from arknights_mower.utils.operators import Operators
@@ -105,3 +107,55 @@ def test_plan_save_clears_old_order_only_when_content_changes(saved, monkeypatch
     assert response.json["dorm_order_reset"] is False
     assert config.conf.dorm_order == ",".join(DEFAULT)
     saved.assert_called_once()
+
+
+@pytest.mark.parametrize("failed_save", ["save_plan", "save_conf"])
+def test_failed_plan_save_can_retry_dorm_order_reset(
+    monkeypatch, tmp_path, failed_save
+):
+    import server
+
+    original_plan = config.PlanModel()
+    original_order = ",".join(reversed(DEFAULT))
+    monkeypatch.setattr(config, "plan", original_plan)
+    monkeypatch.setattr(config, "conf", config.Conf(dorm_order=original_order))
+    monkeypatch.setattr(config, "plan_path", tmp_path / "plan.json")
+    monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
+    config.save_plan()
+    config.save_conf()
+    real_save = getattr(config, failed_save)
+
+    def fail_once():
+        nonlocal first_attempt
+        if first_attempt:
+            first_attempt = False
+            raise OSError("temporary write failure")
+        real_save()
+
+    first_attempt = True
+    monkeypatch.setattr(config, failed_save, fail_once)
+    monkeypatch.setitem(server.app.config, "PROPAGATE_EXCEPTIONS", False)
+    client = server.app.test_client()
+    payload = original_plan.model_dump(mode="json", exclude_none=True)
+    payload["conf"]["ling_xi"] = 2
+
+    response = client.post("/plan", json=payload)
+    assert response.status_code == 500
+    assert config.plan is original_plan
+    assert config.conf.dorm_order == original_order
+
+    response = client.post("/plan", json=payload)
+    assert response.status_code == 200
+    assert response.json["dorm_order_reset"] is True
+    assert config.plan.conf.ling_xi == 2
+    assert config.conf.dorm_order == ""
+    assert json.loads(config.plan_path.read_text())["conf"]["ling_xi"] == 2
+    assert yaml.safe_load(config.conf_path.read_text())["dorm_order"] == ""
+
+    config.conf.dorm_order = original_order
+    config.save_conf()
+    response = client.post("/plan", json=payload)
+    assert response.status_code == 200
+    assert response.json["dorm_order_reset"] is False
+    assert config.conf.dorm_order == original_order
+    assert yaml.safe_load(config.conf_path.read_text())["dorm_order"] == original_order
