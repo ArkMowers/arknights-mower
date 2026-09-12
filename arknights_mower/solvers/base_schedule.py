@@ -3075,7 +3075,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.profession_filter(profession)
         if ope == "Free":
             self.profession_filter("ALL")
-        first_ret = None
         right_swipe = 0
         max_swipe = 50
         while not found:
@@ -3084,22 +3083,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 max_agent_count=1,
                 train=True,
             )
-            if sel == [ope] or ope == "Free":
+            if sel and (sel == [ope] or ope == "Free"):
                 ope = sel[0]
                 found = True
                 break
-            if ret == first_ret and right_swipe >= 3:
-                max_swipe = right_swipe
-            else:
-                first_ret = ret
-            st = ret[-2][1][0]  # 起点
-            ed = ret[0][1][0]  # 终点
-            self.swipe_noinertia(st, (ed[0] - st[0], 0))
-            right_swipe += 1
-            if right_swipe >= 3:
-                self.sleep(0.3)
             if right_swipe >= max_swipe:
-                break
+                logger.error("训练干员搜索达到上限，已暂停排班，保留当前选择")
+                raise MowerExit
+            right_swipe += self.swipe_agent_page(ret, [ope], train=True)
         right_swipe = self.swipe_left(right_swipe, special_filter=profession)
         self.ctap((1280, 60), 0.3)
         self.ctap((1280, 60), 0.3)
@@ -3195,7 +3186,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
-        first_name = ""
         max_swipe = 50
         position = [
             (0.35, 0.35),
@@ -3357,27 +3347,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.profession_filter("ALL")
                     right_swipe = 0
                     last_special_filter = "ALL"
-                if (
-                    agent[0] in self.op_data.operators
-                    and self.op_data.operators[agent[0]].is_resting()
-                    and fast_mode
-                    and is_dorm
-                    and agent[0] != "阿米娅"
-                    and agent[0] not in self.choose_error
-                ):
-                    # 如果在休息，则直接翻最后:
-                    swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
-                    skip_swipe_count = swipe_map[
-                        self.profession_labels.index(last_special_filter)
-                    ]
-                    for i in range(skip_swipe_count):
-                        self.swipe_noinertia(
-                            (0.8 * self.recog.w, 0.5 * self.recog.h),
-                            (-1900, 0),
-                            interval=0,
-                        )
-                    right_swipe = skip_swipe_count
-                    self.sleep(1)
             changed, ret = self.scan_agent(
                 agent, full_scan=last_special_filter == "ALL"
             )
@@ -3387,18 +3356,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 index_change = True
                 siege = False
             else:
-                # 如果没找到 而且右移次数大于5
-                if ret[0][0] == first_name and right_swipe >= 3:
-                    max_swipe = right_swipe
-                else:
-                    first_name = ret[0][0]
                 index_change = False
-                st = ret[-2][1][0]  # 起点
-                ed = ret[0][1][0]  # 终点
-                self.swipe_noinertia(st, (ed[0] - st[0], 0))
-                right_swipe += 1
-                if right_swipe >= 3:
-                    self.sleep(0.3)
+                right_swipe += self.swipe_agent_page(
+                    ret, agent, full_scan=last_special_filter == "ALL"
+                )
             if len(agent) == 0:
                 if siege:
                     if last_special_filter != "ALL":
@@ -3434,10 +3395,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if free_num == 0:
                     break
                 else:
-                    st = ret[-2][1][0]  # 起点
-                    ed = ret[0][1][0]  # 终点
-                    self.swipe_noinertia(st, (ed[0] - st[0], 0))
-                    right_swipe += 1
+                    if right_swipe >= max_swipe:
+                        logger.error("空闲干员搜索达到上限，已暂停排班，保留当前选择")
+                        raise MowerExit
+                    right_swipe += self.swipe_agent_page(
+                        ret, free_list, full_scan=last_special_filter == "ALL"
+                    )
         # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
         # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
         if last_special_filter != "ALL":

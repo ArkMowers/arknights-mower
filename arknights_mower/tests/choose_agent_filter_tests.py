@@ -75,6 +75,17 @@ def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
     assert selected == RESIDENTS
 
 
+def test_resting_operator_is_scanned_without_skipping_pages(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.operators["伊芙利特"] = SimpleNamespace(
+        mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+    )
+    solver.choose_agent(["伊芙利特"], "dormitory_1")
+    assert selected == ["伊芙利特"]
+    solver.swipe_noinertia.assert_not_called()
+    solver.swipe_agent_page.assert_not_called()
+
+
 def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
     current = list(RESIDENTS if residents is None else residents)
@@ -99,6 +110,8 @@ def selection_solver(monkeypatch, residents=None):
     solver.find = MagicMock(return_value=False)
     solver.sleep = MagicMock()
     solver.swipe_noinertia = MagicMock()
+    # 本组模拟筛选和选择结果；真实翻页与延迟帧在 agent_page_search_tests 中验证。
+    solver.swipe_agent_page = MagicMock(return_value=1)
 
     def visible(names):
         return [

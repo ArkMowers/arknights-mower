@@ -174,6 +174,83 @@ class BaseMixin:
         logger.error("干员排序未到达目标状态，已暂停排班，保留当前选择")
         raise MowerExit
 
+    @staticmethod
+    def same_agent_page(left, right):
+        """比较整页名字及卡片位置，允许识别边界的少量像素抖动。"""
+        if not left or not right or len(left) != len(right):
+            return False
+        for (name, scope), (old_name, old_scope) in zip(left, right):
+            if not name or name != old_name or scope is None or old_scope is None:
+                return False
+            if any(
+                abs(value - old_value) > 3
+                for point, old_point in zip(scope, old_scope)
+                for value, old_value in zip(point, old_point)
+            ):
+                return False
+        return True
+
+    def wait_for_agent_page(self, *, full_scan=True, train=False, before=None):
+        """先复核当前页；滑动后不把连续两张相同的旧画面当成新页。"""
+        previous = None
+        stable = False
+        ret = []
+        for attempt in range(6):
+            if attempt:
+                self.sleep(0.5)
+            self.recog.update()
+            if self.find("connecting"):
+                previous = None
+                stable = False
+                continue
+            try:
+                ret = (
+                    operator_list_train(self.recog.img)
+                    if train
+                    else operator_list(self.recog.img, full_scan=full_scan)
+                )
+            except MowerExit:
+                raise
+            except Exception as e:
+                logger.debug(f"翻页名单读取失败，原地复核：{e}")
+                previous = None
+                stable = False
+                continue
+            stable = self.same_agent_page(ret, previous)
+            if stable and (before is None or not self.same_agent_page(ret, before)):
+                logger.debug(f"确认当前干员页：{ret}")
+                return ret
+            previous = ret
+        if stable:
+            # 滑动后仍是旧页：交给调用方确认手势未推进，不能当成新页跳过。
+            return ret
+        logger.error("干员页面仍在移动或名字识别不全，已暂停排班，保留当前选择")
+        raise MowerExit
+
+    def swipe_agent_page(self, page, agent, *, full_scan=True, train=False):
+        """保留两列重叠，确认翻页生效；未推进时只做一次短距离复核。"""
+        columns = sorted({scope[0][0] for _, scope in page})
+        if len(columns) < 2:
+            logger.error("可识别干员列不足，已暂停排班，避免跳过未读出的卡片")
+            raise MowerExit
+        start_x = columns[-2] if len(columns) > 2 else columns[-1]
+        y = page[0][1][0][1]
+        for attempt in range(2):
+            # 第二次只移动一列，防止第一次延迟完成时又跨过一整页。
+            distance = columns[0] - (start_x if attempt == 0 else columns[1])
+            self.swipe_noinertia((start_x, y), (distance, 0))
+            actual = self.wait_for_agent_page(
+                full_scan=full_scan, train=train, before=page
+            )
+            if not self.same_agent_page(actual, page):
+                return attempt + 1
+            logger.debug(f"翻页第{attempt + 1}次未确认推进，仍需查找：{agent}")
+        logger.error(
+            f"两次滑动后整页干员及位置均未变化，可能已到末尾或手势未生效；"
+            f"已暂停排班，保留当前选择，仍需查找：{agent}"
+        )
+        raise MowerExit
+
     def scan_agent(
         self,
         agent: list[str],
@@ -182,39 +259,23 @@ class BaseMixin:
         full_scan=True,
         train=False,
     ):
-        try:
-            # 识别干员
-            self.recog.update()
-            while self.find("connecting"):
-                logger.info("等待网络连接")
-                self.sleep()
-            # 返回的顺序是从左往右从上往下
-            ret = (
-                operator_list(self.recog.img, full_scan=full_scan)
-                if not train
-                else operator_list_train(self.recog.img)
-            )
-            # 提取识别出来的干员的名字
-            select_name = []
-            for name, scope in ret:
-                if name in agent:
-                    select_name.append(name)
-                    self.tap(scope, interval=0.2)
-                    agent.remove(name)
-                    # 如果是按照个数选择 Free
-                    if max_agent_count != -1:
-                        if len(select_name) >= max_agent_count:
-                            return select_name, ret
-            return select_name, ret
-        except MowerExit:
-            raise
-        except Exception as e:
-            error_count += 1
-            if error_count < 3:
-                return self.scan_agent(agent, error_count, max_agent_count, False)
-            else:
-                logger.exception(e)
-                raise e
+        # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
+        ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
+        select_name = []
+        while True:
+            target = next(((name, scope) for name, scope in ret if name in agent), None)
+            if target is None:
+                return select_name, ret
+            name, scope = target
+            self.tap(scope, interval=0.2)
+            select_name.append(name)
+            agent.remove(name)
+            if not agent or (
+                max_agent_count != -1 and len(select_name) >= max_agent_count
+            ):
+                return select_name, ret
+            # 点击可能改变卡片位置；下一名必须从新页面重新定位。
+            ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
 
     def wait_for_arranged_agents(
         self, agent, *, ordered=True, full_scan=True, train=False
