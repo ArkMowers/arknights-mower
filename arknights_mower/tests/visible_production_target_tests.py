@@ -46,7 +46,7 @@ def production_solver(
 ):
     solver = object.__new__(BaseSchedulerSolver)
     selected = ["鸿雪", "黑键"]
-    state = {"phase": "initial", "sorts": 0}
+    state = {"phase": "initial", "sorts": 0, "reorder_cards": None}
     events = []
     initial = page(("鸿雪", "黑键", "杜林", "芬"))
     after_sort = page(
@@ -68,6 +68,8 @@ def production_solver(
     missing = page(("鸿雪", "暗索", "桃金娘", "史都华德"))
 
     def provider():
+        if state["reorder_cards"] is not None:
+            return state["reorder_cards"]
         if state["phase"] == "initial":
             return initial
         if state["phase"] == "sorted":
@@ -107,6 +109,7 @@ def production_solver(
     solver.profession_filter = MagicMock(side_effect=reset_filter)
 
     def sort(*args):
+        state["reorder_cards"] = None
         state["sorts"] += 1
         state["phase"] = "sorted" if state["sorts"] == 1 else "final"
         events.append(("sort", state["sorts"]))
@@ -114,10 +117,21 @@ def production_solver(
 
     def tap(location, **kwargs):
         if isinstance(location[0], (int, float)):
-            # 快速模式撤下原第二位黑键；目标安排仍保留Current解析后的鸿雪。
-            assert location == (672.0, 810.0)
-            selected.remove("黑键")
-            events.append(("remove", "黑键"))
+            if location[1] == 1026:
+                # 清空不改变卡片位置，重新点击排序时才刷新已选置顶。
+                state["reorder_cards"] = tuple(solver.recog.img)
+                selected.clear()
+                events.append(("clear",))
+            elif state["reorder_cards"] is not None:
+                index = [(672, 378), (672, 810)].index(location)
+                name = state["reorder_cards"][index][0]
+                selected.append(name)
+                events.append(("reselect", name))
+            else:
+                # 快速模式撤下原第二位黑键；目标安排仍保留Current解析后的鸿雪。
+                assert location == (672.0, 810.0)
+                selected.remove("黑键")
+                events.append(("remove", "黑键"))
         else:
             name = next(name for name, scope in solver.recog.img if scope == location)
             assert name not in selected
@@ -146,7 +160,8 @@ def test_visible_target_and_correct_final_roster_do_not_reset_filter(
     assert events[selection][2][0][0] == 1705  # 第六列，无需先复位到左端。
     solver.swipe_noinertia.assert_not_called()
     assert selected == ["鸿雪", "但书"]
-    assert solver.switch_arrange_order.call_count == 2
+    assert solver.switch_arrange_order.call_count == 3
+    assert events.count(("clear",)) == 1
     assert ("sort", 2) in events[selection + 1 :]
     solver.tap_confirm.assert_called_once()
 

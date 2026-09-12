@@ -3501,7 +3501,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         verified = False
         if len(agents) != 1:
             self.switch_arrange_order("技能", room)
-            # 未翻页时先读取完整已选名单；校验成功无需再切筛选复位。
+            # 未翻页时先定位目标卡片，名字匹配后无需再切筛选复位。
             exists = None
             if right_swipe == 0:
                 try:
@@ -3524,15 +3524,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     click_order.append(exists.index(a))
                 else:
                     raise Exception("检测到干员选择错误，重新选择")
-            if click_order and exists != agents:
-                # 清空
+            if click_order:
+                # 名字前缀相同不能证明卡片已选中：漏点的目标可能恰好排在
+                # 已选干员之后。保留多人清空重选，再刷新排序并校验。
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                 for p_idx in click_order:
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
                     self.tap((x, y), interval=0.2 if self.low_frame_rate_mode else 0)
             else:
-                # 刚刚已确认完整名单与顺序，且之后未操作，无需再次切换排序。
+                # 空目标没有需要重排和校验的卡片。
                 verified = True
         if not verified:
             logger.debug("验证干员选择..")

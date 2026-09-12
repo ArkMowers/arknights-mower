@@ -144,9 +144,11 @@ def test_verified_roster_does_not_reset_filter_in_either_mode(
     solver.choose_agent(RESIDENTS.copy(), room)
     assert selected == RESIDENTS
     solver.swipe_left.assert_not_called()
-    solver.tap.assert_not_called()
-    solver.switch_arrange_order.assert_called_once()
-    assert solver.recog.update.call_count == (2 if enabled else 1)
+    assert solver.tap.call_count == len(RESIDENTS) + 1
+    assert solver.switch_arrange_order.call_count == 2
+    assert [c.kwargs["interval"] for c in solver.tap.call_args_list] == [0.5] + [
+        0.2 if enabled else 0
+    ] * len(RESIDENTS)
 
 
 @pytest.mark.parametrize("enabled", [False, True])
