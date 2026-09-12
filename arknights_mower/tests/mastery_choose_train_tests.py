@@ -80,8 +80,6 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                 )
                 solver.detect_arrange_order.return_value = ("技能", False)
                 solver.verify_agent.return_value = True
-                observation = object()
-                solver.swipe_left.return_value = (0, observation)
 
                 def scan(agents, **kwargs):
                     self.assertEqual(agents, ["暴雨"])
@@ -90,9 +88,8 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
 
                 solver.scan_agent.side_effect = scan
                 choose_train(solver, ["暴雨", "Current"])
-                solver.verify_agent.assert_called_once_with(
-                    ["暴雨"], "train", observation=observation
-                )
+                solver.verify_agent.assert_called_once_with(["暴雨"], "train")
+                solver.swipe_left.assert_not_called()
                 solver.tap_confirm.assert_called_once_with("train")
                 solver.choose_train_ope.assert_not_called()
                 self.assertEqual(solver.op_data.plan, {})

@@ -17,6 +17,8 @@ from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 OLD_SCOPE = ((631, 488), (820, 520))
 NEW_SCOPE = ((1063, 909), (1252, 941))
 

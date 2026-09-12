@@ -13,6 +13,8 @@ from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 
 def page(names=("砾", "苍苔", "杜林", "芬"), offset=0):
     return tuple(

@@ -3083,6 +3083,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         right_swipe = 0
         max_swipe = 50
         observation = None
+        previous_page = None
         while not found:
             sel, ret = self.scan_agent(
                 [ope] if ope != "Free" else self.get_free_list([]),
@@ -3097,6 +3098,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 break
             if right_swipe >= max_swipe:
                 raise AgentSelectionNotReady("训练干员搜索达到上限，返回房间重试")
+            if (
+                not self.low_frame_rate_mode
+                and right_swipe >= 3
+                and ret == previous_page
+            ):
+                raise AgentSelectionNotReady("训练干员列表已到末尾，返回房间重试")
+            previous_page = ret
             moved, observation = self.swipe_agent_page(
                 ret, [ope], train=True, return_page=True
             )
@@ -3263,7 +3271,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.recog.w * position[pos][0],
                             self.recog.h * position[pos][1],
                         ),
-                        interval=0.2,
+                        interval=0.2 if self.low_frame_rate_mode else 0,
                     )
             agent = [x for x in agents if x not in exists]
         logger.info(f"安排干员 ：{agent}")
@@ -3291,6 +3299,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         last_special_filter = "ALL"
         start_time, finish_time = datetime.now(), datetime.now()
         observation = None
+        previous_page = None
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -3377,6 +3386,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.profession_filter("ALL")
                     right_swipe = 0
                     last_special_filter = "ALL"
+                if (
+                    not self.low_frame_rate_mode
+                    and agent[0] in self.op_data.operators
+                    and self.op_data.operators[agent[0]].is_resting()
+                    and fast_mode
+                    and is_dorm
+                    and agent[0] != "阿米娅"
+                    and agent[0] not in self.choose_error
+                ):
+                    # 普通设备保留休息干员的末页快路；低帧率设备逐页确认。
+                    swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
+                    right_swipe = swipe_map[
+                        self.profession_labels.index(last_special_filter)
+                    ]
+                    for _ in range(right_swipe):
+                        self.swipe_noinertia(
+                            (0.8 * self.recog.w, 0.5 * self.recog.h),
+                            (-1900, 0),
+                            interval=0,
+                        )
+                    self.sleep(1)
             changed, ret = self.scan_agent(
                 agent,
                 full_scan=last_special_filter == "ALL",
@@ -3390,6 +3420,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 siege = False
             else:
                 index_change = False
+                if (
+                    not self.low_frame_rate_mode
+                    and right_swipe >= 3
+                    and ret == previous_page
+                ):
+                    self.choose_error.add(agent[0])
+                    raise AgentSelectionNotReady("干员列表已到末尾，返回房间重试")
+                previous_page = ret
                 moved, observation = self.swipe_agent_page(
                     ret, agent, full_scan=last_special_filter == "ALL", return_page=True
                 )
@@ -3416,6 +3454,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = self.get_free_list(agents)
             observation = None
+            previous_page = None
             while free_num:
                 selected_name, ret = self.scan_agent(
                     free_list,
@@ -3436,6 +3475,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         raise AgentSelectionNotReady(
                             "空闲干员搜索达到上限，返回房间重试"
                         )
+                    if (
+                        not self.low_frame_rate_mode
+                        and right_swipe >= 3
+                        and ret == previous_page
+                    ):
+                        raise AgentSelectionNotReady(
+                            "空闲干员列表已到末尾，返回房间重试"
+                        )
+                    previous_page = ret
                     moved, observation = self.swipe_agent_page(
                         ret,
                         free_list,
@@ -3455,7 +3503,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.switch_arrange_order("技能", room)
             # 未翻页时先读取完整已选名单；校验成功无需再切筛选复位。
             exists = None
-            if right_swipe == 0 and room.startswith("room"):
+            if right_swipe == 0:
                 try:
                     exists = self.wait_for_arranged_agents(agents, ordered=False)
                 except AgentSelectionNotReady:
@@ -3482,14 +3530,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 for p_idx in click_order:
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
-                    self.tap((x, y), interval=0.2)
+                    self.tap((x, y), interval=0.2 if self.low_frame_rate_mode else 0)
             else:
-                # 刚刚已连续确认完整名单与顺序，且之后未操作，无需再次切换排序。
+                # 刚刚已确认完整名单与顺序，且之后未操作，无需再次切换排序。
                 verified = True
         if not verified:
             logger.debug("验证干员选择..")
             self.switch_arrange_order("技能", room)
-            if right_swipe == 0 and room.startswith("room"):
+            if right_swipe == 0:
                 try:
                     verified = self.verify_agent(agents, room)
                 except AgentSelectionNotReady:

@@ -17,6 +17,8 @@ from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 
 class LivePageRecognizer:
     w, h = 1920, 1080

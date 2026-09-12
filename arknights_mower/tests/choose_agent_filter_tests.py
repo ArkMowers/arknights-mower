@@ -11,6 +11,8 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_mixin, base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 RESIDENTS = ["冰酿", "闪灵", "菲亚梅塔", "爱丽丝"]
 
 

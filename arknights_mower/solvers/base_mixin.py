@@ -9,7 +9,7 @@ import numpy as np
 
 from arknights_mower.data import workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
-from arknights_mower.utils import rapidocr, segment
+from arknights_mower.utils import config, rapidocr, segment
 from arknights_mower.utils.character_recognize import operator_list, operator_list_train
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
@@ -141,6 +141,10 @@ def _resolve_operator_room_prefix(
 
 
 class BaseMixin:
+    @property
+    def low_frame_rate_mode(self):
+        return config.conf.low_frame_rate_mode
+
     profession_labels = [
         "ALL",
         "PIONEER",
@@ -181,6 +185,13 @@ class BaseMixin:
             ascending = ascending == "true"
         name_y = 60
         x = self._arrange_order_x(current_room)[name]
+        if not self.low_frame_rate_mode:
+            # 普通设备保留点击后单帧检查，不增加第二帧的固定等待。
+            for _ in range(6):
+                self.tap((x, name_y), interval=0.5)
+                if self.detect_arrange_order(current_room) == (name, ascending):
+                    return
+            raise AgentSelectionNotReady("干员排序未到达目标状态，返回房间重试")
         before = None
         for attempt in range(6):
             if attempt:
@@ -218,12 +229,17 @@ class BaseMixin:
         raise AgentSelectionNotReady("干员排序未到达目标状态，返回房间重试")
 
     @staticmethod
-    def same_agent_page(left, right):
+    def same_agent_page(left, right, *, allow_unknown=False):
         """比较整页名字及卡片位置，允许识别边界的少量像素抖动。"""
         if not left or not right or len(left) != len(right):
             return False
         for (name, scope), (old_name, old_scope) in zip(left, right):
-            if not name or name != old_name or scope is None or old_scope is None:
+            if (
+                (not name and not allow_unknown)
+                or name != old_name
+                or scope is None
+                or old_scope is None
+            ):
                 return False
             if any(
                 abs(value - old_value) > 3
@@ -311,8 +327,13 @@ class BaseMixin:
                 previous = None
                 stable = False
                 continue
-            stable = self.same_agent_page(ret, previous)
-            if stable and (before is None or not self.same_agent_page(ret, before)):
+            # 搜索时允许无关卡片识别为空；仍须整页位置稳定，且只点击识别出的目标。
+            # 最终名单校验继续拒绝空名字。
+            stable = self.same_agent_page(ret, previous, allow_unknown=True)
+            if stable and (
+                before is None
+                or not self.same_agent_page(ret, before, allow_unknown=True)
+            ):
                 logger.debug(f"确认当前干员页：{ret}")
                 return ret
             previous = ret
@@ -325,6 +346,12 @@ class BaseMixin:
         self, page, agent, *, full_scan=True, train=False, return_page=False
     ):
         """保留两列重叠，确认翻页生效；未推进时只做一次短距离复核。"""
+        if not self.low_frame_rate_mode:
+            if len(page) < 2:
+                raise AgentSelectionNotReady("可识别干员不足，返回房间重试")
+            start, end = page[-2][1][0], page[0][1][0]
+            self.swipe_noinertia(start, (end[0] - start[0], 0))
+            return (1, None) if return_page else 1
         columns = sorted({scope[0][0] for _, scope in page})
         if len(columns) < 2:
             raise AgentSelectionNotReady("可识别干员列不足，返回房间重试")
@@ -337,7 +364,7 @@ class BaseMixin:
             actual = self.wait_for_agent_page(
                 full_scan=full_scan, train=train, before=page
             )
-            if not self.same_agent_page(actual, page):
+            if not self.same_agent_page(actual, page, allow_unknown=True):
                 if return_page:
                     return attempt + 1, self.observe_agent_page(
                         actual, full_scan=full_scan, train=train
@@ -358,6 +385,10 @@ class BaseMixin:
         train=False,
         observation=None,
     ):
+        if not self.low_frame_rate_mode:
+            return self._scan_agent_fast(
+                agent, error_count, max_agent_count, full_scan, train
+            )
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
         ret = self.wait_for_agent_page(
             full_scan=full_scan, train=train, observation=observation
@@ -378,11 +409,40 @@ class BaseMixin:
             # 点击可能改变卡片位置；下一名必须从新页面重新定位。
             ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
 
+    def _scan_agent_fast(self, agent, error_count, max_agent_count, full_scan, train):
+        """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
+        try:
+            self.recog.update()
+            while self.find("connecting"):
+                self.sleep()
+            ret = (
+                operator_list_train(self.recog.img)
+                if train
+                else operator_list(self.recog.img, full_scan=full_scan)
+            )
+        except MowerExit:
+            raise
+        except Exception:
+            if error_count >= 2:
+                raise
+            return self._scan_agent_fast(
+                agent, error_count + 1, max_agent_count, False, train
+            )
+        selected = []
+        for name, scope in ret:
+            if name and name in agent:
+                self.tap(scope, interval=0)
+                selected.append(name)
+                agent.remove(name)
+                if max_agent_count != -1 and len(selected) >= max_agent_count:
+                    break
+        return selected, ret
+
     @timed_step("verify")
     def wait_for_arranged_agents(
         self, agent, *, ordered=True, full_scan=True, train=False, observation=None
     ):
-        """等待排序后的名单连续两帧符合预期，不在旧画面上继续点击。"""
+        """校验当前名单；低帧率适配还要求连续两帧的位置和名字一致。"""
         page = (
             observation.consume(self.recog, full_scan=full_scan, train=train)
             if observation is not None
@@ -424,11 +484,13 @@ class BaseMixin:
             actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
             stable = len(actual) == len(agent) and self.same_agent_page(
-                selected, previous
+                selected, previous if self.low_frame_rate_mode else selected
             )
             matches = actual == agent if ordered else sorted(actual) == sorted(agent)
             if matches and stable:
                 return actual
+            if stable and not self.low_frame_rate_mode:
+                return None
             previous = selected
         if stable:
             logger.warning(f"干员名单已稳定但不符合预期：预期{agent}，实际{actual}")
@@ -478,6 +540,11 @@ class BaseMixin:
     def swipe_left(
         self, right_swipe, special_filter, *, train=False, return_page=False
     ):
+        if not self.low_frame_rate_mode and right_swipe <= 3:
+            # 未翻页时不触发筛选/截图；普通设备保留短距离返回路径。
+            for _ in range(2 if right_swipe == 3 else right_swipe):
+                self.swipe_noinertia((650, 540), (2500, 0))
+            return (0, None) if return_page else 0
         # 保留旧接口供选人调用；实际通过切换职业筛选复位，不再反向拖动。
         # 即使计数为零也要真正切换，重复点击当前筛选不能证明列表已归零。
         confirm_buttons = [
@@ -500,6 +567,8 @@ class BaseMixin:
             # 只恢复明确读到的入口状态，不以职业推断侧栏是否展开。
             self._close_profession_filter()
         full_scan = profession == "ALL"
+        if not self.low_frame_rate_mode:
+            return (0, None) if return_page else 0
         actual = self.wait_for_agent_page(full_scan=full_scan, train=train)
         if not actual or (not train and actual[0][1][0][0] > 650):
             raise AgentSelectionNotReady("筛选复位后列表仍被裁切，返回房间重试")
@@ -535,19 +604,37 @@ class BaseMixin:
             (confirm_btn := self.find("confirm_train")) is not None
             and confirm_btn[0][0] > open_threshold
         ):
-            self.tap((1860, 60), 0.1)
-            retry += 1
-            if retry > 5:
+            if retry >= 6:
                 raise Exception("打开职业筛选失败")
+            if retry and self.low_frame_rate_mode:
+                self.sleep(0.5)
+            else:
+                self.tap((1860, 60), interval=0.1)
+            retry += 1
         retry = 0
         # 点击一次ALL先
-        self.tap(label_pos_map["ALL"], 0.1)
+        self.tap(label_pos_map["ALL"], interval=0.1)
+        if self.low_frame_rate_mode:
+            # 等待刚刚点击的筛选生效，避免用切换前的高亮误判已恢复原职业。
+            self._wait_for_profession_filter(label_pos_map["ALL"])
+            if profession != "ALL":
+                self.tap(label_pos_map[profession], interval=0.1)
+                self._wait_for_profession_filter(label_pos_map[profession])
+            return
         while self.get_color(label_pos_map[profession])[2] < 240:
             logger.debug(f"配色为： {self.get_color(label_pos_map[profession])[2]}")
-            self.tap(label_pos_map[profession], 0.1)
+            self.tap(label_pos_map[profession], interval=0.1)
             retry += 1
             if retry > 5:
                 raise Exception("打开职业筛选失败")
+
+    def _wait_for_profession_filter(self, position):
+        for attempt in range(6):
+            if attempt:
+                self.sleep(0.5)
+            if self.get_color(position)[2] >= 240:
+                return
+        raise AgentSelectionNotReady("职业筛选尚未生效，返回房间重试")
 
     def _close_profession_filter(self):
         """仅收起筛选侧栏，保留当前职业。"""
@@ -560,10 +647,13 @@ class BaseMixin:
             (confirm_btn := self.find("confirm_train")) is not None
             and confirm_btn[0][0] < open_threshold
         ):
-            self.tap((1860, 60), 0.1)
-            retry += 1
-            if retry > 5:
+            if retry >= 6:
                 raise Exception("关闭职业筛选失败")
+            if retry and self.low_frame_rate_mode:
+                self.sleep(0.5)
+            else:
+                self.tap((1860, 60), interval=0.1)
+            retry += 1
 
     def detect_room_number(self, img) -> int:
         score = []

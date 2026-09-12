@@ -16,6 +16,8 @@ from arknights_mower.solvers.base_mixin import (  # noqa: E402
 )
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 
 def page(names=("杜林", "芬", "克洛丝", "炎熔", "安赛尔", "香草"), offset=0):
     return tuple(
@@ -98,7 +100,7 @@ def test_free_slot_limit_does_not_overselect(monkeypatch):
     solver.tap.assert_called_once()
 
 
-@pytest.mark.parametrize("frame", [[], page(("", "苍苔"))])
+@pytest.mark.parametrize("frame", [[], [("砾", None)]])
 def test_unreadable_page_pauses_without_tapping_or_swiping(monkeypatch, frame):
     solver = reader(monkeypatch, [frame] * 6)
     with pytest.raises(AgentSelectionNotReady):

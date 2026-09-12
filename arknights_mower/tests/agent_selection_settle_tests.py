@@ -15,6 +15,8 @@ from arknights_mower.solvers.base_mixin import (  # noqa: E402
 )
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 TARGET = ["多萝西", "淬羽赫默", "娜斯提"]
 OLD = ["斯卡蒂", "幽灵鲨", "娜斯提"]
 

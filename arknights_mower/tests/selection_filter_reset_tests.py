@@ -11,6 +11,8 @@ from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.solver import BaseSolver
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 
 @pytest.mark.parametrize("count", [0, 1, 3, 100])
 @pytest.mark.parametrize("profession", [None, "ALL", "MEDIC", "SPECIAL"])
@@ -177,7 +179,7 @@ def test_filter_failure_propagates_without_reverse_gesture(monkeypatch):
     configure_real_filter(solver, monkeypatch)
     solver.get_color.return_value = (0, 0, 0)
     solver.get_color.side_effect = None
-    with pytest.raises(Exception, match="打开职业筛选失败"):
+    with pytest.raises(AgentSelectionNotReady, match="职业筛选尚未生效"):
         solver.swipe_left(0, "ALL")
     solver.swipe_noinertia.assert_not_called()
 
