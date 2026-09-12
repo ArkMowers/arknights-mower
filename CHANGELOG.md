@@ -1,5 +1,337 @@
 # CHANGELOG
 
+## 4.1.6-alpha.4 - 2026-09-08
+
+### New
+
+- 补齐肉鸽玩法字段下发并支持配置企鹅物流上报 id [(#994)](https://github.com/ArkMowers/arknights-mower/pull/994) @NiceAfternoon
+- 补齐 MAA 肉鸽任务通用字段并按主题和策略显示对应字段 [(#991)](https://github.com/ArkMowers/arknights-mower/pull/991) @NiceAfternoon
+- 新增 Mall 只买折扣与保留最大信用、Fight 一图流上报 [(#989)](https://github.com/ArkMowers/arknights-mower/pull/989) @NiceAfternoon
+- 支持访问好友由 mower 原生或 MAA 处理 [(#988)](https://github.com/ArkMowers/arknights-mower/pull/988) @NiceAfternoon
+- 改用 medicine_expire_days 支持按剩余天数使用理智药 [(#983)](https://github.com/ArkMowers/arknights-mower/pull/983) @NiceAfternoon
+- 保存配置时只写入修改过的键 [(#977)](https://github.com/ArkMowers/arknights-mower/pull/977) @NiceAfternoon
+- 将 Windows 端窗口改为无边框自绘标题栏并保留原生缩放 [(#979)](https://github.com/ArkMowers/arknights-mower/pull/979) @NiceAfternoon
+- 完善更新进度、取消操作与自动检查 [(#966)](https://github.com/ArkMowers/arknights-mower/pull/966) @ALEXsun0
+- 支持源码分支与提交切换并兼容不同 Python 环境 [(#965)](https://github.com/ArkMowers/arknights-mower/pull/965) @ALEXsun0
+- 支持自动更新、实例进程控制与 SOCKS 代理 [(#962)](https://github.com/ArkMowers/arknights-mower/pull/962) @ALEXsun0
+- 支持软件更新、多实例恢复与统一网络代理 [(#959)](https://github.com/ArkMowers/arknights-mower/pull/959) @ALEXsun0
+
+### Bug Fixes
+
+- 修复无边框窗口丢失的最小化、最大化与还原动画 [(#995)](https://github.com/ArkMowers/arknights-mower/pull/995) @NiceAfternoon
+- retain operator branches in mastery resource data [(#993)](https://github.com/ArkMowers/arknights-mower/pull/993) @ALEXsun0
+- 修复仓库加载、404兜底及下拉头像显示 [(#992)](https://github.com/ArkMowers/arknights-mower/pull/992) @ALEXsun0
+- 修复 MAA 出错导致游戏被关闭 [(#990)](https://github.com/ArkMowers/arknights-mower/pull/990) @NiceAfternoon
+- 修复 StartUp 与 Fight 未下发协议必填的 client_type [(#986)](https://github.com/ArkMowers/arknights-mower/pull/986) @NiceAfternoon
+- 修复 WebUI 深色模式下输入框和选择框显示白色 [(#987)](https://github.com/ArkMowers/arknights-mower/pull/987) @ALEXsun0
+- 修复调用 maa 信用作战时设置指定的编队不生效 [(#985)](https://github.com/ArkMowers/arknights-mower/pull/985) @NiceAfternoon
+- 统一 ADB 与 scrcpy 重连并修正模拟器首次启动策略 [(#982)](https://github.com/ArkMowers/arknights-mower/pull/982) @ALEXsun0 @NiceAfternoon
+- 完善实例扫描、日志与三端兼容 [(#976)](https://github.com/ArkMowers/arknights-mower/pull/976) @ALEXsun0
+- 修复源码更新与资源版本在 Windows 中文环境下的异常 [(#978)](https://github.com/ArkMowers/arknights-mower/pull/978) @NiceAfternoon
+- 修复森空岛瞬时网络错误导致仓库扫描中断 [(#975)](https://github.com/ArkMowers/arknights-mower/pull/975) @NiceAfternoon
+- 修复 macOS 多开启动并统一托盘与平台默认配置 [(#973)](https://github.com/ArkMowers/arknights-mower/pull/973) @ALEXsun0
+- 修复 MuMu12 更新重启后设备未就绪导致连接失败的问题 [(#974)](https://github.com/ArkMowers/arknights-mower/pull/974) @NiceAfternoon
+- 修复访问好友时识别不到访问下位按钮导致提前结束的问题 [(#972)](https://github.com/ArkMowers/arknights-mower/pull/972) @NiceAfternoon
+- 修复训练室面板因 OCR 噪声导致干员名误判 [(#970)](https://github.com/ArkMowers/arknights-mower/pull/970) @NiceAfternoon
+- 修复打包后测试 Maa 连接时配置文件加载报错的问题 [(#969)](https://github.com/ArkMowers/arknights-mower/pull/969) @NiceAfternoon
+- 修复源码更新与资源版本在 Windows 中文环境下的测试失败 [(#968)](https://github.com/ArkMowers/arknights-mower/pull/968) @NiceAfternoon
+- 修复设备指纹服务不可达时森空岛认证误报设备信息无效 [(#967)](https://github.com/ArkMowers/arknights-mower/pull/967) @NiceAfternoon
+- fix(log)：修复日志文件被多进程占用导致写入失败的问题 [(#964)](https://github.com/ArkMowers/arknights-mower/pull/964) @NiceAfternoon
+- 放行 npm 元数据并增加强制更新二次确认 [(#963)](https://github.com/ArkMowers/arknights-mower/pull/963) @ALEXsun0
+- 减少空闲日志并恢复每小时清理 [(#960)](https://github.com/ArkMowers/arknights-mower/pull/960) @ALEXsun0
+- 修复模拟器自动启动及设备就绪判断 [(#957)](https://github.com/ArkMowers/arknights-mower/pull/957) @ALEXsun0
+
+### Improvements
+
+- 统一软件更新进度条与下载状态展示 [(#971)](https://github.com/ArkMowers/arknights-mower/pull/971) @ALEXsun0
+- 分离截图预览、写盘与过期清理 [(#958)](https://github.com/ArkMowers/arknights-mower/pull/958) @ALEXsun0
+
+### Dependencies
+
+- 升级 vue 与 naive-ui 并适配新版输入组件行为 [(#980)](https://github.com/ArkMowers/arknights-mower/pull/980) @NiceAfternoon
+
+### Maintenance
+
+- 将日志页背景图更换为「结城理」精二立绘 [(#981)](https://github.com/ArkMowers/arknights-mower/pull/981) @NiceAfternoon
+
+### Other
+
+- prerelease v4.1.6-alpha.4 @NiceAfternoon
+
+**Full Changelog**: [v4.1.6-alpha.3...v4.1.6-alpha.4](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.3...v4.1.6-alpha.4)
+
+## 4.1.6-alpha.3 - 2026-09-05
+
+### New
+
+- 窗口标题显示资源包版本并在资源更新后实时刷新 [(#955)](https://github.com/ArkMowers/arknights-mower/pull/955) @NiceAfternoon
+- 资源包展示版本号日期改为构建日期 [(#954)](https://github.com/ArkMowers/arknights-mower/pull/954) @NiceAfternoon
+- 基建技能数据改为运行时下发 [(#953)](https://github.com/ArkMowers/arknights-mower/pull/953) @NiceAfternoon
+- 支持活动结束或定时切换周计划 [(#952)](https://github.com/ArkMowers/arknights-mower/pull/952) @ALEXsun0
+- 恢复刷理智表格计划并新增库存选关 [(#949)](https://github.com/ArkMowers/arknights-mower/pull/949) @ALEXsun0
+- 资源包更新支持免重启与自动更新 [(#945)](https://github.com/ArkMowers/arknights-mower/pull/945) @ALEXsun0
+- 新增 MAA 资源检查与更新 [(#946)](https://github.com/ArkMowers/arknights-mower/pull/946) @ALEXsun0
+- 新增手动添加仓库扫描任务 [(#937)](https://github.com/ArkMowers/arknights-mower/pull/937) @NiceAfternoon
+- 新增多平台 MAA 下载与更新功能 [(#932)](https://github.com/ArkMowers/arknights-mower/pull/932) @ALEXsun0
+
+### Bug Fixes
+
+- 仓库扫描遇到 MEMENTO 纪念品崩溃 [(#956)](https://github.com/ArkMowers/arknights-mower/pull/956) @NiceAfternoon
+- 多开实例共用资源包 [(#951)](https://github.com/ArkMowers/arknights-mower/pull/951) @ALEXsun0
+- 修复无人机加速面板首次点击未生效时误消费跑单任务 [(#948)](https://github.com/ArkMowers/arknights-mower/pull/948) @NiceAfternoon
+- 刷新并缓存 MAA 更新版本 [(#947)](https://github.com/ArkMowers/arknights-mower/pull/947) @ALEXsun0
+- 修复训练位已是计划干员时保护逻辑仍阻止开始训练 [(#943)](https://github.com/ArkMowers/arknights-mower/pull/943) @NiceAfternoon
+- 修复低优替班轮休时重复占用床位导致大组无法下班的问题 [(#942)](https://github.com/ArkMowers/arknights-mower/pull/942) @NiceAfternoon
+- Windows MAA 改为提示手动更新 [(#944)](https://github.com/ArkMowers/arknights-mower/pull/944) @ALEXsun0
+- 修复场景图导航缓存不刷新导致空转刷日志的问题 [(#941)](https://github.com/ArkMowers/arknights-mower/pull/941) @NiceAfternoon
+- 修复排班组纠错把已在岗成员计入纠错任务导致反复重排 [(#940)](https://github.com/ArkMowers/arknights-mower/pull/940) @NiceAfternoon
+- 修复 WebView 启动失败时异常被静默吞掉无法记录 [(#939)](https://github.com/ArkMowers/arknights-mower/pull/939) @NiceAfternoon
+- 修复森空岛签到失败与导入崩溃 [(#938)](https://github.com/ArkMowers/arknights-mower/pull/938) @NiceAfternoon
+- 修复游戏数据更新后仓库扫描识别不准与资源生成崩溃的问题 [(#936)](https://github.com/ArkMowers/arknights-mower/pull/936) @NiceAfternoon
+- 修复基建报表悬停收益 NaN 与干员心情折线表图例重叠 [(#935)](https://github.com/ArkMowers/arknights-mower/pull/935) @NiceAfternoon
+- 修复检测基建通知时在全暗过渡帧越界崩溃 [(#933)](https://github.com/ArkMowers/arknights-mower/pull/933) @NiceAfternoon
+- 修复 macOS 应用启动并改用 DMG 发布 [(#931)](https://github.com/ArkMowers/arknights-mower/pull/931) @ALEXsun0
+- 修复专精换人任务档位错误显示为计划最终目标 [(#929)](https://github.com/ArkMowers/arknights-mower/pull/929) @NiceAfternoon
+- 修复手动更新包在浏览器与桌面端导入失败 [(#930)](https://github.com/ArkMowers/arknights-mower/pull/930) @ALEXsun0
+- 修复干员安排确认循环因识别失败抛错导致排班中断 [(#928)](https://github.com/ArkMowers/arknights-mower/pull/928) @NiceAfternoon
+- 修复训练室排班纠错与收取流程 [(#927)](https://github.com/ArkMowers/arknights-mower/pull/927) @NiceAfternoon
+- 修复仓库扫描在界面就绪前切标签导致误识别 [(#926)](https://github.com/ArkMowers/arknights-mower/pull/926) @NiceAfternoon
+
+### Maintenance
+
+- 医疗和重装专三协助位改为望并优化专精推荐展示 [(#934)](https://github.com/ArkMowers/arknights-mower/pull/934) @NiceAfternoon
+
+**Full Changelog**: [v4.1.6-alpha.2...v4.1.6-alpha.3](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.2...v4.1.6-alpha.3)
+
+## 4.1.6-alpha.2 - 2026-09-03
+
+### New
+
+- 新增资源更新与热更通道 [(#923)](https://github.com/ArkMowers/arknights-mower/pull/923) @NiceAfternoon
+- 配置文件改走原子写并挪到 config/ 目录 [(#920)](https://github.com/ArkMowers/arknights-mower/pull/920) @NiceAfternoon
+
+### Bug Fixes
+
+- 修复排班图片导入在导出图被改过后失败 [(#922)](https://github.com/ArkMowers/arknights-mower/pull/922) @NiceAfternoon
+- 修复一键替换干员漏换主副表全部字段的问题 [(#921)](https://github.com/ArkMowers/arknights-mower/pull/921) @NiceAfternoon
+- 修复窗口尺寸配置不生效 [(#919)](https://github.com/ArkMowers/arknights-mower/pull/919) @NiceAfternoon
+- 修复连接错误被误判导致运行中的游戏退出与资源残留 [(#918)](https://github.com/ArkMowers/arknights-mower/pull/918) @NiceAfternoon
+- 修复 Linux 独立包缺少 pywebview 的 GTK 后端导致窗口无法启动 [(#917)](https://github.com/ArkMowers/arknights-mower/pull/917) @NiceAfternoon
+
+### Improvements
+
+- 精简识别热路径 DEBUG 日志 [(#925)](https://github.com/ArkMowers/arknights-mower/pull/925) @NiceAfternoon
+- 图像识别改用纯 numpy 实现缩减打包体积 [(#916)](https://github.com/ArkMowers/arknights-mower/pull/916) @NiceAfternoon
+
+### Dependencies
+
+- changelog 按版本类型选取基准并新增依赖升级分组 [(#913)](https://github.com/ArkMowers/arknights-mower/pull/913) @NiceAfternoon
+- 升级 echarts、vite、vitest 等前端依赖 [(#912)](https://github.com/ArkMowers/arknights-mower/pull/912) @NiceAfternoon
+
+**Full Changelog**: [v4.1.6-alpha.1...v4.1.6-alpha.2](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.1...v4.1.6-alpha.2)
+
+## 4.1.6-alpha.1 - 2026-09-01
+
+### New
+
+- 支持正式版与 alpha 的跨平台构建发布 ([#911](https://github.com/ArkMowers/arknights-mower/pull/911) @NiceAfternoon)
+- 创建专精计划后立即开始训练 (@NiceAfternoon)
+- 新增按干员是否空闲筛选专精计划 (@NiceAfternoon)
+- 新增专精推荐显示真实技能名和显式保存专精计划与路线配置 (@NiceAfternoon)
+- 新增协助位设置中的配置，优化专精计划管理，并将手动专精任务改为专精计划创建 (@NiceAfternoon)
+- 新增全自动专精全局开关，专精相关任务由仓库扫描触发 (@NiceAfternoon)
+- 专精训练进度改为按训练室画面识别结果更新 (@NiceAfternoon)
+- 专精数据新增干员技能名称供界面显示与识别核对 (@NiceAfternoon)
+- 修改专精计划状态与路线设置为数据库保存 (@NiceAfternoon)
+- 新增数据库管理，并支持按类别删除记录 (@NiceAfternoon)
+- 新增领取会客室信息板信用 ([#885](https://github.com/ArkMowers/arknights-mower/pull/885) @NiceAfternoon)
+- 新增启动游戏自定义命令选项 ([#883](https://github.com/ArkMowers/arknights-mower/pull/883) @ALEXsun0)
+- 新增缓存清零后刷新副表开关并修复训练室读取条件 ([#881](https://github.com/ArkMowers/arknights-mower/pull/881) @ALEXsun0)
+- 优化全自动专精状态机，整合训练室状态检测到心情读取 ([#880](https://github.com/ArkMowers/arknights-mower/pull/880) @NiceAfternoon)
+- 初步实现调用 MAA 刷生息演算 ([#878](https://github.com/ArkMowers/arknights-mower/pull/878) @NiceAfternoon)
+- add MAA mac compatibility check ([#877](https://github.com/ArkMowers/arknights-mower/pull/877) @ALEXsun0)
+- 重构全自动专精调度、增加加工站干员配置并修复邮件和无法删除的加工配置问题 ([#873](https://github.com/ArkMowers/arknights-mower/pull/873) @NiceAfternoon)
+- 完善全自动专精功能 ([#871](https://github.com/ArkMowers/arknights-mower/pull/871) @NiceAfternoon)
+- 实现全自动专精功能并优化合成方案配置 ([#862](https://github.com/ArkMowers/arknights-mower/pull/862) @mikuzc)
+- add Closure order in report and trade order analysis ([#865](https://github.com/ArkMowers/arknights-mower/pull/865) @NiceAfternoon)
+- 周计划关卡按开放时间过滤，活动期间可关闭 ([#860](https://github.com/ArkMowers/arknights-mower/pull/860) @clousky2020)
+- 可露希尔 跑单 (@Shawnsdaddy)
+- APIKEY 后门 (@Shawnsdaddy)
+- 验证码solver (@Shawnsdaddy)
+- changelog pop up (@Shawnsdaddy)
+- 为 Mower AI 助手输出内容添加 markdown 渲染 ([#842](https://github.com/ArkMowers/arknights-mower/pull/842) @NiceAfternoon)
+- add one more cause (@Shawnsdaddy)
+- 周计划方案 (@Shawnsdaddy)
+- 漏单分析 agent (@Shawnsdaddy)
+- 完善森空岛签到功能并优化前端显示逻辑 ([#838](https://github.com/ArkMowers/arknights-mower/pull/838) @NiceAfternoon)
+- 增加了森空岛的终末地签到和测试签到功能 ([#827](https://github.com/ArkMowers/arknights-mower/pull/827) @NiceAfternoon)
+- MuMu截图增强 (@Shawnsdaddy)
+- 添加多开器一键启动全部实例 (@yufuyufuyu)
+- 分类新增 (@Shawnsdaddy)
+- #743 新增检测 (@Shawnsdaddy)
+
+### Bug Fixes
+
+- 修复计划外训练与换人后任务、通知的干员、技能与档位显示 (@NiceAfternoon)
+- 修复清空超时任务后只剩远期专精任务时基建安排不处理 (@NiceAfternoon)
+- 修复替换组干员名称含引号时心情曲线查询失败 (@NiceAfternoon)
+- 修复专精计划页显示无效的三星筛选项 (@NiceAfternoon)
+- 修复任务接口未校验 Webview Token (@NiceAfternoon)
+- 修复错误的创建专精任务，应该使用MasterySync正确地创建任务 ([#906](https://github.com/ArkMowers/arknights-mower/pull/906) @GodofTheFallen)
+- 修复 MAA 连通性检测误报 ([#901](https://github.com/ArkMowers/arknights-mower/pull/901) @ALEXsun0)
+- 最小化修复mower无法停止问题 ([#892](https://github.com/ArkMowers/arknights-mower/pull/892) @ALEXsun0)
+- 修复启动前 MAA 连通性检查时序 ([#889](https://github.com/ArkMowers/arknights-mower/pull/889) @ALEXsun0)
+- 统一任务间休眠收口，修复休息期间 /status 的 sleeping 状态 ([#884](https://github.com/ArkMowers/arknights-mower/pull/884) @djkcyl)
+- 修复训练室空闲检测误判，优化全自动专精稳定性 ([#875](https://github.com/ArkMowers/arknights-mower/pull/875) @NiceAfternoon)
+- 添加缺失的截图 (@Konano)
+- 修复识别跑单订单价值时模板误匹配 ([#858](https://github.com/ArkMowers/arknights-mower/pull/858) @NiceAfternoon)
+- 4.1.6专精模块修复完善 ([#855](https://github.com/ArkMowers/arknights-mower/pull/855) @mikuzc)
+- release warpup (@Shawnsdaddy)
+- 修复房间干员识别、用尽任务时间和见习任务跳过 ([#848](https://github.com/ArkMowers/arknights-mower/pull/848) @ALEXsun0)
+- 修复跑单订单类型误判并适配新增材料分类 ([#851](https://github.com/ArkMowers/arknights-mower/pull/851) @NiceAfternoon)
+- 修复 auto_get_res_new.py 中的解析逻辑，适配部分游戏数据字段从数字改为字符串 ([#849](https://github.com/ArkMowers/arknights-mower/pull/849) @NiceAfternoon)
+- 处理闪断更新公告中的 24:00 时间 ([#850](https://github.com/ArkMowers/arknights-mower/pull/850) @clousky2020)
+- ruff check (@Shawnsdaddy)
+- 修复了连战次数识别错误和理智获取错误的问题并为更新日志添加 markdown 渲染 ([#843](https://github.com/ArkMowers/arknights-mower/pull/843) @NiceAfternoon)
+- add missing code (@Shawnsdaddy)
+- unit test failures (@Shawnsdaddy)
+- ruff format (@Shawnsdaddy)
+- 修复公招 (@Shawnsdaddy)
+- 支持旧版本mumuapi (@yufuyufuyu)
+- 滑动修复 (@Shawnsdaddy)
+- 修复 option 不显示 (@Shawnsdaddy)
+- 修复家具零件碳素组不合成 ([#778](https://github.com/ArkMowers/arknights-mower/pull/778) @HoverSoul)
+- 解决linux中找不到zbar共享库问题 ([#780](https://github.com/ArkMowers/arknights-mower/pull/780) @pikahan)
+- 修复：公招截图太快导致tag重复识别 ([#775](https://github.com/ArkMowers/arknights-mower/pull/775) @HoverSoul)
+- 修复op_data.party_time未初始化问题 & 家具零件垫刀问题 ([#772](https://github.com/ArkMowers/arknights-mower/pull/772) @HoverSoul @Shawnsdaddy)
+- 修复训练free /current bug (@Shawnsdaddy)
+- 九色鹿逻辑判定修复 (@Shawnsdaddy)
+- 仅在party时间过期或不存在时更新op_data.party_time，以修复跃跃排班表失效 (@HoverSoul)
+- 计算点击次数方法修复 (@Shawnsdaddy)
+- 修复边际case (@Shawnsdaddy)
+- 无缝加工站bug修复+添加graph (@Shawnsdaddy)
+
+### Improvements
+
+- 提取基建进驻排序坐标、无人机界面等待与跑单时间读取为共用函数 (@NiceAfternoon)
+- 优化前后端体积与启动性能，修复基建报表数据读取 ([#904](https://github.com/ArkMowers/arknights-mower/pull/904) @NiceAfternoon)
+- 4.1.6仓库刷新逻辑优化 ([#857](https://github.com/ArkMowers/arknights-mower/pull/857) @mikuzc)
+- 版本号更新 (@Shawnsdaddy)
+- 游戏资源更新 (@Shawnsdaddy)
+- 资源更新 (@Shawnsdaddy)
+- 识别图片更新 (@Shawnsdaddy)
+- 版本更新 (@Shawnsdaddy)
+- 游戏数据更新 (@Shawnsdaddy)
+- UI优化 (@Shawnsdaddy)
+- 九色鹿优化 (@Shawnsdaddy)
+- tool 更新 (@Shawnsdaddy)
+- 游戏资源更新 (@Shawnsdaddy)
+- 资源更新 (@Shawnsdaddy)
+- 游戏资源更新 (@Shawnsdaddy)
+- 提示词优化 (@Shawnsdaddy)
+- 导航更新 (@Shawnsdaddy)
+- 用尽任务优化 (@Anyk00)
+- MAAapi更新 (@Anyk00)
+- 九色鹿任务条件判定更新 (@Shawnsdaddy)
+- 适配更新 (@Shawnsdaddy)
+- 优化开发的打包步骤和文档 (@servis)
+- 更新Q群 (@Shawnsdaddy)
+
+### Maintenance
+
+- run dev_tools formatting (@Shawnsdaddy)
+
+### Documentation
+
+- 为 README 添加 Docker 部署文档链接 ([#866](https://github.com/ArkMowers/arknights-mower/pull/866) @dhujsi)
+- 更新 README 文档，修正格式和内容 (@Konano)
+- 本地文档复活 (@Shawnsdaddy)
+
+### Other
+
+- 修复公招测试因模拟 NumPy 导致模型数据导入失败 (@NiceAfternoon)
+- 更新 CHANGELOG 至 4.1.5.8 并优化打包体积 ([#903](https://github.com/ArkMowers/arknights-mower/pull/903) @NiceAfternoon)
+- 更新游戏数据，修复专精调度/导航/日志等问题 ([#902](https://github.com/ArkMowers/arknights-mower/pull/902) @Shawnsdaddy @NiceAfternoon)
+- Update master plan ([#895](https://github.com/ArkMowers/arknights-mower/pull/895) @Shawnsdaddy)
+- 更新游戏数据（新增干员机械师） ([#899](https://github.com/ArkMowers/arknights-mower/pull/899) @WufeiHalf)
+- 更新 CHANGELOG 至 4.1.5.7 并更新游戏数据 ([#890](https://github.com/ArkMowers/arknights-mower/pull/890) @NiceAfternoon)
+- Update master plan ([#886](https://github.com/ArkMowers/arknights-mower/pull/886) @Shawnsdaddy)
+- 更新 CHANGELOG 至 4.1.5.6 ([#874](https://github.com/ArkMowers/arknights-mower/pull/874) @NiceAfternoon)
+- 更新 CHANGELOG 和 游戏数据 ([#872](https://github.com/ArkMowers/arknights-mower/pull/872) @NiceAfternoon)
+- changelog (@Shawnsdaddy)
+- 4.1.6专精模块 ([#854](https://github.com/ArkMowers/arknights-mower/pull/854) @mikuzc)
+- changelog ([#852](https://github.com/ArkMowers/arknights-mower/pull/852) @NiceAfternoon)
+- 游戏资源 (@Shawnsdaddy)
+- changelog (@Shawnsdaddy)
+- UI (@Shawnsdaddy)
+- max AP (@Shawnsdaddy)
+- Deepseek option (@Shawnsdaddy)
+- auto-nav update final draft (clean up later) (@Shawnsdaddy)
+- add missing code (@Shawnsdaddy)
+- dev_tools (@Shawnsdaddy)
+- 4.1.5 ([#837](https://github.com/ArkMowers/arknights-mower/pull/837) @Shawnsdaddy @NiceAfternoon @Well2333)
+- 🐳 添加 Dockerfile、docker-compose.yml 和相关构建脚本，支持 Mower 镜像构建与运行 ([#825](https://github.com/ArkMowers/arknights-mower/pull/825) @Well2333)
+- add pic (@Shawnsdaddy)
+- draft (@Shawnsdaddy)
+- 4.1.0 ([#821](https://github.com/ArkMowers/arknights-mower/pull/821) @Shawnsdaddy @Anyk00 @eiHeyH)
+- 4.1.1 ([#809](https://github.com/ArkMowers/arknights-mower/pull/809) @Shawnsdaddy @Anyk00 @eiHeyH)
+- 2025.10.1 ([#800](https://github.com/ArkMowers/arknights-mower/pull/800) @Shawnsdaddy @djkcyl)
+- 移除不必要的操作 (@Shawnsdaddy)
+- 移除diy.py (@Shawnsdaddy)
+- 提前跑单卡死 (@Shawnsdaddy)
+- 扩展颜色识别范围 (@citydirector)
+- Update get_number (@citydirector)
+- #622 (@Shawnsdaddy)
+- MAA 调用退回主界面 (@Shawnsdaddy)
+- fix 函数名typo (@Shawnsdaddy)
+- #394 add new feature (@Shawnsdaddy)
+- fix config not first load (@Shawnsdaddy)
+- 加个catch 防止命令失败 (@Shawnsdaddy)
+- 读基报等2秒动画 (@Shawnsdaddy)
+- tool cmd update (@Shawnsdaddy)
+- 结束后返回主界面 (@Shawnsdaddy)
+- 会客室新家具支持 (@Shawnsdaddy)
+- 施工完毕：九色鹿允许非基建材料垫刀 ([#779](https://github.com/ArkMowers/arknights-mower/pull/779) @HoverSoul)
+- 修正：加工站任务的垫刀材料检查及添加报错提示 ([#777](https://github.com/ArkMowers/arknights-mower/pull/777) @HoverSoul)
+- AI输出 改为流式 (@Shawnsdaddy)
+- AI 添加FAQ工具 (@Shawnsdaddy)
+- fix format (@Shawnsdaddy)
+- 欢迎词 (@Shawnsdaddy)
+- Add 读取数据库tool (@Shawnsdaddy)
+- update requirement (@Shawnsdaddy)
+- Agent ([#767](https://github.com/ArkMowers/arknights-mower/pull/767) @Shawnsdaddy)
+- add submit issue tool (@Shawnsdaddy)
+- 训练位放人 ([#759](https://github.com/ArkMowers/arknights-mower/pull/759) @Anyk00)
+- init _agent (@Shawnsdaddy)
+- 挤人上班时跳过回满改为跳过用尽回满 (@Anyk00)
+- 允许通过本地图片训练识别模型 (@Anyk00)
+- 清除宿舍信息前match (@Shawnsdaddy)
+- 饼图工休比计算调整，调整为组内最低，同时点击组名按钮可以显示/隐藏全组干员工休比，饼图可拖拽，拖拽有做本地持久化 (@Suzuran-ley)
+- bug fix (@Shawnsdaddy)
+- 重新格式化了一下 (@Suzuran-ley)
+- Revert "bugfix" (@Anyk00)
+- 加工站任务防卡死 (@Shawnsdaddy)
+- MAA运行中截图 (@Shawnsdaddy)
+- 扫描前刷新一次仓库 (@Shawnsdaddy)
+- 如果有下班任务，则跳过纠错 (@Shawnsdaddy)
+- 识别干员使用多线程加速 (@Anyk00)
+- bugfix (@Anyk00)
+- 合并设置时保持有序 (@Shawnsdaddy)
+- bug fix (@Shawnsdaddy)
+- fix format (@Shawnsdaddy)
+- 更改版本号 (@qiuming2022)
+- 增加Linux系统下的Docker一键部署 (@servis)
+- #743 九色鹿支持 (@Shawnsdaddy)
+- 添加Linux系统下python源码打包文件spec以及构建部署方法 (@servis)
+- 在README.md中添加本地源码部署的教程 (@servis)
+- fix typo (@Shawnsdaddy)
+- #743 加入任务流 (@Shawnsdaddy)
+- #743 仓库数据存入数据库 (@Shawnsdaddy)
+- 添加MAA连续战斗次数智能化，提高战斗效率 (@qiuming2022)
+- 自动合成材料的初步实现 (@Shawnsdaddy)
+
+**Full Changelog**: [2025.5.3.3...v4.1.6-alpha.1](https://github.com/ArkMowers/arknights-mower/compare/2025.5.3.3...v4.1.6-alpha.1)
+
 ## v4.1.5.8 - 2026-08-07
 
 ### 修复
@@ -26,7 +358,7 @@
 
 * 修复 mower 无法停止的问题（`/stop` 状态快照缺失字段导致接口报错） [#892](https://github.com/ArkMowers/arknights-mower/pull/892) [@ALEXsun0](https://github.com/ALEXsun0)
 
-* 修复 Maa 连通性检测误报，补充启动前检查测试 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
+* 修复 MAA 连通性检测误报，补充启动前检查测试 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
 
 * 修复专精调度、导航、日志等问题（训练时间读取真实倒计时、level 3 不再换人、导航失败、新增 AP fallback） [#902](https://github.com/ArkMowers/arknights-mower/pull/902) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
 
@@ -345,7 +677,7 @@
 - 修复不养闲人任务合并(Anyk00)
 - 修复邮件发送时机(Anyk00)
 - 修复重启游戏bug+优化添加专精任务(Anyk00)
-- Maa导航api更新(Outsider225)
+- MAA导航api更新(Outsider225)
 
 ## 2025.3.1
 - 新干员适配
@@ -353,7 +685,7 @@
 
 ## 2025.2.3
 - 修复了2.2的亿点点bug
-- 邮件发送改为maa停止后
+- 邮件发送改为MAA停止后
 - 读取时间失败不再显示error
 
 ## 2025.2.2
@@ -370,7 +702,7 @@
 - UI新增急救心情阈值(anykk00)
 - 替换组心情监视(anykk00)
 - 无人机上限提升
-- UI更新+maa领取奖励(anykk00)
+- UI更新+MAA领取奖励(anykk00)
 - 联网增加30秒timeout时间，防止Mower卡死
 - 释放不会增加过时任务【czt635】
 - 宿舍移位优化（增加vip重排+自定义优先级）
@@ -398,7 +730,7 @@
 - 正在激活的副表提醒【911804553】
 - 强制弹性模式
 - 弹性模式bug修复【1249033051】
-- 新版maa调用修复【2768543172等】
+- 新版MAA调用修复【2768543172等】
 - 保全导航超重绝缘水泥修复【1772532975】
 - 反馈log添加版本信息+排班表
 
@@ -517,5 +849,5 @@
 - 新增功能：信用作战指定编队
 - 基建逻辑优化：仅回满干员在同组无用尽的情况下会提前上班，移除仅回满干员心情上限 -0.5
 - 使用优化：UI 路径改动
-- 使用优化：调用 Maa 刷日常时可以手动停止 Maa
+- 使用优化：调用 MAA 刷日常时可以手动停止 MAA
 - 使用优化：工具人数据加入缓存

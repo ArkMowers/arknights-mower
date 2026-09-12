@@ -161,6 +161,8 @@ h2 {
   height: 300px;
   box-sizing: border-box;
   border-radius: 8px;
+  display: flex;
+  flex-direction: column;
 }
 
 .report-card-expand {
@@ -190,6 +192,7 @@ h2 {
   width: 100%;
   overflow-x: scroll;
   flex: 1;
+  min-height: 0;
 }
 
 .line-inner-container {

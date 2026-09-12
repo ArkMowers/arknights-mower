@@ -32,26 +32,28 @@
 </template>
 
 <script setup>
-import skill from '@/pages/basement_skill/skill.json'
 import CustomComponent from '@/components/buffer.vue'
-import { ref, computed } from 'vue'
-const skillData = ref(skill)
-const skillData_length = skillData.value.length
-const skill_items = Array.from({ length: skillData_length }, (_, i) => {
-  // 确保 skillData.value[i] 存在并且有 child_skill 属性
-
-  const name = skillData.value[i].name
-  const span = skillData.value[i].span
-  const childSkill = skillData.value[i].child_skill
-  return {
-    key: `${i}`,
-    value: i,
-    avatar: name,
-    span: span,
-    childSkill: childSkill
-  }
-})
+import { ref, computed, onMounted } from 'vue'
+import { useBasementSkill } from '@/stores/basementSkill'
 import { match } from 'pinyin-pro'
+
+const { skill, load } = useBasementSkill()
+onMounted(load)
+
+const skill_items = computed(() =>
+  Array.from({ length: skill.value.length }, (_, i) => {
+    const name = skill.value[i].name
+    const span = skill.value[i].span
+    const childSkill = skill.value[i].child_skill
+    return {
+      key: `${i}`,
+      value: i,
+      avatar: name,
+      span: span,
+      childSkill: childSkill
+    }
+  })
+)
 
 const name_select = ref('')
 const buiding_select = ref('')
@@ -61,12 +63,10 @@ const filteredItems = computed(() => {
   const buidingValue = buiding_select.value
   const desValue = des_select.value
   if (!nameValue && !buidingValue && !desValue) {
-    return skill_items
+    return skill_items.value
   }
-  return skill_items.filter((item) => {
+  return skill_items.value.filter((item) => {
     const itemName = item['avatar']
-    const itemRoomType = item['roomType']
-    const itemDes = item['childSkill'].some((skill) => skill.des.includes(desValue)) // 检查 des 是否包含筛选条件
     const itemDesMatches = item.childSkill.some((skill) => {
       const itemDes = skill.des
       return (

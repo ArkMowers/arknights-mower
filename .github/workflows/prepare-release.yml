@@ -1,0 +1,156 @@
+# 发布准备只负责更新明确选择的当前仓库分支并创建 tag。
+# tag 创建后显式调用共享构建，避免依赖 GITHUB_TOKEN push 触发新的 workflow。
+
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 发布版本（vX.Y.Z 或 vX.Y.Z-alpha.N）
+        type: string
+        required: true
+
+concurrency:
+  group: prepare-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Update selected branch and create tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.publish.outputs.tag_name }}
+      release_sha: ${{ steps.publish.outputs.release_sha }}
+    steps:
+      - name: Validate release request
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+          TARGET_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${TARGET_REF_TYPE}" != "branch" ]]; then
+            echo "::error::release preparation must run from a branch" >&2
+            exit 1
+          fi
+          if ! git check-ref-format --branch "${TARGET_BRANCH}" >/dev/null; then
+            echo "::error::invalid target branch: ${TARGET_BRANCH}" >&2
+            exit 1
+          fi
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]]; then
+            echo "::error::invalid release version: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify current repository and release target
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          expected_remote="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          actual_remote="$(git remote get-url origin)"
+          if [[ "${actual_remote%.git}" != "${expected_remote%.git}" ]]; then
+            echo "::error::origin is not the current repository: ${actual_remote}" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")" ]]; then
+            echo "::error::selected branch changed before release preparation" >&2
+            exit 1
+          fi
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            echo "::error::tag already exists locally: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          remote_tag="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}")"
+          if [[ -n "${remote_tag}" ]]; then
+            echo "::error::tag already exists in current repository: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+      - name: Update version and changelog
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          python scripts/inject_version.py "${RELEASE_TAG#v}"
+          python scripts/changelog_generator.py \
+            --tag "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --out "${RUNNER_TEMP}/release-body.md" \
+            --prepend-to CHANGELOG.md
+
+          unexpected="$(
+            git diff --name-only |
+              grep -Ev '^(CHANGELOG\.md|arknights_mower/__init__\.py)$' || true
+          )"
+          if [[ -n "${unexpected}" ]]; then
+            echo "::error::release preparation changed unexpected files:" >&2
+            echo "${unexpected}" >&2
+            exit 1
+          fi
+
+      - name: Commit selected branch and create tag
+        id: publish
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          git add -- CHANGELOG.md arknights_mower/__init__.py
+          if git diff --cached --quiet; then
+            echo "::error::release preparation produced no branch changes" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ "${RELEASE_TAG}" == *-alpha.* ]]; then
+            release_kind="prerelease"
+          else
+            release_kind="release"
+          fi
+          git commit -m "build(release): prepare ${release_kind} ${RELEASE_TAG}"
+          release_sha="$(git rev-parse HEAD)"
+          git tag -a "${RELEASE_TAG}" -m "${RELEASE_TAG}"
+
+          git push --atomic origin \
+            "HEAD:refs/heads/${TARGET_BRANCH}" \
+            "refs/tags/${RELEASE_TAG}"
+
+          echo "tag_name=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "release_sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+
+  build-release:
+    name: Build and publish release
+    needs: prepare
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag_name: ${{ needs.prepare.outputs.tag_name }}
+      release_sha: ${{ needs.prepare.outputs.release_sha }}

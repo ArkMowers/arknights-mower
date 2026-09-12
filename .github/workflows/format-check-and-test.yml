@@ -2,11 +2,73 @@
 
 name: 代码格式检查与测试
 on:
-  - push
-  - pull_request
+  push:
+    branches: [alpha, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Determine test scope
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      update: ${{ steps.filter.outputs.update }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+      - uses: dorny/paths-filter@v3
+        id: filter
+        # Manual runs and PRs reaching the API's 3,000-file limit run every check.
+        if: >-
+          github.event_name != 'workflow_dispatch' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.changed_files < 3000)
+        with:
+          base: ${{ github.ref_name }}
+          filters: |
+            code:
+              # One exclusion keeps docs-only changes out; other filters use OR.
+              - '!{*.md,{doc,plan,.github}/**/*.md,ui/README.md,{doc,img}/**/*.{png,jpg,jpeg,gif,webp,svg,avif}}'
+            update:
+              # Updater, shared runtime helpers and their regression tests.
+              - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source,backup}*.py'
+              - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
+              - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
+              - 'arknights_mower/{__init__,__main__}.py'
+              - 'arknights_mower/{utils,views,tests}/__init__.py'
+              - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new}.py'
+              # Resource payloads covered by content-hash regressions.
+              - 'arknights_mower/{data,models}/**'
+              - 'ui/public/{depot,avatar,building_skill}/**'
+              - 'ui/src/pages/basement_skill/{skill,buffer}.json'
+              # Installation dependencies, build contracts and CI itself.
+              - 'requirements*.{in,txt}'
+              - '{pyproject.toml,uv.lock,uv.toml,.python-version,.node-version,.nvmrc,.npmrc}'
+              - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
+              - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
+              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,sync_android_release}.py'
+              - 'scripts/tests/**'
+              - 'arknights_mower/tests/android*_tests.py'
+              - '.github/{workflows,actions}/**'
+            frontend:
+              # Shared components and build inputs can affect update/drop flows.
+              - 'ui/**'
+              - '{.node-version,.nvmrc,.npmrc}'
+              - '.github/workflows/format-check-and-test.yml'
+              - '.github/actions/**'
+
+  # Skip only an explicit docs-only result. If filtering fails, run the checks.
   ruff:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,17 +83,58 @@ jobs:
         run: python -m ruff format --check .
 
   prettier:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - name: Prettier check
         run: npx --yes prettier@latest --check "ui/**/*.js" "ui/**/*.vue"
 
-  unittest:
+  frontend:
+    name: Frontend tests and build
+    needs: changes
+    # Keep browser-independent regressions on one runner, not the native matrix.
+    # Manual runs and unavailable scope still run this check.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.frontend != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Run frontend regressions
+        run: npm test
+      - name: Build production frontend
+        run: npm run build
+
+  actionlint:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint GitHub Actions workflows
+        uses: rhysd/actionlint@v1.7.12
+
+  unittest:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,5 +145,141 @@ jobs:
       - run: |
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
+          ./venv/bin/pip install pytest
+      - name: Compile all Python sources
+        run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
+      - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
+        run: ./venv/bin/python3 -m pytest -v -o faulthandler_timeout=60
+
+  # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
+  # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。
+  recognition-equivalence:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
       - run: |
-          ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
+          python3.12 -m venv venv
+          ./venv/bin/pip install -r requirements-dev.txt
+      - name: Assert upstream libraries are importable
+        # 缺少任何一个都会让等价性用例静默跳过，这里先失败，避免任务假绿。
+        run: ./venv/bin/python3 -c "import scipy, skimage, sklearn"
+      - name: Compare vision_np against upstream implementations
+        run: ./venv/bin/python3 -m unittest arknights_mower.tests.vision_np_tests -v
+
+  update-compatibility:
+    name: Update compatibility (${{ matrix.os }})
+    needs: changes
+    # Run on relevant paths; missing scope (manual runs/errors) stays fail-open.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.update != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      MOWER_DATA_DIR: ${{ github.workspace }}/.cache/update-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: astral-sh/setup-uv@v6
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libzbar0 libgl1 libglib2.0-0
+      - name: Install macOS system library
+        if: runner.os == 'macOS'
+        run: brew install zbar
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Require transaction tools
+        shell: bash
+        run: |
+          python -c "import os; from pathlib import Path; Path(os.environ['MOWER_DATA_DIR']).mkdir(parents=True, exist_ok=True)"
+          python -c "import shutil; missing = [name for name in ('git', 'node', 'npm', 'uv') if not shutil.which(name)]; assert not missing, f'Missing required tools: {missing}'"
+          git --version
+          node --version
+          npm --version
+          uv --version
+      - name: Run native update and resource regressions
+        shell: bash
+        env:
+          # Unit tests also call Worker methods directly, outside its CLI entry.
+          # Legacy-encoding child tests explicitly override this value.
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m unittest -v \
+            arknights_mower.tests.software_update_tests.ReleaseDiscoveryTests \
+            arknights_mower.tests.software_update_tests.ManualPackageTests \
+            arknights_mower.tests.software_update_tests.WorkerTests \
+            arknights_mower.tests.maa_backup_tests \
+            arknights_mower.tests.update_backup_tests \
+            arknights_mower.tests.software_package_tests \
+            arknights_mower.tests.source_version_tests \
+            arknights_mower.tests.source_remote_tests \
+            arknights_mower.tests.source_pull_tests \
+            arknights_mower.tests.update_runtime_tests \
+            arknights_mower.tests.update_compat_tests \
+            arknights_mower.tests.res_version_tests \
+            arknights_mower.tests.resource_version_tests \
+            arknights_mower.tests.resource_pkg_tests \
+            arknights_mower.tests.software_update_progress_tests \
+            arknights_mower.tests.process_control_tests \
+            arknights_mower.tests.software_update_transaction_tests
+
+  android-compatibility:
+    name: Android update compatibility (ARM64)
+    needs: changes
+    # Android embeds Linux ARM64 CPython; this checks the host contract, not an APK.
+    # Include frontend changes because this job builds the actual update archive.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && (needs.changes.outputs.update != 'false' || needs.changes.outputs.frontend != 'false') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      MOWER_DATA_DIR: ${{ github.workspace }}/.cache/android-tests
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install system libraries and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libzbar0 libgl1 libglib2.0-0
+          python -m pip install -r requirements.txt
+          python -c "import os, platform; from pathlib import Path; assert platform.machine() == 'aarch64'; Path(os.environ['MOWER_DATA_DIR']).mkdir(parents=True, exist_ok=True)"
+      - name: Test Android update routes, official MAA assets and packaging
+        run: |
+          python -m unittest -v \
+            arknights_mower.tests.android_distribution_tests \
+            arknights_mower.tests.android_component_tests \
+            scripts.tests.android_release_tests
+      - name: Build shared WebUI
+        working-directory: ui
+        run: npm ci && npm run build
+      - name: Package and validate Android update
+        run: |
+          python scripts/inject_version.py 0.0.0-alpha.0
+          python scripts/package_android.py 0.0.0-alpha.0
+          python scripts/check_android_package.py dist/arknights-mower_0.0.0-alpha.0_android_arm64.zip --version 0.0.0-alpha.0 --revision "$(git rev-parse HEAD)"

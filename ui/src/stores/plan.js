@@ -11,6 +11,7 @@ export const usePlanStore = defineStore('plan', () => {
   const rest_in_full = ref([])
   const ope_resting_priority = ref([])
   const resting_priority = ref([])
+  const resting_standby = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
   const refresh_drained = ref([])
@@ -57,6 +58,7 @@ export const usePlanStore = defineStore('plan', () => {
     'exhaust_require',
     'rest_in_full',
     'resting_priority',
+    'resting_standby',
     'workaholic',
     'free_blacklist',
     'refresh_trading',
@@ -133,17 +135,18 @@ export const usePlanStore = defineStore('plan', () => {
     return plan1
   }
 
-  async function load_plan() {
+  async function load_plan({ resetDormOrder = true } = {}) {
     const config_store = useConfigStore()
     const { dorm_order } = storeToRefs(config_store)
     // 新排班表重置宿舍优先级
-    dorm_order.value = []
+    if (resetDormOrder) dorm_order.value = []
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
     resting_priority.value = str2list(response.data.conf.resting_priority)
+    resting_standby.value = str2list(response.data.conf.resting_standby)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
     refresh_drained.value = str2list(response.data.conf.refresh_drained)
@@ -193,6 +196,7 @@ export const usePlanStore = defineStore('plan', () => {
         rest_in_full: list2str(rest_in_full.value),
         ope_resting_priority: list2str(ope_resting_priority.value),
         resting_priority: list2str(resting_priority.value),
+        resting_standby: list2str(resting_standby.value),
         workaholic: list2str(workaholic.value),
         refresh_trading: list2str(refresh_trading.value),
         refresh_drained: list2str(refresh_drained.value)
@@ -229,10 +233,28 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   const loaded = inject('loaded')
+  const autosave_paused = ref(false)
+  let planSaveRequest = Promise.resolve()
+
+  function save_plan() {
+    const configStore = useConfigStore()
+    const payload = JSON.parse(JSON.stringify(build_plan()))
+    planSaveRequest = planSaveRequest
+      .catch(() => {})
+      .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, payload))
+      .then((response) => {
+        if (response.data?.dorm_order_reset) {
+          // 同步后端的重置，防止下一次配置自动保存又写回旧优先级。
+          configStore.dorm_order = []
+        }
+        return response
+      })
+    return planSaveRequest
+  }
 
   watchEffect(() => {
-    if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
+    if (loaded.value && !autosave_paused.value) {
+      save_plan().catch((error) => console.error('排班保存失败', error))
     }
   })
 
@@ -258,12 +280,16 @@ export const usePlanStore = defineStore('plan', () => {
   })
 
   return {
+    autosave_paused,
+    wait_for_plan_save: () => planSaveRequest,
+    save_plan,
     load_plan,
     load_operators,
     ling_xi,
     exhaust_require,
     rest_in_full,
     resting_priority,
+    resting_standby,
     ope_resting_priority,
     workaholic,
     refresh_trading,

@@ -21,6 +21,7 @@ class TaskTypes(Enum):
     EXHAUST_OFF = ("exhaust_on", "用尽下班", 2)
     SELF_CORRECTION = ("self_correction", "纠错", 2)
     CLUE_PARTY = ("Impart", "趴体", 2)
+    CLUE = ("clue", "线索任务", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
     NOT_SPECIFIC = ("", "空任务", 2)
     RECRUIT = ("recruit", "公招", 2)
@@ -29,6 +30,7 @@ class TaskTypes(Enum):
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
     REFRESH_TIME = ("强制刷新任务时间", "强制刷新任务时间", 2)
     SKILL_UPGRADE = ("技能专精", "技能专精", 2)
+    SWAP_SUPPORT = ("换协助位", "换协助位", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)
     WORKSHOP = ("加工材料", "加工材料", 2)
 
@@ -89,6 +91,99 @@ def find_next_task(
 
 
 def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
+    time_now = time_now or datetime.now()
+    # Keep swaps out of the mutable run-order schedule: their deadline cannot move.
+    enabled = config.conf.enable_mastery
+    ordinary = (
+        [t for t in tasks if t.type != TaskTypes.SWAP_SUPPORT] if enabled else tasks
+    )
+    conflict = _schedule_run_orders(ordinary, run_order_delay, execution_time, time_now)
+    if enabled:
+        swap_conflict = protect_support_swaps(
+            tasks, run_order_delay, execution_time, time_now
+        )
+        if swap_conflict:
+            return swap_conflict
+        # Near a handoff, stop optional drone adjustment loops as well as dispatch.
+        if any(
+            t.type == TaskTypes.SWAP_SUPPORT
+            and t.time <= time_now + _support_swap_gap(run_order_delay)
+            for t in tasks
+        ):
+            return None
+    tasks.sort(key=lambda t: t.time)
+    return conflict
+
+
+def _support_swap_gap(run_order_delay):
+    # The order countdown is offset by the configured entry delay, even when a
+    # caller uses scheduling()'s default conflict interval.
+    return timedelta(
+        minutes=max(10, run_order_delay * 2, config.conf.run_order_delay * 2)
+    )
+
+
+def protect_support_swaps(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
+    """Fixed handoff deadlines yield only trade rooms as drone-acceleration targets."""
+    if not config.conf.enable_mastery:
+        return None
+    now = time_now or datetime.now()
+    swaps = sorted(
+        (t for t in tasks if t.type == TaskTypes.SWAP_SUPPORT), key=lambda t: t.time
+    )
+    gap = _support_swap_gap(run_order_delay)
+    conflict = None
+    for swap in swaps:
+        order_conflict = _avoid_swap_with_orders(tasks, swap, (now, gap))
+        conflict = conflict or order_conflict
+        _defer_work_before_swap(tasks, swap, (now, execution_time))
+    tasks.sort(key=lambda t: t.time)
+    return conflict
+
+
+def _avoid_swap_with_orders(tasks, swap, timing):
+    now, gap = timing
+    conflict = None
+    for task in tasks:
+        if task.type != TaskTypes.RUN_ORDER or not task.meta_data:
+            continue
+        if max(now, task.time) + gap <= swap.time or task.time > swap.time + gap:
+            continue
+        if now + gap < swap.time:
+            conflict = conflict or (task, swap)
+        else:
+            task.time = max(now, swap.time) + gap + timedelta(seconds=1)
+            logger.warning("跑单来不及提前避开专精换人，先执行换人后再处理跑单")
+    return conflict
+
+
+def _ordinary_task_minutes(task, execution_time):
+    minutes = max(1, len(task.plan) * execution_time)
+    if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
+        minutes = max(minutes, 3)
+    # A downshift can insert an extra dorm-reordering action before itself.
+    return minutes * 2 if task.type == TaskTypes.SHIFT_OFF else minutes
+
+
+def _defer_work_before_swap(tasks, swap, timing):
+    now, execution_time = timing
+    cursor = now
+    for task in sorted(tasks, key=lambda t: t.time):
+        if (
+            task.type in (TaskTypes.SWAP_SUPPORT, TaskTypes.RUN_ORDER)
+            or task.time > swap.time
+        ):
+            continue
+        finish = max(cursor, task.time) + timedelta(
+            minutes=_ordinary_task_minutes(task, execution_time)
+        )
+        if finish >= swap.time - timedelta(minutes=1):
+            task.time = max(now, swap.time) + timedelta(minutes=3)
+        else:
+            cursor = finish
+
+
+def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     # execution_time per room
     if time_now is None:
         time_now = datetime.now()
@@ -318,7 +413,10 @@ def plan_metadata(op_data, tasks):
         (
             v
             for v in op_data.operators.values()
-            if v.is_high() and not v.room.startswith("dorm") and not v.is_resting()
+            if v.is_high()
+            and not v.room.startswith("dorm")
+            and not v.is_resting()
+            and not op_data.is_group_standby(v.name)
         ),
         key=lambda x: x.current_mood() - x.lower_limit,
     )
@@ -356,8 +454,15 @@ def plan_metadata(op_data, tasks):
         ]
         if len(_high_dorms) == 0:
             high_dorms = [
-                dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+                dorm
+                for dorm in dorms
+                if op_data.operators[dorm.name].is_high()
+                and op_data.operators[dorm.name].resting_priority != "standby"
             ]
+            if not high_dorms:
+                high_dorms = [
+                    dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+                ]
         else:
             high_dorms = _high_dorms
         rest_in_full_dorms = [
@@ -464,6 +569,8 @@ def try_reorder(op_data, new_plan):
             _op = op_data.operators[name]
             if _op.operator_type == "high" and _op.resting_priority == "high":
                 return "high"
+            elif _op.operator_type == "high" and _op.resting_priority == "standby":
+                return "standby"
             elif _op.operator_type == "high":
                 return "normal"
         return "low"
@@ -483,8 +590,9 @@ def try_reorder(op_data, new_plan):
         priority_order = {
             "high": length,
             "normal": length + 1,
-            "low": length + 2,
-        }  # **先排 priority_list，再按 high > normal > low**
+            "standby": length + 2,
+            "low": length + 3,
+        }  # 先排显式名单，再按高优 > 原低优 > 候补 > 普通替班。
         return (
             priority_list.index(_op["name"])
             if _op["name"] in priority_list and _op["name"] != ""
@@ -510,13 +618,42 @@ def try_reorder(op_data, new_plan):
     return plan
 
 
+def next_workshop_task_time(tasks, earliest=None):
+    """Keep workshop jobs close together but outside the 1.5-second collision window."""
+    candidate = earliest if earliest is not None else datetime.now()
+    gap = timedelta(seconds=2)
+    for task in sorted(tasks, key=lambda task: task.time):
+        if task.time >= candidate + gap:
+            break
+        if abs(task.time - candidate) < gap:
+            candidate = task.time + gap
+    return candidate
+
+
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_automation import (
+        restore_if_no_plans,
+        workshop_task_current,
+    )
+    from arknights_mower.utils.workshop_limits import batch_limit
+    from arknights_mower.utils.workshop_recommendation import (
+        prioritize_workshop_settings,
+    )
 
+    restore_if_no_plans()
+    # 跑单/专精换人可能将加工推迟到五分钟之后，不能把它当作没有待办。
+    pending_operators = {
+        task.meta_data
+        for task in tasks
+        if task.type == TaskTypes.WORKSHOP and workshop_task_current(task)
+    }
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
-        for item in config.conf.workshop_settings:
+        for item in prioritize_workshop_settings(config.conf.workshop_settings):
+            if item.operator in pending_operators:
+                continue
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
@@ -537,18 +674,7 @@ def try_workshop_tasks(op_data, tasks):
                 for material in item.items:
                     for name in material.item_names:
                         metadata = workshop_formula[name]
-                        if name.startswith("家具零件"):
-                            name = "家具零件"
-                        if (
-                            name in inventory_data
-                            and inventory_data[name] < material.self_upper_limit
-                            and all(
-                                child_name in inventory_data
-                                and inventory_data[child_name]
-                                > material.children_lower_limit
-                                for child_name in metadata["items"]
-                            )
-                        ):
+                        if batch_limit(name, metadata, material, inventory_data) > 0:
                             if metadata["apCost"] < 4 or metadata["tab"] == "基建材料":
                                 base_material_match = True
                             elif (
@@ -565,28 +691,26 @@ def try_workshop_tasks(op_data, tasks):
                 for material in item.items:
                     for name in material.item_names:
                         metadata = workshop_formula[name]
-                        if name.startswith("家具零件"):
-                            name = "家具零件"
-                        if (
-                            name in inventory_data
-                            and inventory_data[name] < material.self_upper_limit
-                            and all(
-                                child_name in inventory_data
-                                and inventory_data[child_name]
-                                > material.children_lower_limit
-                                for child_name in metadata["items"]
-                            )
-                        ):
+                        if batch_limit(name, metadata, material, inventory_data) > 0:
                             match = True
                             break
                 if not match:
                     logger.info(f"{item.operator}材料设置不符合要求: 请检查合成数量")
             if match and valid:
-                logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
+                source = "专精备料" if item.source == "mastery" else "手动配置"
+                logger.info(f"{item.operator}满足使用条件，生成加工站任务（{source}）")
                 task = SchedulerTask(
-                    task_type=TaskTypes.WORKSHOP, meta_data=item.operator
+                    time=next_workshop_task_time(tasks),
+                    task_type=TaskTypes.WORKSHOP,
+                    meta_data=item.operator,
                 )
+                from arknights_mower.utils.workshop_automation import (
+                    stamp_workshop_task,
+                )
+
+                stamp_workshop_task(task)
                 tasks.append(task)
+                pending_operators.add(item.operator)
             else:
                 logger.debug("数据不满足条件，跳过加工站任务生成")
     else:
@@ -672,70 +796,6 @@ def add_release_dorm(tasks, op_data, name):
             )
             tasks.append(task)
             logger.info(name + " 新增释放宿舍任务")
-            logger.debug(str(task))
-
-
-def check_dorm_ordering(tasks, op_data):
-    # 仅当下班的时候才触发宿舍排序任务
-    plan = op_data.plan
-    if len(tasks) == 0:
-        return
-    if tasks[0].type == TaskTypes.SHIFT_OFF and tasks[0].meta_data == "":
-        extra_plan = {}
-        other_plan = {}
-        working_agent = []
-        for room, v in tasks[0].plan.items():
-            if not room.startswith("dorm"):
-                working_agent.extend(v)
-        for room, v in tasks[0].plan.items():
-            # 非宿舍则不需要清空
-            if room.startswith("dorm"):
-                # 是否检查过vip位置
-                pass_first_free = False
-                clear = False
-                for idx, agent in enumerate(v):
-                    # 如果当前位置为VIP，且有人员变动，则清除后续人员
-                    if pass_first_free and clear:
-                        if agent == "Current":
-                            current = next(
-                                (
-                                    obj
-                                    for obj in op_data.operators.values()
-                                    if obj.current_room == room
-                                    and obj.current_index == idx
-                                ),
-                                None,
-                            )
-                            if current:
-                                if current.name not in working_agent:
-                                    v[idx] = current.name
-                                else:
-                                    logger.debug(f"检测到干员{current.name}已经上班")
-                                    v[idx] = "Free"
-                        if room not in extra_plan:
-                            extra_plan[room] = copy.deepcopy(v)
-                        # 新生成移除任务 --> 换成移除
-                        extra_plan[room][idx] = ""
-                    if "Free" == plan[room][idx].agent and not pass_first_free:
-                        pass_first_free = True
-                        if agent != "Current":
-                            clear = True
-            else:
-                other_plan[room] = v
-        tasks[0].meta_data = "宿舍排序完成"
-        if extra_plan:
-            for k, v in other_plan.items():
-                del tasks[0].plan[k]
-                extra_plan[k] = v
-            for k, v in extra_plan.items():
-                extra_plan[k] = [item for item in v if item != ""]
-            logger.info("新增排序任务任务")
-            task = SchedulerTask(
-                task_plan=extra_plan,
-                time=tasks[0].time - timedelta(seconds=1),
-                task_type=TaskTypes.RE_ORDER,
-            )
-            tasks.insert(0, task)
             logger.debug(str(task))
 
 

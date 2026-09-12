@@ -215,6 +215,26 @@
     "label": "LEAVE_INFRASTRUCTURE",
     "comment": "离开基建"
   },
+  "225": {
+    "label": "FACTORY_DASHBOARD",
+    "comment": "加工站工作台"
+  },
+  "226": {
+    "label": "FACTORY_PRODUCT_COLLECT",
+    "comment": "加工站收取材料"
+  },
+  "227": {
+    "label": "FACTORY_FORMULA",
+    "comment": "选择材料界面"
+  },
+  "228": {
+    "label": "FACTORY_ROOM",
+    "comment": "加工站干员选择界面"
+  },
+  "229": {
+    "label": "CLUE_MESSAGE_BOARD",
+    "comment": "会客室信息板"
+  },
   "301": {
     "label": "BUSINESS_CARD",
     "comment": "个人名片"
@@ -494,6 +514,10 @@
   "1009": {
     "label": "SSS_GUIDE",
     "comment": "保全教程"
+  },
+  "1010": {
+    "label": "SSS_CONFIRM",
+    "comment": "保全确定"
   },
   "1101": {
     "label": "SF_ENTRANCE",

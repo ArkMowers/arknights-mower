@@ -1,5 +1,147 @@
 [
   {
+    "key": 429,
+    "name": "虎狼丸",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "毛茸茸的抚慰",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.1</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_p3r",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 30级",
+        "skillname": "虎狼丸的报恩",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，处于线索交流时线索搜集速度提升<@cc.vup>30%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_koromaru",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 428,
+    "name": "埃癸斯",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "机械工学",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机每小时充能速度<@cc.vup>+15%</>，如果<@cc.kw>结城理</>进驻在制造站，则无人机充能速度额外<@cc.vup>+5%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd_p3r",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "跨领域交流",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>10%</>，当与<@cc.kw>虎狼丸</>进驻会客室一起工作时，更容易获得线索板上尚未拥有的线索",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_p3r_bd",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 427,
+    "name": "岳羽由加莉",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "独立调查",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+30%</>，心情每小时消耗<@cc.vup>-0.25</>",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_p3r",
+        "buffColor": "#565657",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "合理兼职",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>狙击</>与<@cc.kw>医疗</>干员的专精技能训练速度<@cc.vup>+45%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_p3r",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 426,
+    "name": "结城理",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "领袖魅力",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，所有制造站生产力<@cc.vup>+2%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_p_spd_p3r",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "社群的意义",
+        "buffer": true,
+        "buffer_des": [
+          "cc_tag_sees"
+        ],
+        "des": "进驻制造站时，生产力<@cc.vup>+20%</>，基建内（不包含副手）每有1名<$cc.tag.sees><@cc.kw>S.E.E.S.</></>干员（最多<@cc.kw>4</>名），生产力额外<@cc.vup>+5%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_p3r",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
     "key": 425,
     "name": "时隙",
     "span": 2,

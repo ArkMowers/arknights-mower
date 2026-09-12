@@ -9,6 +9,7 @@ from qrcode.constants import ERROR_CORRECT_L
 from qrcode.main import QRCode
 
 QRCODE_SIZE = 215
+QRCODE_COUNT = 16
 GAP_SIZE = 16
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -56,23 +57,98 @@ def export(plan: Dict, img: Image.Image, theme: str = "light") -> Image.Image:
     return img
 
 
-def decode(img: Image.Image) -> Optional[Dict]:
-    img = img.convert("RGB")
-    if img.getpixel((0, 0)) == BLACK:
-        img = ImageChops.invert(img)
+def _scan_and_cover(img: Image.Image) -> List:
+    """扫出图中所有二维码，扫到的用白块盖住防止重复计数。
+
+    原实现在「只剩 quality>1 的低置信二维码」时会无限循环（continue 跳过了盖白块，
+    却不中断 while）——这里加 found 守卫：一轮扫不到任何可用二维码就结束。
+    """
     result = []
-    while len(data := pyzbar.decode(img)):
-        img1 = ImageDraw.Draw(img)
+    while True:
+        data = pyzbar.decode(img)
+        if not data:
+            break
+        draw = ImageDraw.Draw(img)
+        found = False
         for d in data:
             if d.quality > 1:
                 continue
+            found = True
             left = d.rect.left - 2
             top = d.rect.top - 2
             right = left + d.rect.width + 5
             bottom = top + d.rect.height + 5
-            scope = ((left, top), (right, bottom))
-            img1.rectangle(scope, fill=WHITE)
+            draw.rectangle((left, top, right, bottom), fill=WHITE)
             result.append(d)
-    result.sort(key=lambda i: (i.rect.top * 2 > img.size[1], i.rect.left))
-    result = b45decode(b"".join([i.data for i in result]))
+        if not found:
+            break
+    return result
+
+
+def _center_x(decoded) -> float:
+    return decoded.rect.left + decoded.rect.width / 2.0
+
+
+def _center_y(decoded) -> float:
+    return decoded.rect.top + decoded.rect.height / 2.0
+
+
+def _order_qrcodes(result: List) -> List:
+    """按几何位置排二维码顺序，不依赖图片总尺寸/偏移。
+
+    原实现用 `i.rect.top * 2 > img.size[1]` 区分顶排/底排，图一旦被加高或整体平移，
+    底排会被误判成顶排导致顺序错乱（`Error -3`）。这里改成：按中心 Y 聚成行（相邻
+    中心 Y 差 < 中位块高的 0.5 视为同一行），行内再按中心 X 排序。对任意画布尺寸/偏移
+    都稳定；右下角那排因与底排同 Y、X 更大，排序后自然落在底排之后。
+    """
+    if not result:
+        return []
+    heights = sorted(d.rect.height for d in result)
+    median_height = heights[len(heights) // 2]
+    gap = max(1.0, median_height * 0.5)
+    items = sorted(result, key=_center_y)
+    rows = []
+    cur = [items[0]]
+    for d in items[1:]:
+        if _center_y(d) - _center_y(cur[-1]) > gap:
+            rows.append(cur)
+            cur = [d]
+        else:
+            cur.append(d)
+    rows.append(cur)
+    ordered = []
+    for row in rows:
+        row.sort(key=_center_x)
+        ordered.extend(row)
+    return ordered
+
+
+def decode(img: Image.Image) -> Optional[Dict]:
+    img = img.convert("RGB")
+    if img.getpixel((0, 0)) == BLACK:
+        img = ImageChops.invert(img)
+    # 多档放大重扫：pyzbar 对太小的二维码扫不出（导出图被缩小/压缩到 ~90px 以下一张
+    # 都扫不出），放大到可识别尺寸再扫。取「扫出最多」的那一档，避免某一档漏扫；
+    # 放大后的最大边长限在 8000，防止大图被无谓放大导致内存膨胀。
+    max_side = max(img.width, img.height)
+    scales = [1]
+    for s in (2, 3, 4, 6, 8):
+        if max_side * s <= 8000:
+            scales.append(s)
+    best = []
+    for s in scales:
+        work = (
+            img
+            if s == 1
+            else img.resize((img.width * s, img.height * s), Image.LANCZOS)
+        )
+        got = _scan_and_cover(work)
+        if len(got) > len(best):
+            best = got
+        if len(best) >= QRCODE_COUNT:  # 已集齐全套 16 个，无需再放大
+            break
+    if not best:
+        return None
+    ordered = _order_qrcodes(best)
+    result = b45decode(b"".join([d.data for d in ordered]))
     return json.loads(decompress(result).decode("utf-8"))

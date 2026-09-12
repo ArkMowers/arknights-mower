@@ -12,9 +12,13 @@ def infra_notification(img: tp.Image) -> tp.Coordinate:
     height, width, _ = img.shape
 
     # set a new scan line: right
+    # 场景切换过渡帧可能整屏全暗，right 无下限会越界（减到 -1921）；
+    # 加 left 边界，全暗帧直接返回 None（调用方按「无通知」重读跳过）。
     right = width
-    while np.max(img[:, right - 1]) < 100:
+    while right > 0 and np.max(img[:, right - 1]) < 100:
         right -= 1
+    if right == 0:
+        return None
     right -= 1
 
     # set a new scan line: up

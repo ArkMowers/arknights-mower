@@ -4,9 +4,8 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from skimage.metrics import structural_similarity
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, vision_np
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
@@ -35,7 +34,7 @@ class Recognizer:
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
         self.last_scene = None
-        self.last_scene_time = time.time()
+        self.last_scene_time = datetime.now()
 
     def clear(self):
         self._screencap = None
@@ -92,6 +91,13 @@ class Recognizer:
             raise MowerExit
         self.clear()
 
+    def reset_after_external_control(self) -> None:
+        """外部任务交还控制权时，丢弃旧画面及非连续观测的场景停留计时。"""
+        self.update()
+        self.last_scene = None
+        self.last_scene_time = datetime.now()
+        self.loading_time = 0
+
     def color(self, x: int, y: int) -> tp.Pixel:
         """get the color of the pixel"""
         return self.img[y][x]
@@ -147,6 +153,8 @@ class Recognizer:
                 self.last_scene = None
                 self.last_scene_time = current_time
                 self.device.exit()
+                # 退出后旧场景已失效，导航必须重新获取画面。
+                self.clear()
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
@@ -191,6 +199,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
+        elif self.find("clue/message_board_page"):
+            self.scene = Scene.CLUE_MESSAGE_BOARD
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("infra_overview_in"):
@@ -629,6 +639,13 @@ class Recognizer:
             self.scene = Scene.CONNECTING
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
+        elif self.find("room_detail") or self.find("arrange_check_in_on"):
+            # 进驻详情浮窗（浮窗头 room_detail 或浮窗上的关闭按钮 arrange_check_in_on）：
+            # 浮窗开着时优先识别为详情浮层，须在 train_main/training_support 之前（否则
+            # 浮窗被误标 217/219）；不能用 arrange_check_in（裸主页面也有，加了会恒 205）。
+            # 205 是基建放大视角，back() 会退到基建主界面而非训练室主界面，关浮窗应点
+            # arrange_check_in_on（见 _close_room_detail）。
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
         elif self.find("skill_collect_confirm"):
@@ -706,7 +723,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"find: {res}")
         normalized_res = str(res).replace("\\", "/")
         force_feature_match = "navigation/stage/" in normalized_res
 
@@ -825,14 +841,18 @@ class Recognizer:
                 if cmatch(img, res_img, draw=draw):
                     gray = cropimg(self.gray, scope)
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
-                    ssim = structural_similarity(gray, res_img)
-                    logger.debug(f"{ssim=}")
+                    ssim = vision_np.ssim(gray, res_img)
                     threshold = 0.9
                     if res in template_matching_score:
                         threshold = template_matching_score[res]
                     if ssim >= threshold:
+                        logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
+            if res == "confirm":
+                # 背景透出会改变整条按钮栏的颜色/纹理；保留原匹配，失败时
+                # 只复核固定位置的完整勾选图标，不扩大搜索区域或降低阈值。
+                return self.find_confirm_button()
             return None
 
         template_matching = {
@@ -848,6 +868,9 @@ class Recognizer:
             "fight/use": (858, 864),
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
+            "clue_next_black": ((1600, 850), (1920, 1030)),
+            # 会客室信息板页面：底栏「访问人次」固定在左下角
+            "clue/message_board_page": ((0, 960), (540, 1080)),
             "loading": (736, 333),
             "loading2": (630, 240),
             "loading3": (1681, 1000),
@@ -920,6 +943,7 @@ class Recognizer:
                 threshold = template_matching_score[res]
 
             pos = template_matching[res]
+            res_name = res
             res = loadres(res, True)
             h, w = res.shape
 
@@ -932,8 +956,8 @@ class Recognizer:
             result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             top_left = va(max_loc, scope[0])
-            logger.debug(f"{top_left=} {max_val=}")
             if max_val >= threshold:
+                logger.debug(f"find: {res_name} {top_left=} {max_val=}")
                 return top_left, va(top_left, (w, h))
             return None
 
@@ -991,6 +1015,24 @@ class Recognizer:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
+    def find_confirm_button(self):
+        reference = loadres("confirm")
+        # 原按钮栏位于 (0, 683)，中央图标包含完整白圆、黑勾和窄边缘。
+        local_scope = ((928, 25), (992, 89))
+        scope = ((928, 708), (992, 772))
+        expected = cropimg(reference, local_scope)
+        actual = cropimg(self.img, scope)
+        if actual.shape != expected.shape or not cmatch(actual, expected):
+            return None
+        score = vision_np.ssim(
+            cv2.cvtColor(actual, cv2.COLOR_RGB2GRAY),
+            cv2.cvtColor(expected, cv2.COLOR_RGB2GRAY),
+        )
+        if score >= 0.9:
+            logger.debug(f"find: confirm foreground {scope=} {score=}")
+            return scope
+        return None
+
     def score(
         self,
         res: str,
@@ -1008,8 +1050,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"score: {res}")
-
         res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理

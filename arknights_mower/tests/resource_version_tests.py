@@ -1,0 +1,249 @@
+import json
+import tempfile
+import unittest
+from contextlib import ExitStack
+from pathlib import Path
+from unittest.mock import patch
+
+from arknights_mower import __rootdir__
+from arknights_mower.utils import resource_version as rv
+from arknights_mower.utils.res_version import (
+    content_hash,
+    display_version,
+    package_file_paths,
+    parse_version,
+    version_newer,
+)
+
+
+def _version(res_version="2026.08.23-31a240b", name="墟·复刻", time=1724068800):
+    return {
+        "res_version": res_version,
+        "activity": {"name": name, "time": time, "endTime": time + 86400},
+        "gacha": {},
+        "last_updated": "2026-08-23",
+    }
+
+
+class TestParseResVersion(unittest.TestCase):
+    def test_valid(self):
+        self.assertEqual(parse_version("2026.08.23-31a240b"), (2026, 8, 23, "31a240b"))
+        self.assertEqual(parse_version("v2026.08.23-31a240b"), (2026, 8, 23, "31a240b"))
+
+    def test_invalid(self):
+        for bad in [
+            "2026.08.23",
+            "2026-08-23-31a240b",
+            "vv2026.08.23-31a240b",
+            "",
+            None,
+            "2026.08.23-zzz",
+        ]:
+            self.assertIsNone(parse_version(bad), f"should reject: {bad!r}")
+
+
+class TestResVersionNewer(unittest.TestCase):
+    def test_same_date_diff_hash_is_newer(self):
+        self.assertTrue(version_newer("2026.08.23-bbbbbbb", "2026.08.23-aaaaaaa"))
+
+    def test_later_date_is_newer(self):
+        self.assertTrue(version_newer("2026.08.24-aaaaaaa", "2026.08.23-aaaaaaa"))
+
+    def test_earlier_date_is_not_newer(self):
+        self.assertFalse(version_newer("2026.08.22-aaaaaaa", "2026.08.23-aaaaaaa"))
+
+    def test_equal_is_not_newer(self):
+        self.assertFalse(version_newer("2026.08.23-aaaaaaa", "2026.08.23-aaaaaaa"))
+
+    def test_absent_local_is_always_newer(self):
+        self.assertTrue(version_newer("2026.08.23-aaaaaaa", ""))
+
+    def test_v_prefix_ignored(self):
+        self.assertFalse(version_newer("v2026.08.23-aaaaaaa", "2026.08.23-aaaaaaa"))
+        self.assertTrue(version_newer("v2026.08.24-aaaaaaa", "2026.08.23-aaaaaaa"))
+
+    def test_unparsable_falls_back_to_inequality(self):
+        self.assertTrue(version_newer("nope", "2026.08.23-aaaaaaa"))
+        self.assertFalse(version_newer("nope", "nope"))
+
+
+class TestCheckResourceUpdate(unittest.TestCase):
+    def _patch(self, remote=None, local=None, cache=None):
+        stack = ExitStack()
+        stack.enter_context(
+            patch(
+                "arknights_mower.utils.resource_version._fetch_remote_version_json",
+                return_value=remote,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "arknights_mower.utils.resource_version._read_local_version_json",
+                return_value=local,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "arknights_mower.utils.resource_version._read_tmp_cache",
+                return_value=cache,
+            )
+        )
+        stack.enter_context(
+            patch("arknights_mower.utils.resource_version._write_tmp_cache")
+        )
+        return stack
+
+    def test_remote_newer_than_local(self):
+        local = _version(res_version="2026.08.22-aaaaaaa")
+        remote = _version(res_version="2026.08.23-31a240b")
+        with self._patch(remote=remote, local=local):
+            got = rv.check_resource_update()
+        self.assertEqual(got["current_version"], "2026.08.22-aaaaaaa")
+        self.assertEqual(got["remote_version"], "2026.08.23-31a240b")
+        self.assertTrue(got["update_available"])
+        self.assertIsNone(got["error"])
+        self.assertTrue(got["current_display"].startswith("墟·复刻#"))
+
+    def test_remote_newer_no_local(self):
+        with self._patch(remote=_version(), local=None):
+            got = rv.check_resource_update()
+        self.assertEqual(got["current_version"], "")
+        self.assertEqual(got["current_display"], "")
+        self.assertTrue(got["update_available"])
+
+    def test_local_is_latest(self):
+        local = _version(res_version="2026.08.23-31a240b")
+        remote = _version(res_version="2026.08.23-31a240b")
+        with self._patch(remote=remote, local=local):
+            got = rv.check_resource_update()
+        self.assertFalse(got["update_available"])
+        self.assertIsNone(got["error"])
+
+    def test_fetch_fail_no_cache(self):
+        local = _version(res_version="2026.08.22-aaaaaaa")
+        with self._patch(remote=None, local=local, cache=None):
+            got = rv.check_resource_update()
+        self.assertIsNone(got["update_available"])
+        self.assertIn("网络错误", got["error"])
+        self.assertEqual(got["remote_version"], "")
+
+    def test_fetch_fail_uses_cache(self):
+        local = _version(res_version="2026.08.22-aaaaaaa")
+        cache = _version(res_version="2026.08.23-31a240b")
+        with self._patch(remote=None, local=local, cache=cache):
+            got = rv.check_resource_update()
+        self.assertTrue(got["update_available"])
+        self.assertEqual(got["remote_version"], "2026.08.23-31a240b")
+        self.assertIsNone(got["error"])
+
+    def test_remote_missing_res_version_is_error(self):
+        with self._patch(remote={"activity": {}}, local=None):
+            got = rv.check_resource_update()
+        self.assertIsNone(got["update_available"])
+        self.assertEqual(got["error"], "远程版本号缺失")
+
+    def test_local_only_returns_current_without_remote(self):
+        local = _version(res_version="2026.08.23-31a240b")
+        # local_only 只读本地，即使远端更新也不应触碰 `_fetch_remote_version_json`
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "arknights_mower.utils.resource_version._fetch_remote_version_json",
+                    side_effect=AssertionError("local_only 不应触碰远端"),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "arknights_mower.utils.resource_version._read_local_version_json",
+                    return_value=local,
+                )
+            )
+            got = rv.check_resource_update(local_only=True)
+        self.assertEqual(got["current_version"], "2026.08.23-31a240b")
+        self.assertTrue(got["current_display"].startswith("墟·复刻#"))
+        self.assertEqual(got["remote_version"], "")
+        self.assertEqual(got["update_available"], None)
+        self.assertEqual(got["error"], None)
+
+
+class TestReadLocalVersion(unittest.TestCase):
+    def test_builtin_version_is_available_without_overlay(self):
+        marker = json.loads(
+            (Path(__rootdir__) / "data/version.json").read_text(encoding="utf-8")
+        )
+        with tempfile.TemporaryDirectory() as d:
+            missing_overlay = Path(d) / "resource"
+            with patch(
+                "arknights_mower.utils.resource_pkg.RESOURCE_OVERLAY",
+                missing_overlay,
+            ):
+                got = rv.check_resource_update(local_only=True)
+
+        self.assertTrue(got["current_version"])
+        self.assertTrue(got["current_display"])
+        self.assertEqual(got["current_version"], marker["res_version"])
+        self.assertEqual(got["current_display"], display_version(marker))
+
+    def test_overlay_version_replaces_builtin_version(self):
+        from arknights_mower.tests.resource_pkg_tests import resource_zip
+        from arknights_mower.utils import resource_pkg as rp
+
+        with tempfile.TemporaryDirectory() as d:
+            overlay = Path(d) / "resource"
+            builtin = Path(d) / "builtin"
+            (builtin / "data").mkdir(parents=True)
+            (builtin / "data/version.json").write_text(
+                json.dumps(_version("2026.09.03-aaaaaaa")), encoding="utf-8"
+            )
+            with (
+                patch.object(rp, "__rootdir__", builtin),
+                patch.object(rp, "RESOURCE_OVERLAY", overlay),
+                patch.object(rp, "_STAGING", overlay / ".staging"),
+                patch.object(rp, "_INSTALL_LOCK_PATH", overlay / "install.lock"),
+                patch.object(rp, "_active_resource", None),
+                patch.object(rp, "_loaded_resource_signature", None),
+                patch.object(rp, "_rejected_resource_signature", None),
+                patch.object(rp, "reload_resource_caches"),
+            ):
+                self.assertTrue(
+                    rp.install_resource_pkg(
+                        resource_zip(
+                            manifest=_version(
+                                "2026.09.04-bbbbbbb", "墟·复刻", 1787342400
+                            )
+                        )
+                    )
+                )
+                got = rv.check_resource_update(local_only=True)
+
+        self.assertEqual(got["current_version"], "2026.09.04-bbbbbbb")
+        self.assertEqual(got["current_display"], "墟·复刻#0904")
+
+    def test_builtin_version_hash_matches_bundled_resources(self):
+        project_root = Path(__rootdir__).parent
+        marker = json.loads(
+            (Path(__rootdir__) / "data/version.json").read_text(encoding="utf-8")
+        )
+        digest = content_hash(project_root, package_file_paths(project_root))
+        self.assertTrue(marker["res_version"].endswith(f"-{digest[:7]}"))
+
+    def test_resolves_overlay_path_on_every_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            first = Path(d) / "builtin.json"
+            second = Path(d) / "overlay.json"
+            first.write_text(json.dumps(_version("2026.08.22-aaaaaaa")), "utf-8")
+            second.write_text(json.dumps(_version("2026.08.23-bbbbbbb")), "utf-8")
+
+            with patch.object(rv, "resource_pkg_path", side_effect=[first, second]):
+                self.assertEqual(
+                    rv._read_local_version_json()["res_version"],
+                    "2026.08.22-aaaaaaa",
+                )
+                self.assertEqual(
+                    rv._read_local_version_json()["res_version"],
+                    "2026.08.23-bbbbbbb",
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()

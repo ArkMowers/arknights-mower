@@ -32,7 +32,7 @@ const levels = [
   { label: 'INFO - 基建任务、刷理智、公招汇总、基报、活动签到等', value: 'INFO' },
   { label: 'WARNING - 版本过旧、组内心情差过大、漏单、公招稀有标签等', value: 'WARNING' },
   {
-    label: 'ERROR - 无法排班、专精失败、Maa调用出错、森空岛签到失败、活动签到超时、OF-1失败等',
+    label: 'ERROR - 无法排班、专精失败、MAA调用出错、森空岛签到失败、活动签到超时、OF-1失败等',
     value: 'ERROR'
   }
 ]
@@ -76,7 +76,7 @@ const levels = [
           </n-radio-group>
         </n-form-item>
         <n-form-item label="端口号" v-if="custom_smtp_server.enable">
-          <n-input-number v-model:value="custom_smtp_server.ssl_port" />
+          <mower-input-number v-model:value="custom_smtp_server.ssl_port" />
         </n-form-item>
         <n-form-item>
           <template #label>
@@ -131,7 +131,7 @@ const levels = [
               <p>发送邮件的任务时间会自动转化成当地时间</p>
             </help-text>
           </template>
-          <n-input-number v-model:value="timezone_offset" />
+          <mower-input-number v-model:value="timezone_offset" />
         </n-form-item>
       </n-form>
       <n-divider />
