@@ -55,6 +55,8 @@ def test_correct_order_does_not_clear_and_reselect(monkeypatch):
     assert selected == RESIDENTS
     solver.tap.assert_not_called()
     solver.scan_agent.assert_not_called()
+    solver.switch_arrange_order.assert_called_once()
+    assert solver.recog.update.call_count == 2
 
 
 def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
@@ -112,6 +114,7 @@ def selection_solver(monkeypatch, residents=None):
     solver.swipe_noinertia = MagicMock()
     # 本组模拟筛选和选择结果；真实翻页与延迟帧在 agent_page_search_tests 中验证。
     solver.swipe_agent_page = MagicMock(return_value=1)
+    solver.swipe_left = MagicMock(return_value=0)
 
     def visible(names):
         return [

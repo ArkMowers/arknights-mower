@@ -1,6 +1,7 @@
 import lzma
 import pickle
 from datetime import datetime, timedelta
+from time import perf_counter
 
 import cv2
 import numpy as np
@@ -190,25 +191,59 @@ class BaseMixin:
                 return False
         return True
 
+    @staticmethod
+    def agent_page_reader(*, full_scan=True, train=False):
+        """同一次等待内，名字区域像素完全相同则复用模板匹配结果。"""
+        previous_key = None
+        previous_ret = None
+
+        def read(img):
+            nonlocal previous_key, previous_ret
+            key = None
+            if isinstance(img, np.ndarray):
+                left, right = (
+                    (545, 1920) if train else (600, 1920 if full_scan else 1860)
+                )
+                rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))
+                key = tuple(img[y1:y2, left:right].tobytes() for y1, y2 in rows)
+            if key is not None and key == previous_key:
+                logger.debug("选人名字区域未变化，复用本次等待中的识别结果")
+                return previous_ret
+            started = perf_counter()
+            ret = (
+                operator_list_train(img)
+                if train
+                else operator_list(img, full_scan=full_scan)
+            )
+            logger.debug(
+                f"选人模板匹配耗时：{(perf_counter() - started) * 1000:.0f} ms"
+            )
+            previous_key, previous_ret = key, ret
+            return ret
+
+        return read
+
     def wait_for_agent_page(self, *, full_scan=True, train=False, before=None):
         """先复核当前页；滑动后不把连续两张相同的旧画面当成新页。"""
+        read = self.agent_page_reader(full_scan=full_scan, train=train)
         previous = None
         stable = False
         ret = []
         for attempt in range(6):
             if attempt:
                 self.sleep(0.5)
+            started = perf_counter()
             self.recog.update()
-            if self.find("connecting"):
+            connecting = self.find("connecting")
+            logger.debug(
+                f"选人截图及连接检查耗时：{(perf_counter() - started) * 1000:.0f} ms"
+            )
+            if connecting:
                 previous = None
                 stable = False
                 continue
             try:
-                ret = (
-                    operator_list_train(self.recog.img)
-                    if train
-                    else operator_list(self.recog.img, full_scan=full_scan)
-                )
+                ret = read(self.recog.img)
             except MowerExit:
                 raise
             except Exception as e:
@@ -281,6 +316,7 @@ class BaseMixin:
         self, agent, *, ordered=True, full_scan=True, train=False
     ):
         """等待排序后的名单连续两帧符合预期，不在旧画面上继续点击。"""
+        read = self.agent_page_reader(full_scan=full_scan, train=train)
         previous = None
         stable = False
         actual = []
@@ -293,11 +329,7 @@ class BaseMixin:
                 stable = False
                 continue
             try:
-                ret = (
-                    operator_list(self.recog.img, full_scan=full_scan)
-                    if not train
-                    else operator_list_train(self.recog.img)
-                )
+                ret = read(self.recog.img)
             except MowerExit:
                 raise
             except Exception as e:
@@ -305,6 +337,11 @@ class BaseMixin:
                 previous = None
                 stable = False
                 continue
+            if not train and ret and ret[0][1] is not None and ret[0][1][0][0] > 650:
+                logger.error(
+                    "选人列表左侧仍被裁切，已暂停排班，不能将后续卡片当成已选名单"
+                )
+                raise MowerExit
             actual = [name for name, _ in ret[: len(agent)]]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
             stable = len(actual) == len(agent) and all(actual) and actual == previous
@@ -354,23 +391,27 @@ class BaseMixin:
                 logger.exception(e)
                 raise e
 
-    def swipe_left(self, right_swipe, special_filter):
-        if right_swipe > 3:
-            selected_label = next(
-                (label for label in self.profession_labels if label != special_filter),
-                None,
+    def swipe_left(self, right_swipe, special_filter, *, train=False):
+        # 2500 像素的屏外拖动在 Android 会被裁到边缘，不能按请求距离或
+        # “右移三次只回拉两次”推算归零。回拉使用屏内路径，并读取实际结果。
+        full_scan = special_filter in (None, "ALL")
+        page = self.wait_for_agent_page(full_scan=full_scan, train=train)
+        if right_swipe == 0 and not train and page[0][1][0][0] <= 650:
+            return 0
+        for attempt in range(12):
+            self.swipe_noinertia((650, 540), (1100, 0))
+            actual = self.wait_for_agent_page(
+                full_scan=full_scan, train=train, before=page
             )
-            # 硬切换职业筛选 的时候有时候游戏会出bug，回不去，改成切换到ALL
-            if special_filter == "ALL":
-                self.profession_filter(selected_label)
-            else:
-                self.profession_filter("ALL")
-            self.profession_filter(special_filter)
-        else:
-            swipe_time = 2 if right_swipe == 3 else right_swipe
-            for i in range(swipe_time):
-                self.swipe_noinertia((650, 540), (2500, 0))
-        return 0
+            if self.same_agent_page(actual, page):
+                if train or actual[0][1][0][0] <= 650:
+                    return 0
+                logger.error("回拉后列表仍被裁切且未推进，已暂停排班，保留当前选择")
+                raise MowerExit
+            logger.debug(f"选人列表回拉第{attempt + 1}次，首张完整卡片：{actual[0]}")
+            page = actual
+        logger.error("未能确认干员列表回到左端，已暂停排班，保留当前选择")
+        raise MowerExit
 
     def profession_filter(self, profession=None):
         """

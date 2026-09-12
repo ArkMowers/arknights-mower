@@ -4,6 +4,7 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -187,3 +188,75 @@ def test_training_free_search_checks_next_page_when_first_page_has_no_target():
     solver.choose_train_ope("Free")
     solver.swipe_agent_page.assert_called_once_with(page(), ["Free"], train=True)
     solver.verify_agent.assert_called_once_with(["砾"], "train", train=True)
+
+
+def test_pull_left_continues_until_actual_page_stops_moving():
+    solver = BaseMixin()
+    middle = page(offset=160)
+    another = page(("砾", "苍苔", "克洛丝", "炎熔", "安赛尔", "香草"), 120)
+    left = page()
+    solver.wait_for_agent_page = MagicMock(side_effect=[middle, another, left, left])
+    solver.swipe_noinertia = MagicMock()
+    # 请求向右滑三次后，不能固定回拉两次就认定归零。
+    assert solver.swipe_left(3, "ALL") == 0
+    assert solver.swipe_noinertia.call_count == 3
+    for call in solver.swipe_noinertia.call_args_list:
+        start, movement = call.args
+        assert start == (650, 540)
+        assert 0 <= start[0] + movement[0] < 1920
+
+
+def test_zero_counter_does_not_hide_clipped_first_column():
+    solver = BaseMixin()
+    clipped, left = page(offset=160), page()
+    solver.wait_for_agent_page = MagicMock(side_effect=[clipped, left, left])
+    solver.swipe_noinertia = MagicMock()
+    assert solver.swipe_left(0, "ALL") == 0
+    assert solver.swipe_noinertia.call_count == 2
+
+
+def test_failed_pull_does_not_claim_list_is_at_left_edge():
+    solver = BaseMixin()
+    clipped = page(offset=160)
+    solver.wait_for_agent_page = MagicMock(return_value=clipped)
+    solver.swipe_noinertia = MagicMock()
+    with pytest.raises(MowerExit):
+        solver.swipe_left(3, "ALL")
+    solver.swipe_noinertia.assert_called_once()
+
+
+def test_visible_correct_roster_is_not_read_from_later_columns(monkeypatch):
+    # 用户截图中梅尔/迷迭香列被裁掉，第一张完整卡片位于 x≈790。
+    clipped = page(("槐琥", "酒神", "结城理"), offset=160)
+    solver = reader(monkeypatch, [clipped])
+    with pytest.raises(MowerExit):
+        solver.wait_for_arranged_agents(["迷迭香", "槐琥", "梅尔"], ordered=False)
+    solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("train", [False, True])
+def test_unchanged_name_pixels_reuse_matching_but_changed_names_are_reread(
+    monkeypatch, train
+):
+    matcher = MagicMock(return_value=page())
+    monkeypatch.setattr(base_mixin, "operator_list", matcher)
+    monkeypatch.setattr(base_mixin, "operator_list_train", matcher)
+    read = BaseMixin.agent_page_reader(train=train)
+    first = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    unrelated_animation = first.copy()
+    unrelated_animation[200:400, 800:900] = 255
+    assert read(first) == read(unrelated_animation)
+    assert matcher.call_count == 1
+    changed_name = first.copy()
+    changed_name[490, 800] = 255
+    read(changed_name)
+    assert matcher.call_count == 2
+
+
+def test_name_cache_does_not_survive_a_new_wait(monkeypatch):
+    matcher = MagicMock(return_value=page())
+    monkeypatch.setattr(base_mixin, "operator_list", matcher)
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    BaseMixin.agent_page_reader()(img)
+    BaseMixin.agent_page_reader()(img)
+    assert matcher.call_count == 2

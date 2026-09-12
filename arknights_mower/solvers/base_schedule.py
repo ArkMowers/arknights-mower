@@ -3091,7 +3091,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.error("训练干员搜索达到上限，已暂停排班，保留当前选择")
                 raise MowerExit
             right_swipe += self.swipe_agent_page(ret, [ope], train=True)
-        right_swipe = self.swipe_left(right_swipe, special_filter=profession)
+        right_swipe = self.swipe_left(
+            right_swipe, special_filter=profession, train=True
+        )
         self.ctap((1280, 60), 0.3)
         self.ctap((1280, 60), 0.3)
         logger.debug("验证训练位干员选择")
@@ -3408,10 +3410,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             last_special_filter = "ALL"
             right_swipe = 0
         # 排序
+        verified = False
         if len(agents) != 1:
-            # 左移
-            right_swipe = self.swipe_left(right_swipe, last_special_filter)
             self.switch_arrange_order("技能", room)
+            # 排序后再确认左端，避免排序保留旧偏移时读取后续卡片。
+            right_swipe = self.swipe_left(right_swipe, last_special_filter)
             exists = self.wait_for_arranged_agents(agents, ordered=False)
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
@@ -3429,9 +3432,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
                     self.tap((x, y), interval=0.2)
-        logger.debug("验证干员选择..")
-        self.swipe_left(right_swipe, last_special_filter)
-        self.switch_arrange_order("技能", room)
+            else:
+                # 刚刚已连续确认完整名单与顺序，且之后未操作，无需再次切换排序。
+                verified = True
+        if not verified:
+            logger.debug("验证干员选择..")
+            self.switch_arrange_order("技能", room)
+            self.swipe_left(right_swipe, last_special_filter)
+            verified = self.verify_agent(agents, room)
         finish_time = datetime.now()
         if finish_time - start_time > timedelta(seconds=15) * len(agents):
             # 如果超过5分钟，则所有里面的干员自动用职介筛选
@@ -3439,7 +3447,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if agent != "阿米娅" and agent:
                     logger.debug(f"检测到{agent}选择时间过长，自动使用职介筛选")
                     self.op_data.profession_filter.add(agent)
-        if not self.verify_agent(agents, room):
+        if not verified:
             logger.debug(agents)
             logger.debug(room)
             raise Exception("检测到干员选择错误，重新选择")
