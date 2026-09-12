@@ -231,6 +231,10 @@
     "label": "FACTORY_ROOM",
     "comment": "加工站干员选择界面"
   },
+  "229": {
+    "label": "CLUE_MESSAGE_BOARD",
+    "comment": "会客室信息板"
+  },
   "301": {
     "label": "BUSINESS_CARD",
     "comment": "个人名片"

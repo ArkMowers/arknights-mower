@@ -21,6 +21,7 @@ class TaskTypes(Enum):
     EXHAUST_OFF = ("exhaust_on", "用尽下班", 2)
     SELF_CORRECTION = ("self_correction", "纠错", 2)
     CLUE_PARTY = ("Impart", "趴体", 2)
+    CLUE = ("clue", "线索任务", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
     NOT_SPECIFIC = ("", "空任务", 2)
     RECRUIT = ("recruit", "公招", 2)

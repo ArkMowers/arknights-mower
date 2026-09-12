@@ -335,12 +335,13 @@ async function db_delete(keys) {
       </n-button>
       <help-text v-if="!mobile">
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
-        <div>只开放了空任务/专精/加工站任务</div>
+        <div>只开放了空任务/专精/加工站/仓库扫描/线索任务</div>
         <div>只能增，不能删！！写错了可以【载入心情数据】启动</div>
         <div>如果 mower 休息到 00:30，新增的 00:15 的任务是不会被执行的，因为此时在休息</div>
         <div>添加完任务可以【载入心情任务】启动</div>
         <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
+        <div>线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
       <n-button type="error" @click="show_feedback = true">

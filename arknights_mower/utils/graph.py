@@ -334,6 +334,7 @@ def todo_complete(solver: BaseSolver):
 @edge(Scene.CLUE_GIVE_AWAY, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_SUMMARY, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_PLACE, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.CLUE_MESSAGE_BOARD, Scene.INFRA_DETAILS)
 @edge(Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS)
 @edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
 @edge(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS)
