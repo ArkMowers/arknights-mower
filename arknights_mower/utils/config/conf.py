@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from arknights_mower import __rootdir__
+from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils.path import get_path
 
 DEFAULT_LAUNCH_COMMAND = (
@@ -411,6 +411,12 @@ class RIICPart(ConfModel):
         source: Literal["manual", "mastery", "stockpile"] = "manual"
         "配置来源；旧配置按手动配置保留"
 
+    low_frame_rate_mode: bool = Field(
+        default_factory=lambda: (
+            os.environ.get("MOWER_ANDROID") == "1" or __system__ == "android"
+        )
+    )
+    "低帧率适配：基建选人等待稳定画面；Android 默认开启"
     drone_count_limit: int = 100
     "无人机使用阈值"
     drone_room: str = ""

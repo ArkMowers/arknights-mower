@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import axios from 'axios'
 import { useConfigStore } from './config'
 
-vi.mock('axios', () => ({ default: { post: vi.fn() } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 let pinia
 let store
 afterEach(() => {
@@ -199,5 +199,54 @@ describe('native Android setting ownership', () => {
         theme: 'dark'
       })
     }
+  })
+})
+
+describe('low frame rate adaptation', () => {
+  it.each([
+    ['android', undefined, true],
+    ['android', false, false],
+    ['android', true, true],
+    ['darwin', undefined, false],
+    ['windows', undefined, false],
+    ['linux', undefined, false],
+    ['darwin', true, true]
+  ])('loads %s with setting %s as %s and saves user changes', async (platform, value, expected) => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    // Minimal /conf response containing the fields that require string/object operations.
+    const response = {
+      runtime_platform: platform,
+      low_frame_rate_mode: value,
+      free_blacklist: '',
+      reload_room: '',
+      dorm_order: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: response })
+    axios.post.mockResolvedValue({ data: {} })
+    await store.load_config()
+    expect(store.low_frame_rate_mode).toBe(expected)
+    expect(store.build_config().low_frame_rate_mode).toBe(expected)
+    loaded.value = true
+    await nextTick()
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalled())
+    store.low_frame_rate_mode = !expected
+    await nextTick()
+    await vi.waitFor(() => expect(axios.post.mock.lastCall[1].low_frame_rate_mode).toBe(!expected))
+    loaded.value = false
+    response.low_frame_rate_mode = axios.post.mock.lastCall[1].low_frame_rate_mode
+    await store.load_config()
+    expect(store.low_frame_rate_mode).toBe(!expected)
   })
 })

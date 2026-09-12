@@ -17,6 +17,7 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.traceback import caller_info
 
@@ -153,6 +154,7 @@ class BaseSolver:
     ) -> tp.Scope:
         return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
+    @timed_step("tap")
     def tap(
         self,
         poly: tp.Location,
@@ -335,6 +337,7 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
+    @timed_step("swipe")
     def swipe_noinertia(
         self,
         start: tp.Coordinate,
@@ -363,6 +366,8 @@ class BaseSolver:
         self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:
             self.sleep(interval)
+        else:
+            self.recog.update()
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""

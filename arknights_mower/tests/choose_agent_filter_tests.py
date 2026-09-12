@@ -11,6 +11,8 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_mixin, base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
 RESIDENTS = ["冰酿", "闪灵", "菲亚梅塔", "爱丽丝"]
 
 
@@ -49,6 +51,45 @@ def test_already_selected_mixed_roster_still_reorders(monkeypatch):
     solver.scan_agent.assert_not_called()
 
 
+def test_matching_card_names_still_clear_and_reselect(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+    assert selected == RESIDENTS
+    assert solver.tap.call_count == len(RESIDENTS) + 1
+    solver.scan_agent.assert_not_called()
+    assert solver.switch_arrange_order.call_count == 2
+    solver.swipe_left.assert_not_called()
+
+
+def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    original_order = solver.switch_arrange_order.side_effect
+    first = True
+
+    def order(kind, *args):
+        nonlocal first
+        if kind == "技能" and first:
+            first = False
+            # 游戏实际卡片顺序与进入房间时缓存的顺序不同。
+            selected.reverse()
+        original_order(kind, *args)
+
+    solver.switch_arrange_order.side_effect = order
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+    assert selected == RESIDENTS
+
+
+def test_resting_operator_is_scanned_without_skipping_pages(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.operators["伊芙利特"] = SimpleNamespace(
+        mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+    )
+    solver.choose_agent(["伊芙利特"], "dormitory_1")
+    assert selected == ["伊芙利特"]
+    solver.swipe_noinertia.assert_not_called()
+    solver.swipe_agent_page.assert_not_called()
+
+
 def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
     current = list(RESIDENTS if residents is None else residents)
@@ -58,7 +99,7 @@ def selection_solver(monkeypatch, residents=None):
     first_scan = True
     roster = RESIDENTS + ["伊芙利特", "杜林", "妮芙", "特米米", "深靛"]
     positions = [(672, 378), (672, 810), (864, 378), (864, 810), (1056, 378)]
-    solver.recog = SimpleNamespace(w=1920, h=1080, img=None)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=None, update=MagicMock())
     solver.op_data = SimpleNamespace(
         operators={},
         profession_filter=set(),
@@ -71,8 +112,19 @@ def selection_solver(monkeypatch, residents=None):
     solver.detect_arrange_order = MagicMock(return_value=("技能", False))
     solver.get_order = MagicMock(return_value=(False, ("心情", "true")))
     solver.find = MagicMock(return_value=False)
-    solver.sleep = MagicMock()
+    solver.sleep = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())
     solver.swipe_noinertia = MagicMock()
+    # 本组模拟筛选和选择结果；真实翻页与延迟帧在 agent_page_search_tests 中验证。
+    solver.swipe_agent_page = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            (1, None) if kwargs.get("return_page") else 1
+        )
+    )
+    solver.swipe_left = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            (0, None) if kwargs.get("return_page") else 0
+        )
+    )
 
     def visible(names):
         return [
@@ -118,6 +170,15 @@ def selection_solver(monkeypatch, residents=None):
     monkeypatch.setattr(
         base_mixin,
         "operator_list",
-        lambda *args, **kwargs: [(name, None) for name in cards],
+        lambda *args, **kwargs: [
+            (
+                name,
+                (
+                    (630 + (i // 2) * 215, 488 + (i % 2) * 421),
+                    (818 + (i // 2) * 215, 520 + (i % 2) * 421),
+                ),
+            )
+            for i, name in enumerate(cards)
+        ],
     )
     return solver, selected

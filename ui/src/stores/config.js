@@ -47,6 +47,7 @@ export const useConfigStore = defineStore('config', () => {
   const package_type = ref('official')
   const reload_room = ref('')
   const run_order_delay = ref(10)
+  const low_frame_rate_mode = ref(false)
   const dorm_order = ref([])
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
@@ -410,6 +411,8 @@ export const useConfigStore = defineStore('config', () => {
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     runtime_platform.value = response.data.runtime_platform || ''
+    low_frame_rate_mode.value =
+      response.data.low_frame_rate_mode ?? runtime_platform.value === 'android'
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
@@ -575,6 +578,7 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
+      low_frame_rate_mode: low_frame_rate_mode.value,
       dorm_order: dorm_order.value.join(','),
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
@@ -782,6 +786,7 @@ export const useConfigStore = defineStore('config', () => {
     package_type,
     reload_room,
     run_order_delay,
+    low_frame_rate_mode,
     dorm_order,
     start_automatically,
     maa_mall_buy,
