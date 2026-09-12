@@ -713,7 +713,7 @@ onMounted(async () => {
         relevance: 10
       },
       {
-        begin: /[0-9]+(-[0-9]+)+/,
+        begin: /\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b/,
         className: 'date'
       },
       {
