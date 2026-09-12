@@ -3260,7 +3260,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.recog.w * position[pos][0],
                             self.recog.h * position[pos][1],
                         ),
-                        interval=0,
+                        interval=0.2,
                     )
             agent = [x for x in agents if x not in exists]
         logger.info(f"安排干员 ：{agent}")
@@ -3449,7 +3449,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 左移
             right_swipe = self.swipe_left(right_swipe, last_special_filter)
             self.switch_arrange_order("技能", room)
-            exists.extend(selected)
+            exists = self.wait_for_arranged_agents(agents, ordered=False)
+            if exists is None:
+                raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
             click_order = []
             for a in agents:
@@ -3463,7 +3465,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 for p_idx in click_order:
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
-                    self.tap((x, y), interval=0)
+                    self.tap((x, y), interval=0.2)
         logger.debug("验证干员选择..")
         self.swipe_left(right_swipe, last_special_filter)
         self.switch_arrange_order("技能", room)

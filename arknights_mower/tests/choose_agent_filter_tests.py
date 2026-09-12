@@ -49,6 +49,24 @@ def test_already_selected_mixed_roster_still_reorders(monkeypatch):
     solver.scan_agent.assert_not_called()
 
 
+def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    original_order = solver.switch_arrange_order.side_effect
+    first = True
+
+    def order(kind, *args):
+        nonlocal first
+        if kind == "技能" and first:
+            first = False
+            # 游戏实际卡片顺序与进入房间时缓存的顺序不同。
+            selected.reverse()
+        original_order(kind, *args)
+
+    solver.switch_arrange_order.side_effect = order
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+    assert selected == RESIDENTS
+
+
 def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
     current = list(RESIDENTS if residents is None else residents)
@@ -58,7 +76,7 @@ def selection_solver(monkeypatch, residents=None):
     first_scan = True
     roster = RESIDENTS + ["伊芙利特", "杜林", "妮芙", "特米米", "深靛"]
     positions = [(672, 378), (672, 810), (864, 378), (864, 810), (1056, 378)]
-    solver.recog = SimpleNamespace(w=1920, h=1080, img=None)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=None, update=MagicMock())
     solver.op_data = SimpleNamespace(
         operators={},
         profession_filter=set(),

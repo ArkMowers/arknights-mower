@@ -174,7 +174,7 @@ class BaseMixin:
             for name, scope in ret:
                 if name in agent:
                     select_name.append(name)
-                    self.tap(scope, interval=0)
+                    self.tap(scope, interval=0.2)
                     agent.remove(name)
                     # 如果是按照个数选择 Free
                     if max_agent_count != -1:
@@ -191,6 +191,32 @@ class BaseMixin:
                 logger.exception(e)
                 raise e
 
+    def wait_for_arranged_agents(
+        self, agent, *, ordered=True, full_scan=True, train=False
+    ):
+        """等待排序后的名单连续两帧符合预期，不在旧画面上继续点击。"""
+        previous = None
+        actual = []
+        for attempt in range(6):
+            if attempt:
+                self.sleep(0.5)
+            self.recog.update()
+            if self.find("connecting"):
+                previous = None
+                continue
+            ret = (
+                operator_list(self.recog.img, full_scan=full_scan)
+                if not train
+                else operator_list_train(self.recog.img)
+            )
+            actual = [name for name, _ in ret[: len(agent)]]
+            matches = actual == agent if ordered else sorted(actual) == sorted(agent)
+            if matches and actual == previous:
+                return actual
+            previous = actual if matches else None
+        logger.warning(f"干员名单未稳定：预期{agent}，实际{actual}")
+        return None
+
     def verify_agent(
         self,
         agent: list[str],
@@ -201,31 +227,24 @@ class BaseMixin:
         train=False,
     ):
         try:
-            # 识别干员
-            while self.find("connecting"):
-                logger.info("等待网络连接")
-                self.sleep()
-            ret = (
-                operator_list(self.recog.img, full_scan=full_scan)
-                if not train
-                else operator_list_train(self.recog.img)
-            )  # 返回的顺序是从左往右从上往下
-            # 提取识别出来的干员的名字
-            index = 0
-            for name, scope in ret:
-                if index >= len(agent):
-                    return True
-                if name != agent[index]:
-                    return False
-                index += 1
-            return True
+            return (
+                self.wait_for_arranged_agents(agent, full_scan=full_scan, train=train)
+                is not None
+            )
+        except MowerExit:
+            raise
         except Exception as e:
             error_count += 1
             if room != "train":
                 self.switch_arrange_order("技能", room)
             if error_count < 3:
                 return self.verify_agent(
-                    agent, room, error_count, max_agent_count, full_scan=False
+                    agent,
+                    room,
+                    error_count,
+                    max_agent_count,
+                    full_scan=False,
+                    train=train,
                 )
             else:
                 logger.exception(e)
