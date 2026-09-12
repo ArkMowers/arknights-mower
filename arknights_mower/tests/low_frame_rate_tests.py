@@ -96,7 +96,40 @@ def test_disabled_reset_without_scroll_neither_taps_nor_captures(monkeypatch):
     assert solver.swipe_left(0, "ALL", return_page=True) == (0, None)
 
 
-@pytest.mark.parametrize("opened,waits", [(False, 1.0), (True, 0.8)])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("opened", [False, True])
+@pytest.mark.parametrize("train", [False, True])
+@pytest.mark.parametrize("profession", ["ALL", "MEDIC"])
+def test_already_all_filter_skips_redundant_input(
+    monkeypatch, enabled, opened, train, profession
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
+    solver = solver_for(monkeypatch, [page()] * 10)
+    state = configure_real_filter(solver, monkeypatch, opened=opened, train=train)
+    solver.profession_filter(profession)
+    taps = [c.args[0] for c in solver.device.tap.call_args_list]
+    assert (1918, 135) not in taps
+    assert state["label"] == profession and state["opened"]
+    assert taps.count((1860, 60)) == (0 if opened else 1)
+    assert taps.count((1918, 795)) == (1 if profession == "MEDIC" else 0)
+    # ALL 已高亮时，不增加标签点击及对应等待。
+    assert sum(c.args[0] for c in solver.sleep.call_args_list) == pytest.approx(
+        0.1 * len(taps)
+    )
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_noop_all_filter_still_obeys_stop(monkeypatch, enabled):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
+    solver = solver_for(monkeypatch, [page()] * 2)
+    configure_real_filter(solver, monkeypatch)
+    monkeypatch.setattr(config, "stop_mower", MagicMock(is_set=lambda: True))
+    with pytest.raises(MowerExit):
+        solver.profession_filter("ALL")
+    solver.device.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("opened,waits", [(False, 0.9), (True, 0.7)])
 def test_adapted_filter_reset_uses_explicit_short_tap_intervals(
     monkeypatch, opened, waits
 ):
@@ -105,6 +138,25 @@ def test_adapted_filter_reset_uses_explicit_short_tap_intervals(
     configure_real_filter(solver, monkeypatch, opened=opened)
     solver.swipe_left(0, "ALL")
     assert sum(c.args[0] for c in solver.sleep.call_args_list) == pytest.approx(waits)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("profession", ["ALL", "MEDIC"])
+def test_filter_reset_still_switches_away_and_back_with_two_label_taps(
+    monkeypatch, enabled, profession
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
+    solver = solver_for(monkeypatch, [page()] * 10)
+    state = configure_real_filter(solver, monkeypatch, initial=profession)
+    solver.swipe_left(4, profession)
+    assert state["changes"] == (
+        ["PIONEER", "ALL"] if profession == "ALL" else ["ALL", "MEDIC"]
+    )
+    assert state["label"] == profession and state["offset"] == 0
+    assert solver.device.tap.call_count == 2
+    assert sum(c.args[0] for c in solver.sleep.call_args_list) == pytest.approx(
+        0.7 if enabled else 0.2
+    )
 
 
 def test_fast_scan_retains_narrow_region_retry(monkeypatch):

@@ -590,6 +590,8 @@ class BaseMixin:
         poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
         max_attempts = round(2.5 / poll_interval) + 1
         if profession:
+            if config.stop_mower.is_set():
+                raise MowerExit
             logger.info(f"打开 {profession} 筛选")
         else:
             logger.info("关闭职业筛选")
@@ -613,10 +615,11 @@ class BaseMixin:
             else:
                 self.tap((1860, 60), interval=0.1)
             retry += 1
-        # 点击一次ALL先
-        self.tap(label_pos_map["ALL"], interval=0.1)
-        # 两种模式都先确认 ALL 已生效，不能用切换前的职业高亮提前返回。
-        self._wait_for_profession_filter(label_pos_map["ALL"])
+        # ALL 已高亮时无需重复点击；真正切换到 ALL 后仍须确认生效，
+        # 不能用切换前的目标职业高亮提前返回。
+        if self.get_color(label_pos_map["ALL"])[2] < 240:
+            self.tap(label_pos_map["ALL"], interval=0.1)
+            self._wait_for_profession_filter(label_pos_map["ALL"])
         if profession != "ALL":
             self.tap(label_pos_map[profession], interval=0.1)
             self._wait_for_profession_filter(label_pos_map[profession])
