@@ -117,6 +117,7 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         for package in [
             resource_zip(remove=rp._RESOURCE_MARKER),
             resource_zip(remove=RES_PACKAGE_DATA[0]),
+            resource_zip(remove="arknights_mower/data/furniture.json"),
             resource_zip(manifest={"schema_version": 2}),
             resource_zip(manifest={"mower_version": ">=5"}),
         ]:
@@ -340,3 +341,69 @@ class ResourceCompatibilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFurnitureResourceLoading(ResourcePkgTestBase):
+    def furniture_data(self, quantity):
+        return {
+            "furnitures": {
+                "desk": {
+                    "name": "测试桌",
+                    "quantity": quantity,
+                    "themeId": "room",
+                    "canBeDestroy": True,
+                }
+            },
+            "themes": {"room": {"name": "房间", "counts": {"desk": quantity}}},
+        }
+
+    def write_builtin(self):
+        (self.builtin / "data/furniture.json").write_text(
+            json.dumps(self.furniture_data(1), ensure_ascii=False), encoding="utf-8"
+        )
+
+    def test_loader_reads_selected_external_package_in_utf8(self):
+        from arknights_mower.utils.furniture_data import (
+            FURNITURE_DATA_PATH,
+            load_furniture_keep_counts,
+        )
+
+        self.write_builtin()
+        buffer = io.BytesIO()
+        with (
+            zipfile.ZipFile(io.BytesIO(resource_zip())) as source,
+            zipfile.ZipFile(buffer, "w") as dest,
+        ):
+            for name in source.namelist():
+                content = (
+                    json.dumps(self.furniture_data(3), ensure_ascii=False).encode(
+                        "utf-8"
+                    )
+                    if name == FURNITURE_DATA_PATH
+                    else source.read(name)
+                )
+                dest.writestr(name, content)
+        self.assertTrue(rp.install_resource_pkg(buffer.getvalue()))
+        self.assertEqual(load_furniture_keep_counts(), {"测试桌": 3})
+
+    def test_old_indexed_package_without_furniture_falls_back_as_a_whole(self):
+        from arknights_mower.utils.furniture_data import (
+            FURNITURE_DATA_PATH,
+            load_furniture_keep_counts,
+        )
+
+        self.write_builtin()
+        name = "a" * 64
+        package = self.overlay / "packages" / name
+        with zipfile.ZipFile(
+            io.BytesIO(resource_zip(remove=FURNITURE_DATA_PATH))
+        ) as archive:
+            archive.extractall(package)
+        (self.overlay / "index.json").write_text(
+            json.dumps({"packages": [name]}), encoding="utf-8"
+        )
+        self.assertEqual(load_furniture_keep_counts(), {"测试桌": 1})
+        self.assertEqual(
+            rp.resource_pkg_path("arknights_mower/data/agent.json"),
+            self.builtin / "data/agent.json",
+        )

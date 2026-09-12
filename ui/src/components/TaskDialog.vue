@@ -32,6 +32,7 @@ const error = ref(false)
 const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
+  { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
   { label: '仓库扫描', value: '仓库扫描' },
   { label: '线索任务', value: '线索任务' },
   { label: '空任务', value: '空任务' }
@@ -140,9 +141,8 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
-  } else if (task_type.value == '仓库扫描' || task_type.value == '线索任务') {
-    // 这两类任务不需要房间 plan：仓库扫描到点触发基地仓库扫描，
-    // 线索任务到点触发一次完整会客室流程
+  } else if (['仓库扫描', '分解所有重复家具', '线索任务'].includes(task_type.value)) {
+    // 独立任务不携带房间排班。
     task.plan = {}
   }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task })).data
@@ -205,9 +205,10 @@ const level_list = [
         <n-select
           v-model:value="task_type"
           :options="taskTypeOptions"
+          :consistent-menu-width="false"
           placeholder="任务类别"
           class="dropdown-select"
-          style="width: 120px"
+          :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
         />
         <n-select
           v-if="task_type == '技能专精'"
@@ -309,6 +310,9 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
+      <n-text v-if="task_type == '分解所有重复家具'" depth="3">
+        进入加工站家具页，只分解超出一整套所需数量的家具；无法确认套装数量时跳过。无需选择干员，不消耗心情。
+      </n-text>
       <div class="task_row" v-if="task_type == '技能专精'">
         <label>协助方式：</label>
         <n-select

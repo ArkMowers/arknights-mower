@@ -83,6 +83,12 @@ from arknights_mower.utils.scheduler_task import (
 )
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.trading_order import TradingOrder
+from arknights_mower.utils.workshop_ui import (
+    CONFIRM_OPERATOR,
+    FORMULA_TABS,
+    OPEN_FORMULA,
+    scale_point,
+)
 
 
 def _is_mastery_busy(operator_name: str) -> bool:
@@ -656,6 +662,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     from arknights_mower.solvers.mastery import run_swap_support
 
                     run_swap_support(self)
+                elif self.task.type == TaskTypes.FURNITURE:
+                    from arknights_mower.solvers.furniture import FurnitureDismantler
+                    from arknights_mower.utils.furniture_task import (
+                        FurnitureNavigationError,
+                    )
+
+                    try:
+                        FurnitureDismantler(self).run()
+                    except (MowerExit, FurnitureNavigationError, ConnectionError):
+                        raise
+                    except Exception:
+                        # 保护失败、识别异常及提交结果不明都只执行一次。
+                        # 先移除再交给通用异常记录，避免下一轮重跑同一任务。
+                        self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                        raise
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:
@@ -1335,10 +1356,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
                 return
             tab_pos = {
-                "基建材料": (self.recog.w * 0.1, self.recog.h * 0.18),
-                "精英材料": (self.recog.w * 0.1, self.recog.h * 0.31),
-                "技巧概要": (self.recog.w * 0.1, self.recog.h * 0.45),
-                "芯片": (self.recog.w * 0.1, self.recog.h * 0.57),
+                name: scale_point(self.recog, point)
+                for name, point in FORMULA_TABS.items()
             }
             current_material = None
             current_name = None
@@ -1367,7 +1386,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif self.find("arrange_check_in") or self.find(
                     "arrange_check_in_small"
                 ):
-                    self.tap((self.recog.w * 0.25, self.recog.h * 0.95), interval=0.5)
+                    self.tap(scale_point(self.recog, CONFIRM_OPERATOR), interval=0.5)
                 elif scene == Scene.FACTORY_DASHBOARD:
                     if tasks[0] == "enter":
                         if is_9colored:
@@ -1375,9 +1394,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
-                        self.tap(
-                            (self.recog.w * 0.45, self.recog.h * 0.65), interval=0.5
-                        )
+                        self.tap(scale_point(self.recog, OPEN_FORMULA), interval=0.5)
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
                         inventory_data = get_inventory_counts()

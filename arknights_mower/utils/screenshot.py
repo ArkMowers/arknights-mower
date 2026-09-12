@@ -17,7 +17,7 @@ from threading import Condition, Event, Lock, Thread
 from typing import Callable
 
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
-_IMPORTANT_FOLDERS = {"run_order", "workshop", "solve_captcha"}
+_IMPORTANT_FOLDERS = {"run_order", "workshop", "furniture", "solve_captcha"}
 _STATUS_FIELDS = (
     "pending_count",
     "pending_bytes",
