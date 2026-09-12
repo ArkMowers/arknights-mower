@@ -319,9 +319,12 @@ class Operators:
                         )
                     )
                 else:
-                    return (
-                        "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
+                    logger.info("宿舍休息位已变化，按当前排班重新生成宿舍优先级")
+                    config.conf.dorm_order = ",".join(
+                        dorm.position[0] + "_" + str(dorm.position[1])
+                        for dorm in self.dorm
                     )
+                    config.save_conf()
         else:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:

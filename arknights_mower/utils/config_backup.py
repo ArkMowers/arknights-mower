@@ -243,6 +243,9 @@ def import_configuration(backup):
     with backup_lock, workshop_lock:
         conf, plan = validate_configuration(backup)
         imported_conf = _conf_for_import(backup["data"]["conf"])
+        if plan != config.plan:
+            conf.dorm_order = ""
+            imported_conf["dorm_order"] = ""
         paths = configuration_paths()
         previous = {
             name: path.read_text(encoding="utf-8") if path.exists() else None

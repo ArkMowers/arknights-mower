@@ -28,6 +28,26 @@ function setup() {
 }
 
 describe('configuration restore autosave coordination', () => {
+  it('clears the browser dorm order after a changed plan is saved', async () => {
+    const { config, plan } = setup()
+    config.dorm_order = ['dormitory_1_2']
+    axios.post.mockResolvedValueOnce({ data: { dorm_order_reset: true } })
+    await plan.save_plan()
+    expect(config.dorm_order).toEqual([])
+    config.dorm_order = ['dormitory_2_3']
+    axios.post.mockResolvedValueOnce({ data: { dorm_order_reset: false } })
+    await plan.save_plan()
+    expect(config.dorm_order).toEqual(['dormitory_2_3'])
+  })
+
+  it('preserves the browser dorm order when saving a plan fails', async () => {
+    const { config, plan } = setup()
+    config.dorm_order = ['dormitory_1_2']
+    axios.post.mockRejectedValueOnce(new Error('offline'))
+    await expect(plan.save_plan()).rejects.toThrow('offline')
+    expect(config.dorm_order).toEqual(['dormitory_1_2'])
+  })
+
   it('flushes the latest drafts then prevents old stores from overwriting restored values', async () => {
     const { config, plan, loaded } = setup()
     loaded.value = true
