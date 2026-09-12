@@ -5,7 +5,13 @@ from contextlib import contextmanager
 from typing import Optional
 
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.mastery_support_types import TrainingInputs, encode_supports
+from arknights_mower.utils.mastery_support_types import (
+    DEFAULT_SWAP_BUFFER_MINUTES,
+    DEFAULT_SWAP_BUFFERS,
+    TrainingInputs,
+    configured_swap_buffer,
+    encode_supports,
+)
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skill_label import format_skill_label
 
@@ -272,7 +278,7 @@ def add_plan_checked(
                 current_level or 0,
                 target_level,
                 inputs=TrainingInputs(
-                    buffer=get_route_settings(path).get("mastery_swap_buffer", 10)
+                    buffer=configured_swap_buffer(get_route_settings(path))
                 ),
             )
         )
@@ -600,16 +606,22 @@ def save_route(
 # 全局路线设置的保留职业行（#91 修订）：中枢加成 + 换人缓冲时间，存 supports JSON。
 # 归在「路线配置」里——DB 管理删「专精路线配置」会一起清掉（回默认）；get_all_routes 排除。
 _SETTINGS_PROFESSION = "__mastery_settings__"
-_SETTINGS_DEFAULTS = {"central_bonus": 0, "mastery_swap_buffer": 10}
+_SETTINGS_DEFAULTS = {
+    "central_bonus": 0,
+    "mastery_swap_buffer": DEFAULT_SWAP_BUFFER_MINUTES,
+}
 
 
 def get_route_settings(path: Optional[str] = None) -> dict:
-    """全局路线设置：central_bonus（0/5）+ mastery_swap_buffer（分钟）。
+    """读取中枢加成及三档减半换人缓冲（分钟）。
 
-    存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON），缺行回默认
-    (0, 10)。不再走 conf（旧 `mastery_control_center`/`mastery_swap_buffer` 已废弃）。
+    存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON）。
+    缺行使用 10/15/30 分钟；旧版单值配置兼容应用到三档。
     """
-    defaults = dict(_SETTINGS_DEFAULTS)
+    defaults = {
+        **_SETTINGS_DEFAULTS,
+        "mastery_swap_buffers": dict(DEFAULT_SWAP_BUFFERS),
+    }
     try:
         with _conn(path) as conn:
             row = conn.execute(
@@ -623,6 +635,16 @@ def get_route_settings(path: Optional[str] = None) -> dict:
                     parsed = {}
                 if isinstance(parsed, dict):
                     defaults.update({k: parsed[k] for k in defaults if k in parsed})
+                    if isinstance(parsed.get("mastery_swap_buffers"), dict):
+                        defaults["mastery_swap_buffers"] = {
+                            **DEFAULT_SWAP_BUFFERS,
+                            **parsed["mastery_swap_buffers"],
+                        }
+                    elif "mastery_swap_buffer" in parsed:
+                        defaults["mastery_swap_buffers"] = {
+                            key: parsed["mastery_swap_buffer"]
+                            for key in DEFAULT_SWAP_BUFFERS
+                        }
     except Exception as e:
         logger.error(f"get_route_settings failed: {e}")
     return defaults
@@ -630,14 +652,21 @@ def get_route_settings(path: Optional[str] = None) -> dict:
 
 def save_route_settings(
     central_bonus: int = 0,
-    mastery_swap_buffer: int = 10,
+    mastery_swap_buffer: int = DEFAULT_SWAP_BUFFER_MINUTES,
     path: Optional[str] = None,
+    *,
+    mastery_swap_buffers: dict | None = None,
 ):
     try:
         payload = json.dumps(
             {
                 "central_bonus": int(central_bonus),
                 "mastery_swap_buffer": int(mastery_swap_buffer),
+                "mastery_swap_buffers": (
+                    {**DEFAULT_SWAP_BUFFERS, **mastery_swap_buffers}
+                    if mastery_swap_buffers is not None
+                    else {key: int(mastery_swap_buffer) for key in DEFAULT_SWAP_BUFFERS}
+                ),
             },
             ensure_ascii=False,
         )

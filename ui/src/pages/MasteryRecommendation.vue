@@ -353,15 +353,36 @@
         </n-text>
       </div>
       <n-text depth="2" style="margin-top: 10px">减半换人缓冲时间（分钟）</n-text>
-      <mower-input-number
-        v-model:value="masterySettings.mastery_swap_buffer"
-        :min="0"
-        :max="60"
-        size="small"
-        style="width: 120px; margin-top: 4px"
-      />
+      <div
+        v-for="item in masteryBufferFields"
+        :key="item.key"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 8px;
+        "
+      >
+        <n-text depth="2">{{ item.label }}</n-text>
+        <mower-input-number
+          :value="masterySettings.mastery_swap_buffers[item.key]"
+          @update:value="
+            (value) =>
+              (masterySettings.mastery_swap_buffers[item.key] =
+                value ?? DEFAULT_MASTERY_SWAP_BUFFERS[item.key])
+          "
+          :min="0"
+          :max="60"
+          clearable
+          size="small"
+          style="width: 120px; flex-shrink: 0"
+        />
+      </div>
       <n-text depth="3" style="font-size: 11px; margin-top: 2px">
-        减半对象需在位时间 = 5小时 + 缓冲时间，缓冲越大越保守
+        默认{{
+          autoCentralBonus ? '分别为 15、30' : '为 10'
+        }}分钟，可自行调整；清空单项恢复该项默认值。
       </n-text>
       <template #footer>
         <n-space justify="end" align="center">
@@ -650,7 +671,9 @@ import {
   buildMasteryRoutePayload,
   prepareMasteryRoutes,
   completeMasterySupports,
-  syncMasteryRouteDefaults
+  syncMasteryRouteDefaults,
+  DEFAULT_MASTERY_SWAP_BUFFERS,
+  normalizeMasterySwapBuffers
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
@@ -1243,7 +1266,18 @@ const level_list = [
   { value: 3, label: '专三' }
 ]
 // 全局路线设置（#91 修订）：中枢加成（0/5）+ 换人缓冲时间，存路线配置设置行，不走 conf。
-const masterySettings = reactive({ central_bonus: 0, mastery_swap_buffer: 10 })
+const masterySettings = reactive({
+  central_bonus: 0,
+  mastery_swap_buffers: { ...DEFAULT_MASTERY_SWAP_BUFFERS }
+})
+const masteryBufferFields = computed(() =>
+  autoCentralBonus.value
+    ? [
+        { key: 'central', label: '中枢加成 +5%' },
+        { key: 'central_unhalved_m2', label: '中枢加成 +5%，专二未继承减半' }
+      ]
+    : [{ key: 'no_central', label: '无中枢加成' }]
+)
 
 const defaultsCache = ref(null)
 const bestTrainers = ref({})
@@ -1313,7 +1347,7 @@ for (const profession of profKeys) {
 
 // #115：modal 级中枢加成/缓冲与逐职业路线同源走草稿语义——改了不保存关掉要还原
 watch(
-  () => [masterySettings.central_bonus, masterySettings.mastery_swap_buffer],
+  () => [masterySettings.central_bonus, ...Object.values(masterySettings.mastery_swap_buffers)],
   () => {
     if (_autoSaveReady) _dirtyMasterySettings = true
   }
@@ -1340,7 +1374,7 @@ async function loadRoute() {
   const settings = r.data?.settings || {}
   _autoSaveReady = false
   masterySettings.central_bonus = settings.central_bonus ?? 0
-  masterySettings.mastery_swap_buffer = settings.mastery_swap_buffer ?? 10
+  masterySettings.mastery_swap_buffers = normalizeMasterySwapBuffers(settings)
   bestTrainers.value = r.data?.best_trainers || {}
   defaultsError.value = r.data?.defaults_error || ''
   const { routes: merged, suggestedProfessions } = prepareMasteryRoutes(
@@ -1391,7 +1425,7 @@ async function saveRouteAndClose() {
       flushRouteSettings(),
       axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route/settings`, {
         central_bonus: autoCentralBonus.value,
-        mastery_swap_buffer: masterySettings.mastery_swap_buffer
+        mastery_swap_buffers: { ...masterySettings.mastery_swap_buffers }
       })
     ])
     _dirtyMasterySettings = false // 已落库，关弹窗不再触发「未保存还原」

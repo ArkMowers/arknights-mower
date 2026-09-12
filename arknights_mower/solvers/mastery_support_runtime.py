@@ -15,6 +15,7 @@ from arknights_mower.utils.mastery_support import (
     stage_for,
     stage_route,
 )
+from arknights_mower.utils.mastery_support_types import DEFAULT_SWAP_BUFFER_MINUTES
 
 from .mastery_support_state import (
     enqueue_support_swap,
@@ -107,7 +108,10 @@ def prepare_plan_supports(solver, plan, level):
         level,
         BASE_HOURS[level] * (0.5 if carry else 1),
         central,
-        route.get("mastery_swap_buffer", 10),
+        route.get(
+            "configured_swap_buffer",
+            route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
+        ),
         manual=route.get("manual", False),
     )
     save_runtime(plan, _prepare_stage(first, swap, spec, carry))

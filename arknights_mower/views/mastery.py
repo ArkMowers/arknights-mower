@@ -24,7 +24,10 @@ from arknights_mower.utils.mastery_db import (
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
 from arknights_mower.utils.mastery_support_types import (
+    DEFAULT_SWAP_BUFFER_MINUTES,
+    DEFAULT_SWAP_BUFFERS,
     TrainingInputs,
+    configured_swap_buffer,
     decode_json,
     decode_supports,
 )
@@ -452,7 +455,7 @@ class MasteryRouteView(MethodView):
                     inputs=TrainingInputs(
                         roster=roster,
                         metadata=metadata,
-                        buffer=settings["mastery_swap_buffer"],
+                        buffer=configured_swap_buffer(settings),
                     ),
                 )
             )
@@ -540,9 +543,21 @@ class MasteryRouteSettingsView(MethodView):
 
     def post(self):
         data = request.json or {}
+        buffers = data.get("mastery_swap_buffers")
+        if buffers is not None and (
+            not isinstance(buffers, dict)
+            or any(
+                key not in DEFAULT_SWAP_BUFFERS or type(value) is not int or value < 0
+                for key, value in buffers.items()
+            )
+        ):
+            return {"error": "换人缓冲时间必须为非负整数"}, 400
         save_route_settings(
             central_bonus=int(data.get("central_bonus", 0)),
-            mastery_swap_buffer=int(data.get("mastery_swap_buffer", 10)),
+            mastery_swap_buffer=int(
+                data.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES)
+            ),
+            mastery_swap_buffers=buffers,
         )
         return {"status": "ok"}
 
