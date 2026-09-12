@@ -319,6 +319,7 @@ def test_long_furniture_scan_yields_before_shift_or_new_swap(
     runner.open_formula = MagicMock()
     solver.factory_scene = MagicMock(return_value=furniture.Scene.FACTORY_FORMULA)
     solver.back_to_infrastructure = MagicMock()
+    solver.sleep = MagicMock()
     page = 0
 
     def swipe(*args, **kwargs):

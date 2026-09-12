@@ -12,6 +12,7 @@ from arknights_mower.utils.scene import Scene
 
 REAL_FURNITURE_DETAILS = furniture.furniture_details
 REAL_FURNITURE_BATCH = furniture.furniture_batch
+REAL_WAIT_STABLE_LIST = furniture.FurnitureDismantler.wait_stable_list
 
 
 @pytest.fixture
@@ -32,6 +33,10 @@ def solver():
 
 @pytest.fixture(autouse=True)
 def known_furniture(monkeypatch):
+    # Traversal tests provide discrete pages; motion is exercised separately below.
+    monkeypatch.setattr(
+        furniture.FurnitureDismantler, "wait_stable_list", lambda self: None
+    )
     monkeypatch.setattr(
         furniture, "load_furniture_keep_counts", lambda: {"测试家具": 1}
     )
@@ -834,3 +839,28 @@ def test_uncertain_recipe_title_cannot_authorize_a_click(monkeypatch, solver, sc
     monkeypatch.setattr(furniture.rapidocr, "engine", lambda *a, **k: ([row], 0))
     with pytest.raises(ValueError, match="位置识别置信度不足"):
         furniture.furniture_cards(solver.recog.img)
+
+
+def test_list_coordinates_wait_for_two_consecutive_stable_frames(monkeypatch, solver):
+    frames = iter([0, 10, 10, 20, 20, 20])
+    monkeypatch.setattr(
+        furniture,
+        "list_fingerprint",
+        lambda img: np.full((10, 10), next(frames), np.uint8),
+    )
+    REAL_WAIT_STABLE_LIST(furniture.FurnitureDismantler(solver))
+    assert solver.sleep.call_args_list == [call(0.3)] * 5
+    solver.tap.assert_not_called()
+
+
+def test_continuously_moving_list_stops_without_any_click(monkeypatch, solver):
+    frames = iter(range(0, 100, 10))
+    monkeypatch.setattr(
+        furniture,
+        "list_fingerprint",
+        lambda img: np.full((10, 10), next(frames), np.uint8),
+    )
+    with pytest.raises(furniture.FurnitureSafetyError, match="列表尚未稳定"):
+        REAL_WAIT_STABLE_LIST(furniture.FurnitureDismantler(solver))
+    assert solver.sleep.call_count == 8
+    solver.tap.assert_not_called()

@@ -324,6 +324,20 @@ class FurnitureDismantler:
                 self.solver.sleep(0.5)
         raise FurnitureSafetyError("返回家具列表后位置发生变化，停止以避免选错配方")
 
+    def wait_stable_list(self):
+        previous = list_fingerprint(self.solver.recog.img)
+        stable = 0
+        for _ in range(8):
+            self.check_deadline()
+            self.solver.sleep(0.3)
+            self.wait_scene(Scene.FACTORY_FORMULA)
+            current = list_fingerprint(self.solver.recog.img)
+            stable = stable + 1 if same_list(previous, current) else 0
+            if stable >= 2:
+                return
+            previous = current
+        raise FurnitureSafetyError("家具列表尚未稳定，停止以避免点错配方")
+
     def open_formula(self, reset=True):
         solver = self.solver
         for _ in range(30):
@@ -448,6 +462,7 @@ class FurnitureDismantler:
         bottom_checks = 0
         while True:
             self.wait_scene(Scene.FACTORY_FORMULA)
+            self.wait_stable_list()
             cards = furniture_cards(solver.recog.img)
             completed = False
             page = list_fingerprint(solver.recog.img)
