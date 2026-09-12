@@ -61,6 +61,11 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import (
+    record_selection_retry,
+    timed_room,
+    timed_step,
+)
 from arknights_mower.utils.operators import (
     TRADE_ORDER_AGENTS,
     Operator,
@@ -3176,6 +3181,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             agents[index] = replacements.pop(0).name if replacements else current.name
 
+    @timed_step("selection")
     def choose_agent(
         self,
         agents: list[str],
@@ -3765,6 +3771,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.info(f"宿舍单回排序确认：{room} 目标 {target.name}，恢复原位")
         return True
 
+    @timed_room
     def agent_arrange_room(
         self, new_plan, room, plan, skip_enter=False, get_time=False
     ):
@@ -3979,6 +3986,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except Exception as e:
                 save_exception(e)
                 logger.exception(e)
+                record_selection_retry()
                 choose_error += 1
                 self.recog.update()
                 if "检测到漏单！" in str(e):

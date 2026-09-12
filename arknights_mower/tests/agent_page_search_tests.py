@@ -200,9 +200,13 @@ def test_pull_left_continues_until_actual_page_stops_moving():
     left = page()
     solver.wait_for_agent_page = MagicMock(side_effect=[middle, another, left, left])
     solver.swipe_noinertia = MagicMock()
-    # 请求向右滑三次后，不能固定回拉两次就认定归零。
+    # 先连续回拉两次，仍需根据实际画面追加手势，不能按计数认定归零。
     assert solver.swipe_left(3, "ALL") == 0
-    assert solver.swipe_noinertia.call_count == 3
+    assert solver.swipe_noinertia.call_count == 5
+    assert all(
+        call.kwargs == {"interval": 0}
+        for call in solver.swipe_noinertia.call_args_list[:2]
+    )
     for call in solver.swipe_noinertia.call_args_list:
         start, movement = call.args
         assert start == (650, 540)
@@ -225,7 +229,38 @@ def test_failed_pull_does_not_claim_list_is_at_left_edge():
     solver.swipe_noinertia = MagicMock()
     with pytest.raises(AgentSelectionNotReady):
         solver.swipe_left(3, "ALL")
-    solver.swipe_noinertia.assert_called_once()
+    assert solver.swipe_noinertia.call_count == 3
+
+
+@pytest.mark.parametrize("count,swipes", [(0, 1), (1, 1), (3, 3), (100, 9)])
+def test_rewind_counter_only_batches_input_and_always_checks_end(count, swipes):
+    solver = BaseMixin()
+    solver.wait_for_agent_page = MagicMock(return_value=page())
+    solver.swipe_noinertia = MagicMock()
+    assert solver.swipe_left(count, "ALL") == 0
+    assert solver.swipe_noinertia.call_count == swipes
+    assert solver.wait_for_agent_page.call_count == 2
+
+
+def test_stop_during_bulk_rewind_sends_no_more_input():
+    solver = BaseMixin()
+    solver.wait_for_agent_page = MagicMock()
+    solver.swipe_noinertia = MagicMock(side_effect=[None, MowerExit])
+    with pytest.raises(MowerExit):
+        solver.swipe_left(8, "ALL")
+    assert solver.swipe_noinertia.call_count == 2
+    solver.wait_for_agent_page.assert_not_called()
+
+
+def test_rewind_gestures_remain_bounded_when_every_page_changes():
+    solver = BaseMixin()
+    solver.wait_for_agent_page = MagicMock(
+        side_effect=[page(offset=i * 15) for i in range(20)]
+    )
+    solver.swipe_noinertia = MagicMock()
+    with pytest.raises(AgentSelectionNotReady):
+        solver.swipe_left(100, "ALL")
+    assert solver.swipe_noinertia.call_count == 12
 
 
 def test_visible_correct_roster_is_not_read_from_later_columns(monkeypatch):

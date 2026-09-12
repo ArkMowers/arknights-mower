@@ -13,6 +13,7 @@ from arknights_mower.utils.character_recognize import operator_list, operator_li
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -318,6 +319,7 @@ class BaseMixin:
             # 点击可能改变卡片位置；下一名必须从新页面重新定位。
             ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
 
+    @timed_step("verify")
     def wait_for_arranged_agents(
         self, agent, *, ordered=True, full_scan=True, train=False
     ):
@@ -405,14 +407,20 @@ class BaseMixin:
                 logger.exception(e)
                 raise e
 
+    @timed_step("rewind")
     def swipe_left(self, right_swipe, special_filter, *, train=False):
         # 2500 像素的屏外拖动在 Android 会被裁到边缘，不能按请求距离或
         # “右移三次只回拉两次”推算归零。回拉使用屏内路径，并读取实际结果。
         full_scan = special_filter in (None, "ALL")
+        # 回拉途中不用逐页找人。计数只用于减少中途识别，不能作为到头凭据；
+        # 保留至少一次末端实测，短滑、排序后计数归零仍按实际页面处理。
+        bulk = min(max(right_swipe - 1, 0), 8)
+        for _ in range(bulk):
+            self.swipe_noinertia((650, 540), (1100, 0), interval=0)
         page = self.wait_for_agent_page(full_scan=full_scan, train=train)
         # 排序/筛选可能将计数归零却保留列表偏移；完整卡片也可能恰好
         # 对齐在中间页。因此即使计数为零，也必须实际回拉确认。
-        for attempt in range(12):
+        for attempt in range(12 - bulk):
             self.swipe_noinertia((650, 540), (1100, 0))
             actual = self.wait_for_agent_page(
                 full_scan=full_scan, train=train, before=page
@@ -678,6 +686,7 @@ class BaseMixin:
             best_operator, max_score, scores, sample_width
         )
 
+    @timed_step("room_read")
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
             img = cropimg(img, cord)
