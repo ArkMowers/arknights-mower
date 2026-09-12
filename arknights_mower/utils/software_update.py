@@ -536,7 +536,7 @@ def source_branch_head(branch, repo, proxy):
 
 
 def source_pull_revision(number, repo, proxy):
-    """Resolve GitHub's test merge without downloading Git objects locally."""
+    """Pin the branch and PR head; GitHub's generated merge may be stale."""
     pull = mergeable_source_pull(number, repo, proxy)
     target_repo, branch = source_pull_target(pull, repo)
     if target_repo != repo.casefold():
@@ -544,38 +544,17 @@ def source_pull_revision(number, repo, proxy):
     # base.sha in a PR response may lag behind its actual target branch.
     base = source_branch_head(branch, repo, proxy)
     head = source_commit_info(pull["head"], repo)["sha"]
-    merge_sha = pull.get("merge_commit_sha")
-    pending = (
-        f"GitHub 正在准备 PR #{number} 与目标分支最新版本的合并结果，请稍后重新检查"
-    )
-    if not merge_sha:
-        raise ValueError(pending)
-    merge_sha = source_commit_info({"sha": merge_sha}, repo)["sha"]
-    try:
-        # The Git database endpoint omits file diffs, keeping checks lightweight.
-        commit = github("/git/commits/" + merge_sha, proxy, repo=repo)
-    except requests.HTTPError as error:
-        if error.response is not None and error.response.status_code == 404:
-            raise ValueError(pending) from error
-        raise
-    target = source_commit_info({"sha": commit.get("sha"), "commit": commit}, repo)
-    if target["sha"] != merge_sha or [
-        parent.get("sha") for parent in commit.get("parents", [])
-    ] != [base, head]:
-        # GitHub refreshes the test merge asynchronously after either side moves.
-        # Never silently install an old base or fall back to the PR head alone.
-        raise ValueError(pending)
     return {
         "source_pr": number,
         "source_branch": branch,
         "base_commit": base,
         "head_commit": head,
-        "ref": f"refs/pull/{number}/merge",
-        "commit": merge_sha,
+        "ref": f"refs/pull/{number}/head",
+        "commit": head,  # Replaced by the local merge SHA during preparation.
         "notes": f"#{number} {pull['title']}",
-        "url": target["url"],
-        "author": target["author"],
-        "date": target["date"],
+        "url": f"https://github.com/{repo}/commit/{head}",
+        "author": (pull.get("user") or {}).get("login", ""),
+        "date": pull.get("updated_at", ""),
     }
 
 
@@ -585,21 +564,8 @@ def check_source_pull(number, remote=None):
     current, _, proxy = source_repository()
     selected = resolve_source_remote(remote)
     revision = source_pull_revision(number, selected["source_repo"], proxy)
-    try:
-        protocol = github(
-            "/contents/arknights_mower/utils/update_runtime.py?ref="
-            + revision["commit"],
-            proxy,
-            repo=selected["source_repo"],
-        )
-        if protocol.get("type") != "file":
-            raise ValueError("目标版本未包含可用的实例恢复模块")
-    except requests.HTTPError as error:
-        if error.response is not None and error.response.status_code == 404:
-            raise ValueError(
-                "目标版本未包含实例恢复模块，请使用 Git 手动部署"
-            ) from error
-        raise
+    # Only the worker's actual merge can determine whether the resulting tree
+    # contains the recovery module. The PR head alone may predate that module.
     plan = {
         "deployment": "source",
         "operation": "source-pr",
@@ -609,7 +575,7 @@ def check_source_pull(number, remote=None):
         "created_at": time.time(),
         "available": True,
         "force_available": True,
-        "version": "PR@" + revision["commit"][:7],
+        "version": "PR@" + revision["head_commit"][:7],
     }
     return {
         "ok": True,
@@ -617,7 +583,7 @@ def check_source_pull(number, remote=None):
         "current_commit": current,
         **selected,
         **revision,
-        "sha": revision["commit"],
+        "sha": revision["head_commit"],
         "version": plan["version"],
         "message": revision["notes"],
     }

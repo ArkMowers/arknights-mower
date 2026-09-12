@@ -163,7 +163,7 @@ function confirm() {
         <p class="hint">
           {{
             mode === 'pr'
-              ? '安装 GitHub 生成的目标分支最新版本与所选 PR 的合并结果。后续检查仍跟随原来的仓库、分支和渠道。'
+              ? '检查通过后，安装时将目标分支最新版本与所选 PR 合并，成功后再重启。后续检查仍跟随原来的仓库、分支和渠道。'
               : '提交切换任务后记住所选仓库和分支，供后续开发版检查使用。'
           }}
         </p>
@@ -194,6 +194,7 @@ function confirm() {
             目标仓库：{{ checked.source_repo
             }}{{ checked.source_pr ? ` · PR #${checked.source_pr}` : '' }}
           </p>
+          <p v-if="checked.source_pr" class="hint">所选 PR 提交（安装时生成合并版本）：</p>
           <a :href="checked.url" target="_blank" rel="noopener noreferrer" class="version">{{
             checked.sha
           }}</a>
