@@ -48,16 +48,17 @@ describe('configuration restore autosave coordination', () => {
     expect(config.dorm_order).toEqual(['dormitory_1_2'])
   })
 
-  it('flushes the latest drafts then prevents old stores from overwriting restored values', async () => {
+  it('drains scheduled edits then prevents old stores from overwriting restored values', async () => {
     const { config, plan, loaded } = setup()
     loaded.value = true
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    config.account = 'latest draft'
+    await nextTick()
     config.autosave_paused = true
     plan.autosave_paused = true
     await nextTick()
-    config.account = 'latest draft'
     await config.flush_pending_saves()
-    await plan.save_plan()
+    await plan.flush_pending_saves()
     expect(axios.post.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1].account).toBe(
       'latest draft'
     )
@@ -66,6 +67,20 @@ describe('configuration restore autosave coordination', () => {
     plan.ling_xi = 2
     await nextTick()
     expect(axios.post).toHaveBeenCalledTimes(count)
+  })
+
+  it('restart drains requests without resubmitting stale browser settings', async () => {
+    const { config, plan, loaded } = setup()
+    loaded.value = true
+    await nextTick()
+    await config.flush_pending_saves()
+    await plan.flush_pending_saves()
+    axios.post.mockClear()
+    // A manually restored file can now differ from this unchanged page.
+    await nextTick()
+    await config.flush_pending_saves()
+    await plan.flush_pending_saves()
+    expect(axios.post).not.toHaveBeenCalled()
   })
 
   it('preserves imported dorm order at startup and resets it only for a new plan', async () => {

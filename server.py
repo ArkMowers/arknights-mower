@@ -1061,26 +1061,43 @@ def open_folder_dialog():
 @require_token
 def import_from_image():
     img = request.files["img"]
-    if img.mimetype == "application/json":
-        data = json.load(img)
-    else:
-        try:
+    try:
+        from arknights_mower.utils.config.plan import parse_plan_document
+
+        if img.mimetype == "application/zip" or (img.filename or "").lower().endswith(
+            ".zip"
+        ):
+            from arknights_mower.utils.config_backup import (
+                MAX_BACKUP_BYTES,
+                plan_from_archive,
+                read_archive,
+            )
+
+            imported_plan = plan_from_archive(
+                read_archive(img.stream.read(MAX_BACKUP_BYTES + 1))
+            )
+        elif img.mimetype == "application/json" or (
+            img.filename or ""
+        ).lower().endswith(".json"):
+            imported_plan = parse_plan_document(json.load(img))
+        else:
             from PIL import Image
 
             from arknights_mower.utils import qrcode
 
             img = Image.open(img)
-            data = qrcode.decode(img)
-        except Exception as e:
-            msg = f"排班表导入失败：{e}"
-            logger.exception(msg)
-            return msg
-    if data:
-        config.plan = config.PlanModel(**data)
+            imported_plan = parse_plan_document(qrcode.decode(img))
+    except (ValueError, TypeError, RecursionError, OSError):
+        return "排班表导入失败：请选择有效的排班 JSON、排班图片或包含 config 文件夹的 ZIP 备份"
+    previous_plan = config.plan
+    try:
+        config.plan = imported_plan
         config.save_plan()
-        return "排班已加载"
-    else:
-        return "排班表导入失败！"
+    except OSError:
+        config.plan = previous_plan
+        logger.exception("排班表写入失败")
+        return "排班表导入失败：文件写入失败，原排班已保留"
+    return "排班已加载"
 
 
 @app.route("/sss-copilot", methods=["GET", "POST"])

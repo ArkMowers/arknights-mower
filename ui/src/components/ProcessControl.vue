@@ -1,9 +1,11 @@
 <script setup>
-import { inject, onMounted, onUnmounted, ref } from 'vue'
+import { inject, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
 
 const axios = inject('axios')
 const config = useConfigStore()
+const plan = usePlanStore()
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/process-control`
 const info = ref(null)
 const busy = ref(false)
@@ -62,7 +64,11 @@ async function submit(action) {
   busy.value = true
   failed.value = false
   try {
-    await config.save_config()
+    // Drain edits already scheduled by autosave. A restart must not write a
+    // stale browser snapshot over configuration restored directly on disk.
+    await nextTick()
+    await config.flush_pending_saves()
+    await plan.flush_pending_saves()
     const { data } = await axios.post(
       `${base}/action`,
       { action },

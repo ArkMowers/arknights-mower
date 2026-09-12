@@ -728,7 +728,7 @@ export const useConfigStore = defineStore('config', () => {
       await sync_active_weekly_plan()
     }
     await weeklyPlanSaveRequest
-    await save_config()
+    await configSaveRequest
   }
 
   watchEffect(() => {

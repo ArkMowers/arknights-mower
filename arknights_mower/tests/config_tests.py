@@ -251,8 +251,8 @@ class TestMigrateAppConfigPaths(unittest.TestCase):
         finally:
             config_module.conf = original_conf
 
-    def test_migration_failure_keeps_old_file_and_does_not_crash(self):
-        # Windows 上 os.replace 失败（锁住/TOCTOU）→ 跳过保留旧文件，不拖垮 import
+    def test_migration_failure_stops_before_defaults_can_hide_old_file(self):
+        # Windows 上迁移失败时中止启动，不能随后生成默认配置遮蔽旧文件。
         old = self.dir / "conf.yml"
         new = self.dir / "config" / "conf.yml"
         old.write_text("legacy", encoding="utf-8")
@@ -263,10 +263,26 @@ class TestMigrateAppConfigPaths(unittest.TestCase):
         with (
             patch.object(config_module, "_CONFIG_PATH_PAIRS", [(old, new)]),
             patch("arknights_mower.utils.config.os.replace", boom),
+            self.assertRaisesRegex(OSError, "已停止启动"),
         ):
             migrate_app_config_paths()
         self.assertTrue(old.exists())
         self.assertFalse(new.exists())
+
+    def test_concurrent_migration_success_does_not_block_startup(self):
+        self.old.write_text("legacy", encoding="utf-8")
+
+        def moved_elsewhere(*args):
+            self.new.write_text("legacy", encoding="utf-8")
+            self.old.unlink()
+            raise FileNotFoundError("already moved")
+
+        with (
+            patch.object(config_module, "_CONFIG_PATH_PAIRS", self._pairs()),
+            patch("arknights_mower.utils.config.os.replace", moved_elsewhere),
+        ):
+            migrate_app_config_paths()
+        self.assertEqual(self.new.read_text(encoding="utf-8"), "legacy")
 
     def test_gui_pair_converges_to_config_dir(self):
         # gui 窗口尺寸配置与其余应用配置一起收敛到 @app/config/，旧 @app/gui.yml 纳入迁移
