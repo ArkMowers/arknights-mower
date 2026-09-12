@@ -160,6 +160,15 @@ def selection_solver(monkeypatch, residents=None):
     monkeypatch.setattr(
         base_mixin,
         "operator_list",
-        lambda *args, **kwargs: [(name, None) for name in cards],
+        lambda *args, **kwargs: [
+            (
+                name,
+                (
+                    (630 + (i // 2) * 215, 488 + (i % 2) * 421),
+                    (818 + (i // 2) * 215, 520 + (i % 2) * 421),
+                ),
+            )
+            for i, name in enumerate(cards)
+        ],
     )
     return solver, selected

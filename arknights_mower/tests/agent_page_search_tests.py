@@ -228,9 +228,73 @@ def test_failed_pull_does_not_claim_list_is_at_left_edge():
 def test_visible_correct_roster_is_not_read_from_later_columns(monkeypatch):
     # 用户截图中梅尔/迷迭香列被裁掉，第一张完整卡片位于 x≈790。
     clipped = page(("槐琥", "酒神", "结城理"), offset=160)
-    solver = reader(monkeypatch, [clipped])
+    solver = reader(monkeypatch, [clipped] * 6)
     with pytest.raises(MowerExit):
         solver.wait_for_arranged_agents(["迷迭香", "槐琥", "梅尔"], ordered=False)
+    solver.tap.assert_not_called()
+
+
+def test_zero_counter_does_not_hide_an_aligned_middle_page():
+    solver = BaseMixin()
+    middle = page(("槐琥", "酒神", "结城理"))
+    left = page(("梅尔", "迷迭香", "槐琥"))
+    solver.wait_for_agent_page = MagicMock(side_effect=[middle, left, left])
+    solver.swipe_noinertia = MagicMock()
+    assert solver.swipe_left(0, "ALL") == 0
+    assert solver.swipe_noinertia.call_count == 2
+
+
+def test_transient_clipping_waits_for_complete_roster_without_input(monkeypatch):
+    targets = ["梅尔", "迷迭香", "槐琥"]
+    clipped = page(("槐琥", "酒神", "结城理"), offset=160)
+    complete = page(targets)
+    solver = reader(monkeypatch, [clipped, complete, complete])
+    assert solver.wait_for_arranged_agents(targets) == targets
+    assert solver.recog.update.call_count == 3
+    solver.tap.assert_not_called()
+    solver.swipe_noinertia.assert_not_called()
+
+
+@pytest.mark.parametrize("correct", [False, True])
+def test_moving_roster_is_neither_accepted_nor_reported_wrong(monkeypatch, correct):
+    targets = ["梅尔", "迷迭香", "槐琥"]
+    names = targets if correct else ["槐琥", "酒神", "结城理"]
+    solver = reader(
+        monkeypatch, [page(names, offset) for offset in (20, 16, 12, 8, 4, 0)]
+    )
+    with pytest.raises(MowerExit):
+        solver.wait_for_arranged_agents(targets)
+    solver.tap.assert_not_called()
+
+
+def test_position_must_settle_even_when_names_already_match(monkeypatch):
+    targets = ["梅尔", "迷迭香", "槐琥"]
+    solver = reader(monkeypatch, [page(targets, offset) for offset in (16, 8, 0, 0)])
+    assert solver.wait_for_arranged_agents(targets) == targets
+    assert solver.recog.update.call_count == 4
+
+
+def test_clipped_last_frame_invalidates_wrong_roster(monkeypatch):
+    targets = ["梅尔", "迷迭香", "槐琥"]
+    wrong = page(("槐琥", "酒神", "结城理"))
+    solver = reader(monkeypatch, [wrong] * 5 + [page(offset=160)])
+    with pytest.raises(MowerExit):
+        solver.wait_for_arranged_agents(targets)
+
+
+def test_clipping_breaks_consecutive_matching_roster(monkeypatch):
+    targets = ["梅尔", "迷迭香", "槐琥"]
+    complete = page(targets)
+    solver = reader(monkeypatch, [complete, page(offset=160), complete, complete])
+    assert solver.wait_for_arranged_agents(targets) == targets
+    assert solver.recog.update.call_count == 4
+
+
+def test_missing_card_positions_cannot_confirm_selection(monkeypatch):
+    targets = ["梅尔", "迷迭香", "槐琥"]
+    solver = reader(monkeypatch, [[(name, None) for name in targets]] * 6)
+    with pytest.raises(MowerExit):
+        solver.wait_for_arranged_agents(targets)
     solver.tap.assert_not_called()
 
 

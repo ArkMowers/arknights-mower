@@ -316,6 +316,8 @@ class BaseMixin:
         self, agent, *, ordered=True, full_scan=True, train=False
     ):
         """等待排序后的名单连续两帧符合预期，不在旧画面上继续点击。"""
+        if not agent:
+            return []
         read = self.agent_page_reader(full_scan=full_scan, train=train)
         previous = None
         stable = False
@@ -338,22 +340,28 @@ class BaseMixin:
                 stable = False
                 continue
             if not train and ret and ret[0][1] is not None and ret[0][1][0][0] > 650:
-                logger.error(
-                    "选人列表左侧仍被裁切，已暂停排班，不能将后续卡片当成已选名单"
+                logger.debug(
+                    "选人列表左侧仍被裁切，原地等待，不读取后续卡片作为已选名单"
                 )
-                raise MowerExit
-            actual = [name for name, _ in ret[: len(agent)]]
+                previous = None
+                stable = False
+                actual = []
+                continue
+            selected = ret[: len(agent)]
+            actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
-            stable = len(actual) == len(agent) and all(actual) and actual == previous
+            stable = len(actual) == len(agent) and self.same_agent_page(
+                selected, previous
+            )
             matches = actual == agent if ordered else sorted(actual) == sorted(agent)
             if matches and stable:
                 return actual
-            previous = actual
+            previous = selected
         if stable:
             logger.warning(f"干员名单已稳定但不符合预期：预期{agent}，实际{actual}")
             return None
         logger.error(
-            f"干员名单仍在变化或识别不全，已暂停排班，保留当前选择："
+            f"干员名单或位置仍在变化、左侧裁切或识别不全，已暂停排班，保留当前选择："
             f"预期{agent}，最后读取{actual}"
         )
         raise MowerExit
@@ -396,8 +404,8 @@ class BaseMixin:
         # “右移三次只回拉两次”推算归零。回拉使用屏内路径，并读取实际结果。
         full_scan = special_filter in (None, "ALL")
         page = self.wait_for_agent_page(full_scan=full_scan, train=train)
-        if right_swipe == 0 and not train and page[0][1][0][0] <= 650:
-            return 0
+        # 排序/筛选可能将计数归零却保留列表偏移；完整卡片也可能恰好
+        # 对齐在中间页。因此即使计数为零，也必须实际回拉确认。
         for attempt in range(12):
             self.swipe_noinertia((650, 540), (1100, 0))
             actual = self.wait_for_agent_page(

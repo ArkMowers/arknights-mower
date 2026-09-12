@@ -29,7 +29,18 @@ def reader(monkeypatch, frames):
     solver.find = MagicMock(return_value=False)
     solver.tap = MagicMock()
     monkeypatch.setattr(
-        base_mixin, "operator_list", lambda img, **kwargs: [(n, None) for n in img]
+        base_mixin,
+        "operator_list",
+        lambda img, **kwargs: [
+            (
+                n,
+                (
+                    (630 + (i // 2) * 215, 488 + (i % 2) * 421),
+                    (818 + (i // 2) * 215, 520 + (i % 2) * 421),
+                ),
+            )
+            for i, n in enumerate(img)
+        ],
     )
     return solver
 
