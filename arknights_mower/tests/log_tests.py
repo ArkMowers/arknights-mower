@@ -1,5 +1,10 @@
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 from queue import Queue
 
 from arknights_mower.utils import log, path
@@ -12,6 +17,7 @@ class MultiProcessLogTestBase(unittest.TestCase):
         if log.fhlr is not None:
             log.fhlr.close()
             log.fhlr = None
+        self._reset_screenshot_store()
         self._orig_space = path.global_space
         self._tmp = tempfile.mkdtemp()
         path.global_space = self._tmp
@@ -26,7 +32,15 @@ class MultiProcessLogTestBase(unittest.TestCase):
         if log.fhlr is not None:
             log.fhlr.close()
             log.fhlr = None
+        self._reset_screenshot_store()
         path.global_space = self._orig_space
+
+    @staticmethod
+    def _reset_screenshot_store():
+        # 与 fhlr 等模块级句柄一样复位，避免一个测试建立的存储与线程影响后续测试。
+        if log._store_instance is not None:
+            log._store_instance.close()
+            log._store_instance = None
 
 
 class LogFileHandlerTest(MultiProcessLogTestBase):
@@ -43,6 +57,44 @@ class LogFileHandlerTest(MultiProcessLogTestBase):
             log.fhlr.baseFilename,
             str(log.get_path("@app/log").joinpath("runtime.log")),
         )
+
+
+class ScreenshotStoreStartupTest(MultiProcessLogTestBase):
+    def test_import_builds_no_screenshot_store(self):
+        # 回归：ScreenshotStore 不在导入时建立。清理线程启动时会先扫一遍历史截图，
+        # 而导入本模块的进程（测试、开发服务器、各种脚本）并没有删图的意图；多份
+        # 清理线程并发删除同一批文件时，Windows 会让其中一次以 WinError 5 失败并
+        # 记一条清理错误。这里用子进程确认导入本身不建立存储。
+        space = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, space, ignore_errors=True)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import os;"
+                "from arknights_mower.utils import path;"
+                "path.global_space = os.environ['MOWER_TEST_SPACE'];"
+                "import arknights_mower.utils.log as log;"
+                "print('STORE:', log.get_screenshot_store())",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=str(Path(__file__).parents[2]),
+            env={**os.environ, "MOWER_TEST_SPACE": space},
+        )
+        self.assertIn("STORE: None", result.stdout)
+
+    def test_first_submit_starts_store_and_both_threads(self):
+        self.assertIsNone(log.get_screenshot_store())
+        log.save_screenshot(b"jpeg bytes")
+        store = log.get_screenshot_store()
+        self.assertIsNotNone(store)
+        self.assertEqual(
+            sorted(thread.name for thread in store._threads),
+            ["screenshot-cleaner", "screenshot-writer"],
+        )
+        self.assertEqual(store.folder, path.get_path("@app/screenshot"))
 
 
 class MultiProcessLoggingTest(MultiProcessLogTestBase):
