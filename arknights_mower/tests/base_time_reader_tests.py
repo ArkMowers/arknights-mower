@@ -54,5 +54,5 @@ class BaseTimeReaderTests(unittest.TestCase):
         self.assertLessEqual(result, datetime.now())
         self.assertEqual(solver.digit_reader.get_time.call_count, 5)
         warning.assert_called_once_with(
-            "订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
+            "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
         )
