@@ -2507,7 +2507,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 )
                         else:
                             self.set_detected_party_time(None)
-                            logger.info("线索交流未开启")
+                            logger.info("线索交流未开启或已结束")
                         # party_time 是副表表达式可引用的状态。界面确认状态后立即
                         # 重算，不能等下一轮调度，否则跃跃等会客室副表不会及时触发。
                         self.backup_plan_solver()
