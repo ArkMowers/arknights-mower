@@ -1,3 +1,4 @@
+import itertools
 import sys
 import types
 import unittest
@@ -60,9 +61,20 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
         with self.assertRaises(KeyError):
             data.get_current_room("missing", True)
 
-    def test_real_assistant_selection_without_train_schedule(self):
-        for old_support in ("", "褐果"):
-            with self.subTest(old_support=old_support):
+    def test_real_assistant_selection_with_any_train_schedule(self):
+        schedules = [
+            {},
+            {"train": []},
+            {"train": [types.SimpleNamespace(agent="褐果")]},
+            {
+                "train": [
+                    types.SimpleNamespace(agent="褐果"),
+                    types.SimpleNamespace(agent="号角"),
+                ]
+            },
+        ]
+        for old_support, schedule in itertools.product(("", "褐果"), schedules):
+            with self.subTest(old_support=old_support, schedule=schedule):
                 solver = make_solver(
                     [
                         Scene.INFRA_DETAILS,
@@ -74,7 +86,7 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                         [{"agent": "暴雨"}, {"agent": "号角"}],
                     ],
                 )
-                solver.op_data = self.make_operators(support=old_support)
+                solver.op_data = self.make_operators(support=old_support, plan=schedule)
                 solver.choose_agent = types.MethodType(
                     BaseSchedulerSolver.choose_agent, solver
                 )
@@ -91,7 +103,7 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                 solver.verify_agent.assert_called_once_with(["暴雨"], "train")
                 solver.tap_confirm.assert_called_once_with("train")
                 solver.choose_train_ope.assert_not_called()
-                self.assertEqual(solver.op_data.plan, {})
+                self.assertEqual(solver.op_data.plan, schedule)
                 if not old_support:
                     # 协助位为空时不得把训练位当成原协助者点击取消。
                     solver.tap.assert_not_called()

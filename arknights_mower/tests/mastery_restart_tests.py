@@ -170,14 +170,122 @@ class MasteryRestartTests(unittest.TestCase):
                 self.assertEqual(self.plan()["status"], before["status"])
         self.assertEqual(read.call_count, 4)
 
-    def test_restart_disabled_or_idle_does_not_visit(self):
+    def test_restart_disabled_or_no_unfinished_plans_does_not_visit(self):
         read = self.prepare_restart_check()
         with patch.object(reader.config.conf, "enable_mastery", False):
             self.run_restart_check()
         self.solver.mastery_restart_check_pending = True
-        mastery_db.update_plan_status(self.plan_id, "idle")
+        mastery_db.update_plan_status(self.plan_id, "completed")
         self.run_restart_check()
         read.assert_not_called()
+
+    def test_restart_idle_and_failed_plans_recover_observed_training_swap(self):
+        read = self.prepare_restart_check()
+        route = {
+            "operator": "协助干员",
+            "swap_target": "艾丽妮",
+            "efficiency": 0.3,
+            "job_match": True,
+        }
+        for status in ("idle", "failed"):
+            with self.subTest(status=status):
+                mastery_db.update_plan_status(self.plan_id, status, swap_frozen=1)
+                self.solver.mastery_restart_check_pending = True
+                self.solver.tasks.clear()
+                with (
+                    patch(
+                        "arknights_mower.solvers.mastery._get_plan_route",
+                        return_value=route,
+                    ),
+                    patch.object(
+                        reader,
+                        "_read_slots_checked",
+                        return_value=("协助干员", "测试干员", [], True),
+                    ),
+                ):
+                    self.run_restart_check()
+                self.assertEqual(self.plan()["status"], "training")
+                self.assert_one_task(TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(read.call_count, 2)
+
+    def test_restart_idle_plan_visits_empty_room_without_starting(self):
+        read = self.prepare_restart_check()
+        mastery_db.update_plan_status(self.plan_id, "idle")
+        self.room.state = "empty"
+        self.run_restart_check()
+        read.assert_called_once()
+        self.assertEqual(self.plan()["status"], "idle")
+        self.assertEqual(self.solver.tasks, [])
+
+    def test_mood_scan_never_reads_mastery_countdown_for_any_roster_size(self):
+        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+        for count in (0, 1, 2):
+            with self.subTest(count=count):
+                solver = MagicMock()
+                names = ["协助干员", "测试干员"][:count]
+                solver.op_data.plan = {
+                    "train": [SimpleNamespace(agent=name) for name in names]
+                }
+                operators = {}
+                for index, name in enumerate(names):
+                    op = MagicMock()
+                    op.room = "train"
+                    op.current_room = "train"
+                    op.current_index = index
+                    op.time_stamp = None
+                    op.need_to_refresh.return_value = True
+                    op.not_valid.return_value = False
+                    operators[name] = op
+                solver.op_data.operators = operators
+                solver.op_data.get_current_room.return_value = ["协助干员", "测试干员"]
+                solver.op_data.has_dorm_groups.return_value = False
+                solver.get_agent_from_room.return_value = [
+                    {"agent": "协助干员", "mood": 20},
+                    {"agent": "测试干员", "mood": 24},
+                ]
+                with (
+                    patch.object(reader, "read_room_state") as read,
+                    patch.object(reader, "reconcile_short") as reconcile,
+                ):
+                    BaseSchedulerSolver.agent_get_mood(solver, skip_dorm=True)
+                read.assert_not_called()
+                reconcile.assert_not_called()
+                self.assertEqual(solver.get_agent_from_room.call_count, int(count > 0))
+
+    def test_restart_recovery_ignores_training_roster_size(self):
+        self.prepare_restart_check()
+        for roster in (
+            {},
+            {"train": []},
+            {"train": ["协助干员"]},
+            {"train": ["协助干员", "测试干员"]},
+        ):
+            with self.subTest(roster=roster):
+                self.solver.op_data = SimpleNamespace(plan=roster)
+                self.solver.mastery_restart_check_pending = True
+                mastery_db.update_plan_status(self.plan_id, "idle")
+                with patch.object(reader, "_maybe_recover_swap") as recover:
+                    self.run_restart_check()
+                recover.assert_called_once()
+                self.assertEqual(self.plan()["status"], "training")
+
+    def test_restart_does_not_recover_unmatched_or_ambiguous_skill(self):
+        self.prepare_restart_check()
+        mastery_db.update_plan_status(self.plan_id, "idle")
+        before = self.plan()
+        for operator, resolved in (
+            ("其他干员", 1),
+            ("测试干员", None),
+            ("测试干员", 2),
+        ):
+            with self.subTest(operator=operator, resolved=resolved):
+                self.solver.mastery_restart_check_pending = True
+                self.room.panel.operator_name = operator
+                with patch.object(reader, "resolve_panel_skill", return_value=resolved):
+                    self.run_restart_check()
+                self.assertEqual(self.plan(), before)
+                self.assertEqual(self.solver.tasks, [])
 
     def test_restart_unreadable_skips_without_retry_or_changing_plan(self):
         read = self.prepare_restart_check()
