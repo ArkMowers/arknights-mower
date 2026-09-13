@@ -217,6 +217,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 self.op_data.party_time = value
 
+    def set_detected_party_time(self, value):
+        """写入会客室界面确认过的线索交流状态。
+
+        ``party_time`` 的普通 setter 会保留尚未到期的旧值，避免开始刷新时的
+        临时清空让依赖它的副表误切换。界面读取结果不是临时状态：读不到倒计时
+        表示交流已经结束，必须覆盖旧预测，哪怕旧预测时间仍在未来。
+        """
+        self._party_time = value
+        if self.op_data is not None:
+            self.op_data.party_time = value
+
+    def read_party_time(self):
+        """读取线索交流结束时间；空倒计时表示交流已经结束。"""
+        remaining = self.read_time(((1768, 438), (1902, 480)), None)
+        if remaining is None:
+            return None
+        return datetime.now() + timedelta(seconds=remaining)
+
+    def read_operator_time(self, room, index, cord):
+        """读取干员倒计时；空值按非工作状态或心情耗尽处理。"""
+        remaining = self.read_time(cord, None)
+        if remaining is None:
+            logger.info(
+                f"{self.translate_room(room)} {index + 1}号位未显示干员倒计时，"
+                "按非工作状态或心情耗尽处理"
+            )
+            return datetime.now()
+        return datetime.now() + timedelta(seconds=remaining)
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -2461,10 +2490,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
-                        self.party_time = self.double_read_time(
-                            ((1768, 438), (1902, 480))
-                        )
-                        if self.party_time > datetime.now():
+                        party_time = self.read_party_time()
+                        if party_time is not None and party_time > datetime.now():
+                            self.set_detected_party_time(party_time)
                             logger.info(f"线索交流结束时间：{self.party_time}")
                             if not find_next_task(
                                 self.tasks,
@@ -2478,8 +2506,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     )
                                 )
                         else:
-                            self.party_time = None
+                            self.set_detected_party_time(None)
                             logger.info("线索交流未开启")
+                        # party_time 是副表表达式可引用的状态。界面确认状态后立即
+                        # 重算，不能等下一轮调度，否则跃跃等会客室副表不会及时触发。
+                        self.backup_plan_solver()
                         ctm.complete("party_time")
                     else:
                         # 点击左下角，关闭进驻信息，进入线索界面
@@ -3666,8 +3697,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    # 房间干员倒计时随行号变化；订单模板只识别无人机界面的固定区域。
-                    data["time"] = self.double_read_time(time_p[i])
+                    data["time"] = self.read_operator_time(room, i, time_p[i])
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
