@@ -563,8 +563,10 @@ def _retry_ocr(solver) -> RoomState:
             if state in ("waiting_collect", "empty"):
                 _fill_slots_and_protection(solver, room)
             return room
-        logger.warning(f"[mastery] 训练室状态不一致（第{i + 1}次），重读截图")
-    logger.warning("[mastery] 训练室状态 5 次读取仍不一致，保守按训练中处理")
+        logger.warning(
+            f"[mastery] 训练室倒计时与面板状态不一致（第{i + 1}次），重读截图"
+        )
+    logger.warning("[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理")
     return RoomState("training", first or RoomPanel(), read_failed=True)
 
 

@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 
@@ -644,8 +644,10 @@ class TestReadRoomState(unittest.TestCase):
     def test_empty_state_when_countdown_unreadable(self):
         # 倒计时读失败 + 无名无亮点 → 空闲
         solver = self._solver(None, panel_text="", tier_columns=())
-        room = reader.read_room_state(solver)
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
         self.assertEqual(room.state, "empty")
+        warning.assert_not_called()
 
     def _with_idle_marker(self, solver):
         """面板读空时「空闲中」标记命中（scope 内真实返回矩形，非命中返回 None）。"""
@@ -704,8 +706,10 @@ class TestReadRoomState(unittest.TestCase):
     def test_zero_countdown_is_waiting_collect(self):
         # §16.8 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
         solver = self._solver(0)
-        room = reader.read_room_state(solver)
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
         self.assertEqual(room.state, "waiting_collect")
+        warning.assert_not_called()
 
     def test_waiting_collect_when_finish_scene(self):
         solver = self._solver(0)
@@ -716,9 +720,22 @@ class TestReadRoomState(unittest.TestCase):
     def test_ocr_fail_retries_then_conservative_training(self):
         # §16.2：active+身份+无图标 → 每次重读都 ocr_fail → 5 次后保守训练中（read_failed）
         solver = self._solver(7200, panel_text="[测试干员]测试技能", tier_columns=())
-        room = reader.read_room_state(solver)
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
         self.assertEqual(room.state, "training")
         self.assertTrue(room.read_failed)
+        self.assertEqual(
+            warning.call_args_list,
+            [
+                call(f"[mastery] 训练室倒计时与面板状态不一致（第{i}次），重读截图")
+                for i in range(1, 6)
+            ]
+            + [
+                call(
+                    "[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理"
+                )
+            ],
+        )
 
     def test_ocr_fail_resolves_on_retry(self):
         # 重读过程中出现图标亮点 → 恢复训练中（非保守）

@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
 
@@ -48,7 +48,11 @@ class BaseTimeReaderTests(unittest.TestCase):
         solver = self.solver()
         solver.digit_reader.get_time.return_value = "invalid"
         before = datetime.now()
-        result = solver.double_read_time(None, use_digit_reader=True)
+        with patch("arknights_mower.solvers.base_mixin.logger.warning") as warning:
+            result = solver.double_read_time(None, use_digit_reader=True)
         self.assertGreaterEqual(result, before)
         self.assertLessEqual(result, datetime.now())
         self.assertEqual(solver.digit_reader.get_time.call_count, 5)
+        warning.assert_called_once_with(
+            "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
+        )
