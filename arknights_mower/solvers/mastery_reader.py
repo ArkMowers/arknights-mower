@@ -96,6 +96,9 @@ class RoomPanel:
     # - "failed"：读失败（countdown=None）。不再把读失败和 00:00:00 都压成 now。
     countdown: Optional[datetime] = None
     countdown_state: str = "failed"
+    # 「空闲中」模板命中（游戏直接给出的空闲正证据）。命中时上面三项都不读，
+    # 所以本字段为 True 的面板里 operator_name/skill_name/mastery_tier 都是空的。
+    idle_marker: bool = False
 
 
 @dataclass
@@ -173,23 +176,22 @@ def classify_room_state(scene, countdown_state, identity_present, icon_lit) -> s
     - TRAIN_FINISH → 🟡 waiting_collect
     - TRAIN_MAIN：
       - 倒计时为 0（00:00:00）→ 🟡 waiting_collect（完成房间不再被当空房重置重开）
-      - 倒计时为空 + 无名无亮点 → ⚪ empty（空闲）
       - 倒计时非 0 + 名存在 + 有亮点 → 🔴 training（训练中）
-      - 其余 6 种不一致组合 → "ocr_fail"（读取器原地重试 5 次，仍不一致保守训练中）
+      - 其余组合 → "ocr_fail"（读取器原地重试 5 次，仍不一致保守训练中）
     - 其他房内场景保守视为占用（🔴）。
+
+    ⚪ empty（空闲）**不在这里判**：那三项都是否定式证据（「没读到」不等于「读到了
+    空」），三项全否只能说明这次没读到东西。空闲要的是正证据——「空闲中」模板，由
+    `_classify_panel` 优先判定；模板没命中就保守按训练中（`ocr_fail` → 重试 → 保守），
+    绝不动数据库、绝不换人开训。
     """
     if scene == Scene.TRAIN_FINISH:
         return "waiting_collect"
     if scene == Scene.TRAIN_MAIN:
         if countdown_state == "zero":
             return "waiting_collect"
-        if countdown_state == "active":
-            if identity_present and icon_lit:
-                return "training"
-            return "ocr_fail"
-        # countdown_state == "failed"（倒计时为空）
-        if not identity_present and not icon_lit:
-            return "empty"
+        if countdown_state == "active" and identity_present and icon_lit:
+            return "training"
         return "ocr_fail"
     return "training"
 
@@ -204,35 +206,18 @@ def _idle_marker_visible(solver) -> bool:
     匹配，不额外截图——用的是最近一次 recog.update() 的画面，与同一次读出的面板文本、
     专精图标同源。
 
-    读不到/异常一律返回 False（不采信），调用方退回原路径。
+    命中与未命中都记一条 debug 日志（定案 6）：阈值 0.45 的取舍要靠「漏检率」数据说话，
+    此前只有命中才留痕，跑一段两份都有的日志之后再谈要不要调。
+
+    读不到/异常一律返回 False（不采信）。
     """
     try:
-        return bool(solver.find("training_idle"))
+        hit = bool(solver.find("training_idle"))
     except Exception as e:
         logger.debug(f"空闲标记读取失败: {e}")
         return False
-
-
-def _idle_confirmed(solver, panel) -> bool:
-    """面板读不出归属 + 「空闲中」标记可见 → 确认房间空闲。
-
-    §16.2 的空闲签名是「倒计时空 + 无名无亮点」，但要靠倒计时读空去反推：`read_time`
-    内部最多重试 5 次、每次重新截图，空闲房 5 次都读不到，白等约 2.5 秒才得出同一个
-    结论。「空闲中」标记是游戏自己给出的直接证据（空闲 = 没在专精 且 没有待收取，
-    与房间里有谁无关），面板又读不出归属 → 训练位确定为空，不必再靠倒计时反推。
-
-    读出了 `[干员名]技能名`（与 `_classify_panel` 的 identity_present 同一判据）或任一
-    专精亮点，就不采信标记，照旧走状态矩阵：§16.2 规定这种组合一般是倒计时 OCR 出错，
-    仍要原地重试 5 次，不直接下结论。
-
-    不能用 `panel.skill_name` 单独判——`read_screen` 读空时返回哨兵 `limit + 1`（=25），
-    经 `_parse_panel_text` 会变成 `skill_name="25"`，单判会让空闲格永远走不到这里。
-    """
-    if panel.operator_name and panel.skill_name:
-        return False
-    if panel.mastery_tier:
-        return False
-    return _idle_marker_visible(solver)
+    logger.debug(f"[mastery] 「空闲中」标记{'命中' if hit else '未命中'}")
+    return hit
 
 
 def _read_train_countdown3(solver):
@@ -332,18 +317,44 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
     return RoomPanel(operator_name=operator_name, skill_name=skill_name)
 
 
-def read_main_panel(solver, img=None) -> RoomPanel:
-    """读主页面面板：干员名/技能名/专精图标档位/三态倒计时。"""
+def read_main_panel(solver, img=None) -> Optional[RoomPanel]:
+    """读主页面面板：干员名/技能名/专精图标档位/三态倒计时。
+
+    顺序（定案 3）：「空闲中」模板匹配提到最前——命中就直接判空闲，面板文字、专精
+    图标、倒计时三项都不读（正证据优先，而且省掉倒计时那次最多 5 次的重试）；没命中
+    才读那三项。
+
+    画面必须还是训练室主界面，读数才算数：返回 None = 「这张图不在训练室主界面」。
+    调用方拿到 None 一律走保守分支（按训练中处理），不得把面板区域当通用区域读。
+
+    为什么要在这里再确认一次画面：本函数只是读取链条的一环，链条要 5 次重试、每次
+    重新截图，整段可能持续数秒。画面在这期间被换掉时，非主页面的左下角不是主面板
+    （219 技能选择页那里是协助位天赋文本），会被 OCR 当成身份/倒计时读出来，凭空
+    造出「干员名不符」或「读到了空」的结论。宁可作废这一次读数。
+
+    img 由调用方传入时不做这次确认：「空闲中」模板与画面确认走的都是 `solver.find` /
+    `solver.train_scene()`，判的是 `recog.img`（当前屏），而 OCR 读的是传入的 `img`——
+    两张图不保证同帧，拿旧帧的判据去否掉新帧的读数只会把有效读数误作废、把非空闲房
+    误判成空闲。传入 img 的调用方对场景与标记自行负责（生产路径都传 `img=None`，即由
+    本函数自己截图，那时两张图才保证同源）。
+    """
     if img is None:
         solver.recog.update()
         img = solver.recog.img
+        scene = solver.train_scene()
+        if scene != Scene.TRAIN_MAIN:
+            logger.warning(
+                f"[mastery] 读面板时画面不是训练室主界面（{scene}），本次读数作废"
+            )
+            return None
+        if _idle_marker_visible(solver):
+            # 「空闲中」是游戏直接给出的正证据，优先级最高的空闲判据，命中即判空闲。
+            logger.debug("[mastery] 检测到「空闲中」标记，直接判空闲，面板三项不读")
+            panel = RoomPanel()
+            panel.idle_marker = True
+            return panel
     panel = _read_panel_text(solver, img)
     panel.mastery_tier = _count_lit_mastery_icons(solver, img)
-    if _idle_confirmed(solver, panel):
-        # 面板读不出归属 + 空闲中标记 → 房间确定空闲，跳过倒计时重试（见 _idle_confirmed）
-        logger.debug("[mastery] 面板读不出归属且检测到空闲中标记，跳过倒计时重试")
-        panel.countdown_state = "failed"
-        return panel
     state, countdown = _read_train_countdown3(solver)
     panel.countdown_state = state
     panel.countdown = countdown
@@ -514,15 +525,26 @@ def _compute_protected(solver, room) -> bool:
 
 
 def _classify_panel(solver, panel) -> str:
-    """主面板 → 状态矩阵分类（含 training_completed 模板兜底）。"""
+    """主面板 → 状态矩阵分类（含「空闲中」正证据与 training_completed 模板兜底）。
+
+    panel 为 None = 读的时候画面不在训练室主界面（见 read_main_panel）→ ocr_fail，
+    交给重试循环；重试也拿不到主界面时由调用方保守按训练中处理。
+    """
+    if panel is None:
+        return "ocr_fail"
+    if panel.idle_marker:
+        # 「空闲中」模板命中 = 游戏直接给出的空闲正证据，优先级最高（定案 3）
+        return "empty"
     state = classify_room_state(
         Scene.TRAIN_MAIN,
         panel.countdown_state,
         bool(panel.operator_name and panel.skill_name),
         panel.mastery_tier > 0,
     )
-    if state == "empty" and solver.find("training_completed"):
-        # "刚完成"的 TRAIN_MAIN（训练完成横幅）→ 🟡 待收取
+    if state == "ocr_fail" and solver.find("training_completed"):
+        # "刚完成"的 TRAIN_MAIN（训练完成横幅）→ 🟡 待收取。横幅和「空闲中」标记一样
+        # 是正证据，可以盖过「三项都没读出来」的保守结论；否则这条兜底会随
+        # classify_room_state 不再返回 empty 一起失效。
         state = "waiting_collect"
     return state
 
@@ -550,11 +572,18 @@ def _fill_slots_and_protection(solver, room, want_mood=False):
 def _retry_ocr(solver) -> RoomState:
     """§16.2：OCR/亮点计算失败 → 原地重试 5 次（重读截图，不点动画）。
 
+    每一轮都重新确认画面在训练室主界面（read_main_panel 内部判，判不到返回 None）：
+    画面在重试期间被换掉时读出来的东西不算数，直接结束重试、保守按训练中处理。
     仍不一致 → 保守训练中（不动、重排到 now+2min、记日志）。
     """
     first = None
     for i in range(5):
         panel = _safe_read_panel(solver)
+        if panel is None:
+            logger.warning(
+                "[mastery] 重读时画面已不在训练室主界面，停止重试，保守按训练中处理"
+            )
+            return RoomState("training", first or RoomPanel(), read_failed=True)
         if first is None:
             first = panel
         state = _classify_panel(solver, panel)
@@ -576,6 +605,8 @@ def read_room_state(solver, enter=True, want_mood=False):
     §16.1 读全：进驻详情浮窗（协助位/训练位）+ 左下角（干员/技能/倒计时/图标）；
     按 §16.2 状态矩阵判定；OCR 失败组合原地重试 5 次，仍不一致保守训练中。
     房间停留在 TRAIN_MAIN / TRAIN_FINISH；返回 RoomState（截图权威）。
+    读的过程中画面离开训练室主界面（`read_main_panel` 返回 None）→ 保守按训练中，
+    不读槽位、不判空房（非主页面上的面板区与槽位都是垃圾读）。
 
     want_mood=True 时浮窗读槽位顺带收集心情，返回 (RoomState, mood_data)——mood_data
     为进驻浮窗槽位扫描（get_agent_from_room 返回值，含 mood，供 agent_get_mood 格式化
@@ -588,17 +619,24 @@ def read_room_state(solver, enter=True, want_mood=False):
     if scene == Scene.TRAIN_FINISH:
         # 完成横幅页：只读左下角面板供收取，不读进驻详情/不算保护（该页 get_agent_from_room
         # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§16.1 读全以主页面为主）。
-        room = RoomState("waiting_collect", _safe_read_panel(solver))
+        room = RoomState("waiting_collect", _safe_read_panel(solver) or RoomPanel())
         return (room, []) if want_mood else room
     if scene == Scene.TRAIN_MAIN:
         panel = read_main_panel(solver)
+        if panel is None:
+            # 读的过程中画面离开了训练室主界面 → 这块画面上的读数不算数。保守按训练中
+            # 处理，不读左下角面板、不开进驻浮窗（非主页面上的面板区域与槽位都是垃圾）。
+            room = RoomState("training", RoomPanel())
+            return (room, []) if want_mood else room
         state = _classify_panel(solver, panel)
         if state == "ocr_fail":
             room = _retry_ocr(solver)
             # OCR 失败路径（含重试成功后的槽位填，未带心情）→ 心情取不到
             return (room, []) if want_mood else room
         room = RoomState(state, panel)
-        if want_mood or state in ("waiting_collect", "empty"):
+        # training 也读槽位：判定日志要记下当时的协助位，否则倒计时读数跳变时
+        # 无从对照是不是换了人（`support_slot`/`train_slot` 留空 = 没读，不是没人）。
+        if want_mood or state in ("waiting_collect", "empty", "training"):
             mood = _fill_slots_and_protection(solver, room, want_mood=want_mood)
             return (room, mood) if want_mood else room
         return room
@@ -610,7 +648,8 @@ def read_room_state(solver, enter=True, want_mood=False):
     return (room, []) if want_mood else room
 
 
-def _safe_read_panel(solver) -> RoomPanel:
+def _safe_read_panel(solver) -> Optional[RoomPanel]:
+    """read_main_panel 的异常兜底：读失败 → 空面板；画面不是主界面 → None 照传。"""
     try:
         return read_main_panel(solver)
     except Exception as e:
@@ -773,7 +812,8 @@ def _find_swap_task(solver, plan_key):
 def _upsert_skill_upgrade_task(solver, target_time, meta_data="", plan_key=None):
     """入队/改期一条 SKILL_UPGRADE 任务，队列恒 ≤1 条同形任务（#62 Q3 收敛）。
 
-    - plan_key=None：占用重检（meta_data 为描述性「占用中」标签，#153 起不再留空，
+    - plan_key=None：占用重检（meta_data 为描述性重读标签，形如
+      `艾丽妮（三技能·风刃） 专2 重读训练室状态`；#153 起不再留空，
       任务列表不再只显示类型名）；
     - plan_key=计划ID：某计划的到点收取任务 或 仓库扫描驱动的「开始训练」任务
       （meta_data 均为描述性标签，无逻辑标记；去重按 plan_key，房间状态决定开始/收集）。
@@ -859,15 +899,19 @@ def _queue_has_mastery_task(solver):
 def _log_judgment(solver, room, state, action, **extra):
     """逐轮结构化判定日志：读到什么 → 判定什么 → 动作什么（§16「日志」）。
 
-    读 = 三态倒计时 / 干员 / 技能 / 档位 / 协助位 / 训练位；判 = 状态矩阵结果；
-    动作 = 本轮的执行动作。便于定位错误来源（读到异常 → 判错 → 做错）。
+    读 = 三态倒计时 / 干员 / 技能 / 档位 / 协助位 / 训练位 / 槽位是否读过 / 空闲标记；
+    判 = 状态矩阵结果；动作 = 本轮的执行动作。便于定位错误来源（读到异常 → 判错 → 做错）。
+    槽位「空」有两种来源：真空位与没读过浮窗——带上 slots_read 才分得清。
+    「空闲中」标记命中会把房间判成空闲（定案 3 的正证据优先），记下来才能回溯误判。
     """
     c = room.panel.countdown
     countdown_str = c.strftime("%H:%M:%S") if c else room.panel.countdown_state
     read = (
         f"倒计时={countdown_str} 干员={room.panel.operator_name or '空'} "
         f"技能={room.panel.skill_name or '空'} 档位={room.panel.mastery_tier} "
-        f"协助位={room.support_slot or '空'} 训练位={room.train_slot or '空'}"
+        f"协助位={room.support_slot or '空'} 训练位={room.train_slot or '空'} "
+        f"槽位={'已读' if room.slots_read else '未读'} "
+        f"空闲标记={'命中' if room.panel.idle_marker else '未命中'}"
     )
     tail = " ".join(f"{k}={v}" for k, v in extra.items())
     logger.info(f"[mastery] 判定 读[{read}] → 判[{state}] → 动作[{action}] {tail}")
@@ -1129,21 +1173,45 @@ def _panel_skill_label(op, skill) -> str:
     return skill
 
 
-def _occupancy_recheck_label(room) -> str:
-    """#153：占用重检（plan_key=None）任务的描述性 meta_data。
+def _occupant_label(panel) -> str:
+    """房间里坐着谁（面板读数）：`艾丽妮（三技能·风刃）`；读不到干员名 → ""。
 
-    纯描述、不影响逻辑——面板干员名 + 解析后的完整技能标签（含序数）+ 专精档位 +
-    「占用中」，让任务列表能看出重检针对谁。面板不可读时退化为仅「占用中」。
+    只认真正读到的面板——空字符串表示「没读到」，不表示「房间里没人」。
     """
-    op = room.panel.operator_name
+    op = panel.operator_name
     if not op:
-        return "占用中"
-    sk = _panel_skill_label(op, room.panel.skill_name)
-    label = f"{op}（{sk}）" if sk != "技能未知" else op
+        return ""
+    sk = _panel_skill_label(op, panel.skill_name)
+    return f"{op}（{sk}）" if sk != "技能未知" else op
+
+
+def _occupancy_recheck_label(room) -> str:
+    """占用重检（plan_key=None）任务的描述性 meta_data。
+
+    纯描述、不影响逻辑——只写**真正从屏幕上读到**的房间内容，末尾统一跟
+    「重读训练室状态」：
+
+    - 读到人 → `艾丽妮（三技能·风刃） 重读训练室状态`
+    - 读不到 → `重读训练室状态`
+
+    读不到人是**必然的、预期内的**（219 技能选择页左下角是协助位天赋文本，主面板区
+    域在那里本来就不存在），不是 OCR 出错，所以不写「未知干员」之类的话。
+
+    #153 原版把计划自己的干员名/技能名造进面板再拼标签，任务列表会写成
+    `结城理（三技能·开辟明日的剑刃） 占用中`——那是计划要练的人，不是房间里的人。
+
+    统一后缀是因为队列里所有重检任务其实是**同一条**：它们都不带计划编号，而
+    `_find_plan_task` 比的是「任务类型 + 计划编号」，所以第二条进来只会把第一条改期。
+    标签里那个干员名本来就不表示「这条任务针对谁」——谁读到了、因为什么退出，都在
+    日志里（`_exit_occupied` / `_log_judgment`）。
+    """
+    label = _occupant_label(room.panel)
+    if not label:
+        return "重读训练室状态"
     tier = room.panel.mastery_tier
     if tier:
         label = f"{label} 专{tier}"
-    return f"{label} 占用中"
+    return f"{label} 重读训练室状态"
 
 
 def _wait_for_training(solver, room):
