@@ -184,7 +184,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.global_plan = {}
         self.local_operation_followup_time = None
         self.restart_after_mood_read = False
-        self.mastery_restart_check_pending = False
 
     def find_next_task(
         self,
@@ -814,10 +813,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not self.no_pending_task(1):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
-                    self._check_mastery_after_restart()
-                    if not self.no_pending_task(1):
-                        self.skip(["planned", "todo_task", "collect_notification"])
-                        return True
                     mood_result = self.agent_get_mood(skip_dorm=True)
                     if self.restart_after_mood_read:
                         self.restart_after_mood_read = False
@@ -908,64 +903,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
-    def _check_mastery_after_restart(self):
-        """清缓存后核对一次训练室；读取失败交给后续原有流程处理。"""
-        if not getattr(self, "mastery_restart_check_pending", False):
-            return
-        if not config.conf.enable_mastery:
-            self.mastery_restart_check_pending = False
-            return
-        from arknights_mower.solvers.mastery_reader import (
-            _can_adopt_expiry,
-            _can_recover_plan,
-            _match_plan,
-            _maybe_recover_swap,
-            _recover_to_training,
-            read_room_state,
-        )
-        from arknights_mower.utils.mastery_db import get_reconcile_plans
-
-        plans = get_reconcile_plans()
-        if not plans:
-            self.mastery_restart_check_pending = False
-            return
-        logger.info("缓存清零后主动核对训练室，恢复专精中途换人任务")
-        self.mastery_restart_check_pending = False
-        try:
-            room = read_room_state(self)
-            if (
-                room is None
-                or room.read_failed
-                or (
-                    room.state != "empty"
-                    and (not room.panel.operator_name or not room.panel.skill_name)
-                )
-            ):
-                logger.warning("重启后训练室状态未读清，跳过本次换人任务恢复")
-                return
-            # 启动检查只恢复专一/专二的协助位任务；收取、开训和合成仍走原有入口。
-            plan = _match_plan(plans, room)
-            if (
-                room.state == "training"
-                and room.panel.mastery_tier in (1, 2)
-                and room.panel.countdown_state == "active"
-                and room.panel.countdown is not None
-                and plan is not None
-                and _can_adopt_expiry(plan, room)
-            ):
-                if plan["status"] != "training":
-                    # 归属必须由技能解析器唯一确认，不能仅凭姓名或模糊技能名恢复。
-                    if not _can_recover_plan(plan, room):
-                        return
-                    _recover_to_training(self, plan, room)
-                _maybe_recover_swap(self, plan, room)
-        except MowerExit:
-            raise
-        except Exception as e:
-            logger.warning(f"重启后训练室核对失败，跳过本次换人任务恢复: {e}")
-        finally:
-            self.back_to_infrastructure()
-
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
         need_read = set(
@@ -974,9 +911,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if v.need_to_refresh() and v.room in base_room_list
         )
 
+        # 专精计划可能没有训练室固定排班，仍要通过原有心情扫描核对现场。
+        if config.conf.enable_mastery:
+            from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+            if get_reconcile_plans():
+                need_read.add("train")
+
         for room in need_read:
+            if room == "train":
+                last_read = getattr(self, "last_train_mood_read", None)
+                if last_read and datetime.now() - last_read < timedelta(hours=2.5):
+                    continue
             error_count = 0
-            # 当前房内干员都近期读过时跳过，避免反复进房读取心情。
+            # 近期读过的房内干员无需重复扫描。训练室为空或识别失败时，上面的
+            # 房间级时间同样限频，避免没有固定干员的训练室每轮被强制读取。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
@@ -996,21 +945,59 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.debug(e.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
+            if room == "train":
+                self.last_train_mood_read = datetime.now()
             while True:
                 try:
                     self.enter_room(room)
                     if room == "train":
-                        # 心情扫描只读取两格进驻信息；专精计时与恢复由专精入口负责。
-                        _mood_data = self.get_agent_from_room(room, None)
-                        mood_info = [
-                            f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
-                            for item in _mood_data
-                            if item.get("agent")
-                        ]
-                        if mood_info:
-                            logger.info(
-                                f"房间 {self.translate_room(room)}  {mood_info}"
+                        if config.conf.enable_mastery:
+                            # #94 统一读取：一次 read_room_state(want_mood=True) 开一次
+                            # 浮窗读全（协助位+训练位+心情）+ 左下角面板，消除原来
+                            # get_agent_from_room（读心情）后再 read_room_state（_read_slots
+                            # 再开一次浮窗读槽位）的重复浮窗开关（铁律 3 一次进房做全部）。
+                            from arknights_mower.solvers.mastery_reader import (
+                                read_room_state,
+                                reconcile_short,
                             )
+
+                            try:
+                                room_state, mood_data = read_room_state(
+                                    self, enter=False, want_mood=True
+                                )
+                                mood_info = [
+                                    f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
+                                    for item in mood_data
+                                    if item.get("agent")
+                                ]
+                                if mood_info:
+                                    logger.info(
+                                        f"房间 {self.translate_room(room)}  {mood_info}"
+                                    )
+                                # 重启后训练室可能停在待收取（专精练完但没人收）：进训练室读
+                                # 心情时顺便 reconcile——发现待收取就收（defer_collect=False
+                                # 此刻就是要收），修正 DB（截图为准），打破「不收→等级不刷新
+                                # →材料不够→不调度→更不收」死锁。enable_mastery 关闭时不跑
+                                # 读取器（铁律 10），保留通用心情读取。
+                                if room_state is not None:
+                                    reconcile_short(
+                                        self, room_state, defer_collect=False
+                                    )
+                            except Exception as e:
+                                logger.warning(f"训练室顺路更新状态失败: {e}")
+                        else:
+                            # enable_mastery 关闭：不跑 mastery 读取器（铁律 10），保留
+                            # 通用心情读取。
+                            _mood_data = self.get_agent_from_room(room, None)
+                            mood_info = [
+                                f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
+                                for item in _mood_data
+                                if item.get("agent")
+                            ]
+                            if mood_info:
+                                logger.info(
+                                    f"房间 {self.translate_room(room)}  {mood_info}"
+                                )
                     else:
                         num = len(self.op_data.plan[room])
                         _mood_data = self.get_agent_from_room(

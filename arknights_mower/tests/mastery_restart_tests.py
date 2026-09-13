@@ -95,233 +95,6 @@ class MasteryRestartTests(unittest.TestCase):
             self.plan()["expires_at"], task.time.strftime("%Y-%m-%d %H:%M:%S")
         )
 
-    def test_cold_start_marks_check_but_loaded_state_does_not(self):
-        import arknights_mower.__main__ as entry
-
-        for saved, expected in ((None, True), ({"tasks": []}, False)):
-            with self.subTest(saved=saved):
-                scheduler = MagicMock()
-                scheduler.initialize_operators.return_value = "stop before device work"
-                with (
-                    patch.object(entry, "initialize", return_value=scheduler),
-                    patch.object(entry.config.stop_mower, "is_set", return_value=False),
-                    patch.object(entry.config.conf, "close_simulator_when_idle", False),
-                    patch.object(entry, "base_scheduler", None),
-                ):
-                    entry.simulate(saved)
-                self.assertEqual(scheduler.mastery_restart_check_pending, expected)
-
-    def run_restart_check(self):
-        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-
-        BaseSchedulerSolver._check_mastery_after_restart(self.solver)
-
-    def prepare_restart_check(self):
-        self.solver.mastery_restart_check_pending = True
-        self.solver.back_to_infrastructure = MagicMock()
-        mastery_db.update_plan_status(self.plan_id, "training")
-        return self.enterContext(
-            patch.object(reader, "read_room_state", return_value=self.room)
-        )
-
-    def test_restart_restores_only_swap_once_without_training_roster(self):
-        read = self.prepare_restart_check()
-        route = {
-            "operator": "协助干员",
-            "swap_target": "艾丽妮",
-            "efficiency": 0.3,
-            "job_match": True,
-        }
-        with (
-            patch(
-                "arknights_mower.solvers.mastery._get_plan_route", return_value=route
-            ),
-            patch.object(
-                reader,
-                "_read_slots_checked",
-                return_value=("协助干员", "测试干员", [], True),
-            ),
-        ):
-            self.run_restart_check()
-            self.run_restart_check()
-        read.assert_called_once()
-        self.assert_one_task(TaskTypes.SWAP_SUPPORT)
-
-    def test_restart_does_not_collect_start_or_schedule_other_tasks(self):
-        read = self.prepare_restart_check()
-        before = self.plan()
-        for state, tier, frozen in (
-            ("training", 3, 0),
-            ("waiting_collect", 2, 0),
-            ("empty", 0, 0),
-            ("training", 2, 1),
-        ):
-            with self.subTest(state=state, tier=tier, frozen=frozen):
-                mastery_db.update_plan_status(
-                    self.plan_id, "training", swap_frozen=frozen
-                )
-                self.solver.mastery_restart_check_pending = True
-                self.room.state = state
-                self.room.panel.mastery_tier = tier
-                with patch.object(reader, "collect_flow") as collect:
-                    self.run_restart_check()
-                collect.assert_not_called()
-                self.assertEqual(self.solver.tasks, [])
-                self.assertEqual(self.plan()["status"], before["status"])
-        self.assertEqual(read.call_count, 4)
-
-    def test_restart_disabled_or_no_unfinished_plans_does_not_visit(self):
-        read = self.prepare_restart_check()
-        with patch.object(reader.config.conf, "enable_mastery", False):
-            self.run_restart_check()
-        self.solver.mastery_restart_check_pending = True
-        mastery_db.update_plan_status(self.plan_id, "completed")
-        self.run_restart_check()
-        read.assert_not_called()
-
-    def test_restart_idle_and_failed_plans_recover_observed_training_swap(self):
-        read = self.prepare_restart_check()
-        route = {
-            "operator": "协助干员",
-            "swap_target": "艾丽妮",
-            "efficiency": 0.3,
-            "job_match": True,
-        }
-        for status in ("idle", "failed"):
-            with self.subTest(status=status):
-                mastery_db.update_plan_status(self.plan_id, status, swap_frozen=1)
-                self.solver.mastery_restart_check_pending = True
-                self.solver.tasks.clear()
-                with (
-                    patch(
-                        "arknights_mower.solvers.mastery._get_plan_route",
-                        return_value=route,
-                    ),
-                    patch.object(
-                        reader,
-                        "_read_slots_checked",
-                        return_value=("协助干员", "测试干员", [], True),
-                    ),
-                ):
-                    self.run_restart_check()
-                self.assertEqual(self.plan()["status"], "training")
-                self.assert_one_task(TaskTypes.SWAP_SUPPORT)
-        self.assertEqual(read.call_count, 2)
-
-    def test_restart_idle_plan_visits_empty_room_without_starting(self):
-        read = self.prepare_restart_check()
-        mastery_db.update_plan_status(self.plan_id, "idle")
-        self.room.state = "empty"
-        self.run_restart_check()
-        read.assert_called_once()
-        self.assertEqual(self.plan()["status"], "idle")
-        self.assertEqual(self.solver.tasks, [])
-
-    def test_mood_scan_never_reads_mastery_countdown_for_any_roster_size(self):
-        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-
-        for count in (0, 1, 2):
-            with self.subTest(count=count):
-                solver = MagicMock()
-                names = ["协助干员", "测试干员"][:count]
-                solver.op_data.plan = {
-                    "train": [SimpleNamespace(agent=name) for name in names]
-                }
-                operators = {}
-                for index, name in enumerate(names):
-                    op = MagicMock()
-                    op.room = "train"
-                    op.current_room = "train"
-                    op.current_index = index
-                    op.time_stamp = None
-                    op.need_to_refresh.return_value = True
-                    op.not_valid.return_value = False
-                    operators[name] = op
-                solver.op_data.operators = operators
-                solver.op_data.get_current_room.return_value = ["协助干员", "测试干员"]
-                solver.op_data.has_dorm_groups.return_value = False
-                solver.get_agent_from_room.return_value = [
-                    {"agent": "协助干员", "mood": 20},
-                    {"agent": "测试干员", "mood": 24},
-                ]
-                with (
-                    patch.object(reader, "read_room_state") as read,
-                    patch.object(reader, "reconcile_short") as reconcile,
-                ):
-                    BaseSchedulerSolver.agent_get_mood(solver, skip_dorm=True)
-                read.assert_not_called()
-                reconcile.assert_not_called()
-                self.assertEqual(solver.get_agent_from_room.call_count, int(count > 0))
-
-    def test_restart_recovery_ignores_training_roster_size(self):
-        self.prepare_restart_check()
-        for roster in (
-            {},
-            {"train": []},
-            {"train": ["协助干员"]},
-            {"train": ["协助干员", "测试干员"]},
-        ):
-            with self.subTest(roster=roster):
-                self.solver.op_data = SimpleNamespace(plan=roster)
-                self.solver.mastery_restart_check_pending = True
-                mastery_db.update_plan_status(self.plan_id, "idle")
-                with patch.object(reader, "_maybe_recover_swap") as recover:
-                    self.run_restart_check()
-                recover.assert_called_once()
-                self.assertEqual(self.plan()["status"], "training")
-
-    def test_restart_does_not_recover_unmatched_or_ambiguous_skill(self):
-        self.prepare_restart_check()
-        mastery_db.update_plan_status(self.plan_id, "idle")
-        before = self.plan()
-        for operator, resolved in (
-            ("其他干员", 1),
-            ("测试干员", None),
-            ("测试干员", 2),
-        ):
-            with self.subTest(operator=operator, resolved=resolved):
-                self.solver.mastery_restart_check_pending = True
-                self.room.panel.operator_name = operator
-                with patch.object(reader, "resolve_panel_skill", return_value=resolved):
-                    self.run_restart_check()
-                self.assertEqual(self.plan(), before)
-                self.assertEqual(self.solver.tasks, [])
-
-    def test_restart_unreadable_skips_without_retry_or_changing_plan(self):
-        read = self.prepare_restart_check()
-        before = self.plan()
-        self.room.read_failed = True
-        self.run_restart_check()
-        self.run_restart_check()
-        read.assert_called_once()
-        self.assertFalse(self.solver.mastery_restart_check_pending)
-        self.assertEqual(self.plan(), before)
-        self.assertEqual(self.solver.tasks, [])
-        self.solver.back_to_infrastructure.assert_called_once()
-
-    def test_restart_new_due_task_preempts_mood_and_run_order_reads(self):
-        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-
-        solver = MagicMock()
-        solver.task = None
-        solver.planned = False
-        solver.no_pending_task.side_effect = [True, False]
-        self.assertTrue(BaseSchedulerSolver.infra_main(solver))
-        solver._check_mastery_after_restart.assert_called_once()
-        solver.agent_get_mood.assert_not_called()
-        solver.run_order_solver.assert_not_called()
-
-    def test_restart_reader_exception_does_not_retry(self):
-        read = self.prepare_restart_check()
-        read.side_effect = ValueError("OCR failed after existing retries")
-        before = self.plan()
-        self.run_restart_check()
-        self.run_restart_check()
-        read.assert_called_once()
-        self.assertEqual(self.plan(), before)
-        self.assertEqual(self.solver.tasks, [])
-        self.solver.back_to_infrastructure.assert_called_once()
-
     def test_training_recreates_support_swap_once(self):
         mastery_db.update_plan_status(self.plan_id, "training")
         route = {
@@ -344,6 +117,123 @@ class MasteryRestartTests(unittest.TestCase):
                 reader.reconcile_short(self.solver, self.room)
         self.assert_one_task(TaskTypes.SWAP_SUPPORT)
         self.assertEqual(self.plan()["status"], "training")
+
+    def mood_solver(self, count=None):
+        solver = MagicMock()
+        solver.task = None
+        solver.tasks = []
+        solver.last_train_mood_read = None
+        names = ["协助干员", "测试干员"][: count or 0]
+        solver.op_data.plan = (
+            {}
+            if count is None
+            else {"train": [SimpleNamespace(agent=name) for name in names]}
+        )
+        solver.op_data.operators = {}
+        solver.op_data.get_current_room.return_value = ["协助干员", "测试干员"]
+        solver.op_data.has_dorm_groups.return_value = False
+        return solver
+
+    def read_mood(self, solver):
+        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+        return BaseSchedulerSolver.agent_get_mood(solver, skip_dorm=True)
+
+    def test_mood_scan_recovers_collection_for_all_roster_sizes_and_tiers(self):
+        for count in (None, 0, 1, 2):
+            for tier in (1, 2, 3):
+                with self.subTest(count=count, tier=tier):
+                    mastery_db.update_plan_status(
+                        self.plan_id, "training", swap_frozen=1
+                    )
+                    self.room.panel.mastery_tier = tier
+                    solver = self.mood_solver(count)
+                    with patch.object(
+                        reader, "read_room_state", return_value=(self.room, [])
+                    ) as read:
+                        self.read_mood(solver)
+                        self.read_mood(solver)
+                    read.assert_called_once_with(solver, enter=False, want_mood=True)
+                    self.assertEqual(len(solver.tasks), 1)
+                    self.assertEqual(solver.tasks[0].type, TaskTypes.SKILL_UPGRADE)
+                    self.assertEqual(solver.tasks[0].time, self.room.panel.countdown)
+                    self.assertEqual(solver.tasks[0].plan_key, str(self.plan_id))
+
+    def test_mood_scan_recovers_swap_from_idle_and_failed_without_roster(self):
+        route = {
+            "operator": "协助干员",
+            "swap_target": "艾丽妮",
+            "efficiency": 0.3,
+            "job_match": True,
+        }
+        for status in ("idle", "failed"):
+            with self.subTest(status=status):
+                mastery_db.update_plan_status(self.plan_id, status)
+                solver = self.mood_solver()
+                with (
+                    patch.object(
+                        reader, "read_room_state", return_value=(self.room, [])
+                    ),
+                    patch(
+                        "arknights_mower.solvers.mastery._get_plan_route",
+                        return_value=route,
+                    ),
+                    patch.object(
+                        reader,
+                        "_read_slots_checked",
+                        return_value=("协助干员", "测试干员", [], True),
+                    ),
+                ):
+                    self.read_mood(solver)
+                self.assertEqual(self.plan()["status"], "training")
+                self.assertEqual(len(solver.tasks), 1)
+                self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
+
+    def test_mood_scan_collects_finished_training_without_roster(self):
+        mastery_db.update_plan_status(self.plan_id, "waiting_collect")
+        self.room.state = "waiting_collect"
+        self.room.panel.mastery_tier = 3
+        self.room.panel.countdown_state = "zero"
+        self.room.panel.countdown = None
+        solver = self.mood_solver()
+        with (
+            patch.object(reader, "read_room_state", return_value=(self.room, [])),
+            patch.object(reader, "collect_flow") as collect,
+            patch.object(reader, "_tap_collect_confirm"),
+        ):
+            self.read_mood(solver)
+        collect.assert_called_once()
+        self.assertEqual(self.plan()["status"], "completed")
+        self.assertEqual(solver.tasks, [])
+
+    def test_empty_or_failed_mood_read_is_throttled_and_later_rechecked(self):
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                mastery_db.update_plan_status(self.plan_id, "idle")
+                self.room.state = "empty"
+                solver = self.mood_solver()
+                with patch.object(
+                    reader,
+                    "read_room_state",
+                    return_value=(self.room, []),
+                    side_effect=ValueError("OCR") if failed else None,
+                ) as read:
+                    self.read_mood(solver)
+                    self.read_mood(solver)
+                    self.assertEqual(read.call_count, 1)
+                    solver.last_train_mood_read -= timedelta(hours=3)
+                    self.read_mood(solver)
+                    self.assertEqual(read.call_count, 2)
+                self.assertEqual(solver.tasks, [])
+                self.assertEqual(self.plan()["status"], "idle")
+
+    def test_no_plan_or_disabled_does_not_force_training_room_scan(self):
+        with patch.object(reader, "read_room_state") as read:
+            with patch.object(reader.config.conf, "enable_mastery", False):
+                self.read_mood(self.mood_solver())
+            mastery_db.update_plan_status(self.plan_id, "completed")
+            self.read_mood(self.mood_solver())
+        read.assert_not_called()
 
     def test_finished_training_is_collected_with_empty_queue(self):
         mastery_db.update_plan_status(self.plan_id, "waiting_collect")
