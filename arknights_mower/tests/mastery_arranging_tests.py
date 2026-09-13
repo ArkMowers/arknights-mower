@@ -246,6 +246,12 @@ class TestArrangingConvergence(unittest.TestCase):
         args = upd.call_args[0]
         self.assertEqual(args[0], 1)
         self.assertEqual(args[1], "failed")
+        # 「占用」口径统一后带上读到的干员名：这句话的意思是「训练位是谁读到了、
+        # 但它正在用」，不是「有人在训练室训练」（那时倒计时读不出来）。
+        self.assertEqual(
+            upd.call_args[1]["failed_reason"],
+            "训练位当前干员为（错误干员），换人失败",
+        )
         self.assertTrue(solver.back.called)
 
     # --- 空闲训练室 → 正常开始 ---
@@ -420,8 +426,10 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertFalse(solver.ctap.called, "档位不可读时不应点技能行")
 
     def test_exit_occupied_recheck_task_labeled(self):
-        """#153：_exit_occupied 的 plan_key=None 重检任务带描述性 meta_data
-        （计划干员+技能+「占用中」），任务列表不再只显示类型名。"""
+        """#153 改版：_exit_occupied 的 plan_key=None 重检任务带描述性 meta_data。
+
+        标签只写**真正读到**的房间内容。没传面板（219 技能选择页读不到人）时只有
+        「重读训练室状态」——绝不拿计划自己的干员名/技能名充数。"""
         solver = self.make_solver()
         plan = make_plan(char_name="测试干员", skill_name="测试技能")
         with patch("arknights_mower.utils.mastery_db.update_plan_status"):
@@ -429,8 +437,41 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertEqual(len(solver.tasks), 1)
         task = solver.tasks[0]
         self.assertIsNone(task.plan_key)
-        self.assertEqual(task.meta_data, "测试干员（测试技能） 重读训练室状态")
+        self.assertEqual(task.meta_data, "重读训练室状态")
+        self.assertNotIn("测试干员", task.meta_data)
         self.assertTrue(solver.back.called)
+
+    def test_exit_occupied_recheck_label_uses_read_occupant(self):
+        """传了真读到的面板 → 标签写房间里的干员，不是计划要练的干员。"""
+        solver = self.make_solver()
+        plan = make_plan(char_name="计划干员", skill_name="计划技能")
+        panel = mastery_reader.RoomPanel(
+            operator_name="支援干员", skill_name="测试技能"
+        )
+        with patch("arknights_mower.utils.mastery_db.update_plan_status"):
+            mastery._exit_occupied(
+                solver, plan, None, trigger="训练室待收取", panel=panel
+            )
+        task = solver.tasks[0]
+        self.assertEqual(task.meta_data, "支援干员（测试技能） 重读训练室状态")
+        self.assertNotIn("计划干员", task.meta_data)
+
+    def test_exit_occupied_logs_reason_and_occupant(self):
+        """退出原因不进标签、进日志：原因 + 房间里读到的干员。"""
+        solver = self.make_solver()
+        plan = make_plan()
+        with (
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch.object(mastery.logger, "info") as info,
+        ):
+            mastery._exit_occupied(solver, plan, None, trigger="技能选择页归属未确认")
+        self.assertTrue(
+            any(
+                "重读训练室状态 id=1 原因=技能选择页归属未确认 房间内=未读到"
+                in c.args[0]
+                for c in info.call_args_list
+            )
+        )
 
     def test_read_tier_zero_proceeds_to_start(self):
         """经训练位确认进入真 219，档位读到 0（明确低于 target）→ 正常开始流程
@@ -920,7 +961,7 @@ class TestStartTrainingMail(unittest.TestCase):
         )
 
     def test_mail_falls_back_to_initial_countdown_when_reread_unreadable(self):
-        # 重读失败（不在训练室主页面）→ 回退安排前倒计时，邮件仍发
+        # 重读 5 次都拿不到训练室主页面 → 回退安排前倒计时，邮件仍发，并如实说明
         solver = self._lit_solver(lit=2)
         solver.train_scene.side_effect = [Scene.TRAIN_MAIN, Scene.INFRA_MAIN]
         plan = make_plan()
@@ -937,7 +978,32 @@ class TestStartTrainingMail(unittest.TestCase):
                 solver, plan, START + timedelta(minutes=10)
             )
         self.assertEqual(result, "started")
-        self.assertIn("预计 14:00 完成", send.call_args.args[0])  # 回退初始倒计时
+        msg = send.call_args.args[0]
+        self.assertIn("预计 14:00 完成", msg)  # 回退初始倒计时
+        self.assertIn("换协助位后没能重新读到剩余时间", msg)
+        solver.read_time.assert_called_once()  # 重读全程没读到主页面，没再读倒计时
+
+    def test_mail_uses_third_reread_attempt(self):
+        # 换协助位后重读：前两次失败、第三次读到 1.5h → 用第三次的值，邮件无补充句
+        solver = self._lit_solver(lit=2)
+        solver.read_time.side_effect = [7200, None, None, 5400]
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(mastery, "_schedule_collect"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        msg = send.call_args.args[0]
+        self.assertIn("预计 13:30 完成", msg)
+        self.assertNotIn("没能重新读到剩余时间", msg)
 
     def test_mail_tier_unknown_when_icon_unreadable(self):
         # 档位（左下角专精图标）读不到 → 邮件显示「专精等级未知」，不回退 target_level
@@ -982,6 +1048,182 @@ class TestStartTrainingMail(unittest.TestCase):
         solver = self._solver()
         solver.train_scene.return_value = Scene.INFRA_MAIN
         self.assertIsNone(mastery._re_read_train_countdown(solver))
+
+
+class TestTrainingTailGuards(unittest.TestCase):
+    """训练已经在跑之后的收尾三件事：就地处理不往外报，失败写进开训邮件。
+
+    第 4 步（协助者出勤记录）/ 第 5 步（排中途换人）/ 第 8 步（排到点收取）失败，
+    以及第 2 步取路线失败：训练照旧在跑，计划绝不能被标成失败。
+    """
+
+    def setUp(self):
+        FixedDateTime.now_value = START
+
+    def _solver(self, lit=2):
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.read_time.return_value = 7200
+        solver.read_screen.return_value = "[测试干员]测试技能"
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        solver.tasks = []
+        solver.task = None
+        solver.recog.img = _mastery_canvas(lit)
+        solver.recog.update = MagicMock()
+        return solver
+
+    @staticmethod
+    def _statuses(upd):
+        return [c.args[1] for c in upd.call_args_list if len(c.args) > 1]
+
+    def test_swap_schedule_failure_reported_and_collect_still_scheduled(self):
+        # 第 5 步排换人任务失败 → 计划仍是 training、开训邮件末尾写明、
+        # 「排了换人就不排收取」的连带也不成立：收取任务照常排上
+        solver = self._solver()
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(
+                mastery,
+                "_schedule_swap_if_needed",
+                side_effect=RuntimeError("任务队列已满"),
+            ),
+            patch.object(mastery, "_schedule_collect") as collect,
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        self.assertNotIn("failed", self._statuses(upd))
+        msg = send.call_args_list[0].args[0]
+        self.assertIn("没能安排中途换人（任务队列已满）", msg)
+        self.assertIn("下一级可能不会减半", msg)
+        collect.assert_called_once()
+
+    def test_refresh_end_failure_reported(self):
+        # 第 4 步协助者出勤记录没保存 → 只影响下一级的减半估算，邮件里说明
+        solver = self._solver()
+        plan = make_plan(support_plan={"stages": []})
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(mastery, "_schedule_collect"),
+            patch(
+                "arknights_mower.solvers.mastery_support_state.refresh_end",
+                return_value=False,
+            ) as refresh,
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        refresh.assert_called_once()
+        self.assertNotIn("failed", self._statuses(upd))
+        self.assertIn("协助者出勤记录没能保存", send.call_args_list[0].args[0])
+
+    def test_collect_schedule_failure_sends_standalone_warning(self):
+        # 第 8 步排收取任务失败 → 单独一封 WARNING（按计划 id 去重），写明是哪一步
+        solver = self._solver()
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch(
+                "arknights_mower.utils.mastery_db.should_notify", return_value=True
+            ) as dedup,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(
+                mastery, "_schedule_collect", side_effect=RuntimeError("队列写失败")
+            ),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        self.assertNotIn("failed", self._statuses(upd))
+        dedup.assert_called_once_with("collect_schedule", str(plan["id"]))
+        self.assertEqual(
+            [c.kwargs.get("level") for c in send.call_args_list], ["INFO", "WARNING"]
+        )
+        warn = send.call_args_list[1].args[0]
+        self.assertIn("到点收取任务没能排上（队列写失败）", warn)
+        self.assertIn("稍后进训练室时会顺路收取", warn)
+
+    def test_arrange_route_failure_reported(self):
+        # 第 2 步取协助路线失败 → 这一级仍按原协助位练完，邮件末尾说明
+        solver = self._solver()
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(
+                mastery, "_get_plan_route", side_effect=RuntimeError("路线数据损坏")
+            ),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(mastery, "_schedule_collect"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        self.assertNotIn("failed", self._statuses(upd))
+        msg = send.call_args_list[0].args[0]
+        self.assertIn("协助位没能安排（路线数据损坏）", msg)
+        self.assertIn("这一级仍按原协助位练完", msg)
+
+    def test_all_three_failures_keep_plan_training(self):
+        # 三种失败各造一次叠在一起：邮件一句话里全部写明，状态仍是 training
+        solver = self._solver()
+        plan = make_plan(support_plan={"stages": []})
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch("arknights_mower.utils.mastery_db.should_notify", return_value=True),
+            patch.object(config_mod.conf, "assistant_follows_schedule", False),
+            patch.object(
+                mastery, "_get_plan_route", side_effect=RuntimeError("路线数据损坏")
+            ),
+            patch.object(
+                mastery,
+                "_schedule_swap_if_needed",
+                side_effect=RuntimeError("队列已满"),
+            ),
+            patch.object(
+                mastery, "_schedule_collect", side_effect=RuntimeError("队列写失败")
+            ),
+            patch(
+                "arknights_mower.solvers.mastery_support_state.refresh_end",
+                return_value=False,
+            ),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        self.assertEqual(self._statuses(upd).count("training"), 1)
+        self.assertNotIn("failed", self._statuses(upd))
+        msg = send.call_args_list[0].args[0]
+        self.assertIn("协助位没能安排", msg)
+        self.assertIn("没能安排中途换人", msg)
+        self.assertIn("协助者出勤记录没能保存", msg)
+        self.assertEqual(send.call_args_list[1].kwargs.get("level"), "WARNING")
 
 
 class TestSwapCollectGating(unittest.TestCase):
@@ -2724,6 +2966,161 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         ):
             mastery.run_mastery_task(solver)
         ra.assert_not_called()
+
+
+class TestArrangeFailureExit(unittest.TestCase):
+    """安排中途抛异常：计划还停在 arranging → 置 failed + 一次通知 + 照旧上抛；
+    已经是 training（收尾阶段出错）→ 状态与通知都不动，只把异常上抛。
+
+    定案 ④：这样「失败」才有确定的意思——看到失败，就是这次训练没开起来。
+    """
+
+    @staticmethod
+    def _solver():
+        solver = MagicMock()
+        solver.task = None
+        return solver
+
+    @staticmethod
+    def _room():
+        return mastery_reader.RoomState("empty", train_slot="测试干员")
+
+    def _dispatch(self, solver, plan, exc):
+        with (
+            patch.object(config_mod.conf, "enable_mastery", True),
+            patch.object(
+                mastery_reader,
+                "reconcile_and_act",
+                return_value=(plan, True, self._room()),
+            ),
+            patch.object(mastery, "_start_new_training", side_effect=exc),
+        ):
+            mastery.run_mastery_task(solver)
+
+    def test_start_exception_marks_plan_failed_and_notifies(self):
+        solver = self._solver()
+        plan = make_plan(status="arranging")
+        with (
+            patch("arknights_mower.utils.mastery_db.get_plan_by_id", return_value=plan),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch("arknights_mower.utils.mastery_db.should_notify", return_value=True),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._dispatch(solver, plan, RuntimeError("未成功进入房间"))
+        upd.assert_called_once_with(
+            plan["id"], "failed", failed_reason="安排训练时出错：未成功进入房间"
+        )
+        send.assert_called_once_with(
+            "测试干员 测试技能 安排训练时出错：未成功进入房间", level="ERROR"
+        )
+
+    def test_step_level_lands_in_notification_label(self):
+        from arknights_mower.utils.scheduler_task import SchedulerTask
+
+        solver = self._solver()
+        plan = make_plan(status="arranging")
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_type=TaskTypes.SKILL_UPGRADE,
+            meta_data="测试计划 开始训练",
+        )
+        task.plan_key = str(plan["id"])
+        task.step_level = 2
+        solver.task = task
+        with (
+            patch("arknights_mower.utils.mastery_db.get_plan_by_id", return_value=plan),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch("arknights_mower.utils.mastery_db.should_notify", return_value=True),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._dispatch(solver, plan, RuntimeError("未成功进入房间"))
+        send.assert_called_once_with(
+            "测试干员 测试技能 专2 安排训练时出错：未成功进入房间", level="ERROR"
+        )
+
+    def test_same_plan_failing_twice_notifies_once(self):
+        solver = self._solver()
+        plan = make_plan(status="arranging")
+        seen = set()
+
+        def fake_should_notify(notify_type, dedup_key):
+            key = (notify_type, dedup_key)
+            first = key not in seen
+            seen.add(key)
+            return first
+
+        with (
+            patch("arknights_mower.utils.mastery_db.get_plan_by_id", return_value=plan),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch(
+                "arknights_mower.utils.mastery_db.should_notify",
+                side_effect=fake_should_notify,
+            ),
+        ):
+            for _ in range(2):
+                with self.assertRaises(RuntimeError):
+                    self._dispatch(solver, plan, RuntimeError("未成功进入房间"))
+        self.assertEqual(seen, {("arrange_error", str(plan["id"]))})
+        send.assert_called_once()
+        self.assertEqual(upd.call_count, 2, "两次都要把状态写对，只是不重复通知")
+
+    def test_already_training_leaves_status_and_skips_mail(self):
+        """定案 ④：出错时计划已经是 training（收尾阶段出错）→ 训练正在跑，
+        标 failed 只是 mower 自己记错——不标、不发，异常照旧上抛。"""
+        solver = self._solver()
+        plan = make_plan(status="arranging")
+        latest = make_plan(status="training")
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_plan_by_id", return_value=latest
+            ),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch("arknights_mower.utils.mastery_db.should_notify") as dedup,
+        ):
+            with self.assertRaises(RuntimeError):
+                self._dispatch(solver, plan, RuntimeError("收尾阶段出错"))
+        upd.assert_not_called()
+        send.assert_not_called()
+        dedup.assert_not_called()
+
+    def test_unreadable_status_still_marks_failed(self):
+        """边界：读状态读不出来（DB 异常 / 计划已删）→ 按「还停在 arranging」处理，
+        照旧标失败——「不得留在 arranging」是硬要求。"""
+        solver = self._solver()
+        plan = make_plan(status="arranging")
+        with (
+            patch("arknights_mower.utils.mastery_db.get_plan_by_id", return_value=None),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch("arknights_mower.utils.mastery_db.should_notify", return_value=True),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._dispatch(solver, plan, RuntimeError("未成功进入房间"))
+        self.assertEqual(upd.call_count, 1)
+        self.assertEqual(upd.call_args.args[1], "failed")
+        send.assert_called_once()
+
+    def test_mower_exit_leaves_plan_untouched(self):
+        from arknights_mower.utils.csleep import MowerExit
+
+        solver = self._solver()
+        plan = make_plan(status="arranging")
+        with (
+            patch("arknights_mower.utils.mastery_db.get_plan_by_id") as g,
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch("arknights_mower.utils.mastery_db.should_notify") as dedup,
+        ):
+            with self.assertRaises(MowerExit):
+                self._dispatch(solver, plan, MowerExit())
+        g.assert_not_called()
+        upd.assert_not_called()
+        send.assert_not_called()
+        dedup.assert_not_called()
 
 
 class TestTrainingSlotsFloatingWindow(unittest.TestCase):

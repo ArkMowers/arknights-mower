@@ -440,13 +440,24 @@ def run_mastery_task(solver):
         # 需要「这次要练的专几」，不依赖现场图标（图标可能是占用者的）。
         step_level = getattr(task, "step_level", None) if task is not None else None
         # #93：reconcile 已进房读完全部状态（room），开始流程直接复用，不再重复进房。
-        _start_new_training(
-            solver,
-            plan,
-            arrange_support=arrange_support,
-            room=room,
-            step_level=step_level,
-        )
+        # 中途抛异常时状态还停在 arranging（铁律 9 要求置 failed）——统一在出口补写，
+        # 处理完照旧上抛，排班主循环的通用兜底不受影响。
+        from arknights_mower.utils.csleep import MowerExit
+
+        try:
+            _start_new_training(
+                solver,
+                plan,
+                arrange_support=arrange_support,
+                room=room,
+                step_level=step_level,
+            )
+        except MowerExit:
+            # 用户点了停止：不是安排失败，状态与异常都原样放行
+            raise
+        except Exception as exc:
+            _fail_arranging(solver, plan, exc, step_level)
+            raise
 
 
 def _training_slots(solver):
@@ -532,6 +543,89 @@ def _exit_arranging_timeout(solver, plan, stats, stuck_scene, step_level=None):
     solver.back()
 
 
+def _fail_arranging(solver, plan, exc, step_level=None):
+    """ARRANGING 中途抛异常的统一出口（铁律 9：不得留在 arranging）。
+
+    异常本来就在上抛路上——排班主循环的通用兜底负责记 traceback、跳任务、插纠错，
+    本出口只补「把状态写对」这一件事：置 failed + 一次通知（按计划 id 去重）。
+    不做类型映射，failed_reason 原样带上异常文本。
+
+    标失败前先看一眼计划现在是什么状态：只有还停在 arranging 才说明这次真的没开成。
+    已经是 training（收尾阶段出错）时训练正在跑，标 failed 只是 mower 自己记错，
+    所以不标、不发，异常照旧上抛。这样「失败」就有了确定的意思——看到失败，就是
+    这次训练没开起来。往后开始训练这段再加步骤也不会把正在跑的训练记错。
+
+    边界：读状态读不出来（DB 异常 / 计划已删）时按「还停在 arranging」处理，照旧
+    标失败——那种情况下计划很可能确实还停在 arranging，而「不得留在 arranging」
+    是硬要求。
+
+    通知与退出训练室各自兜底：报错现场可能已经让设备没法操作，这两步失败不得
+    盖掉原始异常（调用方还要继续上抛）。
+    """
+    from arknights_mower.utils.mastery_db import get_plan_by_id, update_plan_status
+
+    latest = get_plan_by_id(plan["id"])
+    if latest is not None and latest.get("status") != "arranging":
+        logger.warning(
+            f"[mastery] 安排训练出错但计划 {plan['id']} 已是 "
+            f"{latest.get('status')}，不改状态、不通知，照旧上抛：{exc}"
+        )
+        return
+    update_plan_status(plan["id"], "failed", failed_reason=f"安排训练时出错：{exc}")
+    try:
+        from arknights_mower.utils.email import send_message
+        from arknights_mower.utils.mastery_db import should_notify
+
+        if should_notify("arrange_error", str(plan["id"])):
+            send_message(
+                f"{_plan_fail_label(plan, step_level)} 安排训练时出错：{exc}",
+                level="ERROR",
+            )
+    except Exception as notify_exc:
+        logger.warning(f"[mastery] 安排失败通知发送失败: {notify_exc}")
+    try:
+        solver.back()
+    except Exception as back_exc:
+        logger.warning(f"[mastery] 安排失败退出训练室失败: {back_exc}")
+
+
+def _schedule_collect_checked(solver, plan, execute_time, tier=None) -> Optional[str]:
+    """排到点收取任务；失败返回原因文案（不抛出）。
+
+    训练已经在跑，排不上收取只是 mower 少一次顺路收取（下次进训练室照常收），
+    不能因此把计划标成失败，所以这里吞掉异常、把原因交回调用方另发一封 WARNING。
+    """
+    try:
+        _schedule_collect(solver, plan, execute_time, tier=tier)
+    except Exception as e:
+        logger.warning(f"[mastery] 到点收取任务安排失败 id={plan['id']}: {e}")
+        return str(e)
+    return None
+
+
+def _notify_collect_unscheduled(plan, step_level, reason):
+    """到点收取任务没排上：单独一封 WARNING（发生在开训邮件之后，没有别的邮件可承载）。
+
+    按计划 id 去重；正文写清是哪一步失败——用户看到这封要知道「少了一次到点收取」，
+    而不是以为训练出了问题（训练仍在跑）。
+
+    通知与 `_fail_arranging` 同样各自兜底：发信失败只记日志，不得让「少排一次收取」
+    这种小事反过来打断已经在跑的训练。
+    """
+    from arknights_mower.utils.email import send_message
+    from arknights_mower.utils.mastery_db import should_notify
+
+    try:
+        if should_notify("collect_schedule", str(plan["id"])):
+            send_message(
+                f"{_plan_fail_label(plan, step_level)}：到点收取任务没能排上"
+                f"（{reason}），稍后进训练室时会顺路收取",
+                level="WARNING",
+            )
+    except Exception as notify_exc:
+        logger.warning(f"[mastery] 到点收取未排上通知发送失败: {notify_exc}")
+
+
 class _SceneTracker:
     """ARRANGING 超时诊断的廉价轨迹计数器（#15 决议）。"""
 
@@ -582,25 +676,33 @@ def _scene_name(scene) -> str:
     return str(scene)
 
 
-def _exit_occupied(solver, plan, countdown, trigger="训练室占用"):
-    """训练室被占用 → 保持 idle + 重排 + 退出（#16/#69/B4/#70 共用）。
+def _exit_occupied(solver, plan, countdown, trigger="训练室占用", panel=None):
+    """训练室现在不归 mower 支配（有人在练 / 练完没领）→ 保持 idle + 重排 + 退出。
 
     countdown 可读时重排到倒计时+缓冲；不可读（面板归属与计划不符 / 已到target
     档位读取失败）时重排到 now+缓冲，避免占用期间每轮 dispatch 空转重试。
-    trigger 写进状态转换日志，区分退出原因。
-    #153：重检任务（plan_key=None）带描述性 meta_data——计划干员+技能+「占用中」，
-    任务列表不再只显示类型名；档位未知（本路径读不到面板图标）不带专N。
+    trigger 只进状态转换日志，用来区分退出原因——不进任务标签：重检任务不带计划
+    编号，队列里所有重检任务其实是同一条，标签里写退出原因只会误导。
+
+    panel：调用方在同一张图上真正读到的面板文字（主页面读倒计时时顺带读一下）。
+    标签只写真正读到的东西——不再拿计划自己的干员/技能造一份面板，那会把「计划要练
+    的干员」当成「房间里的干员」写到任务列表上。读不到人（219 技能选择页等）就只写
+    「重读训练室状态」。
     """
     from arknights_mower.solvers.mastery_reader import (
         _occupancy_recheck_label,
+        _occupant_label,
         _upsert_skill_upgrade_task,
     )
     from arknights_mower.utils.mastery_db import update_plan_status
 
-    panel = RoomPanel(operator_name=plan["char_name"], skill_name=plan["skill_name"])
-    room = RoomState("training", panel)
+    room = RoomState("training", panel or RoomPanel())
+    logger.info(
+        f"[mastery] 重读训练室状态 id={plan['id']} 原因={trigger} "
+        f"房间内={_occupant_label(room.panel) or '未读到'}"
+    )
     if countdown is not None and countdown > datetime.now():
-        panel.countdown = countdown
+        room.panel.countdown = countdown
         _wait_for_training(solver, room)
         reschedule = countdown + ARRANGING_RETRY_BUFFER
     else:
@@ -715,14 +817,28 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 and countdown is not None
                 and countdown > datetime.now()
             ):
-                # 训练室使用中（#16 决议）：保持 idle，重排到倒计时+缓冲，退出
-                _exit_occupied(solver, plan, countdown)
+                # 训练室使用中（#16 决议）：保持 idle，重排到倒计时+缓冲，退出。
+                # 重检任务标签只写真正读到的房间里是谁——刚读过倒计时，同一张图上
+                # 顺带读一次面板文字（成本只是再 OCR 一块区域），不再拿计划干员充数。
+                _exit_occupied(
+                    solver,
+                    plan,
+                    countdown,
+                    trigger="训练室占用",
+                    panel=_read_panel_text(solver),
+                )
                 return
             if countdown_state == "zero":
                 # #211：00:00:00 待收取 → 训练位锁定，不能换人；保持 idle 重排退出。
                 # 旧的 _read_train_countdown 把 zero 和没倒计时都折叠成 None，分不清
                 # 待收取/空闲，会被误判空闲而换入锁定的训练位（原靠 train_slot_locked 兜底）。
-                _exit_occupied(solver, plan, None, trigger="训练室待收取")
+                _exit_occupied(
+                    solver,
+                    plan,
+                    None,
+                    trigger="训练室待收取",
+                    panel=_read_panel_text(solver),
+                )
                 return
             if support_level_to_prepare is not None:
                 from arknights_mower.solvers.mastery_support_runtime import (
@@ -752,13 +868,21 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                     solver.back()  # 关闭 _training_slots 打开的房间详情浮层
                 char_name = _plan_char_label(plan)
                 if trainer_slot and trainer_slot != char_name:
-                    # 无倒计时 + 训练位坐错人 → 换人；失败统一以 choose_train 异常为判据
+                    # 走到这里只剩「倒计时没读出来 + 训练位上坐着别人」：倒计时读得出
+                    # 有效值/00:00:00 的两种占用情形上面已经 return 了。训练位在训练
+                    # 期间锁着，换不动是必然的——所以这不是「读到了有人」，而是
+                    # 「训练位是谁读到了、但它正在用」。失败原因写清读到的干员名，
+                    # 别用「被占用」这种听起来像「有人在训练室练」的说法。
                     logger.info(f"训练位坐着 {trainer_slot}，换入 {char_name}")
                     try:
                         _swap_into_wrong_slot(solver, plan)
                     except Exception as e:
                         logger.warning(f"换人失败: {e}")
-                        _exit_failed(solver, plan, "训练位被占用且换人失败")
+                        _exit_failed(
+                            solver,
+                            plan,
+                            f"训练位当前干员为（{trainer_slot}），换人失败",
+                        )
                         return
                 continue
             # 训练位已确认（空/已是计划干员）→ 身份确认成立，点开技能选择页。
@@ -777,6 +901,8 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                     f"{_plan_char_label(plan)} 技能选择页未经过训练位确认，"
                     "无法确认星星归属，保持 idle 重排"
                 )
+                # 这一页左下角是协助位天赋文本，读不到干员名——重检任务标签只写
+                # 「重读训练室状态」，不传 panel。
                 _exit_occupied(solver, plan, None, trigger="技能选择页归属未确认")
                 return
             if not checked_target:
@@ -938,6 +1064,12 @@ def _confirm_training_started(
                     expires_at=expires_at,
                     swap_frozen=0,
                 )
+                # 以下全是「训练已经在跑」的收尾。每一件都就地处理：失败只记日志，绝不
+                # 往上抛——抛出去会被 _fail_arranging 把正在跑的训练记成失败，那只是
+                # mower 自己记错。失败信息逐条收进 notes，拼进下面那封开训邮件（训练
+                # 确实开始了，级别仍 INFO）；「到点收取任务」排在邮件之后，另发一封
+                # WARNING（_notify_collect_unscheduled）。
+                notes: list[str] = []
                 # #76：主面板专精图标在训练中 = 当前步目标级（亮 N 颗=专N）。确认开始
                 # 后先读图标作当前步级，传给协助位/换人安排（专三计划专一/专二步用
                 # level_1/2 路线减半换人）；同值复用作收取任务目标档位（原 tier）。
@@ -948,36 +1080,84 @@ def _confirm_training_started(
                 except Exception:
                     step_level = None
                 if arrange_support:
-                    _arrange_support(solver, plan, step_level)
+                    arrange_error = _arrange_support(solver, plan, step_level)
+                    if isinstance(arrange_error, str) and arrange_error:
+                        notes.append(
+                            f"协助位没能安排（{arrange_error}），这一级仍按原协助位练完"
+                        )
                 # #90 §16.10 第7步「以当前读取为准」：协助位安排（换效率干员）后倒计时
                 # 会变，重读一次——换人/收取/邮件完成时间都以此为准；读不到回退安排前值。
-                fresh_execute_time = _re_read_train_countdown(solver) or execute_time
+                fresh_execute_time = _re_read_train_countdown(solver)
+                if fresh_execute_time is None:
+                    fresh_execute_time = execute_time
+                    notes.append(
+                        "换协助位后没能重新读到剩余时间，完成时间按换人前的读数记，"
+                        "实际可能更早"
+                    )
                 if plan.get("support_plan"):
                     from arknights_mower.solvers.mastery_support_state import (
                         refresh_end,
                     )
 
-                    refresh_end(plan, step_level, fresh_execute_time)
+                    # 这条时间戳是「这位协助者这一次帮忙算到几点」，下一级用它算帮忙
+                    # 满没满 5 小时（减半攒在上一级）；写不进去只影响下一级的减半估算。
+                    try:
+                        recorded = refresh_end(plan, step_level, fresh_execute_time)
+                    except Exception as e:
+                        recorded = False
+                        logger.warning(
+                            f"[mastery] 协助者出勤记录保存异常 id={plan['id']}: {e}"
+                        )
+                    if not recorded:
+                        notes.append(
+                            "协助者出勤记录没能保存，下一级开始时可能算不准减半时长"
+                        )
                 # §16.10：排了换人任务则不排收取；等 SWAP_SUPPORT 完成后重读倒计时再排收取。
                 # #90：返回 SWAP 任务触发时刻（None=不换人），邮件完成时间据此分两情况。
-                swap_time = _schedule_swap_if_needed(
-                    solver, plan, fresh_execute_time, step_level
-                )
+                # 中途换人的目的是给下一级攒这 5 小时减半，不是加速这一级——排不上丢的是
+                # 下一级的减半，这一级的训练照旧在跑，所以只报告、不标失败。
+                try:
+                    swap_time = _schedule_swap_if_needed(
+                        solver, plan, fresh_execute_time, step_level
+                    )
+                    swap_error = None
+                except Exception as e:
+                    logger.warning(f"[mastery] 安排中途换人失败 id={plan['id']}: {e}")
+                    swap_time, swap_error = None, str(e)
+                if swap_error is not None:
+                    notes.append(
+                        f"没能安排中途换人（{swap_error}），这一级的减半累积没做上，"
+                        "下一级可能不会减半"
+                    )
                 # #90：DB 里的 expires_at 也要用换协助位后的最终倒计时（安排前的倒计时
                 # 基于旧效率、不是最终完成时间）；同值跳过 DB 写（#82 同款）。
                 if fresh_execute_time != execute_time:
-                    update_plan_status(
-                        plan["id"],
-                        "training",
-                        expires_at=fresh_execute_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    )
+                    expires_text = fresh_execute_time.strftime("%Y-%m-%d %H:%M:%S")
+                    # update_plan_status 自己吞异常，返回值是唯一的失败信号。这里不再
+                    # 原样重试：同样的参数必然同样失败，白写一次没有意义。写不进去只
+                    # 影响展示用的完成时间，下一次状态核对会拿屏幕上的读数纠正。
+                    if not update_plan_status(
+                        plan["id"], "training", expires_at=expires_text
+                    ):
+                        logger.warning(
+                            f"[mastery] 完成时间写库失败 id={plan['id']} "
+                            f"expires_at={expires_text}（下次状态核对会用屏幕读数纠正）"
+                        )
                 # #90：邮件移到协助位安排 + 换人判定之后发（此时效率/倒计时已确定）；
                 # 真名 = plan["skill_name"]；档位 = 目标级（step_level，不加1），读不到
                 # 显示「专精等级未知」（不回退 target_level）；完成时间两情况——无减半 =
                 # 重读倒计时、有减半 = 换人任务时刻 + (300 + 缓冲) 分钟，附换入干员名。
                 tier_text = f"专{step_level}" if step_level else "专精等级未知"
                 if swap_time is not None:
-                    route = _get_plan_route(plan, step_level)
+                    # 取路线只为邮件里那句「将于 X 换入谁」和缓冲时长；失败就退回默认
+                    # 缓冲、不写换入对象，报错邮件里已经说明换人是怎么失败的。
+                    try:
+                        route = _get_plan_route(plan, step_level)
+                    except Exception as e:
+                        logger.warning(
+                            f"[mastery] 换人路线读取失败 id={plan['id']}: {e}"
+                        )
+                        route = None
                     swap_target = route.get("swap_target") if route else None
                     buffer = (
                         route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES)
@@ -997,10 +1177,17 @@ def _confirm_training_started(
                     f"{_plan_char_label(plan)} {plan['skill_name']} {tier_text} "
                     f"开始训练{swap_clause}，预计 {_fmt_completion_time(completion)} 完成"
                 )
+                if notes:
+                    # 收尾哪几件没做成，如实写在末尾——训练确实开始了，级别仍是 INFO。
+                    msg = f"{msg}；{'；'.join(notes)}"
                 logger.info(msg)
                 send_message(msg, level="INFO")
                 if swap_time is None:
-                    _schedule_collect(solver, plan, fresh_execute_time, tier=step_level)
+                    collect_error = _schedule_collect_checked(
+                        solver, plan, fresh_execute_time, step_level
+                    )
+                    if collect_error:
+                        _notify_collect_unscheduled(plan, step_level, collect_error)
                 return "started"
         elif scene == Scene.TRAIN_SKILL_UPGRADE_ERROR:
             msg = f"{_plan_fail_label(plan)} 材料不足"
@@ -1015,19 +1202,28 @@ def _confirm_training_started(
     return "timeout"
 
 
-def _arrange_support(solver, plan, step_level=None):
+def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
     """训练确认开始后，安排协助位干员（复用 choose_train）
 
     #76：路线按当前步目标级加载（step_level，确认时读主面板图标）；
     step_level 读不到回退 target_level（保守用整体目标路线）。
+
+    返回值：None = 这一级不用安排（跟随排班 / 路线没 operator）或已安排成功；
+    错误文案 = 这一级的协助位没安排成（取路线失败或换人失败）。调用方把它补进开训
+    邮件——训练已经在跑，协助位没换只是效率差一点，不能因此把计划标成失败。
     """
     from arknights_mower.utils import config
 
     if config.conf.assistant_follows_schedule:
-        return
-    route = _get_plan_route(plan, step_level)
+        return None
+    try:
+        route = _get_plan_route(plan, step_level)
+    except Exception as e:
+        logger.warning(f"协助位路线读取失败: {e}")
+        logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=路线读取失败 err={e}")
+        return str(e)
     if not route or not route.get("operator"):
-        return
+        return None
     support_name = route["operator"]
     logger.info(f"安排协助位：{support_name}")
     logger.debug(f"[mastery] 协助位判定 id={plan['id']} 期望={support_name} 动作=安排")
@@ -1040,6 +1236,7 @@ def _arrange_support(solver, plan, step_level=None):
         else:
             solver.choose_train([support_name, "Current"])
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=ok")
+        return None
     except Exception as e:
         from arknights_mower.utils.csleep import MowerExit
 
@@ -1058,6 +1255,7 @@ def _arrange_support(solver, plan, step_level=None):
             update_plan_status(plan["id"], "training", swap_frozen=1)
         logger.warning(f"安排协助位失败: {e}")
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=失败 err={e}")
+        return str(e)
 
 
 def _re_read_train_countdown(solver) -> Optional[datetime]:
@@ -1065,19 +1263,14 @@ def _re_read_train_countdown(solver) -> Optional[datetime]:
 
     choose_train 换协助位后停在进驻详情浮窗（INFRA_DETAILS），先关浮窗回主页面再读
     （back() 内部 sleep→recog.update 已重置场景缓存，与 _swap_still_worthwhile/
-    _schedule_collect_after_swap 同款关浮窗读法）；不在训练室主页面 / 读失败 → None
-    （调用方回退安排前倒计时）。
+    _schedule_collect_after_swap 同款关浮窗读法）。
+
+    改用带重试的读法（最多 5 次，每次先确认在训练室主页面、浮窗先关，与换人路径
+    _read_countdown_with_retry 同款）：换协助位刚把画面甩到浮窗/过渡态，读一次就放弃
+    太早，完成时间会白白退回换人前的旧读数。仍读不到 → None，调用方退回安排前倒计时，
+    并在开训邮件里说明这一点。
     """
-    try:
-        scene = solver.train_scene()
-        if scene == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
-            scene = solver.train_scene()
-        if scene != Scene.TRAIN_MAIN:
-            return None
-        return _read_train_countdown(solver)
-    except Exception:
-        return None
+    return _read_countdown_with_retry(solver)
 
 
 def _schedule_swap_if_needed(
