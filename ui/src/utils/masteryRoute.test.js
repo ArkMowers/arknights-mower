@@ -17,11 +17,22 @@ describe('mastery handoff buffers', () => {
       central_unhalved_m2: 30
     })
   })
-  it('retains a smaller legacy custom value for every condition', () => {
-    expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: 5 })).toEqual({
-      no_central: 5,
-      central: 5,
-      central_unhalved_m2: 5
+  it('migrates scalar settings and preserves saved per-condition values', () => {
+    expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: 10 })).toEqual({
+      no_central: 10,
+      central: 15,
+      central_unhalved_m2: 30
+    })
+    const custom = { no_central: 10, central: 10, central_unhalved_m2: 10 }
+    expect(
+      normalizeMasterySwapBuffers({ mastery_swap_buffer: 10, mastery_swap_buffers: custom })
+    ).toEqual(custom)
+  })
+  it.each([0, 5, 10, 45])('migrates any legacy scalar %s to the new defaults', (value) => {
+    expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: value })).toEqual({
+      no_central: 10,
+      central: 15,
+      central_unhalved_m2: 30
     })
   })
   it('keeps independent custom values including zero', () => {

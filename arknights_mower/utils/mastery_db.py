@@ -616,7 +616,7 @@ def get_route_settings(path: Optional[str] = None) -> dict:
     """读取中枢加成及三档减半换人缓冲（分钟）。
 
     存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON）。
-    缺行使用 10/15/30 分钟；旧版单值配置兼容应用到三档。
+    缺行使用 10/15/30 分钟；旧版单值配置一次性迁移为分档默认。
     """
     defaults = {
         **_SETTINGS_DEFAULTS,
@@ -641,10 +641,26 @@ def get_route_settings(path: Optional[str] = None) -> dict:
                             **parsed["mastery_swap_buffers"],
                         }
                     elif "mastery_swap_buffer" in parsed:
-                        defaults["mastery_swap_buffers"] = {
-                            key: parsed["mastery_swap_buffer"]
-                            for key in DEFAULT_SWAP_BUFFERS
+                        defaults["mastery_swap_buffers"] = dict(DEFAULT_SWAP_BUFFERS)
+                        # The persisted map is the migration marker. Subsequent
+                        # reads must preserve even user-selected 10/10/10 values.
+                        migrated = {
+                            **parsed,
+                            "mastery_swap_buffers": defaults["mastery_swap_buffers"],
                         }
+                        cursor = conn.execute(
+                            "UPDATE mastery_route SET supports=? "
+                            "WHERE profession=? AND is_default=0 AND supports=?",
+                            (
+                                json.dumps(migrated, ensure_ascii=False),
+                                _SETTINGS_PROFESSION,
+                                row["supports"],
+                            ),
+                        )
+                        conn.commit()
+                        if cursor.rowcount == 0:
+                            # A concurrent save takes precedence over migration.
+                            return get_route_settings(path)
     except Exception as e:
         logger.error(f"get_route_settings failed: {e}")
     return defaults
