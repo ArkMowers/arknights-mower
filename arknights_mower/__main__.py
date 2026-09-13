@@ -127,6 +127,7 @@ def simulate(saved, restart_after_mood_read=False):
                 raise MowerExit
             base_scheduler = initialize([], connection_retries=connection_retries)
             base_scheduler.restart_after_mood_read = restart_after_mood_read
+            base_scheduler.mastery_restart_check_pending = not saved
             success = True
         except MowerExit:
             return
