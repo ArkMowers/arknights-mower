@@ -15,9 +15,9 @@
     trigger="click"
     @select="handleSelect"
   >
-    <n-button>收益算法选择（默认82算法）</n-button>
+    <n-button>{{currentAlgorithmHint}}</n-button>
   </n-dropdown>
-  <n-card title="收益系数输入" v-show="isShow">
+  <n-card title="自定义收益系数输入" v-show="isShow">
     <div>
       <span>赤金<mower-input-number v-model:value="value_coefficient_gold" /></span>
       <span>订单<mower-input-number v-model:value="value_coefficient_lmb" /></span>
@@ -25,7 +25,7 @@
     </div>
     <div class="button_class">
       <n-button type="tertiary" @click="isShow = false">取消</n-button>
-      <n-button type="primary" @click="handleClick">确认</n-button>
+      <n-button type="primary" @click="handleSave">保存为自定义</n-button>
     </div>
   </n-card>
   <n-alert title="数据错误" type="error" v-if="show_alert">
@@ -69,7 +69,7 @@ import {
   DataZoomComponent
 } from 'echarts/components'
 import VChart, { THEME_KEY } from 'vue-echarts'
-import { ref, provide, onMounted, computed } from 'vue'
+import { ref, provide, onMounted, computed, reactive } from 'vue'
 
 use([
   TitleComponent,
@@ -98,36 +98,61 @@ const total_earnings = ref(0)
 const isShow = ref(false)
 const algorithm_options = [
   {
+    algorithm: { gold: 0.8, lmb: 0.2, exp: 1 },
     label: '82算法',
-    key: '收益公式：赤金*0.8+订单*0.2+经验*1',
+    key: '82',
     id: 0
   },
   {
-    label: 'CE6&LS6算法',
-    key: '收益公式：赤金*0.8+订单*0.245+经验*1',
+    algorithm: { gold: 0.8, lmb: 733 / 2990, exp: 1 },
+    label: '0.245算法（CE6 & LS6，经验=1）',
+    key: '0.245',
     id: 1
   },
   {
-    label: '其他算法，点击输入产物系数',
-    key: '自定义收益',
+    algorithm: { gold: 0.76544, lmb: 0.23456, exp: 0.9568 },
+    label: '0.23456算法（CE6 & LS6，龙门币=1）',
+    key: '0.23456',
     id: 2
+  },
+  {
+    label: '其他算法，点击输入产物系数',
+    key: '自定义',
+    id: -1
   }
 ]
-const message = useMessage()
-function handleSelect(key, option) {
-  message.info(key)
-  if (option.id == 0) {
-    value_coefficient_gold.value = 0.8
-    value_coefficient_lmb.value = 0.2
-    value_coefficient_exp.value = 1
-  } else if (option.id == 1) {
-    value_coefficient_gold.value = 0.8
-    value_coefficient_lmb.value = 0.245
-    value_coefficient_exp.value = 1
-  } else {
-    isShow.value = true
+
+const earningAlgorithmConfig = reactive({
+  using: 0,
+  custom: JSON.parse(JSON.stringify(algorithm_options[0].algorithm)),
+})
+const currentAlgorithmHint = computed(() => {
+  if (!isShow.value) {
+    return `选择收益算法（当前算法：${algorithm_options.find(option => option.id === earningAlgorithmConfig.using)?.key ?? '未知'}算法）`
   }
-  // 同步更新收益数据
+  return '选择收益算法（填入下表复用数值）'
+})
+
+
+function getCurrentAlgorithm() {
+  const option = algorithm_options.find(option => option.id === earningAlgorithmConfig.using)
+  if (option.algorithm) {
+    return option.algorithm
+  }
+  return earningAlgorithmConfig.custom
+}
+
+const message = useMessage()
+
+function computeEarning(data) {
+  const gold = (data.赤金 || 0) + (data.龙舌兰赤金 || 0) + (data.可露希尔赤金 || 0);
+  const lmb = data.龙门币订单 || 0
+  const exp = data.作战录像 || 0
+  const algorithm = getCurrentAlgorithm()
+  return gold * algorithm.gold + lmb * algorithm.lmb + exp * algorithm.exp
+}
+
+function updateEarning() {
   ReportData.value.forEach((item) => {
     getTradingHistory.value.forEach((count) => {
       if (count['日期'] == item['日期']) {
@@ -139,34 +164,90 @@ function handleSelect(key, option) {
         }
       }
     })
-    item.收益 =
-      ((item['赤金'] + (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)) *
-        value_coefficient_gold.value +
-        item['龙门币订单'] * value_coefficient_lmb.value +
-        item['作战录像'] * value_coefficient_exp.value) /
-      10000
+    item.收益 = computeEarning(item) / 10000
   })
 }
-function handleClick() {
-  isShow.value = false
-  ReportData.value.forEach((item) => {
-    getTradingHistory.value.forEach((count) => {
-      if (count['日期'] == item['日期']) {
-        if (count['龙舌兰']) {
-          item.龙舌兰赤金 = count['龙舌兰'] * 500
-        }
-        if (count['可露希尔']) {
-          item.可露希尔赤金 = count['可露希尔'] * 200
-        }
+
+function formatEarning(earning, accurate = false) {
+  if (!accurate) {
+    // 默认格式：最多显示3位小数
+    return (Math.round(earning * 1000) / 1000).toString()
+  }
+  // 精确显示所有小数
+  return earning.toString()
+}
+
+const earningAlgorithmKey = 'earning_algorithm_config'
+
+function saveEarningAlgorithmConfig() {
+  localStorage.setItem(earningAlgorithmKey, JSON.stringify(earningAlgorithmConfig))
+}
+
+function getEarningAlgorithmConfig() {
+  const value = localStorage.getItem(earningAlgorithmKey)
+  const defaultConfig = {
+    using: 0,
+    custom: algorithm_options[0].algorithm
+  }
+  try {
+    const parsedConfig = JSON.parse(value || '') || {}
+    return {
+      using: +parsedConfig.using || 0,
+      custom: {
+        gold: +parsedConfig.custom?.gold || 0,
+        lmb: +parsedConfig.custom?.lmb || 0,
+        exp: +parsedConfig.custom?.exp || 0,
       }
-    })
-    item.收益 =
-      ((item['赤金'] + (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)) *
-        value_coefficient_gold.value +
-        item['龙门币订单'] * value_coefficient_lmb.value +
-        item['作战录像'] * value_coefficient_exp.value) /
-      10000
-  })
+    }
+  } catch (error) {
+    console.error(`failed to parse config:`, error)
+    return defaultConfig
+  }
+}
+
+function initEarningAlgorithmConfig() {
+  const config = getEarningAlgorithmConfig()
+  earningAlgorithmConfig.using = config.using
+  const { custom } = config
+  earningAlgorithmConfig.custom.gold = custom.gold
+  earningAlgorithmConfig.custom.lmb = custom.lmb
+  earningAlgorithmConfig.custom.exp = custom.exp
+}
+
+
+function handleSelect(_key, option) {
+  const { algorithm } = option
+  if (algorithm == null) {
+    // 自定义
+    message.info('自定义收益算法')
+    isShow.value = true
+    value_coefficient_gold.value = earningAlgorithmConfig.custom.gold
+    value_coefficient_lmb.value = earningAlgorithmConfig.custom.lmb
+    value_coefficient_exp.value = earningAlgorithmConfig.custom.exp
+  } else {
+    // 预设
+    if (isShow.value) {
+      // 显示输入框时，点击任意预设算法仅将预设参数填入输入框，不修改当前算法参数
+      value_coefficient_gold.value = algorithm.gold
+      value_coefficient_lmb.value = algorithm.lmb
+      value_coefficient_exp.value = algorithm.exp
+      return
+    }
+    message.info(`收益公式：赤金*${algorithm.gold}+订单*${algorithm.lmb}+经验*${algorithm.exp}`)
+  }
+  earningAlgorithmConfig.using = option.id
+  saveEarningAlgorithmConfig()
+  updateEarning()
+}
+
+function handleSave() {
+  isShow.value = false
+  const algorithm = earningAlgorithmConfig.custom
+  algorithm.gold = value_coefficient_gold.value
+  algorithm.lmb = value_coefficient_lmb.value
+  algorithm.exp = value_coefficient_exp.value
+  saveEarningAlgorithmConfig()
+  updateEarning()
 }
 
 registerTheme('dark', dark)
@@ -191,28 +272,12 @@ const ReportData = ref([])
 const HalfMonthData = ref([])
 onMounted(async () => {
   try {
+    initEarningAlgorithmConfig()
     ReportData.value = await getReportData()
     HalfMonthData.value = await getOrundumData()
     getTradingHistory.value = await getTradingHistory()
     //往ReportData.value添加龙舌兰赤金数据
-    ReportData.value.forEach((item) => {
-      getTradingHistory.value.forEach((count) => {
-        if (count['日期'] == item['日期']) {
-          if (count['龙舌兰']) {
-            item.龙舌兰赤金 = count['龙舌兰'] * 500
-          }
-          if (count['可露希尔']) {
-            item.可露希尔赤金 = count['可露希尔'] * 200
-          }
-        }
-      })
-      item.收益 =
-        ((item['赤金'] + (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)) *
-          value_coefficient_gold.value +
-          item['龙门币订单'] * value_coefficient_lmb.value +
-          item['作战录像'] * value_coefficient_exp.value) /
-        10000
-    })
+    updateEarning()
     show_iron_chart.value = true
     show_earnings_chart.value = true
     if (HalfMonthData.value.length > 0) {
@@ -289,13 +354,7 @@ const option_manufactor = computed(() => {
       },
 
       formatter: function (params) {
-        total_earnings.value =
-          (params[0].data['赤金'] +
-            (params[0].data['龙舌兰赤金'] || 0) +
-            (params[0].data['可露希尔赤金'] || 0)) *
-            value_coefficient_gold.value +
-          params[0].data['龙门币订单'] * value_coefficient_lmb.value +
-          params[0].data['作战录像'] * value_coefficient_exp.value
+        total_earnings.value = computeEarning(params[0].data)
         const tip = `<div style="font-size:1.4rem;">
                         <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
                         ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
@@ -303,7 +362,7 @@ const option_manufactor = computed(() => {
                         ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['作战录像']}</span>  <br>
                         <span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#8A2BE2;"></span>    <span style="font-size:14px">龙舌兰赤金:${params[0].data['龙舌兰赤金'] || 0}</span> <br>
                         <span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#8A2BE2;"></span>    <span style="font-size:14px">可露希尔赤金:${params[0].data['可露希尔赤金'] || 0}</span> <br>
-                                               <span style="font-size:14px">收益:${total_earnings.value}</span>  <br>
+                                               <span style="font-size:14px">收益:${formatEarning(total_earnings.value)}</span>  <br>
           </div>`
         return tip
       }
@@ -479,11 +538,14 @@ const option_earnings = computed(() => {
         color: '#f5744f',
         tooltip: {
           valueFormatter(value) {
-            return value
+            return formatEarning(value, true)
           }
         },
         label: {
           show: true,
+          formatter(item) {
+            return formatEarning(item.value.收益)
+          },
           position: 'top'
         }
       }
