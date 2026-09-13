@@ -184,7 +184,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.global_plan = {}
         self.local_operation_followup_time = None
         self.restart_after_mood_read = False
-        self.mastery_restart_check_pending = False
 
     def find_next_task(
         self,
@@ -814,10 +813,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not self.no_pending_task(1):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
-                    self._check_mastery_after_restart()
-                    if not self.no_pending_task(1):
-                        self.skip(["planned", "todo_task", "collect_notification"])
-                        return True
                     mood_result = self.agent_get_mood(skip_dorm=True)
                     if self.restart_after_mood_read:
                         self.restart_after_mood_read = False
@@ -908,53 +903,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
-    def _check_mastery_after_restart(self):
-        """清缓存后核对一次训练室；读取失败交给后续原有流程处理。"""
-        if not getattr(self, "mastery_restart_check_pending", False):
-            return
-        if not config.conf.enable_mastery:
-            self.mastery_restart_check_pending = False
-            return
-        from arknights_mower.solvers.mastery_reader import (
-            _can_adopt_expiry,
-            _maybe_recover_swap,
-            read_room_state,
-        )
-        from arknights_mower.utils.mastery_db import get_active_plan
-
-        plan = get_active_plan()
-        if plan is None or plan["status"] != "training":
-            self.mastery_restart_check_pending = False
-            return
-        logger.info("缓存清零后主动核对训练室，恢复专精中途换人任务")
-        self.mastery_restart_check_pending = False
-        try:
-            room = read_room_state(self)
-            if (
-                room is None
-                or room.read_failed
-                or (
-                    room.state != "empty"
-                    and (not room.panel.operator_name or not room.panel.skill_name)
-                )
-            ):
-                logger.warning("重启后训练室状态未读清，跳过本次换人任务恢复")
-                return
-            # 启动检查只恢复专一/专二的协助位任务；收取、开训和合成仍走原有入口。
-            if (
-                room.state == "training"
-                and room.panel.mastery_tier in (1, 2)
-                and room.panel.countdown is not None
-                and _can_adopt_expiry(plan, room)
-            ):
-                _maybe_recover_swap(self, plan, room)
-        except MowerExit:
-            raise
-        except Exception as e:
-            logger.warning(f"重启后训练室核对失败，跳过本次换人任务恢复: {e}")
-        finally:
-            self.back_to_infrastructure()
-
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
         need_read = set(
@@ -963,14 +911,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if v.need_to_refresh() and v.room in base_room_list
         )
 
+        # 专精计划可能没有训练室固定排班，仍要通过原有心情扫描核对现场。
+        if config.conf.enable_mastery:
+            from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+            if get_reconcile_plans():
+                need_read.add("train")
+
         for room in need_read:
+            if room == "train":
+                last_read = getattr(self, "last_train_mood_read", None)
+                if last_read and datetime.now() - last_read < timedelta(hours=2.5):
+                    continue
             error_count = 0
-            # 训练室与其他房间一致：当前房内干员都近期读过则跳过（2026-08-16 审计——
-            # 原 room != "train" 免除使训练室在「计划在训练室但未进驻的陈旧干员」把
-            # 训练室推进待读集合时每轮循环都强制进房读心情，2h 内十多次）。训练室进房
-            # 时的顺路 reconcile（破重启待收取死锁）不受影响：重启后无 current_room=
-            # "train" 的干员 → current_working 空 → 不跳过；平时占用干员心情 2.5h
-            # 陈旧 → 不跳过 → 照常读+reconcile。
+            # 近期读过的房内干员无需重复扫描。训练室为空或识别失败时，上面的
+            # 房间级时间同样限频，避免没有固定干员的训练室每轮被强制读取。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
@@ -990,6 +945,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.debug(e.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
+            if room == "train":
+                self.last_train_mood_read = datetime.now()
             while True:
                 try:
                     self.enter_room(room)
