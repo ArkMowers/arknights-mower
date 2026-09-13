@@ -22,11 +22,10 @@ from arknights_mower.utils.mastery_support_types import (
 )
 
 
-def test_saved_old_numeric_buffer_stays_custom_and_can_return_to_defaults(tmp_path):
+def test_old_scalar_migrates_then_new_custom_buffers_are_preserved(tmp_path):
     path = str(tmp_path / "mastery.db")
     assert configured_swap_buffer(db.get_route_settings(path)) == DEFAULT_SWAP_BUFFERS
-    # Existing installations saved only these two fields; do not reinterpret
-    # their smaller explicit values as the new automatic margin.
+    # All old scalar settings migrate once, including custom values.
     with db._conn(path) as conn:
         conn.execute(
             "INSERT INTO mastery_route (profession, supports, is_default) VALUES (?, ?, 0)",
@@ -34,7 +33,7 @@ def test_saved_old_numeric_buffer_stays_custom_and_can_return_to_defaults(tmp_pa
         )
         conn.commit()
     settings = db.get_route_settings(path)
-    assert configured_swap_buffer(settings) == {key: 5 for key in DEFAULT_SWAP_BUFFERS}
+    assert configured_swap_buffer(settings) == DEFAULT_SWAP_BUFFERS
     custom = {"no_central": 4, "central": 7, "central_unhalved_m2": 6}
     db.save_route_settings(5, path=path, mastery_swap_buffers=custom)
     assert configured_swap_buffer(db.get_route_settings(path)) == custom

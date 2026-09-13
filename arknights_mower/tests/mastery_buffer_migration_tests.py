@@ -30,14 +30,10 @@ def read_raw(path):
 
 
 @pytest.mark.parametrize("legacy", [0, 5, 10, 45])
-def test_legacy_migration_persists_default_or_custom_values(tmp_path, legacy):
+def test_every_legacy_scalar_migrates_to_persisted_defaults(tmp_path, legacy):
     path = str(tmp_path / "mastery.db")
     store_raw(path, {"central_bonus": 5, "mastery_swap_buffer": legacy, "extra": True})
-    expected = (
-        DEFAULT_SWAP_BUFFERS
-        if legacy == 10
-        else dict.fromkeys(DEFAULT_SWAP_BUFFERS, legacy)
-    )
+    expected = DEFAULT_SWAP_BUFFERS
     assert db.get_route_settings(path)["mastery_swap_buffers"] == expected
     saved = read_raw(path)
     assert saved["mastery_swap_buffers"] == expected
