@@ -5483,9 +5483,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         scheduled 来自 auto_schedule_mastery_tasks（已按链级材料核算），元素带
         char_id/skill_index。按 (char_id, skill_index) 匹配 DB 里 status=='idle' 的
-        计划（get_all_plans 按 priority 排序 → 高优先级计划先入队先开始），入队一条
+        计划（get_all_plans 按 priority, id 排序 → 高优先级计划先入队先开始），入队一条
         plan_key=计划id 的开始任务（meta_data 仅描述性标签，无逻辑标记）。TASK-01 按
         plan_key 去重恒 ≤1 条，重复扫描原地刷新；计划开始训练后该任务原位升级为收取任务。
+
+        两轮扫描，兜住存量库里的重复计划（同干员同技能多行，见
+        doc/mastery-constraints.md §5.1）：第一轮记下正被 reconcile 管着的键
+        （arranging/training/waiting_collect），第二轮每个键只对第一条 idle 行派发。
+        否则「按行派发」会给同一个技能各发一条一模一样的任务，只有一条能真跑、其余
+        扑空报错（实测 `scheduled=1` 却打出「已为 7 个……安排开始训练」）。
         """
         if not scheduled:
             return
@@ -5497,13 +5503,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (entry.get("char_id"), entry.get("skill_index")): entry
             for entry in scheduled
         }
+        plans = get_all_plans()  # 非终态，按 priority, id 排序
+        # 第一轮：这些键正被 reconcile 管着，同键的重复行不该再去开训练
+        managed = {
+            (plan["char_id"], plan["skill_index"])
+            for plan in plans
+            if plan["status"] in ("arranging", "training", "waiting_collect")
+        }
+        # 第二轮：每个键只对第一条 idle 行派发（排序后第一条就是该管的那个）
         dispatched = 0
-        for plan in get_all_plans():  # 非终态，按 priority, id 排序
+        seen: set = set()
+        for plan in plans:
             if plan["status"] != "idle":
                 continue
-            entry = confirmed.get((plan["char_id"], plan["skill_index"]))
+            key = (plan["char_id"], plan["skill_index"])
+            if key in managed or key in seen:
+                continue
+            entry = confirmed.get(key)
             if entry is None:
                 continue
+            seen.add(key)
             step_level = entry.get("current_level", 0) + 1
             _schedule_scan_start(self, plan, step_level=step_level)
             dispatched += 1

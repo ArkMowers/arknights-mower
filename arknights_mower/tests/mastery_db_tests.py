@@ -9,12 +9,14 @@ from arknights_mower.tests.mastery_plan_helpers import stub_support_planner
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
     delete_plan,
+    describe_existing_plan,
     get_active_plan,
     get_all_plans,
     get_all_routes,
     get_failed_plans,
     get_next_idle_plan,
     get_plan_by_id,
+    get_plan_by_skill,
     get_reconcile_plans,
     get_route,
     get_route_settings,
@@ -446,6 +448,105 @@ class TestMasteryDb(unittest.TestCase):
             self.assertIsNone(get_current_mastery_level("char_999", 0))
         finally:
             os.unlink(path)
+
+    # --- plan-dedup：同一 (干员, 技能) 只保留一条未结束的计划 ---
+
+    def _seed_plan(
+        self, char_id="char_001", skill_index=0, status="idle", priority=0, reason=None
+    ):
+        pid = insert_plan(char_id, skill_index, 3, priority=priority, path=self.db_path)
+        if status != "idle":
+            update_plan_status(pid, status, failed_reason=reason, path=self.db_path)
+        return pid
+
+    def test_get_plan_by_skill_returns_first_unfinished(self):
+        # 同一技能多条存量重复行 → 按 (priority, id) 取第一条，与派发口径一致
+        first = self._seed_plan()
+        second = self._seed_plan(priority=5)
+        found = get_plan_by_skill("char_001", 0, path=self.db_path)
+        self.assertEqual(found["id"], first)
+        self.assertNotEqual(found["id"], second)
+
+    def test_get_plan_by_skill_skips_completed(self):
+        self._seed_plan(status="completed")
+        self.assertIsNone(get_plan_by_skill("char_001", 0, path=self.db_path))
+
+    def test_get_plan_by_skill_counts_failed_as_existing(self):
+        failed = self._seed_plan(status="failed", reason="材料不足")
+        found = get_plan_by_skill("char_001", 0, path=self.db_path)
+        self.assertEqual(found["id"], failed)
+
+    def test_get_plan_by_skill_none_when_absent(self):
+        self.assertIsNone(get_plan_by_skill("char_001", 0, path=self.db_path))
+
+    def test_describe_existing_plan_covers_statuses(self):
+        self.assertEqual(describe_existing_plan({"status": "idle"}), "已在待执行队列")
+        self.assertEqual(describe_existing_plan({"status": "training"}), "已在训练中")
+        self.assertEqual(
+            describe_existing_plan({"status": "waiting_collect"}), "已在训练中"
+        )
+        self.assertEqual(
+            describe_existing_plan({"status": "failed", "failed_reason": "材料不足"}),
+            "此前失败：材料不足",
+        )
+        self.assertEqual(
+            describe_existing_plan({"status": "failed"}), "此前失败：原因未知"
+        )
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_add_plan_checked_rejects_duplicate_unfinished_plan(
+        self, get_level, insert
+    ):
+        # 统一入口拦重复：HTTP API 和 agent 工具两条路一起覆盖，不再累积重复行
+        self._seed_plan(status="training")
+        get_level.return_value = 0
+        plan_id, reason = add_plan_checked(
+            "char_001", 0, target_level=3, path=self.db_path
+        )
+        self.assertEqual(plan_id, -1)
+        self.assertIn("已有计划", reason)
+        self.assertIn("已在训练中", reason)
+        insert.assert_not_called()
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_add_plan_checked_rejects_duplicate_failed_plan(self, get_level, insert):
+        # failed 算「已有」：不建新行，原因里带上此前的失败原因
+        self._seed_plan(status="failed", reason="材料不足")
+        get_level.return_value = 0
+        plan_id, reason = add_plan_checked(
+            "char_001", 0, target_level=3, path=self.db_path
+        )
+        self.assertEqual(plan_id, -1)
+        self.assertIn("此前失败：材料不足", reason)
+        insert.assert_not_called()
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_add_plan_checked_allows_new_after_completed(self, get_level, insert):
+        # completed 不拦：先练到专一完成、过一阵继续练专三，要能再建
+        self._seed_plan(status="completed")
+        get_level.return_value = 1
+        insert.return_value = 7
+        plan_id, reason = add_plan_checked(
+            "char_001", 0, target_level=3, path=self.db_path
+        )
+        self.assertEqual(plan_id, 7)
+        self.assertIsNone(reason)
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_add_plan_checked_other_skill_not_blocked(self, get_level, insert):
+        # 只拦同一个技能：同干员另一个技能照常建
+        self._seed_plan(skill_index=0)
+        get_level.return_value = 0
+        insert.return_value = 8
+        plan_id, reason = add_plan_checked(
+            "char_001", 1, target_level=3, path=self.db_path
+        )
+        self.assertEqual(plan_id, 8)
+        self.assertIsNone(reason)
 
     @patch("arknights_mower.utils.mastery_recommendation.get_path")
     def test_get_current_mastery_level_missing_or_bad_file(self, get_path_mock):

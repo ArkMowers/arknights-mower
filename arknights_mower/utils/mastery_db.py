@@ -219,6 +219,43 @@ def insert_plan(
 DEFAULT_TARGET_LEVEL = 3  # 与推荐层一致（R-03：推荐恒专三），#65/B7 统一计划创建目标
 
 
+def get_plan_by_skill(
+    char_id: str, skill_index: int, path: Optional[str] = None
+) -> Optional[dict]:
+    """按 (干员, 技能) 取一条未结束的计划（completed 除外）；没有则 None。
+
+    判「未结束」而不是「未完成」：failed 也算已有（重复添加时不新建行，由调用方把它
+    放回待执行再派发）。completed 不拦——先练到专一完成、过一阵想继续练专三，要能再建。
+
+    同一技能可能有多条存量重复行（`insert_plan` 无去重，表上也没有唯一约束，见
+    doc/mastery-constraints.md §5.1）——按 (priority, id) 取第一条，与
+    `get_all_plans` / `get_reconcile_plans` 的「重复计划（同干员技能）时优先高优先级
+    一条，不重复管理」口径一致。
+    """
+    try:
+        with _conn(path) as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_plan WHERE char_id=? AND skill_index=? "
+                "AND status != 'completed' ORDER BY priority, id LIMIT 1",
+                (char_id, skill_index),
+            ).fetchone()
+            return lazy_fill_plan_names(dict(row), conn) if row else None
+    except Exception as e:
+        logger.error(f"get_plan_by_skill failed: {e}")
+        return None
+
+
+def describe_existing_plan(plan: dict) -> str:
+    """已有计划的一句话状态描述（重复添加时给用户看的原因）。"""
+    status = plan.get("status")
+    if status == "failed":
+        reason = plan.get("failed_reason") or "原因未知"
+        return f"此前失败：{reason}"
+    if status == "idle":
+        return "已在待执行队列"
+    return "已在训练中"
+
+
 def add_plan_checked(
     char_id: str,
     skill_index: int,
@@ -229,12 +266,17 @@ def add_plan_checked(
     path: Optional[str] = None,
     support_mode: str = "auto",
 ) -> tuple[int, Optional[str]]:
-    """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级。
+    """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级 + 技能是否已有计划。
 
     target_level 缺省 = 专三（与推荐一致，消除「推荐专三、创建专一」分歧）。
     返回 (plan_id, error)：成功 (id>0, None)；拒绝/失败 (<=0, 错误文案)。
     干员当前等级取自 cultivate.json，读不到（文件缺失/干员不在）则跳过该校验——
     执行层已到target检测按截图兜底，#70 档位读失败保守化不回退。
+
+    (干员, 技能) 已有未结束的计划时拒绝：统一入口拦一次，HTTP API 和 agent 工具两条路
+    一起覆盖，不会再累积重复行（重复行会让派发按行各发一条一模一样的「开始训练」，
+    队列里只有一条能真跑、其余扑空）。要「马上开始已有计划」由 views/mastery.py 的
+    重复添加分支处理，不在这里建新行。
     """
     if target_level is None:
         target_level = DEFAULT_TARGET_LEVEL
@@ -260,6 +302,12 @@ def add_plan_checked(
     requirement_error = get_mastery_requirement_error(char_id)
     if requirement_error:
         return -1, requirement_error
+    existing = get_plan_by_skill(char_id, skill_index, path)
+    if existing is not None:
+        return -1, (
+            f"该干员该技能已有计划（{describe_existing_plan(existing)}，"
+            f"目标专{existing.get('target_level')}），未新建"
+        )
     current_level = get_current_mastery_level(char_id, skill_index)
     if current_level is not None and current_level >= target_level:
         return -1, f"该干员技能已专{current_level}，无需再练到专{target_level}"

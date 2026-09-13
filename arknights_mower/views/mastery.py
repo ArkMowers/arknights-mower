@@ -16,11 +16,13 @@ from arknights_mower.utils.mastery_db import (
     get_all_routes,
     get_failed_plans,
     get_plan_by_id,
+    get_plan_by_skill,
     get_route_settings,
     save_route,
     save_route_settings,
     save_support_plan,
     update_plan_priority,
+    update_plan_status,
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
 from arknights_mower.utils.mastery_support_types import (
@@ -136,7 +138,7 @@ def _chars_missing_from_cultivate(char_ids) -> set:
         return set(char_ids)
 
 
-def _dispatch_new_plans_immediately(chars=None):
+def _dispatch_new_plans_immediately(chars=None, targets=None):
     """一键专精建计划后立即尝试开始——刷新库存数据后复用仓库扫描的派发逻辑。
 
     #141（用户拍板方案 A）：建计划成功后**刷新 cultivate.json**（缺失/过期才拉，
@@ -147,17 +149,25 @@ def _dispatch_new_plans_immediately(chars=None):
     数据（新获得、cultivate.json 还新鲜），强制拉一次让推荐数据包含它再重算，否则
     新干员一键仍会静默空转。材料不足不派发（继续等下次扫描）；受 enable_mastery 门控
     （OFF 停专精自动化）；base_scheduler 未运行（None）时防御按无任务处理。
+
+    targets：本次点的那几条 (char_id, skill_index)。给了就只派发这几条——按钮的字面
+    意思是「把这一条排上」，不是「顺手把所有材料够的都排一遍」（与仓库扫描、一键专精
+    的批量派发刻意不一致）。None = 不限（批量派发路径）。
+
+    返回按 targets 过滤后的 {"scheduled": [...], "skipped": [...]}：调用方据此把
+    「材料不足，暂不开始」明说给用户，而不是白建一行还回「已添加」。
     """
+    nothing = {"scheduled": [], "skipped": []}
     if not config.conf.enable_mastery:
-        return
+        return nothing
     try:
         from arknights_mower.__main__ import base_scheduler
     except ImportError:
-        return
+        return nothing
     if base_scheduler is None or not hasattr(
         base_scheduler, "_dispatch_scan_start_tasks"
     ):
-        return
+        return nothing
     try:
         from arknights_mower.utils.mastery_recommendation import (
             auto_schedule_mastery_tasks,
@@ -169,15 +179,31 @@ def _dispatch_new_plans_immediately(chars=None):
             # 新干员不在本地数据 → 强制拉一次再重算（用户显式点了一键专精）
             _refresh_cultivate_if_stale(force=True)
             res = auto_schedule_mastery_tasks()
-        base_scheduler._dispatch_scan_start_tasks(res.get("scheduled", []))
-        if res.get("scheduled"):
+        scheduled = res.get("scheduled", [])
+        skipped = res.get("skipped", [])
+        if targets is not None:
+            wanted = {(char_id, skill_index) for char_id, skill_index in targets}
+            scheduled = [
+                entry
+                for entry in scheduled
+                if (entry.get("char_id"), entry.get("skill_index")) in wanted
+            ]
+            skipped = [
+                entry
+                for entry in skipped
+                if (entry.get("char_id"), entry.get("skill_index")) in wanted
+            ]
+        base_scheduler._dispatch_scan_start_tasks(scheduled)
+        if scheduled:
             config.wake_scheduler.set()
+        return {"scheduled": scheduled, "skipped": skipped}
     except Exception as e:
         logger.exception(f"一键专精立即派发失败: {e}")
+        return nothing
 
 
-def _added_plan_result(name, plan_id):
-    plan = get_plan_by_id(plan_id)
+def _added_plan_result(name, plan_id, path=None):
+    plan = get_plan_by_id(plan_id, path)
     automatic = bool(plan and plan.get("support_plan"))
     result = {
         "key": name,
@@ -188,6 +214,78 @@ def _added_plan_result(name, plan_id):
     if not automatic:
         result["warning"] = "此计划使用职业路线，请在通用专精路线预览中确认协助者配置"
     return result
+
+
+def _add_or_reuse_plan(
+    name,
+    char_id,
+    skill_index,
+    skill_name,
+    target_level,
+    support_mode,
+    path=None,
+):
+    """按钮路径的单条处理：能建就建，已有计划就复用（绝不建重复行）。
+
+    返回 (result, target, is_new)：result 是要回给前端的条目；target=(char_id, skill_index)
+    表示这条该去派发（材料不足时由调用方按派发结果覆盖成 insufficient），None = 这条
+    不用派发（正被 reconcile 管着，不碰）；is_new 表示这次真建了新行（调用方据此决定
+    要不要给新干员强制刷新 cultivate 数据）。
+
+    定案（2026-09-14）：failed 也算「已有」——不建新行，先把它放回待执行（get_all_plans
+    不含 failed，不放回去就进不了待练名单），再走派发让它排上。
+
+    path 透传到底层查询：不传则用默认库（生产行为）；测试传临时库，免得读到使用者
+    自己库里的同 (干员, 技能) 计划。
+    """
+    existing = get_plan_by_skill(char_id, skill_index, path)
+    if existing is not None:
+        return _reuse_existing_plan(name, char_id, skill_index, existing, path)
+    plan_id, reason = add_plan_checked(
+        char_id=char_id,
+        skill_index=skill_index,
+        target_level=target_level,
+        skill_name=skill_name,
+        char_name=name,
+        support_mode=support_mode,
+        path=path,
+    )
+    if plan_id > 0:
+        return _added_plan_result(name, plan_id, path), (char_id, skill_index), True
+    # add_plan_checked 的重复拦截会返回 error——但那是并发窗口（两次 POST 之间被插了一
+    # 行）或本地状态过期。再查一次库：查到了就按复用路径回 existing，别让用户看到
+    # 「已有计划」这种本该是绿字的提示被涂成红色错误。
+    raced = get_plan_by_skill(char_id, skill_index, path)
+    if raced is not None:
+        return _reuse_existing_plan(name, char_id, skill_index, raced, path)
+    return {"key": name, "status": "error", "reason": reason}, None, False
+
+
+def _reuse_existing_plan(name, char_id, skill_index, existing, path=None):
+    """已有一条同 (干员, 技能) 的计划 → 不建新行，按它的状态决定要不要派发。"""
+    result = {"key": name, "status": "existing", "id": existing["id"]}
+    status = existing["status"]
+    if status == "failed":
+        # 置回待执行要连 failed_reason 一起清：不清就是留一条陈旧的失败原因挂在一条
+        # 「待执行」的计划上，与 retry_failed_plans() 的口径也不一致。
+        if not update_plan_status(existing["id"], "idle", failed_reason="", path=path):
+            # 状态没翻转就派发不了（_dispatch_scan_start_tasks 按 status=='idle' 过滤），
+            # 此时回「已重新排入待执行」就是骗人——要按 error 报出去。
+            result["status"] = "error"
+            result["reason"] = "此前失败的计划没能置回待执行，请重试"
+            return result, None, False
+        reason = existing.get("failed_reason")
+        result["reason"] = (
+            f"此前失败：{reason}，已重新排入待执行"
+            if reason
+            else "此前失败，已重新排入待执行"
+        )
+        return result, (char_id, skill_index), False
+    if status == "idle":
+        result["reason"] = "已在计划中，已安排立即开始"
+        return result, (char_id, skill_index), False
+    result["reason"] = "已在训练中"
+    return result, None, False
 
 
 class MasteryPlanView(MethodView):
@@ -245,8 +343,18 @@ class MasteryPlanView(MethodView):
         }
 
         results = []
-        added = False
         added_char_ids = []
+        # 本次点的那几条（result, (char_id, skill_index)）：轮完统一派发一次，
+        # 派发范围收窄到这几条（定案 2）。
+        pending = []
+
+        def _record(result, target, is_new, char_id):
+            results.append(result)
+            if target is not None:
+                pending.append((result, target))
+            if is_new:
+                added_char_ids.append(char_id)
+
         items = (
             data.get("items", [])
             if isinstance(data, dict) and "items" in data
@@ -280,20 +388,16 @@ class MasteryPlanView(MethodView):
                     if len(skills) > skill_index
                     else f"技能{skill_index + 1}"
                 )
-                plan_id, reason = add_plan_checked(
-                    char_id=char_id,
-                    skill_index=skill_index,
-                    target_level=target_level,
-                    skill_name=skill_name,
-                    char_name=name,
-                    support_mode=item.get("support_mode", "auto"),
+                result, target, is_new = _add_or_reuse_plan(
+                    name,
+                    char_id,
+                    skill_index,
+                    skill_name,
+                    target_level,
+                    item.get("support_mode", "auto"),
+                    path=None,
                 )
-                if plan_id > 0:
-                    results.append(_added_plan_result(name, plan_id))
-                    added = True
-                    added_char_ids.append(char_id)
-                else:
-                    results.append({"key": name, "status": "error", "reason": reason})
+                _record(result, target, is_new, char_id)
         else:
             for name, skill_index in data.items():
                 char_id = name_to_id.get(name)
@@ -324,20 +428,24 @@ class MasteryPlanView(MethodView):
                     if len(skills) > skill_index
                     else f"技能{skill_index + 1}"
                 )
-                plan_id, reason = add_plan_checked(
-                    char_id=char_id,
-                    skill_index=skill_index,
-                    skill_name=skill_name,
-                    char_name=name,
+                result, target, is_new = _add_or_reuse_plan(
+                    name, char_id, skill_index, skill_name, None, "auto", path=None
                 )
-                if plan_id > 0:
-                    results.append(_added_plan_result(name, plan_id))
-                    added = True
-                    added_char_ids.append(char_id)
-                else:
-                    results.append({"key": name, "status": "error", "reason": reason})
-        if added:
-            _dispatch_new_plans_immediately(chars=added_char_ids)
+                _record(result, target, is_new, char_id)
+        if pending:
+            info = _dispatch_new_plans_immediately(
+                chars=added_char_ids, targets=[target for _, target in pending]
+            )
+            insufficient = {
+                (entry.get("char_id"), entry.get("skill_index"))
+                for entry in (info or {}).get("skipped", [])
+            }
+            for result, target in pending:
+                if target in insufficient:
+                    # 材料不足也要明说（不静默跳过、不白建一行）——对「已有计划但材料
+                    # 仍不足」同样适用，此时给的是材料不足而不是「已在计划中」。
+                    result["status"] = "insufficient"
+                    result["reason"] = "材料不足，暂不开始"
         return {"results": results}
 
     def delete(self):
