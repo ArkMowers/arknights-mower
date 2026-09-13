@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
 
 
@@ -67,6 +68,47 @@ class TestTapElement(unittest.TestCase):
         result = self.solver.tap_element("confirm_blue")
         self.assertTrue(result)
         self.tap_mock.assert_called_once_with([[100, 200], [300, 400]], 0.5, 0.5, 1)
+
+
+class TestRunClearsStaleScene(unittest.TestCase):
+    """run：每圈结束清一次场景缓存，转移静默失败时不会拿陈旧场景一直空转。"""
+
+    class _StaleSceneSolver(BaseSolver):
+        """转移在陈旧场景上静默失败，画面刷新之后才认出正确场景。"""
+
+        def __init__(self, recog):
+            self.recog = recog
+            self.iterations = 0
+
+        def transition(self):
+            self.iterations += 1
+            if self.iterations > 3:
+                raise AssertionError("run 未在刷新画面后退出，仍在陈旧场景上空转")
+            if self.scene() == Scene.OPERATOR_ELIMINATE_AGENCY:
+                return None  # 找不到要点的元素，静默失败
+            return True
+
+    class _StaleRecog:
+        """get_scene 返回缓存场景，update 之后才看得到新画面。"""
+
+        def __init__(self, scene, refreshed):
+            self.scene = scene
+            self.refreshed = refreshed
+
+        def get_scene(self):
+            return self.scene
+
+        def update(self):
+            self.scene = self.refreshed
+
+        def check_current_focus(self):
+            pass
+
+    def test_stale_scene_does_not_spin_forever(self):
+        recog = self._StaleRecog(Scene.OPERATOR_ELIMINATE_AGENCY, Scene.INFRA_MAIN)
+        solver = self._StaleSceneSolver(recog)
+        self.assertTrue(solver.run())
+        self.assertEqual(solver.iterations, 2)
 
 
 if __name__ == "__main__":
