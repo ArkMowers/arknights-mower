@@ -186,9 +186,6 @@ def _validate_configuration(files):
     }
     conf = config.Conf(**data)
     plan = plan_from_archive(files)
-    if plan != config.plan:
-        conf.dorm_order = ""
-        data["dorm_order"] = ""
     weekly = _object_file(files, "weekly_plans.yml", optional=True)
     if weekly is not None:
         plans = weekly.get("plans")
