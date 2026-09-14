@@ -296,35 +296,21 @@ class Operators:
                     if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
-            if config.conf.dorm_order == "":
-                logger.debug(self.dorm)
-                config.conf.dorm_order = ",".join(
-                    [
-                        dorm.position[0] + "_" + str(dorm.position[1])
-                        for dorm in self.dorm
-                    ]
-                )
-                logger.debug(config.conf.dorm_order)
-                config.save_conf()  # 保存配置
-            else:
-                dorm_order = config.conf.dorm_order.split(",")
-                current_dorm_names = {
-                    dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
-                }
-                saved_dorm_names = set(dorm_order)
-                if saved_dorm_names == current_dorm_names:
+            dorm_order = [name for name in config.conf.dorm_order.split(",") if name]
+            current_dorm_names = {
+                dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
+            }
+            if dorm_order:
+                if set(dorm_order) == current_dorm_names:
                     self.dorm.sort(
                         key=lambda dorm: dorm_order.index(
                             dorm.position[0] + "_" + str(dorm.position[1])
                         )
                     )
                 else:
-                    logger.info("宿舍休息位已变化，按当前排班重新生成宿舍优先级")
-                    config.conf.dorm_order = ",".join(
-                        dorm.position[0] + "_" + str(dorm.position[1])
-                        for dorm in self.dorm
+                    return (
+                        "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
                     )
-                    config.save_conf()
         else:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
@@ -480,6 +466,18 @@ class Operators:
             agent = self.operators[name]
             if agent.room.startswith("dorm"):
                 agent.time_stamp = None
+
+    def restore_dorm_state(self, saved_dorms):
+        """按床位恢复宿舍状态，保留当前排班生成的顺序和床位集合。"""
+        saved_by_position = {
+            tuple(dorm.position): dorm
+            for dorm in saved_dorms
+            if hasattr(dorm, "position")
+        }
+        for dorm in self.dorm:
+            if saved := saved_by_position.get(tuple(dorm.position)):
+                dorm.name = saved.name
+                dorm.time = saved.time
 
     @save_action_to_sqlite_decorator
     def update_detail(self, name, mood, current_room, current_index, update_time=False):

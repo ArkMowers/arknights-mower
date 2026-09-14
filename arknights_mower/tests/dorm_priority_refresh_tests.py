@@ -1,13 +1,12 @@
-"""排班改变后重新生成优先级，历史失效床位不再阻断启动。"""
+"""排班改变后仅刷新运行时优先级，不改动用户设置。"""
 
-import json
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-import yaml
 
 from arknights_mower.utils import config
-from arknights_mower.utils.operators import Operators
+from arknights_mower.utils.operators import Dormitory, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
 
@@ -52,28 +51,56 @@ DEFAULT = [
 @pytest.mark.parametrize(
     "old",
     [
-        "dormitory_2_4,dormitory_1_2,dormitory_2_2,dormitory_1_4,dormitory_1_3,dormitory_2_3",
+        "dormitory_2_4,dormitory_1_2,dormitory_2_2,dormitory_1_4,"
+        "dormitory_1_3,dormitory_2_3",
         "dormitory_2_4",
-        "",
     ],
 )
-def test_stale_or_empty_order_regenerates_entire_default_order(saved, old):
+def test_stale_or_incomplete_order_keeps_original_validation(saved, old):
     config.conf.dorm_order = old
+    op = operators()
+    assert (
+        op.init_and_validate()
+        == "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
+    )
+    assert config.conf.dorm_order == old
+    saved.assert_not_called()
+
+
+def test_empty_order_uses_runtime_default_without_rewriting_setting(saved):
     op = operators()
     assert op.init_and_validate() is None
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
-    assert config.conf.dorm_order == ",".join(DEFAULT)
-    saved.assert_called_once()
-    assert operators().init_and_validate() is None
-    saved.assert_called_once()
+    assert config.conf.dorm_order == ""
+    saved.assert_not_called()
 
 
-def test_valid_manual_order_unchanged_until_plan_is_edited(saved):
+def test_valid_manual_order_is_used_without_rewriting_setting(saved):
     order = list(reversed(DEFAULT))
     config.conf.dorm_order = ",".join(order)
     op = operators()
     assert op.init_and_validate() is None
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == order
+    saved.assert_not_called()
+
+
+def test_saved_state_restores_values_without_overriding_regenerated_order(saved):
+    op = operators()
+    assert op.init_and_validate() is None
+    first_time = datetime(2026, 9, 14, 12)
+    last_time = datetime(2026, 9, 14, 13)
+    op.restore_dorm_state(
+        [
+            Dormitory(("dormitory_2", 4), "流明", last_time),
+            Dormitory(("dormitory_3", 2), "失效床位", first_time),
+            Dormitory(("dormitory_1", 3), "冰酿", first_time),
+        ]
+    )
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
+    assert (op.dorm[0].name, op.dorm[0].time) == ("冰酿", first_time)
+    assert (op.dorm[-1].name, op.dorm[-1].time) == ("流明", last_time)
+    assert all(dorm.position[0] != "dormitory_3" for dorm in op.dorm)
+    assert config.conf.dorm_order == ""
     saved.assert_not_called()
 
 
@@ -85,7 +112,7 @@ def test_invalid_plan_still_rejected(saved):
     saved.assert_not_called()
 
 
-def test_plan_save_clears_old_order_only_when_content_changes(saved, monkeypatch):
+def test_plan_save_never_changes_dorm_order(saved, monkeypatch):
     import server
 
     monkeypatch.setattr(config, "plan", config.PlanModel())
@@ -95,24 +122,16 @@ def test_plan_save_clears_old_order_only_when_content_changes(saved, monkeypatch
     payload = config.plan.model_dump(mode="json", exclude_none=True)
     response = client.post("/plan", json=payload)
     assert response.status_code == 200
-    assert response.json["dorm_order_reset"] is False
+    assert "dorm_order_reset" not in response.json
     saved.assert_not_called()
     payload["conf"]["ling_xi"] = 2
     response = client.post("/plan", json=payload)
-    assert response.json["dorm_order_reset"] is True
-    assert config.conf.dorm_order == ""
-    saved.assert_called_once()
-    config.conf.dorm_order = ",".join(DEFAULT)
-    response = client.post("/plan", json=payload)
-    assert response.json["dorm_order_reset"] is False
-    assert config.conf.dorm_order == ",".join(DEFAULT)
-    saved.assert_called_once()
+    assert response.status_code == 200
+    assert config.conf.dorm_order == ",".join(reversed(DEFAULT))
+    saved.assert_not_called()
 
 
-@pytest.mark.parametrize("failed_save", ["save_plan", "save_conf"])
-def test_failed_plan_save_can_retry_dorm_order_reset(
-    monkeypatch, tmp_path, failed_save
-):
+def test_failed_plan_save_restores_plan_and_keeps_dorm_order(monkeypatch, tmp_path):
     import server
 
     original_plan = config.PlanModel()
@@ -123,7 +142,7 @@ def test_failed_plan_save_can_retry_dorm_order_reset(
     monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
     config.save_plan()
     config.save_conf()
-    real_save = getattr(config, failed_save)
+    real_save = config.save_plan
 
     def fail_once():
         nonlocal first_attempt
@@ -133,7 +152,7 @@ def test_failed_plan_save_can_retry_dorm_order_reset(
         real_save()
 
     first_attempt = True
-    monkeypatch.setattr(config, failed_save, fail_once)
+    monkeypatch.setattr(config, "save_plan", fail_once)
     monkeypatch.setitem(server.app.config, "PROPAGATE_EXCEPTIONS", False)
     client = server.app.test_client()
     payload = original_plan.model_dump(mode="json", exclude_none=True)
@@ -146,16 +165,5 @@ def test_failed_plan_save_can_retry_dorm_order_reset(
 
     response = client.post("/plan", json=payload)
     assert response.status_code == 200
-    assert response.json["dorm_order_reset"] is True
     assert config.plan.conf.ling_xi == 2
-    assert config.conf.dorm_order == ""
-    assert json.loads(config.plan_path.read_text())["conf"]["ling_xi"] == 2
-    assert yaml.safe_load(config.conf_path.read_text())["dorm_order"] == ""
-
-    config.conf.dorm_order = original_order
-    config.save_conf()
-    response = client.post("/plan", json=payload)
-    assert response.status_code == 200
-    assert response.json["dorm_order_reset"] is False
     assert config.conf.dorm_order == original_order
-    assert yaml.safe_load(config.conf_path.read_text())["dorm_order"] == original_order

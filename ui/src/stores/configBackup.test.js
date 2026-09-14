@@ -29,23 +29,16 @@ function setup() {
 }
 
 describe('configuration restore autosave coordination', () => {
-  it('clears the browser dorm order after a changed plan is saved', async () => {
+  it('preserves the browser dorm order after saving and loading a plan', async () => {
     const { config, plan } = setup()
     config.dorm_order = ['dormitory_1_2']
     axios.post.mockResolvedValueOnce({ data: { dorm_order_reset: true } })
     await plan.save_plan()
-    expect(config.dorm_order).toEqual([])
-    config.dorm_order = ['dormitory_2_3']
-    axios.post.mockResolvedValueOnce({ data: { dorm_order_reset: false } })
-    await plan.save_plan()
-    expect(config.dorm_order).toEqual(['dormitory_2_3'])
-  })
-
-  it('preserves the browser dorm order when saving a plan fails', async () => {
-    const { config, plan } = setup()
-    config.dorm_order = ['dormitory_1_2']
-    axios.post.mockRejectedValueOnce(new Error('offline'))
-    await expect(plan.save_plan()).rejects.toThrow('offline')
+    expect(config.dorm_order).toEqual(['dormitory_1_2'])
+    axios.get.mockResolvedValue({
+      data: { conf: { ling_xi: 1 }, plan1: {}, backup_plans: [] }
+    })
+    await plan.load_plan()
     expect(config.dorm_order).toEqual(['dormitory_1_2'])
   })
 
@@ -75,18 +68,6 @@ describe('configuration restore autosave coordination', () => {
     // A manually restored file can now differ from this unchanged page.
     await drainConfigurationSaves(config, plan)
     expect(axios.post).not.toHaveBeenCalled()
-  })
-
-  it('preserves imported dorm order at startup and resets it only for a new plan', async () => {
-    const { config, plan } = setup()
-    axios.get.mockResolvedValue({
-      data: { conf: { ling_xi: 1 }, plan1: {}, backup_plans: [] }
-    })
-    config.dorm_order = ['dormitory_3', 'dormitory_1']
-    await plan.load_plan({ resetDormOrder: false })
-    expect(config.dorm_order).toEqual(['dormitory_3', 'dormitory_1'])
-    await plan.load_plan()
-    expect(config.dorm_order).toEqual([])
   })
 })
 
@@ -170,17 +151,20 @@ describe('maintenance save coordination', () => {
     expect(plan.autosave_paused).toBe(true)
   })
 
-  it('drains a config save triggered by plan completion', async () => {
+  it('does not rewrite dorm order after a plan save completes', async () => {
     const { config, plan, loaded } = setup()
     loaded.value = true
     await drainConfigurationSaves(config, plan)
     config.dorm_order = ['dormitory_1_2']
     await nextTick()
     await config.flush_config_saves()
-    axios.post.mockResolvedValueOnce({ data: { dorm_order_reset: true } })
+    const configSaveCount = axios.post.mock.calls.filter(([url]) => url.endsWith('/conf')).length
     const saving = plan.save_plan()
     await drainConfigurationSaves(config, plan)
     await saving
-    expect(axios.post.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1].dorm_order).toBe('')
+    expect(axios.post.mock.calls.filter(([url]) => url.endsWith('/conf'))).toHaveLength(
+      configSaveCount
+    )
+    expect(config.dorm_order).toEqual(['dormitory_1_2'])
   })
 })

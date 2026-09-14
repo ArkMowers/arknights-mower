@@ -6,7 +6,7 @@ export async function drainConfigurationSaves(config, plan) {
   await nextTick()
   await config.flush_config_saves()
   await plan.wait_for_plan_save()
-  // A completed plan save can reset dorm_order and queue a config save.
+  // Drain any configuration request queued while the plan save was completing.
   await nextTick()
   await config.flush_config_saves()
 }
