@@ -319,7 +319,7 @@ function cancelCopyDialogLongPress() {
                   企鹅物流
                 </n-a>
                 ，勾选后额外上传至
-                <n-a href="https://yituliu.site/" target="_blank" rel="noopener noreferrer">
+                <n-a href="https://ark.yituliu.cn/" target="_blank" rel="noopener noreferrer">
                   一图流
                 </n-a>
                 。
