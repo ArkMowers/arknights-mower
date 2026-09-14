@@ -59,6 +59,17 @@ def _mastery_canvas(lit):
     return img
 
 
+def _no_idle_marker(find):
+    """给 solver.find 装一条不含「空闲中」标记的 side_effect。
+
+    「空闲中」模板是空闲的正证据、优先级最高，所以凡是不是空闲房的用例都必须让它
+    返回 None——未配置的 MagicMock 一律真值，不显式挡掉会被当成命中。
+    """
+    find.side_effect = lambda res, *a, **k: (
+        None if res == "training_idle" else MagicMock()
+    )
+
+
 class FixedDateTime(datetime):
     """冻结的假时钟，替换 mastery 模块的 datetime。"""
 
@@ -418,7 +429,7 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertEqual(len(solver.tasks), 1)
         task = solver.tasks[0]
         self.assertIsNone(task.plan_key)
-        self.assertEqual(task.meta_data, "测试干员（测试技能） 占用中")
+        self.assertEqual(task.meta_data, "测试干员（测试技能） 重读训练室状态")
         self.assertTrue(solver.back.called)
 
     def test_read_tier_zero_proceeds_to_start(self):
@@ -776,6 +787,9 @@ class TestStartTrainingMail(unittest.TestCase):
         solver.train_scene.return_value = Scene.TRAIN_MAIN
         solver.read_time.return_value = 7200
         solver.read_screen.return_value = "[测试干员]测试技能"
+        # 「空闲中」标记是空闲的正证据、优先级最高：这些用例都不是空闲房，
+        # find 对 training_idle 必须返回 None（未配置的 MagicMock 一律真值会被当命中）
+        _no_idle_marker(solver.find)
         solver.recog.w = 1920
         solver.recog.h = 1080
         solver.tasks = []
@@ -981,6 +995,9 @@ class TestSwapCollectGating(unittest.TestCase):
         solver.train_scene.return_value = Scene.TRAIN_MAIN
         solver.read_time.return_value = 7200
         solver.read_screen.return_value = "[测试干员]测试技能"
+        # 「空闲中」标记是空闲的正证据、优先级最高：这里没开空闲房，find 对
+        # training_idle 必须返回 None（未配置的 MagicMock 一律真值会被当命中）
+        _no_idle_marker(solver.find)
         solver.recog.w = 1920
         solver.recog.h = 1080
         solver.tasks = []
@@ -990,14 +1007,16 @@ class TestSwapCollectGating(unittest.TestCase):
         return solver
 
     def _swap_solver(self):
-        """run_swap_support 用 solver：场景模拟 217 读槽位 → 浮窗 205 → 关回，后续回 217。
+        """run_swap_support 用 solver：场景模拟 217 读面板 → 217 读槽位 → 浮窗 205 → 关回。
 
         #140：_read_slots_checked 读槽位前确认 217、读后确认浮窗开了（205）——测试 mock
         必须模拟 get_agent_from_room 开浮窗后场景变 205，否则读被判不可靠、换人分支不触发。
+        读面板前的画面确认（read_main_panel 内部）也占一次场景询问。
         """
         solver = self._solver()
         scenes = [
             Scene.TRAIN_MAIN,  # run_swap_support 场景检测（217）
+            Scene.TRAIN_MAIN,  # read_main_panel 的画面确认（217）
             Scene.TRAIN_MAIN,  # 读槽位前置：主页面
             Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
         ]
@@ -1815,7 +1834,8 @@ class TestSwapCollectGating(unittest.TestCase):
         solver.get_agent_from_room.return_value = self._slots("夜半")
         solver.train_scene.side_effect = [
             Scene.INFRA_DETAILS,  # run_swap_support 场景检测：浮窗开着 → 先关回 217
-            Scene.TRAIN_MAIN,
+            Scene.TRAIN_MAIN,  # 关浮窗后回主页面
+            Scene.TRAIN_MAIN,  # read_main_panel 的画面确认（217）
             Scene.TRAIN_MAIN,  # 读槽位前置：主页面
             Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
         ]
@@ -1854,6 +1874,9 @@ class TestRouteStepLevel(unittest.TestCase):
         solver.train_scene.return_value = Scene.TRAIN_MAIN
         solver.read_time.return_value = 7200
         solver.read_screen.return_value = "[测试干员]测试技能"
+        # 「空闲中」标记是空闲的正证据、优先级最高：这些用例都不是空闲房，
+        # find 对 training_idle 必须返回 None（未配置的 MagicMock 一律真值会被当命中）
+        _no_idle_marker(solver.find)
         solver.recog.w = 1920
         solver.recog.h = 1080
         solver.tasks = []
@@ -2128,6 +2151,7 @@ class TestRouteStepLevel(unittest.TestCase):
         solver = self._lit_solver(lit=2)
         solver.train_scene.side_effect = [
             Scene.TRAIN_MAIN,  # run_swap_support 场景检测
+            Scene.TRAIN_MAIN,  # read_main_panel 的画面确认（217）
             Scene.TRAIN_MAIN,  # 读槽位前置：主页面
             Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
         ]
