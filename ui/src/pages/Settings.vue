@@ -13,6 +13,7 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
+  low_frame_rate_mode,
   dorm_order,
   drone_room,
   drone_count_limit,
@@ -448,6 +449,13 @@ if (return_home_when_idle.value) {
                 <template #suffix>毫秒</template>
               </mower-input-number>
             </n-form-item>
+            <n-form-item>
+              <n-checkbox v-model:checked="low_frame_rate_mode">低帧率适配</n-checkbox>
+              <help-text>
+                基建选人、排序和翻页时等待画面稳定，适合低帧率或画面延迟的设备，可能增加换班耗时。
+                Android 默认开启，其他平台默认关闭；设备运行流畅时可关闭。
+              </help-text>
+            </n-form-item>
             <n-form-item v-if="runtime_platform !== 'android'" :show-feedback="screenshot === 0">
               <template #label>
                 <span>截图保存时间</span>
@@ -586,6 +594,10 @@ if (return_home_when_idle.value) {
                 </n-checkbox>
               </n-flex>
             </n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
+              Android 推荐保持「跑单前置延时」5 分钟、「葛朗台缓冲时间」15
+              秒；前者为导航选人留余量，后者为确认入驻留余量。两项均可自行修改；设备较慢时可适当增加。
+            </n-alert>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>

@@ -1,12 +1,14 @@
 import lzma
 import pickle
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 import cv2
 import numpy as np
 
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -39,8 +41,25 @@ def reload_resource_models() -> None:
     OP_SELECT.update(select)
     OP_TRAIN.clear()
     OP_TRAIN.update(train)
+    _match_name_template.cache_clear()
 
 
+@lru_cache(maxsize=256)
+def _match_name_template(train, shape, pixels):
+    """仅复用完全相同的归一化名字像素；卡片坐标每帧重新分割。"""
+    tpl = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
+    max_score = 0
+    best_operator = ""
+    for operator, template in (OP_TRAIN if train else OP_SELECT).items():
+        result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        if max_val > max_score:
+            max_score = max_val
+            best_operator = operator
+    return best_operator if max_score > 0.6 else ""
+
+
+@timed_step("names")
 def operator_list(img, draw=False, full_scan=True):
     name_y = ((488, 520), (909, 941))
     line1 = cropimg(img, tuple(zip((600, 1860 if not full_scan else 1920), name_y[0])))
@@ -70,31 +89,38 @@ def operator_list(img, draw=False, full_scan=True):
     logger.debug(name_p)
 
     op_name = []
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    # 名字只占两条横带；遮罩分割后的 line1 不可用于名字识别。
+    gray_rows = (
+        {
+            y0: cv2.cvtColor(
+                img[y0:y1, 600 : 1920 if full_scan else 1860], cv2.COLOR_RGB2GRAY
+            )
+            for y0, y1 in name_y
+        }
+        if name_p
+        else {}
+    )
 
     def process_name_region(p):
-        im = cropimg(gray, p)
+        (x0, y0), (x1, _) = p
+        im = gray_rows[y0][:, x0 - 600 : x1 - 600]
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(im, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            # 空白或裁切卡片只保留位置，不阻断同页其他干员的识别。
+            return ""
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
+        if im.shape[0] > tpl.shape[0] or im.shape[1] > tpl.shape[1]:
+            # 异常轮廓不能截断后猜名字，也不能让模板赋值失败拖累整页。
+            return ""
         tpl[: im.shape[0], : im.shape[1]] = im
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
-        max_score = 0
-        best_operator = None
-        for operator, template in OP_SELECT.items():
-            result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            if max_val > max_score:
-                max_score = max_val
-                best_operator = operator
-        if max_score > 0.6:
-            return best_operator
-        return ""
+        return _match_name_template(False, tpl.shape, tpl.tobytes())
 
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))
@@ -112,6 +138,7 @@ def operator_list(img, draw=False, full_scan=True):
     return tuple(zip(op_name, name_p))
 
 
+@timed_step("names")
 def operator_list_train(img, draw=False, full_scan=True):
     name_y = ((479, 506), (895, 922))
     name_p_row = [[], []]
@@ -204,18 +231,7 @@ def operator_list_train(img, draw=False, full_scan=True):
         """cv2.imshow("tpl", tpl)
         cv2.waitKey(0)
         cv2.destroyAllWindows()"""
-        max_score = 0
-        best_operator = ""
-        for operator, template in OP_TRAIN.items():
-            result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            if max_val > max_score:
-                max_score = max_val
-                best_operator = operator
-        logger.debug(f"{best_operator}:{max_score}")
-        if max_score > 0.6:
-            return best_operator
-        return ""
+        return _match_name_template(True, tpl.shape, tpl.tobytes())
 
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))
