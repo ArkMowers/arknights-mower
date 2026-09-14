@@ -65,7 +65,7 @@ def read_confident_text(img):
     return read_text(img, min_confidence=MIN_TEXT_CONFIDENCE)
 
 
-def glyph_image(mask, padding=6, *, reject_clipped=False):
+def glyph_image(mask, padding=6, *, reject_clipped=False, source=None):
     x, y, width, height = cv2.boundingRect(mask)
     if (
         not width
@@ -74,13 +74,13 @@ def glyph_image(mask, padding=6, *, reject_clipped=False):
     ):
         raise ValueError("家具文字为空或被裁切")
     return cv2.copyMakeBorder(
-        mask[y : y + height, x : x + width],
+        (mask if source is None else source)[y : y + height, x : x + width],
         padding,
         padding,
         padding,
         padding,
         cv2.BORDER_CONSTANT,
-        value=0,
+        value=0 if source is None else (0, 0, 0),
     )
 
 
@@ -104,7 +104,13 @@ def furniture_name(img):
     # 整个名称区域重读，不能用检测框把漏检的字切掉后再次确认残缺名称。
     mask = cv2.inRange(name_img, (200, 200, 200), (255, 255, 255))
     try:
-        candidate = read_confident_text(glyph_image(mask, reject_clipped=True))
+        # 掩膜只定位整行范围；保留原图抗锯齿细节，避免小号 TM 被二值化损坏。
+        original_glyph = glyph_image(mask, reject_clipped=True, source=name_img)
+        try:
+            candidate = read_confident_text(original_glyph)
+        except ValueError:
+            # 原色背景仍有干扰时再读二值字形；可靠结果冲突不能走此重试。
+            candidate = read_confident_text(glyph_image(mask, reject_clipped=True))
     except ValueError as error:
         raise ValueError("家具名称无法可靠确认") from error
     if name is None or candidate == name or candidate in {f"“{name}”", f'"{name}"'}:
@@ -119,7 +125,15 @@ def furniture_details(img, expected_count=1, expected_batch=None):
     # 数量右对齐：分子为库存，分母随加工份数改变，MAX 后可能是 12/11。
     batch_digits = len(str(expected_batch)) if expected_batch is not None else 1
     left = 0.476 - 0.010 * (len(str(expected_count)) + batch_digits - 2)
-    stock = read_confident_text(crop_relative(img, ((left, 0.414), (0.511, 0.443))))
+    stock_img = crop_relative(img, ((left, 0.414), (0.511, 0.443)))
+    try:
+        stock = read_confident_text(stock_img)
+    except ValueError:
+        stock = ""
+    if not re.fullmatch(r"(\d+)[/／](\d+)", stock):
+        # 背景可能被识别成引号；重读真实白色字形，不删改 OCR 文本来凑格式。
+        mask = cv2.inRange(stock_img, (200, 200, 200), (255, 255, 255))
+        stock = read_confident_text(glyph_image(mask, reject_clipped=True))
     if not (match := re.fullmatch(r"(\d+)[/／](\d+)", stock)):
         raise ValueError("无法确认家具库存")
     owned, consumed = map(int, match.groups())

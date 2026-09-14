@@ -447,6 +447,26 @@ def test_details_reject_uncertain_stock(monkeypatch, solver, text, score):
         REAL_FURNITURE_DETAILS(solver.recog.img)
 
 
+@pytest.mark.parametrize(
+    "retry,score,accepted",
+    [("3/1", 1, True), ("3/1", 0.89, False), ("3/?", 1, False), ("3/2", 1, False)],
+)
+def test_stock_retry_reads_pixels_and_keeps_strict_validation(
+    monkeypatch, solver, retry, score, accepted
+):
+    monkeypatch.setattr(furniture, "furniture_name", lambda img: "测试家具")
+    solver.recog.img[452:472, 930:960] = 255
+    engine = MagicMock(side_effect=[([['"3/1', 0.92]], 0), ([[retry, score]], 0)])
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    if accepted:
+        assert REAL_FURNITURE_DETAILS(solver.recog.img, 3, 1) == ("测试家具", 3)
+    else:
+        with pytest.raises(ValueError):
+            REAL_FURNITURE_DETAILS(solver.recog.img, 3, 1)
+    assert engine.call_count == 2
+    assert np.count_nonzero(engine.call_args_list[1].args[0]) > 0
+
+
 @pytest.mark.parametrize("stock", [2, 12, 100, 999])
 def test_detail_stock_parser_accepts_multiple_digits(monkeypatch, solver, stock):
     monkeypatch.setattr(
@@ -535,7 +555,7 @@ def test_uncertain_name_detection_never_uses_partial_text(monkeypatch, solver, r
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     with pytest.raises(ValueError, match="家具名称无法可靠确认"):
         REAL_FURNITURE_DETAILS(solver.recog.img, 2)
-    assert engine.call_count == (2 if result else 1)
+    assert engine.call_count == (3 if result else 1)
 
 
 def test_multi_digit_stock_is_used_in_both_detail_checks(monkeypatch, solver):
