@@ -15,7 +15,7 @@
     trigger="click"
     @select="handleSelect"
   >
-    <n-button>{{currentAlgorithmHint}}</n-button>
+    <n-button>{{ currentAlgorithmHint }}</n-button>
   </n-dropdown>
   <n-card title="自定义收益系数输入" v-show="isShow">
     <div>
@@ -124,19 +124,18 @@ const algorithm_options = [
 
 const earningAlgorithmConfig = reactive({
   using: 0,
-  custom: JSON.parse(JSON.stringify(algorithm_options[0].algorithm)),
+  custom: JSON.parse(JSON.stringify(algorithm_options[0].algorithm))
 })
 const currentAlgorithmHint = computed(() => {
   if (!isShow.value) {
-    return `选择收益算法（当前算法：${algorithm_options.find(option => option.id === earningAlgorithmConfig.using)?.key ?? '未知'}算法）`
+    return `选择收益算法（当前算法：${algorithm_options.find((option) => option.id === earningAlgorithmConfig.using)?.key ?? '未知'}算法）`
   }
   return '选择收益算法（填入下表复用数值）'
 })
 
-
 function getCurrentAlgorithm() {
-  const option = algorithm_options.find(option => option.id === earningAlgorithmConfig.using)
-  if (option.algorithm) {
+  const option = algorithm_options.find((option) => option.id === earningAlgorithmConfig.using)
+  if (option?.algorithm) {
     return option.algorithm
   }
   return earningAlgorithmConfig.custom
@@ -145,7 +144,7 @@ function getCurrentAlgorithm() {
 const message = useMessage()
 
 function computeEarning(data) {
-  const gold = (data.赤金 || 0) + (data.龙舌兰赤金 || 0) + (data.可露希尔赤金 || 0);
+  const gold = (data.赤金 || 0) + (data.龙舌兰赤金 || 0) + (data.可露希尔赤金 || 0)
   const lmb = data.龙门币订单 || 0
   const exp = data.作战录像 || 0
   const algorithm = getCurrentAlgorithm()
@@ -189,14 +188,17 @@ function getEarningAlgorithmConfig() {
     using: 0,
     custom: algorithm_options[0].algorithm
   }
+  if (!value) {
+    return defaultConfig
+  }
   try {
-    const parsedConfig = JSON.parse(value || '') || {}
+    const parsedConfig = JSON.parse(value) || {}
     return {
       using: +parsedConfig.using || 0,
       custom: {
         gold: +parsedConfig.custom?.gold || 0,
         lmb: +parsedConfig.custom?.lmb || 0,
-        exp: +parsedConfig.custom?.exp || 0,
+        exp: +parsedConfig.custom?.exp || 0
       }
     }
   } catch (error) {
@@ -212,8 +214,10 @@ function initEarningAlgorithmConfig() {
   earningAlgorithmConfig.custom.gold = custom.gold
   earningAlgorithmConfig.custom.lmb = custom.lmb
   earningAlgorithmConfig.custom.exp = custom.exp
+  value_coefficient_gold.value = custom.gold
+  value_coefficient_lmb.value = custom.lmb
+  value_coefficient_exp.value = custom.exp
 }
-
 
 function handleSelect(_key, option) {
   const { algorithm } = option
