@@ -615,13 +615,8 @@ jobs:
           pattern: arknights-mower_*
           merge-multiple: true
 
-      - name: Reuse compatible Android host release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ANDROID_CHANNEL: ${{ needs.prepare.outputs.prerelease == 'true' && 'beta' || 'stable' }}
-        run: |
-          python scripts/sync_android_release.py --channel "$ANDROID_CHANNEL" \
-            --output release-assets --body release-metadata/body.md
+      - name: Link Android APK downloads
+        run: python scripts/sync_android_release.py --body release-metadata/body.md
 
       - name: Generate SHA-256 manifest
         run: |
@@ -636,8 +631,6 @@ jobs:
           files: |
             release-assets/arknights-mower_*
             release-assets/SHA256SUMS
-            release-assets/mower-android-*.apk
-            release-assets/mower-maa-python-*.zip
           body_path: release-metadata/body.md
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           draft: false
