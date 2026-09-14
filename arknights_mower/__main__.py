@@ -170,6 +170,9 @@ def simulate(saved, restart_after_mood_read=False):
                 base_scheduler.op_data.operators[k].dorm_recovery_room = getattr(
                     v, "dorm_recovery_room", ""
                 )
+                base_scheduler.op_data.operators[k].resting_from_train = getattr(
+                    v, "resting_from_train", False
+                )
             base_scheduler.op_data.dorm = saved["dorm"]
             base_scheduler.party_time = saved["party_time"]
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]

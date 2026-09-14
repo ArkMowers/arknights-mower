@@ -61,6 +61,8 @@ def selection_solver(monkeypatch, residents=None):
     solver.recog = SimpleNamespace(w=1920, h=1080, img=None)
     solver.op_data = SimpleNamespace(
         operators={},
+        plan={},
+        config=SimpleNamespace(free_blacklist=[], ope_resting_priority=[]),
         profession_filter=set(),
         get_current_room=lambda *args: current.copy(),
     )

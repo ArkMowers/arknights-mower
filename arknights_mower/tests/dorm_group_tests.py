@@ -138,6 +138,7 @@ def test_failed_group_assignment_is_atomic(solver, monkeypatch, failure):
         data.operators["塑心"].replacement = ["陈"]
     else:
         data.operators["泥岩"].operator_type = "high"
+        data.operators["泥岩"].resting_priority = "high"
     before = [(d.name, d.time) for d in data.dorm]
     plan, replacements = {}, []
     solver.get_resting_plan(data.groups["联动"], replacements, plan, 0)

@@ -682,7 +682,10 @@ if (return_home_when_idle.value) {
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="free_room">
                 宿舍不养闲人
-                <help-text>干员心情回满后，立即释放宿舍空位</help-text>
+                <help-text>
+                  有可用的未满心情干员时，按休息优先级和心情替换动态床位中的满心情普通干员，也会补入空床位。
+                  主班按轮休任务回班，固定宿舍岗位不清除；执行时机受任务队列及合并间隔影响。
+                </help-text>
               </n-checkbox>
             </n-form-item>
             <n-form-item v-if="free_room">

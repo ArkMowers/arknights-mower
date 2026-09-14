@@ -13,6 +13,7 @@ from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.config.conf import RIICPart  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
+from arknights_mower.utils.resting_priority import RestingTier  # noqa: E402
 
 
 @pytest.fixture
@@ -28,10 +29,11 @@ def dorm_solver(monkeypatch):
     solver.global_plan = {
         "default_plan": Plan(
             {
+                "meeting": [Room("伊芙利特", "", ["红", "陈"])],
                 "dormitory_1": [
                     Room(name, "", [])
                     for name in ["塑心", "冰酿", "Free", "Free", "Free"]
-                ]
+                ],
             },
             PlanConfig("", "", ""),
         ),
@@ -42,6 +44,7 @@ def dorm_solver(monkeypatch):
     solver.plan_metadata = MagicMock()
     for name in ["空爆", "红", "陈", "银灰", "伊内丝", "年"]:
         solver.op_data.add(Operator(name, "", mood=5))
+        solver.op_data.operators[name].time_stamp = datetime.now()
     for name, index in [("银灰", 2), ("伊内丝", 4)]:
         op = solver.op_data.operators[name]
         op.operator_type = "high"
@@ -138,25 +141,24 @@ def test_every_crafting_selection_is_dynamic_and_below_ordinary_replacements(
         if field.endswith("operators")
         else [RIICPart.WorkShopSetting(operator="年")],
     )
-    assert BaseSchedulerSolver._resting_tier(op) > BaseSchedulerSolver._resting_tier(
-        regular
-    )
+    assert dorm_solver._resting_tier(op) > dorm_solver._resting_tier(regular)
     config.conf.workshop_low_priority_rest = False
-    assert BaseSchedulerSolver._resting_tier(op) == BaseSchedulerSolver._REST_TIER_HIGH
+    assert dorm_solver._resting_tier(op) == RestingTier.MAIN
     config.conf.workshop_low_priority_rest = True
     assert op.is_workshop()
     setattr(config.conf, field, [] if field != "workshop_manual_backup" else None)
     assert not op.is_workshop()
 
 
-def test_occupied_crafter_bed_does_not_exhaust_regular_rest_capacity(dorm_solver):
+def test_occupied_crafter_bed_counts_as_occupied_but_remains_takable(dorm_solver):
     before = dorm_solver.op_data.available_free("low")
     op = dorm_solver.op_data.operators["空爆"]
     op.operator_type = "high"
     op.resting_priority = "high"
     occupy(dorm_solver, "空爆", 3)
-    assert dorm_solver.op_data.available_free("low") == before
+    assert dorm_solver.op_data.available_free("low") == before - 1
     assert dorm_solver.op_data.active_high_resting_count() == 2
+    assert dorm_solver.op_data.assign_dorm("红") is not None
 
 
 @pytest.mark.parametrize("mood,expected", [(22, "红"), (22.01, "空爆"), (24, "空爆")])
@@ -186,6 +188,8 @@ def test_one_tired_replacement_does_not_evict_two_crafters(dorm_solver):
 def test_disabling_crafter_priority_restores_bed_allocation_and_ui_selection(
     dorm_solver,
 ):
+    # 开关只撤销加工降级；没有写入排班的干员仍属于其他空闲人员。
+    dorm_solver.op_data.plan["meeting"][0].replacement.append("空爆")
     config.conf.workshop_low_priority_rest = False
     occupy(dorm_solver, "空爆", 3)
     # Both are ordinary low-priority replacements again: occupied beds stay protected.
@@ -193,9 +197,21 @@ def test_disabling_crafter_priority_restores_bed_allocation_and_ui_selection(
     agents = ["塑心", "冰酿", "银灰", "Free", "伊内丝"]
     dorm_solver.task = MagicMock(plan={"dormitory_1": agents})
     dorm_solver.preserve_resting_crafters(agents, "dormitory_1")
-    assert agents[3] == "Free"
+    assert agents[3] == "空爆"
     # Actual free-slot selection must also retain crafters, even with tired replacements.
     dorm_solver.op_data.operators["空爆"].current_room = ""
+    agents[3] = "Free"
     assert "空爆" in dorm_solver.get_free_list(agents)
     config.conf.workshop_low_priority_rest = True
-    assert "空爆" not in dorm_solver.get_free_list(agents)
+    free_list = dorm_solver.get_free_list(["塑心", "冰酿", "银灰", "Free", "伊内丝"])
+    assert free_list.index("红") < free_list.index("空爆")
+
+
+def test_actual_free_placeholder_prefers_replacement_over_lower_mood_idle(dorm_solver):
+    dorm_solver.op_data.operators["红"].mood = 20
+    dorm_solver.op_data.operators["陈"].mood = 23
+    dorm_solver.op_data.operators["空爆"].mood = 0
+    agents = ["塑心", "冰酿", "银灰", "Free", "伊内丝"]
+    dorm_solver.task = MagicMock(plan={"dormitory_1": agents})
+    dorm_solver.preserve_resting_crafters(agents, "dormitory_1")
+    assert agents[3] == "红"

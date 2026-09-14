@@ -498,7 +498,13 @@ function movePlanForward() {
       <slick-operator-select v-model="current_conf.workaholic"></slick-operator-select>
     </n-form-item>
     <n-form-item>
-      <template #label><span>宿舍低优先级干员</span><help-text>请查阅文档</help-text></template>
+      <template #label>
+        <span>宿舍低优先级干员</span>
+        <help-text>
+          低于普通主班，高于宿舍休息候补；同级按当前心情从低到高安排。
+          仍需床位，可接管更低层级的床位，不受 22 心情门槛限制；同级不互踢。
+        </help-text>
+      </template>
       <slick-operator-select v-model="current_conf.resting_priority"></slick-operator-select>
     </n-form-item>
     <n-form-item>
@@ -554,8 +560,8 @@ function movePlanForward() {
       <template #label>
         <span>干员休息优先级</span>
         <help-text>
-          <p>会按照优先级放入宿舍的时候重新排序</p>
-          <p>宿舍重新排序触发此设置优先级最高，所以非高效组谨慎填写</p>
+          <p>名单中的干员属于最高休息层级；名单内部按当前心情从低到高排序，不按填写顺序。</p>
+          <p>可接管更低层级的动态床位，但仍须满足下班条件。非主班干员请谨慎填写。</p>
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.ope_resting_priority"></slick-operator-select>
