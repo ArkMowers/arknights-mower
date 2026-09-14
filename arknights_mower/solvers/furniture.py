@@ -211,14 +211,14 @@ def furniture_cards(img):
     for box, text, score in result or []:
         if normalize_name(text) != "家具零件":
             continue
-        if not MIN_TEXT_CONFIDENCE <= score <= 1:
-            raise ValueError("家具配方位置识别置信度不足")
         found_title = True
         x = min(point[0] for point in box) / width + 0.2
         y = min(point[1] for point in box) / height + 0.1
         # 列表底部可能仅露出标题，留到下次滚动后处理。
         if y + 0.215 > 0.98:
             continue
+        if not MIN_TEXT_CONFIDENCE <= score <= 1:
+            raise ValueError("家具配方位置识别置信度不足")
         quantity_img = crop_relative(
             img, ((x - 0.005, y + 0.16), (x + 0.09, y + 0.215))
         )

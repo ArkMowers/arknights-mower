@@ -52,11 +52,16 @@ def title(x, y, text="家具零件"):
     return [[[x, y], [x + 100, y], [x + 100, y + 30], [x, y + 30]], text, 1]
 
 
-def test_cards_follow_row_order_skip_singles_and_ignore_clipped_bottom(monkeypatch):
+@pytest.mark.parametrize("clipped_score", [1, 0.896, float("nan")])
+def test_cards_follow_row_order_skip_singles_and_ignore_clipped_bottom(
+    monkeypatch, clipped_score
+):
     # OCR 返回顺序不保证两列按行排列；最后一个只露出标题。
+    clipped = title(260, 850)
+    clipped[2] = clipped_score
     ocr = MagicMock(
         side_effect=[
-            ([title(1000, 39), title(260, 42), title(260, 310), title(260, 850)], 0),
+            ([title(1000, 39), title(260, 42), title(260, 310), clipped], 0),
             ([["1/1", 1]], 0),
             ([["7/1", 1]], 0),
             ([["2/1", 1]], 0),
