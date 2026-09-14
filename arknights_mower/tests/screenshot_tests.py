@@ -29,8 +29,8 @@ class ScreenshotTests(unittest.TestCase):
         )
         self.addCleanup(self.store.close)
 
-    def wait_idle(self):
-        deadline = time.monotonic() + 3
+    def wait_idle(self, timeout=3):
+        deadline = time.monotonic() + timeout
         while self.store.stats()["pending_count"] and time.monotonic() < deadline:
             Event().wait(0.005)
         self.assertEqual(self.store.stats()["pending_count"], 0)
@@ -71,7 +71,8 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(self.store.latest().filename, files[-1])
         self.assertIsNone(reference())
         self.store.start()
-        self.wait_idle()
+        # Windows CI 写入 128 个文件可能超过 3 秒；此处验证队列与文件完整性。
+        self.wait_idle(timeout=15)
         self.assertFalse((self.root / oldest).exists())
         self.assertFalse((self.root / files[-129]).exists())
         self.assertTrue(all((self.root / file).exists() for file in files[-128:]))
