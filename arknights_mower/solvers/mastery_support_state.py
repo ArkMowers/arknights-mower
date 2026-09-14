@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_support import (
     SupportPlanError,
     decode_json,
@@ -57,18 +58,43 @@ def record_work(plan, level, name, until=None):
     save_runtime(plan, route)
 
 
-def refresh_end(plan, level, end):
+def refresh_end(plan, level, end) -> bool:
+    """Record when the current assistant's contribution runs until.
+
+    Returns False when the timestamp could not be persisted. The caller runs after the
+    training has already started, and this is bookkeeping for the *next* stage's
+    halving estimate, so a failed write is reported back instead of raised: it must
+    never be turned into a plan failure for a training that is running fine.
+    """
     route = stage_for(plan, level)
-    if (
+    if not (
         route
         and route.get("working_operator")
         and route.get("working_until") != end.isoformat()
     ):
-        route["working_until"] = end.isoformat()
-        save_runtime(plan, route)
+        return True
+    route["working_until"] = end.isoformat()
+    from arknights_mower.utils.mastery_db import save_support_plan
+
+    try:
+        if not save_support_plan(plan["id"], route, runtime=True):
+            logger.warning(f"[mastery] 协助者出勤记录保存失败 id={plan['id']}")
+            return False
+    except Exception as e:
+        logger.warning(f"[mastery] 协助者出勤记录保存失败 id={plan['id']}: {e}")
+        return False
+    plan["support_runtime"] = encode_supports(route)
+    return True
 
 
 def schedule_support_swap(solver, plan, end, level):
+    """Enqueue the mid-stage swap; None = no swap is needed for this stage.
+
+    Raises SupportPlanError only through `stage_for` when the plan's own route cannot be
+    read. Callers that run *after* the training has started must catch that and report
+    it as a failed step instead of letting it fail a running training; callers in the
+    pre-start support preflight rely on it and let it propagate.
+    """
     route = stage_for(plan, level)
     if (
         not route
