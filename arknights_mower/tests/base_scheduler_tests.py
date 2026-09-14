@@ -707,6 +707,47 @@ class TestBaseScheduler(unittest.TestCase):
             )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_detected_party_end_overwrites_unexpired_prediction(self):
+        solver = BaseSchedulerSolver()
+        predicted_end = datetime.now() + timedelta(hours=1)
+        solver._party_time = predicted_end
+        solver.op_data = MagicMock()
+        solver.op_data.party_time = predicted_end
+
+        # 刷新前的临时清空仍保留旧预测，维持 PR #765 的防抖语义。
+        solver.party_time = None
+        self.assertEqual(solver.op_data.party_time, predicted_end)
+
+        # 会客室界面确认无倒计时后，旧预测必须被清掉。
+        solver.set_detected_party_time(None)
+        self.assertIsNone(solver.party_time)
+        self.assertIsNone(solver.op_data.party_time)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_party_time_read_failure_means_party_ended(self):
+        solver = BaseSchedulerSolver()
+        solver.read_time = MagicMock(return_value=None)
+
+        self.assertIsNone(solver.read_party_time())
+        solver.read_time.assert_called_once_with(((1768, 438), (1902, 480)), None)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_operator_time_read_failure_means_not_working_or_depleted(self):
+        solver = BaseSchedulerSolver()
+        solver.read_time = MagicMock(return_value=None)
+        before = datetime.now()
+
+        with patch.object(base_schedule.logger, "info") as log_info:
+            result = solver.read_operator_time("room_1_2", 1, ((1, 2), (3, 4)))
+
+        self.assertGreaterEqual(result, before)
+        self.assertLessEqual(result, datetime.now())
+        solver.read_time.assert_called_once_with(((1, 2), (3, 4)), None)
+        log_info.assert_called_once_with(
+            "B102 2号位未显示干员倒计时，按非工作状态或心情耗尽处理"
+        )
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_backup_plan_solver_GreyytheLightningbearer(self):
         plan_config = {
             "room_2_3": [Room("雷蛇", "澄闪", ["炎狱炎熔", "格雷伊"])],

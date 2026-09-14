@@ -20,10 +20,8 @@ const {
   savedRemotes,
   mode,
   pulls,
-  pullRows,
-  canCheckPulls,
-  addPull,
-  removePull,
+  pullNumber,
+  canCheckPull,
   selectMode,
   selectPull,
   refresh,
@@ -149,47 +147,23 @@ function confirm() {
             :input-props="{ 'aria-label': '源码目标版本' }"
           />
         </n-form-item>
-        <div v-if="mode === 'pr'" class="pull-list">
-          <div v-for="(row, index) in pullRows" :key="row.id" class="pull-row">
-            <n-form-item label="开放 PR">
-              <n-select
-                :value="row.number"
-                :options="
-                  pullOptions.filter(
-                    (option) =>
-                      option.value === row.number ||
-                      !pullRows.some((other) => other.number === option.value)
-                  )
-                "
-                filterable
-                size="small"
-                :loading="loading"
-                :disabled="running || loading || checking"
-                placeholder="选择 PR 后检查是否可合并"
-                :input-props="{ 'aria-label': `源码开放 PR ${index + 1}` }"
-                @update:value="(value) => selectPull(value, row.id)"
-              />
-            </n-form-item>
-            <n-button
-              size="small"
-              :disabled="running || checking || pullRows.length === 1"
-              :aria-label="`移除 PR ${index + 1}`"
-              @click="removePull(row.id)"
-              >−</n-button
-            >
-            <n-button
-              size="small"
-              :disabled="running || checking || pullRows.length >= 10"
-              :aria-label="`在 PR ${index + 1} 后添加`"
-              @click="addPull(row.id)"
-              >＋</n-button
-            >
-          </div>
-        </div>
+        <n-form-item v-if="mode === 'pr'" label="开放 PR">
+          <n-select
+            :value="pullNumber"
+            :options="pullOptions"
+            filterable
+            size="small"
+            :loading="loading"
+            :disabled="running || loading || checking"
+            placeholder="选择一个无合并冲突的 PR"
+            :input-props="{ 'aria-label': '源码开放 PR' }"
+            @update:value="selectPull"
+          />
+        </n-form-item>
         <p class="hint">
           {{
             mode === 'pr'
-              ? '先更新到 PR 目标分支的最新版本，再按所选顺序合并 PR，通过后才能安装。多个 PR 需指向同一分支。后续检查仍跟随原来的仓库、分支和渠道。'
+              ? '检查通过后，安装时将目标分支最新版本与所选 PR 合并，成功后再重启。后续检查仍跟随原来的仓库、分支和渠道。'
               : '提交切换任务后记住所选仓库和分支，供后续开发版检查使用。'
           }}
         </p>
@@ -203,7 +177,7 @@ function confirm() {
           <n-button
             size="small"
             :loading="checking"
-            :disabled="running || checking || (mode === 'pr' ? !canCheckPulls : !reference.trim())"
+            :disabled="running || checking || (mode === 'pr' ? !canCheckPull : !reference.trim())"
             @click="checkVersion"
             >检查版本</n-button
           >
@@ -218,14 +192,9 @@ function confirm() {
           </p>
           <p class="version">
             目标仓库：{{ checked.source_repo
-            }}{{
-              checked.source_prs
-                ? ` · PR ${checked.source_prs.map((pull) => '#' + pull.number).join('、')}`
-                : checked.source_pr
-                  ? ` · PR #${checked.source_pr}`
-                  : ''
-            }}
+            }}{{ checked.source_pr ? ` · PR #${checked.source_pr}` : '' }}
           </p>
+          <p v-if="checked.source_pr" class="hint">所选 PR 提交（安装时生成合并版本）：</p>
           <a :href="checked.url" target="_blank" rel="noopener noreferrer" class="version">{{
             checked.sha
           }}</a>
@@ -246,20 +215,6 @@ function confirm() {
   flex-direction: column;
   gap: 12px;
   width: 100%;
-  min-width: 0;
-}
-.pull-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.pull-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-.pull-row > .n-form-item {
-  flex: 1;
   min-width: 0;
 }
 .hint {

@@ -8,7 +8,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -518,8 +517,8 @@ def mergeable_source_pull(number, repo, proxy):
             time.sleep(0.5 * (attempt + 1))
     if pull.get("mergeable") is False:
         raise ValueError(f"PR #{number} 存在合并冲突，暂不能用于更新")
-    # GitHub computes this asynchronously. Unknown is not a conflict: the
-    # isolated Git merge still has to succeed before an install can be admitted.
+    if pull.get("mergeable") is not True:
+        raise ValueError(f"GitHub 正在计算 PR #{number} 的合并状态，请稍后重新检查")
     return pull
 
 
@@ -536,78 +535,65 @@ def source_branch_head(branch, repo, proxy):
     return source_commit_info(result["commit"], repo)["sha"]
 
 
+def source_pull_revision(number, repo, proxy):
+    """Pin the branch and PR head; GitHub's generated merge may be stale."""
+    pull = mergeable_source_pull(number, repo, proxy)
+    target_repo, branch = source_pull_target(pull, repo)
+    if target_repo != repo.casefold():
+        raise ValueError("PR 的目标仓库已改变，请重新选择")
+    # base.sha in a PR response may lag behind its actual target branch.
+    base = source_branch_head(branch, repo, proxy)
+    head = source_commit_info(pull["head"], repo)["sha"]
+    return {
+        "source_pr": number,
+        "source_branch": branch,
+        "base_commit": base,
+        "head_commit": head,
+        "ref": f"refs/pull/{number}/head",
+        "commit": head,  # Replaced by the local merge SHA during preparation.
+        "notes": f"#{number} {pull['title']}",
+        "url": f"https://github.com/{repo}/commit/{head}",
+        "author": (pull.get("user") or {}).get("login", ""),
+        "date": pull.get("updated_at", ""),
+    }
+
+
 def check_source_pull(number, remote=None):
-    return check_source_pulls([number], remote)
-
-
-def check_source_pulls(numbers, remote=None):
-    if not isinstance(numbers, list) or not 1 <= len(numbers) <= 10:
-        raise ValueError("请选择 1 至 10 个 PR")
-    if any(type(number) is not int or number <= 0 for number in numbers):
+    if type(number) is not int or number <= 0:
         raise ValueError("请选择有效的 PR 编号")
-    if len(set(numbers)) != len(numbers):
-        raise ValueError("不能重复选择同一个 PR")
     current, _, proxy = source_repository()
     selected = resolve_source_remote(remote)
-    pulls = [
-        mergeable_source_pull(number, selected["source_repo"], proxy)
-        for number in numbers
-    ]
-    targets = {source_pull_target(pull, selected["source_repo"]) for pull in pulls}
-    if (
-        len(targets) != 1
-        or next(iter(targets))[0] != selected["source_repo"].casefold()
-    ):
-        raise ValueError("请选择同一仓库、同一目标分支的 PR")
-    _, branch = next(iter(targets))
-    # A PR's base.sha can lag behind its target branch, independently for each
-    # PR. Resolve the shared branch once instead of comparing those snapshots.
-    base_commit = source_branch_head(branch, selected["source_repo"], proxy)
+    revision = source_pull_revision(number, selected["source_repo"], proxy)
+    # Only the worker's actual merge can determine whether the resulting tree
+    # contains the recovery module. The PR head alone may predate that module.
     plan = {
         "deployment": "source",
         "operation": "source-pr",
         **selected,
+        **revision,
         "channel": "dev",
-        "source_branch": branch,
-        "base_commit": base_commit,
-        "source_prs": [
-            {"number": number, "sha": pull["head"]["sha"], "title": pull["title"]}
-            for number, pull in zip(numbers, pulls)
-        ],
-        "merge_date": f"@{int(time.time())} +0000",
         "created_at": time.time(),
         "available": True,
         "force_available": True,
-        "url": f"https://github.com/{selected['source_repo']}/pulls",
-        "notes": "\n".join(
-            f"#{number} {pull['title']}" for number, pull in zip(numbers, pulls)
-        ),
+        "version": "PR@" + revision["head_commit"][:7],
     }
-    from .source_pr_merge import merge_source_pulls
-
-    git = shutil.which("git", path=source_tool_path())
-    if not git:
-        raise ValueError("未找到 Git，无法检查 PR 的合并结果")
-    with tempfile.TemporaryDirectory(prefix="mower-pr-check-") as directory:
-        commit = merge_source_pulls(
-            git, selected["source_url"], plan, directory, runtime.launch_environment({})
-        )
-    plan.update(commit=commit, version="PR@" + commit[:7])
     return {
         "ok": True,
         "check_id": remember_check(plan),
         "current_commit": current,
         **selected,
-        "source_prs": plan["source_prs"],
-        "source_branch": plan["source_branch"],
-        "base_commit": plan["base_commit"],
-        "sha": commit,
+        **revision,
+        "sha": revision["head_commit"],
         "version": plan["version"],
-        "url": plan["url"],
-        "message": plan["notes"],
-        "author": "Mower 合并预览",
-        "date": "",
+        "message": revision["notes"],
     }
+
+
+def check_source_pulls(numbers, remote=None):
+    # Accept a single selection from an older page, never silently discard PRs.
+    if not isinstance(numbers, list) or len(numbers) != 1:
+        raise ValueError("仅支持选择一个 PR，请刷新页面后重新选择")
+    return check_source_pull(numbers[0], remote)
 
 
 def choose_release(releases, channel):
@@ -967,32 +953,19 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
     if force and (plan["deployment"] != "source" or uploaded is not None):
         raise ValueError("强制更新仅支持源码部署")
     if plan.get("source_prs"):
-        network_settings.apply_http_proxy()
-        proxy = network_settings.get_effective_settings()["http_proxy"]
-        for selected_pull in plan["source_prs"]:
-            pull = mergeable_source_pull(
-                selected_pull["number"], plan["source_repo"], proxy
-            )
-            if pull["head"]["sha"] != selected_pull["sha"] or source_pull_target(
-                pull, plan["source_repo"]
-            ) != (plan["source_repo"].casefold(), plan["source_branch"]):
-                raise ValueError("PR 提交或目标分支已改变，请重新检查并确认更新")
-        if (
-            source_branch_head(plan["source_branch"], plan["source_repo"], proxy)
-            != plan["base_commit"]
-        ):
-            raise ValueError("目标分支已更新，请重新检查并确认更新")
+        raise ValueError("已取消多 PR 合并，请刷新页面后重新选择一个 PR")
     if plan.get("source_pr"):
-        # Recheck status and head immediately before admission; a previously
-        # confirmed PR may have closed, conflicted or received another push.
         network_settings.apply_http_proxy()
-        pull = mergeable_source_pull(
+        revision = source_pull_revision(
             plan["source_pr"],
             plan["source_repo"],
             network_settings.get_effective_settings()["http_proxy"],
         )
-        if pull["head"]["sha"] != plan["commit"]:
-            raise ValueError("PR 提交已改变，请重新检查并确认更新")
+        if any(
+            revision[key] != plan.get(key)
+            for key in ("source_branch", "base_commit", "head_commit", "commit", "ref")
+        ):
+            raise ValueError("PR 或目标分支已改变，请重新检查并确认更新")
     details = info()
     if details["blockers"] and not (force and details.get("force_supported", False)):
         raise ValueError("；".join(details["blockers"]))
@@ -1075,7 +1048,6 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
                 shutil.copy2(socks.__file__, work / "socks.py")
             for name in (
                 "software_update_worker.py",
-                "source_pr_merge.py",
                 "software_update_progress.py",
                 "update_runtime.py",
                 "github_download.py",

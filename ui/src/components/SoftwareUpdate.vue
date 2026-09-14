@@ -270,7 +270,7 @@ async function install(force = false, target = null, selection = {}) {
     if (!response.data.ok) throw new Error(response.data.message)
     if (target) {
       autoUpdate.value = false
-      if (!target.source_pr && !target.source_prs) channel.value = 'dev'
+      if (!target.source_pr) channel.value = 'dev'
     }
     sessionStorage.setItem(pendingKey, response.data.id)
     pendingSince = Date.now()

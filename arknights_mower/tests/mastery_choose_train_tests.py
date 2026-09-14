@@ -1,7 +1,10 @@
+import itertools
 import sys
 import types
 import unittest
 from unittest.mock import MagicMock
+
+import numpy as np
 
 # base_schedule 导入链（cultivate_depot→skland）会在 skland 模块加载时调用
 # SecuritySm.get_d_id() 发网络请求（环境性 flake，与测试无关）。测试不涉及
@@ -60,9 +63,55 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
         with self.assertRaises(KeyError):
             data.get_current_room("missing", True)
 
-    def test_real_assistant_selection_without_train_schedule(self):
-        for old_support in ("", "褐果"):
-            with self.subTest(old_support=old_support):
+    def test_real_mood_reader_uses_two_slots_without_requiring_schedule(self):
+        for count in (None, 0, 1, 2):
+            for empty in (False, True):
+                with self.subTest(count=count, empty=empty):
+                    solver = MagicMock()
+                    solver.tasks = []
+                    solver.task = None
+                    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+                    solver.detect_product_complete.return_value = False
+                    solver.find.return_value = empty
+                    solver.read_screen.side_effect = ["暴雨", "号角"]
+                    solver.read_accurate_mood.return_value = 20
+                    solver.op_data.plan = (
+                        {} if count is None else {"train": [None] * count}
+                    )
+                    operators = {}
+                    for name in ("暴雨", "号角"):
+                        op = MagicMock()
+                        op.current_room = "train"
+                        op.need_to_refresh.return_value = True
+                        op.depletion_rate = 1
+                        operators[name] = op
+                    solver.op_data.operators = operators
+                    solver.op_data.update_detail.return_value = None
+                    solver.op_data.config.free_room = False
+                    result = BaseSchedulerSolver.get_agent_from_room(solver, "train")
+                    self.assertEqual(len(result), 2)
+                    self.assertEqual(
+                        [row["agent"] for row in result],
+                        ["", ""] if empty else ["暴雨", "号角"],
+                    )
+                    self.assertEqual(
+                        solver.read_accurate_mood.call_count, 0 if empty else 2
+                    )
+
+    def test_real_assistant_selection_with_any_train_schedule(self):
+        schedules = [
+            {},
+            {"train": []},
+            {"train": [types.SimpleNamespace(agent="褐果")]},
+            {
+                "train": [
+                    types.SimpleNamespace(agent="褐果"),
+                    types.SimpleNamespace(agent="号角"),
+                ]
+            },
+        ]
+        for old_support, schedule in itertools.product(("", "褐果"), schedules):
+            with self.subTest(old_support=old_support, schedule=schedule):
                 solver = make_solver(
                     [
                         Scene.INFRA_DETAILS,
@@ -74,7 +123,7 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                         [{"agent": "暴雨"}, {"agent": "号角"}],
                     ],
                 )
-                solver.op_data = self.make_operators(support=old_support)
+                solver.op_data = self.make_operators(support=old_support, plan=schedule)
                 solver.choose_agent = types.MethodType(
                     BaseSchedulerSolver.choose_agent, solver
                 )
@@ -91,7 +140,7 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                 solver.verify_agent.assert_called_once_with(["暴雨"], "train")
                 solver.tap_confirm.assert_called_once_with("train")
                 solver.choose_train_ope.assert_not_called()
-                self.assertEqual(solver.op_data.plan, {})
+                self.assertEqual(solver.op_data.plan, schedule)
                 if not old_support:
                     # 协助位为空时不得把训练位当成原协助者点击取消。
                     solver.tap.assert_not_called()

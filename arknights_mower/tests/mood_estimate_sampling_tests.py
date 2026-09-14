@@ -62,7 +62,7 @@ def room_reader(monkeypatch):
     solver.find = MagicMock(return_value=None)
     solver.read_screen = MagicMock(return_value="夕")
     solver.read_accurate_mood = MagicMock(return_value=20)
-    solver.double_read_time = MagicMock(return_value=Clock.now() + timedelta(hours=1))
+    solver.read_operator_time = MagicMock(return_value=Clock.now() + timedelta(hours=1))
     solver.plan_metadata = MagicMock()
     solver.total_agent = [target, solver.op_data.operators["絮雨"]]
     return solver, target, Clock
@@ -105,4 +105,6 @@ def test_real_read_still_updates_sample_and_depletion_from_measurements(room_rea
 def test_room_countdown_uses_its_row_crop_instead_of_fixed_order_region(room_reader):
     solver, target, clock = room_reader
     solver.get_agent_from_room("central", read_time_index=[0])
-    solver.double_read_time.assert_called_once_with(((1650, 270), (1780, 305)))
+    solver.read_operator_time.assert_called_once_with(
+        "central", 0, ((1650, 270), (1780, 305))
+    )

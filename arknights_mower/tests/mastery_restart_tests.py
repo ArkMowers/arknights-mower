@@ -118,6 +118,123 @@ class MasteryRestartTests(unittest.TestCase):
         self.assert_one_task(TaskTypes.SWAP_SUPPORT)
         self.assertEqual(self.plan()["status"], "training")
 
+    def mood_solver(self, count=None):
+        solver = MagicMock()
+        solver.task = None
+        solver.tasks = []
+        solver.last_train_mood_read = None
+        names = ["协助干员", "测试干员"][: count or 0]
+        solver.op_data.plan = (
+            {}
+            if count is None
+            else {"train": [SimpleNamespace(agent=name) for name in names]}
+        )
+        solver.op_data.operators = {}
+        solver.op_data.get_current_room.return_value = ["协助干员", "测试干员"]
+        solver.op_data.has_dorm_groups.return_value = False
+        return solver
+
+    def read_mood(self, solver):
+        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+        return BaseSchedulerSolver.agent_get_mood(solver, skip_dorm=True)
+
+    def test_mood_scan_recovers_collection_for_all_roster_sizes_and_tiers(self):
+        for count in (None, 0, 1, 2):
+            for tier in (1, 2, 3):
+                with self.subTest(count=count, tier=tier):
+                    mastery_db.update_plan_status(
+                        self.plan_id, "training", swap_frozen=1
+                    )
+                    self.room.panel.mastery_tier = tier
+                    solver = self.mood_solver(count)
+                    with patch.object(
+                        reader, "read_room_state", return_value=(self.room, [])
+                    ) as read:
+                        self.read_mood(solver)
+                        self.read_mood(solver)
+                    read.assert_called_once_with(solver, enter=False, want_mood=True)
+                    self.assertEqual(len(solver.tasks), 1)
+                    self.assertEqual(solver.tasks[0].type, TaskTypes.SKILL_UPGRADE)
+                    self.assertEqual(solver.tasks[0].time, self.room.panel.countdown)
+                    self.assertEqual(solver.tasks[0].plan_key, str(self.plan_id))
+
+    def test_mood_scan_recovers_swap_from_idle_and_failed_without_roster(self):
+        route = {
+            "operator": "协助干员",
+            "swap_target": "艾丽妮",
+            "efficiency": 0.3,
+            "job_match": True,
+        }
+        for status in ("idle", "failed"):
+            with self.subTest(status=status):
+                mastery_db.update_plan_status(self.plan_id, status)
+                solver = self.mood_solver()
+                with (
+                    patch.object(
+                        reader, "read_room_state", return_value=(self.room, [])
+                    ),
+                    patch(
+                        "arknights_mower.solvers.mastery._get_plan_route",
+                        return_value=route,
+                    ),
+                    patch.object(
+                        reader,
+                        "_read_slots_checked",
+                        return_value=("协助干员", "测试干员", [], True),
+                    ),
+                ):
+                    self.read_mood(solver)
+                self.assertEqual(self.plan()["status"], "training")
+                self.assertEqual(len(solver.tasks), 1)
+                self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
+
+    def test_mood_scan_collects_finished_training_without_roster(self):
+        mastery_db.update_plan_status(self.plan_id, "waiting_collect")
+        self.room.state = "waiting_collect"
+        self.room.panel.mastery_tier = 3
+        self.room.panel.countdown_state = "zero"
+        self.room.panel.countdown = None
+        solver = self.mood_solver()
+        with (
+            patch.object(reader, "read_room_state", return_value=(self.room, [])),
+            patch.object(reader, "collect_flow") as collect,
+            patch.object(reader, "_tap_collect_confirm"),
+        ):
+            self.read_mood(solver)
+        collect.assert_called_once()
+        self.assertEqual(self.plan()["status"], "completed")
+        self.assertEqual(solver.tasks, [])
+
+    def test_empty_or_failed_mood_read_is_throttled_and_later_rechecked(self):
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                mastery_db.update_plan_status(self.plan_id, "idle")
+                self.room.state = "empty"
+                solver = self.mood_solver()
+                with patch.object(
+                    reader,
+                    "read_room_state",
+                    return_value=(self.room, []),
+                    side_effect=ValueError("OCR") if failed else None,
+                ) as read:
+                    self.read_mood(solver)
+                    self.read_mood(solver)
+                    self.assertEqual(read.call_count, 1)
+                    solver.last_train_mood_read -= timedelta(hours=3)
+                    self.read_mood(solver)
+                    self.assertEqual(read.call_count, 2)
+                self.assertEqual(solver.tasks, [])
+                self.assertEqual(self.plan()["status"], "idle")
+
+    def test_no_plan_or_disabled_does_not_force_training_room_scan(self):
+        with patch.object(reader, "read_room_state") as read:
+            with patch.object(reader.config.conf, "enable_mastery", False):
+                self.read_mood(self.mood_solver())
+            mastery_db.update_plan_status(self.plan_id, "completed")
+            self.read_mood(self.mood_solver())
+        read.assert_not_called()
+
     def test_finished_training_is_collected_with_empty_queue(self):
         mastery_db.update_plan_status(self.plan_id, "waiting_collect")
         self.room.state = "waiting_collect"

@@ -849,6 +849,10 @@ class Recognizer:
                         logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
+            if res == "confirm":
+                # 背景透出会改变整条按钮栏的颜色/纹理；保留原匹配，失败时
+                # 只复核固定位置的完整勾选图标，不扩大搜索区域或降低阈值。
+                return self.find_confirm_button()
             return None
 
         template_matching = {
@@ -1010,6 +1014,24 @@ class Recognizer:
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
+
+    def find_confirm_button(self):
+        reference = loadres("confirm")
+        # 原按钮栏位于 (0, 683)，中央图标包含完整白圆、黑勾和窄边缘。
+        local_scope = ((928, 25), (992, 89))
+        scope = ((928, 708), (992, 772))
+        expected = cropimg(reference, local_scope)
+        actual = cropimg(self.img, scope)
+        if actual.shape != expected.shape or not cmatch(actual, expected):
+            return None
+        score = vision_np.ssim(
+            cv2.cvtColor(actual, cv2.COLOR_RGB2GRAY),
+            cv2.cvtColor(expected, cv2.COLOR_RGB2GRAY),
+        )
+        if score >= 0.9:
+            logger.debug(f"find: confirm foreground {scope=} {score=}")
+            return scope
+        return None
 
     def score(
         self,

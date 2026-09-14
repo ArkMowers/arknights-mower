@@ -223,6 +223,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 self.op_data.party_time = value
 
+    def set_detected_party_time(self, value):
+        """写入会客室界面确认过的线索交流状态。
+
+        ``party_time`` 的普通 setter 会保留尚未到期的旧值，避免开始刷新时的
+        临时清空让依赖它的副表误切换。界面读取结果不是临时状态：读不到倒计时
+        表示交流已经结束，必须覆盖旧预测，哪怕旧预测时间仍在未来。
+        """
+        self._party_time = value
+        if self.op_data is not None:
+            self.op_data.party_time = value
+
+    def read_party_time(self):
+        """读取线索交流结束时间；空倒计时表示交流已经结束。"""
+        remaining = self.read_time(((1768, 438), (1902, 480)), None)
+        if remaining is None:
+            return None
+        return datetime.now() + timedelta(seconds=remaining)
+
+    def read_operator_time(self, room, index, cord):
+        """读取干员倒计时；空值按非工作状态或心情耗尽处理。"""
+        remaining = self.read_time(cord, None)
+        if remaining is None:
+            logger.info(
+                f"{self.translate_room(room)} {index + 1}号位未显示干员倒计时，"
+                "按非工作状态或心情耗尽处理"
+            )
+            return datetime.now()
+        return datetime.now() + timedelta(seconds=remaining)
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -903,14 +932,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if v.need_to_refresh() and v.room in base_room_list
         )
 
+        # 专精计划可能没有训练室固定排班，仍要通过原有心情扫描核对现场。
+        if config.conf.enable_mastery:
+            from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+            if get_reconcile_plans():
+                need_read.add("train")
+
         for room in need_read:
+            if room == "train":
+                last_read = getattr(self, "last_train_mood_read", None)
+                if last_read and datetime.now() - last_read < timedelta(hours=2.5):
+                    continue
             error_count = 0
-            # 训练室与其他房间一致：当前房内干员都近期读过则跳过（2026-08-16 审计——
-            # 原 room != "train" 免除使训练室在「计划在训练室但未进驻的陈旧干员」把
-            # 训练室推进待读集合时每轮循环都强制进房读心情，2h 内十多次）。训练室进房
-            # 时的顺路 reconcile（破重启待收取死锁）不受影响：重启后无 current_room=
-            # "train" 的干员 → current_working 空 → 不跳过；平时占用干员心情 2.5h
-            # 陈旧 → 不跳过 → 照常读+reconcile。
+            # 近期读过的房内干员无需重复扫描。训练室为空或识别失败时，上面的
+            # 房间级时间同样限频，避免没有固定干员的训练室每轮被强制读取。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
@@ -930,6 +966,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.debug(e.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
+            if room == "train":
+                self.last_train_mood_read = datetime.now()
             while True:
                 try:
                     self.enter_room(room)
@@ -2478,10 +2516,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
-                        self.party_time = self.double_read_time(
-                            ((1768, 438), (1902, 480))
-                        )
-                        if self.party_time > datetime.now():
+                        party_time = self.read_party_time()
+                        if party_time is not None and party_time > datetime.now():
+                            self.set_detected_party_time(party_time)
                             logger.info(f"线索交流结束时间：{self.party_time}")
                             if not find_next_task(
                                 self.tasks,
@@ -2495,8 +2532,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     )
                                 )
                         else:
-                            self.party_time = None
-                            logger.info("线索交流未开启")
+                            self.set_detected_party_time(None)
+                            logger.info("线索交流未开启或已结束")
+                        # party_time 是副表表达式可引用的状态。界面确认状态后立即
+                        # 重算，不能等下一轮调度，否则跃跃等会客室副表不会及时触发。
+                        self.backup_plan_solver()
                         ctm.complete("party_time")
                     else:
                         # 点击左下角，关闭进驻信息，进入线索界面
@@ -3573,6 +3613,28 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.reset_room_time(room)
         raise Exception("未成功进入房间")
 
+    def scroll_room_operators(self, *, bottom):
+        """滚动房间详情名单；弹窗或滚动不生效时交回原有房间重试。"""
+        point = (1800, 930 if bottom else 138)
+        direction = -1 if bottom else 1
+        self.recog.update()
+        for attempt in range(7):
+            if self.find("confirm") or self.find("double_confirm/main"):
+                raise RecognizeError("读取房间名单时出现确认弹窗，返回场景导航处理")
+            if not self.find("room_detail"):
+                raise RecognizeError("读取房间名单时已离开房间详情，重新定位")
+            if self.get_color(point)[0] <= 51:
+                return
+            if attempt == 6:
+                break
+            self.swipe(
+                (self.recog.w * 0.8, self.recog.h * 0.5),
+                (0, direction * self.recog.h * 0.45),
+                duration=500,
+                interval=1,
+            )
+        raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
+
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
@@ -3601,13 +3663,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             length = len(self.op_data.plan[room])
         if length > 3:
-            while self.get_color((1800, 138))[0] > 51:
-                self.swipe(
-                    (self.recog.w * 0.8, self.recog.h * 0.5),
-                    (0, self.recog.h * 0.45),
-                    duration=500,
-                    interval=1,
-                )
+            self.scroll_room_operators(bottom=False)
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
         name_p = [tuple(zip(name_x, y)) for y in name_y]
@@ -3622,13 +3678,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                while self.get_color((1800, 930))[0] > 51:
-                    self.swipe(
-                        (self.recog.w * 0.8, self.recog.h * 0.5),
-                        (0, -self.recog.h * 0.45),
-                        duration=500,
-                        interval=1,
-                    )
+                self.scroll_room_operators(bottom=True)
                 swiped = True
             data = {}
             if self.find("infra_no_operator", scope=name_p[i]):
@@ -3673,8 +3723,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    # 房间干员倒计时随行号变化；订单模板只识别无人机界面的固定区域。
-                    data["time"] = self.double_read_time(time_p[i])
+                    data["time"] = self.read_operator_time(room, i, time_p[i])
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)

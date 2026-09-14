@@ -6,10 +6,9 @@ export const DEFAULT_MASTERY_SWAP_BUFFERS = Object.freeze({
 
 export function normalizeMasterySwapBuffers(settings = {}) {
   const configured = settings.mastery_swap_buffers
-  const legacy = settings.mastery_swap_buffer
   return Object.fromEntries(
     Object.entries(DEFAULT_MASTERY_SWAP_BUFFERS).map(([key, fallback]) => {
-      const value = configured && typeof configured === 'object' ? configured[key] : legacy
+      const value = configured && typeof configured === 'object' ? configured[key] : undefined
       return [key, Number.isInteger(value) && value >= 0 ? value : fallback]
     })
   )

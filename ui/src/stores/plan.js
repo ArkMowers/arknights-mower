@@ -281,6 +281,7 @@ export const usePlanStore = defineStore('plan', () => {
 
   return {
     autosave_paused,
+    wait_for_plan_save: () => planSaveRequest,
     save_plan,
     load_plan,
     load_operators,

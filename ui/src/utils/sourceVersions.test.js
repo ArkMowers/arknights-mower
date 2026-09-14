@@ -128,7 +128,7 @@ describe('source remote and PR selection', () => {
     await view.selectPull(7)
     expect(axios.post).toHaveBeenCalledExactlyOnceWith(
       '/software-update/source/pr/check',
-      { remote: 'origin', numbers: [7] },
+      { remote: 'origin', number: 7 },
       { headers: { 'X-Mower-Update': '1' } }
     )
     expect(view.checked.value.source_pr).toBe(7)
@@ -162,48 +162,47 @@ describe('source remote and PR selection', () => {
   })
 })
 
-describe('multiple source PR rows', () => {
-  it('adds stable rows, removes rows and invalidates stale merge checks', async () => {
-    let finish
+describe('single source PR selection', () => {
+  it('replaces the selected PR and ignores the previous pending check', async () => {
+    const checks = []
     const axios = {
       get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }),
-      post: vi.fn().mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            finish = resolve
-          })
-      )
+      post: vi.fn(() => new Promise((resolve) => checks.push(resolve)))
     }
     const view = state(axios)
     await view.selectMode('pr')
-    const first = view.pullRows.value[0].id
-    view.addPull(first)
-    const second = view.pullRows.value[1].id
-    await view.selectPull(7, first)
-    expect(view.canCheckPulls.value).toBe(false)
     await view.checkVersion()
     expect(axios.post).not.toHaveBeenCalled()
-    await view.selectPull(8, second)
-    expect(view.canCheckPulls.value).toBe(true)
-    const checking = view.checkVersion()
-    expect(axios.post.mock.calls[0][1]).toEqual({ remote: 'origin', numbers: [7, 8] })
-    view.removePull(first)
-    expect(view.pullRows.value).toEqual([{ id: second, number: 8 }])
-    finish({ data: { ok: true, check_id: 'stale-combination' } })
-    await checking
+    const first = view.selectPull(7)
+    const second = view.selectPull(8)
+    expect(view.pullNumber.value).toBe(8)
+    expect(axios.post.mock.calls.map((call) => call[1])).toEqual([
+      { remote: 'origin', number: 7 },
+      { remote: 'origin', number: 8 }
+    ])
+    checks[1]({ data: { ok: true, check_id: 'second', source_pr: 8 } })
+    await second
+    checks[0]({ data: { ok: true, check_id: 'first', source_pr: 7 } })
+    await first
+    expect(view.checked.value.check_id).toBe('second')
+    await view.selectPull(null)
     expect(view.checked.value).toBeNull()
-    view.removePull(second)
-    expect(view.pullRows.value).toHaveLength(1)
-    view.addPull(second)
-    expect(view.pullRows.value[1].id).not.toBe(first)
+    expect(view.canCheckPull.value).toBe(false)
+    expect(axios.post).toHaveBeenCalledTimes(2)
   })
 
-  it('rejects duplicate selections and limits rows to ten', async () => {
-    const view = state({ get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }) })
+  it('clears the PR selection when changing repository', async () => {
+    const axios = {
+      get: vi.fn().mockResolvedValue({ data: { ok: true, pulls: [] } }),
+      post: vi.fn().mockResolvedValue({ data: { ok: true, check_id: 'old' } })
+    }
+    const view = state(axios)
     await view.selectMode('pr')
-    for (let i = 0; i < 12; i++) view.addPull(view.pullRows.value.at(-1).id)
-    expect(view.pullRows.value).toHaveLength(10)
-    for (const row of view.pullRows.value) await view.selectPull(7, row.id)
-    expect(view.canCheckPulls.value).toBe(false)
+    await view.selectPull(7)
+    await view.selectRemote('origin')
+    expect(view.pullNumber.value).toBeNull()
+    expect(view.checked.value).toBeNull()
+    await view.checkVersion()
+    expect(axios.post).toHaveBeenCalledTimes(1)
   })
 })

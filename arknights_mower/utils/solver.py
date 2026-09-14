@@ -86,6 +86,10 @@ class BaseSolver:
                 logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
+            # transition() 既没点屏幕也没等待就返回时，缓存不会被清掉（清理写在
+            # sleep 里）。下一次 get_scene 仍返回旧场景，比如 tap_element 找不到
+            # 元素直接返回 False，while 就会一直空转下去。这里补上清理。
+            self.recog.update()
 
     @abstractmethod
     def transition(self) -> bool:
@@ -339,26 +343,22 @@ class BaseSolver:
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
-        duration: int = 80,
+        duration: int = 20,
         interval: float = 0.2,
     ) -> None:
-        """swipe with no inertia (movement should be vertical)。
-
-        duration 调大、偏置调小：主轴太快会甩过头弹回（画面抖动、稳定不下来），
-        回放会拿着没停稳的画面继续走而错位；改成受控拖动。
-        """
+        """swipe with no inertia (movement should be vertical)"""
         if config.stop_mower.is_set():
             raise MowerExit
         points = [start]
         if movement[0] == 0:
             dis = abs(movement[1])
-            points.append((start[0] + 40, start[1]))
-            points.append((start[0] + 40, start[1] + movement[1]))
+            points.append((start[0] + 100, start[1]))
+            points.append((start[0] + 100, start[1] + movement[1]))
             points.append((start[0], start[1] + movement[1]))
         else:
             dis = abs(movement[0])
-            points.append((start[0], start[1] + 40))
-            points.append((start[0] + movement[0], start[1] + 40))
+            points.append((start[0], start[1] + 100))
+            points.append((start[0] + movement[0], start[1] + 100))
             points.append((start[0] + movement[0], start[1]))
         self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:

@@ -430,7 +430,7 @@ class BaseMixin:
         )
         if time_in_seconds is None:
             logger.warning(
-                "订单/设施倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
+                "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
             )
             return datetime.now()
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
