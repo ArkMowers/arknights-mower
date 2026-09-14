@@ -29,8 +29,8 @@ class ScreenshotTests(unittest.TestCase):
         )
         self.addCleanup(self.store.close)
 
-    def wait_idle(self):
-        deadline = time.monotonic() + 3
+    def wait_idle(self, timeout=3):
+        deadline = time.monotonic() + timeout
         while self.store.stats()["pending_count"] and time.monotonic() < deadline:
             Event().wait(0.005)
         self.assertEqual(self.store.stats()["pending_count"], 0)
@@ -71,7 +71,8 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(self.store.latest().filename, files[-1])
         self.assertIsNone(reference())
         self.store.start()
-        self.wait_idle()
+        # Windows CI 写入 128 个文件可能超过 3 秒；此处验证队列与文件完整性。
+        self.wait_idle(timeout=15)
         self.assertFalse((self.root / oldest).exists())
         self.assertFalse((self.root / files[-129]).exists())
         self.assertTrue(all((self.root / file).exists() for file in files[-128:]))
@@ -93,10 +94,10 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(written, [files[-1], latest])
 
     def test_pressure_preserves_each_important_folder_and_evicts_debug_frames(self):
-        self.limit_store(max_pending_count=4)
+        self.limit_store(max_pending_count=5)
         important = [
             self.store.submit(b"important", folder)
-            for folder in ("run_order", "workshop", "solve_captcha")
+            for folder in ("run_order", "workshop", "furniture", "solve_captcha")
         ]
         debug = self.store.submit(b"debug", "terminal_main")
         latest = self.store.submit(b"latest")
@@ -277,7 +278,13 @@ class ScreenshotTests(unittest.TestCase):
             Path, "mkdir", side_effect=AssertionError("关闭保存仍访问磁盘")
         ):
             filename = self.store.submit(b"preview")
-            for folder in ("terminal_main", "run_order", "workshop", "solve_captcha"):
+            for folder in (
+                "terminal_main",
+                "run_order",
+                "workshop",
+                "furniture",
+                "solve_captcha",
+            ):
                 self.store.submit(b"debug", folder)
         self.assertEqual(self.store.latest().filename, filename)
         self.assertEqual(self.store.latest().data, b"preview")
@@ -290,7 +297,7 @@ class ScreenshotTests(unittest.TestCase):
         self.retention = 0
         files = [
             self.store.submit(b"important", folder)
-            for folder in ("run_order", "workshop", "solve_captcha")
+            for folder in ("run_order", "workshop", "furniture", "solve_captcha")
         ]
         self.store.start()
         self.wait_idle()
@@ -320,7 +327,13 @@ class ScreenshotTests(unittest.TestCase):
                 self.assertTrue(entered.wait(2))
                 queued = [
                     self.store.submit(b"queued", folder)
-                    for folder in (None, "run_order", "workshop", "solve_captcha")
+                    for folder in (
+                        None,
+                        "run_order",
+                        "workshop",
+                        "furniture",
+                        "solve_captcha",
+                    )
                 ]
                 self.retention = 0
             finally:
@@ -492,6 +505,13 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(all(not path.exists() for path in paths[:5]))
         self.assertTrue(all(path.exists() for path in paths[5:]))
         self.assertTrue((self.root / "run_order" / f"{old + 200}.jpg").exists())
+
+    def test_furniture_cleanup_retains_latest_100_evidence_frames(self):
+        old = time.time_ns() - 2 * 3600 * 10**9
+        paths = [self.seed("furniture", old + i) for i in range(105)]
+        self.store.cleanup()
+        self.assertTrue(all(not path.exists() for path in paths[:5]))
+        self.assertTrue(all(path.exists() for path in paths[5:]))
 
     def test_cleanup_failure_does_not_prevent_later_cleanup(self):
         expired = self.seed("", time.time_ns() - 2 * 3600 * 10**9)

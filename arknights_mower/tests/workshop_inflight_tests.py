@@ -12,7 +12,7 @@ from arknights_mower.utils import workshop_automation as auto
 from arknights_mower.utils import workshop_config as state
 
 
-@pytest.mark.parametrize("entry", ["workshop", "release", "direct"])
+@pytest.mark.parametrize("entry", ["workshop", "release", "direct", "furniture-page"])
 @pytest.mark.parametrize("cancel_at", [None, "scan", "selection", "submit"])
 @pytest.mark.parametrize("cancel_by", ["disable", "delete"])
 def test_restore_during_real_crafting_never_submits_manual_recipe(
@@ -58,7 +58,8 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     ]:
         setattr(solver, method, MagicMock())
     solver.factory_scene = MagicMock(
-        side_effect=[
+        side_effect=([base.Scene.FACTORY_FORMULA] if entry == "furniture-page" else [])
+        + [
             base.Scene.FACTORY_DASHBOARD,
             base.Scene.FACTORY_DASHBOARD,
             base.Scene.FACTORY_FORMULA,
@@ -126,6 +127,9 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     else:
         solver.craft_material()
     errors.assert_not_called()
+    if entry == "furniture-page" and cancel_at is None:
+        solver.back.assert_called()
+        assert (1920 * 0.1, 1080 * 0.45) in submitted
     assert submitted.count(produce_btn) == (1 if cancel_at is None else 0)
     if cancel_at == "scan":
         assert selected == []
