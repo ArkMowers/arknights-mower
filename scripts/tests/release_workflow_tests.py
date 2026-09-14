@@ -197,18 +197,18 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("release-assets/arknights-mower_*", publish["with"]["files"])
         self.assertIn("release-assets/SHA256SUMS", publish["with"]["files"])
 
-    def test_android_reuses_host_assets_without_building_an_apk(self):
+    def test_android_links_to_host_downloads_without_mirroring_binaries(self):
         commands = all_run_commands(self.workflow)
         self.assertNotIn("gradlew", commands)
         self.assertNotIn("assembleRelease", commands)
-        step = find_step(self.jobs["release"], "Reuse compatible Android host release")
+        step = find_step(self.jobs["release"], "Link Android APK downloads")
         self.assertIn("sync_android_release.py", step["run"])
-        self.assertIn("'beta' || 'stable'", step["env"]["ANDROID_CHANNEL"])
+        self.assertNotIn("env", step)
         files = find_step(self.jobs["release"], "Publish GitHub Release")["with"][
             "files"
         ]
-        self.assertIn("release-assets/mower-android-*.apk", files)
-        self.assertIn("release-assets/mower-maa-python-*.zip", files)
+        self.assertNotIn(".apk", files)
+        self.assertNotIn("mower-maa-python", files)
         self.assertNotIn("MAAComponent", files)
 
     def test_sha256_manifest_step(self):
@@ -498,3 +498,15 @@ class PrepareReleaseWorkflowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UpdateCompatibilityScopeTests(unittest.TestCase):
+    def test_four_platforms_share_trigger_and_keep_manual_failure_fallback(self):
+        jobs = load_workflow(REPO_ROOT / ".github/workflows/format-check-and-test.yml")[
+            "jobs"
+        ]
+        desktop = jobs["update-compatibility"]["if"]
+        self.assertEqual(jobs["android-compatibility"]["if"], desktop)
+        self.assertIn("outputs.update != 'false'", desktop)
+        self.assertNotIn("outputs.frontend", desktop)
+        self.assertEqual(jobs["android-compatibility"]["runs-on"], "ubuntu-24.04-arm")
