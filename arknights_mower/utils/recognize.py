@@ -12,6 +12,7 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger, save_screenshot
 from arknights_mower.utils.matcher import Matcher
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.vector import va
 
@@ -67,6 +68,7 @@ class Recognizer:
             self._matcher = Matcher(self.gray)
         return self._matcher
 
+    @timed_step("capture")
     def start(self, screencap: Optional[bytes] = None) -> None:
         """init with screencap"""
         retry_times = config.MAX_RETRYTIME

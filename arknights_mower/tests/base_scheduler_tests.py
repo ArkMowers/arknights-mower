@@ -462,7 +462,7 @@ class TestBaseScheduler(unittest.TestCase):
         bill_results = iter((None, object()))
         solver.find = MagicMock(
             side_effect=lambda template: (
-                next(bill_results) if template == "bill_accelerate" else object()
+                next(bill_results) if template == "bill_accelerate" else None
             )
         )
         solver.tap = MagicMock()
@@ -471,7 +471,13 @@ class TestBaseScheduler(unittest.TestCase):
 
         self.assertEqual(
             solver.find.call_args_list,
-            [call("bill_accelerate"), call("bill_accelerate")],
+            [
+                call("connecting"),
+                call("bill_accelerate"),
+                call("arrange_check_in_on"),
+                call("connecting"),
+                call("bill_accelerate"),
+            ],
         )
         solver.tap.assert_called_once_with((96, 1026), interval=1)
 
@@ -479,12 +485,18 @@ class TestBaseScheduler(unittest.TestCase):
     def test_wait_drone_interface_accepts_either_button_by_default(self):
         solver = BaseSchedulerSolver()
         solver.recog = MagicMock(w=1920, h=1080)
-        solver.find = MagicMock(return_value=object())
+        solver.find = MagicMock(
+            side_effect=lambda template: (
+                object() if template == "factory_accelerate" else None
+            )
+        )
         solver.tap = MagicMock()
 
         solver._wait_drone_interface()
 
-        solver.find.assert_called_once_with("factory_accelerate")
+        self.assertEqual(
+            solver.find.call_args_list, [call("connecting"), call("factory_accelerate")]
+        )
         solver.tap.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
