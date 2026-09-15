@@ -94,11 +94,11 @@ const levels = [
                 <n-button
                   text
                   tag="a"
-                  href="https://service.mail.qq.com/detail/0/75"
+                  href="https://help.mail.qq.com/detail/106/985"
                   target="_blank"
                   type="primary"
                 >
-                  https://service.mail.qq.com/detail/0/75
+                  https://help.mail.qq.com/detail/106/985
                 </n-button>
               </help-text>
             </template>
