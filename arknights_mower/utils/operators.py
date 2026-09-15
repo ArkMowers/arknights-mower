@@ -1126,13 +1126,13 @@ class Operator:
         refresh_order_room=None,
         refresh_drained=False,
     ):
+        self.name = name
         if refresh_order_room is not None:
             self.refresh_order_room = refresh_order_room
             logger.debug(f"设置{self.name}刷新交易所房间为{self.refresh_order_room}")
         else:
             self.refresh_order_room = [False, []]
         self.refresh_drained = refresh_drained
-        self.name = name
         self.room = room
         self.operator_type = operator_type
         self.index = index
