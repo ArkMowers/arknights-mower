@@ -3945,13 +3945,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def current_room_changed(self, instance):
         if not self.op_data.first_init:
             logger.info(f"{instance.name} 房间变动")
-            ref_rooms = (
-                instance.refresh_order_room[1]
-                if instance.refresh_order_room[1]
-                else list(self.op_data.run_order_rooms.keys())
-            )
-            for ref_room in ref_rooms:
-                self.refresh_run_order_time(ref_room)
+            if instance.refresh_order_room[0]:
+                ref_rooms = (
+                    instance.refresh_order_room[1]
+                    if instance.refresh_order_room[1]
+                    else list(self.op_data.run_order_rooms.keys())
+                )
+                for ref_room in ref_rooms:
+                    self.refresh_run_order_time(ref_room)
             if (
                 instance.name in self.op_data.operators
                 and self.op_data.operators[instance.name].refresh_drained
