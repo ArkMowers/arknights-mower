@@ -50,12 +50,12 @@ echo "🔑 webui token: ${TOKEN}"
 # 如果MAA目录不存在或为空，则下载并解压最新版本
 echo "🔍 检查MAA目录是否存在或为空..."
 if [ ! -d "${MAA_DIR}" ] || [ -z "$(ls -A "${MAA_DIR}" 2>/dev/null)" ]; then
-  echo "⬇️ 下载并安装最新版本的Maa..."
+  echo "⬇️ 下载并安装最新版本的MAA..."
   url=$(curl -s https://api.github.com/repos/MaaAssistantArknights/MaaAssistantArknights/releases/latest \
     | jq -r --arg arch "${ARCH}" '.assets[] | select(.name | contains("linux") and contains($arch) and contains("tar")) | .browser_download_url' \
     | head -n 1)
   if [ -z "${url}" ]; then
-    echo "❌ 无法找到MaaAssistantArknights下载链接" >&2
+    echo "❌ 无法找到MAA下载链接" >&2
     exit 1
   fi
   tmp_tar="/tmp/maa.tar.gz"
@@ -63,7 +63,7 @@ if [ ! -d "${MAA_DIR}" ] || [ -z "$(ls -A "${MAA_DIR}" 2>/dev/null)" ]; then
   mkdir -p "${MAA_DIR}"
   tar -xzf "${tmp_tar}" -C "${MAA_DIR}"
   rm -f "${tmp_tar}"
-  echo "✅ Maa已安装到${MAA_DIR}"
+  echo "✅ MAA已安装到${MAA_DIR}"
 fi
 echo ""
 

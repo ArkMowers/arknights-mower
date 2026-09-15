@@ -9,9 +9,13 @@ const {
   maa_mall_buy,
   maa_mall_blacklist,
   maa_mall_ignore_blacklist_when_full,
+  maa_mall_only_buy_discount,
+  maa_mall_reserve_max_credit,
   maa_enable,
   maa_credit_fight,
-  credit_fight
+  credit_fight,
+  visit_friend_enable,
+  visit_friend_mode
 } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
@@ -66,6 +70,11 @@ const squads = [
   { label: '第四编队', value: 4 }
 ]
 
+const visit_friend_mode_options = [
+  { label: 'mower', value: 'mower' },
+  { label: 'MAA', value: 'maa' }
+]
+
 const show_map = ref(false)
 </script>
 
@@ -85,6 +94,14 @@ const show_map = ref(false)
       <n-form-item label="编队">
         <n-select :options="squads" v-model:value="credit_fight.squad" />
       </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="visit_friend_enable">
+          <div class="item">访问好友</div>
+        </n-checkbox>
+      </n-form-item>
+      <n-form-item v-if="visit_friend_enable" label="处理方式">
+        <n-select :options="visit_friend_mode_options" v-model:value="visit_friend_mode" />
+      </n-form-item>
       <!--<n-form-item label="干员">
         <n-select
           filterable
@@ -96,9 +113,9 @@ const show_map = ref(false)
       </n-form-item>
       <n-form-item label="部署">
         <div style="width: 40px; text-align: right">X</div>
-        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
+        <mower-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
         <div style="width: 40px; text-align: right">Y</div>
-        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
+        <mower-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
         <n-select
           style="width: 250px; margin-right: 8px"
           :options="deploy_directions"
@@ -133,6 +150,17 @@ const show_map = ref(false)
       label-width="72"
       label-align="left"
     >
+      <n-form-item label="购物设置">
+        <n-space :size="24">
+          <n-checkbox v-model:checked="maa_mall_only_buy_discount">只购买折扣物品</n-checkbox>
+          <n-checkbox v-model:checked="maa_mall_reserve_max_credit">
+            保留最大信用点（低于 300 停止购买）
+          </n-checkbox>
+        </n-space>
+        <help-text>
+          <div>两个设置均仅作用于第二轮购买。</div>
+        </help-text>
+      </n-form-item>
       <n-form-item label="信用溢出">
         <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
           <n-space>

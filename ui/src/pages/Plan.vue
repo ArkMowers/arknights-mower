@@ -3,6 +3,7 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { swap } from '@/utils/common'
+import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edit'
 
 const config_store = useConfigStore()
 const { free_blacklist, theme } = storeToRefs(config_store)
@@ -11,6 +12,7 @@ const plan_store = usePlanStore()
 const {
   ling_xi,
   resting_priority,
+  resting_standby,
   exhaust_require,
   rest_in_full,
   workaholic,
@@ -24,7 +26,7 @@ const {
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
-import { computed, inject, provide, ref, watchEffect } from 'vue'
+import { computed, inject, provide, ref, watch, watchEffect } from 'vue'
 const axios = inject('axios')
 
 const facility = ref('')
@@ -38,13 +40,14 @@ const current_plan = computed(() => {
   }
 })
 
-import { useMessage, NAlert } from 'naive-ui'
+import { useDialog, useMessage, NAlert } from 'naive-ui'
 
 const plan_editor = ref(null)
 
 const generating_image = ref(false)
 
 const message = useMessage()
+const dialog = useDialog()
 
 import { sleep } from '@/utils/sleep'
 import { toBlob } from 'html-to-image'
@@ -117,6 +120,7 @@ function create_sub_plan() {
       ling_xi: ling_xi.value,
       rest_in_full: [],
       resting_priority: [],
+      resting_standby: [],
       workaholic: [],
       refresh_trading: [],
       refresh_drained: [],
@@ -144,6 +148,7 @@ const current_conf = ref({
   ling_xi: ling_xi.value,
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
+  resting_standby: resting_standby.value,
   workaholic: workaholic.value,
   exhaust_require: exhaust_require.value,
   refresh_trading: refresh_trading.value
@@ -155,6 +160,7 @@ watchEffect(() => {
       ling_xi: ling_xi.value,
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
+      resting_standby: resting_standby.value,
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
       refresh_trading: refresh_trading.value,
@@ -173,6 +179,7 @@ watchEffect(() => {
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
+    resting_standby.value = current_conf.value.resting_standby
     workaholic.value = current_conf.value.workaholic
     refresh_trading.value = current_conf.value.refresh_trading
     free_blacklist.value = current_conf.value.free_blacklist
@@ -201,6 +208,14 @@ provide('add_task', add_task)
 const replace_source = ref('')
 const replace_target = ref('')
 
+// 弹窗关闭（应用或取消）时清空选择，避免重开时旧 target 已进排班 → 误报重复守卫
+watch(show_replace_dialog, (open) => {
+  if (!open) {
+    replace_source.value = ''
+    replace_target.value = ''
+  }
+})
+
 async function validate_plan() {
   try {
     const { data } = await axios.post(
@@ -220,6 +235,44 @@ async function validate_plan() {
   }
 }
 
+function replace_main_conf() {
+  return {
+    rest_in_full: rest_in_full.value,
+    exhaust_require: exhaust_require.value,
+    workaholic: workaholic.value,
+    resting_priority: resting_priority.value,
+    resting_standby: resting_standby.value,
+    refresh_trading: refresh_trading.value,
+    refresh_drained: refresh_drained.value,
+    free_blacklist: free_blacklist.value,
+    ope_resting_priority: ope_resting_priority.value
+  }
+}
+
+const replace_plan_state = () => ({
+  main_plan: plan.value,
+  main_conf: replace_main_conf(),
+  backup_plans: backup_plans.value
+})
+
+// 被替换侧只列排班里出现过的干员（防选了个不在排班里的干员变 no-op）
+const replace_source_options = computed(() =>
+  collect_plan_operators(replace_plan_state()).map((name) => ({ value: name, label: name }))
+)
+
+// 目标干员已在排班 → 提示（不硬禁：重复替换是合理需求，见 #168 修订）
+const target_already_in_plan = computed(() => {
+  const target = replace_target.value
+  if (!target) return false
+  return collect_plan_operators(replace_plan_state()).includes(target)
+})
+
+function do_replace() {
+  apply_operator_replace(replace_plan_state(), replace_source.value, replace_target.value)
+  message.success('替换完成')
+  show_replace_dialog.value = false
+}
+
 function apply_replace() {
   if (!replace_source.value || !replace_target.value) {
     message.error('请选择源干员和目标干员')
@@ -229,26 +282,18 @@ function apply_replace() {
     message.error('源干员和目标干员不能相同')
     return
   }
-  // 遍历所有计划，包括主表和副表
-  const allPlans = [plan.value, ...backup_plans.value.map((bp) => bp.plan)]
-  for (const currentPlan of allPlans) {
-    for (const facility in currentPlan) {
-      if (currentPlan[facility].plans) {
-        for (const planItem of currentPlan[facility].plans) {
-          if (planItem.agent === replace_source.value) {
-            planItem.agent = replace_target.value
-          }
-          if (planItem.replacement) {
-            planItem.replacement = planItem.replacement.map((r) =>
-              r === replace_source.value ? replace_target.value : r
-            )
-          }
-        }
-      }
-    }
+  if (target_already_in_plan.value) {
+    dialog.warning({
+      title: '目标干员已在排班中',
+      content:
+        '目标干员已存在于排班（可能来自之前的替换，如主表换过、副表没换）。仍要执行的话会继续把排班里的源干员全部换成目标干员。',
+      positiveText: '仍要替换',
+      negativeText: '取消',
+      onPositiveClick: do_replace
+    })
+    return
   }
-  message.success('替换完成')
-  show_replace_dialog.value = false
+  do_replace()
 }
 
 import DocumentExport from '@vicons/carbon/DocumentExport'
@@ -458,6 +503,22 @@ function movePlanForward() {
     </n-form-item>
     <n-form-item>
       <template #label>
+        <span>宿舍休息候补干员</span>
+        <help-text>
+          <p>
+            测试设置：仅对主班排班中已绑组的干员生效，休息优先级低于「宿舍低优先级干员」。
+            整组下班时，有床则休息，无床则撤下待命，随组回班；待命期间不恢复心情。
+          </p>
+          <p>
+            仅建议在同组存在心情消耗极高的干员时填写，其他情况请使用原有休息优先级。
+            组内需保留能入宿舍休息的高优干员；零心情工作干员绑组后随组上下班，但不入住宿舍。
+          </p>
+        </help-text>
+      </template>
+      <slick-operator-select v-model="current_conf.resting_standby"></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
         <span>跑单时间刷新干员</span>
         <help-text>
           <p>贸易站外影响贸易效率的干员</p>
@@ -504,29 +565,59 @@ function movePlanForward() {
     v-model:show="show_replace_dialog"
     preset="card"
     title="一键替换干员"
-    :style="{ width: '500px' }"
+    :style="{ width: '560px' }"
   >
     <n-alert title="警告" type="warning">
       该操作会一键替换主表+副表所有干员名字，不可逆，使用前最好复制现有排班表，以防出错
     </n-alert>
-    <n-space>
-      <n-select
-        v-model:value="replace_source"
-        :options="operators"
-        placeholder="选择要替换的干员"
-        filterable
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-      />
-      <n-select
-        v-model:value="replace_target"
-        :options="operators"
-        placeholder="选择目标干员"
-        filterable
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-      />
-    </n-space>
+    <div class="replace-flow">
+      <div class="replace-side">
+        <div class="replace-side-label">被替换干员（排班中已有）</div>
+        <n-select
+          v-model:value="replace_source"
+          :options="replace_source_options"
+          placeholder="选择排班中的干员"
+          filterable
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :render-label="render_op_label"
+        />
+      </div>
+      <svg
+        class="replace-arrow"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M5 12h13m-5-5 5 5-5 5"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <div class="replace-side">
+        <div class="replace-side-label">替换为（全部干员池）</div>
+        <n-select
+          v-model:value="replace_target"
+          :options="operators"
+          placeholder="选择目标干员"
+          filterable
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :render-label="render_op_label"
+        />
+      </div>
+    </div>
+    <n-alert
+      v-if="target_already_in_plan"
+      title="目标干员已在排班中"
+      type="warning"
+      class="replace-duplicate"
+    >
+      目标干员已存在于排班（可能来自之前的替换，如主表换过、副表没换）。仍可替换：点「替换」后确认即可继续。
+    </n-alert>
     <template #footer>
       <n-space justify="end">
         <n-button @click="show_replace_dialog = false">取消</n-button>
@@ -568,5 +659,32 @@ function movePlanForward() {
   flex-grow: 0;
   gap: 6px;
   padding: 0 12px;
+}
+
+.replace-flow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.replace-side {
+  flex: 1;
+  min-width: 0;
+}
+
+.replace-side-label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: rgb(153, 153, 153);
+}
+
+.replace-arrow {
+  flex-shrink: 0;
+  color: rgb(153, 153, 153);
+}
+
+.replace-duplicate {
+  margin-top: 12px;
 }
 </style>

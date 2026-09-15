@@ -30,13 +30,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 WORKDIR /app
 COPY requirements.txt requirements.in ./
 COPY docker/gen_server_requirements.py ./gen_server_requirements.py
+COPY scripts/prune_opencv.py ./scripts/prune_opencv.py
 RUN python gen_server_requirements.py requirements.txt requirements-server.txt \
     && uv venv /opt/venv --python /usr/local/bin/python3.12 \
     && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile setuptools wheel \
     && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile --no-deps -r requirements-server.txt \
+    && /opt/venv/bin/python scripts/prune_opencv.py \
     && find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} + \
     && find /opt/venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete \
-    && find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} + || true
+    && (find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} + || true)
 
 # 构建运行时镜像
 FROM base AS runtime

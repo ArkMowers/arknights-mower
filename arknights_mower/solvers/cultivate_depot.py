@@ -1,8 +1,7 @@
 import json
 
-import requests
-
 from arknights_mower.utils import config
+from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skland import (
     get_binding_list,
@@ -10,7 +9,9 @@ from arknights_mower.utils.skland import (
     get_sign_header,
     header,
     log,
+    request_with_retry,
 )
+from arknights_mower.utils.workshop_data import parse_roster
 
 
 class cultivate:
@@ -22,21 +23,31 @@ class cultivate:
 
     def start(self):
         if not config.conf.skland_info:
-            return
+            return False
+        updated = False
         item = config.conf.skland_info[0]
         self.save_param(get_cred_by_token(log(item)))
         for i in get_binding_list(self.sign_token):
             if i.get("gameId") == 1 and item.cultivate_select == i.get("isOfficial"):
                 body = {"gameId": 1, "uid": i.get("uid")}
                 ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
-                resp = requests.get(
+                resp = request_with_retry(
+                    "get",
                     ingame,
                     headers=get_sign_header(ingame, "get", body, self.sign_token),
-                    timeout=30,
                 ).json()
-                self.record_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.record_path, "w", encoding="utf-8") as file:
+
+                if isinstance(resp, dict) and resp.get("code") != 0:
+                    raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
+                parse_roster(resp)
+
+                def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
+
+                # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
+                atomic_write(self.record_path, dump)
+                updated = True
+        return updated
 
     def save_param(self, cred_resp):
         header["cred"] = cred_resp["cred"]

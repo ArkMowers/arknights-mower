@@ -4,6 +4,7 @@ import json
 import pickle
 import sqlite3
 import traceback
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import pytz
@@ -12,6 +13,77 @@ from tzlocal import get_localzone
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+# 全部 DB 表定义（#86：建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
+_DB_TABLE_STMTS = (
+    "CREATE TABLE IF NOT EXISTS agent_action ("
+    "name TEXT,"
+    "agent_current_room TEXT,"
+    "current_room TEXT,"
+    "is_high INTEGER,"
+    "agent_group TEXT,"
+    "mood REAL,"
+    "current_time TEXT"
+    ")",
+    "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)",
+    "CREATE TABLE IF NOT EXISTS trading_history ("
+    "time INTEGER PRIMARY KEY,"
+    "server_date TEXT,"
+    "type TEXT,"
+    "price INTEGER"
+    ")",
+    "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)",
+    "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
+    "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS log (time INTEGER,task TEXT,level TEXT,message TEXT)",
+    "CREATE TABLE IF NOT EXISTS operation_history ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "stage_id TEXT,"
+    "run_count INTEGER,"
+    "ap_cost INTEGER,"
+    "started_at TEXT,"
+    "finished_at TEXT,"
+    "duration_seconds REAL,"
+    "status TEXT,"
+    "drop_json TEXT,"
+    "created_at TEXT"
+    ")",
+)
+_tables_created = False
+
+
+def _ensure_tables(conn):
+    """建表检查进程内只跑一次（表结构只在代码升级时变，重启后首访即建表）。"""
+    global _tables_created
+    if _tables_created:
+        return
+    for stmt in _DB_TABLE_STMTS:
+        conn.execute(stmt)
+    conn.commit()
+    _tables_created = True
+
+
+@contextmanager
+def _conn():
+    """共享连接上下文：每次新开连接（避开 sqlite 跨线程复用），建表检查只跑一次。"""
+    global _tables_created
+    get_path("@app/tmp").mkdir(exist_ok=True)
+    db_path = get_path("@app/tmp/data.db")
+    # #86：数据库文件被删/首次 → 重置建表标记，下次连接重建表（防运行中丢库后 no-such-table）
+    if not db_path.exists():
+        _tables_created = False
+    conn = sqlite3.connect(db_path)
+    try:
+        _ensure_tables(conn)
+        yield conn
+    finally:
+        conn.close()
+
+
+def _fetchall(sql, *params):
+    """共享连接上执行只读查询（建表检查只跑一次）。"""
+    with _conn() as conn:
+        return conn.execute(sql, params).fetchall()
 
 
 # 记录干员进出站以及心情数据，将记录信息存入agent_action表里
@@ -28,44 +100,24 @@ def save_action_to_sqlite_decorator(func):
             return
         # 保存到数据库
         current_time = datetime.now()
-        database_path = get_path("@app/tmp/data.db")
 
         try:
-            # Create 'tmp' directory if it doesn't exist
-            get_path("@app/tmp").mkdir(exist_ok=True)
-
-            connection = sqlite3.connect(database_path)
-            cursor = connection.cursor()
-
-            # Create a table if it doesn't exist
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS agent_action ("
-                "name TEXT,"
-                "agent_current_room TEXT,"
-                "current_room TEXT,"
-                "is_high INTEGER,"
-                "agent_group TEXT,"
-                "mood REAL,"
-                "current_time TEXT"
-                ")"
-            )
-
-            # Insert data
-            cursor.execute(
-                "INSERT INTO agent_action VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    name,
-                    agent_current_room,
-                    current_room,
-                    int(agent_is_high),
-                    agent.group,
-                    mood,
-                    str(current_time),
-                ),
-            )
-
-            connection.commit()
-            connection.close()
+            with _conn() as connection:
+                cursor = connection.cursor()
+                # Insert data
+                cursor.execute(
+                    "INSERT INTO agent_action VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        name,
+                        agent_current_room,
+                        current_room,
+                        int(agent_is_high),
+                        agent.group,
+                        mood,
+                        str(current_time),
+                    ),
+                )
+                connection.commit()
 
             # Log the action
             logger.debug(
@@ -96,7 +148,6 @@ def current_state():
         "daily_skland": base_scheduler.daily_skland,
         "daily_mail": base_scheduler.daily_mail,
         "task_count": base_scheduler.task_count,
-        "skill_upgrade_supports": base_scheduler.op_data.skill_upgrade_supports,
     }
 
 
@@ -106,26 +157,19 @@ def save_state_to_db(saved_state):
         return False
 
     current_time = datetime.now()
-    database_path = get_path("@app/tmp/data.db")
 
     try:
-        get_path("@app/tmp").mkdir(exist_ok=True)
-
-        connection = sqlite3.connect(database_path)
-        cursor = connection.cursor()
-
-        cursor.execute("CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)")
-        cursor.execute("DELETE FROM saved_state")
-        cursor.execute(
-            "INSERT INTO saved_state VALUES (?, ?)",
-            (
-                str(current_time),
-                sqlite3.Binary(pickle.dumps(saved_state)),
-            ),
-        )
-
-        connection.commit()
-        connection.close()
+        with _conn() as connection:
+            cursor = connection.cursor()
+            cursor.execute("DELETE FROM saved_state")
+            cursor.execute(
+                "INSERT INTO saved_state VALUES (?, ?)",
+                (
+                    str(current_time),
+                    sqlite3.Binary(pickle.dumps(saved_state)),
+                ),
+            )
+            connection.commit()
 
         logger.info(f"储存缓存数据至数据库 {current_time}")
         return True
@@ -152,22 +196,18 @@ def save_state(func):
 def load_state():
     # Initialize an empty variable to hold the loaded state
     loaded_state = None
-    database_path = get_path("@app/tmp/data.db")
 
     try:
-        connection = sqlite3.connect(database_path)
-        cursor = connection.cursor()
-
-        # Query the last saved state
-        cursor.execute("SELECT state FROM saved_state ORDER BY time DESC LIMIT 1")
-        row = cursor.fetchone()
+        with _conn() as connection:
+            cursor = connection.cursor()
+            # Query the last saved state
+            cursor.execute("SELECT state FROM saved_state ORDER BY time DESC LIMIT 1")
+            row = cursor.fetchone()
 
         if row is not None:
             loaded_state = pickle.loads(row[0])  # Deserialize the state
         else:
             logger.debug("No saved state found in the database")
-
-        connection.close()
 
     except sqlite3.Error as e:
         logger.error(f"SQLite error: {e}")
@@ -176,24 +216,21 @@ def load_state():
 
 
 def clear_data(date_time):
-    database_path = get_path("@app/tmp/data.db")
     try:
-        connection = sqlite3.connect(database_path)
-        cursor = connection.cursor()
+        with _conn() as connection:
+            cursor = connection.cursor()
 
-        # Ensure date_time is in the correct format
-        if isinstance(date_time, datetime):
-            date_time_str = date_time.strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            date_time_str = date_time
+            # Ensure date_time is in the correct format
+            if isinstance(date_time, datetime):
+                date_time_str = date_time.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                date_time_str = date_time
 
-        # Execute the DELETE statement with parameterized query
-        cursor.execute(
-            "DELETE FROM agent_action WHERE `current_time` < ?", (date_time_str,)
-        )
-
-        connection.commit()
-        connection.close()
+            # Execute the DELETE statement with parameterized query
+            cursor.execute(
+                "DELETE FROM agent_action WHERE `current_time` < ?", (date_time_str,)
+            )
+            connection.commit()
         logger.info(f"已删除 早于 {date_time_str} 的干员心情记录")
 
     except sqlite3.Error as e:
@@ -202,24 +239,17 @@ def clear_data(date_time):
 
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
-    database_path = get_path("@app/tmp/data.db")
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
-    sel = ""
-    for name in favorite:
-        sel = (
-            sel
-            + """
-                UNION
-                SELECT '{}' AS name
-            """.format(name)
-        )
+    sel = "".join(
+        """
+            UNION
+            SELECT ? AS name
+        """
+        for _ in favorite
+    )
     try:
-        # 连接到数据库
-        conn = sqlite3.connect(database_path)
-        # conn = sqlite3.connect('../../tmp/data.db')
-        cursor = conn.cursor()
         # 查询数据
-        cursor.execute(
+        data = _fetchall(
             """
                         SELECT a.*
                         FROM agent_action a
@@ -236,11 +266,9 @@ def get_work_rest_ratios():
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
-                       """
+                       """,
+            *favorite,
         )
-        data = cursor.fetchall()
-        # 关闭数据库连接
-        conn.close()
     except sqlite3.Error:
         data = []
     processed_data = {}
@@ -287,23 +315,17 @@ def get_work_rest_ratios():
 
 # 整理心情曲线
 def get_mood_ratios():
-    database_path = get_path("@app/tmp/data.db")
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
-    sel = ""
-    for name in favorite:
-        sel = (
-            sel
-            + """
-                UNION
-                SELECT '{}' AS name
-            """.format(name)
-        )
+    sel = "".join(
+        """
+            UNION
+            SELECT ? AS name
+        """
+        for _ in favorite
+    )
     try:
-        # 连接到数据库
-        conn = sqlite3.connect(database_path)
-        cursor = conn.cursor()
         # 查询数据（筛掉宿管和替班组的数据）
-        cursor.execute(
+        data = _fetchall(
             """
                        SELECT a.*
                         FROM agent_action a
@@ -321,11 +343,9 @@ def get_mood_ratios():
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
                         ORDER BY a.agent_group DESC, a.current_time;
 
-        """
+        """,
+            *favorite,
         )
-        data = cursor.fetchall()
-        # 关闭数据库连接
-        conn.close()
     except sqlite3.Error:
         data = []
 
@@ -391,50 +411,40 @@ def calculate_time_difference(start_time, end_time):
 
 def save_trading_info(func):
     def wrapper(*args, **kwargs):
-        database_path = get_path("@app/tmp/data.db")
         try:
             result = None
-            get_path("@app/tmp").mkdir(exist_ok=True)
-            connection = sqlite3.connect(database_path)
-            cursor = connection.cursor()
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS trading_history ("
-                "time INTEGER PRIMARY KEY,"
-                "server_date TEXT,"
-                "type TEXT,"
-                "price INTEGER"
-                ")"
-            )
-            if len(args) > 2:
-                dt = args[2]
-                cursor.execute(
-                    "SELECT COUNT(*) FROM trading_history WHERE time = ?",
-                    (int(dt.timestamp()),),
-                )
-                exists = cursor.fetchone()[0] > 0
-                if exists:
-                    logger.debug("当前订单信息已经存在数据库，跳过.")
-                    return
-            result = func(*args, **kwargs)
+            with _conn() as connection:
+                cursor = connection.cursor()
+                if len(args) > 2:
+                    dt = args[2]
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM trading_history WHERE time = ?",
+                        (int(dt.timestamp()),),
+                    )
+                    exists = cursor.fetchone()[0] > 0
+                    if exists:
+                        logger.debug("当前订单信息已经存在数据库，跳过.")
+                        return
+                result = func(*args, **kwargs)
 
-            if result:
-                dubai_tz = pytz.timezone("Asia/Dubai")
-                cursor.execute(
-                    "INSERT INTO trading_history VALUES (?, ?, ?, ?)",
-                    (
-                        int(result.time.timestamp()),
-                        result.time.astimezone(dubai_tz).date(),
-                        result.buff,
-                        result.price,
-                    ),
-                )
-                logger.info(f"当前为 {result.buff} 订单, 订单价值为: {result.price}")
-                logger.info(f"储存订单信息至数据库 {datetime.now()}")
-                connection.commit()
+                if result:
+                    dubai_tz = pytz.timezone("Asia/Dubai")
+                    cursor.execute(
+                        "INSERT INTO trading_history VALUES (?, ?, ?, ?)",
+                        (
+                            int(result.time.timestamp()),
+                            result.time.astimezone(dubai_tz).date(),
+                            result.buff,
+                            result.price,
+                        ),
+                    )
+                    logger.info(
+                        f"当前为 {result.buff} 订单, 订单价值为: {result.price}"
+                    )
+                    logger.info(f"储存订单信息至数据库 {datetime.now()}")
+                    connection.commit()
         except sqlite3.Error as e:
             logger.error(f"SQLite error: {e}")
-        finally:
-            connection.close()
         return result
 
     return wrapper
@@ -455,8 +465,6 @@ def get_trading_history(start_date: str, end_date: str):
     start_dt = dubai_start.astimezone(local_tz)
     end_dt = dubai_end.astimezone(local_tz)
 
-    database_path = get_path("@app/tmp/data.db")
-    database_path.parent.mkdir(parents=True, exist_ok=True)
     start_timestamp = int(start_dt.timestamp())
     end_timestamp = int(end_dt.timestamp())
 
@@ -465,40 +473,29 @@ def get_trading_history(start_date: str, end_date: str):
     logger.debug(f"分析数据至{end_dt}")
 
     try:
-        connection = sqlite3.connect(database_path)
-        cursor = connection.cursor()
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS trading_history ("
-            "time INTEGER PRIMARY KEY,"
-            "server_date TEXT,"
-            "type TEXT,"
-            "price INTEGER"
-            ")"
-        )
-        cursor.execute(
-            """
-            SELECT server_date, type, price, COUNT(*)
-            FROM trading_history
-            WHERE time BETWEEN ? AND ?
-            GROUP BY server_date, type, price
-            """,
-            (start_timestamp, end_timestamp),
-        )
-        for row in cursor.fetchall():
-            trade_date, trade_type, price, count = row
-            # 构建每个记录的统计信息
-            key = (
-                trade_type
-                if trade_type in ["佩佩", "龙舌兰", "可露希尔"]
-                else f"{trade_type}_{price}"
+        with _conn() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT server_date, type, price, COUNT(*)
+                FROM trading_history
+                WHERE time BETWEEN ? AND ?
+                GROUP BY server_date, type, price
+                """,
+                (start_timestamp, end_timestamp),
             )
-            result_dict[trade_date].append({key: count})
+            for row in cursor.fetchall():
+                trade_date, trade_type, price, count = row
+                # 构建每个记录的统计信息
+                key = (
+                    trade_type
+                    if trade_type in ["佩佩", "龙舌兰", "可露希尔"]
+                    else f"{trade_type}_{price}"
+                )
+                result_dict[trade_date].append({key: count})
 
     except sqlite3.Error as e:
         logger.exception(e)
-    finally:
-        if connection:
-            connection.close()
     result_list = [
         {"日期": date, **{k: v for stat in stats for k, v in stat.items()}}
         for date, stats in result_dict.items()
@@ -506,27 +503,59 @@ def get_trading_history(start_date: str, end_date: str):
     return result_list
 
 
-def save_inventory_counts(inventorys: dict[str, int]):
-    data = [(name, count) for name, count in inventorys.items()]
-    with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
+def save_inventory_counts(
+    inventorys: dict[str, int], *, scanned_counts=None, scanned_at=0
+):
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        effective = dict(inventorys)
+        protected = dict(
+            conn.execute(
+                "SELECT item_name, observed_at FROM workshop_inventory_updates"
+            )
         )
+        if scanned_counts is not None:
+            current = dict(conn.execute("SELECT item_name, count FROM inventory"))
+            for name, observed_at in protected.items():
+                scanned = scanned_counts.get(name, 0)
+                if (
+                    scanned_at > observed_at
+                    and isinstance(scanned, int)
+                    and scanned >= 0
+                ):
+                    # A newer in-game scan can reconcile crafting, loot and spending.
+                    # Keep its marker: reopening the page must not restore cloud cache.
+                    effective[name] = scanned
+                    conn.execute(
+                        "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
+                        (scanned_at, name),
+                    )
+                elif name in current:
+                    effective[name] = current[name]
+                else:
+                    effective.pop(name, None)  # Preserve an unconfirmed/unknown count.
+        else:
+            conn.executemany(
+                "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
+                [
+                    (datetime.now().timestamp(), name)
+                    for name in effective
+                    if name in protected
+                ],
+            )
+        cursor = conn.cursor()
         cursor.executemany(
             "INSERT INTO inventory (item_name, count) VALUES (?, ?) "
             "ON CONFLICT(item_name) DO UPDATE SET count = excluded.count",
-            data,
+            list(effective.items()),
         )
         conn.commit()
+        return effective
 
 
 def get_inventory_counts(item_names: list[str] | None = None):
-    with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
+    with _conn() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
-        )
         if not item_names:
             cursor.execute("SELECT item_name, count FROM inventory")
         else:
@@ -536,30 +565,50 @@ def get_inventory_counts(item_names: list[str] | None = None):
         return dict(cursor.fetchall())
 
 
-def save_log(message: str, task: str = "{}", level: str = "INFO"):
-    database_path = get_path("@app/tmp/data.db")
-    try:
-        get_path("@app/tmp").mkdir(exist_ok=True)
-        conn = sqlite3.connect(database_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS log ("
-            "time INTEGER,"
-            "task TEXT,"
-            "level TEXT,"
-            "message TEXT"
-            ")"
+def apply_workshop_inventory(delta: dict[str, int]):
+    """Apply the main output and ingredient changes of one confirmed batch."""
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "UPDATE inventory SET count = MAX(0, count + ?) WHERE item_name = ?",
+            [(amount, name) for name, amount in delta.items()],
         )
-        if not task:
-            task = "{}"
-        if not isinstance(task, str):
-            task = json.dumps(task, ensure_ascii=False)
-        cursor.execute(
-            "INSERT INTO log VALUES (?, ?, ?, ?)",
-            (int(datetime.now().timestamp()), task, level, message),
-        )
+        _mark_workshop_inventory(conn, delta)
         conn.commit()
-        conn.close()
+
+
+def invalidate_workshop_inventory(names):
+    """An unconfirmed batch requires a depot read before these materials are reused."""
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "DELETE FROM inventory WHERE item_name = ?", [(name,) for name in names]
+        )
+        _mark_workshop_inventory(conn, names)
+        conn.commit()
+
+
+def _mark_workshop_inventory(conn, names):
+    conn.executemany(
+        "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
+        "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
+        [(name, datetime.now().timestamp()) for name in names],
+    )
+
+
+def save_log(message: str, task: str = "{}", level: str = "INFO"):
+    try:
+        with _conn() as conn:
+            cursor = conn.cursor()
+            if not task:
+                task = "{}"
+            if not isinstance(task, str):
+                task = json.dumps(task, ensure_ascii=False)
+            cursor.execute(
+                "INSERT INTO log VALUES (?, ?, ?, ?)",
+                (int(datetime.now().timestamp()), task, level, message),
+            )
+            conn.commit()
     except Exception as e:
         logger.error(f"Log DB error: {e}")
 
@@ -567,23 +616,6 @@ def save_log(message: str, task: str = "{}", level: str = "INFO"):
 def save_exception(e: Exception):
     tb = traceback.format_exc()
     save_log(f"Exception: {str(e)}\n{tb}", task="{}", level="ERROR")
-
-
-def _ensure_operation_tables(cursor: sqlite3.Cursor):
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS operation_history ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "stage_id TEXT,"
-        "run_count INTEGER,"
-        "ap_cost INTEGER,"
-        "started_at TEXT,"
-        "finished_at TEXT,"
-        "duration_seconds REAL,"
-        "status TEXT,"
-        "drop_json TEXT,"
-        "created_at TEXT"
-        ")"
-    )
 
 
 def record_operation_batch(
@@ -596,12 +628,9 @@ def record_operation_batch(
     status: str = "success",
     drop_json: str | None = None,
 ):
-    database_path = get_path("@app/tmp/data.db")
-    get_path("@app/tmp").mkdir(exist_ok=True)
     created_at = datetime.now().isoformat(sep=" ", timespec="seconds")
-    with sqlite3.connect(database_path) as conn:
+    with _conn() as conn:
         cursor = conn.cursor()
-        _ensure_operation_tables(cursor)
         cursor.execute(
             "INSERT INTO operation_history (stage_id, run_count, ap_cost, started_at, finished_at, duration_seconds, status, drop_json, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -624,11 +653,8 @@ def get_stage_operation_duration(
     stage_id: str,
     fallback_seconds: int,
 ):
-    database_path = get_path("@app/tmp/data.db")
-    get_path("@app/tmp").mkdir(exist_ok=True)
-    with sqlite3.connect(database_path) as conn:
+    with _conn() as conn:
         cursor = conn.cursor()
-        _ensure_operation_tables(cursor)
         cursor.execute(
             "SELECT duration_seconds FROM operation_history "
             "WHERE stage_id = ? AND status = 'success' "
