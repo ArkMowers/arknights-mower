@@ -4335,6 +4335,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         not_take = True
         while self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
             if not_take:
+                # 动画过渡防抖：若首帧已充分定格则直接放行，否则最多等待 2 次采样 (~0.3s)
+                scores = self.order_reader.get_buff_scores(self.recog.img)
+                if not self.order_reader.has_distinct_buff(scores):
+                    for _ in range(2):
+                        self.sleep(0.15)
+                        self.recog.update()
+                        new_scores = self.order_reader.get_buff_scores(self.recog.img)
+                        if self.order_reader.has_distinct_buff(
+                            new_scores
+                        ) or self.order_reader.is_stable(scores, new_scores):
+                            break
+                        scores = new_scores
+
                 self.recog.save_screencap("run_order")
                 self.order_reader.save(self.recog.img)
                 not_take = False
