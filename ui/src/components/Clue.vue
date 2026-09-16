@@ -11,7 +11,8 @@ const {
   maa_mall_ignore_blacklist_when_full,
   maa_mall_only_buy_discount,
   maa_mall_reserve_max_credit,
-  maa_enable,
+  maa_mall_enable,
+  maa_mall_mode,
   maa_credit_fight,
   credit_fight,
   visit_friend_enable,
@@ -70,11 +71,6 @@ const squads = [
   { label: '第四编队', value: 4 }
 ]
 
-const visit_friend_mode_options = [
-  { label: 'mower', value: 'mower' },
-  { label: 'MAA', value: 'maa' }
-]
-
 const show_map = ref(false)
 </script>
 
@@ -100,7 +96,16 @@ const show_map = ref(false)
         </n-checkbox>
       </n-form-item>
       <n-form-item v-if="visit_friend_enable" label="处理方式">
-        <n-select :options="visit_friend_mode_options" v-model:value="visit_friend_mode" />
+        <n-radio-group v-model:value="visit_friend_mode">
+          <n-space>
+            <n-radio value="maa">MAA</n-radio>
+            <n-radio value="mower">Mower</n-radio>
+          </n-space>
+        </n-radio-group>
+        <help-text>
+          <div>MAA：在执行日常任务时由 MAA 进入好友列表拜访并收取信用。</div>
+          <div>Mower：在轮询基建调度之余由 Mower 原生进入好友列表拜访并收取信用。</div>
+        </help-text>
       </n-form-item>
       <!--<n-form-item label="干员">
         <n-select
@@ -128,7 +133,7 @@ const show_map = ref(false)
       </n-form-item>-->
     </n-form>
     <n-divider />
-    <n-checkbox v-model:checked="maa_enable" class="maa-shop">
+    <n-checkbox v-model:checked="maa_mall_enable" class="maa-shop">
       <div class="item">信用商店购物</div>
     </n-checkbox>
     <help-text>
@@ -145,12 +150,25 @@ const show_map = ref(false)
       <p>注意：跑单时赤金与作战记录均大幅升值</p>
     </help-text>
     <n-form
+      v-if="maa_mall_enable"
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
       label-width="72"
       label-align="left"
     >
-      <n-form-item label="购物设置">
+      <n-form-item label="处理方式">
+        <n-radio-group v-model:value="maa_mall_mode">
+          <n-space>
+            <n-radio value="maa">MAA</n-radio>
+            <n-radio value="mower">Mower</n-radio>
+          </n-space>
+        </n-radio-group>
+        <help-text>
+          <div>MAA：在执行日常任务时由 MAA 进入采购中心进行信用收取和购物。</div>
+          <div>Mower：在会客室线索流程处理完成后由 Mower 原生进入信用商店进行收取和购物。</div>
+        </help-text>
+      </n-form-item>
+      <n-form-item label="购物设置" v-if="maa_mall_mode === 'maa'">
         <n-space :size="24">
           <n-checkbox v-model:checked="maa_mall_only_buy_discount">只购买折扣物品</n-checkbox>
           <n-checkbox v-model:checked="maa_mall_reserve_max_credit">
@@ -170,17 +188,15 @@ const show_map = ref(false)
         </n-radio-group>
       </n-form-item>
       <n-form-item label="优先购买">
-        <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
-          <n-select
-            multiple
-            filterable
-            tag
-            :options="shop_list"
-            v-model:value="maa_mall_buy"
-            :render-tag="render_tag"
-            :render-label="render_label"
-          />
-        </n-radio-group>
+        <n-select
+          multiple
+          filterable
+          tag
+          :options="shop_list"
+          v-model:value="maa_mall_buy"
+          :render-tag="render_tag"
+          :render-label="render_label"
+        />
       </n-form-item>
       <n-form-item label="黑名单">
         <n-select

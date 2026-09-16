@@ -2367,6 +2367,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.last_clue = datetime.now()
         self.skip(["collect_notification"])
 
+    def _run_clue_shop(self):
+        conf = config.conf
+        if getattr(
+            conf,
+            "should_run_mower_mall",
+            getattr(conf, "maa_mall_enable", True)
+            and getattr(conf, "maa_mall_mode", "maa") == "mower",
+        ):
+            shop_solver = CreditShop(self.device, self.recog)
+            shop_solver.run()
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
+
     def clue_new(self):
         try:
             logger.info("基建：线索")
@@ -2764,9 +2776,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 else:
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
                     self.enter_room("meeting")
-            shop_solver = CreditShop(self.device, self.recog)
-            shop_solver.run()
-            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            self._run_clue_shop()
         except Exception as e:
             save_exception(e)
             logger.exception(e)
@@ -4646,7 +4656,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.MAA.append_task(
                 "Mall",
                 {
-                    "shopping": True,
+                    "shopping": getattr(
+                        conf,
+                        "should_run_maa_mall",
+                        getattr(conf, "maa_mall_enable", True)
+                        and getattr(conf, "maa_mall_mode", "maa") == "maa",
+                    ),
                     "buy_first": conf.maa_mall_buy.split(","),
                     "blacklist": conf.maa_mall_blacklist.split(","),
                     "credit_fight": conf.maa_credit_fight
@@ -4654,8 +4669,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.credit_fight is None,
                     "formation_index": max(0, min(4, conf.credit_fight.squad)),
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
-                    "visit_friends": conf.visit_friend_enable
-                    and conf.visit_friend_mode == "maa",
+                    "visit_friends": getattr(
+                        conf,
+                        "should_run_maa_visit_friend",
+                        getattr(conf, "visit_friend_enable", False)
+                        and getattr(conf, "visit_friend_mode", "maa") == "maa",
+                    ),
                     "only_buy_discount": conf.maa_mall_only_buy_discount,
                     "reserve_max_credit": conf.maa_mall_reserve_max_credit,
                 },
@@ -4764,6 +4783,45 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.MAA.stop()
                 self.recog.reset_after_external_control()
 
+    def has_maa_daily_tasks(self) -> bool:
+        conf = config.conf
+        if hasattr(conf, "has_maa_daily_tasks"):
+            return conf.has_maa_daily_tasks
+        return (
+            (
+                getattr(conf, "stage_plan_enable", True)
+                and getattr(conf, "stage_plan_runner", "maa") == "maa"
+            )
+            or (
+                getattr(conf, "maa_mall_enable", True)
+                and getattr(conf, "maa_mall_mode", "maa") == "maa"
+            )
+            or (
+                getattr(conf, "visit_friend_enable", False)
+                and getattr(conf, "visit_friend_mode", "maa") == "maa"
+            )
+            or any(
+                [
+                    getattr(conf, "maa_mail", False),
+                    getattr(conf, "maa_recruit", False),
+                    getattr(conf, "maa_orundum", False),
+                    getattr(conf, "maa_mining", False),
+                    getattr(conf, "maa_specialaccess", False),
+                ]
+            )
+        )
+
+    def has_maa_tasks(self) -> bool:
+        conf = config.conf
+        if hasattr(conf, "has_maa_tasks"):
+            return conf.has_maa_tasks
+        return (
+            self.has_maa_daily_tasks()
+            or getattr(conf, "RG", False)
+            or getattr(conf, "SSS", False)
+            or getattr(conf, "RCL", False)
+        )
+
     def maa_plan_solver(self, tasks="All", one_time=False):
         """清日常"""
         try:
@@ -4783,13 +4841,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 > timedelta()
             ):
                 logger.info(f"{format_time(delta.total_seconds())}后开始做日常任务")
+            elif tasks == "All" and not self.has_maa_daily_tasks():
+                logger.info("没有启用的 MAA 日常任务，跳过日常")
             else:
                 send_message("启动MAA")
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Mall", "Award"]
+                    tasks = ["StartUp"]
+                    if getattr(
+                        conf,
+                        "should_run_maa_stage_plan",
+                        getattr(conf, "stage_plan_enable", True)
+                        and getattr(conf, "stage_plan_runner", "maa") == "maa",
+                    ):
+                        tasks.append("Fight")
+                    if getattr(
+                        conf,
+                        "should_run_maa_mall_task",
+                        (
+                            getattr(conf, "maa_mall_enable", True)
+                            and getattr(conf, "maa_mall_mode", "maa") == "maa"
+                        )
+                        or (
+                            getattr(conf, "visit_friend_enable", False)
+                            and getattr(conf, "visit_friend_mode", "maa") == "maa"
+                        ),
+                    ):
+                        tasks.append("Mall")
+                    tasks.append("Award")
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 self.MAA.start()

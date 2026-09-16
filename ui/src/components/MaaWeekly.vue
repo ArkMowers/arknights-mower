@@ -18,7 +18,8 @@ import WeeklyPlanSelector from './WeeklyPlanSelector.vue'
 const store = useConfigStore()
 const {
   maa_weekly_plan,
-  maa_enable,
+  stage_plan_enable,
+  stage_plan_runner,
   medicine_expire_days,
   expiring_medicine_on_weekend,
   maa_report_to_yituliu,
@@ -227,7 +228,7 @@ function cancelCopyDialogLongPress() {
 <template>
   <n-card>
     <template #header>
-      <n-checkbox v-model:checked="maa_enable">
+      <n-checkbox v-model:checked="stage_plan_enable">
         <div class="card-title">刷理智周计划</div>
       </n-checkbox>
       <help-text>
@@ -266,6 +267,19 @@ function cancelCopyDialogLongPress() {
     >
       <n-form-item :show-label="false">
         <n-flex vertical :size="8">
+          <n-flex align="center">
+            <span>执行方式</span>
+            <n-radio-group v-model:value="stage_plan_runner" :disabled="!stage_plan_enable">
+              <n-space>
+                <n-radio value="maa">MAA</n-radio>
+                <n-radio value="mower">Mower</n-radio>
+              </n-space>
+            </n-radio-group>
+            <help-text>
+              <div>MAA：调用 MAA 客户端完成关卡战斗，支持掉落上报与异常恢复。</div>
+              <div>Mower：使用 Mower 内置本地寻路与作战逻辑，不依赖 MAA。</div>
+            </help-text>
+          </n-flex>
           <n-flex class="weekly-plan-toolbar" align="center">
             <span>使用还剩</span>
             <mower-input-number
@@ -296,7 +310,7 @@ function cancelCopyDialogLongPress() {
               只在周末服用过期的理智药
             </n-checkbox>
           </n-flex>
-          <n-flex align="center">
+          <n-flex align="center" v-if="stage_plan_runner === 'maa'">
             <span>企鹅物流 id</span>
             <n-input
               v-model:value="maa_penguin_id"
@@ -304,7 +318,7 @@ function cancelCopyDialogLongPress() {
               style="width: 200px"
             />
           </n-flex>
-          <n-flex align="center">
+          <n-flex align="center" v-if="stage_plan_runner === 'maa'">
             <n-checkbox v-model:checked="maa_report_to_yituliu">上报至一图流</n-checkbox>
             <n-input
               v-model:value="maa_yituliu_id"
@@ -327,18 +341,24 @@ function cancelCopyDialogLongPress() {
               <div>两个上报站点均凭 id 关联个人账号；企鹅物流 id 选填，留空仍会匿名上报。</div>
             </help-text>
           </n-flex>
-          <n-flex>
+          <n-flex align="center">
             <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
-            <mower-input-number
-              v-model:value="ap_fallback"
-              :min="0"
-              :max="999"
-              :show-button="false"
-              placeholder="体力"
-              style="width: 90px"
-            >
-              <template #suffix>体力</template>
-            </mower-input-number>
+            <n-flex align="center" v-if="stage_plan_runner === 'mower'">
+              <span>关卡体力默认值</span>
+              <mower-input-number
+                v-model:value="ap_fallback"
+                :min="0"
+                :max="999"
+                :show-button="false"
+                placeholder="体力"
+                style="width: 90px"
+              >
+                <template #suffix>体力</template>
+              </mower-input-number>
+              <help-text>
+                <div>Mower 本地计算体力阈值时，若关卡数据中未找到消耗，则使用此默认体力值。</div>
+              </help-text>
+            </n-flex>
           </n-flex>
         </n-flex>
       </n-form-item>
@@ -355,7 +375,7 @@ function cancelCopyDialogLongPress() {
             <tr>
               <th class="weekday-column">日期</th>
               <th>关卡</th>
-              <th class="number-column">每次吃药</th>
+              <th v-if="stage_plan_runner === 'maa'" class="number-column">每次吃药</th>
               <th class="number-column">体力阈值</th>
             </tr>
           </thead>
@@ -377,7 +397,7 @@ function cancelCopyDialogLongPress() {
                   :on-create="createTag"
                 />
               </td>
-              <td class="number-column">
+              <td v-if="stage_plan_runner === 'maa'" class="number-column">
                 <mower-input-number
                   v-model:value="plan.medicine"
                   :min="0"
