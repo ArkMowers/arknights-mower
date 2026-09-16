@@ -10,12 +10,37 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 
+def cloud_inventory_snapshot(payload):
+    """Only a successful sync made by this version can replace local crafting counts."""
+    observed_at = payload.get("_mower_inventory_observed_at", 0)
+    items = payload.get("data", {}).get("items")
+    if (
+        not isinstance(observed_at, (int, float))
+        or observed_at <= 0
+        or not isinstance(items, list)
+    ):
+        return {}, 0
+    # Skland supplies material inventory; basic/consumable categories are scanned
+    # in-game. Never synthesize zero counts for those unreported categories.
+    counts = {
+        name: 0
+        for name, entry in key_mapping.items()
+        if name == entry[2] and entry[3] == "MATERIAL"
+    }
+    for item in items:
+        entry = key_mapping.get(item["id"])
+        if entry is not None:
+            counts[entry[2]] = int(item["count"])
+    return counts, observed_at
+
+
 def 读取仓库():
     path = get_path("@app/tmp/cultivate.json")
     if not os.path.exists(path):
         创建json()
     with open(path, "r", encoding="utf-8") as f:
         depotinfo = json.load(f)
+    cloud_counts, cloud_at = cloud_inventory_snapshot(depotinfo)
     物品数量 = depotinfo["data"]["items"]
     新物品1 = {}
     for item in 物品数量:
@@ -62,6 +87,8 @@ def 读取仓库():
         db_dict,
         scanned_counts=scanned_counts,
         scanned_at=float(depotinfo[-1][0]),
+        cloud_counts=cloud_counts,
+        cloud_at=cloud_at,
     )
     新物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
     新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
