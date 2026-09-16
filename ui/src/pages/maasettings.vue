@@ -121,35 +121,35 @@ h4 {
 </style>
 
 <style>
-/*小于1400的内容！*/
-@media (max-width: 1399px) {
-  .grid-two {
-    margin: 0 0 -10px 0;
-    width: 100%;
-    max-width: 600px;
-  }
-
-  .grid-left {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-  }
-
-  .grid-right {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-    margin-top: 10px;
-  }
+/* 默认单栏布局（窄屏或可用宽度不足） */
+.grid-two {
+  margin: 0 0 -10px 0;
+  width: 100%;
+  max-width: 600px;
 }
 
-/*双栏 大于1400的内容 */
-@media (min-width: 1400px) {
+.grid-left {
+  display: grid;
+  row-gap: 10px;
+  grid-template-columns: 100%;
+}
+
+.grid-right {
+  display: grid;
+  row-gap: 10px;
+  grid-template-columns: 100%;
+  margin-top: 10px;
+}
+
+/* 容器查询：内容区可用宽度足够容纳双栏时（>= 1180px）智能双栏 */
+@container (min-width: 1180px) {
   .grid-two {
     display: grid;
     grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
     align-items: flex-start;
     gap: 5px;
+    max-width: 1210px;
+    margin: 0;
   }
 
   .grid-left {
@@ -164,6 +164,36 @@ h4 {
     gap: 5px;
     grid-template-columns: 100%;
     max-width: 600px;
+    margin-top: 0;
+  }
+}
+
+/* 不支持容器查询时的兜底 */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1400px) {
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
+      align-items: flex-start;
+      gap: 5px;
+      max-width: 1210px;
+      margin: 0;
+    }
+
+    .grid-left {
+      display: grid;
+      gap: 5px;
+      grid-template-columns: 100%;
+      max-width: 600px;
+    }
+
+    .grid-right {
+      display: grid;
+      gap: 5px;
+      grid-template-columns: 100%;
+      max-width: 600px;
+      margin-top: 0;
+    }
   }
 }
 
