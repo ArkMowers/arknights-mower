@@ -504,7 +504,12 @@ def get_trading_history(start_date: str, end_date: str):
 
 
 def save_inventory_counts(
-    inventorys: dict[str, int], *, scanned_counts=None, scanned_at=0
+    inventorys: dict[str, int],
+    *,
+    scanned_counts=None,
+    scanned_at=0,
+    cloud_counts=None,
+    cloud_at=0,
 ):
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -516,19 +521,31 @@ def save_inventory_counts(
         )
         if scanned_counts is not None:
             current = dict(conn.execute("SELECT item_name, count FROM inventory"))
-            for name, observed_at in protected.items():
-                scanned = scanned_counts.get(name, 0)
+            for name in protected.keys() | (cloud_counts or {}).keys():
+                observed_at = protected.get(name, 0)
+                # Depot scans cover only some categories. An absent item is not
+                # an observed zero and must not advance its freshness marker.
+                scanned = scanned_counts.get(name)
+                source_at = scanned_at
                 if (
-                    scanned_at > observed_at
+                    cloud_counts is not None
+                    and name in cloud_counts
+                    and (scanned is None or cloud_at >= scanned_at)
+                ):
+                    scanned = cloud_counts[name]
+                    source_at = cloud_at
+                if (
+                    source_at > observed_at
                     and isinstance(scanned, int)
                     and scanned >= 0
                 ):
-                    # A newer in-game scan can reconcile crafting, loot and spending.
+                    # A fresh source can reconcile crafting, loot and spending.
                     # Keep its marker: reopening the page must not restore cloud cache.
                     effective[name] = scanned
                     conn.execute(
-                        "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
-                        (scanned_at, name),
+                        "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
+                        "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
+                        (name, source_at),
                     )
                 elif name in current:
                     effective[name] = current[name]

@@ -148,10 +148,10 @@ def test_unconfirmed_stock_stays_unknown_until_new_in_game_scan(inventory):
     inventory.invalidate_workshop_inventory(old)
     assert inventory.save_inventory_counts(old, scanned_counts=old, scanned_at=0) == {}
     assert inventory.get_inventory_counts() == {}
-    # Missing materials in a complete new scan mean zero; cached API values don't win.
+    # A partial scan cannot confirm missing materials; cached API values do not win.
     assert inventory.save_inventory_counts(
         old, scanned_counts={"碳": 91}, scanned_at=10_000_000_000
-    ) == {"碳": 91, "碳素": 0}
+    ) == {"碳": 91}
 
 
 @pytest.fixture
@@ -469,3 +469,62 @@ def test_real_depot_read_keeps_crafted_counts_in_database_and_page(
         assert inventory.get_inventory_counts()["碳素"] == 8
         assert json.loads(ids)[key_mapping["碳素"][0]] == 8
         assert page["K未分类"]["碳素"]["number"] == 8
+
+
+@pytest.mark.parametrize("scanned", [{}, {"龙门币": 100}, {"固源岩组": None}])
+def test_partial_scan_preserves_stock_and_observation_time(inventory, scanned):
+    old = {"固源岩组": 280, "提纯源岩": 3}
+    inventory.save_inventory_counts(old)
+    inventory.apply_workshop_inventory({"固源岩组": -4, "提纯源岩": 1})
+    with inventory._conn() as conn:
+        before = list(conn.execute("SELECT * FROM workshop_inventory_updates"))
+    for _ in range(2):
+        assert inventory.save_inventory_counts(
+            old, scanned_counts=scanned, scanned_at=10_000_000_000
+        ) == {"固源岩组": 276, "提纯源岩": 4}
+    with inventory._conn() as conn:
+        assert list(conn.execute("SELECT * FROM workshop_inventory_updates")) == before
+
+
+def test_explicit_zero_reconciles_only_observed_material(inventory):
+    old = {"固源岩组": 280, "提纯源岩": 3}
+    inventory.save_inventory_counts(old)
+    inventory.apply_workshop_inventory({"固源岩组": -4, "提纯源岩": 1})
+    assert inventory.save_inventory_counts(
+        old, scanned_counts={"固源岩组": 0}, scanned_at=10_000_000_000
+    ) == {"固源岩组": 0, "提纯源岩": 4}
+    assert inventory.get_inventory_counts() == {"固源岩组": 0, "提纯源岩": 4}
+
+
+def test_new_partial_depot_scan_does_not_zero_crafted_elite_materials(
+    inventory, monkeypatch, tmp_path
+):
+    from arknights_mower.data import key_mapping
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    old = {"固源岩组": 280, "提纯源岩": 3, "技巧概要·卷3": 48}
+    cloud = {
+        "data": {
+            "items": [
+                {"id": key_mapping[name][0], "count": str(count)}
+                for name, count in old.items()
+            ]
+        }
+    }
+    (tmp_path / "cultivate.json").write_text(json.dumps(cloud))
+    inventory.save_inventory_counts(old)
+    inventory.apply_workshop_inventory(
+        {"固源岩组": -4, "提纯源岩": 1, "技巧概要·卷3": -8}
+    )
+    with (tmp_path / "depotresult.csv").open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow([10_000_000_000, json.dumps({"碳": 100}), "{}"])
+    for _ in range(2):
+        _, ids, _ = depot.读取仓库()
+        for name, count in {"固源岩组": 276, "提纯源岩": 4, "技巧概要·卷3": 40}.items():
+            assert inventory.get_inventory_counts()[name] == count
+            assert json.loads(ids)[key_mapping[name][0]] == count
