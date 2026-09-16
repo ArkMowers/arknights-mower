@@ -125,7 +125,7 @@ Windows ARM64 继续暂缓，避免它阻塞其他平台的 Release。
 
 ## 分发边界
 
-这套流程只创建当前仓库的分支提交、tag 和 GitHub Release。Android 热更新包由本仓库构建；发布时从 Android 仓库读取并附带兼容的现有 APK 和 Python 接口，不向外部仓库写入内容，详见 [Android 发行兼容](android-distribution.md)。现有 `.github/workflows/python-publish.yml` 仍是独立的
+这套流程只创建当前仓库的分支提交、tag 和 GitHub Release。Android 热更新包（含配套 Python 解释器和依赖）由本仓库构建；发布说明提供 Android 仓库的 APK 与 Python 接口下载链接，不转存 APK，不向外部仓库写入内容，详见 [Android 发行兼容](android-distribution.md)。现有 `.github/workflows/python-publish.yml` 仍是独立的
 PyPI 发布流程，发布准备任务不会显式调用它。
 
 ## Linux 独立包的窗口后端与宿主依赖

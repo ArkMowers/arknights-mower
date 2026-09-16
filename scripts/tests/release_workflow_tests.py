@@ -46,7 +46,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(download["with"]["path"], "release-metadata")
         copy = find_step(job, "Overwrite changelog with generated")
         self.assertEqual(copy["run"], "cp release-metadata/CHANGELOG.md CHANGELOG.md")
-        package = find_step(job, "Package Mower without the Android host")
+        package = find_step(job, "Package Mower and Python without the Android host")
         self.assertLess(job["steps"].index(copy), job["steps"].index(package))
 
     def test_stable_alpha_tag_and_reusable_triggers(self):
