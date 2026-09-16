@@ -46,7 +46,7 @@
         "skillname": "机械工学",
         "buffer": false,
         "buffer_des": [],
-        "des": "进驻发电站时，无人机每小时充能速度<@cc.vup>+15%</>，如果<@cc.kw>结城理</>进驻在制造站，则无人机充能速度额外<@cc.vup>+5%</>",
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+15%</>，如果<@cc.kw>结城理</>进驻在制造站，则无人机充能速度额外<@cc.vup>+5%</>",
         "roomType": "发电站",
         "buffCategory": "OUTPUT",
         "skillIcon": "bskill_pow_spd_p3r",

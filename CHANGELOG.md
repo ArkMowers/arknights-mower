@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 4.1.6-alpha.5 - 2026-09-09
+
+### New
+
+- Revert "feat(workshop): 新增分解所有重复家具任务 (#1010)" [(#1013)](https://github.com/ArkMowers/arknights-mower/pull/1013) @ALEXsun0
+- 按周计划方案保存库存选关规则 [(#1012)](https://github.com/ArkMowers/arknights-mower/pull/1012) @ALEXsun0
+- 新增分解所有重复家具任务 [(#1010)](https://github.com/ArkMowers/arknights-mower/pull/1010) @ALEXsun0
+- 按 BOX 自动选人并按专精进度准备材料 [(#1000)](https://github.com/ArkMowers/arknights-mower/pull/1000) @ALEXsun0
+- 自动规划协助者并增加通用专精路线预览 [(#997)](https://github.com/ArkMowers/arknights-mower/pull/997) @ALEXsun0
+
+### Bug Fixes
+
+- 修复 MAA 回归测试进入真实休眠导致卡住 [(#1011)](https://github.com/ArkMowers/arknights-mower/pull/1011) @ALEXsun0
+- 修复黑流树海误退出并支持任务结束后恢复主题 [(#1009)](https://github.com/ArkMowers/arknights-mower/pull/1009) @ALEXsun0
+- 高门槛一键设置保留蚀清和技巧概要干员 [(#1008)](https://github.com/ArkMowers/arknights-mower/pull/1008) @ALEXsun0
+- 排除无法在训练室专精的机械师与电弧 [(#1007)](https://github.com/ArkMowers/arknights-mower/pull/1007) @ALEXsun0
+- 修复无心情加工与残留备料并增加休息优先级开关 [(#1006)](https://github.com/ArkMowers/arknights-mower/pull/1006) @ALEXsun0
+- 修复多干员重复加工并按心情限制批量 [(#1005)](https://github.com/ArkMowers/arknights-mower/pull/1005) @ALEXsun0
+- 修复 alpha Release 更新日志不显示 [(#1004)](https://github.com/ArkMowers/arknights-mower/pull/1004) @ALEXsun0
+- 保护手动合成配置并完善宿舍与垫刀设置 [(#1002)](https://github.com/ArkMowers/arknights-mower/pull/1002) @ALEXsun0
+- 纠错优先安排替班，无可用替班时保留叫回 [(#1003)](https://github.com/ArkMowers/arknights-mower/pull/1003) @ALEXsun0
+- 隐藏 Windows ADB 端口探测控制台窗口 @ALEXsun0
+- 允许渠道回退并要求点击安装后二次确认 @ALEXsun0
+- 按 Latest 和 Pre-release 获取软件更新 @ALEXsun0
+- 隔离网页连接断线，防止日志转发线程退出 @ALEXsun0
+- 统一 MAA 软件名称的大小写 [(#996)](https://github.com/ArkMowers/arknights-mower/pull/996) @ALEXsun0
+
+### Other
+
+- prerelease v4.1.6-alpha.5 @NiceAfternoon
+
+**Full Changelog**: [v4.1.6-alpha.4...v4.1.6-alpha.5](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.4...v4.1.6-alpha.5)
+
 ## 4.1.6-alpha.4 - 2026-09-08
 
 ### New

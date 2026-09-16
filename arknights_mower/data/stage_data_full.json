@@ -365,6 +365,382 @@
     }
   },
   {
+    "id": "SR-EX-1",
+    "name": "欲求之础",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-1 突袭",
+    "name": "欲求之础",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-2",
+    "name": "封闭之柱",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-2 突袭",
+    "name": "封闭之柱",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-3",
+    "name": "否定之壁",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-3 突袭",
+    "name": "否定之壁",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-4",
+    "name": "反刍之堂",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-4 突袭",
+    "name": "反刍之堂",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-5",
+    "name": "刻板之廊",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-5 突袭",
+    "name": "刻板之廊",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-6",
+    "name": "解离之梁",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-6 突袭",
+    "name": "解离之梁",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-7",
+    "name": "激越之拱",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-7 突袭",
+    "name": "激越之拱",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-8",
+    "name": "虚无之顶",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act54side_token_tape",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
+    "id": "SR-EX-8 突袭",
+    "name": "虚无之顶",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1789113600,
+      "endTs": 1789675199
+    }
+  },
+  {
     "id": "SR-TR-1",
     "name": "月影",
     "drop": [
@@ -6854,6 +7230,182 @@
     "difficulty": "NORMAL",
     "zoneNameSecond": "月行水上",
     "subTitle": "通学路",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-1",
+    "name": "欲求之础",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-1",
+    "name": "欲求之础",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-2",
+    "name": "封闭之柱",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-2",
+    "name": "封闭之柱",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-3",
+    "name": "否定之壁",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-3",
+    "name": "否定之壁",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-4",
+    "name": "反刍之堂",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-4",
+    "name": "反刍之堂",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-5",
+    "name": "刻板之廊",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-5",
+    "name": "刻板之廊",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-6",
+    "name": "解离之梁",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-6",
+    "name": "解离之梁",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-7",
+    "name": "激越之拱",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-7",
+    "name": "激越之拱",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-8",
+    "name": "虚无之顶",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "SR-EX-8",
+    "name": "虚无之顶",
+    "drop": null,
+    "zoneId": "act54side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "zoneNameSecond": "月行水上",
+    "subTitle": "殡仪堂",
     "stageType": "ACTIVITY"
   },
   {
