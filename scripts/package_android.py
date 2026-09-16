@@ -1,15 +1,19 @@
-"""Package Mower application files for an existing Android host (no APK/runtime)."""
+"""Package Mower and its complete Python environment for the Android host."""
 
 import argparse
 import json
 import re
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# Bump only when the embedded Python dependencies or host API must change.
-# Ordinary Mower code, WebUI and resource releases keep the same runtime API.
+sys.path.insert(0, str(ROOT))
+
+from scripts.android_runtime_archive import RUNTIME_FILE, runtime_metadata  # noqa: E402
+
+# The native bridge API is independent of the bundled Python environment.
 RUNTIME_API = 1
 ROOTS = (
     "arknights_mower",
@@ -31,7 +35,9 @@ REQUIRED = (
 )
 
 
-def package(root: Path, output: Path, version: str, revision: str) -> Path:
+def package(
+    root: Path, output: Path, version: str, revision: str, runtime: Path | None = None
+) -> Path:
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-alpha\.\d+)?", version):
         raise ValueError("invalid release version")
     if not re.fullmatch(r"[a-f0-9]{40}", revision):
@@ -44,13 +50,15 @@ def package(root: Path, output: Path, version: str, revision: str) -> Path:
     source = (root / "arknights_mower/__init__.py").read_text()
     if f'__version__ = "{version}"' not in source:
         raise ValueError("package version does not match injected Mower version")
+    environment = runtime_metadata(runtime or output / RUNTIME_FILE)
     manifest = {
         "kind": "mower-android",
-        "format": 1,
+        "format": 2,
+        "min_apk": 29,
         "version": version,
         "revision": revision,
         "runtime_api": RUNTIME_API,
-        "python": "3.12",
+        **environment,
         "platform": "android",
         "arch": "arm64",
     }
@@ -61,6 +69,11 @@ def package(root: Path, output: Path, version: str, revision: str) -> Path:
         with zipfile.ZipFile(
             temporary, "w", zipfile.ZIP_DEFLATED, compresslevel=6
         ) as z:
+            z.write(
+                runtime or output / RUNTIME_FILE,
+                RUNTIME_FILE,
+                compress_type=zipfile.ZIP_STORED,
+            )
             z.writestr("mower-android.json", json.dumps(manifest, indent=2) + "\n")
             for name in ROOTS:
                 base = root / name
@@ -89,11 +102,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
     parser.add_argument("--output", type=Path, default=ROOT / "dist")
+    parser.add_argument(
+        "--runtime", type=Path, help="Complete ARM64 Python rootfs ZIP.XZ (required)"
+    )
     args = parser.parse_args()
     revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
-    print(package(ROOT, args.output, args.version, revision))
+    print(package(ROOT, args.output, args.version, revision, args.runtime))
 
 
 if __name__ == "__main__":

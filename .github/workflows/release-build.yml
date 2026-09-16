@@ -551,7 +551,7 @@ jobs:
   build-android:
     name: Package Android Mower update
     needs: prepare
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -577,7 +577,9 @@ jobs:
       - name: Build shared WebUI
         working-directory: ui
         run: npm ci && npm run build
-      - name: Package Mower without the Android host
+      - name: Build and smoke test ARM64 Python environment
+        run: python scripts/build_android_runtime.py
+      - name: Package Mower and Python without the Android host
         run: python scripts/package_android.py "${{ needs.prepare.outputs.version }}"
       - name: Validate Android update archive
         run: python scripts/check_android_package.py "dist/arknights-mower_${{ needs.prepare.outputs.version }}_android_arm64.zip" --version "${{ needs.prepare.outputs.version }}" --revision "$(git rev-parse HEAD)"

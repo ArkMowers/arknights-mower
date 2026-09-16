@@ -31,6 +31,11 @@ async function run(payload) {
     busy.value = false
   }
 }
+function check() {
+  if (props.component.check) return run({ action: 'check' })
+}
+defineExpose({ check })
+
 function confirm(action) {
   dialogs.warning({
     title: action === 'reset' ? '确认恢复内置版本？' : '确认更新兼容接口？',
@@ -78,7 +83,7 @@ onUnmounted(() => {
     </n-checkbox>
     <n-space>
       <n-button
-        v-if="component.check"
+        v-if="component.check && !component.combined_check"
         size="small"
         :disabled="busy || disabled"
         @click="run({ action: 'check' })"

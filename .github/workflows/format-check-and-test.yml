@@ -62,7 +62,8 @@ jobs:
               - '{pyproject.toml,uv.lock,uv.toml,.python-version,.node-version,.nvmrc,.npmrc}'
               - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
               - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
-              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,sync_android_release}.py'
+              - 'scripts/android-runtime.Dockerfile'
+              - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,build_android_runtime,smoke_android_runtime,android_runtime_archive,sync_android_release}.py'
               - 'scripts/tests/**'
               - 'arknights_mower/tests/android*_tests.py'
               - '.github/{workflows,actions}/**'
@@ -299,6 +300,8 @@ jobs:
       - name: Build shared WebUI
         working-directory: ui
         run: npm ci && npm run build
+      - name: Build and smoke test ARM64 Python environment
+        run: python scripts/build_android_runtime.py
       - name: Package and validate Android update
         run: |
           python scripts/inject_version.py 0.0.0-alpha.0

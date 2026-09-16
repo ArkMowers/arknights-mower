@@ -1,5 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 const axios = inject('axios')
 
@@ -99,6 +100,9 @@ const maa_installed = ref(false)
 const maa_installed_version = ref('')
 const maa_backup_path = ref('')
 const maa_update_info_msg = ref('')
+const maa_component_updates = ref([])
+const maa_component_controls = ref([])
+const maa_combined_checking = ref(false)
 const maa_update_check = ref({
   status: 'idle',
   message: '',
@@ -509,6 +513,8 @@ async function get_maa_update_info() {
     })
     if (request_id !== maa_update_info_request_id) return
     const data = response.data
+    maa_component_updates.value =
+      runtime_platform.value === 'android' ? data.component_updates || [] : []
     maa_update_supported.value = Boolean(data.supported)
     maa_update_platform.value = data.platform || ''
     maa_update_arch.value = data.arch || ''
@@ -609,6 +615,29 @@ async function get_maa_resource_update_info() {
 }
 
 async function check_maa_update() {
+  if (
+    maa_combined_checking.value ||
+    maa_update_checking.value ||
+    maa_updating.value ||
+    !maa_installed.value
+  )
+    return
+  maa_combined_checking.value = true
+  try {
+    // Keep the MAA result and check_id separate from optional Android components.
+    // A failed check must not hide an available update in the other component.
+    await Promise.allSettled([
+      check_maa_core_update(),
+      ...(runtime_platform.value === 'android'
+        ? maa_component_controls.value.map((component) => component.check())
+        : [])
+    ])
+  } finally {
+    maa_combined_checking.value = false
+  }
+}
+
+async function check_maa_core_update() {
   if (maa_update_checking.value || maa_updating.value || !maa_installed.value) return
   reset_maa_update_check(false)
   maa_update_info_msg.value = ''
@@ -1040,8 +1069,10 @@ onUnmounted(() => {
         <n-space>
           <n-button
             v-if="maa_installed"
-            :loading="maa_update_checking"
-            :disabled="maa_updating || maa_resource_updating || maa_update_checking"
+            :loading="maa_update_checking || maa_combined_checking"
+            :disabled="
+              maa_updating || maa_resource_updating || maa_update_checking || maa_combined_checking
+            "
             @click="check_maa_update"
           >
             检查 MAA 更新
@@ -1061,6 +1092,13 @@ onUnmounted(() => {
             }}
           </n-button>
         </n-space>
+        <SoftwareComponentUpdates
+          v-for="component in maa_component_updates"
+          :key="component.endpoint"
+          ref="maa_component_controls"
+          :component="component"
+          :disabled="maa_updating || maa_resource_updating"
+        />
       </div>
     </template>
     <template v-else-if="['linux', 'android'].includes(maa_update_platform) && maa_update_info_msg">

@@ -2,12 +2,15 @@
 
 import argparse
 import json
+import shutil
 import sys
+import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts.android_runtime_archive import RUNTIME_FILE, runtime_metadata  # noqa: E402
 from scripts.package_android import REQUIRED, RUNTIME_API  # noqa: E402
 
 
@@ -20,18 +23,26 @@ def check(package: Path, version: str, revision: str) -> None:
             path = PurePosixPath(name)
             if path.is_absolute() or ".." in path.parts or "\\" in name:
                 raise ValueError(f"unsafe archive path: {name}")
-            if name != "mower-android.json" and not name.startswith("mower/"):
+            if name not in ("mower-android.json", RUNTIME_FILE) and not name.startswith(
+                "mower/"
+            ):
                 raise ValueError(f"unexpected archive root: {name}")
             if any(p in ("mower_android", "__pycache__", "tests") for p in path.parts):
                 raise ValueError(f"host or development files in update: {name}")
         meta = json.loads(archive.read("mower-android.json"))
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime = Path(temporary) / RUNTIME_FILE
+            with archive.open(RUNTIME_FILE) as source, runtime.open("wb") as target:
+                shutil.copyfileobj(source, target)
+            environment = runtime_metadata(runtime)
         expected = {
             "kind": "mower-android",
-            "format": 1,
+            "format": 2,
+            "min_apk": 29,
             "version": version,
             "revision": revision,
             "runtime_api": RUNTIME_API,
-            "python": "3.12",
+            **environment,
             "platform": "android",
             "arch": "arm64",
         }
