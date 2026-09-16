@@ -51,12 +51,12 @@
             :rotate="-15"
           />
           <n-layout
-            :has-sider="!mobile"
+            :has-sider="!isMobileNav"
             class="outer-layout"
             :class="{ 'outer-layout--collapsed': sidebarCollapsed }"
           >
             <n-layout-sider
-              v-if="!mobile"
+              v-if="!isMobileNav"
               :bordered="!windowShellActive"
               collapse-mode="width"
               :collapsed-width="64"
@@ -105,7 +105,7 @@
                 </div>
               </n-modal>
             </n-layout-content>
-            <template v-if="windowShellActive && !mobile">
+            <template v-if="windowShellActive && !isMobileNav">
               <div class="sider-fade-zone" @mousedown.stop @click="toggleSidebar">
                 <div
                   class="sider-fade-btn"
@@ -121,7 +121,7 @@
                 </div>
               </div>
             </template>
-            <n-layout-footer v-if="mobile">
+            <n-layout-footer v-if="isMobileNav">
               <n-tabs type="line" justify-content="space-evenly" size="small">
                 <n-tab name="日志" @click="$router.push('/')">
                   <div style="display: flex; flex-direction: column; align-items: center">
@@ -301,9 +301,11 @@ const showModal = ref(false)
 const showModal2 = ref(false)
 const showFeedback = ref(false)
 const sidebarCollapsed = ref(false)
+const userToggledSidebar = ref(false)
 provide('show_feedback', showFeedback)
 provide('sidebar_collapsed', sidebarCollapsed)
 function toggleSidebar() {
+  userToggledSidebar.value = true
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 function renderIcon(icon) {
@@ -576,20 +578,24 @@ function start() {
   axios.get(`${import.meta.env.VITE_HTTP_URL}/start/0`)
 }
 
-function actions_on_resize() {
-  document.documentElement.style.setProperty(
-    '--app-height',
-    `${window.innerHeight / webview.value.scale}px`
-  )
-  document.documentElement.style.setProperty(
-    '--app-width',
-    `${window.innerWidth / webview.value.scale}px`
-  )
-  mobile.value = window.innerWidth < 800 * webview.value.scale
+function apply_zoom(scale) {
+  const s = Number(scale) || 1.0
+  document.documentElement.style.zoom = s
+  actions_on_resize()
 }
 
-const mobile = ref(true)
+const isMobileNav = ref(false)
+const mobile = ref(false)
 provide('mobile', mobile)
+
+function actions_on_resize() {
+  const width = document.documentElement.clientWidth || window.innerWidth
+  isMobileNav.value = width < 680
+  mobile.value = width < 850
+  if (!userToggledSidebar.value) {
+    sidebarCollapsed.value = width < 850
+  }
+}
 
 const loaded = inject('loaded')
 
@@ -775,12 +781,11 @@ watch(
 )
 
 watch(
-  () => webview.value.scale,
-  () => {
-    const ele = document.querySelector('#app')
-    ele.style.transform = `scale(${webview.value.scale})`
-    actions_on_resize()
-  }
+  () => webview.value?.scale,
+  (newScale) => {
+    apply_zoom(newScale)
+  },
+  { immediate: true }
 )
 </script>
 
@@ -809,10 +814,18 @@ watch(
 </style>
 
 <style lang="scss">
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 #app {
-  height: var(--app-height, 100vh);
-  width: var(--app-width, 100vw);
-  transform-origin: 0 0;
+  height: 100%;
+  width: 100%;
 }
 
 .provider--window-shell {
@@ -854,6 +867,11 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
 
 .provider--window-shell .n-layout-sider__border {
   background: transparent;
+}
+
+.layout-content-container {
+  container-type: inline-size;
+  container-name: main-content;
 }
 
 .provider--window-shell .layout-content-container {

@@ -18,6 +18,7 @@ from arknights_mower.utils.window_shell import (
     DESKTOP_WINDOW_SIDEBAR_CONTROL_WIDTH,
     DESKTOP_WINDOW_TITLEBAR_HEIGHT,
     WindowSize,
+    desktop_window_min_size,
     is_windows,
     window_dpi_scale,
 )
@@ -454,8 +455,9 @@ def _install_hook(
     def constrain_maximized_bounds(l_param: int) -> None:
         minmax = ctypes.cast(l_param, ctypes.POINTER(_MINMAXINFO)).contents
         scale = window_scale()
-        minmax.ptMinTrackSize.x = round(min_size.width * scale)
-        minmax.ptMinTrackSize.y = round(min_size.height * scale)
+        current_min = desktop_window_min_size()
+        minmax.ptMinTrackSize.x = round(current_min.width * scale)
+        minmax.ptMinTrackSize.y = round(current_min.height * scale)
 
         monitor = user32.MonitorFromWindow(hwnd, _MONITOR_DEFAULTTONEAREST)
         if not monitor:
