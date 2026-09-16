@@ -277,9 +277,10 @@ def simulate(saved, restart_after_mood_read=False):
                         from arknights_mower.utils.scheduler_task import scheduling
 
                         scheduling(base_scheduler.tasks)
-                    if config.conf.maa_enable != 1:
+                    if config.conf.should_run_mower_stage_plan:
                         base_scheduler.mower_plan_solver()
-                    elif config.conf.maa_enable == 1:
+
+                    if base_scheduler.has_maa_tasks():
                         subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                         context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                         logger.info(context)

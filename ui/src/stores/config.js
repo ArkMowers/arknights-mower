@@ -16,6 +16,10 @@ export const useConfigStore = defineStore('config', () => {
   const free_blacklist = ref([])
   const maa_adb_path = ref('')
   const maa_enable = ref(false)
+  const stage_plan_enable = ref(true)
+  const stage_plan_runner = ref('maa')
+  const maa_mall_enable = ref(true)
+  const maa_mall_mode = ref('maa')
   const maa_path = ref('')
   const maa_mirrorchyan_token = ref('')
   const maa_update_channel = ref('stable')
@@ -423,6 +427,16 @@ export const useConfigStore = defineStore('config', () => {
       response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
     maa_adb_path.value = response.data.maa_adb_path
     maa_enable.value = response.data.maa_enable != 0
+    stage_plan_enable.value =
+      response.data.stage_plan_enable !== undefined
+        ? Boolean(response.data.stage_plan_enable)
+        : response.data.maa_enable != 0
+    stage_plan_runner.value = response.data.stage_plan_runner === 'mower' ? 'mower' : 'maa'
+    maa_mall_enable.value =
+      response.data.maa_mall_enable !== undefined
+        ? Boolean(response.data.maa_mall_enable)
+        : response.data.maa_enable != 0
+    maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
     maa_path.value = response.data.maa_path
     maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
     maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
@@ -551,8 +565,15 @@ export const useConfigStore = defineStore('config', () => {
       enable_party: enable_party.value ? 1 : 0,
       leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
-      maa_adb_path: maa_adb_path.value,
-      maa_enable: maa_enable.value ? 1 : 0,
+      maa_enable:
+        (stage_plan_enable.value && stage_plan_runner.value === 'maa') ||
+        (maa_mall_enable.value && maa_mall_mode.value === 'maa')
+          ? 1
+          : 0,
+      stage_plan_enable: stage_plan_enable.value,
+      stage_plan_runner: stage_plan_runner.value,
+      maa_mall_enable: maa_mall_enable.value,
+      maa_mall_mode: maa_mall_mode.value,
       maa_path: maa_path.value,
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
       maa_update_channel: maa_update_channel.value,
@@ -755,6 +776,10 @@ export const useConfigStore = defineStore('config', () => {
     free_blacklist,
     maa_adb_path,
     maa_enable,
+    stage_plan_enable,
+    stage_plan_runner,
+    maa_mall_enable,
+    maa_mall_mode,
     maa_path,
     maa_mirrorchyan_token,
     maa_update_channel,

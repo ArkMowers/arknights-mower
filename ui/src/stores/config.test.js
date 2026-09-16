@@ -249,4 +249,85 @@ describe('low frame rate adaptation', () => {
     await store.load_config()
     expect(store.low_frame_rate_mode).toBe(!expected)
   })
+
+  it('loads and saves stage plan and mall settings with backward-compatible defaults', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+
+    // 1. Old response with only maa_enable: 1
+    const legacyResponse = {
+      maa_enable: 1,
+      free_blacklist: '',
+      reload_room: '',
+      dorm_order: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: legacyResponse })
+    await store.load_config()
+    expect(store.stage_plan_enable).toBe(true)
+    expect(store.stage_plan_runner).toBe('maa')
+    expect(store.maa_mall_enable).toBe(true)
+    expect(store.maa_mall_mode).toBe('maa')
+
+    // 2. Modify values and check build_config output
+    store.stage_plan_enable = false
+    store.stage_plan_runner = 'mower'
+    store.maa_mall_enable = false
+    store.maa_mall_mode = 'mower'
+    let payload = store.build_config()
+    expect(payload.stage_plan_enable).toBe(false)
+    expect(payload.stage_plan_runner).toBe('mower')
+    expect(payload.maa_mall_enable).toBe(false)
+    expect(payload.maa_mall_mode).toBe('mower')
+    expect(payload.maa_enable).toBe(0)
+
+    // 2b. stage_plan disabled but maa_mall executed by maa -> maa_enable must be 1
+    store.stage_plan_enable = false
+    store.stage_plan_runner = 'mower'
+    store.maa_mall_enable = true
+    store.maa_mall_mode = 'maa'
+    payload = store.build_config()
+    expect(payload.maa_enable).toBe(1)
+
+    // 2c. stage_plan enabled with maa but maa_mall executed by mower -> maa_enable must be 1
+    store.stage_plan_enable = true
+    store.stage_plan_runner = 'maa'
+    store.maa_mall_enable = true
+    store.maa_mall_mode = 'mower'
+    payload = store.build_config()
+    expect(payload.maa_enable).toBe(1)
+
+    // 3. New response with explicit settings
+    const modernResponse = {
+      stage_plan_enable: true,
+      stage_plan_runner: 'mower',
+      maa_mall_enable: false,
+      maa_mall_mode: 'mower',
+      free_blacklist: '',
+      reload_room: '',
+      dorm_order: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: modernResponse })
+    await store.load_config()
+    expect(store.stage_plan_enable).toBe(true)
+    expect(store.stage_plan_runner).toBe('mower')
+    expect(store.maa_mall_enable).toBe(false)
+    expect(store.maa_mall_mode).toBe('mower')
+  })
 })

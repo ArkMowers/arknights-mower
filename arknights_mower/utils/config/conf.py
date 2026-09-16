@@ -59,6 +59,10 @@ class CluePart(ConfModel):
     "线索收集"
     leifeng_mode: int = 1
     "雷锋模式"
+    maa_mall_enable: bool = True
+    "信用商店购物开关"
+    maa_mall_mode: Literal["maa", "mower"] = "maa"
+    "信用商店购物处理方式：maa / mower"
     maa_mall_blacklist: str = "加急许可,碳,碳素,家具零件"
     "黑名单"
     maa_mall_buy: str = "招聘许可,技巧概要·卷2"
@@ -335,7 +339,11 @@ class RegularTaskPart(ConfModel):
     check_mail_enable: bool = True
     "领取邮件奖励"
     maa_enable: bool = True
-    "日常任务"
+    "日常任务（兼容旧字段）"
+    stage_plan_enable: bool = True
+    "刷理智周计划开关"
+    stage_plan_runner: Literal["maa", "mower"] = "maa"
+    "刷理智周计划执行方式：maa / mower"
     maa_gap: float = 3
     "日常任务间隔"
     medicine_expire_days: int = 0
@@ -679,6 +687,16 @@ class Conf(
                 data["visit_friend_enable"] = old_visit_friend
             if "visit_friend_mode" not in data:
                 data["visit_friend_mode"] = "mower" if old_visit_friend else "maa"
+        if "maa_enable" in data:
+            old_maa_enable = bool(data["maa_enable"])
+            if "stage_plan_enable" not in data:
+                data["stage_plan_enable"] = old_maa_enable
+            if "stage_plan_runner" not in data:
+                data["stage_plan_runner"] = "maa" if old_maa_enable else "mower"
+            if "maa_mall_enable" not in data:
+                data["maa_mall_enable"] = old_maa_enable
+            if "maa_mall_mode" not in data:
+                data["maa_mall_mode"] = "maa"
         for old, new in _LEGACY_KEY_MIGRATIONS.items():
             if old not in data:
                 continue
@@ -714,6 +732,50 @@ class Conf(
     @property
     def RCL(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "rcl"
+
+    @property
+    def should_run_maa_stage_plan(self) -> bool:
+        return bool(self.stage_plan_enable and self.stage_plan_runner == "maa")
+
+    @property
+    def should_run_mower_stage_plan(self) -> bool:
+        return bool(self.stage_plan_enable and self.stage_plan_runner == "mower")
+
+    @property
+    def should_run_maa_mall(self) -> bool:
+        return bool(self.maa_mall_enable and self.maa_mall_mode == "maa")
+
+    @property
+    def should_run_mower_mall(self) -> bool:
+        return bool(self.maa_mall_enable and self.maa_mall_mode == "mower")
+
+    @property
+    def should_run_maa_visit_friend(self) -> bool:
+        return bool(self.visit_friend_enable and self.visit_friend_mode == "maa")
+
+    @property
+    def should_run_maa_mall_task(self) -> bool:
+        return self.should_run_maa_mall or self.should_run_maa_visit_friend
+
+    @property
+    def has_maa_daily_tasks(self) -> bool:
+        return (
+            self.should_run_maa_stage_plan
+            or self.should_run_maa_mall_task
+            or any(
+                [
+                    self.maa_mail,
+                    self.maa_recruit,
+                    self.maa_orundum,
+                    self.maa_mining,
+                    self.maa_specialaccess,
+                ]
+            )
+        )
+
+    @property
+    def has_maa_tasks(self) -> bool:
+        return self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL
 
     @property
     def run_order_buffer_time(self):
