@@ -1,31 +1,27 @@
+"""执行器抽象基类：`run_steps()` 队列模式 + 场景/超时守卫。
+
+`Step` / `StepRetry` / `StepRestart` 已下沉到 `scheduler/steps.py`，本模块只保留
+**兼容再导出**（见下方 import）。既有引用方（`executors/infra_scan.py`、
+`executors/shift.py`、`services/agent_swap_service.py`）仍可照旧 import，无需改动。
+"""
+
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Callable, Optional, Sequence
+from typing import Optional, Sequence
 
+from arknights_mower.scheduler.constants import TapPosition
 from arknights_mower.scheduler.domain.task import SchedulerTask
 from arknights_mower.scheduler.infra import InfraKit
+from arknights_mower.scheduler.steps import (  # noqa: F401 兼容再导出
+    Step,
+    StepRestart,
+    StepRetry,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class StepRetry(Exception):
-    pass
-
-
-class StepRestart(Exception):
-    pass
-
-
-@dataclass
-class Step:
-    name: str
-    enter: Callable[[int], bool]
-    act: Callable[[], Optional[list[Step]]] = field(default=lambda: None)
-    start: int | None = None
 
 
 class AbstractExecutor(ABC):
@@ -65,14 +61,6 @@ class AbstractExecutor(ABC):
     def wait_scene_stable(self, **kwargs):
         self.infra.navigator.wait_scene_stable(**kwargs)
 
-    def safe_execute(self, task: SchedulerTask) -> bool:
-        try:
-            self.execute(task)            
-            return True
-        except Exception:
-            logger.exception(f"executor failed for task: {task}")
-            return False
-
     def guard(self) -> None:
         self.infra.pause.wait_if_paused()
         if self._timeout_start and datetime.now() - self._timeout_start > self._timeout:
@@ -80,6 +68,7 @@ class AbstractExecutor(ABC):
 
     def run_steps(self, steps: list[Step]) -> None:
         from collections import deque
+
         from arknights_mower.scheduler.scene import Scene
 
         initial = list(steps)
@@ -91,7 +80,7 @@ class AbstractExecutor(ABC):
             if scene in (Scene.LOADING, Scene.CONNECTING):
                 continue
             if scene == Scene.LEAVE_INFRASTRUCTURE:
-                self.infra.device.tap(670 / 1920, 750 / 1080)
+                self.infra.device.tap(*TapPosition.LEAVE_INFRASTRUCTURE.value)
                 continue
             step = queue[0]
             logger.info(f"step={step.name} scene={scene}")
