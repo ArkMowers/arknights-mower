@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from arknights_mower.scheduler.constants import StartMode
-from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.dispatch import TaskDispatch
-from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
+from arknights_mower.scheduler.domain.task import TaskTypes
 from arknights_mower.scheduler.errors import ConfigError, DeviceError
 from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.scheduler.infra.pause_controller import PauseController
@@ -22,15 +20,14 @@ def _create_device():
     return Device()
 
 
-def _build_infra(v1_device, state) -> InfraKit:
+def _build_infra(v1_device, state, pause: PauseController) -> InfraKit:
     from arknights_mower.scheduler.infra.pc_device_port import PCDevicePort
 
-    device = PCDevicePort(v1_device)
+    device = PCDevicePort(v1_device, pause)
 
     from arknights_mower.scheduler.graph import build_default_graph
-    from arknights_mower.scheduler.infra.agent_selection import AgentSelection
     from arknights_mower.scheduler.navigator import Navigator
-    from arknights_mower.utils.recognize import Scene, Recognizer
+    from arknights_mower.utils.recognize import Recognizer, Scene
 
     recognizer = Recognizer(v1_device)
     graph = build_default_graph()
@@ -39,14 +36,13 @@ def _build_infra(v1_device, state) -> InfraKit:
         recognizer.update()
         return recognizer.get_scene()
 
-    navigator = Navigator(device, graph, get_scene, recognizer)
-    agent_selector = AgentSelection.create(device, recognizer)
+    navigator = Navigator(device, graph, get_scene, pause, recognizer)
 
     return InfraKit(
         device=device,
         state=state,
+        pause=pause,
         navigator=navigator,
-        agent_selector=agent_selector,
     )
 
 
@@ -54,10 +50,8 @@ def _build_planners(state: SchedulerState) -> list:
     planners = []
 
     from arknights_mower.scheduler.planners.workshop import WorkshopPlanner
-    # from arknights_mower.scheduler.planners.infra_scan import InfraScanPlanner
 
     planners.append(WorkshopPlanner())
-    # planners.append(InfraScanPlanner())
 
     return planners
 
@@ -65,15 +59,15 @@ def _build_planners(state: SchedulerState) -> list:
 def _build_dispatch() -> TaskDispatch:
     dispatch = TaskDispatch()
 
-    from arknights_mower.scheduler.executors.run_order import RunOrderExecutor
-    from arknights_mower.scheduler.executors.shift import ShiftExecutor
-    from arknights_mower.scheduler.executors.exhaust import ExhaustExecutor
-    from arknights_mower.scheduler.executors.fiammetta import FiammettaExecutor
     from arknights_mower.scheduler.executors.clue import ClueExecutor
     from arknights_mower.scheduler.executors.correction import CorrectionExecutor
+    from arknights_mower.scheduler.executors.exhaust import ExhaustExecutor
+    from arknights_mower.scheduler.executors.fiammetta import FiammettaExecutor
+    from arknights_mower.scheduler.executors.infra_scan import InfraScanExecutor
+    from arknights_mower.scheduler.executors.run_order import RunOrderExecutor
+    from arknights_mower.scheduler.executors.shift import ShiftExecutor
     from arknights_mower.scheduler.executors.skill import SkillExecutor
     from arknights_mower.scheduler.executors.workshop import WorkshopExecutor
-    from arknights_mower.scheduler.executors.infra_scan import InfraScanExecutor
 
     dispatch.register(TaskTypes.INFRA_SCAN, InfraScanExecutor)
     dispatch.register(TaskTypes.RUN_ORDER, RunOrderExecutor)
@@ -130,17 +124,9 @@ def run(
         state.task_queue.clear()
         logger.info("mood only: tasks cleared")
 
-    # test: arrange room_1_1
-    state.task_queue.push(SchedulerTask(
-        time=datetime.now(),
-        type=TaskTypes.SHIFT_ON,
-        plan={"room_1_1": ["Current", "能天使", "空爆"]},
-    ))
-    
-    logger.info("test: pushed SHIFT_ON for room_1_1")
     logger.info("initializing device")
     v1_device = _create_device()
-    infra = _build_infra(v1_device, state)
+    infra = _build_infra(v1_device, state, pause)
 
     logger.info("registering planners")
     planners = _build_planners(state)
