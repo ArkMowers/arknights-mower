@@ -3,6 +3,8 @@ from enum import Enum
 SCREEN_W = 1920
 SCREEN_H = 1080
 
+PAUSE_WAKE_SLICE = 0.5
+
 
 class Server(Enum):
     CN = "CN"

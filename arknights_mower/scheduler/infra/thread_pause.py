@@ -1,5 +1,7 @@
 import threading
+from datetime import datetime, timedelta
 
+from arknights_mower.scheduler.constants import PAUSE_WAKE_SLICE
 from arknights_mower.scheduler.infra.pause_controller import PauseController
 
 
@@ -29,3 +31,16 @@ class ThreadPauseController(PauseController):
 
     def wait_if_paused(self) -> None:
         self._event.wait()
+
+    def wait(self, seconds: float) -> None:
+        if seconds <= 0:
+            return
+        deadline = datetime.now() + timedelta(seconds=seconds)
+        while True:
+            self.wait_if_paused()
+            if self.is_stopped:
+                return
+            remaining = (deadline - datetime.now()).total_seconds()
+            if remaining <= 0:
+                return
+            self._stop_event.wait(min(remaining, PAUSE_WAKE_SLICE))

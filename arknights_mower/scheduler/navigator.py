@@ -7,7 +7,6 @@ from arknights_mower.scheduler.constants import TapPosition
 from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.graph import SceneGraph
 from arknights_mower.scheduler.infra.pause_controller import PauseController
-from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
 from arknights_mower.scheduler.scene import Scene
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
@@ -25,14 +24,14 @@ class Navigator:
         device: DevicePort,
         graph: SceneGraph,
         get_scene: Callable[[], Scene],
+        pause_controller: PauseController,
         recognizer: Optional[object] = None,
-        pause_controller: Optional[PauseController] = None,
     ) -> None:
         self._device = device
         self._graph = graph
         self._get_scene = get_scene
         self._recognizer = recognizer
-        self._pause = pause_controller or ThreadPauseController()
+        self._pause = pause_controller
 
     def navigate(self, target: Scene) -> bool:
         error_count = 0
