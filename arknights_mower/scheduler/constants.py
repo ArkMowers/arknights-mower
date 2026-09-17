@@ -45,6 +45,10 @@ DEFAULT_SORT = ("技能", False)
 SPECIAL_AGENT_ALL_FILTER = "阿米娅"
 DEFAULT_FILTER = "ALL"
 
+# 跑单（贸易站订单）干员：唯一权威定义。
+# 要求"不能为此类干员释放空位"的逻辑一律引用本常量，不得再各自复制字面量。
+TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
+
 PROFESSION_LABELS = [
     "ALL", "PIONEER", "WARRIOR", "TANK",
     "SNIPER", "CASTER", "MEDIC", "SUPPORT", "SPECIAL",
@@ -107,6 +111,7 @@ class TapPosition(Enum):
     TODO_COMPLETE = (1840 / SCREEN_W, 140 / SCREEN_H)
     INDEX_INFRASTRUCTURE = (1410 / SCREEN_W, 870 / SCREEN_H)
     INFRA_ARRANGE_CONFIRM = (1452 / SCREEN_W, 1029 / SCREEN_H)
+    LEAVE_INFRASTRUCTURE = (670 / SCREEN_W, 750 / SCREEN_H)
     RIIC_BACK = (30 / SCREEN_W, 55 / SCREEN_H)
     LOGIN_START = (665 / SCREEN_W, 741 / SCREEN_H)
     AGREEMENT_LINE1 = (791 / SCREEN_W, 728 / SCREEN_H)
