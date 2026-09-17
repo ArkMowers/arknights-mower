@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 
 from arknights_mower.scheduler.constants import SCREEN_H, SCREEN_W
 from arknights_mower.scheduler.device_port import DevicePort
+from arknights_mower.scheduler.infra.pause_controller import PauseController
 from arknights_mower.utils import config
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.device import Device
@@ -11,7 +14,8 @@ from arknights_mower.utils.simulator import restart_simulator
 
 
 class PCDevicePort(DevicePort):
-    def __init__(self, device: Device) -> None:
+    def __init__(self, device: Device, pause: Optional[PauseController] = None) -> None:
+        super().__init__(pause)
         self._device = device
 
     def tap(self, x: float, y: float) -> None:

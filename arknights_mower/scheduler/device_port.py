@@ -1,14 +1,24 @@
 from __future__ import annotations
 
-import time
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
 from arknights_mower.scheduler.constants import SCREEN_H, SCREEN_W
 
+if TYPE_CHECKING:
+    from arknights_mower.scheduler.infra.pause_controller import PauseController
+
 
 class DevicePort(ABC):
+    def __init__(self, pause: Optional[PauseController] = None) -> None:
+        self._pause = pause
+
+    def _wait(self, seconds: float) -> None:
+        if self._pause is not None:
+            self._pause.wait(seconds)
+
     @abstractmethod
     def tap(self, x: float, y: float) -> None:
         ...
@@ -70,7 +80,7 @@ class DevicePort(ABC):
             durations = [200, _dis * duration // 100, 200]
         self.swipe_path(points, durations)
         if interval > 0:
-            time.sleep(interval)
+            self._wait(interval)
 
     @abstractmethod
     def check_focus(self) -> bool:

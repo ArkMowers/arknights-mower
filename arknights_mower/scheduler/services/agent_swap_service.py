@@ -33,7 +33,6 @@ from arknights_mower.scheduler.constants import (
 from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.executors.base import Step, StepRestart, StepRetry
 from arknights_mower.scheduler.infra.pause_controller import PauseController
-from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
 from arknights_mower.scheduler.scene import Scene
 from arknights_mower.utils.log import logger
 
@@ -46,13 +45,13 @@ class AgentSwapService:
         device: DevicePort,
         recognizer: object,
         get_scene: Callable[[], int],
-        pause: Optional[PauseController] = None,
+        pause: PauseController,
         wait_scene_stable: Optional[Callable] = None,
     ) -> None:
         self._device = device
         self._recog = recognizer
         self._get_scene = get_scene
-        self._pause = pause or ThreadPauseController()
+        self._pause = pause
         self._wait_scene_stable = wait_scene_stable or (lambda **kwargs: None)
 
         from arknights_mower.data import agent_profession, agent_list
@@ -191,15 +190,15 @@ class AgentSwapService:
 
     def _do_scan(self) -> list[Step] | None:
         self._recog.update()
-        cache = self._operator_list_fn(self._recog.img, full_scan=(self._last_filter == "ALL"))
-        names = [r[0] if isinstance(r, tuple) else r for r in cache]
+        self._cache = self._operator_list_fn(self._recog.img, full_scan=(self._last_filter == "ALL"))
+        names = [r[0] if isinstance(r, tuple) else r for r in self._cache]
         logger.info(f"AgentSwap: scan page={self._page_count} filter={self._last_filter} names={names}")
-        if not cache:
+        if not self._cache:
             raise StepRetry
 
         target = self._pending[0] if self._pending else None
         self._found_target = False
-        for name, box in cache:
+        for name, box in self._cache:
             if name not in self._pending:
                 continue
             logger.info(f"AgentSwap: tap {name} at {box}")
@@ -222,11 +221,16 @@ class AgentSwapService:
 
         if self._free_count > 0 and not self._pending:
             for name, box in self._cache:
-                if name not in self._agent_list:
+                # 已在座或本轮已选的干员不再补位
+                if name not in self._agent_list or name in self._selected:
                     continue
                 logger.info(f"AgentSwap: free tap {name}")
                 self._tap_center(box)
                 self._free_count -= 1
+                # 与 legacy 一致：补位结果记入已选，并占用一个 Free 名额，
+                # 否则 _do_sort 重建时会把它连同清空一起丢掉
+                self._selected.append(name)
+                self._agents[self._agents.index("Free")] = name
                 if self._free_count == 0:
                     logger.info(f"AgentSwap: free done")
                     return [Step("sort", self._scene_check, self._do_sort)]
