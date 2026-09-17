@@ -8,6 +8,7 @@ import numpy as np
 
 from arknights_mower.scheduler.database.repositories.state import StateRepository
 from arknights_mower.scheduler.database.sqlite_storage import SQLiteStorage
+from arknights_mower.scheduler.domain.operators import Operator, OperatorType
 from arknights_mower.scheduler.state import SchedulerState
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
@@ -73,8 +74,6 @@ class RoomReader:
             slots.append(f"{name}({mood:.0f})")
 
             if name not in state.operators:
-                from arknights_mower.scheduler.domain.operators import Operator, OperatorType
-
                 state.operators[name] = Operator(
                     name=name, room=room, index=i, operator_type=OperatorType.LOW
                 )

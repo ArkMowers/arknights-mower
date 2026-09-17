@@ -4,15 +4,27 @@ from collections import deque
 from datetime import timedelta
 
 from arknights_mower.scheduler.constants import (
-    ARRANGE_CONFIRM, CONFIRM_BLUE, CONFIRM_TRAIN, CURRENT,
+    ARRANGE_CONFIRM,
+    CONFIRM_BLUE,
+    CONFIRM_TRAIN,
+    CURRENT,
     INFRA_ROOM_SLOT_TAP,
+    SCREEN_H,
+    SCREEN_W,
 )
 from arknights_mower.scheduler.domain.task import SchedulerTask
-from arknights_mower.scheduler.executors.base import AbstractExecutor, Step, StepRestart, StepRetry
+from arknights_mower.scheduler.executors.base import (
+    AbstractExecutor,
+    Step,
+    StepRestart,
+    StepRetry,
+)
 from arknights_mower.scheduler.infra.room_reader import RoomReader
 from arknights_mower.scheduler.scene import Scene as V2Scene
 from arknights_mower.scheduler.services.agent_swap_service import AgentSwapService
-from arknights_mower.scheduler.services.operator_service import current_operators_in_room
+from arknights_mower.scheduler.services.operator_service import (
+    current_operators_in_room,
+)
 from arknights_mower.utils.log import logger
 
 
@@ -43,10 +55,14 @@ class ShiftExecutor(AbstractExecutor):
     @property
     def swap_service(self) -> AgentSwapService:
         if self._swap is None:
+            # state 注入是裁定 14 的前提：只有 SchedulerState 同时持有
+            # operators[...].current_room 与 config.free_blacklist，
+            # 换班服务才能做出**真正的空闲判定**（见 agent_swap_filter.py）。
             self._swap = AgentSwapService(
                 self.infra.device, self._recog,
                 self.infra.navigator._get_scene, self.infra.pause,
                 self.infra.navigator.wait_scene_stable,
+                state=self.infra.state,
             )
         return self._swap
 
@@ -161,6 +177,8 @@ class ShiftExecutor(AbstractExecutor):
             if isinstance(box[0], (list, tuple)):
                 x1, y1 = box[0]
                 x2, y2 = box[1]
-                self.infra.device.tap((x1 + x2) / 2 / 1920, (y1 + y2) / 2 / 1080)
+                self.infra.device.tap(
+                    (x1 + x2) / 2 / SCREEN_W, (y1 + y2) / 2 / SCREEN_H
+                )
             else:
-                self.infra.device.tap(box[0] / 1920, box[1] / 1080)
+                self.infra.device.tap(box[0] / SCREEN_W, box[1] / SCREEN_H)
