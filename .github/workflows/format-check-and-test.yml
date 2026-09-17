@@ -43,4 +43,4 @@ jobs:
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
       - run: |
-          ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
+          ./venv/bin/python3 -m unittest discover -s tests -t . -p "*_tests.py"
