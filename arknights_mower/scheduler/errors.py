@@ -19,7 +19,3 @@ class NavigationError(SchedulerError):
 
 class ConfigError(SchedulerError):
     pass
-
-
-class AgentSelectionError(SchedulerError):
-    pass
