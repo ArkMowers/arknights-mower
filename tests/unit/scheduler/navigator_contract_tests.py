@@ -8,7 +8,7 @@ import ast
 import inspect
 import unittest
 
-from arknights_mower.scheduler.constants import SCREEN_W
+from arknights_mower.scheduler.constants import SCREEN_H, SCREEN_W
 from arknights_mower.scheduler.navigator import Navigator
 from arknights_mower.scheduler.scene import Scene
 from tests.harness.mock_recognizer import MockRecognizer
@@ -100,11 +100,28 @@ class NoBareScreenSizeTests(unittest.TestCase):
 
     ⚠️ 刻意**不**用 grep 判断字面量 —— S2 的教训是 `670 / 1920`
     （空格包围）能绕过逐字 grep。这里直接看 AST 常量节点。
+
+    判据通过 `SCREEN_W`/`SCREEN_H` 常量表达（而非重抄 1920/1080 字面量），
+    这样本文件自身也不含裸尺寸。
     """
 
     def test_navigator_was_actually_split(self):
         """拆分必须真的产生多个文件，否则"≤300"可能是"什么都没拆"。"""
         self.assertGreaterEqual(len(navigator_sources()), 2)
+
+    def test_screen_size_anchor(self):
+        """锚点：用常量表达的判据必须与 1920×1080 等价（防静默失效）。
+
+        没有这条，把 `SCREEN_W` 改成 1280 会让裸尺寸守卫**静默失效**。
+        锚点取自**独立事实**而非重抄字面量：`constants.py:106` 定义
+        `CENTER = (960 / SCREEN_W, 540 / SCREEN_H)`，屏幕中心必归一化为
+        `(0.5, 0.5)` —— 这只有在 `SCREEN_W = 960 * 2` 时才成立。
+        """
+        from arknights_mower.scheduler.constants import TapPosition
+
+        self.assertEqual(TapPosition.CENTER.value, (0.5, 0.5))
+        self.assertEqual(SCREEN_W, 960 * 2)
+        self.assertEqual(SCREEN_H, 540 * 2)
 
     def test_no_bare_screen_size_literals(self):
         for path in navigator_sources():
@@ -112,7 +129,8 @@ class NoBareScreenSizeTests(unittest.TestCase):
             offenders = [
                 (node.lineno, node.value)
                 for node in ast.walk(tree)
-                if isinstance(node, ast.Constant) and node.value in (1920, 1080)
+                if isinstance(node, ast.Constant)
+                and node.value in (SCREEN_W, SCREEN_H)
             ]
             with self.subTest(file=path.name):
                 self.assertEqual(offenders, [], f"{path.name} 仍有裸尺寸：{offenders}")
