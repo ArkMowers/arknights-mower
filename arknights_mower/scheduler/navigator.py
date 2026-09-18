@@ -1,21 +1,37 @@
+"""导航层核心 —— 场景图驱动的界面导航。
+
+`Navigator` 负责：从当前 scene 走到目标 scene（`navigate`）、等界面稳定
+（`wait_scene_stable`）、房间定位（`enter_room`）以及点击/返回原语。
+
+| 文件 | 职责 |
+|---|---|
+| `navigator.py` | 构造、`navigate`、`enter_room`、识别辅助、等待、点击原语 |
+| `navigator_actions.py` | 55 个 `_action_*` 处理器（**Mixin**） |
+
+⚠️ `navigate` 用 `getattr(self, f"_action_{transition.action}")` 做字符串分派，
+因此 `_action_*` **必须绑定在 `Navigator` 实例上**（Mixin/继承）。若改成组合
+（`self._actions = NavigatorActions(...)`），55 个动作会同时取到 `None` →
+全部报 "no handler" → 导航全面失效。守卫用例见
+`tests/unit/scheduler/navigator_split_guard_tests.py`。
+"""
+
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Callable, Optional
 
-from arknights_mower.scheduler.constants import TapPosition
+from arknights_mower.scheduler.constants import SCREEN_H, SCREEN_W, TapPosition
 from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.graph import SceneGraph
 from arknights_mower.scheduler.infra.pause_controller import PauseController
+from arknights_mower.scheduler.navigator_actions import NavigatorActionsMixin
 from arknights_mower.scheduler.scene import Scene
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 
-
 _WAITING_SCENES = {Scene.LOADING, Scene.CONNECTING, Scene.LOGIN_LOADING, Scene.SKIP}
 
 
-class Navigator:
+class Navigator(NavigatorActionsMixin):
     MAX_UNKNOWN = 6
     MAX_ERROR = 5
 
@@ -98,32 +114,32 @@ class Navigator:
 
         import numpy as np
 
-        target = np.clip(target, [0, 0], [1920, 1080])
+        target = np.clip(target, [0, 0], [SCREEN_W, SCREEN_H])
         min_x = min(p[0] for p in target)
         max_x = max(p[0] for p in target)
         if min_x < 0:
             dx = -min_x
-            self._device.swipe(960 / 1920, 540 / 1080, (960 + dx) / 1920, 540 / 1080, duration=500)
+            self._device.swipe(960 / SCREEN_W, 540 / SCREEN_H, (960 + dx) / SCREEN_W, 540 / SCREEN_H, duration=500)
             for i in range(len(target)):
                 target[i][0] += dx
-            target = np.clip(target, [0, 0], [1920, 1080])
-        elif max_x > 1920:
-            dx = 1920 - max_x
-            self._device.swipe(960 / 1920, 540 / 1080, (960 + dx) / 1920, 540 / 1080, duration=500)
+            target = np.clip(target, [0, 0], [SCREEN_W, SCREEN_H])
+        elif max_x > SCREEN_W:
+            dx = SCREEN_W - max_x
+            self._device.swipe(960 / SCREEN_W, 540 / SCREEN_H, (960 + dx) / SCREEN_W, 540 / SCREEN_H, duration=500)
             for i in range(len(target)):
                 target[i][0] += dx
-            target = np.clip(target, [0, 0], [1920, 1080])
+            target = np.clip(target, [0, 0], [SCREEN_W, SCREEN_H])
         cx = int((target[0][0] + target[2][0]) // 2)
         cy = int((target[0][1] + target[2][1]) // 2)
-        self._device.tap(cx / 1920, cy / 1080)
-        self.wait_scene_stable(max_duration=3.0, min_stable=2, crop=((0,0),(1920,162)))
+        self._device.tap(cx / SCREEN_W, cy / SCREEN_H)
+        self.wait_scene_stable(max_duration=3.0, min_stable=2, crop=((0,0),(SCREEN_W,162)))
         return True
 
     def _detect_room(self) -> str | None:
         if self._recognizer is None:
             return None
         import cv2
-        import numpy as np
+
         from arknights_mower.utils.image import cropimg, loadres
 
         img = cropimg(self._recognizer.img, ((568, 18), (957, 95)))
@@ -152,6 +168,7 @@ class Navigator:
 
     def _detect_digit(self, img) -> int:
         import cv2
+
         from arknights_mower.utils.image import loadres
 
         scores = []
@@ -173,9 +190,10 @@ class Navigator:
         threshold: float = 0.012,
         crop: tuple = None,
     ) -> bool:
+        import time as _time
+
         import cv2
         import numpy as np
-        import time as _time
 
         t0 = _time.time()
         stable = 0
@@ -202,7 +220,7 @@ class Navigator:
         return False
 
     def _wait_room_detail(self) -> bool:  
-        from arknights_mower.scheduler.scene import Scene as V2Scene    
+        from arknights_mower.scheduler.scene import Scene as V2Scene
         success = False                      
         while True:
             scene = self._get_scene()
@@ -231,7 +249,7 @@ class Navigator:
         self._device.tap(*pos.value)
 
     def _tap(self, x: int, y: int) -> None:
-        self._device.tap(x / 1920, y / 1080)
+        self._device.tap(x / SCREEN_W, y / SCREEN_H)
 
     def _center(self, box) -> tuple[int, int]:
         if isinstance(box, list) and len(box) == 2 and isinstance(box[0], list):
@@ -268,183 +286,3 @@ class Navigator:
                 if self._get_scene() != scene:
                     return
 
-    def _action_back_to_index(self) -> None:
-        self._cback(1)
-
-    def _action_leave_infrastructure(self) -> None:
-        self._tap_confirm(True)
-
-    def _action_dont_download_voice(self) -> None:
-        self._tap_confirm(False)
-
-    def _action_login_quickly(self) -> None:
-        self._tap_element("login_awake")
-
-    def _action_login_captcha(self) -> None:
-        self._tap_element("login_captcha")
-        self.wait_scene_stable()
-
-    def _action_login_bilibili(self) -> None:
-        self._tap_pos(TapPosition.LOGIN_BILIBILI)
-
-    def _action_exit_cancel(self) -> None:
-        self._tap_confirm(False)
-
-    def _action_materiel(self) -> None:
-        self._tap_pos(TapPosition.MATERIEL)
-
-    def _action_announcement(self) -> None:
-        if self._recognizer is not None:
-            pos = self._recognizer.check_announcement()
-            if pos is not None:
-                x, y = pos
-                self._device.tap(x / 1920, y / 1080)
-            else:
-                self._tap_pos(TapPosition.CENTER)
-
-    def _action_agreement(self) -> None:
-        if self._recognizer is not None:
-            pos = self._recognizer.find("read_and_agree")
-            if pos is not None:
-                box = pos[0] if isinstance(pos, tuple) else pos
-                self._tap(*self._center(box))
-            else:
-                self._tap_pos(TapPosition.AGREEMENT_LINE1)
-                self.wait_scene_stable()
-                self._tap_pos(TapPosition.AGREEMENT_LINE2)
-
-    def _action_index_to_infra(self) -> None:
-        self._tap_pos(TapPosition.INDEX_INFRASTRUCTURE)
-
-    def _action_index_to_friend(self) -> None:
-        self._tap_element("friend")
-
-    def _action_index_to_mission(self) -> None:
-        self._tap_element("mission")
-
-    def _action_index_to_recruit(self) -> None:
-        self._tap_element("recruit")
-
-    def _action_index_to_shop(self) -> None:
-        self._tap_element("shop")
-
-    def _action_index_to_terminal(self) -> None:
-        self._tap_element("terminal")
-
-    def _action_index_to_depot(self) -> None:
-        self._tap_element("warehouse")
-
-    def _action_index_to_mail(self) -> None:
-        self._tap_element("mail")
-
-    def _action_index_to_headhunting(self) -> None:
-        self._tap_element("headhunting")
-
-    def _action_index_nav(self) -> None:
-        self._tap_element("nav_button")
-
-    def _action_nav_mission(self) -> None:
-        self._tap_element("mission")
-
-    def _action_nav_index(self) -> None:
-        self._tap_element("index")
-
-    def _action_nav_terminal(self) -> None:
-        self._tap_element("terminal")
-
-    def _action_nav_recruit(self) -> None:
-        self._tap_element("recruit")
-
-    def _action_nav_shop(self) -> None:
-        self._tap_element("shop")
-
-    def _action_nav_headhunting(self) -> None:
-        self._tap_element("headhunting")
-
-    def _action_nav_friend(self) -> None:
-        self._tap_element("friend")
-
-    def _action_mission_to_weekly(self) -> None:
-        self._tap_element("mission_weekly")
-
-    def _action_mission_trainee_to_daily(self) -> None:
-        self._tap_element("mission_daily")
-
-    def _action_shop_to_credit(self) -> None:
-        self._tap_element("shop_credit_2")
-
-    def _action_shop_confirm(self) -> None:
-        self._back()
-
-    def _action_friend_list(self) -> None:
-        self._tap_pos(TapPosition.FRIEND_LIST)
-
-    def _action_business_card(self) -> None:
-        self._tap_pos(TapPosition.BUSINESS_CARD)
-
-    def _action_friend_visiting_back(self) -> None:
-        self._back()
-
-    def _action_back_to_friend_confirm(self) -> None:
-        self._tap_confirm(True)
-
-    def _action_terminal_to_main_theme(self) -> None:
-        self._tap_element("main_theme")
-
-    def _action_operation_back(self) -> None:
-        self._back()
-
-    def _action_operation_give_up(self) -> None:
-        self._tap_confirm(True)
-
-    def _action_operation_finish(self) -> None:
-        self._tap_pos(TapPosition.OPERATION_FINISH)
-
-    def _action_upgrade(self) -> None:
-        self._tap_pos(TapPosition.CENTER)
-
-    def _action_todo_complete(self) -> None:
-        self._tap_pos(TapPosition.TODO_COMPLETE)
-
-    def _action_infra_back(self) -> None:
-        self._back()
-        self.wait_scene_stable()
-
-    def _action_infra_arrange_confirm(self) -> None:
-        self._tap_pos(TapPosition.INFRA_ARRANGE_CONFIRM)
-
-    def _action_riic_back(self) -> None:
-        self._tap_pos(TapPosition.RIIC_BACK)
-
-    def _action_riic(self) -> None:
-        self._tap_element("control_central_assistants")
-
-    def _action_control_central(self) -> None:
-        self._tap_element("control_central")
-
-    def _action_recruit_result(self) -> None:
-        self._tap_pos(TapPosition.CENTER)
-
-    def _action_refresh_cancel(self) -> None:
-        self._tap_confirm(False)
-
-    def _action_recruit_back(self) -> None:
-        self._back()
-
-    def _action_skip(self) -> None:
-        self._tap_element("skip")
-
-    def _action_get_scene(self) -> None:
-        pass
-
-    def _action_login_main_noentry(self) -> None:
-        self._device.tap(0.5, 0.5)
-
-    def _action_login_start(self) -> None:
-        self._tap_pos(TapPosition.LOGIN_START)
-
-    def _action_confirm(self) -> None:
-        self._tap_element("confirm")
-
-    def _action_network_check_cancel(self) -> None:
-        self._tap_element("confirm")
