@@ -203,10 +203,12 @@ class Client:
         只用 start-server（幂等，不会打断已运行的 adb server）。不做 kill-server：
         重启全局 5037 server 会把共用它的另一台模拟器也踢下线（双模拟器场景互相干扰）。
         """
+        if not adb_bin or not str(adb_bin).strip():
+            return False
         try:
             self.__exec("start-server", adb_bin)
             return self.check_server_alive()
-        except (FileNotFoundError, subprocess.CalledProcessError):
+        except (FileNotFoundError, subprocess.CalledProcessError, OSError):
             return False
 
     def session(self) -> Session:

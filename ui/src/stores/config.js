@@ -565,6 +565,7 @@ export const useConfigStore = defineStore('config', () => {
       enable_party: enable_party.value ? 1 : 0,
       leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
+      maa_adb_path: maa_adb_path.value,
       maa_enable:
         (stage_plan_enable.value && stage_plan_runner.value === 'maa') ||
         (maa_mall_enable.value && maa_mall_mode.value === 'maa')
