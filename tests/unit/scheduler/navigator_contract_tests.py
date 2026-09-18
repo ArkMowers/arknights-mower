@@ -15,6 +15,7 @@ from tests.harness.mock_recognizer import MockRecognizer
 from tests.unit.scheduler.navigator_scenarios import (
     MAX_FILE_LINES,
     SCHEDULER,
+    CyclingRecognizer,
     build,
     frame,
     navigator_sources,
@@ -37,42 +38,71 @@ class WaitSceneStableTests(unittest.TestCase):
         # 首帧只做基准（stable 仍为 0），故需 1 + min_stable 次 update
         self.assertEqual(recog.update_count, 4)
 
-    def test_changing_frames_return_false_on_budget(self):
-        """帧持续变化 -> 永不稳定 -> 超时返回 False（`max_duration` 极小）。"""
-        frames = [frame((i * 7) % 256) for i in range(400)]
-        recog = MockRecognizer(scenes=[Scene.INDEX], frames=frames)
+    def test_always_changing_frames_return_false(self):
+        """帧持续变化 -> 永不稳定 -> 返回 False。
+
+        ⚠️ 修复前用 **400 帧**绕过 `MockRecognizer` 的钳制（帧用尽后相邻帧会相同）。
+        方向对但代价大：400 × 5.93 MiB ≈ **2.32 GiB** 峰值内存，对 CI 是风险。
+        按 §10.2 硬要求 5「新用例优先用循环帧而非海量帧」改为 `CyclingRecognizer`
+        （**2 帧**，约 12 MiB，内存降 3 个数量级），语义不变：帧恒变 → 永不稳定。
+
+        预算取 **2.0s**（宽裕）：让结果为 `False` 的是**结构**（相邻帧恒不同），
+        不是"时间不够" —— 这正是硬要求 5 要求的形态。
+        """
+        first = frame(10)
+        second = frame(200)
+        recog = CyclingRecognizer(scenes=[Scene.INDEX], frames=[first, second])
         nav, _device, _ = build(recognizer=recog)
 
         # Act
-        result = nav.wait_scene_stable(max_duration=0.2, min_stable=3)
+        result = nav.wait_scene_stable(max_duration=2.0, min_stable=3)
 
         # Assert
         self.assertFalse(result)
         self.assertGreater(recog.update_count, 0, "应真的取样过至少一帧")
 
     def test_crop_limits_compared_region(self):
-        """`crop` 生效：只比较顶部 162 行时，下方变化不阻止稳定。"""
-        base = frame(128)
-        frames = []
-        for i in range(10):
-            f = base.copy()
-            f[200:, :, :] = (i * 40) % 256  # 只在裁剪区之外变化
-            frames.append(f)
-        recog = MockRecognizer(scenes=[Scene.INDEX], frames=frames)
+        """`crop` 生效：只比较顶部 162 行时，下方变化不阻止稳定。
+
+        ⚠️ **本用例曾 flaky，修法见下**（§10.2 硬要求 5「禁止墙钟依赖」）。
+
+        修复前行为：否定对照用 **10 帧 + `MockRecognizer` 钳制 + 0.2s 预算**。
+        `advance_frame()` 钳制在最后一帧（`min(cursor+1, len-1)`），循环走到第 9 帧
+        之后相邻帧**变得相同** → 稳定计数增长 → **第 11 轮**达成 `min_stable=2`。
+        于是 `assertFalse(uncropped)` 的真假取决于"0.2 秒内 CPU 能跑 11 轮还是 10 轮"：
+        单跑（空载）常凑够 11 轮 → 假红；全量跑（有争用）轮次不足 → 反而通过。
+        主控实测 20 次单跑失败 1 次、全量 8 次失败 4 次。
+
+        修复后：改用 `CyclingRecognizer`（帧**无限循环**，不钳制），两帧只在
+        `y >= 200`（裁剪区之外）不同。这样**每一对相邻帧都真的不同**，无论循环跑
+        1 轮还是 10 万轮结果恒为 `False` —— 否定用例**结构性成立**。
+        因此否定对照也用**宽裕**预算（`max_duration=2.0`）：让结果为 `False` 的是
+        结构而非"时间不够"。这同时是最强的回归守卫 —— 若有人改回"帧会钳制"的写法，
+        宽裕预算下 `uncropped` 会变成 `True` → `assertFalse` 立刻变红。
+        """
+        # 两帧只在裁剪区（y >= 200）之外不同
+        uncropped_a = frame(128)
+        uncropped_b = uncropped_a.copy()
+        uncropped_b[200:, :, :] = 40
+        crop = ((0, 0), (SCREEN_W, 162))
+
+        recog = CyclingRecognizer(
+            scenes=[Scene.INDEX], frames=[uncropped_a, uncropped_b]
+        )
         nav, _device, _ = build(recognizer=recog)
 
         # Act
-        cropped = nav.wait_scene_stable(
-            max_duration=2.0, min_stable=2, crop=((0, 0), (SCREEN_W, 162))
+        cropped = nav.wait_scene_stable(max_duration=2.0, min_stable=2, crop=crop)
+        # 对照：同一组帧不做裁剪时，相邻帧恒不相同 -> 结构性不稳定
+        recog2 = CyclingRecognizer(
+            scenes=[Scene.INDEX], frames=[uncropped_a, uncropped_b]
         )
-        # 对照：同样的帧序列不做裁剪时不稳定
-        recog2 = MockRecognizer(scenes=[Scene.INDEX], frames=frames)
         nav2, _device2, _ = build(recognizer=recog2)
-        uncropped = nav2.wait_scene_stable(max_duration=0.2, min_stable=2)
+        uncropped = nav2.wait_scene_stable(max_duration=2.0, min_stable=2)
 
-        # Assert
-        self.assertTrue(cropped)
-        self.assertFalse(uncropped)
+        # Assert：crop 的正反对照都必须有意义
+        self.assertTrue(cropped, "裁剪区内静止，应判为稳定")
+        self.assertFalse(uncropped, "相邻帧恒不同，应永远不稳定")
 
     def test_threshold_argument_is_respected(self):
         """阈值放大到 1.0 时，任何差异都被判为稳定。"""
