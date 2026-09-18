@@ -425,6 +425,102 @@ class TestArrangingConvergence(unittest.TestCase):
         )
         self.assertFalse(solver.ctap.called, "档位不可读时不应点技能行")
 
+    def test_user_scenario_matching_operator_starts_normally(self):
+        """用户真实场景：协助位逻各斯，训练位已是计划干员（凛御银灰），训练室空闲。
+        核验槽位时已是目标干员，确认身份后点开技能选择页，正常开训。
+        """
+        read_count = {"n": 0}
+
+        def fake_read(*args, **kwargs):
+            read_count["n"] += 1
+            return None if read_count["n"] <= 2 else 7200
+
+        scenes = [
+            Scene.TRAIN_MAIN,  # 读倒计时(无) → 核验训练位(凛御银灰，已匹配) → 点开技能选择页（身份确认）
+            Scene.TRAIN_SKILL_SELECT,  # 读档位(0) → ctap 技能
+            Scene.TRAIN_SKILL_UPGRADE,  # tap 确认 → 确认开训
+        ]
+        solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
+        solver.read_time.side_effect = fake_read
+        solver.read_screen.return_value = "[凛御银灰]测试技能"
+        solver.find.return_value = ((1563, 832), (1880, 1048))  # skill_confirm
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        room = mastery_reader.RoomState(
+            "empty", support_slot="逻各斯", train_slot="凛御银灰"
+        )
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            mastery._start_new_training(solver, plan, room=room)
+
+        training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
+        self.assertTrue(training_calls, "目标干员在训练位时应正常开训并转入 training")
+
+    def test_skill_select_unconfirmed_identity_self_heals(self):
+        """未在主界面确认身份直接处在技能选择页（如转场残留）：
+        自愈机制应调用 back() 返回 TRAIN_MAIN 重新核验训练位，然后再进入技能页成功开训。
+        """
+        read_count = {"n": 0}
+
+        def fake_read(*args, **kwargs):
+            read_count["n"] += 1
+            return None if read_count["n"] <= 2 else 7200
+
+        scenes = [
+            Scene.TRAIN_SKILL_SELECT,  # 未确认身份进入 219 → 触发自愈，back 回主页
+            Scene.TRAIN_MAIN,  # 等待转场轮询命中 TRAIN_MAIN
+            Scene.TRAIN_MAIN,  # 主界面读倒计时(无) → 核验槽位 → 身份确认，点开技能选择页
+            Scene.TRAIN_SKILL_SELECT,  # 已确认身份 → 读档位(0) → ctap 技能
+            Scene.TRAIN_SKILL_UPGRADE,  # tap 确认 → 确认开训
+        ]
+        solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
+        solver.read_time.side_effect = fake_read
+        solver.read_screen.return_value = "[凛御银灰]测试技能"
+        solver.find.return_value = ((1563, 832), (1880, 1048))  # skill_confirm
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        room = mastery_reader.RoomState(
+            "empty", support_slot="逻各斯", train_slot="凛御银灰"
+        )
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            mastery._start_new_training(solver, plan, room=room)
+
+        self.assertTrue(solver.back.called, "应调用 back 返回主界面")
+        training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
+        self.assertTrue(training_calls, "自愈后应成功开训")
+
+    def test_skill_select_unconfirmed_identity_exhaustion_exits(self):
+        """若技能选择页自愈尝试后仍停留在 219（重试上限已耗尽）：
+        应终止开训并调用 _exit_occupied 保守退出（保持 idle 重排）。
+        """
+        scenes = [
+            Scene.TRAIN_SKILL_SELECT,  # 迭代1：未确认身份进入 219 → 触发自愈，back 回主页
+            # 自愈转场轮询未退回 TRAIN_MAIN，持续停在 219
+            # 迭代2：再次处在 219，重试计数已达上限 1 → 保守退出
+        ]
+        solver = self.make_solver(
+            scenes=scenes, scene_fallback=Scene.TRAIN_SKILL_SELECT
+        )
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            mastery._start_new_training(solver, plan)
+
+        idle_calls = [c for c in upd.call_args_list if c.args[1] == "idle"]
+        self.assertTrue(idle_calls, "重试耗尽后应保守保持 idle 重排")
+        self.assertTrue(solver.back.called)
+
     def test_exit_occupied_recheck_task_labeled(self):
         """#153 改版：_exit_occupied 的 plan_key=None 重检任务带描述性 meta_data。
 

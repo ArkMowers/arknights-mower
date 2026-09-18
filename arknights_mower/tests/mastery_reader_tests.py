@@ -2331,6 +2331,9 @@ class TestReconcile73(unittest.TestCase):
 class TestComputeProtected(unittest.TestCase):
     """§16.5 保护检查（现读现判）：逻各斯/艾丽妮 + 待收取/空闲的判定。"""
 
+    def setUp(self):
+        self.solver = MagicMock()
+
     def _room(self, state, support, train, tier):
         return reader.RoomState(
             state=state,
@@ -2343,13 +2346,13 @@ class TestComputeProtected(unittest.TestCase):
         # §16.3 第1格：专三完成 → 无论如何不保护 → 可排班
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("waiting_collect", "逻各斯", "", 3)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_waiting_collect_below_m3_protected(self):
         # 非专三（链未走完）+ 逻各斯/艾丽妮 → 保护
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("waiting_collect", "艾丽妮", "", 2)
-            self.assertTrue(reader._compute_protected(MagicMock(), room))
+            self.assertTrue(reader._compute_protected(self.solver, room))
 
     def test_empty_with_occupant_deep_read(self):
         # 空闲 + 逻各斯 + 训练位有人 → 深读技能页（有专一/专二 → 保护）
@@ -2358,25 +2361,67 @@ class TestComputeProtected(unittest.TestCase):
             patch.object(reader, "_train_slot_has_mastery", return_value=True),
         ):
             room = self._room("empty", "逻各斯", "能天使", 0)
-            self.assertTrue(reader._compute_protected(MagicMock(), room))
+            self.assertTrue(reader._compute_protected(self.solver, room))
         with (
             patch.object(reader.config.conf, "enable_mastery", True),
             patch.object(reader, "_train_slot_has_mastery", return_value=False),
         ):
             room = self._room("empty", "逻各斯", "能天使", 0)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_empty_no_train_slot_not_protected(self):
         # 空闲 + 逻各斯 + 训练位没人 → 可排班
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("empty", "逻各斯", "", 0)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_off_no_protection(self):
         # §16.11 OFF：保护全停
         with patch.object(reader.config.conf, "enable_mastery", False):
             room = self._room("waiting_collect", "逻各斯", "", 2)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
+
+    @patch.object(reader, "_train_slot_has_mastery")
+    def test_bypass_deep_read_when_train_slot_matches_scan_plan(self, mock_has_mastery):
+        # 用户实际场景：协助位逻各斯，训练位凛御银灰，计划为凛御银灰
+        room = make_room(state="empty", support_slot="逻各斯", train_slot="凛御银灰")
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
+
+        self.assertFalse(is_protected)
+        mock_has_mastery.assert_not_called()
+
+    @patch.object(reader, "_train_slot_has_mastery", return_value=True)
+    def test_deep_read_when_train_slot_mismatches_scan_plan(self, mock_has_mastery):
+        room = make_room(state="empty", support_slot="逻各斯", train_slot="异客")
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
+
+        self.assertTrue(is_protected)
+        mock_has_mastery.assert_called_once_with(self.solver)
+
+    @patch.object(reader, "_train_slot_has_mastery", return_value=True)
+    def test_deep_read_when_scan_plan_is_none(self, mock_has_mastery):
+        room = make_room(state="empty", support_slot="逻各斯", train_slot="凛御银灰")
+
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            is_protected = reader._compute_protected(self.solver, room, scan_plan=None)
+
+        self.assertTrue(is_protected)
+        mock_has_mastery.assert_called_once_with(self.solver)
+
+    @patch.object(reader, "_fill_slots_and_protection")
+    @patch.object(reader, "_classify_panel", return_value="empty")
+    @patch.object(reader, "_safe_read_panel", return_value=reader.RoomPanel())
+    def test_retry_ocr_preserves_scan_plan(self, mock_read, mock_classify, mock_fill):
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        reader._retry_ocr(self.solver, scan_plan=plan)
+        mock_fill.assert_called_once()
+        self.assertIs(mock_fill.call_args[1]["scan_plan"], plan)
 
 
 class TestPromotePlan(unittest.TestCase):
@@ -2940,6 +2985,57 @@ class TestReconcileProtectedRelease(unittest.TestCase):
         )
         (result, _, _) = self._call(room, plan)
         self.assertIsNone(result[0])
+
+
+class TestTrainSlotHasMastery(unittest.TestCase):
+    """深读技能页保护判定：确保进入技能页后在 finally 必定 back 回主界面。"""
+
+    def setUp(self):
+        self.solver = MagicMock()
+        self.solver.recog.w = 1920
+        self.solver.recog.h = 1080
+
+    @patch.object(reader, "_read_slot_mastery_tier", side_effect=[0, 0, 0])
+    def test_normal_navigation_and_always_backs_out(self, mock_read_tier):
+        # 场景演进：TRAIN_MAIN -> 点击后进入 TRAIN_SKILL_SELECT -> back 回 TRAIN_MAIN
+        scenes = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,
+        ]
+        self.solver.train_scene.side_effect = lambda: (
+            scenes.pop(0) if scenes else Scene.TRAIN_MAIN
+        )
+
+        res = reader._train_slot_has_mastery(self.solver)
+        self.assertFalse(res, "全专0不保护")
+        self.solver.tap.assert_called_once()
+        self.solver.back.assert_called_once()
+
+    @patch.object(reader, "_read_slot_mastery_tier", side_effect=Exception("OCR crash"))
+    def test_exception_in_skill_select_still_backs_out(self, mock_read_tier):
+        scenes = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,
+        ]
+        self.solver.train_scene.side_effect = lambda: (
+            scenes.pop(0) if scenes else Scene.TRAIN_MAIN
+        )
+
+        res = reader._train_slot_has_mastery(self.solver)
+        self.assertTrue(res, "异常保守保护")
+        self.solver.back.assert_called_once()
+
+    def test_transition_timeout_does_not_back_from_train_main(self):
+        # 点击后卡在主界面未成功跳转，不应在主界面执行 back 误退房间
+        self.solver.train_scene.return_value = Scene.TRAIN_MAIN
+
+        res = reader._train_slot_has_mastery(self.solver)
+        self.assertTrue(res, "超时保守保护")
+        self.solver.back.assert_not_called()
 
 
 if __name__ == "__main__":
