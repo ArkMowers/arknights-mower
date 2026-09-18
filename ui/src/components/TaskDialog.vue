@@ -371,6 +371,7 @@ const level_list = [
   align-items: center;
   gap: 8px;
   width: 100%;
+  padding: 2px;
 
   .n-input {
     width: 140px;
