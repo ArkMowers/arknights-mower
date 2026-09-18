@@ -478,15 +478,28 @@ def _train_slot_has_mastery(solver) -> bool:
 
     有专一/专二 → True（保护，不能动）；全专三或专0 → False（可动）；
     进不去技能页 / 读不到档位 → 保守 True（保护）。
+    进入技能选择页后，finally 保证必定 back 回 TRAIN_MAIN 并等待转场。
     """
+    entered_skill_select = False
     try:
         scene = solver.train_scene()
         if scene == Scene.TRAIN_MAIN:
             solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
-        elif scene != Scene.TRAIN_SKILL_SELECT:
+            for _ in range(5):
+                if solver.train_scene() == Scene.TRAIN_SKILL_SELECT:
+                    entered_skill_select = True
+                    break
+                solver.sleep(0.5)
+            else:
+                return True
+        elif scene == Scene.TRAIN_SKILL_SELECT:
+            entered_skill_select = True
+        else:
             return True
+
         if solver.train_scene() != Scene.TRAIN_SKILL_SELECT:
             return True
+
         has = False
         for idx in (0, 1, 2):
             tier = _read_slot_mastery_tier(solver, idx)
@@ -494,21 +507,34 @@ def _train_slot_has_mastery(solver) -> bool:
                 return True  # 读不到 → 保守保护
             if tier in (1, 2):
                 has = True
-        try:
-            solver.back()
-        except Exception:
-            pass
         return has
     except Exception:
         return True
+    finally:
+        if entered_skill_select:
+            try:
+                _back_to_train_main(solver)
+            except Exception:
+                pass
 
 
-def _compute_protected(solver, room) -> bool:
+def _back_to_train_main(solver, max_retries: int = 5, interval: float = 0.5) -> bool:
+    """从次级界面（如技能选择页）返回训练室主界面，轮询确认场景转场。"""
+    solver.back()
+    for _ in range(max_retries):
+        if solver.train_scene() == Scene.TRAIN_MAIN:
+            return True
+        solver.sleep(interval)
+    return False
+
+
+def _compute_protected(solver, room, scan_plan=None) -> bool:
     """§16.5 保护检查（现读现判）：协助位为逻各斯/艾丽妮时房间受保护。
 
     - 待收取：仅非专三（链未走完）保护；专三完成 → §16.3 第1格「无论如何不保护 → 可排班」；
     - 空闲 + 训练位有人 → 深读技能页，有专一/专二 → 保护；全专三/专0 → 可动；
     - 空闲 + 训练位没人 → 可排班。
+    - scan_plan 匹配训练位干员时，开训不动训练位，保护不适用，无需深读技能页。
     每次排班进训练室重读重判，条件一变自动解除；enable_mastery OFF 时保护全停（§16.11）。
     """
     if not config.conf.enable_mastery:
@@ -519,6 +545,12 @@ def _compute_protected(solver, room) -> bool:
         return room.panel.mastery_tier != 3
     if room.state == "empty":
         if not room.train_slot:
+            return False
+        if (
+            scan_plan is not None
+            and scan_plan.get("status") == "idle"
+            and _plan_operator_matches(scan_plan, room.train_slot)
+        ):
             return False
         return _train_slot_has_mastery(solver)
     return False
@@ -549,7 +581,7 @@ def _classify_panel(solver, panel) -> str:
     return state
 
 
-def _fill_slots_and_protection(solver, room, want_mood=False):
+def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
     # enable_mastery OFF：槽位/保护无人消费（reconcile 被 gate、_compute_protected 恒 False），
     # 不白开进驻浮窗（§16.11 防卡检查只看 locked，面板态即可）。
     if config.conf.enable_mastery:
@@ -565,11 +597,11 @@ def _fill_slots_and_protection(solver, room, want_mood=False):
         )
     else:
         mood = None
-    room.protected = _compute_protected(solver, room)
+    room.protected = _compute_protected(solver, room, scan_plan=scan_plan)
     return mood
 
 
-def _retry_ocr(solver) -> RoomState:
+def _retry_ocr(solver, scan_plan=None) -> RoomState:
     """§16.2：OCR/亮点计算失败 → 原地重试 5 次（重读截图，不点动画）。
 
     每一轮都重新确认画面在训练室主界面（read_main_panel 内部判，判不到返回 None）：
@@ -590,7 +622,7 @@ def _retry_ocr(solver) -> RoomState:
         if state != "ocr_fail":
             room = RoomState(state, panel)
             if state in ("waiting_collect", "empty"):
-                _fill_slots_and_protection(solver, room)
+                _fill_slots_and_protection(solver, room, scan_plan=scan_plan)
             return room
         logger.warning(
             f"[mastery] 训练室倒计时与面板状态不一致（第{i + 1}次），重读截图"
@@ -599,7 +631,7 @@ def _retry_ocr(solver) -> RoomState:
     return RoomState("training", first or RoomPanel(), read_failed=True)
 
 
-def read_room_state(solver, enter=True, want_mood=False):
+def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
     """进房读全部状态。enter=False 表示已在房内（排班 gate 用）。
 
     §16.1 读全：进驻详情浮窗（协助位/训练位）+ 左下角（干员/技能/倒计时/图标）；
@@ -630,14 +662,16 @@ def read_room_state(solver, enter=True, want_mood=False):
             return (room, []) if want_mood else room
         state = _classify_panel(solver, panel)
         if state == "ocr_fail":
-            room = _retry_ocr(solver)
+            room = _retry_ocr(solver, scan_plan=scan_plan)
             # OCR 失败路径（含重试成功后的槽位填，未带心情）→ 心情取不到
             return (room, []) if want_mood else room
         room = RoomState(state, panel)
         # training 也读槽位：判定日志要记下当时的协助位，否则倒计时读数跳变时
         # 无从对照是不是换了人（`support_slot`/`train_slot` 留空 = 没读，不是没人）。
         if want_mood or state in ("waiting_collect", "empty", "training"):
-            mood = _fill_slots_and_protection(solver, room, want_mood=want_mood)
+            mood = _fill_slots_and_protection(
+                solver, room, want_mood=want_mood, scan_plan=scan_plan
+            )
             return (room, mood) if want_mood else room
         return room
     # 其他房内场景（技能选择/确认/未知/浮窗残留）→ 保守视为占用，**不读左下角面板**
@@ -1499,7 +1533,7 @@ def reconcile_and_act(solver, scan_plan=None):
 
     if not config.conf.enable_mastery:
         return None, True, None
-    room = read_room_state(solver)
+    room = read_room_state(solver, scan_plan=scan_plan)
     active = get_active_plan()
     plans = get_reconcile_plans()
     plan, arrange_support = _reconcile(solver, room, active, plans, scan_plan=scan_plan)

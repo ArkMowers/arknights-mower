@@ -6,6 +6,7 @@ from arknights_mower.solvers.mastery_reader import (
     PROTECT_OPERATORS,
     RoomPanel,
     RoomState,
+    _back_to_train_main,
     _close_room_detail,
     _count_lit_mastery_icons,
     _notify_at_target,
@@ -784,6 +785,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     # #72：数星星前的身份/归属确认。只在 TRAIN_MAIN 训练位校验通过并主动点开技能
     # 选择页时置位；未置位就出现 219（重启停在技能选择页 / 手动进入）→ 219 分支保守退出。
     identity_confirmed = False
+    unconfirmed_select_cnt = 0
 
     if room is None:
         solver.enter_room("train")
@@ -884,7 +886,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                             f"训练位当前干员为（{trainer_slot}），换人失败",
                         )
                         return
-                continue
+                    continue
             # 训练位已确认（空/已是计划干员）→ 身份确认成立，点开技能选择页。
             # #72：数星星前唯一合法的身份/归属确认点——经训练位校验后主动进入技能
             # 选择页；未置位就出现 219 在 219 分支直接保守退出。
@@ -896,13 +898,16 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 # `[干员名]技能名`——不能在 219 上读主面板区域（COUNTDOWN/PANEL）当占用
                 # 探针（219 上没有主面板，读了也读不到）。未经过 TRAIN_MAIN 训练位
                 # 校验就出现 219 → 数星星前无法确认干员身份，星星可能误读非零值
-                # （误开训练/误判完成，#70 只挡 None）→ 保守保持 idle 重排退出。
-                logger.info(
-                    f"{_plan_char_label(plan)} 技能选择页未经过训练位确认，"
-                    "无法确认星星归属，保持 idle 重排"
+                # （误开训练/误判完成，#70 只挡 None）→ 先尝试退回主界面重新核验，多次失败再保守退出。
+                char_name = _plan_char_label(plan)
+                logger.warning(
+                    f"处于技能选择页，但未在主界面核验训练位是否为【{char_name}】"
+                    "（无法确认当前技能归属），尝试返回训练室主界面重新核验"
                 )
-                # 这一页左下角是协助位天赋文本，读不到干员名——重检任务标签只写
-                # 「重读训练室状态」，不传 panel。
+                if unconfirmed_select_cnt < 1:
+                    unconfirmed_select_cnt += 1
+                    _back_to_train_main(solver)
+                    continue
                 _exit_occupied(solver, plan, None, trigger="技能选择页归属未确认")
                 return
             if not checked_target:
