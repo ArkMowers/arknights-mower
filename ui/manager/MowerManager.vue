@@ -149,7 +149,12 @@ async function start(idx) {
             </template>
           </n-button>
           <template v-if="editing == idx">
-            <n-input placeholder="实例名称" v-model:value="new_name" />
+            <n-input
+              placeholder="实例名称"
+              v-model:value="new_name"
+              size="small"
+              style="margin: 2px 0"
+            />
             <n-button type="primary" size="tiny" circle @click="accept_name">
               <template #icon>
                 <n-icon>
@@ -203,7 +208,7 @@ async function start(idx) {
   display: flex;
   gap: 6px;
   align-items: center;
-  height: 28px;
+  min-height: 28px;
 }
 
 .expand {

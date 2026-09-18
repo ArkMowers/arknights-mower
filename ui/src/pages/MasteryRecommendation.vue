@@ -418,7 +418,13 @@
       @update:show="onPlanModalShow"
     >
       <n-space vertical>
-        <n-input v-model:value="planSearch" placeholder="搜索干员" clearable size="small" />
+        <n-input
+          v-model:value="planSearch"
+          placeholder="搜索干员"
+          clearable
+          size="small"
+          style="margin: 2px 0"
+        />
         <draggable
           v-model="sortablePlanEntries"
           item-key="key"

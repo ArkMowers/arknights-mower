@@ -886,15 +886,14 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
     -5px -5px 20px -16px var(--window-shell-content-shadow-corner);
 }
 
-/* shadcn 输入框（n-input / n-input-number）——按 shadcn Input 源码规格：
-   h-9(36px) / rounded-md(6px) / 1px border-input / bg-background / px-3 / text-sm
-   / placeholder:muted-foreground / focus-visible:ring-2 + ring-offset-2 */
+/* shadcn / 现代精致输入框（n-input / n-input-number）：
+   聚焦时直接高亮边框并添加 2px 贴身高亮环，杜绝过大外扩（4px）被子窗口边框/overflow 裁剪 */
 .n-input {
   --n-height: 36px !important;
   --n-border-radius: 6px !important;
   --n-border: 1px solid #e4e4e7 !important;
-  --n-border-hover: 1px solid #d4d4d8 !important;
-  --n-border-focus: 1px solid #e4e4e7 !important;
+  --n-border-hover: 1px solid #36ad6a !important;
+  --n-border-focus: 1px solid #18a058 !important;
   --n-color: #ffffff !important;
   --n-color-hover: #ffffff !important;
   --n-color-focus: #ffffff !important;
@@ -903,30 +902,32 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
   --n-padding-vertical: 0 !important;
   --n-text-color: #09090b !important;
   --n-placeholder-color: #71717a !important;
-  --n-box-shadow-focus: 0 0 0 2px #ffffff, 0 0 0 4px rgba(24, 160, 88, 0.4) !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(24, 160, 88, 0.2) !important;
 }
 html[data-mower-theme='dark'] .n-input {
   --n-border: 1px solid #27272a !important;
-  --n-border-hover: 1px solid #3f3f46 !important;
-  --n-border-focus: 1px solid #27272a !important;
+  --n-border-hover: 1px solid #7fe7c4 !important;
+  --n-border-focus: 1px solid #63e2b7 !important;
   --n-color: #101014 !important;
   --n-color-hover: #101014 !important;
   --n-color-focus: #101014 !important;
   --n-text-color: #fafafa !important;
   --n-placeholder-color: #71717a !important;
-  --n-box-shadow-focus: 0 0 0 2px #101014, 0 0 0 4px rgba(99, 226, 183, 0.4) !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
 }
 
-/* shadcn 下拉选择框（n-select）：触发器 = 同款输入框盒子 + 菜单 = 圆角浮层/option 高亮 */
+/* 下拉选择框（n-select）：触发器 = 同款输入框盒子 + 菜单 = 圆角浮层/option 高亮 */
 .n-base-selection {
   --n-height: 36px !important;
   --n-border-radius: 6px !important;
   --n-border: 1px solid #e4e4e7 !important;
-  --n-border-hover: 1px solid #d4d4d8 !important;
-  --n-border-focus: 1px solid #e4e4e7 !important;
+  --n-border-hover: 1px solid #36ad6a !important;
+  --n-border-focus: 1px solid #18a058 !important;
+  --n-border-active: 1px solid #18a058 !important;
   --n-color: #ffffff !important;
   --n-color-active: #ffffff !important;
-  --n-box-shadow-focus: 0 0 0 2px #ffffff, 0 0 0 4px rgba(24, 160, 88, 0.4) !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(24, 160, 88, 0.2) !important;
+  --n-box-shadow-active: 0 0 0 2px rgba(24, 160, 88, 0.2) !important;
   --n-text-color: #09090b !important;
   --n-placeholder-color: #71717a !important;
   --n-padding-single: 0 12px !important;
@@ -942,19 +943,39 @@ html[data-mower-theme='dark'] .n-input {
 }
 html[data-mower-theme='dark'] .n-base-selection {
   --n-border: 1px solid #27272a !important;
-  --n-border-hover: 1px solid #3f3f46 !important;
-  --n-border-focus: 1px solid #27272a !important;
+  --n-border-hover: 1px solid #7fe7c4 !important;
+  --n-border-focus: 1px solid #63e2b7 !important;
+  --n-border-active: 1px solid #63e2b7 !important;
   --n-color: #101014 !important;
   --n-color-active: #101014 !important;
   --n-text-color: #fafafa !important;
   --n-placeholder-color: #71717a !important;
-  --n-box-shadow-focus: 0 0 0 2px #101014, 0 0 0 4px rgba(99, 226, 183, 0.4) !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
+  --n-box-shadow-active: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
 }
 html[data-mower-theme='dark'] .n-base-select-menu {
   --n-color: #101014 !important;
   --n-option-color-pending: rgba(99, 226, 183, 0.12) !important;
   --n-option-color-active: rgba(99, 226, 183, 0.16) !important;
   --n-option-color-active-pending: rgba(99, 226, 183, 0.2) !important;
+}
+
+/* 提升处于聚焦/激活状态输入框的层叠层级，避免被相邻单元格、边框或相邻按钮遮挡 */
+.n-input:focus-within,
+.n-base-selection:focus-within {
+  position: relative;
+  z-index: 2;
+}
+
+/* 只给「含输入框/下拉」的单元格加定位：position:relative 会把单元格提到定位层，
+   无输入框的表格（如运行日志页任务表）跟着提层会盖住 .log-bg 背景图 */
+.n-table td:has(.n-input, .n-base-selection) {
+  position: relative;
+}
+
+.n-table td:has(.n-input:focus-within),
+.n-table td:has(.n-base-selection:focus-within) {
+  z-index: 3;
 }
 
 html.mower-theme-changing *,

@@ -29,6 +29,7 @@ const { sub_plan, backup_plans } = storeToRefs(plan_store)
   display: flex;
   align-items: center;
   margin-top: 5px;
+  padding: 2px;
 }
 
 .dropdown-label {
