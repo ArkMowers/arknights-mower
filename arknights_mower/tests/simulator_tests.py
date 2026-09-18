@@ -125,6 +125,13 @@ class TestSimulatorReady(unittest.TestCase):
         self.assertTrue(simulator.adb_ready())
         self.assertEqual(self.conf.adb, self.old_target)
 
+    def test_wait_for_adb_handles_exception_gracefully(self):
+        process = self.popen.return_value
+        with patch.object(
+            simulator, "adb_ready", side_effect=RuntimeError("cannot connect: 10061")
+        ):
+            self.assertFalse(simulator.wait_for_adb(process, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

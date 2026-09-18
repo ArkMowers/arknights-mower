@@ -203,5 +203,28 @@ class TestInitDeviceWaitsForDevice(unittest.TestCase):
                 client._Client__init_device()
 
 
+class TestCheckAdbSafety(unittest.TestCase):
+    def test_check_adb_empty_path_returns_false_without_exec(self):
+        client = _client()
+        with patch.object(client, "_Client__exec") as mock_exec:
+            self.assertFalse(client._Client__check_adb(""))
+            self.assertFalse(client._Client__check_adb("   "))
+            self.assertFalse(client._Client__check_adb(None))
+            mock_exec.assert_not_called()
+
+    def test_check_adb_handles_oserror_gracefully(self):
+        client = _client()
+        with (
+            patch.object(
+                client,
+                "_Client__exec",
+                side_effect=OSError(87, "The parameter is incorrect"),
+            ),
+            patch.object(client, "check_server_alive") as mock_alive,
+        ):
+            self.assertFalse(client._Client__check_adb("invalid_adb"))
+            mock_alive.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

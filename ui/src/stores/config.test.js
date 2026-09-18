@@ -284,7 +284,9 @@ describe('low frame rate adaptation', () => {
     store.stage_plan_runner = 'mower'
     store.maa_mall_enable = false
     store.maa_mall_mode = 'mower'
+    store.maa_adb_path = '/custom/adb'
     let payload = store.build_config()
+    expect(payload.maa_adb_path).toBe('/custom/adb')
     expect(payload.stage_plan_enable).toBe(false)
     expect(payload.stage_plan_runner).toBe('mower')
     expect(payload.maa_mall_enable).toBe(false)

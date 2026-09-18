@@ -214,7 +214,13 @@ def wait_for_adb(process: subprocess.Popen, wait_time: int) -> bool:
         if process.poll() is not None and process.returncode not in (0, None):
             logger.debug(process.communicate())
         csleep(1)
-    return adb_ready()
+    try:
+        return adb_ready()
+    except MowerExit:
+        raise
+    except Exception as e:
+        logger.debug(e)
+        return False
 
 
 def adb_ready() -> bool:
