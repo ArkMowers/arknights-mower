@@ -107,6 +107,29 @@ def graph_action_names():
     return sorted(actions)
 
 
+class CyclingRecognizer(MockRecognizer):
+    """帧序列**无限循环**（不钳制）—— 相邻帧恒不相同，永不稳定。
+
+    为什么需要它（§10.2 硬要求 5「禁止墙钟依赖」，主控 2026-09-18）：
+    `MockRecognizer.advance_frame()` 钳制在最后一帧（`min(cursor+1, len-1)`），
+    因此帧序列用尽后相邻帧**会变得相同**，稳定必然达成 —— 于是"能否在预算内
+    跑完"成了竞态：同一用例在空载机器上凑够轮次就 `True`，负载高就 `False`。
+
+    本类改写为 `(cursor + 1) % len(frames)`，只要**每一对相邻帧都真的不同**
+    （含首尾相接那一对），无论循环跑 1 轮还是 10 万轮，结果恒为 `False` ——
+    否定用例因此**结构性成立**，不再依赖墙钟。
+
+    ️ 帧数必须 >= 2 且**首尾也要不同**：循环会让最后一帧接回第 0 帧，
+    若这两帧恰好相同，稳定计数仍会增长。
+    """
+
+    def advance_frame(self) -> None:
+        if self._frames:
+            self._frame_cursor = (self._frame_cursor + 1) % len(self._frames)
+            self._img = None
+            self._gray = None
+
+
 def navigator_sources():
     """`navigator*.py` 全部生产文件（拆分必须真的产生多个）。"""
     return sorted(SCHEDULER.glob("navigator*.py"))
