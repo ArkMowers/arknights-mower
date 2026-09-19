@@ -2,12 +2,14 @@ import time
 from datetime import datetime, timedelta
 
 from arknights_mower.utils import config
+from arknights_mower.utils.operation_timing import timed_step
 
 
 class MowerExit(Exception):
     pass
 
 
+@timed_step("sleep")
 def csleep(interval: float = 1):
     """check and sleep"""
     stop_time = datetime.now() + timedelta(seconds=interval)

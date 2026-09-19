@@ -1,26 +1,28 @@
+from arknights_mower.solvers.mastery import get_char_name, validate_route_supports
 from arknights_mower.utils.mastery_db import (
+    add_plan_checked,
     get_all_plans,
     get_route,
-    has_train_group_plan,
-    insert_plan,
-    retry_plan,
+    retry_failed_plans,
     save_route,
 )
 
 
-def add_mastery_plan(char_id: str, skill_index: int, skill_name: str = ""):
+def add_mastery_plan(
+    char_id: str, skill_index: int, skill_name: str = "", target_level: int = 3
+):
     """Add a new mastery plan for an operator skill."""
-    if has_train_group_plan():
-        return "训练室已设置小组轮换，无法添加专精计划"
-    plan_id = insert_plan(
+    plan_id, reason = add_plan_checked(
         char_id,
         skill_index,
-        "pending",
+        target_level=target_level,
         skill_name=skill_name or f"技能{skill_index + 1}",
+        # #53：补传干员名，否则计划 char_name 为 NULL，邮件读不出练谁
+        char_name=get_char_name(char_id),
     )
     if plan_id > 0:
-        return f"已添加专精计划: {char_id} 技能{skill_index + 1}"
-    return f"添加专精计划失败: {char_id} 技能{skill_index + 1}"
+        return f"已添加专精计划: {char_id} 技能{skill_index + 1} 专{target_level}"
+    return f"添加专精计划失败: {char_id} 技能{skill_index + 1}（{reason}）"
 
 
 def list_plans(status_filter: str = ""):
@@ -37,7 +39,7 @@ def list_plans(status_filter: str = ""):
             f"<tr><td>{p['char_id']}</td>"
             f"<td>{p.get('skill_name', '技能' + str(p['skill_index'] + 1))}</td>"
             f"<td>{p['status']}</td>"
-            f"<td>{p.get('level', 1)}</td>"
+            f"<td>{p.get('target_level', 1)}</td>"
             f"<td>{p.get('failed_reason', '')}</td>"
             f"<td>{p.get('created_at', '')}</td></tr>"
         )
@@ -46,7 +48,17 @@ def list_plans(status_filter: str = ""):
 
 
 def set_route(profession: str, supports_json: str):
-    """Save a user-customized mastery route for a profession."""
+    """Save a user-customized mastery route for a profession.
+
+    supports_json 为该职业路线的 supports 数组（[{name, skill_level, efficiency,
+    swap, swap_name, match}, ...]）或含 supports 的包装对象；中枢加成/换人缓冲是全局
+    设置（POST /mastery-route/settings），不在路线 JSON 里。
+    """
+    # #114：写入端校验 supports 是合法 JSON 且形态是数组/包装对象/旧字典之一，
+    # 不合法拒绝保存（读取端 json.loads 无守卫，#91 review 决策，坏数据不得进库）。
+    err = validate_route_supports(supports_json)
+    if err:
+        return f"保存 {profession} 路线失败: {err}"
     save_route(profession, supports_json, is_default=0)
     return f"已保存 {profession} 路线的专精路线"
 
@@ -60,11 +72,11 @@ def get_route_info(profession: str):
 
 
 def retry_plan_tool(char_id: str, skill_index: int):
-    """Retry a failed mastery plan by inserting a new pending row."""
-    plan_id = retry_plan(char_id, skill_index)
-    if plan_id > 0:
-        return f"已重试专精计划: {char_id} 技能{skill_index + 1}"
-    return f"重试专精计划失败: {char_id} 技能{skill_index + 1}"
+    """Retry failed mastery plans by resetting them to idle."""
+    count = retry_failed_plans()
+    if count > 0:
+        return f"已重置 {count} 个失败的专精计划为待执行"
+    return "没有失败的专精计划需要重试"
 
 
 add_mastery_plan_tool_def = {
@@ -81,6 +93,11 @@ add_mastery_plan_tool_def = {
                 },
                 "skill_index": {"type": "integer", "description": "技能索引 0/1/2"},
                 "skill_name": {"type": "string", "description": "技能名称（可选）"},
+                "target_level": {
+                    "type": "integer",
+                    "description": "目标专精等级 1/2/3，缺省 3",
+                    "enum": [1, 2, 3],
+                },
             },
             "required": ["char_id", "skill_index"],
         },
@@ -120,7 +137,7 @@ set_route_tool_def = {
                 },
                 "supports_json": {
                     "type": "string",
-                    "description": "包含 supports/controlCenter 的完整 JSON 配置",
+                    "description": "该职业路线的 supports JSON 数组 [{name, skill_level, efficiency, swap, swap_name, match}]",
                 },
             },
             "required": ["profession", "supports_json"],

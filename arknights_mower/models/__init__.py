@@ -3,8 +3,13 @@ import pickle
 
 from arknights_mower import __rootdir__
 
-with lzma.open(f"{__rootdir__}/models/avatar.pkl", "rb") as f:
-    avatar = pickle.load(f)
+# avatar.pkl 暂时不生成、不进打包（CreditFight 未接线，AutoFight 的 avatar 识别未启用）。
+# 容错为 None，避免模型文件缺失导致 import 即崩溃。
+try:
+    with lzma.open(f"{__rootdir__}/models/avatar.pkl", "rb") as f:
+        avatar = pickle.load(f)
+except FileNotFoundError:
+    avatar = None
 
 
 with lzma.open(f"{__rootdir__}/models/secret_front.pkl", "rb") as f:

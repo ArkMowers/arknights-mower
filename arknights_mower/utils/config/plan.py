@@ -14,6 +14,8 @@ class PlanConf(BaseModel):
     "回满"
     resting_priority: str = ""
     "低优先级"
+    resting_standby: str = ""
+    "宿舍休息候补干员，仅对主班绑组干员生效"
     workaholic: str = ""
     "0心情工作（主力宿舍黑名单）"
     refresh_trading: str = ""
@@ -125,3 +127,12 @@ class PlanModel(BaseModel):
     plan1: Plan1 = Plan1()
     conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []
+
+
+def parse_plan_document(data) -> PlanModel:
+    """Reject unrelated JSON instead of silently constructing an empty plan."""
+    if not isinstance(data, dict) or not isinstance(data.get("plan1"), dict):
+        raise ValueError("排班文件必须包含 plan1 主排班")
+    if data.get("default", "plan1") != "plan1":
+        raise ValueError("不支持的主排班名称")
+    return PlanModel(**data)

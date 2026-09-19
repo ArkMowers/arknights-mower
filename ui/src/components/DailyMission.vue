@@ -6,8 +6,7 @@ const axios = inject('axios')
 
 const store = useConfigStore()
 
-const { check_mail_enable, report_enable, sign_in, visit_friend, skland_info, skland_enable } =
-  storeToRefs(store)
+const { check_mail_enable, report_enable, sign_in, skland_info, skland_enable } = storeToRefs(store)
 
 const sign_msg = ref('')
 
@@ -127,10 +126,6 @@ const SyncStatus = (item, game) => {
       <n-divider />
       <n-checkbox v-model:checked="check_mail_enable">
         <div class="item">领取邮件</div>
-      </n-checkbox>
-      <n-divider />
-      <n-checkbox v-model:checked="visit_friend">
-        <div class="item">访问好友</div>
       </n-checkbox>
       <n-divider />
       <n-flex>

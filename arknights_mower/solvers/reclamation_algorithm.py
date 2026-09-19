@@ -32,7 +32,6 @@ class Map:
         return (round(y[0][0] / y[2][0]), round(y[1][0] / y[2][0]))
 
     def find(self, res: tp.Res) -> Optional[tp.Scope]:
-        logger.debug(f"find: {res}")
         if self.matcher is None:
             self.matcher = Matcher(self.map)
         res_img = loadres(f"ra/map/{res}", True)

@@ -4,13 +4,10 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-import sklearn.pipeline  # noqa
-import sklearn.preprocessing
-import sklearn.svm  # noqa
-from skimage.metrics import structural_similarity as compare_ssim
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils import vision_np
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
 
@@ -29,7 +26,7 @@ def keypoints(img: tp.GrayImage):
 
 
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
-    SVC = pickle.loads(f.read())
+    SVC_MODEL: vision_np.LinearSvcModel = pickle.loads(f.read())
 
 
 # build FlannBasedMatcher
@@ -71,7 +68,6 @@ class Matcher:
     """image matching module"""
 
     def __init__(self, origin: tp.GrayImage) -> None:
-        logger.debug(f"Matcher init: shape ({origin.shape})")
         self.origin = origin
         self.kp, self.des = keypoints(self.origin)
 
@@ -104,7 +100,9 @@ class Matcher:
             else:
                 logger.debug(f"score is not greater than {prescore}: {rect_score}")
                 return None
-        if judge and not SVC.predict([score])[0]:
+        if judge and not vision_np.linear_svc_predict(
+            score, SVC_MODEL["w"], SVC_MODEL["b"]
+        ):
             logger.debug(f"match fail: {rect_score}")
             return None
         logger.debug(f"match success: {rect_score}")
@@ -137,7 +135,6 @@ class Matcher:
                     ):
                         ori_kp.append(_kp)
                         ori_des.append(_des)
-                logger.debug(f"match crop: {scope}, {len(self.kp)} -> {len(ori_kp)}")
                 ori_kp, ori_des = np.array(ori_kp), np.array(ori_des)
             else:
                 ori_kp, ori_des = self.kp, self.des
@@ -195,8 +192,6 @@ class Matcher:
             if M is None:
                 logger.debug("calculated transformation matrix failed")
                 return None
-            else:
-                logger.debug(f"transform matrix: {M.tolist()}")
 
             M[0][1] = 0
             M[1][0] = 0
@@ -235,13 +230,11 @@ class Matcher:
                 rect[1][0] - rect[0][0] < min_width
                 or rect[1][1] - rect[0][1] < min_height
             ):
-                logger.debug(f"rectangle is too small: {rect}")
                 return None
 
             if not dpi_aware:
                 max_width = w * 1.25
                 if rect[1][0] - rect[0][0] > max_width:
-                    logger.debug(f"rectangle is too big: {rect}")
                     return None
 
             # measure the rate of good match within the rectangle (x-axis)
@@ -282,7 +275,7 @@ class Matcher:
             hash = 1 - (aHash(query, rect_img) / 16)
 
             # calc ssim between query image and rect_img
-            ssim = compare_ssim(query, rect_img, multichannel=True)
+            ssim = vision_np.ssim(query, rect_img)
 
             # return final rectangle and four dimensions of scoring
             if only_score:

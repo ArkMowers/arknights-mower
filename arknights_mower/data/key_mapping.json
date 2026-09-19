@@ -335,20 +335,6 @@
         "NORMAL",
         10205
     ],
-    "LMTGS_COIN_7601": [
-        "LMTGS_COIN_7601",
-        "LMTGS_COIN_7601",
-        "寻访数据契约",
-        "NORMAL",
-        10326
-    ],
-    "寻访数据契约": [
-        "LMTGS_COIN_7601",
-        "LMTGS_COIN_7601",
-        "寻访数据契约",
-        "NORMAL",
-        10326
-    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -671,17 +657,31 @@
         "NORMAL",
         40001
     ],
-    "LIMITED_TKT_GACHA_10_7601": [
-        "LIMITED_TKT_GACHA_10_7601",
-        "LIMITED_TKT_GACHA_10_7601",
-        "搭车漫游寻访凭证",
+    "LINKAGE_TKT_GACHA_10_7701": [
+        "LINKAGE_TKT_GACHA_10_7701",
+        "LINKAGE_TKT_GACHA_10_7701",
+        "一逢满月十连寻访凭证",
         "NORMAL",
         40003
     ],
-    "搭车漫游寻访凭证": [
-        "LIMITED_TKT_GACHA_10_7601",
-        "LIMITED_TKT_GACHA_10_7601",
-        "搭车漫游寻访凭证",
+    "一逢满月十连寻访凭证": [
+        "LINKAGE_TKT_GACHA_10_7701",
+        "LINKAGE_TKT_GACHA_10_7701",
+        "一逢满月十连寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "LINKAGE_TKT_GACHA_7701": [
+        "LINKAGE_TKT_GACHA_7701",
+        "LINKAGE_TKT_GACHA_7701",
+        "一逢满月寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "一逢满月寻访凭证": [
+        "LINKAGE_TKT_GACHA_7701",
+        "LINKAGE_TKT_GACHA_7701",
+        "一逢满月寻访凭证",
         "NORMAL",
         40003
     ],
@@ -4142,6 +4142,20 @@
         "罗德岛隐秘队的信物",
         "MATERIAL",
         1100010
+    ],
+    "p_char_4220_kormr": [
+        "p_char_4220_kormr",
+        "p_char_4220_kormr",
+        "虎狼丸的信物",
+        "MATERIAL",
+        1100011
+    ],
+    "虎狼丸的信物": [
+        "p_char_4220_kormr",
+        "p_char_4220_kormr",
+        "虎狼丸的信物",
+        "MATERIAL",
+        1100011
     ],
     "p_char_502_nblade": [
         "p_char_502_nblade",
@@ -7993,6 +8007,34 @@
         "MATERIAL",
         700193
     ],
+    "p_char_4218_aigis": [
+        "p_char_4218_aigis",
+        "p_char_4218_aigis",
+        "埃癸斯的信物",
+        "MATERIAL",
+        700194
+    ],
+    "埃癸斯的信物": [
+        "p_char_4218_aigis",
+        "p_char_4218_aigis",
+        "埃癸斯的信物",
+        "MATERIAL",
+        700194
+    ],
+    "p_char_4219_yukari": [
+        "p_char_4219_yukari",
+        "p_char_4219_yukari",
+        "岳羽由加莉的信物",
+        "MATERIAL",
+        700195
+    ],
+    "岳羽由加莉的信物": [
+        "p_char_4219_yukari",
+        "p_char_4219_yukari",
+        "岳羽由加莉的信物",
+        "MATERIAL",
+        700195
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -9882,6 +9924,20 @@
         "珊比的信物",
         "MATERIAL",
         600135
+    ],
+    "p_char_4217_makoto": [
+        "p_char_4217_makoto",
+        "p_char_4217_makoto",
+        "结城理的信物",
+        "MATERIAL",
+        600136
+    ],
+    "结城理的信物": [
+        "p_char_4217_makoto",
+        "p_char_4217_makoto",
+        "结城理的信物",
+        "MATERIAL",
+        600136
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -12435,84 +12491,84 @@
         "main16_spitem_1",
         "main16_fadeoriginium",
         "暗淡的源石",
-        "NORMAL",
-        10601
+        "MEMENTO",
+        8000801
     ],
     "暗淡的源石": [
         "main16_spitem_1",
         "main16_fadeoriginium",
         "暗淡的源石",
-        "NORMAL",
-        10601
+        "MEMENTO",
+        8000801
     ],
     "main16_spitem_2": [
         "main16_spitem_2",
         "main16_minelamp",
         "无主的矿灯",
-        "NORMAL",
-        10602
+        "MEMENTO",
+        8000802
     ],
     "无主的矿灯": [
         "main16_spitem_2",
         "main16_minelamp",
         "无主的矿灯",
-        "NORMAL",
-        10602
+        "MEMENTO",
+        8000802
     ],
     "main16_spitem_3": [
         "main16_spitem_3",
         "main16_reunionflag",
         "涂改的旗帜",
-        "NORMAL",
-        10603
+        "MEMENTO",
+        8000803
     ],
     "涂改的旗帜": [
         "main16_spitem_3",
         "main16_reunionflag",
         "涂改的旗帜",
-        "NORMAL",
-        10603
+        "MEMENTO",
+        8000803
     ],
     "main16_spitem_4": [
         "main16_spitem_4",
         "main16_dud",
         "未爆的哑弹",
-        "NORMAL",
-        10604
+        "MEMENTO",
+        8000804
     ],
     "未爆的哑弹": [
         "main16_spitem_4",
         "main16_dud",
         "未爆的哑弹",
-        "NORMAL",
-        10604
+        "MEMENTO",
+        8000804
     ],
     "main17_spitem_1": [
         "main17_spitem_1",
         "main17_spitem",
         "“AMa-10”",
-        "NORMAL",
-        10605
+        "MEMENTO",
+        8000805
     ],
     "“AMa-10”": [
         "main17_spitem_1",
         "main17_spitem",
         "“AMa-10”",
-        "NORMAL",
-        10605
+        "MEMENTO",
+        8000805
     ],
     "ark_odc_act53side_spitem_1": [
         "ark_odc_act53side_spitem_1",
         "ark_odc_act53side_spitem",
         "温泉度假村体验券",
-        "NORMAL",
-        10606
+        "MEMENTO",
+        8000806
     ],
     "温泉度假村体验券": [
         "ark_odc_act53side_spitem_1",
         "ark_odc_act53side_spitem",
         "温泉度假村体验券",
-        "NORMAL",
-        10606
+        "MEMENTO",
+        8000806
     ]
 }

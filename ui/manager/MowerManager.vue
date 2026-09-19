@@ -7,9 +7,14 @@ import PencilIcon from '@vicons/ionicons5/Pencil'
 import PlayIcon from '@vicons/ionicons5/Play'
 import TrashOutline from '@vicons/ionicons5/TrashOutline'
 
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
+
+import { initializeManager } from './bridge.js'
 
 const loading = ref(true)
+const ready = ref(false)
+const initializationError = ref('')
+const error = ref('')
 
 const instances = ref([])
 
@@ -17,24 +22,36 @@ const editing = ref(-1)
 
 const new_name = ref('')
 
-onMounted(() => {
-  window.addEventListener('pywebviewready', async () => {
-    instances.value = await pywebview.api.get_instances()
+async function initialize() {
+  loading.value = true
+  initializationError.value = ''
+  try {
+    await initializeManager(async (loadedInstances) => {
+      instances.value = loadedInstances
+      ready.value = true
+      loading.value = false
+      await nextTick()
+    })
+  } catch (error) {
+    initializationError.value = error?.message || '无法加载实例列表，请重试'
+  } finally {
     loading.value = false
-  })
-})
+  }
+}
+
+onMounted(initialize)
 
 async function add() {
   instances.value.push({
     name: '新实例',
     path: ''
   })
-  await pywebview.api.add('新实例', '')
+  await window.pywebview.api.add('新实例', '')
 }
 
 async function remove(idx) {
   instances.value.splice(idx, 1)
-  await pywebview.api.remove(idx)
+  await window.pywebview.api.remove(idx)
 }
 
 function edit_name(idx) {
@@ -46,7 +63,7 @@ async function accept_name() {
   const idx = editing.value
   editing.value = -1
   instances.value[idx].name = new_name.value
-  await pywebview.api.rename(idx, new_name.value)
+  await window.pywebview.api.rename(idx, new_name.value)
 }
 
 async function openAll() {
@@ -60,21 +77,34 @@ function drop_name() {
 }
 
 async function select_path(idx) {
-  const response = await pywebview.api.select_path(idx)
-  if (response) {
-    instances.value[idx].path = response
+  try {
+    const response = await window.pywebview.api.select_path(idx)
+    if (response) {
+      instances.value[idx].path = response
+    }
+    error.value = ''
+  } catch (failure) {
+    error.value = failure?.message || '无法选择实例保存目录，请重试'
   }
 }
 
 async function start(idx) {
-  await pywebview.api.start(idx)
+  const result = await window.pywebview.api.start(idx)
+  error.value = result?.ok === false ? result.message : ''
 }
 </script>
 
 <template>
-  <div class="mower-list">
+  <div class="mower-list" :data-manager-ready="ready">
+    <n-alert v-if="initializationError" type="error">
+      {{ initializationError }}
+      <template #action>
+        <n-button @click="initialize">重新加载</n-button>
+      </template>
+    </n-alert>
+    <n-alert v-if="error" type="warning">{{ error }}</n-alert>
     <div class="openheader">
-      <n-button @click="openAll">全部打开</n-button>
+      <n-button :disabled="!ready" @click="openAll">全部打开</n-button>
     </div>
     <template v-if="loading">
       <n-card size="small" v-for="i in 3" :key="i">
@@ -148,7 +178,7 @@ async function start(idx) {
         </n-button>
       </div>
     </n-card>
-    <n-button size="large" dashed v-if="!loading" @click="add">
+    <n-button size="large" dashed v-if="ready" @click="add">
       <template #icon>
         <n-icon>
           <plus-icon />
