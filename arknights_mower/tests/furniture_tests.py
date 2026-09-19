@@ -256,11 +256,13 @@ def test_exit_connection_failure_does_not_restart_scan(monkeypatch, solver):
     solver.tap.assert_not_called()
 
 
-def test_scan_resets_after_reordering_then_scrolls_until_bottom(monkeypatch, solver):
+def test_scan_rereads_visible_page_after_reordering_then_scrolls_until_bottom(
+    monkeypatch, solver
+):
     scans = MagicMock(
         side_effect=[
             [((0.37, 0.21), 1), ((0.75, 0.21), 3)],
-            # 成功后返回列表顶端；剩余重复家具因列表重排而上移。
+            # 成功后停留当前页；剩余重复家具因列表重排而上移。
             [((0.37, 0.21), 2)],
             [((0.37, 0.21), 1)],
             [((0.37, 0.21), 1)],
@@ -286,9 +288,79 @@ def test_scan_resets_after_reordering_then_scrolls_until_bottom(monkeypatch, sol
         call((0.37, 0.21), 2),
         call((0.37, 0.21), 4),
     ]
-    assert runner.open_formula.call_count == 4
+    assert runner.open_formula.call_args_list == [call()] + [call(reset=False)] * 3
     assert solver.swipe_noinertia.call_count == 4
     solver.back_to_infrastructure.assert_called_once()
+
+
+def test_success_on_later_page_does_not_rescan_prefix_or_reuse_old_coordinates(
+    monkeypatch, solver
+):
+    # 第一页是需保留的家具；第二页有超出单次上限的家具和另一件重复家具。
+    pages = [[2], [105, 4], [1]]
+    state = {"page": 0}
+    reads = []
+    selections = []
+    runner = furniture.FurnitureDismantler(solver)
+
+    def open_formula(reset=True):
+        if reset:
+            state["page"] = 0
+
+    def cards(img):
+        page = state["page"]
+        reads.append(page)
+        return [((0.37 + 0.38 * i, 0.21), count) for i, count in enumerate(pages[page])]
+
+    def process(position, count):
+        page = state["page"]
+        selections.append((page, position, count))
+        if page == 0:
+            return False
+        # 可见页每次都从首项处理；旧的第二项坐标在移除首项后已失效。
+        assert position == (0.37, 0.21)
+        assert count == pages[page][0]
+        if count > 100:
+            pages[page][0] = count - 99
+        else:
+            pages[page].pop(0)
+        return True
+
+    runner.open_formula = open_formula
+    runner.process = process
+    monkeypatch.setattr(furniture, "furniture_cards", cards)
+    monkeypatch.setattr(
+        furniture,
+        "list_fingerprint",
+        lambda img: np.full((10, 10), state["page"] * 50, np.uint8),
+    )
+    solver.swipe_noinertia.side_effect = lambda *a, **k: state.update(
+        page=min(state["page"] + 1, len(pages) - 1)
+    )
+    runner.run()
+    assert reads.count(0) == 1
+    assert selections == [
+        (0, (0.37, 0.21), 2),
+        (1, (0.37, 0.21), 105),
+        (1, (0.37, 0.21), 6),
+        (1, (0.37, 0.21), 4),
+    ]
+    assert state["page"] == 2
+    assert solver.swipe_noinertia.call_count == 4
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_open_formula_after_processing_preserves_category_and_scroll(solver):
+    solver.factory_scene.side_effect = [
+        Scene.FACTORY_DASHBOARD,
+        Scene.FACTORY_FORMULA,
+        Scene.FACTORY_FORMULA,
+    ]
+    furniture.FurnitureDismantler(solver).open_formula(reset=False)
+    solver.tap.assert_called_once_with(
+        (furniture.OPEN_FORMULA[0] * 1920, furniture.OPEN_FORMULA[1] * 1080),
+        interval=0.5,
+    )
 
 
 def test_open_formula_from_room_never_arranges_staff(solver):
