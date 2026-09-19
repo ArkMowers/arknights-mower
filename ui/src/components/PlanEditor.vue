@@ -186,6 +186,7 @@ defineExpose({
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
+import { factory_product_options } from '@/utils/base_products'
 
 function fill_with_free() {
   for (let i = 0; i < operator_limit.value; ++i) {
@@ -200,11 +201,7 @@ const trading_products = [
   { label: '合成玉订单', value: 'orundum' }
 ]
 
-const factory_products = [
-  { label: '赤金', value: 'gold' },
-  { label: '中级作战记录', value: 'exp3' },
-  { label: '源石碎片', value: 'orirock' }
-]
+const factory_products = factory_product_options
 
 import { NAvatar } from 'naive-ui'
 
@@ -220,9 +217,10 @@ const render_product = (option) => {
     },
     [
       h(NAvatar, {
-        src: '/product/' + option.value + '.png',
+        src: '/product/' + (option.icon || option.value) + '.png',
         round: true,
-        size: 'small'
+        size: 'small',
+        style: { flexShrink: 0 }
       }),
       option.label
     ]
@@ -574,7 +572,13 @@ function set_facility(e) {
             <span v-else class="type-select">{{ right_side_facility_name }}</span>
           </td>
           <template v-if="['制造站', '贸易站'].includes(current_plan[facility].name)">
-            <td>产物<help-text>切产物功能暂未实装</help-text></td>
+            <td>
+              产物
+              <help-text v-if="current_plan[facility].name == '制造站'">
+                制造站会随排班自动核对并切换产物。
+              </help-text>
+              <help-text v-else> 贸易站会随排班自动核对并切换订单类型。 </help-text>
+            </td>
             <td>
               <n-select
                 v-model:value="current_plan[facility].product"

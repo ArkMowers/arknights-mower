@@ -2,7 +2,14 @@
 const props = defineProps(['data'])
 const emit = defineEmits(['update'])
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, h } from 'vue'
+import { NAvatar } from 'naive-ui'
+import {
+  inventory_expression,
+  inventory_options,
+  inventory_options_with_counts,
+  parse_inventory_expression
+} from '@/utils/trigger_inventory'
 
 const data = ref(props.data)
 
@@ -44,6 +51,13 @@ const op_data = computed(() => {
       type: 'impart'
     }
   }
+  const inventory = parse_inventory_expression(data.value)
+  if (inventory) {
+    return {
+      type: 'inventory',
+      item: inventory
+    }
+  }
   return {
     type: 'custom'
   }
@@ -54,6 +68,8 @@ const op_type = computed(() => {
     return 'custom'
   } else if (op_data.value.type == 'impart') {
     return 'impart'
+  } else if (op_data.value.type == 'inventory') {
+    return 'inventory'
   } else {
     return 'op'
   }
@@ -61,6 +77,7 @@ const op_type = computed(() => {
 
 const type_options = [
   { label: '干员属性', value: 'op' },
+  { label: '仓库资源', value: 'inventory' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '自定义', value: 'custom' }
 ]
@@ -78,13 +95,69 @@ function set_op_type(v) {
     data.value = "op_data.operators['阿米娅'].current_mood()"
   } else if (v == 'impart') {
     data.value = 'op_data.party_time'
+  } else if (v == 'inventory') {
+    data.value = inventory_expression(inventory_options[0].value)
   }
+}
+
+function update_inventory(item) {
+  data.value = inventory_expression(item)
+}
+
+function render_inventory_option(option) {
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        width: '100%',
+        minWidth: 0
+      }
+    },
+    [
+      h(NAvatar, {
+        src: `/depot/${option.icon}.webp`,
+        round: true,
+        size: 'small',
+        objectFit: 'contain'
+      }),
+      h('span', { style: { whiteSpace: 'nowrap' } }, option.name),
+      h(
+        'span',
+        {
+          style: {
+            marginLeft: 'auto',
+            opacity: 0.65,
+            whiteSpace: 'nowrap',
+            fontVariantNumeric: 'tabular-nums'
+          }
+        },
+        `库存 ${option.inventoryText}`
+      )
+    ]
+  )
 }
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
+import { usedepotStore } from '@/stores/depot'
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
+const depot_store = usedepotStore()
+const { inventory, inventoryLoaded, inventoryLoadError } = storeToRefs(depot_store)
+
+const inventory_select_options = computed(() =>
+  inventory_options_with_counts(
+    inventory.value,
+    inventoryLoadError.value ? 'error' : inventoryLoaded.value ? 'loaded' : 'loading'
+  )
+)
+
+onMounted(() => {
+  depot_store.loadInventory().catch(() => {})
+})
 
 function build_data(op, type) {
   const x = `op_data.operators['${op}'].`
@@ -168,4 +241,12 @@ const custom_tips = [
       style="min-width: 120px"
     />
   </template>
+  <n-select
+    v-if="op_type == 'inventory'"
+    :default-value="op_data.item"
+    :options="inventory_select_options"
+    :on-update:value="update_inventory"
+    :render-label="render_inventory_option"
+    style="min-width: 320px"
+  />
 </template>

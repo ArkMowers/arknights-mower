@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
+import { factory_product_ids } from '@/utils/base_products'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
@@ -79,7 +80,7 @@ export const usePlanStore = defineStore('plan', () => {
             full_plan[i].product = 'lmd'
           }
         } else if (full_plan[i].name == '制造站') {
-          if (!['gold', 'exp3', 'orirock'].includes(full_plan[i].product)) {
+          if (!factory_product_ids.includes(full_plan[i].product)) {
             full_plan[i].product = 'gold'
           }
         }

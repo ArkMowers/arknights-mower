@@ -19,6 +19,7 @@ from arknights_mower.utils.operators import Operator
 
 class TaskTypes(Enum):
     RUN_ORDER = ("run_order", "跑单", 1)
+    SWITCH_PRODUCT = ("switch_product", "切换产物/订单", 2)
     FIAMMETTA = ("菲亚梅塔", "肥鸭", 2)
     SHIFT_OFF = ("shifit_off", "下班", 2)
     SHIFT_ON = ("shifit_on", "上班", 2)

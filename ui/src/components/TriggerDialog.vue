@@ -1,12 +1,18 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, watch } from 'vue'
 const show = inject('show_trigger_editor')
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
+import { usedepotStore } from '@/stores/depot'
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
+const depot_store = usedepotStore()
+
+watch(show, (visible) => {
+  if (visible) depot_store.loadInventory(true).catch(() => {})
+})
 
 const triggerTimingOptions = [
   { label: '任务开始', value: 'BEGINNING' },
@@ -25,6 +31,7 @@ function update_trigger(data) {
     v-model:show="show"
     preset="card"
     title="触发条件"
+    :auto-focus="false"
     transform-origin="center"
     style="width: auto; max-width: 90vw"
   >

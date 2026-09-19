@@ -117,6 +117,12 @@ class Scene:
     "加工站干员选择界面"
     CLUE_MESSAGE_BOARD = 229
     "会客室信息板"
+    FACTORY_PRODUCT_SELECT = 230
+    "制造站选择产物"
+    FACTORY_PRODUCT_CHANGE_CONFIRM = 231
+    "制造站切换产物确认"
+    TRADE_STRATEGY_SELECT = 232
+    "贸易站选择订单类型"
     BUSINESS_CARD = 301
     "个人名片"
     FRIEND_LIST = 302
@@ -353,6 +359,9 @@ SceneComment = {
     227: "选择材料界面",
     228: "加工站干员选择界面",
     229: "会客室信息板",
+    230: "制造站选择产物",
+    231: "制造站切换产物确认",
+    232: "贸易站选择订单类型",
     301: "个人名片",
     302: "好友列表",
     303: "基建内访问好友",

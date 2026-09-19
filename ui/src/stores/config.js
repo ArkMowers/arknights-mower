@@ -131,6 +131,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_robot = ref(true)
   const recruit_auto_only5 = ref(true)
   const run_order_grandet_mode = ref({})
+  const product_switching = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
@@ -544,6 +545,12 @@ export const useConfigStore = defineStore('config', () => {
       back_to_index: false,
       ...(response.data.run_order_grandet_mode || {})
     }
+    product_switching.value = {
+      grandet_mode: true,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2,
+      ...(response.data.product_switching || {})
+    }
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
@@ -696,6 +703,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_robot: recruit_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
+      product_switching: product_switching.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
@@ -921,6 +929,7 @@ export const useConfigStore = defineStore('config', () => {
     ai_key,
     skland_info,
     run_order_grandet_mode,
+    product_switching,
     check_mail_enable,
     report_enable,
     recruit_gap,

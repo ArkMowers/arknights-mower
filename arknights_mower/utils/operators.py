@@ -8,7 +8,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
-from ..solvers.record import save_action_to_sqlite_decorator
+from ..solvers.record import get_inventory_counts, save_action_to_sqlite_decorator
 from ..utils.log import logger
 
 # 赤金交易订单干员常量
@@ -22,6 +22,7 @@ def build_global_plan():
     from ..utils.plan import Plan, PlanConfig, Room
 
     plan1 = {}
+    default_products = {}
     plan = config.plan.model_dump(exclude_none=True)
     conf = config.conf
     plan_config = PlanConfig(
@@ -39,6 +40,8 @@ def build_global_plan():
         free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():
+        if product_id := obj.get("product"):
+            default_products[room] = product_id
         plan1[room] = [
             Room(
                 op["agent"],
@@ -50,13 +53,16 @@ def build_global_plan():
             for op in obj["plans"]
         ]
     # 默认任务
-    plan["default_plan"] = Plan(plan1, plan_config)
+    plan["default_plan"] = Plan(plan1, plan_config, products=default_products)
     # 备用自定义任务
     backup_plans: list[Plan] = []
 
     for i in plan["backup_plans"]:
         backup_plan: dict[str, Room] = {}
+        backup_products = {}
         for room, obj in i["plan"].items():
+            if product_id := obj.get("product"):
+                backup_products[room] = product_id
             backup_plan[room] = [
                 Room(
                     op["agent"],
@@ -92,6 +98,7 @@ def build_global_plan():
                 task=backup_task,
                 trigger_timing=backup_trigger_timing,
                 name=i.get("name"),
+                products=backup_products,
             )
         )
     plan["backup_plans"] = backup_plans
@@ -131,7 +138,9 @@ class Operators:
         self.party_time = None
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
-        self.eval_model.nodes.extend(["Call", "Attribute", "Is", "IsNot"])
+        self.eval_model.nodes.extend(
+            ["Call", "Attribute", "Is", "IsNot", "Mult", "FloorDiv", "Pow"]
+        )
         self.eval_model.attributes.extend(
             [
                 "operators",
@@ -140,6 +149,7 @@ class Operators:
                 "is_resting",
                 "current_mood",
                 "current_room",
+                "inventory_count",
             ]
         )
         self.power_plant_count = 0
@@ -150,10 +160,12 @@ class Operators:
 
     def swap_plan(self, condition, refresh=False):
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+        self.products = copy.deepcopy(self.global_plan["default_plan"].products)
         self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
         for index, success in enumerate(condition):
             if success:
                 self.plan, self.config = self.merge_plan(index, self.config, self.plan)
+                self.products.update(self.global_plan["backup_plans"][index].products)
         self.plan_condition = condition
         if refresh:
             self.first_init = True
@@ -421,6 +433,24 @@ class Operators:
         except Exception as e:
             logger.exception(f"附表格式出错: {e}")
             return None
+
+    def inventory_count(self, item_name: str) -> int:
+        """返回副表条件可用的仓库数量。"""
+        if item_name == "全部经验（计算）":
+            experience_values = {
+                "基础作战记录": 200,
+                "初级作战记录": 400,
+                "中级作战记录": 1000,
+                "高级作战记录": 2000,
+            }
+            counts = get_inventory_counts(list(experience_values))
+            return sum(
+                counts.get(name, 0) * value for name, value in experience_values.items()
+            )
+        allowed_items = {"赤金", "源石碎片", "固源岩", "装置", "龙门币"}
+        if item_name not in allowed_items:
+            raise ValueError(f"不支持的副表仓库资源：{item_name}")
+        return get_inventory_counts([item_name]).get(item_name, 0)
 
     def get_current_room(self, room, bypass=False, current_index=None):
         room_data = {

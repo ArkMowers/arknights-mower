@@ -335,6 +335,46 @@ describe('low frame rate adaptation', () => {
   })
 })
 
+describe('factory product switching policy', () => {
+  it('defaults drone loss tolerance to 30 seconds and serializes edits', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    axios.get.mockResolvedValue({
+      data: {
+        free_blacklist: '',
+        reload_room: '',
+        dorm_order: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+    })
+
+    await store.load_config()
+    expect(store.product_switching).toEqual({
+      grandet_mode: true,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2
+    })
+
+    store.product_switching.grandet_mode = false
+    store.product_switching.drone_loss_seconds = 45
+    store.product_switching.waiting_seconds = 4
+    expect(store.build_config().product_switching).toEqual({
+      grandet_mode: false,
+      drone_loss_seconds: 45,
+      waiting_seconds: 4
+    })
+  })
+})
+
 describe('version update mood policy', () => {
   it('defaults to 80% and 12 hours and serializes user edits', () => {
     pinia = createPinia()

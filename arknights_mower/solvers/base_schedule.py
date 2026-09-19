@@ -58,6 +58,15 @@ from arknights_mower.utils.datetime import (
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import maa_template, send_message, task_template
+from arknights_mower.utils.factory_product import (
+    DRONE_SECONDS,
+    FACTORY_PRODUCTS,
+    TRADE_PRODUCTS,
+    current_unit_remaining,
+    drone_plan,
+    parse_product_task_meta,
+    product_task_meta,
+)
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -146,6 +155,12 @@ _COLLECTIBLE_START_KEYS = (
     "ideas",
     "ticket",
 )
+
+
+class ProductSwitchDeferred(Exception):
+    def __init__(self, message: str, minutes: int = 15):
+        super().__init__(message)
+        self.minutes = minutes
 
 
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
@@ -467,6 +482,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         TaskTypes.SKILL_UPGRADE,
                         TaskTypes.SWAP_SUPPORT,
                         TaskTypes.REFRESH_TIME,
+                        TaskTypes.SWITCH_PRODUCT,
                     )
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
@@ -686,6 +702,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.task = None
                 self.skip()
                 return True
+            product_tasks = []
             try:
                 if self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
@@ -715,6 +732,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 先移除再交给通用异常记录，避免下一轮重跑同一任务。
                         self.tasks[:] = [t for t in self.tasks if t is not self.task]
                         raise
+                elif self.task.type == TaskTypes.SWITCH_PRODUCT:
+                    batch_cutoff = datetime.now()
+                    product_tasks = [
+                        task
+                        for task in self.tasks
+                        if task.type == TaskTypes.SWITCH_PRODUCT
+                        and task.time <= batch_cutoff
+                    ]
+                    self.switch_base_products(product_tasks)
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:
@@ -822,6 +848,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.tasks[:] = [t for t in self.tasks if t is not self.task]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
+            except ProductSwitchDeferred as e:
+                retry_time = datetime.now() + timedelta(minutes=e.minutes)
+                for task in product_tasks or [self.task]:
+                    task.time = retry_time
+                logger.warning(f"{e}，同批任务推迟至 {retry_time.strftime('%H:%M:%S')}")
+                self.skip()
             except MowerExit:
                 raise
             except Exception as e:
@@ -2103,7 +2135,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}"
                     )
                     logger.info(f"新条件列表:{con}")
+                    previous_products = copy.deepcopy(self.op_data.products)
                     self.op_data.swap_plan(con, refresh=True)
+                    self.queue_product_switches(previous_products)
                     # 回班时间和岗位依赖生效排班；副表可能改变用尽、回满或组员岗位。
                     # 已生成的宿舍任务不能继续沿用切换前的急救预测。
                     if any(
@@ -2264,7 +2298,43 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def initialize_operators(self):
         self.op_data = Operators(self.global_plan)
         Operators.current_room_changed_callback = self.current_room_changed
-        return self.op_data.init_and_validate()
+        error = self.op_data.init_and_validate()
+        if error is None:
+            self.queue_product_switches()
+        return error
+
+    def queue_product_switches(self, previous_products=None):
+        """为目标产物或订单发生变化的生产站生成幂等任务。"""
+        previous_products = previous_products or {}
+        for room, target_product in self.op_data.products.items():
+            room_plan = self.op_data.plan.get(room) or []
+            if not room_plan:
+                continue
+            facility = room_plan[0].facility
+            supported = (
+                facility == "制造站" and target_product in FACTORY_PRODUCTS
+            ) or (facility == "贸易站" and target_product in TRADE_PRODUCTS)
+            if not supported:
+                continue
+            if previous_products.get(room) == target_product:
+                continue
+            self.tasks[:] = [
+                task
+                for task in self.tasks
+                if not (
+                    task.type == TaskTypes.SWITCH_PRODUCT
+                    and task.meta_data.split(",", 1)[0] == room
+                )
+            ]
+            self.tasks.append(
+                SchedulerTask(
+                    task_type=TaskTypes.SWITCH_PRODUCT,
+                    meta_data=product_task_meta(room, target_product),
+                )
+            )
+            logger.info(
+                f"生成{self.translate_room(room)}切换产物或订单的任务：{target_product}"
+            )
 
     def check_fia(self):
         if "菲亚梅塔" in self.op_data.operators.keys() and self.op_data.operators[
@@ -2878,6 +2948,349 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     return all_in
                 break
         raise RecognizeError(f"无人机加速面板未出现：未识别到 {all_in_res}")
+
+    def _tap_factory_point(self, point, interval=0.5):
+        x, y = point
+        self.tap(
+            (self.recog.w * x // 1920, self.recog.h * y // 1080),
+            interval=interval,
+        )
+
+    def _wait_factory_resource(self, resource, *, present=True, retries=8):
+        for _ in range(retries):
+            found = self.find(resource)
+            if bool(found) == present:
+                return found
+            self.sleep(0.5)
+            self.recog.update()
+        state = "出现" if present else "消失"
+        raise RecognizeError(f"等待 {resource} {state}超时")
+
+    def _factory_ocr_text(self, scope) -> str:
+        if rapidocr.engine is None:
+            rapidocr.initialize_ocr()
+        roi = cropimg(self.recog.img, scope)
+        result = rapidocr.engine(
+            roi,
+            use_det=True,
+            use_cls=False,
+            use_rec=True,
+        )[0]
+        texts = []
+
+        def collect(value):
+            if isinstance(value, str):
+                texts.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    collect(item)
+
+        collect(result)
+        return "".join(texts).replace(" ", "")
+
+    def read_factory_product(self) -> str:
+        product_scope = (
+            (self.recog.w * 1540 // 1920, self.recog.h * 330 // 1080),
+            (self.recog.w * 1835 // 1920, self.recog.h * 430 // 1080),
+        )
+        text = self._factory_ocr_text(product_scope)
+        for product_id in ("gold", "exp3"):
+            product = FACTORY_PRODUCTS[product_id]
+            if product.name in text:
+                logger.info(f"识别到当前制造产物：{product.name}")
+                return product_id
+
+        # 源石碎片标题位于复杂背景上，实机 OCR 可能为空；材料名位于纯色背景，
+        # 同时还能直接区分固源岩和装置配方。
+        material_scope = (
+            (self.recog.w * 430 // 1920, self.recog.h * 330 // 1080),
+            (self.recog.w * 650 // 1920, self.recog.h * 430 // 1080),
+        )
+        material_text = self._factory_ocr_text(material_scope)
+        material_products = {
+            "固源岩": "orirock",
+            "装置": "orirock_device",
+        }
+        for material, product_id in material_products.items():
+            if material in material_text:
+                logger.info(f"识别到当前制造产物：{FACTORY_PRODUCTS[product_id].name}")
+                return product_id
+        if "源石碎片" in text:
+            raise RecognizeError(
+                f"无法识别源石碎片配方：{material_text or 'OCR 无结果'}"
+            )
+        raise RecognizeError(f"无法识别当前制造产物：{text or 'OCR 无结果'}")
+
+    def _confirm_drone_count(self, count: int):
+        """在已打开的加速面板中精确选择无人机数量并确认。"""
+        if count <= 0:
+            return
+        for _ in range(count):
+            self._tap_factory_point((1320, 502), interval=0.1)
+        self._tap_factory_point((1440, 864), interval=0.5)
+        if self.scene() in self.waiting_scene:
+            if not self.waiting_solver():
+                raise RecognizeError("无人机加速确认后界面未恢复")
+
+    def _select_factory_product(self, target_product: str):
+        product = FACTORY_PRODUCTS[target_product]
+        self._tap_factory_point((1680, 500))
+        self._wait_factory_resource("factory_product_select")
+        self._tap_factory_point(product.category)
+        self._tap_factory_point(product.recipe)
+        self._wait_factory_resource("factory_product_change_confirm")
+        self._tap_factory_point((1425, 895))
+        self._wait_factory_resource("factory_product_change_confirm", present=False)
+
+        # 更换配方还会二次确认取消旧制造计划。
+        self._wait_factory_resource("factory_product_cancel_confirm")
+        self._tap_factory_point((1440, 742))
+        self._wait_factory_resource("factory_product_cancel_confirm", present=False)
+
+        # 新配方默认只排一份；补到当前仓库容量允许的最大值。
+        self._tap_factory_point((1450, 305))
+        self._wait_factory_resource("factory_product_change_confirm")
+        self._tap_factory_point((1425, 895))
+        self._wait_factory_resource("factory_product_change_confirm", present=False)
+
+    def _open_factory_product_detail(self, room: str):
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
+        self.enter_room(room)
+        self._tap_factory_point((96, 1026), interval=3)
+        self._wait_factory_resource("factory_accelerate")
+
+    def _read_factory_total_seconds(self) -> int:
+        hours, minutes, seconds = self.digit_reader.识别制造加速总剩余时间(
+            self.recog.gray, self.recog.h, self.recog.w
+        )
+        return hours * 3600 + minutes * 60 + seconds
+
+    def _survey_factory_switch(self, room: str, target_product: str) -> dict:
+        """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
+        self._open_factory_product_detail(room)
+        current_product = self.read_factory_product()
+        observation = {
+            "room": room,
+            "facility": "factory",
+            "target_product": target_product,
+            "current_product": current_product,
+            "needs_switch": current_product != target_product,
+        }
+        if not observation["needs_switch"]:
+            return observation
+
+        observation["available_drones"] = self.digit_reader.get_drone(
+            self.recog.gray, self.recog.h, self.recog.w
+        )
+        self._tap_drone_accelerate("factory_accelerate", "all_in")
+        total_seconds = self._read_factory_total_seconds()
+        self._tap_factory_point((480, 864))
+        unit_seconds = FACTORY_PRODUCTS[current_product].unit_seconds
+        setting = getattr(config.conf, "product_switching", None)
+        max_loss_seconds = (
+            getattr(setting, "drone_loss_seconds", 30)
+            if getattr(setting, "grandet_mode", True)
+            else DRONE_SECONDS
+        )
+        drone_count, wait_seconds = drone_plan(
+            total_seconds, unit_seconds, max_loss_seconds
+        )
+        observation.update(
+            total_seconds=total_seconds,
+            current_remaining=current_unit_remaining(total_seconds, unit_seconds),
+            drone_count=drone_count,
+            wait_seconds=wait_seconds,
+        )
+        logger.info(
+            f"{self.translate_room(room)}计划：使用{drone_count}架无人机，"
+            f"余下至多等待{wait_seconds}秒"
+        )
+        return observation
+
+    def _execute_factory_acceleration(self, observation: dict) -> int:
+        """按快照复核当前份进度，只允许把计划中的无人机数向下修正。"""
+        self._open_factory_product_detail(observation["room"])
+        current_product = self.read_factory_product()
+        if current_product == observation["target_product"]:
+            return 0
+        if current_product != observation["current_product"]:
+            raise RecognizeError(
+                f"{self.translate_room(observation['room'])}产物在规划期间发生变化"
+            )
+
+        available_drones = self.digit_reader.get_drone(
+            self.recog.gray, self.recog.h, self.recog.w
+        )
+        self._tap_drone_accelerate("factory_accelerate", "all_in")
+        current_total = self._read_factory_total_seconds()
+        progressed = max(0, observation["total_seconds"] - current_total)
+        remaining = max(0, observation["current_remaining"] - progressed)
+        setting = getattr(config.conf, "product_switching", None)
+        max_loss_seconds = (
+            getattr(setting, "drone_loss_seconds", 30)
+            if getattr(setting, "grandet_mode", True)
+            else DRONE_SECONDS
+        )
+        unit_seconds = FACTORY_PRODUCTS[current_product].unit_seconds
+        drone_count, wait_seconds = drone_plan(
+            remaining, unit_seconds, max_loss_seconds
+        )
+        drone_count = min(drone_count, observation["drone_count"])
+        if available_drones < drone_count:
+            self._tap_factory_point((480, 864))
+            raise ProductSwitchDeferred(
+                f"无人机不足：需要{drone_count}架，当前{available_drones}架"
+            )
+        if drone_count:
+            self._confirm_drone_count(drone_count)
+        else:
+            self._tap_factory_point((480, 864))
+        logger.info(
+            f"{self.translate_room(observation['room'])}执行计划："
+            f"使用{drone_count}架无人机，余下至多等待{wait_seconds}秒"
+        )
+        return wait_seconds
+
+    def _change_factory_product(self, observation: dict):
+        self._open_factory_product_detail(observation["room"])
+        current_product = self.read_factory_product()
+        if current_product == observation["target_product"]:
+            return
+        self._select_factory_product(observation["target_product"])
+        self.recog.update()
+        final_product = self.read_factory_product()
+        if final_product != observation["target_product"]:
+            raise RecognizeError(
+                f"制造站产物切换校验失败：期望"
+                f"{FACTORY_PRODUCTS[observation['target_product']].name}，"
+                f"实际{FACTORY_PRODUCTS[final_product].name}"
+            )
+
+    def _open_trade_product_detail(self, room: str):
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
+        self.enter_room(room)
+        self._tap_factory_point((96, 1026), interval=3)
+        self._wait_factory_resource("order_label")
+
+    def read_trade_product(self) -> str:
+        lmd_brightness = sum(self.recog.color(778, 800))
+        orundum_brightness = sum(self.recog.color(1140, 800))
+        if abs(lmd_brightness - orundum_brightness) < 120:
+            raise RecognizeError("无法识别当前贸易站订单类型")
+        product_id = "lmd" if lmd_brightness > orundum_brightness else "orundum"
+        logger.info(
+            f"识别到当前贸易站订单类型：{TRADE_PRODUCTS[product_id].strategy_name}"
+        )
+        return product_id
+
+    def _close_trade_product_select(self):
+        # 订单类型点击后立即生效，但选择弹窗不会自行关闭。
+        self._tap_factory_point((1600, 200))
+        self._wait_factory_resource("trade_strategy_select", present=False)
+
+    def _survey_trade_switch(self, room: str, target_product: str) -> dict:
+        self._open_trade_product_detail(room)
+        self._tap_factory_point((1580, 955))
+        self._wait_factory_resource("trade_strategy_select")
+        current_product = self.read_trade_product()
+        self._close_trade_product_select()
+        return {
+            "room": room,
+            "facility": "trade",
+            "target_product": target_product,
+            "current_product": current_product,
+            "needs_switch": current_product != target_product,
+        }
+
+    def _change_trade_product(self, observation: dict):
+        self._open_trade_product_detail(observation["room"])
+        self._tap_factory_point((1580, 955))
+        self._wait_factory_resource("trade_strategy_select")
+        current_product = self.read_trade_product()
+        if current_product == observation["target_product"]:
+            self._close_trade_product_select()
+            return
+        self._tap_factory_point(TRADE_PRODUCTS[observation["target_product"]].option)
+        self._close_trade_product_select()
+        self._tap_factory_point((1580, 955))
+        self._wait_factory_resource("trade_strategy_select")
+        self.recog.update()
+        final_product = self.read_trade_product()
+        self._close_trade_product_select()
+        if final_product != observation["target_product"]:
+            raise RecognizeError(
+                f"贸易站订单切换校验失败：期望"
+                f"{TRADE_PRODUCTS[observation['target_product']].strategy_name}，"
+                f"实际{TRADE_PRODUCTS[final_product].strategy_name}"
+            )
+
+    def switch_base_products(self, tasks: list[SchedulerTask]):
+        """先巡检全部目标站，再统一执行最省无人机的产物与订单计划。"""
+        task_observations = []
+        for task in tasks:
+            room, target_product = parse_product_task_meta(task.meta_data)
+            if target_product in FACTORY_PRODUCTS:
+                observation = self._survey_factory_switch(room, target_product)
+            else:
+                observation = self._survey_trade_switch(room, target_product)
+            task_observations.append((task, observation))
+
+        # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
+        for _, observation in task_observations:
+            if observation["facility"] == "trade" and observation["needs_switch"]:
+                self._change_trade_product(observation)
+        resolved_before_factory = {
+            id(task)
+            for task, observation in task_observations
+            if observation["facility"] == "trade" or not observation["needs_switch"]
+        }
+        self.tasks[:] = [
+            task for task in self.tasks if id(task) not in resolved_before_factory
+        ]
+
+        pending_factory = [
+            observation
+            for _, observation in task_observations
+            if observation["facility"] == "factory" and observation["needs_switch"]
+        ]
+        planned_drones = sum(item["drone_count"] for item in pending_factory)
+        available = min(
+            (item["available_drones"] for item in pending_factory),
+            default=planned_drones,
+        )
+        if available == 201:
+            raise RecognizeError("无人机数量识别异常")
+        logger.info(
+            f"制造站批量切产物计划共需至多{planned_drones}架无人机，"
+            f"当前可用{available}架"
+        )
+        if planned_drones > available:
+            raise ProductSwitchDeferred(
+                f"批量切产物无人机不足：需要{planned_drones}架，当前{available}架"
+            )
+
+        # 余数大的站先处理，把更快自然跨过三分钟边界的站留到后面；
+        # 每站执行前会复核，争取让实际消耗低于快照计划。
+        execution_order = sorted(
+            pending_factory,
+            key=lambda item: (item["wait_seconds"], item["drone_count"]),
+            reverse=True,
+        )
+        waits = [self._execute_factory_acceleration(item) for item in execution_order]
+        if waits:
+            setting = getattr(config.conf, "product_switching", None)
+            if getattr(setting, "grandet_mode", True):
+                wait_seconds = max(waits)
+                buffer_seconds = max(0, getattr(setting, "waiting_seconds", 2))
+                self.sleep(wait_seconds + buffer_seconds)
+                self.recog.update()
+
+        for observation in pending_factory:
+            self._change_factory_product(observation)
+
+        task_ids = {id(task) for task in tasks}
+        self.tasks[:] = [task for task in self.tasks if id(task) not in task_ids]
+        logger.info(f"基建批量切换完成，共处理{len(task_observations)}个生产站")
 
     def drone(
         self,

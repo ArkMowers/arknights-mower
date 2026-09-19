@@ -414,6 +414,14 @@ class RIICPart(ConfModel):
         back_to_index: bool = False
         "跑单前返回基建首页"
 
+    class ProductSwitchingConf(ConfModel):
+        grandet_mode: bool = True
+        "仅使用不会超过损耗容限的无人机，余下时间自然等待"
+        drone_loss_seconds: int = Field(default=30, ge=0, le=180)
+        "允许额外一架无人机浪费的加速秒数"
+        waiting_seconds: int = Field(default=2, ge=0, le=60)
+        "制造站自然完成当前产物后的额外等待秒数"
+
     class WorkShopSetting(ConfModel):
         items: list[WorkShopItem] = []
         "材料列表"
@@ -502,6 +510,11 @@ class RIICPart(ConfModel):
             grandet["buffer_time"] = profile.grandet_buffer_time
             data["run_order_grandet_mode"] = grandet
         return data
+
+    product_switching: ProductSwitchingConf = Field(
+        default_factory=ProductSwitchingConf
+    )
+    "葛朗台切产物与订单"
 
     free_room: bool = False
     "宿舍不养闲人模式"
