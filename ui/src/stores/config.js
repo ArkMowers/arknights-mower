@@ -61,6 +61,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_gap = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
+  const version_update_resting_threshold = ref(80)
+  const version_update_threshold_advance_hours = ref(12)
   const fia_threshold = ref(90)
   const rescue_threshold = ref(75)
   const favorite = ref([])
@@ -476,6 +478,10 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap.value = response.data.maa_gap
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold * 100
+    version_update_resting_threshold.value =
+      (response.data.version_update_resting_threshold ?? 0.8) * 100
+    version_update_threshold_advance_hours.value =
+      response.data.version_update_threshold_advance_hours ?? 12
     fia_threshold.value = response.data.fia_threshold * 100
     rescue_threshold.value = response.data.rescue_threshold * 100
     favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
@@ -609,6 +615,8 @@ export const useConfigStore = defineStore('config', () => {
       simulator: simulator.value,
       ...(runtime_platform.value === 'android' ? {} : { theme: theme.value }),
       resting_threshold: resting_threshold.value / 100,
+      version_update_resting_threshold: version_update_resting_threshold.value / 100,
+      version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,
       favorite: favorite.value.join(','),
@@ -826,6 +834,8 @@ export const useConfigStore = defineStore('config', () => {
     defaultLaunchCommand,
     simulator,
     resting_threshold,
+    version_update_resting_threshold,
+    version_update_threshold_advance_hours,
     fia_threshold,
     rescue_threshold,
     favorite,

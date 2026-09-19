@@ -333,3 +333,25 @@ describe('low frame rate adaptation', () => {
     expect(store.maa_mall_mode).toBe('mower')
   })
 })
+
+describe('version update mood policy', () => {
+  it('defaults to 80% and 12 hours and serializes user edits', () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+
+    expect(store.version_update_resting_threshold).toBe(80)
+    expect(store.version_update_threshold_advance_hours).toBe(12)
+    store.version_update_resting_threshold = 85
+    store.version_update_threshold_advance_hours = 18
+
+    expect(store.build_config()).toMatchObject({
+      version_update_resting_threshold: 0.85,
+      version_update_threshold_advance_hours: 18
+    })
+  })
+})
