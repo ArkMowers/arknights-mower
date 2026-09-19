@@ -1498,6 +1498,64 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertIn("受保护", mock_send.call_args[0][0])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_suppresses_train_correction_when_train_room_locked(self):
+        # 异常二修复：训练室处于锁定状态（训练中/待收取）时跳过训练室纠错，防止无限进退
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        locked_room = mastery_reader.RoomState(
+            "training", mastery_reader.RoomPanel(countdown_state="active")
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(mastery_reader, "reconcile_short"),
+            patch.object(
+                mastery_reader, "read_room_state", return_value=(locked_room, [])
+            ),
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=None
+            ),
+        ):
+            result = solver.agent_get_mood()
+        self.assertIsNone(result)
+        self.assertEqual(solver.tasks, [])
+        self.assertEqual(solver.train_room_state, locked_room)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_freezes_trainee_slot_when_locked_and_following_schedule(
+        self,
+    ):
+        # 训练室锁定但开启协助位跟随：训练位保持 Current，仅协助位纠错
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        locked_room = mastery_reader.RoomState(
+            "training", mastery_reader.RoomPanel(countdown_state="active")
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(base_schedule.config.conf, "assistant_follows_schedule", True),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(mastery_reader, "reconcile_short"),
+            patch.object(
+                mastery_reader, "read_room_state", return_value=(locked_room, [])
+            ),
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=None
+            ),
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task)
+        self.assertIn("train", task.plan)
+        self.assertEqual(task.plan["train"][1], "Current")
+        self.assertEqual(task.plan["train"][0], "褐果")
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_train_mastery_active_signals(self):
         # #207 守卫·专精活跃信号：enable_mastery 门 + DB active + 队列 SKILL_UPGRADE/SWAP_SUPPORT。
         import arknights_mower.utils.scheduler_task as st

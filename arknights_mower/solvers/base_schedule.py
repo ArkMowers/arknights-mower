@@ -195,9 +195,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.global_plan = {}
         self.local_operation_followup_time = None
         self.restart_after_mood_read = False
-        # 无运行缓存启动时，current_room 为空仅表示“尚未读取”，不能据此触发
-        # is_working() == False 一类副表条件。首次心情/房间扫描完成后再解除。
-        self.defer_backup_plan_until_mood_read = False
+        self.train_room_state = None
 
     def find_next_task(
         self,
@@ -999,6 +997,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 room_state, mood_data = read_room_state(
                                     self, enter=False, want_mood=True
                                 )
+                                self.train_room_state = room_state
                                 mood_info = [
                                     f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                     for item in mood_data
@@ -1090,12 +1089,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     fix_plan[key][idx] = plan[key][idx].agent
         # 最后如果有任何高效组心情没有记录 或者高效组在宿舍
         # 宿舍绑组成员由组状态纠错处理；下班期间离开固定位置是正常状态。
+        train_room_state = getattr(self, "train_room_state", None)
+        train_blocked = (
+            getattr(train_room_state, "state", None) in ("training", "waiting_collect")
+            or getattr(train_room_state, "locked", None) is True
+            or getattr(train_room_state, "protected", None) is True
+        )
         miss_list = {
             k: v
             for k, v in self.op_data.operators.items()
             if v.not_valid()
             and not (v.group and v.room.startswith("dorm"))
             and not self.op_data.is_group_standby(k)
+            and not (
+                train_blocked
+                and v.room == "train"
+                and not (config.conf.assistant_follows_schedule and v.index == 0)
+            )
         }
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
@@ -1288,6 +1298,29 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             fix_plan.pop("train")
             logger.debug("训练室受保护，跳过训练室纠错")
             self._notify_train_correction_skipped()
+            return
+        train_room_state = getattr(self, "train_room_state", None)
+        train_locked = (
+            getattr(train_room_state, "state", None) in ("training", "waiting_collect")
+            or getattr(train_room_state, "locked", None) is True
+        )
+        train_protected = getattr(train_room_state, "protected", None) is True
+        if train_protected:
+            fix_plan.pop("train")
+            logger.debug("训练室受保护，跳过训练室纠错")
+            self._notify_train_correction_skipped()
+            return
+        if train_locked:
+            if not config.conf.assistant_follows_schedule:
+                fix_plan.pop("train")
+                logger.debug("训练室处于锁定状态且未开启协助位跟随，跳过训练室纠错")
+                return
+            if len(fix_plan["train"]) > 1:
+                fix_plan["train"][1] = "Current"
+            if all(slot == "Current" for slot in fix_plan["train"]):
+                fix_plan.pop("train")
+                logger.debug("训练室处于锁定状态且无协助位变更，跳过训练室纠错")
+                return
 
     def _notify_train_correction_skipped(self) -> None:
         """训练室受保护导致纠错跳过 → 发节流提醒邮件（⑤ protected，key=协助位:训练位）。
@@ -4131,6 +4164,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         except Exception as e:
                             logger.warning(f"训练室状态读取失败: {e}")
                             room_state = None
+                        self.train_room_state = room_state
                         if room_state is not None and config.conf.enable_mastery:
                             # #61 短动作排班路径内联：顺路核实/帮收/重置/更新状态，并据截图
                             # 修正 DB（空闲×DB active 冲突 → 重置 idle，以截图为准）。不
@@ -4163,6 +4197,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                         room_state = read_room_state(self, enter=False)
                                     except Exception:
                                         room_state = None
+                                self.train_room_state = room_state
                         # §16.5 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
                         # 保护训练室）或读失败（room_state=None）都算「不能排班」→ 冻结/
                         # 跳过（#211：读失败保守不碰训练位，替代已删除的 train_slot_locked）。
@@ -4171,6 +4206,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             or room_state.locked
                             or room_state.protected
                         ):
+                            self.train_room_state = room_state
                             if config.conf.assistant_follows_schedule:
                                 if len(plan[room]) > 1:
                                     plan[room][1] = "Current"
