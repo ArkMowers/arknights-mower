@@ -867,7 +867,9 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                     trainer_slot = room.train_slot
                 else:
                     trainer_slot = _training_slots(solver)[1]
-                    solver.back()  # 关闭 _training_slots 打开的房间详情浮层
+                    _close_room_detail(
+                        solver
+                    )  # 关闭 _training_slots 打开的房间详情浮层
                 char_name = _plan_char_label(plan)
                 if trainer_slot and trainer_slot != char_name:
                     # 走到这里只剩「倒计时没读出来 + 训练位上坐着别人」：倒计时读得出
