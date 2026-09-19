@@ -91,6 +91,37 @@ def test_edit_when_idle_updates_runtime_and_cannot_be_replaced_by_old_tab(next_s
     assert config.conf.drone_interval == 9
 
 
+def test_version_update_policy_change_wakes_running_scheduler(next_skill):
+    from arknights_mower import __main__ as mower_main
+
+    req = payload()
+    req["version_update_resting_threshold"] = 0.85
+    req["version_update_threshold_advance_hours"] = 18
+    config.wake_scheduler.clear()
+    mower_main.base_scheduler = MagicMock()
+
+    try:
+        state.save_user_config(req)
+
+        assert config.wake_scheduler.is_set()
+    finally:
+        mower_main.base_scheduler = None
+        config.wake_scheduler.clear()
+
+
+def test_version_update_policy_change_does_not_wake_stopped_mower(next_skill):
+    from arknights_mower import __main__ as mower_main
+
+    req = payload()
+    req["version_update_resting_threshold"] = 0.85
+    config.wake_scheduler.clear()
+    mower_main.base_scheduler = None
+
+    state.save_user_config(req)
+
+    assert not config.wake_scheduler.is_set()
+
+
 def test_edit_during_restore_uses_manual_revision_not_runtime_generation(next_skill):
     config.conf.workshop_settings = [manual_setting()]
     auto.update_workshop_config()

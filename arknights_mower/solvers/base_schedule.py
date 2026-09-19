@@ -5823,7 +5823,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 f"仓库扫描: 已为 {dispatched} 个材料足够的空闲专精计划安排开始训练"
             )
 
-    def _idle_sleep(self, remaining_time):
+    def _idle_sleep(self, remaining_time, allow_wakeup=True):
         """任务之间真正的休眠——全工程里唯一维护 `sleeping` 状态的地方。
 
         所有「等到下一个任务」的等待都必须经过这里，这样 /status 读到的
@@ -5832,14 +5832,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         #141：web 一键专精派发 now 任务后设 `config.wake_scheduler` 事件打断休眠，
         让调度器下一轮立即执行新任务（不依赖 csleep——csleep 全工程共用，不能全局
         加唤醒检查）。轮询每 ~1s，保持 csleep 的停止检查粒度；结束时照常 recog.update
-        刷新场景缓存（原 self.sleep 结尾行为）。
+        刷新场景缓存（原 self.sleep 结尾行为）。维护等待传 allow_wakeup=False，避免普通
+        配置唤醒导致维护期间提前执行任务；停止信号仍由 csleep 正常响应。
         """
         self.sleeping = True
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
             while datetime.now() < end_time:
                 refresh_resource_at_boundary()
-                if config.wake_scheduler.is_set():
+                if allow_wakeup and config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
                     break
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))

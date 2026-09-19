@@ -25,6 +25,8 @@ const {
   simulator,
   theme,
   resting_threshold,
+  version_update_resting_threshold,
+  version_update_threshold_advance_hours,
   fia_threshold,
   rescue_threshold,
   favorite,
@@ -690,6 +692,46 @@ if (return_home_when_idle.value) {
                   <template #suffix>%</template>
                 </mower-input-number>
               </div>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>版本维护心情阈值</span>
+                <help-text>
+                  <div>检测到需要更新客户端的大版本维护后，在维护前指定时长内临时使用此阈值</div>
+                  <div>只修改运行中的排班阈值，不覆盖上方的日常心情阈值</div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider
+                  v-model:value="version_update_resting_threshold"
+                  :step="5"
+                  :min="50"
+                  :max="100"
+                  :format-tooltip="(v) => `${v}%`"
+                />
+                <mower-input-number
+                  v-model:value="version_update_resting_threshold"
+                  :step="5"
+                  :min="50"
+                  :max="100"
+                >
+                  <template #suffix>%</template>
+                </mower-input-number>
+              </div>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>版本维护阈值提前时长</span>
+                <help-text>维护开始前多久切换到版本维护心情阈值</help-text>
+              </template>
+              <mower-input-number
+                v-model:value="version_update_threshold_advance_hours"
+                :step="1"
+                :min="0"
+                :max="168"
+              >
+                <template #suffix>小时</template>
+              </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="free_room">

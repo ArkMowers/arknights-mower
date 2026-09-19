@@ -127,6 +127,17 @@ def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
     assert all(task is not scheduler.shift for task in scheduler.solver.tasks)
 
 
+def test_maintenance_sleep_ignores_regular_scheduler_wakeup(scheduler):
+    started_at = scheduler.clock.now()
+    scheduler.wake.set()
+
+    scheduler.solver._idle_sleep(2, allow_wakeup=False)
+
+    assert scheduler.clock.now() == started_at + timedelta(seconds=2)
+    assert scheduler.wake.is_set()
+    assert not scheduler.solver.sleeping
+
+
 @pytest.mark.parametrize("wake_only", [False, True])
 def test_original_shift_waits_until_due_without_new_work(scheduler, wake_only):
     if wake_only:

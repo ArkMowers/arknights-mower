@@ -439,6 +439,10 @@ class RIICPart(ConfModel):
     "跑单前置延时"
     resting_threshold: float = 0.65
     "心情阈值"
+    version_update_resting_threshold: float = Field(default=0.8, ge=0, le=1)
+    "版本维护心情阈值"
+    version_update_threshold_advance_hours: float = Field(default=12, ge=0, le=168)
+    "版本维护心情阈值提前启用时长（小时）"
     run_order_grandet_mode: RunOrderGrandetModeConf = Field(
         default_factory=RunOrderGrandetModeConf
     )

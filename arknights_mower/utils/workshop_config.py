@@ -151,8 +151,20 @@ def _merge_model_fields(model, updates):
     return data
 
 
+def _wake_scheduler_if_running():
+    # Import lazily to avoid making configuration loading depend on the runtime.
+    from arknights_mower.__main__ import base_scheduler
+
+    if base_scheduler is not None:
+        config.wake_scheduler.set()
+
+
 def save_user_config(req):
     with workshop_lock:
+        previous_maintenance_policy = (
+            config.conf.version_update_resting_threshold,
+            config.conf.version_update_threshold_advance_hours,
+        )
         state = config.conf.model_copy(deep=True)
         warning = initialize_manual_settings(state)
         conflict = _edit_manual(state, req)
@@ -168,6 +180,12 @@ def save_user_config(req):
         if not conf.enable_mastery:
             restore_manual_settings(conf)
         save_conf(conf)
+        if previous_maintenance_policy != (
+            conf.version_update_resting_threshold,
+            conf.version_update_threshold_advance_hours,
+        ):
+            # Let a sleeping running scheduler re-evaluate and hot-apply the policy.
+            _wake_scheduler_if_running()
         if conf.workshop_preset_migrated:
             warning = ""
         return {**workshop_state(conf, warning), "workshop_manual_conflict": conflict}
