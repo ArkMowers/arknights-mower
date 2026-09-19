@@ -358,7 +358,7 @@ class FurnitureDismantler:
             self.check_deadline()
             scene = solver.factory_scene()
             if scene == Scene.FACTORY_FORMULA:
-                # 切换分类重置列表位置，兼容分解后列表自动重排或移除条目。
+                # 仅进入任务时切换分类；分解后保留当前位置，由 scan 重读可见页。
                 if reset:
                     self.tap(*FORMULA_TABS["芯片"])
                     self.tap(*FORMULA_TABS["家具"])
@@ -485,13 +485,14 @@ class FurnitureDismantler:
                 if count <= 1:
                     continue
                 completed = self.process(position, count)
-                # 跳过的家具没有消耗，保持当前列表位置继续下一项。
-                self.open_formula(reset=completed)
+                # 成功或跳过都保留当前位置，避免每加工一件就回到顶部重扫。
+                self.open_formula(reset=False)
                 if not completed:
                     self.wait_list_position(page)
                 if completed:
                     processed += 1
                     logger.info(f"已完成第{processed}批重复家具分解")
+                    # 库存、卡片顺序可能变化：丢弃旧坐标，稳定后重读当前可见页。
                     break
             if completed:
                 bottom_checks = 0
