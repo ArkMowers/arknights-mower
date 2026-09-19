@@ -128,16 +128,29 @@ def _parse_panel_text(text):
 
     OCR 常在括号前带噪声（前置引号/残缺字符/零宽字符），旧逻辑要求 `[` 恰为首字符，
     噪声一前置就把整串 `[干员]技能` 当纯技能名返回 → 干员名被误判不可读 → 状态矩阵走
-    ocr_fail → 5 次重读仍不一致 → 保守训练中。改为「找第一个 `[`」：括号前的噪声丢弃，
+    ocr_fail → 5 次重读仍不一致 → 保守训练中。改为「找第一个左括号」：括号前的噪声丢弃，
     括号内容作干员名、其后作技能名——信息 OCR 其实已读到，不因噪声丢失。
-    无 `[` 仍视为纯技能名（保持原语义）。
+    同时兼容全角括号（【】、［］）及混合括号（如 `[干员】`）。
+    无括号仍视为纯技能名（保持原语义）。
     """
     if not text:
         return "", ""
     t = str(text).strip()
-    start = t.find("[")
+    left_brackets = ("[", "【", "［")
+    right_brackets = ("]", "】", "］")
+
+    start = -1
+    for i, ch in enumerate(t):
+        if ch in left_brackets:
+            start = i
+            break
+
     if start != -1:
-        end = t.find("]", start)
+        end = -1
+        for i in range(start + 1, len(t)):
+            if t[i] in right_brackets:
+                end = i
+                break
         if end != -1:
             name = t[start + 1 : end].strip()
             rest = t[end + 1 :].strip()

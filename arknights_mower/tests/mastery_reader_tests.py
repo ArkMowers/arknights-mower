@@ -195,6 +195,20 @@ class TestPanelParse(unittest.TestCase):
             reader._parse_panel_text("[珊比]“慢慢走~”"), ("珊比", "“慢慢走~”")
         )
 
+    def test_parse_fullwidth_and_mixed_brackets(self):
+        # 全角括号【】、［］以及半角/全角混用（如实机出现的 [泡泡】“挨打”）
+        self.assertEqual(
+            reader._parse_panel_text("【能天使】扫射模式"), ("能天使", "扫射模式")
+        )
+        self.assertEqual(
+            reader._parse_panel_text("［能天使］扫射模式"), ("能天使", "扫射模式")
+        )
+        self.assertEqual(reader._parse_panel_text("[泡泡】“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("【泡泡]“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(
+            reader._parse_panel_text("“【泡泡】“挨打”"), ("泡泡", "“挨打”")
+        )
+
 
 class TestCountLitMainPanelIcons(unittest.TestCase):
     """主面板专精图标逐框判亮（MASTERY_ICON_PIPS）。"""
