@@ -263,7 +263,7 @@ jobs:
             arknights_mower/tests/workshop_inflight_tests.py
 
   android-compatibility:
-    name: Android update compatibility (ARM64)
+    name: Update compatibility (Android-arm64)
     needs: changes
     # Android embeds Linux ARM64 CPython; this checks the host contract, not an APK.
     # All four update compatibility jobs share the same trigger scope.
