@@ -3021,6 +3021,43 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         raise RecognizeError(f"无法识别当前制造产物：{text or 'OCR 无结果'}")
 
+    def _cache_facility_state(self, room: str, facility: str, product: str) -> None:
+        op_data = getattr(self, "op_data", None)
+        if op_data is not None:
+            op_data.update_facility_state(room, facility, product)
+
+    def refresh_facility_state(self, room: str) -> None:
+        """进入房间读取心情时，顺带刷新生产设施的实际产物或订单。"""
+        room_plan = self.op_data.plan.get(room) or []
+        if not room_plan:
+            return
+        facility_name = getattr(room_plan[0], "facility", "")
+        if facility_name not in ("制造站", "贸易站"):
+            return
+
+        try:
+            self._tap_factory_point((96, 1026), interval=3)
+            if facility_name == "制造站":
+                self._wait_factory_resource("factory_accelerate")
+                product = self.read_factory_product()
+                facility = "factory"
+                label = FACTORY_PRODUCTS[product].name
+            else:
+                self._wait_factory_resource("order_label")
+                self._tap_factory_point((1580, 955))
+                self._wait_factory_resource("trade_strategy_select")
+                product = self.read_trade_product()
+                facility = "trade"
+                label = TRADE_PRODUCTS[product].strategy_name
+                self._close_trade_product_select()
+            self._cache_facility_state(room, facility, product)
+            logger.info(f"已刷新{self.translate_room(room)}设施状态：{label}")
+        except MowerExit:
+            raise
+        except Exception as e:
+            logger.warning(f"刷新{self.translate_room(room)}设施状态失败：{e}")
+        self.scene_graph_navigation(Scene.INFRA_DETAILS)
+
     def _confirm_drone_count(self, count: int):
         """在已打开的加速面板中精确选择无人机数量并确认。"""
         if count <= 0:
@@ -3069,6 +3106,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
         self._open_factory_product_detail(room)
         current_product = self.read_factory_product()
+        self._cache_facility_state(room, "factory", current_product)
         observation = {
             "room": room,
             "facility": "factory",
@@ -3154,11 +3192,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def _change_factory_product(self, observation: dict):
         self._open_factory_product_detail(observation["room"])
         current_product = self.read_factory_product()
+        self._cache_facility_state(observation["room"], "factory", current_product)
         if current_product == observation["target_product"]:
             return
         self._select_factory_product(observation["target_product"])
         self.recog.update()
         final_product = self.read_factory_product()
+        self._cache_facility_state(observation["room"], "factory", final_product)
         if final_product != observation["target_product"]:
             raise RecognizeError(
                 f"制造站产物切换校验失败：期望"
@@ -3193,6 +3233,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self._tap_factory_point((1580, 955))
         self._wait_factory_resource("trade_strategy_select")
         current_product = self.read_trade_product()
+        self._cache_facility_state(room, "trade", current_product)
         self._close_trade_product_select()
         return {
             "room": room,
@@ -3207,6 +3248,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self._tap_factory_point((1580, 955))
         self._wait_factory_resource("trade_strategy_select")
         current_product = self.read_trade_product()
+        self._cache_facility_state(observation["room"], "trade", current_product)
         if current_product == observation["target_product"]:
             self._close_trade_product_select()
             return
@@ -3216,6 +3258,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self._wait_factory_resource("trade_strategy_select")
         self.recog.update()
         final_product = self.read_trade_product()
+        self._cache_facility_state(observation["room"], "trade", final_product)
         self._close_trade_product_select()
         if final_product != observation["target_product"]:
             raise RecognizeError(
@@ -4230,6 +4273,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f"当前拥有线索数量为{self.clue_count}")
+        self.refresh_facility_state(room)
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):

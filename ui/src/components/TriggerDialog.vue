@@ -5,13 +5,18 @@ const show = inject('show_trigger_editor')
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
+import { useFacilityStore } from '@/stores/facility'
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
 const depot_store = usedepotStore()
+const facility_store = useFacilityStore()
 
 watch(show, (visible) => {
-  if (visible) depot_store.loadInventory(true).catch(() => {})
+  if (visible) {
+    depot_store.loadInventory(true).catch(() => {})
+    facility_store.load(true).catch(() => {})
+  }
 })
 
 const triggerTimingOptions = [

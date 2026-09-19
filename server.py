@@ -782,6 +782,21 @@ def operator_list():
     return agent_list
 
 
+@app.route("/facility-state")
+def facility_state():
+    """返回运行中或最近一次运行缓存里的生产设施状态。"""
+    states = {}
+    if mower_thread and mower_thread.is_alive():
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and base_scheduler.op_data:
+            states = base_scheduler.op_data.facility_states
+    if not states:
+        saved = load_state() or {}
+        states = saved.get("facility_states", {})
+    return {room: dict(state) for room, state in states.items()}
+
+
 @app.route("/shop")
 def shop_list():
     from arknights_mower.data import shop_items

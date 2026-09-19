@@ -1,3 +1,5 @@
+import { swap } from '@/utils/common'
+
 // 排班表里的干员名单 conf 字段（主表 conf 与副表 conf 同构；ling_xi 是枚举不是名单）
 export const OPERATOR_CONF_FIELDS = [
   'rest_in_full',
@@ -49,6 +51,21 @@ function updateTrigger(trigger, source, target) {
         updateTrigger(trigger[key], source, target)
       }
     }
+  }
+}
+
+function swapPlanFacilities(mainPlan, backupPlans, activePlan, source, target) {
+  if (activePlan === 'main') {
+    swap(source, target, mainPlan)
+  } else {
+    swap(source, target, backupPlans[activePlan].plan)
+  }
+
+  if (activePlan !== 'main') swap(source, target, mainPlan)
+  for (const [index, backup] of backupPlans.entries()) {
+    if (String(index) !== String(activePlan)) swap(source, target, backup.plan)
+    swapTask(backup.task, source, target)
+    updateTrigger(backup.trigger, source, target)
   }
 }
 
@@ -154,4 +171,4 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
   return [...seen]
 }
 
-export { swapSubstrings, swapTask, updateTrigger }
+export { swapPlanFacilities, swapSubstrings, swapTask, updateTrigger }

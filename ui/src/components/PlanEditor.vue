@@ -2,8 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { swap } from '@/utils/common'
-import { swapTask, updateTrigger } from '@/utils/plan_edit'
+import { swapPlanFacilities } from '@/utils/plan_edit'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -151,27 +150,7 @@ function drag_facility(room, event) {
 function drop_facility(target, event) {
   const source = event.dataTransfer.getData('text/plain')
 
-  // 1. 更新当前 current_plan 表
-  swap(source, target, current_plan.value)
-
-  // 2. 更新所有副表和主表（除当前表以外）
-  const allPlans = ['main', ...backup_plans.value]
-
-  allPlans.forEach((item, index) => {
-    if ((sub_plan.value === 'main' && item === 'main') || sub_plan.value + 1 === index) {
-      return
-    }
-    // 执行更新操作
-    if (item !== 'main') {
-      swap(source, target, item.plan)
-      // 副表才需要更新trigger 和 task
-      swapTask(item.task, source, target)
-      updateTrigger(item.trigger, source, target)
-    } else {
-      // plan 是主表
-      swap(source, target, plan.value)
-    }
-  })
+  swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
 
   event.preventDefault()
 }

@@ -143,6 +143,7 @@ def current_state():
         "tasks": base_scheduler.tasks,
         "party_time": base_scheduler.op_data.party_time,
         "operators": base_scheduler.op_data.operators,
+        "facility_states": getattr(base_scheduler.op_data, "facility_states", {}),
         "daily_visit_friend": base_scheduler.daily_visit_friend,
         "daily_report": base_scheduler.daily_report,
         "daily_skland": base_scheduler.daily_skland,

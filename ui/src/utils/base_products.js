@@ -6,3 +6,14 @@ export const factory_product_options = [
 ]
 
 export const factory_product_ids = factory_product_options.map(({ value }) => value)
+
+export const trade_product_options = [
+  { label: '龙门商法', value: 'lmd' },
+  { label: '开采协力', value: 'orundum' }
+]
+
+export const facility_product_options = [...factory_product_options, ...trade_product_options]
+
+export const facility_product_labels = Object.fromEntries(
+  facility_product_options.map(({ label, value }) => [value, label])
+)

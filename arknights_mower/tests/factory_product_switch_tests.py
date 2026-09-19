@@ -403,6 +403,92 @@ def test_inventory_count_can_be_used_in_backup_expression(monkeypatch):
     assert operators.evaluate_expression("op_data.inventory_count('固源岩') >= 60")
 
 
+def test_facility_state_is_cached_and_available_to_backup_expression():
+    room, plan = product_plan()
+    operators = Operators(plan)
+
+    operators.update_facility_state(
+        room, "factory", "exp3", updated_at="2026-09-20T12:00:00"
+    )
+
+    assert operators.facility_states[room] == {
+        "facility": "factory",
+        "product": "exp3",
+        "updated_at": "2026-09-20T12:00:00",
+    }
+    assert operators.facility_product(room) == "exp3"
+    assert operators.evaluate_expression("op_data.facility_product('room_1_2') == exp3")
+
+
+def test_facility_state_can_hold_inventory_backup_until_lower_threshold(monkeypatch):
+    room, plan = product_plan()
+    inventory = {"赤金": 6_000}
+    monkeypatch.setattr(
+        base.Operators.__module__ + ".get_inventory_counts",
+        lambda names=None: {name: inventory.get(name, 0) for name in names},
+    )
+    operators = Operators(plan)
+    operators.update_facility_state(room, "factory", "exp3")
+    expression = (
+        "op_data.inventory_count('赤金') >= 7000 or "
+        "(op_data.inventory_count('赤金') > 200 and "
+        "op_data.facility_product('room_1_2') == exp3)"
+    )
+
+    assert operators.evaluate_expression(expression)
+    inventory["赤金"] = 200
+    assert not operators.evaluate_expression(expression)
+
+
+def test_mood_room_visit_refreshes_factory_state_before_operator_detail():
+    room, plan = product_plan()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver._tap_factory_point = MagicMock()
+    solver._wait_factory_resource = MagicMock()
+    solver.read_factory_product = MagicMock(return_value="gold")
+    solver.scene_graph_navigation = MagicMock()
+    solver.translate_room = MagicMock(return_value="B102")
+
+    solver.refresh_facility_state(room)
+
+    assert solver.op_data.facility_product(room) == "gold"
+    solver._tap_factory_point.assert_called_once_with((96, 1026), interval=3)
+    solver._wait_factory_resource.assert_called_once_with("factory_accelerate")
+    solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
+
+
+def test_mood_room_visit_refreshes_trade_order_state():
+    room = "room_1_1"
+    conf = PlanConfig("", "", "")
+    plan = {
+        "default_plan": Plan(
+            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
+            conf,
+            products={room: "lmd"},
+        ),
+        "backup_plans": [],
+    }
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver._tap_factory_point = MagicMock()
+    solver._wait_factory_resource = MagicMock()
+    solver.read_trade_product = MagicMock(return_value="orundum")
+    solver._close_trade_product_select = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+    solver.translate_room = MagicMock(return_value="B101")
+
+    solver.refresh_facility_state(room)
+
+    assert solver.op_data.facility_product(room) == "orundum"
+    assert [call.args for call in solver._tap_factory_point.call_args_list] == [
+        ((96, 1026),),
+        ((1580, 955),),
+    ]
+    solver._close_trade_product_select.assert_called_once()
+    solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
+
+
 @pytest.mark.parametrize(
     ("expression", "expected"),
     [

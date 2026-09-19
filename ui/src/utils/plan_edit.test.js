@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   apply_operator_replace,
   collect_plan_operators,
+  swapPlanFacilities,
   swapSubstrings,
   swapTask,
   updateTrigger
@@ -166,5 +167,39 @@ describe('复用自 PlanEditor 的换位工具', () => {
     updateTrigger(trigger, '能天使', '德克萨斯')
     expect(trigger.left).toBe('德克萨斯')
     expect(trigger.right.right).toBe('德克萨斯')
+  })
+
+  it('交换设施时同步交换当前副表及其他副表的条件位置', () => {
+    const main = { room_1_1: { name: 'A' }, room_1_2: { name: 'B' } }
+    const backups = [
+      {
+        plan: { room_1_1: { name: 'A0' }, room_1_2: { name: 'B0' } },
+        task: { room_1_1: ['甲'] },
+        trigger: {
+          left: "op_data.facility_product('room_1_1')",
+          operator: '==',
+          right: 'gold'
+        }
+      },
+      {
+        plan: { room_1_1: { name: 'A1' }, room_1_2: { name: 'B1' } },
+        task: { room_1_2: ['乙'] },
+        trigger: {
+          left: "op_data.facility_product('room_1_2')",
+          operator: '==',
+          right: 'exp3'
+        }
+      }
+    ]
+
+    swapPlanFacilities(main, backups, 0, 'room_1_1', 'room_1_2')
+
+    expect(main.room_1_1.name).toBe('B')
+    expect(backups[0].plan.room_1_1.name).toBe('B0')
+    expect(backups[0].task).toEqual({ room_1_2: ['甲'] })
+    expect(backups[0].trigger.left).toContain("'room_1_2'")
+    expect(backups[1].plan.room_1_1.name).toBe('B1')
+    expect(backups[1].task).toEqual({ room_1_1: ['乙'] })
+    expect(backups[1].trigger.left).toContain("'room_1_1'")
   })
 })

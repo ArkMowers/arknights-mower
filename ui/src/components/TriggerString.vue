@@ -10,6 +10,12 @@ import {
   inventory_options_with_counts,
   parse_inventory_expression
 } from '@/utils/trigger_inventory'
+import {
+  facility_expression,
+  parse_facility_expression,
+  parse_facility_product
+} from '@/utils/trigger_facility'
+import { facility_product_labels, facility_product_options } from '@/utils/base_products'
 
 const data = ref(props.data)
 
@@ -58,6 +64,20 @@ const op_data = computed(() => {
       item: inventory
     }
   }
+  const facility = parse_facility_expression(data.value)
+  if (facility) {
+    return {
+      type: 'facility',
+      room: facility
+    }
+  }
+  const facilityProduct = parse_facility_product(data.value)
+  if (facilityProduct) {
+    return {
+      type: 'facility_product',
+      product: facilityProduct
+    }
+  }
   return {
     type: 'custom'
   }
@@ -70,6 +90,10 @@ const op_type = computed(() => {
     return 'impart'
   } else if (op_data.value.type == 'inventory') {
     return 'inventory'
+  } else if (op_data.value.type == 'facility') {
+    return 'facility'
+  } else if (op_data.value.type == 'facility_product') {
+    return 'facility_product'
   } else {
     return 'op'
   }
@@ -78,6 +102,8 @@ const op_type = computed(() => {
 const type_options = [
   { label: '干员属性', value: 'op' },
   { label: '仓库资源', value: 'inventory' },
+  { label: '设施状态', value: 'facility' },
+  { label: '产物或订单', value: 'facility_product' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '自定义', value: 'custom' }
 ]
@@ -97,11 +123,23 @@ function set_op_type(v) {
     data.value = 'op_data.party_time'
   } else if (v == 'inventory') {
     data.value = inventory_expression(inventory_options[0].value)
+  } else if (v == 'facility') {
+    data.value = facility_expression(facility_select_options.value[0]?.value || 'room_1_1')
+  } else if (v == 'facility_product') {
+    data.value = facility_product_options[0].value
   }
 }
 
 function update_inventory(item) {
   data.value = inventory_expression(item)
+}
+
+function update_facility(room) {
+  data.value = facility_expression(room)
+}
+
+function update_facility_product(product) {
+  data.value = product
 }
 
 function render_inventory_option(option) {
@@ -143,10 +181,18 @@ function render_inventory_option(option) {
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
+import { useFacilityStore } from '@/stores/facility'
 const plan_store = usePlanStore()
-const { operators } = storeToRefs(plan_store)
+const { operators, plan } = storeToRefs(plan_store)
+const { left_side_facility } = plan_store
 const depot_store = usedepotStore()
 const { inventory, inventoryLoaded, inventoryLoadError } = storeToRefs(depot_store)
+const facility_store = useFacilityStore()
+const {
+  states: facility_states,
+  loaded: facilityLoaded,
+  loadError: facilityLoadError
+} = storeToRefs(facility_store)
 
 const inventory_select_options = computed(() =>
   inventory_options_with_counts(
@@ -155,8 +201,23 @@ const inventory_select_options = computed(() =>
   )
 )
 
+const facility_select_options = computed(() =>
+  left_side_facility
+    .filter(({ value }) => ['制造站', '贸易站'].includes(plan.value[value]?.name))
+    .map((option) => {
+      let current = '读取中…'
+      if (facilityLoadError.value) {
+        current = '未知'
+      } else if (facilityLoaded.value) {
+        current = facility_product_labels[facility_states.value[option.value]?.product] || '未记录'
+      }
+      return { ...option, label: `${option.label}（当前：${current}）` }
+    })
+)
+
 onMounted(() => {
   depot_store.loadInventory().catch(() => {})
+  facility_store.load().catch(() => {})
 })
 
 function build_data(op, type) {
@@ -248,5 +309,19 @@ const custom_tips = [
     :on-update:value="update_inventory"
     :render-label="render_inventory_option"
     style="min-width: 320px"
+  />
+  <n-select
+    v-if="op_type == 'facility'"
+    :default-value="op_data.room"
+    :options="facility_select_options"
+    :on-update:value="update_facility"
+    style="min-width: 280px"
+  />
+  <n-select
+    v-if="op_type == 'facility_product'"
+    :default-value="op_data.product"
+    :options="facility_product_options"
+    :on-update:value="update_facility_product"
+    style="min-width: 220px"
   />
 </template>

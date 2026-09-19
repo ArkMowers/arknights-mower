@@ -52,6 +52,26 @@ class DepotRouteTests(unittest.TestCase):
                 finally:
                     response.close()
 
+    def test_facility_state_api_uses_last_saved_runtime_cache(self):
+        states = {
+            "room_1_2": {
+                "facility": "factory",
+                "product": "exp3",
+                "updated_at": "2026-09-20T12:00:00",
+            }
+        }
+        with (
+            patch.object(server, "mower_thread", None),
+            patch.object(
+                server, "load_state", return_value={"facility_states": states}
+            ),
+        ):
+            response = self.client.get("/facility-state")
+        self.addCleanup(response.close)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), states)
+
 
 if __name__ == "__main__":
     unittest.main()

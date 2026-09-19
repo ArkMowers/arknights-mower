@@ -5,6 +5,7 @@ from itertools import product
 from evalidate import Expr, base_eval_model
 
 from arknights_mower.utils import config
+from arknights_mower.utils.factory_product import FACTORY_PRODUCTS, TRADE_PRODUCTS
 from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
@@ -136,6 +137,7 @@ class Operators:
         self.clues = []
         self.current_room_changed_callback = None
         self.party_time = None
+        self.facility_states = {}
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(
@@ -150,6 +152,7 @@ class Operators:
                 "current_mood",
                 "current_room",
                 "inventory_count",
+                "facility_product",
             ]
         )
         self.power_plant_count = 0
@@ -427,6 +430,7 @@ class Operators:
     def evaluate_expression(self, expression):
         try:
             model = {e: e for e in base_room_list}
+            model.update({e: e for e in FACTORY_PRODUCTS | TRADE_PRODUCTS})
             model["op_data"] = self
             result = Expr(expression, self.eval_model).eval(model)
             return result
@@ -451,6 +455,27 @@ class Operators:
         if item_name not in allowed_items:
             raise ValueError(f"不支持的副表仓库资源：{item_name}")
         return get_inventory_counts([item_name]).get(item_name, 0)
+
+    def update_facility_state(
+        self, room: str, facility: str, product: str, updated_at: str | None = None
+    ) -> None:
+        """记录生产设施最近一次从游戏界面识别到的实际状态。"""
+        supported = (facility == "factory" and product in FACTORY_PRODUCTS) or (
+            facility == "trade" and product in TRADE_PRODUCTS
+        )
+        if room not in base_room_list or not supported:
+            raise ValueError(f"不支持的设施状态：{room}, {facility}, {product}")
+        self.facility_states[room] = {
+            "facility": facility,
+            "product": product,
+            "updated_at": updated_at or datetime.now().isoformat(timespec="seconds"),
+        }
+
+    def facility_product(self, room: str) -> str | None:
+        """返回指定设施最近识别到的实际产物或订单类型。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        return self.facility_states.get(room, {}).get("product")
 
     def get_current_room(self, room, bypass=False, current_index=None):
         room_data = {
