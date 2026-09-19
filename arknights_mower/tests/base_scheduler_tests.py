@@ -251,6 +251,24 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
                     ],
                 )
 
+    def test_fresh_start_defers_backup_plan_until_mood_read(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+
+        self.main.simulate(None)
+
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+
+    def test_saved_state_does_not_defer_backup_plan(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+
+        self.main.simulate({"tasks": []})
+
+        self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
+
     def use_real_connection_retries(self, failures):
         from arknights_mower.utils.device.device import Device
         from arknights_mower.utils.solver import BaseSolver
@@ -1118,12 +1136,66 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual([item["agent"] for item in result], ["", ""])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_defers_beginning_backup_plan_before_initial_mood_read(self):
+        plan_config = PlanConfig("", "", "")
+        solver = BaseSchedulerSolver()
+        solver.global_plan = {
+            "default_plan": Plan(
+                {"meeting": [Room("能天使", "", ["陈"])]}, plan_config
+            ),
+            "backup_plans": [
+                Plan(
+                    {},
+                    plan_config,
+                    trigger=LogicExpression(
+                        "op_data.operators['能天使'].is_working()", "==", "False"
+                    ),
+                    task={"meeting": ["Current"]},
+                    trigger_timing="BEGINNING",
+                )
+            ],
+        }
+        with patch.object(base_schedule.config, "save_conf"):
+            solver.initialize_operators()
+        solver.tasks = []
+        solver._party_time = None
+        solver.free_clue = None
+        solver.credit_fight = None
+        solver.defer_backup_plan_until_mood_read = True
+        solver.handle_error = MagicMock()
+
+        with (
+            patch.object(base_schedule.SceneGraphSolver, "run", return_value=True),
+            patch.object(base_schedule, "save_log"),
+        ):
+            self.assertTrue(solver.run())
+
+        # current_room 仍为空（未知），但负向工作条件没有被误判为已满足。
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.tasks, [])
+
+        # 完成首次读取后，实际确认在岗；任务开始判定仍不应触发副表。
+        operator = solver.op_data.operators["能天使"]
+        operator.current_room = "meeting"
+        operator.current_index = 0
+        solver.defer_backup_plan_until_mood_read = False
+        with (
+            patch.object(base_schedule.SceneGraphSolver, "run", return_value=True),
+            patch.object(base_schedule, "save_log"),
+        ):
+            self.assertTrue(solver.run())
+
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.tasks, [])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_infra_main_requests_restart_after_mood_read(self):
         solver = BaseSchedulerSolver()
         solver.task = None
         solver.planned = False
         solver.tasks = []
         solver.restart_after_mood_read = True
+        solver.defer_backup_plan_until_mood_read = True
 
         with (
             patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1140,6 +1212,7 @@ class TestBaseScheduler(unittest.TestCase):
 
         self.assertEqual(result, "restart_after_mood_read")
         self.assertFalse(solver.restart_after_mood_read)
+        self.assertFalse(solver.defer_backup_plan_until_mood_read)
         mock_agent_get_mood.assert_called_once_with(skip_dorm=True)
         mock_run_order.assert_not_called()
         mock_plan.assert_not_called()
