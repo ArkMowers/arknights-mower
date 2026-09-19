@@ -243,11 +243,12 @@ describe('low frame rate adaptation', () => {
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalled())
     store.low_frame_rate_mode = !expected
     await nextTick()
-    await vi.waitFor(() => expect(axios.post.mock.lastCall[1].low_frame_rate_mode).toBe(!expected))
+    const savedValue = store.performance_mode === 'auto' ? expected : !expected
+    await vi.waitFor(() => expect(axios.post.mock.lastCall[1].low_frame_rate_mode).toBe(savedValue))
     loaded.value = false
     response.low_frame_rate_mode = axios.post.mock.lastCall[1].low_frame_rate_mode
     await store.load_config()
-    expect(store.low_frame_rate_mode).toBe(!expected)
+    expect(store.low_frame_rate_mode).toBe(savedValue)
   })
 
   it('loads and saves stage plan and mall settings with backward-compatible defaults', async () => {

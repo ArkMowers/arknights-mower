@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { normalizePerformanceMode, performanceProfile } from '@/utils/performanceProfile'
 import { defineStore } from 'pinia'
 import { inject, ref, watch, watchEffect } from 'vue'
 import { createWorkshopState } from '@/utils/workshopConfig'
@@ -52,6 +53,10 @@ export const useConfigStore = defineStore('config', () => {
   const reload_room = ref('')
   const run_order_delay = ref(10)
   const low_frame_rate_mode = ref(false)
+  const performance_mode = ref('high')
+  const performance_effective_mode = ref('high')
+  const selection_poll_interval = ref(0.1)
+  const selection_transition_timeout = ref(2.5)
   const dorm_order = ref([])
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
@@ -417,8 +422,25 @@ export const useConfigStore = defineStore('config', () => {
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     runtime_platform.value = response.data.runtime_platform || ''
+    performance_mode.value = normalizePerformanceMode(
+      response.data.performance_mode,
+      response.data.low_frame_rate_mode,
+      runtime_platform.value
+    )
+    performance_effective_mode.value =
+      response.data.performance_effective_mode ||
+      (performance_mode.value === 'auto'
+        ? runtime_platform.value === 'android'
+          ? 'medium'
+          : 'high'
+        : performance_mode.value)
+    const fallbackProfile = performanceProfile(performance_mode.value, runtime_platform.value)
     low_frame_rate_mode.value =
-      response.data.low_frame_rate_mode ?? runtime_platform.value === 'android'
+      response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
+    selection_poll_interval.value =
+      response.data.selection_poll_interval ?? fallbackProfile.selectionPollInterval
+    selection_transition_timeout.value =
+      response.data.selection_transition_timeout ?? fallbackProfile.selectionTransitionTimeout
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
@@ -467,7 +489,7 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
-    run_order_delay.value = response.data.run_order_delay
+    run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
 
     dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
     start_automatically.value = response.data.start_automatically
@@ -515,7 +537,12 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
     recruit_auto_only5.value = response.data.recruit_auto_only5
-    run_order_grandet_mode.value = response.data.run_order_grandet_mode
+    run_order_grandet_mode.value = {
+      enable: false,
+      buffer_time: fallbackProfile.grandetBufferTime,
+      back_to_index: false,
+      ...(response.data.run_order_grandet_mode || {})
+    }
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
@@ -606,7 +633,13 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
-      low_frame_rate_mode: low_frame_rate_mode.value,
+      low_frame_rate_mode:
+        performance_mode.value === 'auto'
+          ? performanceProfile('auto', runtime_platform.value).lowFrameRateMode
+          : low_frame_rate_mode.value,
+      performance_mode: performance_mode.value,
+      selection_poll_interval: selection_poll_interval.value,
+      selection_transition_timeout: selection_transition_timeout.value,
       dorm_order: dorm_order.value.join(','),
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
@@ -821,6 +854,10 @@ export const useConfigStore = defineStore('config', () => {
     reload_room,
     run_order_delay,
     low_frame_rate_mode,
+    performance_mode,
+    performance_effective_mode,
+    selection_poll_interval,
+    selection_transition_timeout,
     dorm_order,
     start_automatically,
     maa_mall_buy,

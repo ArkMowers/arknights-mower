@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
 
 import { folder_dialog } from '@/utils/dialog'
+import { performanceProfile } from '@/utils/performanceProfile'
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -14,6 +15,10 @@ const mobile = inject('mobile')
 const {
   run_order_delay,
   low_frame_rate_mode,
+  performance_mode,
+  performance_effective_mode,
+  selection_poll_interval,
+  selection_transition_timeout,
   dorm_order,
   drone_room,
   drone_count_limit,
@@ -60,6 +65,47 @@ const {
   ai_type,
   ai_key
 } = storeToRefs(config_store)
+
+const performance_mode_options = [
+  { label: '自动', value: 'auto' },
+  { label: '高性能', value: 'high' },
+  { label: '中性能', value: 'medium' },
+  { label: '低性能', value: 'low' },
+  { label: '自定义', value: 'custom' }
+]
+const performance_effective_label = computed(
+  () =>
+    ({ high: '高性能', medium: '中性能', low: '低性能' })[performance_effective_mode.value] ||
+    performance_effective_mode.value
+)
+
+function apply_performance_mode(mode) {
+  performance_mode.value = mode
+  if (mode === 'custom') return
+  const profile = performanceProfile(mode, runtime_platform.value)
+  low_frame_rate_mode.value = profile.lowFrameRateMode
+  selection_poll_interval.value = profile.selectionPollInterval
+  selection_transition_timeout.value = profile.selectionTransitionTimeout
+  run_order_delay.value = profile.runOrderDelay
+  run_order_grandet_mode.value.buffer_time = profile.grandetBufferTime
+}
+
+function set_custom_parameter(target, value) {
+  const parameters = {
+    selection_poll_interval,
+    selection_transition_timeout,
+    run_order_delay
+  }
+  parameters[target].value = value
+  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
+
+function set_custom_buffer(value) {
+  run_order_grandet_mode.value.buffer_time = value
+  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
 
 const hide_macos_menu_bar = computed({
   get: () => !webview.value.tray,
@@ -451,12 +497,38 @@ if (return_home_when_idle.value) {
                 <template #suffix>毫秒</template>
               </mower-input-number>
             </n-form-item>
-            <n-form-item>
-              <n-checkbox v-model:checked="low_frame_rate_mode">低帧率适配</n-checkbox>
+            <n-form-item label="设备性能适配">
+              <n-select
+                :value="performance_mode"
+                :options="performance_mode_options"
+                @update:value="apply_performance_mode"
+              />
               <help-text>
-                基建选人、排序和翻页时等待画面稳定，适合低帧率或画面延迟的设备，可能增加换班耗时。
-                Android 默认开启，其他平台默认关闭；设备运行流畅时可关闭。
+                自动档根据截图耗时选择高、中、低档；Android 默认自动，其他平台默认高性能。
+                当前自动判定：{{ performance_effective_label }}。修改下方任一参数会切换为自定义。
               </help-text>
+            </n-form-item>
+            <n-form-item label="选人采样间隔">
+              <mower-input-number
+                :value="selection_poll_interval"
+                :min="0.1"
+                :max="2"
+                @update:value="(value) => set_custom_parameter('selection_poll_interval', value)"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item label="操作反馈超时">
+              <mower-input-number
+                :value="selection_transition_timeout"
+                :min="1"
+                :max="20"
+                @update:value="
+                  (value) => set_custom_parameter('selection_transition_timeout', value)
+                "
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
             </n-form-item>
             <n-form-item v-if="runtime_platform !== 'android'" :show-feedback="screenshot === 0">
               <template #label>
@@ -597,8 +669,8 @@ if (return_home_when_idle.value) {
               </n-flex>
             </n-form-item>
             <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
-              Android 推荐保持「跑单前置延时」5 分钟、「葛朗台缓冲时间」15
-              秒；前者为导航选人留余量，后者为确认入驻留余量。两项均可自行修改；设备较慢时可适当增加。
+              Android
+              默认使用自动性能适配。性能档位会同时设置选人等待、跑单前置延时和葛朗台缓冲时间；手动修改会切换为自定义。
             </n-alert>
             <n-form-item>
               <template #label>
@@ -608,19 +680,26 @@ if (return_home_when_idle.value) {
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <mower-input-number v-model:value="run_order_delay">
+              <mower-input-number
+                :value="run_order_delay"
+                @update:value="(value) => set_custom_parameter('run_order_delay', value)"
+              >
                 <template #suffix>分钟</template>
               </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
             </n-form-item>
-            <n-form-item v-if="run_order_grandet_mode.enable">
+            <n-form-item>
               <template #label>
                 <span>葛朗台缓冲时间</span>
                 <help-text>推荐范围：15-30</help-text>
               </template>
-              <mower-input-number v-model:value="run_order_grandet_mode.buffer_time">
+              <mower-input-number
+                :value="run_order_grandet_mode.buffer_time"
+                :disabled="!run_order_grandet_mode.enable"
+                @update:value="set_custom_buffer"
+              >
                 <template #suffix>秒</template>
               </mower-input-number>
             </n-form-item>
