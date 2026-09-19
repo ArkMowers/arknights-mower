@@ -892,13 +892,12 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                         solver
                     )  # 关闭 _training_slots 打开的房间详情浮层
                 char_name = _plan_char_label(plan)
-                if trainer_slot and trainer_slot != char_name:
-                    # 走到这里只剩「倒计时没读出来 + 训练位上坐着别人」：倒计时读得出
-                    # 有效值/00:00:00 的两种占用情形上面已经 return 了。训练位在训练
-                    # 期间锁着，换不动是必然的——所以这不是「读到了有人」，而是
-                    # 「训练位是谁读到了、但它正在用」。失败原因写清读到的干员名，
-                    # 别用「被占用」这种听起来像「有人在训练室练」的说法。
-                    logger.info(f"训练位坐着 {trainer_slot}，换入 {char_name}")
+                if trainer_slot != char_name:
+                    # 走到这里只剩「倒计时没读出来 + 训练位非计划干员（坐错人或为空）」：
+                    # 倒计时读得出有效值/00:00:00 的两种占用情形上面已经 return 了。
+                    # 换入计划干员。
+                    slot_desc = trainer_slot or "空"
+                    logger.info(f"训练位为 {slot_desc}，换入 {char_name}")
                     try:
                         _swap_into_wrong_slot(solver, plan)
                     except Exception as e:

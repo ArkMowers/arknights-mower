@@ -215,6 +215,21 @@ class TestArrangingConvergence(unittest.TestCase):
         solver.choose_train.assert_called()
         self.assertEqual(solver.choose_train.call_args[0][0], ["Current", "测试干员"])
 
+    def test_empty_slot_triggers_swap(self):
+        """无倒计时 + 训练位为空：通过 choose_train 换入计划干员。"""
+        solver = self.make_solver(
+            scenes=[
+                Scene.TRAIN_MAIN,
+                Scene.TRAIN_MAIN,
+                Scene.TRAIN_SKILL_SELECT,
+            ],
+            slots=[{"agent": ""}, {"agent": ""}],
+        )
+        plan = make_plan()
+        self.run_arranging(solver, plan, advance=timedelta(minutes=1))
+        solver.choose_train.assert_called()
+        self.assertEqual(solver.choose_train.call_args[0][0], ["Current", "测试干员"])
+
     # --- 00:00:00 待收取：训练位锁定，不换人 ---
     def test_waiting_collect_zero_exits_without_swap(self):
         """#211：00:00:00（待收取，有倒计时值为 0）→ 训练位锁定，保持 idle 退出，
