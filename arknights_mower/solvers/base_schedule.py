@@ -195,6 +195,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.global_plan = {}
         self.local_operation_followup_time = None
         self.restart_after_mood_read = False
+        # 无运行缓存启动时，current_room 为空仅表示“尚未读取”，不能据此触发
+        # is_working() == False 一类副表条件。首次心情/房间扫描完成后再解除。
+        self.defer_backup_plan_until_mood_read = False
 
     def find_next_task(
         self,
@@ -292,7 +295,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         self.op_data.correct_dorm()
-        self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+        if not getattr(self, "defer_backup_plan_until_mood_read", False):
+            self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logMsg = "||".join([str(t) for t in self.tasks])
         logger.debug("当前任务: " + logMsg)
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
@@ -840,6 +844,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
                     mood_result = self.agent_get_mood(skip_dorm=True)
+                    # agent_get_mood 已读取所有需要刷新的房间；从此 current_room
+                    # 可以用于副表条件。若配置了读取后重启，重启流程会用这份新缓存
+                    # 在 simulate() 初始化阶段统一刷新副表。
+                    self.defer_backup_plan_until_mood_read = False
                     if self.restart_after_mood_read:
                         self.restart_after_mood_read = False
                         logger.info("缓存清零重启后心情读取完成，准备载入心情数据重启")
