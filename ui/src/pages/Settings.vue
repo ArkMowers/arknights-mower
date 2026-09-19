@@ -84,6 +84,7 @@ function apply_performance_mode(mode) {
   if (mode === 'custom') return
   const profile = performanceProfile(mode, runtime_platform.value)
   low_frame_rate_mode.value = profile.lowFrameRateMode
+  screenshot_interval.value = profile.screenshotInterval
   selection_poll_interval.value = profile.selectionPollInterval
   selection_transition_timeout.value = profile.selectionTransitionTimeout
   run_order_delay.value = profile.runOrderDelay
@@ -94,6 +95,7 @@ function set_custom_parameter(target, value) {
   const parameters = {
     selection_poll_interval,
     selection_transition_timeout,
+    screenshot_interval,
     run_order_delay
   }
   parameters[target].value = value
@@ -492,21 +494,33 @@ if (return_home_when_idle.value) {
                 <div>（截图用时{{ elapsed }}ms）</div>
               </n-flex>
             </n-form-item>
-            <n-form-item label="截图最短间隔">
-              <mower-input-number v-model:value="screenshot_interval" :precision="0">
-                <template #suffix>毫秒</template>
-              </mower-input-number>
-            </n-form-item>
             <n-form-item label="设备性能适配">
-              <n-select
-                :value="performance_mode"
-                :options="performance_mode_options"
-                @update:value="apply_performance_mode"
-              />
+              <n-radio-group :value="performance_mode" @update:value="apply_performance_mode">
+                <n-flex>
+                  <n-radio
+                    v-for="option in performance_mode_options"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </n-radio>
+                </n-flex>
+              </n-radio-group>
               <help-text>
                 自动档根据截图耗时选择高、中、低档；Android 默认自动，其他平台默认高性能。
-                当前自动判定：{{ performance_effective_label }}。修改下方任一参数会切换为自定义。
+                切换档位会同步修改截图最短间隔、跑单前置延时和葛朗台缓冲时间。当前自动判定：{{
+                  performance_effective_label
+                }}。修改任一性能参数会切换为自定义。
               </help-text>
+            </n-form-item>
+            <n-form-item label="截图最短间隔">
+              <mower-input-number
+                :value="screenshot_interval"
+                :precision="0"
+                @update:value="(value) => set_custom_parameter('screenshot_interval', value)"
+              >
+                <template #suffix>毫秒</template>
+              </mower-input-number>
             </n-form-item>
             <n-form-item label="选人采样间隔">
               <mower-input-number

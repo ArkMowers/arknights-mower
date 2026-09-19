@@ -9,6 +9,7 @@ from arknights_mower import __system__
 class PerformanceProfile:
     mode: str
     low_frame_rate: bool
+    screenshot_interval: int
     poll_interval: float
     transition_timeout: float
     run_order_delay: float
@@ -20,9 +21,9 @@ class PerformanceProfile:
 
 
 PERFORMANCE_PRESETS = {
-    "high": PerformanceProfile("high", False, 0.1, 2.5, 3, 15),
-    "medium": PerformanceProfile("medium", True, 0.5, 2.5, 5, 15),
-    "low": PerformanceProfile("low", True, 0.75, 6.0, 10, 30),
+    "high": PerformanceProfile("high", False, 500, 0.1, 2.5, 3, 15),
+    "medium": PerformanceProfile("medium", True, 500, 0.5, 2.5, 5, 15),
+    "low": PerformanceProfile("low", True, 750, 0.75, 6.0, 10, 30),
 }
 
 
@@ -45,6 +46,7 @@ def effective_performance_profile(conf, screenshot_avg=None, screenshot_count=0)
         return PerformanceProfile(
             "custom",
             conf.low_frame_rate_mode,
+            conf.screenshot_interval,
             conf.selection_poll_interval,
             conf.selection_transition_timeout,
             conf.run_order_delay,
@@ -68,6 +70,7 @@ def effective_performance_profile(conf, screenshot_avg=None, screenshot_count=0)
     return PerformanceProfile(
         selected,
         profile.low_frame_rate,
+        profile.screenshot_interval,
         profile.poll_interval,
         profile.transition_timeout,
         profile.run_order_delay,
