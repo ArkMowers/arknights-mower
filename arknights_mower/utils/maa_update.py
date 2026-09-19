@@ -3,7 +3,8 @@
 运行库使用官方 macOS runtime 包；Python API 则通过 HTTP Range 读取 Windows
 arm64 ZIP 的中央目录，只提取其中的 ``Python`` 目录，避免下载完整 Windows 包。
 Linux 按当前架构下载单个官方 ``tar.gz`` 完整包。
-Windows 未安装 MAA 时按当前架构下载完整包，已有安装则提示用户打开 MAA 手动更新。
+Windows 未安装 MAA 时下载完整包；已有安装优先应用官方 OTA 增量包，
+没有对应增量包时回退到完整包。
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import gc
 import hashlib
 import importlib
 import io
+import json
 import os
 import platform
 import shutil
@@ -33,7 +35,7 @@ import requests
 from packaging.version import InvalidVersion, Version
 
 from arknights_mower.utils.github_download import download_url
-from arknights_mower.utils.maa_backup import update_transaction
+from arknights_mower.utils.maa_backup import maa_in_use, update_transaction
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
 MAA_REPOSITORY = "MaaAssistantArknights/MaaAssistantArknights"
@@ -47,6 +49,15 @@ REQUEST_TIMEOUT = (10, 60)
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 RANGE_CACHE_SIZE = 256 * 1024
 PRESERVED_USER_ENTRIES = ("cache", "config", "config.json")
+WINDOWS_PRESERVED_USER_ENTRIES = (
+    "achievement",
+    "cache",
+    "config",
+    "config.json",
+    "data",
+    "debug",
+    "Res/Backgrounds/Wallpapers",
+)
 MAA_CORE_LIBRARY_NAMES = (
     "libMaaCore.dylib",
     "MaaCore.dll",
@@ -75,12 +86,14 @@ class MaaRelease:
     python_source: ReleaseAsset | None = None
     source: str = "github"
     channel: str = "stable"
+    package_type: str = "full"
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "tag": self.tag,
             "source": self.source,
             "channel": self.channel,
+            "package_type": self.package_type,
             "runtime": {
                 "name": self.runtime.name,
                 "size": self.runtime.size,
@@ -199,6 +212,7 @@ def parse_release(
     system: str = "darwin",
     machine: str | None = None,
     channel: str = "stable",
+    installed_version: str = "",
 ) -> MaaRelease:
     """从 GitHub Release JSON 中选择当前系统需要的安装包。"""
     tag = payload.get("tag_name")
@@ -210,6 +224,7 @@ def parse_release(
 
     system = system.lower()
     channel = normalize_update_channel(channel)
+    expected_ota = ""
     if system == "darwin":
         expected_runtime = f"MAA-{tag.strip()}-macos-runtime-universal.zip"
         expected_python = f"MAA-{tag.strip()}-win-arm64.zip"
@@ -225,11 +240,17 @@ def parse_release(
     elif system == "windows":
         arch = normalize_windows_arch(machine)
         expected_runtime = f"MAA-{tag.strip()}-win-{arch}.zip"
+        expected_ota = (
+            f"MAAComponent-OTA-{installed_version.strip()}_{tag.strip()}-win-{arch}.zip"
+            if installed_version.strip()
+            else ""
+        )
         expected_python = None
     else:
         raise MaaUpdateError("当前系统不使用 Mower 的 MAA 下载流程")
 
     runtime_payload = None
+    ota_payload = None
     python_payload = None
     for item in assets:
         if not isinstance(item, dict) or not isinstance(item.get("name"), str):
@@ -237,6 +258,8 @@ def parse_release(
         name = item["name"]
         if name == expected_runtime:
             runtime_payload = item
+        elif expected_ota and name.casefold() == expected_ota.casefold():
+            ota_payload = item
         elif expected_python is not None and name == expected_python:
             python_payload = item
 
@@ -250,13 +273,15 @@ def parse_release(
         raise MaaUpdateError("MAA 最新 Release 中没有 macOS universal runtime 包")
     if expected_python is not None and python_payload is None:
         raise MaaUpdateError("MAA 最新 Release 中没有 Windows arm64 包")
+    selected_runtime = ota_payload if ota_payload is not None else runtime_payload
     return MaaRelease(
         tag=tag.strip(),
-        runtime=_asset_from_payload(runtime_payload),
+        runtime=_asset_from_payload(selected_runtime),
         python_source=(
             _asset_from_payload(python_payload) if python_payload is not None else None
         ),
         channel=channel,
+        package_type="ota" if ota_payload is not None else "full",
     )
 
 
@@ -265,6 +290,7 @@ def get_latest_release(
     system: str = "darwin",
     machine: str | None = None,
     channel: str = "stable",
+    installed_version: str = "",
 ) -> MaaRelease:
     """按 MAA 正式版 / 公测版通道读取 GitHub Release 信息。"""
     client = session or requests.Session()
@@ -307,6 +333,7 @@ def get_latest_release(
             system=system,
             machine=machine,
             channel=channel,
+            installed_version=installed_version,
         )
 
     if channel == "stable":
@@ -326,6 +353,7 @@ def get_latest_release(
                 system=system,
                 machine=machine,
                 channel=channel,
+                installed_version=installed_version,
             )
     channel_label = "公测版" if channel == "beta" else "正式版"
     raise MaaUpdateError(f"获取 MAA {channel_label}失败")
@@ -358,6 +386,7 @@ def _request_mirrorchyan(
     channel: str,
     session: requests.Session,
     sp_id: str,
+    current_version: str = "",
 ) -> tuple[int, dict[str, Any]]:
     params = {
         "cdk": token,
@@ -367,6 +396,8 @@ def _request_mirrorchyan(
         "channel": channel,
         "sp_id": sp_id,
     }
+    if current_version.strip():
+        params["current_version"] = current_version.strip()
     try:
         response = session.get(
             MIRRORCHYAN_RELEASE_API,
@@ -476,7 +507,8 @@ def _get_mirrorchyan_asset(
     channel: str,
     session: requests.Session,
     sp_id: str,
-) -> tuple[str, ReleaseAsset]:
+    current_version: str = "",
+) -> tuple[str, ReleaseAsset, str]:
     code, data = _request_mirrorchyan(
         token,
         os_name,
@@ -484,6 +516,7 @@ def _get_mirrorchyan_asset(
         channel,
         session,
         sp_id,
+        current_version,
     )
     if code != 0:
         raise MaaUpdateError(_MIRRORCHYAN_ERRORS.get(code, "Mirror酱服务返回业务错误"))
@@ -499,18 +532,28 @@ def _get_mirrorchyan_asset(
     checksum = data.get("sha256")
     if not isinstance(version, str) or not isinstance(url, str):
         raise MaaUpdateError("Mirror酱返回的 MAA 下载信息不完整")
-    if data.get("update_type") != "full":
-        raise MaaUpdateError("Mirror酱未返回 MAA 完整包")
+    update_type = "full" if data.get("update_type") == "full" else "ota"
+    if update_type == "ota" and not current_version.strip():
+        raise MaaUpdateError("Mirror酱返回了缺少当前版本的 MAA 增量包")
     if urlsplit(url).scheme != "https":
         raise MaaUpdateError("Mirror酱返回了无效的 MAA 下载地址")
 
     platform_label = f"{os_name}-{arch}"
     suffix = ".tar.gz" if os_name == "linux" else ".zip"
-    return version, ReleaseAsset(
-        name=f"MAA-{version}-{platform_label}{suffix}",
-        url=url,
-        size=int(size or 0),
-        sha256=checksum if isinstance(checksum, str) else "",
+    asset_name = (
+        f"MAAComponent-OTA-{current_version.strip()}_{version}-{platform_label}{suffix}"
+        if update_type == "ota"
+        else f"MAA-{version}-{platform_label}{suffix}"
+    )
+    return (
+        version,
+        ReleaseAsset(
+            name=asset_name,
+            url=url,
+            size=int(size or 0),
+            sha256=checksum if isinstance(checksum, str) else "",
+        ),
+        update_type,
     )
 
 
@@ -520,8 +563,9 @@ def get_mirrorchyan_release(
     system: str = "darwin",
     machine: str | None = None,
     channel: str = "stable",
+    installed_version: str = "",
 ) -> MaaRelease:
-    """通过 Mirror酱取得当前系统所需的 MAA 完整包。"""
+    """通过 Mirror酱取得当前系统所需的 MAA 更新包。"""
     if os.environ.get("MOWER_ANDROID") == "1" or system == "android":
         raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
@@ -538,24 +582,26 @@ def get_mirrorchyan_release(
         else:
             os_name = "win"
             arch = normalize_windows_arch(machine)
-        version, asset = _get_mirrorchyan_asset(
+        version, asset, package_type = _get_mirrorchyan_asset(
             token,
             os_name,
             arch,
             channel,
             client,
             sp_id,
+            installed_version if system == "windows" else "",
         )
         return MaaRelease(
             tag=version,
             runtime=asset,
             source="mirrorchyan",
             channel=channel,
+            package_type=package_type,
         )
     if system != "darwin":
         raise MaaUpdateError("当前系统不使用 Mower 的 MAA 下载流程")
 
-    mac_version, mac_asset = _get_mirrorchyan_asset(
+    mac_version, mac_asset, _ = _get_mirrorchyan_asset(
         token,
         "macos",
         "arm64",
@@ -563,7 +609,7 @@ def get_mirrorchyan_release(
         client,
         sp_id,
     )
-    win_version, win_asset = _get_mirrorchyan_asset(
+    win_version, win_asset, _ = _get_mirrorchyan_asset(
         token,
         "win",
         "arm64",
@@ -833,6 +879,10 @@ def extract_windows_package(
     except OSError as e:
         raise MaaUpdateError(f"MAA Windows 完整包解压失败：{e}") from e
 
+    _validate_windows_installation(destination)
+
+
+def _validate_windows_installation(destination: Path) -> None:
     required = (
         destination / "MaaCore.dll",
         destination / "MAA.exe",
@@ -846,6 +896,130 @@ def extract_windows_package(
         raise MaaUpdateError(
             "MAA Windows 完整包缺少 MaaCore、MAA.exe、更新程序、resource 或 Python"
         )
+
+
+def _windows_ota_parts(value: str) -> tuple[str, ...] | None:
+    """按 MAA Windows 客户端规则解析 OTA 相对路径。"""
+    normalized = value.strip().replace("\\", "/")
+    if not normalized:
+        return None
+    # MAA 生成器的旧版清单可能包含目录项，官方客户端会忽略。
+    if normalized.endswith("/"):
+        return None
+    if is_unsafe_zip_member(normalized):
+        raise MaaUpdateError(f"MAA Windows OTA 包含非法路径：{value}")
+    parts = PurePosixPath(normalized).parts
+    return tuple(part for part in parts if part not in {"", "."}) or None
+
+
+def _windows_ota_remove_entries(archive: ZipFile) -> list[tuple[str, ...]]:
+    names = {info.filename.casefold(): info for info in archive.infolist()}
+    remove_entries: list[str] = []
+    remove_info = names.get("removelist.txt")
+    changes_info = names.get("changes.json")
+    if remove_info is None and changes_info is None:
+        raise MaaUpdateError("MAA Windows OTA 包缺少 removelist.txt 或 changes.json")
+    try:
+        if remove_info is not None:
+            remove_entries.extend(
+                archive.read(remove_info).decode("utf-8-sig").splitlines()
+            )
+        if changes_info is not None:
+            changes = json.loads(archive.read(changes_info).decode("utf-8-sig"))
+            if not isinstance(changes, dict):
+                raise ValueError("changes.json 必须是对象")
+            deleted = changes.get("deleted", [])
+            if not isinstance(deleted, list) or not all(
+                isinstance(item, str) for item in deleted
+            ):
+                raise ValueError("deleted 必须是字符串列表")
+            remove_entries.extend(deleted)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as e:
+        raise MaaUpdateError(f"MAA Windows OTA 包删除清单无效：{e}") from e
+
+    result: list[tuple[str, ...]] = []
+    seen: set[tuple[str, ...]] = set()
+    for entry in remove_entries:
+        parts = _windows_ota_parts(entry)
+        if parts is None:
+            continue
+        key = tuple(part.casefold() for part in parts)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(parts)
+    return result
+
+
+def apply_windows_ota_package(
+    archive_path: Path,
+    destination: Path,
+    callback: ProgressCallback | None = None,
+) -> None:
+    """在已复制的 Windows MAA 目录上应用官方 OTA 差异包。"""
+    control_files = {"removelist.txt", "changes.json"}
+    try:
+        with ZipFile(archive_path) as archive:
+            removals = _windows_ota_remove_entries(archive)
+            payload: list[tuple[ZipInfo, tuple[str, ...]]] = []
+            seen: set[tuple[str, ...]] = set()
+            for info in archive.infolist():
+                parts = _safe_parts(info)
+                if len(parts) == 1 and parts[0].casefold() in control_files:
+                    continue
+                if not parts:
+                    continue
+                mode = info.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise MaaUpdateError(
+                        f"MAA Windows OTA 包包含符号链接：{info.filename}"
+                    )
+                if not info.is_dir():
+                    key = tuple(part.casefold() for part in parts)
+                    if key in seen:
+                        raise MaaUpdateError(
+                            f"MAA Windows OTA 包包含重复路径：{info.filename}"
+                        )
+                    seen.add(key)
+                payload.append((info, parts))
+
+            total = len(removals) + sum(
+                1 for info, _parts in payload if not info.is_dir()
+            )
+            current = 0
+            for parts in removals:
+                _remove_path(destination.joinpath(*parts))
+                current += 1
+                _emit(
+                    callback,
+                    "applying_windows_ota",
+                    current,
+                    total,
+                    "正在应用 Windows MAA OTA 增量包",
+                )
+            for info, parts in payload:
+                output = destination.joinpath(*parts)
+                if info.is_dir():
+                    output.mkdir(parents=True, exist_ok=True)
+                    continue
+                if output.exists() or output.is_symlink():
+                    _remove_path(output)
+                output = _prepare_output_path(destination, parts)
+                _extract_member(archive, info, output)
+                current += 1
+                _emit(
+                    callback,
+                    "applying_windows_ota",
+                    current,
+                    total,
+                    "正在应用 Windows MAA OTA 增量包",
+                )
+    except BadZipFile as e:
+        raise MaaUpdateError("MAA Windows OTA 包已损坏") from e
+    except OSError as e:
+        raise MaaUpdateError(f"应用 MAA Windows OTA 包失败：{e}") from e
+
+    _validate_windows_installation(destination)
 
 
 def _safe_tar_parts(name: str) -> tuple[str, ...]:
@@ -1247,10 +1421,11 @@ def preserve_user_data(
     current_install: Path,
     staged_install: Path,
     callback: ProgressCallback | None = None,
+    entries: tuple[str, ...] = PRESERVED_USER_ENTRIES,
 ) -> list[str]:
     """把旧目录中的缓存/配置复制到新目录，程序文件仍全部使用新版本。"""
     preserved = []
-    for name in PRESERVED_USER_ENTRIES:
+    for name in entries:
         source = current_install / name
         if not source.exists() and not source.is_symlink():
             continue
@@ -1269,7 +1444,7 @@ def preserve_user_data(
             callback,
             "preserving_user_data",
             len(preserved),
-            len(PRESERVED_USER_ENTRIES),
+            len(entries),
             "正在保留 MAA 缓存与配置",
         )
     return preserved
@@ -1453,6 +1628,8 @@ def install_latest_maa(
     channel: str = "stable",
 ) -> dict[str, Any]:
     """下载或更新 MAA，切换成功后把原目录保留为同级 ``.old``。"""
+    if maa_in_use():
+        raise MaaUpdateError("MAA 正在使用中，请等待当前 MAA 任务结束后再更新")
     if os.environ.get("MOWER_ANDROID") == "1":
         from mower_android.managed import install_update
 
@@ -1471,6 +1648,7 @@ def install_latest_maa(
     channel = normalize_update_channel(channel)
     installed_before = has_maa_installation(target_path)
     operation = "更新" if installed_before else "下载"
+    installed_version = ""
     if system not in {"darwin", "linux", "windows"}:
         raise MaaUpdateError("当前系统不使用 Mower 的 MAA 下载流程")
     if system == "linux":
@@ -1478,7 +1656,9 @@ def install_latest_maa(
     elif system == "windows":
         arch = normalize_windows_arch(machine)
         if installed_before:
-            raise MaaUpdateError("已检测到 Windows MAA，请手动打开 MAA 进行更新")
+            installed_version = read_installed_version(target_path, fresh=True)
+            if not installed_version:
+                raise MaaUpdateError("未读取到已安装的 Windows MAA 版本")
     else:
         arch = ""
     if source not in {"github", "mirrorchyan"}:
@@ -1498,6 +1678,7 @@ def install_latest_maa(
             system=system,
             machine=machine,
             channel=channel,
+            installed_version=installed_version,
         )
     else:
         _emit(
@@ -1512,6 +1693,7 @@ def install_latest_maa(
             system=system,
             machine=machine,
             channel=channel,
+            installed_version=installed_version,
         )
 
     prefix = f".{target_path.name}.maa-update-"
@@ -1538,6 +1720,9 @@ def install_latest_maa(
             python_downloaded = 0
             python_full_size = 0
         elif system == "windows":
+            windows_package_label = (
+                "OTA 增量包" if release.package_type == "ota" else "完整包"
+            )
             runtime_downloaded = download_asset(
                 release.runtime,
                 archive_path,
@@ -1545,12 +1730,25 @@ def install_latest_maa(
                 callback=callback,
                 phase="downloading_windows",
                 message=(
-                    f"正在通过 Mirror酱下载 Windows {arch} 完整包"
+                    f"正在通过 Mirror酱下载 Windows {arch} {windows_package_label}"
                     if release.source == "mirrorchyan"
-                    else f"正在下载 Windows {arch} 完整包"
+                    else f"正在下载 Windows {arch} {windows_package_label}"
                 ),
             )
-            extract_windows_package(archive_path, staged, callback=callback)
+            if release.package_type == "ota":
+                if not installed_before:
+                    raise MaaUpdateError("Windows MAA 首次安装不能使用 OTA 增量包")
+                _emit(
+                    callback,
+                    "preparing_windows_ota",
+                    0,
+                    0,
+                    "正在准备 Windows MAA OTA 更新副本",
+                )
+                shutil.copytree(target_path, staged, dirs_exist_ok=True)
+                apply_windows_ota_package(archive_path, staged, callback=callback)
+            else:
+                extract_windows_package(archive_path, staged, callback=callback)
             python_downloaded = 0
             python_full_size = 0
         elif release.source == "mirrorchyan":
@@ -1603,7 +1801,19 @@ def install_latest_maa(
                 callback=callback,
             )
             python_full_size = release.python_source.size
-        preserved = preserve_user_data(target_path, staged, callback=callback)
+        if system == "windows" and release.package_type == "ota":
+            preserved = []
+        else:
+            preserved = preserve_user_data(
+                target_path,
+                staged,
+                callback=callback,
+                entries=(
+                    WINDOWS_PRESERVED_USER_ENTRIES
+                    if system == "windows"
+                    else PRESERVED_USER_ENTRIES
+                ),
+            )
 
         _emit(
             callback,
@@ -1611,7 +1821,11 @@ def install_latest_maa(
             0,
             0,
             (
-                "正在安装已下载的 Windows MAA 完整包"
+                (
+                    "正在安装 Windows MAA OTA 增量更新"
+                    if release.package_type == "ota"
+                    else "正在安装已下载的 Windows MAA 完整包"
+                )
                 if system == "windows"
                 else (
                     "正在备份旧版本并完成 MAA 更新"
@@ -1620,6 +1834,11 @@ def install_latest_maa(
                 )
             ),
         )
+        if system == "windows" and installed_before:
+            # Mower 空闲时可以保持主进程运行；切换目录前只释放它持有的
+            # MaaCore/Python 句柄。若仍有外部 MAA 进程占用文件，os.replace 会
+            # 失败并保留原安装。
+            clear_loaded_maa_cache(target_path)
         try:
             backup = replace_with_backup(staged, target_path, work_dir)
         except OSError as e:
@@ -1629,6 +1848,7 @@ def install_latest_maa(
         "version": release.tag,
         "source": release.source,
         "channel": release.channel,
+        "package_type": release.package_type,
         "operation": "update" if installed_before else "download",
         "platform": system,
         "arch": arch,

@@ -5,10 +5,12 @@ import logging
 import os
 import shutil
 import threading
+import weakref
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from pathlib import Path
 
 _update_lock = threading.RLock()
+_verified_instances = weakref.WeakSet()
 
 
 def configure_update_lock(lock):
@@ -24,6 +26,12 @@ def update_transaction(function):
             return function(*args, **kwargs)
 
     return locked
+
+
+def maa_in_use():
+    """返回是否有 Mower 管理的 MAA 实例已连接或正在执行任务。"""
+    with _update_lock:
+        return any(instance._active for instance in list(_verified_instances))
 
 
 def identity(path):
@@ -140,6 +148,9 @@ class VerifiedAsst:
         self._verified = False
         self._cleanup_thread = None
         self._cleanup_lock = threading.Lock()
+        self._active = False
+        with _update_lock:
+            _verified_instances.add(self)
         if os.environ.get("MOWER_ANDROID") == "1":
             # Older APKs remain usable; storage cleanup is an optional host hook.
             try:
@@ -163,16 +174,25 @@ class VerifiedAsst:
     def __getattr__(self, name):
         return getattr(self._asst, name)
 
+    def connect(self, *args, **kwargs):
+        """把连接与更新事务串行，成功连接后视为 MAA 正在使用。"""
+        with _update_lock:
+            result = self._asst.connect(*args, **kwargs)
+            self._active = bool(result)
+            return result
+
     def _message(self, message, details, argument):
         self._outcome.event(message)
         if self._consumer is not None:
             self._consumer(message, details, argument)
 
     def start(self):
-        self._outcome.begin()
-        self._verified = False
-        result = self._asst.start()
-        self._outcome.accept(result)
+        with _update_lock:
+            self._outcome.begin()
+            self._verified = False
+            result = self._asst.start()
+            self._active = bool(result)
+            self._outcome.accept(result)
         return result
 
     def _cleanup(self, verified=False):
@@ -198,6 +218,7 @@ class VerifiedAsst:
 
     def running(self):
         running = self._asst.running()
+        self._active = bool(running)
         if not running:
             self._cleanup()
         return running
@@ -206,5 +227,6 @@ class VerifiedAsst:
         verified = self._outcome.successful
         self._outcome.cancel()
         result = self._asst.stop()
+        self._active = False
         self._cleanup(verified=verified)
         return result

@@ -90,6 +90,48 @@ class TestReleaseParsing(unittest.TestCase):
         self.assertEqual(arm64.runtime.name, "MAA-v6.17.0-win-arm64.zip")
         self.assertIsNone(x64.python_source)
 
+    def test_windows_prefers_exact_ota_package_for_installed_version(self):
+        payload = {
+            "tag_name": "v6.18.0",
+            "assets": [
+                _asset("MAA-v6.18.0-win-x64.zip", 500),
+                _asset("MAAComponent-OTA-v6.16.0_v6.18.0-win-x64.zip", 100),
+                _asset("MAAComponent-OTA-v6.17.0_v6.18.0-win-x64.zip", 120),
+            ],
+        }
+
+        release = mu.parse_release(
+            payload,
+            system="windows",
+            machine="amd64",
+            installed_version="v6.17.0",
+        )
+
+        self.assertEqual(release.package_type, "ota")
+        self.assertEqual(
+            release.runtime.name,
+            "MAAComponent-OTA-v6.17.0_v6.18.0-win-x64.zip",
+        )
+
+    def test_windows_falls_back_to_full_package_without_matching_ota(self):
+        payload = {
+            "tag_name": "v6.18.0",
+            "assets": [
+                _asset("MAA-v6.18.0-win-x64.zip", 500),
+                _asset("MAAComponent-OTA-v6.16.0_v6.18.0-win-x64.zip", 100),
+            ],
+        }
+
+        release = mu.parse_release(
+            payload,
+            system="windows",
+            machine="amd64",
+            installed_version="v6.17.0",
+        )
+
+        self.assertEqual(release.package_type, "full")
+        self.assertEqual(release.runtime.name, "MAA-v6.18.0-win-x64.zip")
+
     def test_unsupported_windows_architecture_raises(self):
         with self.assertRaisesRegex(mu.MaaUpdateError, "x86"):
             mu.normalize_windows_arch("x86")
@@ -374,6 +416,48 @@ class TestReleaseParsing(unittest.TestCase):
         self.assertEqual(session.params[0]["arch"], "arm64")
         self.assertEqual(session.params[0]["channel"], "beta")
 
+    def test_mirrorchyan_windows_requests_ota_from_installed_version(self):
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "code": 0,
+                    "data": {
+                        "version_name": "v6.18.0",
+                        "url": "https://mirror.example/windows-ota",
+                        "filesize": 123,
+                        "sha256": "c" * 64,
+                        "update_type": "ota",
+                    },
+                }
+
+        class Session:
+            def __init__(self):
+                self.params = []
+
+            def get(self, url, params, timeout):
+                self.params.append(params)
+                return Response()
+
+        session = Session()
+        with patch.object(mu, "mirrorchyan_sp_id", return_value="spid"):
+            release = mu.get_mirrorchyan_release(
+                "secret-token",
+                session=session,
+                system="windows",
+                machine="amd64",
+                installed_version="v6.17.0",
+            )
+
+        self.assertEqual(release.package_type, "ota")
+        self.assertEqual(
+            release.runtime.name,
+            "MAAComponent-OTA-v6.17.0_v6.18.0-win-x64.zip",
+        )
+        self.assertEqual(session.params[0]["current_version"], "v6.17.0")
+
 
 class TestArchiveExtraction(unittest.TestCase):
     def setUp(self):
@@ -490,6 +574,45 @@ class TestArchiveExtraction(unittest.TestCase):
 
         with self.assertRaises(mu.MaaUpdateError):
             mu.extract_windows_package(archive_path, self.root / "new")
+        self.assertFalse((self.root / "outside.dll").exists())
+
+    def test_windows_ota_removes_and_replaces_files(self):
+        destination = self.root / "new"
+        (destination / "resource").mkdir(parents=True)
+        (destination / "Python").mkdir()
+        (destination / "MaaCore.dll").write_bytes(b"old-core")
+        (destination / "MAA.exe").write_bytes(b"main")
+        (destination / "MAA.Updater.exe").write_bytes(b"updater")
+        (destination / "resource/removed.json").write_text("old")
+        (destination / "resource/keep.json").write_text("keep")
+        (destination / "config.json").write_text("user")
+        archive_path = self.root / "ota.zip"
+        with ZipFile(archive_path, "w") as archive:
+            archive.writestr(
+                "removelist.txt",
+                "resource/removed.json\nresource/legacy-directory/\n",
+            )
+            archive.writestr("MaaCore.dll", b"new-core")
+            archive.writestr("resource/new.json", b"new")
+
+        mu.apply_windows_ota_package(archive_path, destination)
+
+        self.assertEqual((destination / "MaaCore.dll").read_bytes(), b"new-core")
+        self.assertFalse((destination / "resource/removed.json").exists())
+        self.assertEqual((destination / "resource/keep.json").read_text(), "keep")
+        self.assertEqual((destination / "resource/new.json").read_text(), "new")
+        self.assertEqual((destination / "config.json").read_text(), "user")
+        self.assertFalse((destination / "removelist.txt").exists())
+
+    def test_windows_ota_changes_json_path_traversal_is_rejected(self):
+        destination = self.root / "new"
+        destination.mkdir()
+        archive_path = self.root / "bad-ota.zip"
+        with ZipFile(archive_path, "w") as archive:
+            archive.writestr("changes.json", '{"deleted":["../outside.dll"]}')
+
+        with self.assertRaisesRegex(mu.MaaUpdateError, "非法路径"):
+            mu.apply_windows_ota_package(archive_path, destination)
         self.assertFalse((self.root / "outside.dll").exists())
 
     @staticmethod
@@ -827,6 +950,12 @@ class TestInstallAndBackup(unittest.TestCase):
 
         self.target.mkdir()
         (self.target / "config.json").write_text("{}", encoding="utf-8")
+        for name in ("achievement", "data", "debug"):
+            (self.target / name).mkdir()
+            (self.target / name / "user.txt").write_text(name, encoding="utf-8")
+        wallpapers = self.target / "Res/Backgrounds/Wallpapers"
+        wallpapers.mkdir(parents=True)
+        (wallpapers / "custom.png").write_bytes(b"wallpaper")
         with (
             patch.object(
                 mu, "get_latest_release", return_value=windows_release
@@ -846,6 +975,7 @@ class TestInstallAndBackup(unittest.TestCase):
             system="windows",
             machine="amd64",
             channel="beta",
+            installed_version="",
         )
         download.assert_called_once()
         self.assertEqual(result["platform"], "windows")
@@ -856,25 +986,65 @@ class TestInstallAndBackup(unittest.TestCase):
         self.assertEqual(result["operation"], "download")
         self.assertTrue((self.target / "MAA.exe").is_file())
         self.assertTrue((self.target / "config.json").is_file())
+        for name in ("achievement", "data", "debug"):
+            self.assertEqual((self.target / name / "user.txt").read_text(), name)
+        self.assertEqual(
+            (self.target / "Res/Backgrounds/Wallpapers/custom.png").read_bytes(),
+            b"wallpaper",
+        )
 
-    def test_windows_existing_install_is_not_replaced(self):
-        self.target.mkdir()
-        (self.target / "MaaCore.dll").write_bytes(b"existing")
-        with (
-            patch.object(
-                mu,
-                "get_latest_release",
-                side_effect=AssertionError("已安装 MAA 时不应请求下载信息"),
+    def test_windows_existing_install_uses_ota_and_keeps_rollback(self):
+        (self.target / "resource").mkdir(parents=True)
+        (self.target / "Python").mkdir()
+        (self.target / "MaaCore.dll").write_bytes(b"old-core")
+        (self.target / "MAA.exe").write_bytes(b"main")
+        (self.target / "MAA.Updater.exe").write_bytes(b"updater")
+        (self.target / "resource/removed.json").write_text("remove")
+        (self.target / "config.json").write_text("user")
+        ota_release = mu.MaaRelease(
+            tag="v6.18.0",
+            runtime=mu.ReleaseAsset(
+                "MAAComponent-OTA-v6.17.0_v6.18.0-win-x64.zip",
+                "https://example.test/windows-ota",
+                0,
             ),
-            self.assertRaisesRegex(mu.MaaUpdateError, "手动打开 MAA 进行更新"),
+            package_type="ota",
+        )
+
+        def fake_download(asset, destination, **kwargs):
+            with ZipFile(destination, "w") as archive:
+                archive.writestr("removelist.txt", "resource/removed.json\n")
+                archive.writestr("MaaCore.dll", b"new-core")
+                archive.writestr("resource/new.json", b"new")
+            return destination.stat().st_size
+
+        with (
+            patch.object(mu, "read_installed_version", return_value="v6.17.0"),
+            patch.object(mu, "get_latest_release", return_value=ota_release) as latest,
+            patch.object(mu, "download_asset", side_effect=fake_download),
+            patch.object(mu, "clear_loaded_maa_cache") as clear_cache,
         ):
-            mu.install_latest_maa(
+            result = mu.install_latest_maa(
                 self.target,
                 system="windows",
                 machine="amd64",
             )
 
-        self.assertEqual((self.target / "MaaCore.dll").read_bytes(), b"existing")
+        latest.assert_called_once_with(
+            ANY,
+            system="windows",
+            machine="amd64",
+            channel="stable",
+            installed_version="v6.17.0",
+        )
+        clear_cache.assert_called_once_with(self.target)
+        self.assertEqual(result["operation"], "update")
+        self.assertEqual(result["package_type"], "ota")
+        self.assertEqual((self.target / "MaaCore.dll").read_bytes(), b"new-core")
+        self.assertFalse((self.target / "resource/removed.json").exists())
+        self.assertEqual((self.target / "resource/new.json").read_bytes(), b"new")
+        self.assertEqual((self.target / "config.json").read_text(), "user")
+        self.assertEqual((self.backup / "MaaCore.dll").read_bytes(), b"old-core")
 
     def test_swap_failure_restores_target_and_previous_old(self):
         self.target.mkdir()

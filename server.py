@@ -92,6 +92,19 @@ def _mower_busy_response():
     return None
 
 
+def _maa_busy_response():
+    """仅在 MAA 实际被任务或连接测试使用时阻止 MAA 更新。"""
+    from arknights_mower.utils.maa_backup import maa_in_use
+
+    _collect_maa_check_result()
+    if maa_check_job["status"] == "running" or maa_in_use():
+        return {
+            "ok": False,
+            "message": "MAA 正在使用中，请等待当前 MAA 任务或连接测试结束后再更新",
+        }
+    return None
+
+
 maa_check_job = {
     "id": None,
     "process": None,
@@ -1287,9 +1300,7 @@ def get_maa_update_info():
         channel=channel,
     )
     cached_latest = str(cached_check.get("latest_version") or "")
-    supported = __system__ in {"darwin", "linux"} or (
-        __system__ == "windows" and not installed
-    )
+    supported = __system__ in {"darwin", "linux", "windows"}
     arch = ""
     if __system__ in {"linux", "windows"}:
         try:
@@ -1300,8 +1311,7 @@ def get_maa_update_info():
             )
         except MaaUpdateError as e:
             arch_error = str(e)
-            if __system__ != "windows" or not installed:
-                supported = False
+            supported = False
 
     result = {
         "ok": True,
@@ -1320,10 +1330,10 @@ def get_maa_update_info():
         "installed": installed,
         "installed_version": installed_version,
         "latest": {"tag": cached_latest} if cached_latest else None,
-        "check_required": installed and __system__ in {"darwin", "linux"},
+        "check_required": installed and __system__ in {"darwin", "linux", "windows"},
         "job": job,
     }
-    if __system__ in {"linux", "windows"} and not supported and not installed:
+    if __system__ in {"linux", "windows"} and not supported:
         result["ok"] = False
         result["message"] = arch_error
         return result
@@ -1357,9 +1367,7 @@ def check_maa_update():
     target = str(Path(resolve_config_path(target_text)).expanduser())
     if not has_maa_installation(target):
         return {"ok": False, "message": "当前目录未检测到 MAA，请使用下载功能"}
-    if __system__ == "windows":
-        return {"ok": False, "message": "请手动打开 MAA 检查并完成更新"}
-    if __system__ not in {"darwin", "linux"}:
+    if __system__ not in {"darwin", "linux", "windows"}:
         return {"ok": False, "message": "当前平台不使用 Mower 的 MAA 更新功能"}
 
     source = str(payload.get("source") or "github").strip()
@@ -1387,9 +1395,18 @@ def check_maa_update():
                 mirror_token,
                 system=__system__,
                 channel=channel,
+                installed_version=(
+                    installed_version if __system__ == "windows" else ""
+                ),
             )
             if source == "mirrorchyan"
-            else get_latest_release(system=__system__, channel=channel)
+            else get_latest_release(
+                system=__system__,
+                channel=channel,
+                installed_version=(
+                    installed_version if __system__ == "windows" else ""
+                ),
+            )
         )
         available = is_maa_version_newer(release.tag, installed_version)
     except MaaUpdateError as e:
@@ -1435,7 +1452,7 @@ def start_maa_update():
 
     if __system__ not in {"darwin", "linux", "windows"}:
         return {"ok": False, "message": "当前系统不使用 Mower 的 MAA 下载流程"}
-    if busy := _mower_busy_response():
+    if busy := _maa_busy_response():
         return busy
 
     payload = request.get_json(silent=True) or {}
@@ -1455,11 +1472,6 @@ def start_maa_update():
     target = str(Path(resolve_config_path(target)).expanduser())
     installed = has_maa_installation(target)
     operation = "更新" if installed else "下载"
-    if __system__ == "windows" and installed:
-        return {
-            "ok": False,
-            "message": "已检测到 Windows MAA，请手动打开 MAA 进行更新",
-        }
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": f"未知的 MAA {operation}源"}
     if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
@@ -1758,8 +1770,8 @@ def start_maa_resource_update():
         config.save_conf()
 
     with maa_maintenance_lock:
-        if mower_thread and mower_thread.is_alive():
-            return {"ok": False, "message": "请先停止 Mower，再更新 MAA 资源"}
+        if busy := _maa_busy_response():
+            return busy
         if active_job():
             return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}
         if _job_running(maa_update_job):

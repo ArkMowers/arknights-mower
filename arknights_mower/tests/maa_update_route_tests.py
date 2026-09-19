@@ -66,6 +66,20 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         server.maa_resource_update_job.update({"thread": None, "status": "idle"})
         self.temp.cleanup()
 
+    def test_maa_busy_gate_uses_actual_maa_activity_not_mower_process(self):
+        server.maa_check_job.update({"status": "idle"})
+        with (
+            patch.object(server, "_collect_maa_check_result"),
+            patch.object(server, "mower_thread", _FakeThread()),
+            patch("arknights_mower.utils.maa_backup.maa_in_use", return_value=False),
+        ):
+            self.assertIsNone(server._maa_busy_response())
+        with (
+            patch.object(server, "_collect_maa_check_result"),
+            patch("arknights_mower.utils.maa_backup.maa_in_use", return_value=True),
+        ):
+            self.assertIn("MAA 正在使用中", server._maa_busy_response()["message"])
+
     def test_android_saved_mirror_config_uses_official_default_and_rejects_requests(
         self,
     ):
@@ -283,6 +297,75 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         self.assertEqual(data["latest"]["tag"], "v6.18.0")
         self.assertEqual(data["installed_version"], "v6.18.0")
         read_version.assert_called_once_with(Path(target), fresh=True)
+
+    def test_windows_installed_maa_supports_check_and_update(self):
+        target = str(Path(self.target).expanduser())
+        channel = server.config.conf.maa_update_channel
+        release = MaaRelease(
+            tag="v6.18.0",
+            runtime=ReleaseAsset(
+                name="MAAComponent-OTA-v6.17.0_v6.18.0-win-x64.zip",
+                url="https://example.test/maa-ota.zip",
+                size=1,
+            ),
+            package_type="ota",
+        )
+        with (
+            patch.object(server, "__system__", "windows"),
+            patch.object(server, "_maa_busy_response", return_value=None),
+            patch.object(server, "Thread", _FakeThread),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.read_installed_version",
+                return_value="v6.17.0",
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.normalize_windows_arch",
+                return_value="x64",
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.get_latest_release",
+                return_value=release,
+            ) as latest,
+        ):
+            info = self.client.get(
+                "/maa-update/info",
+                query_string={"maa_path": target, "channel": channel},
+                headers=self.headers,
+            ).get_json()
+            checked = self.client.post(
+                "/maa-update/check",
+                json={
+                    "maa_path": target,
+                    "source": "github",
+                    "channel": channel,
+                },
+                headers=self.headers,
+            ).get_json()
+            started = self.client.post(
+                "/maa-update/start",
+                json={
+                    "maa_path": target,
+                    "source": "github",
+                    "channel": channel,
+                    "check_id": checked["check_id"],
+                },
+                headers=self.headers,
+            ).get_json()
+
+        self.assertTrue(info["supported"])
+        self.assertTrue(info["check_required"])
+        self.assertTrue(checked["available"])
+        self.assertEqual(checked["latest"]["package_type"], "ota")
+        self.assertTrue(started["ok"])
+        latest.assert_called_once_with(
+            system="windows",
+            channel=channel,
+            installed_version="v6.17.0",
+        )
 
     def test_maa_update_start_requires_matching_successful_check(self):
         with (
