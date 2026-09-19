@@ -22,6 +22,7 @@ describe('performance profiles', () => {
 
   it('uses the Android medium profile as the visible auto baseline', () => {
     expect(performanceProfile('auto', 'android')).toMatchObject({
+      screenshotInterval: 500,
       selectionPollInterval: 0.5,
       selectionTransitionTimeout: 2.5,
       runOrderDelay: 5,
@@ -32,6 +33,7 @@ describe('performance profiles', () => {
   it('keeps other platforms on the high profile by default', () => {
     expect(performanceProfile('auto', 'darwin')).toMatchObject({
       lowFrameRateMode: false,
+      screenshotInterval: 500,
       selectionPollInterval: 0.1,
       runOrderDelay: 3
     })

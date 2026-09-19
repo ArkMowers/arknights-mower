@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from arknights_mower.utils import performance
-from arknights_mower.utils.config.conf import RIICPart
+from arknights_mower.utils.config.conf import Conf, RIICPart
 
 
 @pytest.mark.parametrize(
@@ -28,7 +28,7 @@ def test_legacy_boolean_migrates_when_no_timing_is_configured(legacy, expected):
 
 
 def test_existing_timing_migrates_to_custom_without_overwriting_values():
-    conf = RIICPart(
+    conf = Conf(
         low_frame_rate_mode=False,
         run_order_delay=7.5,
         run_order_grandet_mode={"buffer_time": 22},
@@ -37,6 +37,12 @@ def test_existing_timing_migrates_to_custom_without_overwriting_values():
     assert conf.run_order_delay == 7.5
     assert conf.run_order_grandet_mode.buffer_time == 22
     assert not performance.effective_performance_profile(conf).low_frame_rate
+
+
+def test_existing_screenshot_interval_migrates_to_custom():
+    conf = Conf(screenshot_interval=650)
+    assert conf.performance_mode == "custom"
+    assert conf.screenshot_interval == 650
 
 
 @pytest.mark.parametrize(
@@ -58,7 +64,7 @@ def test_android_auto_uses_medium_during_warmup(monkeypatch):
 
 
 def test_low_preset_sets_all_linked_parameters():
-    conf = RIICPart(
+    conf = Conf(
         performance_mode="low",
         low_frame_rate_mode=False,
         selection_poll_interval=0.1,
@@ -67,6 +73,7 @@ def test_low_preset_sets_all_linked_parameters():
         run_order_grandet_mode={"buffer_time": 15},
     )
     assert conf.low_frame_rate_mode
+    assert conf.screenshot_interval == 750
     assert conf.selection_poll_interval == 0.75
     assert conf.selection_transition_timeout == 6
     assert conf.run_order_delay == 10
@@ -77,11 +84,13 @@ def test_custom_profile_uses_configured_values():
     conf = SimpleNamespace(
         performance_mode="custom",
         low_frame_rate_mode=True,
+        screenshot_interval=650,
         selection_poll_interval=1.25,
         selection_transition_timeout=9,
         run_order_delay=12,
         run_order_grandet_mode=SimpleNamespace(buffer_time=40),
     )
     profile = performance.effective_performance_profile(conf)
+    assert profile.screenshot_interval == 650
     assert (profile.poll_interval, profile.transition_timeout) == (1.25, 9)
     assert (profile.run_order_delay, profile.grandet_buffer_time) == (12, 40)

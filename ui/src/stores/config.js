@@ -527,7 +527,8 @@ export const useConfigStore = defineStore('config', () => {
     rogue.value = response.data.rogue
     sss.value = response.data.sss
     screenshot.value = response.data.screenshot
-    screenshot_interval.value = response.data.screenshot_interval
+    screenshot_interval.value =
+      response.data.screenshot_interval ?? fallbackProfile.screenshotInterval
     mail_subject.value = response.data.mail_subject
     skland_enable.value = response.data.skland_enable != 0
     ai_key.value = response.data.ai_key
