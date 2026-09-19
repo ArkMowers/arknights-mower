@@ -254,6 +254,21 @@ class TestArrangingConvergence(unittest.TestCase):
         )
         self.assertTrue(solver.back.called)
 
+    def test_slot_check_closes_room_detail_instead_of_back(self):
+        """当 room 为 None 时，读槽位后必须使用 _close_room_detail 关闭浮窗，不能调用 back()。"""
+        scenes = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+        ]
+        solver = self.make_solver(
+            scenes=scenes,
+            slots=[{"agent": ""}, {"agent": "测试干员"}],
+        )
+        plan = make_plan()
+        with patch.object(mastery, "_close_room_detail") as mock_close:
+            self.run_arranging(solver, plan, advance=timedelta(minutes=1))
+            mock_close.assert_called_once_with(solver)
+
     # --- 空闲训练室 → 正常开始 ---
     def test_free_room_starts_normally(self):
         read_count = {"n": 0}
