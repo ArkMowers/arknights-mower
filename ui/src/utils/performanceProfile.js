@@ -1,6 +1,7 @@
 export const performancePresets = Object.freeze({
   high: Object.freeze({
     lowFrameRateMode: false,
+    screenshotInterval: 500,
     selectionPollInterval: 0.1,
     selectionTransitionTimeout: 2.5,
     runOrderDelay: 3,
@@ -8,6 +9,7 @@ export const performancePresets = Object.freeze({
   }),
   medium: Object.freeze({
     lowFrameRateMode: true,
+    screenshotInterval: 500,
     selectionPollInterval: 0.5,
     selectionTransitionTimeout: 2.5,
     runOrderDelay: 5,
@@ -15,6 +17,7 @@ export const performancePresets = Object.freeze({
   }),
   low: Object.freeze({
     lowFrameRateMode: true,
+    screenshotInterval: 750,
     selectionPollInterval: 0.75,
     selectionTransitionTimeout: 6,
     runOrderDelay: 10,

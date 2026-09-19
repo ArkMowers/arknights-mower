@@ -369,10 +369,15 @@ class Device:
         return True
 
     def screencap(self) -> bytes:
+        from arknights_mower.utils.performance import effective_performance_profile
+
         start_time = datetime.now()
-        min_time = config.screenshot_time + timedelta(
-            milliseconds=config.conf.screenshot_interval
-        )
+        screenshot_interval = config.conf.screenshot_interval
+        if getattr(config.conf, "performance_mode", None) == "auto":
+            screenshot_interval = effective_performance_profile(
+                config.conf, config.screenshot_avg, config.screenshot_count
+            ).screenshot_interval
+        min_time = config.screenshot_time + timedelta(milliseconds=screenshot_interval)
         delta = (min_time - start_time).total_seconds()
         if delta > 0:
             time.sleep(delta)

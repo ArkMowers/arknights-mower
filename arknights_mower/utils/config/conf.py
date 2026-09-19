@@ -478,6 +478,7 @@ class RIICPart(ConfModel):
             has_custom_timing = any(
                 field in data
                 for field in (
+                    "screenshot_interval",
                     "selection_poll_interval",
                     "selection_transition_timeout",
                     "run_order_delay",
@@ -493,6 +494,7 @@ class RIICPart(ConfModel):
         if mode in PERFORMANCE_PRESETS:
             profile = PERFORMANCE_PRESETS[mode]
             data["low_frame_rate_mode"] = profile.low_frame_rate
+            data["screenshot_interval"] = profile.screenshot_interval
             data["selection_poll_interval"] = profile.poll_interval
             data["selection_transition_timeout"] = profile.transition_timeout
             data["run_order_delay"] = profile.run_order_delay

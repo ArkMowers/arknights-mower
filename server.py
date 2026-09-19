@@ -695,6 +695,7 @@ def load_config():
         data["performance_effective_mode"] = performance.mode
         if config.conf.performance_mode == "auto":
             data["low_frame_rate_mode"] = performance.low_frame_rate
+            data["screenshot_interval"] = performance.screenshot_interval
             data["selection_poll_interval"] = performance.poll_interval
             data["selection_transition_timeout"] = performance.transition_timeout
             data["run_order_delay"] = performance.run_order_delay
