@@ -15,6 +15,11 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operation_timing import timed_step
+from arknights_mower.utils.performance import (
+    PERFORMANCE_PRESETS,
+    default_performance_profile,
+    effective_performance_profile,
+)
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -143,8 +148,39 @@ def _resolve_operator_room_prefix(
 
 class BaseMixin:
     @property
+    def performance_profile(self):
+        profile = effective_performance_profile(
+            config.conf,
+            config.screenshot_avg,
+            config.screenshot_count,
+        )
+        # Compatibility for integrations that still change only the former
+        # boolean. In AUTO, only a deviation from the platform baseline is an
+        # explicit legacy override; the baseline itself remains adaptive.
+        if config.conf.performance_mode == "auto":
+            legacy_enabled = config.conf.low_frame_rate_mode
+            if legacy_enabled != default_performance_profile().low_frame_rate:
+                return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
+        elif config.conf.performance_mode in PERFORMANCE_PRESETS:
+            legacy_enabled = config.conf.low_frame_rate_mode
+            if legacy_enabled != profile.low_frame_rate:
+                return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
+        return profile
+
+    @property
     def low_frame_rate_mode(self):
-        return config.conf.low_frame_rate_mode
+        return self.performance_profile.low_frame_rate
+
+    def selection_transition_timing(self):
+        profile = self.performance_profile
+        return profile.poll_interval, profile.transition_attempts
+
+    def selection_observation_timing(self):
+        profile = self.performance_profile
+        attempts = (
+            6 if profile.mode in {"high", "medium"} else profile.transition_attempts
+        )
+        return profile.poll_interval, attempts
 
     profession_labels = [
         "ALL",
@@ -195,9 +231,10 @@ class BaseMixin:
             raise AgentSelectionNotReady("干员排序未到达目标状态，返回房间重试")
         before = None
         capture_time = 0
-        for attempt in range(6):
+        poll_interval, max_attempts = self.selection_observation_timing()
+        for attempt in range(max_attempts):
             if attempt:
-                self.wait_for_next_observation(capture_time)
+                self.wait_for_next_observation(capture_time, poll_interval)
             else:
                 self.recog.update()
             started = perf_counter()
@@ -213,9 +250,9 @@ class BaseMixin:
             self.tap((x, name_y), interval=0.5)
             previous = None
             capture_time = 0
-            for attempt in range(6):
+            for attempt in range(max_attempts):
                 if attempt:
-                    self.wait_for_next_observation(capture_time)
+                    self.wait_for_next_observation(capture_time, poll_interval)
                 started = perf_counter()
                 # tap/sleep 已使识别缓存失效，后续按需获取画面。
                 actual = self.detect_arrange_order(current_room)
@@ -316,9 +353,10 @@ class BaseMixin:
         stable = False
         ret = []
         capture_time = 0
-        for attempt in range(6):
+        poll_interval, max_attempts = self.selection_observation_timing()
+        for attempt in range(max_attempts):
             if attempt:
-                self.wait_for_next_observation(capture_time)
+                self.wait_for_next_observation(capture_time, poll_interval)
             else:
                 self.recog.update()
             started = perf_counter()
@@ -471,9 +509,10 @@ class BaseMixin:
         stable = False
         actual = []
         capture_time = 0
-        for attempt in range(6):
+        poll_interval, max_attempts = self.selection_observation_timing()
+        for attempt in range(max_attempts):
             if attempt:
-                self.wait_for_next_observation(capture_time)
+                self.wait_for_next_observation(capture_time, poll_interval)
             else:
                 self.recog.update()
             started = perf_counter()
@@ -607,8 +646,7 @@ class BaseMixin:
         """
         retry = 0
         open_threshold = 1650
-        poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
-        max_attempts = round(2.5 / poll_interval) + 1
+        poll_interval, max_attempts = self.selection_transition_timing()
         if profession:
             if config.stop_mower.is_set():
                 raise MowerExit
@@ -646,8 +684,8 @@ class BaseMixin:
 
     def _wait_for_profession_filter(self, position):
         # 普通设备收到反馈即继续；仅未生效时轮询，两种模式保留相同的等待预算。
-        poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
-        for attempt in range(round(2.5 / poll_interval) + 1):
+        poll_interval, max_attempts = self.selection_transition_timing()
+        for attempt in range(max_attempts):
             if attempt:
                 self.sleep(poll_interval)
             if self.get_color(position)[2] >= 240:
@@ -658,8 +696,7 @@ class BaseMixin:
         """仅收起筛选侧栏，保留当前职业。"""
         retry = 0
         open_threshold = 1650
-        poll_interval = 0.5 if self.low_frame_rate_mode else 0.1
-        max_attempts = round(2.5 / poll_interval) + 1
+        poll_interval, max_attempts = self.selection_transition_timing()
         while (
             (confirm_btn := self.find("confirm_blue")) is not None
             and confirm_btn[0][0] < open_threshold

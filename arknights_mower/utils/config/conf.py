@@ -8,6 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.performance import (
+    PERFORMANCE_PRESETS,
+    default_performance_mode,
+    default_performance_profile,
+)
 
 DEFAULT_LAUNCH_COMMAND = (
     "input keyevent KEYCODE_WAKEUP; "
@@ -419,12 +424,24 @@ class RIICPart(ConfModel):
         source: Literal["manual", "mastery", "stockpile"] = "manual"
         "配置来源；旧配置按手动配置保留"
 
+    performance_mode: Literal["auto", "high", "medium", "low", "custom"] = Field(
+        default_factory=default_performance_mode
+    )
+    "设备性能：自动 / 高 / 中 / 低 / 自定义"
+    selection_poll_interval: float = Field(
+        default_factory=lambda: default_performance_profile().poll_interval,
+        ge=0.1,
+        le=2,
+    )
+    "选人界面稳定帧采样间隔（秒）"
+    selection_transition_timeout: float = Field(default=2.5, ge=1, le=20)
+    "选人界面操作反馈超时（秒）"
     low_frame_rate_mode: bool = Field(
         default_factory=lambda: (
             os.environ.get("MOWER_ANDROID") == "1" or __system__ == "android"
         )
     )
-    "低帧率适配：基建选人等待稳定画面；Android 默认开启"
+    "旧版低帧率适配兼容字段；false 对应高，true 对应中"
     drone_count_limit: int = 100
     "无人机使用阈值"
     drone_room: str = ""
@@ -435,7 +452,9 @@ class RIICPart(ConfModel):
     "宿舍黑名单"
     reload_room: str = ""
     "搓玉补货房间"
-    run_order_delay: float = 3
+    run_order_delay: float = Field(
+        default_factory=lambda: default_performance_profile().run_order_delay
+    )
     "跑单前置延时"
     resting_threshold: float = 0.65
     "心情阈值"
@@ -447,6 +466,41 @@ class RIICPart(ConfModel):
         default_factory=RunOrderGrandetModeConf
     )
     "葛朗台跑单"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_performance_mode(cls, data):
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "performance_mode" not in data:
+            grandet = data.get("run_order_grandet_mode")
+            has_custom_timing = any(
+                field in data
+                for field in (
+                    "selection_poll_interval",
+                    "selection_transition_timeout",
+                    "run_order_delay",
+                )
+            ) or (isinstance(grandet, dict) and "buffer_time" in grandet)
+            if has_custom_timing:
+                data["performance_mode"] = "custom"
+            elif "low_frame_rate_mode" in data:
+                data["performance_mode"] = (
+                    "medium" if data["low_frame_rate_mode"] else "high"
+                )
+        mode = data.get("performance_mode")
+        if mode in PERFORMANCE_PRESETS:
+            profile = PERFORMANCE_PRESETS[mode]
+            data["low_frame_rate_mode"] = profile.low_frame_rate
+            data["selection_poll_interval"] = profile.poll_interval
+            data["selection_transition_timeout"] = profile.transition_timeout
+            data["run_order_delay"] = profile.run_order_delay
+            grandet = dict(data.get("run_order_grandet_mode") or {})
+            grandet["buffer_time"] = profile.grandet_buffer_time
+            data["run_order_grandet_mode"] = grandet
+        return data
+
     free_room: bool = False
     "宿舍不养闲人模式"
     fia_fool: bool = True
