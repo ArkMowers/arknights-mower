@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class FactoryProduct:
+class ManufactureProduct:
     name: str
     category: tuple[int, int]
     recipe: tuple[int, int]
@@ -15,11 +15,13 @@ class TradeProduct:
     option: tuple[int, int]
 
 
-FACTORY_PRODUCTS = {
-    "gold": FactoryProduct("赤金", (180, 335), (500, 250), 72 * 60),
-    "exp3": FactoryProduct("中级作战记录", (180, 195), (500, 525), 180 * 60),
-    "orirock": FactoryProduct("源石碎片（固源岩）", (180, 620), (500, 250), 60 * 60),
-    "orirock_device": FactoryProduct(
+MANUFACTURE_PRODUCTS = {
+    "gold": ManufactureProduct("赤金", (180, 335), (500, 250), 72 * 60),
+    "exp3": ManufactureProduct("中级作战记录", (180, 195), (500, 525), 180 * 60),
+    "orirock": ManufactureProduct(
+        "源石碎片（固源岩）", (180, 620), (500, 250), 60 * 60
+    ),
+    "orirock_device": ManufactureProduct(
         "源石碎片（装置）", (180, 620), (1240, 250), 60 * 60
     ),
 }
@@ -63,6 +65,6 @@ def product_task_meta(room: str, product_id: str) -> str:
 
 def parse_product_task_meta(meta_data: str) -> tuple[str, str]:
     room, product_id = meta_data.split(",", 1)
-    if room == "" or product_id not in FACTORY_PRODUCTS | TRADE_PRODUCTS:
+    if room == "" or product_id not in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS:
         raise ValueError(f"无效的基建产物切换任务：{meta_data}")
     return room, product_id

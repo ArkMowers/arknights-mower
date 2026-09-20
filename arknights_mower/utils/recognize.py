@@ -173,10 +173,10 @@ class Recognizer:
         # 平均色匹配
         elif self.find("trade_strategy_select"):
             self.scene = Scene.TRADE_STRATEGY_SELECT
-        elif self.find("factory_product_change_confirm"):
-            self.scene = Scene.FACTORY_PRODUCT_CHANGE_CONFIRM
-        elif self.find("factory_product_select"):
-            self.scene = Scene.FACTORY_PRODUCT_SELECT
+        elif self.find("manufacture_product_change_confirm"):
+            self.scene = Scene.MANUFACTURE_PRODUCT_CHANGE_CONFIRM
+        elif self.find("manufacture_product_select"):
+            self.scene = Scene.MANUFACTURE_PRODUCT_SELECT
         elif self.find("confirm"):
             self.scene = Scene.CONFIRM
         elif self.find("order_label"):
@@ -876,9 +876,9 @@ class Recognizer:
             "fight/use": (858, 864),
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
-            "factory_product_cancel_confirm": ((500, 430), (1420, 540)),
-            "factory_product_select": ((1150, 15), (1900, 110)),
-            "factory_product_change_confirm": ((1190, 750), (1510, 840)),
+            "manufacture_product_cancel_confirm": ((500, 430), (1420, 540)),
+            "manufacture_product_select": ((1150, 15), (1900, 110)),
+            "manufacture_product_change_confirm": ((1190, 750), (1510, 840)),
             "trade_strategy_select": ((590, 850), (1330, 970)),
             "clue_next_black": ((1600, 850), (1920, 1030)),
             # 会客室信息板页面：底栏「访问人次」固定在左下角

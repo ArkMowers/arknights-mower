@@ -5,7 +5,10 @@ from itertools import product
 from evalidate import Expr, base_eval_model
 
 from arknights_mower.utils import config
-from arknights_mower.utils.factory_product import FACTORY_PRODUCTS, TRADE_PRODUCTS
+from arknights_mower.utils.manufacture_product import (
+    MANUFACTURE_PRODUCTS,
+    TRADE_PRODUCTS,
+)
 from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
@@ -441,7 +444,7 @@ class Operators:
     def evaluate_expression(self, expression):
         try:
             model = {e: e for e in base_room_list}
-            model.update({e: e for e in FACTORY_PRODUCTS | TRADE_PRODUCTS})
+            model.update({e: e for e in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS})
             model.update({e: e for e in FACILITY_TYPE_IDS.values()})
             model["op_data"] = self
             result = Expr(expression, self.eval_model).eval(model)
@@ -472,7 +475,7 @@ class Operators:
         self, room: str, facility: str, product: str, updated_at: str | None = None
     ) -> None:
         """记录生产设施最近一次从游戏界面识别到的实际状态。"""
-        supported = (facility == "manufacture" and product in FACTORY_PRODUCTS) or (
+        supported = (facility == "manufacture" and product in MANUFACTURE_PRODUCTS) or (
             facility == "trade" and product in TRADE_PRODUCTS
         )
         if room not in base_room_list or not supported:
@@ -488,7 +491,7 @@ class Operators:
         if room not in base_room_list:
             raise ValueError(f"不支持的设施位置：{room}")
         cached = self.facility_states.get(room, {}).get("product")
-        if cached in FACTORY_PRODUCTS | TRADE_PRODUCTS:
+        if cached in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS:
             return cached
         return self.global_plan["default_plan"].products.get(room)
 
@@ -531,7 +534,7 @@ class Operators:
 
     def facility_product_count(self, product: str) -> int:
         """返回当前生产指定产物或订单类型的设施数量。"""
-        if product not in FACTORY_PRODUCTS | TRADE_PRODUCTS:
+        if product not in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS:
             raise ValueError(f"不支持的产物或订单类型：{product}")
         rooms = (
             self.global_plan["default_plan"].products.keys()
@@ -550,7 +553,7 @@ class Operators:
                 product
                 for room in rooms
                 if (product := self.facility_product(room))
-                in FACTORY_PRODUCTS | TRADE_PRODUCTS
+                in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS
             }
         )
 

@@ -117,9 +117,9 @@ class Scene:
     "加工站干员选择界面"
     CLUE_MESSAGE_BOARD = 229
     "会客室信息板"
-    FACTORY_PRODUCT_SELECT = 230
+    MANUFACTURE_PRODUCT_SELECT = 230
     "制造站选择产物"
-    FACTORY_PRODUCT_CHANGE_CONFIRM = 231
+    MANUFACTURE_PRODUCT_CHANGE_CONFIRM = 231
     "制造站切换产物确认"
     TRADE_STRATEGY_SELECT = 232
     "贸易站选择订单类型"

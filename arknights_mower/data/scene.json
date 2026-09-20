@@ -236,11 +236,11 @@
     "comment": "会客室信息板"
   },
   "230": {
-    "label": "FACTORY_PRODUCT_SELECT",
+    "label": "MANUFACTURE_PRODUCT_SELECT",
     "comment": "制造站选择产物"
   },
   "231": {
-    "label": "FACTORY_PRODUCT_CHANGE_CONFIRM",
+    "label": "MANUFACTURE_PRODUCT_CHANGE_CONFIRM",
     "comment": "制造站切换产物确认"
   },
   "232": {
