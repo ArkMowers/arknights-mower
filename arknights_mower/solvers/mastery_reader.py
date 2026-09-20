@@ -55,6 +55,8 @@ MASTERY_ICON_PIPS = [
     ((338, 848), (350, 860)),  # 专三（左下）
 ]
 
+# 重排缓冲：读取器与 dispatch（`mastery.py` 从这里导入）共用一份，两种用法——
+# 占用且有倒计时 → 排到「练完时刻 + 缓冲」；结束时刻读不出来 → 排到「now + 缓冲」。
 ARRANGING_RETRY_BUFFER = timedelta(minutes=2)
 
 # §16.5 保护检查：协助位是这些干员时训练室受保护（不能被排班/mower 改动）

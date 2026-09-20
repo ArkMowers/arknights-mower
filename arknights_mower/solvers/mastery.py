@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from arknights_mower.solvers.mastery_reader import (
+    ARRANGING_RETRY_BUFFER,
     PROTECT_OPERATORS,
     RoomPanel,
     RoomState,
@@ -27,7 +28,8 @@ from arknights_mower.utils.mastery_support_types import DEFAULT_SWAP_BUFFER_MINU
 from arknights_mower.utils.scene import Scene
 
 ARRANGING_DEADLINE = timedelta(minutes=5)
-ARRANGING_RETRY_BUFFER = timedelta(minutes=2)
+# ARRANGING_RETRY_BUFFER（2 分钟重排缓冲）从 mastery_reader 导入：读取器与 dispatch
+# 两处都排「now/练完时刻 + 缓冲」，同步改一个常量，不再各写一份。
 # #81（2026-08-15 用户拍板）：SWAP 换人失败最多重试次数（无 +5min 间隔，立刻原地重试；
 # 每次重试都重读倒计时判还值不值得换，倒计时只会减少，终会到「不足 5 小时」放弃）
 SWAP_RETRY_LIMIT = 5
