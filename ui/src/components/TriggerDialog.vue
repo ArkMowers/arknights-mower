@@ -46,7 +46,7 @@ function update_trigger(data) {
     <div class="dropdown-container">
       <label class="dropdown-label"
         >最早切表阶段
-        <help-text>
+        <help-text :max-width="560" nowrap>
           <div>该选项表示最早允许切表的阶段。</div>
           <div>任务开始：调度器选中一个待执行任务后，在处理前允许切表。</div>
           <div>下班结束：适合需要在上班前切换产物或订单的副表。</div>

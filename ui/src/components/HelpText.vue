@@ -1,10 +1,5 @@
 <template>
-  <n-tooltip
-    trigger="manual"
-    :show="hovered || focused"
-    to="body"
-    style="max-width: min(360px, calc(100vw - 32px))"
-  >
+  <n-tooltip trigger="manual" :show="hovered || focused" to="body" :style="tooltipStyle">
     <template #trigger>
       <span
         class="help"
@@ -52,10 +47,18 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { NButton, NIcon, NTooltip } from 'naive-ui'
 
-defineProps({ label: { type: String, default: '查看说明' } })
+const props = defineProps({
+  label: { type: String, default: '查看说明' },
+  maxWidth: { type: Number, default: 360 },
+  nowrap: { type: Boolean, default: false }
+})
+const tooltipStyle = computed(() => ({
+  maxWidth: `min(${props.maxWidth}px, calc(100vw - 32px))`,
+  whiteSpace: props.nowrap ? 'nowrap' : 'normal'
+}))
 const hovered = ref(false)
 const focused = ref(false)
 let hideTimer

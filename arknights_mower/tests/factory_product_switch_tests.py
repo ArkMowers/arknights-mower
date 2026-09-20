@@ -493,6 +493,23 @@ def test_facility_type_reuses_current_plan():
     )
 
 
+def test_trade_facility_type_expression_is_true():
+    room = "room_1_1"
+    conf = PlanConfig("", "", "")
+    plan = {
+        "default_plan": Plan(
+            {room: [Room("但书", "", [], "贸易站", "lmd")]},
+            conf,
+            products={room: "lmd"},
+        ),
+        "backup_plans": [],
+    }
+    operators = Operators(plan)
+
+    assert operators.facility_type(room) == "trade"
+    assert operators.evaluate_expression("op_data.facility_type('room_1_1') == trade")
+
+
 def test_product_constant_is_valid_in_expression():
     _, plan = product_plan()
     operators = Operators(plan)
