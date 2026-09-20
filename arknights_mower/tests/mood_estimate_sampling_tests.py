@@ -77,6 +77,7 @@ def test_repeated_cached_reads_do_not_schedule_premature_group_downshift(room_re
     assert readings == [20, 20, 20]
     assert (target.mood, target.time_stamp) == (21, sample_time)
     assert target.current_mood() == 20
+    assert solver.op_data.facility_states["central"]["operators"] == ["夕"]
     solver.read_accurate_mood.assert_not_called()
 
 

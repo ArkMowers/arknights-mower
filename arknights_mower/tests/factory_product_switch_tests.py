@@ -15,7 +15,11 @@ from arknights_mower.utils.factory_product import (  # noqa: E402
     parse_product_task_meta,
     product_task_meta,
 )
-from arknights_mower.utils.operators import Operators, build_global_plan  # noqa: E402
+from arknights_mower.utils.operators import (  # noqa: E402
+    Operator,
+    Operators,
+    build_global_plan,
+)
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
@@ -410,11 +414,19 @@ def test_facility_state_is_cached_and_available_to_backup_expression():
     operators.update_facility_state(
         room, "factory", "exp3", updated_at="2026-09-20T12:00:00"
     )
+    operators.update_facility_operators(
+        room,
+        ["Lancet-2", "阿米娅"],
+        facility="factory",
+        updated_at="2026-09-20T12:00:01",
+    )
 
     assert operators.facility_states[room] == {
         "facility": "factory",
         "product": "exp3",
-        "updated_at": "2026-09-20T12:00:00",
+        "operators": ["Lancet-2", "阿米娅"],
+        "operator_count": 2,
+        "updated_at": "2026-09-20T12:00:01",
     }
     assert operators.facility_product(room) == "exp3"
     assert operators.evaluate_expression("op_data.facility_product('room_1_2') == exp3")
@@ -430,6 +442,44 @@ def test_facility_operator_count_supports_all_base_rooms():
     assert operators.evaluate_expression(
         "op_data.facility_operator_count('central') >= 1"
     )
+
+
+def test_facility_operator_binding_and_work_relation_are_available_to_expression():
+    room, plan = product_plan()
+    operators = Operators(plan)
+    operators.add(Operator("Lancet-2", ""))
+    operators.add(Operator("阿米娅", ""))
+    lancet = operators.operators["Lancet-2"]
+    amiya = operators.operators["阿米娅"]
+    lancet.current_room = room
+    lancet.current_index = 0
+    amiya.current_room = room
+    amiya.current_index = 1
+
+    assert operators.facility_has_operator(room, "阿米娅")
+    assert operators.operators_work_together("Lancet-2", "阿米娅")
+    assert operators.evaluate_expression(
+        "op_data.facility_has_operator('room_1_2', '阿米娅')"
+    )
+    assert operators.evaluate_expression(
+        "op_data.operators_work_together('Lancet-2', '阿米娅')"
+    )
+
+    amiya.current_room = "dormitory_1"
+    assert not operators.operators_work_together("Lancet-2", "阿米娅")
+
+
+def test_facility_product_statistics_are_available_to_expression():
+    room, plan = product_plan()
+    operators = Operators(plan)
+    operators.update_facility_state(room, "factory", "gold")
+    operators.update_facility_state("room_1_1", "trade", "lmd")
+    operators.update_facility_state("room_2_1", "factory", "gold")
+
+    assert operators.facility_product_count("gold") == 2
+    assert operators.facility_product_type_count() == 2
+    assert operators.evaluate_expression("op_data.facility_product_count('gold') == 2")
+    assert operators.evaluate_expression("op_data.facility_product_type_count() == 2")
 
 
 def test_facility_state_can_hold_inventory_backup_until_lower_threshold(monkeypatch):

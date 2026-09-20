@@ -12,7 +12,14 @@ import {
 } from '@/utils/trigger_inventory'
 import {
   facility_expression,
+  facility_operator_expression,
+  facility_product_count_expression,
+  facility_product_type_count_expression,
+  operator_relation_expression,
   parse_facility_expression,
+  parse_facility_operator_expression,
+  parse_facility_product_count_expression,
+  parse_operator_relation_expression,
   parse_facility_product
 } from '@/utils/trigger_facility'
 import { facility_product_labels, facility_product_options } from '@/utils/base_products'
@@ -72,6 +79,37 @@ const op_data = computed(() => {
       status: facility.status
     }
   }
+  const facilityOperator = parse_facility_operator_expression(data.value)
+  if (facilityOperator) {
+    return {
+      type: 'facility',
+      room: facilityOperator.room,
+      status: 'operator',
+      operator: facilityOperator.operator
+    }
+  }
+  const operatorRelation = parse_operator_relation_expression(data.value)
+  if (operatorRelation) {
+    return {
+      type: 'operator_relation',
+      first: operatorRelation.first,
+      second: operatorRelation.second
+    }
+  }
+  const productCount = parse_facility_product_count_expression(data.value)
+  if (productCount) {
+    return {
+      type: 'facility_stat',
+      status: 'product_count',
+      product: productCount
+    }
+  }
+  if (data.value == facility_product_type_count_expression) {
+    return {
+      type: 'facility_stat',
+      status: 'product_type_count'
+    }
+  }
   const facilityProduct = parse_facility_product(data.value)
   if (facilityProduct) {
     return {
@@ -93,6 +131,10 @@ const op_type = computed(() => {
     return 'inventory'
   } else if (op_data.value.type == 'facility') {
     return 'facility'
+  } else if (op_data.value.type == 'operator_relation') {
+    return 'operator_relation'
+  } else if (op_data.value.type == 'facility_stat') {
+    return 'facility_stat'
   } else if (op_data.value.type == 'facility_product') {
     return 'facility_product'
   } else {
@@ -104,6 +146,8 @@ const type_options = [
   { label: '干员属性', value: 'op' },
   { label: '仓库资源', value: 'inventory' },
   { label: '设施状态', value: 'facility' },
+  { label: '干员同设施工作', value: 'operator_relation' },
+  { label: '生产设施统计', value: 'facility_stat' },
   { label: '产物或订单', value: 'facility_product' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '自定义', value: 'custom' }
@@ -130,6 +174,12 @@ function set_op_type(v) {
       ? 'product'
       : 'operator_count'
     data.value = facility_expression(room, status)
+  } else if (v == 'operator_relation') {
+    const first = operators.value[0]?.value || '阿米娅'
+    const second = operators.value[1]?.value || first
+    data.value = operator_relation_expression(first, second)
+  } else if (v == 'facility_stat') {
+    data.value = facility_product_count_expression(facility_product_options[0].value)
   } else if (v == 'facility_product') {
     data.value = facility_product_options[0].value
   }
@@ -143,11 +193,44 @@ function update_facility(room) {
   const supportsProduct = ['制造站', '贸易站'].includes(plan.value[room]?.name)
   const status =
     op_data.value.status == 'product' && !supportsProduct ? 'operator_count' : op_data.value.status
-  data.value = facility_expression(room, status)
+  data.value =
+    status == 'operator'
+      ? facility_operator_expression(room, op_data.value.operator)
+      : facility_expression(room, status)
 }
 
 function update_facility_status(status) {
-  data.value = facility_expression(op_data.value.room, status)
+  if (status == 'operator') {
+    data.value = facility_operator_expression(
+      op_data.value.room,
+      operators.value[0]?.value || '阿米娅'
+    )
+  } else {
+    data.value = facility_expression(op_data.value.room, status)
+  }
+}
+
+function update_facility_operator(operator) {
+  data.value = facility_operator_expression(op_data.value.room, operator)
+}
+
+function update_relation_first(operator) {
+  data.value = operator_relation_expression(operator, op_data.value.second)
+}
+
+function update_relation_second(operator) {
+  data.value = operator_relation_expression(op_data.value.first, operator)
+}
+
+function update_facility_stat(status) {
+  data.value =
+    status == 'product_type_count'
+      ? facility_product_type_count_expression
+      : facility_product_count_expression(facility_product_options[0].value)
+}
+
+function update_facility_stat_product(product) {
+  data.value = facility_product_count_expression(product)
 }
 
 function update_facility_product(product) {
@@ -216,10 +299,19 @@ const inventory_select_options = computed(() =>
 const facility_select_options = computed(() =>
   left_side_facility.map((option) => {
     const facilityName = plan.value[option.value]?.name
+    let occupants = '未记录'
+    if (facilityLoaded.value) {
+      const names = facility_states.value[option.value]?.operators
+      if (Array.isArray(names)) occupants = names.length ? names.join('、') : '空'
+    } else if (facilityLoadError.value) {
+      occupants = '未知'
+    }
     if (!['制造站', '贸易站'].includes(facilityName)) {
       return {
         ...option,
-        label: facilityName ? `${option.label}（${facilityName}）` : option.label
+        label: facilityName
+          ? `${option.label}（${facilityName}；进驻：${occupants}）`
+          : option.label
       }
     }
     let current = '读取中…'
@@ -228,17 +320,39 @@ const facility_select_options = computed(() =>
     } else if (facilityLoaded.value) {
       current = facility_product_labels[facility_states.value[option.value]?.product] || '未记录'
     }
-    return { ...option, label: `${option.label}（${facilityName}；当前：${current}）` }
+    return {
+      ...option,
+      label: `${option.label}（${facilityName}；当前：${current}；进驻：${occupants}）`
+    }
   })
 )
 
 const facility_status_options = computed(() => {
   const facilityName = plan.value[op_data.value.room]?.name
-  const options = [{ label: '当前干员数量', value: 'operator_count' }]
+  const options = [
+    { label: '当前进驻干员', value: 'operator' },
+    { label: '当前干员数量', value: 'operator_count' }
+  ]
   if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
   if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
   return options
 })
+
+const facility_stat_options = [
+  { label: '指定产物/订单的设施数', value: 'product_count' },
+  { label: '当前产物及订单种类数', value: 'product_type_count' }
+]
+
+const facility_product_stat_options = computed(() =>
+  facility_product_options.map((option) => {
+    const current = facilityLoadError.value
+      ? '未知'
+      : facilityLoaded.value
+        ? `${Object.values(facility_states.value).filter((state) => state.product == option.value).length} 个设施`
+        : '读取中…'
+    return { ...option, label: `${option.label}（当前 ${current}）` }
+  })
+)
 
 onMounted(() => {
   depot_store.loadInventory().catch(() => {})
@@ -327,6 +441,26 @@ const custom_tips = [
       style="min-width: 120px"
     />
   </template>
+  <template v-if="op_type == 'operator_relation'">
+    <n-select
+      :default-value="op_data.first"
+      filterable
+      :options="operators"
+      :on-update:value="update_relation_first"
+      :filter="(p, o) => pinyin_match(o.label, p)"
+      :render-label="render_op_label"
+      style="min-width: 220px"
+    />
+    <n-select
+      :default-value="op_data.second"
+      filterable
+      :options="operators"
+      :on-update:value="update_relation_second"
+      :filter="(p, o) => pinyin_match(o.label, p)"
+      :render-label="render_op_label"
+      style="min-width: 220px"
+    />
+  </template>
   <n-select
     v-if="op_type == 'inventory'"
     :default-value="op_data.item"
@@ -348,6 +482,30 @@ const custom_tips = [
     :options="facility_status_options"
     :on-update:value="update_facility_status"
     style="min-width: 160px"
+  />
+  <n-select
+    v-if="op_type == 'facility' && op_data.status == 'operator'"
+    :default-value="op_data.operator"
+    filterable
+    :options="operators"
+    :on-update:value="update_facility_operator"
+    :filter="(p, o) => pinyin_match(o.label, p)"
+    :render-label="render_op_label"
+    style="min-width: 220px"
+  />
+  <n-select
+    v-if="op_type == 'facility_stat'"
+    :default-value="op_data.status"
+    :options="facility_stat_options"
+    :on-update:value="update_facility_stat"
+    style="min-width: 220px"
+  />
+  <n-select
+    v-if="op_type == 'facility_stat' && op_data.status == 'product_count'"
+    :default-value="op_data.product"
+    :options="facility_product_stat_options"
+    :on-update:value="update_facility_stat_product"
+    style="min-width: 220px"
   />
   <n-select
     v-if="op_type == 'facility_product'"

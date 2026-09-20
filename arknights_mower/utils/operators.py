@@ -154,6 +154,10 @@ class Operators:
                 "inventory_count",
                 "facility_product",
                 "facility_operator_count",
+                "facility_has_operator",
+                "operators_work_together",
+                "facility_product_count",
+                "facility_product_type_count",
             ]
         )
         self.power_plant_count = 0
@@ -466,11 +470,38 @@ class Operators:
         )
         if room not in base_room_list or not supported:
             raise ValueError(f"不支持的设施状态：{room}, {facility}, {product}")
-        self.facility_states[room] = {
-            "facility": facility,
-            "product": product,
-            "updated_at": updated_at or datetime.now().isoformat(timespec="seconds"),
-        }
+        state = self.facility_states.setdefault(room, {})
+        state.update(
+            {
+                "facility": facility,
+                "product": product,
+                "updated_at": updated_at
+                or datetime.now().isoformat(timespec="seconds"),
+            }
+        )
+
+    def update_facility_operators(
+        self,
+        room: str,
+        names: list[str],
+        facility: str = "",
+        updated_at: str | None = None,
+    ) -> None:
+        """记录一次房间名单读取结果，并保留同轮已经识别到的产物。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        operators = [name for name in names if name]
+        state = self.facility_states.setdefault(room, {})
+        if facility:
+            state["facility"] = facility
+        state.update(
+            {
+                "operators": operators,
+                "operator_count": len(operators),
+                "updated_at": updated_at
+                or datetime.now().isoformat(timespec="seconds"),
+            }
+        )
 
     def facility_product(self, room: str) -> str | None:
         """返回指定设施最近识别到的实际产物或订单类型。"""
@@ -484,6 +515,43 @@ class Operators:
             raise ValueError(f"不支持的设施位置：{room}")
         return sum(
             operator.current_room == room for operator in self.operators.values()
+        )
+
+    def facility_has_operator(self, room: str, name: str) -> bool:
+        """判断指定干员当前是否在某个设施。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        operator = self.operators.get(name)
+        return operator is not None and operator.current_room == room
+
+    def operators_work_together(self, first: str, second: str) -> bool:
+        """判断两名干员当前是否在同一非宿舍设施工作。"""
+        left = self.operators.get(first)
+        right = self.operators.get(second)
+        if first == second or left is None or right is None or not left.current_room:
+            return False
+        return (
+            left.current_room == right.current_room
+            and left.is_working()
+            and right.is_working()
+        )
+
+    def facility_product_count(self, product: str) -> int:
+        """返回当前生产指定产物或订单类型的设施数量。"""
+        if product not in FACTORY_PRODUCTS | TRADE_PRODUCTS:
+            raise ValueError(f"不支持的产物或订单类型：{product}")
+        return sum(
+            state.get("product") == product for state in self.facility_states.values()
+        )
+
+    def facility_product_type_count(self) -> int:
+        """返回设施缓存中当前产物和订单类型的种类数。"""
+        return len(
+            {
+                state.get("product")
+                for state in self.facility_states.values()
+                if state.get("product") in FACTORY_PRODUCTS | TRADE_PRODUCTS
+            }
         )
 
     def get_current_room(self, room, bypass=False, current_index=None):
