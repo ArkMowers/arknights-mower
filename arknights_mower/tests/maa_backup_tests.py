@@ -18,6 +18,9 @@ class FakeAsst:
     def start(self):
         return self.accepted
 
+    def connect(self, *args, **kwargs):
+        return self.accepted
+
     def running(self):
         messages, self.messages = self.messages, []
         for message in messages:
@@ -92,6 +95,23 @@ class MaaBackupTests(unittest.TestCase):
         self.assertFalse(instance.start())
         self.finish(instance)
         self.assertTrue(self.old.exists())
+
+    def test_reports_only_actively_running_maa_instances_as_busy(self):
+        instance = self.asst()
+
+        self.assertFalse(backup.maa_in_use())
+        self.assertTrue(instance.start())
+        self.assertTrue(backup.maa_in_use())
+        instance.stop()
+        self.assertFalse(backup.maa_in_use())
+
+    def test_successful_connection_counts_as_maa_activity_before_start(self):
+        instance = self.asst()
+
+        self.assertTrue(instance.connect("adb", "127.0.0.1:5555"))
+        self.assertTrue(backup.maa_in_use())
+        instance.stop()
+        self.assertFalse(backup.maa_in_use())
         instance = self.asst()
         instance.start()
         instance.stop()

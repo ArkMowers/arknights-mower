@@ -941,11 +941,7 @@ onUnmounted(() => {
       <n-divider />
       <div class="maa-updater">
         <div class="update-title">
-          {{
-            maa_update_platform === 'windows'
-              ? 'Windows 下载 MAA'
-              : `${maa_update_platform_label} ${maa_installed ? '更新 MAA' : '下载 MAA'}`
-          }}
+          {{ maa_update_platform_label }} {{ maa_installed ? '更新 MAA' : '下载 MAA' }}
         </div>
         <div class="update-meta">
           <span>
@@ -953,8 +949,7 @@ onUnmounted(() => {
               maa_latest_version || '尚未检查'
             }}
           </span>
-          <span v-if="maa_update_platform === 'windows'">已安装：未检测到 MAA</span>
-          <span v-else>已安装：{{ maa_installed_version || '未知/手动安装' }}</span>
+          <span>已安装：{{ maa_installed_version || '未知/手动安装' }}</span>
         </div>
         <div class="update-option">
           <span class="update-option-label">自动检查更新</span>
@@ -1001,8 +996,18 @@ onUnmounted(() => {
             </n-a>
           </div>
           <div v-if="maa_update_platform === 'windows'" class="update-hint">
-            未检测到 MAA，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
-            {{ maa_update_arch }} 完整包并安装到设定目录。
+            <template v-if="maa_installed && maa_update_arch === 'x64'">
+              更新时会向 Mirror酱传递当前版本，优先取得 Windows {{ maa_update_arch }} OTA
+              增量包；若服务端只提供完整包则自动回退。
+            </template>
+            <template v-else-if="maa_installed">
+              Windows ARM64 不提供 OTA，更新时会像 Linux
+              一样下载完整包并原子替换，同时保留用户数据。
+            </template>
+            <template v-else>
+              未检测到 MAA，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
+              {{ maa_update_arch }} 完整包并安装到设定目录。
+            </template>
           </div>
           <div v-else-if="maa_update_platform === 'android'" class="update-hint">
             使用 MAA 官方 Android ARM64 组件，Python
@@ -1019,8 +1024,18 @@ onUnmounted(() => {
           </div>
         </template>
         <div v-else-if="maa_update_platform === 'windows'" class="update-hint">
-          未检测到 MAA，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows
-          {{ maa_update_arch }} 完整包并安装到设定目录。
+          <template v-if="maa_installed && maa_update_arch === 'x64'">
+            GitHub 更新优先使用与当前版本精确匹配的 Windows {{ maa_update_arch }} OTA
+            增量包，没有对应 OTA 时自动回退到完整包。
+          </template>
+          <template v-else-if="maa_installed">
+            Windows ARM64 不提供 OTA，GitHub 更新会像 Linux
+            一样下载完整包并原子替换，同时保留用户数据。
+          </template>
+          <template v-else>
+            未检测到 MAA，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows
+            {{ maa_update_arch }} 完整包并安装到设定目录。
+          </template>
         </div>
         <div v-else-if="maa_update_platform === 'android'" class="update-hint">
           使用 MAA 官方 Android ARM64 组件，暂不支持 Mirror酱。Python
@@ -1083,13 +1098,7 @@ onUnmounted(() => {
             :disabled="maa_update_action_disabled"
             @click="start_maa_update"
           >
-            {{
-              maa_update_platform === 'windows'
-                ? '下载 MAA'
-                : maa_installed
-                  ? '更新 MAA'
-                  : '下载 MAA'
-            }}
+            {{ maa_installed ? '更新 MAA' : '下载 MAA' }}
           </n-button>
         </n-space>
         <SoftwareComponentUpdates
@@ -1108,20 +1117,6 @@ onUnmounted(() => {
           {{ maa_update_platform_label }} {{ maa_installed ? '更新 MAA' : '下载 MAA' }}
         </div>
         <div class="update-error">{{ maa_update_info_msg }}</div>
-      </div>
-    </template>
-    <template v-else-if="maa_update_platform === 'windows'">
-      <n-divider />
-      <div class="maa-updater">
-        <div class="update-title">Windows 更新 MAA</div>
-        <div class="update-meta">
-          <span>已安装：{{ maa_installed_version || '已检测到 MAA' }}</span>
-        </div>
-        <div class="update-hint">
-          已检测到 Windows MAA，请手动打开 MAA，并在 MAA
-          设置中完成程序及资源更新。更新源、版本通道和 Mirror酱 CDK 以 MAA 内的配置为准，Mower
-          不会覆盖 MAA 目录。
-        </div>
       </div>
     </template>
     <template v-if="maa_resource_update_supported">

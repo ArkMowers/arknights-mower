@@ -19,7 +19,7 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 import requests
 
 from arknights_mower.utils.github_download import download_url
-from arknights_mower.utils.maa_backup import update_transaction
+from arknights_mower.utils.maa_backup import maa_in_use, update_transaction
 from arknights_mower.utils.maa_update import (
     MaaUpdateError,
     backup_path_for,
@@ -431,6 +431,8 @@ def install_maa_resource_update(
     callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """检查并原子合并 MaaResource；Windows 由 MAA 主程序负责。"""
+    if maa_in_use():
+        raise MaaUpdateError("MAA 正在使用中，请等待当前 MAA 任务结束后再更新")
     system = system.lower()
     if system not in {"darwin", "linux"}:
         raise MaaUpdateError("当前平台请在 MAA 主程序中更新 MAA 资源")
