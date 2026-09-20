@@ -2848,6 +2848,60 @@ class TestReadSlotsSceneGate(unittest.TestCase):
         self.assertTrue(reliable)
         self.assertEqual((support, train), ("支援干员", "训练干员"))
 
+    def test_reads_open_popup_in_place_when_title_says_train(self):
+        # 浮窗已开 + 门牌认出是训练室 → 就地读，不再「关掉再打开」：只关一次窗（读后）
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.INFRA_DETAILS
+        solver.detect_room.return_value = "train"
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        with patch.object(reader, "_close_room_detail") as mock_close:
+            support, train, scan, reliable = reader._read_slots_checked(solver)
+        mock_close.assert_called_once_with(solver)  # 读前那一次关窗被省掉了
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+        solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_closes_popup_first_when_title_is_other_room(self):
+        # 浮窗已开但门牌不是训练室（别的房间的进驻详情也是 205）→ 照旧先关回 217 再重开
+        solver = MagicMock()
+        solver.detect_room.return_value = "meeting"
+        solver.train_scene.side_effect = [
+            Scene.INFRA_DETAILS,  # 前置：浮窗开着，但不是训练室的
+            Scene.TRAIN_MAIN,  # 关掉后回到训练室主页面
+            Scene.INFRA_DETAILS,  # 读后：浮窗已开 → 关回
+        ]
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        with patch.object(reader, "_close_room_detail") as mock_close:
+            support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertEqual(mock_close.call_count, 2)  # 读前关 + 读后关
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+
+    def test_detect_room_failure_falls_back_to_reopen(self):
+        # detect_room 抛异常 → 当「认不出来」，走旧的关掉重开，读照常生效（不因它失败而读不到）
+        solver = MagicMock()
+        solver.detect_room.side_effect = Exception("detect fail")
+        solver.train_scene.side_effect = [
+            Scene.INFRA_DETAILS,
+            Scene.TRAIN_MAIN,
+            Scene.INFRA_DETAILS,
+        ]
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        with patch.object(reader, "_close_room_detail") as mock_close:
+            support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertEqual(mock_close.call_count, 2)
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+
 
 class TestFillSlotsReliability(unittest.TestCase):
     """#100：RoomState.slots_reliable 如实反映 _read_slots_checked 的可靠位。
