@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  expression_value_option,
   facility_expression,
   facility_product_count_expression,
   facility_product_type_count_expression,
@@ -10,6 +11,14 @@ import {
 } from './trigger_facility.js'
 
 describe('设施状态副表表达式', () => {
+  it('自动补全显示中文但写入表达式值', () => {
+    expect(expression_value_option('赤金', 'gold')).toEqual({
+      label: 'gold',
+      value: 'gold',
+      displayLabel: '赤金（gold）'
+    })
+  })
+
   it('生成并解析设施产物表达式', () => {
     const expression = facility_expression('room_1_2')
     expect(expression).toBe("op_data.facility_product('room_1_2')")

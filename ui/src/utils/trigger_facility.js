@@ -14,6 +14,14 @@ const facilityMethodStatuses = Object.fromEntries(
   Object.entries(facilityStatusMethods).map(([status, method]) => [method, status])
 )
 
+export function expression_value_option(displayLabel, value) {
+  return {
+    label: value,
+    value,
+    displayLabel: `${displayLabel}（${value}）`
+  }
+}
+
 export function facility_expression(room, status = 'product') {
   return `op_data.${facilityStatusMethods[status]}('${room}')`
 }

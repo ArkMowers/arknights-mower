@@ -493,6 +493,14 @@ def test_facility_type_reuses_current_plan():
     )
 
 
+def test_product_constant_is_valid_in_expression():
+    _, plan = product_plan()
+    operators = Operators(plan)
+
+    assert operators.evaluate_expression("gold == 'gold'")
+    assert operators.evaluate_expression("gold != True")
+
+
 def test_facility_product_statistics_are_available_to_expression():
     room, plan = product_plan()
     operators = Operators(plan)

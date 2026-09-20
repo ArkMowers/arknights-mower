@@ -11,6 +11,7 @@ import {
   parse_inventory_expression
 } from '@/utils/trigger_inventory'
 import {
+  expression_value_option,
   facility_expression,
   facility_product_count_expression,
   facility_product_type_count_expression,
@@ -345,11 +346,8 @@ import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const custom_tips = [
-  ...facility_product_options.map(({ label, value }) => ({
-    label: `${label}（${value}）`,
-    value
-  })),
-  ...trigger_facility_type_options,
+  ...facility_product_options.map(({ label, value }) => expression_value_option(label, value)),
+  ...trigger_facility_type_options.map(({ label, value }) => expression_value_option(label, value)),
   'True',
   'False',
   'None',
@@ -372,6 +370,10 @@ const custom_tips = [
   'dormitory_3',
   'dormitory_4'
 ]
+
+function render_custom_tip(option) {
+  return option.displayLabel || option.label
+}
 </script>
 
 <template>
@@ -385,6 +387,7 @@ const custom_tips = [
     v-if="op_type == 'custom'"
     v-model:value="data"
     :options="custom_tips"
+    :render-label="render_custom_tip"
     blur-after-select
     :get-show="() => true"
   />
