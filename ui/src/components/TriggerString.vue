@@ -16,7 +16,6 @@ import {
   facility_product_type_count_expression,
   operator_relation_expression,
   parse_facility_expression,
-  parse_facility_type,
   parse_facility_product_count_expression,
   parse_operator_relation_expression,
   summarize_facility_products
@@ -101,13 +100,6 @@ const op_data = computed(() => {
       status: 'product_type_count'
     }
   }
-  const facilityType = parse_facility_type(data.value)
-  if (facilityType) {
-    return {
-      type: 'facility_type',
-      facility: facilityType
-    }
-  }
   return {
     type: 'custom'
   }
@@ -126,8 +118,6 @@ const op_type = computed(() => {
     return 'operator_relation'
   } else if (op_data.value.type == 'facility_stat') {
     return 'facility_stat'
-  } else if (op_data.value.type == 'facility_type') {
-    return 'facility_type'
   } else {
     return 'op'
   }
@@ -139,9 +129,8 @@ const type_options = [
   { label: '设施状态', value: 'facility' },
   { label: '干员同设施工作', value: 'operator_relation' },
   { label: '生产设施统计', value: 'facility_stat' },
-  { label: '设施类型', value: 'facility_type' },
   { label: '线索交流结束时间', value: 'impart' },
-  { label: '自定义', value: 'custom' }
+  { label: '常量/自定义', value: 'custom' }
 ]
 
 const op_options = [
@@ -171,8 +160,6 @@ function set_op_type(v) {
     data.value = operator_relation_expression(first, second)
   } else if (v == 'facility_stat') {
     data.value = facility_product_count_expression(facility_product_options[0].value)
-  } else if (v == 'facility_type') {
-    data.value = trigger_facility_type_options[0].value
   }
 }
 
@@ -212,10 +199,6 @@ function update_facility_stat(status) {
 
 function update_facility_stat_product(product) {
   data.value = facility_product_count_expression(product)
-}
-
-function update_facility_type(facility) {
-  data.value = facility
 }
 
 function render_inventory_option(option) {
@@ -391,6 +374,7 @@ const custom_tips = [
     label: `${label}（${value}）`,
     value
   })),
+  ...trigger_facility_type_options,
   'True',
   'False',
   'None',
@@ -505,13 +489,6 @@ const custom_tips = [
     :on-update:value="update_facility_stat_product"
     :consistent-menu-width="false"
     style="min-width: 300px"
-  />
-  <n-select
-    v-if="op_type == 'facility_type'"
-    :default-value="data"
-    :options="trigger_facility_type_options"
-    :on-update:value="update_facility_type"
-    style="min-width: 160px"
   />
 </template>
 
