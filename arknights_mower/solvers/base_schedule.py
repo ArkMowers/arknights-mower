@@ -3044,12 +3044,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 label = FACTORY_PRODUCTS[product].name
             else:
                 self._wait_factory_resource("order_label")
-                self._tap_factory_point((1580, 955))
-                self._wait_factory_resource("trade_strategy_select")
-                product = self.read_trade_product()
+                if self._trade_strategy_locked():
+                    product = "lmd"
+                else:
+                    self._tap_factory_point((1580, 955))
+                    self._wait_factory_resource("trade_strategy_select")
+                    product = self.read_trade_product()
+                    self._close_trade_product_select()
                 facility = "trade"
                 label = TRADE_PRODUCTS[product].strategy_name
-                self._close_trade_product_select()
             self._cache_facility_state(room, facility, product)
             logger.info(f"已刷新{self.translate_room(room)}设施状态：{label}")
         except MowerExit:
@@ -3223,6 +3226,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         return product_id
 
+    def _trade_strategy_locked(self) -> bool:
+        """识别无法切换策略的低等级贸易站。"""
+        scope = (
+            (self.recog.w * 1400 // 1920, self.recog.h * 840 // 1080),
+            (self.recog.w * 1810 // 1920, self.recog.h * 1040 // 1080),
+        )
+        text = self._factory_ocr_text(scope)
+        locked = "3级后可切换" in text or ("3级" in text and "切换" in text)
+        if locked:
+            logger.info("识别到低等级贸易站，订单类型固定为龙门商法")
+        return locked
+
     def _close_trade_product_select(self):
         # 订单类型点击后立即生效，但选择弹窗不会自行关闭。
         self._tap_factory_point((1600, 200))
@@ -3230,21 +3245,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def _survey_trade_switch(self, room: str, target_product: str) -> dict:
         self._open_trade_product_detail(room)
-        self._tap_factory_point((1580, 955))
-        self._wait_factory_resource("trade_strategy_select")
-        current_product = self.read_trade_product()
+        switchable = not self._trade_strategy_locked()
+        if switchable:
+            self._tap_factory_point((1580, 955))
+            self._wait_factory_resource("trade_strategy_select")
+            current_product = self.read_trade_product()
+            self._close_trade_product_select()
+        else:
+            current_product = "lmd"
         self._cache_facility_state(room, "trade", current_product)
-        self._close_trade_product_select()
         return {
             "room": room,
             "facility": "trade",
             "target_product": target_product,
             "current_product": current_product,
             "needs_switch": current_product != target_product,
+            "switchable": switchable,
         }
 
     def _change_trade_product(self, observation: dict):
         self._open_trade_product_detail(observation["room"])
+        if self._trade_strategy_locked():
+            self._cache_facility_state(observation["room"], "trade", "lmd")
+            if observation["target_product"] == "lmd":
+                return
+            raise ProductSwitchDeferred(
+                f"{self.translate_room(observation['room'])}等级不足，"
+                "无法切换至开采协力",
+                minutes=60,
+            )
         self._tap_factory_point((1580, 955))
         self._wait_factory_resource("trade_strategy_select")
         current_product = self.read_trade_product()
@@ -3277,6 +3306,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 observation = self._survey_trade_switch(room, target_product)
             task_observations.append((task, observation))
+
+        locked_trade = [
+            observation
+            for _, observation in task_observations
+            if observation["facility"] == "trade"
+            and observation["needs_switch"]
+            and not observation.get("switchable", True)
+        ]
+        if locked_trade:
+            rooms = "、".join(
+                self.translate_room(item["room"]) for item in locked_trade
+            )
+            raise ProductSwitchDeferred(
+                f"{rooms}等级不足，无法切换至开采协力", minutes=60
+            )
 
         # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
         for _, observation in task_observations:

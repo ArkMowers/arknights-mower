@@ -585,6 +585,7 @@ def test_mood_room_visit_refreshes_trade_order_state():
     solver._tap_factory_point = MagicMock()
     solver._wait_factory_resource = MagicMock()
     solver.read_trade_product = MagicMock(return_value="orundum")
+    solver._trade_strategy_locked = MagicMock(return_value=False)
     solver._close_trade_product_select = MagicMock()
     solver.scene_graph_navigation = MagicMock()
     solver.translate_room = MagicMock(return_value="B101")
@@ -597,6 +598,45 @@ def test_mood_room_visit_refreshes_trade_order_state():
         ((1580, 955),),
     ]
     solver._close_trade_product_select.assert_called_once()
+    solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
+
+
+def test_trade_strategy_lock_is_detected_from_low_level_hint():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver._factory_ocr_text = MagicMock(return_value="贸易站3级后可切换")
+
+    assert solver._trade_strategy_locked()
+    solver._factory_ocr_text.assert_called_once_with(((1400, 840), (1810, 1040)))
+
+
+def test_mood_room_visit_caches_locked_trade_as_lmd_without_opening_selector():
+    room = "room_1_1"
+    conf = PlanConfig("", "", "")
+    plan = {
+        "default_plan": Plan(
+            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
+            conf,
+            products={room: "lmd"},
+        ),
+        "backup_plans": [],
+    }
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver._tap_factory_point = MagicMock()
+    solver._wait_factory_resource = MagicMock()
+    solver._trade_strategy_locked = MagicMock(return_value=True)
+    solver.read_trade_product = MagicMock()
+    solver._close_trade_product_select = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+    solver.translate_room = MagicMock(return_value="B101")
+
+    solver.refresh_facility_state(room)
+
+    assert solver.op_data.facility_product(room) == "lmd"
+    solver._tap_factory_point.assert_called_once_with((96, 1026), interval=3)
+    solver.read_trade_product.assert_not_called()
+    solver._close_trade_product_select.assert_not_called()
     solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
 
 
@@ -928,10 +968,65 @@ def test_trade_strategy_uses_selected_checkbox_brightness():
     assert solver.read_trade_product() == "orundum"
 
 
+def test_locked_trade_survey_only_caches_fixed_lmd_order():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver._open_trade_product_detail = MagicMock()
+    solver._trade_strategy_locked = MagicMock(return_value=True)
+    solver._tap_factory_point = MagicMock()
+    solver._wait_factory_resource = MagicMock()
+    solver.read_trade_product = MagicMock()
+    solver._close_trade_product_select = MagicMock()
+    solver._cache_facility_state = MagicMock()
+
+    observation = solver._survey_trade_switch("room_1_1", "lmd")
+
+    assert observation == {
+        "room": "room_1_1",
+        "facility": "trade",
+        "target_product": "lmd",
+        "current_product": "lmd",
+        "needs_switch": False,
+        "switchable": False,
+    }
+    solver._cache_facility_state.assert_called_once_with("room_1_1", "trade", "lmd")
+    solver._tap_factory_point.assert_not_called()
+    solver.read_trade_product.assert_not_called()
+    solver._close_trade_product_select.assert_not_called()
+
+
+def test_locked_trade_with_incompatible_target_defers_without_switching():
+    task = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta("room_1_1", "orundum"),
+    )
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.tasks = [task]
+    solver.translate_room = MagicMock(return_value="B101")
+    solver._survey_trade_switch = MagicMock(
+        return_value={
+            "room": "room_1_1",
+            "facility": "trade",
+            "target_product": "orundum",
+            "current_product": "lmd",
+            "needs_switch": True,
+            "switchable": False,
+        }
+    )
+    solver._change_trade_product = MagicMock()
+
+    with pytest.raises(base.ProductSwitchDeferred) as exc_info:
+        solver.switch_base_products([task])
+
+    assert exc_info.value.minutes == 60
+    solver._change_trade_product.assert_not_called()
+    assert solver.tasks == [task]
+
+
 def test_trade_switch_closes_persistent_selector_and_reopens_to_verify():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(update=MagicMock())
     solver._open_trade_product_detail = MagicMock()
+    solver._trade_strategy_locked = MagicMock(return_value=False)
     solver._tap_factory_point = MagicMock()
     solver._wait_factory_resource = MagicMock()
     solver.read_trade_product = MagicMock(side_effect=["lmd", "orundum"])
