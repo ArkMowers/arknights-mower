@@ -7,7 +7,6 @@ import {
   operator_relation_expression,
   parse_facility_expression,
   parse_facility_type,
-  parse_facility_product,
   parse_facility_product_count_expression,
   parse_operator_relation_expression,
   summarize_facility_products
@@ -43,10 +42,19 @@ describe('设施状态副表表达式', () => {
     expect(parse_facility_type("'控制中枢'")).toBeUndefined()
   })
 
-  it('只把支持的产物和订单识别为设施状态值', () => {
-    expect(parse_facility_product('orirock_device')).toBe('orirock_device')
-    expect(parse_facility_product('orundum')).toBe('orundum')
-    expect(parse_facility_product('unknown')).toBeUndefined()
+  it('生成并解析训练室专精状态表达式', () => {
+    expect(facility_expression('train', 'mastery_plan')).toBe(
+      "op_data.facility_has_mastery_plan('train')"
+    )
+    expect(parse_facility_expression("op_data.facility_has_mastery_plan('train')")).toEqual({
+      room: 'train',
+      status: 'mastery_plan'
+    })
+    expect(facility_expression('train', 'training')).toBe("op_data.facility_is_training('train')")
+    expect(parse_facility_expression("op_data.facility_is_training('train')")).toEqual({
+      room: 'train',
+      status: 'training'
+    })
   })
 
   it('生成并解析同设施工作关系', () => {

@@ -7,7 +7,9 @@ const facilityTypeNames = new Set(facility_type_names)
 const facilityStatusMethods = {
   type: 'facility_type',
   product: 'facility_product',
-  operator_count: 'facility_operator_count'
+  operator_count: 'facility_operator_count',
+  mastery_plan: 'facility_has_mastery_plan',
+  training: 'facility_is_training'
 }
 
 const facilityMethodStatuses = Object.fromEntries(
@@ -20,7 +22,7 @@ export function facility_expression(room, status = 'product') {
 
 export function parse_facility_expression(value) {
   const match = value.match(
-    /^op_data\.(facility_type|facility_product|facility_operator_count)\('(.+)'\)$/
+    /^op_data\.(facility_type|facility_product|facility_operator_count|facility_has_mastery_plan|facility_is_training)\('(.+)'\)$/
   )
   if (!match) return undefined
   return {
@@ -32,10 +34,6 @@ export function parse_facility_expression(value) {
 export function parse_facility_type(value) {
   const match = value.match(/^'(.+)'$/)
   return match && facilityTypeNames.has(match[1]) ? match[1] : undefined
-}
-
-export function parse_facility_product(value) {
-  return facilityProductIds.has(value) ? value : undefined
 }
 
 export function summarize_facility_products(plan = {}, states = {}) {

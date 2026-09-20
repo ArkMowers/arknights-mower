@@ -19,7 +19,6 @@ import {
   parse_facility_type,
   parse_facility_product_count_expression,
   parse_operator_relation_expression,
-  parse_facility_product,
   summarize_facility_products
 } from '@/utils/trigger_facility'
 import { trigger_facility_type_options } from '@/utils/base_facilities'
@@ -102,13 +101,6 @@ const op_data = computed(() => {
       status: 'product_type_count'
     }
   }
-  const facilityProduct = parse_facility_product(data.value)
-  if (facilityProduct) {
-    return {
-      type: 'facility_product',
-      product: facilityProduct
-    }
-  }
   const facilityType = parse_facility_type(data.value)
   if (facilityType) {
     return {
@@ -134,8 +126,6 @@ const op_type = computed(() => {
     return 'operator_relation'
   } else if (op_data.value.type == 'facility_stat') {
     return 'facility_stat'
-  } else if (op_data.value.type == 'facility_product') {
-    return 'facility_product'
   } else if (op_data.value.type == 'facility_type') {
     return 'facility_type'
   } else {
@@ -149,7 +139,6 @@ const type_options = [
   { label: '设施状态', value: 'facility' },
   { label: '干员同设施工作', value: 'operator_relation' },
   { label: '生产设施统计', value: 'facility_stat' },
-  { label: '产物或订单', value: 'facility_product' },
   { label: '设施类型', value: 'facility_type' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '自定义', value: 'custom' }
@@ -182,8 +171,6 @@ function set_op_type(v) {
     data.value = operator_relation_expression(first, second)
   } else if (v == 'facility_stat') {
     data.value = facility_product_count_expression(facility_product_options[0].value)
-  } else if (v == 'facility_product') {
-    data.value = facility_product_options[0].value
   } else if (v == 'facility_type') {
     data.value = trigger_facility_type_options[0].value
   }
@@ -195,8 +182,12 @@ function update_inventory(item) {
 
 function update_facility(room) {
   const supportsProduct = ['制造站', '贸易站'].includes(plan.value[room]?.name)
+  const supportsMastery = room == 'train'
   const status =
-    op_data.value.status == 'product' && !supportsProduct ? 'operator_count' : op_data.value.status
+    (op_data.value.status == 'product' && !supportsProduct) ||
+    (['mastery_plan', 'training'].includes(op_data.value.status) && !supportsMastery)
+      ? 'operator_count'
+      : op_data.value.status
   data.value = facility_expression(room, status)
 }
 
@@ -221,10 +212,6 @@ function update_facility_stat(status) {
 
 function update_facility_stat_product(product) {
   data.value = facility_product_count_expression(product)
-}
-
-function update_facility_product(product) {
-  data.value = product
 }
 
 function update_facility_type(facility) {
@@ -271,6 +258,7 @@ import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
+import { useMasteryStore } from '@/stores/mastery'
 const plan_store = usePlanStore()
 const { operators, plan } = storeToRefs(plan_store)
 const { left_side_facility } = plan_store
@@ -282,6 +270,13 @@ const {
   loaded: facilityLoaded,
   loadError: facilityLoadError
 } = storeToRefs(facility_store)
+const mastery_store = useMasteryStore()
+const {
+  planCount: masteryPlanCount,
+  isTraining: masteryIsTraining,
+  planSummaryLoaded,
+  planSummaryError
+} = storeToRefs(mastery_store)
 
 const inventory_select_options = computed(() =>
   inventory_options_with_counts(
@@ -298,7 +293,8 @@ const facility_product_summary = computed(() =>
 )
 
 const facility_select_options = computed(() =>
-  left_side_facility.map((option) => {
+  [...left_side_facility, { label: '训练室', value: 'train' }].map((option) => {
+    if (option.value == 'train') return option
     const facilityName = plan.value[option.value]?.name
     if (!['制造站', '贸易站'].includes(facilityName)) {
       return {
@@ -316,6 +312,23 @@ const facility_select_options = computed(() =>
 )
 
 const facility_status_options = computed(() => {
+  if (op_data.value.room == 'train') {
+    const planCount = planSummaryError.value
+      ? '读取失败'
+      : planSummaryLoaded.value
+        ? `当前 ${masteryPlanCount.value} 条`
+        : '读取中'
+    const training = planSummaryError.value
+      ? '读取失败'
+      : planSummaryLoaded.value
+        ? `当前：${masteryIsTraining.value ? '是' : '否'}`
+        : '读取中'
+    return [
+      { label: `是否存在专精计划（${planCount}）`, value: 'mastery_plan' },
+      { label: `是否正在训练（${training}）`, value: 'training' },
+      { label: '当前干员数量', value: 'operator_count' }
+    ]
+  }
   const facilityName = plan.value[op_data.value.room]?.name
   const options = [
     { label: '设施类型', value: 'type' },
@@ -344,6 +357,7 @@ const facility_product_stat_options = computed(() =>
 onMounted(() => {
   depot_store.loadInventory().catch(() => {})
   facility_store.load().catch(() => {})
+  mastery_store.loadPlanSummary().catch(() => {})
 })
 
 function build_data(op, type) {
@@ -373,6 +387,10 @@ import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const custom_tips = [
+  ...facility_product_options.map(({ label, value }) => ({
+    label: `${label}（${value}）`,
+    value
+  })),
   'True',
   'False',
   'None',
@@ -485,13 +503,6 @@ const custom_tips = [
     :on-update:value="update_facility_stat_product"
     :consistent-menu-width="false"
     style="min-width: 300px"
-  />
-  <n-select
-    v-if="op_type == 'facility_product'"
-    :default-value="op_data.product"
-    :options="facility_product_options"
-    :on-update:value="update_facility_product"
-    style="min-width: 220px"
   />
   <n-select
     v-if="op_type == 'facility_type'"

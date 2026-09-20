@@ -10,6 +10,38 @@ export const useMasteryStore = defineStore('mastery', () => {
   const filterAchievable = ref(false)
   const cultivateOk = ref(false)
   const cultivateMsg = ref('')
+  const planCount = ref(0)
+  const isTraining = ref(false)
+  const planSummaryLoaded = ref(false)
+  const planSummaryError = ref('')
+  let planSummaryLoadedAt = 0
+  let planSummaryRequest = null
+
+  async function loadPlanSummary(force = false) {
+    if (!force && planSummaryLoaded.value && Date.now() - planSummaryLoadedAt < 30_000) {
+      return { planCount: planCount.value, isTraining: isTraining.value }
+    }
+    if (planSummaryRequest) return planSummaryRequest
+    planSummaryError.value = ''
+    planSummaryRequest = axios
+      .get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
+      .then((response) => {
+        const plans = Array.isArray(response.data?.plans) ? response.data.plans : []
+        planCount.value = plans.length
+        isTraining.value = plans.some(({ status }) => status === 'training')
+        planSummaryLoaded.value = true
+        planSummaryLoadedAt = Date.now()
+        return { planCount: planCount.value, isTraining: isTraining.value }
+      })
+      .catch((e) => {
+        planSummaryError.value = e?.message || '读取专精计划失败'
+        throw e
+      })
+      .finally(() => {
+        planSummaryRequest = null
+      })
+    return planSummaryRequest
+  }
 
   async function fetchRecommendations() {
     loading.value = true
@@ -76,6 +108,11 @@ export const useMasteryStore = defineStore('mastery', () => {
     fetchRecommendations,
     fetchCultivate,
     cultivateOk,
-    cultivateMsg
+    cultivateMsg,
+    planCount,
+    isTraining,
+    planSummaryLoaded,
+    planSummaryError,
+    loadPlanSummary
   }
 })

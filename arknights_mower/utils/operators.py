@@ -158,6 +158,8 @@ class Operators:
                 "operators_work_together",
                 "facility_product_count",
                 "facility_product_type_count",
+                "facility_has_mastery_plan",
+                "facility_is_training",
             ]
         )
         self.power_plant_count = 0
@@ -501,6 +503,26 @@ class Operators:
         return sum(
             operator.current_room == room for operator in self.operators.values()
         )
+
+    @staticmethod
+    def _validate_training_room(room: str) -> None:
+        if room != "train":
+            raise ValueError(f"不支持的训练室位置：{room}")
+
+    def facility_has_mastery_plan(self, room: str) -> bool:
+        """复用专精计划库，判断训练室是否存在未完结的计划。"""
+        self._validate_training_room(room)
+        from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+        return bool(get_reconcile_plans())
+
+    def facility_is_training(self, room: str) -> bool:
+        """复用专精计划状态，判断训练室是否正在训练。"""
+        self._validate_training_room(room)
+        from arknights_mower.utils.mastery_db import get_active_plan
+
+        plan = get_active_plan()
+        return plan is not None and plan.get("status") == "training"
 
     def operators_work_together(self, first: str, second: str) -> bool:
         """判断两名干员当前是否在同一非宿舍设施工作。"""

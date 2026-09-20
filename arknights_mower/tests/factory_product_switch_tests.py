@@ -452,6 +452,41 @@ def test_facility_operator_count_supports_all_base_rooms():
     )
 
 
+def test_training_room_conditions_reuse_mastery_plan_state(monkeypatch):
+    _, plan = product_plan()
+    operators = Operators(plan)
+    mastery_db = "arknights_mower.utils.mastery_db"
+
+    monkeypatch.setattr(f"{mastery_db}.get_reconcile_plans", lambda: [{"id": 1}])
+    monkeypatch.setattr(
+        f"{mastery_db}.get_active_plan", lambda: {"id": 1, "status": "training"}
+    )
+
+    assert operators.evaluate_expression(
+        "op_data.facility_has_mastery_plan('train') == True"
+    )
+    assert operators.evaluate_expression(
+        "op_data.facility_is_training('train') == True"
+    )
+
+    monkeypatch.setattr(f"{mastery_db}.get_reconcile_plans", lambda: [])
+    monkeypatch.setattr(
+        f"{mastery_db}.get_active_plan",
+        lambda: {"id": 1, "status": "waiting_collect"},
+    )
+
+    assert not operators.facility_has_mastery_plan("train")
+    assert not operators.facility_is_training("train")
+
+
+def test_training_room_conditions_reject_other_rooms():
+    _, plan = product_plan()
+    operators = Operators(plan)
+
+    with pytest.raises(ValueError, match="训练室位置"):
+        operators.facility_has_mastery_plan("room_1_1")
+
+
 def test_facility_type_reuses_current_plan():
     room, plan = product_plan()
     operators = Operators(plan)

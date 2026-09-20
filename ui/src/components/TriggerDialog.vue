@@ -6,16 +6,19 @@ import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
+import { useMasteryStore } from '@/stores/mastery'
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
 const depot_store = usedepotStore()
 const facility_store = useFacilityStore()
+const mastery_store = useMasteryStore()
 
 watch(show, (visible) => {
   if (visible) {
     depot_store.loadInventory(true).catch(() => {})
     facility_store.load(true).catch(() => {})
+    mastery_store.loadPlanSummary(true).catch(() => {})
   }
 })
 
