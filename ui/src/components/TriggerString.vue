@@ -16,10 +16,12 @@ import {
   facility_product_type_count_expression,
   operator_relation_expression,
   parse_facility_expression,
+  parse_facility_type,
   parse_facility_product_count_expression,
   parse_operator_relation_expression,
   parse_facility_product
 } from '@/utils/trigger_facility'
+import { trigger_facility_type_options } from '@/utils/base_facilities'
 import { facility_product_labels, facility_product_options } from '@/utils/base_products'
 
 const data = ref(props.data)
@@ -106,6 +108,13 @@ const op_data = computed(() => {
       product: facilityProduct
     }
   }
+  const facilityType = parse_facility_type(data.value)
+  if (facilityType) {
+    return {
+      type: 'facility_type',
+      facility: facilityType
+    }
+  }
   return {
     type: 'custom'
   }
@@ -126,6 +135,8 @@ const op_type = computed(() => {
     return 'facility_stat'
   } else if (op_data.value.type == 'facility_product') {
     return 'facility_product'
+  } else if (op_data.value.type == 'facility_type') {
+    return 'facility_type'
   } else {
     return 'op'
   }
@@ -138,6 +149,7 @@ const type_options = [
   { label: '干员同设施工作', value: 'operator_relation' },
   { label: '生产设施统计', value: 'facility_stat' },
   { label: '产物或订单', value: 'facility_product' },
+  { label: '设施类型', value: 'facility_type' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '自定义', value: 'custom' }
 ]
@@ -171,6 +183,8 @@ function set_op_type(v) {
     data.value = facility_product_count_expression(facility_product_options[0].value)
   } else if (v == 'facility_product') {
     data.value = facility_product_options[0].value
+  } else if (v == 'facility_type') {
+    data.value = trigger_facility_type_options[0].value
   }
 }
 
@@ -210,6 +224,10 @@ function update_facility_stat_product(product) {
 
 function update_facility_product(product) {
   data.value = product
+}
+
+function update_facility_type(facility) {
+  data.value = facility
 }
 
 function render_inventory_option(option) {
@@ -274,19 +292,10 @@ const inventory_select_options = computed(() =>
 const facility_select_options = computed(() =>
   left_side_facility.map((option) => {
     const facilityName = plan.value[option.value]?.name
-    let occupants = '未记录'
-    if (facilityLoaded.value) {
-      const names = facility_states.value[option.value]?.operators
-      if (Array.isArray(names)) occupants = names.length ? names.join('、') : '空'
-    } else if (facilityLoadError.value) {
-      occupants = '未知'
-    }
     if (!['制造站', '贸易站'].includes(facilityName)) {
       return {
         ...option,
-        label: facilityName
-          ? `${option.label}（${facilityName}；进驻：${occupants}）`
-          : option.label
+        label: facilityName ? `${option.label}（${facilityName}）` : option.label
       }
     }
     let current = '读取中…'
@@ -297,14 +306,17 @@ const facility_select_options = computed(() =>
     }
     return {
       ...option,
-      label: `${option.label}（${facilityName}；当前：${current}；进驻：${occupants}）`
+      label: `${option.label}（${facilityName}；当前：${current}）`
     }
   })
 )
 
 const facility_status_options = computed(() => {
   const facilityName = plan.value[op_data.value.room]?.name
-  const options = [{ label: '当前干员数量', value: 'operator_count' }]
+  const options = [
+    { label: '设施类型', value: 'type' },
+    { label: '当前干员数量', value: 'operator_count' }
+  ]
   if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
   if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
   return options
@@ -475,5 +487,12 @@ const custom_tips = [
     :options="facility_product_options"
     :on-update:value="update_facility_product"
     style="min-width: 220px"
+  />
+  <n-select
+    v-if="op_type == 'facility_type'"
+    :default-value="data"
+    :options="trigger_facility_type_options"
+    :on-update:value="update_facility_type"
+    style="min-width: 160px"
   />
 </template>

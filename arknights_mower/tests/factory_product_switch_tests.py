@@ -436,6 +436,16 @@ def test_facility_operator_count_supports_all_base_rooms():
     )
 
 
+def test_facility_type_reuses_current_plan():
+    room, plan = product_plan()
+    operators = Operators(plan)
+
+    assert operators.facility_type(room) == "制造站"
+    assert operators.evaluate_expression(
+        "op_data.facility_type('room_1_2') == '制造站'"
+    )
+
+
 def test_facility_operator_binding_and_work_relation_are_available_to_expression():
     room, plan = product_plan()
     operators = Operators(plan)

@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { swapPlanFacilities } from '@/utils/plan_edit'
+import { plan_facility_type_options } from '@/utils/base_facilities'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -13,11 +14,7 @@ const { theme } = storeToRefs(config_store)
 
 const outer = ref(null)
 
-const facility_types = [
-  { label: '贸易站', value: '贸易站' },
-  { label: '制造站', value: '制造站' },
-  { label: '发电站', value: '发电站' }
-]
+const facility_types = plan_facility_type_options
 
 const facility = inject('facility')
 

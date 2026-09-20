@@ -1,23 +1,37 @@
 import { facility_product_options } from '@/utils/base_products'
+import { facility_type_names } from '@/utils/base_facilities'
 
 const facilityProductIds = new Set(facility_product_options.map(({ value }) => value))
+const facilityTypeNames = new Set(facility_type_names)
 
 const facilityStatusMethods = {
+  type: 'facility_type',
   product: 'facility_product',
   operator_count: 'facility_operator_count'
 }
+
+const facilityMethodStatuses = Object.fromEntries(
+  Object.entries(facilityStatusMethods).map(([status, method]) => [method, status])
+)
 
 export function facility_expression(room, status = 'product') {
   return `op_data.${facilityStatusMethods[status]}('${room}')`
 }
 
 export function parse_facility_expression(value) {
-  const match = value.match(/^op_data\.(facility_product|facility_operator_count)\('(.+)'\)$/)
+  const match = value.match(
+    /^op_data\.(facility_type|facility_product|facility_operator_count)\('(.+)'\)$/
+  )
   if (!match) return undefined
   return {
     room: match[2],
-    status: match[1] == 'facility_product' ? 'product' : 'operator_count'
+    status: facilityMethodStatuses[match[1]]
   }
+}
+
+export function parse_facility_type(value) {
+  const match = value.match(/^'(.+)'$/)
+  return match && facilityTypeNames.has(match[1]) ? match[1] : undefined
 }
 
 export function parse_facility_product(value) {

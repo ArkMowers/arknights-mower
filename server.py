@@ -19,7 +19,6 @@ from werkzeug.exceptions import NotFound
 from werkzeug.security import safe_join
 
 from arknights_mower import __system__
-from arknights_mower.data import base_room_list
 from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config, network_settings
 from arknights_mower.utils.config_backup import backup_lock
@@ -787,39 +786,15 @@ def operator_list():
 def facility_state():
     """返回运行中或最近一次运行缓存里的生产设施状态。"""
     states = {}
-    operators = None
     if mower_thread and mower_thread.is_alive():
         from arknights_mower.__main__ import base_scheduler
 
         if base_scheduler and base_scheduler.op_data:
             states = base_scheduler.op_data.facility_states
-            operators = base_scheduler.op_data.operators
-    if not states or operators is None:
+    if not states:
         saved = load_state() or {}
-        if not states:
-            states = saved.get("facility_states", {})
-        if operators is None:
-            operators = saved.get("operators")
-
-    response = {room: dict(state) for room, state in states.items()}
-    if operators is None:
-        return response
-
-    left_rooms = {room for room in base_room_list if room.startswith("room_")}
-    occupants = {}
-    for name, operator in operators.items():
-        room = getattr(operator, "current_room", "")
-        if room not in left_rooms:
-            continue
-        occupants.setdefault(room, []).append(
-            (getattr(operator, "current_index", -1), name)
-        )
-    for room in left_rooms & (response.keys() | occupants.keys()):
-        names = [name for _, name in sorted(occupants.get(room, []))]
-        response.setdefault(room, {}).update(
-            {"operators": names, "operator_count": len(names)}
-        )
-    return response
+        states = saved.get("facility_states", {})
+    return {room: dict(state) for room, state in states.items()}
 
 
 @app.route("/shop")

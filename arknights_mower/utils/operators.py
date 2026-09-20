@@ -152,6 +152,7 @@ class Operators:
                 "current_mood",
                 "current_room",
                 "inventory_count",
+                "facility_type",
                 "facility_product",
                 "facility_operator_count",
                 "operators_work_together",
@@ -480,6 +481,15 @@ class Operators:
         if room not in base_room_list:
             raise ValueError(f"不支持的设施位置：{room}")
         return self.facility_states.get(room, {}).get("product")
+
+    def facility_type(self, room: str) -> str | None:
+        """从当前排班复用指定位置的设施类型。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        room_plan = self.plan.get(room) or []
+        if not room_plan:
+            return None
+        return getattr(room_plan[0], "facility", None) or None
 
     def facility_operator_count(self, room: str) -> int:
         """根据已有干员位置缓存返回指定设施的进驻干员数量。"""

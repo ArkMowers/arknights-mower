@@ -6,6 +6,7 @@ import {
   facility_product_type_count_expression,
   operator_relation_expression,
   parse_facility_expression,
+  parse_facility_type,
   parse_facility_product,
   parse_facility_product_count_expression,
   parse_operator_relation_expression
@@ -28,6 +29,17 @@ describe('设施状态副表表达式', () => {
       room: 'central',
       status: 'operator_count'
     })
+  })
+
+  it('生成并解析设施类型表达式和值', () => {
+    const expression = facility_expression('room_1_2', 'type')
+    expect(expression).toBe("op_data.facility_type('room_1_2')")
+    expect(parse_facility_expression(expression)).toEqual({
+      room: 'room_1_2',
+      status: 'type'
+    })
+    expect(parse_facility_type("'制造站'")).toBe('制造站')
+    expect(parse_facility_type("'控制中枢'")).toBeUndefined()
   })
 
   it('只把支持的产物和订单识别为设施状态值', () => {
