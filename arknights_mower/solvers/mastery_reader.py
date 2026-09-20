@@ -113,6 +113,9 @@ class RoomState:
     read_failed: bool = False  # 状态矩阵 OCR 失败 5 次仍不一致 → 保守训练中
     collected: bool = False  # reconcile 是否收走了待收取训练（房间物理变空闲）
     slots_read: bool = False  # 是否读过进驻槽位（TRAIN_FINISH 横幅页首次进房时未读）
+    # 槽位读取是否可信（_read_slots_checked 的场景闸门 + #100 读失败闸门）。False 时
+    # train_slot 的空串分不清「真空位」与「读浮窗失败」——调用方不得据此做补位/换人。
+    slots_reliable: bool = False
 
     @property
     def locked(self) -> bool:
@@ -438,6 +441,10 @@ def _read_slots_checked(solver):
     #100：reliable=False（读失败）时返回 ("", "", scan, False)——调用方不得把读失败
     当真空位做补位/纠错 mutation（与「真空」区分，稳为先：读不到就不动作）。
     scan 为 get_agent_from_room 原始列表（want_mood 用，含 mood）。
+    槽位约定（与 choose_train 一致）：scan[0]=上排=协助位、scan[1]=下排=训练位——
+    get_agent_from_room 与 operator_list_train 的 name_y 同为上→下，choose_train 内部
+    idx==0 走 choose_agent（协助位）、idx==1 走 choose_train_ope（训练位）。读不到
+    名字的槽位是空串。
     #140 场景闸门：开浮窗前先确认在训练室主页面（TRAIN_MAIN=217，浮窗开着先关回）；
     浮窗读取后再确认浮窗确实开了（INFRA_DETAILS=205）才消费——turn_on_room_detail 只靠
     room_detail 模板 + 单像素颜色确认浮窗、不判场景，非 205 的槽位读取是垃圾（读之前
@@ -459,7 +466,7 @@ def _read_slots_checked(solver):
             _close_room_detail(solver)
         elif reliable:
             # 浮窗没开/开错（get_agent_from_room 未确认 205）→ 槽位数据来自非目标场景，
-            # 不消费并清空（_read_slots 等调用方丢弃 reliable，必须让槽位为空防误用）
+            # 不消费并清空（调用方就是据此判空的，槽位必须为空防误用）
             logger.debug("[mastery] 读槽位后场景非 INFRA_DETAILS，浮窗未确认，不消费")
             reliable = False
             scan = []
@@ -467,23 +474,10 @@ def _read_slots_checked(solver):
         reliable = False
         scan = []
     if len(scan) < 2:
-        return "", "", scan, reliable
+        # 没读全（train 房恒 2 槽）＝没读到：不能报 reliable，否则「空 scan + 可靠」会被
+        # 调用方当成「可靠地空着」去做补位/换人 mutation（#101/#100 稳为先）。
+        return "", "", scan, False
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
-
-
-def _read_slots(solver, want_mood=False):
-    """读进驻详情浮窗：返回 (协助位, 训练位)。读后关浮窗回训练室主界面。
-
-    want_mood=True 时返回 ((协助位, 训练位), mood_data)，mood_data 为浮窗槽位扫描
-    （get_agent_from_room 返回值，含 mood，对齐 agent_get_mood 的 mood_info 数据源）。
-    槽位约定：scan[0]=上排=协助位，scan[1]=下排=训练位（与 choose_train 一致）。
-    读失败/无两人 → ("", "")；want_mood 时 mood_data 为空列表。
-    """
-    support_slot, train_slot, scan, _ = _read_slots_checked(solver)
-    slots = support_slot, train_slot
-    if want_mood:
-        return slots, scan
-    return slots
 
 
 def _train_slot_has_mastery(solver) -> bool:
@@ -598,13 +592,14 @@ def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
     # enable_mastery OFF：槽位/保护无人消费（reconcile 被 gate、_compute_protected 恒 False），
     # 不白开进驻浮窗（§16.11 防卡检查只看 locked，面板态即可）。
     if config.conf.enable_mastery:
-        if want_mood:
-            (room.support_slot, room.train_slot), mood = _read_slots(
-                solver, want_mood=True
-            )
-        else:
-            room.support_slot, room.train_slot = _read_slots(solver)
-            mood = None
+        # #100：直接消费 _read_slots_checked 的 reliable——「真空位」与「读失败」在
+        # RoomState 里分得开，开训换人与排班 gate 都据此判空。
+        room.support_slot, room.train_slot, scan, room.slots_reliable = (
+            _read_slots_checked(solver)
+        )
+        # 心情数据 = 同一张浮窗扫描（get_agent_from_room 原始列表，含 mood）；读失败 /
+        # 浮窗没确认时 scan 为空（没有有效心情可交付）。
+        mood = scan if want_mood else None
         room.slots_read = (
             True  # #210：gate 据此区分「① 读过槽位」可复用 / TRAIN_FINISH 未读需重读
         )

@@ -986,8 +986,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if config.conf.enable_mastery:
                             # #94 统一读取：一次 read_room_state(want_mood=True) 开一次
                             # 浮窗读全（协助位+训练位+心情）+ 左下角面板，消除原来
-                            # get_agent_from_room（读心情）后再 read_room_state（_read_slots
-                            # 再开一次浮窗读槽位）的重复浮窗开关（铁律 3 一次进房做全部）。
+                            # get_agent_from_room（读心情）后再开一次浮窗读槽位的重复
+                            # 浮窗开关（铁律 3 一次进房做全部）。
                             from arknights_mower.solvers.mastery_reader import (
                                 read_room_state,
                                 reconcile_short,

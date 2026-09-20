@@ -35,6 +35,16 @@ def make_plan(**overrides):
     return plan
 
 
+def reliable_empty_room():
+    """reconcile 读房交给开始流程的「训练位确实空着」可信房态（#100）。
+
+    slots_reliable=True = `_read_slots_checked` 过了场景闸门、确实读到两个槽位；
+    只有这种空位才等价于「换人核验该换人」。读浮窗失败的空串不在此列——
+    见 test_unreadable_slot_raises_skips_swap / test_short_slot_scan_skips_swap。
+    """
+    return mastery_reader.RoomState("empty", slots_reliable=True)
+
+
 def _to_seconds(dt):
     """fake execute_time(datetime) → read_time 秒；None → None（倒计时读失败）。
 
@@ -92,11 +102,12 @@ class TestArrangingConvergence(unittest.TestCase):
     def setUp(self):
         FixedDateTime.now_value = START
 
-    def run_arranging(self, solver, plan, advance=timedelta(0)):
+    def run_arranging(self, solver, plan, advance=timedelta(0), room=None):
         """跑 _start_new_training，返回 (solver, update_plan_status mock)。
 
         advance：每轮 now() 额外前跳的时长。freeze 测试传 timedelta(minutes=1)
         让 5 分钟 deadline 几秒内可触发；其余场景传 0（冻结时钟）即可。
+        room：reconcile 已读的房态（#93 复用路径）；None = 冷启动现读（默认）。
         """
 
         class Clock(FixedDateTime):
@@ -116,7 +127,7 @@ class TestArrangingConvergence(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
             patch("arknights_mower.utils.email.send_message"),
         ):
-            mastery._start_new_training(solver, plan)
+            mastery._start_new_training(solver, plan, room=room)
         return solver, upd
 
     @staticmethod
@@ -175,7 +186,10 @@ class TestArrangingConvergence(unittest.TestCase):
         ]
         solver = self.make_solver(scenes=scenes)
         plan = make_plan()
-        _, upd = self.run_arranging(solver, plan, advance=timedelta(minutes=1))
+        # #100：reconcile 读到「训练位确实空着」→ 先换人再进 219（本用例只关心 219 卡死）
+        _, upd = self.run_arranging(
+            solver, plan, advance=timedelta(minutes=1), room=reliable_empty_room()
+        )
 
         self.assertTrue(solver.back.called, "超时后应退出训练室")
         args = upd.call_args[0]
@@ -200,13 +214,17 @@ class TestArrangingConvergence(unittest.TestCase):
 
     # --- 无倒计时 + 训练位坐错人 → choose_train 换人 ---
     def test_wrong_operator_triggers_swap(self):
-        # 场景推进：TRAIN_MAIN(读槽位发现坐错人→换人→back) → TRAIN_MAIN(训练位已确认
-        # → 点开技能选择页) → TRAIN_SKILL_SELECT(读档位→ctap，此后停 219，推进时钟收敛)
+        # 场景推进：TRAIN_MAIN(读槽位发现坐错人→换人) → 浮窗(choose_train 后还开着→关掉)
+        # → TRAIN_MAIN(训练位已确认→点开技能选择页) → TRAIN_SKILL_SELECT(读档位→ctap，
+        # 此后停 219，推进时钟收敛)。#100 起兜底读也过闸门（读前 217、读后确认 205）。
         solver = self.make_solver(
             scenes=[
-                Scene.TRAIN_MAIN,
-                Scene.TRAIN_MAIN,
-                Scene.TRAIN_SKILL_SELECT,
+                Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 兜底重读槽位
+                Scene.TRAIN_MAIN,  # 重读前置：主页面
+                Scene.INFRA_DETAILS,  # 重读后：浮窗已开（读到「错误干员」）→ 关浮窗
+                Scene.INFRA_DETAILS,  # 迭代2：choose_train 后浮窗还开着 → 循环关掉
+                Scene.TRAIN_MAIN,  # 迭代3：训练位已确认 → 点开技能选择页
+                Scene.TRAIN_SKILL_SELECT,  # 迭代4：读档位 → ctap
             ],
             slots=[{"agent": ""}, {"agent": "错误干员"}],
         )
@@ -216,19 +234,53 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertEqual(solver.choose_train.call_args[0][0], ["Current", "测试干员"])
 
     def test_empty_slot_triggers_swap(self):
-        """无倒计时 + 训练位为空：通过 choose_train 换入计划干员。"""
+        """无倒计时 + **可靠读到**训练位为空：通过 choose_train 换入计划干员。
+
+        #100：空串只有配上 `room.slots_reliable`（reconcile 那次读取过了场景闸门）
+        才是「确实没人」；读浮窗失败的空串是另一回事——见下面两条红测试。
+        """
         solver = self.make_solver(
             scenes=[
                 Scene.TRAIN_MAIN,
                 Scene.TRAIN_MAIN,
                 Scene.TRAIN_SKILL_SELECT,
-            ],
-            slots=[{"agent": ""}, {"agent": ""}],
+            ]
         )
         plan = make_plan()
-        self.run_arranging(solver, plan, advance=timedelta(minutes=1))
+        self.run_arranging(
+            solver, plan, advance=timedelta(minutes=1), room=reliable_empty_room()
+        )
         solver.choose_train.assert_called()
         self.assertEqual(solver.choose_train.call_args[0][0], ["Current", "测试干员"])
+
+    # --- #100 闸门：读不到训练位 ≠ 训练位是空的（读不到不换人，稳为先） ---
+    def test_unreadable_slot_raises_skips_swap(self):
+        """get_agent_from_room 抛异常（OCR 坏名 KeyError 等）＝读失败，不是空位：
+        不得 choose_train，保持 idle 重排退出（旧代码把空串当空位直接换人）。"""
+        solver = self.make_solver(scene=Scene.TRAIN_MAIN)
+        solver.get_agent_from_room.side_effect = KeyError("泡泡")
+        plan = make_plan()
+        _, upd = self.run_arranging(solver, plan)
+
+        solver.choose_train.assert_not_called()
+        statuses = [c.args[1] for c in upd.call_args_list]
+        self.assertIn("idle", statuses, "读失败保持 idle 重排")
+        self.assertNotIn("failed", statuses, "读不到训练位不是安排失败")
+        self.assertTrue(solver.back.called, "应退出训练室")
+        self.assertEqual(len(solver.tasks), 1, "应重排一条重检任务")
+        self.assertEqual(solver.tasks[0].time, START + mastery.ARRANGING_RETRY_BUFFER)
+
+    def test_short_slot_scan_skips_swap(self):
+        """浮窗只读到不足 2 条（空列表）＝没读全，不是「可靠地空着」→ 不换人。"""
+        solver = self.make_solver(scene=Scene.TRAIN_MAIN)
+        solver.get_agent_from_room.return_value = []
+        plan = make_plan()
+        _, upd = self.run_arranging(solver, plan)
+
+        solver.choose_train.assert_not_called()
+        statuses = [c.args[1] for c in upd.call_args_list]
+        self.assertIn("idle", statuses, "没读全保持 idle 重排")
+        self.assertTrue(solver.back.called, "应退出训练室")
 
     # --- 00:00:00 待收取：训练位锁定，不换人 ---
     def test_waiting_collect_zero_exits_without_swap(self):
@@ -252,7 +304,11 @@ class TestArrangingConvergence(unittest.TestCase):
             raise Exception("选人流程超时")
 
         solver = self.make_solver(
-            scene=Scene.TRAIN_MAIN,
+            scenes=[
+                Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 兜底重读槽位
+                Scene.TRAIN_MAIN,  # 重读前置：主页面
+                Scene.INFRA_DETAILS,  # 重读后：浮窗已开（读到「错误干员」）→ 关浮窗
+            ],
             slots=[{"agent": ""}, {"agent": "错误干员"}],
             choose_train=boom,
         )
@@ -270,17 +326,23 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertTrue(solver.back.called)
 
     def test_slot_check_closes_room_detail_instead_of_back(self):
-        """当 room 为 None 时，读槽位后必须使用 _close_room_detail 关闭浮窗，不能调用 back()。"""
+        """room 为 None（冷启动）时兜底重读槽位：关浮窗必须点关闭按钮，不能 back 退房间。
+
+        #100 起兜底重读走 `_read_slots_checked`（读前确认 217、读后确认浮窗 205，读后
+        自己点关闭按钮）——不再是调用方无条件 `_close_room_detail`（浮窗没开时那一下
+        会把人点出训练室）。本用例守住「关浮窗走关闭按钮」这条（#78 / 35a86834）。
+        """
         scenes = [
-            Scene.TRAIN_MAIN,
-            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 兜底重读槽位
+            Scene.TRAIN_MAIN,  # 重读前置：主页面
+            Scene.INFRA_DETAILS,  # 重读后：浮窗已开 → 点关闭按钮回主页面
         ]
         solver = self.make_solver(
             scenes=scenes,
             slots=[{"agent": ""}, {"agent": "测试干员"}],
         )
         plan = make_plan()
-        with patch.object(mastery, "_close_room_detail") as mock_close:
+        with patch.object(mastery_reader, "_close_room_detail") as mock_close:
             self.run_arranging(solver, plan, advance=timedelta(minutes=1))
             mock_close.assert_called_once_with(solver)
 
@@ -303,7 +365,7 @@ class TestArrangingConvergence(unittest.TestCase):
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
         solver.read_time.side_effect = fake_read
         plan = make_plan()
-        _, upd = self.run_arranging(solver, plan)
+        _, upd = self.run_arranging(solver, plan, room=reliable_empty_room())
 
         training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
         self.assertTrue(training_calls, "正常开始后应转入 training 状态")
@@ -611,7 +673,9 @@ class TestArrangingConvergence(unittest.TestCase):
         )
         # recog.img 为全零画布 → _read_slot_mastery_tier 返回 0（明确未专精）
         plan = make_plan(target_level=3)
-        self.run_arranging(solver, plan, advance=timedelta(minutes=1))
+        self.run_arranging(
+            solver, plan, advance=timedelta(minutes=1), room=reliable_empty_room()
+        )
 
         self.assertTrue(solver.ctap.called, "档位=0 明确低于 target 时应继续点技能行")
 
@@ -640,7 +704,7 @@ class TestArrangingConvergence(unittest.TestCase):
             ),
             patch("arknights_mower.utils.email.send_message"),
         ):
-            mastery._start_new_training(solver, plan)
+            mastery._start_new_training(solver, plan, room=reliable_empty_room())
 
         completed_calls = [c for c in upd.call_args_list if c.args[1] == "completed"]
         self.assertTrue(completed_calls, "档位≥target 应判完成")
@@ -655,7 +719,11 @@ class TestArrangingConvergence(unittest.TestCase):
             raise Exception("训练位被锁定，无法换入指定干员")
 
         solver = self.make_solver(
-            scene=Scene.TRAIN_MAIN,
+            scenes=[
+                Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 兜底重读槽位
+                Scene.TRAIN_MAIN,  # 重读前置：主页面
+                Scene.INFRA_DETAILS,  # 重读后：浮窗已开（读到「错误干员」）→ 关浮窗
+            ],
             slots=[{"agent": ""}, {"agent": "错误干员"}],
             choose_train=boom,
         )
@@ -754,7 +822,7 @@ class TestArrangingConvergence(unittest.TestCase):
             "[错误干员]其他技能"  # 真 219 不读面板；确认页才读
         )
         plan = make_plan()
-        _, upd = self.run_arranging(solver, plan)
+        _, upd = self.run_arranging(solver, plan, room=reliable_empty_room())
 
         training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
         failed_calls = [c for c in upd.call_args_list if c.args[1] == "failed"]
@@ -2757,7 +2825,7 @@ class TestAtTargetNotifyAndMaterialGate(unittest.TestCase):
             patch("arknights_mower.utils.email.send_message"),
             patch.object(mastery, "_notify_at_target") as nat,
         ):
-            mastery._start_new_training(solver, plan)
+            mastery._start_new_training(solver, plan, room=reliable_empty_room())
         nat.assert_called_once()
         statuses = [c.args[1] for c in upd.call_args_list]
         self.assertIn("completed", statuses)
@@ -2793,7 +2861,7 @@ class TestAtTargetNotifyAndMaterialGate(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.get_next_idle_plan") as g,
             patch("arknights_mower.utils.email.send_message"),
         ):
-            mastery._start_new_training(solver, plan)
+            mastery._start_new_training(solver, plan, room=reliable_empty_room())
         g.assert_not_called()
         statuses = [c.args[1] for c in upd.call_args_list]
         arranging_ids = [
@@ -2881,22 +2949,46 @@ class TestStartWithReconciledRoom(unittest.TestCase):
         solver.get_agent_from_room.assert_not_called()
 
     def test_unread_room_slots_fall_back_to_fresh_read(self):
-        # room.train_slot 空串（读浮窗失败 / 真空）无法区分 → 重读一次兜底：保持旧
-        # 「开始时刻第二次读」的换人校验，不因复用 room 静默丢掉。重读路径自己 back()
-        # 关浮窗，换人后停在 TRAIN_MAIN。
+        # room.train_slot 空串且不可靠（读浮窗失败 / 首进房没读过）→ 兜底重读一次，走同一
+        # 道闸门（读前 217、读后确认浮窗 205）；读到名字 →「坐错人」换人校验照旧生效。
         scenes = [
-            Scene.TRAIN_MAIN,  # 读倒计时(无) → room.train_slot=空 → 重读(错误干员) → 换人 → back 关浮窗
+            Scene.TRAIN_MAIN,  # 读倒计时(无) → room.train_slot 空且不可靠 → 兜底重读
+            Scene.TRAIN_MAIN,  # 重读前置：主页面
+            Scene.INFRA_DETAILS,  # 重读后：浮窗已开（读到「错误干员」）→ 关浮窗
+            Scene.INFRA_DETAILS,  # choose_train 后仍停在浮窗 → 循环里关掉
             Scene.TRAIN_MAIN,  # 训练位已确认 → 点开技能选择页
             Scene.TRAIN_SKILL_SELECT,  # 读档位(None) → 保守退出
         ]
         solver = self._solver(scenes, slots=[{"agent": ""}, {"agent": "错误干员"}])
-        room = mastery_reader.RoomState("empty")  # train_slot 空串 → 触发重读
+        room = mastery_reader.RoomState(
+            "empty"
+        )  # 空串 + slots_reliable=False → 触发重读
         plan = make_plan()
         self._run(solver, plan, room)
 
-        solver.get_agent_from_room.assert_called()  # 空串 → 重读一次兜底
+        solver.get_agent_from_room.assert_called()  # 空串且不可靠 → 兜底重读一次
         solver.choose_train.assert_called_once_with(["Current", "测试干员"])
         solver.enter_room.assert_not_called()  # 仍不重复进房（room 非 None）
+
+    def test_fallback_read_popup_unconfirmed_skips_swap(self):
+        """兜底重读也过场景闸门：浮窗没确认（读后不是 205）→ 不换人、不当空位。
+
+        #100 之前这里是无闸门的裸读 get_agent_from_room：不看场景（非 205 上的垃圾读
+        也当依据）、读后还无条件多按一次 back。"""
+        scenes = [
+            Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 兜底重读槽位
+            Scene.TRAIN_MAIN,  # 重读前置：主页面
+            Scene.TRAIN_MAIN,  # 重读后场景仍是 217（浮窗没开/没确认）→ 不消费
+        ]
+        solver = self._solver(scenes, slots=[{"agent": ""}, {"agent": "错误干员"}])
+        room = mastery_reader.RoomState("empty")  # 空串 + 不可靠 → 触发兜底重读
+        plan = make_plan()
+        _, upd = self._run(solver, plan, room)
+
+        solver.choose_train.assert_not_called()
+        statuses = [c.args[1] for c in upd.call_args_list]
+        self.assertIn("idle", statuses, "浮窗没确认 → 保持 idle 重排")
+        self.assertTrue(solver.back.called, "应退出训练室")
 
     def test_collect_continue_room_reused_through_dispatch(self):
         """#93 主场景接线：run_mastery_task → 真实 reconcile_and_act（mock 读房与对账）
@@ -3247,31 +3339,6 @@ class TestArrangeFailureExit(unittest.TestCase):
         upd.assert_not_called()
         send.assert_not_called()
         dedup.assert_not_called()
-
-
-class TestTrainingSlotsFloatingWindow(unittest.TestCase):
-    """#78 审计定案：_training_slots 读槽位后**不**自己关浮窗——由唯一调用方
-    _start_new_training 关（单次 back），避免 _read_slots 自己关造成二次 back 退出房间。"""
-
-    def _solver(self):
-        solver = MagicMock()
-        solver.get_agent_from_room.return_value = [
-            {"agent": "逻各斯"},
-            {"agent": "能天使"},
-        ]
-        return solver
-
-    def test_leaves_floating_window_open_for_caller(self):
-        solver = self._solver()
-        support, train = mastery._training_slots(solver)
-        self.assertEqual((support, train), ("逻各斯", "能天使"))
-        solver.back.assert_not_called()
-
-    def test_short_scan_returns_empty(self):
-        solver = self._solver()
-        solver.get_agent_from_room.return_value = [{"agent": "逻各斯"}]
-        self.assertEqual(mastery._training_slots(solver), ("", ""))
-        solver.back.assert_not_called()
 
 
 class TestRouteConfigSupportsFormat(unittest.TestCase):
