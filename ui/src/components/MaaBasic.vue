@@ -996,9 +996,13 @@ onUnmounted(() => {
             </n-a>
           </div>
           <div v-if="maa_update_platform === 'windows'" class="update-hint">
-            <template v-if="maa_installed">
+            <template v-if="maa_installed && maa_update_arch === 'x64'">
               更新时会向 Mirror酱传递当前版本，优先取得 Windows {{ maa_update_arch }} OTA
               增量包；若服务端只提供完整包则自动回退。
+            </template>
+            <template v-else-if="maa_installed">
+              Windows ARM64 不提供 OTA，更新时会像 Linux
+              一样下载完整包并原子替换，同时保留用户数据。
             </template>
             <template v-else>
               未检测到 MAA，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
@@ -1020,9 +1024,13 @@ onUnmounted(() => {
           </div>
         </template>
         <div v-else-if="maa_update_platform === 'windows'" class="update-hint">
-          <template v-if="maa_installed">
+          <template v-if="maa_installed && maa_update_arch === 'x64'">
             GitHub 更新优先使用与当前版本精确匹配的 Windows {{ maa_update_arch }} OTA
             增量包，没有对应 OTA 时自动回退到完整包。
+          </template>
+          <template v-else-if="maa_installed">
+            Windows ARM64 不提供 OTA，GitHub 更新会像 Linux
+            一样下载完整包并原子替换，同时保留用户数据。
           </template>
           <template v-else>
             未检测到 MAA，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows

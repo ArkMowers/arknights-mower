@@ -132,6 +132,25 @@ class TestReleaseParsing(unittest.TestCase):
         self.assertEqual(release.package_type, "full")
         self.assertEqual(release.runtime.name, "MAA-v6.18.0-win-x64.zip")
 
+    def test_windows_arm64_always_uses_full_package(self):
+        payload = {
+            "tag_name": "v6.18.0",
+            "assets": [
+                _asset("MAA-v6.18.0-win-arm64.zip", 500),
+                _asset("MAAComponent-OTA-v6.17.0_v6.18.0-win-arm64.zip", 120),
+            ],
+        }
+
+        release = mu.parse_release(
+            payload,
+            system="windows",
+            machine="arm64",
+            installed_version="v6.17.0",
+        )
+
+        self.assertEqual(release.package_type, "full")
+        self.assertEqual(release.runtime.name, "MAA-v6.18.0-win-arm64.zip")
+
     def test_unsupported_windows_architecture_raises(self):
         with self.assertRaisesRegex(mu.MaaUpdateError, "x86"):
             mu.normalize_windows_arch("x86")
@@ -406,6 +425,7 @@ class TestReleaseParsing(unittest.TestCase):
                 system="windows",
                 machine="arm64",
                 channel="beta",
+                installed_version="v6.16.0",
             )
 
         self.assertEqual(release.runtime.name, "MAA-v6.17.0-win-arm64.zip")
@@ -415,6 +435,7 @@ class TestReleaseParsing(unittest.TestCase):
         self.assertEqual(session.params[0]["os"], "win")
         self.assertEqual(session.params[0]["arch"], "arm64")
         self.assertEqual(session.params[0]["channel"], "beta")
+        self.assertNotIn("current_version", session.params[0])
 
     def test_mirrorchyan_windows_requests_ota_from_installed_version(self):
         class Response:

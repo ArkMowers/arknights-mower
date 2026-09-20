@@ -106,7 +106,7 @@ macOS 实例的启动画面、窗口和托盘通过继承管道通信，窗口�
 
 MAA 本体更新在 Windows、macOS、Linux 和 Android 宿主上都以“MAA 是否正在实际使用”为执行条件。Mower 主进程已启动、在后台等待，或正在执行不调用 MAA 的普通任务，不会单独阻止更新。MAA 任务或 MAA 连接测试正在运行时才会要求等待；更新事务开始后也会阻止新的 MAA 实例在文件切换期间启动。
 
-Windows 已安装 MAA 时，Mower 按官方客户端的 OTA 命名与应用规则，优先选择从当前版本到目标版本、与系统架构一致的 `MAAComponent-OTA-<当前版本>_<目标版本>-win-<架构>.zip`。更新器在临时副本中处理 `removelist.txt` / `changes.json` 与差异文件，校验完整安装结构后再原子切换；没有精确匹配的 OTA 包时自动回退到同版本完整包，并按官方客户端规则保留 `achievement`、`cache`、`config`、`data`、`debug` 与自定义壁纸等用户数据。原目录保留为同级 `.old`，后续 MAA 任务验证成功后再按现有策略清理。Mirror酱更新会携带当前版本请求增量包，服务端返回完整包时同样走完整包回退流程。
+Windows x64 已安装 MAA 时，Mower 按官方客户端的 OTA 命名与应用规则，优先选择从当前版本到目标版本的 `MAAComponent-OTA-<当前版本>_<目标版本>-win-x64.zip`。更新器在临时副本中处理 `removelist.txt` / `changes.json` 与差异文件，校验完整安装结构后再原子切换；没有精确匹配的 OTA 包时自动回退到同版本完整包。Windows ARM64 不提供 OTA，和 Linux 一样始终下载完整包后替换。完整包更新按官方客户端规则保留 `achievement`、`cache`、`config`、`data`、`debug` 与自定义壁纸等用户数据。原目录保留为同级 `.old`，后续 MAA 任务验证成功后再按现有策略清理。Mirror酱仅在 Windows x64 更新时携带当前版本请求增量包，ARM64 请求完整包。
 
 ## 资源更新进度
 

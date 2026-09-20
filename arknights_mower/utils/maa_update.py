@@ -3,8 +3,8 @@
 运行库使用官方 macOS runtime 包；Python API 则通过 HTTP Range 读取 Windows
 arm64 ZIP 的中央目录，只提取其中的 ``Python`` 目录，避免下载完整 Windows 包。
 Linux 按当前架构下载单个官方 ``tar.gz`` 完整包。
-Windows 未安装 MAA 时下载完整包；已有安装优先应用官方 OTA 增量包，
-没有对应增量包时回退到完整包。
+Windows 未安装 MAA 时下载完整包；x64 已有安装优先应用官方 OTA 增量包，
+没有对应增量包时回退到完整包；ARM64 始终使用完整包替换。
 """
 
 from __future__ import annotations
@@ -242,7 +242,7 @@ def parse_release(
         expected_runtime = f"MAA-{tag.strip()}-win-{arch}.zip"
         expected_ota = (
             f"MAAComponent-OTA-{installed_version.strip()}_{tag.strip()}-win-{arch}.zip"
-            if installed_version.strip()
+            if arch == "x64" and installed_version.strip()
             else ""
         )
         expected_python = None
@@ -589,7 +589,7 @@ def get_mirrorchyan_release(
             channel,
             client,
             sp_id,
-            installed_version if system == "windows" else "",
+            installed_version if system == "windows" and arch == "x64" else "",
         )
         return MaaRelease(
             tag=version,
