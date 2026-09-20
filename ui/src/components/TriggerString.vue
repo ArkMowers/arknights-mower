@@ -479,14 +479,16 @@ const custom_tips = [
     :default-value="op_data.room"
     :options="facility_select_options"
     :on-update:value="update_facility"
-    style="min-width: 280px"
+    :consistent-menu-width="false"
+    class="facility-room-select"
   />
   <n-select
     v-if="op_type == 'facility'"
     :default-value="op_data.status"
     :options="facility_status_options"
     :on-update:value="update_facility_status"
-    style="min-width: 160px"
+    :consistent-menu-width="false"
+    class="facility-status-select"
   />
   <n-select
     v-if="op_type == 'facility_stat'"
@@ -512,3 +514,17 @@ const custom_tips = [
     style="min-width: 160px"
   />
 </template>
+
+<style scoped>
+.facility-room-select {
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 180px;
+  max-width: 220px;
+}
+
+.facility-status-select {
+  flex: 1 1 360px;
+  min-width: 360px;
+}
+</style>
