@@ -487,10 +487,8 @@ def test_facility_type_reuses_current_plan():
     room, plan = product_plan()
     operators = Operators(plan)
 
-    assert operators.facility_type(room) == "制造站"
-    assert operators.evaluate_expression(
-        "op_data.facility_type('room_1_2') == '制造站'"
-    )
+    assert operators.facility_type(room) == "factory"
+    assert operators.evaluate_expression("op_data.facility_type('room_1_2') == factory")
 
 
 def test_product_constant_is_valid_in_expression():

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { plan_facility_type_options, trigger_facility_type_options } from './base_facilities.js'
 import {
   expression_value_option,
   facility_expression,
@@ -17,6 +18,11 @@ describe('设施状态副表表达式', () => {
       value: 'gold',
       displayLabel: '赤金'
     })
+  })
+
+  it('排班表保留中文设施类型，条件使用英文内部值', () => {
+    expect(plan_facility_type_options[1]).toEqual({ label: '制造站', value: '制造站' })
+    expect(trigger_facility_type_options[1]).toEqual({ label: '制造站', value: 'factory' })
   })
 
   it('生成并解析设施产物表达式', () => {

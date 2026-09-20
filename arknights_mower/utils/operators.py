@@ -14,6 +14,7 @@ from ..utils.log import logger
 
 # 赤金交易订单干员常量
 TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
+FACILITY_TYPE_IDS = {"贸易站": "trade", "制造站": "factory", "发电站": "power"}
 
 
 def build_global_plan():
@@ -437,6 +438,7 @@ class Operators:
         try:
             model = {e: e for e in base_room_list}
             model.update({e: e for e in FACTORY_PRODUCTS | TRADE_PRODUCTS})
+            model.update({e: e for e in FACILITY_TYPE_IDS.values()})
             model["op_data"] = self
             result = Expr(expression, self.eval_model).eval(model)
             return result
@@ -493,7 +495,7 @@ class Operators:
         room_plan = self.plan.get(room) or []
         if not room_plan:
             return None
-        return getattr(room_plan[0], "facility", None) or None
+        return FACILITY_TYPE_IDS.get(getattr(room_plan[0], "facility", None))
 
     def facility_operator_count(self, room: str) -> int:
         """根据已有干员位置缓存返回指定设施的进驻干员数量。"""
