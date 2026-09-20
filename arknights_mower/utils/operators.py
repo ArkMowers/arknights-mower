@@ -153,6 +153,7 @@ class Operators:
                 "current_room",
                 "inventory_count",
                 "facility_product",
+                "facility_operator_count",
             ]
         )
         self.power_plant_count = 0
@@ -476,6 +477,14 @@ class Operators:
         if room not in base_room_list:
             raise ValueError(f"不支持的设施位置：{room}")
         return self.facility_states.get(room, {}).get("product")
+
+    def facility_operator_count(self, room: str) -> int:
+        """返回指定设施最近记录的进驻干员数量。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        return sum(
+            operator.current_room == room for operator in self.operators.values()
+        )
 
     def get_current_room(self, room, bypass=False, current_index=None):
         room_data = {

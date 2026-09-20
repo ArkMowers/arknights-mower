@@ -420,6 +420,18 @@ def test_facility_state_is_cached_and_available_to_backup_expression():
     assert operators.evaluate_expression("op_data.facility_product('room_1_2') == exp3")
 
 
+def test_facility_operator_count_supports_all_base_rooms():
+    room, plan = product_plan()
+    operators = Operators(plan)
+    operators.operators["测试干员"] = SimpleNamespace(current_room="central")
+
+    assert operators.facility_operator_count("central") == 1
+    assert operators.facility_operator_count(room) == 0
+    assert operators.evaluate_expression(
+        "op_data.facility_operator_count('central') >= 1"
+    )
+
+
 def test_facility_state_can_hold_inventory_backup_until_lower_threshold(monkeypatch):
     room, plan = product_plan()
     inventory = {"赤金": 6_000}

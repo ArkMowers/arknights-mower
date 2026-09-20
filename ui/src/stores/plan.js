@@ -45,6 +45,23 @@ export const usePlanStore = defineStore('plan', () => {
     facility_operator_limit[`gaming_${i}`] = 1
   }
 
+  const facility_options = [
+    { label: '控制中枢', value: 'central' },
+    { label: '会客室', value: 'meeting' },
+    { label: '办公室', value: 'contact' },
+    { label: '加工站', value: 'factory' },
+    { label: '训练室', value: 'train' },
+    ...left_side_facility,
+    ...Array.from({ length: 4 }, (_, index) => ({
+      label: `${index + 1}层宿舍`,
+      value: `dormitory_${index + 1}`
+    })),
+    ...Array.from({ length: 3 }, (_, index) => ({
+      label: `活动室${index + 1}`,
+      value: `gaming_${index + 1}`
+    }))
+  ]
+
   function list2str(data) {
     return data.join(',')
   }
@@ -285,6 +302,7 @@ export const usePlanStore = defineStore('plan', () => {
     operators,
     facility_operator_limit,
     left_side_facility,
+    facility_options,
     build_plan,
     groups,
     backup_plans,

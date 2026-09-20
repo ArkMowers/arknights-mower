@@ -68,7 +68,8 @@ const op_data = computed(() => {
   if (facility) {
     return {
       type: 'facility',
-      room: facility
+      room: facility.room,
+      status: facility.status
     }
   }
   const facilityProduct = parse_facility_product(data.value)
@@ -124,7 +125,10 @@ function set_op_type(v) {
   } else if (v == 'inventory') {
     data.value = inventory_expression(inventory_options[0].value)
   } else if (v == 'facility') {
-    data.value = facility_expression(facility_select_options.value[0]?.value || 'room_1_1')
+    data.value = facility_expression(
+      facility_select_options.value[0]?.value || 'central',
+      'operator_count'
+    )
   } else if (v == 'facility_product') {
     data.value = facility_product_options[0].value
   }
@@ -135,11 +139,14 @@ function update_inventory(item) {
 }
 
 function update_facility(room) {
-  data.value = facility_expression(room)
+  const supportsProduct = ['制造站', '贸易站'].includes(plan.value[room]?.name)
+  const status =
+    op_data.value.status == 'product' && !supportsProduct ? 'operator_count' : op_data.value.status
+  data.value = facility_expression(room, status)
 }
 
 function update_facility_status(status) {
-  if (status == 'product') data.value = facility_expression(op_data.value.room)
+  data.value = facility_expression(op_data.value.room, status)
 }
 
 function update_facility_product(product) {
@@ -188,7 +195,7 @@ import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 const plan_store = usePlanStore()
 const { operators, plan } = storeToRefs(plan_store)
-const { left_side_facility } = plan_store
+const { facility_options } = plan_store
 const depot_store = usedepotStore()
 const { inventory, inventoryLoaded, inventoryLoadError } = storeToRefs(depot_store)
 const facility_store = useFacilityStore()
@@ -206,28 +213,30 @@ const inventory_select_options = computed(() =>
 )
 
 const facility_select_options = computed(() =>
-  left_side_facility
-    .filter(({ value }) => ['制造站', '贸易站'].includes(plan.value[value]?.name))
-    .map((option) => {
-      let current = '读取中…'
-      if (facilityLoadError.value) {
-        current = '未知'
-      } else if (facilityLoaded.value) {
-        current = facility_product_labels[facility_states.value[option.value]?.product] || '未记录'
+  facility_options.map((option) => {
+    const facilityName = plan.value[option.value]?.name
+    if (!['制造站', '贸易站'].includes(facilityName)) {
+      return {
+        ...option,
+        label: facilityName ? `${option.label}（${facilityName}）` : option.label
       }
-      return { ...option, label: `${option.label}（当前：${current}）` }
-    })
+    }
+    let current = '读取中…'
+    if (facilityLoadError.value) {
+      current = '未知'
+    } else if (facilityLoaded.value) {
+      current = facility_product_labels[facility_states.value[option.value]?.product] || '未记录'
+    }
+    return { ...option, label: `${option.label}（${facilityName}；当前：${current}）` }
+  })
 )
 
 const facility_status_options = computed(() => {
   const facilityName = plan.value[op_data.value.room]?.name
-  const label =
-    facilityName == '制造站'
-      ? '当前产物'
-      : facilityName == '贸易站'
-        ? '当前订单类型'
-        : '当前产物或订单'
-  return [{ label, value: 'product' }]
+  const options = [{ label: '当前干员数量', value: 'operator_count' }]
+  if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
+  if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
+  return options
 })
 
 onMounted(() => {
@@ -334,7 +343,7 @@ const custom_tips = [
   />
   <n-select
     v-if="op_type == 'facility'"
-    default-value="product"
+    :default-value="op_data.status"
     :options="facility_status_options"
     :on-update:value="update_facility_status"
     style="min-width: 160px"
