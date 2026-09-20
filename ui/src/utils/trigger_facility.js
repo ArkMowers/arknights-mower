@@ -1,8 +1,6 @@
 import { facility_product_options } from '@/utils/base_products'
-import { facility_type_names } from '@/utils/base_facilities'
 
 const facilityProductIds = new Set(facility_product_options.map(({ value }) => value))
-const facilityTypeNames = new Set(facility_type_names)
 
 const facilityStatusMethods = {
   type: 'facility_type',
@@ -31,11 +29,6 @@ export function parse_facility_expression(value) {
   }
 }
 
-export function parse_facility_type(value) {
-  const match = value.match(/^'(.+)'$/)
-  return match && facilityTypeNames.has(match[1]) ? match[1] : undefined
-}
-
 export function summarize_facility_products(plan = {}, states = {}) {
   const products = {}
   for (const [room, facility] of Object.entries(plan)) {
@@ -53,16 +46,6 @@ export function summarize_facility_products(plan = {}, states = {}) {
   const counts = Object.fromEntries([...facilityProductIds].map((product) => [product, 0]))
   for (const product of Object.values(products)) counts[product] += 1
   return { products, counts, typeCount: new Set(Object.values(products)).size }
-}
-
-export function operator_relation_expression(first, second) {
-  return `op_data.operators_work_together('${first}', '${second}')`
-}
-
-export function parse_operator_relation_expression(value) {
-  const match = value.match(/^op_data\.operators_work_together\('(.+)', '(.+)'\)$/)
-  if (!match) return undefined
-  return { first: match[1], second: match[2] }
 }
 
 export function facility_product_count_expression(product) {

@@ -15,11 +15,7 @@ from arknights_mower.utils.factory_product import (  # noqa: E402
     parse_product_task_meta,
     product_task_meta,
 )
-from arknights_mower.utils.operators import (  # noqa: E402
-    Operator,
-    Operators,
-    build_global_plan,
-)
+from arknights_mower.utils.operators import Operators, build_global_plan  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
@@ -495,27 +491,6 @@ def test_facility_type_reuses_current_plan():
     assert operators.evaluate_expression(
         "op_data.facility_type('room_1_2') == '制造站'"
     )
-
-
-def test_facility_operator_binding_and_work_relation_are_available_to_expression():
-    room, plan = product_plan()
-    operators = Operators(plan)
-    operators.add(Operator("Lancet-2", ""))
-    operators.add(Operator("阿米娅", ""))
-    lancet = operators.operators["Lancet-2"]
-    amiya = operators.operators["阿米娅"]
-    lancet.current_room = room
-    lancet.current_index = 0
-    amiya.current_room = room
-    amiya.current_index = 1
-
-    assert operators.operators_work_together("Lancet-2", "阿米娅")
-    assert operators.evaluate_expression(
-        "op_data.operators_work_together('Lancet-2', '阿米娅')"
-    )
-
-    amiya.current_room = "dormitory_1"
-    assert not operators.operators_work_together("Lancet-2", "阿米娅")
 
 
 def test_facility_product_statistics_are_available_to_expression():

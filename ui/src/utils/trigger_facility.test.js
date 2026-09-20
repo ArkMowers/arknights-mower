@@ -4,11 +4,8 @@ import {
   facility_expression,
   facility_product_count_expression,
   facility_product_type_count_expression,
-  operator_relation_expression,
   parse_facility_expression,
-  parse_facility_type,
   parse_facility_product_count_expression,
-  parse_operator_relation_expression,
   summarize_facility_products
 } from './trigger_facility.js'
 
@@ -31,15 +28,13 @@ describe('设施状态副表表达式', () => {
     })
   })
 
-  it('生成并解析设施类型表达式和值', () => {
+  it('生成并解析设施类型表达式', () => {
     const expression = facility_expression('room_1_2', 'type')
     expect(expression).toBe("op_data.facility_type('room_1_2')")
     expect(parse_facility_expression(expression)).toEqual({
       room: 'room_1_2',
       status: 'type'
     })
-    expect(parse_facility_type("'制造站'")).toBe('制造站')
-    expect(parse_facility_type("'控制中枢'")).toBeUndefined()
   })
 
   it('生成并解析训练室专精状态表达式', () => {
@@ -54,15 +49,6 @@ describe('设施状态副表表达式', () => {
     expect(parse_facility_expression("op_data.facility_is_training('train')")).toEqual({
       room: 'train',
       status: 'training'
-    })
-  })
-
-  it('生成并解析同设施工作关系', () => {
-    const expression = operator_relation_expression('阿米娅', '陈')
-    expect(expression).toBe("op_data.operators_work_together('阿米娅', '陈')")
-    expect(parse_operator_relation_expression(expression)).toEqual({
-      first: '阿米娅',
-      second: '陈'
     })
   })
 

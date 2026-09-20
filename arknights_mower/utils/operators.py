@@ -155,7 +155,6 @@ class Operators:
                 "facility_type",
                 "facility_product",
                 "facility_operator_count",
-                "operators_work_together",
                 "facility_product_count",
                 "facility_product_type_count",
                 "facility_has_mastery_plan",
@@ -523,18 +522,6 @@ class Operators:
 
         plan = get_active_plan()
         return plan is not None and plan.get("status") == "training"
-
-    def operators_work_together(self, first: str, second: str) -> bool:
-        """判断两名干员当前是否在同一非宿舍设施工作。"""
-        left = self.operators.get(first)
-        right = self.operators.get(second)
-        if first == second or left is None or right is None or not left.current_room:
-            return False
-        return (
-            left.current_room == right.current_room
-            and left.is_working()
-            and right.is_working()
-        )
 
     def facility_product_count(self, product: str) -> int:
         """返回当前生产指定产物或订单类型的设施数量。"""

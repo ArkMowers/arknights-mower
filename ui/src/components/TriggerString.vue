@@ -14,10 +14,8 @@ import {
   facility_expression,
   facility_product_count_expression,
   facility_product_type_count_expression,
-  operator_relation_expression,
   parse_facility_expression,
   parse_facility_product_count_expression,
-  parse_operator_relation_expression,
   summarize_facility_products
 } from '@/utils/trigger_facility'
 import { trigger_facility_type_options } from '@/utils/base_facilities'
@@ -78,14 +76,6 @@ const op_data = computed(() => {
       status: facility.status
     }
   }
-  const operatorRelation = parse_operator_relation_expression(data.value)
-  if (operatorRelation) {
-    return {
-      type: 'operator_relation',
-      first: operatorRelation.first,
-      second: operatorRelation.second
-    }
-  }
   const productCount = parse_facility_product_count_expression(data.value)
   if (productCount) {
     return {
@@ -114,8 +104,6 @@ const op_type = computed(() => {
     return 'inventory'
   } else if (op_data.value.type == 'facility') {
     return 'facility'
-  } else if (op_data.value.type == 'operator_relation') {
-    return 'operator_relation'
   } else if (op_data.value.type == 'facility_stat') {
     return 'facility_stat'
   } else {
@@ -127,7 +115,6 @@ const type_options = [
   { label: '干员属性', value: 'op' },
   { label: '仓库资源', value: 'inventory' },
   { label: '设施状态', value: 'facility' },
-  { label: '干员同设施工作', value: 'operator_relation' },
   { label: '生产设施统计', value: 'facility_stat' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '常量/自定义', value: 'custom' }
@@ -154,10 +141,6 @@ function set_op_type(v) {
       ? 'product'
       : 'operator_count'
     data.value = facility_expression(room, status)
-  } else if (v == 'operator_relation') {
-    const first = operators.value[0]?.value || '阿米娅'
-    const second = operators.value[1]?.value || first
-    data.value = operator_relation_expression(first, second)
   } else if (v == 'facility_stat') {
     data.value = facility_product_count_expression(facility_product_options[0].value)
   }
@@ -180,14 +163,6 @@ function update_facility(room) {
 
 function update_facility_status(status) {
   data.value = facility_expression(op_data.value.room, status)
-}
-
-function update_relation_first(operator) {
-  data.value = operator_relation_expression(operator, op_data.value.second)
-}
-
-function update_relation_second(operator) {
-  data.value = operator_relation_expression(op_data.value.first, operator)
 }
 
 function update_facility_stat(status) {
@@ -428,26 +403,6 @@ const custom_tips = [
       :options="op_options"
       :on-update:value="update_type"
       style="min-width: 120px"
-    />
-  </template>
-  <template v-if="op_type == 'operator_relation'">
-    <n-select
-      :default-value="op_data.first"
-      filterable
-      :options="operators"
-      :on-update:value="update_relation_first"
-      :filter="(p, o) => pinyin_match(o.label, p)"
-      :render-label="render_op_label"
-      style="min-width: 220px"
-    />
-    <n-select
-      :default-value="op_data.second"
-      filterable
-      :options="operators"
-      :on-update:value="update_relation_second"
-      :filter="(p, o) => pinyin_match(o.label, p)"
-      :render-label="render_op_label"
-      style="min-width: 220px"
     />
   </template>
   <n-select
