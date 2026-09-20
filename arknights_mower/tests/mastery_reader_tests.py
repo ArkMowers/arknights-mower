@@ -2720,7 +2720,7 @@ class TestGetTrainSceneFloatingWindow(unittest.TestCase):
     """#78 浮窗识别盲区：get_train_scene 识别 room_detail → 205，且不误用 arrange_check_in。
 
     浮窗开着时 room_detail（浮窗头）须在 train_main/training_support 之前判 205，
-    否则浮窗被误标 217/219、_read_slots 关浮窗死代码永不触发。
+    否则浮窗被误标 217/219、读槽位后的关浮窗（点 arrange_check_in_on）永不触发。
     """
 
     def _recog(self, find_hits):
@@ -2752,8 +2752,12 @@ class TestGetTrainSceneFloatingWindow(unittest.TestCase):
         self.assertEqual(rec.get_train_scene(), Scene.TRAIN_MAIN)
 
 
-class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
-    """#78 复活 _read_slots 的关浮窗死代码：读完进驻详情后浮窗必须确定关掉，无二次 back。"""
+class TestReadSlotsCheckedCloseFloatingWindow(unittest.TestCase):
+    """#78：读完进驻详情浮窗必须确定关掉（点关闭按钮，不是 back，也不会二次 back）。
+
+    #100 起读槽位只有一个入口 `_read_slots_checked`（`_read_slots` 包装层已删），
+    原 `TestReadSlotsCloseFloatingWindow` 的行为断言原样搬过来。
+    """
 
     def test_closes_floating_window_after_read(self):
         solver = MagicMock()
@@ -2765,28 +2769,35 @@ class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
             Scene.TRAIN_MAIN,  # 读槽位前置：主页面
             Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
         ]
-        support, train = reader._read_slots(solver)
+        support, train, _, reliable = reader._read_slots_checked(solver)
+        self.assertTrue(reliable)
         self.assertEqual((support, train), ("逻各斯", "能天使"))
         # 205 放大视角关浮窗应点关闭按钮（arrange_check_in_on），不是 back（会退到基建）
         solver.find.assert_any_call("arrange_check_in_on")
         solver.tap.assert_called()
         solver.back.assert_not_called()
 
-    def test_no_double_back_when_window_closed(self):
+    def test_no_double_back_when_popup_not_confirmed(self):
+        # 读后场景非 205（浮窗没开/开错）→ 槽位不消费，也不补一次 back
         solver = MagicMock()
         solver.get_agent_from_room.return_value = [
             {"agent": "逻各斯"},
             {"agent": "能天使"},
         ]
         solver.train_scene.return_value = Scene.TRAIN_MAIN
-        reader._read_slots(solver)
+        support, train, _, reliable = reader._read_slots_checked(solver)
+        self.assertFalse(reliable)
+        self.assertEqual((support, train), ("", ""))
         solver.back.assert_not_called()
         solver.tap.assert_not_called()
 
     def test_read_failure_returns_empty_no_back(self):
         solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
         solver.get_agent_from_room.side_effect = Exception("read fail")
-        self.assertEqual(reader._read_slots(solver), ("", ""))
+        support, train, _, reliable = reader._read_slots_checked(solver)
+        self.assertFalse(reliable)
+        self.assertEqual((support, train), ("", ""))
         solver.back.assert_not_called()
 
 
@@ -2836,6 +2847,58 @@ class TestReadSlotsSceneGate(unittest.TestCase):
         support, train, scan, reliable = reader._read_slots_checked(solver)
         self.assertTrue(reliable)
         self.assertEqual((support, train), ("支援干员", "训练干员"))
+
+
+class TestFillSlotsReliability(unittest.TestCase):
+    """#100：RoomState.slots_reliable 如实反映 _read_slots_checked 的可靠位。
+
+    开训换人（_start_new_training）与排班 gate 都靠它区分「真空位」与「读浮窗失败」：
+    False 时空串只能当「不知道」，不得当空位做补位/换人 mutation。
+    """
+
+    @staticmethod
+    def _solver(scenes):
+        solver = MagicMock()
+        it = iter(scenes)
+        solver.train_scene.side_effect = lambda: next(it, Scene.TRAIN_MAIN)
+        solver.find.return_value = None  # _close_room_detail 不点任何东西
+        return solver
+
+    @staticmethod
+    def _fill(solver, scan):
+        solver.get_agent_from_room.return_value = scan
+        room = reader.RoomState("empty")
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            reader._fill_slots_and_protection(solver, room)
+        return room
+
+    def test_reliable_empty_slots(self):
+        # 读前在 217、读后浮窗确实开了（205）+ 两个槽位都空 → 可靠地空着
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        room = self._fill(solver, [{"agent": ""}, {"agent": ""}])
+        self.assertTrue(room.slots_read)
+        self.assertTrue(room.slots_reliable, "过了场景闸门的空位＝可靠地空着")
+        self.assertEqual((room.support_slot, room.train_slot), ("", ""))
+
+    def test_read_failure_is_not_reliable(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        solver.get_agent_from_room.side_effect = KeyError("泡泡")
+        room = reader.RoomState("empty")
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            reader._fill_slots_and_protection(solver, room)
+        self.assertTrue(room.slots_read)
+        self.assertFalse(room.slots_reliable, "读失败不是空位")
+
+    def test_short_scan_is_not_reliable(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        room = self._fill(solver, [])
+        self.assertFalse(room.slots_reliable, "槽位没读全不能报「可靠地空着」")
+
+    def test_popup_not_confirmed_is_not_reliable(self):
+        # 读后场景非 205（浮窗没开/开错）→ 槽位数据不消费
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.TRAIN_MAIN])
+        room = self._fill(solver, [{"agent": ""}, {"agent": ""}])
+        self.assertFalse(room.slots_reliable)
 
 
 class TestUpdateExpirySkipWrite(unittest.TestCase):

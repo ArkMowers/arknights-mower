@@ -461,24 +461,6 @@ def run_mastery_task(solver):
             raise
 
 
-def _training_slots(solver):
-    """读训练室两个槽位的干员名，返回 (协助位, 训练位)。
-
-    槽位约定（与 choose_train 基类一致，#53 从实机 log 佐证）：
-    - scan[0] = 上排 = 协助位；scan[1] = 下排 = 训练位
-      （get_agent_from_room 与 operator_list_train 的 name_y 均为 上→下）
-    - choose_train 内部 idx==0 走 choose_agent（协助位）、idx==1 走
-      choose_train_ope（训练位），get_agent_from_room 的 scan 与之同序
-    - 现有调用佐证：_arrange_support / run_swap_support 传
-      choose_train([协助干员, "Current"])，都把 idx0 当协助位
-    读不到名字的槽位返回 ""。
-    """
-    scan = solver.get_agent_from_room("train")
-    if len(scan) < 2:
-        return "", ""
-    return scan[0].get("agent", ""), scan[1].get("agent", "")
-
-
 def _swap_into_wrong_slot(solver, plan):
     """无倒计时 + 训练位坐错人：复用 choose_train 换人。
 
@@ -881,17 +863,26 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 checked_target = False
             if not checked_slot:
                 checked_slot = True
-                # #93：复用 reconcile 读房已读的槽位（省重复浮窗开关）。槽位读到空串时
-                # 无法区分「真空」与「读浮窗失败」——重读一次兜底（读失败恢复换人校验、
-                # 真空重读仍空无害）。冷启动（room=None）保持旧行为现读。
-                if room is not None and room.train_slot:
-                    trainer_slot = room.train_slot
+                # #93：复用 reconcile 读房已读的槽位（省重复浮窗开关）。#100：空串有两个
+                # 来源——真空位与读浮窗失败；只有 reliable（_read_slots_checked 过了场景
+                # 闸门）为真时，空串才是「确实没人」；读到名字＝确实有人。
+                if room is not None and (room.train_slot or room.slots_reliable):
+                    trainer_slot, slot_reliable = room.train_slot, room.slots_reliable
                 else:
-                    trainer_slot = _training_slots(solver)[1]
-                    _close_room_detail(
-                        solver
-                    )  # 关闭 _training_slots 打开的房间详情浮层
+                    # 兜底重读走同一道闸门（#140 场景确认 + #100 读失败闸门），浮窗由
+                    # reader 自己点关闭按钮关掉——不再有「裸读 get_agent_from_room」：
+                    # 那既不看场景（非 205 的垃圾读也当依据），读后还会无条件多按一次 back。
+                    _, trainer_slot, _, slot_reliable = _read_slots_checked(solver)
                 char_name = _plan_char_label(plan)
+                if not (trainer_slot or slot_reliable):
+                    # 读不到训练位 → 不换人（读失败不得当真空位做 mutation，稳为先）：
+                    # 保持 idle + 重排 + 退出，等下一轮重读，绝不盲点换人/开训。
+                    logger.warning(
+                        "[mastery] 训练位读取失败（真空位与读失败不可分），"
+                        "跳过换人核验，保持 idle 重排"
+                    )
+                    _exit_occupied(solver, plan, None, trigger="训练位读取失败")
+                    return
                 if trainer_slot != char_name:
                     # 走到这里只剩「倒计时没读出来 + 训练位非计划干员（坐错人或为空）」：
                     # 倒计时读得出有效值/00:00:00 的两种占用情形上面已经 return 了。
