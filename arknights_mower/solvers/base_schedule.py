@@ -1093,7 +1093,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         train_blocked = (
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
             or getattr(train_room_state, "locked", None) is True
-            or getattr(train_room_state, "protected", None) is True
+            or (
+                config.conf.enable_mastery
+                and getattr(train_room_state, "protected", None) is True
+            )
         )
         miss_list = {
             k: v
@@ -1287,7 +1290,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return self.op_data.get_train_support() in ("逻各斯", "艾丽妮")
 
     def _suppress_train_correction(self, fix_plan: dict) -> None:
-        """训练室纠错是否应抑制：专精活跃或受保护时弹出 train 项（受保护时提醒）。"""
+        """训练室纠错是否应抑制：专精活跃或受保护时弹出 train 项（受保护时提醒）。
+
+        缓存（`train_room_state`）里的状态与保护都按 `enable_mastery` 门控后再消费：
+        缓存在开关打开的那一轮写下来，开关关掉后它就是陈年结论，按 §16.11「关闭时
+        保护完全停用」不得再据此弹纠错（兄弟判定 `_train_protected` 同样先门控）。
+        """
         if "train" not in fix_plan:
             return
         if self._train_mastery_active():
@@ -1304,7 +1312,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
             or getattr(train_room_state, "locked", None) is True
         )
-        train_protected = getattr(train_room_state, "protected", None) is True
+        train_protected = (
+            config.conf.enable_mastery
+            and getattr(train_room_state, "protected", None) is True
+        )
         if train_protected:
             fix_plan.pop("train")
             logger.debug("训练室受保护，跳过训练室纠错")
