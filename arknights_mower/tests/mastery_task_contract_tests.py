@@ -1,4 +1,4 @@
-"""#71 一键专精流接入 DB 计划架构——/task 契约 + 前端流契约测试。
+"""一键专精流接入 DB 计划架构——/task 契约 + 前端流契约测试。
 
 - 服务端 `/task`：原始「技能专精」任务被明确拒绝并指引 POST /mastery-plan，不再死路；
   `upgrade_support` 载荷不再被消费。空任务 / 加工材料等其它类型仍照常入队。
@@ -28,7 +28,7 @@ from arknights_mower.utils.scheduler_task import TaskTypes
 from arknights_mower.views.task import task_bp
 
 # base_schedule 导入链（cultivate_depot→skland）在 skland 模块加载时调用
-# SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关），与
+# SecuritySm.get_d_id() 发网络请求（环境性 flake，与测试无关），与
 # base_scheduler_tests 同款 stub。
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
@@ -93,7 +93,7 @@ class TestTaskEndpointContract(unittest.TestCase):
             sys.modules["arknights_mower.__main__"] = self._saved_main
 
     def test_skill_upgrade_rejected_with_plan_api_pointer(self):
-        # #71：前端不再发原始「技能专精」/task；若收到则明确拒绝并指引计划 API，不再死路。
+        # 前端不再发原始「技能专精」/task；若收到则明确拒绝并指引计划 API，不再死路。
         r = self.client.post("/task", json=_task_payload("技能专精", meta_data="1"))
         self.assertEqual(r.status_code, 200)
         self.assertNotIn("添加任务成功！", r.data.decode("utf-8"))
@@ -111,7 +111,7 @@ class TestTaskEndpointContract(unittest.TestCase):
         self.assertEqual(self.fake_scheduler.tasks, [])
 
     def test_upgrade_support_payload_no_longer_consumed(self):
-        # upgrade_support 载荷后端无消费者（#71 验收：移除或接入路线配置），不再被静默收下。
+        # upgrade_support 载荷后端无消费者（验收：移除或接入路线配置），不再被静默收下。
         r = self.client.post(
             "/task",
             json=_task_payload(
@@ -165,7 +165,7 @@ class TestTaskEndpointContract(unittest.TestCase):
         self.assertIn("请确保Mower正在运行", r.data.decode("utf-8"))
 
     def test_token_required_when_configured(self):
-        # #104：/task 是唯一未走 _require_token 的状态变更路由——webview 配置 token 时
+        # /task 是唯一未走 _require_token 的状态变更路由——webview 配置 token 时
         # 服务绑定 0.0.0.0，任意 LAN 对等端可 POST 注入调度任务 / GET 读任务队列。
         app = Flask(__name__)
         app.token = "secret"

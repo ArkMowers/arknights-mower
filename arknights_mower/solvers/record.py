@@ -14,7 +14,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
-# 全部 DB 表定义（#86：建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
+# 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
 _DB_TABLE_STMTS = (
     "CREATE TABLE IF NOT EXISTS agent_action ("
     "name TEXT,"
@@ -69,7 +69,7 @@ def _conn():
     global _tables_created
     get_path("@app/tmp").mkdir(exist_ok=True)
     db_path = get_path("@app/tmp/data.db")
-    # #86：数据库文件被删/首次 → 重置建表标记，下次连接重建表（防运行中丢库后 no-such-table）
+    # 数据库文件被删/首次 → 重置建表标记，下次连接重建表（防运行中丢库后 no-such-table）
     if not db_path.exists():
         _tables_created = False
     conn = sqlite3.connect(db_path)

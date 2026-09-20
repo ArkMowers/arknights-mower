@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 # base_schedule 导入链（cultivate_depot→skland）会在 skland 模块加载时调用
-# SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关）。与
+# SecuritySm.get_d_id() 发网络请求（环境性 flake，与测试无关）。与
 # mastery_choose_train_tests.py 同款 stub，避免单测依赖外网。
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
@@ -1408,7 +1408,7 @@ class TestBaseScheduler(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_train_correction_not_suppressed_when_mastery_off(self):
-        # #207 守卫·铁律 10/§16.11：enable_mastery OFF 保护全停、排班照常排训练室——
+        # #207 守卫·铁律 10/§7.3：enable_mastery OFF 保护全停、排班照常排训练室——
         # 即使协助位是逻各斯，训练室纠错也不被弹掉、不发邮件。
         solver = self._train_mismatch_solver(
             ["褐果", "桃金娘"],
@@ -1486,7 +1486,7 @@ class TestBaseScheduler(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_ignores_stale_protected_when_mastery_off(self):
-        # #207 守卫·铁律 10/§16.11：开关关闭后，上一轮读到的「受保护」缓存不得再弹
+        # #207 守卫·铁律 10/§7.3：开关关闭后，上一轮读到的「受保护」缓存不得再弹
         # 训练室纠错（缓存本身没有门控，靠 _suppress_train_correction 按开关拦）。
         solver = self._train_mismatch_solver(["褐果", "桃金娘"])
         stale = MagicMock()
@@ -2041,7 +2041,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_enable_mastery_off_keeps_blocked_room_check_no_reconcile(self):
-        """§16.11：OFF 时排班照常但保留「被占用就不硬塞」防卡检查——锁定房仍跳过，
+        """§7.3：OFF 时排班照常但保留「被占用就不硬塞」防卡检查——锁定房仍跳过，
         但不跑 reconcile（自动收取/对账全停）。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
@@ -2384,7 +2384,7 @@ class TestScanDispatchMastery(unittest.TestCase):
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_auto_schedule_mastery_after_scan_gates_on_enable_mastery(self):
-        # §16.11 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
+        # §7.3 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
         # 照跑；加工配置钩子在 OFF 时仅恢复手动配置。三个钩子被调 + dispatch 不被调
         # 钉死结构——把门误提到钩子前（failed 计划永不重置、idle 永不重排）套件会红。
         solver = self._solver()

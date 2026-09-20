@@ -410,7 +410,7 @@ class TestArrangingConvergence(unittest.TestCase):
 
     def test_confirm_after_skill_select_backs_to_main_before_countdown(self):
         """#89：确认升级后游戏自动退回技能选择页（真 219，读不出倒计时）——必须 back
-        一次回训练室主页面（217）再读倒计时（§16.10 第 3 步「再退出一次」），否则 219
+        一次回训练室主页面（217）再读倒计时（§5.2 第 3 步「再退出一次」），否则 219
         左下角是协助位天赋文本、会被 OCR 当倒计时反复读甚至假确认开始。
         """
         solver = MagicMock()
@@ -1009,7 +1009,7 @@ class TestPlanFailLabel(unittest.TestCase):
 class TestStartTrainingMail(unittest.TestCase):
     """#90：开始训练邮件——协助位安排后重读倒计时再发；真名/目标级档位；两情况完成时间。
 
-    邮件发送点从确认倒计时时刻移到协助位安排 + 换人判定之后（§16.10 第7步以当前读取
+    邮件发送点从确认倒计时时刻移到协助位安排 + 换人判定之后（§5.2 第7步以当前读取
     为准）；档位 = 左下角专精图标读数（step_level，不加1）；真名 = plan["skill_name"]；
     完成时间：无减半 = 重读倒计时、有减半 = 换人任务时刻 + (300 + mastery_swap_buffer)。
     """
@@ -1115,7 +1115,7 @@ class TestStartTrainingMail(unittest.TestCase):
         self.assertIn("预计 18:10 完成", msg)
 
     def test_mail_rereads_countdown_after_arrange_for_swap_and_collect(self):
-        # §16.10 第7步：协助位安排后重读倒计时，换人/收取/邮件完成时间都以此为准
+        # §5.2 第7步：协助位安排后重读倒计时，换人/收取/邮件完成时间都以此为准
         solver = self._lit_solver(lit=2)
         solver.read_time.side_effect = [7200, 5400]  # 初始 2h → 安排后 1.5h
         plan = make_plan()
@@ -1421,7 +1421,7 @@ class TestTrainingTailGuards(unittest.TestCase):
 
 
 class TestSwapCollectGating(unittest.TestCase):
-    """#73 §16.10：排了换人任务则不排收取；SWAP_SUPPORT 完成后重读倒计时再排收取。"""
+    """#73 §5.2：排了换人任务则不排收取；SWAP_SUPPORT 完成后重读倒计时再排收取。"""
 
     def setUp(self):
         FixedDateTime.now_value = START
@@ -1484,7 +1484,7 @@ class TestSwapCollectGating(unittest.TestCase):
         return result, sc
 
     def test_swap_scheduled_skips_collect(self):
-        # §16.10：排了换人任务 → 不排收取（等 SWAP_SUPPORT 完成后重读倒计时再排收取）
+        # §5.2：排了换人任务 → 不排收取（等 SWAP_SUPPORT 完成后重读倒计时再排收取）
         result, sc = self._confirm(swap_scheduled=True)
         self.assertEqual(result, "started")
         sc.assert_not_called()
@@ -1571,7 +1571,7 @@ class TestSwapCollectGating(unittest.TestCase):
         self.assertEqual(route_calls, [None], "应把缺省 step_level 传给路线加载")
 
     def test_run_swap_support_schedules_collect_after_swap(self):
-        # §16.10：SWAP_SUPPORT 完成后重读倒计时再排收取。倒计时得「值得换」
+        # §5.2：SWAP_SUPPORT 完成后重读倒计时再排收取。倒计时得「值得换」
         # （换后真实 ≥ 301，read_time=15000→250 分钟）才会真正执行换人。
         solver = self._swap_solver()
         solver.read_time.return_value = 15000  # 250 分钟，换后真实 ≈ 330 分钟
@@ -2756,7 +2756,7 @@ class TestRouteStepLevel(unittest.TestCase):
 
     def test_run_swap_support_not_main_scene_skips(self):
         # 进房后不在训练主页面（已完成页 TRAIN_FINISH）→ 图标不可靠，不换人、
-        # 补排收取（§16.10）、退出房间
+        # 补排收取（§5.2）、退出房间
         solver = self._solver()
         solver.train_scene.return_value = Scene.TRAIN_FINISH
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -2786,7 +2786,7 @@ class TestRouteStepLevel(unittest.TestCase):
 
 
 class TestAtTargetNotifyAndMaterialGate(unittest.TestCase):
-    """#73 §16.9 ⑥ 已到target 通知；完成不级联开始下一个计划（#74 第2段）。"""
+    """#73 §10.2 ⑥ 已到target 通知；完成不级联开始下一个计划（#74 第2段）。"""
 
     def setUp(self):
         FixedDateTime.now_value = START
