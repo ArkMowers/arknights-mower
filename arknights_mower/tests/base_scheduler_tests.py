@@ -1434,6 +1434,32 @@ class TestBaseScheduler(unittest.TestCase):
         mock_send.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_ignores_stale_protected_when_mastery_off(self):
+        # #207 守卫·铁律 10/§16.11：开关关闭后，上一轮读到的「受保护」缓存不得再弹
+        # 训练室纠错（缓存本身没有门控，靠 _suppress_train_correction 按开关拦）。
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        stale = MagicMock()
+        # 空闲房也不会命中后面的 train_locked 分支（那条只看训练中/待收取），
+        # 于是唯一能弹掉纠错的就剩陈年 protected——正是本条要盯的那一行。
+        stale.state = "empty"
+        stale.protected = True
+        solver.train_room_state = stale
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task)
+        self.assertIn("train", task.plan)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_suppresses_train_correction_when_mastery_active(self):
         # #207 守卫·专精活跃：DB 有 active 计划 → 训练室纠错被弹出，不生成纠错任务。
         # 即便协助位同时是逻各斯（受保护），mastery 分支先行 → 不发提醒邮件。
