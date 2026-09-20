@@ -20,10 +20,8 @@ watch(show, (visible) => {
 })
 
 const triggerTimingOptions = [
-  { label: '任务开始', value: 'BEGINNING' },
   { label: '下班结束', value: 'BEFORE_PLANNING' },
-  { label: '上班结束', value: 'AFTER_PLANNING' },
-  { label: '任务结束', value: 'END' }
+  { label: '上班结束', value: 'AFTER_PLANNING' }
 ]
 
 function update_trigger(data) {
@@ -42,12 +40,12 @@ function update_trigger(data) {
   >
     <div class="dropdown-container">
       <label class="dropdown-label"
-        >触发时机
+        >最早切表阶段
         <help-text>
-          <div>任务开始：单个任务开始时</div>
-          <div>下班结束：高效组下班任务安排完毕，生成上班时间任务前</div>
-          <div>上班结束：高效组上班安排结束时</div>
-          <div>任务结束：单个任务结束时</div>
+          <div>该选项表示最早允许切表的阶段。</div>
+          <div>下班结束：适合需要在上班前切换产物或订单的副表。</div>
+          <div>上班结束：等本轮换班完成后再允许切表。</div>
+          <div>后续检查点仍会复查，条件未变化时不会重复切换。</div>
         </help-text>
       </label>
       <n-select
