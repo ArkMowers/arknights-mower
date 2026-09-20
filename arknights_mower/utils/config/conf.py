@@ -575,6 +575,8 @@ class RIICPart(ConfModel):
     "不养闲人合并间隔"
     dorm_order: str = ""
     "宿舍优先级"
+    refresh_backup_plan_after_mood: bool = True
+    "缓存清零重启后读取心情并按载入心情数据模式重启，默认开启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True
