@@ -15,7 +15,7 @@ describe('设施状态副表表达式', () => {
     expect(expression_value_option('赤金', 'gold')).toEqual({
       label: 'gold',
       value: 'gold',
-      displayLabel: '赤金（gold）'
+      displayLabel: '赤金'
     })
   })
 

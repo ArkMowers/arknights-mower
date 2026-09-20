@@ -18,7 +18,7 @@ export function expression_value_option(displayLabel, value) {
   return {
     label: value,
     value,
-    displayLabel: `${displayLabel}（${value}）`
+    displayLabel
   }
 }
 
