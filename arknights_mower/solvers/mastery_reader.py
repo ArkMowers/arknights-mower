@@ -33,12 +33,15 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
+    PANEL_LEFT_BRACKETS,
+    PANEL_RIGHT_BRACKETS,
     _resolve_operator_char_id,
     format_skill_label,
     is_placeholder_skill_name,
     normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
+    strip_panel_brackets,
 )
 
 # 主页面面板坐标（#61 已钉，#149 2026-08-19 实测校准：面板整体下移）
@@ -126,6 +129,82 @@ class RoomState:
 # --- 纯函数：技能名/面板解析/像素计数/状态分类 ---
 
 
+# 面板上的括号定界符与残渣清理统一来自 utils.skill_label（同一份表，避免两处分叉）。
+
+
+def _strip_bracket_noise(text: str) -> str:
+    """去掉字符串两端残留的括号字符，中间不动。"""
+    return strip_panel_brackets(text).strip()
+
+
+_joint_panel_cache = None
+
+
+def _joint_panel_candidates():
+    """(干员名, char_id) 候选，按名字长度倒序；撞名的干员整条丢弃。
+
+    用于「只有左括号、右括号丢了」时的名字边界消歧：右括号没了就没有定界符，
+    单靠字符串切不出名字到哪结束，改成拿「干员名 + 技能名」这一对回查
+    `skill_data.json` 校验。撞名干员无法确定身份，一律不参与消歧。
+    """
+    global _joint_panel_cache
+    if _joint_panel_cache is None:
+        try:
+            from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+            characters = get_skill_data().get("characters", {})
+        except Exception:
+            characters = {}
+        seen = {}
+        for char_id, char in characters.items():
+            name = char.get("name")
+            if name:
+                seen.setdefault(name, []).append(char_id)
+        _joint_panel_cache = sorted(
+            ((name, ids[0]) for name, ids in seen.items() if len(ids) == 1),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        )
+    return _joint_panel_cache
+
+
+def _split_name_by_skill_data(remainder, skip_leading_noise=False):
+    """在 `remainder` 上做「干员名 + 技能名」联合匹配，返回 (干员名, 技能名)。
+
+    有括号的残缺串（`[泡泡“挨打”`）用：逐个试已知干员名做前缀，再用该干员的技能池
+    校验剩下的部分（`resolve_panel_skill` 只在无歧义唯一命中时才给序号）。命中即
+    返回；都不中就返回 None，交回调用方按原语义当纯技能名处理。
+
+    `skip_leading_noise` 给「定界符没切出来」的形态用：那种串没有可依据的左括号，
+    OCR 前置的噪点（引号/×/残留符号）会顶在名字前面，纯前缀匹配会全部落空。打开后
+    从第一个中日韩字符起试，最多退到该位置（名字含非汉字的干员靠括号分支覆盖，
+    不指望这一支）。
+
+    返回前把名字两侧及技能名开头残留的括号字符清掉——没预料到的括号形、或只读到
+    半个括号时，残渣会粘在切分结果上，技能名带残渣会导致下游技能比对直接失败。
+    """
+    if not remainder:
+        return None
+    from arknights_mower.utils.skill_label import resolve_panel_skill
+
+    start = 0
+    if skip_leading_noise:
+        first_cjk = next(
+            (i for i, ch in enumerate(remainder) if "\u4e00" <= ch <= "\u9fff"), -1
+        )
+        if first_cjk == -1:
+            return None
+        start = first_cjk
+    for name, _char_id in _joint_panel_candidates():
+        if not remainder.startswith(name, start):
+            continue
+        rest = remainder[start + len(name) :].strip()
+        rest = _strip_bracket_noise(rest)
+        if rest and resolve_panel_skill(name, rest) is not None:
+            return name, rest
+    return None
+
+
 def _parse_panel_text(text):
     """`[干员名]技能名` → (干员名, 技能名)。无方括号视为纯技能名。
 
@@ -133,31 +212,55 @@ def _parse_panel_text(text):
     噪声一前置就把整串 `[干员]技能` 当纯技能名返回 → 干员名被误判不可读 → 状态矩阵走
     ocr_fail → 5 次重读仍不一致 → 保守训练中。改为「找第一个左括号」：括号前的噪声丢弃，
     括号内容作干员名、其后作技能名——信息 OCR 其实已读到，不因噪声丢失。
-    同时兼容全角括号（【】、［］）及混合括号（如 `[干员】`）。
-    无括号仍视为纯技能名（保持原语义）。
+    同时兼容全角括号（【】、［］）、OCR 把方括号读成其它括号形（花括号/直角/书名号/
+    圆括号等，见 PANEL_LEFT_BRACKETS）以及混合括号（如 `[干员】`）。
+    左括号整个丢了（`干员]技能`，OCR 在符号边界处漏字）时，右括号左边的文本作干员名、
+    其后作技能名——右括号左边只可能是干员名（`skill_data.json` 的 1147 条技能名条目
+    实测零条含方括号，见 §8.2），不靠干员表猜断点。
+    括号残缺到没有定界符可用时（右括号丢、左括号还在的 `[泡泡“挨打”`；两个括号都丢的
+    `泡泡“挨打”`）改走 `_split_name_by_skill_data` 的「干员名 + 技能名」联合回查
+    （后者另开 skip_leading_noise 从首个汉字起试）。实机日志
+    `干员=空 技能=[泡泡】“挨打”` 就是右括号丢这一种，名字与技能其实都还在串里。
+    校验不中时名字仍为空，行为与原语义一致（当纯技能名交回上层，照常走重试→保守）。
     """
     if not text:
         return "", ""
     t = str(text).strip()
-    left_brackets = ("[", "【", "［")
-    right_brackets = ("]", "】", "］")
+    left_brackets = PANEL_LEFT_BRACKETS
+    right_brackets = PANEL_RIGHT_BRACKETS
 
-    start = -1
-    for i, ch in enumerate(t):
-        if ch in left_brackets:
-            start = i
-            break
+    def _first(chars, begin=0):
+        for i in range(begin, len(t)):
+            if t[i] in chars:
+                return i
+        return -1
 
+    def _clean(name, skill):
+        # 名字两侧与技能名开头残留的括号字符（没预料到的括号形、或只读到半个括号时
+        # 会粘上来）统一清掉：技能名带残渣会让下游技能比对直接失败。
+        return _strip_bracket_noise(name), _strip_bracket_noise(skill)
+
+    start = _first(left_brackets)
     if start != -1:
-        end = -1
-        for i in range(start + 1, len(t)):
-            if t[i] in right_brackets:
-                end = i
-                break
+        end = _first(right_brackets, start + 1)
         if end != -1:
-            name = t[start + 1 : end].strip()
-            rest = t[end + 1 :].strip()
-            return name, rest
+            return _clean(t[start + 1 : end], t[end + 1 :])
+        matched = _split_name_by_skill_data(t[start + 1 :].strip())
+        if matched is not None:
+            return matched
+    else:
+        end = _first(right_brackets)
+        if end != -1:
+            # 右括号左边含噪声（`“干员]技能`）时名字会带上噪声（`“干员`），调用方按
+            # 「不在干员表」处理：不当作计划干员，该走的重读照走。右括号打头（无名字）
+            # 不切，交回旧口径当纯技能名。
+            name = _strip_bracket_noise(t[:end])
+            if name:
+                return name, _strip_bracket_noise(t[end + 1 :])
+        else:
+            matched = _split_name_by_skill_data(t, skip_leading_noise=True)
+            if matched is not None:
+                return matched
     return "", t
 
 

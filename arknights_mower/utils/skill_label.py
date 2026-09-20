@@ -12,6 +12,51 @@ from typing import Optional
 CN_ORDINAL = {0: "一", 1: "二", 2: "三", 3: "四", 4: "五", 5: "六", 6: "七"}
 _CANONICAL_RE = re.compile(r"^[一二三四五六]技能·")
 _PLACEHOLDER_RE = re.compile(r"^技能[0-9]+$")
+
+# 面板上的括号定界符。除半角/全角方括号外，一并收 OCR 常把方括号读成的其它括号形
+# （花括号/直角/书名号/圆括号等）——技能名与干员名里这些字符实测零命中（906 条技能名、
+# 482 个干员名），只可能是结构性噪声，认下来才能干净切分、比对时才不会被残渣绊住。
+PANEL_LEFT_BRACKETS = (
+    "[",
+    "【",
+    "［",
+    "{",
+    "｛",
+    "〔",
+    "〈",
+    "《",
+    "「",
+    "『",
+    "（",
+    "(",
+)
+PANEL_RIGHT_BRACKETS = (
+    "]",
+    "】",
+    "］",
+    "}",
+    "｝",
+    "〕",
+    "〉",
+    "》",
+    "」",
+    "』",
+    "）",
+    ")",
+)
+PANEL_BRACKETS = PANEL_LEFT_BRACKETS + PANEL_RIGHT_BRACKETS
+
+
+def strip_panel_brackets(text: str) -> str:
+    """去掉字符串里的面板括号字符（名字/技能名实测不含这些字符，只可能是噪声）。"""
+    if not text:
+        return ""
+    s = str(text)
+    for ch in PANEL_BRACKETS:
+        s = s.replace(ch, "")
+    return s
+
+
 _SEPARATORS = "·・．.。 　\t"
 
 
@@ -41,10 +86,14 @@ def format_skill_label(skill_index: int, skill_name=None) -> str:
 
 
 def normalize_skill_text(s) -> str:
-    """归一化技能文本用于比较：去方括号/空白，统一中文序数点分隔符。"""
+    """归一化技能文本用于比较：去括号/空白，统一中文序数点分隔符。
+
+    去掉的是全部面板括号形（不只半角方括号）：OCR 读出的技能名常粘着半个括号
+    （`}“挨打”`），只清半角方括号时残渣会留在串里把互含比对挡掉。
+    """
     if not s:
         return ""
-    s = str(s).replace("[", "").replace("]", "")
+    s = strip_panel_brackets(str(s))
     for sep in _SEPARATORS:
         s = s.replace(sep, "·")
     return s
