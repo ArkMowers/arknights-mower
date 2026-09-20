@@ -1,4 +1,4 @@
-"""专精技能名全局规范（#58/#61/#63 定稿）。
+"""专精技能名全局规范。
 
 规范格式：`{序数}技能·真名`，如 `二技能·飞翔瞪射`（一/二/三技能 + `·` + 真名）。
 - 计划 `skill_name` 存规范格式；创建端点/懒填充时填真名。
@@ -103,7 +103,7 @@ def panel_skill_matches(panel_skill, plan_skill_name) -> bool:
     """主页面面板技能名 ⊂ 计划 skill_name（归一化后的包含匹配）。
 
     面板可能因长名截断只显示前缀，故用包含而非全等；
-    同一干员内技能名不重复，无歧义（#63）。
+    同一干员内技能名不重复，无歧义。
     OCR 偶尔在技能名后多读一个拉丁字母/数字（如「破坏与滋养」→「破坏与滋养A」），
     直接比不中；去掉尾部 ASCII 再比一次兜底。合法含尾字母的「红桃K」等先直接命中，
     不受影响。
@@ -152,7 +152,7 @@ def resolve_panel_skill(operator_name, panel_skill_text) -> Optional[int]:
     已知技能 ≤3（skill_data.json characters[char_id].skills[].name）。面板文本对
     每个有名字的已知技能做归一化互含匹配（面板 ⊂ 真名 或 真名 ⊂ 面板，容忍长名截断
     与 OCR 首尾噪声）；命中**唯一**技能才返回序号；查无干员 / 无命名技能 / 0 或多候选
-    → 返回 None（调用方回退 panel_skill_matches 现行为）。#95
+    → 返回 None（调用方回退 panel_skill_matches 现行为）。
     """
     if not operator_name or not panel_skill_text:
         return None

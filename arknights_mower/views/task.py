@@ -1,4 +1,4 @@
-"""`/task` 新增任务 HTTP 契约（#71 一键专精流接入 DB 计划架构）。
+"""`/task` 新增任务 HTTP 契约（一键专精流接入 DB 计划架构）。
 
 前端一键专精（MasteryRecommendation.vue）与手动对话框（TaskDialog.vue）已改走
 `POST /mastery-plan`（DB 计划状态机，dispatch 只认 DB 计划）。原始「技能专精」/task
@@ -91,7 +91,7 @@ def add_task():
                     ):
                         raise Exception("找到同时间任务请勿重复添加")
                     if new_task.type == TaskTypes.SKILL_UPGRADE:
-                        # #71：专精训练由 DB 计划状态机驱动（POST /mastery-plan），
+                        # 专精训练由 DB 计划状态机驱动（POST /mastery-plan），
                         # dispatch 只认 DB 计划；原始「技能专精」/task 不带 operator/
                         # skill，提交即死路。明确拒绝并指引计划 API。
                         raise Exception(

@@ -583,7 +583,7 @@ def simulate(saved, restart_after_mood_read=False):
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning("出现错误.尝试重启Mower")
-                # #84：内层重连循环加次数上限，最后失败抛错而非无限重启
+                # 内层重连循环加次数上限，最后失败抛错而非无限重启
                 retry = 0
                 while retry < reconnect_max_tries:
                     retry += 1

@@ -133,7 +133,7 @@ def test_refresh_end_saves_and_skips_when_unchanged(database, monkeypatch):
     assert state.refresh_end(plan, 1, end) is True
     assert saved["working_until"] == end.isoformat()
 
-    # 同值再调一次 → 不重复写库（#82 同款跳过）
+    # 同值再调一次 → 不重复写库（同款跳过）
     saved.clear()
     assert state.refresh_end(plan, 1, end) is True
     assert saved == {}

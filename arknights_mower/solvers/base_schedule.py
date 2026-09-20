@@ -1278,9 +1278,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
 
     def _train_protected(self) -> bool:
-        """训练室是否受保护：协助位（槽0）是逻各斯/艾丽妮（§16.5）。
+        """训练室是否受保护：协助位（槽0）是逻各斯/艾丽妮（§4.4）。
 
-        铁律 10/§16.11：enable_mastery OFF 时保护全停、排班照常排训练室，故先按开关门控。
+        铁律 10/§7.3：enable_mastery OFF 时保护全停、排班照常排训练室，故先按开关门控。
         用 op_data 缓存判定（深读训练室浮窗会让纠错生成阶段反复进出训练室，反而放大
         本票要消除的问题）；缓存漏过保护时，执行闸门 agent_arrange_room 在
         enable_mastery ON 路径读 room_state.protected 兜底（OFF 时保护本就全停，不兜底）。
@@ -1293,7 +1293,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """训练室纠错是否应抑制：专精活跃或受保护时弹出 train 项（受保护时提醒）。
 
         缓存（`train_room_state`）里的状态与保护都按 `enable_mastery` 门控后再消费：
-        缓存在开关打开的那一轮写下来，开关关掉后它就是陈年结论，按 §16.11「关闭时
+        缓存在开关打开的那一轮写下来，开关关掉后它就是陈年结论，按 §7.3「关闭时
         保护完全停用」不得再据此弹纠错（兄弟判定 `_train_protected` 同样先门控）。
         """
         if "train" not in fix_plan:
@@ -4209,7 +4209,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     except Exception:
                                         room_state = None
                                 self.train_room_state = room_state
-                        # §16.5 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
+                        # §4.4 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
                         # 保护训练室）或读失败（room_state=None）都算「不能排班」→ 冻结/
                         # 跳过（#211：读失败保守不碰训练位，替代已删除的 train_slot_locked）。
                         if (

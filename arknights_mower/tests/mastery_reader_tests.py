@@ -396,7 +396,7 @@ class TestReadSlotMasteryTier(unittest.TestCase):
 
 
 class TestClassifyRoom(unittest.TestCase):
-    """#73 状态矩阵（§16.2）：三态倒计时 × 干员/技能存在性 × 图标亮点。"""
+    """#73 状态矩阵（§4.3）：三态倒计时 × 干员/技能存在性 × 图标亮点。"""
 
     def test_train_finish_is_waiting_collect(self):
         self.assertEqual(
@@ -405,7 +405,7 @@ class TestClassifyRoom(unittest.TestCase):
         )
 
     def test_zero_countdown_is_waiting_collect(self):
-        # §16.8：00:00:00 → 待收取（完成房间不再被当空房重置重开），与身份/图标无关
+        # §4.2：00:00:00 → 待收取（完成房间不再被当空房重置重开），与身份/图标无关
         self.assertEqual(
             reader.classify_room_state(Scene.TRAIN_MAIN, "zero", True, True),
             "waiting_collect",
@@ -916,7 +916,7 @@ class TestReadRoomState(unittest.TestCase):
         )
 
     def test_zero_countdown_is_waiting_collect(self):
-        # §16.8 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
+        # §4.2 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
         solver = self._solver(0)
         with patch.object(reader.logger, "warning") as warning:
             room = reader.read_room_state(solver)
@@ -929,7 +929,7 @@ class TestReadRoomState(unittest.TestCase):
         self.assertEqual(room.state, "waiting_collect")
 
     def test_ocr_fail_retries_then_conservative_training(self):
-        # §16.2：active+身份+无图标 → 每次重读都 ocr_fail → 5 次后保守训练中（read_failed）
+        # §4.3：active+身份+无图标 → 每次重读都 ocr_fail → 5 次后保守训练中（read_failed）
         solver = self._solver(7200, panel_text="[测试干员]测试技能", tier_columns=())
         with patch.object(reader.logger, "warning") as warning:
             room = reader.read_room_state(solver)
@@ -2250,9 +2250,9 @@ class TestReconcileMatrix(unittest.TestCase):
 
 
 class TestReconcile73(unittest.TestCase):
-    """#73 状态矩阵对账：待收取 7 格动作（§16.3）/ 保护检查（§16.4-16.5）/ 恢复流程（§16.6）。"""
+    """#73 状态矩阵对账：待收取 7 格动作（§5.3）/ 保护检查（§4.4）/ 恢复流程。"""
 
-    # --- §16.3 待收取 7 格：图标 × 协助位 × 计划 ---
+    # --- §5.3 待收取 7 格：图标 × 协助位 × 计划 ---
 
     def test_waiting_collect_m3_unmatched_silent(self):
         # 专三 + 无计划 → 正常收取，不通知④（③ 需计划；无计划专三静默）
@@ -2305,7 +2305,7 @@ class TestReconcile73(unittest.TestCase):
         cp.assert_not_called()
 
     def test_waiting_collect_below_m3_matched_recovers_and_promotes(self):
-        # 非专三 + 都在计划 → 恢复流程（§16.6）：收取 + 优先级排前 + 继续本级当场开
+        # 非专三 + 都在计划 → 恢复流程：收取 + 优先级排前 + 继续本级当场开
         # （#74 第3段「都去掉」后一律当场开，不分扫描链/重启；路线 operator 照常安排）
         solver = MagicMock()
         room = make_room("waiting_collect", mastery_tier=2)
@@ -2333,7 +2333,7 @@ class TestReconcile73(unittest.TestCase):
         pp.assert_not_called()
 
     def test_waiting_collect_operator_only_partial_still_help_collect(self):
-        # 干员在计划、技能不在 → 也走帮收④（§16.3 干员在、技能不在格）
+        # 干员在计划、技能不在 → 也走帮收④（§5.3 干员在、技能不在格）
         solver = MagicMock()
         room = make_room("waiting_collect", mastery_tier=2, skill_name="别的技能")
         plan = make_plan()  # 干员匹配但技能不匹配
@@ -2361,11 +2361,11 @@ class TestReconcile73(unittest.TestCase):
         cs.assert_not_called()
         nh.assert_not_called()
 
-    # --- §16.4/§16.5 保护检查 ---
+    # --- §5.2/§4.4 保护检查 ---
 
     def test_protected_empty_with_idle_plan_notifies_and_holds(self):
         # 空闲 + 受保护 + 有待开始计划 → mower 不能开始：⑤ + 保持 idle，不主动轮询
-        # （保护解除靠「排班进训练室重读重判」，§16.5）
+        # （保护解除靠「排班进训练室重读重判」，§4.4）
         solver = MagicMock()
         solver.tasks = []
         room = make_room("empty", support_slot="逻各斯", train_slot="能天使")
@@ -2427,7 +2427,7 @@ class TestReconcile73(unittest.TestCase):
 
 
 class TestComputeProtected(unittest.TestCase):
-    """§16.5 保护检查（现读现判）：逻各斯/艾丽妮 + 待收取/空闲的判定。"""
+    """§4.4 保护检查（现读现判）：逻各斯/艾丽妮 + 待收取/空闲的判定。"""
 
     def setUp(self):
         self.solver = MagicMock()
@@ -2441,7 +2441,7 @@ class TestComputeProtected(unittest.TestCase):
         )
 
     def test_waiting_collect_m3_not_protected(self):
-        # §16.3 第1格：专三完成 → 无论如何不保护 → 可排班
+        # §5.3 第1格：专三完成 → 无论如何不保护 → 可排班
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("waiting_collect", "逻各斯", "", 3)
             self.assertFalse(reader._compute_protected(self.solver, room))
@@ -2474,7 +2474,7 @@ class TestComputeProtected(unittest.TestCase):
             self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_off_no_protection(self):
-        # §16.11 OFF：保护全停
+        # §7.3 OFF：保护全停
         with patch.object(reader.config.conf, "enable_mastery", False):
             room = self._room("waiting_collect", "逻各斯", "", 2)
             self.assertFalse(reader._compute_protected(self.solver, room))
@@ -2523,7 +2523,7 @@ class TestComputeProtected(unittest.TestCase):
 
 
 class TestPromotePlan(unittest.TestCase):
-    """§16.6 恢复流程插队：已最前不动；未最前插到最前、原最前计划后移一位。"""
+    """恢复流程插队：已最前不动；未最前插到最前、原最前计划后移一位。"""
 
     def test_already_front_no_change(self):
         solver = MagicMock()
@@ -3080,7 +3080,7 @@ class TestUpdateExpirySkipWrite(unittest.TestCase):
 
 
 class TestRefreshTrainingHalfOverlap(unittest.TestCase):
-    """#82：半重叠消除——先换人判定，排了换人就不排收取；没排换人才排收取（§16.10）。"""
+    """#82：半重叠消除——先换人判定，排了换人就不排收取；没排换人才排收取（§5.2）。"""
 
     def setUp(self):
         self.patch_follows = patch.object(
@@ -3145,7 +3145,7 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
 
 
 class TestReconcileProtectedRelease(unittest.TestCase):
-    """§16.5 保护：训练位已是计划干员时放行 mower 开始训练。
+    """§4.4 保护：训练位已是计划干员时放行 mower 开始训练。
 
     保护挡「移动协助位/训练位」；训练位 = 计划干员时开始训练不动训练位
     （只按路线补协助位）→ 保护不适用，放行 scan_plan；训练位空/坐别人

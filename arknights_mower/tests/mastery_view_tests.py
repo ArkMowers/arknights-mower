@@ -10,7 +10,7 @@ from flask import Flask
 from arknights_mower.tests.mastery_plan_helpers import stub_support_planner
 
 # base_schedule 导入链（cultivate_depot→skland）在 skland 模块加载时调用
-# SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关）。与
+# SecuritySm.get_d_id() 发网络请求（环境性 flake，与测试无关）。与
 # base_scheduler_tests 同款 stub。refresh 测试的 lazy import 在 os.path.exists
 # 被 patch 的窗口内触发 skland 加载，不 stub 会误伤 requests 的 CA bundle 检查。
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -47,7 +47,7 @@ class TestMasteryRouteView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.save_route")
     def test_route_post_rejects_invalid_json(self, save_route_mock):
-        # #114：supports 不是合法 JSON → 400 拒绝保存（坏数据不得进库，读取端无守卫）
+        # supports 不是合法 JSON → 400 拒绝保存（坏数据不得进库，读取端无守卫）
         for bad in ("not json", "{", "", '"broken'):
             r = self.client.post(
                 "/mastery-route", json={"profession": "近卫", "supports": bad}
@@ -58,7 +58,7 @@ class TestMasteryRouteView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.save_route")
     def test_route_post_rejects_wrong_shape(self, save_route_mock):
-        # #114：合法 JSON 但形态不是数组/包装对象/旧字典 → 400
+        # 合法 JSON 但形态不是数组/包装对象/旧字典 → 400
         # （读取端 _route_entry_from_supports 返回 None 静默回退默认路线）；
         # level_N 值非 dict（如字符串）能过 json.loads 却在读取端 dict() 抛 ValueError
         # 被 _get_plan_route 吞掉静默回退 → 同样拒绝
@@ -79,7 +79,7 @@ class TestMasteryRouteView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.save_route")
     def test_route_post_accepts_valid_shapes(self, save_route_mock):
-        # #114：三种合法形态（数组/包装对象/旧字典）都放行保存
+        # 三种合法形态（数组/包装对象/旧字典）都放行保存
         valid = (
             '[{"name": "银灰", "skill_level": 1}]',
             '{"supports": [{"name": "银灰", "skill_level": 1}]}',
@@ -95,7 +95,7 @@ class TestMasteryRouteView(unittest.TestCase):
     @patch("arknights_mower.views.mastery.get_route_settings")
     @patch("arknights_mower.views.mastery.get_all_routes")
     def test_route_get_includes_settings(self, routes_mock, settings_mock):
-        # #91 修订：GET /mastery-route 带全局设置（中枢加成 + 换人缓冲），前端一个开关读它
+        # 修订：GET /mastery-route 带全局设置（中枢加成 + 换人缓冲），前端一个开关读它
         routes_mock.return_value = []
         settings_mock.return_value = {"central_bonus": 5, "mastery_swap_buffer": 15}
         response = self.client.get("/mastery-route")
@@ -165,7 +165,7 @@ class TestMasteryPlanView(unittest.TestCase):
     def test_plan_get_includes_failed_plans(
         self, get_all, get_failed, get_history, get_skill
     ):
-        # #69：failed 计划要带给前端（含 failed_reason），不能"凭空消失"
+        # failed 计划要带给前端（含 failed_reason），不能"凭空消失"
         get_all.return_value = [
             {
                 "id": 1,
@@ -222,7 +222,7 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_bulk_rejects_out_of_range_target(self, get_skill, insert):
-        # #65/B7：bulk 路径 target_level 越界（0/4/布尔 true）拒绝，不落库
+        # bulk 路径 target_level 越界（0/4/布尔 true）拒绝，不落库
         get_skill.return_value = self._char_table()
         for bad in (0, 4, True):
             r = self.client.post(
@@ -239,7 +239,7 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_bulk_rejects_non_int_target(self, get_skill, insert):
-        # #65/B7：target_level 非整数（如字符串 "3"）拒绝
+        # target_level 非整数（如字符串 "3"）拒绝
         get_skill.return_value = self._char_table()
         r = self.client.post(
             "/mastery-plan",
@@ -254,7 +254,7 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
     def test_bulk_defaults_target_to_three(self, get_level, get_skill, insert):
-        # #65/B7：bulk 未传 target_level 默认专三（与推荐一致），不再硬编码专一
+        # bulk 未传 target_level 默认专三（与推荐一致），不再硬编码专一
         get_skill.return_value = self._char_table()
         get_level.return_value = 1
         insert.return_value = 5
@@ -271,7 +271,7 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
     def test_bulk_honors_explicit_target(self, get_level, get_skill, insert):
-        # #65/B7：bulk 显式 target_level 被采纳（在范围内且低于当前等级）
+        # bulk 显式 target_level 被采纳（在范围内且低于当前等级）
         get_skill.return_value = self._char_table()
         get_level.return_value = 1
         insert.return_value = 8
@@ -289,7 +289,7 @@ class TestMasteryPlanView(unittest.TestCase):
     def test_bulk_rejects_operator_already_at_target(
         self, get_level, get_skill, insert
     ):
-        # #65/B7：干员已到目标档位 → 拒绝并给清晰文案，不落库
+        # 干员已到目标档位 → 拒绝并给清晰文案，不落库
         get_skill.return_value = self._char_table()
         get_level.return_value = 2
         r = self.client.post(
@@ -305,7 +305,7 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
     def test_flat_defaults_target_to_three(self, get_level, get_skill, insert):
-        # #65/B7：扁平路径不传 target_level，默认专三（不再硬编码专一）
+        # 扁平路径不传 target_level，默认专三（不再硬编码专一）
         get_skill.return_value = self._char_table()
         get_level.return_value = 1
         insert.return_value = 7
@@ -321,7 +321,7 @@ class TestMasteryPlanView(unittest.TestCase):
     def test_flat_rejects_operator_already_at_target(
         self, get_level, get_skill, insert
     ):
-        # #65/B7：干员已专三（≥ 默认目标）→ 扁平路径也拒绝
+        # 干员已专三（≥ 默认目标）→ 扁平路径也拒绝
         get_skill.return_value = self._char_table()
         get_level.return_value = 3
         r = self.client.post("/mastery-plan", json={"阿米娅": 0})
@@ -333,7 +333,7 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_flat_rejects_bool_skill_index(self, get_skill, insert):
-        # #112：bool 是 int 子类（True in (0,1,2) 为真）——JSON true 必须被拒绝为
+        # bool 是 int 子类（True in (0,1,2) 为真）——JSON true 必须被拒绝为
         # invalid skill_index，不得静默当成二技能建错计划
         get_skill.return_value = self._char_table()
         for bad in (True, False):
@@ -343,12 +343,12 @@ class TestMasteryPlanView(unittest.TestCase):
             self.assertEqual(res["reason"], "invalid skill_index")
         insert.assert_not_called()
 
-    # --- #97 删除清理 ---
+    # --- 删除清理 ---
 
     @patch("arknights_mower.views.mastery._purge_plan_tasks")
     @patch("arknights_mower.views.mastery.delete_plan")
     def test_delete_purges_queued_tasks(self, delete_mock, purge_mock):
-        # #97：删除计划后清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill）
+        # 删除计划后清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill）
         delete_mock.return_value = True
         r = self.client.delete("/mastery-plan", json={"id": 3})
         self.assertEqual(r.status_code, 200)
@@ -364,7 +364,7 @@ class TestMasteryPlanView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.delete_plan")
     def test_delete_rejects_non_numeric_id(self, delete_mock):
-        # #113：非数字 id 不再 int() ValueError → 500，应 400（对齐 #97 retry）
+        # 非数字 id 不再 int() ValueError → 500，应 400（对齐 retry）
         for bad in ("abc", True, 1.5):
             r = self.client.delete("/mastery-plan", json={"id": bad})
             self.assertEqual(r.status_code, 400, f"id={bad!r} 应 400")
@@ -373,7 +373,7 @@ class TestMasteryPlanView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.update_plan_priority")
     def test_order_rejects_non_numeric_id(self, update_mock):
-        # #113：PATCH order 非数字 id → 400（不再 int() ValueError → 500）
+        # PATCH order 非数字 id → 400（不再 int() ValueError → 500）
         r = self.client.patch(
             "/mastery-plan/order", json=[{"id": "abc", "priority": 1}]
         )
@@ -383,7 +383,7 @@ class TestMasteryPlanView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.update_plan_priority")
     def test_order_rejects_non_numeric_priority(self, update_mock):
-        # #113：PATCH order 非数字 priority → 400（与 id 同型）
+        # PATCH order 非数字 priority → 400（与 id 同型）
         r = self.client.patch(
             "/mastery-plan/order", json=[{"id": 3, "priority": "abc"}]
         )
@@ -392,8 +392,8 @@ class TestMasteryPlanView(unittest.TestCase):
         update_mock.assert_not_called()
 
     def test_purge_plan_tasks_removes_plan_key_tasks(self):
-        # #97：_purge_plan_tasks 清掉该计划 plan_key 的队列任务（SKILL_UPGRADE/SWAP，
-        # #101 补位不再有独立 fill-{id} 键），保留其它
+        # _purge_plan_tasks 清掉该计划 plan_key 的队列任务（SKILL_UPGRADE/SWAP，
+        # 补位不再有独立 fill-{id} 键），保留其它
         from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
         from arknights_mower.views.mastery import _purge_plan_tasks
 
@@ -413,7 +413,7 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(remaining, ["9"], "plan_key=5 应清掉，plan_key=9 保留")
 
     def test_purge_plan_tasks_keeps_current_dispatch(self):
-        # #97 review 修复：当前派发任务（base_scheduler.task）不删——主循环 dispatch 完
+        # review 修复：当前派发任务（base_scheduler.task）不删——主循环 dispatch 完
         # 按 `del self.tasks[0]` 删除它，若移走会误删下一个排队任务
         from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
         from arknights_mower.views.mastery import _purge_plan_tasks
@@ -439,7 +439,7 @@ class TestMasteryPlanView(unittest.TestCase):
         )
 
     def test_purge_plan_tasks_guards_no_scheduler(self):
-        # #97：base_scheduler 未运行（None）→ 防御不崩
+        # base_scheduler 未运行（None）→ 防御不崩
         from arknights_mower.views.mastery import _purge_plan_tasks
 
         fake = types.ModuleType("arknights_mower.__main__")
@@ -448,7 +448,7 @@ class TestMasteryPlanView(unittest.TestCase):
             _purge_plan_tasks(5)  # 不应抛异常
 
     def test_purge_plan_tasks_snapshot_excludes_current_deleted_plan(self):
-        # #147 边界：被删计划的任务当前正被派发（base_scheduler.task）→ live 队列保留
+        # 边界：被删计划的任务当前正被派发（base_scheduler.task）→ live 队列保留
         # （del self.tasks[0] 占位），但持久化快照必须剔除它——否则重启 load_state 复活
         from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
         from arknights_mower.views.mastery import _purge_plan_tasks
@@ -779,7 +779,7 @@ class TestMasteryPlanView(unittest.TestCase):
         sched._dispatch_scan_start_tasks.assert_called_once_with([])
 
     def test_dispatch_refreshes_stale_cultivate_and_wakes(self):
-        # #141 方案 A：派发前刷新 stale cultivate.json；scheduled 非空 → 唤醒调度休眠
+        # 方案 A：派发前刷新 stale cultivate.json；scheduled 非空 → 唤醒调度休眠
         from arknights_mower.views.mastery import _dispatch_new_plans_immediately
 
         fake = types.ModuleType("arknights_mower.__main__")
@@ -854,7 +854,7 @@ class TestMasteryPlanView(unittest.TestCase):
         start.assert_called_once()
 
     def test_chars_missing_from_cultivate(self):
-        # #141 review 跟进：新干员不在本地 cultivate.json characters → 缺失；在数据里
+        # review 跟进：新干员不在本地 cultivate.json characters → 缺失；在数据里
         # （含被推荐过滤的非精二）不算缺失
         from arknights_mower.views.mastery import _chars_missing_from_cultivate
 
@@ -898,7 +898,7 @@ class TestMasteryPlanView(unittest.TestCase):
             self.assertEqual(_chars_missing_from_cultivate(["char_a"]), {"char_a"})
 
     def test_dispatch_forces_refresh_when_new_char_missing(self):
-        # #141 review 跟进：新增干员不在本地 cultivate 数据（新获得）→ 强制拉一次再重算
+        # review 跟进：新增干员不在本地 cultivate 数据（新获得）→ 强制拉一次再重算
         from arknights_mower.views.mastery import _dispatch_new_plans_immediately
 
         fake = types.ModuleType("arknights_mower.__main__")

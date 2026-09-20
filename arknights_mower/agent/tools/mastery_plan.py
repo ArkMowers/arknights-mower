@@ -17,7 +17,7 @@ def add_mastery_plan(
         skill_index,
         target_level=target_level,
         skill_name=skill_name or f"技能{skill_index + 1}",
-        # #53：补传干员名，否则计划 char_name 为 NULL，邮件读不出练谁
+        # 补传干员名，否则计划 char_name 为 NULL，邮件读不出练谁
         char_name=get_char_name(char_id),
     )
     if plan_id > 0:
@@ -54,8 +54,8 @@ def set_route(profession: str, supports_json: str):
     swap, swap_name, match}, ...]）或含 supports 的包装对象；中枢加成/换人缓冲是全局
     设置（POST /mastery-route/settings），不在路线 JSON 里。
     """
-    # #114：写入端校验 supports 是合法 JSON 且形态是数组/包装对象/旧字典之一，
-    # 不合法拒绝保存（读取端 json.loads 无守卫，#91 review 决策，坏数据不得进库）。
+    # 写入端校验 supports 是合法 JSON 且形态是数组/包装对象/旧字典之一，
+    # 不合法拒绝保存（读取端 json.loads 无守卫，review 决策，坏数据不得进库）。
     err = validate_route_supports(supports_json)
     if err:
         return f"保存 {profession} 路线失败: {err}"
