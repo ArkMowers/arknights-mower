@@ -9,6 +9,7 @@ from arknights_mower.utils import skill_label as skill_label_mod
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.skill_label import (
     format_skill_label,
+    normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
 )
@@ -101,6 +102,18 @@ class TestSkillLabel(unittest.TestCase):
         self.assertTrue(panel_skill_matches("飞翔瞪射2", "二技能·飞翔瞪射"))
         # 合法尾部字母（红桃K）直接命中，不走兜底也不误伤
         self.assertTrue(panel_skill_matches("红桃K", "一技能·红桃K"))
+
+    def test_normalize_strips_every_panel_bracket(self):
+        # OCR 读出的技能名常粘着半个括号（全角/花括号/圆括号…），归一化要去掉全部
+        # 面板括号形而不只是半角方括号，否则残渣会把互含比对挡掉。
+        self.assertEqual(normalize_skill_text("}“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("｝“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("）“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("》“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("]“挨打”"), "“挨打”")
+        # 比对两侧都过：面板带残渣 vs 计划里的干净真名
+        self.assertTrue(panel_skill_matches("}“挨打”", "“挨打”"))
+        self.assertTrue(panel_skill_matches("（飞翔瞪射）", "二技能·飞翔瞪射"))
 
 
 def _patch_synth_skill_data():
@@ -208,6 +221,77 @@ class TestPanelParse(unittest.TestCase):
         self.assertEqual(
             reader._parse_panel_text("“【泡泡】“挨打”"), ("泡泡", "“挨打”")
         )
+
+    def test_parse_lost_left_bracket(self):
+        # 左括号被 OCR 漏掉、只剩右括号：右括号左边就是干员名（技能名不含方括号）
+        self.assertEqual(reader._parse_panel_text("泡泡]“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("泡泡】“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("泡泡］“挨打”"), ("泡泡", "“挨打”"))
+
+    def test_parse_lost_right_bracket(self):
+        # 右括号被 OCR 漏掉、左括号还在：没有任何定界符能切出名字边界，改走
+        # 「干员名 + 技能名」联合回查（泡泡 的技能名实测就是「挨打」）。
+        self.assertEqual(reader._parse_panel_text("[泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("【泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("［泡泡“挨打”"), ("泡泡", "“挨打”"))
+        # 长名截断（面板常截断技能名）也认
+        self.assertEqual(reader._parse_panel_text("[泡泡“挨打"), ("泡泡", "“挨打"))
+
+    def test_parse_lost_both_brackets(self):
+        # 两个括号都被 OCR 漏掉：仍走同一套「干员名 + 技能名」联合回查。这种串没有
+        # 左括号可依据，前置噪点顶在名字前面，故从首个汉字起试。
+        self.assertEqual(reader._parse_panel_text("泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("×泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("*泡泡“挨打”"), ("泡泡", "“挨打”"))
+        # 面板常截断技能名，截断也要认
+        self.assertEqual(reader._parse_panel_text("泡泡“挨打"), ("泡泡", "“挨打"))
+
+    def test_parse_lost_right_bracket_stays_conservative(self):
+        # 联合回查查不到（干员表无此人 / 剩下部分不构成该干员的技能）时不得猜名字，
+        # 保持原语义把整串当纯技能名，交给上层走重读→保守。
+        self.assertEqual(
+            reader._parse_panel_text("[测试干员测试技能"), ("", "[测试干员测试技能")
+        )
+        self.assertEqual(
+            reader._parse_panel_text("测试干员测试技能"), ("", "测试干员测试技能")
+        )
+        # 左括号后什么都没有：不猜
+        self.assertEqual(reader._parse_panel_text("[泡泡"), ("", "[泡泡"))
+        # 纯技能名（没有任何干员名可匹配）：保持原语义
+        self.assertEqual(reader._parse_panel_text("扫射模式"), ("", "扫射模式"))
+
+    def test_parse_other_bracket_shapes(self):
+        # OCR 常把方括号读成别的括号形（花括号/直角/书名号/圆括号…）。这些字符在
+        # 906 条技能名与 482 个干员名里零命中，一律当定界符：切开后名字与技能名
+        # 两侧都不能留残渣（残渣会挡住下游的技能互含比对）。
+        for left, right in [
+            ("{", "}"),
+            ("｛", "｝"),
+            ("〔", "〕"),
+            ("〈", "〉"),
+            ("《", "》"),
+            ("「", "」"),
+            ("『", "』"),
+            ("（", "）"),
+            ("(", ")"),
+        ]:
+            with self.subTest(brackets=left + right):
+                self.assertEqual(
+                    reader._parse_panel_text(f"{left}泡泡{right}“挨打”"),
+                    ("泡泡", "“挨打”"),
+                )
+                # 只读到左括号：右括号丢了，走联合回查
+                self.assertEqual(
+                    reader._parse_panel_text(f"{left}泡泡“挨打”"), ("泡泡", "“挨打”")
+                )
+                # 只读到右括号：左括号丢了，右括号左边是名字
+                self.assertEqual(
+                    reader._parse_panel_text(f"泡泡{right}“挨打”"), ("泡泡", "“挨打”")
+                )
+
+    def test_parse_lone_right_bracket_stays_skill_text(self):
+        # 右括号打头（右边没有名字）不切，保持「无括号视为纯技能名」的旧语义
+        self.assertEqual(reader._parse_panel_text("]扫射模式"), ("", "]扫射模式"))
 
 
 class TestCountLitMainPanelIcons(unittest.TestCase):
