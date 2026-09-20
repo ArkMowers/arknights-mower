@@ -9,6 +9,7 @@ import {
   buildStageOptions,
   createStageOption,
   formatStageLabel,
+  getGameWeekdayIndex,
   isStageAvailableOnWeekday
 } from '@/utils/maa_weekly_plan'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
@@ -64,10 +65,7 @@ watch(editorMode, (mode) => {
   }
 })
 
-const currentWeekdayIndex = computed(() => {
-  const day = new Date().getDay()
-  return day === 0 ? 6 : day - 1
-})
+const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
 
 const stageOptions = computed(() => buildStageOptions(latestActivityOptions.value))
 

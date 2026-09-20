@@ -13,7 +13,7 @@ import {
   previewInventorySelection,
   selectRatioMember
 } from '@/utils/maa_stage_inventory'
-import { WEEKDAYS } from '@/utils/maa_weekly_plan'
+import { WEEKDAYS, getGameWeekdayIndex } from '@/utils/maa_weekly_plan'
 
 const message = useMessage()
 const store = useConfigStore()
@@ -36,10 +36,7 @@ const activityRatioSuggestion = ref(null)
 const limitStageToAdd = ref(null)
 const activePlanLabel = computed(() => maa_weekly_plan_active.value || '当前方案')
 
-const currentWeekdayIndex = computed(() => {
-  const day = new Date().getDay()
-  return day === 0 ? 6 : day - 1
-})
+const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
 
 const currentWeekday = computed(() => WEEKDAYS[currentWeekdayIndex.value])
 const currentPlanStages = computed(() => {

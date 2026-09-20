@@ -4,6 +4,23 @@ export const WEEKDAY_INDICES = Object.fromEntries(
   WEEKDAYS.map((weekday, index) => [weekday, index])
 )
 
+const GAME_TIMEZONE_OFFSET_HOURS = 8
+const GAME_DAY_START_HOUR = 4
+
+/**
+ * Return the weekday index used by the game (Monday = 0, Sunday = 6).
+ *
+ * Arknights' daily reset is at 04:00 in UTC+8, so 00:00-03:59 still
+ * belongs to the previous game day. Using UTC here also keeps the result
+ * independent from the browser's local timezone.
+ */
+export function getGameWeekdayIndex(date = new Date()) {
+  const gameDayOffsetMs =
+    (GAME_TIMEZONE_OFFSET_HOURS - GAME_DAY_START_HOUR) * 60 * 60 * 1000
+  const day = new Date(date.getTime() + gameDayOffsetMs).getUTCDay()
+  return day === 0 ? 6 : day - 1
+}
+
 export const STAGE_DISPLAY_NAMES = {
   '': '上次作战',
   Annihilation: '当期剿灭',
