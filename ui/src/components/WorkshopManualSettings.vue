@@ -123,7 +123,7 @@ function createNewItem() {
                 placeholder="自身上限"
               />
               <help-text>
-                <div>设置占位，可能没用</div>
+                <div>成品库存达到此数量后停止合成</div>
               </help-text>
             </div>
             <div style="display: flex; flex-direction: row; align-self: center">
@@ -134,7 +134,7 @@ function createNewItem() {
                 placeholder="子项下限"
               />
               <help-text>
-                <div>设置占位，可能没用</div>
+                <div>为每种子材料保留的最低库存，合成时不会消耗到低于此数量</div>
               </help-text>
             </div>
           </div>
