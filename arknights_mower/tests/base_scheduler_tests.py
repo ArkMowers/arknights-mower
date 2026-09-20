@@ -1436,6 +1436,57 @@ class TestBaseScheduler(unittest.TestCase):
         mock_send.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_stale_protected_keeps_train_correction_when_mastery_off(self):
+        """开关关闭后，陈年 protected 缓存不得再挡掉训练室心情纠错。
+
+        训练室干员要走进 `miss_list` 的 `train_blocked` 过滤，得是「真登记在训练室、
+        且 not_valid() 为真」——所以这里让两人都坐在自己的训练位上、心情记录过期。
+        `train_room_state` 的 protected 只有开关打开的那一轮会写，开关关掉后它是陈年
+        结论；按 §7.3「关闭时保护完全停用」不得再据此排除训练室干员。
+        """
+        from arknights_mower.utils.operators import Operators
+
+        plan_agents = ["褐果", "桃金娘"]
+        plan_config = {"train": [Room(a, "", []) for a in plan_agents]}
+        plan = {
+            "default_plan": Plan(plan_config, PlanConfig("稀音", "稀音", "伺夜")),
+            "backup_plans": [],
+        }
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        op_data = Operators(plan)
+        op_data.operators = {}
+        for idx, name in enumerate(plan_agents):
+            op = Operator(name, "train", idx, "", [], "high", operator_type="high")
+            op.current_room = "train"
+            op.current_index = idx
+            op.mood = 8
+            op.time_stamp = datetime.now() - timedelta(hours=8)
+            op_data.operators[name] = op
+        op_data.groups = {}
+        solver.op_data = op_data
+        # 上一轮开关打开时读到的「受保护」快照
+        solver.train_room_state = SimpleNamespace(
+            state="empty", locked=False, protected=True
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task, "陈年 protected 缓存把训练室心情纠错吞掉了")
+        self.assertEqual(task.plan.get("train"), plan_agents)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_ignores_stale_protected_when_mastery_off(self):
         # #207 守卫·铁律 10/§16.11：开关关闭后，上一轮读到的「受保护」缓存不得再弹
         # 训练室纠错（缓存本身没有门控，靠 _suppress_train_correction 按开关拦）。
@@ -1460,6 +1511,50 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertIsNotNone(task)
         self.assertIn("train", task.plan)
         mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_skips_occupied_training_room_correction(self):
+        """外部手动开训 + 缓存里训练室两格是空的 + 计划配着别人 → 不得生成 train 纠错。
+
+        缓存里的训练室两格来自干员表（`op_data`，重启后由本地库恢复），不是刚读到的
+        槽位；房间被外人占着时它就是错的。本条盯的是「刚读到的房间状态优先于陈年缓存」
+        这个口径——生成纠错时缓存确实会把计划干员写进 train 项，但必须由
+        `_suppress_train_correction` 的锁定分支弹掉（`85b0d9bd` 落地）。
+        """
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        # 手动开训的人不在计划里，也不在干员缓存的训练室两格中（缓存是陈年数据）
+        solver.op_data.operators["真言"] = Operator(
+            "真言", "", current_room="train", current_index=1
+        )
+        observed = SimpleNamespace(
+            state="training",
+            locked=True,
+            support_slot="艾丽妮",
+            train_slot="真言",
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=(observed, []),
+            ),
+            patch.object(mastery_reader, "reconcile_short"),
+            patch(
+                "arknights_mower.utils.mastery_db.get_reconcile_plans",
+                return_value=[{"id": 1, "status": "idle"}],
+            ),
+        ):
+            solver.agent_get_mood()
+        for task in solver.tasks:
+            # 当前实现会把 fix_plan 弹空 → 无 SELF_CORRECTION 任务（循环不跑也算过）；
+            # 将来若生成别的房间纠错，这一条仍守住「不得含 train」。
+            self.assertNotIn("train", task.plan)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_suppresses_train_correction_when_mastery_active(self):
