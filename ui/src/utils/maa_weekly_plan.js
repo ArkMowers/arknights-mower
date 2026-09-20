@@ -15,8 +15,7 @@ const GAME_DAY_START_HOUR = 4
  * independent from the browser's local timezone.
  */
 export function getGameWeekdayIndex(date = new Date()) {
-  const gameDayOffsetMs =
-    (GAME_TIMEZONE_OFFSET_HOURS - GAME_DAY_START_HOUR) * 60 * 60 * 1000
+  const gameDayOffsetMs = (GAME_TIMEZONE_OFFSET_HOURS - GAME_DAY_START_HOUR) * 60 * 60 * 1000
   const day = new Date(date.getTime() + gameDayOffsetMs).getUTCDay()
   return day === 0 ? 6 : day - 1
 }
