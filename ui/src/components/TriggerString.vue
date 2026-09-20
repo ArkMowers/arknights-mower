@@ -125,10 +125,11 @@ function set_op_type(v) {
   } else if (v == 'inventory') {
     data.value = inventory_expression(inventory_options[0].value)
   } else if (v == 'facility') {
-    data.value = facility_expression(
-      facility_select_options.value[0]?.value || 'central',
-      'operator_count'
-    )
+    const room = facility_select_options.value[0]?.value || 'room_1_1'
+    const status = ['制造站', '贸易站'].includes(plan.value[room]?.name)
+      ? 'product'
+      : 'operator_count'
+    data.value = facility_expression(room, status)
   } else if (v == 'facility_product') {
     data.value = facility_product_options[0].value
   }
@@ -195,7 +196,7 @@ import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 const plan_store = usePlanStore()
 const { operators, plan } = storeToRefs(plan_store)
-const { facility_options } = plan_store
+const { left_side_facility } = plan_store
 const depot_store = usedepotStore()
 const { inventory, inventoryLoaded, inventoryLoadError } = storeToRefs(depot_store)
 const facility_store = useFacilityStore()
@@ -213,7 +214,7 @@ const inventory_select_options = computed(() =>
 )
 
 const facility_select_options = computed(() =>
-  facility_options.map((option) => {
+  left_side_facility.map((option) => {
     const facilityName = plan.value[option.value]?.name
     if (!['制造站', '贸易站'].includes(facilityName)) {
       return {

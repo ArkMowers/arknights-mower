@@ -1,6 +1,6 @@
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
@@ -268,6 +268,31 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
         self.main.simulate({"tasks": []})
 
         self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
+
+    def test_saved_mood_state_refreshes_backup_plan_before_run(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = None
+        scheduler.op_data.validate_backup_plans.return_value = {"success": True}
+        scheduler.op_data.backup_plans = [object()]
+        scheduler.run.side_effect = base_schedule.MowerExit
+        self.initialize.return_value = scheduler
+        saved = {
+            "tasks": [],
+            "operators": {},
+            "dorm": [],
+            "facility_states": {},
+            "party_time": None,
+            "daily_visit_friend": date.min,
+            "daily_report": date.min,
+            "daily_skland": date.min,
+            "daily_mail": date.min,
+            "task_count": 0,
+        }
+
+        self.main.simulate(saved)
+
+        scheduler.backup_plan_solver.assert_called_once_with()
+        scheduler.run.assert_called_once_with()
 
     def use_real_connection_retries(self, failures):
         from arknights_mower.utils.device.device import Device
@@ -1218,38 +1243,10 @@ class TestBaseScheduler(unittest.TestCase):
         mock_plan.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_get_mood_keeps_self_correction_when_backup_refresh_disabled(self):
+    def test_agent_get_mood_defers_backup_refresh_to_restart(self):
         solver, read_meeting = self._create_backup_refresh_solver()
 
         with (
-            patch.object(
-                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
-            ),
-            patch.object(BaseSchedulerSolver, "enter_room"),
-            patch.object(
-                BaseSchedulerSolver,
-                "get_agent_from_room",
-                side_effect=read_meeting,
-            ),
-            patch.object(BaseSchedulerSolver, "back"),
-        ):
-            result = solver.agent_get_mood(skip_dorm=True)
-
-        self.assertEqual(result, "self_correction")
-        self.assertEqual(solver.op_data.plan_condition, [False])
-        self.assertEqual(solver.op_data.plan["meeting"][0].agent, "伊内丝")
-        self.assertTrue(
-            any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
-        )
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_get_mood_does_not_refresh_backup_plan_by_default(self):
-        solver, read_meeting = self._create_backup_refresh_solver()
-
-        with (
-            patch.object(
-                base_schedule.config.conf, "refresh_backup_plan_after_mood", True
-            ),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(
                 BaseSchedulerSolver,

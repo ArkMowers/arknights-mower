@@ -147,7 +147,6 @@ export const useConfigStore = defineStore('config', () => {
   const free_room = ref(false)
   const merge_interval = ref(10)
   const fia_fool = ref(true)
-  const refresh_backup_plan_after_mood = ref(false)
   const assistant_follows_schedule = ref(false)
   const enable_mastery = ref(true)
   const sign_in = ref({ enable: true })
@@ -565,7 +564,6 @@ export const useConfigStore = defineStore('config', () => {
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
     fia_fool.value = response.data.fia_fool
-    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? false
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
     enable_mastery.value = response.data.enable_mastery ?? true
     sign_in.value = response.data.sign_in
@@ -722,7 +720,6 @@ export const useConfigStore = defineStore('config', () => {
       free_room: free_room.value,
       merge_interval: merge_interval.value,
       fia_fool: fia_fool.value,
-      refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
       enable_mastery: enable_mastery.value,
       sign_in: sign_in.value,
@@ -945,7 +942,6 @@ export const useConfigStore = defineStore('config', () => {
     free_room,
     merge_interval,
     fia_fool,
-    refresh_backup_plan_after_mood,
     assistant_follows_schedule,
     enable_mastery,
     sign_in,

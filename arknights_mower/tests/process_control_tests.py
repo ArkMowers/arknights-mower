@@ -17,7 +17,7 @@ from arknights_mower.views.process_control import process_control_bp
 
 
 class ProcessControlTests(unittest.TestCase):
-    def test_reset_start_skips_incompatible_saved_state(self):
+    def test_reset_start_skips_saved_state_and_forces_mood_reload(self):
         import server
 
         with (
@@ -28,7 +28,6 @@ class ProcessControlTests(unittest.TestCase):
             patch.object(server, "log_stream"),
             patch.object(server, "get_path", return_value=Path(folder)),
             patch.object(server.config, "stop_mower"),
-            patch.object(server.config.conf, "refresh_backup_plan_after_mood", True),
             patch.object(
                 server, "load_state", side_effect=ValueError("incompatible snapshot")
             ) as load,

@@ -953,9 +953,9 @@ def start(start_type):
         saved_state = {} if start_type == "2" else (load_state() or {})
         if start_type == "1":
             saved_state["tasks"] = []
-        restart_after_mood_read = (
-            start_type == "2" and config.conf.refresh_backup_plan_after_mood
-        )
+        # 清空缓存后 current_room 与心情均未知。首次读取完成后强制按新缓存
+        # 重载调度器，确保副表先于主表规划刷新。
+        restart_after_mood_read = start_type == "2"
         from arknights_mower.__main__ import main
 
         mower_thread = Thread(
