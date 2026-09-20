@@ -1518,8 +1518,13 @@ class TestBaseScheduler(unittest.TestCase):
 
         缓存里的训练室两格来自干员表（`op_data`，重启后由本地库恢复），不是刚读到的
         槽位；房间被外人占着时它就是错的。本条盯的是「刚读到的房间状态优先于陈年缓存」
-        这个口径——生成纠错时缓存确实会把计划干员写进 train 项，但必须由
+        这个口径——生成纠错时缓存确实会把计划干员写进 train 项（探针实测：锁定分支前
+        `fix_plan` 是 `{'train': ['褐果', '桃金娘']}`），但必须由
         `_suppress_train_correction` 的锁定分支弹掉（`85b0d9bd` 落地）。
+
+        断言写成「一条任务都没有」而不是「循环里没有 task 含 train」：后者在任务为空时
+        空跑也过（原来那句注释自己承认了）。锁定分支一旦失效，train 项会真的生成出
+        SELF_CORRECTION 任务，这条断言就会红。
         """
         solver = self._train_mismatch_solver(["褐果", "桃金娘"])
         # 手动开训的人不在计划里，也不在干员缓存的训练室两格中（缓存是陈年数据）
@@ -1549,12 +1554,11 @@ class TestBaseScheduler(unittest.TestCase):
                 "arknights_mower.utils.mastery_db.get_reconcile_plans",
                 return_value=[{"id": 1, "status": "idle"}],
             ),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
         ):
             solver.agent_get_mood()
-        for task in solver.tasks:
-            # 当前实现会把 fix_plan 弹空 → 无 SELF_CORRECTION 任务（循环不跑也算过）；
-            # 将来若生成别的房间纠错，这一条仍守住「不得含 train」。
-            self.assertNotIn("train", task.plan)
+        self.assertEqual(solver.tasks, [])
+        mock_send.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_suppresses_train_correction_when_mastery_active(self):
