@@ -424,6 +424,22 @@ def test_facility_state_is_cached_and_available_to_backup_expression():
     assert operators.evaluate_expression("op_data.facility_product('room_1_2') == exp3")
 
 
+def test_facility_product_conditions_fall_back_to_main_plan_until_cached():
+    room, plan = product_plan(default="gold")
+    operators = Operators(plan)
+
+    assert operators.facility_product(room) == "gold"
+    assert operators.facility_product_count("gold") == 1
+    assert operators.facility_product_type_count() == 1
+
+    operators.update_facility_state(room, "factory", "exp3")
+
+    assert operators.facility_product(room) == "exp3"
+    assert operators.facility_product_count("gold") == 0
+    assert operators.facility_product_count("exp3") == 1
+    assert operators.facility_product_type_count() == 1
+
+
 def test_facility_operator_count_supports_all_base_rooms():
     room, plan = product_plan()
     operators = Operators(plan)

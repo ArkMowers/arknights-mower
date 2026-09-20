@@ -477,10 +477,13 @@ class Operators:
         }
 
     def facility_product(self, room: str) -> str | None:
-        """返回指定设施最近识别到的实际产物或订单类型。"""
+        """返回指定设施产物；未读取实际状态时使用主表配置。"""
         if room not in base_room_list:
             raise ValueError(f"不支持的设施位置：{room}")
-        return self.facility_states.get(room, {}).get("product")
+        cached = self.facility_states.get(room, {}).get("product")
+        if cached in FACTORY_PRODUCTS | TRADE_PRODUCTS:
+            return cached
+        return self.global_plan["default_plan"].products.get(room)
 
     def facility_type(self, room: str) -> str | None:
         """从当前排班复用指定位置的设施类型。"""
@@ -515,17 +518,24 @@ class Operators:
         """返回当前生产指定产物或订单类型的设施数量。"""
         if product not in FACTORY_PRODUCTS | TRADE_PRODUCTS:
             raise ValueError(f"不支持的产物或订单类型：{product}")
-        return sum(
-            state.get("product") == product for state in self.facility_states.values()
+        rooms = (
+            self.global_plan["default_plan"].products.keys()
+            | self.facility_states.keys()
         )
+        return sum(self.facility_product(room) == product for room in rooms)
 
     def facility_product_type_count(self) -> int:
-        """返回设施缓存中当前产物和订单类型的种类数。"""
+        """返回当前产物和订单类型的种类数，缓存为空时使用主表。"""
+        rooms = (
+            self.global_plan["default_plan"].products.keys()
+            | self.facility_states.keys()
+        )
         return len(
             {
-                state.get("product")
-                for state in self.facility_states.values()
-                if state.get("product") in FACTORY_PRODUCTS | TRADE_PRODUCTS
+                product
+                for room in rooms
+                if (product := self.facility_product(room))
+                in FACTORY_PRODUCTS | TRADE_PRODUCTS
             }
         )
 

@@ -19,7 +19,8 @@ import {
   parse_facility_type,
   parse_facility_product_count_expression,
   parse_operator_relation_expression,
-  parse_facility_product
+  parse_facility_product,
+  summarize_facility_products
 } from '@/utils/trigger_facility'
 import { trigger_facility_type_options } from '@/utils/base_facilities'
 import { facility_product_labels, facility_product_options } from '@/utils/base_products'
@@ -289,6 +290,13 @@ const inventory_select_options = computed(() =>
   )
 )
 
+const facility_product_summary = computed(() =>
+  summarize_facility_products(
+    plan.value,
+    facilityLoaded.value && !facilityLoadError.value ? facility_states.value : {}
+  )
+)
+
 const facility_select_options = computed(() =>
   left_side_facility.map((option) => {
     const facilityName = plan.value[option.value]?.name
@@ -298,12 +306,8 @@ const facility_select_options = computed(() =>
         label: facilityName ? `${option.label}（${facilityName}）` : option.label
       }
     }
-    let current = '读取中…'
-    if (facilityLoadError.value) {
-      current = '未知'
-    } else if (facilityLoaded.value) {
-      current = facility_product_labels[facility_states.value[option.value]?.product] || '未记录'
-    }
+    const current =
+      facility_product_labels[facility_product_summary.value.products[option.value]] || '未配置'
     return {
       ...option,
       label: `${option.label}（${facilityName}；当前：${current}）`
@@ -322,18 +326,17 @@ const facility_status_options = computed(() => {
   return options
 })
 
-const facility_stat_options = [
+const facility_stat_options = computed(() => [
   { label: '指定产物/订单的设施数', value: 'product_count' },
-  { label: '当前产物及订单种类数', value: 'product_type_count' }
-]
+  {
+    label: `当前产物及订单种类数（当前 ${facility_product_summary.value.typeCount} 种）`,
+    value: 'product_type_count'
+  }
+])
 
 const facility_product_stat_options = computed(() =>
   facility_product_options.map((option) => {
-    const current = facilityLoadError.value
-      ? '未知'
-      : facilityLoaded.value
-        ? `${Object.values(facility_states.value).filter((state) => state.product == option.value).length} 个设施`
-        : '读取中…'
+    const current = `${facility_product_summary.value.counts[option.value]} 个设施`
     return { ...option, label: `${option.label}（当前 ${current}）` }
   })
 )

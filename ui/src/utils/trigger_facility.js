@@ -38,6 +38,25 @@ export function parse_facility_product(value) {
   return facilityProductIds.has(value) ? value : undefined
 }
 
+export function summarize_facility_products(plan = {}, states = {}) {
+  const products = {}
+  for (const [room, facility] of Object.entries(plan)) {
+    if (
+      ['制造站', '贸易站'].includes(facility?.name) &&
+      facilityProductIds.has(facility?.product)
+    ) {
+      products[room] = facility.product
+    }
+  }
+  for (const [room, state] of Object.entries(states)) {
+    if (facilityProductIds.has(state?.product)) products[room] = state.product
+  }
+
+  const counts = Object.fromEntries([...facilityProductIds].map((product) => [product, 0]))
+  for (const product of Object.values(products)) counts[product] += 1
+  return { products, counts, typeCount: new Set(Object.values(products)).size }
+}
+
 export function operator_relation_expression(first, second) {
   return `op_data.operators_work_together('${first}', '${second}')`
 }
