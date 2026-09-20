@@ -329,15 +329,15 @@ const facility_status_options = computed(() => {
 const facility_stat_options = computed(() => [
   { label: '指定产物/订单的设施数', value: 'product_count' },
   {
-    label: `当前产物及订单种类数（当前 ${facility_product_summary.value.typeCount} 种）`,
+    label: `产物/订单种类数（${facility_product_summary.value.typeCount} 种）`,
     value: 'product_type_count'
   }
 ])
 
 const facility_product_stat_options = computed(() =>
   facility_product_options.map((option) => {
-    const current = `${facility_product_summary.value.counts[option.value]} 个设施`
-    return { ...option, label: `${option.label}（当前 ${current}）` }
+    const current = facility_product_summary.value.counts[option.value]
+    return { ...option, label: `${option.label}（${current} 站）` }
   })
 )
 
@@ -475,14 +475,16 @@ const custom_tips = [
     :default-value="op_data.status"
     :options="facility_stat_options"
     :on-update:value="update_facility_stat"
-    style="min-width: 220px"
+    :consistent-menu-width="false"
+    style="min-width: 300px"
   />
   <n-select
     v-if="op_type == 'facility_stat' && op_data.status == 'product_count'"
     :default-value="op_data.product"
     :options="facility_product_stat_options"
     :on-update:value="update_facility_stat_product"
-    style="min-width: 220px"
+    :consistent-menu-width="false"
+    style="min-width: 300px"
   />
   <n-select
     v-if="op_type == 'facility_product'"
