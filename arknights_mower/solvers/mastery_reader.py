@@ -449,13 +449,26 @@ def _read_slots_checked(solver):
     浮窗读取后再确认浮窗确实开了（INFRA_DETAILS=205）才消费——turn_on_room_detail 只靠
     room_detail 模板 + 单像素颜色确认浮窗、不判场景，非 205 的槽位读取是垃圾（读之前
     场景未确认，垃圾读已被消费）。场景不符/读失败 → ("", "", scan, False)（稳为先）。
+    浮窗已开（205）时不再盲目「关掉再打开」：先用 detect_room() 认门牌（房间标题牌
+    色块，训练室返回 "train"）——认出是训练室 → 就地读（turn_on_room_detail 看到浮窗
+    已开会直接返回），省一次关+开两下 UI 动作；认不出 / 是别的房间 / 抛异常 → 照旧关
+    回 217 重开（安全降级：最坏等于旧行为）。之所以必须先认门牌，是因为 205 不区分房间
+    （任何房间的进驻详情都是 205），而读名字用的坐标是全房间共用的一套。
     """
+    popup_is_ours = False
     try:
         scene = solver.train_scene()
         if scene == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
-            scene = solver.train_scene()
-        if scene != Scene.TRAIN_MAIN:
+            try:
+                popup_is_ours = solver.detect_room() == "train"
+            except Exception:
+                popup_is_ours = False
+            if popup_is_ours:
+                logger.debug("[mastery] 浮窗已开且门牌是训练室，就地读槽位")
+            else:
+                _close_room_detail(solver)
+                scene = solver.train_scene()
+        if not popup_is_ours and scene != Scene.TRAIN_MAIN:
             logger.debug(f"[mastery] 读槽位前置场景不符：{scene}，不读")
             return "", "", [], False
     except Exception:
