@@ -144,12 +144,12 @@ def test_order_entrance_lost_tap_can_retry():
 
 
 def test_unrelated_factory_button_is_not_trade_success():
-    solver = solver_for([{"factory_accelerate": BLUE}, {"bill_accelerate": BLUE}])
+    solver = solver_for([{"manufacture_accelerate": BLUE}, {"bill_accelerate": BLUE}])
     solver._wait_drone_interface(accelerate_template="bill_accelerate")
     assert solver.tap.call_count == 1
 
 
-@pytest.mark.parametrize("template", ["factory_accelerate", "bill_accelerate"])
+@pytest.mark.parametrize("template", ["manufacture_accelerate", "bill_accelerate"])
 def test_ready_drone_page_receives_no_input(template):
     solver = solver_for([{template: BLUE}])
     solver._wait_drone_interface()

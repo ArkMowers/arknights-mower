@@ -264,6 +264,7 @@ def acceleration_solver(*, available_drones, current_total):
     solver.digit_reader.get_drone.return_value = available_drones
     solver._open_manufacture_product_detail = MagicMock()
     solver.read_manufacture_product = MagicMock(return_value="gold")
+    solver._manufacture_is_idle = MagicMock(return_value=False)
     solver._tap_drone_accelerate = MagicMock()
     solver._read_manufacture_total_seconds = MagicMock(return_value=current_total)
     solver._confirm_drone_count = MagicMock()
@@ -322,6 +323,25 @@ def test_manufacture_execution_at_loss_threshold_uses_one_drone():
 
     solver._confirm_drone_count.assert_called_once_with(1)
     assert wait_seconds == 0
+
+
+def test_idle_manufacture_execution_skips_drone_panel():
+    solver = acceleration_solver(available_drones=10, current_total=5000)
+    solver._manufacture_is_idle.return_value = True
+    observation = {
+        "room": "room_1_2",
+        "target_product": "exp3",
+        "current_product": "gold",
+        "total_seconds": 0,
+        "current_remaining": 0,
+        "drone_count": 0,
+    }
+
+    wait_seconds = solver._execute_manufacture_acceleration(observation)
+
+    assert wait_seconds == 0
+    solver._tap_drone_accelerate.assert_not_called()
+    solver._read_manufacture_total_seconds.assert_not_called()
 
 
 def test_manufacture_execution_without_grandet_mode_finishes_immediately(monkeypatch):
@@ -395,6 +415,15 @@ def test_read_manufacture_product_distinguishes_orundum_material(
     assert solver._product_ocr_text.call_count == 2
 
 
+def test_manufacture_idle_state_is_read_from_status_text():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver._product_ocr_text = MagicMock(return_value="已完成总剩余时间00:00:00")
+
+    assert solver._manufacture_is_idle()
+    solver._product_ocr_text.assert_called_once_with(((1540, 430), (1835, 700)))
+
+
 def test_orundum_recipes_require_switching_between_each_other():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver._open_manufacture_product_detail = MagicMock()
@@ -402,6 +431,7 @@ def test_orundum_recipes_require_switching_between_each_other():
     solver.digit_reader = MagicMock()
     solver.digit_reader.get_drone.return_value = 100
     solver.recog = SimpleNamespace(gray=MagicMock(), h=1080, w=1920)
+    solver._manufacture_is_idle = MagicMock(return_value=False)
     solver._tap_drone_accelerate = MagicMock()
     solver._read_manufacture_total_seconds = MagicMock(return_value=3600)
     solver._tap_product_point = MagicMock()
@@ -410,6 +440,38 @@ def test_orundum_recipes_require_switching_between_each_other():
 
     assert observation["needs_switch"] is True
     assert observation["current_product"] == "orirock"
+
+
+def test_idle_manufacture_survey_skips_drone_panel_and_waiting():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver._open_manufacture_product_detail = MagicMock()
+    solver.read_manufacture_product = MagicMock(return_value="orirock_device")
+    solver.digit_reader = MagicMock()
+    solver.digit_reader.get_drone.return_value = 540
+    solver.recog = SimpleNamespace(gray=MagicMock(), h=1080, w=1920)
+    solver._manufacture_is_idle = MagicMock(return_value=True)
+    solver._tap_drone_accelerate = MagicMock()
+    solver._read_manufacture_total_seconds = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver.translate_room = MagicMock(return_value="B303")
+
+    observation = solver._survey_manufacture_switch("room_3_3", "orirock")
+
+    assert observation == {
+        "room": "room_3_3",
+        "facility": "manufacture",
+        "target_product": "orirock",
+        "current_product": "orirock_device",
+        "needs_switch": True,
+        "available_drones": 540,
+        "total_seconds": 0,
+        "current_remaining": 0,
+        "drone_count": 0,
+        "wait_seconds": 0,
+    }
+    solver._tap_drone_accelerate.assert_not_called()
+    solver._read_manufacture_total_seconds.assert_not_called()
+    solver._tap_product_point.assert_not_called()
 
 
 def test_inventory_count_supports_selected_materials_and_total_exp(monkeypatch):
@@ -603,7 +665,7 @@ def test_mood_room_visit_refreshes_manufacture_state_before_operator_detail():
 
     assert solver.op_data.facility_product(room) == "gold"
     solver._wait_drone_interface.assert_called_once_with(
-        interval=3, accelerate_template="factory_accelerate"
+        interval=3, accelerate_template="manufacture_accelerate"
     )
     solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
 

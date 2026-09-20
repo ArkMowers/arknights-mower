@@ -62,6 +62,11 @@ const op_data = computed(() => {
       type: 'impart'
     }
   }
+  if (data.value == 'op_data.major_maintenance_remaining_hours()') {
+    return {
+      type: 'major_maintenance'
+    }
+  }
   const inventory = parse_inventory_expression(data.value)
   if (inventory) {
     return {
@@ -107,6 +112,8 @@ const op_type = computed(() => {
     return 'facility'
   } else if (op_data.value.type == 'facility_stat') {
     return 'facility_stat'
+  } else if (op_data.value.type == 'major_maintenance') {
+    return 'major_maintenance'
   } else {
     return 'op'
   }
@@ -118,6 +125,7 @@ const type_options = [
   { label: '设施状态', value: 'facility' },
   { label: '生产设施统计', value: 'facility_stat' },
   { label: '线索交流结束时间', value: 'impart' },
+  { label: '距离停服大更新维护时长（小时）', value: 'major_maintenance' },
   { label: '常量/自定义', value: 'custom' }
 ]
 
@@ -144,6 +152,8 @@ function set_op_type(v) {
     data.value = facility_expression(room, status)
   } else if (v == 'facility_stat') {
     data.value = facility_product_count_expression(facility_product_options[0].value)
+  } else if (v == 'major_maintenance') {
+    data.value = 'op_data.major_maintenance_remaining_hours()'
   }
 }
 
@@ -346,8 +356,6 @@ import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const custom_tips = [
-  ...facility_product_options.map(({ label, value }) => expression_value_option(label, value)),
-  ...trigger_facility_type_options.map(({ label, value }) => expression_value_option(label, value)),
   'True',
   'False',
   'None',
@@ -368,7 +376,9 @@ const custom_tips = [
   'dormitory_1',
   'dormitory_2',
   'dormitory_3',
-  'dormitory_4'
+  'dormitory_4',
+  ...facility_product_options.map(({ label, value }) => expression_value_option(label, value)),
+  ...trigger_facility_type_options.map(({ label, value }) => expression_value_option(label, value))
 ]
 
 function render_custom_tip(option) {

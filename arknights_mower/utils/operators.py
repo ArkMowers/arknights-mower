@@ -14,6 +14,7 @@ from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import get_inventory_counts, save_action_to_sqlite_decorator
 from ..utils.log import logger
+from ..utils.news_checker import NewsChecker
 
 # 赤金交易订单干员常量
 TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
@@ -167,6 +168,7 @@ class Operators:
                 "facility_product_type_count",
                 "facility_has_mastery_plan",
                 "facility_is_training",
+                "major_maintenance_remaining_hours",
             ]
         )
         self.power_plant_count = 0
@@ -470,6 +472,13 @@ class Operators:
         if item_name not in allowed_items:
             raise ValueError(f"不支持的副表仓库资源：{item_name}")
         return get_inventory_counts([item_name]).get(item_name, 0)
+
+    def major_maintenance_remaining_hours(self) -> float:
+        """返回距离下一次停服大版本维护的小时数。"""
+        info = NewsChecker.get_maintenance()
+        if info is None or info.update_type != "major" or info.is_flash_update:
+            return float("inf")
+        return max(0.0, (info.start - datetime.now()).total_seconds() / 3600)
 
     def update_facility_state(
         self, room: str, facility: str, product: str, updated_at: str | None = None

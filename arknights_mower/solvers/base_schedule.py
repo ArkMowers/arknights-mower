@@ -2403,7 +2403,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         templates = (
             (accelerate_template,)
             if accelerate_template is not None
-            else ("factory_accelerate", "bill_accelerate")
+            else ("manufacture_accelerate", "bill_accelerate")
         )
         pending = None
         retry_ready = False
@@ -3071,6 +3071,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         raise RecognizeError(f"无法识别当前制造产物：{text or 'OCR 无结果'}")
 
+    def _manufacture_is_idle(self) -> bool:
+        """识别制造站因缺少材料且未补货而没有正在制造的状态。"""
+        status_scope = (
+            (self.recog.w * 1540 // 1920, self.recog.h * 430 // 1080),
+            (self.recog.w * 1835 // 1920, self.recog.h * 700 // 1080),
+        )
+        text = self._product_ocr_text(status_scope)
+        return "已完成" in text or "空闲中" in text or "00:00:00" in text
+
     def _cache_facility_state(self, room: str, facility: str, product: str) -> None:
         op_data = getattr(self, "op_data", None)
         if op_data is not None:
@@ -3088,7 +3097,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             if facility_name == "制造站":
                 self._wait_drone_interface(
-                    interval=3, accelerate_template="factory_accelerate"
+                    interval=3, accelerate_template="manufacture_accelerate"
                 )
                 product = self.read_manufacture_product()
                 facility = "manufacture"
@@ -3145,7 +3154,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def _open_manufacture_product_detail(self, room: str):
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         self.enter_room(room)
-        self._wait_drone_interface(interval=3, accelerate_template="factory_accelerate")
+        self._wait_drone_interface(
+            interval=3, accelerate_template="manufacture_accelerate"
+        )
 
     def _read_manufacture_total_seconds(self) -> int:
         hours, minutes, seconds = self.digit_reader.识别制造加速总剩余时间(
@@ -3171,7 +3182,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         observation["available_drones"] = self.digit_reader.get_drone(
             self.recog.gray, self.recog.h, self.recog.w
         )
-        self._tap_drone_accelerate("factory_accelerate", "all_in")
+        if self._manufacture_is_idle():
+            observation.update(
+                total_seconds=0,
+                current_remaining=0,
+                drone_count=0,
+                wait_seconds=0,
+            )
+            logger.info(f"{self.translate_room(room)}当前空闲，无需使用无人机")
+            return observation
+        self._tap_drone_accelerate("manufacture_accelerate", "all_in")
         total_seconds = self._read_manufacture_total_seconds()
         self._tap_product_point((480, 864))
         unit_seconds = MANUFACTURE_PRODUCTS[current_product].unit_seconds
@@ -3207,10 +3227,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 f"{self.translate_room(observation['room'])}产物在规划期间发生变化"
             )
 
+        if self._manufacture_is_idle():
+            logger.info(
+                f"{self.translate_room(observation['room'])}当前空闲，直接切换产物"
+            )
+            return 0
+
         available_drones = self.digit_reader.get_drone(
             self.recog.gray, self.recog.h, self.recog.w
         )
-        self._tap_drone_accelerate("factory_accelerate", "all_in")
+        self._tap_drone_accelerate("manufacture_accelerate", "all_in")
         current_total = self._read_manufacture_total_seconds()
         progressed = max(0, observation["total_seconds"] - current_total)
         remaining = max(0, observation["current_remaining"] - progressed)
@@ -3439,7 +3465,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 关闭掉房间总览
         self._wait_drone_interface(interval=3)
 
-        accelerate = self.find("factory_accelerate")
+        accelerate = self.find("manufacture_accelerate")
         if accelerate:
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
@@ -3447,7 +3473,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
                 return
             logger.info("制造站加速")
-            all_in_scope = self._tap_drone_accelerate("factory_accelerate", "all_in")
+            all_in_scope = self._tap_drone_accelerate(
+                "manufacture_accelerate", "all_in"
+            )
             # 如果不是全部all in
             if all_in > 0:
                 tap_times = (
@@ -3507,15 +3535,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     #     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
     #     # 关闭掉房间总览
     #     error_count = 0
-    #     while self.find('factory_accelerate') is None:
+    #     while self.find('manufacture_accelerate') is None:
     #         if error_count > 5:
     #             raise Exception('未成功进入制造详情界面')
     #         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
     #         error_count += 1
-    #     accelerate = self.find('factory_accelerate')
+    #     accelerate = self.find('manufacture_accelerate')
     #     无人机数量 = self.digit_reader.get_drone(self.recog.gray, self.recog.h, self.recog.w)
     #     if accelerate:
-    #         self.tap_element('factory_accelerate')
+    #         self.tap_element('manufacture_accelerate')
     #         self.recog.update()
     #         剩余制造加速总时间 = self.digit_reader.识别制造加速总剩余时间(self.recog.gray, self.recog.h, self.recog.w)
     #         # logger.info(f'制造站 B{room[5]}0{room[7]} 剩余制造总时间为 {剩余制造加速总时间}')

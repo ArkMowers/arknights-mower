@@ -530,7 +530,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.recog = MagicMock(w=1920, h=1080)
         solver.find = MagicMock(
             side_effect=lambda template: (
-                object() if template == "factory_accelerate" else None
+                object() if template == "manufacture_accelerate" else None
             )
         )
         solver.tap = MagicMock()
@@ -538,7 +538,8 @@ class TestBaseScheduler(unittest.TestCase):
         solver._wait_drone_interface()
 
         self.assertEqual(
-            solver.find.call_args_list, [call("connecting"), call("factory_accelerate")]
+            solver.find.call_args_list,
+            [call("connecting"), call("manufacture_accelerate")],
         )
         solver.tap.assert_not_called()
 
@@ -2426,7 +2427,7 @@ class TestDroneAccelerate(unittest.TestCase):
                 solver,
                 "find",
                 side_effect=lambda res, **kw: (
-                    accelerate_scope if res == "factory_accelerate" else None
+                    accelerate_scope if res == "manufacture_accelerate" else None
                 ),
             ),
             patch.object(solver, "_wait_drone_interface"),
@@ -2439,7 +2440,7 @@ class TestDroneAccelerate(unittest.TestCase):
             solver.drone("factory", not_customize=True)
 
         # 制造站走确认面板的 helper，避免在详情页误触
-        mock_helper.assert_called_once_with("factory_accelerate", "all_in")
+        mock_helper.assert_called_once_with("manufacture_accelerate", "all_in")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_infra_main_keeps_run_order_task_alive_across_two_passes(self):

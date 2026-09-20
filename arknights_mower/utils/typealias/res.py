@@ -32,7 +32,7 @@ Res = Literal[
     "drone",
     "enter",
     "episode",
-    "factory_accelerate",
+    "manufacture_accelerate",
     "factory_collect",
     "factory_furniture",
     "manufacture_product_cancel_confirm",
