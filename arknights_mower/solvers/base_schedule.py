@@ -3040,7 +3040,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if facility_name == "制造站":
                 self._wait_factory_resource("factory_accelerate")
                 product = self.read_factory_product()
-                facility = "factory"
+                facility = "manufacture"
                 label = FACTORY_PRODUCTS[product].name
             else:
                 self._wait_factory_resource("order_label")
@@ -3106,10 +3106,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
         self._open_factory_product_detail(room)
         current_product = self.read_factory_product()
-        self._cache_facility_state(room, "factory", current_product)
+        self._cache_facility_state(room, "manufacture", current_product)
         observation = {
             "room": room,
-            "facility": "factory",
+            "facility": "manufacture",
             "target_product": target_product,
             "current_product": current_product,
             "needs_switch": current_product != target_product,
@@ -3192,13 +3192,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def _change_factory_product(self, observation: dict):
         self._open_factory_product_detail(observation["room"])
         current_product = self.read_factory_product()
-        self._cache_facility_state(observation["room"], "factory", current_product)
+        self._cache_facility_state(observation["room"], "manufacture", current_product)
         if current_product == observation["target_product"]:
             return
         self._select_factory_product(observation["target_product"])
         self.recog.update()
         final_product = self.read_factory_product()
-        self._cache_facility_state(observation["room"], "factory", final_product)
+        self._cache_facility_state(observation["room"], "manufacture", final_product)
         if final_product != observation["target_product"]:
             raise RecognizeError(
                 f"制造站产物切换校验失败：期望"
@@ -3294,7 +3294,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         pending_factory = [
             observation
             for _, observation in task_observations
-            if observation["facility"] == "factory" and observation["needs_switch"]
+            if observation["facility"] == "manufacture" and observation["needs_switch"]
         ]
         planned_drones = sum(item["drone_count"] for item in pending_factory)
         available = min(

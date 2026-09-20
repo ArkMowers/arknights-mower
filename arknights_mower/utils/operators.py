@@ -14,7 +14,11 @@ from ..utils.log import logger
 
 # 赤金交易订单干员常量
 TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
-FACILITY_TYPE_IDS = {"贸易站": "trade", "制造站": "factory", "发电站": "power"}
+FACILITY_TYPE_IDS = {
+    "贸易站": "trade",
+    "制造站": "manufacture",
+    "发电站": "power",
+}
 
 
 def build_global_plan():
@@ -468,7 +472,7 @@ class Operators:
         self, room: str, facility: str, product: str, updated_at: str | None = None
     ) -> None:
         """记录生产设施最近一次从游戏界面识别到的实际状态。"""
-        supported = (facility == "factory" and product in FACTORY_PRODUCTS) or (
+        supported = (facility == "manufacture" and product in FACTORY_PRODUCTS) or (
             facility == "trade" and product in TRADE_PRODUCTS
         )
         if room not in base_room_list or not supported:

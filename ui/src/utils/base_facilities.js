@@ -1,6 +1,6 @@
 export const facility_types = [
   { label: '贸易站', value: 'trade' },
-  { label: '制造站', value: 'factory' },
+  { label: '制造站', value: 'manufacture' },
   { label: '发电站', value: 'power' }
 ]
 

@@ -55,7 +55,7 @@ class DepotRouteTests(unittest.TestCase):
     def test_facility_state_api_uses_last_saved_runtime_cache(self):
         states = {
             "room_1_2": {
-                "facility": "factory",
+                "facility": "manufacture",
                 "product": "exp3",
                 "updated_at": "2026-09-20T12:00:00",
             }

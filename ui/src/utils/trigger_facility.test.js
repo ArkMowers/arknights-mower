@@ -22,7 +22,7 @@ describe('设施状态副表表达式', () => {
 
   it('排班表保留中文设施类型，条件使用英文内部值', () => {
     expect(plan_facility_type_options[1]).toEqual({ label: '制造站', value: '制造站' })
-    expect(trigger_facility_type_options[1]).toEqual({ label: '制造站', value: 'factory' })
+    expect(trigger_facility_type_options[1]).toEqual({ label: '制造站', value: 'manufacture' })
   })
 
   it('生成并解析设施产物表达式', () => {
@@ -92,7 +92,7 @@ describe('设施状态副表表达式', () => {
     })
     expect(
       summarize_facility_products(plan, {
-        room_1_2: { facility: 'factory', product: 'exp3' },
+        room_1_2: { facility: 'manufacture', product: 'exp3' },
         room_2_2: { facility: 'trade', product: 'orundum' }
       })
     ).toEqual({

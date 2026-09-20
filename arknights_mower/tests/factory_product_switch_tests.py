@@ -408,11 +408,11 @@ def test_facility_state_is_cached_and_available_to_backup_expression():
     operators = Operators(plan)
 
     operators.update_facility_state(
-        room, "factory", "exp3", updated_at="2026-09-20T12:00:00"
+        room, "manufacture", "exp3", updated_at="2026-09-20T12:00:00"
     )
 
     assert operators.facility_states[room] == {
-        "facility": "factory",
+        "facility": "manufacture",
         "product": "exp3",
         "updated_at": "2026-09-20T12:00:00",
     }
@@ -428,7 +428,7 @@ def test_facility_product_conditions_fall_back_to_main_plan_until_cached():
     assert operators.facility_product_count("gold") == 1
     assert operators.facility_product_type_count() == 1
 
-    operators.update_facility_state(room, "factory", "exp3")
+    operators.update_facility_state(room, "manufacture", "exp3")
 
     assert operators.facility_product(room) == "exp3"
     assert operators.facility_product_count("gold") == 0
@@ -487,8 +487,10 @@ def test_facility_type_reuses_current_plan():
     room, plan = product_plan()
     operators = Operators(plan)
 
-    assert operators.facility_type(room) == "factory"
-    assert operators.evaluate_expression("op_data.facility_type('room_1_2') == factory")
+    assert operators.facility_type(room) == "manufacture"
+    assert operators.evaluate_expression(
+        "op_data.facility_type('room_1_2') == manufacture"
+    )
 
 
 def test_product_constant_is_valid_in_expression():
@@ -502,9 +504,9 @@ def test_product_constant_is_valid_in_expression():
 def test_facility_product_statistics_are_available_to_expression():
     room, plan = product_plan()
     operators = Operators(plan)
-    operators.update_facility_state(room, "factory", "gold")
+    operators.update_facility_state(room, "manufacture", "gold")
     operators.update_facility_state("room_1_1", "trade", "lmd")
-    operators.update_facility_state("room_2_1", "factory", "gold")
+    operators.update_facility_state("room_2_1", "manufacture", "gold")
 
     assert operators.facility_product_count("gold") == 2
     assert operators.facility_product_type_count() == 2
@@ -520,7 +522,7 @@ def test_facility_state_can_hold_inventory_backup_until_lower_threshold(monkeypa
         lambda names=None: {name: inventory.get(name, 0) for name in names},
     )
     operators = Operators(plan)
-    operators.update_facility_state(room, "factory", "exp3")
+    operators.update_facility_state(room, "manufacture", "exp3")
     expression = (
         "op_data.inventory_count('赤金') >= 7000 or "
         "(op_data.inventory_count('赤金') > 200 and "
@@ -622,7 +624,7 @@ def test_batch_surveys_every_station_before_spending_drones():
     factory_observations = {
         "room_1_2": {
             "room": "room_1_2",
-            "facility": "factory",
+            "facility": "manufacture",
             "target_product": "gold",
             "needs_switch": True,
             "drone_count": 4,
@@ -631,7 +633,7 @@ def test_batch_surveys_every_station_before_spending_drones():
         },
         "room_2_2": {
             "room": "room_2_2",
-            "facility": "factory",
+            "facility": "manufacture",
             "target_product": "exp3",
             "needs_switch": True,
             "drone_count": 3,
@@ -698,7 +700,7 @@ def test_batch_with_insufficient_drones_does_not_accelerate_any_station():
         side_effect=[
             {
                 "room": "room_1_2",
-                "facility": "factory",
+                "facility": "manufacture",
                 "target_product": "gold",
                 "needs_switch": True,
                 "drone_count": 4,
@@ -707,7 +709,7 @@ def test_batch_with_insufficient_drones_does_not_accelerate_any_station():
             },
             {
                 "room": "room_2_2",
-                "facility": "factory",
+                "facility": "manufacture",
                 "target_product": "exp3",
                 "needs_switch": True,
                 "drone_count": 3,
@@ -742,7 +744,7 @@ def test_insufficient_factory_drones_do_not_block_direct_trade_switch():
     solver._survey_factory_switch = MagicMock(
         return_value={
             "room": "room_1_2",
-            "facility": "factory",
+            "facility": "manufacture",
             "target_product": "gold",
             "needs_switch": True,
             "drone_count": 7,
@@ -812,7 +814,7 @@ def test_mixed_batch_accelerates_factory_and_switches_both_facilities(monkeypatc
     solver.sleep = MagicMock()
     factory_observation = {
         "room": "room_1_2",
-        "facility": "factory",
+        "facility": "manufacture",
         "target_product": "exp3",
         "needs_switch": True,
         "drone_count": 2,
@@ -849,7 +851,7 @@ def test_non_grandet_batch_switches_immediately_without_buffer(monkeypatch):
     )
     observation = {
         "room": "room_1_2",
-        "facility": "factory",
+        "facility": "manufacture",
         "target_product": "exp3",
         "needs_switch": True,
         "drone_count": 1,
