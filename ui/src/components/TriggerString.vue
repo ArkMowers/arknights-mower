@@ -138,6 +138,10 @@ function update_facility(room) {
   data.value = facility_expression(room)
 }
 
+function update_facility_status(status) {
+  if (status == 'product') data.value = facility_expression(op_data.value.room)
+}
+
 function update_facility_product(product) {
   data.value = product
 }
@@ -214,6 +218,17 @@ const facility_select_options = computed(() =>
       return { ...option, label: `${option.label}（当前：${current}）` }
     })
 )
+
+const facility_status_options = computed(() => {
+  const facilityName = plan.value[op_data.value.room]?.name
+  const label =
+    facilityName == '制造站'
+      ? '当前产物'
+      : facilityName == '贸易站'
+        ? '当前订单类型'
+        : '当前产物或订单'
+  return [{ label, value: 'product' }]
+})
 
 onMounted(() => {
   depot_store.loadInventory().catch(() => {})
@@ -316,6 +331,13 @@ const custom_tips = [
     :options="facility_select_options"
     :on-update:value="update_facility"
     style="min-width: 280px"
+  />
+  <n-select
+    v-if="op_type == 'facility'"
+    default-value="product"
+    :options="facility_status_options"
+    :on-update:value="update_facility_status"
+    style="min-width: 160px"
   />
   <n-select
     v-if="op_type == 'facility_product'"
