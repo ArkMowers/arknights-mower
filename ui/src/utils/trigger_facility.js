@@ -24,16 +24,6 @@ export function parse_facility_product(value) {
   return facilityProductIds.has(value) ? value : undefined
 }
 
-export function facility_operator_expression(room, operator) {
-  return `op_data.facility_has_operator('${room}', '${operator}')`
-}
-
-export function parse_facility_operator_expression(value) {
-  const match = value.match(/^op_data\.facility_has_operator\('(.+)', '(.+)'\)$/)
-  if (!match) return undefined
-  return { room: match[1], operator: match[2] }
-}
-
 export function operator_relation_expression(first, second) {
   return `op_data.operators_work_together('${first}', '${second}')`
 }

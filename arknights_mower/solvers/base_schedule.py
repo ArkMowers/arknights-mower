@@ -4399,19 +4399,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if release_task and self.task != release_task:
                         self.tasks.remove(release_task)
                 logger.info(f"重设 {_operator} 至空闲")
-        room_plan = self.op_data.plan.get(room) or []
-        facility = getattr(room_plan[0], "facility", "") if room_plan else ""
-        facility_ids = {
-            "制造站": "factory",
-            "贸易站": "trade",
-            "发电站": "power",
-        }
-        if hasattr(self.op_data, "update_facility_operators"):
-            self.op_data.update_facility_operators(
-                room,
-                [item["agent"] for item in result],
-                facility_ids.get(facility, facility),
-            )
         return result
 
     def refresh_current_room(self, room, current_index=None):

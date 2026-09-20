@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   facility_expression,
-  facility_operator_expression,
   facility_product_count_expression,
   facility_product_type_count_expression,
   operator_relation_expression,
   parse_facility_expression,
-  parse_facility_operator_expression,
   parse_facility_product,
   parse_facility_product_count_expression,
   parse_operator_relation_expression
@@ -36,15 +34,6 @@ describe('设施状态副表表达式', () => {
     expect(parse_facility_product('orirock_device')).toBe('orirock_device')
     expect(parse_facility_product('orundum')).toBe('orundum')
     expect(parse_facility_product('unknown')).toBeUndefined()
-  })
-
-  it('生成并解析指定设施的进驻干员', () => {
-    const expression = facility_operator_expression('room_1_2', '阿米娅')
-    expect(expression).toBe("op_data.facility_has_operator('room_1_2', '阿米娅')")
-    expect(parse_facility_operator_expression(expression)).toEqual({
-      room: 'room_1_2',
-      operator: '阿米娅'
-    })
   })
 
   it('生成并解析同设施工作关系', () => {

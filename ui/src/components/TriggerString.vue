@@ -12,12 +12,10 @@ import {
 } from '@/utils/trigger_inventory'
 import {
   facility_expression,
-  facility_operator_expression,
   facility_product_count_expression,
   facility_product_type_count_expression,
   operator_relation_expression,
   parse_facility_expression,
-  parse_facility_operator_expression,
   parse_facility_product_count_expression,
   parse_operator_relation_expression,
   parse_facility_product
@@ -77,15 +75,6 @@ const op_data = computed(() => {
       type: 'facility',
       room: facility.room,
       status: facility.status
-    }
-  }
-  const facilityOperator = parse_facility_operator_expression(data.value)
-  if (facilityOperator) {
-    return {
-      type: 'facility',
-      room: facilityOperator.room,
-      status: 'operator',
-      operator: facilityOperator.operator
     }
   }
   const operatorRelation = parse_operator_relation_expression(data.value)
@@ -193,25 +182,11 @@ function update_facility(room) {
   const supportsProduct = ['制造站', '贸易站'].includes(plan.value[room]?.name)
   const status =
     op_data.value.status == 'product' && !supportsProduct ? 'operator_count' : op_data.value.status
-  data.value =
-    status == 'operator'
-      ? facility_operator_expression(room, op_data.value.operator)
-      : facility_expression(room, status)
+  data.value = facility_expression(room, status)
 }
 
 function update_facility_status(status) {
-  if (status == 'operator') {
-    data.value = facility_operator_expression(
-      op_data.value.room,
-      operators.value[0]?.value || '阿米娅'
-    )
-  } else {
-    data.value = facility_expression(op_data.value.room, status)
-  }
-}
-
-function update_facility_operator(operator) {
-  data.value = facility_operator_expression(op_data.value.room, operator)
+  data.value = facility_expression(op_data.value.room, status)
 }
 
 function update_relation_first(operator) {
@@ -329,10 +304,7 @@ const facility_select_options = computed(() =>
 
 const facility_status_options = computed(() => {
   const facilityName = plan.value[op_data.value.room]?.name
-  const options = [
-    { label: '当前进驻干员', value: 'operator' },
-    { label: '当前干员数量', value: 'operator_count' }
-  ]
+  const options = [{ label: '当前干员数量', value: 'operator_count' }]
   if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
   if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
   return options
@@ -482,16 +454,6 @@ const custom_tips = [
     :options="facility_status_options"
     :on-update:value="update_facility_status"
     style="min-width: 160px"
-  />
-  <n-select
-    v-if="op_type == 'facility' && op_data.status == 'operator'"
-    :default-value="op_data.operator"
-    filterable
-    :options="operators"
-    :on-update:value="update_facility_operator"
-    :filter="(p, o) => pinyin_match(o.label, p)"
-    :render-label="render_op_label"
-    style="min-width: 220px"
   />
   <n-select
     v-if="op_type == 'facility_stat'"

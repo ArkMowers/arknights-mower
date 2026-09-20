@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import server
@@ -71,6 +72,32 @@ class DepotRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), states)
+
+    def test_facility_state_api_derives_occupants_from_operator_cache(self):
+        operators = {
+            "阿米娅": SimpleNamespace(current_room="room_1_2", current_index=1),
+            "Lancet-2": SimpleNamespace(current_room="room_1_2", current_index=0),
+            "陈": SimpleNamespace(current_room="central", current_index=0),
+        }
+        with (
+            patch.object(server, "mower_thread", None),
+            patch.object(
+                server,
+                "load_state",
+                return_value={"facility_states": {}, "operators": operators},
+            ),
+        ):
+            response = self.client.get("/facility-state")
+        self.addCleanup(response.close)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()["room_1_2"],
+            {
+                "operators": ["Lancet-2", "阿米娅"],
+                "operator_count": 2,
+            },
+        )
 
 
 if __name__ == "__main__":

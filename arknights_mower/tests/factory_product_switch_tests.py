@@ -414,19 +414,11 @@ def test_facility_state_is_cached_and_available_to_backup_expression():
     operators.update_facility_state(
         room, "factory", "exp3", updated_at="2026-09-20T12:00:00"
     )
-    operators.update_facility_operators(
-        room,
-        ["Lancet-2", "阿米娅"],
-        facility="factory",
-        updated_at="2026-09-20T12:00:01",
-    )
 
     assert operators.facility_states[room] == {
         "facility": "factory",
         "product": "exp3",
-        "operators": ["Lancet-2", "阿米娅"],
-        "operator_count": 2,
-        "updated_at": "2026-09-20T12:00:01",
+        "updated_at": "2026-09-20T12:00:00",
     }
     assert operators.facility_product(room) == "exp3"
     assert operators.evaluate_expression("op_data.facility_product('room_1_2') == exp3")
@@ -456,11 +448,7 @@ def test_facility_operator_binding_and_work_relation_are_available_to_expression
     amiya.current_room = room
     amiya.current_index = 1
 
-    assert operators.facility_has_operator(room, "阿米娅")
     assert operators.operators_work_together("Lancet-2", "阿米娅")
-    assert operators.evaluate_expression(
-        "op_data.facility_has_operator('room_1_2', '阿米娅')"
-    )
     assert operators.evaluate_expression(
         "op_data.operators_work_together('Lancet-2', '阿米娅')"
     )
