@@ -4,6 +4,26 @@ from typing import Optional, Self
 
 from arknights_mower.utils.logic_expression import LogicExpression
 
+DEFAULT_DORM_ROOM_ORDER = [f"dormitory_{index}" for index in range(1, 5)]
+
+
+def effective_dorm_room_order(values: list[str]) -> list[str]:
+    """将房间或旧具体床位顺序折叠为完整的四宿舍顺序。"""
+    result = []
+    for value in values:
+        parts = value.rsplit("_", 1)
+        room = (
+            parts[0]
+            if len(parts) == 2
+            and parts[0] in DEFAULT_DORM_ROOM_ORDER
+            and parts[1].isdigit()
+            else value
+        )
+        if room in DEFAULT_DORM_ROOM_ORDER and room not in result:
+            result.append(room)
+    result.extend(room for room in DEFAULT_DORM_ROOM_ORDER if room not in result)
+    return result
+
 
 class PlanTriggerTiming(Enum):
     "副表触发时机"
@@ -53,6 +73,7 @@ class PlanConfig:
         ope_resting_priority: str = "",
         resting_standby: str = "",
         dorm_order: str = "",
+        dorm_order_override: Optional[bool] = None,
         experimental_dorm_logic: bool = False,
     ):
         """排班的设置
@@ -88,6 +109,15 @@ class PlanConfig:
         self.refresh_drained = to_list(refresh_drained)
         self.ope_resting_priority = to_list(ope_resting_priority)
         self.dorm_order = [name for name in to_list(dorm_order) if name]
+        self.dorm_order_override = (
+            dorm_order_override
+            if dorm_order_override is not None
+            else bool(
+                self.dorm_order
+                and effective_dorm_room_order(self.dorm_order)
+                != DEFAULT_DORM_ROOM_ORDER
+            )
+        )
         self.experimental_dorm_logic = experimental_dorm_logic
 
     def is_rest_in_full(self, agent_name) -> bool:
@@ -144,10 +174,10 @@ class PlanConfig:
                 if item not in merged_list:
                     merged_list.append(item)
             setattr(n, p, merged_list)
-        # 宿舍床位顺序是当前排班的完整配置，不与主表或其他副表取并集。
-        # 多张副表同时生效时，后合并的副表覆盖前一张；空列表也表示明确清空。
-        if self.experimental_dorm_logic:
+        # 副表未显式设置宿舍顺序时继承此前结果；只有显式设置的副表覆盖。
+        if self.experimental_dorm_logic and target.dorm_order_override:
             n.dorm_order = copy.deepcopy(target.dorm_order)
+            n.dorm_order_override = True
         return n
 
 

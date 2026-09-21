@@ -126,7 +126,8 @@ function create_sub_plan() {
       refresh_trading: [],
       refresh_drained: [],
       ope_resting_priority: [],
-      dorm_order: ['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4']
+      dorm_order: [],
+      dorm_order_override: false
     },
     plan: fill_empty({}),
     trigger: {
@@ -145,6 +146,12 @@ function create_sub_plan() {
 function delete_sub_plan() {
   backup_plans.value.splice(sub_plan.value, 1)
   sub_plan.value = 'main'
+}
+
+function update_dorm_order_override(value) {
+  if (sub_plan.value !== 'main') {
+    current_conf.value.dorm_order_override = value.length > 0
+  }
 }
 
 const current_conf = ref({
@@ -582,10 +589,15 @@ function movePlanForward() {
         <span>宿舍优先级排序</span>
         <help-text>
           <p>仅在当前主表或副表生效，按宿舍房间排序；同一房间内按床位位置排列。</p>
-          <p>副表生效后会应用该副表自己的顺序；默认顺序为宿舍 1→2→3→4。</p>
+          <p>主表默认顺序为宿舍 1→2→3→4；副表留空时继承此前生效的顺序，不会覆盖前一张副表。</p>
+          <p>副表实际选择或拖动顺序后，才会显式覆盖此前顺序。</p>
         </help-text>
       </template>
-      <slick-dorm-select v-model="current_conf.dorm_order" room-only></slick-dorm-select>
+      <slick-dorm-select
+        v-model="current_conf.dorm_order"
+        room-only
+        @update:model-value="update_dorm_order_override"
+      ></slick-dorm-select>
     </n-form-item>
   </n-form>
   <n-modal

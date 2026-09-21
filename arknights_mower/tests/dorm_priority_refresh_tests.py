@@ -229,27 +229,38 @@ def test_backup_order_overrides_main_and_switching_back_restores_main(saved):
     )
 
 
-def test_empty_backup_order_explicitly_restores_default(saved):
+def test_empty_backup_order_inherits_main(saved):
     op = operators(",".join(reversed(DEFAULT)), [""])
     assert op.init_and_validate() is None
     assert op.swap_plan([True], True) is None
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
-        ROOM_DEFAULT
+        ["dormitory_2", "dormitory_1", "dormitory_3", "dormitory_4"]
     )
 
 
-def test_last_active_backup_order_wins(saved):
+def test_later_default_backup_does_not_override_earlier_custom_order(saved):
     first = DEFAULT[1:] + DEFAULT[:1]
     second = DEFAULT[2:] + DEFAULT[:2]
     op = operators("", [",".join(first), ",".join(second)])
     assert op.init_and_validate() is None
     assert op.swap_plan([True, True], True) is None
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
-        ["dormitory_1", "dormitory_2", "dormitory_3", "dormitory_4"]
+        ["dormitory_2", "dormitory_1", "dormitory_3", "dormitory_4"]
     )
 
 
-def test_legacy_global_order_is_copied_to_every_missing_plan_config():
+def test_explicit_default_backup_can_reset_earlier_custom_order(saved):
+    first = DEFAULT[1:] + DEFAULT[:1]
+    op = operators("", [",".join(first), ",".join(ROOM_DEFAULT)])
+    op.global_plan["backup_plans"][1].config.dorm_order_override = True
+    assert op.init_and_validate() is None
+    assert op.swap_plan([True, True], True) is None
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ROOM_DEFAULT
+    )
+
+
+def test_legacy_global_order_only_migrates_to_main_plan():
     legacy = ",".join(reversed(DEFAULT))
     data = {
         "plan1": {},
@@ -264,8 +275,37 @@ def test_legacy_global_order_is_copied_to_every_missing_plan_config():
     assert migrate_legacy_dorm_order(plan, data, legacy)
     migrated = "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
     assert plan.conf.dorm_order == migrated
-    assert plan.backup_plans[0].conf.dorm_order == migrated
-    assert plan.backup_plans[1].conf.dorm_order == ",".join(ROOM_DEFAULT)
+    assert plan.backup_plans[0].conf.dorm_order == ""
+    assert plan.backup_plans[1].conf.dorm_order == ""
+    assert not plan.backup_plans[0].conf.dorm_order_override
+    assert not plan.backup_plans[1].conf.dorm_order_override
+
+
+def test_backup_order_migration_distinguishes_implicit_and_explicit_defaults():
+    default = ",".join(ROOM_DEFAULT)
+    custom = "dormitory_3,dormitory_1,dormitory_2,dormitory_4"
+    data = {
+        "plan1": {},
+        "conf": {"dorm_order": default},
+        "backup_plans": [
+            {"plan": {}, "conf": {"dorm_order": default}},
+            {"plan": {}, "conf": {"dorm_order": custom}},
+            {
+                "plan": {},
+                "conf": {"dorm_order": default, "dorm_order_override": True},
+            },
+        ],
+    }
+    plan = config.PlanModel(**data)
+
+    assert migrate_legacy_dorm_order(plan, data, "")
+    implicit, changed, explicit_default = plan.backup_plans
+    assert implicit.conf.dorm_order == ""
+    assert implicit.conf.dorm_order_override is False
+    assert changed.conf.dorm_order == custom
+    assert changed.conf.dorm_order_override is True
+    assert explicit_default.conf.dorm_order == default
+    assert explicit_default.conf.dorm_order_override is True
 
 
 def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path):
@@ -292,10 +332,12 @@ def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path
     assert config._legacy_dorm_order == legacy
     migrated = "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
     assert config.plan.conf.dorm_order == migrated
-    assert config.plan.backup_plans[0].conf.dorm_order == migrated
+    assert config.plan.backup_plans[0].conf.dorm_order == ""
+    assert not config.plan.backup_plans[0].conf.dorm_order_override
     saved_plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert saved_plan["conf"]["dorm_order"] == migrated
-    assert saved_plan["backup_plans"][0]["conf"]["dorm_order"] == migrated
+    assert saved_plan["backup_plans"][0]["conf"]["dorm_order"] == ""
+    assert not saved_plan["backup_plans"][0]["conf"]["dorm_order_override"]
 
 
 def test_plan_save_persists_plan_dorm_order(saved, monkeypatch):
