@@ -1144,6 +1144,17 @@ class Operators:
 
     def _slot_takable(self, dorm, protect_resting, requester=None):
         """床位能否被接管；低优之间保护正在休息者，高优可接管低优床位。"""
+        # self.dorm 由默认排班中的 Free 初始化；副表切换时不会重建这组潜在床位。
+        # 因此实际分配前还要以当前合并后的有效排班为准，确认该位置仍是 Free。
+        room, index = dorm.position
+        if (
+            room not in self.plan
+            or index < 0
+            or index >= len(self.plan[room])
+            or self.plan[room][index].agent != "Free"
+        ):
+            return False
+
         name = dorm.name
         if name == "" or name not in self.operators:
             return True

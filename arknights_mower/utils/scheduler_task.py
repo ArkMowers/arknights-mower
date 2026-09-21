@@ -587,14 +587,28 @@ def try_reorder(op_data, new_plan):
                 return "normal"
         return "low"
 
+    # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
+    # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。
+    effective_free_indices = [
+        idx
+        for idx, room in enumerate(dorm)
+        if room.position[0] in op_data.plan
+        and 0 <= room.position[1] < len(op_data.plan[room.position[0]])
+        and op_data.plan[room.position[0]][room.position[1]].agent == "Free"
+    ]
+    blocked_indices = set(range(len(dorm))) - set(effective_free_indices)
+    for idx in blocked_indices:
+        dorm[idx].name = ""
+        dorm[idx].time = None
+
     dorm_info = [
         {
-            "name": room.name,
+            "name": dorm[idx].name,
             "index": idx,
-            "time": room.time,
-            "priority": get_ranking(room.name),
+            "time": dorm[idx].time,
+            "priority": get_ranking(dorm[idx].name),
         }
-        for idx, room in enumerate(dorm)  # **跳过 name 为空的 dorm**
+        for idx in effective_free_indices
     ]
 
     def sort_key(_op):
@@ -613,9 +627,9 @@ def try_reorder(op_data, new_plan):
         )
 
     dorm_info.sort(key=sort_key)
-    for idx in range(len(dorm)):
-        dorm[idx].name = dorm_info[idx]["name"]
-        dorm[idx].time = dorm_info[idx]["time"]
+    for target_idx, info in zip(effective_free_indices, dorm_info):
+        dorm[target_idx].name = info["name"]
+        dorm[target_idx].time = info["time"]
     plan = {}
     logger.debug(f"更新房间信息{dorm}")
     for room in dorm:
@@ -772,7 +786,8 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                         break
                     agent = op_data.operators[value.name]
                     logger.debug(str(value))
-                    if not v.is_high() and (
+                    # 判断当前床位上的干员；v 是上一个 operators 循环的遗留变量。
+                    if not agent.is_high() and (
                         agent.current_mood() >= agent.upper_limit
                         or (value.time is not None and value.time < datetime.now())
                     ):
