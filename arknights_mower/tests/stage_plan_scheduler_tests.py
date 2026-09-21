@@ -348,3 +348,39 @@ def test_conf_helper_properties():
     )
     assert c8.should_run_maa_visit_friend is False
     assert c8.should_run_maa_mall_task is False
+
+
+def test_maa_plan_solver_skips_when_next_task_within_5_minutes(scheduler, monkeypatch):
+    scheduler.tasks = [
+        SimpleNamespace(time=datetime.now() + timedelta(seconds=120), plan={})
+    ]
+    monkeypatch.setattr(scheduler, "has_maa_daily_tasks", lambda: True)
+    scheduler.initialize_maa = MagicMock()
+    scheduler.maa_plan_solver()
+    scheduler.initialize_maa.assert_not_called()
+
+
+def test_mower_plan_solver_does_not_rest_until_next_task(scheduler, monkeypatch):
+    scheduler.tasks = [
+        SimpleNamespace(time=datetime.now() + timedelta(minutes=10), plan={})
+    ]
+    monkeypatch.setattr(
+        scheduler,
+        "run_local_operation_stage",
+        MagicMock(
+            return_value={
+                "simulated_current_ap": 100,
+                "executed_any": False,
+                "should_break": True,
+            }
+        ),
+    )
+    monkeypatch.setattr(base_schedule, "MissionSolver", MagicMock())
+    scheduler.rest_until_next_task = MagicMock()
+    monkeypatch.setattr(
+        base_schedule.config,
+        "conf",
+        Conf(stage_plan_enable=True, stage_plan_runner="mower", maa_gap=4),
+    )
+    scheduler.mower_plan_solver()
+    scheduler.rest_until_next_task.assert_not_called()
