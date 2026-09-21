@@ -130,6 +130,44 @@ def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
     assert all(t.type != TaskTypes.SHIFT_ON for t in solver.tasks)
 
 
+def test_plan_swap_dorm_reorder_adds_empty_followup_with_future_mastery(
+    solver, monkeypatch
+):
+    mastery = SchedulerTask(
+        time=datetime(2026, 9, 11, 20),
+        task_type=TaskTypes.SKILL_UPGRADE,
+    )
+    solver.tasks = [mastery]
+    monkeypatch.setattr(
+        base,
+        "rebalance_plan_swap_dorms",
+        MagicMock(return_value={"dormitory_1": ["Current"] * 5}),
+    )
+
+    assert solver.backup_plan_solver() is True
+
+    generated = [task for task in solver.tasks if task is not mastery]
+    assert [task.type for task in generated] == [
+        TaskTypes.RE_ORDER,
+        TaskTypes.NOT_SPECIFIC,
+    ]
+    assert generated[0].time == generated[1].time == base.datetime.now()
+
+
+def test_embedded_plan_swap_dorm_reorder_does_not_add_empty_followup(
+    solver, monkeypatch
+):
+    monkeypatch.setattr(
+        base,
+        "rebalance_plan_swap_dorms",
+        MagicMock(return_value={"dormitory_1": ["Current"] * 5}),
+    )
+
+    assert solver.backup_plan_solver(append_empty_task=False) is True
+
+    assert [task.type for task in solver.tasks] == [TaskTypes.RE_ORDER]
+
+
 def test_before_dorm_task_supersedes_same_dorm_and_preserves_other_dorms(solver):
     backup = solver.op_data.backup_plans[0]
     backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM

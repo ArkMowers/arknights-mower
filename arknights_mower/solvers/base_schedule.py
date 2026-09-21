@@ -2325,6 +2325,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.tasks.append(generated)
                         if generated_tasks is not None:
                             generated_tasks.append(generated)
+                        if append_empty_task:
+                            followup = SchedulerTask(
+                                time=generated.time,
+                                task_plan={},
+                                task_type=TaskTypes.NOT_SPECIFIC,
+                            )
+                            self.tasks.append(followup)
+                            if generated_tasks is not None:
+                                generated_tasks.append(followup)
                     if deactivated_task_slots:
                         restore_plan = {}
                         for room, indexes in deactivated_task_slots.items():
@@ -5006,6 +5015,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ].current_room == room and _operator not in [
                 res["agent"] for res in result
             ]:
+                if room.startswith("dorm"):
+                    _idx, dorm = self.op_data.get_dorm_by_name(_operator)
+                    if dorm is not None:
+                        dorm.reset()
                 self.op_data.operators[_operator].current_room = ""
                 self.op_data.operators[_operator].current_index = -1
                 if (
