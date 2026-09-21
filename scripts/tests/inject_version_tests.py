@@ -11,6 +11,27 @@ import inject_version  # noqa: E402
 
 
 class InjectVersionTests(unittest.TestCase):
+    def test_injects_desktop_release_metadata_into_version_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "__init__.py"
+            path.write_text(
+                '__version__ = "4.1.5.8"\n'
+                '__release_system__ = ""\n'
+                '__release_arch__ = ""\n'
+                '__release_archive__ = ""\n',
+                encoding="utf-8",
+            )
+
+            inject_version.inject_release(path, "4.1.6-alpha.1", "linux", "arm64")
+
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                '__version__ = "4.1.6-alpha.1"\n'
+                '__release_system__ = "linux"\n'
+                '__release_arch__ = "arm64"\n'
+                '__release_archive__ = "tar.gz"\n',
+            )
+
     def test_injects_valid_alpha_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "__init__.py"
@@ -73,6 +94,28 @@ class InjectVersionTests(unittest.TestCase):
                         inject_version.inject_version(path, "4.1.6-alpha.1")
 
                     self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+    def test_invalid_release_metadata_does_not_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "__init__.py"
+            original = (
+                '__version__ = "4.1.5.8"\n'
+                '__release_system__ = ""\n'
+                '__release_arch__ = ""\n'
+                '__release_archive__ = ""\n'
+            )
+            path.write_text(original, encoding="utf-8")
+            for system, arch in (
+                ("windows", None),
+                ("android", "arm64"),
+                ("windows", "x86"),
+            ):
+                with (
+                    self.subTest(system=system, arch=arch),
+                    self.assertRaises(ValueError),
+                ):
+                    inject_version.inject_release(path, "4.1.6", system, arch)
+                self.assertEqual(path.read_text(encoding="utf-8"), original)
 
 
 if __name__ == "__main__":

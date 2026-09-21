@@ -172,7 +172,7 @@ jobs:
         run: cp release-metadata/CHANGELOG.md CHANGELOG.md
 
       - name: Inject version from tag
-        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}" --system windows --arch x64
 
       - name: Install Python dependencies
         shell: bash
@@ -267,7 +267,7 @@ jobs:
         run: cp release-metadata/CHANGELOG.md CHANGELOG.md
 
       - name: Inject version from tag
-        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}" --system linux --arch "${{ matrix.arch }}"
 
       - name: Install system dependencies
         run: |
@@ -432,7 +432,7 @@ jobs:
         run: cp release-metadata/CHANGELOG.md CHANGELOG.md
 
       - name: Inject version from tag
-        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}" --system macos --arch "${{ matrix.arch }}"
 
       - name: Install zbar system library
         run: brew install zbar

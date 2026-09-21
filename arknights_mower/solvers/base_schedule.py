@@ -2458,17 +2458,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if self.op_data.is_auto_free_dorm_operator(x):
                 # 同组姓名只开启这张临时床；不把该姓名安排进宿舍，固定
                 # 宿舍成员离岗期间由统一动态床位算法决定实际入住者。
-                __plan.setdefault(
-                    x.room, ["Current"] * len(self.op_data.plan[x.room])
-                )[x.index] = "Free"
+                __plan.setdefault(x.room, ["Current"] * len(self.op_data.plan[x.room]))[
+                    x.index
+                ] = "Free"
                 continue
 
             def replacement_available(obj):
                 replacement = self.op_data.operators[obj]
-                if (
-                    replacement.current_room != ""
-                    and not replacement.is_resting()
-                ):
+                if replacement.current_room != "" and not replacement.is_resting():
                     return False
                 return (
                     obj not in TRADE_ORDER_AGENTS

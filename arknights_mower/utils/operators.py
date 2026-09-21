@@ -1411,9 +1411,7 @@ class Operators:
             and resting_tier(self, dorm.name) != RestingTier.IDLE
         )
 
-    def _slot_takable(
-        self, dorm, protect_resting, requester=None, active_groups=None
-    ):
+    def _slot_takable(self, dorm, protect_resting, requester=None, active_groups=None):
         """按严格层级接管；主班免额外心情门槛，同级恢复者不互踢。"""
         if not self.is_effective_free_slot(dorm, active_groups=active_groups):
             return False
@@ -1454,9 +1452,7 @@ class Operators:
             and not protect_resting
         )
 
-    def _find_dorm_slot(
-        self, name, used, *, group_resting=False, active_groups=None
-    ):
+    def _find_dorm_slot(self, name, used, *, group_resting=False, active_groups=None):
         operator = self.operators[name]
         if not self.experimental_dorm_logic:
             is_high = operator.resting_priority == "high" and not operator.is_workshop()

@@ -376,9 +376,7 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
             bed
             for bed in op_data.dorm
             if bed.position not in closing
-            and op_data.is_effective_free_slot(
-                bed, inactive_groups=inactive_groups
-            )
+            and op_data.is_effective_free_slot(bed, inactive_groups=inactive_groups)
         ]
         candidates = []
         seen = set()
@@ -389,7 +387,9 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
             if op.group and op.group in inactive_groups:
                 continue
             seen.add(name)
-            candidates.append((resting_key(op_data, name, now), order, name, saved_time))
+            candidates.append(
+                (resting_key(op_data, name, now), order, name, saved_time)
+            )
         candidates.sort(key=lambda item: (item[0], item[1]))
         dropped = candidates[len(beds) :]
         dropped_groups = {
@@ -412,8 +412,7 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
                     closing.add((member_op.room, member_op.index))
 
     assignments = {
-        bed.position: candidate
-        for bed, candidate in zip(beds, candidates[: len(beds)])
+        bed.position: candidate for bed, candidate in zip(beds, candidates[: len(beds)])
     }
     for bed in op_data.dorm:
         room, index = bed.position
@@ -437,11 +436,7 @@ def rebalance_plan_swap_dorms(op_data):
     if not getattr(op_data, "experimental_dorm_logic", False):
         return {}
     sources = [
-        *(
-            bed
-            for bed in op_data.dorm
-            if bed.name and bed.name in op_data.operators
-        ),
+        *(bed for bed in op_data.dorm if bed.name and bed.name in op_data.operators),
         *(
             bed
             for bed in getattr(op_data, "displaced_dorms", [])
@@ -572,9 +567,7 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
                     planned.add(agent)
                     task_recalled.add(agent)
         if rest_in_full is not None:
-            planned.update(
-                rebalance_closing_dorm_slots(op_data, plan, task_recalled)
-            )
+            planned.update(rebalance_closing_dorm_slots(op_data, plan, task_recalled))
         if rest_in_full:
             if exhaust_exist:
                 time = max(time, current_time)

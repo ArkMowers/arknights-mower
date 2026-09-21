@@ -404,16 +404,12 @@ def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
     data.config.experimental_dorm_logic = False
     data.dorm[0].name = "泥岩"
     before = [(bed.name, bed.time) for bed in data.dorm]
-    plan = {
-        "dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]
-    }
+    plan = {"dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]}
 
     recalled = rebalance_closing_dorm_slots(data, plan, {"伊内丝"})
 
     assert recalled == {"伊内丝"}
-    assert plan == {
-        "dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]
-    }
+    assert plan == {"dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]}
     assert [(bed.name, bed.time) for bed in data.dorm] == before
 
 

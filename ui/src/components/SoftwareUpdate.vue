@@ -487,7 +487,7 @@ onUnmounted(() => {
             <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="dropSoftwarePackage">
               <div>{{ info.manual_label || '点击或拖入 Release 安装包' }}</div>
               <div class="hint">
-                {{ info.manual_hint || '离线读取包内版本并校验完整性，文件名可任意修改' }}
+                {{ info.manual_hint || '读取包内版本信息，文件名可任意修改' }}
               </div>
             </n-upload-dragger>
           </n-upload>
@@ -498,7 +498,7 @@ onUnmounted(() => {
               processing
             />
             <span class="hint">{{
-              uploadPercent < 100 ? '正在上传安装包' : '正在读取包内版本并校验完整性'
+              uploadPercent < 100 ? '正在上传安装包' : '正在读取包内版本信息'
             }}</span>
           </template>
           <n-button

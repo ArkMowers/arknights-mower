@@ -1167,7 +1167,7 @@ def inspect_upload(upload, proxy=""):
             "version": plan["version"],
             "downgrade": plan["downgrade"],
             "manual": True,
-            "message": "安装包完整性检查通过，请确认安装",
+            "message": "安装包版本信息检查通过，请确认安装",
         }
     except Exception:
         shutil.rmtree(directory, ignore_errors=True)

@@ -1,10 +1,6 @@
-"""Local package inspection never imports package code or fetches metadata."""
+"""Desktop Release inspection reads only the embedded version file."""
 
 import io
-import shutil
-import struct
-import subprocess
-import sys
 import tarfile
 import tempfile
 import unittest
@@ -12,56 +8,45 @@ import zipfile
 from pathlib import Path
 
 from arknights_mower.utils.software_update_package import (
-    executable_platform,
+    VERSION_FILE_PATH,
     inspect_package,
-    package_version,
 )
 
 
-def package_files(version="4.2.0", system="windows", arch="x64"):
-    header = bytearray(128)
-    if system == "windows":
-        header[:2] = b"MZ"
-        struct.pack_into("<I", header, 60, 64)
-        header[64:68] = b"PE\0\0"
-        struct.pack_into("<H", header, 68, 0x8664 if arch == "x64" else 0xAA64)
-    else:
-        header[:6] = b"\x7fELF\x02\x01"
-        struct.pack_into("<H", header, 18, 62 if arch == "x64" else 183)
-    library = io.BytesIO()
-    with zipfile.ZipFile(library, "w") as archive:
-        archive.writestr("fixture.pyc", b"fixture")
-    root = "mower/_internal/"
-    return {
-        "mower/" + ("mower.exe" if system == "windows" else "mower"): bytes(header),
-        "mower/" + ("manager.exe" if system == "windows" else "manager"): bytes(header),
-        root
-        + "arknights_mower/__init__.py": f'__version__ = "{version}"\nraise RuntimeError("must not execute")\n'.encode(),
-        root + "arknights_mower/utils/update_runtime.py": b"# fixture",
-        root + "arknights_mower/utils/software_update_worker.py": b"# fixture",
-        root + "ui/dist/index.html": b"fixture",
-        root + "ui/dist/manager/index.html": b"fixture",
-        root + "base_library.zip": library.getvalue(),
-        root
-        + (
-            "python312.dll" if system == "windows" else "libpython3.12.so.1.0"
-        ): b"fixture runtime",
+def version_source(version="4.2.0", system="windows", arch="x64", **changes):
+    values = {
+        "__version__": version,
+        "__release_system__": system,
+        "__release_arch__": arch,
+        "__release_archive__": {
+            "windows": "zip",
+            "linux": "tar.gz",
+            "macos": "dmg",
+        }[system],
     }
+    values.update(changes)
+    assignments = "\n".join(f'{name} = "{value}"' for name, value in values.items())
+    return (assignments + "\nraise RuntimeError('must not execute')\n").encode()
 
 
-def make_release_package(version="4.2.0", system="windows", arch="x64", *, files=None):
-    files = package_files(version, system, arch) if files is None else files
+def make_release_package(
+    version="4.2.0", system="windows", arch="x64", *, content=None
+):
+    content = content or version_source(version, system, arch)
     output = io.BytesIO()
     if system == "windows":
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
-            for name, data in files.items():
-                archive.writestr(name, data)
+            archive.writestr(str(VERSION_FILE_PATH), content)
+            archive.writestr("mower/任意其他文件.exe", b"not inspected")
     else:
         with tarfile.open(fileobj=output, mode="w:gz") as archive:
-            for name, data in files.items():
-                info = tarfile.TarInfo(name)
-                info.size = len(data)
-                archive.addfile(info, io.BytesIO(data))
+            info = tarfile.TarInfo(str(VERSION_FILE_PATH))
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
+            ignored = b"not inspected"
+            info = tarfile.TarInfo("mower/任意其他文件")
+            info.size = len(ignored)
+            archive.addfile(info, io.BytesIO(ignored))
     return output.getvalue()
 
 
@@ -76,124 +61,66 @@ class PackageInspectionTests(unittest.TestCase):
         package.write_bytes(data)
         return inspect_package(package, system, arch)
 
-    def test_version_comes_from_contents_even_when_filename_claims_a_newer_version(
-        self,
-    ):
-        for system in ("windows", "linux"):
+    def test_version_platform_and_arch_come_from_version_file_not_filename(self):
+        for system, archive in (("windows", "zip"), ("linux", "tar.gz")):
             for arch in ("x64", "arm64"):
                 with self.subTest(system=system, arch=arch):
                     result = self.inspect(
-                        make_release_package("4.1.5", system, arch),
+                        make_release_package("4.1.6-alpha.7", system, arch),
                         system,
                         arch,
-                        "arknights-mower_99.0.0_macos_arm64 (1).dmg",
                     )
-                    self.assertEqual(result["version"], "4.1.5")
                     self.assertEqual(
-                        result["format"], "zip" if system == "windows" else "tar.gz"
+                        result, {"version": "4.1.6-alpha.7", "format": archive}
                     )
 
-    def test_required_files_and_python_library_are_checked(self):
-        for missing in package_files():
-            files = package_files()
-            files.pop(missing)
-            with self.subTest(missing=missing), self.assertRaises(ValueError):
-                self.inspect(make_release_package(files=files))
-        files = package_files()
-        files["mower/_internal/base_library.zip"] = b"broken library"
-        with self.assertRaisesRegex(ValueError, "标准库损坏"):
-            self.inspect(make_release_package(files=files))
+    def test_no_payload_file_list_is_validated(self):
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            archive.writestr(str(VERSION_FILE_PATH), version_source())
+        self.assertEqual(self.inspect(data.getvalue())["version"], "4.2.0")
 
-    def test_wrong_platform_architecture_and_source_zip_are_rejected(self):
-        for data in (
-            make_release_package(arch="arm64"),
-            make_release_package(system="linux"),
-            make_release_package(
-                files={"arknights_mower/__init__.py": b'__version__ = "4.2.0"'}
-            ),
-        ):
-            with self.assertRaises(ValueError):
-                self.inspect(data)
-
-    def test_corrupted_zip_and_gzip_footer_are_rejected(self):
-        data = make_release_package()
-        # Alter stored bytes without updating the ZIP CRC.
-        with self.assertRaises(zipfile.BadZipFile):
-            self.inspect(data.replace(b"must not execute", b"must not executX"))
-        data = bytearray(make_release_package(system="linux"))
-        data[-8] ^= 0xFF
-        with self.assertRaises(OSError):
-            self.inspect(bytes(data), "linux")
-        for data in (b"", b"not an archive", make_release_package()[:100]):
-            with self.assertRaises(ValueError):
-                self.inspect(data)
-
-    def test_version_is_a_single_literal_never_executed(self):
-        path = self.root / "__init__.py"
+    def test_version_file_must_match_current_platform_and_arch(self):
         for source in (
-            b'__version__ = str("4.2.0")',
-            b'__version__ = "4.2.0"\n__version__ = "4.3.0"',
-            b'def value():\n    __version__ = "4.2.0"',
-            b'__version__ = "invalid"',
-            b"broken(",
+            version_source(system="linux", arch="x64"),
+            version_source(system="windows", arch="arm64"),
         ):
-            path.write_bytes(source)
-            with self.subTest(source=source), self.assertRaises(ValueError):
-                package_version(path)
-        path.write_text('__version__: str = "4.2.0-alpha.1"\nraise RuntimeError()\n')
-        self.assertEqual(package_version(path), "4.2.0-alpha.1")
+            with (
+                self.subTest(source=source),
+                self.assertRaisesRegex(ValueError, "系统或架构"),
+            ):
+                self.inspect(make_release_package(content=source))
 
-    def test_macho_architecture_is_read_without_running_the_executable(self):
-        path = self.root / "mower"
-        for cpu, arch in ((0x1000007, "x64"), (0x100000C, "arm64")):
-            path.write_bytes(b"\xcf\xfa\xed\xfe" + struct.pack("<I", cpu) + bytes(24))
-            self.assertEqual(executable_platform(path), ("macos", {arch}))
+    def test_missing_duplicate_or_invalid_version_file_is_rejected(self):
+        cases = []
+        empty = io.BytesIO()
+        with zipfile.ZipFile(empty, "w") as archive:
+            archive.writestr("mower/file", b"fixture")
+        cases.append(empty.getvalue())
+        duplicate = io.BytesIO()
+        with zipfile.ZipFile(duplicate, "w") as archive:
+            archive.writestr(str(VERSION_FILE_PATH), version_source())
+            archive.writestr(str(VERSION_FILE_PATH), version_source())
+        cases.append(duplicate.getvalue())
+        cases.extend(
+            make_release_package(content=content)
+            for content in (
+                b"not python(",
+                version_source(version="invalid"),
+                version_source(__release_system__="linux"),
+                version_source(__release_archive__="tar.gz"),
+                version_source(__release_arch__=""),
+            )
+        )
+        for data in cases:
+            with self.subTest(size=len(data)), self.assertRaises(ValueError):
+                self.inspect(data)
 
-    @unittest.skipUnless(
-        sys.platform == "darwin", "requires macOS hdiutil and codesign"
-    )
-    def test_real_renamed_dmg_inspects_signed_fixture_bundle(self):
-        app = self.root / "image/mower.app"
-        for name, data in package_files().items():
-            if name.startswith("mower/_internal/"):
-                target = (
-                    app / "Contents/Resources" / name.removeprefix("mower/_internal/")
-                )
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(data)
-        for name in ("MacOS/mower", "MacOS/manager", "Frameworks/Python"):
-            target = app / "Contents" / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile("/usr/bin/true", target)
-            target.chmod(0o755)
-        (app / "Contents/Info.plist").write_text(
-            '<?xml version="1.0"?><plist version="1.0"><dict>'
-            "<key>CFBundleExecutable</key><string>mower</string>"
-            "<key>CFBundleIdentifier</key><string>mower.test.offline</string>"
-            "</dict></plist>"
-        )
-        subprocess.run(
-            ["codesign", "--force", "--deep", "--sign", "-", str(app)],
-            check=True,
-            capture_output=True,
-        )
-        image = self.root / "fixture.dmg"
-        subprocess.run(
-            [
-                "hdiutil",
-                "create",
-                "-srcfolder",
-                str(app.parent),
-                "-format",
-                "UDZO",
-                str(image),
-            ],
-            check=True,
-            capture_output=True,
-            timeout=120,
-        )
-        renamed = image.with_name("任意改名 (1).bin")
-        image.rename(renamed)
-        _, arches = executable_platform(app / "Contents/MacOS/mower")
-        result = inspect_package(renamed, "macos", next(iter(arches)))
-        self.assertEqual(result, {"version": "4.2.0", "format": "dmg"})
+    def test_unknown_or_damaged_archives_are_rejected(self):
+        for data in (b"", b"not an archive", make_release_package()[:30]):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                self.inspect(data)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -228,13 +228,22 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("notarize", run)
 
     def test_builds_share_version_injection(self):
-        command = f'python scripts/inject_version.py "{VERSION}"'
-        for job_name in (
-            "build-windows",
-            "build-linux",
-            "build-macos",
-            "build-android",
-        ):
+        commands = {
+            "build-windows": (
+                f'python scripts/inject_version.py "{VERSION}" '
+                "--system windows --arch x64"
+            ),
+            "build-linux": (
+                f'python scripts/inject_version.py "{VERSION}" '
+                '--system linux --arch "${{ matrix.arch }}"'
+            ),
+            "build-macos": (
+                f'python scripts/inject_version.py "{VERSION}" '
+                '--system macos --arch "${{ matrix.arch }}"'
+            ),
+            "build-android": f'python scripts/inject_version.py "{VERSION}"',
+        }
+        for job_name, command in commands.items():
             step = find_step(self.jobs[job_name], "Inject version from tag")
             self.assertEqual(step["run"], command, msg=f"{job_name} inject step")
 

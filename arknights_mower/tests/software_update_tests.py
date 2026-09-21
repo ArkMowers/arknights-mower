@@ -406,16 +406,15 @@ class ManualPackageTests(unittest.TestCase):
             network.start()
             self.addCleanup(network.stop)
 
-    def upload(self, version="4.2.0", name="任意改名 (1).bin"):
+    def upload(self, version="4.2.0", name=None):
         return FileStorage(
-            stream=io.BytesIO(make_release_package(version)), filename=name
+            stream=io.BytesIO(make_release_package(version)),
+            filename=name or "任意改名 (1).bin",
         )
 
-    def test_preview_uses_package_version_and_does_not_start_worker(self):
+    def test_preview_uses_package_version_file_and_does_not_start_worker(self):
         with patch.object(subprocess, "Popen") as process:
-            result = update.inspect_upload(
-                self.upload("4.1.5", "arknights-mower_99.0.0.zip")
-            )
+            result = update.inspect_upload(self.upload("4.1.5"))
         self.assertEqual(result["version"], "v4.1.5")
         self.assertTrue(result["downgrade"])
         plan = update._checks[result["check_id"]]
@@ -456,9 +455,18 @@ class ManualPackageTests(unittest.TestCase):
 
     def test_invalid_or_oversized_uploads_leave_no_preview_or_worker(self):
         with patch.object(update, "start_job") as start:
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(ValueError, "无法识别安装包内容"):
                 update.inspect_upload(
                     FileStorage(stream=io.BytesIO(b"broken"), filename="mower.zip")
+                )
+            with self.assertRaisesRegex(ValueError, "系统或架构"):
+                update.inspect_upload(
+                    FileStorage(
+                        stream=io.BytesIO(
+                            make_release_package(system="windows", arch="arm64")
+                        ),
+                        filename="arknights-mower_4.2.0_linux_x64.tar.gz",
+                    )
                 )
             with (
                 patch.object(update, "MAX_PACKAGE_BYTES", 8),
@@ -506,7 +514,7 @@ class AdmissionAndRoutesTests(unittest.TestCase):
         self.app.register_blueprint(software_update_bp)
         self.client = self.app.test_client()
 
-    def test_manual_preview_route_reads_contents_before_confirmation(self):
+    def test_manual_preview_route_reads_version_file_before_confirmation(self):
         with (
             tempfile.TemporaryDirectory() as temporary,
             patch.object(runtime, "frozen", return_value=True),
@@ -523,7 +531,10 @@ class AdmissionAndRoutesTests(unittest.TestCase):
             result = self.client.post(
                 "/software-update/manual/inspect",
                 data={
-                    "file": (io.BytesIO(make_release_package("4.1.5")), "arbitrary.bin")
+                    "file": (
+                        io.BytesIO(make_release_package("4.1.5")),
+                        "renamed.bin",
+                    )
                 },
                 headers=headers,
             )
@@ -635,7 +646,7 @@ class AdmissionAndRoutesTests(unittest.TestCase):
                 data = {
                     "file": (
                         io.BytesIO(make_release_package("4.1.5")),
-                        "renamed (1).bin",
+                        "renamed.bin",
                     )
                 }
                 if value is not None:
@@ -681,8 +692,8 @@ class AdmissionAndRoutesTests(unittest.TestCase):
                 "/software-update/manual",
                 data={
                     "file": (
-                        io.BytesIO(make_release_package()),
-                        "renamed (1).bin",
+                        io.BytesIO(make_release_package("4.2.0")),
+                        "renamed.bin",
                     ),
                 },
                 headers={"X-Mower-Update": "1"},
