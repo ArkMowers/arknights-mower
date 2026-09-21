@@ -372,9 +372,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     continue
                 required += 1
             remove_name = set()
+            effective_dorms = [
+                dorm
+                for dorm in self.op_data.dorm
+                if self.op_data.is_effective_free_slot(dorm)
+            ]
             # 按心情降序排序
             sorted_dorms = sorted(
-                self.op_data.dorm,
+                effective_dorms,
                 key=lambda dorm: (
                     self.op_data.operators[dorm.name].mood
                     if dorm.name in self.op_data.operators
@@ -415,10 +420,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 # 检查条件是否满足
                 if current_resting - len(remove_name) + required <= len(
-                    self.op_data.dorm
+                    effective_dorms
                 ):
                     break
-            if current_resting - len(remove_name) + required > len(self.op_data.dorm):
+            if current_resting - len(remove_name) + required > len(effective_dorms):
                 msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
                 send_message(msg, level="ERROR")
                 return
@@ -2077,12 +2082,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 理想休息人数只描述主力轮休；低优占床另由 available_free("low")
         # 管理，不能抬高这里的当前人数或挡住可接管床位上的大组。
         current_resting = self.op_data.active_high_resting_count()
-        # 阈值暂定为 0.5
+        effective_dorm_count = sum(
+            1 for dorm in self.op_data.dorm if self.op_data.is_effective_free_slot(dorm)
+        )
+        # 阈值暂定为 0.5；理想休息人数不能超过当前副表下真实可用床位。
         self.ideal_resting_count = (
-            4
+            min(4, effective_dorm_count)
             if self.op_data.average_mood()
             > self.op_data.config.resting_threshold * config.conf.rescue_threshold
-            else len(self.op_data.dorm)
+            else effective_dorm_count
         )
         logger.debug(f"当前理想休息人数是{self.ideal_resting_count}")
         # #59：训练室干员跳过休息规划改为「DB 有没有 active 计划」，

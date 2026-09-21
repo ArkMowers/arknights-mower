@@ -444,8 +444,10 @@ def plan_metadata(op_data, tasks):
     logger.debug(f"预测最低休息时间为: {min_resting_time}")
     grouped_dorms = defaultdict(list)
     free_rooms = []
-    # 分组 dorm 对象
+    # 分组 dorm 对象；只处理当前有效排班中仍为 Free 的潜在床位。
     for dorm in op_data.dorm:
+        if not op_data.is_effective_free_slot(dorm):
+            continue
         if dorm.name and dorm.name in op_data.operators:
             operator = op_data.operators[dorm.name]
             grouped_dorms[operator.group].append(dorm)
@@ -587,14 +589,24 @@ def try_reorder(op_data, new_plan):
                 return "normal"
         return "low"
 
+    # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
+    # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。
+    effective_free_indices = [
+        idx for idx, room in enumerate(dorm) if op_data.is_effective_free_slot(room)
+    ]
+    blocked_indices = set(range(len(dorm))) - set(effective_free_indices)
+    for idx in blocked_indices:
+        dorm[idx].name = ""
+        dorm[idx].time = None
+
     dorm_info = [
         {
-            "name": room.name,
+            "name": dorm[idx].name,
             "index": idx,
-            "time": room.time,
-            "priority": get_ranking(room.name),
+            "time": dorm[idx].time,
+            "priority": get_ranking(dorm[idx].name),
         }
-        for idx, room in enumerate(dorm)  # **跳过 name 为空的 dorm**
+        for idx in effective_free_indices
     ]
 
     def sort_key(_op):
@@ -613,9 +625,9 @@ def try_reorder(op_data, new_plan):
         )
 
     dorm_info.sort(key=sort_key)
-    for idx in range(len(dorm)):
-        dorm[idx].name = dorm_info[idx]["name"]
-        dorm[idx].time = dorm_info[idx]["time"]
+    for target_idx, info in zip(effective_free_indices, dorm_info):
+        dorm[target_idx].name = info["name"]
+        dorm[target_idx].time = info["time"]
     plan = {}
     logger.debug(f"更新房间信息{dorm}")
     for room in dorm:
@@ -737,7 +749,11 @@ def try_add_release_dorm(plan, time, op_data, tasks):
         for name in v:
             if name != "Current":
                 _idx, __dorm = op_data.get_dorm_by_name(name)
-                if __dorm and __dorm.time < time:
+                if (
+                    __dorm
+                    and op_data.is_effective_free_slot(__dorm)
+                    and __dorm.time < time
+                ):
                     add_release_dorm(tasks, op_data, name)
     # 普通情况
     if not plan:
@@ -766,13 +782,16 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 return
             logger.debug(f"有{len(waiting_list)}个干员心情未满")
             plan = {}
-            for idx, value in enumerate(op_data.dorm):
+            for value in op_data.dorm:
+                if not op_data.is_effective_free_slot(value):
+                    continue
                 if value.name in op_data.operators:
                     if not waiting_list:
                         break
                     agent = op_data.operators[value.name]
                     logger.debug(str(value))
-                    if not v.is_high() and (
+                    # 判断当前床位上的干员；v 是上一个 operators 循环的遗留变量。
+                    if not agent.is_high() and (
                         agent.current_mood() >= agent.upper_limit
                         or (value.time is not None and value.time < datetime.now())
                     ):

@@ -492,8 +492,11 @@ class Operators:
                 and not total_count
             ):
                 return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
-            if total_count > len(self.dorm):
-                return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于总宿舍数{len(self.dorm)}"
+            effective_dorm_count = sum(
+                1 for dorm in self.dorm if self.is_effective_free_slot(dorm)
+            )
+            if total_count > effective_dorm_count:
+                return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于当前有效宿舍数{effective_dorm_count}"
         # 设定令夕模式的心情阈值
         self.init_mood_limit()
         for name in self.workaholic_agent:
@@ -1090,12 +1093,24 @@ class Operators:
         )
         return current_mood / total_mood
 
+    def is_effective_free_slot(self, dorm):
+        """当前合并后的有效排班中，该潜在宿舍位是否仍为 Free。"""
+        room, index = dorm.position
+        return (
+            room in self.plan
+            and 0 <= index < len(self.plan[room])
+            and self.plan[room][index].agent == "Free"
+        )
+
     def available_free(self, free_type="high", time=None):
         if not time:
             time = datetime.now()
 
-        dorm_count = sum(1 for key in self.plan if key.startswith("dorm"))
-        total = len(self.dorm)
+        effective_dorms = [
+            dorm for dorm in self.dorm if self.is_effective_free_slot(dorm)
+        ]
+        dorm_count = len({dorm.position[0] for dorm in effective_dorms})
+        total = len(effective_dorms)
 
         count_high = 0
         count_low = 0
@@ -1103,7 +1118,7 @@ class Operators:
 
         # 一次性遍历 dorm。低优占位也必须消耗 low 配额，否则调度器会持续把
         # 已占用床位误判为空位；但它仍可被高优主力接管，不能据此阻止大组下班。
-        for dorm in self.dorm:
+        for dorm in effective_dorms:
             if dorm.name == "" or dorm.name not in self.operators:
                 continue
             op = self.operators[dorm.name]
@@ -1136,7 +1151,8 @@ class Operators:
         return sum(
             1
             for dorm in self.dorm
-            if dorm.name in self.operators
+            if self.is_effective_free_slot(dorm)
+            and dorm.name in self.operators
             and self.operators[dorm.name].is_high()
             and not self.operators[dorm.name].is_workshop()
             and not (dorm.time is not None and dorm.time < time)
@@ -1144,6 +1160,9 @@ class Operators:
 
     def _slot_takable(self, dorm, protect_resting, requester=None):
         """床位能否被接管；低优之间保护正在休息者，高优可接管低优床位。"""
+        if not self.is_effective_free_slot(dorm):
+            return False
+
         name = dorm.name
         if name == "" or name not in self.operators:
             return True
