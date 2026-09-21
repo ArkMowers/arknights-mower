@@ -3253,5 +3253,142 @@ class TestTrainSlotHasMastery(unittest.TestCase):
         self.solver.back.assert_not_called()
 
 
+class TestLogJudgment(unittest.TestCase):
+    """验证重构后的判定日志格式：WebUI 高亮、空槽规范（'' 与 -1）、slots_reliable 区分。"""
+
+    def setUp(self):
+        self.solver = MagicMock()
+
+    @patch.object(reader.logger, "info")
+    def test_log_training_consistent_with_mood(self, mock_info):
+        # 正常训练中：协助位年，训练位泡泡，带心情与倒计时
+        countdown = datetime(2026, 9, 21, 4, 12, 30)
+        panel = make_panel(
+            operator_name="泡泡",
+            skill_name="挨打",
+            mastery_tier=1,
+            countdown=countdown,
+            countdown_state="active",
+        )
+        room = reader.RoomState(
+            state="training",
+            panel=panel,
+            support_slot="年",
+            train_slot="泡泡",
+            support_mood=24.0,
+            train_mood=18.5,
+            slots_read=True,
+            slots_reliable=True,
+        )
+        reader._log_judgment(self.solver, room, "training", "更新专精完成的收取时间")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[训练中]：", msg)
+        self.assertIn("\"协助位干员：'年'，心情：24.0\"", msg)
+        self.assertIn(
+            "\"训练位干员：'泡泡'「挨打」专精一 剩余 04:12:30，心情：18.5\"", msg
+        )
+        self.assertIn("更新专精完成的收取时间", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_unreliable_slots(self, mock_info):
+        # 进驻浮窗读取失败/不可靠
+        countdown = datetime(2026, 9, 21, 4, 12, 30)
+        panel = make_panel(
+            operator_name="泡泡",
+            skill_name="挨打",
+            mastery_tier=1,
+            countdown=countdown,
+            countdown_state="active",
+        )
+        room = reader.RoomState(
+            state="training",
+            panel=panel,
+            support_slot="",
+            train_slot="",
+            slots_read=True,
+            slots_reliable=False,
+        )
+        reader._log_judgment(self.solver, room, "training", "更新专精完成的收取时间")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[训练中]：", msg)
+        self.assertIn('"进驻浮窗读取不可靠"', msg)
+        self.assertIn("\"训练位干员：'泡泡'「挨打」专精一 剩余 04:12:30\"", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_ocr_fail_slots_unread(self, mock_info):
+        # 识别异常早返回：未展开浮窗
+        countdown = datetime(2026, 9, 21, 2, 30, 15)
+        panel = make_panel(
+            operator_name="",
+            skill_name="[泡泡“挨打”",
+            mastery_tier=0,
+            countdown=countdown,
+            countdown_state="active",
+        )
+        room = reader.RoomState(
+            state="training",
+            panel=panel,
+            read_failed=True,
+            slots_read=False,
+            slots_reliable=False,
+        )
+        reader._log_judgment(self.solver, room, "ocr_fail", "保守训练中，等待排班重读")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[识别异常]：", msg)
+        self.assertIn('"未展开进驻详情"', msg)
+        self.assertIn("\"面板识别：'[泡泡“挨打”' 剩余 02:30:15\"", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_empty_room(self, mock_info):
+        # 空闲房间：槽位均为空（格式化为 '' 与 -1），命中空闲标记
+        panel = make_panel(idle_marker=True)
+        room = reader.RoomState(
+            state="empty",
+            panel=panel,
+            support_slot="",
+            train_slot="",
+            slots_read=True,
+            slots_reliable=True,
+        )
+        reader._log_judgment(self.solver, room, "empty", "准备开始训练", 计划=101)
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[空闲]：", msg)
+        self.assertIn("\"协助位干员：''，心情：-1\"", msg)
+        self.assertIn("\"训练位干员：''，心情：-1\"", msg)
+        self.assertIn('"面板：空闲中"', msg)
+        self.assertIn("计划 #101", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_waiting_collect_tier3(self, mock_info):
+        # 专三完成待收取
+        panel = make_panel(
+            operator_name="能天使",
+            skill_name="过载运转",
+            mastery_tier=3,
+            countdown_state="zero",
+        )
+        room = reader.RoomState(
+            state="waiting_collect",
+            panel=panel,
+            support_slot="逻各斯",
+            train_slot="能天使",
+            support_mood=24.0,
+            train_mood=12.0,
+            slots_read=True,
+            slots_reliable=True,
+        )
+        reader._log_judgment(self.solver, room, "waiting_collect", "专三完成，正常收取")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[待收取]：", msg)
+        self.assertIn("\"协助位干员：'逻各斯'，心情：24.0\"", msg)
+        self.assertIn("\"训练位干员：'能天使'「过载运转」专精三 已完成\"", msg)
+        self.assertIn("专三完成，正常收取", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

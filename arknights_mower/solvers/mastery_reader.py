@@ -121,6 +121,8 @@ class RoomState:
     # 槽位读取是否可信（_read_slots_checked 的场景闸门 + #100 读失败闸门）。False 时
     # train_slot 的空串分不清「真空位」与「读浮窗失败」——调用方不得据此做补位/换人。
     slots_reliable: bool = False
+    support_mood: Optional[float] = None  # 协助位心情（浮窗扫描，仅 reliable 时有效）
+    train_mood: Optional[float] = None  # 训练位心情（浮窗扫描，仅 reliable 时有效）
 
     @property
     def locked(self) -> bool:
@@ -715,6 +717,9 @@ def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
         room.support_slot, room.train_slot, scan, room.slots_reliable = (
             _read_slots_checked(solver)
         )
+        if len(scan) >= 2 and room.slots_reliable:
+            room.support_mood = scan[0].get("mood")
+            room.train_mood = scan[1].get("mood")
         # 心情数据 = 同一张浮窗扫描（get_agent_from_room 原始列表，含 mood）；读失败 /
         # 浮窗没确认时 scan 为空（没有有效心情可交付）。
         mood = scan if want_mood else None
@@ -1057,24 +1062,108 @@ def _queue_has_mastery_task(solver):
 
 
 def _log_judgment(solver, room, state, action, **extra):
-    """逐轮结构化判定日志：读到什么 → 判定什么 → 动作什么。
+    """逐轮结构化判定日志：房间状态、进驻详情与执行动作。
 
-    读 = 三态倒计时 / 干员 / 技能 / 档位 / 协助位 / 训练位 / 槽位是否读过 / 空闲标记；
-    判 = 状态矩阵结果；动作 = 本轮的执行动作。便于定位错误来源（读到异常 → 判错 → 做错）。
-    槽位「空」有两种来源：真空位与没读过浮窗——带上 slots_read 才分得清。
-    「空闲中」标记命中会把房间判成空闲（定案 3 的正证据优先），记下来才能回溯误判。
+    对齐 Mower 原生房间日志格式并适配 WebUI 高亮：
+    - 干员名字带单引号（'泡泡'、'年'）以触发 WebUI 红色高亮；
+    - 时间带 HH:MM:SS 以触发 WebUI 蓝色高亮；
+    - 空槽位按照标准记为 '' 与 心情 -1（不输出汉字“空”）；
+    - 浮窗未读取显示「未展开进驻详情」，读取不可靠显示「进驻浮窗读取不可靠」。
     """
-    c = room.panel.countdown
-    countdown_str = c.strftime("%H:%M:%S") if c else room.panel.countdown_state
-    read = (
-        f"倒计时={countdown_str} 干员={room.panel.operator_name or '空'} "
-        f"技能={room.panel.skill_name or '空'} 档位={room.panel.mastery_tier} "
-        f"协助位={room.support_slot or '空'} 训练位={room.train_slot or '空'} "
-        f"槽位={'已读' if room.slots_read else '未读'} "
-        f"空闲标记={'命中' if room.panel.idle_marker else '未命中'}"
-    )
-    tail = " ".join(f"{k}={v}" for k, v in extra.items())
-    logger.info(f"[mastery] 判定 读[{read}] → 判[{state}] → 动作[{action}] {tail}")
+    state_map = {
+        "training": "训练中",
+        "waiting_collect": "待收取",
+        "empty": "空闲",
+        "ocr_fail": "识别异常",
+    }
+    tier_map = {1: "专精一", 2: "专精二", 3: "专精三"}
+    status_cn = state_map.get(state, state)
+    items = []
+
+    if not room.slots_read:
+        items.append('"未展开进驻详情"')
+    elif not room.slots_reliable:
+        items.append('"进驻浮窗读取不可靠"')
+    else:
+        # 协助位（仅在浮窗可信时输出）
+        if room.support_slot:
+            mood_str = (
+                f"，心情：{round(room.support_mood, 1)}"
+                if room.support_mood is not None
+                else ""
+            )
+            items.append(f"\"协助位干员：'{room.support_slot}'{mood_str}\"")
+        else:
+            items.append("\"协助位干员：''，心情：-1\"")
+
+    # 训练位 / 面板信息
+    if room.state == "training":
+        op = room.panel.operator_name or room.train_slot
+        op_str = f"'{op}'" if op else "''"
+        skill_str = f"「{room.panel.skill_name}」" if room.panel.skill_name else ""
+        tier_name = tier_map.get(room.panel.mastery_tier, "")
+        tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
+        c = room.panel.countdown
+        countdown_str = (
+            f" 剩余 {c.strftime('%H:%M:%S')}"
+            if c
+            else (
+                f" 倒计时{room.panel.countdown_state}"
+                if room.panel.countdown_state != "none"
+                else ""
+            )
+        )
+        if room.slots_read and room.slots_reliable:
+            mood_str = (
+                f"，心情：{round(room.train_mood, 1)}"
+                if (room.train_mood is not None and op)
+                else ("，心情：-1" if not op else "")
+            )
+        else:
+            mood_str = ""
+        items.append(
+            f'"训练位干员：{op_str}{skill_str}{tier_str}{countdown_str}{mood_str}"'
+        )
+    elif room.state == "waiting_collect":
+        op = room.panel.operator_name or room.train_slot
+        op_str = f"'{op}'" if op else "''"
+        skill_str = f"「{room.panel.skill_name}」" if room.panel.skill_name else ""
+        tier_name = tier_map.get(room.panel.mastery_tier, "")
+        tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
+        items.append(f'"训练位干员：{op_str}{skill_str}{tier_str} 已完成"')
+    elif room.state == "empty":
+        if room.slots_read and room.slots_reliable:
+            if room.train_slot:
+                mood_str = (
+                    f"，心情：{round(room.train_mood, 1)}"
+                    if room.train_mood is not None
+                    else ""
+                )
+                items.append(f"\"训练位干员：'{room.train_slot}'{mood_str}\"")
+            else:
+                items.append("\"训练位干员：''，心情：-1\"")
+
+    if room.panel.idle_marker:
+        items.append('"面板：空闲中"')
+    elif state == "ocr_fail":
+        c = room.panel.countdown
+        countdown_str = f" 剩余 {c.strftime('%H:%M:%S')}" if c else ""
+        panel_text = room.panel.skill_name or room.panel.operator_name or "异常"
+        items.append(f"\"面板识别：'{panel_text}'{countdown_str}\"")
+
+    items_str = "，".join(items)
+
+    extra_parts = []
+    for k, v in extra.items():
+        if k in ("协助位", "保护"):
+            continue
+        if k == "计划":
+            extra_parts.append(f"计划 #{v}")
+        else:
+            extra_parts.append(f"{k}={v}")
+    tail = f" ({'，'.join(extra_parts)})" if extra_parts else ""
+
+    logger.info(f"[mastery] 房间 训练室[{status_cn}]：[{items_str}] {action}{tail}")
 
 
 def _reset_to_idle(solver, plan):
