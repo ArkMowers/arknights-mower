@@ -518,6 +518,8 @@ class RIICPart(ConfModel):
 
     free_room: bool = False
     "宿舍不养闲人模式"
+    experimental_dorm_logic: bool = False
+    "测试宿舍逻辑；关闭时使用稳定版宿舍分配规则"
     fia_fool: bool = True
     "菲亚防呆"
     fia_threshold: float = 0.9
@@ -564,7 +566,7 @@ class RIICPart(ConfModel):
     workshop_protect_t2_device_rock: bool = False
     "禁止加工消耗装置、固源岩（仅 T2），材料预算也排除对应合成配方"
     workshop_low_priority_rest: bool = True
-    "加工干员使用最低宿舍恢复优先级，覆盖床位分配与实际选人"
+    "稳定版加工干员最低宿舍恢复优先级"
     t5_operators: list[str] = ["年"]
     "自动专精 T5 加工干员"
     book_operators: list[str] = ["司霆惊蛰"]
@@ -574,7 +576,7 @@ class RIICPart(ConfModel):
     merge_interval: float = 10
     "不养闲人合并间隔"
     dorm_order: str = ""
-    "宿舍优先级"
+    "稳定版全局宿舍优先级"
     refresh_backup_plan_after_mood: bool = True
     "缓存清零重启后读取心情并按载入心情数据模式重启，默认开启"
     assistant_follows_schedule: bool = False

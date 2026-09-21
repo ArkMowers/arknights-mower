@@ -57,7 +57,6 @@ export const useConfigStore = defineStore('config', () => {
   const performance_effective_mode = ref('high')
   const selection_poll_interval = ref(0.1)
   const selection_transition_timeout = ref(2.5)
-  const dorm_order = ref([])
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
   const maa_mall_blacklist = ref('')
@@ -145,6 +144,8 @@ export const useConfigStore = defineStore('config', () => {
   const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
+  const experimental_dorm_logic = ref(false)
+  const dorm_order = ref([])
   const merge_interval = ref(10)
   const fia_fool = ref(true)
   const refresh_backup_plan_after_mood = ref(true)
@@ -492,7 +493,6 @@ export const useConfigStore = defineStore('config', () => {
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
     run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
 
-    dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
     start_automatically.value = response.data.start_automatically
     maa_mall_buy.value =
       response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
@@ -563,6 +563,8 @@ export const useConfigStore = defineStore('config', () => {
     sf_target.value = response.data.secret_front.target
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
+    experimental_dorm_logic.value = response.data.experimental_dorm_logic ?? false
+    dorm_order.value = response.data.dorm_order ? response.data.dorm_order.split(',') : []
     merge_interval.value = response.data.merge_interval
     fia_fool.value = response.data.fia_fool
     refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
@@ -648,7 +650,6 @@ export const useConfigStore = defineStore('config', () => {
       performance_mode: performance_mode.value,
       selection_poll_interval: selection_poll_interval.value,
       selection_transition_timeout: selection_transition_timeout.value,
-      dorm_order: dorm_order.value.join(','),
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
@@ -720,6 +721,8 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
+      experimental_dorm_logic: experimental_dorm_logic.value,
+      dorm_order: dorm_order.value.join(','),
       merge_interval: merge_interval.value,
       fia_fool: fia_fool.value,
       refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
@@ -867,7 +870,6 @@ export const useConfigStore = defineStore('config', () => {
     performance_effective_mode,
     selection_poll_interval,
     selection_transition_timeout,
-    dorm_order,
     start_automatically,
     maa_mall_buy,
     maa_mall_blacklist,
@@ -943,6 +945,8 @@ export const useConfigStore = defineStore('config', () => {
     sf_target,
     touch_method,
     free_room,
+    experimental_dorm_logic,
+    dorm_order,
     merge_interval,
     fia_fool,
     refresh_backup_plan_after_mood,

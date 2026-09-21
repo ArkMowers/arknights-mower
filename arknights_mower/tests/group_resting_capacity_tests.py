@@ -58,6 +58,7 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     config.conf.enable_mastery = False
+    config.conf.experimental_dorm_logic = True
     for field in (
         "fodder_operators",
         "t5_operators",
@@ -94,6 +95,7 @@ def solver(monkeypatch):
                 "",
                 resting_standby=",".join(DEEP[1:]),
                 ope_resting_priority=DEEP[0],
+                experimental_dorm_logic=True,
             ),
         ),
         "backup_plans": [],
@@ -209,7 +211,12 @@ def test_required_beds_and_replacements_fail_without_partial_assignment(
     occupy_beds(solver, "high")
     data = solver.op_data
     if failure == "no_bed":
-        data.add(Operator("年", "meeting", operator_type="high", mood=5))
+        data.config.ope_resting_priority = []
+        data.add(
+            Operator(
+                "年", "meeting", operator_type="high", resting_priority="high", mood=5
+            )
+        )
         room, index = data.dorm[0].position
         names = ["Current"] * 5
         names[index] = "年"
@@ -303,6 +310,7 @@ def test_ordinary_low_cannot_evict_resting_main_or_another_replacement(solver):
     occupy_beds(solver, "replacement")
     data = solver.op_data
     data.add(Operator("年", "", mood=5))
+    data.plan["central"][0].replacement.append("年")
     room, index = data.dorm[0].position
     names = ["Current"] * 5
     names[index] = "年"
@@ -313,9 +321,7 @@ def test_ordinary_low_cannot_evict_resting_main_or_another_replacement(solver):
 
 
 @pytest.mark.parametrize("occupants", ["replacement", "high", "low"])
-def test_legacy_low_priority_requires_beds_and_cannot_take_resting_replacements(
-    solver, occupants
-):
+def test_low_main_requires_beds_but_can_take_resting_replacements(solver, occupants):
     conf = solver.global_plan["default_plan"].config
     conf.resting_standby = []
     conf.resting_priority = DEEP[1:]
@@ -326,6 +332,11 @@ def test_legacy_low_priority_requires_beds_and_cannot_take_resting_replacements(
     before = [(bed.name, bed.time) for bed in data.dorm]
     plan, replacements = {}, []
     solver.get_resting_plan(data.groups["深海"], replacements, plan, 0)
+    if occupants == "replacement":
+        assert replacements == COVERS
+        assert {bed.name for bed in data.dorm} >= set(DEEP)
+        assert plan
+        return
     assert plan == {}
     assert replacements == []
     assert [(bed.name, bed.time) for bed in data.dorm] == before
@@ -341,7 +352,6 @@ def test_legacy_low_priority_requires_beds_and_cannot_take_resting_replacements(
         (DEEP[1], "workaholic"),
         (DEEP[1], "exhaust_require"),
         (DEEP[1], "rest_in_full"),
-        (DEEP[1], "workshop"),
     ],
 )
 def test_candidate_setting_only_applies_to_eligible_grouped_main(solver, name, invalid):
@@ -349,11 +359,18 @@ def test_candidate_setting_only_applies_to_eligible_grouped_main(solver, name, i
     conf.resting_standby = [name]
     if invalid in ("workaholic", "exhaust_require", "rest_in_full"):
         setattr(conf, invalid, [name])
-    elif invalid == "workshop":
-        config.conf.t5_operators = [name]
     assert solver.initialize_operators() is None
     assert solver.op_data.operators[name].resting_priority != "standby"
     assert not solver.op_data._can_group_standby(solver.op_data.operators[name])
+
+
+def test_workshop_selection_does_not_disable_group_standby(solver):
+    name = DEEP[1]
+    solver.global_plan["default_plan"].config.resting_standby = [name]
+    config.conf.t5_operators = [name]
+    assert solver.initialize_operators() is None
+    assert solver.op_data.operators[name].resting_priority == "standby"
+    assert solver.op_data._can_group_standby(solver.op_data.operators[name])
 
 
 def test_normal_low_gets_last_spare_bed_before_candidate(solver):

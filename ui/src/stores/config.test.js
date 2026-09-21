@@ -37,7 +37,7 @@ describe('workshop config autosave', () => {
     loaded.value = false
   })
 
-  it('saves turning off crafter recovery priority without changing workshop selections', async () => {
+  it('saves stable crafter recovery priority without changing workshop selections', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const loaded = ref(false)
@@ -46,6 +46,7 @@ describe('workshop config autosave', () => {
     app.provide('loaded', loaded)
     store = app.runWithContext(() => useConfigStore())
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.experimental_dorm_logic).toBe(false)
     expect(store.workshop_low_priority_rest).toBe(true)
     store.fodder_operators = ['空爆']
     axios.post.mockResolvedValue({ data: {} })
@@ -54,6 +55,7 @@ describe('workshop config autosave', () => {
     store.workshop_low_priority_rest = false
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
     expect(axios.post.mock.calls[1][1]).toMatchObject({
+      experimental_dorm_logic: false,
       workshop_low_priority_rest: false,
       fodder_operators: ['空爆']
     })
@@ -225,7 +227,6 @@ describe('low frame rate adaptation', () => {
       low_frame_rate_mode: value,
       free_blacklist: '',
       reload_room: '',
-      dorm_order: '',
       maa_mall_buy: '',
       maa_mall_blacklist: '',
       favorite: '',
@@ -265,7 +266,6 @@ describe('low frame rate adaptation', () => {
       maa_enable: 1,
       free_blacklist: '',
       reload_room: '',
-      dorm_order: '',
       maa_mall_buy: '',
       maa_mall_blacklist: '',
       favorite: '',
@@ -318,7 +318,6 @@ describe('low frame rate adaptation', () => {
       maa_mall_mode: 'mower',
       free_blacklist: '',
       reload_room: '',
-      dorm_order: '',
       maa_mall_buy: '',
       maa_mall_blacklist: '',
       favorite: '',
@@ -347,7 +346,6 @@ describe('factory product switching policy', () => {
       data: {
         free_blacklist: '',
         reload_room: '',
-        dorm_order: '',
         maa_mall_buy: '',
         maa_mall_blacklist: '',
         favorite: '',

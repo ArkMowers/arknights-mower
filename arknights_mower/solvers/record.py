@@ -139,7 +139,7 @@ def current_state():
     if base_scheduler is None or base_scheduler.op_data is None:
         return None
     return {
-        "dorm": base_scheduler.op_data.dorm,
+        "dorm": base_scheduler.op_data.all_dorms(),
         "tasks": base_scheduler.tasks,
         "party_time": base_scheduler.op_data.party_time,
         "operators": base_scheduler.op_data.operators,

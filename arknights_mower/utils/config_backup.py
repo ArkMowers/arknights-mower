@@ -18,7 +18,10 @@ from yamlcore import CoreLoader
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RegularTaskPart
-from arknights_mower.utils.config.plan import parse_plan_document
+from arknights_mower.utils.config.plan import (
+    migrate_legacy_dorm_order,
+    parse_plan_document,
+)
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.workshop_config import workshop_lock
 
@@ -175,6 +178,7 @@ def plan_from_archive(files):
 
 def _validate_configuration(files):
     data = _object_file(files, "conf.yml")
+    legacy_dorm_order = str(data.get("dorm_order", "") or "")
     webview = data.get("webview", {})
     if not isinstance(webview, dict):
         raise ValueError("窗口设置格式错误")
@@ -185,7 +189,19 @@ def _validate_configuration(files):
         "tray": config.conf.webview.tray,
     }
     conf = config.Conf(**data)
-    plan = plan_from_archive(files)
+    plan_data = _object_file(files, "plan.json")
+    # Some older exports were normalized through the newer schema and therefore carry
+    # an empty main-plan field even though the global value was still authoritative.
+    if (
+        conf.experimental_dorm_logic
+        and legacy_dorm_order
+        and plan_data.get("conf", {}).get("dorm_order") == ""
+    ):
+        plan_data["conf"].pop("dorm_order")
+    plan = parse_plan_document(plan_data)
+    dorm_order_migrated = conf.experimental_dorm_logic and migrate_legacy_dorm_order(
+        plan, plan_data, legacy_dorm_order
+    )
     weekly = _object_file(files, "weekly_plans.yml", optional=True)
     if weekly is not None:
         plans = weekly.get("plans")
@@ -223,13 +239,13 @@ def _validate_configuration(files):
                         raise ValueError("活动回退方案必须是字符串")
                 elif type(value) is not int or value < 0:
                     raise ValueError("活动切换时间必须是非负整数")
-    return data, conf, plan
+    return data, conf, plan, dorm_order_migrated
 
 
 def import_configuration(raw):
     with backup_lock, workshop_lock:
         files = read_archive(raw)
-        data, conf, plan = _validate_configuration(files)
+        data, conf, plan, dorm_order_migrated = _validate_configuration(files)
         root = config.conf_path.parent
         previous, local_names = _local_snapshot()
         # Reject destination path collisions before backup or write.
@@ -253,6 +269,10 @@ def import_configuration(raw):
         contents["conf.yml"] = yaml.safe_dump(
             data, allow_unicode=True, sort_keys=False
         ).encode("utf-8")
+        if dorm_order_migrated:
+            contents["plan.json"] = json.dumps(
+                plan.model_dump(exclude_none=True), ensure_ascii=False, indent=2
+            ).encode("utf-8")
         written = []
         database = get_path("@app/tmp/data.db")
         transaction = (

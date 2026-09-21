@@ -240,7 +240,7 @@ class TestScheduling(unittest.TestCase):
                     Room("Current", "", []),
                 ]
             },
-            PlanConfig("", "", ""),
+            PlanConfig("", "", "", experimental_dorm_logic=True),
         )
         op_data.global_plan["backup_plans"] = [backup]
         op_data.backup_plans = [backup]
@@ -288,6 +288,32 @@ class TestScheduling(unittest.TestCase):
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
         self.assertEqual(1, op_data.active_high_resting_count())
 
+    def test_reorder_does_not_clear_backup_overlaid_slot(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        high = op_data.operators["夕"]
+        high.current_room, high.current_index = target.position
+        target.name = "夕"
+        target.time = datetime.now() + timedelta(hours=1)
+
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        blocked = next(
+            dorm for dorm in op_data.dorm if dorm.position == ("dormitory_1", 2)
+        )
+        self.assertEqual("夕", blocked.name)
+        destination = next(
+            dorm for dorm in op_data.dorm if op_data.is_effective_free_slot(dorm)
+        )
+        destination.name = "夕"
+        destination.time = blocked.time
+
+        plan = try_reorder(op_data, {})
+
+        room, index = destination.position
+        self.assertEqual("夕", plan[room][index])
+        blocked_plan = plan.get("dormitory_1")
+        self.assertTrue(blocked_plan is None or blocked_plan[2] == "Current")
+
     def test_backup_overlay_blocks_task_rebuild_and_free_room_writes(self):
         op_data = self.init_opdata()
         target = self.add_dorm_overlay_backup(op_data)
@@ -328,7 +354,10 @@ class TestScheduling(unittest.TestCase):
 
     def init_opdata(self):
         agent_base_config = PlanConfig(
-            "稀音,黑键,伊内丝,承曦格雷伊", "稀音,柏喙,伊内丝", "见行者"
+            "稀音,黑键,伊内丝,承曦格雷伊",
+            "稀音,柏喙,伊内丝",
+            "见行者",
+            experimental_dorm_logic=True,
         )
         plan_config = {
             "central": [

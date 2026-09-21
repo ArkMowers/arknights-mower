@@ -672,7 +672,7 @@ onMounted(async () => {
     )
     .catch((error) => console.error('failed to request automatic software check', error))
 
-  await load_plan({ resetDormOrder: false })
+  await load_plan()
 
   try {
     const notice = await loadUpdateNotice()
