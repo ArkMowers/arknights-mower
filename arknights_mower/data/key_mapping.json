@@ -657,34 +657,6 @@
         "NORMAL",
         40001
     ],
-    "LINKAGE_TKT_GACHA_10_7701": [
-        "LINKAGE_TKT_GACHA_10_7701",
-        "LINKAGE_TKT_GACHA_10_7701",
-        "一逢满月十连寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "一逢满月十连寻访凭证": [
-        "LINKAGE_TKT_GACHA_10_7701",
-        "LINKAGE_TKT_GACHA_10_7701",
-        "一逢满月十连寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "LINKAGE_TKT_GACHA_7701": [
-        "LINKAGE_TKT_GACHA_7701",
-        "LINKAGE_TKT_GACHA_7701",
-        "一逢满月寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "一逢满月寻访凭证": [
-        "LINKAGE_TKT_GACHA_7701",
-        "LINKAGE_TKT_GACHA_7701",
-        "一逢满月寻访凭证",
-        "NORMAL",
-        40003
-    ],
     "7003": [
         "7003",
         "TKT_GACHA",

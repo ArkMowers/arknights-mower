@@ -15198,8 +15198,44 @@
       "quantity": 0,
       "canBeDestroy": false
     },
+    "furni_MA_mooncake_B_05": {
+      "name": "“流金影”礼盒",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_MA_mooncake_B_06": {
+      "name": "“共光华”礼盒",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_MA_mooncake_J_03": {
+      "name": "“举清辉”礼盒",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_MA_mooncake_J_04": {
+      "name": "“拾秋实”礼盒",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_act1dp_frame_01": {
+      "name": "“乐趣洋洋”",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
     "furni_act77d0_shelf_01": {
       "name": "“预知梦”置物架",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_oct1st_barrier_01": {
+      "name": "“矢量限位器”",
       "themeId": "",
       "quantity": 0,
       "canBeDestroy": false
