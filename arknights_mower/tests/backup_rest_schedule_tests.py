@@ -130,7 +130,7 @@ def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
     assert all(t.type != TaskTypes.SHIFT_ON for t in solver.tasks)
 
 
-def test_before_dorm_task_preempts_and_preserves_remaining_dorm_plan(solver):
+def test_before_dorm_task_supersedes_same_dorm_and_preserves_other_dorms(solver):
     backup = solver.op_data.backup_plans[0]
     backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
     backup.task = {
@@ -143,6 +143,7 @@ def test_before_dorm_task_preempts_and_preserves_remaining_dorm_plan(solver):
         task_plan={
             "contact": ["红"],
             "dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"],
+            "dormitory_2": ["Current"] * 5,
         },
         task_type=TaskTypes.SHIFT_OFF,
     )
@@ -163,7 +164,7 @@ def test_before_dorm_task_preempts_and_preserves_remaining_dorm_plan(solver):
 
     assert solver.agent_arrange(current.plan, get_time=True) is False
     assert arranged == ["contact"]
-    assert current.plan == {"dormitory_1": ["隐德来希", "冰酿", "黑键", "Free", "Free"]}
+    assert current.plan == {"dormitory_2": ["Current"] * 5}
     generated = next(task for task in solver.tasks if task is not current)
     assert generated.plan == backup.task
     assert generated.time == current.time - timedelta(microseconds=1)
@@ -214,7 +215,7 @@ def test_before_dorm_deactivation_restores_main_plan_before_dorm(solver):
 
     assert solver.agent_arrange(current.plan, get_time=True) is False
     assert arranged == ["contact"]
-    assert current.plan == {"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]}
+    assert current.plan == {}
     generated = next(task for task in solver.tasks if task is not current)
     assert generated.plan == {
         "dormitory_1": [
@@ -243,6 +244,34 @@ def test_infra_main_keeps_deferred_dorm_task(solver):
 
     assert current in solver.tasks
     assert current.plan
+    solver.plan_metadata.assert_not_called()
+    solver.skip.assert_called()
+
+
+def test_infra_main_removes_fully_superseded_dorm_task(solver):
+    current = SchedulerTask(
+        task_plan={"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]},
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    generated = SchedulerTask(
+        task_plan={
+            "dormitory_1": ["隐德来希", "Current", "Current", "Current", "Current"]
+        }
+    )
+    solver.task = current
+    solver.tasks = [generated, current]
+
+    def supersede_current(plan, get_time):
+        plan.clear()
+        return False
+
+    solver.agent_arrange.side_effect = supersede_current
+    solver.plan_metadata = MagicMock()
+
+    solver.infra_main()
+
+    assert current not in solver.tasks
+    assert generated in solver.tasks
     solver.plan_metadata.assert_not_called()
     solver.skip.assert_called()
 

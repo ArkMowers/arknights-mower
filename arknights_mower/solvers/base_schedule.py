@@ -834,9 +834,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.agent_arrange(self.task.plan, get_time) is False
                     )
                     if arrangement_deferred:
-                        # 已处理的工作房间从原任务移除，保留剩余宿舍；先执行刚生成的
-                        # 副表任务，下轮再继续原任务，避免休息干员早于新宿管入驻。
-                        remove_current_task = False
+                        # 已处理的工作房间从原任务移除；副表覆盖的宿舍也会从
+                        # 原任务移除。仅在还有未覆盖的宿舍时保留原任务续行。
+                        remove_current_task = not self.task.plan
                         self.skip()
                     elif get_time:
                         if not self.backup_plan_solver(
@@ -5284,16 +5284,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         reversed(generated_tasks), start=1
                     ):
                         generated.time = anchor - timedelta(microseconds=offset)
-                    # 副表任务明确改动的宿舍位置同步到原任务，避免副表任务先换入
-                    # 新宿管后，续行的旧任务又把旧宿管放回去。Current 不覆盖原安排。
+                    # 副表宿舍任务代替原任务中的同一宿舍；原任务只续行剩余
+                    # 未被副表覆盖的宿舍，避免副表完成后又执行旧的房间安排。
+                    superseded_dorms = set()
                     for generated in generated_tasks:
-                        for dorm, agents in generated.plan.items():
+                        for dorm in generated.plan:
                             if dorm not in plan or not dorm.startswith("dormitory_"):
                                 continue
-                            for index, name in enumerate(agents[: len(plan[dorm])]):
-                                if name != "Current":
-                                    plan[dorm][index] = name
-                    logger.info("入住宿舍前触发副表任务，保留原宿舍安排等待续行")
+                            superseded_dorms.add(dorm)
+                    for dorm in superseded_dorms:
+                        del plan[dorm]
+                    logger.info(
+                        "入住宿舍前触发副表任务，"
+                        f"覆盖原任务宿舍: {sorted(superseded_dorms)}"
+                    )
                     return False
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
         if len(new_plan) == 1 and room != "train":
