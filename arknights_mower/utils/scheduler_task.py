@@ -319,7 +319,7 @@ def adjust_run_order_for_maintenance(tasks, run_order_delay=5):
         t.adjusted = True  # 标记为已调整
 
 
-def generate_plan_by_drom(tasks, op_data):
+def generate_plan_by_drom(tasks, op_data, existing_targets=None):
     if not tasks:
         return []
     ordered = sorted(tasks.items())
@@ -348,10 +348,32 @@ def generate_plan_by_drom(tasks, op_data):
                 agents = op_data.groups[op.group] if op.group != "" else [op.name]
                 for agent in agents:
                     o = op_data.operators[agent]
-                    if o.room not in plan:
-                        plan[o.room] = ["Current"] * len(op_data.plan[o.room])
-                    plan[o.room][o.index] = agent
-                    planned.add(o.name)
+                    target_room, target_index = o.room, o.index
+                    if existing_targets and agent in existing_targets:
+                        t_room, t_index = existing_targets[agent]
+                        if (
+                            t_room in op_data.plan
+                            and t_index < len(op_data.plan[t_room])
+                            and (
+                                t_room not in plan
+                                or plan[t_room][t_index] in ("Current", agent)
+                            )
+                        ):
+                            native_agent = op_data.plan[t_room][t_index].agent
+                            if native_agent == agent or not any(
+                                getattr(d, "name", None) == native_agent for d in dorms
+                            ):
+                                target_room, target_index = t_room, t_index
+                    if target_room not in plan:
+                        plan[target_room] = ["Current"] * len(op_data.plan[target_room])
+                    if plan[target_room][target_index] not in ("Current", agent):
+                        target_room, target_index = o.room, o.index
+                        if target_room not in plan:
+                            plan[target_room] = ["Current"] * len(
+                                op_data.plan[target_room]
+                            )
+                    plan[target_room][target_index] = agent
+                    planned.add(agent)
         if rest_in_full:
             if exhaust_exist:
                 time = max(time, current_time)
@@ -412,6 +434,16 @@ def generate_plan_by_drom(tasks, op_data):
 
 
 def plan_metadata(op_data, tasks):
+    # 仅当副表处于激活状态时，保留既有回班任务中的工位快照，避免副表临时调整工位覆盖回班目标；
+    # 当所有副表均已失效（恢复纯主表）时，所有干员统一按主表规划回班，避免副表工位粘滞。
+    existing_targets = {}
+    if any(getattr(op_data, "plan_condition", [])):
+        for t in tasks:
+            if t.type == TaskTypes.SHIFT_ON and t.plan:
+                for room, agents in t.plan.items():
+                    for idx, name in enumerate(agents):
+                        if name not in ("Current", "Free", ""):
+                            existing_targets[name] = (room, idx)
     # 清除，重新添加刷新
     tasks = [
         t for t in tasks if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
@@ -558,7 +590,9 @@ def plan_metadata(op_data, tasks):
                     new_task[task_time] = ([room], None)
                 else:
                     new_task[task_time] = (new_task[task_time][0].append(room), None)
-    tasks.extend(generate_plan_by_drom(new_task, op_data))
+    tasks.extend(
+        generate_plan_by_drom(new_task, op_data, existing_targets=existing_targets)
+    )
     return tasks
 
 
