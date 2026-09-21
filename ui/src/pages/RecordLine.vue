@@ -121,7 +121,11 @@ const chartOptions = ref({
   },
   plugins: {
     datalabels: {
-      display: false
+      display: (context) => Boolean(context.raw?.relatedOperator),
+      formatter: (_value, context) => context.raw.relatedOperator,
+      align: 'top',
+      anchor: 'end',
+      clamp: true
     }
   }
 })

@@ -12,6 +12,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
 
 @pytest.fixture
@@ -104,6 +105,30 @@ def test_fiammetta_keeps_countdown_even_when_in_central(room_reader):
     assert solver.get_agent_from_room("central", [0])[0]["time"] == deadline
     solver.read_operator_time.assert_called_once()
     solver.recog.update.assert_not_called()
+
+
+def test_fiammetta_swap_reads_only_fiammetta_mood(room_reader):
+    target_solver, target, _ = room_reader(room="dormitory_1", name="伊内丝", mood=7.5)
+    target_solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    target.need_to_refresh.return_value = True
+    target_solver.get_agent_from_room("dormitory_1")
+    target_solver.read_accurate_mood.assert_not_called()
+
+    fia_solver, fia, _ = room_reader(room="dormitory_1", name="菲亚梅塔", mood=7.5)
+    fia_solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, meta_data="伊内丝")
+    fia.need_to_refresh.return_value = False
+    fia_solver.op_data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    fia_solver.op_data.update_detail = MagicMock(return_value=None)
+    fia_solver.get_agent_from_room("dormitory_1", related_operators={0: "伊内丝"})
+    fia_solver.read_accurate_mood.assert_called_once()
+    fia_solver.op_data.update_detail.assert_called_once_with(
+        "菲亚梅塔",
+        7.5,
+        "dormitory_1",
+        0,
+        True,
+        related_operator="伊内丝",
+    )
 
 
 def test_nonzero_central_keeps_measured_working_countdown(room_reader):

@@ -865,7 +865,15 @@ class Operators:
         ]
 
     @save_action_to_sqlite_decorator
-    def update_detail(self, name, mood, current_room, current_index, update_time=False):
+    def update_detail(
+        self,
+        name,
+        mood,
+        current_room,
+        current_index,
+        update_time=False,
+        related_operator=None,
+    ):
         """更新对象的详细信息，并记录到SQLite数据库
         参数:
         name(str): 对象的名称。

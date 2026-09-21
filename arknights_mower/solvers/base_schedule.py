@@ -572,6 +572,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     time=self.task.time,
                     task_type=TaskTypes.FIAMMETTA,
                     task_plan={fia_room: [target, "菲亚梅塔"]},
+                    meta_data=target,
                 )
             )
             # 充能结束后整组立即上班
@@ -4881,9 +4882,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
-    def get_agent_from_room(self, room, read_time_index=None):
+    def get_agent_from_room(self, room, read_time_index=None, related_operators=None):
         if read_time_index is None:
             read_time_index = []
+        if related_operators is None:
+            related_operators = {}
         if room == "meeting" and not self.leifeng_mode:
             self.sleep(0.5)
             self.recog.update()
@@ -4897,11 +4900,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):
-            read_time_index = [
+            dorm_read_time_index = [
                 i
                 for i, obj in enumerate(self.op_data.plan[room])
-                if obj.agent == "Free" or obj.agent == "菲亚梅塔"
+                if obj.agent == "菲亚梅塔"
+                or (
+                    obj.agent == "Free"
+                    and (self.task is None or self.task.type != TaskTypes.FIAMMETTA)
+                )
             ]
+            if self.task is not None and self.task.type == TaskTypes.FIAMMETTA:
+                read_time_index = dorm_read_time_index
+            else:
+                read_time_index = list(
+                    dict.fromkeys([*read_time_index, *dorm_read_time_index])
+                )
         while self.detect_product_complete():
             logger.info("检测到产物收取提示")
             self.sleep(1)
@@ -4942,19 +4955,37 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.add(Operator(_name, ""))
 
                 agent = self.op_data.operators[_name]
-                if (
+                should_read_mood = (
                     self.op_data.operators[_name].need_to_refresh(r=room)
                     or (self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON)
                     or i in read_time_index
+                )
+                if (
+                    room.startswith("dorm")
+                    and self.task is not None
+                    and self.task.type == TaskTypes.FIAMMETTA
                 ):
+                    should_read_mood = _name == "菲亚梅塔" and i in read_time_index
+                if should_read_mood:
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
                 # 估算值只用于本次读数，保留与原采样时间配对的心情，避免重复扣减。
-                high_no_time = self.op_data.update_detail(
-                    _name, _mood if update_time else agent.mood, room, i, update_time
+                update_args = (
+                    _name,
+                    _mood if update_time else agent.mood,
+                    room,
+                    i,
+                    update_time,
                 )
+                related_operator = related_operators.get(i)
+                if _name == "菲亚梅塔" and related_operator:
+                    high_no_time = self.op_data.update_detail(
+                        *update_args, related_operator=related_operator
+                    )
+                else:
+                    high_no_time = self.op_data.update_detail(*update_args)
                 data["depletion_rate"] = agent.depletion_rate
                 if high_no_time is not None and high_no_time not in read_time_index:
                     logger.debug(
@@ -5372,20 +5403,39 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.choose_agent(plan[room], room, choose_error <= 0)
                         self.tap_confirm(room, new_plan)
                     read_time_index = []
-                    if get_time or recovery_ordered:
-                        read_time_index = self.op_data.get_refresh_index(
+                    related_operators = {}
+                    fia_arrangement = (
+                        self.task.type == TaskTypes.FIAMMETTA
+                        and "菲亚梅塔" in plan[room]
+                    )
+                    if fia_arrangement:
+                        fia_index = plan[room].index("菲亚梅塔")
+                        read_time_index.append(fia_index)
+                        if self.task.meta_data:
+                            related_operators[fia_index] = self.task.meta_data
+                        logger.info("肥鸭换入完成，读取交换后心情")
+                    elif get_time or recovery_ordered:
+                        refresh_indexes = self.op_data.get_refresh_index(
                             room, plan[room]
                         )
                         if recovery_ordered:
-                            read_time_index = [
+                            refresh_indexes = [
                                 i
                                 for i, slot in enumerate(self.op_data.plan[room])
                                 if slot.agent == "Free"
                             ]
+                        read_time_index = list(
+                            dict.fromkeys([*read_time_index, *refresh_indexes])
+                        )
                     if len(new_plan) > 1:
                         self.op_data.operators["菲亚梅塔"].time_stamp = None
                         self.op_data.operators[plan[room][0]].time_stamp = None
-                    current = self.get_agent_from_room(room, read_time_index)
+                    if related_operators:
+                        current = self.get_agent_from_room(
+                            room, read_time_index, related_operators
+                        )
+                    else:
+                        current = self.get_agent_from_room(room, read_time_index)
                     for idx, name in enumerate(plan[room]):
                         if current[idx]["agent"] != name and name != "Free":
                             if not (room == "train" and idx == 1):
