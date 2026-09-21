@@ -69,3 +69,35 @@ def test_started_major_maintenance_has_zero_remaining_hours(monkeypatch):
     )
 
     assert op_data.major_maintenance_remaining_hours() == 0
+
+
+def test_group_mood_supports_min_max_and_excludes_zero_mood_workers():
+    op_data = operators()
+    op_data.groups = {"鸿雪组": ["鸿雪", "图耶", "爱丽丝", "焰影苇草"]}
+    op_data.operators = {
+        "鸿雪": SimpleNamespace(current_mood=lambda: 0, workaholic=True),
+        "图耶": SimpleNamespace(current_mood=lambda: 24, workaholic=True),
+        "爱丽丝": SimpleNamespace(current_mood=lambda: 7.25, workaholic=False),
+        "焰影苇草": SimpleNamespace(current_mood=lambda: 18.5, workaholic=False),
+    }
+
+    assert op_data.group_min_mood("鸿雪组") == 7.25
+    assert op_data.group_max_mood("鸿雪组") == 18.5
+    assert op_data.evaluate_expression("op_data.group_min_mood('鸿雪组') < 8")
+    assert op_data.evaluate_expression("op_data.group_max_mood('鸿雪组') < 19")
+
+
+def test_group_min_mood_rejects_unknown_group():
+    with pytest.raises(ValueError, match="不存在的绑组"):
+        operators().group_min_mood("不存在")
+
+
+def test_group_mood_rejects_group_with_only_zero_mood_workers():
+    op_data = operators()
+    op_data.groups = {"零心情组": ["鸿雪"]}
+    op_data.operators = {
+        "鸿雪": SimpleNamespace(current_mood=lambda: 24, workaholic=True)
+    }
+
+    with pytest.raises(ValueError, match="没有可统计心情"):
+        op_data.group_max_mood("零心情组")

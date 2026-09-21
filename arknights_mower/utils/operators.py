@@ -169,6 +169,8 @@ class Operators:
                 "facility_has_mastery_plan",
                 "facility_is_training",
                 "major_maintenance_remaining_hours",
+                "group_min_mood",
+                "group_max_mood",
             ]
         )
         self.power_plant_count = 0
@@ -479,6 +481,27 @@ class Operators:
         if info is None or info.update_type != "major" or info.is_flash_update:
             return float("inf")
         return max(0.0, (info.start - datetime.now()).total_seconds() / 3600)
+
+    def _group_moods(self, group: str) -> list[float]:
+        members = self.groups.get(group)
+        if not members:
+            raise ValueError(f"不存在的绑组：{group}")
+        moods = [
+            self.operators[name].current_mood()
+            for name in members
+            if not self.operators[name].workaholic
+        ]
+        if not moods:
+            raise ValueError(f"绑组内没有可统计心情的干员：{group}")
+        return moods
+
+    def group_min_mood(self, group: str) -> float:
+        """排除0心情工作干员后返回指定绑组的最小心情。"""
+        return min(self._group_moods(group))
+
+    def group_max_mood(self, group: str) -> float:
+        """排除0心情工作干员后返回指定绑组的最大心情。"""
+        return max(self._group_moods(group))
 
     def update_facility_state(
         self, room: str, facility: str, product: str, updated_at: str | None = None

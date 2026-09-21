@@ -21,6 +21,11 @@ import {
 } from '@/utils/trigger_facility'
 import { trigger_facility_type_options } from '@/utils/base_facilities'
 import { facility_product_labels, facility_product_options } from '@/utils/base_products'
+import {
+  group_mood_expression,
+  group_mood_mode_options,
+  parse_group_mood_expression
+} from '@/utils/trigger_group'
 
 const data = ref(props.data)
 
@@ -65,6 +70,13 @@ const op_data = computed(() => {
   if (data.value == 'op_data.major_maintenance_remaining_hours()') {
     return {
       type: 'major_maintenance'
+    }
+  }
+  const groupMood = parse_group_mood_expression(data.value)
+  if (groupMood) {
+    return {
+      type: 'group_mood',
+      ...groupMood
     }
   }
   const inventory = parse_inventory_expression(data.value)
@@ -114,6 +126,8 @@ const op_type = computed(() => {
     return 'facility_stat'
   } else if (op_data.value.type == 'major_maintenance') {
     return 'major_maintenance'
+  } else if (op_data.value.type == 'group_mood') {
+    return 'group_mood'
   } else {
     return 'op'
   }
@@ -124,6 +138,7 @@ const type_options = [
   { label: '仓库资源', value: 'inventory' },
   { label: '设施状态', value: 'facility' },
   { label: '生产设施统计', value: 'facility_stat' },
+  { label: '绑组心情', value: 'group_mood' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '距离停服大更新维护时长（小时）', value: 'major_maintenance' },
   { label: '常量/自定义', value: 'custom' }
@@ -154,7 +169,17 @@ function set_op_type(v) {
     data.value = facility_product_count_expression(facility_product_options[0].value)
   } else if (v == 'major_maintenance') {
     data.value = 'op_data.major_maintenance_remaining_hours()'
+  } else if (v == 'group_mood') {
+    data.value = group_mood_expression(groups.value[0] || '')
   }
+}
+
+function update_group(group) {
+  data.value = group_mood_expression(group, op_data.value.mode)
+}
+
+function update_group_mood_mode(mode) {
+  data.value = group_mood_expression(op_data.value.group, mode)
 }
 
 function update_inventory(item) {
@@ -229,7 +254,7 @@ import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
 const plan_store = usePlanStore()
-const { operators, plan } = storeToRefs(plan_store)
+const { operators, groups, plan } = storeToRefs(plan_store)
 const { left_side_facility } = plan_store
 const depot_store = usedepotStore()
 const { inventory, inventoryLoaded, inventoryLoadError } = storeToRefs(depot_store)
@@ -425,6 +450,22 @@ function render_custom_tip(option) {
     :on-update:value="update_inventory"
     :render-label="render_inventory_option"
     style="min-width: 320px"
+  />
+  <n-select
+    v-if="op_type == 'group_mood'"
+    :default-value="op_data.group"
+    :options="groups.map((group) => ({ label: group, value: group }))"
+    :on-update:value="update_group"
+    filterable
+    style="min-width: 220px"
+  />
+  <n-select
+    v-if="op_type == 'group_mood'"
+    :default-value="op_data.mode"
+    :options="group_mood_mode_options"
+    :on-update:value="update_group_mood_mode"
+    :consistent-menu-width="false"
+    style="min-width: 240px"
   />
   <n-select
     v-if="op_type == 'facility'"
