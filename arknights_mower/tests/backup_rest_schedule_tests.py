@@ -283,3 +283,94 @@ def test_before_dorm_timing_order_and_parser():
         < PlanTriggerTiming.BEFORE_DORM.value
         < PlanTriggerTiming.BEFORE_PLANNING.value
     )
+
+
+def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver):
+    solver.plan_metadata()
+    old_task = return_task(solver)
+    assert old_task.plan["contact"][0] == "黑键"
+    assert old_task.time == datetime(2026, 9, 11, 16, 24, 21)
+
+    # 模拟副表调整了工位（黑键与陈换位），并将歌蕾蒂娅设为用尽
+    backup = solver.op_data.backup_plans[0]
+    backup.plan = {
+        "contact": [Room("陈", "", [])],
+        "central": [Room("黑键", "感知", ["陈"])],
+    }
+    backup.config.exhaust_require = ["歌蕾蒂娅"]
+
+    solver.backup_plan_solver()
+
+    # 副表已生效且修改了 contact 和 central 的计划
+    assert solver.op_data.plan["contact"][0].agent == "陈"
+    assert solver.op_data.plan["central"][0].agent == "黑键"
+    new_task = return_task(solver)
+    # 回班任务的时间按副表配置消除急救推迟到 17:05
+    assert new_task.time == datetime(2026, 9, 11, 17, 5, 3)
+    # 回班工位依然保留下班时的快照（contact 的黑键），没有被副表改写为 central
+    assert new_task.plan["contact"][0] == "黑键"
+    assert "central" not in new_task.plan
+
+
+def test_deactivation_restores_main_plan_targets_preventing_stickiness(solver):
+    solver.plan_metadata()
+    # 模拟副表生效
+    backup = solver.op_data.backup_plans[0]
+    backup.plan = {
+        "contact": [Room("陈", "", [])],
+        "central": [Room("黑键", "感知", ["陈"])],
+    }
+    backup.config.exhaust_require = ["歌蕾蒂娅"]
+    solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [True]
+
+    # 模拟副表期间存在的某任务记录了副表工位 central
+    task = return_task(solver)
+    task.plan = {"central": ["黑键"]}
+
+    # 条件变更，黑键离开宿舍，副表条件失效
+    solver.op_data.operators["黑键"].is_resting = MagicMock(return_value=False)
+    solver.backup_plan_solver()
+
+    # 副表失效，恢复主表
+    assert solver.op_data.plan_condition == [False]
+    new_task = return_task(solver)
+    # 不会发生工位粘滞，黑键回班工位正确恢复为主表工位 contact，而不是副表 central
+    assert new_task.plan["contact"][0] == "黑键"
+    assert "central" not in new_task.plan
+
+
+def test_shift_on_slot_collision_falls_back_gracefully(solver):
+    # 快照将黑键指定到 contact 0 号位
+    existing_targets = {"黑键": ("contact", 0)}
+    # 生效排班中陈为 contact 0 号位
+    solver.op_data.plan["contact"][0] = Room("陈", "", [])
+    solver.op_data.operators["陈"].room = "contact"
+    solver.op_data.operators["陈"].index = 0
+    solver.op_data.operators["陈"].operator_type = "high"
+    solver.op_data.operators["陈"].current_room = "dormitory_1"
+    solver.op_data.operators["陈"].current_index = 1
+    # 黑键在生效排班中为 central 0 号位
+    solver.op_data.operators["黑键"].room = "central"
+    solver.op_data.operators["黑键"].index = 0
+
+    # 同一批次陈与黑键同时安排回班
+    batch_dorms = {
+        datetime(2026, 9, 11, 17): (
+            [
+                solver.op_data.dorm[0],  # 黑键
+                operators.Dormitory(
+                    ("dormitory_1", 1), "陈", datetime(2026, 9, 11, 17)
+                ),
+            ],
+            False,
+        )
+    }
+    tasks = scheduler_task.generate_plan_by_drom(
+        batch_dorms, solver.op_data, existing_targets=existing_targets
+    )
+    assert len(tasks) == 1
+    plan = tasks[0].plan
+    all_assigned = [agent for agents in plan.values() for agent in agents]
+    assert "黑键" in all_assigned
+    assert "陈" in all_assigned
