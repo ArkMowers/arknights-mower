@@ -1,6 +1,6 @@
 """数据库管理接口（运行日志页「数据库管理」卡片）。
 
-按白名单类**删行**（DELETE FROM），**绝不允许 DROP TABLE**——#82 建表守卫进程内只跑
+按白名单类**删行**（DELETE FROM），**绝不允许 DROP TABLE**——建表守卫进程内只跑
 一次（`_tables_created` 按库路径记），被 DROP 的表不会被重建，下次读写即 no-such-table。
 删除只影响行数据，不动表结构。表白名单硬编码，未知键直接拒绝（防注入 + 防误删其它表）。
 """
@@ -96,7 +96,7 @@ def delete():
     try:
         with record._conn() as conn:
             if "mastery_plan" in keys:
-                # #118：批量删计划后清 #97 队列残留任务（plan_key=旧id 的
+                # 批量删计划后清掉队列里的残留任务（plan_key=旧id 的
                 # SKILL_UPGRADE/SWAP 照常派发到已删计划），先记下要删的 id
                 try:
                     plan_ids = [

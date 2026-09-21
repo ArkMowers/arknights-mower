@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 # base_schedule 导入链（cultivate_depot→skland）会在 skland 模块加载时调用
-# SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关）。与
+# SecuritySm.get_d_id() 发网络请求（环境性 flake，与测试无关）。与
 # mastery_choose_train_tests.py 同款 stub，避免单测依赖外网。
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
@@ -1408,7 +1408,7 @@ class TestBaseScheduler(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_train_correction_not_suppressed_when_mastery_off(self):
-        # #207 守卫·铁律 10/§16.11：enable_mastery OFF 保护全停、排班照常排训练室——
+        # #207 守卫·铁律 10/§7.3：enable_mastery OFF 保护全停、排班照常排训练室——
         # 即使协助位是逻各斯，训练室纠错也不被弹掉、不发邮件。
         solver = self._train_mismatch_solver(
             ["褐果", "桃金娘"],
@@ -1431,6 +1431,218 @@ class TestBaseScheduler(unittest.TestCase):
         )
         self.assertIsNotNone(task)
         self.assertIn("train", task.plan)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_stale_protected_keeps_train_correction_when_mastery_off(self):
+        """开关关闭后，陈年 protected 缓存不得再挡掉训练室心情纠错。
+
+        训练室干员要走进 `miss_list` 的 `train_blocked` 过滤，得是「真登记在训练室、
+        且 not_valid() 为真」——所以这里让两人都坐在自己的训练位上、心情记录过期。
+        `train_room_state` 的 protected 只有开关打开的那一轮会写，开关关掉后它是陈年
+        结论；按 §7.3「关闭时保护完全停用」不得再据此排除训练室干员。
+        """
+        from arknights_mower.utils.operators import Operators
+
+        plan_agents = ["褐果", "桃金娘"]
+        plan_config = {"train": [Room(a, "", []) for a in plan_agents]}
+        plan = {
+            "default_plan": Plan(plan_config, PlanConfig("稀音", "稀音", "伺夜")),
+            "backup_plans": [],
+        }
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        op_data = Operators(plan)
+        op_data.operators = {}
+        for idx, name in enumerate(plan_agents):
+            op = Operator(name, "train", idx, "", [], "high", operator_type="high")
+            op.current_room = "train"
+            op.current_index = idx
+            op.mood = 8
+            op.time_stamp = datetime.now() - timedelta(hours=8)
+            op_data.operators[name] = op
+        op_data.groups = {}
+        solver.op_data = op_data
+        # 上一轮开关打开时读到的「受保护」快照
+        solver.train_room_state = SimpleNamespace(
+            state="empty", locked=False, protected=True
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task, "陈年 protected 缓存把训练室心情纠错吞掉了")
+        self.assertEqual(task.plan.get("train"), plan_agents)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_ignores_stale_protected_when_mastery_off(self):
+        # #207 守卫·铁律 10/§7.3：开关关闭后，上一轮读到的「受保护」缓存不得再弹
+        # 训练室纠错（缓存本身没有门控，靠 _suppress_train_correction 按开关拦）。
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        stale = MagicMock()
+        # 空闲房也不会命中后面的 train_locked 分支（那条只看训练中/待收取），
+        # 于是唯一能弹掉纠错的就剩陈年 protected——正是本条要盯的那一行。
+        stale.state = "empty"
+        stale.protected = True
+        solver.train_room_state = stale
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task)
+        self.assertIn("train", task.plan)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_stale_locked_keeps_train_correction_when_mastery_off(self):
+        """开关关闭后，陈年 locked/training 缓存不得再挡掉训练室心情纠错。"""
+        from arknights_mower.utils.operators import Operators
+
+        plan_agents = ["褐果", "桃金娘"]
+        plan_config = {"train": [Room(a, "", []) for a in plan_agents]}
+        plan = {
+            "default_plan": Plan(plan_config, PlanConfig("稀音", "稀音", "伺夜")),
+            "backup_plans": [],
+        }
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        op_data = Operators(plan)
+        op_data.operators = {}
+        for idx, name in enumerate(plan_agents):
+            op = Operator(name, "train", idx, "", [], "high", operator_type="high")
+            op.current_room = "train"
+            op.current_index = idx
+            op.mood = 8
+            op.time_stamp = datetime.now() - timedelta(hours=8)
+            op_data.operators[name] = op
+        op_data.groups = {}
+        solver.op_data = op_data
+        solver.train_room_state = SimpleNamespace(
+            state="training", locked=True, protected=False
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task, "陈年 locked 缓存把训练室心情纠错吞掉了")
+        self.assertEqual(task.plan.get("train"), plan_agents)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_ignores_stale_locked_when_mastery_off(self):
+        """开关关闭后，上一轮读到的锁定/训练中缓存不得再抑制训练室纠错。"""
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        stale = MagicMock()
+        stale.state = "training"
+        stale.locked = True
+        stale.protected = False
+        solver.train_room_state = stale
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task)
+        self.assertIn("train", task.plan)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_clears_train_room_state_when_mastery_off(self):
+        """开关关闭后，读取训练室普通心情应清空陈旧的 train_room_state 缓存。"""
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        solver.train_room_state = SimpleNamespace(
+            state="training", locked=True, protected=True
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+        ):
+            solver.agent_get_mood()
+        self.assertIsNone(solver.train_room_state)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_skips_occupied_training_room_correction(self):
+        """外部手动开训 + 缓存里训练室两格是空的 + 计划配着别人 → 不得生成 train 纠错。
+
+        缓存里的训练室两格来自干员表（`op_data`，重启后由本地库恢复），不是刚读到的
+        槽位；房间被外人占着时它就是错的。本条盯的是「刚读到的房间状态优先于陈年缓存」
+        这个口径——生成纠错时缓存确实会把计划干员写进 train 项（探针实测：锁定分支前
+        `fix_plan` 是 `{'train': ['褐果', '桃金娘']}`），但必须由
+        `_suppress_train_correction` 的锁定分支弹掉（`85b0d9bd` 落地）。
+
+        断言写成「一条任务都没有」而不是「循环里没有 task 含 train」：后者在任务为空时
+        空跑也过（原来那句注释自己承认了）。锁定分支一旦失效，train 项会真的生成出
+        SELF_CORRECTION 任务，这条断言就会红。
+        """
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        # 手动开训的人不在计划里，也不在干员缓存的训练室两格中（缓存是陈年数据）
+        solver.op_data.operators["真言"] = Operator(
+            "真言", "", current_room="train", current_index=1
+        )
+        observed = SimpleNamespace(
+            state="training",
+            locked=True,
+            support_slot="艾丽妮",
+            train_slot="真言",
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=(observed, []),
+            ),
+            patch.object(mastery_reader, "reconcile_short"),
+            patch(
+                "arknights_mower.utils.mastery_db.get_reconcile_plans",
+                return_value=[{"id": 1, "status": "idle"}],
+            ),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        self.assertEqual(solver.tasks, [])
         mock_send.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -1494,6 +1706,64 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks, [])
         mock_send.assert_called_once()
         self.assertIn("受保护", mock_send.call_args[0][0])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_suppresses_train_correction_when_train_room_locked(self):
+        # 异常二修复：训练室处于锁定状态（训练中/待收取）时跳过训练室纠错，防止无限进退
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        locked_room = mastery_reader.RoomState(
+            "training", mastery_reader.RoomPanel(countdown_state="active")
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(mastery_reader, "reconcile_short"),
+            patch.object(
+                mastery_reader, "read_room_state", return_value=(locked_room, [])
+            ),
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=None
+            ),
+        ):
+            result = solver.agent_get_mood()
+        self.assertIsNone(result)
+        self.assertEqual(solver.tasks, [])
+        self.assertEqual(solver.train_room_state, locked_room)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_freezes_trainee_slot_when_locked_and_following_schedule(
+        self,
+    ):
+        # 训练室锁定但开启协助位跟随：训练位保持 Current，仅协助位纠错
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        locked_room = mastery_reader.RoomState(
+            "training", mastery_reader.RoomPanel(countdown_state="active")
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(base_schedule.config.conf, "assistant_follows_schedule", True),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(mastery_reader, "reconcile_short"),
+            patch.object(
+                mastery_reader, "read_room_state", return_value=(locked_room, [])
+            ),
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=None
+            ),
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task)
+        self.assertIn("train", task.plan)
+        self.assertEqual(task.plan["train"][1], "Current")
+        self.assertEqual(task.plan["train"][0], "褐果")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_train_mastery_active_signals(self):
@@ -1862,7 +2132,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_enable_mastery_off_keeps_blocked_room_check_no_reconcile(self):
-        """§16.11：OFF 时排班照常但保留「被占用就不硬塞」防卡检查——锁定房仍跳过，
+        """§7.3：OFF 时排班照常但保留「被占用就不硬塞」防卡检查——锁定房仍跳过，
         但不跑 reconcile（自动收取/对账全停）。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
@@ -2205,7 +2475,7 @@ class TestScanDispatchMastery(unittest.TestCase):
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_auto_schedule_mastery_after_scan_gates_on_enable_mastery(self):
-        # §16.11 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
+        # §7.3 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
         # 照跑；加工配置钩子在 OFF 时仅恢复手动配置。三个钩子被调 + dispatch 不被调
         # 钉死结构——把门误提到钩子前（failed 计划永不重置、idle 永不重排）套件会红。
         solver = self._solver()

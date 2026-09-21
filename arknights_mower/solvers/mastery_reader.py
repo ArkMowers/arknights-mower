@@ -9,11 +9,11 @@
 - 一次进房做完全部动作（读+动作不拆两次）；短动作（核实/帮收/重置/更新状态）可排班路径
   内联，长动作（开始训练）返回给调用方（SKILL_UPGRADE dispatch）执行。
 
-#73 重设计（doc/mastery-constraints.md §16）：
+#73 重设计（doc/mastery-constraints.md §4.2/§4.3/§4.4/§5.3/§3.3）：
 - 三态倒计时（有值 / 00:00:00 / 读失败），不再把读失败和 00:00:00 都压成 now；
 - 状态矩阵（倒计时×干员/技能存在×图标亮点），OCR 失败组合原地重试 5 次；
 - 待收取 7 格动作（图标×协助位×计划）、保护检查（逻各斯/艾丽妮）、恢复流程、
-  材料门控、逐轮结构化判定日志。
+  逐轮结构化判定日志（材料门控当年定案时已撤回，未实现）。
 
 读取能力（坐标已钉，见 #61）：
 - 主页面面板（主读取器）：`[干员名]技能名`、倒计时、专精图标（亮 N 颗 = 在专N/专N完成）；
@@ -33,12 +33,15 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
+    PANEL_LEFT_BRACKETS,
+    PANEL_RIGHT_BRACKETS,
     _resolve_operator_char_id,
     format_skill_label,
     is_placeholder_skill_name,
     normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
+    strip_panel_brackets,
 )
 
 # 主页面面板坐标（#61 已钉，#149 2026-08-19 实测校准：面板整体下移）
@@ -52,9 +55,11 @@ MASTERY_ICON_PIPS = [
     ((338, 848), (350, 860)),  # 专三（左下）
 ]
 
+# 重排缓冲：读取器与 dispatch（`mastery.py` 从这里导入）共用一份，两种用法——
+# 占用且有倒计时 → 排到「练完时刻 + 缓冲」；结束时刻读不出来 → 排到「now + 缓冲」。
 ARRANGING_RETRY_BUFFER = timedelta(minutes=2)
 
-# §16.5 保护检查：协助位是这些干员时训练室受保护（不能被排班/mower 改动）
+# §4.4 保护检查：协助位是这些干员时训练室受保护（不能被排班/mower 改动）
 PROTECT_OPERATORS = ("逻各斯", "艾丽妮")
 
 # 技能选择页目标技能槽的专精星（已到target检测）。实机坐标已校准：
@@ -90,7 +95,7 @@ class RoomPanel:
     operator_name: str = ""
     skill_name: str = ""
     mastery_tier: int = 0  # 专精图标亮灯计数 0-3
-    # 三态倒计时（§16.8）：
+    # 三态倒计时（§4.2）：
     # - "active"：countdown = 结束时刻（读到非 0 秒）；
     # - "zero"：读到 00:00:00（countdown=None）；
     # - "failed"：读失败（countdown=None）。不再把读失败和 00:00:00 都压成 now。
@@ -107,12 +112,17 @@ class RoomState:
 
     state: str = "empty"  # "training" | "waiting_collect" | "empty"
     panel: RoomPanel = field(default_factory=RoomPanel)
-    support_slot: str = ""  # 协助位干员（进驻详情浮窗，§16.1）
-    train_slot: str = ""  # 训练位干员（进驻详情浮窗，§16.1）
-    protected: bool = False  # §16.5 保护检查（逻各斯/艾丽妮）
+    support_slot: str = ""  # 协助位干员（进驻详情浮窗，§4.3）
+    train_slot: str = ""  # 训练位干员（进驻详情浮窗，§4.3）
+    protected: bool = False  # §4.4 保护检查（逻各斯/艾丽妮）
     read_failed: bool = False  # 状态矩阵 OCR 失败 5 次仍不一致 → 保守训练中
     collected: bool = False  # reconcile 是否收走了待收取训练（房间物理变空闲）
     slots_read: bool = False  # 是否读过进驻槽位（TRAIN_FINISH 横幅页首次进房时未读）
+    # 槽位读取是否可信（_read_slots_checked 的场景闸门 + #100 读失败闸门）。False 时
+    # train_slot 的空串分不清「真空位」与「读浮窗失败」——调用方不得据此做补位/换人。
+    slots_reliable: bool = False
+    support_mood: Optional[float] = None  # 协助位心情（浮窗扫描，仅 reliable 时有效）
+    train_mood: Optional[float] = None  # 训练位心情（浮窗扫描，仅 reliable 时有效）
 
     @property
     def locked(self) -> bool:
@@ -123,25 +133,138 @@ class RoomState:
 # --- 纯函数：技能名/面板解析/像素计数/状态分类 ---
 
 
+# 面板上的括号定界符与残渣清理统一来自 utils.skill_label（同一份表，避免两处分叉）。
+
+
+def _strip_bracket_noise(text: str) -> str:
+    """去掉字符串两端残留的括号字符，中间不动。"""
+    return strip_panel_brackets(text).strip()
+
+
+_joint_panel_cache = None
+
+
+def _joint_panel_candidates():
+    """(干员名, char_id) 候选，按名字长度倒序；撞名的干员整条丢弃。
+
+    用于「只有左括号、右括号丢了」时的名字边界消歧：右括号没了就没有定界符，
+    单靠字符串切不出名字到哪结束，改成拿「干员名 + 技能名」这一对回查
+    `skill_data.json` 校验。撞名干员无法确定身份，一律不参与消歧。
+    """
+    global _joint_panel_cache
+    if _joint_panel_cache is None:
+        try:
+            from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+            characters = get_skill_data().get("characters", {})
+        except Exception:
+            characters = {}
+        seen = {}
+        for char_id, char in characters.items():
+            name = char.get("name")
+            if name:
+                seen.setdefault(name, []).append(char_id)
+        _joint_panel_cache = sorted(
+            ((name, ids[0]) for name, ids in seen.items() if len(ids) == 1),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        )
+    return _joint_panel_cache
+
+
+def _split_name_by_skill_data(remainder, skip_leading_noise=False):
+    """在 `remainder` 上做「干员名 + 技能名」联合匹配，返回 (干员名, 技能名)。
+
+    有括号的残缺串（`[泡泡“挨打”`）用：逐个试已知干员名做前缀，再用该干员的技能池
+    校验剩下的部分（`resolve_panel_skill` 只在无歧义唯一命中时才给序号）。命中即
+    返回；都不中就返回 None，交回调用方按原语义当纯技能名处理。
+
+    `skip_leading_noise` 给「定界符没切出来」的形态用：那种串没有可依据的左括号，
+    OCR 前置的噪点（引号/×/残留符号）会顶在名字前面，纯前缀匹配会全部落空。打开后
+    从第一个中日韩字符起试，最多退到该位置（名字含非汉字的干员靠括号分支覆盖，
+    不指望这一支）。
+
+    返回前把名字两侧及技能名开头残留的括号字符清掉——没预料到的括号形、或只读到
+    半个括号时，残渣会粘在切分结果上，技能名带残渣会导致下游技能比对直接失败。
+    """
+    if not remainder:
+        return None
+    from arknights_mower.utils.skill_label import resolve_panel_skill
+
+    start = 0
+    if skip_leading_noise:
+        first_cjk = next(
+            (i for i, ch in enumerate(remainder) if "\u4e00" <= ch <= "\u9fff"), -1
+        )
+        if first_cjk == -1:
+            return None
+        start = first_cjk
+    for name, _char_id in _joint_panel_candidates():
+        if not remainder.startswith(name, start):
+            continue
+        rest = remainder[start + len(name) :].strip()
+        rest = _strip_bracket_noise(rest)
+        if rest and resolve_panel_skill(name, rest) is not None:
+            return name, rest
+    return None
+
+
 def _parse_panel_text(text):
     """`[干员名]技能名` → (干员名, 技能名)。无方括号视为纯技能名。
 
     OCR 常在括号前带噪声（前置引号/残缺字符/零宽字符），旧逻辑要求 `[` 恰为首字符，
     噪声一前置就把整串 `[干员]技能` 当纯技能名返回 → 干员名被误判不可读 → 状态矩阵走
-    ocr_fail → 5 次重读仍不一致 → 保守训练中。改为「找第一个 `[`」：括号前的噪声丢弃，
+    ocr_fail → 5 次重读仍不一致 → 保守训练中。改为「找第一个左括号」：括号前的噪声丢弃，
     括号内容作干员名、其后作技能名——信息 OCR 其实已读到，不因噪声丢失。
-    无 `[` 仍视为纯技能名（保持原语义）。
+    同时兼容全角括号（【】、［］）、OCR 把方括号读成其它括号形（花括号/直角/书名号/
+    圆括号等，见 PANEL_LEFT_BRACKETS）以及混合括号（如 `[干员】`）。
+    左括号整个丢了（`干员]技能`，OCR 在符号边界处漏字）时，右括号左边的文本作干员名、
+    其后作技能名——右括号左边只可能是干员名（`skill_data.json` 的 1147 条技能名条目
+    实测零条含方括号，见 §8.2），不靠干员表猜断点。
+    括号残缺到没有定界符可用时（右括号丢、左括号还在的 `[泡泡“挨打”`；两个括号都丢的
+    `泡泡“挨打”`）改走 `_split_name_by_skill_data` 的「干员名 + 技能名」联合回查
+    （后者另开 skip_leading_noise 从首个汉字起试）。实机日志
+    `干员=空 技能=[泡泡】“挨打”` 就是右括号丢这一种，名字与技能其实都还在串里。
+    校验不中时名字仍为空，行为与原语义一致（当纯技能名交回上层，照常走重试→保守）。
     """
     if not text:
         return "", ""
     t = str(text).strip()
-    start = t.find("[")
+    left_brackets = PANEL_LEFT_BRACKETS
+    right_brackets = PANEL_RIGHT_BRACKETS
+
+    def _first(chars, begin=0):
+        for i in range(begin, len(t)):
+            if t[i] in chars:
+                return i
+        return -1
+
+    def _clean(name, skill):
+        # 名字两侧与技能名开头残留的括号字符（没预料到的括号形、或只读到半个括号时
+        # 会粘上来）统一清掉：技能名带残渣会让下游技能比对直接失败。
+        return _strip_bracket_noise(name), _strip_bracket_noise(skill)
+
+    start = _first(left_brackets)
     if start != -1:
-        end = t.find("]", start)
+        end = _first(right_brackets, start + 1)
         if end != -1:
-            name = t[start + 1 : end].strip()
-            rest = t[end + 1 :].strip()
-            return name, rest
+            return _clean(t[start + 1 : end], t[end + 1 :])
+        matched = _split_name_by_skill_data(t[start + 1 :].strip())
+        if matched is not None:
+            return matched
+    else:
+        end = _first(right_brackets)
+        if end != -1:
+            # 右括号左边含噪声（`“干员]技能`）时名字会带上噪声（`“干员`），调用方按
+            # 「不在干员表」处理：不当作计划干员，该走的重读照走。右括号打头（无名字）
+            # 不切，交回旧口径当纯技能名。
+            name = _strip_bracket_noise(t[:end])
+            if name:
+                return name, _strip_bracket_noise(t[end + 1 :])
+        else:
+            matched = _split_name_by_skill_data(t, skip_leading_noise=True)
+            if matched is not None:
+                return matched
     return "", t
 
 
@@ -171,7 +294,7 @@ def _box_is_lit(img, box, brightness=None, lit_ratio=None, inset=PIP_INSET):
 
 
 def classify_room_state(scene, countdown_state, identity_present, icon_lit) -> str:
-    """纯函数：场景 + 三态倒计时 + 干员/技能存在性 + 图标亮点 → 房间状态（§16.2）。
+    """纯函数：场景 + 三态倒计时 + 干员/技能存在性 + 图标亮点 → 房间状态（§4.3）。
 
     - TRAIN_FINISH → 🟡 waiting_collect
     - TRAIN_MAIN：
@@ -221,7 +344,7 @@ def _idle_marker_visible(solver) -> bool:
 
 
 def _read_train_countdown3(solver):
-    """三态倒计时读取（§16.8）：返回 (state, end_time)。
+    """三态倒计时读取（§4.2）：返回 (state, end_time)。
 
     - state="active"：读到非 0 秒，end_time=结束时刻；
     - state="zero"：读到 00:00:00，end_time=None；
@@ -425,17 +548,34 @@ def _read_slots_checked(solver):
     #100：reliable=False（读失败）时返回 ("", "", scan, False)——调用方不得把读失败
     当真空位做补位/纠错 mutation（与「真空」区分，稳为先：读不到就不动作）。
     scan 为 get_agent_from_room 原始列表（want_mood 用，含 mood）。
+    槽位约定（与 choose_train 一致）：scan[0]=上排=协助位、scan[1]=下排=训练位——
+    get_agent_from_room 与 operator_list_train 的 name_y 同为上→下，choose_train 内部
+    idx==0 走 choose_agent（协助位）、idx==1 走 choose_train_ope（训练位）。读不到
+    名字的槽位是空串。
     #140 场景闸门：开浮窗前先确认在训练室主页面（TRAIN_MAIN=217，浮窗开着先关回）；
     浮窗读取后再确认浮窗确实开了（INFRA_DETAILS=205）才消费——turn_on_room_detail 只靠
     room_detail 模板 + 单像素颜色确认浮窗、不判场景，非 205 的槽位读取是垃圾（读之前
     场景未确认，垃圾读已被消费）。场景不符/读失败 → ("", "", scan, False)（稳为先）。
+    浮窗已开（205）时不再盲目「关掉再打开」：先用 detect_room() 认门牌（房间标题牌
+    色块，训练室返回 "train"）——认出是训练室 → 就地读（turn_on_room_detail 看到浮窗
+    已开会直接返回），省一次关+开两下 UI 动作；认不出 / 是别的房间 / 抛异常 → 照旧关
+    回 217 重开（安全降级：最坏等于旧行为）。之所以必须先认门牌，是因为 205 不区分房间
+    （任何房间的进驻详情都是 205），而读名字用的坐标是全房间共用的一套。
     """
+    popup_is_ours = False
     try:
         scene = solver.train_scene()
         if scene == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
-            scene = solver.train_scene()
-        if scene != Scene.TRAIN_MAIN:
+            try:
+                popup_is_ours = solver.detect_room() == "train"
+            except Exception:
+                popup_is_ours = False
+            if popup_is_ours:
+                logger.debug("[mastery] 浮窗已开且门牌是训练室，就地读槽位")
+            else:
+                _close_room_detail(solver)
+                scene = solver.train_scene()
+        if not popup_is_ours and scene != Scene.TRAIN_MAIN:
             logger.debug(f"[mastery] 读槽位前置场景不符：{scene}，不读")
             return "", "", [], False
     except Exception:
@@ -446,7 +586,7 @@ def _read_slots_checked(solver):
             _close_room_detail(solver)
         elif reliable:
             # 浮窗没开/开错（get_agent_from_room 未确认 205）→ 槽位数据来自非目标场景，
-            # 不消费并清空（_read_slots 等调用方丢弃 reliable，必须让槽位为空防误用）
+            # 不消费并清空（调用方就是据此判空的，槽位必须为空防误用）
             logger.debug("[mastery] 读槽位后场景非 INFRA_DETAILS，浮窗未确认，不消费")
             reliable = False
             scan = []
@@ -454,27 +594,14 @@ def _read_slots_checked(solver):
         reliable = False
         scan = []
     if len(scan) < 2:
-        return "", "", scan, reliable
+        # 没读全（train 房恒 2 槽）＝没读到：不能报 reliable，否则「空 scan + 可靠」会被
+        # 调用方当成「可靠地空着」去做补位/换人 mutation（#101/#100 稳为先）。
+        return "", "", scan, False
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
 
 
-def _read_slots(solver, want_mood=False):
-    """读进驻详情浮窗：返回 (协助位, 训练位)。读后关浮窗回训练室主界面。
-
-    want_mood=True 时返回 ((协助位, 训练位), mood_data)，mood_data 为浮窗槽位扫描
-    （get_agent_from_room 返回值，含 mood，对齐 agent_get_mood 的 mood_info 数据源）。
-    槽位约定：scan[0]=上排=协助位，scan[1]=下排=训练位（与 choose_train 一致）。
-    读失败/无两人 → ("", "")；want_mood 时 mood_data 为空列表。
-    """
-    support_slot, train_slot, scan, _ = _read_slots_checked(solver)
-    slots = support_slot, train_slot
-    if want_mood:
-        return slots, scan
-    return slots
-
-
 def _train_slot_has_mastery(solver) -> bool:
-    """§16.4 空闲保护深读：进技能选择页读训练位干员所有技能。
+    """§5.2 空闲保护深读：进技能选择页读训练位干员所有技能。
 
     有专一/专二 → True（保护，不能动）；全专三或专0 → False（可动）；
     进不去技能页 / 读不到档位 → 保守 True（保护）。
@@ -529,13 +656,13 @@ def _back_to_train_main(solver, max_retries: int = 5, interval: float = 0.5) -> 
 
 
 def _compute_protected(solver, room, scan_plan=None) -> bool:
-    """§16.5 保护检查（现读现判）：协助位为逻各斯/艾丽妮时房间受保护。
+    """§4.4 保护检查（现读现判）：协助位为逻各斯/艾丽妮时房间受保护。
 
-    - 待收取：仅非专三（链未走完）保护；专三完成 → §16.3 第1格「无论如何不保护 → 可排班」；
+    - 待收取：仅非专三（链未走完）保护；专三完成 → §5.3 第1格「无论如何不保护 → 可排班」；
     - 空闲 + 训练位有人 → 深读技能页，有专一/专二 → 保护；全专三/专0 → 可动；
     - 空闲 + 训练位没人 → 可排班。
     - scan_plan 匹配训练位干员时，开训不动训练位，保护不适用，无需深读技能页。
-    每次排班进训练室重读重判，条件一变自动解除；enable_mastery OFF 时保护全停（§16.11）。
+    每次排班进训练室重读重判，条件一变自动解除；enable_mastery OFF 时保护全停（§7.3）。
     """
     if not config.conf.enable_mastery:
         return False
@@ -583,15 +710,19 @@ def _classify_panel(solver, panel) -> str:
 
 def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
     # enable_mastery OFF：槽位/保护无人消费（reconcile 被 gate、_compute_protected 恒 False），
-    # 不白开进驻浮窗（§16.11 防卡检查只看 locked，面板态即可）。
+    # 不白开进驻浮窗（§7.3 防卡检查只看 locked，面板态即可）。
     if config.conf.enable_mastery:
-        if want_mood:
-            (room.support_slot, room.train_slot), mood = _read_slots(
-                solver, want_mood=True
-            )
-        else:
-            room.support_slot, room.train_slot = _read_slots(solver)
-            mood = None
+        # #100：直接消费 _read_slots_checked 的 reliable——「真空位」与「读失败」在
+        # RoomState 里分得开，开训换人与排班 gate 都据此判空。
+        room.support_slot, room.train_slot, scan, room.slots_reliable = (
+            _read_slots_checked(solver)
+        )
+        if len(scan) >= 2 and room.slots_reliable:
+            room.support_mood = scan[0].get("mood")
+            room.train_mood = scan[1].get("mood")
+        # 心情数据 = 同一张浮窗扫描（get_agent_from_room 原始列表，含 mood）；读失败 /
+        # 浮窗没确认时 scan 为空（没有有效心情可交付）。
+        mood = scan if want_mood else None
         room.slots_read = (
             True  # #210：gate 据此区分「① 读过槽位」可复用 / TRAIN_FINISH 未读需重读
         )
@@ -602,7 +733,7 @@ def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
 
 
 def _retry_ocr(solver, scan_plan=None) -> RoomState:
-    """§16.2：OCR/亮点计算失败 → 原地重试 5 次（重读截图，不点动画）。
+    """§4.3：OCR/亮点计算失败 → 原地重试 5 次（重读截图，不点动画）。
 
     每一轮都重新确认画面在训练室主界面（read_main_panel 内部判，判不到返回 None）：
     画面在重试期间被换掉时读出来的东西不算数，直接结束重试、保守按训练中处理。
@@ -634,8 +765,8 @@ def _retry_ocr(solver, scan_plan=None) -> RoomState:
 def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
     """进房读全部状态。enter=False 表示已在房内（排班 gate 用）。
 
-    §16.1 读全：进驻详情浮窗（协助位/训练位）+ 左下角（干员/技能/倒计时/图标）；
-    按 §16.2 状态矩阵判定；OCR 失败组合原地重试 5 次，仍不一致保守训练中。
+    §4.3 读全：进驻详情浮窗（协助位/训练位）+ 左下角（干员/技能/倒计时/图标）；
+    按 §4.3 状态矩阵判定；OCR 失败组合原地重试 5 次，仍不一致保守训练中。
     房间停留在 TRAIN_MAIN / TRAIN_FINISH；返回 RoomState（截图权威）。
     读的过程中画面离开训练室主界面（`read_main_panel` 返回 None）→ 保守按训练中，
     不读槽位、不判空房（非主页面上的面板区与槽位都是垃圾读）。
@@ -650,7 +781,7 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
     scene = _settle_in_room(solver)
     if scene == Scene.TRAIN_FINISH:
         # 完成横幅页：只读左下角面板供收取，不读进驻详情/不算保护（该页 get_agent_from_room
-        # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§16.1 读全以主页面为主）。
+        # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§4.3 读全以主页面为主）。
         room = RoomState("waiting_collect", _safe_read_panel(solver) or RoomPanel())
         return (room, []) if want_mood else room
     if scene == Scene.TRAIN_MAIN:
@@ -931,24 +1062,108 @@ def _queue_has_mastery_task(solver):
 
 
 def _log_judgment(solver, room, state, action, **extra):
-    """逐轮结构化判定日志：读到什么 → 判定什么 → 动作什么（§16「日志」）。
+    """逐轮结构化判定日志：房间状态、进驻详情与执行动作。
 
-    读 = 三态倒计时 / 干员 / 技能 / 档位 / 协助位 / 训练位 / 槽位是否读过 / 空闲标记；
-    判 = 状态矩阵结果；动作 = 本轮的执行动作。便于定位错误来源（读到异常 → 判错 → 做错）。
-    槽位「空」有两种来源：真空位与没读过浮窗——带上 slots_read 才分得清。
-    「空闲中」标记命中会把房间判成空闲（定案 3 的正证据优先），记下来才能回溯误判。
+    对齐 Mower 原生房间日志格式并适配 WebUI 高亮：
+    - 干员名字带单引号（'泡泡'、'年'）以触发 WebUI 红色高亮；
+    - 时间带 HH:MM:SS 以触发 WebUI 蓝色高亮；
+    - 空槽位按照标准记为 '' 与 心情 -1（不输出汉字“空”）；
+    - 浮窗未读取显示「未展开进驻详情」，读取不可靠显示「进驻浮窗读取不可靠」。
     """
-    c = room.panel.countdown
-    countdown_str = c.strftime("%H:%M:%S") if c else room.panel.countdown_state
-    read = (
-        f"倒计时={countdown_str} 干员={room.panel.operator_name or '空'} "
-        f"技能={room.panel.skill_name or '空'} 档位={room.panel.mastery_tier} "
-        f"协助位={room.support_slot or '空'} 训练位={room.train_slot or '空'} "
-        f"槽位={'已读' if room.slots_read else '未读'} "
-        f"空闲标记={'命中' if room.panel.idle_marker else '未命中'}"
-    )
-    tail = " ".join(f"{k}={v}" for k, v in extra.items())
-    logger.info(f"[mastery] 判定 读[{read}] → 判[{state}] → 动作[{action}] {tail}")
+    state_map = {
+        "training": "训练中",
+        "waiting_collect": "待收取",
+        "empty": "空闲",
+        "ocr_fail": "识别异常",
+    }
+    tier_map = {1: "专精一", 2: "专精二", 3: "专精三"}
+    status_cn = state_map.get(state, state)
+    items = []
+
+    if not room.slots_read:
+        items.append('"未展开进驻详情"')
+    elif not room.slots_reliable:
+        items.append('"进驻浮窗读取不可靠"')
+    else:
+        # 协助位（仅在浮窗可信时输出）
+        if room.support_slot:
+            mood_str = (
+                f"，心情：{round(room.support_mood, 1)}"
+                if room.support_mood is not None
+                else ""
+            )
+            items.append(f"\"协助位干员：'{room.support_slot}'{mood_str}\"")
+        else:
+            items.append("\"协助位干员：''，心情：-1\"")
+
+    # 训练位 / 面板信息
+    if room.state == "training":
+        op = room.panel.operator_name or room.train_slot
+        op_str = f"'{op}'" if op else "''"
+        skill_str = f"「{room.panel.skill_name}」" if room.panel.skill_name else ""
+        tier_name = tier_map.get(room.panel.mastery_tier, "")
+        tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
+        c = room.panel.countdown
+        countdown_str = (
+            f" 剩余 {c.strftime('%H:%M:%S')}"
+            if c
+            else (
+                f" 倒计时{room.panel.countdown_state}"
+                if room.panel.countdown_state != "none"
+                else ""
+            )
+        )
+        if room.slots_read and room.slots_reliable:
+            mood_str = (
+                f"，心情：{round(room.train_mood, 1)}"
+                if (room.train_mood is not None and op)
+                else ("，心情：-1" if not op else "")
+            )
+        else:
+            mood_str = ""
+        items.append(
+            f'"训练位干员：{op_str}{skill_str}{tier_str}{countdown_str}{mood_str}"'
+        )
+    elif room.state == "waiting_collect":
+        op = room.panel.operator_name or room.train_slot
+        op_str = f"'{op}'" if op else "''"
+        skill_str = f"「{room.panel.skill_name}」" if room.panel.skill_name else ""
+        tier_name = tier_map.get(room.panel.mastery_tier, "")
+        tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
+        items.append(f'"训练位干员：{op_str}{skill_str}{tier_str} 已完成"')
+    elif room.state == "empty":
+        if room.slots_read and room.slots_reliable:
+            if room.train_slot:
+                mood_str = (
+                    f"，心情：{round(room.train_mood, 1)}"
+                    if room.train_mood is not None
+                    else ""
+                )
+                items.append(f"\"训练位干员：'{room.train_slot}'{mood_str}\"")
+            else:
+                items.append("\"训练位干员：''，心情：-1\"")
+
+    if room.panel.idle_marker:
+        items.append('"面板：空闲中"')
+    elif state == "ocr_fail":
+        c = room.panel.countdown
+        countdown_str = f" 剩余 {c.strftime('%H:%M:%S')}" if c else ""
+        panel_text = room.panel.skill_name or room.panel.operator_name or "异常"
+        items.append(f"\"面板识别：'{panel_text}'{countdown_str}\"")
+
+    items_str = "，".join(items)
+
+    extra_parts = []
+    for k, v in extra.items():
+        if k in ("协助位", "保护"):
+            continue
+        if k == "计划":
+            extra_parts.append(f"计划 #{v}")
+        else:
+            extra_parts.append(f"{k}={v}")
+    tail = f" ({'，'.join(extra_parts)})" if extra_parts else ""
+
+    logger.info(f"[mastery] 房间 训练室[{status_cn}]：[{items_str}] {action}{tail}")
 
 
 def _reset_to_idle(solver, plan):
@@ -980,7 +1195,7 @@ def _update_expiry(solver, plan, room):
     （面板干员名+技能名可读且匹配）。任一采纳漏掉该门，不可读的外人倒计时会持续
     「祝福」计划、或把 waiting_collect 无校验降回 training。
     #82：拆出「排收取」——只写 expires_at（同值不重写，进房不再无谓写 DB），
-    收取由调用方在换人判定后决定（排了换人则不排收取，§16.10 半重叠消除）。
+    收取由调用方在换人判定后决定（排了换人则不排收取，§5.2 半重叠消除）。
     """
     from arknights_mower.utils.mastery_db import update_plan_status
 
@@ -1029,7 +1244,7 @@ def _refresh_training_plan(solver, plan, room):
 
     先写 expires_at（同值跳过 DB 写），再跑换人判定（_maybe_recover_swap：重启补排 /
     #80 陌生人纠错）；排了换人（或队列已有换人任务）就不排收取，没排换人才排收取——
-    消除「收取+换人两任务同队列」的中间态（§16.10，排了换人等 SWAP 完成后重读再排收取）。
+    消除「收取+换人两任务同队列」的中间态（§5.2，排了换人等 SWAP 完成后重读再排收取）。
     """
     _update_expiry(solver, plan, room)
     if not _maybe_recover_swap(solver, plan, room):
@@ -1288,7 +1503,7 @@ def _notify_blocked(solver, room):
 
 
 def _notify_help_collect(solver, room):
-    """④ 帮收：非专三收取 + 干员/技能不在计划 → 通知「mower 帮忙收取」（§16.9）。"""
+    """④ 帮收：非专三收取 + 干员/技能不在计划 → 通知「mower 帮忙收取」（§10.2）。"""
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
@@ -1305,7 +1520,7 @@ def _notify_help_collect(solver, room):
 
 
 def _notify_protected(solver, room):
-    """⑤ 训练室受保护（逻各斯/艾丽妮）、mower 无法开始训练（§16.9）。"""
+    """⑤ 训练室受保护（逻各斯/艾丽妮）、mower 无法开始训练（§10.2）。"""
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
@@ -1319,7 +1534,7 @@ def _notify_protected(solver, room):
 
 
 def _notify_at_target(solver, plan, tier):
-    """⑥ 已到target：开始训练时发现技能已到目标档位 → 邮件 + DB 标完成（§16.9）。"""
+    """⑥ 已到target：开始训练时发现技能已到目标档位 → 邮件 + DB 标完成（§10.2）。"""
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
@@ -1329,7 +1544,7 @@ def _notify_at_target(solver, plan, tier):
 
 
 def _promote_plan(solver, plan):
-    """§16.6 恢复流程：计划「插队」到 idle 队列最前。
+    """恢复流程：计划「插队」到 idle 队列最前。
 
     先看是否已最前；不是则把最前基准让给本计划、原最前计划们后移一位
     （其他计划优先级按需变动），避免无限负漂移。
@@ -1487,7 +1702,7 @@ def _collect_plan(solver, plan, room: RoomState):
 
 
 def _collect_silent(solver, room: RoomState, suppress_help=False):
-    """未命中计划纯收取：非专三 → 通知④帮收（§16.3）；专三/档位读失败 → 静默。
+    """未命中计划纯收取：非专三 → 通知④帮收（§5.3）；专三/档位读失败 → 静默。
 
     #116 守卫用 mastery_tier 自身（像素读取）而非 operator_name（文本 OCR）判可读性：
     待收取语境真实档位必 ≥1，tier 读成 0 = 图标像素读失败 → 不算专三也不算非专三，
@@ -1557,7 +1772,7 @@ def _reconcile(
     arrange_support 是否安排路线 operator（2026-08-17 用户拍板恒 True——「收取→下一
     次开始」边界也照常安排，不再有减半守卫的 False）。
 
-    §16.2 矩阵：待收取/空闲/训练中；OCR 失败 5 次仍不一致 → 保守训练中。
+    §4.3 矩阵：待收取/空闲/训练中；OCR 失败 5 次仍不一致 → 保守训练中。
     scan_plan：任务 plan_key 指定的开始计划（#74 第3段）；None 表示无指定（plan_key=None）。
     defer_collect（#75 方案 C）：排班 gate（reconcile_short）传 True 时待收取格跳过
     「队列已有专精任务」的计划的收集（见 _reconcile_waiting_collect）；dispatch 恒 False。
@@ -1569,7 +1784,7 @@ def _reconcile(
         _reset_to_idle(solver, active)
         active = None
 
-    # §16.2 OCR 失败 5 次仍不一致 → 保守训练中：不动 + 记日志。
+    # §4.3 OCR 失败 5 次仍不一致 → 保守训练中：不动 + 记日志。
     # 用户 08-15 定案：读不出不排重检——等排班系统下次自然进房重读。
     if room.read_failed:
         _log_judgment(
@@ -1585,7 +1800,7 @@ def _reconcile(
             )
             update_plan_status(active["id"], "idle")
         if room.protected:
-            # §16.5 保护挡「移动协助位/训练位」。训练位已是计划干员时，开始训练
+            # §4.4 保护挡「移动协助位/训练位」。训练位已是计划干员时，开始训练
             # 不动训练位（只按路线补协助位），保护不适用 → 放行 mower 开始。
             if (
                 scan_plan is not None
@@ -1595,11 +1810,11 @@ def _reconcile(
                 return scan_plan, True
             idle = _next_idle_to_start(solver)
             if idle is not None:
-                # §16.5 保护挡住 mower 自己开始训练 → 通知⑤ + 保持 idle。
-                # 不主动轮询：保护解除靠「每次排班进训练室重读重判」（§16.5 解除时机）。
+                # §4.4 保护挡住 mower 自己开始训练 → 通知⑤ + 保持 idle。
+                # 不主动轮询：保护解除靠「每次排班进训练室重读重判」（§4.4 解除时机）。
                 _notify_protected(solver, room)
             return None, True
-        # §16.4 空闲×未保护：scan_plan（任务 plan_key 指定的计划，仍 idle）→ 返回该
+        # §5.2 空闲×未保护：scan_plan（任务 plan_key 指定的计划，仍 idle）→ 返回该
         # 开始计划。任何带 plan_key 的 SKILL_UPGRADE 任务（扫描开始/收取/重检）在空闲格
         # 都会返回其指定计划开始（#74 第3段，2026-08-14 用户拍板「都去掉」：不再区分
         # 扫描标记；开始/继续一律当场，重启后不再保守等扫描）。
@@ -1616,7 +1831,7 @@ def _reconcile(
 
 
 def _reconcile_training(solver, room, active, plans):
-    """§16.4 训练中（倒计时非 0）：
+    """§5.2 训练中（倒计时非 0）：
     跟随排班 → 训练位冻结（gate 负责）；未开跟随排班 + 计划匹配 → 静默重读+重排收取
     （保护训练室）；不匹配 → 通知① blocked（不动房间，下次排班再看）。
 
@@ -1685,10 +1900,10 @@ def _reconcile_training(solver, room, active, plans):
 
 
 def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False):
-    """§16.3 待收取（00:00:00）7 格动作：图标（专三/非专三）× 协助位（逻各斯/艾丽妮）× 计划。
+    """§5.3 待收取（00:00:00）7 格动作：图标（专三/非专三）× 协助位（逻各斯/艾丽妮）× 计划。
 
     返回 (start_plan, arrange_support)。「可排班/不可排班」由 gate 读 room.protected 决定；
-    §16.4 空闲保护（训练位有人+有专一/专二）由 read_room_state 预先算好 protected。
+    §5.2 空闲保护（训练位有人+有专一/专二）由 read_room_state 预先算好 protected。
 
     defer_collect（#75 方案 C）：排班 gate（reconcile_short）传 True——命中计划且队列
     已有任一 SKILL_UPGRADE 任务时跳过本次收集，留给队列任务收（任何 dispatch 进房都
@@ -1707,7 +1922,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         hit = None
     tier = room.panel.mastery_tier
     # 日志用真实保护状态（_compute_protected 已按档位/状态算好）：专三待收取即使协助位
-    # 是逻各斯/艾丽妮也不保护（§16.3 第1格），只看协助位会误报保护=True。
+    # 是逻各斯/艾丽妮也不保护（§5.3 第1格），只看协助位会误报保护=True。
     protective = room.protected
 
     # 截图权威：DB active 与待收取房内干员不一致 → 假记录重置
@@ -1747,7 +1962,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         return None, True
 
     if hit is not None:
-        # 干员+技能都在计划（非专三）：恢复流程（§16.6）——正常收取 → 优先级排前 +
+        # 干员+技能都在计划（非专三）：恢复流程——正常收取 → 优先级排前 +
         # 置 idle → 继续本级**当场开下一级**（2026-08-14 用户拍板「都去掉」：不再区分
         # 扫描链/重启，一律当场开；重启后也不保守等扫描）。**路线 operator 照常安排**
         # （2026-08-17 用户拍板：原「减半守卫」跨「收取→下一次开始」边界传

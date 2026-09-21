@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from arknights_mower.solvers.mastery_reader import (
+    ARRANGING_RETRY_BUFFER,
     PROTECT_OPERATORS,
     RoomPanel,
     RoomState,
@@ -27,7 +28,8 @@ from arknights_mower.utils.mastery_support_types import DEFAULT_SWAP_BUFFER_MINU
 from arknights_mower.utils.scene import Scene
 
 ARRANGING_DEADLINE = timedelta(minutes=5)
-ARRANGING_RETRY_BUFFER = timedelta(minutes=2)
+# ARRANGING_RETRY_BUFFER（2 分钟重排缓冲）从 mastery_reader 导入：读取器与 dispatch
+# 两处都排「now/练完时刻 + 缓冲」，同步改一个常量，不再各写一份。
 # #81（2026-08-15 用户拍板）：SWAP 换人失败最多重试次数（无 +5min 间隔，立刻原地重试；
 # 每次重试都重读倒计时判还值不值得换，倒计时只会减少，终会到「不足 5 小时」放弃）
 SWAP_RETRY_LIMIT = 5
@@ -461,24 +463,6 @@ def run_mastery_task(solver):
             raise
 
 
-def _training_slots(solver):
-    """读训练室两个槽位的干员名，返回 (协助位, 训练位)。
-
-    槽位约定（与 choose_train 基类一致，#53 从实机 log 佐证）：
-    - scan[0] = 上排 = 协助位；scan[1] = 下排 = 训练位
-      （get_agent_from_room 与 operator_list_train 的 name_y 均为 上→下）
-    - choose_train 内部 idx==0 走 choose_agent（协助位）、idx==1 走
-      choose_train_ope（训练位），get_agent_from_room 的 scan 与之同序
-    - 现有调用佐证：_arrange_support / run_swap_support 传
-      choose_train([协助干员, "Current"])，都把 idx0 当协助位
-    读不到名字的槽位返回 ""。
-    """
-    scan = solver.get_agent_from_room("train")
-    if len(scan) < 2:
-        return "", ""
-    return scan[0].get("agent", ""), scan[1].get("agent", "")
-
-
 def _swap_into_wrong_slot(solver, plan):
     """无倒计时 + 训练位坐错人：复用 choose_train 换人。
 
@@ -881,22 +865,36 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 checked_target = False
             if not checked_slot:
                 checked_slot = True
-                # #93：复用 reconcile 读房已读的槽位（省重复浮窗开关）。槽位读到空串时
-                # 无法区分「真空」与「读浮窗失败」——重读一次兜底（读失败恢复换人校验、
-                # 真空重读仍空无害）。冷启动（room=None）保持旧行为现读。
-                if room is not None and room.train_slot:
-                    trainer_slot = room.train_slot
+                # #93：复用 reconcile 读房已读的槽位（省重复浮窗开关）。#100：空串有两个
+                # 来源——真空位与读浮窗失败；只有 reliable（_read_slots_checked 过了场景
+                # 闸门）为真时，空串才是「确实没人」；读到名字＝确实有人。
+                room_train_slot = getattr(room, "train_slot", None)
+                room_slots_reliable = getattr(
+                    room, "slots_reliable", bool(room_train_slot)
+                )
+                if room is not None and (room_train_slot or room_slots_reliable):
+                    trainer_slot, slot_reliable = room_train_slot, room_slots_reliable
                 else:
-                    trainer_slot = _training_slots(solver)[1]
-                    solver.back()  # 关闭 _training_slots 打开的房间详情浮层
+                    # 兜底重读走同一道闸门（#140 场景确认 + #100 读失败闸门），浮窗由
+                    # reader 自己点关闭按钮关掉——不再有「裸读 get_agent_from_room」：
+                    # 那既不看场景（非 205 的垃圾读也当依据），读后还会无条件多按一次 back。
+                    _, trainer_slot, _, slot_reliable = _read_slots_checked(solver)
                 char_name = _plan_char_label(plan)
-                if trainer_slot and trainer_slot != char_name:
-                    # 走到这里只剩「倒计时没读出来 + 训练位上坐着别人」：倒计时读得出
-                    # 有效值/00:00:00 的两种占用情形上面已经 return 了。训练位在训练
-                    # 期间锁着，换不动是必然的——所以这不是「读到了有人」，而是
-                    # 「训练位是谁读到了、但它正在用」。失败原因写清读到的干员名，
-                    # 别用「被占用」这种听起来像「有人在训练室练」的说法。
-                    logger.info(f"训练位坐着 {trainer_slot}，换入 {char_name}")
+                if not (trainer_slot or slot_reliable):
+                    # 读不到训练位 → 不换人（读失败不得当真空位做 mutation，稳为先）：
+                    # 保持 idle + 重排 + 退出，等下一轮重读，绝不盲点换人/开训。
+                    logger.warning(
+                        "[mastery] 训练位读取失败（真空位与读失败不可分），"
+                        "跳过换人核验，保持 idle 重排"
+                    )
+                    _exit_occupied(solver, plan, None, trigger="训练位读取失败")
+                    return
+                if trainer_slot != char_name:
+                    # 走到这里只剩「倒计时没读出来 + 训练位非计划干员（坐错人或为空）」：
+                    # 倒计时读得出有效值/00:00:00 的两种占用情形上面已经 return 了。
+                    # 换入计划干员。
+                    slot_desc = trainer_slot or "空"
+                    logger.info(f"训练位为 {slot_desc}，换入 {char_name}")
                     try:
                         _swap_into_wrong_slot(solver, plan)
                     except Exception as e:
@@ -941,7 +939,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                     )
                     _log_transition(plan, "completed", "已到target检测", 档位=tier)
                     update_plan_status(plan["id"], "completed")
-                    _notify_at_target(solver, plan, tier)  # §16.9 ⑥
+                    _notify_at_target(solver, plan, tier)  # §10.2 ⑥
                     # #74 第2段：完成不再级联开始下一个 idle 计划（等扫描派发）
                     solver.back()
                     return
@@ -1025,7 +1023,7 @@ def _confirm_training_started(
     while datetime.now() < deadline:
         scene = solver.train_scene()
         # #89：219 是技能选择页，读不出倒计时。确认升级后游戏自动退回 219，必须先
-        # back 一次回训练室主页面（217）再读倒计时（§16.10 第 3 步「再退出一次」）。
+        # back 一次回训练室主页面（217）再读倒计时（§5.2 第 3 步「再退出一次」）。
         # 旧注释「运行页被误判成 219」写反语义：219 左下角是协助位天赋文本，会被 OCR
         # 当倒计时反复读（卡 ~15 秒），甚至偶然读出类时间文本 → 假确认开始。
         # 只允许 back 一次：back 后再读到 219 是动画/识别抖动，继续 back 会把已在
@@ -1111,7 +1109,7 @@ def _confirm_training_started(
                         notes.append(
                             f"协助位没能安排（{arrange_error}），这一级仍按原协助位练完"
                         )
-                # #90 §16.10 第7步「以当前读取为准」：协助位安排（换效率干员）后倒计时
+                # #90 §5.2 第7步「以当前读取为准」：协助位安排（换效率干员）后倒计时
                 # 会变，重读一次——换人/收取/邮件完成时间都以此为准；读不到回退安排前值。
                 fresh_execute_time = _re_read_train_countdown(solver)
                 if fresh_execute_time is None:
@@ -1138,7 +1136,7 @@ def _confirm_training_started(
                         notes.append(
                             "协助者出勤记录没能保存，下一级开始时可能算不准减半时长"
                         )
-                # §16.10：排了换人任务则不排收取；等 SWAP_SUPPORT 完成后重读倒计时再排收取。
+                # §5.2：排了换人任务则不排收取；等 SWAP_SUPPORT 完成后重读倒计时再排收取。
                 # #90：返回 SWAP 任务触发时刻（None=不换人），邮件完成时间据此分两情况。
                 # 中途换人的目的是给下一级攒这 5 小时减半，不是加速这一级——排不上丢的是
                 # 下一级的减半，这一级的训练照旧在跑，所以只报告、不标失败。
@@ -1285,7 +1283,7 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
 
 
 def _re_read_train_countdown(solver) -> Optional[datetime]:
-    """#90 §16.10 第7步「以当前读取为准」：协助位安排后重读倒计时。
+    """#90 §5.2 第7步「以当前读取为准」：协助位安排后重读倒计时。
 
     choose_train 换协助位后停在进驻详情浮窗（INFRA_DETAILS），先关浮窗回主页面再读
     （back() 内部 sleep→recog.update 已重置场景缓存，与 _swap_still_worthwhile/
@@ -1304,7 +1302,7 @@ def _schedule_swap_if_needed(
 ) -> Optional[datetime]:
     """训练开始后计算是否需要换人，需要则插入 SWAP_SUPPORT 任务。
 
-    §16.10：返回 SWAP 任务触发时刻（None=不排换人）——排了换人则不排收取（等
+    §5.2：返回 SWAP 任务触发时刻（None=不排换人）——排了换人则不排收取（等
     SWAP_SUPPORT 完成后重读倒计时再排收取）。立即换人（remaining ≤ threshold）也排
     任务（修旧 silent-drop）。#90 邮件「有减半」的完成时间 = 返回时刻 + (300+缓冲) 分。
     #76：路线按当前步目标级加载（step_level）；「专三不换人」由 level_3 路线
@@ -1547,7 +1545,7 @@ def run_swap_support(solver):
                     except Exception as e:
                         logger.debug(f"主面板重读失败: {e}")
                 if panel is not None and panel.countdown is not None:
-                    # 有换人目标 → 排阈值时刻任务（排了换人就不排收取，§16.10 等 SWAP
+                    # 有换人目标 → 排阈值时刻任务（排了换人就不排收取，§5.2 等 SWAP
                     # 完成后重读再排）；专三/无减半目标 → 直接排收取
                     step_level = panel.mastery_tier if panel is not None else None
                     if (
@@ -1651,7 +1649,7 @@ def run_swap_support(solver):
             if not countdown_active
             else "当前步路线无换人目标、协助位已是减半对象或剩余不足，跳过减半换人"
         )
-    # §16.10：无论换人成功与否/是否跳过，重读倒计时再排收取——开始训练时「排了换人
+    # §5.2：无论换人成功与否/是否跳过，重读倒计时再排收取——开始训练时「排了换人
     # 任务则不排收取」，收集只能靠这里补；跳过换人也补排（防读图标失败/不在主页面丢收集）。
     _schedule_collect_after_swap(solver, plan, tier=step_level)
     if not did_swap:
@@ -1735,7 +1733,7 @@ def _retry_swap_in_place(solver, plan, route, swap_target) -> bool:
 def _notify_swap_giveup(solver, plan):
     """⑧ 换人失败放弃通知（#81）：减半收益可能丢失。
 
-    去重按 plan id（INSERT OR IGNORE，WARNING），与⑦ 纠错失败并列（doc §16.9）；
+    去重按 plan id（INSERT OR IGNORE，WARNING），与⑦ 纠错失败并列（doc §10.2）；
     异常时 fail open 照发（宁可多发不漏发）。
     """
     from arknights_mower.utils.email import send_message
@@ -1810,7 +1808,7 @@ def _read_countdown_with_retry(solver) -> Optional[datetime]:
 
 
 def _schedule_collect_after_swap(solver, plan, tier=None):
-    """§16.10：SWAP_SUPPORT 完成后重读倒计时再排收取。
+    """§5.2：SWAP_SUPPORT 完成后重读倒计时再排收取。
 
     #150：与训练开始路径（_confirm_training_started）一致，收取任务档位标签用实际
     读到的面板图标档位（tier=panel.mastery_tier，run_swap_support 进房已读），读不到

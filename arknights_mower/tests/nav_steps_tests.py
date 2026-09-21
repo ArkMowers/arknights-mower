@@ -355,6 +355,18 @@ class TestForceRecordEntryFlow(unittest.TestCase):
     def _engine(self, stack: ExitStack):
         stack.enter_context(patch.object(nav_module.rapidocr, "engine", object()))
 
+    def setUp(self):
+        # 录制成功后 try_activity_entry 会真的调 persist_nav_steps，把数据写进
+        # 仓库里的 data/nav_trie_steps.json；把 __rootdir__ 指到用例自己的 tmpdir，
+        # 让这类写入落在临时目录里。
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self._rootdir_patch = patch.object(
+            nav_module, "__rootdir__", Path(self.tmp.name)
+        )
+        self._rootdir_patch.start()
+        self.addCleanup(self._rootdir_patch.stop)
+
     def test_force_record_skips_quick_and_replay(self):
         s = self._mk(force_record=True)
         with ExitStack() as stack:
@@ -503,6 +515,17 @@ class TestReplayRecordsSteps(unittest.TestCase):
         {"action": "tap", "payload": {"pos": [490, 1014], "text": "main_entry"}},
         {"action": "swipe", "payload": {"start": [960, 700], "vector": [0, -910]}},
     ]
+
+    def setUp(self):
+        # 同 TestForceRecordEntryFlow：把 __rootdir__ 指到 tmpdir，
+        # 避免将来加用例时把数据写进仓库里的 data/nav_trie_steps.json。
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self._rootdir_patch = patch.object(
+            nav_module, "__rootdir__", Path(self.tmp.name)
+        )
+        self._rootdir_patch.start()
+        self.addCleanup(self._rootdir_patch.stop)
 
     def _solver(self):
         s = object.__new__(NavigationSolver)

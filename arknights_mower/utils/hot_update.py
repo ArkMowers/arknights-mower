@@ -103,7 +103,7 @@ def apply_manual_zip(data: bytes) -> bool:
     """手动应用一份 hot_update.zip 内容：校验 + 解压到热更目录 + 记录版本。
 
     与网络下载走同一套应用路径（_extract_zip）；版本号尽力从 version.json 读，
-    没有则不覆盖已记录版本。记录版本遵守与 #183 相同的「只升不降」守卫——拖入更旧
+    没有则不覆盖已记录版本。记录版本遵守与网络下载路径相同的「只升不降」守卫——拖入更旧
     的包不覆盖已应用的更新版本。用于国内直连 GitHub 不稳时的人工兜底。
     """
     if not _extract_zip(data):

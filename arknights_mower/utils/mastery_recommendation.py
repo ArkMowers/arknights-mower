@@ -62,7 +62,7 @@ def reload_resource_data() -> None:
 def get_skill_real_name(char_id: str, skill_index: int):
     """从 skill_data.json 取干员技能的显示真名（如 飞翔瞪射）；查不到返回 None。
 
-    skill_data.json 由 auto_get_res_new.py 生成并并入真名（#63）。
+    skill_data.json 由 auto_get_res_new.py 生成并并入真名。
     """
     try:
         skills = (
@@ -445,7 +445,7 @@ def compute_workshop_config(
 
     from arknights_mower.data import workshop_formula
 
-    # #83：计划直接读 DB（get_all_plans 非终态）。matery_plan.json 是全仓库无写入者
+    # 计划直接读 DB（get_all_plans 非终态）。matery_plan.json 是全仓库无写入者
     # 的孤儿文件（@app/tmp 上的 stale key），UI/API/agent 新增计划不在里面；completed/
     # failed 计划不核算材料（不消耗；failed 已由扫描钩子 retry_failed_plans 先重置 idle）。
     from arknights_mower.utils.mastery_db import get_all_plans
@@ -763,7 +763,7 @@ def auto_schedule_mastery_tasks():
     """仓库扫描后：检测计划内未满M3的技能，直接需求全部满足则返回待安排列表"""
     result = {"scheduled": [], "skipped": []}
 
-    # #83：计划直接读 DB（get_all_plans 非终态）——matery_plan.json 是全仓库无写入者
+    # 计划直接读 DB（get_all_plans 非终态）——matery_plan.json 是全仓库无写入者
     # 的孤儿文件，只靠它的话新装/绕过前端新增的计划永远不在 plan_set，扫描自动开始失效。
     from arknights_mower.utils.mastery_db import get_all_plans
 

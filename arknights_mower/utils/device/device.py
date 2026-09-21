@@ -260,7 +260,7 @@ class Device:
     def is_app_running_in_background(self) -> bool:
         """检查游戏进程是否存活；无法判定时按「运行中」处理，避免误判重新拉起游戏。"""
         try:
-            # 同一条持久 adb 会话查询，避免另起 adb.exe 进程的竞态假阴性（#159 根因）
+            # 同一条持久 adb 会话查询，避免另起 adb.exe 进程的竞态假阴性（根因）
             output = self.run(f"ps -A | grep {config.conf.APPNAME} | grep -v grep")
             if output.strip():
                 return True

@@ -2,7 +2,7 @@ import unittest
 
 from PIL import Image
 
-# map #169：导出图被第三方改过（放更大画布 / 缩小）后导入失败。回归测试覆盖三种情况。
+# map 导出图被第三方改过（放更大画布 / 缩小）后导入失败。回归测试覆盖三种情况。
 # base 尺寸 3000x1230 略大于导出粘贴二维码的最大坐标（x≈2966 / y≈1210）。
 #
 # pyzbar 依赖系统 libzbar，CI 的 ubuntu-latest 没装。qrcode 模块顶层 `from pyzbar import

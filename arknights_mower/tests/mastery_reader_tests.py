@@ -9,6 +9,7 @@ from arknights_mower.utils import skill_label as skill_label_mod
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.skill_label import (
     format_skill_label,
+    normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
 )
@@ -102,6 +103,18 @@ class TestSkillLabel(unittest.TestCase):
         # 合法尾部字母（红桃K）直接命中，不走兜底也不误伤
         self.assertTrue(panel_skill_matches("红桃K", "一技能·红桃K"))
 
+    def test_normalize_strips_every_panel_bracket(self):
+        # OCR 读出的技能名常粘着半个括号（全角/花括号/圆括号…），归一化要去掉全部
+        # 面板括号形而不只是半角方括号，否则残渣会把互含比对挡掉。
+        self.assertEqual(normalize_skill_text("}“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("｝“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("）“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("》“挨打”"), "“挨打”")
+        self.assertEqual(normalize_skill_text("]“挨打”"), "“挨打”")
+        # 比对两侧都过：面板带残渣 vs 计划里的干净真名
+        self.assertTrue(panel_skill_matches("}“挨打”", "“挨打”"))
+        self.assertTrue(panel_skill_matches("（飞翔瞪射）", "二技能·飞翔瞪射"))
+
 
 def _patch_synth_skill_data():
     """patch get_skill_data 为合成数据，并重置 skill_label 反查缓存（setUp 用）。"""
@@ -194,6 +207,91 @@ class TestPanelParse(unittest.TestCase):
         self.assertEqual(
             reader._parse_panel_text("[珊比]“慢慢走~”"), ("珊比", "“慢慢走~”")
         )
+
+    def test_parse_fullwidth_and_mixed_brackets(self):
+        # 全角括号【】、［］以及半角/全角混用（如实机出现的 [泡泡】“挨打”）
+        self.assertEqual(
+            reader._parse_panel_text("【能天使】扫射模式"), ("能天使", "扫射模式")
+        )
+        self.assertEqual(
+            reader._parse_panel_text("［能天使］扫射模式"), ("能天使", "扫射模式")
+        )
+        self.assertEqual(reader._parse_panel_text("[泡泡】“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("【泡泡]“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(
+            reader._parse_panel_text("“【泡泡】“挨打”"), ("泡泡", "“挨打”")
+        )
+
+    def test_parse_lost_left_bracket(self):
+        # 左括号被 OCR 漏掉、只剩右括号：右括号左边就是干员名（技能名不含方括号）
+        self.assertEqual(reader._parse_panel_text("泡泡]“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("泡泡】“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("泡泡］“挨打”"), ("泡泡", "“挨打”"))
+
+    def test_parse_lost_right_bracket(self):
+        # 右括号被 OCR 漏掉、左括号还在：没有任何定界符能切出名字边界，改走
+        # 「干员名 + 技能名」联合回查（泡泡 的技能名实测就是「挨打」）。
+        self.assertEqual(reader._parse_panel_text("[泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("【泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("［泡泡“挨打”"), ("泡泡", "“挨打”"))
+        # 长名截断（面板常截断技能名）也认
+        self.assertEqual(reader._parse_panel_text("[泡泡“挨打"), ("泡泡", "“挨打"))
+
+    def test_parse_lost_both_brackets(self):
+        # 两个括号都被 OCR 漏掉：仍走同一套「干员名 + 技能名」联合回查。这种串没有
+        # 左括号可依据，前置噪点顶在名字前面，故从首个汉字起试。
+        self.assertEqual(reader._parse_panel_text("泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("×泡泡“挨打”"), ("泡泡", "“挨打”"))
+        self.assertEqual(reader._parse_panel_text("*泡泡“挨打”"), ("泡泡", "“挨打”"))
+        # 面板常截断技能名，截断也要认
+        self.assertEqual(reader._parse_panel_text("泡泡“挨打"), ("泡泡", "“挨打"))
+
+    def test_parse_lost_right_bracket_stays_conservative(self):
+        # 联合回查查不到（干员表无此人 / 剩下部分不构成该干员的技能）时不得猜名字，
+        # 保持原语义把整串当纯技能名，交给上层走重读→保守。
+        self.assertEqual(
+            reader._parse_panel_text("[测试干员测试技能"), ("", "[测试干员测试技能")
+        )
+        self.assertEqual(
+            reader._parse_panel_text("测试干员测试技能"), ("", "测试干员测试技能")
+        )
+        # 左括号后什么都没有：不猜
+        self.assertEqual(reader._parse_panel_text("[泡泡"), ("", "[泡泡"))
+        # 纯技能名（没有任何干员名可匹配）：保持原语义
+        self.assertEqual(reader._parse_panel_text("扫射模式"), ("", "扫射模式"))
+
+    def test_parse_other_bracket_shapes(self):
+        # OCR 常把方括号读成别的括号形（花括号/直角/书名号/圆括号…）。这些字符在
+        # 906 条技能名与 482 个干员名里零命中，一律当定界符：切开后名字与技能名
+        # 两侧都不能留残渣（残渣会挡住下游的技能互含比对）。
+        for left, right in [
+            ("{", "}"),
+            ("｛", "｝"),
+            ("〔", "〕"),
+            ("〈", "〉"),
+            ("《", "》"),
+            ("「", "」"),
+            ("『", "』"),
+            ("（", "）"),
+            ("(", ")"),
+        ]:
+            with self.subTest(brackets=left + right):
+                self.assertEqual(
+                    reader._parse_panel_text(f"{left}泡泡{right}“挨打”"),
+                    ("泡泡", "“挨打”"),
+                )
+                # 只读到左括号：右括号丢了，走联合回查
+                self.assertEqual(
+                    reader._parse_panel_text(f"{left}泡泡“挨打”"), ("泡泡", "“挨打”")
+                )
+                # 只读到右括号：左括号丢了，右括号左边是名字
+                self.assertEqual(
+                    reader._parse_panel_text(f"泡泡{right}“挨打”"), ("泡泡", "“挨打”")
+                )
+
+    def test_parse_lone_right_bracket_stays_skill_text(self):
+        # 右括号打头（右边没有名字）不切，保持「无括号视为纯技能名」的旧语义
+        self.assertEqual(reader._parse_panel_text("]扫射模式"), ("", "]扫射模式"))
 
 
 class TestCountLitMainPanelIcons(unittest.TestCase):
@@ -298,7 +396,7 @@ class TestReadSlotMasteryTier(unittest.TestCase):
 
 
 class TestClassifyRoom(unittest.TestCase):
-    """#73 状态矩阵（§16.2）：三态倒计时 × 干员/技能存在性 × 图标亮点。"""
+    """#73 状态矩阵（§4.3）：三态倒计时 × 干员/技能存在性 × 图标亮点。"""
 
     def test_train_finish_is_waiting_collect(self):
         self.assertEqual(
@@ -307,7 +405,7 @@ class TestClassifyRoom(unittest.TestCase):
         )
 
     def test_zero_countdown_is_waiting_collect(self):
-        # §16.8：00:00:00 → 待收取（完成房间不再被当空房重置重开），与身份/图标无关
+        # §4.2：00:00:00 → 待收取（完成房间不再被当空房重置重开），与身份/图标无关
         self.assertEqual(
             reader.classify_room_state(Scene.TRAIN_MAIN, "zero", True, True),
             "waiting_collect",
@@ -818,7 +916,7 @@ class TestReadRoomState(unittest.TestCase):
         )
 
     def test_zero_countdown_is_waiting_collect(self):
-        # §16.8 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
+        # §4.2 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
         solver = self._solver(0)
         with patch.object(reader.logger, "warning") as warning:
             room = reader.read_room_state(solver)
@@ -831,7 +929,7 @@ class TestReadRoomState(unittest.TestCase):
         self.assertEqual(room.state, "waiting_collect")
 
     def test_ocr_fail_retries_then_conservative_training(self):
-        # §16.2：active+身份+无图标 → 每次重读都 ocr_fail → 5 次后保守训练中（read_failed）
+        # §4.3：active+身份+无图标 → 每次重读都 ocr_fail → 5 次后保守训练中（read_failed）
         solver = self._solver(7200, panel_text="[测试干员]测试技能", tier_columns=())
         with patch.object(reader.logger, "warning") as warning:
             room = reader.read_room_state(solver)
@@ -2152,9 +2250,9 @@ class TestReconcileMatrix(unittest.TestCase):
 
 
 class TestReconcile73(unittest.TestCase):
-    """#73 状态矩阵对账：待收取 7 格动作（§16.3）/ 保护检查（§16.4-16.5）/ 恢复流程（§16.6）。"""
+    """#73 状态矩阵对账：待收取 7 格动作（§5.3）/ 保护检查（§4.4）/ 恢复流程。"""
 
-    # --- §16.3 待收取 7 格：图标 × 协助位 × 计划 ---
+    # --- §5.3 待收取 7 格：图标 × 协助位 × 计划 ---
 
     def test_waiting_collect_m3_unmatched_silent(self):
         # 专三 + 无计划 → 正常收取，不通知④（③ 需计划；无计划专三静默）
@@ -2207,7 +2305,7 @@ class TestReconcile73(unittest.TestCase):
         cp.assert_not_called()
 
     def test_waiting_collect_below_m3_matched_recovers_and_promotes(self):
-        # 非专三 + 都在计划 → 恢复流程（§16.6）：收取 + 优先级排前 + 继续本级当场开
+        # 非专三 + 都在计划 → 恢复流程：收取 + 优先级排前 + 继续本级当场开
         # （#74 第3段「都去掉」后一律当场开，不分扫描链/重启；路线 operator 照常安排）
         solver = MagicMock()
         room = make_room("waiting_collect", mastery_tier=2)
@@ -2235,7 +2333,7 @@ class TestReconcile73(unittest.TestCase):
         pp.assert_not_called()
 
     def test_waiting_collect_operator_only_partial_still_help_collect(self):
-        # 干员在计划、技能不在 → 也走帮收④（§16.3 干员在、技能不在格）
+        # 干员在计划、技能不在 → 也走帮收④（§5.3 干员在、技能不在格）
         solver = MagicMock()
         room = make_room("waiting_collect", mastery_tier=2, skill_name="别的技能")
         plan = make_plan()  # 干员匹配但技能不匹配
@@ -2263,11 +2361,11 @@ class TestReconcile73(unittest.TestCase):
         cs.assert_not_called()
         nh.assert_not_called()
 
-    # --- §16.4/§16.5 保护检查 ---
+    # --- §5.2/§4.4 保护检查 ---
 
     def test_protected_empty_with_idle_plan_notifies_and_holds(self):
         # 空闲 + 受保护 + 有待开始计划 → mower 不能开始：⑤ + 保持 idle，不主动轮询
-        # （保护解除靠「排班进训练室重读重判」，§16.5）
+        # （保护解除靠「排班进训练室重读重判」，§4.4）
         solver = MagicMock()
         solver.tasks = []
         room = make_room("empty", support_slot="逻各斯", train_slot="能天使")
@@ -2329,7 +2427,7 @@ class TestReconcile73(unittest.TestCase):
 
 
 class TestComputeProtected(unittest.TestCase):
-    """§16.5 保护检查（现读现判）：逻各斯/艾丽妮 + 待收取/空闲的判定。"""
+    """§4.4 保护检查（现读现判）：逻各斯/艾丽妮 + 待收取/空闲的判定。"""
 
     def setUp(self):
         self.solver = MagicMock()
@@ -2343,7 +2441,7 @@ class TestComputeProtected(unittest.TestCase):
         )
 
     def test_waiting_collect_m3_not_protected(self):
-        # §16.3 第1格：专三完成 → 无论如何不保护 → 可排班
+        # §5.3 第1格：专三完成 → 无论如何不保护 → 可排班
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("waiting_collect", "逻各斯", "", 3)
             self.assertFalse(reader._compute_protected(self.solver, room))
@@ -2376,7 +2474,7 @@ class TestComputeProtected(unittest.TestCase):
             self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_off_no_protection(self):
-        # §16.11 OFF：保护全停
+        # §7.3 OFF：保护全停
         with patch.object(reader.config.conf, "enable_mastery", False):
             room = self._room("waiting_collect", "逻各斯", "", 2)
             self.assertFalse(reader._compute_protected(self.solver, room))
@@ -2425,7 +2523,7 @@ class TestComputeProtected(unittest.TestCase):
 
 
 class TestPromotePlan(unittest.TestCase):
-    """§16.6 恢复流程插队：已最前不动；未最前插到最前、原最前计划后移一位。"""
+    """恢复流程插队：已最前不动；未最前插到最前、原最前计划后移一位。"""
 
     def test_already_front_no_change(self):
         solver = MagicMock()
@@ -2706,7 +2804,7 @@ class TestGetTrainSceneFloatingWindow(unittest.TestCase):
     """#78 浮窗识别盲区：get_train_scene 识别 room_detail → 205，且不误用 arrange_check_in。
 
     浮窗开着时 room_detail（浮窗头）须在 train_main/training_support 之前判 205，
-    否则浮窗被误标 217/219、_read_slots 关浮窗死代码永不触发。
+    否则浮窗被误标 217/219、读槽位后的关浮窗（点 arrange_check_in_on）永不触发。
     """
 
     def _recog(self, find_hits):
@@ -2738,8 +2836,12 @@ class TestGetTrainSceneFloatingWindow(unittest.TestCase):
         self.assertEqual(rec.get_train_scene(), Scene.TRAIN_MAIN)
 
 
-class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
-    """#78 复活 _read_slots 的关浮窗死代码：读完进驻详情后浮窗必须确定关掉，无二次 back。"""
+class TestReadSlotsCheckedCloseFloatingWindow(unittest.TestCase):
+    """#78：读完进驻详情浮窗必须确定关掉（点关闭按钮，不是 back，也不会二次 back）。
+
+    #100 起读槽位只有一个入口 `_read_slots_checked`（`_read_slots` 包装层已删），
+    原 `TestReadSlotsCloseFloatingWindow` 的行为断言原样搬过来。
+    """
 
     def test_closes_floating_window_after_read(self):
         solver = MagicMock()
@@ -2751,28 +2853,35 @@ class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
             Scene.TRAIN_MAIN,  # 读槽位前置：主页面
             Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
         ]
-        support, train = reader._read_slots(solver)
+        support, train, _, reliable = reader._read_slots_checked(solver)
+        self.assertTrue(reliable)
         self.assertEqual((support, train), ("逻各斯", "能天使"))
         # 205 放大视角关浮窗应点关闭按钮（arrange_check_in_on），不是 back（会退到基建）
         solver.find.assert_any_call("arrange_check_in_on")
         solver.tap.assert_called()
         solver.back.assert_not_called()
 
-    def test_no_double_back_when_window_closed(self):
+    def test_no_double_back_when_popup_not_confirmed(self):
+        # 读后场景非 205（浮窗没开/开错）→ 槽位不消费，也不补一次 back
         solver = MagicMock()
         solver.get_agent_from_room.return_value = [
             {"agent": "逻各斯"},
             {"agent": "能天使"},
         ]
         solver.train_scene.return_value = Scene.TRAIN_MAIN
-        reader._read_slots(solver)
+        support, train, _, reliable = reader._read_slots_checked(solver)
+        self.assertFalse(reliable)
+        self.assertEqual((support, train), ("", ""))
         solver.back.assert_not_called()
         solver.tap.assert_not_called()
 
     def test_read_failure_returns_empty_no_back(self):
         solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
         solver.get_agent_from_room.side_effect = Exception("read fail")
-        self.assertEqual(reader._read_slots(solver), ("", ""))
+        support, train, _, reliable = reader._read_slots_checked(solver)
+        self.assertFalse(reliable)
+        self.assertEqual((support, train), ("", ""))
         solver.back.assert_not_called()
 
 
@@ -2823,6 +2932,112 @@ class TestReadSlotsSceneGate(unittest.TestCase):
         self.assertTrue(reliable)
         self.assertEqual((support, train), ("支援干员", "训练干员"))
 
+    def test_reads_open_popup_in_place_when_title_says_train(self):
+        # 浮窗已开 + 门牌认出是训练室 → 就地读，不再「关掉再打开」：只关一次窗（读后）
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.INFRA_DETAILS
+        solver.detect_room.return_value = "train"
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        with patch.object(reader, "_close_room_detail") as mock_close:
+            support, train, scan, reliable = reader._read_slots_checked(solver)
+        mock_close.assert_called_once_with(solver)  # 读前那一次关窗被省掉了
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+        solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_closes_popup_first_when_title_is_other_room(self):
+        # 浮窗已开但门牌不是训练室（别的房间的进驻详情也是 205）→ 照旧先关回 217 再重开
+        solver = MagicMock()
+        solver.detect_room.return_value = "meeting"
+        solver.train_scene.side_effect = [
+            Scene.INFRA_DETAILS,  # 前置：浮窗开着，但不是训练室的
+            Scene.TRAIN_MAIN,  # 关掉后回到训练室主页面
+            Scene.INFRA_DETAILS,  # 读后：浮窗已开 → 关回
+        ]
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        with patch.object(reader, "_close_room_detail") as mock_close:
+            support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertEqual(mock_close.call_count, 2)  # 读前关 + 读后关
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+
+    def test_detect_room_failure_falls_back_to_reopen(self):
+        # detect_room 抛异常 → 当「认不出来」，走旧的关掉重开，读照常生效（不因它失败而读不到）
+        solver = MagicMock()
+        solver.detect_room.side_effect = Exception("detect fail")
+        solver.train_scene.side_effect = [
+            Scene.INFRA_DETAILS,
+            Scene.TRAIN_MAIN,
+            Scene.INFRA_DETAILS,
+        ]
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        with patch.object(reader, "_close_room_detail") as mock_close:
+            support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertEqual(mock_close.call_count, 2)
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+
+
+class TestFillSlotsReliability(unittest.TestCase):
+    """#100：RoomState.slots_reliable 如实反映 _read_slots_checked 的可靠位。
+
+    开训换人（_start_new_training）与排班 gate 都靠它区分「真空位」与「读浮窗失败」：
+    False 时空串只能当「不知道」，不得当空位做补位/换人 mutation。
+    """
+
+    @staticmethod
+    def _solver(scenes):
+        solver = MagicMock()
+        it = iter(scenes)
+        solver.train_scene.side_effect = lambda: next(it, Scene.TRAIN_MAIN)
+        solver.find.return_value = None  # _close_room_detail 不点任何东西
+        return solver
+
+    @staticmethod
+    def _fill(solver, scan):
+        solver.get_agent_from_room.return_value = scan
+        room = reader.RoomState("empty")
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            reader._fill_slots_and_protection(solver, room)
+        return room
+
+    def test_reliable_empty_slots(self):
+        # 读前在 217、读后浮窗确实开了（205）+ 两个槽位都空 → 可靠地空着
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        room = self._fill(solver, [{"agent": ""}, {"agent": ""}])
+        self.assertTrue(room.slots_read)
+        self.assertTrue(room.slots_reliable, "过了场景闸门的空位＝可靠地空着")
+        self.assertEqual((room.support_slot, room.train_slot), ("", ""))
+
+    def test_read_failure_is_not_reliable(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        solver.get_agent_from_room.side_effect = KeyError("泡泡")
+        room = reader.RoomState("empty")
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            reader._fill_slots_and_protection(solver, room)
+        self.assertTrue(room.slots_read)
+        self.assertFalse(room.slots_reliable, "读失败不是空位")
+
+    def test_short_scan_is_not_reliable(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        room = self._fill(solver, [])
+        self.assertFalse(room.slots_reliable, "槽位没读全不能报「可靠地空着」")
+
+    def test_popup_not_confirmed_is_not_reliable(self):
+        # 读后场景非 205（浮窗没开/开错）→ 槽位数据不消费
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.TRAIN_MAIN])
+        room = self._fill(solver, [{"agent": ""}, {"agent": ""}])
+        self.assertFalse(room.slots_reliable)
+
 
 class TestUpdateExpirySkipWrite(unittest.TestCase):
     """#82：_update_expiry 只写 expires_at（拆出排收取），倒计时未变时跳过 DB 写。"""
@@ -2865,7 +3080,7 @@ class TestUpdateExpirySkipWrite(unittest.TestCase):
 
 
 class TestRefreshTrainingHalfOverlap(unittest.TestCase):
-    """#82：半重叠消除——先换人判定，排了换人就不排收取；没排换人才排收取（§16.10）。"""
+    """#82：半重叠消除——先换人判定，排了换人就不排收取；没排换人才排收取（§5.2）。"""
 
     def setUp(self):
         self.patch_follows = patch.object(
@@ -2930,7 +3145,7 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
 
 
 class TestReconcileProtectedRelease(unittest.TestCase):
-    """§16.5 保护：训练位已是计划干员时放行 mower 开始训练。
+    """§4.4 保护：训练位已是计划干员时放行 mower 开始训练。
 
     保护挡「移动协助位/训练位」；训练位 = 计划干员时开始训练不动训练位
     （只按路线补协助位）→ 保护不适用，放行 scan_plan；训练位空/坐别人
@@ -3036,6 +3251,143 @@ class TestTrainSlotHasMastery(unittest.TestCase):
         res = reader._train_slot_has_mastery(self.solver)
         self.assertTrue(res, "超时保守保护")
         self.solver.back.assert_not_called()
+
+
+class TestLogJudgment(unittest.TestCase):
+    """验证重构后的判定日志格式：WebUI 高亮、空槽规范（'' 与 -1）、slots_reliable 区分。"""
+
+    def setUp(self):
+        self.solver = MagicMock()
+
+    @patch.object(reader.logger, "info")
+    def test_log_training_consistent_with_mood(self, mock_info):
+        # 正常训练中：协助位年，训练位泡泡，带心情与倒计时
+        countdown = datetime(2026, 9, 21, 4, 12, 30)
+        panel = make_panel(
+            operator_name="泡泡",
+            skill_name="挨打",
+            mastery_tier=1,
+            countdown=countdown,
+            countdown_state="active",
+        )
+        room = reader.RoomState(
+            state="training",
+            panel=panel,
+            support_slot="年",
+            train_slot="泡泡",
+            support_mood=24.0,
+            train_mood=18.5,
+            slots_read=True,
+            slots_reliable=True,
+        )
+        reader._log_judgment(self.solver, room, "training", "更新专精完成的收取时间")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[训练中]：", msg)
+        self.assertIn("\"协助位干员：'年'，心情：24.0\"", msg)
+        self.assertIn(
+            "\"训练位干员：'泡泡'「挨打」专精一 剩余 04:12:30，心情：18.5\"", msg
+        )
+        self.assertIn("更新专精完成的收取时间", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_unreliable_slots(self, mock_info):
+        # 进驻浮窗读取失败/不可靠
+        countdown = datetime(2026, 9, 21, 4, 12, 30)
+        panel = make_panel(
+            operator_name="泡泡",
+            skill_name="挨打",
+            mastery_tier=1,
+            countdown=countdown,
+            countdown_state="active",
+        )
+        room = reader.RoomState(
+            state="training",
+            panel=panel,
+            support_slot="",
+            train_slot="",
+            slots_read=True,
+            slots_reliable=False,
+        )
+        reader._log_judgment(self.solver, room, "training", "更新专精完成的收取时间")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[训练中]：", msg)
+        self.assertIn('"进驻浮窗读取不可靠"', msg)
+        self.assertIn("\"训练位干员：'泡泡'「挨打」专精一 剩余 04:12:30\"", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_ocr_fail_slots_unread(self, mock_info):
+        # 识别异常早返回：未展开浮窗
+        countdown = datetime(2026, 9, 21, 2, 30, 15)
+        panel = make_panel(
+            operator_name="",
+            skill_name="[泡泡“挨打”",
+            mastery_tier=0,
+            countdown=countdown,
+            countdown_state="active",
+        )
+        room = reader.RoomState(
+            state="training",
+            panel=panel,
+            read_failed=True,
+            slots_read=False,
+            slots_reliable=False,
+        )
+        reader._log_judgment(self.solver, room, "ocr_fail", "保守训练中，等待排班重读")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[识别异常]：", msg)
+        self.assertIn('"未展开进驻详情"', msg)
+        self.assertIn("\"面板识别：'[泡泡“挨打”' 剩余 02:30:15\"", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_empty_room(self, mock_info):
+        # 空闲房间：槽位均为空（格式化为 '' 与 -1），命中空闲标记
+        panel = make_panel(idle_marker=True)
+        room = reader.RoomState(
+            state="empty",
+            panel=panel,
+            support_slot="",
+            train_slot="",
+            slots_read=True,
+            slots_reliable=True,
+        )
+        reader._log_judgment(self.solver, room, "empty", "准备开始训练", 计划=101)
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[空闲]：", msg)
+        self.assertIn("\"协助位干员：''，心情：-1\"", msg)
+        self.assertIn("\"训练位干员：''，心情：-1\"", msg)
+        self.assertIn('"面板：空闲中"', msg)
+        self.assertIn("计划 #101", msg)
+
+    @patch.object(reader.logger, "info")
+    def test_log_waiting_collect_tier3(self, mock_info):
+        # 专三完成待收取
+        panel = make_panel(
+            operator_name="能天使",
+            skill_name="过载运转",
+            mastery_tier=3,
+            countdown_state="zero",
+        )
+        room = reader.RoomState(
+            state="waiting_collect",
+            panel=panel,
+            support_slot="逻各斯",
+            train_slot="能天使",
+            support_mood=24.0,
+            train_mood=12.0,
+            slots_read=True,
+            slots_reliable=True,
+        )
+        reader._log_judgment(self.solver, room, "waiting_collect", "专三完成，正常收取")
+        mock_info.assert_called_once()
+        msg = mock_info.call_args[0][0]
+        self.assertIn("房间 训练室[待收取]：", msg)
+        self.assertIn("\"协助位干员：'逻各斯'，心情：24.0\"", msg)
+        self.assertIn("\"训练位干员：'能天使'「过载运转」专精三 已完成\"", msg)
+        self.assertIn("专三完成，正常收取", msg)
 
 
 if __name__ == "__main__":
