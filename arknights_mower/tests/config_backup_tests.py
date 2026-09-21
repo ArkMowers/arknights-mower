@@ -116,12 +116,11 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
     original_plan = populated_plan.model_dump(exclude_none=True)
     migrated_plan = json.loads(json.dumps(original_plan))
     migrated_plan["conf"]["dorm_order"] = (
-        "dormitory_1,dormitory_2,dormitory_3,dormitory_4"
+        "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
     )
     for backup_plan in migrated_plan["backup_plans"]:
-        backup_plan["conf"]["dorm_order"] = (
-            "dormitory_1,dormitory_2,dormitory_3,dormitory_4"
-        )
+        backup_plan["conf"]["dorm_order"] = ""
+        backup_plan["conf"]["dorm_order_override"] = False
     raw = incoming(
         **{
             "conf.yml": (
@@ -144,7 +143,7 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
         config.load_plan()
         assert config.conf.account == "restored"
         assert config.plan.conf.dorm_order == (
-            "dormitory_1,dormitory_2,dormitory_3,dormitory_4"
+            "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
         )
         assert config.plan.model_dump(exclude_none=True) == migrated_plan
     assert json.loads(config.plan_path.read_text()) == migrated_plan

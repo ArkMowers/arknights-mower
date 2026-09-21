@@ -65,6 +65,19 @@ export const usePlanStore = defineStore('plan', () => {
     return result.concat(default_dorm_order.filter((room) => !result.includes(room)))
   }
 
+  function normalizeBackupDormOrder(conf) {
+    const raw = conf.dorm_order
+    const normalized = raw ? normalizeDormOrder(raw) : []
+    const hasOverride =
+      Object.prototype.hasOwnProperty.call(conf, 'dorm_order_override') &&
+      conf.dorm_order_override != null
+    const override = hasOverride
+      ? Boolean(conf.dorm_order_override)
+      : normalized.length > 0 && normalized.join(',') !== default_dorm_order.join(',')
+    conf.dorm_order_override = override
+    return override ? normalized : []
+  }
+
   const backup_conf_convert_list = [
     'exhaust_require',
     'rest_in_full',
@@ -180,7 +193,7 @@ export const usePlanStore = defineStore('plan', () => {
         b.exit_trigger_timing = null
       }
       for (const i of backup_conf_convert_list) {
-        b.conf[i] = i === 'dorm_order' ? normalizeDormOrder(b.conf[i]) : str2list(b.conf[i])
+        b.conf[i] = i === 'dorm_order' ? normalizeBackupDormOrder(b.conf) : str2list(b.conf[i])
       }
       b.plan = fill_empty(b.plan)
     }

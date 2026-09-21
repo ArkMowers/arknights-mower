@@ -233,6 +233,7 @@ def build_global_plan():
             free_blacklist=i["conf"]["free_blacklist"],
             ope_resting_priority=i["conf"]["ope_resting_priority"],
             dorm_order=i["conf"].get("dorm_order", ""),
+            dorm_order_override=i["conf"].get("dorm_order_override", False),
             experimental_dorm_logic=conf.experimental_dorm_logic,
             resting_standby=i["conf"].get("resting_standby", ""),
             resting_threshold=conf.resting_threshold,
