@@ -337,6 +337,91 @@ def _native_return(op_data, plan, names):
             slots[op.index] = name
 
 
+def _active_recovery_room(op_data, name):
+    """返回仍有效的单回宿舍标记；离开过该宿舍的旧标记不参与豁免。"""
+    op = op_data.operators[name]
+    room = getattr(op, "dorm_recovery_room", "")
+    return room if room and op.current_room == room else ""
+
+
+def _recovery_aware_assignments(
+    op_data, beds, candidates, *, clear_invalid_recovery=True
+):
+    """按正常排名选人，再豁免已有单回目标并尽量留在原宿舍。
+
+    candidates 的统一布局为 ``(排序键, 原床位顺序, 姓名, 时间, ...)``。
+    单回目标若原本会因缩容落选，会替换保留区末尾的非单回目标；若目标
+    所在宿舍仍有动态床，优先保留原床或同房床。确实换房/离床时清除旧
+    标记，使后续宿舍任务重新执行一次单回入驻。
+    """
+    capacity = len(beds)
+    protected = {
+        candidate[2]
+        for candidate in candidates
+        if _active_recovery_room(op_data, candidate[2])
+    }
+    kept = list(candidates[:capacity])
+    kept_names = {candidate[2] for candidate in kept}
+    for candidate in candidates[capacity:]:
+        name = candidate[2]
+        if name not in protected:
+            continue
+        replace_index = next(
+            (
+                index
+                for index in range(len(kept) - 1, -1, -1)
+                if kept[index][2] not in protected
+            ),
+            None,
+        )
+        if replace_index is None:
+            continue
+        kept_names.remove(kept[replace_index][2])
+        kept[replace_index] = candidate
+        kept_names.add(name)
+    kept.sort(key=candidates.index)
+    dropped = [candidate for candidate in candidates if candidate[2] not in kept_names]
+
+    available = list(beds)
+    assignments = {}
+    assigned_names = set()
+    # 单回目标先占原宿舍；同房内优先原床，避免无意义地重做单回。
+    for candidate in kept:
+        name = candidate[2]
+        recovery_room = _active_recovery_room(op_data, name)
+        if not recovery_room:
+            continue
+        same_room = [bed for bed in available if bed.position[0] == recovery_room]
+        if not same_room:
+            continue
+        op = op_data.operators[name]
+        bed = next(
+            (
+                item
+                for item in same_room
+                if item.position == (op.current_room, op.current_index)
+            ),
+            same_room[0],
+        )
+        assignments[bed.position] = candidate
+        assigned_names.add(name)
+        available.remove(bed)
+
+    remaining = [candidate for candidate in kept if candidate[2] not in assigned_names]
+    for bed, candidate in zip(available, remaining):
+        assignments[bed.position] = candidate
+
+    assigned_rooms = {
+        candidate[2]: position[0] for position, candidate in assignments.items()
+    }
+    if clear_invalid_recovery:
+        for name in protected:
+            recovery_room = _active_recovery_room(op_data, name)
+            if assigned_rooms.get(name) != recovery_room:
+                op_data.operators[name].clear_dorm_recovery()
+    return assignments, dropped
+
+
 def rebalance_closing_dorm_slots(op_data, plan, recalled):
     """固定宿舍成员回班前，统一重排仍在恢复中的动态床位。
 
@@ -391,7 +476,9 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
                 (resting_key(op_data, name, now), order, name, saved_time)
             )
         candidates.sort(key=lambda item: (item[0], item[1]))
-        dropped = candidates[len(beds) :]
+        _assignments, dropped = _recovery_aware_assignments(
+            op_data, beds, candidates, clear_invalid_recovery=False
+        )
         dropped_groups = {
             op_data.operators[name].group
             for _key, _order, name, _time in dropped
@@ -411,9 +498,7 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
                 if op_data.is_auto_free_dorm_operator(member_op):
                     closing.add((member_op.room, member_op.index))
 
-    assignments = {
-        bed.position: candidate for bed, candidate in zip(beds, candidates[: len(beds)])
-    }
+    assignments, _dropped = _recovery_aware_assignments(op_data, beds, candidates)
     for bed in op_data.dorm:
         room, index = bed.position
         if bed.position in closing:
@@ -431,18 +516,31 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
     return recalled
 
 
-def rebalance_plan_swap_dorms(op_data):
-    """主副表切换导致动态床位增减时，迁移仍需恢复的入住者。"""
+def rebalance_plan_swap_dorms(op_data, previous_dorms=None):
+    """主副表切换后按新顺序迁移仍需恢复的入住者。
+
+    previous_dorms 用于保留切表前的“原床位顺序”。因此即使床位集合不变、
+    只修改了副表宿舍房间优先级，也能生成实际的宿舍重排任务。
+    """
     if not getattr(op_data, "experimental_dorm_logic", False):
         return {}
-    sources = [
-        *(bed for bed in op_data.dorm if bed.name and bed.name in op_data.operators),
-        *(
-            bed
-            for bed in getattr(op_data, "displaced_dorms", [])
-            if bed.name and bed.name in op_data.operators
-        ),
-    ]
+    if previous_dorms is not None:
+        sources = [
+            bed for bed in previous_dorms if bed.name and bed.name in op_data.operators
+        ]
+    else:
+        sources = [
+            *(
+                bed
+                for bed in op_data.dorm
+                if bed.name and bed.name in op_data.operators
+            ),
+            *(
+                bed
+                for bed in getattr(op_data, "displaced_dorms", [])
+                if bed.name and bed.name in op_data.operators
+            ),
+        ]
     if not sources:
         return {}
     now = datetime.now()
@@ -460,16 +558,19 @@ def rebalance_plan_swap_dorms(op_data):
         for name, (order, bed) in unique.items()
     )
     beds = [bed for bed in op_data.dorm if op_data.is_effective_free_slot(bed)]
-    kept = candidates[: len(beds)]
+    assignments, dropped = _recovery_aware_assignments(op_data, beds, candidates)
     plan = {}
-    for _key, _order, name, _time, _position in candidates[len(beds) :]:
+    for _key, _order, name, _time, _position in dropped:
         op = op_data.operators[name]
         if op.is_high():
             members = op_data.groups[op.group] if op.group else [name]
             _native_return(op_data, plan, members)
 
     destinations = {}
-    for bed, candidate in zip(beds, kept):
+    for bed in beds:
+        candidate = assignments.get(bed.position)
+        if candidate is None:
+            continue
         _key, _order, name, saved_time, _position = candidate
         destinations[bed.position] = name
         current = op_data.get_current_operator(*bed.position)

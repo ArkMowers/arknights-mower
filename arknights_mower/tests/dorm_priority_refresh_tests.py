@@ -1,5 +1,6 @@
 """宿舍床位顺序随主副排班独立保存并在切换时刷新。"""
 
+import copy
 import json
 from datetime import datetime
 from unittest.mock import MagicMock
@@ -10,6 +11,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import migrate_legacy_dorm_order
 from arknights_mower.utils.operators import Dormitory, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.scheduler_task import rebalance_plan_swap_dorms
 
 
 @pytest.fixture
@@ -155,6 +157,26 @@ def test_backup_plan_applies_its_own_dorm_order(saved):
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
         ROOM_DEFAULT
     )
+
+
+def test_backup_order_only_change_generates_physical_reorder(saved):
+    op = operators("", ["dormitory_2,dormitory_1,dormitory_3,dormitory_4"])
+    assert op.init_and_validate() is None
+    first, second = op.dorm[:2]
+    first.name = "至简"
+    second.name = "蜜莓"
+    for bed in (first, second):
+        agent = op.operators[bed.name]
+        agent.current_room, agent.current_index = bed.position
+        agent.mood = 12
+        agent.time_stamp = datetime(2026, 9, 22, 10)
+    previous = copy.deepcopy(op.dorm)
+
+    assert op.swap_plan([True], refresh=True) is None
+    plan = rebalance_plan_swap_dorms(op, previous)
+
+    assert plan["dormitory_2"][2:4] == ["至简", "蜜莓"]
+    assert [bed.name for bed in op.dorm[:2]] == ["至简", "蜜莓"]
 
 
 def test_saved_state_restores_values_without_overriding_regenerated_order(saved):

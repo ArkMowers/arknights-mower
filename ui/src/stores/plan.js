@@ -176,6 +176,9 @@ export const usePlanStore = defineStore('plan', () => {
 
     backup_plans.value = response.data.backup_plans ?? []
     for (let b of backup_plans.value) {
+      if (!Object.prototype.hasOwnProperty.call(b, 'exit_trigger_timing')) {
+        b.exit_trigger_timing = null
+      }
       for (const i of backup_conf_convert_list) {
         b.conf[i] = i === 'dorm_order' ? normalizeDormOrder(b.conf[i]) : str2list(b.conf[i])
       }

@@ -398,6 +398,35 @@ def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(sol
     assert all(bed.time == now + timedelta(hours=4) for bed in data.dorm[1:])
 
 
+def test_closing_bed_keeps_existing_single_recovery_target(solver):
+    configure_same_group_cover(solver)
+    data = solver.op_data
+    now = datetime.now()
+    occupants = ["泥岩", "陈", "能天使", "年"]
+    for bed, name in zip(data.dorm, occupants):
+        bed.name = name
+        bed.time = now + timedelta(hours=4)
+        op = data.operators[name]
+        op.current_room, op.current_index = bed.position
+        op.time_stamp = now
+        op.mood = 2
+    target = data.operators["年"]
+    target.mood = 23
+    target.dorm_recovery_room = "dormitory_1"
+    target.dorm_recovery_fixed = ("塑心",)
+    plan = {
+        "meeting": ["伊内丝", "银灰"],
+        "contact": ["讯使"],
+        "dormitory_1": ["塑心", "Current", "Current", "Current", "Current"],
+    }
+
+    rebalance_closing_dorm_slots(data, plan, set(data.groups["联动"]))
+
+    assert "年" in [bed.name for bed in data.dorm]
+    assert "能天使" not in [bed.name for bed in data.dorm]
+    assert target.dorm_recovery_room == "dormitory_1"
+
+
 def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
     configure_same_group_cover(solver)
     data = solver.op_data

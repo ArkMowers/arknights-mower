@@ -24,10 +24,16 @@ watch(show, (visible) => {
 
 const triggerTimingOptions = [
   { label: '任务开始', value: 'BEGINNING' },
+  { label: '进入工作站前', value: 'BEFORE_WORK' },
   { label: '入住宿舍前', value: 'BEFORE_DORM' },
   { label: '下班结束', value: 'BEFORE_PLANNING' },
   { label: '上班结束', value: 'AFTER_PLANNING' },
   { label: '任务结束', value: 'END' }
+]
+
+const exitTriggerTimingOptions = [
+  { label: '与切入阶段一致（默认）', value: null },
+  ...triggerTimingOptions
 ]
 
 function update_trigger(data) {
@@ -46,10 +52,11 @@ function update_trigger(data) {
   >
     <div class="dropdown-container">
       <label class="dropdown-label"
-        >最早切表阶段
+        >最早切入阶段
         <help-text :max-width="560" nowrap>
           <div>该选项表示最早允许切表的阶段。</div>
           <div>任务开始：调度器选中一个待执行任务后，在处理前允许切表。</div>
+          <div>进入工作站前：进入本轮第一间非宿舍设施前。</div>
           <div>入住宿舍前：工作站换班完成、进入第一间宿舍前；副表任务会先于原宿舍安排执行。</div>
           <div>下班结束：适合需要在上班前切换产物或订单的副表。</div>
           <div>上班结束：等本轮换班完成后再允许切表。</div>
@@ -61,6 +68,22 @@ function update_trigger(data) {
         v-model:value="backup_plans[sub_plan].trigger_timing"
         :options="triggerTimingOptions"
         placeholder="Select Trigger Timing"
+        class="dropdown-select"
+      >
+      </n-select>
+    </div>
+    <div class="dropdown-container">
+      <label class="dropdown-label"
+        >最早切出阶段
+        <help-text :max-width="560" nowrap>
+          <div>副表条件失效后，最早允许退出副表的阶段。</div>
+          <div>默认跟随切入阶段；也可单独设置，例如切入选“入住宿舍前”、切出选“进入工作站前”。</div>
+        </help-text>
+      </label>
+      <n-select
+        v-model:value="backup_plans[sub_plan].exit_trigger_timing"
+        :options="exitTriggerTimingOptions"
+        placeholder="与切入阶段一致"
         class="dropdown-select"
       >
       </n-select>

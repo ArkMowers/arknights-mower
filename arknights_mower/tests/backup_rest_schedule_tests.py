@@ -277,12 +277,72 @@ def test_infra_main_removes_fully_superseded_dorm_task(solver):
 
 
 def test_before_dorm_timing_order_and_parser():
+    assert Plan.set_timing_enum("before_work") is PlanTriggerTiming.BEFORE_WORK
     assert Plan.set_timing_enum("before_dorm") is PlanTriggerTiming.BEFORE_DORM
     assert (
         PlanTriggerTiming.BEGINNING.value
+        < PlanTriggerTiming.BEFORE_WORK.value
         < PlanTriggerTiming.BEFORE_DORM.value
         < PlanTriggerTiming.BEFORE_PLANNING.value
     )
+
+
+def test_exit_timing_defaults_to_entry_timing_and_can_be_independent():
+    inherited = Plan({}, PlanConfig("", "", ""), trigger_timing="BEFORE_DORM")
+    independent = Plan(
+        {},
+        PlanConfig("", "", ""),
+        trigger_timing="BEFORE_DORM",
+        exit_trigger_timing="BEFORE_WORK",
+    )
+
+    assert inherited.exit_trigger_timing is PlanTriggerTiming.BEFORE_DORM
+    assert independent.trigger_timing is PlanTriggerTiming.BEFORE_DORM
+    assert independent.exit_trigger_timing is PlanTriggerTiming.BEFORE_WORK
+
+
+def test_backup_uses_independent_exit_timing(solver):
+    backup = solver.op_data.backup_plans[0]
+    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
+    backup.exit_trigger_timing = PlanTriggerTiming.BEFORE_WORK
+    solver.op_data.plan_condition = [True]
+    solver.op_data.operators["黑键"].is_resting = MagicMock(return_value=False)
+
+    solver.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+    assert solver.op_data.plan_condition == [True]
+
+    solver.backup_plan_solver(PlanTriggerTiming.BEFORE_WORK)
+    assert solver.op_data.plan_condition == [False]
+
+
+def test_before_work_exit_defers_current_room_before_entering_it(solver):
+    backup = solver.op_data.backup_plans[0]
+    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
+    backup.exit_trigger_timing = PlanTriggerTiming.BEFORE_WORK
+    backup.task = {"contact": ["红"]}
+    solver.op_data.plan_condition = [True]
+    solver.op_data.operators["黑键"].is_resting = MagicMock(return_value=False)
+    current = SchedulerTask(
+        time=datetime(2026, 9, 11, 16),
+        task_plan={
+            "contact": ["红"],
+            "dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"],
+        },
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    solver.task = current
+    solver.tasks = [current]
+    solver.agent_arrange_room = MagicMock()
+    solver.agent_arrange = base.BaseSchedulerSolver.agent_arrange.__get__(solver)
+    solver.queue_product_switches = MagicMock()
+
+    assert solver.agent_arrange(current.plan, get_time=True) is False
+
+    solver.agent_arrange_room.assert_not_called()
+    assert current.plan == {"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]}
+    generated = next(task for task in solver.tasks if task is not current)
+    assert generated.plan == {"contact": ["黑键"]}
+    assert generated.time == current.time - timedelta(microseconds=1)
 
 
 def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver):

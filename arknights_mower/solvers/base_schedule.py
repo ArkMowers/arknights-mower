@@ -2275,9 +2275,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     func = str(bp.trigger)
                     logger.debug(func)
                     con[idx] = self.op_data.evaluate_expression(func)
+                    trigger_timing = (
+                        bp.trigger_timing if con[idx] else bp.exit_trigger_timing
+                    )
                     if (
                         current_con[idx] != con[idx]
-                        and bp.trigger_timing.value <= timing.value
+                        and trigger_timing.value <= timing.value
                     ):
                         task = self.op_data.backup_plans[idx].task
                         if task and con[idx]:
@@ -2306,9 +2309,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}"
                     )
                     logger.info(f"新条件列表:{con}")
+                    previous_dorms = copy.deepcopy(self.op_data.all_dorms())
                     self.op_data.swap_plan(con, refresh=True)
                     self.queue_product_switches()
-                    dorm_migration = rebalance_plan_swap_dorms(self.op_data)
+                    dorm_migration = rebalance_plan_swap_dorms(
+                        self.op_data, previous_dorms
+                    )
                     if dorm_migration:
                         new_task = True
                         generated = SchedulerTask(
@@ -5466,6 +5472,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             copy.deepcopy(plan) if self.task.type == TaskTypes.RUN_ORDER else None
         )
         new_plan = {}
+        before_work_checked = False
         before_dorm_checked = False
         # 优先替换工作站再替换宿舍
         rooms.sort(
@@ -5475,6 +5482,47 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         )
         for room in rooms:
+            if not room.startswith("dormitory_") and not before_work_checked:
+                before_work_checked = True
+                custom_task_time = self.task.time - timedelta(microseconds=1)
+                generated_tasks = []
+                if self.backup_plan_solver(
+                    PlanTriggerTiming.BEFORE_WORK,
+                    append_empty_task=False,
+                    custom_task_time=custom_task_time,
+                    generated_tasks=generated_tasks,
+                    restore_on_deactivate=True,
+                ):
+                    generated_ids = {id(task) for task in generated_tasks}
+                    anchor = min(
+                        (
+                            task.time
+                            for task in self.tasks
+                            if id(task) not in generated_ids
+                        ),
+                        default=self.task.time,
+                    )
+                    for offset, generated in enumerate(
+                        reversed(generated_tasks), start=1
+                    ):
+                        generated.time = anchor - timedelta(microseconds=offset)
+                    # 先执行切表生成的任务；它明确写入的槽位不再由旧任务覆盖，
+                    # 旧任务中其他房间或其他槽位仍在下一轮续行。
+                    for generated in generated_tasks:
+                        for generated_room, generated_agents in generated.plan.items():
+                            if generated_room not in plan:
+                                continue
+                            for index, name in enumerate(generated_agents):
+                                if (
+                                    index < len(plan[generated_room])
+                                    and name != "Current"
+                                ):
+                                    plan[generated_room][index] = "Current"
+                    for pending_room in list(plan):
+                        if all(name == "Current" for name in plan[pending_room]):
+                            del plan[pending_room]
+                    logger.info("进入工作站前触发副表任务，先执行切表任务")
+                    return False
             if room.startswith("dormitory_") and not before_dorm_checked:
                 before_dorm_checked = True
                 custom_task_time = self.task.time - timedelta(microseconds=1)
