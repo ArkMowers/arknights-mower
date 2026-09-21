@@ -112,6 +112,13 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     )
     conflict = _schedule_run_orders(ordinary, run_order_delay, execution_time, time_now)
     if enabled:
+        # ordinary 是为保护专精换人而创建的浅拷贝；同步其中被合并掉的任务。
+        ordinary_ids = {id(task) for task in ordinary}
+        tasks[:] = [
+            task
+            for task in tasks
+            if task.type == TaskTypes.SWAP_SUPPORT or id(task) in ordinary_ids
+        ]
         swap_conflict = protect_support_swaps(
             tasks, run_order_delay, execution_time, time_now
         )
@@ -196,6 +203,78 @@ def _defer_work_before_swap(tasks, swap, timing):
             task.time = max(now, swap.time) + timedelta(minutes=3)
         else:
             cursor = finish
+
+
+def _merge_deferred_dorm_schedules(tasks):
+    """把同一批延期任务里的宿舍中间态合成一次最终安排。"""
+    dorm_tasks = [
+        task
+        for task in tasks
+        if any(room.startswith("dormitory_") for room in task.plan)
+    ]
+    if len(dorm_tasks) < 2:
+        return tasks
+
+    merged = {}
+
+    def remove_from_dorm(name):
+        if name in ("", "Current", "Free"):
+            return
+        for agents in merged.values():
+            for index, current in enumerate(agents):
+                if current == name:
+                    agents[index] = "Free"
+
+    for task in tasks:
+        # agent_arrange 同一任务内先处理工作站；回班人员不应再出现在最终宿舍。
+        for room, agents in task.plan.items():
+            if room.startswith("dormitory_"):
+                continue
+            for name in agents:
+                remove_from_dorm(name)
+        for room, agents in task.plan.items():
+            if not room.startswith("dormitory_"):
+                continue
+            target = merged.setdefault(room, ["Current"] * len(agents))
+            if len(target) < len(agents):
+                target.extend(["Current"] * (len(agents) - len(target)))
+            for index, name in enumerate(agents):
+                if name == "Current":
+                    continue
+                remove_from_dorm(name)
+                target[index] = name
+
+    # SHIFT_OFF 需要读取新入住者的休息时间，优先承载合并后的宿舍安排。
+    anchor = next(
+        (task for task in dorm_tasks if task.type == TaskTypes.SHIFT_OFF),
+        dorm_tasks[-1],
+    )
+    dorm_ids = {id(task) for task in dorm_tasks}
+    redundant_followup_ids = {
+        id(tasks[index + 1])
+        for index, task in enumerate(tasks[:-1])
+        if task is not anchor
+        and task.type == TaskTypes.RE_ORDER
+        and tasks[index + 1].type == TaskTypes.NOT_SPECIFIC
+        and not tasks[index + 1].plan
+        and tasks[index + 1].time == task.time
+    }
+    for task in dorm_tasks:
+        for room in list(task.plan):
+            if room.startswith("dormitory_"):
+                del task.plan[room]
+    anchor.plan.update(merged)
+
+    result = []
+    for task in tasks:
+        if task is not anchor and id(task) in dorm_ids and not task.plan:
+            continue
+        # RE_ORDER 后的空任务只是为了唤醒下一轮；RE_ORDER 已合并时不再需要。
+        if id(task) in redundant_followup_ids:
+            continue
+        result.append(task)
+    logger.info("合并同批延期任务的宿舍安排，仅保留一次最终排班")
+    return result
 
 
 def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
@@ -285,11 +364,17 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                         logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
                         logger.debug("||".join([str(t) for t in tasks]))
                         next_priority_0_time = tasks[next_priority_0_index].time
-                        for j in range(i, next_priority_0_index):
-                            if tasks[j].adjusted:
+                        pending = _merge_deferred_dorm_schedules(
+                            tasks[i:next_priority_0_index]
+                        )
+                        tasks[i:next_priority_0_index] = pending
+                        for pending_task in pending:
+                            if pending_task.adjusted:
                                 continue
-                            tasks[j].time = next_priority_0_time + timedelta(seconds=1)
-                            next_priority_0_time = tasks[j].time
+                            pending_task.time = next_priority_0_time + timedelta(
+                                seconds=1
+                            )
+                            next_priority_0_time = pending_task.time
                         logger.debug("||".join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
