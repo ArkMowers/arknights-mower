@@ -1068,7 +1068,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 logger.warning(f"训练室顺路更新状态失败: {e}")
                         else:
                             # enable_mastery 关闭：不跑 mastery 读取器（铁律 10），保留
-                            # 通用心情读取。
+                            # 通用心情读取；清空专精状态缓存，避免消费陈旧锁定。
+                            self.train_room_state = None
                             _mood_data = self.get_agent_from_room(room, None)
                             mood_info = [
                                 f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
@@ -1137,14 +1138,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     fix_plan[key][idx] = plan[key][idx].agent
         # 最后如果有任何高效组心情没有记录 或者高效组在宿舍
         # 宿舍绑组成员由组状态纠错处理；下班期间离开固定位置是正常状态。
-        train_room_state = getattr(self, "train_room_state", None)
-        train_blocked = (
+        if (
+            not config.conf.enable_mastery
+            and getattr(self, "train_room_state", None) is not None
+        ):
+            self.train_room_state = None
+        train_room_state = (
+            getattr(self, "train_room_state", None)
+            if config.conf.enable_mastery
+            else None
+        )
+        train_blocked = config.conf.enable_mastery and (
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
             or getattr(train_room_state, "locked", None) is True
-            or (
-                config.conf.enable_mastery
-                and getattr(train_room_state, "protected", None) is True
-            )
+            or getattr(train_room_state, "protected", None) is True
         )
         miss_list = {
             k: v
@@ -1355,8 +1362,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug("训练室受保护，跳过训练室纠错")
             self._notify_train_correction_skipped()
             return
-        train_room_state = getattr(self, "train_room_state", None)
-        train_locked = (
+        if (
+            not config.conf.enable_mastery
+            and getattr(self, "train_room_state", None) is not None
+        ):
+            self.train_room_state = None
+        train_room_state = (
+            getattr(self, "train_room_state", None)
+            if config.conf.enable_mastery
+            else None
+        )
+        train_locked = config.conf.enable_mastery and (
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
             or getattr(train_room_state, "locked", None) is True
         )
@@ -4770,7 +4786,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         except Exception as e:
                             logger.warning(f"训练室状态读取失败: {e}")
                             room_state = None
-                        self.train_room_state = room_state
+                        self.train_room_state = (
+                            room_state if config.conf.enable_mastery else None
+                        )
                         if room_state is not None and config.conf.enable_mastery:
                             # #61 短动作排班路径内联：顺路核实/帮收/重置/更新状态，并据截图
                             # 修正 DB（空闲×DB active 冲突 → 重置 idle，以截图为准）。不
@@ -4803,7 +4821,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                         room_state = read_room_state(self, enter=False)
                                     except Exception:
                                         room_state = None
-                                self.train_room_state = room_state
+                                self.train_room_state = (
+                                    room_state if config.conf.enable_mastery else None
+                                )
                         # §4.4 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
                         # 保护训练室）或读失败（room_state=None）都算「不能排班」→ 冻结/
                         # 跳过（#211：读失败保守不碰训练位，替代已删除的 train_slot_locked）。
@@ -4812,7 +4832,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             or room_state.locked
                             or room_state.protected
                         ):
-                            self.train_room_state = room_state
+                            self.train_room_state = (
+                                room_state if config.conf.enable_mastery else None
+                            )
                             if config.conf.assistant_follows_schedule:
                                 if len(plan[room]) > 1:
                                     plan[room][1] = "Current"

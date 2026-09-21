@@ -1511,6 +1511,93 @@ class TestBaseScheduler(unittest.TestCase):
         mock_send.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_stale_locked_keeps_train_correction_when_mastery_off(self):
+        """开关关闭后，陈年 locked/training 缓存不得再挡掉训练室心情纠错。"""
+        from arknights_mower.utils.operators import Operators
+
+        plan_agents = ["褐果", "桃金娘"]
+        plan_config = {"train": [Room(a, "", []) for a in plan_agents]}
+        plan = {
+            "default_plan": Plan(plan_config, PlanConfig("稀音", "稀音", "伺夜")),
+            "backup_plans": [],
+        }
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        op_data = Operators(plan)
+        op_data.operators = {}
+        for idx, name in enumerate(plan_agents):
+            op = Operator(name, "train", idx, "", [], "high", operator_type="high")
+            op.current_room = "train"
+            op.current_index = idx
+            op.mood = 8
+            op.time_stamp = datetime.now() - timedelta(hours=8)
+            op_data.operators[name] = op
+        op_data.groups = {}
+        solver.op_data = op_data
+        solver.train_room_state = SimpleNamespace(
+            state="training", locked=True, protected=False
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task, "陈年 locked 缓存把训练室心情纠错吞掉了")
+        self.assertEqual(task.plan.get("train"), plan_agents)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_ignores_stale_locked_when_mastery_off(self):
+        """开关关闭后，上一轮读到的锁定/训练中缓存不得再抑制训练室纠错。"""
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        stale = MagicMock()
+        stale.state = "training"
+        stale.locked = True
+        stale.protected = False
+        solver.train_room_state = stale
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+            patch("arknights_mower.utils.email.send_message") as mock_send,
+        ):
+            solver.agent_get_mood()
+        task = next(
+            (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
+        )
+        self.assertIsNotNone(task)
+        self.assertIn("train", task.plan)
+        mock_send.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_clears_train_room_state_when_mastery_off(self):
+        """开关关闭后，读取训练室普通心情应清空陈旧的 train_room_state 缓存。"""
+        solver = self._train_mismatch_solver(["褐果", "桃金娘"])
+        solver.train_room_state = SimpleNamespace(
+            state="training", locked=True, protected=True
+        )
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", False),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "get_agent_from_room", return_value=[]),
+        ):
+            solver.agent_get_mood()
+        self.assertIsNone(solver.train_room_state)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_skips_occupied_training_room_correction(self):
         """外部手动开训 + 缓存里训练室两格是空的 + 计划配着别人 → 不得生成 train 纠错。
 
