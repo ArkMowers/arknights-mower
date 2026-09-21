@@ -406,6 +406,9 @@ def simulate(saved, restart_after_mood_read=False):
                 base_scheduler.op_data.operators[k].dorm_recovery_room = getattr(
                     v, "dorm_recovery_room", ""
                 )
+                base_scheduler.op_data.operators[k].dorm_recovery_fixed = getattr(
+                    v, "dorm_recovery_fixed", ()
+                )
             base_scheduler.op_data.restore_dorm_state(saved["dorm"])
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})

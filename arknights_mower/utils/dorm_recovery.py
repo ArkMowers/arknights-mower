@@ -1,6 +1,14 @@
 """为首个 Free 位建立单回入驻顺序，不改变最终床位分配。"""
 
 
+def recovery_fixed_occupants(op_data, room, agents):
+    """返回本次确认所使用的固定宿管阵容。"""
+    slots = op_data.plan.get(room, [])
+    if len(agents) != len(slots):
+        return ()
+    return tuple(name for name, slot in zip(agents, slots) if slot.agent != "Free")
+
+
 def recovery_target(op_data, room, agents):
     slots = op_data.plan.get(room, [])
     if not room.startswith("dorm") or len(agents) != len(slots):
@@ -26,6 +34,8 @@ def recovery_order_plan(op_data, room, agents):
     if (
         getattr(target, "dorm_recovery_room", "") == room
         and target.current_room == room
+        and getattr(target, "dorm_recovery_fixed", ())
+        == recovery_fixed_occupants(op_data, room, agents)
     ):
         return None
     retained = []

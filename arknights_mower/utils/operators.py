@@ -807,7 +807,7 @@ class Operators:
         agent.current_index = current_index
         agent.mood = mood
         if mood >= 24:
-            agent.dorm_recovery_room = ""
+            agent.clear_dorm_recovery()
         # 如果是高效组且没有记录时间，则返还index
         if to_dorm:
             idx, dorm = self.get_dorm_by_name(name)
@@ -940,6 +940,7 @@ class Operators:
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
             operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
+            operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
         if operator.exhaust_require and not (
@@ -1420,6 +1421,7 @@ class Operator:
         self.replacement = replacement
         self.resting_priority = resting_priority
         self.dorm_recovery_room = ""
+        self.dorm_recovery_fixed = ()
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
@@ -1441,7 +1443,7 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
-            self.dorm_recovery_room = ""
+            self.clear_dorm_recovery()
             self._current_room = value
             if Operators.current_room_changed_callback and (
                 self.refresh_order_room[0] or self.refresh_drained
@@ -1450,6 +1452,10 @@ class Operator:
                 logger.debug(
                     f"触发当前房间变更回调: {self.name} 现在在 {self._current_room}, 刷新交易所房间: {self.refresh_order_room}, 刷新疲劳: {self.refresh_drained}"
                 )
+
+    def clear_dorm_recovery(self):
+        self.dorm_recovery_room = ""
+        self.dorm_recovery_fixed = ()
 
     def is_high(self):
         # 是否为高效组

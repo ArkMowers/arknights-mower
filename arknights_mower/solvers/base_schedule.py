@@ -4708,6 +4708,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         目标及清空结果均识别成功后才记录；留在同一宿舍期间不重复清房。
         """
         from arknights_mower.utils.dorm_recovery import (
+            recovery_fixed_occupants,
             recovery_order_plan,
             recovery_target,
         )
@@ -4753,7 +4754,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             current = [item["agent"] for item in self.get_agent_from_room(room)]
             if current != expected:
                 raise Exception("宿舍单回排序确认失败，保留原任务重试")
-        target.dorm_recovery_room = room if target.mood < 24 else ""
+        if target.mood < 24:
+            target.dorm_recovery_room = room
+            target.dorm_recovery_fixed = recovery_fixed_occupants(
+                self.op_data, room, agents
+            )
+        else:
+            target.clear_dorm_recovery()
         logger.info(f"宿舍单回排序确认：{room} 目标 {target.name}，恢复原位")
         return True
 
