@@ -6,6 +6,7 @@ import sqlite3
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from threading import Lock
 
 import pytz
 from tzlocal import get_localzone
@@ -23,7 +24,8 @@ _DB_TABLE_STMTS = (
     "is_high INTEGER,"
     "agent_group TEXT,"
     "mood REAL,"
-    "current_time TEXT"
+    "current_time TEXT,"
+    "related_operator TEXT"
     ")",
     "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)",
     "CREATE TABLE IF NOT EXISTS trading_history ("
@@ -50,6 +52,7 @@ _DB_TABLE_STMTS = (
     ")",
 )
 _tables_created = False
+_tables_lock = Lock()
 
 
 def _ensure_tables(conn):
@@ -57,10 +60,18 @@ def _ensure_tables(conn):
     global _tables_created
     if _tables_created:
         return
-    for stmt in _DB_TABLE_STMTS:
-        conn.execute(stmt)
-    conn.commit()
-    _tables_created = True
+    with _tables_lock:
+        if _tables_created:
+            return
+        for stmt in _DB_TABLE_STMTS:
+            conn.execute(stmt)
+        agent_action_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(agent_action)").fetchall()
+        }
+        if "related_operator" not in agent_action_columns:
+            conn.execute("ALTER TABLE agent_action ADD COLUMN related_operator TEXT")
+        conn.commit()
+        _tables_created = True
 
 
 @contextmanager
@@ -88,7 +99,15 @@ def _fetchall(sql, *params):
 
 # 记录干员进出站以及心情数据，将记录信息存入agent_action表里
 def save_action_to_sqlite_decorator(func):
-    def wrapper(self, name, mood, current_room, current_index, update_time=False):
+    def wrapper(
+        self,
+        name,
+        mood,
+        current_room,
+        current_index,
+        update_time=False,
+        related_operator=None,
+    ):
         agent = self.operators[name]  # 干员
 
         agent_current_room = agent.current_room  # 干员所在房间
@@ -106,7 +125,12 @@ def save_action_to_sqlite_decorator(func):
                 cursor = connection.cursor()
                 # Insert data
                 cursor.execute(
-                    "INSERT INTO agent_action VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    """
+                    INSERT INTO agent_action (
+                        name, agent_current_room, current_room, is_high,
+                        agent_group, mood, current_time, related_operator
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         name,
                         agent_current_room,
@@ -115,6 +139,7 @@ def save_action_to_sqlite_decorator(func):
                         agent.group,
                         mood,
                         str(current_time),
+                        related_operator,
                     ),
                 )
                 connection.commit()
@@ -371,6 +396,10 @@ def get_mood_ratios():
 
         mood_label = row[0]  # Assuming 'name' is at index 0
         mood_value = row[5]  # Assuming 'mood' is at index 5
+        related_operator = row[7] if len(row) > 7 else None
+        point = {"x": current_time, "y": mood_value}
+        if mood_label == "菲亚梅塔" and related_operator:
+            point["relatedOperator"] = related_operator
 
         if mood_label in [dataset["label"] for dataset in mood_data["datasets"]]:
             # if mood_label == mood_data['datasets'][0]['label']:
@@ -378,14 +407,12 @@ def get_mood_ratios():
             # If mood label already exists, find the corresponding dataset
             for dataset in mood_data["datasets"]:
                 if dataset["label"] == mood_label:
-                    dataset["data"].append({"x": current_time, "y": mood_value})
+                    dataset["data"].append(point)
                     break
         else:
             # If mood label doesn't exist, create a new dataset
             mood_data["labels"].append(current_time)
-            mood_data["datasets"].append(
-                {"label": mood_label, "data": [{"x": current_time, "y": mood_value}]}
-            )
+            mood_data["datasets"].append({"label": mood_label, "data": [point]})
 
         grouped_data[group_name] = mood_data
     print(grouped_work_rest_data)

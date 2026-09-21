@@ -666,6 +666,7 @@ def test_fia_working_target_does_not_compare_resident_mood(solver, monkeypatch):
     solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
     solver.plan_fia()
     assert solver.tasks[0].plan["dormitory_1"] == ["伊内丝", "菲亚梅塔"]
+    assert solver.tasks[0].meta_data == "伊内丝"
     resident.current_mood.assert_not_called()
 
 
