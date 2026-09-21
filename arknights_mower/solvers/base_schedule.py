@@ -5510,6 +5510,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             conf = config.conf
             if (
                 not one_time
+                and len(self.tasks) > 0
+                and (self.tasks[0].time - datetime.now()).total_seconds() < 300
+            ):
+                logger.info("距离下次基建任务不足5分钟，跳过MAA日常任务")
+                return
+            if (
+                not one_time
                 and self.last_execution["maa"] is not None
                 and (
                     delta := (
@@ -6363,7 +6370,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info("local operation finished without executing any stage")
 
             scheduling(self.tasks)
-            self.rest_until_next_task()
         except MowerExit:
             raise
         except Exception as e:
@@ -6371,12 +6377,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.exception(e)
             self.device.exit()
             send_message(str(e), "mower local operation error", level="ERROR")
-            remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
-            if remaining_time > 0:
-                logger.info(
-                    f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
-                )
-                self._idle_sleep(remaining_time)
             self.check_current_focus()
 
     def mail_plan_solver(self):
