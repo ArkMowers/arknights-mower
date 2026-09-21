@@ -2212,11 +2212,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         append_empty_task=True,
         custom_task_time=None,
         generated_tasks=None,
+        restore_on_deactivate=False,
     ):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
             new_task = False
+            deactivated_task_slots = {}
             if self.op_data.backup_plans:
                 con = copy.deepcopy(self.op_data.plan_condition)
                 current_con = self.op_data.plan_condition
@@ -2238,6 +2240,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.tasks.append(generated)
                             if generated_tasks is not None:
                                 generated_tasks.append(generated)
+                        elif task and restore_on_deactivate:
+                            for room, agents in task.items():
+                                indexes = deactivated_task_slots.setdefault(room, set())
+                                indexes.update(
+                                    index
+                                    for index, name in enumerate(agents)
+                                    if name != "Current"
+                                )
                     else:
                         # 不切换
                         con[idx] = current_con[idx]
@@ -2249,6 +2259,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
                     self.queue_product_switches()
+                    if deactivated_task_slots:
+                        restore_plan = {}
+                        for room, indexes in deactivated_task_slots.items():
+                            active_room = self.op_data.plan.get(room)
+                            if active_room is None:
+                                continue
+                            agents = ["Current"] * len(active_room)
+                            for index in indexes:
+                                if index < len(active_room):
+                                    agents[index] = active_room[index].agent
+                            if any(name != "Current" for name in agents):
+                                restore_plan[room] = agents
+                        if restore_plan:
+                            new_task = True
+                            generated = SchedulerTask(
+                                time=custom_task_time,
+                                task_plan=restore_plan,
+                            )
+                            self.tasks.append(generated)
+                            if generated_tasks is not None:
+                                generated_tasks.append(generated)
                     # 回班时间和岗位依赖生效排班；副表可能改变用尽、回满或组员岗位。
                     # 已生成的宿舍任务不能继续沿用切换前的急救预测。
                     if any(
@@ -5238,6 +5269,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     append_empty_task=False,
                     custom_task_time=custom_task_time,
                     generated_tasks=generated_tasks,
+                    restore_on_deactivate=True,
                 ):
                     generated_ids = {id(task) for task in generated_tasks}
                     anchor = min(
