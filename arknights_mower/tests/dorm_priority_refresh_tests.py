@@ -66,6 +66,11 @@ DEFAULT = [
     "dormitory_2_3",
     "dormitory_2_4",
 ]
+ROOM_DEFAULT = ["dormitory_1", "dormitory_2", "dormitory_3", "dormitory_4"]
+
+
+def bed_order(room_order):
+    return [bed for room in room_order for bed in DEFAULT if bed.startswith(room + "_")]
 
 
 def test_experimental_dorm_logic_defaults_off():
@@ -96,27 +101,33 @@ def test_stable_logic_uses_global_order_and_ignores_backup_order(saved):
         "dormitory_2_4",
     ],
 )
-def test_stale_or_incomplete_order_keeps_original_validation(saved, old):
+def test_old_or_incomplete_bed_order_is_folded_to_rooms(saved, old):
     op = operators(old)
-    assert (
-        op.init_and_validate()
-        == "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
+    assert op.init_and_validate() is None
+    expected_rooms = ["dormitory_2", "dormitory_1", "dormitory_3", "dormitory_4"]
+    assert op.config.dorm_order == expected_rooms
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        expected_rooms
     )
     saved.assert_not_called()
 
 
-def test_empty_order_uses_runtime_default_without_rewriting_setting(saved):
+def test_empty_order_uses_default_room_order(saved):
     op = operators()
     assert op.init_and_validate() is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ROOM_DEFAULT
+    )
+    assert op.config.dorm_order == ROOM_DEFAULT
     saved.assert_not_called()
 
 
-def test_valid_manual_order_is_used_without_rewriting_setting(saved):
+def test_old_manual_bed_order_preserves_first_room_occurrence(saved):
     order = list(reversed(DEFAULT))
     op = operators(",".join(order))
     assert op.init_and_validate() is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == order
+    rooms = ["dormitory_2", "dormitory_1", "dormitory_3", "dormitory_4"]
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(rooms)
     saved.assert_not_called()
 
 
@@ -137,11 +148,13 @@ def test_backup_plan_applies_its_own_dorm_order(saved):
     op.backup_plans = op.global_plan["backup_plans"]
 
     assert op.swap_plan([True], refresh=True) is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == list(
-        reversed(DEFAULT)
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ["dormitory_2", "dormitory_1"]
     )
     assert op.swap_plan([False], refresh=True) is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ROOM_DEFAULT
+    )
 
 
 def test_saved_state_restores_values_without_overriding_regenerated_order(saved):
@@ -156,7 +169,9 @@ def test_saved_state_restores_values_without_overriding_regenerated_order(saved)
             Dormitory(("dormitory_1", 3), "冰酿", first_time),
         ]
     )
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ROOM_DEFAULT
+    )
     assert (op.dorm[0].name, op.dorm[0].time) == ("冰酿", first_time)
     assert (op.dorm[-1].name, op.dorm[-1].time) == ("流明", last_time)
     assert all(dorm.position[0] != "dormitory_3" for dorm in op.dorm)
@@ -175,20 +190,30 @@ def test_backup_order_overrides_main_and_switching_back_restores_main(saved):
     backup = DEFAULT[1:] + DEFAULT[:1]
     op = operators(",".join(main), [",".join(backup)])
     assert op.init_and_validate() is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == main
+    main_rooms = ["dormitory_2", "dormitory_1", "dormitory_3", "dormitory_4"]
+    backup_rooms = ["dormitory_2", "dormitory_1", "dormitory_3", "dormitory_4"]
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        main_rooms
+    )
 
     assert op.swap_plan([True], True) is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == backup
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        backup_rooms
+    )
 
     assert op.swap_plan([False], True) is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == main
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        main_rooms
+    )
 
 
 def test_empty_backup_order_explicitly_restores_default(saved):
     op = operators(",".join(reversed(DEFAULT)), [""])
     assert op.init_and_validate() is None
     assert op.swap_plan([True], True) is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ROOM_DEFAULT
+    )
 
 
 def test_last_active_backup_order_wins(saved):
@@ -197,7 +222,9 @@ def test_last_active_backup_order_wins(saved):
     op = operators("", [",".join(first), ",".join(second)])
     assert op.init_and_validate() is None
     assert op.swap_plan([True, True], True) is None
-    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == second
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == bed_order(
+        ["dormitory_1", "dormitory_2", "dormitory_3", "dormitory_4"]
+    )
 
 
 def test_legacy_global_order_is_copied_to_every_missing_plan_config():
@@ -213,10 +240,10 @@ def test_legacy_global_order_is_copied_to_every_missing_plan_config():
     plan = config.PlanModel(**data)
 
     assert migrate_legacy_dorm_order(plan, data, legacy)
-    assert plan.conf.dorm_order == legacy
-    assert plan.backup_plans[0].conf.dorm_order == legacy
-    # An explicitly empty per-plan value means default order and is preserved.
-    assert plan.backup_plans[1].conf.dorm_order == ""
+    migrated = "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
+    assert plan.conf.dorm_order == migrated
+    assert plan.backup_plans[0].conf.dorm_order == migrated
+    assert plan.backup_plans[1].conf.dorm_order == ",".join(ROOM_DEFAULT)
 
 
 def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path):
@@ -241,11 +268,12 @@ def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path
     config.load_plan()
 
     assert config._legacy_dorm_order == legacy
-    assert config.plan.conf.dorm_order == legacy
-    assert config.plan.backup_plans[0].conf.dorm_order == legacy
+    migrated = "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
+    assert config.plan.conf.dorm_order == migrated
+    assert config.plan.backup_plans[0].conf.dorm_order == migrated
     saved_plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    assert saved_plan["conf"]["dorm_order"] == legacy
-    assert saved_plan["backup_plans"][0]["conf"]["dorm_order"] == legacy
+    assert saved_plan["conf"]["dorm_order"] == migrated
+    assert saved_plan["backup_plans"][0]["conf"]["dorm_order"] == migrated
 
 
 def test_plan_save_persists_plan_dorm_order(saved, monkeypatch):

@@ -126,7 +126,7 @@ function create_sub_plan() {
       refresh_trading: [],
       refresh_drained: [],
       ope_resting_priority: [],
-      dorm_order: []
+      dorm_order: ['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4']
     },
     plan: fill_empty({}),
     trigger: {
@@ -580,11 +580,11 @@ function movePlanForward() {
       <template #label>
         <span>宿舍优先级排序</span>
         <help-text>
-          <p>仅在当前主表或副表生效；留空时使用当前排班自动生成的床位顺序。</p>
-          <p>副表生效后会应用该副表自己的顺序，不再读取全局设置。</p>
+          <p>仅在当前主表或副表生效，按宿舍房间排序；同一房间内按床位位置排列。</p>
+          <p>副表生效后会应用该副表自己的顺序；默认顺序为宿舍 1→2→3→4。</p>
         </help-text>
       </template>
-      <slick-dorm-select v-model="current_conf.dorm_order"></slick-dorm-select>
+      <slick-dorm-select v-model="current_conf.dorm_order" room-only></slick-dorm-select>
     </n-form-item>
   </n-form>
   <n-modal

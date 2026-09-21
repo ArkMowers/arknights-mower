@@ -9,7 +9,8 @@ export const usePlanStore = defineStore('plan', () => {
   const exhaust_require = ref([])
   const rest_in_full = ref([])
   const ope_resting_priority = ref([])
-  const dorm_order = ref([])
+  const default_dorm_order = ['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4']
+  const dorm_order = ref([...default_dorm_order])
   const resting_priority = ref([])
   const resting_standby = ref([])
   const workaholic = ref([])
@@ -52,6 +53,16 @@ export const usePlanStore = defineStore('plan', () => {
 
   function str2list(data) {
     return data && data != '' ? data.split(',') : []
+  }
+
+  function normalizeDormOrder(data) {
+    const result = []
+    for (const value of str2list(data)) {
+      const match = value.match(/^(dormitory_[1-4])(?:_\d+)?$/)
+      const room = match?.[1]
+      if (room && !result.includes(room)) result.push(room)
+    }
+    return result.concat(default_dorm_order.filter((room) => !result.includes(room)))
   }
 
   const backup_conf_convert_list = [
@@ -142,7 +153,7 @@ export const usePlanStore = defineStore('plan', () => {
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
-    dorm_order.value = str2list(response.data.conf.dorm_order)
+    dorm_order.value = normalizeDormOrder(response.data.conf.dorm_order)
     resting_priority.value = str2list(response.data.conf.resting_priority)
     resting_standby.value = str2list(response.data.conf.resting_standby)
     workaholic.value = str2list(response.data.conf.workaholic)
@@ -166,7 +177,7 @@ export const usePlanStore = defineStore('plan', () => {
     backup_plans.value = response.data.backup_plans ?? []
     for (let b of backup_plans.value) {
       for (const i of backup_conf_convert_list) {
-        b.conf[i] = str2list(b.conf[i])
+        b.conf[i] = i === 'dorm_order' ? normalizeDormOrder(b.conf[i]) : str2list(b.conf[i])
       }
       b.plan = fill_empty(b.plan)
     }
