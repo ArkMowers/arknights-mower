@@ -135,6 +135,7 @@ function create_sub_plan() {
       right: ''
     },
     trigger_timing: 'AFTER_PLANNING',
+    exit_trigger_timing: null,
     task: {},
     name: `plan${backup_plans.value.length}`
   })

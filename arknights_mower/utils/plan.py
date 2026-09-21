@@ -10,6 +10,8 @@ class PlanTriggerTiming(Enum):
 
     BEGINNING = 0
     "任务开始"
+    BEFORE_WORK = 100
+    "进入第一个工作站前"
     BEFORE_DORM = 200
     "入住宿舍前"
     BEFORE_PLANNING = 300
@@ -189,6 +191,7 @@ class Plan:
         trigger: Optional[LogicExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
         trigger_timing: Optional[str] = None,
+        exit_trigger_timing: Optional[str] = None,
         name: Optional[str] = "",
         products: Optional[dict[str, str]] = None,
     ):
@@ -199,14 +202,32 @@ class Plan:
             trigger: 触发备用plan 的条件（必填）就是每次最多只有一个备用plan触发
             task: 触发备用plan 的时间生成的任务（选填）
             trigger_timing: 触发时机
+            exit_trigger_timing: 退出时机；未填写时与触发时机一致
         """
         self.plan = plan
         self.config = config
         self.trigger = trigger
         self.task = task
         self.trigger_timing = self.set_timing_enum(trigger_timing)
+        self._exit_trigger_timing = (
+            self.set_timing_enum(exit_trigger_timing) if exit_trigger_timing else None
+        )
         self.name = name
         self.products = products or {}
+
+    @property
+    def exit_trigger_timing(self) -> PlanTriggerTiming:
+        """未单独配置时动态跟随切入时机。"""
+        return self._exit_trigger_timing or self.trigger_timing
+
+    @exit_trigger_timing.setter
+    def exit_trigger_timing(self, value: Optional[str | PlanTriggerTiming]):
+        if value is None:
+            self._exit_trigger_timing = None
+        elif isinstance(value, PlanTriggerTiming):
+            self._exit_trigger_timing = value
+        else:
+            self._exit_trigger_timing = self.set_timing_enum(value)
 
     @staticmethod
     def set_timing_enum(value: str) -> PlanTriggerTiming:

@@ -121,6 +121,8 @@ class BackupPlan(BaseModel):
     task: Task = {}
     trigger: Trigger = {}
     trigger_timing: str = "AFTER_PLANNING"
+    # 空值表示始终跟随切入时机，兼容旧排班且允许之后修改切入时机。
+    exit_trigger_timing: Optional[str] = None
     name: str = "plan"
 
 

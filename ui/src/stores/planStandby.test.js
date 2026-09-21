@@ -42,6 +42,7 @@ describe('宿舍休息候补配置', () => {
     expect(saved.backup_plans[0].conf.dorm_order).toBe(
       'dormitory_1,dormitory_2,dormitory_3,dormitory_4'
     )
+    expect(saved.backup_plans[0].exit_trigger_timing).toBeNull()
   })
 
   it('主副表候补名单和宿舍顺序导入后独立保存', async () => {
@@ -80,6 +81,8 @@ describe('宿舍休息候补配置', () => {
       'dormitory_1',
       'dormitory_4'
     ]
+    store.backup_plans[0].trigger_timing = 'BEFORE_DORM'
+    store.backup_plans[0].exit_trigger_timing = 'BEFORE_WORK'
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
     const sent = axios.post.mock.calls[1][1]
     expect(sent.conf.resting_standby).toBe('斯卡蒂,乌尔比安')
@@ -88,6 +91,8 @@ describe('宿舍休息候补配置', () => {
     expect(sent.backup_plans[0].conf.dorm_order).toBe(
       'dormitory_3,dormitory_2,dormitory_1,dormitory_4'
     )
+    expect(sent.backup_plans[0].trigger_timing).toBe('BEFORE_DORM')
+    expect(sent.backup_plans[0].exit_trigger_timing).toBe('BEFORE_WORK')
     expect(sent.conf.resting_priority).toBe('')
     loaded.value = false
   })

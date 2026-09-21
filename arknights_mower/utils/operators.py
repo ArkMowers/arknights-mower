@@ -243,6 +243,7 @@ def build_global_plan():
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
         backup_task = i.get("task")
         backup_trigger_timing = i.get("trigger_timing")
+        backup_exit_trigger_timing = i.get("exit_trigger_timing")
         backup_plans.append(
             Plan(
                 backup_plan,
@@ -250,6 +251,7 @@ def build_global_plan():
                 trigger=backup_trigger,
                 task=backup_task,
                 trigger_timing=backup_trigger_timing,
+                exit_trigger_timing=backup_exit_trigger_timing,
                 name=i.get("name"),
                 products=backup_products,
             )

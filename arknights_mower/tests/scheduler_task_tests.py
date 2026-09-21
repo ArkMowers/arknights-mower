@@ -1,3 +1,4 @@
+import copy
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -312,6 +313,72 @@ class TestScheduling(unittest.TestCase):
         room, index = destination.position
         self.assertEqual("夕", plan[room][index])
         self.assertEqual(target.time, destination.time)
+
+    def test_single_recovery_target_stays_in_room_when_its_bed_closes(self):
+        op_data = self.init_opdata()
+        closing = self.add_dorm_overlay_backup(op_data)
+        target = op_data.operators["麒麟R夜刀"]
+        target.current_room, target.current_index = closing.position
+        target.dorm_recovery_room = "dormitory_1"
+        target.dorm_recovery_fixed = ("塑心", "冰酿")
+        closing.name = target.name
+        closing.time = datetime.now() + timedelta(hours=1)
+        previous = copy.deepcopy(op_data.dorm)
+
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        plan = rebalance_plan_swap_dorms(op_data, previous)
+
+        destination = next(dorm for dorm in op_data.dorm if dorm.name == target.name)
+        self.assertEqual(destination.position[0], "dormitory_1")
+        self.assertEqual(target.dorm_recovery_room, "dormitory_1")
+        self.assertEqual(plan["dormitory_1"][2], "真言")
+        self.assertEqual(plan["dormitory_1"][destination.position[1]], target.name)
+
+    def test_single_recovery_move_to_other_room_requests_recovery_again(self):
+        op_data = self.init_opdata()
+        target_bed = op_data.dorm[0]
+        target = op_data.operators["麒麟R夜刀"]
+        target.current_room, target.current_index = target_bed.position
+        target.dorm_recovery_room = target_bed.position[0]
+        target.dorm_recovery_fixed = ("塑心", "冰酿")
+        target_bed.name = target.name
+        target_bed.time = datetime.now() + timedelta(hours=1)
+        previous = copy.deepcopy(op_data.dorm)
+        op_data.dorm = [
+            bed for bed in op_data.dorm if bed.position[0] != target.current_room
+        ]
+
+        plan = rebalance_plan_swap_dorms(op_data, previous)
+
+        destination = next(dorm for dorm in op_data.dorm if dorm.name == target.name)
+        self.assertNotEqual(destination.position[0], target.current_room)
+        self.assertEqual(target.dorm_recovery_room, "")
+        self.assertEqual(
+            plan[destination.position[0]][destination.position[1]], target.name
+        )
+
+    def test_single_recovery_target_is_exempt_from_capacity_drop(self):
+        op_data = self.init_opdata()
+        protected_bed, preferred_bed = op_data.dorm[:2]
+        protected = op_data.operators["麒麟R夜刀"]
+        protected.current_room, protected.current_index = protected_bed.position
+        protected.dorm_recovery_room = protected_bed.position[0]
+        protected.dorm_recovery_fixed = ("塑心", "冰酿")
+        protected.mood = 23
+        protected.time_stamp = datetime.now()
+        protected_bed.name = protected.name
+        preferred = op_data.operators["夕"]
+        preferred.current_room, preferred.current_index = preferred_bed.position
+        preferred.mood = 1
+        preferred.time_stamp = datetime.now()
+        preferred_bed.name = preferred.name
+        previous = copy.deepcopy(op_data.dorm[:2])
+        op_data.dorm = [protected_bed]
+
+        rebalance_plan_swap_dorms(op_data, previous)
+
+        self.assertEqual(op_data.dorm[0].name, protected.name)
+        self.assertEqual(protected.dorm_recovery_room, protected.current_room)
 
     def test_backup_overlay_blocks_task_rebuild_and_free_room_writes(self):
         op_data = self.init_opdata()
