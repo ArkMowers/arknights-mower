@@ -47,6 +47,8 @@ const {
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
+  experimental_dorm_logic,
+  dorm_order,
   merge_interval,
   fia_fool,
   refresh_backup_plan_after_mood,
@@ -871,10 +873,31 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="free_room">
                 宿舍不养闲人
                 <help-text>
-                  有可用的未满心情干员时，按休息优先级和心情替换动态床位中的满心情普通干员，也会补入空床位。
-                  主班按轮休任务回班，固定宿舍岗位不清除；执行时机受任务队列及合并间隔影响。
+                  <template v-if="experimental_dorm_logic">
+                    有可用的未满心情干员时，按统一休息优先级和心情替换动态床位中的满心情普通干员，也会补入空床位。
+                    主班按轮休任务回班，固定宿舍岗位不清除；执行时机受任务队列及合并间隔影响。
+                  </template>
+                  <template v-else>
+                    使用稳定版逻辑，把未满心情的空闲干员安排到可释放的动态宿舍床位。
+                    加工名单中的干员是否使用最低休息优先级，由自动加工页面的设置控制。
+                  </template>
                 </help-text>
               </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="experimental_dorm_logic">
+                测试宿舍逻辑
+                <help-text>
+                  默认关闭。开启后使用本测试版的统一休息优先级、床位抢占保护、绑组固定宿舍恢复位、主副表独立床位排序及新版不养闲人逻辑。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item v-if="!experimental_dorm_logic">
+              <template #label>
+                <span>宿舍优先级排序</span>
+                <help-text>稳定版全局设置，对主表及全部副表共同生效。</help-text>
+              </template>
+              <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
             </n-form-item>
             <n-form-item v-if="free_room">
               <template #label>

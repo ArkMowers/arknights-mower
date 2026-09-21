@@ -27,6 +27,7 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     config.conf.enable_mastery = False
+    config.conf.experimental_dorm_logic = True
     instance = object.__new__(BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
@@ -42,7 +43,7 @@ def solver(monkeypatch):
                     *[Room("Free", "", []) for _ in range(3)],
                 ],
             },
-            PlanConfig("", "", ""),
+            PlanConfig("", "", "", experimental_dorm_logic=True),
         ),
         "backup_plans": [],
     }

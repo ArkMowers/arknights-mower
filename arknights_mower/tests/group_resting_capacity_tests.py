@@ -58,6 +58,7 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     config.conf.enable_mastery = False
+    config.conf.experimental_dorm_logic = True
     for field in (
         "fodder_operators",
         "t5_operators",
@@ -94,6 +95,7 @@ def solver(monkeypatch):
                 "",
                 resting_standby=",".join(DEEP[1:]),
                 ope_resting_priority=DEEP[0],
+                experimental_dorm_logic=True,
             ),
         ),
         "backup_plans": [],

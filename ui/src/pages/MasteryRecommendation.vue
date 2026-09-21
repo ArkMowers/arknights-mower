@@ -528,6 +528,17 @@
           <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
             >一键设置</n-button
           >
+          <n-space v-if="!experimentalDormLogic" align="center" :size="6">
+            <n-switch
+              v-model:value="workshopLowPriorityRest"
+              size="small"
+              aria-label="加工干员低优先休息"
+            />
+            <n-text>低优先休息</n-text>
+            <help-text>
+              稳定版宿舍逻辑中，加工名单内干员使用最低恢复优先级；开启测试宿舍逻辑后此设置不生效。
+            </help-text>
+          </n-space>
         </n-space>
         <n-space align="center" :size="6">
           <n-switch
@@ -716,6 +727,8 @@ const idleFilterOptions = [
 const {
   workshop_min_bonus: workshopMinBonus,
   workshop_protect_t2_device_rock: workshopProtectT2,
+  workshop_low_priority_rest: workshopLowPriorityRest,
+  experimental_dorm_logic: experimentalDormLogic,
   workshop_deer_fodder: deerFodder,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,

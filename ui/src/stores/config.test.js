@@ -37,6 +37,31 @@ describe('workshop config autosave', () => {
     loaded.value = false
   })
 
+  it('saves stable crafter recovery priority without changing workshop selections', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.experimental_dorm_logic).toBe(false)
+    expect(store.workshop_low_priority_rest).toBe(true)
+    store.fodder_operators = ['空爆']
+    axios.post.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
+    store.workshop_low_priority_rest = false
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    expect(axios.post.mock.calls[1][1]).toMatchObject({
+      experimental_dorm_logic: false,
+      workshop_low_priority_rest: false,
+      fodder_operators: ['空爆']
+    })
+    loaded.value = false
+  })
+
   it('tracks nested edits and sends the latest manual draft with the acknowledged revision', async () => {
     pinia = createPinia()
     setActivePinia(pinia)

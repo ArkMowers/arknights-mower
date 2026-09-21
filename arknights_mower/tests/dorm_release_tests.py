@@ -17,6 +17,7 @@ def op_data(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     config.conf.enable_mastery = False
+    config.conf.experimental_dorm_logic = True
     data = Operators(
         {
             "default_plan": Plan(
@@ -27,7 +28,7 @@ def op_data(monkeypatch):
                         for name in ["杜林", "闪灵", "爱丽丝", "桃金娘", "Free"]
                     ],
                 },
-                PlanConfig("", "", "", free_room=True),
+                PlanConfig("", "", "", free_room=True, experimental_dorm_logic=True),
             ),
             "backup_plans": [],
         }

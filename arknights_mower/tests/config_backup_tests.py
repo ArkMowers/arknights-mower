@@ -119,7 +119,8 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
     raw = incoming(
         **{
             "conf.yml": (
-                "# backup\naccount: restored\ndorm_order: dormitory_2_4,dormitory_1_3\n"
+                "# backup\naccount: restored\nexperimental_dorm_logic: true\n"
+                "dorm_order: dormitory_2_4,dormitory_1_3\n"
             ),
             "plan.json": json.dumps(original_plan),
             "weekly_plans.yml": "plans: {日常: [{weekday: 周一, stage: ['1-7']}]}\n",
@@ -139,7 +140,7 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
         assert config.plan.conf.dorm_order == "dormitory_2_4,dormitory_1_3"
         assert config.plan.model_dump(exclude_none=True) == migrated_plan
     assert json.loads(config.plan_path.read_text()) == migrated_plan
-    assert "dorm_order" not in config.conf_path.read_text()
+    assert "dorm_order: dormitory_2_4,dormitory_1_3" in config.conf_path.read_text()
     assert (
         config.conf_path.parent / "nested/custom.yml"
     ).read_bytes() == b"# retained raw\nkey: value\n"

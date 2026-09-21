@@ -178,7 +178,7 @@ def plan_from_archive(files):
 
 def _validate_configuration(files):
     data = _object_file(files, "conf.yml")
-    legacy_dorm_order = str(data.pop("dorm_order", "") or "")
+    legacy_dorm_order = str(data.get("dorm_order", "") or "")
     webview = data.get("webview", {})
     if not isinstance(webview, dict):
         raise ValueError("窗口设置格式错误")
@@ -192,10 +192,16 @@ def _validate_configuration(files):
     plan_data = _object_file(files, "plan.json")
     # Some older exports were normalized through the newer schema and therefore carry
     # an empty main-plan field even though the global value was still authoritative.
-    if legacy_dorm_order and plan_data.get("conf", {}).get("dorm_order") == "":
+    if (
+        conf.experimental_dorm_logic
+        and legacy_dorm_order
+        and plan_data.get("conf", {}).get("dorm_order") == ""
+    ):
         plan_data["conf"].pop("dorm_order")
     plan = parse_plan_document(plan_data)
-    dorm_order_migrated = migrate_legacy_dorm_order(plan, plan_data, legacy_dorm_order)
+    dorm_order_migrated = conf.experimental_dorm_logic and migrate_legacy_dorm_order(
+        plan, plan_data, legacy_dorm_order
+    )
     weekly = _object_file(files, "weekly_plans.yml", optional=True)
     if weekly is not None:
         plans = weekly.get("plans")

@@ -2093,8 +2093,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.backup_plan_solver()
 
     def resting(self):
-        now = datetime.now()
-        self.total_agent.sort(key=lambda op: resting_key(self.op_data, op.name, now))
+        experimental = self.op_data.experimental_dorm_logic
+        if experimental:
+            now = datetime.now()
+            self.total_agent.sort(
+                key=lambda op: resting_key(self.op_data, op.name, now)
+            )
+        else:
+            self.total_agent.sort(
+                key=lambda op: (
+                    self._resting_tier(op),
+                    op.current_mood() - op.lower_limit,
+                )
+            )
         self.plan_metadata()
         # 理想休息人数只描述主力轮休；低优占床另由 available_free("low")
         # 管理，不能抬高这里的当前人数或挡住可接管床位上的大组。
@@ -2127,9 +2138,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _high_done = False
         _low_used = set()
         for op in self.total_agent:
-            if self._resting_tier(op) == RestingTier.EXCLUDED:
+            if experimental and self._resting_tier(op) == RestingTier.EXCLUDED:
                 continue
-            if op.is_high():
+            if experimental and op.is_high():
                 can_standby = op.group and self.op_data.group_standby_candidates(
                     self.op_data.groups[op.group]
                 )
@@ -2155,6 +2166,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     _high_done = True
                     continue
+            elif not experimental:
+                if op.is_high() and not op.is_workshop():
+                    can_standby = op.group and self.op_data.group_standby_candidates(
+                        self.op_data.groups[op.group]
+                    )
+                    if _high_done and not can_standby:
+                        continue
+                    if (
+                        not can_standby
+                        and current_resting + len(_replacement)
+                        >= self.ideal_resting_count
+                        and self.op_data.available_free() == 0
+                    ):
+                        _high_done = True
+                        continue
+                elif self.op_data.available_free("low") == 0:
+                    break
             if op.name in self.op_data.workaholic_agent:
                 continue
             if (
@@ -2180,10 +2208,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 continue
             if not op.is_high():
-                previous = {bed.position: bed.name for bed in self.op_data.dorm}
+                previous = (
+                    {bed.position: bed.name for bed in self.op_data.dorm}
+                    if experimental
+                    else None
+                )
                 _dorm = self.op_data.assign_dorm(op.name, True, used=_low_used)
-                if _dorm is not None:
+                if _dorm is not None and experimental:
                     self.restore_displaced_resting(previous, _plan)
+                if _dorm is not None:
                     logger.debug(f"安排低优{op.name}休息 -> {_dorm.position}")
                 continue
             if op.group != "":
@@ -2203,8 +2236,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(f"生成{_plan}的下班任务")
         return _plan
 
+    _REST_TIER_HIGH = 0
+    _REST_TIER_MARKED_LOW = 1
+    _REST_TIER_STANDBY = 2
+    _REST_TIER_REPLACEMENT = 3
+
     def _resting_tier(self, op):
-        return resting_tier(self.op_data, op.name)
+        if self.op_data.experimental_dorm_logic:
+            return resting_tier(self.op_data, op.name)
+        if op.is_workshop():
+            return 4
+        if op.is_high() and op.resting_priority == "high":
+            return self._REST_TIER_HIGH
+        if op.is_high() and op.resting_priority == "standby":
+            return self._REST_TIER_STANDBY
+        if op.is_high():
+            return self._REST_TIER_MARKED_LOW
+        return self._REST_TIER_REPLACEMENT
 
     def backup_plan_solver(
         self,
@@ -2340,6 +2388,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             high_count -= 1
 
     def get_resting_plan(self, agents, exist_replacement, plan, current_resting):
+        if not self.op_data.experimental_dorm_logic:
+            return self._get_resting_plan_legacy(
+                agents, exist_replacement, plan, current_resting
+            )
         # 宿舍成员只跟随换班，不以自身心情抢占组内替班或休息优先级。
         dorm_agents = [
             name
@@ -2465,8 +2517,104 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         plan[k][idx] = name
             logger.debug(f"当前plan{plan}")
 
+    def _get_resting_plan_legacy(
+        self, agents, exist_replacement, plan, current_resting
+    ):
+        """测试宿舍逻辑关闭时保留 alpha 的分组轮休行为。"""
+        dorm_agents = [
+            name
+            for name in agents
+            if self.op_data.operators[name].room.startswith("dorm")
+        ]
+        if dorm_agents:
+            agents = [name for name in agents if name not in dorm_agents]
+        replacements = []
+        next_plan = {}
+        required = sum(
+            1
+            for name in agents
+            if not self.op_data.operators[name].workaholic
+            and not self.op_data.operators[name].room.startswith("dorm")
+        )
+        logger.debug(f"需求:{current_resting} 当前休息")
+        logger.debug(f"需求:{required}宿舍空位")
+        logger.debug(f"需求:{exist_replacement} 当前安排")
+        logger.debug(f"当前计划{plan}")
+        success = True
+        fia_plan, _ = self.check_fia()
+        agents.sort(
+            key=lambda name: (
+                name not in fia_plan if fia_plan else True,
+                self.op_data.operators[name].current_room in ["factory", "train"],
+                self.op_data.operators[name].current_mood()
+                - self.op_data.operators[name].lower_limit,
+            )
+        )
+        agents.extend(dorm_agents)
+        logger.debug(f"计算排班:{agents}")
+        for name in agents:
+            op = self.op_data.operators[name]
+            if op.room not in base_room_list:
+                logger.debug(f"干员房间出错:{name}")
+                success = False
+                break
+            if self.op_data.get_dorm_by_name(op.name)[0] is not None:
+                success = False
+                break
+            replacement = next(
+                (
+                    candidate
+                    for candidate in self.op_data.replacement_candidates(op)
+                    if not (
+                        self.op_data.operators[candidate].current_room != ""
+                        and not self.op_data.operators[candidate].is_resting()
+                    )
+                    and candidate not in TRADE_ORDER_AGENTS
+                    and not _is_mastery_busy(candidate)
+                    and candidate not in exist_replacement
+                    and candidate not in replacements
+                    and not self.op_data.is_dorm_replacement(candidate)
+                    and (
+                        op.room.startswith("dorm")
+                        or self.op_data.operators[candidate].current_room != op.room
+                    )
+                ),
+                None,
+            )
+            if replacement is None:
+                success = False
+                break
+            replacements.append(replacement)
+            next_plan.setdefault(
+                op.room, ["Current"] * len(self.op_data.plan[op.room])
+            )[op.index] = replacement
+        if not success:
+            return
+        resting_agents = [
+            name
+            for name in agents
+            if not self.op_data.operators[name].workaholic
+            and not self.op_data.operators[name].room.startswith("dorm")
+        ]
+        dorms = self.op_data.assign_dorm_group(resting_agents)
+        if dorms is None:
+            return
+        logger.debug(f"当前替换{replacements}")
+        exist_replacement.extend(replacements)
+        logger.debug(dorms)
+        for room, names in next_plan.items():
+            if room not in plan:
+                plan[room] = names
+                continue
+            for index, name in enumerate(names):
+                if plan[room][index] == "Current" and name != "Current":
+                    plan[room][index] = name
+        logger.debug(f"当前plan{plan}")
+
     def restore_displaced_resting(self, previous, plan):
         """接管主班床位时显式处理回班，不能等纠错发现缺床成员。"""
+        if not self.op_data.experimental_dorm_logic:
+            return
         displaced = {
             previous[bed.position]
             for bed in self.op_data.dorm
@@ -4123,6 +4271,32 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]
         )
         train_support = self.op_data.get_train_support()
+        if not self.op_data.experimental_dorm_logic:
+            remove_set = set()
+            if self.task is not None:
+                for value_list in self.task.plan.values():
+                    remove_set.update(value_list)
+            remove_set.discard("Current")
+            remove_set.discard("Free")
+            logger.debug(f"去除被安排的人员{remove_set}")
+            free_list = list(
+                set(free_list) - set(self.op_data.config.free_blacklist) - remove_set
+            )
+            if train_support in free_list:
+                free_list.remove(train_support)
+            if any(
+                name in self.op_data.operators
+                and not self.op_data.operators[name].is_workshop()
+                and self.op_data.operators[name].current_mood() <= 22
+                for name in free_list
+            ):
+                free_list = [
+                    name
+                    for name in free_list
+                    if name not in self.op_data.operators
+                    or not self.op_data.operators[name].is_workshop()
+                ]
+            return free_list
         # 获取所有要移除的字符串集合（排除 'Crueent'）
         remove_set = set()
         for task in [self.task, *getattr(self, "tasks", [])]:
@@ -4156,6 +4330,32 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def preserve_resting_crafters(self, agents, room):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
         if not room.startswith("dorm") or "Free" not in agents:
+            return
+        if not self.op_data.experimental_dorm_logic:
+            replacements = sorted(
+                (
+                    self.op_data.operators[name]
+                    for name in self.get_free_list(agents)
+                    if name in self.op_data.operators
+                    and not self.op_data.operators[name].is_workshop()
+                    and self.op_data.operators[name].current_mood() <= 22
+                ),
+                key=lambda op: op.current_mood(),
+            )
+            for index, name in enumerate(agents):
+                if name != "Free":
+                    continue
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    current is None
+                    or not current.is_workshop()
+                    or current.current_mood() >= current.upper_limit
+                    or current.name in agents
+                ):
+                    continue
+                agents[index] = (
+                    replacements.pop(0).name if replacements else current.name
+                )
             return
         now = datetime.now()
         moving = (
@@ -4223,6 +4423,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
         max_swipe = 50
+        experimental_dorm_logic = bool(
+            getattr(self.op_data, "experimental_dorm_logic", False)
+        )
         position = [
             (0.35, 0.35),
             (0.35, 0.75),
@@ -4245,7 +4448,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
                 __agent = self.op_data.operators[agents[idx]]
                 if (
-                    getattr(self.op_data.config, "free_room", False)
+                    (
+                        not experimental_dorm_logic
+                        or getattr(self.op_data.config, "free_room", False)
+                    )
                     and not preserve_dorm_occupants
                     and __agent.mood == __agent.upper_limit
                     and not __agent.room.startswith("dorm")
@@ -4471,20 +4677,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = self.get_free_list(agents)
-            selection_time = datetime.now()
+            selection_time = datetime.now() if experimental_dorm_logic else None
             observation = None
             previous_page = None
             while free_num:
-                if not free_list or right_swipe > max_swipe:
+                if experimental_dorm_logic and (
+                    not free_list or right_swipe > max_swipe
+                ):
                     raise Exception("没有找到足够的可用宿舍候选干员")
                 # scan_agent 按屏幕顺序点击，单纯排序名单不能保证层级和心情顺序。
                 # 一次只允许选择当前最高优先级、最低已知心情的候选。
-                first_key = resting_key(self.op_data, free_list[0], selection_time)
-                candidates = [
-                    name
-                    for name in free_list
-                    if resting_key(self.op_data, name, selection_time) == first_key
-                ]
+                if experimental_dorm_logic:
+                    first_key = resting_key(self.op_data, free_list[0], selection_time)
+                    candidates = [
+                        name
+                        for name in free_list
+                        if resting_key(self.op_data, name, selection_time) == first_key
+                    ]
+                else:
+                    candidates = free_list
                 selected_name, ret = self.scan_agent(
                     candidates,
                     max_agent_count=free_num,
@@ -4497,11 +4708,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 changed = bool(selected_name)
                 while len(selected_name) > 0:
                     agents[agents.index("Free")] = selected_name[0]
-                    free_list.remove(selected_name[0])
+                    if experimental_dorm_logic:
+                        free_list.remove(selected_name[0])
                     selected_name.remove(selected_name[0])
                 if free_num == 0:
                     break
-                elif changed:
+                elif changed and experimental_dorm_logic:
                     right_swipe = self.swipe_left(right_swipe, last_special_filter)
                 else:
                     if right_swipe >= max_swipe:

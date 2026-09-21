@@ -154,7 +154,7 @@ describe('maintenance save coordination', () => {
     expect(plan.autosave_paused).toBe(true)
   })
 
-  it('does not send plan-owned dorm order through the global config endpoint', async () => {
+  it('sends stable global and experimental plan dorm orders independently', async () => {
     const { config, plan, loaded } = setup()
     loaded.value = true
     await drainConfigurationSaves(config, plan)
@@ -163,7 +163,7 @@ describe('maintenance save coordination', () => {
     await drainConfigurationSaves(config, plan)
     const confPayload = axios.post.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1]
     const planPayload = axios.post.mock.calls.findLast(([url]) => url.endsWith('/plan'))[1]
-    expect(confPayload).not.toHaveProperty('dorm_order')
+    expect(confPayload.dorm_order).toBe('')
     expect(planPayload.conf.dorm_order).toBe('dormitory_1_2')
   })
 })

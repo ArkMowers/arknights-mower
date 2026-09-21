@@ -14,7 +14,7 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
 @pytest.fixture
 def saved(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(experimental_dorm_logic=True))
     save = MagicMock()
     monkeypatch.setattr(config, "save_conf", save)
     return save
@@ -34,10 +34,25 @@ def operators(dorm_order="", backup_orders=()):
                         for n in ["流明", "蜜莓", "Free", "Free", "Free"]
                     ],
                 },
-                PlanConfig("", "", "", dorm_order=dorm_order),
+                PlanConfig(
+                    "",
+                    "",
+                    "",
+                    dorm_order=dorm_order,
+                    experimental_dorm_logic=True,
+                ),
             ),
             "backup_plans": [
-                Plan({}, PlanConfig("", "", "", dorm_order=order))
+                Plan(
+                    {},
+                    PlanConfig(
+                        "",
+                        "",
+                        "",
+                        dorm_order=order,
+                        experimental_dorm_logic=True,
+                    ),
+                )
                 for order in backup_orders
             ],
         }
@@ -51,6 +66,26 @@ DEFAULT = [
     "dormitory_2_3",
     "dormitory_2_4",
 ]
+
+
+def test_experimental_dorm_logic_defaults_off():
+    assert config.Conf().experimental_dorm_logic is False
+
+
+def test_stable_logic_uses_global_order_and_ignores_backup_order(saved):
+    global_order = list(reversed(DEFAULT))
+    backup_order = DEFAULT[1:] + DEFAULT[:1]
+    config.conf.experimental_dorm_logic = False
+    config.conf.dorm_order = ",".join(global_order)
+    op = operators(",".join(DEFAULT), [",".join(backup_order)])
+    op.global_plan["default_plan"].config.experimental_dorm_logic = False
+    op.global_plan["backup_plans"][0].config.experimental_dorm_logic = False
+    op.config.experimental_dorm_logic = False
+
+    assert op.init_and_validate() is None
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == global_order
+    assert op.swap_plan([True], refresh=True) is None
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == global_order
 
 
 @pytest.mark.parametrize(
@@ -88,7 +123,16 @@ def test_valid_manual_order_is_used_without_rewriting_setting(saved):
 def test_backup_plan_applies_its_own_dorm_order(saved):
     op = operators(",".join(DEFAULT))
     op.global_plan["backup_plans"] = [
-        Plan({}, PlanConfig("", "", "", dorm_order=",".join(reversed(DEFAULT))))
+        Plan(
+            {},
+            PlanConfig(
+                "",
+                "",
+                "",
+                dorm_order=",".join(reversed(DEFAULT)),
+                experimental_dorm_logic=True,
+            ),
+        )
     ]
     op.backup_plans = op.global_plan["backup_plans"]
 
@@ -191,12 +235,12 @@ def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path
     )
     monkeypatch.setattr(config, "plan_path", plan_path)
     monkeypatch.setattr(config, "conf_path", conf_path)
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(experimental_dorm_logic=True))
     monkeypatch.setattr(config, "_legacy_dorm_order", legacy)
 
     config.load_plan()
 
-    assert config._legacy_dorm_order == ""
+    assert config._legacy_dorm_order == legacy
     assert config.plan.conf.dorm_order == legacy
     assert config.plan.backup_plans[0].conf.dorm_order == legacy
     saved_plan = json.loads(plan_path.read_text(encoding="utf-8"))

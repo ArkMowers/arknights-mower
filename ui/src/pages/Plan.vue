@@ -6,7 +6,7 @@ import { swap } from '@/utils/common'
 import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edit'
 
 const config_store = useConfigStore()
-const { free_blacklist, theme } = storeToRefs(config_store)
+const { free_blacklist, theme, experimental_dorm_logic } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const {
@@ -565,13 +565,18 @@ function movePlanForward() {
       <template #label>
         <span>干员休息优先级</span>
         <help-text>
-          <p>名单中的干员属于最高休息层级；名单内部按当前心情从低到高排序，不按填写顺序。</p>
-          <p>可接管更低层级的动态床位，但仍须满足下班条件。非主班干员请谨慎填写。</p>
+          <template v-if="experimental_dorm_logic">
+            <p>名单中的干员属于最高休息层级；名单内部按当前心情从低到高排序，不按填写顺序。</p>
+            <p>可接管更低层级的动态床位，但仍须满足下班条件。非主班干员请谨慎填写。</p>
+          </template>
+          <template v-else>
+            <p>稳定版逻辑按名单顺序优先安排休息；名单中的干员排在其他主班与替班之前。</p>
+          </template>
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.ope_resting_priority"></slick-operator-select>
     </n-form-item>
-    <n-form-item>
+    <n-form-item v-if="experimental_dorm_logic">
       <template #label>
         <span>宿舍优先级排序</span>
         <help-text>

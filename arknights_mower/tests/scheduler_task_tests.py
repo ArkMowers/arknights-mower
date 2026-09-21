@@ -240,7 +240,7 @@ class TestScheduling(unittest.TestCase):
                     Room("Current", "", []),
                 ]
             },
-            PlanConfig("", "", ""),
+            PlanConfig("", "", "", experimental_dorm_logic=True),
         )
         op_data.global_plan["backup_plans"] = [backup]
         op_data.backup_plans = [backup]
@@ -354,7 +354,10 @@ class TestScheduling(unittest.TestCase):
 
     def init_opdata(self):
         agent_base_config = PlanConfig(
-            "稀音,黑键,伊内丝,承曦格雷伊", "稀音,柏喙,伊内丝", "见行者"
+            "稀音,黑键,伊内丝,承曦格雷伊",
+            "稀音,柏喙,伊内丝",
+            "见行者",
+            experimental_dorm_logic=True,
         )
         plan_config = {
             "central": [
