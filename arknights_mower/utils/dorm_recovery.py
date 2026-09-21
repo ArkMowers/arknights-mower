@@ -6,14 +6,25 @@ def recovery_fixed_occupants(op_data, room, agents):
     slots = op_data.plan.get(room, [])
     if len(agents) != len(slots):
         return ()
-    return tuple(name for name, slot in zip(agents, slots) if slot.agent != "Free")
+    return tuple(
+        name
+        for index, name in enumerate(agents)
+        if not op_data.is_dynamic_dorm_position(room, index, name)
+    )
 
 
 def recovery_target(op_data, room, agents):
     slots = op_data.plan.get(room, [])
     if not room.startswith("dorm") or len(agents) != len(slots):
         return None
-    index = next((i for i, slot in enumerate(slots) if slot.agent == "Free"), None)
+    index = next(
+        (
+            i
+            for i, name in enumerate(agents)
+            if op_data.is_dynamic_dorm_position(room, i, name)
+        ),
+        None,
+    )
     if index is None:
         return None
     target = op_data.operators.get(agents[index])
@@ -43,8 +54,7 @@ def recovery_order_plan(op_data, room, agents):
         if name == target.name:
             retained.append(name)
             continue
-        slot = op_data.plan[room][index]
-        if slot.agent == "Free":
+        if op_data.is_dynamic_dorm_position(room, index, name):
             continue
         op = op_data.operators.get(name)
         if op_data.is_dorm_replacement_for_slot(name, room, index) and (

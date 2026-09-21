@@ -25,7 +25,7 @@ class PlanConf(BaseModel):
     ope_resting_priority: str = ""
     "休息排序优先级"
     dorm_order: str = ""
-    "当前排班的宿舍床位优先级"
+    "测试宿舍逻辑下当前排班的宿舍房间优先级"
 
 
 class BackupPlanConf(PlanConf):
@@ -143,19 +143,31 @@ def parse_plan_document(data) -> PlanModel:
 def migrate_legacy_dorm_order(
     plan: PlanModel, data: dict, legacy_dorm_order: str
 ) -> bool:
-    """Copy the former global bed order into schedule configs that predate it.
+    """迁移全局旧床位顺序，并折叠为每张排班独立的房间顺序。
 
-    Existing schedules used one global order for the main plan and every backup plan.
-    Copying it into every missing config preserves that behaviour on upgrade while making
-    each copied value independently editable afterwards.  An explicitly present empty
-    value is never overwritten.
+    旧排班缺少独立字段时先继承全局值；已有值（包括旧具体床位值）按
+    房间首次出现顺序折叠，空值使用 1→2→3→4 的默认房间顺序。
     """
-    if not legacy_dorm_order:
-        return False
+    rooms = [f"dormitory_{index}" for index in range(1, 5)]
+
+    def room_order(value: str) -> str:
+        result = []
+        for item in (value or "").split(","):
+            parts = item.rsplit("_", 1)
+            room = parts[0] if len(parts) == 2 and parts[1].isdigit() else item
+            if room in rooms and room not in result:
+                result.append(room)
+        result.extend(room for room in rooms if room not in result)
+        return ",".join(result)
+
     changed = False
     main_conf = data.get("conf")
     if not isinstance(main_conf, dict) or "dorm_order" not in main_conf:
         plan.conf.dorm_order = legacy_dorm_order
+        changed = True
+    normalized = room_order(plan.conf.dorm_order)
+    if plan.conf.dorm_order != normalized:
+        plan.conf.dorm_order = normalized
         changed = True
     raw_backups = data.get("backup_plans")
     if not isinstance(raw_backups, list):
@@ -164,5 +176,9 @@ def migrate_legacy_dorm_order(
         raw_conf = raw_backups[index].get("conf") if index < len(raw_backups) else None
         if not isinstance(raw_conf, dict) or "dorm_order" not in raw_conf:
             backup.conf.dorm_order = legacy_dorm_order
+            changed = True
+        normalized = room_order(backup.conf.dorm_order)
+        if backup.conf.dorm_order != normalized:
+            backup.conf.dorm_order = normalized
             changed = True
     return changed

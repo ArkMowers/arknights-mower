@@ -9,6 +9,7 @@ from arknights_mower.utils.scheduler_task import (
     TaskTypes,
     find_next_task,
     plan_metadata,
+    rebalance_plan_swap_dorms,
     scheduling,
     try_add_release_dorm,
     try_reorder,
@@ -209,9 +210,10 @@ class TestScheduling(unittest.TestCase):
 
         # op_data.config.ope_resting_priority=["森蚺","夕"]
         plan = try_reorder(op_data, {})
-        self.assertEqual(len(plan), 3)
+        self.assertEqual(len(plan), 2)
         self.assertEqual(plan["dormitory_1"][2], "夕")
-        self.assertEqual(plan["dormitory_1"][4], "凯尔希")
+        self.assertEqual(plan["dormitory_1"][3], "森蚺")
+        self.assertEqual(plan["dormitory_1"][4], "见行者")
 
     def test_reorder_3(self):
         # 如果高优都占了，则不动
@@ -226,7 +228,8 @@ class TestScheduling(unittest.TestCase):
         try_reorder(op_data, {})
         plan = try_reorder(op_data, {})
         self.assertEqual(plan["dormitory_1"][2], "夕")
-        self.assertEqual(plan["dormitory_1"][3], "见行者")
+        self.assertEqual(plan["dormitory_1"][3], "焰尾")
+        self.assertEqual(plan["dormitory_2"][2], "Current")
 
     def add_dorm_overlay_backup(self, op_data):
         op_data.global_plan["default_plan"].config.free_room = True
@@ -271,7 +274,7 @@ class TestScheduling(unittest.TestCase):
         self.assertTrue(op_data.is_effective_free_slot(target))
         self.assertEqual(before_low, op_data.available_free("low"))
 
-    def test_active_high_resting_ignores_backup_overlaid_slot(self):
+    def test_active_high_resting_migrates_when_backup_removes_bed(self):
         op_data = self.init_opdata()
         target = self.add_dorm_overlay_backup(op_data)
         op_data.operators["红"].current_room = ""
@@ -284,11 +287,14 @@ class TestScheduling(unittest.TestCase):
 
         self.assertEqual(1, op_data.active_high_resting_count())
         self.assertIsNone(op_data.swap_plan([True], refresh=True))
-        self.assertEqual(0, op_data.active_high_resting_count())
+        migration = rebalance_plan_swap_dorms(op_data)
+        self.assertTrue(migration)
+        self.assertEqual(1, op_data.active_high_resting_count())
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        rebalance_plan_swap_dorms(op_data)
         self.assertEqual(1, op_data.active_high_resting_count())
 
-    def test_reorder_does_not_clear_backup_overlaid_slot(self):
+    def test_backup_removed_bed_is_restored_and_occupant_is_migrated(self):
         op_data = self.init_opdata()
         target = self.add_dorm_overlay_backup(op_data)
         high = op_data.operators["夕"]
@@ -297,22 +303,15 @@ class TestScheduling(unittest.TestCase):
         target.time = datetime.now() + timedelta(hours=1)
 
         self.assertIsNone(op_data.swap_plan([True], refresh=True))
-        blocked = next(
-            dorm for dorm in op_data.dorm if dorm.position == ("dormitory_1", 2)
+        self.assertFalse(
+            any(dorm.position == ("dormitory_1", 2) for dorm in op_data.dorm)
         )
-        self.assertEqual("夕", blocked.name)
-        destination = next(
-            dorm for dorm in op_data.dorm if op_data.is_effective_free_slot(dorm)
-        )
-        destination.name = "夕"
-        destination.time = blocked.time
-
-        plan = try_reorder(op_data, {})
-
+        plan = rebalance_plan_swap_dorms(op_data)
+        self.assertEqual("真言", plan["dormitory_1"][2])
+        destination = next(dorm for dorm in op_data.dorm if dorm.name == "夕")
         room, index = destination.position
         self.assertEqual("夕", plan[room][index])
-        blocked_plan = plan.get("dormitory_1")
-        self.assertTrue(blocked_plan is None or blocked_plan[2] == "Current")
+        self.assertEqual(target.time, destination.time)
 
     def test_backup_overlay_blocks_task_rebuild_and_free_room_writes(self):
         op_data = self.init_opdata()

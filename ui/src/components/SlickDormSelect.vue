@@ -34,6 +34,10 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  roomOnly: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -41,6 +45,10 @@ const props = defineProps({
 const dormitories = computed(() => {
   let options = []
   for (let x = 1; x <= 4; x++) {
+    if (props.roomOnly) {
+      options.push({ label: `宿舍 ${x}`, value: `dormitory_${x}` })
+      continue
+    }
     for (let y = 1; y <= 4; y++) {
       const value = `dormitory_${x}_${y}`
       options.push({ label: `宿舍 ${x}-${y + 1}`, value })

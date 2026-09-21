@@ -97,6 +97,7 @@ from arknights_mower.utils.scheduler_task import (
     find_next_task,
     plan_metadata,
     protect_support_swaps,
+    rebalance_plan_swap_dorms,
     scheduling,
     try_add_release_dorm,
     try_reorder,
@@ -2307,6 +2308,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
                     self.queue_product_switches()
+                    dorm_migration = rebalance_plan_swap_dorms(self.op_data)
+                    if dorm_migration:
+                        new_task = True
+                        generated = SchedulerTask(
+                            time=custom_task_time,
+                            task_plan=dorm_migration,
+                            task_type=TaskTypes.RE_ORDER,
+                        )
+                        self.tasks.append(generated)
+                        if generated_tasks is not None:
+                            generated_tasks.append(generated)
                     if deactivated_task_slots:
                         restore_plan = {}
                         for room, indexes in deactivated_task_slots.items():
@@ -2400,18 +2412,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ]
         if dorm_agents:
             agents = [name for name in agents if name not in dorm_agents]
-        work_agents = set(agents)
         __replacement = []
         __plan = {}
-        group_dorm_assignments = []
-        group_dorm_resting = set()
+        active_groups = {
+            self.op_data.operators[name].group
+            for name in [*agents, *dorm_agents]
+            if self.op_data.operators[name].group
+        }
         required = 0
         for x in agents:
             op = self.op_data.operators[x]
             if op.workaholic or op.room.startswith("dorm"):
                 continue
             required += 1
-        required -= self.op_data.group_dorm_bed_count([*agents, *dorm_agents])
         logger.debug(f"需求:{current_resting} 当前休息")
         logger.debug(f"需求:{required}宿舍空位")
         logger.debug(f"需求:{exist_replacement} 当前安排")
@@ -2442,19 +2455,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 success = False
                 break
 
+            if self.op_data.is_auto_free_dorm_operator(x):
+                # 同组姓名只开启这张临时床；不把该姓名安排进宿舍，固定
+                # 宿舍成员离岗期间由统一动态床位算法决定实际入住者。
+                __plan.setdefault(
+                    x.room, ["Current"] * len(self.op_data.plan[x.room])
+                )[x.index] = "Free"
+                continue
+
             def replacement_available(obj):
                 replacement = self.op_data.operators[obj]
-                same_group_dorm = self.op_data.is_same_group_dorm_replacement(x, obj)
-                departing_for_dorm = (
-                    same_group_dorm
-                    and obj in work_agents
-                    and replacement.room in __plan
-                    and __plan[replacement.room][replacement.index] != "Current"
-                )
                 if (
                     replacement.current_room != ""
                     and not replacement.is_resting()
-                    and not departing_for_dorm
                 ):
                     return False
                 return (
@@ -2481,9 +2494,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if x.room not in __plan.keys():
                     __plan[x.room] = ["Current"] * len(self.op_data.plan[x.room])
                 __plan[x.room][x.index] = _rep
-                if self.op_data.is_same_group_dorm_replacement(x, _rep):
-                    group_dorm_assignments.append((x.room, x.index, _rep))
-                    group_dorm_resting.add(_rep)
             else:
                 success = False
         if success:
@@ -2492,20 +2502,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 for x in agents
                 if not self.op_data.operators[x].workaholic
                 and not self.op_data.operators[x].room.startswith("dorm")
-                and x not in group_dorm_resting
             ]
             # 床位判断和分配使用同一套规则。先为整组模拟预留，避免低优占床
             # 提前挡住大组，也避免分到一半才失败留下脏状态。
             previous = {bed.position: bed.name for bed in self.op_data.dorm}
-            dorms = self.op_data.assign_dorm_group(resting_agents)
+            dorms = self.op_data.assign_dorm_group(
+                resting_agents, active_groups=active_groups
+            )
             if dorms is None:
                 return
             self.restore_displaced_resting(previous, __plan)
-            for room, index, name in group_dorm_assignments:
-                dorm = self.op_data.get_group_dorm(room, index)
-                if dorm is not None:
-                    dorm.name = name
-                    dorm.time = None
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
             logger.debug(dorms)

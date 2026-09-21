@@ -326,6 +326,194 @@ def adjust_run_order_for_maintenance(tasks, run_order_delay=5):
         t.adjusted = True  # 标记为已调整
 
 
+def _native_return(op_data, plan, names):
+    """把需要结束休息的干员按当前排班写回原岗位。"""
+    for name in names:
+        op = op_data.operators[name]
+        if not op.room or op.room not in op_data.plan:
+            continue
+        slots = plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))
+        if slots[op.index] in ("Current", name):
+            slots[op.index] = name
+
+
+def rebalance_closing_dorm_slots(op_data, plan, recalled):
+    """固定宿舍成员回班前，统一重排仍在恢复中的动态床位。
+
+    关闭临时 Free 位时，被挤出者和其他动态床位入住者使用同一套
+    “休息层级、当前心情、原床位次序”排序。容量不足时只淘汰排序
+    最后的成员；如果该成员属于主班，则其整组一并回班并再次计算，
+    避免留下无岗位、无床位的半组状态。
+    """
+    if not getattr(op_data, "experimental_dorm_logic", False):
+        return set(recalled)
+    closing = {
+        (room, index)
+        for room, names in plan.items()
+        for index, name in enumerate(names)
+        if name not in ("Current", "Free", "")
+        and op_data.is_auto_free_dorm_slot(room, index)
+        and op_data.plan[room][index].agent == name
+    }
+    if not closing:
+        return set(recalled)
+
+    original = [
+        (order, bed, bed.name, bed.time)
+        for order, bed in enumerate(op_data.dorm)
+        if bed.name and bed.name in op_data.operators
+    ]
+    recalled = set(recalled)
+    inactive_groups = {
+        op_data.operators[name].group
+        for name in recalled
+        if name in op_data.operators and op_data.operators[name].group
+    }
+    now = datetime.now()
+
+    while True:
+        beds = [
+            bed
+            for bed in op_data.dorm
+            if bed.position not in closing
+            and op_data.is_effective_free_slot(
+                bed, inactive_groups=inactive_groups
+            )
+        ]
+        candidates = []
+        seen = set()
+        for order, _bed, name, saved_time in original:
+            if name in seen or name in recalled:
+                continue
+            op = op_data.operators[name]
+            if op.group and op.group in inactive_groups:
+                continue
+            seen.add(name)
+            candidates.append((resting_key(op_data, name, now), order, name, saved_time))
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        dropped = candidates[len(beds) :]
+        dropped_groups = {
+            op_data.operators[name].group
+            for _key, _order, name, _time in dropped
+            if op_data.operators[name].is_high()
+            and op_data.operators[name].group
+            and op_data.operators[name].group not in inactive_groups
+        }
+        if not dropped_groups:
+            break
+        for group in dropped_groups:
+            members = set(op_data.groups[group])
+            recalled.update(members)
+            inactive_groups.add(group)
+            _native_return(op_data, plan, members)
+            for member in members:
+                member_op = op_data.operators[member]
+                if op_data.is_auto_free_dorm_operator(member_op):
+                    closing.add((member_op.room, member_op.index))
+
+    assignments = {
+        bed.position: candidate
+        for bed, candidate in zip(beds, candidates[: len(beds)])
+    }
+    for bed in op_data.dorm:
+        room, index = bed.position
+        if bed.position in closing:
+            bed.reset()
+            continue
+        candidate = assignments.get(bed.position)
+        desired = candidate[2] if candidate else ""
+        saved_time = candidate[3] if candidate else None
+        if bed.name != desired:
+            plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = (
+                desired or "Free"
+            )
+        bed.name = desired
+        bed.time = saved_time
+    return recalled
+
+
+def rebalance_plan_swap_dorms(op_data):
+    """主副表切换导致动态床位增减时，迁移仍需恢复的入住者。"""
+    if not getattr(op_data, "experimental_dorm_logic", False):
+        return {}
+    sources = [
+        *(
+            bed
+            for bed in op_data.dorm
+            if bed.name and bed.name in op_data.operators
+        ),
+        *(
+            bed
+            for bed in getattr(op_data, "displaced_dorms", [])
+            if bed.name and bed.name in op_data.operators
+        ),
+    ]
+    if not sources:
+        return {}
+    now = datetime.now()
+    unique = {}
+    for order, bed in enumerate(sources):
+        unique.setdefault(bed.name, (order, bed))
+    candidates = sorted(
+        (
+            resting_key(op_data, name, now),
+            order,
+            name,
+            bed.time,
+            bed.position,
+        )
+        for name, (order, bed) in unique.items()
+    )
+    beds = [bed for bed in op_data.dorm if op_data.is_effective_free_slot(bed)]
+    kept = candidates[: len(beds)]
+    plan = {}
+    for _key, _order, name, _time, _position in candidates[len(beds) :]:
+        op = op_data.operators[name]
+        if op.is_high():
+            members = op_data.groups[op.group] if op.group else [name]
+            _native_return(op_data, plan, members)
+
+    destinations = {}
+    for bed, candidate in zip(beds, kept):
+        _key, _order, name, saved_time, _position = candidate
+        destinations[bed.position] = name
+        current = op_data.get_current_operator(*bed.position)
+        if current is None or current.name != name:
+            room, index = bed.position
+            plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = name
+        bed.name = name
+        bed.time = saved_time
+
+    effective_positions = {bed.position for bed in beds}
+    for _key, _order, _name, _time, position in candidates:
+        if position in destinations:
+            continue
+        room, index = position
+        if room not in op_data.plan or index >= len(op_data.plan[room]):
+            continue
+        target = (
+            "Free"
+            if position in effective_positions
+            else op_data.plan[room][index].agent
+        )
+        plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = target
+
+    assigned = set(destinations.values())
+    for bed in op_data.dorm:
+        if bed.position not in destinations:
+            bed.reset()
+    logger.info(
+        "副表切换后重排宿舍：保留%s，离开%s",
+        sorted(assigned),
+        sorted(set(unique) - assigned),
+    )
+    return {
+        room: names
+        for room, names in plan.items()
+        if any(name != "Current" for name in names)
+    }
+
+
 def generate_plan_by_drom(tasks, op_data, existing_targets=None):
     if not tasks:
         return []
@@ -336,6 +524,7 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
+        task_recalled = set()
         exhaust_exist = False
         for room in dorms:
             if room.name in planned:
@@ -381,6 +570,11 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
                             )
                     plan[target_room][target_index] = agent
                     planned.add(agent)
+                    task_recalled.add(agent)
+        if rest_in_full is not None:
+            planned.update(
+                rebalance_closing_dorm_slots(op_data, plan, task_recalled)
+            )
         if rest_in_full:
             if exhaust_exist:
                 time = max(time, current_time)

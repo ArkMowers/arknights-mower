@@ -36,10 +36,12 @@ describe('宿舍休息候补配置', () => {
     const saved = store.build_plan()
     expect(saved.conf.resting_priority).toBe('斯卡蒂')
     expect(saved.conf.resting_standby).toBe('')
-    expect(saved.conf.dorm_order).toBe('')
+    expect(saved.conf.dorm_order).toBe('dormitory_1,dormitory_2,dormitory_3,dormitory_4')
     expect(saved.backup_plans[0].conf.resting_priority).toBe('幽灵鲨')
     expect(saved.backup_plans[0].conf.resting_standby).toBe('')
-    expect(saved.backup_plans[0].conf.dorm_order).toBe('')
+    expect(saved.backup_plans[0].conf.dorm_order).toBe(
+      'dormitory_1,dormitory_2,dormitory_3,dormitory_4'
+    )
   })
 
   it('主副表候补名单和宿舍顺序导入后独立保存', async () => {
@@ -58,22 +60,34 @@ describe('宿舍休息候补配置', () => {
     })
     await store.load_plan()
     expect(store.resting_standby).toEqual(['斯卡蒂'])
-    expect(store.dorm_order).toEqual(['dormitory_1_3'])
+    expect(store.dorm_order).toEqual(['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4'])
     expect(store.backup_plans[0].conf.resting_standby).toEqual(['幽灵鲨'])
-    expect(store.backup_plans[0].conf.dorm_order).toEqual(['dormitory_2_2'])
+    expect(store.backup_plans[0].conf.dorm_order).toEqual([
+      'dormitory_2',
+      'dormitory_1',
+      'dormitory_3',
+      'dormitory_4'
+    ])
     axios.post.mockResolvedValue({ data: {} })
     loaded.value = true
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
     store.resting_standby.push('乌尔比安')
-    store.dorm_order.push('dormitory_1_4')
+    store.dorm_order = ['dormitory_4', 'dormitory_1', 'dormitory_2', 'dormitory_3']
     store.backup_plans[0].conf.resting_standby.push('安哲拉')
-    store.backup_plans[0].conf.dorm_order.push('dormitory_2_3')
+    store.backup_plans[0].conf.dorm_order = [
+      'dormitory_3',
+      'dormitory_2',
+      'dormitory_1',
+      'dormitory_4'
+    ]
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
     const sent = axios.post.mock.calls[1][1]
     expect(sent.conf.resting_standby).toBe('斯卡蒂,乌尔比安')
-    expect(sent.conf.dorm_order).toBe('dormitory_1_3,dormitory_1_4')
+    expect(sent.conf.dorm_order).toBe('dormitory_4,dormitory_1,dormitory_2,dormitory_3')
     expect(sent.backup_plans[0].conf.resting_standby).toBe('幽灵鲨,安哲拉')
-    expect(sent.backup_plans[0].conf.dorm_order).toBe('dormitory_2_2,dormitory_2_3')
+    expect(sent.backup_plans[0].conf.dorm_order).toBe(
+      'dormitory_3,dormitory_2,dormitory_1,dormitory_4'
+    )
     expect(sent.conf.resting_priority).toBe('')
     loaded.value = false
   })

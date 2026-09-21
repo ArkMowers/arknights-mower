@@ -17,6 +17,8 @@ from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
     TaskTypes,
     generate_plan_by_drom,
+    rebalance_closing_dorm_slots,
+    try_add_release_dorm,
     try_reorder,
 )
 
@@ -323,12 +325,14 @@ def test_same_group_worker_uses_resident_slot_as_resting_bed(solver):
     assert plan == {
         "meeting": ["陈", "初雪"],
         "contact": ["红"],
-        "dormitory_1": ["伊内丝", "Current", "Current", "Current", "Current"],
+        "dormitory_1": ["Free", "Current", "Current", "Current", "Current"],
     }
-    assert len(replacements) == len(set(replacements)) == 4
-    assert {d.name for d in solver.op_data.dorm} == {"银灰", "讯使", "年"}
-    assert solver.op_data.group_dorm[0].name == "伊内丝"
-    assert solver.op_data.get_dorm_by_name("伊内丝")[1] is solver.op_data.group_dorm[0]
+    assert len(replacements) == len(set(replacements)) == 3
+    assert {d.name for d in solver.op_data.dorm} == {"伊内丝", "银灰", "讯使", "年"}
+    assert solver.op_data.get_dorm_by_name("伊内丝")[1].position == (
+        "dormitory_1",
+        0,
+    )
 
     tasks = generate_plan_by_drom(
         {datetime.now() + timedelta(hours=4): (solver.op_data.all_dorms(), True)},
@@ -352,8 +356,88 @@ def test_same_group_resident_slot_reduces_required_free_beds(solver):
         solver.op_data.operators[name].mood = 5
 
     plan, _ = shift_off(solver)
-    assert plan["dormitory_1"][0] == "伊内丝"
-    assert {d.name for d in solver.op_data.dorm} == {"泥岩", "银灰", "讯使"}
+    assert plan["dormitory_1"][0] == "Free"
+    assert {d.name for d in solver.op_data.dorm} == {
+        "伊内丝",
+        "泥岩",
+        "银灰",
+        "讯使",
+    }
+
+
+def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(solver):
+    configure_same_group_cover(solver)
+    data = solver.op_data
+    now = datetime.now()
+    occupants = ["泥岩", "陈", "能天使", "年"]
+    for bed, name in zip(data.dorm, occupants):
+        bed.name = name
+        bed.time = now + timedelta(hours=4)
+        op = data.operators[name]
+        op.current_room, op.current_index = bed.position
+        op.time_stamp = now
+    data.operators["泥岩"].operator_type = "high"
+    data.operators["泥岩"].resting_priority = "low"
+    data.operators["泥岩"].mood = 20
+    data.operators["陈"].mood = 2
+    data.operators["能天使"].mood = 2
+    data.operators["年"].mood = 20
+
+    returning = set(data.groups["联动"])
+    plan = {
+        "meeting": ["伊内丝", "银灰"],
+        "contact": ["讯使"],
+        "dormitory_1": ["塑心", "Current", "Current", "Current", "Current"],
+    }
+    rebalance_closing_dorm_slots(data, plan, returning)
+
+    # 泥岩虽然原本在即将关闭的 1 号位，仍与其他入住者一起按层级、
+    # 心情重排；容量缩为三张后，只淘汰排序最低且心情最高的年。
+    assert plan["dormitory_1"] == ["塑心", "Current", "泥岩", "陈", "能天使"]
+    assert [bed.name for bed in data.dorm] == ["", "泥岩", "陈", "能天使"]
+    assert all(bed.time == now + timedelta(hours=4) for bed in data.dorm[1:])
+
+
+def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
+    configure_same_group_cover(solver)
+    data = solver.op_data
+    data.config.experimental_dorm_logic = False
+    data.dorm[0].name = "泥岩"
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    plan = {
+        "dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]
+    }
+
+    recalled = rebalance_closing_dorm_slots(data, plan, {"伊内丝"})
+
+    assert recalled == {"伊内丝"}
+    assert plan == {
+        "dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]
+    }
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+
+
+def test_auto_free_occupant_can_be_replaced_after_recovery_finishes(solver):
+    configure_same_group_cover(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    bed = data.dorm[0]
+    apply_plan(
+        solver,
+        {"dormitory_1": ["年", "Current", "Current", "Current", "Current"]},
+    )
+    bed.name = "年"
+    bed.time = datetime.now() - timedelta(minutes=1)
+    data.operators["年"].mood = 24
+    data.operators["泥岩"].current_room = ""
+    data.operators["泥岩"].current_index = -1
+    data.operators["泥岩"].mood = 5
+    data.operators["泥岩"].time_stamp = datetime.now()
+    tasks = []
+
+    try_add_release_dorm({}, None, data, tasks)
+
+    assert tasks[0].plan["dormitory_1"][0] == "泥岩"
 
 
 def test_mood_driven_resting_schedules_resident_cover(solver, monkeypatch):

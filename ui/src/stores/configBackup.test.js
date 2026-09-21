@@ -31,9 +31,11 @@ function setup() {
 describe('configuration restore autosave coordination', () => {
   it('saves and reloads dorm order as part of the plan', async () => {
     const { plan } = setup()
-    plan.dorm_order = ['dormitory_1_2']
+    plan.dorm_order = ['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4']
     await plan.save_plan()
-    expect(axios.post.mock.lastCall[1].conf.dorm_order).toBe('dormitory_1_2')
+    expect(axios.post.mock.lastCall[1].conf.dorm_order).toBe(
+      'dormitory_1,dormitory_2,dormitory_3,dormitory_4'
+    )
     axios.get.mockResolvedValue({
       data: {
         conf: { ling_xi: 1, dorm_order: 'dormitory_2_3' },
@@ -42,7 +44,7 @@ describe('configuration restore autosave coordination', () => {
       }
     })
     await plan.load_plan()
-    expect(plan.dorm_order).toEqual(['dormitory_2_3'])
+    expect(plan.dorm_order).toEqual(['dormitory_2', 'dormitory_1', 'dormitory_3', 'dormitory_4'])
   })
 
   it('drains scheduled edits then prevents old stores from overwriting restored values', async () => {
@@ -158,12 +160,12 @@ describe('maintenance save coordination', () => {
     const { config, plan, loaded } = setup()
     loaded.value = true
     await drainConfigurationSaves(config, plan)
-    plan.dorm_order = ['dormitory_1_2']
+    plan.dorm_order = ['dormitory_2', 'dormitory_1', 'dormitory_3', 'dormitory_4']
     await nextTick()
     await drainConfigurationSaves(config, plan)
     const confPayload = axios.post.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1]
     const planPayload = axios.post.mock.calls.findLast(([url]) => url.endsWith('/plan'))[1]
     expect(confPayload.dorm_order).toBe('')
-    expect(planPayload.conf.dorm_order).toBe('dormitory_1_2')
+    expect(planPayload.conf.dorm_order).toBe('dormitory_2,dormitory_1,dormitory_3,dormitory_4')
   })
 })

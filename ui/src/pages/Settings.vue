@@ -888,7 +888,8 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="experimental_dorm_logic">
                 测试宿舍逻辑
                 <help-text>
-                  默认关闭。开启后使用本测试版的统一休息优先级、床位抢占保护、绑组固定宿舍恢复位、主副表独立床位排序及新版不养闲人逻辑。
+                  默认关闭。开启后使用统一休息优先级、床位抢占保护、绑组宿舍临时
+                  Free、主副表独立房间排序及新版不养闲人逻辑。
                 </help-text>
               </n-checkbox>
             </n-form-item>
