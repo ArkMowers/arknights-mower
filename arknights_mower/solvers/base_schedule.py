@@ -867,8 +867,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     task.time = max(task.time, retry_time)
                 self.tasks.sort(key=lambda task: task.time)
                 logger.warning(
-                    f"{e}，未完成的切换任务推迟至 "
-                    f"{retry_time.strftime('%H:%M:%S')}"
+                    f"{e}，未完成的切换任务推迟至 {retry_time.strftime('%H:%M:%S')}"
                 )
                 self.skip()
             except MowerExit:

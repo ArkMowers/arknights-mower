@@ -129,10 +129,7 @@ def _validate_expression_resources(expression: str) -> None:
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
             exponent = _integer_literal(node.right)
             result_bits = _numeric_result_bits(node)
-            if (
-                exponent is None
-                or not 0 <= exponent <= _MAX_POWER_EXPONENT
-            ):
+            if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
                 raise ValueError(
                     f"幂运算指数必须是 0 到 {_MAX_POWER_EXPONENT} 的整数常量"
                 )

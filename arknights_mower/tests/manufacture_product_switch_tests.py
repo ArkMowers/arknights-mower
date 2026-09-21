@@ -1208,9 +1208,7 @@ def test_locked_trade_does_not_block_other_product_switches(monkeypatch):
     solver._survey_trade_switch = MagicMock(
         side_effect=[locked_observation, trade_observation]
     )
-    solver._survey_manufacture_switch = MagicMock(
-        return_value=manufacture_observation
-    )
+    solver._survey_manufacture_switch = MagicMock(return_value=manufacture_observation)
     solver._change_trade_product = MagicMock()
     solver._execute_manufacture_acceleration = MagicMock(return_value=0)
     solver._change_manufacture_product = MagicMock()
@@ -1224,9 +1222,7 @@ def test_locked_trade_does_not_block_other_product_switches(monkeypatch):
     solver._execute_manufacture_acceleration.assert_called_once_with(
         manufacture_observation
     )
-    solver._change_manufacture_product.assert_called_once_with(
-        manufacture_observation
-    )
+    solver._change_manufacture_product.assert_called_once_with(manufacture_observation)
     assert solver.tasks == [locked_task]
     assert locked_task.time >= started_at + timedelta(minutes=59)
 
