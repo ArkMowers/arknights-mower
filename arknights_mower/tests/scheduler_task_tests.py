@@ -8,7 +8,9 @@ from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     find_next_task,
+    plan_metadata,
     scheduling,
+    try_add_release_dorm,
     try_reorder,
 )
 
@@ -225,6 +227,116 @@ class TestScheduling(unittest.TestCase):
         plan = try_reorder(op_data, {})
         self.assertEqual(plan["dormitory_1"][2], "夕")
         self.assertEqual(plan["dormitory_1"][3], "见行者")
+
+    def add_dorm_overlay_backup(self, op_data):
+        op_data.global_plan["default_plan"].config.free_room = True
+        backup = Plan(
+            {
+                "dormitory_1": [
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                    Room("真言", "", []),
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                ]
+            },
+            PlanConfig("", "", ""),
+        )
+        op_data.global_plan["backup_plans"] = [backup]
+        op_data.backup_plans = [backup]
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        return next(
+            dorm
+            for dorm in op_data.dorm
+            if dorm.position == ("dormitory_1", 2)
+        )
+
+    @staticmethod
+    def task_writes_slot(tasks, room, index):
+        for task in tasks:
+            room_plan = task.plan.get(room)
+            if (
+                room_plan
+                and index < len(room_plan)
+                and room_plan[index] != "Current"
+            ):
+                return True
+        return False
+
+    def test_effective_free_slot_round_trip_and_capacity(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        before_low = op_data.available_free("low")
+
+        self.assertTrue(op_data.is_effective_free_slot(target))
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        self.assertFalse(op_data.is_effective_free_slot(target))
+        self.assertEqual(before_low - 1, op_data.available_free("low"))
+
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        self.assertTrue(op_data.is_effective_free_slot(target))
+        self.assertEqual(before_low, op_data.available_free("low"))
+
+    def test_active_high_resting_ignores_backup_overlaid_slot(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        op_data.operators["红"].current_room = ""
+        op_data.operators["红"].current_index = -1
+        high = op_data.operators["夕"]
+        high.current_room = "dormitory_1"
+        high.current_index = 2
+        target.name = "夕"
+        target.time = datetime.now() + timedelta(hours=1)
+
+        self.assertEqual(1, op_data.active_high_resting_count())
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        self.assertEqual(0, op_data.active_high_resting_count())
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        self.assertEqual(1, op_data.active_high_resting_count())
+
+    def test_backup_overlay_blocks_task_rebuild_and_free_room_writes(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        now = datetime.now()
+        red = op_data.operators["红"]
+        red.current_room = "dormitory_1"
+        red.current_index = 2
+        red.mood = red.upper_limit
+        red.time_stamp = now
+        target.name = "红"
+        target.time = now + timedelta(hours=1)
+
+        waiting = op_data.operators["陈"]
+        waiting.current_room = ""
+        waiting.current_index = -1
+        waiting.mood = 1
+        waiting.time_stamp = now
+
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+
+        rebuilt = plan_metadata(op_data, [])
+        self.assertFalse(self.task_writes_slot(rebuilt, "dormitory_1", 2))
+
+        release_tasks = []
+        try_add_release_dorm(
+            {"meeting": ["红"]}, now + timedelta(hours=2), op_data, release_tasks
+        )
+        self.assertFalse(
+            self.task_writes_slot(release_tasks, "dormitory_1", 2)
+        )
+
+        free_room_tasks = []
+        try_add_release_dorm({}, None, op_data, free_room_tasks)
+        self.assertFalse(
+            self.task_writes_slot(free_room_tasks, "dormitory_1", 2)
+        )
+
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        restored_tasks = []
+        try_add_release_dorm({}, None, op_data, restored_tasks)
+        self.assertTrue(
+            self.task_writes_slot(restored_tasks, "dormitory_1", 2)
+        )
 
     def init_opdata(self):
         agent_base_config = PlanConfig(
