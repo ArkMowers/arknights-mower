@@ -1,6 +1,9 @@
 """肥鸭充能采样的对象名持久化与曲线输出。"""
 
 import sqlite3
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 from arknights_mower.solvers import record
 from arknights_mower.utils import config
@@ -23,6 +26,44 @@ def test_agent_action_schema_adds_related_operator_to_legacy_table():
     columns = [row[1] for row in connection.execute("PRAGMA table_info(agent_action)")]
     assert columns[-1] == "related_operator"
     connection.close()
+    record._tables_created = False
+
+
+def test_agent_action_schema_migration_is_serialized():
+    class Cursor:
+        def fetchall(self):
+            return []
+
+    class Connection:
+        def execute(self, _statement):
+            nonlocal active, max_active
+            with state_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.005)
+            with state_lock:
+                active -= 1
+            return Cursor()
+
+        def commit(self):
+            pass
+
+    active = max_active = 0
+    workers = 8
+    state_lock = threading.Lock()
+    barrier = threading.Barrier(workers)
+    record._tables_created = False
+
+    def migrate():
+        barrier.wait()
+        record._ensure_tables(Connection())
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(migrate) for _ in range(workers)]
+        for future in futures:
+            future.result()
+
+    assert max_active == 1
     record._tables_created = False
 
 

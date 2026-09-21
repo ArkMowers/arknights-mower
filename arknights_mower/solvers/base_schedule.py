@@ -4900,18 +4900,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):
-            dorm_read_time_index = [
-                i
-                for i, obj in enumerate(self.op_data.plan[room])
-                if obj.agent == "菲亚梅塔"
-                or (
-                    obj.agent == "Free"
-                    and (self.task is None or self.task.type != TaskTypes.FIAMMETTA)
-                )
-            ]
             if self.task is not None and self.task.type == TaskTypes.FIAMMETTA:
-                read_time_index = dorm_read_time_index
+                # 充能时菲亚梅塔会被临时换到任务指定的槽位，
+                # 与静态排班中的位置无关；保留 agent_arrange 传入的
+                # 实际槽位，否则无法采样并记录本次充能对象。
+                read_time_index = list(dict.fromkeys(read_time_index))
             else:
+                dorm_read_time_index = [
+                    i
+                    for i, obj in enumerate(self.op_data.plan[room])
+                    if obj.agent in ("Free", "菲亚梅塔")
+                ]
                 read_time_index = list(
                     dict.fromkeys([*read_time_index, *dorm_read_time_index])
                 )

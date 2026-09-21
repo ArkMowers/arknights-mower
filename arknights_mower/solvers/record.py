@@ -6,6 +6,7 @@ import sqlite3
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from threading import Lock
 
 import pytz
 from tzlocal import get_localzone
@@ -51,6 +52,7 @@ _DB_TABLE_STMTS = (
     ")",
 )
 _tables_created = False
+_tables_lock = Lock()
 
 
 def _ensure_tables(conn):
@@ -58,15 +60,18 @@ def _ensure_tables(conn):
     global _tables_created
     if _tables_created:
         return
-    for stmt in _DB_TABLE_STMTS:
-        conn.execute(stmt)
-    agent_action_columns = {
-        row[1] for row in conn.execute("PRAGMA table_info(agent_action)").fetchall()
-    }
-    if "related_operator" not in agent_action_columns:
-        conn.execute("ALTER TABLE agent_action ADD COLUMN related_operator TEXT")
-    conn.commit()
-    _tables_created = True
+    with _tables_lock:
+        if _tables_created:
+            return
+        for stmt in _DB_TABLE_STMTS:
+            conn.execute(stmt)
+        agent_action_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(agent_action)").fetchall()
+        }
+        if "related_operator" not in agent_action_columns:
+            conn.execute("ALTER TABLE agent_action ADD COLUMN related_operator TEXT")
+        conn.commit()
+        _tables_created = True
 
 
 @contextmanager

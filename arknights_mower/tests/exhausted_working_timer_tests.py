@@ -117,9 +117,9 @@ def test_fiammetta_swap_reads_only_fiammetta_mood(room_reader):
     fia_solver, fia, _ = room_reader(room="dormitory_1", name="菲亚梅塔", mood=7.5)
     fia_solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, meta_data="伊内丝")
     fia.need_to_refresh.return_value = False
-    fia_solver.op_data.plan["dormitory_1"][0].agent = "菲亚梅塔"
     fia_solver.op_data.update_detail = MagicMock(return_value=None)
-    fia_solver.get_agent_from_room("dormitory_1", related_operators={0: "伊内丝"})
+    # 静态排班的该槽位是 Free；充能任务会临时把菲亚梅塔换入。
+    fia_solver.get_agent_from_room("dormitory_1", [0], related_operators={0: "伊内丝"})
     fia_solver.read_accurate_mood.assert_called_once()
     fia_solver.op_data.update_detail.assert_called_once_with(
         "菲亚梅塔",
