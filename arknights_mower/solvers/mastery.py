@@ -627,6 +627,35 @@ def _notify_collect_unscheduled(plan, step_level, reason):
         logger.warning(f"[mastery] 到点收取未排上通知发送失败: {notify_exc}")
 
 
+def _warn_training_room_group(plan):
+    """未跟随排班时，提醒训练室绑组可能与专精换人冲突，但不阻断执行。"""
+    from arknights_mower.utils import config
+
+    if config.conf.assistant_follows_schedule:
+        return
+
+    from arknights_mower.utils.mastery_support_data import training_room_group_warning
+
+    group_warning = training_room_group_warning()
+    if not group_warning:
+        return
+
+    message = (
+        f"{group_warning}。未勾选“训练室协助位总是跟随排班”，"
+        "专精系统仍会自行更换协助位，可能与绑组排班冲突；本次继续执行"
+    )
+    logger.warning(f"[mastery] {message}")
+    try:
+        from arknights_mower.utils.email import send_message
+        from arknights_mower.utils.mastery_db import should_notify
+
+        if should_notify("training_group_warning", str(plan["id"])):
+            send_message(f"{_plan_fail_label(plan)} {message}", level="WARNING")
+    except Exception as notify_exc:
+        # 警告本身不得反过来阻断开训或换人。
+        logger.warning(f"[mastery] 训练室绑组通知发送失败: {notify_exc}")
+
+
 class _SceneTracker:
     """ARRANGING 超时诊断的廉价轨迹计数器（#15 决议）。"""
 
@@ -738,16 +767,8 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         get_mastery_requirement_error,
     )
     from arknights_mower.utils.mastery_support import SupportPlanError
-    from arknights_mower.utils.mastery_support_data import training_room_group_error
 
-    group_error = training_room_group_error()
-    if group_error:
-        from arknights_mower.utils.email import send_message
-
-        logger.warning(f"[mastery] 暂不开始训练：{group_error}")
-        update_plan_status(plan["id"], "failed", failed_reason=group_error)
-        send_message(f"{_plan_fail_label(plan)} {group_error}", level="ERROR")
-        return
+    _warn_training_room_group(plan)
 
     requirement_error = get_mastery_requirement_error(plan["char_id"])
     if requirement_error:
@@ -1411,14 +1432,7 @@ def run_swap_support(solver):
     countdown_active = bool(panel is not None and panel.countdown_state == "active")
     step_level = panel.mastery_tier if panel is not None else None
 
-    from arknights_mower.utils.mastery_support_data import training_room_group_error
-
-    if group_error := training_room_group_error():
-        from arknights_mower.solvers.mastery_support_state import stop_support_swap
-
-        stop_support_swap(solver, plan, step_level, group_error)
-        solver.back()
-        return
+    _warn_training_room_group(plan)
 
     route = _get_plan_route(plan, step_level)
     operator = route.get("operator") if route else None
