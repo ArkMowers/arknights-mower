@@ -111,6 +111,11 @@ def test_clear_competitors_confirm_then_restore_exact_slots(solver, task_type):
     assert solver.confirms == [["杜林", "琴柳", "银灰", "", ""], FINAL]
     assert solver.physical == original[ROOM]
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
+    assert solver.op_data.operators["银灰"].dorm_recovery_fixed == (
+        "杜林",
+        "琴柳",
+        "红",
+    )
     assert solver.task.plan == {}
     assert solver.task.dorm_recovery_restore == []
     assert [3, 4] in solver.reads
@@ -144,12 +149,38 @@ def test_only_once_while_target_stays_in_room(solver):
     assert recovery_order_plan(solver.op_data, ROOM, FINAL) is None
 
 
+def test_backup_plan_manager_change_reconfirms_same_target(solver):
+    arrange(solver)
+    backup = Plan(
+        {
+            ROOM: [
+                Room("陈", "", []),
+                *[Room("Current", "", []) for _ in range(4)],
+            ]
+        },
+        PlanConfig("", "", ""),
+    )
+    solver.op_data.global_plan["backup_plans"] = [backup]
+    solver.op_data.backup_plans = [backup]
+    assert solver.op_data.swap_plan([True], refresh=True) is None
+    updated = ["陈", "琴柳", "红", "银灰", "黑角"]
+    arrange(solver, updated)
+    assert solver.confirms[-2:] == [
+        ["陈", "琴柳", "银灰", "", ""],
+        updated,
+    ]
+    target = solver.op_data.operators["银灰"]
+    assert target.dorm_recovery_room == ROOM
+    assert target.dorm_recovery_fixed == ("陈", "琴柳", "红")
+
+
 def test_target_leaves_then_returns_needs_new_confirmation(solver):
     arrange(solver)
     target = solver.op_data.operators["银灰"]
     target.current_room = "meeting"
     target.current_room = ROOM
     assert target.dorm_recovery_room == ""
+    assert target.dorm_recovery_fixed == ()
     arrange(solver, FINAL)
     assert len(solver.confirms) == 4
 
@@ -266,9 +297,15 @@ def test_shadow_rebuild_and_pickle_preserve_cycle(solver):
     target = solver.op_data.operators["银灰"]
     restored = pickle.loads(pickle.dumps(target))
     assert restored.dorm_recovery_room == ROOM
+    assert restored.dorm_recovery_fixed == ("杜林", "琴柳", "红")
     solver.op_data.shadow_copy = {"银灰": restored}
     solver.op_data.add(Operator("银灰", "meeting", group="联动"))
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
+    assert solver.op_data.operators["银灰"].dorm_recovery_fixed == (
+        "杜林",
+        "琴柳",
+        "红",
+    )
     assert recovery_order_plan(solver.op_data, ROOM, FINAL) is None
 
 
@@ -277,11 +314,21 @@ def test_old_operator_without_marker_is_compatible(solver):
     assert recovery_order_plan(solver.op_data, ROOM, FINAL)
 
 
+def test_old_marker_without_fixed_managers_reconfirms(solver):
+    target = solver.op_data.operators["银灰"]
+    target.dorm_recovery_room = ROOM
+    target.current_room = ROOM
+    del target.dorm_recovery_fixed
+    assert recovery_order_plan(solver.op_data, ROOM, FINAL)
+
+
 def test_mood_read_at_24_clears_marker(solver):
     target = solver.op_data.operators["银灰"]
     target.dorm_recovery_room = ROOM
+    target.dorm_recovery_fixed = ("杜林", "琴柳", "红")
     solver.op_data.update_detail("银灰", 24, ROOM, 3)
     assert target.dorm_recovery_room == ""
+    assert target.dorm_recovery_fixed == ()
 
 
 def test_first_shift_does_not_clear_for_occupant_replaced_by_pending_bed_task(solver):

@@ -1,7 +1,7 @@
 """副表切换后，回班任务必须使用新排班的耗尽配置和岗位。"""
 
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -128,3 +128,70 @@ def test_unchanged_or_not_yet_eligible_backup_keeps_return(solver):
 def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
     solver.backup_plan_solver()
     assert all(t.type != TaskTypes.SHIFT_ON for t in solver.tasks)
+
+
+def test_before_dorm_task_preempts_and_preserves_remaining_dorm_plan(solver):
+    backup = solver.op_data.backup_plans[0]
+    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
+    backup.task = {
+        "dormitory_1": ["隐德来希", "Current", "Current", "Current", "Current"]
+    }
+    black_key = solver.op_data.operators["黑键"]
+    black_key.current_room, black_key.current_index = "contact", 0
+    current = SchedulerTask(
+        time=datetime(2026, 9, 11, 16),
+        task_plan={
+            "contact": ["红"],
+            "dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"],
+        },
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    solver.task = current
+    solver.tasks = [current]
+    arranged = []
+
+    def arrange_room(new_plan, room, plan, get_time=False):
+        arranged.append(room)
+        del plan[room]
+        if room == "contact":
+            black_key.current_room, black_key.current_index = "dormitory_1", 2
+        return new_plan
+
+    solver.agent_arrange_room = MagicMock(side_effect=arrange_room)
+    solver.agent_arrange = base.BaseSchedulerSolver.agent_arrange.__get__(solver)
+    solver.queue_product_switches = MagicMock()
+
+    assert solver.agent_arrange(current.plan, get_time=True) is False
+    assert arranged == ["contact"]
+    assert current.plan == {"dormitory_1": ["隐德来希", "冰酿", "黑键", "Free", "Free"]}
+    generated = next(task for task in solver.tasks if task is not current)
+    assert generated.plan == backup.task
+    assert generated.time == current.time - timedelta(microseconds=1)
+    assert solver.op_data.plan_condition == [True]
+
+
+def test_infra_main_keeps_deferred_dorm_task(solver):
+    current = SchedulerTask(
+        task_plan={"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]},
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    solver.task = current
+    solver.tasks = [current]
+    solver.agent_arrange.return_value = False
+    solver.plan_metadata = MagicMock()
+
+    solver.infra_main()
+
+    assert current in solver.tasks
+    assert current.plan
+    solver.plan_metadata.assert_not_called()
+    solver.skip.assert_called()
+
+
+def test_before_dorm_timing_order_and_parser():
+    assert Plan.set_timing_enum("before_dorm") is PlanTriggerTiming.BEFORE_DORM
+    assert (
+        PlanTriggerTiming.BEGINNING.value
+        < PlanTriggerTiming.BEFORE_DORM.value
+        < PlanTriggerTiming.BEFORE_PLANNING.value
+    )
