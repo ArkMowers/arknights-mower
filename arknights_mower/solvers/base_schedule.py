@@ -3765,7 +3765,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if pos is None:
                     if not clicks:
                         break
-                    if self.find(template) is None and any(
+                    if (
+                        self.find(template, score=0.9)
+                        if clicks
+                        else self.find(template)
+                    ) is None and any(
                         self.find(destination)
                         for destination in (
                             "confirm_blue",
