@@ -1,12 +1,26 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, watch } from 'vue'
 const show = inject('show_trigger_editor')
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
+import { usedepotStore } from '@/stores/depot'
+import { useFacilityStore } from '@/stores/facility'
+import { useMasteryStore } from '@/stores/mastery'
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
+const depot_store = usedepotStore()
+const facility_store = useFacilityStore()
+const mastery_store = useMasteryStore()
+
+watch(show, (visible) => {
+  if (visible) {
+    depot_store.loadInventory(true).catch(() => {})
+    facility_store.load(true).catch(() => {})
+    mastery_store.loadPlanSummary(true).catch(() => {})
+  }
+})
 
 const triggerTimingOptions = [
   { label: '任务开始', value: 'BEGINNING' },
@@ -25,17 +39,20 @@ function update_trigger(data) {
     v-model:show="show"
     preset="card"
     title="触发条件"
+    :auto-focus="false"
     transform-origin="center"
     style="width: auto; max-width: 90vw"
   >
     <div class="dropdown-container">
       <label class="dropdown-label"
-        >触发时机
-        <help-text>
-          <div>任务开始：单个任务开始时</div>
-          <div>下班结束：高效组下班任务安排完毕，生成上班时间任务前</div>
-          <div>上班结束：高效组上班安排结束时</div>
-          <div>任务结束：单个任务结束时</div>
+        >最早切表阶段
+        <help-text :max-width="560" nowrap>
+          <div>该选项表示最早允许切表的阶段。</div>
+          <div>任务开始：调度器选中一个待执行任务后，在处理前允许切表。</div>
+          <div>下班结束：适合需要在上班前切换产物或订单的副表。</div>
+          <div>上班结束：等本轮换班完成后再允许切表。</div>
+          <div>任务结束：仅在当前任务收尾或完整状态刷新后允许切表。</div>
+          <div>后续检查点仍会复查，条件未变化时不会重复切换。</div>
         </help-text>
       </label>
       <n-select

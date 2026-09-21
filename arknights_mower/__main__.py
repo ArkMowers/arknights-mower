@@ -1,3 +1,4 @@
+import copy
 import os
 from datetime import datetime, timedelta
 from threading import Lock, Timer
@@ -406,6 +407,9 @@ def simulate(saved, restart_after_mood_read=False):
                     v, "dorm_recovery_room", ""
                 )
             base_scheduler.op_data.restore_dorm_state(saved["dorm"])
+            base_scheduler.op_data.facility_states = copy.deepcopy(
+                saved.get("facility_states", {})
+            )
             base_scheduler.party_time = saved["party_time"]
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
             base_scheduler.daily_report = saved["daily_report"]
@@ -567,7 +571,8 @@ def simulate(saved, restart_after_mood_read=False):
 
                 if save_current_state():
                     return result
-                logger.warning("心情数据保存失败，继续当前Mower流程")
+                logger.warning("心情数据保存失败，直接刷新副表后继续当前Mower流程")
+                base_scheduler.backup_plan_solver()
             reconnect_tries = 0
         except MowerExit:
             return

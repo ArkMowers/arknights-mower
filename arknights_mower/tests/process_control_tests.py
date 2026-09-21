@@ -17,29 +17,42 @@ from arknights_mower.views.process_control import process_control_bp
 
 
 class ProcessControlTests(unittest.TestCase):
-    def test_reset_start_skips_incompatible_saved_state(self):
+    def test_mood_reload_switch_defaults_on(self):
+        from arknights_mower.utils.config.conf import Conf
+
+        self.assertTrue(Conf().refresh_backup_plan_after_mood)
+
+    def test_reset_start_skips_saved_state_and_respects_mood_reload_switch(self):
         import server
 
-        with (
-            tempfile.TemporaryDirectory() as folder,
-            patch.object(server, "active_job", return_value=False),
-            patch.object(server, "_job_running", return_value=False),
-            patch.object(server, "mower_thread", None),
-            patch.object(server, "log_stream"),
-            patch.object(server, "get_path", return_value=Path(folder)),
-            patch.object(server.config, "stop_mower"),
-            patch.object(server.config.conf, "refresh_backup_plan_after_mood", True),
-            patch.object(
-                server, "load_state", side_effect=ValueError("incompatible snapshot")
-            ) as load,
-            patch.object(server, "Thread") as thread,
-            patch.object(server, "set_mower_thread"),
-        ):
-            headers = {"token": getattr(server.app, "token", "")}
-            response = server.app.test_client().get("/start/2", headers=headers)
-            self.assertEqual(response.get_data(as_text=True), "true")
-            load.assert_not_called()
-            self.assertEqual(thread.call_args.kwargs["args"], ({}, True))
+        for enabled in (False, True):
+            with (
+                self.subTest(enabled=enabled),
+                tempfile.TemporaryDirectory() as folder,
+                patch.object(server, "active_job", return_value=False),
+                patch.object(server, "_job_running", return_value=False),
+                patch.object(server, "mower_thread", None),
+                patch.object(server, "log_stream"),
+                patch.object(server, "get_path", return_value=Path(folder)),
+                patch.object(server.config, "stop_mower"),
+                patch.object(
+                    server.config.conf,
+                    "refresh_backup_plan_after_mood",
+                    enabled,
+                ),
+                patch.object(
+                    server,
+                    "load_state",
+                    side_effect=ValueError("incompatible snapshot"),
+                ) as load,
+                patch.object(server, "Thread") as thread,
+                patch.object(server, "set_mower_thread"),
+            ):
+                headers = {"token": getattr(server.app, "token", "")}
+                response = server.app.test_client().get("/start/2", headers=headers)
+                self.assertEqual(response.get_data(as_text=True), "true")
+                load.assert_not_called()
+                self.assertEqual(thread.call_args.kwargs["args"], ({}, enabled))
 
     def test_normal_start_still_loads_saved_state(self):
         import server

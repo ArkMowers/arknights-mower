@@ -42,6 +42,7 @@ const {
   screenshot,
   screenshot_interval,
   run_order_grandet_mode,
+  product_switching,
   webview,
   runtime_platform,
   fix_mumu12_adb_disconnect,
@@ -722,6 +723,47 @@ if (return_home_when_idle.value) {
                 跑单前返回主界面以保持登录状态
               </n-checkbox>
             </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="product_switching.grandet_mode">
+                葛朗台切产物
+                <help-text>
+                  开启时按损耗容限节省无人机，并等待当前一份自然完成；关闭时直接使用足量无人机完成当前一份后切换。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>葛朗台无人机损耗容限</span>
+                <help-text>
+                  允许最后一架无人机浪费的加速时间。默认 30 秒，即当前一份余下至少 2 分 30
+                  秒时使用无人机完成，否则等待自然完成。
+                </help-text>
+              </template>
+              <mower-input-number
+                v-model:value="product_switching.drone_loss_seconds"
+                :disabled="!product_switching.grandet_mode"
+                :min="0"
+                :max="180"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>葛朗台切换等待缓冲</span>
+                <help-text>
+                  葛朗台切产物开启时，在计算出的自然完成时间之外额外等待，避免动画或网络延迟导致过早切换。
+                </help-text>
+              </template>
+              <mower-input-number
+                v-model:value="product_switching.waiting_seconds"
+                :disabled="!product_switching.grandet_mode"
+                :min="0"
+                :max="60"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>无人机使用房间</span>
@@ -856,8 +898,7 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
                 读取心情后先刷新副表
                 <help-text
-                  >开启后，仅在缓存清零重启时，Mower
-                  会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
+                  >默认开启。缓存清零重启时，会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班；若关闭，则沿用普通首次规划流程。</help-text
                 >
               </n-checkbox>
             </n-form-item>

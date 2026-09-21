@@ -180,6 +180,7 @@ class Plan:
         task: Optional[dict[str, list[str]]] = None,
         trigger_timing: Optional[str] = None,
         name: Optional[str] = "",
+        products: Optional[dict[str, str]] = None,
     ):
         """
         Args:
@@ -195,6 +196,7 @@ class Plan:
         self.task = task
         self.trigger_timing = self.set_timing_enum(trigger_timing)
         self.name = name
+        self.products = products or {}
 
     @staticmethod
     def set_timing_enum(value: str) -> PlanTriggerTiming:

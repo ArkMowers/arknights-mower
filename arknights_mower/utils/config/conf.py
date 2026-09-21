@@ -414,6 +414,14 @@ class RIICPart(ConfModel):
         back_to_index: bool = False
         "跑单前返回基建首页"
 
+    class ProductSwitchingConf(ConfModel):
+        grandet_mode: bool = True
+        "仅使用不会超过损耗容限的无人机，余下时间自然等待"
+        drone_loss_seconds: int = Field(default=30, ge=0, le=180)
+        "允许额外一架无人机浪费的加速秒数"
+        waiting_seconds: int = Field(default=2, ge=0, le=60)
+        "制造站自然完成当前产物后的额外等待秒数"
+
     class WorkShopSetting(ConfModel):
         items: list[WorkShopItem] = []
         "材料列表"
@@ -503,6 +511,11 @@ class RIICPart(ConfModel):
             data["run_order_grandet_mode"] = grandet
         return data
 
+    product_switching: ProductSwitchingConf = Field(
+        default_factory=ProductSwitchingConf
+    )
+    "葛朗台切产物与订单"
+
     free_room: bool = False
     "宿舍不养闲人模式"
     fia_fool: bool = True
@@ -562,8 +575,8 @@ class RIICPart(ConfModel):
     "不养闲人合并间隔"
     dorm_order: str = ""
     "宿舍优先级"
-    refresh_backup_plan_after_mood: bool = False
-    "缓存清零重启后读取心情并按载入心情数据模式重启"
+    refresh_backup_plan_after_mood: bool = True
+    "缓存清零重启后读取心情并按载入心情数据模式重启，默认开启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True

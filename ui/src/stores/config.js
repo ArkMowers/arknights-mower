@@ -131,6 +131,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_robot = ref(true)
   const recruit_auto_only5 = ref(true)
   const run_order_grandet_mode = ref({})
+  const product_switching = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
@@ -146,7 +147,7 @@ export const useConfigStore = defineStore('config', () => {
   const free_room = ref(false)
   const merge_interval = ref(10)
   const fia_fool = ref(true)
-  const refresh_backup_plan_after_mood = ref(false)
+  const refresh_backup_plan_after_mood = ref(true)
   const assistant_follows_schedule = ref(false)
   const enable_mastery = ref(true)
   const sign_in = ref({ enable: true })
@@ -544,6 +545,12 @@ export const useConfigStore = defineStore('config', () => {
       back_to_index: false,
       ...(response.data.run_order_grandet_mode || {})
     }
+    product_switching.value = {
+      grandet_mode: true,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2,
+      ...(response.data.product_switching || {})
+    }
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
@@ -558,7 +565,7 @@ export const useConfigStore = defineStore('config', () => {
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
     fia_fool.value = response.data.fia_fool
-    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? false
+    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
     enable_mastery.value = response.data.enable_mastery ?? true
     sign_in.value = response.data.sign_in
@@ -696,6 +703,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_robot: recruit_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
+      product_switching: product_switching.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
@@ -921,6 +929,7 @@ export const useConfigStore = defineStore('config', () => {
     ai_key,
     skland_info,
     run_order_grandet_mode,
+    product_switching,
     check_mail_enable,
     report_enable,
     recruit_gap,

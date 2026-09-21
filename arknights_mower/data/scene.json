@@ -235,6 +235,18 @@
     "label": "CLUE_MESSAGE_BOARD",
     "comment": "会客室信息板"
   },
+  "230": {
+    "label": "MANUFACTURE_PRODUCT_SELECT",
+    "comment": "制造站选择产物"
+  },
+  "231": {
+    "label": "MANUFACTURE_PRODUCT_CHANGE_CONFIRM",
+    "comment": "制造站切换产物确认"
+  },
+  "232": {
+    "label": "TRADE_STRATEGY_SELECT",
+    "comment": "贸易站选择订单类型"
+  },
   "301": {
     "label": "BUSINESS_CARD",
     "comment": "个人名片"
