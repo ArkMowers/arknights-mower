@@ -24,6 +24,7 @@ watch(show, (visible) => {
 
 const triggerTimingOptions = [
   { label: '任务开始', value: 'BEGINNING' },
+  { label: '入住宿舍前', value: 'BEFORE_DORM' },
   { label: '下班结束', value: 'BEFORE_PLANNING' },
   { label: '上班结束', value: 'AFTER_PLANNING' },
   { label: '任务结束', value: 'END' }
@@ -49,6 +50,7 @@ function update_trigger(data) {
         <help-text :max-width="560" nowrap>
           <div>该选项表示最早允许切表的阶段。</div>
           <div>任务开始：调度器选中一个待执行任务后，在处理前允许切表。</div>
+          <div>入住宿舍前：工作站换班完成、进入第一间宿舍前；副表任务会先于原宿舍安排执行。</div>
           <div>下班结束：适合需要在上班前切换产物或订单的副表。</div>
           <div>上班结束：等本轮换班完成后再允许切表。</div>
           <div>任务结束：仅在当前任务收尾或完整状态刷新后允许切表。</div>

@@ -704,6 +704,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 return True
             product_tasks = []
             remove_current_task = True
+            arrangement_deferred = False
             try:
                 if self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
@@ -817,15 +818,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.refresh_connecting = True
                         return
                     self.refresh_connecting = False
-                    self.agent_arrange(self.task.plan, get_time)
-                    if get_time:
+                    arrangement_deferred = (
+                        self.agent_arrange(self.task.plan, get_time) is False
+                    )
+                    if arrangement_deferred:
+                        # 已处理的工作房间从原任务移除，保留剩余宿舍；先执行刚生成的
+                        # 副表任务，下轮再继续原任务，避免休息干员早于新宿管入驻。
+                        remove_current_task = False
+                        self.skip()
+                    elif get_time:
                         if not self.backup_plan_solver(
                             PlanTriggerTiming.BEFORE_PLANNING
                         ):
                             self.plan_metadata()
                         else:
                             logger.info("检测到排班表切换，跳过plan")
-                    if TaskTypes.RE_ORDER == self.task.type:
+                    if (
+                        not arrangement_deferred
+                        and TaskTypes.RE_ORDER == self.task.type
+                    ):
                         self.skip()
                 # 如果任务名称包含干员名,则为动态生成的
                 elif self.task.type == TaskTypes.FIAMMETTA:
@@ -851,7 +862,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     pass
                 if remove_current_task:
                     self.tasks[:] = [t for t in self.tasks if t is not self.task]
-                if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
+                if (
+                    not arrangement_deferred
+                    and self.tasks
+                    and self.tasks[0].type in [TaskTypes.SHIFT_ON]
+                ):
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
             except ProductSwitchDeferred as e:
                 retry_time = datetime.now() + timedelta(minutes=e.minutes)
@@ -2180,7 +2195,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return BaseSchedulerSolver._REST_TIER_MARKED_LOW
         return BaseSchedulerSolver._REST_TIER_REPLACEMENT
 
-    def backup_plan_solver(self, timing=None, append_empty_task=True):
+    def backup_plan_solver(
+        self,
+        timing=None,
+        append_empty_task=True,
+        custom_task_time=None,
+        generated_tasks=None,
+    ):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
@@ -2199,9 +2220,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         task = self.op_data.backup_plans[idx].task
                         if task and con[idx]:
                             new_task = True
-                            self.tasks.append(
-                                SchedulerTask(task_plan=copy.deepcopy(task))
+                            generated = SchedulerTask(
+                                time=custom_task_time,
+                                task_plan=copy.deepcopy(task),
                             )
+                            self.tasks.append(generated)
+                            if generated_tasks is not None:
+                                generated_tasks.append(generated)
                     else:
                         # 不切换
                         con[idx] = current_con[idx]
@@ -5050,6 +5075,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             copy.deepcopy(plan) if self.task.type == TaskTypes.RUN_ORDER else None
         )
         new_plan = {}
+        before_dorm_checked = False
         # 优先替换工作站再替换宿舍
         rooms.sort(
             key=lambda x: (
@@ -5058,6 +5084,40 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         )
         for room in rooms:
+            if room.startswith("dormitory_") and not before_dorm_checked:
+                before_dorm_checked = True
+                custom_task_time = self.task.time - timedelta(microseconds=1)
+                generated_tasks = []
+                if self.backup_plan_solver(
+                    PlanTriggerTiming.BEFORE_DORM,
+                    append_empty_task=False,
+                    custom_task_time=custom_task_time,
+                    generated_tasks=generated_tasks,
+                ):
+                    generated_ids = {id(task) for task in generated_tasks}
+                    anchor = min(
+                        (
+                            task.time
+                            for task in self.tasks
+                            if id(task) not in generated_ids
+                        ),
+                        default=self.task.time,
+                    )
+                    for offset, generated in enumerate(
+                        reversed(generated_tasks), start=1
+                    ):
+                        generated.time = anchor - timedelta(microseconds=offset)
+                    # 副表任务明确改动的宿舍位置同步到原任务，避免副表任务先换入
+                    # 新宿管后，续行的旧任务又把旧宿管放回去。Current 不覆盖原安排。
+                    for generated in generated_tasks:
+                        for dorm, agents in generated.plan.items():
+                            if dorm not in plan or not dorm.startswith("dormitory_"):
+                                continue
+                            for index, name in enumerate(agents[: len(plan[dorm])]):
+                                if name != "Current":
+                                    plan[dorm][index] = name
+                    logger.info("入住宿舍前触发副表任务，保留原宿舍安排等待续行")
+                    return False
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
         if len(new_plan) == 1 and room != "train":
             if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
