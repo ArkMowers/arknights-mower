@@ -427,15 +427,20 @@ class Operators:
             return "菲亚梅塔替换缺失"
         if len(missing_replacements):
             return f"以下干员替换组缺失：{','.join(missing_replacements)}"
-        dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
+        # 动态床位集合由主表定义并跨切表持久存在。副表可以临时把主表的
+        # Free 位置覆盖成固定干员，但不能因此删除该位置及其入住状态；位置
+        # 当前是否可用统一由 is_effective_free_slot() 判断。
+        base_plan = self.global_plan["default_plan"].plan
+        bed_plan = base_plan if update else self.plan
+        dorm_names = [k for k in bed_plan.keys() if k.startswith("dorm")]
         dorm_names.sort(key=lambda d: d, reverse=False)
         added = []
         # 竖向遍历出效率高到低
         for dorm in dorm_names:
             free_found = False
-            for _idx, _dorm in enumerate(self.plan[dorm]):
+            for _idx, _dorm in enumerate(bed_plan[dorm]):
                 if _dorm.agent == "Free" and _idx <= 1:
-                    if "波登可" not in [_agent.agent for _agent in self.plan[dorm]]:
+                    if "波登可" not in [_agent.agent for _agent in bed_plan[dorm]]:
                         return "宿舍必须安排2个宿管"
                 if _dorm.agent != "Free" and free_found:
                     return "Free必须连续且安排在宿管后"
@@ -452,7 +457,7 @@ class Operators:
                 return "宿舍必须安排至少一个Free"
         # VIP休息位用完后横向遍历
         for dorm in dorm_names:
-            for _idx, _dorm in enumerate(self.plan[dorm]):
+            for _idx, _dorm in enumerate(bed_plan[dorm]):
                 if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                     self.dorm.append(Dormitory((dorm, _idx)))
                     added.append(dorm + str(_idx))
@@ -522,8 +527,11 @@ class Operators:
             ):
                 return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
             required_beds = total_count - group_dorm_count
-            if required_beds > len(self.dorm):
-                return f"{key} 分组无法排班,所需宿舍数{required_beds}大于总宿舍数{len(self.dorm)}"
+            effective_dorm_count = sum(
+                1 for dorm in self.dorm if self.is_effective_free_slot(dorm)
+            )
+            if required_beds > effective_dorm_count:
+                return f"{key} 分组无法排班,所需宿舍数{required_beds}大于当前有效宿舍数{effective_dorm_count}"
         self.group_dorm = [
             Dormitory((operator.room, operator.index))
             for operator in self.operators.values()
@@ -854,7 +862,7 @@ class Operators:
         elif (current_room and not to_dorm) or mood >= 24:
             agent.resting_from_train = False
         if mood >= 24:
-            agent.dorm_recovery_room = ""
+            agent.clear_dorm_recovery()
         # 如果是高效组且没有记录时间，则返还index
         if to_dorm:
             idx, dorm = self.get_dorm_by_name(name)
@@ -996,6 +1004,7 @@ class Operators:
             operator.current_index = exist.current_index
             operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
             operator.resting_from_train = getattr(exist, "resting_from_train", False)
+            operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
         if operator.exhaust_require and not (
@@ -1210,18 +1219,30 @@ class Operators:
         )
         return current_mood / total_mood
 
+    def is_effective_free_slot(self, dorm):
+        """当前合并后的有效排班中，该潜在宿舍位是否仍为 Free。"""
+        room, index = dorm.position
+        return (
+            room in self.plan
+            and 0 <= index < len(self.plan[room])
+            and self.plan[room][index].agent == "Free"
+        )
+
     def available_free(self, free_type="high", time=None):
         if not time:
             time = datetime.now()
 
-        dorm_count = sum(1 for key in self.plan if key.startswith("dorm"))
-        total = len(self.dorm)
+        effective_dorms = [
+            dorm for dorm in self.dorm if self.is_effective_free_slot(dorm)
+        ]
+        dorm_count = len({dorm.position[0] for dorm in effective_dorms})
+        total = len(effective_dorms)
 
         count_high = 0
         count_low = 0
         # 一次性遍历 dorm。低优占位也必须消耗 low 配额，否则调度器会持续把
         # 已占用床位误判为空位；恢复完成的普通填充干员由不养闲人处理。
-        for dorm in self.dorm:
+        for dorm in effective_dorms:
             if dorm.name == "" or dorm.name not in self.operators:
                 continue
             op = self.operators[dorm.name]
@@ -1240,13 +1261,16 @@ class Operators:
         return sum(
             1
             for dorm in self.dorm
-            if dorm.name in self.operators
+            if self.is_effective_free_slot(dorm)
+            and dorm.name in self.operators
             and self.operators[dorm.name].is_high()
             and resting_tier(self, dorm.name) != RestingTier.IDLE
         )
 
     def _slot_takable(self, dorm, protect_resting, requester=None):
         """按严格层级接管；主班免额外心情门槛，同级恢复者不互踢。"""
+        if not self.is_effective_free_slot(dorm):
+            return False
         name = dorm.name
         if name == "" or name not in self.operators:
             return True
@@ -1524,6 +1548,7 @@ class Operator:
         self.resting_priority = resting_priority
         self.dorm_recovery_room = ""
         self.resting_from_train = False
+        self.dorm_recovery_fixed = ()
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
@@ -1545,7 +1570,7 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
-            self.dorm_recovery_room = ""
+            self.clear_dorm_recovery()
             self._current_room = value
             if Operators.current_room_changed_callback and (
                 self.refresh_order_room[0] or self.refresh_drained
@@ -1554,6 +1579,10 @@ class Operator:
                 logger.debug(
                     f"触发当前房间变更回调: {self.name} 现在在 {self._current_room}, 刷新交易所房间: {self.refresh_order_room}, 刷新疲劳: {self.refresh_drained}"
                 )
+
+    def clear_dorm_recovery(self):
+        self.dorm_recovery_room = ""
+        self.dorm_recovery_fixed = ()
 
     def is_high(self):
         # 是否为高效组

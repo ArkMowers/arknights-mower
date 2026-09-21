@@ -10,6 +10,8 @@ class PlanTriggerTiming(Enum):
 
     BEGINNING = 0
     "任务开始"
+    BEFORE_DORM = 200
+    "入住宿舍前"
     BEFORE_PLANNING = 300
     "下班结束"
     AFTER_PLANNING = 600

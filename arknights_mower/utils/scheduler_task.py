@@ -450,8 +450,10 @@ def plan_metadata(op_data, tasks):
     logger.debug(f"预测最低休息时间为: {min_resting_time}")
     grouped_dorms = defaultdict(list)
     free_rooms = []
-    # 分组 dorm 对象
+    # 固定宿舍恢复位始终参与回班计时；动态床位只处理当前排班仍为 Free 的位置。
     for dorm in op_data.all_dorms():
+        if dorm in op_data.dorm and not op_data.is_effective_free_slot(dorm):
+            continue
         if dorm.name and dorm.name in op_data.operators:
             operator = op_data.operators[dorm.name]
             grouped_dorms[operator.group].append(dorm)
@@ -581,13 +583,22 @@ def try_reorder(op_data, new_plan):
     if vip == 0:
         return
 
+    # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
+    # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。
+    effective_free_indices = [
+        idx for idx, room in enumerate(dorm) if op_data.is_effective_free_slot(room)
+    ]
+    blocked_indices = set(range(len(dorm))) - set(effective_free_indices)
+    for idx in blocked_indices:
+        dorm[idx].name = ""
+        dorm[idx].time = None
     dorm_info = [
         {
-            "name": room.name,
+            "name": dorm[idx].name,
             "index": idx,
-            "time": room.time,
+            "time": dorm[idx].time,
         }
-        for idx, room in enumerate(dorm)  # **跳过 name 为空的 dorm**
+        for idx in effective_free_indices
     ]
 
     now = datetime.now()
@@ -598,13 +609,13 @@ def try_reorder(op_data, new_plan):
             resting_key(op_data, item["name"], now),
         )
     )
-    for idx in range(len(dorm)):
-        dorm[idx].name = dorm_info[idx]["name"]
-        dorm[idx].time = dorm_info[idx]["time"]
+    for target_idx, info in zip(effective_free_indices, dorm_info):
+        dorm[target_idx].name = info["name"]
+        dorm[target_idx].time = info["time"]
     plan = {}
     logger.debug(f"更新房间信息{dorm}")
     destinations = {bed.position for bed in dorm if bed.name}
-    bed_positions = {bed.position for bed in dorm}
+    effective_positions = {dorm[idx].position for idx in effective_free_indices}
     for room in dorm:
         if room.name:
             op = op_data.operators[room.name]
@@ -614,7 +625,10 @@ def try_reorder(op_data, new_plan):
                     plan[room_name] = ["Current"] * 5
                 plan[room_name][idx] = room.name
                 old_position = (op.current_room, op.current_index)
-                if old_position in bed_positions and old_position not in destinations:
+                if (
+                    old_position in effective_positions
+                    and old_position not in destinations
+                ):
                     plan.setdefault(op.current_room, ["Current"] * 5)[
                         op.current_index
                     ] = "Free"
@@ -729,7 +743,12 @@ def try_add_release_dorm(plan, time, op_data, tasks):
         for name in v:
             if name in op_data.operators and time is not None:
                 _idx, __dorm = op_data.get_dorm_by_name(name)
-                if __dorm and __dorm.time is not None and __dorm.time < time:
+                if (
+                    __dorm
+                    and op_data.is_effective_free_slot(__dorm)
+                    and __dorm.time is not None
+                    and __dorm.time < time
+                ):
                     add_release_dorm(tasks, op_data, name)
     # 普通情况
     if not plan:
@@ -773,7 +792,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 room, index = value.position
                 if (
                     value.position in reserved_slots
-                    or op_data.plan[room][index].agent != "Free"
+                    or not op_data.is_effective_free_slot(value)
                 ):
                     continue
                 agent = op_data.operators.get(value.name)
