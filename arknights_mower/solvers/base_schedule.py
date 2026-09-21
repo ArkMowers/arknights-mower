@@ -2083,9 +2083,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 管理，不能抬高这里的当前人数或挡住可接管床位上的大组。
         current_resting = self.op_data.active_high_resting_count()
         effective_dorm_count = sum(
-            1
-            for dorm in self.op_data.dorm
-            if self.op_data.is_effective_free_slot(dorm)
+            1 for dorm in self.op_data.dorm if self.op_data.is_effective_free_slot(dorm)
         )
         # 阈值暂定为 0.5；理想休息人数不能超过当前副表下真实可用床位。
         self.ideal_resting_count = (

@@ -246,20 +246,14 @@ class TestScheduling(unittest.TestCase):
         op_data.backup_plans = [backup]
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
         return next(
-            dorm
-            for dorm in op_data.dorm
-            if dorm.position == ("dormitory_1", 2)
+            dorm for dorm in op_data.dorm if dorm.position == ("dormitory_1", 2)
         )
 
     @staticmethod
     def task_writes_slot(tasks, room, index):
         for task in tasks:
             room_plan = task.plan.get(room)
-            if (
-                room_plan
-                and index < len(room_plan)
-                and room_plan[index] != "Current"
-            ):
+            if room_plan and index < len(room_plan) and room_plan[index] != "Current":
                 return True
         return False
 
@@ -321,22 +315,16 @@ class TestScheduling(unittest.TestCase):
         try_add_release_dorm(
             {"meeting": ["红"]}, now + timedelta(hours=2), op_data, release_tasks
         )
-        self.assertFalse(
-            self.task_writes_slot(release_tasks, "dormitory_1", 2)
-        )
+        self.assertFalse(self.task_writes_slot(release_tasks, "dormitory_1", 2))
 
         free_room_tasks = []
         try_add_release_dorm({}, None, op_data, free_room_tasks)
-        self.assertFalse(
-            self.task_writes_slot(free_room_tasks, "dormitory_1", 2)
-        )
+        self.assertFalse(self.task_writes_slot(free_room_tasks, "dormitory_1", 2))
 
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
         restored_tasks = []
         try_add_release_dorm({}, None, op_data, restored_tasks)
-        self.assertTrue(
-            self.task_writes_slot(restored_tasks, "dormitory_1", 2)
-        )
+        self.assertTrue(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
 
     def init_opdata(self):
         agent_base_config = PlanConfig(
