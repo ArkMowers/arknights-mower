@@ -195,9 +195,7 @@ def _validate_configuration(files):
     if legacy_dorm_order and plan_data.get("conf", {}).get("dorm_order") == "":
         plan_data["conf"].pop("dorm_order")
     plan = parse_plan_document(plan_data)
-    dorm_order_migrated = migrate_legacy_dorm_order(
-        plan, plan_data, legacy_dorm_order
-    )
+    dorm_order_migrated = migrate_legacy_dorm_order(plan, plan_data, legacy_dorm_order)
     weekly = _object_file(files, "weekly_plans.yml", optional=True)
     if weekly is not None:
         plans = weekly.get("plans")

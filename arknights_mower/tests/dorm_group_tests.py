@@ -232,6 +232,7 @@ def test_other_group_cannot_borrow_occupied_dorm_cover(solver):
 
 def test_full_mood_cover_is_preserved_during_actual_selection(solver, monkeypatch):
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
+    solver.op_data.config.free_room = True
     monkeypatch.setattr(solver, "preserve_resting_crafters", lambda agents, room: None)
     monkeypatch.setattr(
         solver.op_data,
@@ -628,6 +629,7 @@ def test_ungrouped_fixed_slot_keeps_legacy_full_mood_release(
     legacy_solver, monkeypatch
 ):
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
+    legacy_solver.op_data.config.free_room = True
     monkeypatch.setattr(
         legacy_solver, "preserve_resting_crafters", lambda agents, room: None
     )

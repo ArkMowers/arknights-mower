@@ -528,19 +528,6 @@
           <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
             >一键设置</n-button
           >
-          <n-space align="center" :size="6">
-            <n-switch
-              v-model:value="workshopLowPriorityRest"
-              size="small"
-              aria-label="加工干员低优先休息"
-            />
-            <n-text>低优先休息</n-text>
-            <help-text>
-              开启后，加工名单、配置及备份中的干员额外降为其他空闲干员层级，显式指定高优仍优先。
-              低优主班及以上可接管更低层级；候补和普通替班接管加工床位时，心情须不高于 22。
-              同级仍在恢复的干员不互踢。关闭后按排班身份定级，未写入排班的干员仍属其他空闲层级。
-            </help-text>
-          </n-space>
         </n-space>
         <n-space align="center" :size="6">
           <n-switch
@@ -728,7 +715,6 @@ const idleFilterOptions = [
 ]
 const {
   workshop_min_bonus: workshopMinBonus,
-  workshop_low_priority_rest: workshopLowPriorityRest,
   workshop_protect_t2_device_rock: workshopProtectT2,
   workshop_deer_fodder: deerFodder,
   fodder_operators: fodderOps,

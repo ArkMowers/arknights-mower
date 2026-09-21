@@ -1,4 +1,4 @@
-"""Crafters borrow spare recovery slots; ordinary replacements above 22 cannot evict."""
+"""加工名单不改写排班身份；未排班加工干员自然属于空闲层级。"""
 
 import sys
 from datetime import datetime, timedelta
@@ -10,7 +10,6 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
-from arknights_mower.utils.config.conf import RIICPart  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.resting_priority import RestingTier  # noqa: E402
@@ -23,7 +22,6 @@ def dorm_solver(monkeypatch):
     config.conf.t5_operators = []
     config.conf.book_operators = []
     config.conf.workshop_manual_backup = None
-    config.conf.workshop_settings = [RIICPart.WorkShopSetting(operator="空爆")]
     config.conf.enable_mastery = False
     solver = object.__new__(BaseSchedulerSolver)
     solver.global_plan = {
@@ -117,48 +115,41 @@ def test_crafter_uses_spare_slot_when_replacement_does_not_need_rest(dorm_solver
     )
 
 
-@pytest.mark.parametrize(
-    "field",
-    [
-        "fodder_operators",
-        "t5_operators",
-        "book_operators",
-        "workshop_settings",
-        "workshop_manual_backup",
-    ],
-)
-def test_every_crafting_selection_is_dynamic_and_below_ordinary_replacements(
-    dorm_solver, field
-):
+def test_workshop_lists_do_not_lower_scheduled_main(dorm_solver):
     op = dorm_solver.op_data.operators["年"]
-    regular = dorm_solver.op_data.operators["红"]
     op.operator_type = "high"
     op.resting_priority = "high"
-    setattr(
-        config.conf,
-        field,
-        ["年"]
-        if field.endswith("operators")
-        else [RIICPart.WorkShopSetting(operator="年")],
-    )
-    assert dorm_solver._resting_tier(op) > dorm_solver._resting_tier(regular)
-    config.conf.workshop_low_priority_rest = False
+    config.conf.t5_operators = ["年"]
     assert dorm_solver._resting_tier(op) == RestingTier.MAIN
-    config.conf.workshop_low_priority_rest = True
-    assert op.is_workshop()
-    setattr(config.conf, field, [] if field != "workshop_manual_backup" else None)
-    assert not op.is_workshop()
 
 
-def test_occupied_crafter_bed_counts_as_occupied_but_remains_takable(dorm_solver):
+def test_workshop_lists_do_not_lower_scheduled_replacement(dorm_solver):
+    config.conf.fodder_operators = ["空爆"]
+    dorm_solver.op_data.plan["meeting"][0].replacement.append("空爆")
+    assert (
+        dorm_solver._resting_tier(dorm_solver.op_data.operators["空爆"])
+        == RestingTier.REPLACEMENT
+    )
+
+
+def test_unplanned_workshop_operator_is_idle(dorm_solver):
+    config.conf.book_operators = ["空爆"]
+    assert (
+        dorm_solver._resting_tier(dorm_solver.op_data.operators["空爆"])
+        == RestingTier.IDLE
+    )
+
+
+def test_scheduled_main_bed_counts_as_protected_high_resting(dorm_solver):
     before = dorm_solver.op_data.available_free("low")
     op = dorm_solver.op_data.operators["空爆"]
     op.operator_type = "high"
     op.resting_priority = "high"
+    config.conf.fodder_operators = ["空爆"]
     occupy(dorm_solver, "空爆", 3)
     assert dorm_solver.op_data.available_free("low") == before - 1
-    assert dorm_solver.op_data.active_high_resting_count() == 2
-    assert dorm_solver.op_data.assign_dorm("红") is not None
+    assert dorm_solver.op_data.active_high_resting_count() == 3
+    assert dorm_solver.op_data.assign_dorm("红") is None
 
 
 @pytest.mark.parametrize("mood,expected", [(22, "红"), (22.01, "空爆"), (24, "空爆")])
@@ -185,26 +176,25 @@ def test_one_tired_replacement_does_not_evict_two_crafters(dorm_solver):
     assert agents[3:] == ["红", "年"]
 
 
-def test_disabling_crafter_priority_restores_bed_allocation_and_ui_selection(
-    dorm_solver,
-):
-    # 开关只撤销加工降级；没有写入排班的干员仍属于其他空闲人员。
+def test_replacement_identity_controls_bed_allocation_and_ui_selection(dorm_solver):
     dorm_solver.op_data.plan["meeting"][0].replacement.append("空爆")
-    config.conf.workshop_low_priority_rest = False
+    config.conf.fodder_operators = ["空爆"]
     occupy(dorm_solver, "空爆", 3)
-    # Both are ordinary low-priority replacements again: occupied beds stay protected.
+    # 两人都是普通替班，同级休息者不互踢。
     assert dorm_solver.op_data.assign_dorm("红") is None
     agents = ["塑心", "冰酿", "银灰", "Free", "伊内丝"]
     dorm_solver.task = MagicMock(plan={"dormitory_1": agents})
     dorm_solver.preserve_resting_crafters(agents, "dormitory_1")
     assert agents[3] == "空爆"
-    # Actual free-slot selection must also retain crafters, even with tired replacements.
+    # 实际 Free 选人也按普通替班层级与心情排序。
     dorm_solver.op_data.operators["空爆"].current_room = ""
     agents[3] = "Free"
     assert "空爆" in dorm_solver.get_free_list(agents)
-    config.conf.workshop_low_priority_rest = True
     free_list = dorm_solver.get_free_list(["塑心", "冰酿", "银灰", "Free", "伊内丝"])
     assert free_list.index("红") < free_list.index("空爆")
+    assert dorm_solver._resting_tier(
+        dorm_solver.op_data.operators["空爆"]
+    ) == dorm_solver._resting_tier(dorm_solver.op_data.operators["红"])
 
 
 def test_actual_free_placeholder_prefers_replacement_over_lower_mood_idle(dorm_solver):

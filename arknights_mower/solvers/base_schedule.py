@@ -2106,7 +2106,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for op in self.total_agent:
             if self._resting_tier(op) == RestingTier.EXCLUDED:
                 continue
-            if op.is_high() and not op.is_workshop():
+            if op.is_high():
                 can_standby = op.group and self.op_data.group_standby_candidates(
                     self.op_data.groups[op.group]
                 )
@@ -4177,7 +4177,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
                 __agent = self.op_data.operators[agents[idx]]
                 if (
-                    not preserve_dorm_occupants
+                    getattr(self.op_data.config, "free_room", False)
+                    and not preserve_dorm_occupants
                     and __agent.mood == __agent.upper_limit
                     and not __agent.room.startswith("dorm")
                     and not self.op_data.is_dorm_replacement_for_slot(

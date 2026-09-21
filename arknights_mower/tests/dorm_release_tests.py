@@ -54,12 +54,36 @@ def test_full_occupant_replaced_regardless_of_last_operator(op_data, last):
     assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
 
 
-def test_full_main_not_removed_by_free_room(op_data):
+def test_full_main_is_replaced_by_free_room(op_data):
     occupant = op_data.operators["空爆"]
     occupant.operator_type = "high"
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+
+
+@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+def test_unfinished_standby_or_higher_is_protected_from_free_room(op_data, priority):
+    occupant = op_data.operators["空爆"]
+    occupant.operator_type = "high"
+    occupant.resting_priority = priority
+    occupant.mood = 10
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=4)
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
     assert tasks == []
+
+
+@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+def test_finished_standby_or_higher_is_replaced_by_free_room(op_data, priority):
+    occupant = op_data.operators["空爆"]
+    occupant.operator_type = "high"
+    occupant.resting_priority = priority
+    occupant.mood = 10
+    op_data.dorm[0].time = datetime.now() - timedelta(minutes=1)
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
 
 
 def test_free_room_reads_dynamic_slot_countdown(op_data):

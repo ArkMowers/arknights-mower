@@ -20,8 +20,6 @@ def resting_tier(op_data, name):
     if name in op_data.config.ope_resting_priority:
         return RestingTier.PRIORITY
     if op is not None:
-        if op.is_workshop():
-            return RestingTier.IDLE
         if (op.room == "train" and op.index == 0) or (
             op.current_room == "train" and op.current_index == 0
         ):

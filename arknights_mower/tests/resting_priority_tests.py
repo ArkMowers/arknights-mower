@@ -50,14 +50,16 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
     current = set_tier(data, "空爆", occupant, 3)
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
-    expected = incoming <= RestingTier.LOW_MAIN and incoming < occupant
-    if incoming == RestingTier.STANDBY and occupant == RestingTier.REPLACEMENT:
-        expected = True
-    if (
-        incoming in (RestingTier.STANDBY, RestingTier.REPLACEMENT)
-        and occupant == RestingTier.IDLE
-    ):
-        expected = mood <= 22
+    expected = False
+    if occupant > RestingTier.STANDBY and incoming < occupant:
+        expected = incoming <= RestingTier.LOW_MAIN
+        if incoming == RestingTier.STANDBY and occupant == RestingTier.REPLACEMENT:
+            expected = True
+        if (
+            incoming in (RestingTier.STANDBY, RestingTier.REPLACEMENT)
+            and occupant == RestingTier.IDLE
+        ):
+            expected = mood <= 22
     assert (
         data._find_dorm_slot(request.name, set(), group_resting=True) is not None
     ) == expected
@@ -135,14 +137,9 @@ def test_train_support_keeps_replacement_tier_during_recovery_and_restart(op_dat
     assert resting_tier(op_data, op.name) == RestingTier.IDLE
 
 
-def test_workshop_switch_can_lower_planned_replacement_but_explicit_priority_wins(
-    op_data,
-):
+def test_workshop_selection_does_not_override_schedule_identity(op_data):
     config.conf.fodder_operators = ["红"]
-    assert resting_tier(op_data, "红") == RestingTier.IDLE
-    config.conf.workshop_low_priority_rest = False
     assert resting_tier(op_data, "红") == RestingTier.REPLACEMENT
-    config.conf.workshop_low_priority_rest = True
     op_data.config.ope_resting_priority = ["红"]
     assert resting_tier(op_data, "红") == RestingTier.PRIORITY
 

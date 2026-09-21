@@ -5,7 +5,6 @@ from itertools import product
 
 from evalidate import Expr, base_eval_model
 
-from arknights_mower.utils import config
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -1026,7 +1025,6 @@ class Operators:
             and not operator.workaholic
             and not operator.exhaust_require
             and not operator.rest_in_full
-            and not operator.is_workshop()
         ):
             operator.resting_priority = "standby"
 
@@ -1041,7 +1039,6 @@ class Operators:
             and not op.workaholic
             and not op.exhaust_require
             and not op.rest_in_full
-            and not op.is_workshop()
         )
 
     def is_group_standby(self, name):
@@ -1061,7 +1058,6 @@ class Operators:
             and member.resting_priority == "high"
             and not member.room.startswith("dorm")
             and not member.workaholic
-            and not member.is_workshop()
             and member.is_resting()
             and self.get_dorm_by_name(member.name)[0] is not None
             for member in (self.operators[n] for n in self.groups.get(op.group, []))
@@ -1223,36 +1219,22 @@ class Operators:
 
         count_high = 0
         count_low = 0
-        free_name = []
-
         # 一次性遍历 dorm。低优占位也必须消耗 low 配额，否则调度器会持续把
-        # 已占用床位误判为空位；但它仍可被高优主力接管，不能据此阻止大组下班。
+        # 已占用床位误判为空位；恢复完成的普通填充干员由不养闲人处理。
         for dorm in self.dorm:
             if dorm.name == "" or dorm.name not in self.operators:
                 continue
             op = self.operators[dorm.name]
-            if dorm.time is not None and dorm.time < time:
-                if op.is_high():
-                    free_name.append(dorm.name)
-                continue
             if resting_tier(self, op.name) <= RestingTier.MAIN:
                 count_high += 1
             else:
                 count_low += 1
         available_high = max(0, dorm_count - count_high)
         available_low = total - count_low - max(count_high, dorm_count)
-
-        if len(free_name) > 0:
-            for name in free_name:
-                logger.debug(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
-                if name in agent_list:
-                    self.operators[name].mood = self.operators[name].upper_limit
-                    self.operators[name].depletion_rate = 0
-                    self.operators[name].time_stamp = time
         return available_high if free_type == "high" else available_low
 
     def active_high_resting_count(self, time=None):
-        """正在轮休的主班人数；被加工开关降级的人员不计入。"""
+        """正在占用恢复床位的主班人数。"""
         if time is None:
             time = datetime.now()
         return sum(
@@ -1261,7 +1243,6 @@ class Operators:
             if dorm.name in self.operators
             and self.operators[dorm.name].is_high()
             and resting_tier(self, dorm.name) != RestingTier.IDLE
-            and not (dorm.time is not None and dorm.time < time)
         )
 
     def _slot_takable(self, dorm, protect_resting, requester=None):
@@ -1273,9 +1254,10 @@ class Operators:
         # 已预留、尚未执行入驻的床位不能被本轮后续组重复分配。
         if (op.current_room, op.current_index) != dorm.position:
             return False
-        if dorm.time is not None and dorm.time < datetime.now():
-            return True
         tier = resting_tier(self, name)
+        # 候补及以上只按层级、心情换床位顺序；一旦入住便不被其他休息者踢出。
+        if tier <= RestingTier.STANDBY:
+            return False
         if requester is None:
             return False
         incoming_tier = resting_tier(self, requester)
@@ -1314,7 +1296,7 @@ class Operators:
 
         def takeover_cost(index):
             bed = self.dorm[index]
-            if not bed.name or (bed.time is not None and bed.time <= now):
+            if not bed.name:
                 return (0, 0, 0)
             tier, mood = resting_key(self, bed.name, now)
             # 先使用空位，再接管层级最低、同级心情最高的占位者。
@@ -1333,7 +1315,6 @@ class Operators:
             and op.is_high()
             and op.resting_priority == "high"
             and not op.workaholic
-            and not op.is_workshop()
             and not op.room.startswith("dorm")
             and 0 <= op.mood < op.upper_limit
             and op.current_mood() < op.upper_limit
@@ -1507,24 +1488,6 @@ class Dormitory:
 
 
 class Operator:
-    def is_workshop(self):
-        """Whether this crafter uses the optional lowest dorm recovery priority."""
-        conf = config.conf
-        if not conf.workshop_low_priority_rest:
-            return False
-        names = (
-            *getattr(conf, "fodder_operators", ()),
-            *getattr(conf, "t5_operators", ()),
-            *getattr(conf, "book_operators", ()),
-        )
-        return self.name in names or any(
-            setting.operator == self.name
-            for setting in (
-                *getattr(conf, "workshop_settings", ()),
-                *(getattr(conf, "workshop_manual_backup", None) or ()),
-            )
-        )
-
     def __init__(
         self,
         name,

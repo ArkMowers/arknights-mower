@@ -778,16 +778,13 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     continue
                 agent = op_data.operators.get(value.name)
                 if agent is not None:
-                    # 只释放当前床位里的普通人员；主班的回班仍由轮休任务处理。
-                    if (
-                        agent.is_high()
-                        or (agent.current_room, agent.current_index) != value.position
-                    ):
+                    if (agent.current_room, agent.current_index) != value.position:
                         continue
                     mood = resting_mood(agent, now)
                     full = (mood != float("inf") and mood >= agent.upper_limit) or (
                         value.time is not None and value.time <= now
                     )
+                    # 候补及以上在恢复期间受保护；休息完成后由不养闲人统一腾床。
                     if not full and not op_data._slot_takable(
                         value, protect_resting=True, requester=waiting_list[0].name
                     ):

@@ -350,7 +350,6 @@ def test_low_main_requires_beds_but_can_take_resting_replacements(solver, occupa
         (DEEP[1], "workaholic"),
         (DEEP[1], "exhaust_require"),
         (DEEP[1], "rest_in_full"),
-        (DEEP[1], "workshop"),
     ],
 )
 def test_candidate_setting_only_applies_to_eligible_grouped_main(solver, name, invalid):
@@ -358,11 +357,18 @@ def test_candidate_setting_only_applies_to_eligible_grouped_main(solver, name, i
     conf.resting_standby = [name]
     if invalid in ("workaholic", "exhaust_require", "rest_in_full"):
         setattr(conf, invalid, [name])
-    elif invalid == "workshop":
-        config.conf.t5_operators = [name]
     assert solver.initialize_operators() is None
     assert solver.op_data.operators[name].resting_priority != "standby"
     assert not solver.op_data._can_group_standby(solver.op_data.operators[name])
+
+
+def test_workshop_selection_does_not_disable_group_standby(solver):
+    name = DEEP[1]
+    solver.global_plan["default_plan"].config.resting_standby = [name]
+    config.conf.t5_operators = [name]
+    assert solver.initialize_operators() is None
+    assert solver.op_data.operators[name].resting_priority == "standby"
+    assert solver.op_data._can_group_standby(solver.op_data.operators[name])
 
 
 def test_normal_low_gets_last_spare_bed_before_candidate(solver):
