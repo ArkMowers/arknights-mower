@@ -112,7 +112,7 @@ def test_start_waits_for_main_before_real_preparation(
         patch.object(mastery, "_exit_failed") as fail,
     ):
         mastery._start_new_training(
-            solver, plan, room=SimpleNamespace(train_slot="能天使")
+            solver, plan, room=SimpleNamespace(train_slot="能天使", slots_reliable=True)
         )
     assert events[0] == "back"
     if transient != Scene.TRAIN_MAIN:
@@ -132,3 +132,26 @@ def test_start_waits_for_main_before_real_preparation(
         fail.assert_called_once()
         assert "无法确认当前训练室协助者" in fail.call_args.args[2]
         assert db.get_plan_by_id(pid)["support_runtime"] is None
+
+
+def test_start_supports_legacy_room_without_slots_reliable(database, context_game):
+    """兼容只传 train_slot 的旧调用者/夹具，不抛 AttributeError。"""
+    _, ids = context_game
+    pid = db.insert_plan(ids["能天使"], 0, 3, char_name="能天使")
+    plan = db.get_plan_by_id(pid)
+    solver, _ = scene_solver(Scene.TRAIN_MAIN, True, "艾丽妮")
+    with (
+        patch.object(mastery, "_read_train_countdown3", return_value=("failed", None)),
+        patch(
+            "arknights_mower.solvers.mastery_reader._read_slot_mastery_tier",
+            return_value=0,
+        ),
+        patch(
+            "arknights_mower.utils.config.conf",
+            SimpleNamespace(assistant_follows_schedule=False),
+        ),
+        patch.object(mastery, "_confirm_training_started", return_value="started"),
+    ):
+        mastery._start_new_training(
+            solver, plan, room=SimpleNamespace(train_slot="能天使")
+        )

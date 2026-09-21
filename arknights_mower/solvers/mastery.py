@@ -868,8 +868,12 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 # #93：复用 reconcile 读房已读的槽位（省重复浮窗开关）。#100：空串有两个
                 # 来源——真空位与读浮窗失败；只有 reliable（_read_slots_checked 过了场景
                 # 闸门）为真时，空串才是「确实没人」；读到名字＝确实有人。
-                if room is not None and (room.train_slot or room.slots_reliable):
-                    trainer_slot, slot_reliable = room.train_slot, room.slots_reliable
+                room_train_slot = getattr(room, "train_slot", None)
+                room_slots_reliable = getattr(
+                    room, "slots_reliable", bool(room_train_slot)
+                )
+                if room is not None and (room_train_slot or room_slots_reliable):
+                    trainer_slot, slot_reliable = room_train_slot, room_slots_reliable
                 else:
                     # 兜底重读走同一道闸门（#140 场景确认 + #100 读失败闸门），浮窗由
                     # reader 自己点关闭按钮关掉——不再有「裸读 get_agent_from_room」：
