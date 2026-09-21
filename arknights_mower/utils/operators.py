@@ -1,3 +1,4 @@
+import ast
 import copy
 from datetime import datetime, timedelta
 from itertools import product
@@ -23,6 +24,120 @@ FACILITY_TYPE_IDS = {
     "制造站": "manufacture",
     "发电站": "power",
 }
+
+_MAX_EXPRESSION_LENGTH = 2048
+_MAX_EXPRESSION_NODES = 128
+_MAX_INTEGER_LITERAL_BITS = 256
+_MAX_STRING_LITERAL_LENGTH = 512
+_MAX_POWER_EXPONENT = 64
+_MAX_NUMERIC_RESULT_BITS = 4096
+_NUMERIC_EXPRESSION_CALLS = {
+    "current_mood",
+    "facility_operator_count",
+    "facility_product_count",
+    "facility_product_type_count",
+    "group_max_mood",
+    "group_min_mood",
+    "inventory_count",
+    "major_maintenance_remaining_hours",
+}
+
+
+def _integer_literal(node: ast.AST) -> int | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, (ast.UAdd, ast.USub))
+        and isinstance(node.operand, ast.Constant)
+        and isinstance(node.operand.value, int)
+    ):
+        value = node.operand.value
+        return value if isinstance(node.op, ast.UAdd) else -value
+    return None
+
+
+def _numeric_result_bits(node: ast.AST) -> int | None:
+    """保守估算整数结果位数；非数值或无法确定时返回 None。"""
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool):
+            return 1
+        if isinstance(node.value, int):
+            return max(1, node.value.bit_length())
+        if isinstance(node.value, (float, complex)):
+            return 64
+        return None
+    if isinstance(node, ast.UnaryOp):
+        return _numeric_result_bits(node.operand)
+    if isinstance(node, (ast.Compare, ast.BoolOp)):
+        return 1
+    if isinstance(node, ast.IfExp):
+        body_bits = _numeric_result_bits(node.body)
+        else_bits = _numeric_result_bits(node.orelse)
+        if body_bits is None or else_bits is None:
+            return None
+        return max(body_bits, else_bits)
+    if isinstance(node, ast.BinOp):
+        left_bits = _numeric_result_bits(node.left)
+        right_bits = _numeric_result_bits(node.right)
+        if left_bits is None or right_bits is None:
+            return None
+        if isinstance(node.op, ast.Pow):
+            exponent = _integer_literal(node.right)
+            if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
+                return None
+            return max(1, left_bits * exponent)
+        if isinstance(node.op, ast.Mult):
+            return left_bits + right_bits
+        if isinstance(node.op, (ast.Add, ast.Sub)):
+            return max(left_bits, right_bits) + 1
+        if isinstance(node.op, (ast.Div, ast.FloorDiv, ast.Mod)):
+            return max(left_bits, right_bits)
+        return None
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        return 64 if node.func.attr in _NUMERIC_EXPRESSION_CALLS else None
+    return None
+
+
+def _validate_expression_resources(expression: str) -> None:
+    """在 evalidate 执行前拦截可能产生超大中间值的表达式。"""
+    if len(expression) > _MAX_EXPRESSION_LENGTH:
+        raise ValueError("表达式过长")
+    tree = ast.parse(expression, mode="eval")
+    nodes = list(ast.walk(tree))
+    if len(nodes) > _MAX_EXPRESSION_NODES:
+        raise ValueError("表达式过于复杂")
+
+    for node in nodes:
+        if isinstance(node, ast.Constant):
+            if (
+                isinstance(node.value, int)
+                and node.value.bit_length() > _MAX_INTEGER_LITERAL_BITS
+            ):
+                raise ValueError("整数常量过大")
+            if (
+                isinstance(node.value, (str, bytes))
+                and len(node.value) > _MAX_STRING_LITERAL_LENGTH
+            ):
+                raise ValueError("字符串常量过长")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+            result_bits = _numeric_result_bits(node)
+            if result_bits is None:
+                raise ValueError("乘法仅支持数值表达式")
+            if result_bits > _MAX_NUMERIC_RESULT_BITS:
+                raise ValueError("乘法结果过大")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            exponent = _integer_literal(node.right)
+            result_bits = _numeric_result_bits(node)
+            if (
+                exponent is None
+                or not 0 <= exponent <= _MAX_POWER_EXPONENT
+            ):
+                raise ValueError(
+                    f"幂运算指数必须是 0 到 {_MAX_POWER_EXPONENT} 的整数常量"
+                )
+            if result_bits is None or result_bits > _MAX_NUMERIC_RESULT_BITS:
+                raise ValueError("幂运算结果过大")
 
 
 def build_global_plan():
@@ -447,6 +562,7 @@ class Operators:
 
     def evaluate_expression(self, expression):
         try:
+            _validate_expression_resources(expression)
             model = {e: e for e in base_room_list}
             model.update({e: e for e in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS})
             model.update({e: e for e in FACILITY_TYPE_IDS.values()})

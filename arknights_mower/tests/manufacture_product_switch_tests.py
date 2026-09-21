@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -773,6 +774,23 @@ def test_backup_expression_supports_common_arithmetic(expression, expected):
     assert operators.evaluate_expression(expression) == expected
 
 
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "10 ** 1000000000",
+        "10 ** op_data.inventory_count('赤金')",
+        "(10 ** 64) ** 64",
+        "'x' * 1000000000",
+        "room_1_1 * 1000000000",
+    ],
+)
+def test_backup_expression_rejects_unbounded_arithmetic(expression):
+    _, plan = product_plan()
+    operators = Operators(plan)
+
+    assert operators.evaluate_expression(expression) is None
+
+
 def test_batch_surveys_every_station_before_spending_drones():
     tasks = [
         SchedulerTask(
@@ -1136,12 +1154,81 @@ def test_locked_trade_with_incompatible_target_defers_without_switching():
     )
     solver._change_trade_product = MagicMock()
 
-    with pytest.raises(base.ProductSwitchDeferred) as exc_info:
-        solver.switch_base_products([task])
+    started_at = datetime.now()
+    solver.switch_base_products([task])
 
-    assert exc_info.value.minutes == 60
     solver._change_trade_product.assert_not_called()
     assert solver.tasks == [task]
+    assert task.time >= started_at + timedelta(minutes=59)
+
+
+def test_locked_trade_does_not_block_other_product_switches(monkeypatch):
+    locked_task = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta("room_1_1", "orundum"),
+    )
+    trade_task = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta("room_2_1", "orundum"),
+    )
+    manufacture_task = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta("room_1_2", "exp3"),
+    )
+    locked_observation = {
+        "room": "room_1_1",
+        "facility": "trade",
+        "target_product": "orundum",
+        "current_product": "lmd",
+        "needs_switch": True,
+        "switchable": False,
+    }
+    trade_observation = {
+        "room": "room_2_1",
+        "facility": "trade",
+        "target_product": "orundum",
+        "current_product": "lmd",
+        "needs_switch": True,
+        "switchable": True,
+    }
+    manufacture_observation = {
+        "room": "room_1_2",
+        "facility": "manufacture",
+        "target_product": "exp3",
+        "needs_switch": True,
+        "drone_count": 2,
+        "wait_seconds": 0,
+        "available_drones": 10,
+    }
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.tasks = [locked_task, trade_task, manufacture_task]
+    solver.translate_room = MagicMock(return_value="B101")
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver._survey_trade_switch = MagicMock(
+        side_effect=[locked_observation, trade_observation]
+    )
+    solver._survey_manufacture_switch = MagicMock(
+        return_value=manufacture_observation
+    )
+    solver._change_trade_product = MagicMock()
+    solver._execute_manufacture_acceleration = MagicMock(return_value=0)
+    solver._change_manufacture_product = MagicMock()
+    monkeypatch.setattr(config, "conf", config.Conf())
+    config.conf.product_switching.grandet_mode = False
+
+    started_at = datetime.now()
+    solver.switch_base_products([locked_task, trade_task, manufacture_task])
+
+    solver._change_trade_product.assert_called_once_with(trade_observation)
+    solver._execute_manufacture_acceleration.assert_called_once_with(
+        manufacture_observation
+    )
+    solver._change_manufacture_product.assert_called_once_with(
+        manufacture_observation
+    )
+    assert solver.tasks == [locked_task]
+    assert locked_task.time >= started_at + timedelta(minutes=59)
 
 
 def test_trade_switch_opens_selector_only_when_needed_and_verifies_card():

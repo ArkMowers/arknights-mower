@@ -705,6 +705,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.skip()
                 return True
             product_tasks = []
+            remove_current_task = True
             try:
                 if self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
@@ -743,6 +744,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         and task.time <= batch_cutoff
                     ]
                     self.switch_base_products(product_tasks)
+                    # switch_base_products 会自行移除已完成的任务，并保留、延期
+                    # 当前无法切换的低等级贸易站任务。
+                    remove_current_task = False
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:
@@ -847,14 +851,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.仓库扫描()
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
-                self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                if remove_current_task:
+                    self.tasks[:] = [t for t in self.tasks if t is not self.task]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
             except ProductSwitchDeferred as e:
                 retry_time = datetime.now() + timedelta(minutes=e.minutes)
-                for task in product_tasks or [self.task]:
-                    task.time = retry_time
-                logger.warning(f"{e}，同批任务推迟至 {retry_time.strftime('%H:%M:%S')}")
+                pending_ids = {id(task) for task in self.tasks}
+                deferred_tasks = [
+                    task
+                    for task in product_tasks or [self.task]
+                    if id(task) in pending_ids
+                ]
+                for task in deferred_tasks:
+                    task.time = max(task.time, retry_time)
+                self.tasks.sort(key=lambda task: task.time)
+                logger.warning(
+                    f"{e}，未完成的切换任务推迟至 "
+                    f"{retry_time.strftime('%H:%M:%S')}"
+                )
                 self.skip()
             except MowerExit:
                 raise
@@ -3371,19 +3386,28 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             task_observations.append((task, observation))
 
         locked_trade = [
-            observation
-            for _, observation in task_observations
+            (task, observation)
+            for task, observation in task_observations
             if observation["facility"] == "trade"
             and observation["needs_switch"]
             and not observation.get("switchable", True)
         ]
         if locked_trade:
             rooms = "、".join(
-                self.translate_room(item["room"]) for item in locked_trade
+                self.translate_room(observation["room"])
+                for _, observation in locked_trade
             )
-            raise ProductSwitchDeferred(
-                f"{rooms}等级不足，无法切换至开采协力", minutes=60
+            retry_time = datetime.now() + timedelta(minutes=60)
+            for task, _ in locked_trade:
+                task.time = max(task.time, retry_time)
+            logger.warning(
+                f"{rooms}等级不足，无法切换至开采协力；"
+                f"对应任务推迟至 {retry_time.strftime('%H:%M:%S')}"
             )
+            locked_task_ids = {id(task) for task, _ in locked_trade}
+            task_observations = [
+                item for item in task_observations if id(item[0]) not in locked_task_ids
+            ]
 
         # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
         for _, observation in task_observations:
@@ -3440,9 +3464,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for observation in pending_manufacture:
             self._change_manufacture_product(observation)
 
-        task_ids = {id(task) for task in tasks}
+        task_ids = {id(task) for task, _ in task_observations}
         self.tasks[:] = [task for task in self.tasks if id(task) not in task_ids]
-        logger.info(f"基建批量切换完成，共处理{len(task_observations)}个生产站")
+        self.tasks.sort(key=lambda task: task.time)
+        logger.info(
+            f"基建批量切换完成，共处理{len(task_observations)}个生产站，"
+            f"延期{len(locked_trade)}个低等级贸易站"
+        )
 
     def drone(
         self,
