@@ -16,9 +16,9 @@ from arknights_mower.utils.mastery_support_types import StageSpec
 
 @pytest.fixture
 def game():
-    data = json.loads((Path(__file__).parents[1] / "data/skill_data.json").read_text())[
-        "training"
-    ]["operators"]
+    data = json.loads(
+        (Path(__file__).parents[1] / "data/skill_data.json").read_text(encoding="utf-8")
+    )["training"]["operators"]
     return data, {m["name"]: cid for cid, m in data.items()}
 
 
