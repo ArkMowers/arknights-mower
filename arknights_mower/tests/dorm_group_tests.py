@@ -4,6 +4,7 @@ import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -202,6 +203,35 @@ def test_restart_with_absent_stale_resident_preserves_cover(solver):
     solver.op_data.operators["塑心"].time_stamp = None
     assert solver.agent_get_mood() is None
     assert solver.tasks == []
+
+
+def test_room_scan_clears_stale_occupant_from_closed_group_bed(solver):
+    configure_same_group_cover(solver)
+    data = solver.op_data
+    bed = next(d for d in data.dorm if d.position == ("dormitory_1", 0))
+    stale = data.operators["陈"]
+    stale.current_room, stale.current_index = bed.position
+    bed.name = stale.name
+    bed.time = datetime.now() + timedelta(hours=4)
+
+    solver.task = None
+    solver.recog = MagicMock(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.detect_product_complete = MagicMock(return_value=False)
+    solver.scroll_room_operators = MagicMock()
+    solver.find = MagicMock(return_value=None)
+    solver.read_screen = MagicMock(side_effect=["塑心", "冰酿", "泥岩", "能天使", "年"])
+    solver.read_accurate_mood = MagicMock(return_value=5)
+    solver.read_operator_time = MagicMock(
+        return_value=datetime.now() + timedelta(hours=4)
+    )
+
+    solver.get_agent_from_room("dormitory_1")
+
+    assert (stale.current_room, stale.current_index) == ("", -1)
+    assert (bed.name, bed.time) == ("", None)
+    assert data.is_effective_free_slot(bed) is False
 
 
 def test_correction_completes_partial_dorm_shift_and_restores_after_return(solver):
