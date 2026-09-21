@@ -48,6 +48,7 @@ class PlanConfig:
         refresh_drained: str = "",
         ope_resting_priority: str = "",
         resting_standby: str = "",
+        dorm_order: str = "",
     ):
         """排班的设置
 
@@ -81,6 +82,7 @@ class PlanConfig:
         self.refresh_trading_config = to_list(refresh_trading_config)
         self.refresh_drained = to_list(refresh_drained)
         self.ope_resting_priority = to_list(ope_resting_priority)
+        self.dorm_order = [name for name in to_list(dorm_order) if name]
 
     def is_rest_in_full(self, agent_name) -> bool:
         return agent_name in self.rest_in_full
@@ -136,6 +138,9 @@ class PlanConfig:
                 if item not in merged_list:
                     merged_list.append(item)
             setattr(n, p, merged_list)
+        # 宿舍床位顺序是当前排班的完整配置，不与主表或其他副表取并集。
+        # 多张副表同时生效时，后合并的副表覆盖前一张；空列表也表示明确清空。
+        n.dorm_order = copy.deepcopy(target.dorm_order)
         return n
 
 

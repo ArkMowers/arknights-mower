@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from yamlcore import CoreDumper, CoreLoader
 
 from arknights_mower.utils.config.conf import Conf
-from arknights_mower.utils.config.plan import PlanModel
+from arknights_mower.utils.config.plan import PlanModel, migrate_legacy_dorm_order
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
 
@@ -156,11 +156,20 @@ def load_plan():
     if not plan_path.is_file():
         plan_path.parent.mkdir(exist_ok=True)
         plan = PlanModel()
+        migrated = migrate_legacy_dorm_order(plan, {}, conf.dorm_order)
         save_plan()
+        if migrated:
+            conf.dorm_order = ""
+            save_conf()
         return
     # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
     with plan_path.open("r", encoding="utf-8-sig") as f:
-        plan = PlanModel(**json.load(f))
+        data = json.load(f)
+    plan = PlanModel(**data)
+    if migrate_legacy_dorm_order(plan, data, conf.dorm_order):
+        save_plan()
+        conf.dorm_order = ""
+        save_conf()
 
 
 plan: PlanModel

@@ -9,6 +9,7 @@ export const usePlanStore = defineStore('plan', () => {
   const exhaust_require = ref([])
   const rest_in_full = ref([])
   const ope_resting_priority = ref([])
+  const dorm_order = ref([])
   const resting_priority = ref([])
   const resting_standby = ref([])
   const workaholic = ref([])
@@ -62,7 +63,8 @@ export const usePlanStore = defineStore('plan', () => {
     'free_blacklist',
     'refresh_trading',
     'refresh_drained',
-    'ope_resting_priority'
+    'ope_resting_priority',
+    'dorm_order'
   ]
 
   function fill_empty(full_plan) {
@@ -140,6 +142,7 @@ export const usePlanStore = defineStore('plan', () => {
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
+    dorm_order.value = str2list(response.data.conf.dorm_order)
     resting_priority.value = str2list(response.data.conf.resting_priority)
     resting_standby.value = str2list(response.data.conf.resting_standby)
     workaholic.value = str2list(response.data.conf.workaholic)
@@ -190,6 +193,7 @@ export const usePlanStore = defineStore('plan', () => {
         exhaust_require: list2str(exhaust_require.value),
         rest_in_full: list2str(rest_in_full.value),
         ope_resting_priority: list2str(ope_resting_priority.value),
+        dorm_order: list2str(dorm_order.value),
         resting_priority: list2str(resting_priority.value),
         resting_standby: list2str(resting_standby.value),
         workaholic: list2str(workaholic.value),
@@ -278,6 +282,7 @@ export const usePlanStore = defineStore('plan', () => {
     resting_priority,
     resting_standby,
     ope_resting_priority,
+    dorm_order,
     workaholic,
     refresh_trading,
     refresh_drained,

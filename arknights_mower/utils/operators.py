@@ -162,6 +162,7 @@ def build_global_plan():
         workaholic=config.plan.conf.workaholic,
         free_blacklist=conf.free_blacklist,
         ope_resting_priority=config.plan.conf.ope_resting_priority,
+        dorm_order=config.plan.conf.dorm_order,
         resting_threshold=conf.resting_threshold,
         refresh_trading_config=config.plan.conf.refresh_trading,
         refresh_drained=config.plan.conf.refresh_drained,
@@ -209,6 +210,7 @@ def build_global_plan():
             workaholic=i["conf"]["workaholic"],
             free_blacklist=i["conf"]["free_blacklist"],
             ope_resting_priority=i["conf"]["ope_resting_priority"],
+            dorm_order=i["conf"].get("dorm_order", ""),
             resting_standby=i["conf"].get("resting_standby", ""),
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
@@ -447,25 +449,35 @@ class Operators:
                     if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
-            dorm_order = [name for name in config.conf.dorm_order.split(",") if name]
-            current_dorm_names = {
-                dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
-            }
-            if dorm_order:
-                if set(dorm_order) == current_dorm_names:
-                    self.dorm.sort(
-                        key=lambda dorm: dorm_order.index(
-                            dorm.position[0] + "_" + str(dorm.position[1])
-                        )
-                    )
-                else:
-                    return (
-                        "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
-                    )
         else:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
                     self.add(Operator(key, ""))
+        # 每次切换排班都从默认床位顺序重新排序，否则退出副表时会残留副表顺序。
+        first_free_index = {}
+        for dorm in self.dorm:
+            room, index = dorm.position
+            first_free_index[room] = min(index, first_free_index.get(room, index))
+        self.dorm.sort(
+            key=lambda dorm: (
+                dorm.position[1] != first_free_index[dorm.position[0]],
+                dorm.position[0],
+                dorm.position[1],
+            )
+        )
+        dorm_order = self.config.dorm_order
+        current_dorm_names = {
+            dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
+        }
+        if dorm_order:
+            if set(dorm_order) == current_dorm_names:
+                self.dorm.sort(
+                    key=lambda dorm: dorm_order.index(
+                        dorm.position[0] + "_" + str(dorm.position[1])
+                    )
+                )
+            else:
+                return "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
         # 跑单
         for x, y in self.plan.items():
             if not x.startswith("room"):

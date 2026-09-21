@@ -5,7 +5,6 @@ import axios from 'axios'
 import { usePlanStore } from './plan'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
-vi.mock('@/stores/config', () => ({ useConfigStore: () => ({ dorm_order: ref([]) }) }))
 let store
 afterEach(() => {
   store?.$dispose()
@@ -41,27 +40,38 @@ describe('宿舍休息候补配置', () => {
     expect(saved.backup_plans[0].conf.resting_standby).toBe('')
   })
 
-  it('主副表候补名单导入后保留，编辑时自动保存为独立字段', async () => {
+  it('主副表候补名单和宿舍顺序导入后独立保存', async () => {
     const loaded = setup()
     axios.get.mockResolvedValue({
       data: {
-        conf: { resting_standby: '斯卡蒂' },
+        conf: { resting_standby: '斯卡蒂', dorm_order: 'dormitory_1_3' },
         plan1: {},
-        backup_plans: [{ plan: {}, conf: { resting_standby: '幽灵鲨' } }]
+        backup_plans: [
+          {
+            plan: {},
+            conf: { resting_standby: '幽灵鲨', dorm_order: 'dormitory_2_2' }
+          }
+        ]
       }
     })
     await store.load_plan()
     expect(store.resting_standby).toEqual(['斯卡蒂'])
+    expect(store.dorm_order).toEqual(['dormitory_1_3'])
     expect(store.backup_plans[0].conf.resting_standby).toEqual(['幽灵鲨'])
+    expect(store.backup_plans[0].conf.dorm_order).toEqual(['dormitory_2_2'])
     axios.post.mockResolvedValue({ data: {} })
     loaded.value = true
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
     store.resting_standby.push('乌尔比安')
+    store.dorm_order.push('dormitory_1_4')
     store.backup_plans[0].conf.resting_standby.push('安哲拉')
+    store.backup_plans[0].conf.dorm_order.push('dormitory_2_3')
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
     const sent = axios.post.mock.calls[1][1]
     expect(sent.conf.resting_standby).toBe('斯卡蒂,乌尔比安')
+    expect(sent.conf.dorm_order).toBe('dormitory_1_3,dormitory_1_4')
     expect(sent.backup_plans[0].conf.resting_standby).toBe('幽灵鲨,安哲拉')
+    expect(sent.backup_plans[0].conf.dorm_order).toBe('dormitory_2_2,dormitory_2_3')
     expect(sent.conf.resting_priority).toBe('')
     loaded.value = false
   })

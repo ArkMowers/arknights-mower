@@ -19,7 +19,6 @@ const {
   performance_effective_mode,
   selection_poll_interval,
   selection_transition_timeout,
-  dorm_order,
   drone_room,
   drone_count_limit,
   drone_interval,
@@ -912,15 +911,6 @@ if (return_home_when_idle.value) {
                   >勾选后专精时的协助位不会使用设置的专精工具人，在基建排班时会根据排班表来替换训练室的协助位。</help-text
                 >
               </n-checkbox>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>宿舍优先级排序</span>
-                <help-text>
-                  <div>正常情况千万不需要，除非你有特殊情况</div>
-                </help-text>
-              </template>
-              <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
             </n-form-item>
             <n-form-item>
               <template #label>

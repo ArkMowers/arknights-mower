@@ -24,6 +24,8 @@ class PlanConf(BaseModel):
     "用尽时间刷新干员"
     ope_resting_priority: str = ""
     "休息排序优先级"
+    dorm_order: str = ""
+    "动态宿舍床位优先级"
 
 
 class BackupPlanConf(PlanConf):
@@ -136,3 +138,31 @@ def parse_plan_document(data) -> PlanModel:
     if data.get("default", "plan1") != "plan1":
         raise ValueError("不支持的主排班名称")
     return PlanModel(**data)
+
+
+def migrate_legacy_dorm_order(
+    plan: PlanModel, data: dict, legacy_dorm_order: str
+) -> bool:
+    """Copy the former global bed order into schedule configs that predate it.
+
+    Existing schedules used one global order for the main plan and every backup plan.
+    Copying it into every missing config preserves that behaviour on upgrade while making
+    each copied value independently editable afterwards.  An explicitly present empty
+    value is never overwritten.
+    """
+    if not legacy_dorm_order:
+        return False
+    changed = False
+    main_conf = data.get("conf")
+    if not isinstance(main_conf, dict) or "dorm_order" not in main_conf:
+        plan.conf.dorm_order = legacy_dorm_order
+        changed = True
+    raw_backups = data.get("backup_plans")
+    if not isinstance(raw_backups, list):
+        raw_backups = []
+    for index, backup in enumerate(plan.backup_plans):
+        raw_conf = raw_backups[index].get("conf") if index < len(raw_backups) else None
+        if not isinstance(raw_conf, dict) or "dorm_order" not in raw_conf:
+            backup.conf.dorm_order = legacy_dorm_order
+            changed = True
+    return changed

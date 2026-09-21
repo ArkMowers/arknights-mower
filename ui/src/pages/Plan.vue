@@ -21,6 +21,7 @@ const {
   refresh_trading,
   refresh_drained,
   ope_resting_priority,
+  dorm_order,
   operators,
   plan
 } = storeToRefs(plan_store)
@@ -124,7 +125,8 @@ function create_sub_plan() {
       workaholic: [],
       refresh_trading: [],
       refresh_drained: [],
-      ope_resting_priority: []
+      ope_resting_priority: [],
+      dorm_order: []
     },
     plan: fill_empty({}),
     trigger: {
@@ -151,7 +153,8 @@ const current_conf = ref({
   resting_standby: resting_standby.value,
   workaholic: workaholic.value,
   exhaust_require: exhaust_require.value,
-  refresh_trading: refresh_trading.value
+  refresh_trading: refresh_trading.value,
+  dorm_order: dorm_order.value
 })
 
 watchEffect(() => {
@@ -166,7 +169,8 @@ watchEffect(() => {
       refresh_trading: refresh_trading.value,
       free_blacklist: free_blacklist.value,
       refresh_drained: refresh_drained.value,
-      ope_resting_priority: ope_resting_priority.value
+      ope_resting_priority: ope_resting_priority.value,
+      dorm_order: dorm_order.value
     }
   } else {
     current_conf.value = backup_plans.value[sub_plan.value].conf
@@ -185,6 +189,7 @@ watchEffect(() => {
     free_blacklist.value = current_conf.value.free_blacklist
     refresh_drained.value = current_conf.value.refresh_drained
     ope_resting_priority.value = current_conf.value.ope_resting_priority
+    dorm_order.value = current_conf.value.dorm_order
   } else {
     backup_plans.value[sub_plan.value].conf = current_conf.value
   }
@@ -555,6 +560,16 @@ function movePlanForward() {
         <help-text>不希望进行填充宿舍的干员</help-text>
       </template>
       <slick-operator-select v-model="current_conf.free_blacklist"></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>宿舍优先级排序</span>
+        <help-text>
+          当前排班独立使用的动态床位顺序；切换主表或副表时会切换到各自保存的顺序。
+          留空时使用默认顺序。
+        </help-text>
+      </template>
+      <slick-dorm-select v-model="current_conf.dorm_order"></slick-dorm-select>
     </n-form-item>
     <n-form-item>
       <template #label>
