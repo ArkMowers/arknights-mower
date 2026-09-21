@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildStageOptions,
   buildTableStageOptions,
+  getGameWeekdayIndex,
   isStageAvailableOnWeekday,
   mergeTableStageOrder,
   normalizeCreatedStage,
@@ -12,6 +13,15 @@ import {
 } from './maa_weekly_plan.js'
 
 describe('刷理智周计划双视图同步', () => {
+  it('凌晨 4 点前仍使用前一天的刷取计划', () => {
+    expect(getGameWeekdayIndex(new Date('2026-09-20T19:47:00.000Z'))).toBe(6)
+    expect(getGameWeekdayIndex(new Date('2026-09-20T19:59:59.999Z'))).toBe(6)
+  })
+
+  it('凌晨 4 点起切换到新的刷取日', () => {
+    expect(getGameWeekdayIndex(new Date('2026-09-20T20:00:00.000Z'))).toBe(0)
+  })
+
   it('表格动态包含资源包活动关卡，并保留列表中的自定义关卡', () => {
     const options = buildTableStageOptions(
       [{ value: 'ACT-9', label: 'ACT-9:材料', code: 'ACT-9' }],

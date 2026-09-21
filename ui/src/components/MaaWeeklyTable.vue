@@ -8,6 +8,7 @@ import {
   WEEKDAYS,
   buildTableStageOptions,
   createStageOption,
+  getGameWeekdayIndex,
   isStageAvailableOnWeekday,
   mergeTableStageOrder,
   reorderWeeklyPlanStages,
@@ -49,10 +50,7 @@ const sortableStageOptions = ref([])
 let needsDefaultOrderMigration =
   window.localStorage.getItem(stageOrderVersionStorageKey) !== stageOrderVersion
 
-const currentWeekdayIndex = computed(() => {
-  const day = new Date().getDay()
-  return day === 0 ? 6 : day - 1
-})
+const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
 
 const availableStageOptions = computed(() =>
   buildTableStageOptions(

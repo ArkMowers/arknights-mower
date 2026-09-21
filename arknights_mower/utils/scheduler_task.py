@@ -7,6 +7,10 @@ from typing import Literal
 from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
+from arknights_mower.utils.furniture_task import (
+    FURNITURE_EXIT_SECONDS,
+    FURNITURE_RUN_SECONDS,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
@@ -21,12 +25,14 @@ from arknights_mower.utils.resting_priority import (
 
 class TaskTypes(Enum):
     RUN_ORDER = ("run_order", "跑单", 1)
+    SWITCH_PRODUCT = ("switch_product", "切换产物/订单", 2)
     FIAMMETTA = ("菲亚梅塔", "肥鸭", 2)
     SHIFT_OFF = ("shifit_off", "下班", 2)
     SHIFT_ON = ("shifit_on", "上班", 2)
     EXHAUST_OFF = ("exhaust_on", "用尽下班", 2)
     SELF_CORRECTION = ("self_correction", "纠错", 2)
     CLUE_PARTY = ("Impart", "趴体", 2)
+    CLUE = ("clue", "线索任务", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
     NOT_SPECIFIC = ("", "空任务", 2)
     RECRUIT = ("recruit", "公招", 2)
@@ -38,6 +44,7 @@ class TaskTypes(Enum):
     SWAP_SUPPORT = ("换协助位", "换协助位", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)
     WORKSHOP = ("加工材料", "加工材料", 2)
+    FURNITURE = ("分解所有重复家具", "分解所有重复家具", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -163,6 +170,8 @@ def _avoid_swap_with_orders(tasks, swap, timing):
 
 
 def _ordinary_task_minutes(task, execution_time):
+    if task.type == TaskTypes.FURNITURE:
+        return (FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS) / 60
     minutes = max(1, len(task.plan) * execution_time)
     if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
         minutes = max(minutes, 3)
@@ -252,6 +261,10 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                             if task_time == 0
                             else task_time
                         )
+                        if tasks[j].type == TaskTypes.FURNITURE:
+                            estimate_time = _ordinary_task_minutes(
+                                tasks[j], execution_time
+                            )
                         if (
                             timedelta(minutes=total_execution_time + estimate_time)
                             + time_now

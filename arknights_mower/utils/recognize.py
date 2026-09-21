@@ -12,6 +12,7 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger, save_screenshot
 from arknights_mower.utils.matcher import Matcher
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.vector import va
 
@@ -67,6 +68,7 @@ class Recognizer:
             self._matcher = Matcher(self.gray)
         return self._matcher
 
+    @timed_step("capture")
     def start(self, screencap: Optional[bytes] = None) -> None:
         """init with screencap"""
         retry_times = config.MAX_RETRYTIME
@@ -169,6 +171,12 @@ class Recognizer:
             self.scene = Scene.CONNECTING
 
         # 平均色匹配
+        elif self.find("trade_strategy_select"):
+            self.scene = Scene.TRADE_STRATEGY_SELECT
+        elif self.find("manufacture_product_change_confirm"):
+            self.scene = Scene.MANUFACTURE_PRODUCT_CHANGE_CONFIRM
+        elif self.find("manufacture_product_select"):
+            self.scene = Scene.MANUFACTURE_PRODUCT_SELECT
         elif self.find("confirm"):
             self.scene = Scene.CONFIRM
         elif self.find("order_label"):
@@ -199,6 +207,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
+        elif self.find("clue/message_board_page"):
+            self.scene = Scene.CLUE_MESSAGE_BOARD
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("infra_overview_in"):
@@ -376,7 +386,7 @@ class Recognizer:
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
+        elif self.find("factory_formula") or self.find("factory_furniture"):
             self.scene = Scene.FACTORY_FORMULA
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
@@ -677,8 +687,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
-            # 这是一个filter ，鉴于自动的话不会动，用来识别界面
+        elif self.find("factory_formula") or self.find("factory_furniture"):
+            # 家具分类选中后变为浅色，需要单独的模板。
             self.scene = Scene.FACTORY_FORMULA
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
@@ -847,6 +857,10 @@ class Recognizer:
                         logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
+            if res == "confirm":
+                # 背景透出会改变整条按钮栏的颜色/纹理；保留原匹配，失败时
+                # 只复核固定位置的完整勾选图标，不扩大搜索区域或降低阈值。
+                return self.find_confirm_button()
             return None
 
         template_matching = {
@@ -862,7 +876,13 @@ class Recognizer:
             "fight/use": (858, 864),
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
+            "manufacture_product_cancel_confirm": ((500, 430), (1420, 540)),
+            "manufacture_product_select": ((1150, 15), (1900, 110)),
+            "manufacture_product_change_confirm": ((1190, 750), (1510, 840)),
+            "trade_strategy_select": ((590, 850), (1330, 970)),
             "clue_next_black": ((1600, 850), (1920, 1030)),
+            # 会客室信息板页面：底栏「访问人次」固定在左下角
+            "clue/message_board_page": ((0, 960), (540, 1080)),
             "loading": (736, 333),
             "loading2": (630, 240),
             "loading3": (1681, 1000),
@@ -1006,6 +1026,24 @@ class Recognizer:
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
+
+    def find_confirm_button(self):
+        reference = loadres("confirm")
+        # 原按钮栏位于 (0, 683)，中央图标包含完整白圆、黑勾和窄边缘。
+        local_scope = ((928, 25), (992, 89))
+        scope = ((928, 708), (992, 772))
+        expected = cropimg(reference, local_scope)
+        actual = cropimg(self.img, scope)
+        if actual.shape != expected.shape or not cmatch(actual, expected):
+            return None
+        score = vision_np.ssim(
+            cv2.cvtColor(actual, cv2.COLOR_RGB2GRAY),
+            cv2.cvtColor(expected, cv2.COLOR_RGB2GRAY),
+        )
+        if score >= 0.9:
+            logger.debug(f"find: confirm foreground {scope=} {score=}")
+            return scope
+        return None
 
     def score(
         self,

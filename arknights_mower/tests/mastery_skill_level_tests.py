@@ -43,6 +43,9 @@ def roster(tmp_path, monkeypatch):
     monkeypatch.setattr(rec, "get_path", lambda _: path)
     monkeypatch.setattr(rec, "_find_skill_data", lambda: skills_path)
     monkeypatch.setattr(rec, "_skill_data_cache", None)
+    # add_plan_checked 现在会先查「该技能是否已有未结束的计划」；本文件测的是基础
+    # 等级门，不碰真实用户库 → 一律查成空（重复拦截另有 mastery_db_tests 覆盖）。
+    monkeypatch.setattr(db, "get_plan_by_skill", lambda *a, **k: None)
 
     def write(level, mastery_level=0):
         char = {

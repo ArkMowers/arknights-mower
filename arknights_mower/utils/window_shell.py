@@ -24,7 +24,11 @@ class WindowRatio(NamedTuple):
 
 DESKTOP_WINDOW_WIDTH = 1450
 DESKTOP_WINDOW_HEIGHT = 850
-DESKTOP_WINDOW_MIN_SIZE = WindowSize(1024, 640)
+DESKTOP_WINDOW_MIN_WIDTH = 600
+DESKTOP_WINDOW_MIN_HEIGHT = 400
+DESKTOP_WINDOW_MIN_SIZE = WindowSize(
+    DESKTOP_WINDOW_MIN_WIDTH, DESKTOP_WINDOW_MIN_HEIGHT
+)
 DESKTOP_WINDOW_TITLEBAR_HEIGHT = 36
 DESKTOP_WINDOW_CONTROLS_WIDTH = 46 * 3
 DESKTOP_WINDOW_SIDEBAR_CONTROL_WIDTH = 44
@@ -113,9 +117,26 @@ def _screen_work_area() -> WindowSize | None:
     return None
 
 
+def desktop_window_min_size() -> WindowSize:
+    """Return the shell minimum footprint within the current display work area.
+
+    To support tiling and Windows Snap (1/2, 1/3, 1/4 screen layouts) across
+    different resolutions and DPI scaling factors, the base minimum size is
+    (600, 400), clamped so it never exceeds 35% of the screen work area width
+    and 40% of the height on smaller displays or virtual machines.
+    """
+    work_area = _screen_work_area()
+    if work_area and work_area.width > 0 and work_area.height > 0:
+        return WindowSize(
+            min(DESKTOP_WINDOW_MIN_WIDTH, max(300, int(work_area.width * 0.35))),
+            min(DESKTOP_WINDOW_MIN_HEIGHT, max(300, int(work_area.height * 0.4))),
+        )
+    return DESKTOP_WINDOW_MIN_SIZE
+
+
 def configured_desktop_window_size(size: WindowSize) -> WindowSize:
     """Return the configured startup size within the shell minimum and the display."""
-    min_size = DESKTOP_WINDOW_MIN_SIZE
+    min_size = desktop_window_min_size()
     work_area = _screen_work_area()
     if work_area:
         max_width, max_height = work_area.width, work_area.height

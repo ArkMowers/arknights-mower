@@ -251,8 +251,8 @@ class TestMigrateAppConfigPaths(unittest.TestCase):
         finally:
             config_module.conf = original_conf
 
-    def test_migration_failure_keeps_old_file_and_does_not_crash(self):
-        # Windows 上 os.replace 失败（锁住/TOCTOU）→ 跳过保留旧文件，不拖垮 import
+    def test_migration_failure_stops_before_defaults_can_hide_old_file(self):
+        # Windows 上迁移失败时中止启动，不能随后生成默认配置遮蔽旧文件。
         old = self.dir / "conf.yml"
         new = self.dir / "config" / "conf.yml"
         old.write_text("legacy", encoding="utf-8")
@@ -263,10 +263,26 @@ class TestMigrateAppConfigPaths(unittest.TestCase):
         with (
             patch.object(config_module, "_CONFIG_PATH_PAIRS", [(old, new)]),
             patch("arknights_mower.utils.config.os.replace", boom),
+            self.assertRaisesRegex(OSError, "已停止启动"),
         ):
             migrate_app_config_paths()
         self.assertTrue(old.exists())
         self.assertFalse(new.exists())
+
+    def test_concurrent_migration_success_does_not_block_startup(self):
+        self.old.write_text("legacy", encoding="utf-8")
+
+        def moved_elsewhere(*args):
+            self.new.write_text("legacy", encoding="utf-8")
+            self.old.unlink()
+            raise FileNotFoundError("already moved")
+
+        with (
+            patch.object(config_module, "_CONFIG_PATH_PAIRS", self._pairs()),
+            patch("arknights_mower.utils.config.os.replace", moved_elsewhere),
+        ):
+            migrate_app_config_paths()
+        self.assertEqual(self.new.read_text(encoding="utf-8"), "legacy")
 
     def test_gui_pair_converges_to_config_dir(self):
         # gui 窗口尺寸配置与其余应用配置一起收敛到 @app/config/，旧 @app/gui.yml 纳入迁移
@@ -622,6 +638,55 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertTrue(config_module.conf.visit_friend_enable)
             self.assertEqual(config_module.conf.visit_friend_mode, "mower")
             self.assertIn("visit_friend_enable", config_module.conf.model_fields_set)
+
+    def test_stage_plan_and_mall_defaults(self):
+        conf = config_module.Conf()
+        self.assertTrue(conf.stage_plan_enable)
+        self.assertEqual(conf.stage_plan_runner, "maa")
+        self.assertTrue(conf.maa_mall_enable)
+        self.assertEqual(conf.maa_mall_mode, "maa")
+
+    def test_legacy_maa_enable_true_migrates(self):
+        self._write_conf("maa_enable: true\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertTrue(config_module.conf.stage_plan_enable)
+            self.assertEqual(config_module.conf.stage_plan_runner, "maa")
+            self.assertTrue(config_module.conf.maa_mall_enable)
+            self.assertEqual(config_module.conf.maa_mall_mode, "maa")
+
+    def test_legacy_maa_enable_false_migrates(self):
+        self._write_conf("maa_enable: false\n")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertFalse(config_module.conf.stage_plan_enable)
+            self.assertEqual(config_module.conf.stage_plan_runner, "mower")
+            self.assertFalse(config_module.conf.maa_mall_enable)
+            self.assertEqual(config_module.conf.maa_mall_mode, "maa")
+
+    def test_new_stage_plan_takes_precedence_when_both_present(self):
+        self._write_conf(
+            "maa_enable: false\nstage_plan_enable: true\nstage_plan_runner: mower\nmaa_mall_enable: true\nmaa_mall_mode: mower\n"
+        )
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertTrue(config_module.conf.stage_plan_enable)
+            self.assertEqual(config_module.conf.stage_plan_runner, "mower")
+            self.assertTrue(config_module.conf.maa_mall_enable)
+            self.assertEqual(config_module.conf.maa_mall_mode, "mower")
+
+    def test_migrated_stage_plan_survives_round_trip(self):
+        self._write_conf(
+            "stage_plan_enable: false\nstage_plan_runner: mower\nmaa_mall_enable: true\nmaa_mall_mode: mower\n"
+        )
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertFalse(config_module.conf.stage_plan_enable)
+            self.assertEqual(config_module.conf.stage_plan_runner, "mower")
+            self.assertTrue(config_module.conf.maa_mall_enable)
+            self.assertEqual(config_module.conf.maa_mall_mode, "mower")
 
 
 if __name__ == "__main__":

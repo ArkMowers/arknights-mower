@@ -17,7 +17,9 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.swipe import noinertia_path
 from arknights_mower.utils.traceback import caller_info
 
 
@@ -86,6 +88,10 @@ class BaseSolver:
                 logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
+            # transition() 既没点屏幕也没等待就返回时，缓存不会被清掉（清理写在
+            # sleep 里）。下一次 get_scene 仍返回旧场景，比如 tap_element 找不到
+            # 元素直接返回 False，while 就会一直空转下去。这里补上清理。
+            self.recog.update()
 
     @abstractmethod
     def transition(self) -> bool:
@@ -153,6 +159,7 @@ class BaseSolver:
     ) -> tp.Scope:
         return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
+    @timed_step("tap")
     def tap(
         self,
         poly: tp.Location,
@@ -335,34 +342,28 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
+    @timed_step("swipe")
     def swipe_noinertia(
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
-        duration: int = 80,
+        duration: int = 20,
         interval: float = 0.2,
+        *,
+        retry: bool = False,
     ) -> None:
-        """swipe with no inertia (movement should be vertical)。
+        """无惯性滑动；调用方确认未生效后可用 retry=True 延长拖动。
 
-        duration 调大、偏置调小：主轴太快会甩过头弹回（画面抖动、稳定不下来），
-        回放会拿着没停稳的画面继续走而错位；改成受控拖动。
+        本接口只执行一次手势，不根据截图差异自动重复操作。
         """
         if config.stop_mower.is_set():
             raise MowerExit
-        points = [start]
-        if movement[0] == 0:
-            dis = abs(movement[1])
-            points.append((start[0] + 40, start[1]))
-            points.append((start[0] + 40, start[1] + movement[1]))
-            points.append((start[0], start[1] + movement[1]))
-        else:
-            dis = abs(movement[0])
-            points.append((start[0], start[1] + 40))
-            points.append((start[0] + movement[0], start[1] + 40))
-            points.append((start[0] + movement[0], start[1]))
-        self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
+        points, durations = noinertia_path(start, movement, duration, retry=retry)
+        self.device.swipe_ext(points, durations=durations)
         if interval > 0:
             self.sleep(interval)
+        else:
+            self.recog.update()
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""

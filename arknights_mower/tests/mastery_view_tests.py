@@ -113,7 +113,30 @@ class TestMasteryRouteView(unittest.TestCase):
             json={"central_bonus": 5, "mastery_swap_buffer": 15},
         )
         self.assertEqual(response.status_code, 200)
-        save_mock.assert_called_once_with(central_bonus=5, mastery_swap_buffer=15)
+        save_mock.assert_called_once_with(
+            central_bonus=5, mastery_swap_buffer=15, mastery_swap_buffers=None
+        )
+
+    @patch("arknights_mower.views.mastery.save_route_settings")
+    def test_route_settings_post_forwards_independent_buffers(self, save_mock):
+        buffers = {"no_central": 0, "central": 5, "central_unhalved_m2": 7}
+        response = self.client.post(
+            "/mastery-route/settings",
+            json={"central_bonus": 5, "mastery_swap_buffers": buffers},
+        )
+        self.assertEqual(response.status_code, 200)
+        save_mock.assert_called_once_with(
+            central_bonus=5, mastery_swap_buffer=10, mastery_swap_buffers=buffers
+        )
+
+    @patch("arknights_mower.views.mastery.save_route_settings")
+    def test_route_settings_rejects_invalid_buffer_map(self, save_mock):
+        for buffers in ([], {"central": -1}, {"central": True}, {"unknown": 5}):
+            response = self.client.post(
+                "/mastery-route/settings", json={"mastery_swap_buffers": buffers}
+            )
+            self.assertEqual(response.status_code, 400)
+        save_mock.assert_not_called()
 
     @patch("arknights_mower.views.mastery.save_route_settings")
     def test_route_settings_post_keeps_zero_buffer(self, save_mock):
@@ -123,7 +146,9 @@ class TestMasteryRouteView(unittest.TestCase):
             json={"central_bonus": 0, "mastery_swap_buffer": 0},
         )
         self.assertEqual(response.status_code, 200)
-        save_mock.assert_called_once_with(central_bonus=0, mastery_swap_buffer=0)
+        save_mock.assert_called_once_with(
+            central_bonus=0, mastery_swap_buffer=0, mastery_swap_buffers=None
+        )
 
 
 class TestMasteryPlanView(unittest.TestCase):
@@ -461,11 +486,12 @@ class TestMasteryPlanView(unittest.TestCase):
     # --- 一键专精立即派发 ---
 
     @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
     def test_post_added_dispatches_immediately(
-        self, get_level, get_skill, insert, dispatch
+        self, get_level, get_skill, insert, get_existing, dispatch
     ):
         # 一键专精建计划成功后立即派发，不再等下次仓库扫描
         get_skill.return_value = self._char_table()
@@ -476,6 +502,27 @@ class TestMasteryPlanView(unittest.TestCase):
         )
         self.assertEqual(r.get_json()["results"][0]["status"], "added")
         dispatch.assert_called_once()
+        # 派发范围收窄到刚点的那一条（定案 2：按钮字面意思优先）
+        self.assertEqual(dispatch.call_args.kwargs["targets"], [("char_001", 0)])
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_id", return_value=None)
+    @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_post_added_passes_path_to_plan_lookup(
+        self, get_level, get_skill, insert, get_existing, get_by_id, dispatch
+    ):
+        # 新建后回读那条计划也要带上 path，否则 path 非 None（临时库）时读不到刚建的行，
+        # 会把 automatic 误判成 False、误报「此计划使用职业路线」。
+        get_skill.return_value = self._char_table()
+        get_level.return_value = 1
+        insert.return_value = 5
+        self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        get_by_id.assert_called_once_with(5, None)
 
     @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
     @patch("arknights_mower.views.mastery.get_skill_data")
@@ -505,6 +552,186 @@ class TestMasteryPlanView(unittest.TestCase):
         statuses = [x["status"] for x in r.get_json()["results"]]
         self.assertEqual(statuses, ["error", "error"])
         dispatch.assert_not_called()
+
+    # --- plan-dedup：重复添加不建新行，「立即开始」改成复用已有计划 ---
+
+    def _existing(self, **overrides):
+        plan = {
+            "id": 11,
+            "char_id": "char_001",
+            "char_name": "阿米娅",
+            "skill_index": 0,
+            "skill_name": "一技能",
+            "target_level": 3,
+            "status": "idle",
+            "priority": 0,
+        }
+        plan.update(overrides)
+        return plan
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill")
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_post_duplicate_idle_reuses_existing_and_dispatches(
+        self, get_skill, insert, get_existing, dispatch
+    ):
+        # 已有一条待执行的计划：不建新行，走原有派发让它排上（前端出绿字）
+        get_skill.return_value = self._char_table()
+        get_existing.return_value = self._existing()
+        dispatch.return_value = {
+            "scheduled": [{"char_id": "char_001", "skill_index": 0}]
+        }
+        r = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = r.get_json()["results"][0]
+        self.assertEqual(result["status"], "existing")
+        self.assertEqual(result["id"], 11)
+        self.assertIn("已在计划中", result["reason"])
+        insert.assert_not_called()
+        self.assertEqual(dispatch.call_args.kwargs["targets"], [("char_001", 0)])
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill")
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_post_duplicate_training_not_touched(
+        self, get_skill, insert, get_existing, dispatch
+    ):
+        # 已有一条在训练/等着收的计划：不建、不碰、不派发
+        get_skill.return_value = self._char_table()
+        get_existing.return_value = self._existing(status="training")
+        r = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = r.get_json()["results"][0]
+        self.assertEqual(result["status"], "existing")
+        self.assertIn("已在训练中", result["reason"])
+        insert.assert_not_called()
+        dispatch.assert_not_called()
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill")
+    @patch("arknights_mower.views.mastery.update_plan_status")
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_post_duplicate_failed_requeued(
+        self, get_skill, insert, update_status, get_existing, dispatch
+    ):
+        # failed 算「已有」：放回待执行（否则进不了待练名单），再走派发
+        get_skill.return_value = self._char_table()
+        get_existing.return_value = self._existing(
+            status="failed", failed_reason="材料不足"
+        )
+        dispatch.return_value = {
+            "scheduled": [],
+            "skipped": [{"char_id": "char_001", "skill_index": 0}],
+        }
+        r = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = r.get_json()["results"][0]
+        self.assertEqual(result["status"], "insufficient")
+        self.assertEqual(result["reason"], "材料不足，暂不开始")
+        # 置回待执行时必须连 failed_reason 一起清（与 retry_failed_plans 同口径）
+        update_status.assert_called_once_with(11, "idle", failed_reason="", path=None)
+        insert.assert_not_called()
+        dispatch.assert_called_once()
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill")
+    @patch("arknights_mower.views.mastery.update_plan_status", return_value=False)
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_post_duplicate_failed_requeue_failure_reports_error(
+        self, get_skill, insert, update_status, get_existing, dispatch
+    ):
+        # 状态没置回去就派发不了（派发按 status=='idle' 过滤）——此时回「已重新排入
+        # 待执行」就是骗人，必须按 error 报出去
+        get_skill.return_value = self._char_table()
+        get_existing.return_value = self._existing(
+            status="failed", failed_reason="材料不足"
+        )
+        r = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = r.get_json()["results"][0]
+        self.assertEqual(result["status"], "error")
+        self.assertIn("没能置回待执行", result["reason"])
+        insert.assert_not_called()
+        dispatch.assert_not_called()
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_post_insufficient_materials_reports_it(
+        self, get_level, get_skill, insert, get_existing, dispatch
+    ):
+        # 材料不足：不静默跳过，明确回「材料不足，暂不开始」（旧行为是白建一行还说「已添加」）
+        get_skill.return_value = self._char_table()
+        get_level.return_value = 1
+        insert.return_value = 5
+        dispatch.return_value = {
+            "scheduled": [],
+            "skipped": [{"char_id": "char_001", "skill_index": 0}],
+        }
+        r = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = r.get_json()["results"][0]
+        self.assertEqual(result["status"], "insufficient")
+        self.assertEqual(result["reason"], "材料不足，暂不开始")
+
+    def test_dispatch_new_plans_targets_filter(self):
+        # targets 给了就只派发这几条（定案 2：按钮字面意思优先）
+        from arknights_mower.views.mastery import _dispatch_new_plans_immediately
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = MagicMock()
+        fake.base_scheduler = sched
+        scheduled = [
+            {"char_id": "char_a", "skill_index": 1},
+            {"char_id": "char_b", "skill_index": 0},
+        ]
+        skipped = [{"char_id": "char_c", "skill_index": 2}]
+        with (
+            patch.dict(sys.modules, {"arknights_mower.__main__": fake}),
+            patch("arknights_mower.views.mastery.config.conf.enable_mastery", True),
+            patch(
+                "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
+                return_value={"scheduled": scheduled, "skipped": skipped},
+            ),
+            patch("arknights_mower.views.mastery._refresh_cultivate_if_stale"),
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()),
+        ):
+            info = _dispatch_new_plans_immediately(targets=[("char_b", 0)])
+        sched._dispatch_scan_start_tasks.assert_called_once_with(
+            [{"char_id": "char_b", "skill_index": 0}]
+        )
+        self.assertEqual(info["skipped"], [])
+
+    def test_dispatch_new_plans_reports_skipped(self):
+        # 材料不足的条目要回给调用方，前端才能明说「暂不开始」
+        from arknights_mower.views.mastery import _dispatch_new_plans_immediately
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        fake.base_scheduler = MagicMock()
+        skipped = [{"char_id": "char_a", "skill_index": 1}]
+        with (
+            patch.dict(sys.modules, {"arknights_mower.__main__": fake}),
+            patch("arknights_mower.views.mastery.config.conf.enable_mastery", True),
+            patch(
+                "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
+                return_value={"scheduled": [], "skipped": skipped},
+            ),
+            patch("arknights_mower.views.mastery._refresh_cultivate_if_stale"),
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()),
+        ):
+            info = _dispatch_new_plans_immediately()
+        self.assertEqual(info, {"scheduled": [], "skipped": skipped})
 
     def test_dispatch_new_plans_immediately_calls_dispatch(self):
         # 材料核算后把 scheduled 交给 _dispatch_scan_start_tasks（复用扫描派发逻辑）

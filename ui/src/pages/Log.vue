@@ -98,6 +98,7 @@ import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
 import ServerOutlineIcon from '@vicons/ionicons5/ServerOutline'
+import ChatbubbleIcon from '@vicons/ionicons5/ChatbubbleEllipsesOutline'
 import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
 import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
 
@@ -305,7 +306,7 @@ async function db_delete(keys) {
               <stop-icon />
             </n-icon>
           </template>
-          <template v-if="!mobile">立即停止</template>
+          <span class="btn-text">立即停止</span>
         </n-button>
       </drop-down>
       <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
@@ -321,7 +322,7 @@ async function db_delete(keys) {
               <play-icon />
             </n-icon>
           </template>
-          <template v-if="!mobile">开始执行</template>
+          <span class="btn-text">开始执行</span>
         </n-button>
       </drop-down>
       <task-dialog />
@@ -331,25 +332,27 @@ async function db_delete(keys) {
             <add-icon />
           </n-icon>
         </template>
-        <template v-if="!mobile">新增任务</template>
+        <span class="btn-text">新增任务</span>
       </n-button>
-      <help-text v-if="!mobile">
+      <help-text class="help-btn">
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
-        <div>只开放了空任务/专精/加工站任务</div>
+        <div>支持空任务、专精、加工材料、分解所有重复家具、仓库扫描和线索任务</div>
         <div>只能增，不能删！！写错了可以【载入心情数据】启动</div>
-        <div>如果 mower 休息到 00:30，新增的 00:15 的任务是不会被执行的，因为此时在休息</div>
+        <div>新增加工材料或分解家具任务会唤醒调度器，按任务时间执行</div>
+        <div>其他新增任务不会主动唤醒调度器，休眠期间添加的任务可能延后执行</div>
         <div>添加完任务可以【载入心情任务】启动</div>
         <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
+        <div>线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
       <n-button type="error" @click="show_feedback = true">
         <template #icon>
-          <!-- <n-icon>
-          <add-icon />
-        </n-icon> -->
+          <n-icon>
+            <chatbubble-icon />
+          </n-icon>
         </template>
-        <template v-if="!mobile">反馈问题</template>
+        <span class="btn-text">反馈问题</span>
       </n-button>
       <feedback />
       <n-button type="info" @click="db_toggle_panel">
@@ -358,16 +361,16 @@ async function db_delete(keys) {
             <server-outline-icon />
           </n-icon>
         </template>
-        <template v-if="!mobile">数据库管理</template>
+        <span class="btn-text">数据库管理</span>
       </n-button>
       <div class="expand"></div>
       <div class="scroll-container">
         <n-checkbox v-model:checked="sc_preview">
-          <template v-if="mobile">截图</template>
-          <template v-else>预览截图</template>
+          <span class="btn-text">预览截图</span>
+          <span class="btn-text-short">截图</span>
         </n-checkbox>
         <n-switch v-model:value="auto_scroll" />
-        <span class="scroll-label" v-if="!mobile">自动滚动</span>
+        <span class="scroll-label">自动滚动</span>
       </div>
     </div>
     <n-button
@@ -461,17 +464,69 @@ async function db_delete(keys) {
 .action-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 
-.scroll-container {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  :deep(.n-button) {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  :deep(.n-checkbox) {
+    white-space: nowrap;
+  }
 }
 
 .expand {
   flex-grow: 1;
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.scroll-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.scroll-label {
+  white-space: nowrap;
+}
+
+.btn-text-short {
+  display: none;
+}
+
+@container main-content (max-width: 500px) {
+  .btn-text {
+    display: none;
+  }
+  .btn-text-short {
+    display: inline;
+  }
+  .scroll-label,
+  .help-btn {
+    display: none;
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 500px) {
+    .btn-text {
+      display: none;
+    }
+    .btn-text-short {
+      display: inline;
+    }
+    .scroll-label,
+    .help-btn {
+      display: none;
+    }
+  }
 }
 
 .toggle-table-collapse-btn {

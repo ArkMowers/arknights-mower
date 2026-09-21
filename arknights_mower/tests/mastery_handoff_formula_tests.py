@@ -22,7 +22,7 @@ from arknights_mower.utils.mastery_support_types import StageSpec  # noqa: E402
 def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
     now = datetime(2026, 9, 8, 17, 42)
     route = stage_route(
-        stat("缄默德克萨斯", 80), stat("逻各斯", 0, True), StageSpec(2, 8, central, 10)
+        stat("缄默德克萨斯", 80), stat("逻各斯", 0, True), StageSpec(2, 8, central)
     )
     route["working_operator"] = route["operator"]
     plan = {
@@ -32,7 +32,8 @@ def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
         "support_runtime": route,
     }
     end = now + timedelta(hours=8 / (1.85 + central / 100))
-    expected = end - timedelta(minutes=310 * (1.05 + central / 100) / 1.85)
+    buffer = 15 if central else 10
+    expected = end - timedelta(minutes=(300 + buffer) * (1.05 + central / 100) / 1.85)
     with (
         patch.object(state, "datetime") as mock_now,
         patch.object(state, "enqueue_support_swap"),
@@ -46,11 +47,17 @@ def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
         8 - route["switch_after"] * (1.85 + central / 100)
     ) / (1.05 + central / 100)
     assert route["hours"] == pytest.approx(expected_hours)
-    speed = swap_runtime._current_rate({"教官": {2: stat("教官", 80)}}, "教官", 2)
-    assert speed == pytest.approx(1.85)
+    speed = swap_runtime._current_rate(
+        {"教官": {2: stat("教官", 80)}}, "教官", 2, central
+    )
+    assert speed == pytest.approx(1.85 + central / 100)
     remaining = (end - at).total_seconds()
     selected, delay = swap_runtime.select_swap_support(
-        remaining * speed, speed, [stat("逻各斯", 0, True)], (central, 10)
+        remaining * speed,
+        speed,
+        [stat("逻各斯", 0, True)],
+        (central, buffer),
+        schedule_rate=1.85,
     )
     assert selected["name"] == "逻各斯"
     assert delay == pytest.approx(0, abs=1e-5)

@@ -5,7 +5,13 @@ from contextlib import contextmanager
 from typing import Optional
 
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.mastery_support_types import TrainingInputs, encode_supports
+from arknights_mower.utils.mastery_support_types import (
+    DEFAULT_SWAP_BUFFER_MINUTES,
+    DEFAULT_SWAP_BUFFERS,
+    TrainingInputs,
+    configured_swap_buffer,
+    encode_supports,
+)
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skill_label import format_skill_label
 
@@ -213,6 +219,43 @@ def insert_plan(
 DEFAULT_TARGET_LEVEL = 3  # 与推荐层一致（R-03：推荐恒专三），#65/B7 统一计划创建目标
 
 
+def get_plan_by_skill(
+    char_id: str, skill_index: int, path: Optional[str] = None
+) -> Optional[dict]:
+    """按 (干员, 技能) 取一条未结束的计划（completed 除外）；没有则 None。
+
+    判「未结束」而不是「未完成」：failed 也算已有（重复添加时不新建行，由调用方把它
+    放回待执行再派发）。completed 不拦——先练到专一完成、过一阵想继续练专三，要能再建。
+
+    同一技能可能有多条存量重复行（`insert_plan` 无去重，表上也没有唯一约束，见
+    doc/mastery-constraints.md §5.1）——按 (priority, id) 取第一条，与
+    `get_all_plans` / `get_reconcile_plans` 的「重复计划（同干员技能）时优先高优先级
+    一条，不重复管理」口径一致。
+    """
+    try:
+        with _conn(path) as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_plan WHERE char_id=? AND skill_index=? "
+                "AND status != 'completed' ORDER BY priority, id LIMIT 1",
+                (char_id, skill_index),
+            ).fetchone()
+            return lazy_fill_plan_names(dict(row), conn) if row else None
+    except Exception as e:
+        logger.error(f"get_plan_by_skill failed: {e}")
+        return None
+
+
+def describe_existing_plan(plan: dict) -> str:
+    """已有计划的一句话状态描述（重复添加时给用户看的原因）。"""
+    status = plan.get("status")
+    if status == "failed":
+        reason = plan.get("failed_reason") or "原因未知"
+        return f"此前失败：{reason}"
+    if status == "idle":
+        return "已在待执行队列"
+    return "已在训练中"
+
+
 def add_plan_checked(
     char_id: str,
     skill_index: int,
@@ -223,12 +266,17 @@ def add_plan_checked(
     path: Optional[str] = None,
     support_mode: str = "auto",
 ) -> tuple[int, Optional[str]]:
-    """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级。
+    """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级 + 技能是否已有计划。
 
     target_level 缺省 = 专三（与推荐一致，消除「推荐专三、创建专一」分歧）。
     返回 (plan_id, error)：成功 (id>0, None)；拒绝/失败 (<=0, 错误文案)。
     干员当前等级取自 cultivate.json，读不到（文件缺失/干员不在）则跳过该校验——
     执行层已到target检测按截图兜底，#70 档位读失败保守化不回退。
+
+    (干员, 技能) 已有未结束的计划时拒绝：统一入口拦一次，HTTP API 和 agent 工具两条路
+    一起覆盖，不会再累积重复行（重复行会让派发按行各发一条一模一样的「开始训练」，
+    队列里只有一条能真跑、其余扑空）。要「马上开始已有计划」由 views/mastery.py 的
+    重复添加分支处理，不在这里建新行。
     """
     if target_level is None:
         target_level = DEFAULT_TARGET_LEVEL
@@ -254,6 +302,12 @@ def add_plan_checked(
     requirement_error = get_mastery_requirement_error(char_id)
     if requirement_error:
         return -1, requirement_error
+    existing = get_plan_by_skill(char_id, skill_index, path)
+    if existing is not None:
+        return -1, (
+            f"该干员该技能已有计划（{describe_existing_plan(existing)}，"
+            f"目标专{existing.get('target_level')}），未新建"
+        )
     current_level = get_current_mastery_level(char_id, skill_index)
     if current_level is not None and current_level >= target_level:
         return -1, f"该干员技能已专{current_level}，无需再练到专{target_level}"
@@ -272,7 +326,7 @@ def add_plan_checked(
                 current_level or 0,
                 target_level,
                 inputs=TrainingInputs(
-                    buffer=get_route_settings(path).get("mastery_swap_buffer", 10)
+                    buffer=configured_swap_buffer(get_route_settings(path))
                 ),
             )
         )
@@ -600,16 +654,22 @@ def save_route(
 # 全局路线设置的保留职业行（#91 修订）：中枢加成 + 换人缓冲时间，存 supports JSON。
 # 归在「路线配置」里——DB 管理删「专精路线配置」会一起清掉（回默认）；get_all_routes 排除。
 _SETTINGS_PROFESSION = "__mastery_settings__"
-_SETTINGS_DEFAULTS = {"central_bonus": 0, "mastery_swap_buffer": 10}
+_SETTINGS_DEFAULTS = {
+    "central_bonus": 0,
+    "mastery_swap_buffer": DEFAULT_SWAP_BUFFER_MINUTES,
+}
 
 
 def get_route_settings(path: Optional[str] = None) -> dict:
-    """全局路线设置：central_bonus（0/5）+ mastery_swap_buffer（分钟）。
+    """读取中枢加成及三档减半换人缓冲（分钟）。
 
-    存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON），缺行回默认
-    (0, 10)。不再走 conf（旧 `mastery_control_center`/`mastery_swap_buffer` 已废弃）。
+    存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON）。
+    缺行使用 10/15/30 分钟；旧版单值配置一次性迁移为分档默认。
     """
-    defaults = dict(_SETTINGS_DEFAULTS)
+    defaults = {
+        **_SETTINGS_DEFAULTS,
+        "mastery_swap_buffers": dict(DEFAULT_SWAP_BUFFERS),
+    }
     try:
         with _conn(path) as conn:
             row = conn.execute(
@@ -623,6 +683,32 @@ def get_route_settings(path: Optional[str] = None) -> dict:
                     parsed = {}
                 if isinstance(parsed, dict):
                     defaults.update({k: parsed[k] for k in defaults if k in parsed})
+                    if isinstance(parsed.get("mastery_swap_buffers"), dict):
+                        defaults["mastery_swap_buffers"] = {
+                            **DEFAULT_SWAP_BUFFERS,
+                            **parsed["mastery_swap_buffers"],
+                        }
+                    elif "mastery_swap_buffer" in parsed:
+                        defaults["mastery_swap_buffers"] = dict(DEFAULT_SWAP_BUFFERS)
+                        # The persisted map is the migration marker. Subsequent
+                        # reads must preserve even user-selected 10/10/10 values.
+                        migrated = {
+                            **parsed,
+                            "mastery_swap_buffers": defaults["mastery_swap_buffers"],
+                        }
+                        cursor = conn.execute(
+                            "UPDATE mastery_route SET supports=? "
+                            "WHERE profession=? AND is_default=0 AND supports=?",
+                            (
+                                json.dumps(migrated, ensure_ascii=False),
+                                _SETTINGS_PROFESSION,
+                                row["supports"],
+                            ),
+                        )
+                        conn.commit()
+                        if cursor.rowcount == 0:
+                            # A concurrent save takes precedence over migration.
+                            return get_route_settings(path)
     except Exception as e:
         logger.error(f"get_route_settings failed: {e}")
     return defaults
@@ -630,14 +716,21 @@ def get_route_settings(path: Optional[str] = None) -> dict:
 
 def save_route_settings(
     central_bonus: int = 0,
-    mastery_swap_buffer: int = 10,
+    mastery_swap_buffer: int = DEFAULT_SWAP_BUFFER_MINUTES,
     path: Optional[str] = None,
+    *,
+    mastery_swap_buffers: dict | None = None,
 ):
     try:
         payload = json.dumps(
             {
                 "central_bonus": int(central_bonus),
                 "mastery_swap_buffer": int(mastery_swap_buffer),
+                "mastery_swap_buffers": (
+                    {**DEFAULT_SWAP_BUFFERS, **mastery_swap_buffers}
+                    if mastery_swap_buffers is not None
+                    else {key: int(mastery_swap_buffer) for key in DEFAULT_SWAP_BUFFERS}
+                ),
             },
             ensure_ascii=False,
         )

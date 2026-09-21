@@ -2,11 +2,53 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   buildMasteryRoutePayload,
+  normalizeMasterySwapBuffers,
   normalizeMasteryRouteDefaults,
   parseMasteryRoute,
   prepareMasteryRoutes,
   syncMasteryRouteDefaults
 } from './masteryRoute.js'
+
+describe('mastery handoff buffers', () => {
+  it('uses separate defaults for the three conditions', () => {
+    expect(normalizeMasterySwapBuffers()).toEqual({
+      no_central: 10,
+      central: 15,
+      central_unhalved_m2: 30
+    })
+  })
+  it('migrates scalar settings and preserves saved per-condition values', () => {
+    expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: 10 })).toEqual({
+      no_central: 10,
+      central: 15,
+      central_unhalved_m2: 30
+    })
+    const custom = { no_central: 10, central: 10, central_unhalved_m2: 10 }
+    expect(
+      normalizeMasterySwapBuffers({ mastery_swap_buffer: 10, mastery_swap_buffers: custom })
+    ).toEqual(custom)
+  })
+  it.each([0, 5, 10, 45])('migrates any legacy scalar %s to the new defaults', (value) => {
+    expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: value })).toEqual({
+      no_central: 10,
+      central: 15,
+      central_unhalved_m2: 30
+    })
+  })
+  it('keeps independent custom values including zero', () => {
+    const values = { no_central: 0, central: 4, central_unhalved_m2: 9 }
+    expect(
+      normalizeMasterySwapBuffers({ mastery_swap_buffers: values, mastery_swap_buffer: 10 })
+    ).toEqual(values)
+  })
+  it('fills only missing conditions with defaults', () => {
+    expect(normalizeMasterySwapBuffers({ mastery_swap_buffers: { central: 6 } })).toEqual({
+      no_central: 10,
+      central: 6,
+      central_unhalved_m2: 30
+    })
+  })
+})
 
 describe('mastery route contracts', () => {
   it('waits for roster sync before asking for fresh defaults', async () => {

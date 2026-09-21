@@ -353,15 +353,36 @@
         </n-text>
       </div>
       <n-text depth="2" style="margin-top: 10px">减半换人缓冲时间（分钟）</n-text>
-      <mower-input-number
-        v-model:value="masterySettings.mastery_swap_buffer"
-        :min="0"
-        :max="60"
-        size="small"
-        style="width: 120px; margin-top: 4px"
-      />
+      <div
+        v-for="item in masteryBufferFields"
+        :key="item.key"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 8px;
+        "
+      >
+        <n-text depth="2">{{ item.label }}</n-text>
+        <mower-input-number
+          :value="masterySettings.mastery_swap_buffers[item.key]"
+          @update:value="
+            (value) =>
+              (masterySettings.mastery_swap_buffers[item.key] =
+                value ?? DEFAULT_MASTERY_SWAP_BUFFERS[item.key])
+          "
+          :min="0"
+          :max="60"
+          clearable
+          size="small"
+          style="width: 120px; flex-shrink: 0"
+        />
+      </div>
       <n-text depth="3" style="font-size: 11px; margin-top: 2px">
-        减半对象需在位时间 = 5小时 + 缓冲时间，缓冲越大越保守
+        默认{{
+          autoCentralBonus ? '分别为 15、30' : '为 10'
+        }}分钟，可自行调整；清空单项恢复该项默认值。
       </n-text>
       <template #footer>
         <n-space justify="end" align="center">
@@ -397,7 +418,13 @@
       @update:show="onPlanModalShow"
     >
       <n-space vertical>
-        <n-input v-model:value="planSearch" placeholder="搜索干员" clearable size="small" />
+        <n-input
+          v-model:value="planSearch"
+          placeholder="搜索干员"
+          clearable
+          size="small"
+          style="margin: 2px 0"
+        />
         <draggable
           v-model="sortablePlanEntries"
           item-key="key"
@@ -650,7 +677,9 @@ import {
   buildMasteryRoutePayload,
   prepareMasteryRoutes,
   completeMasterySupports,
-  syncMasteryRouteDefaults
+  syncMasteryRouteDefaults,
+  DEFAULT_MASTERY_SWAP_BUFFERS,
+  normalizeMasterySwapBuffers
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
@@ -913,6 +942,14 @@ async function toggleSkillPlan(op, rec, draft = false) {
         // #65：target_level 由服务端默认专三（与推荐一致）
         planStatus.value[k] = { id: results[0].id, status: 'idle', target_level: 3, priority: 0 }
         await refreshPlanFromServer()
+      } else if (results[0]?.status === 'existing') {
+        // 已有计划：服务端不再新建重复行，直接复用那条去派发。本地状态可能过期，
+        // 重新拉一次服务器计划让按钮/状态收敛。
+        plan.value[k] = true
+        await refreshPlanFromServer()
+        message.success(results[0]?.reason || '已在计划中，已安排立即开始')
+      } else if (results[0]?.status === 'insufficient') {
+        message.warning(results[0]?.reason || '材料不足，暂不开始')
       } else {
         message.warning(results[0]?.reason || '添加失败')
       }
@@ -951,7 +988,8 @@ async function addAllToPlan(op, draft = false) {
     message.success(`${op.name} 全部技能已加入计划`)
     return
   }
-  // 主列表 quick-add：立即写后端（跳过已计划技能，后端无 (char,skill) 唯一约束，重复 POST 会建重复行）
+  // 主列表 quick-add：立即写后端。已计划技能在本地就跳过；后端按 (干员, 技能) 拦重复，
+  // 万一本地状态过期撞上已有计划，服务端会回 existing 而不是再建一行。
   const toAdd = recs.filter((rec) => !plan.value[planKey(op.char_id, rec.skill_index)])
   if (!toAdd.length) {
     message.info(`${op.name} 所有推荐技能都已在计划中`)
@@ -966,19 +1004,26 @@ async function addAllToPlan(op, draft = false) {
       message.warning(warning)
     }
     const errs = []
+    const infos = []
     results.forEach((res, i) => {
       const rec = toAdd[i]
-      if (res.status === 'added') {
+      if (res.status === 'added' || res.status === 'existing') {
         const k = planKey(op.char_id, rec.skill_index)
         plan.value[k] = true
         // #65：target_level 由服务端默认专三（与推荐一致）
         planStatus.value[k] = { id: res.id, status: 'idle', target_level: 3, priority: 0 }
+        if (res.status === 'existing') infos.push(res.reason || '已在计划中')
+      } else if (res.status === 'insufficient') {
+        infos.push(`${rec.skill_index + 1}技能：${res.reason || '材料不足，暂不开始'}`)
       } else {
         errs.push(res.reason || '添加失败')
       }
     })
     if (errs.length) {
       message.warning(`${op.name} 有 ${errs.length} 项未加入: ${errs.join('；')}`)
+    } else if (infos.length) {
+      // 材料不足 / 已有计划都明说，别静默当成「全部加入」
+      message.info(`${op.name} ${infos.join('；')}`)
     } else {
       message.success(`${op.name} 全部技能已加入计划`)
     }
@@ -1027,6 +1072,12 @@ async function savePlanFn() {
     const err = results.filter((x) => x.status === 'error')
     if (err.length) {
       message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
+    } else {
+      // 材料不足的项同样没排上，别静默当成全部保存成功
+      const poor = results.filter((x) => x.status === 'insufficient')
+      if (poor.length) {
+        message.info(`保存完成；${poor.length} 项暂未开始: ${poor.map((x) => x.reason).join('；')}`)
+      }
     }
   }
   for (const k of toDel) {
@@ -1243,7 +1294,18 @@ const level_list = [
   { value: 3, label: '专三' }
 ]
 // 全局路线设置（#91 修订）：中枢加成（0/5）+ 换人缓冲时间，存路线配置设置行，不走 conf。
-const masterySettings = reactive({ central_bonus: 0, mastery_swap_buffer: 10 })
+const masterySettings = reactive({
+  central_bonus: 0,
+  mastery_swap_buffers: { ...DEFAULT_MASTERY_SWAP_BUFFERS }
+})
+const masteryBufferFields = computed(() =>
+  autoCentralBonus.value
+    ? [
+        { key: 'central', label: '中枢加成 +5%' },
+        { key: 'central_unhalved_m2', label: '中枢加成 +5%，专二未继承减半' }
+      ]
+    : [{ key: 'no_central', label: '无中枢加成' }]
+)
 
 const defaultsCache = ref(null)
 const bestTrainers = ref({})
@@ -1313,7 +1375,7 @@ for (const profession of profKeys) {
 
 // #115：modal 级中枢加成/缓冲与逐职业路线同源走草稿语义——改了不保存关掉要还原
 watch(
-  () => [masterySettings.central_bonus, masterySettings.mastery_swap_buffer],
+  () => [masterySettings.central_bonus, ...Object.values(masterySettings.mastery_swap_buffers)],
   () => {
     if (_autoSaveReady) _dirtyMasterySettings = true
   }
@@ -1340,7 +1402,7 @@ async function loadRoute() {
   const settings = r.data?.settings || {}
   _autoSaveReady = false
   masterySettings.central_bonus = settings.central_bonus ?? 0
-  masterySettings.mastery_swap_buffer = settings.mastery_swap_buffer ?? 10
+  masterySettings.mastery_swap_buffers = normalizeMasterySwapBuffers(settings)
   bestTrainers.value = r.data?.best_trainers || {}
   defaultsError.value = r.data?.defaults_error || ''
   const { routes: merged, suggestedProfessions } = prepareMasteryRoutes(
@@ -1391,7 +1453,7 @@ async function saveRouteAndClose() {
       flushRouteSettings(),
       axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route/settings`, {
         central_bonus: autoCentralBonus.value,
-        mastery_swap_buffer: masterySettings.mastery_swap_buffer
+        mastery_swap_buffers: { ...masterySettings.mastery_swap_buffers }
       })
     ])
     _dirtyMasterySettings = false // 已落库，关弹窗不再触发「未保存还原」
@@ -1609,6 +1671,12 @@ async function doAddTask() {
     if (results[0]?.status === 'added') {
       message.success(`${op.name} ${rec.skill_name} 专精任务已添加！`)
       await refreshPlanFromServer()
+    } else if (results[0]?.status === 'existing') {
+      // 已有计划：服务端复用那条并立即派发，不再靠新建重复行开训
+      await refreshPlanFromServer()
+      message.success(results[0]?.reason || '已在计划中，已安排立即开始')
+    } else if (results[0]?.status === 'insufficient') {
+      message.warning(results[0]?.reason || '材料不足，暂不开始')
     } else {
       message.warning(results[0]?.reason || '添加失败')
     }

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_support import (
     SupportPlanError,
     decode_json,
@@ -57,18 +58,43 @@ def record_work(plan, level, name, until=None):
     save_runtime(plan, route)
 
 
-def refresh_end(plan, level, end):
+def refresh_end(plan, level, end) -> bool:
+    """Record when the current assistant's contribution runs until.
+
+    Returns False when the timestamp could not be persisted. The caller runs after the
+    training has already started, and this is bookkeeping for the *next* stage's
+    halving estimate, so a failed write is reported back instead of raised: it must
+    never be turned into a plan failure for a training that is running fine.
+    """
     route = stage_for(plan, level)
-    if (
+    if not (
         route
         and route.get("working_operator")
         and route.get("working_until") != end.isoformat()
     ):
-        route["working_until"] = end.isoformat()
-        save_runtime(plan, route)
+        return True
+    route["working_until"] = end.isoformat()
+    from arknights_mower.utils.mastery_db import save_support_plan
+
+    try:
+        if not save_support_plan(plan["id"], route, runtime=True):
+            logger.warning(f"[mastery] 协助者出勤记录保存失败 id={plan['id']}")
+            return False
+    except Exception as e:
+        logger.warning(f"[mastery] 协助者出勤记录保存失败 id={plan['id']}: {e}")
+        return False
+    plan["support_runtime"] = encode_supports(route)
+    return True
 
 
 def schedule_support_swap(solver, plan, end, level):
+    """Enqueue the mid-stage swap; None = no swap is needed for this stage.
+
+    Raises SupportPlanError only through `stage_for` when the plan's own route cannot be
+    read. Callers that run *after* the training has started must catch that and report
+    it as a failed step instead of letting it fail a running training; callers in the
+    pre-start support preflight rely on it and let it propagate.
+    """
     route = stage_for(plan, level)
     if (
         not route
@@ -85,7 +111,8 @@ def schedule_support_swap(solver, plan, end, level):
     target_seconds = (300 + route["mastery_swap_buffer"]) * 60
     now = datetime.now()
     left = (end - now).total_seconds()
-    if route.get("swap_halves", True) and left * current_rate / tail_rate < 301 * 60:
+    check_rate = rate(route["efficiency"], route["central_bonus"])
+    if route.get("swap_halves", True) and left * check_rate / tail_rate < 301 * 60:
         return None
     at = now + timedelta(
         seconds=max(0, left - target_seconds * tail_rate / current_rate)
@@ -133,9 +160,13 @@ def stop_support_swap(solver, plan, level, reason):
         finish_support_swap(solver, plan, level, freeze=True)
 
 
-def select_swap_support(work_seconds, current_rate, stats, settings):
-    """Return (candidate, delay_seconds). A slower alternate may need a later handoff."""
+def select_swap_support(
+    work_seconds, current_rate, stats, settings, *, schedule_rate=None
+):
+    """Validate with nominal rates, while keeping conservative handoff timing."""
     central, buffer = settings
+    schedule_rate = current_rate if schedule_rate is None else schedule_rate
+    remaining = work_seconds / current_rate
     minimum = (300 + max(1, buffer)) * 60
     for candidate in stats:
         dest_rate = rate(candidate["efficiency"], central)
@@ -144,7 +175,8 @@ def select_swap_support(work_seconds, current_rate, stats, settings):
             candidate["halves"] and available_seconds < 301 * 60
         ):
             continue
-        tail = min(available_seconds, minimum)
-        delay = max(0, (work_seconds - tail * dest_rate) / current_rate)
+        # The more permissive final check must not postpone an already-due swap.
+        # A slower alternate still uses the original conservative scheduling rate.
+        delay = max(0, remaining - minimum * dest_rate / schedule_rate)
         return candidate, delay
     return None, 0

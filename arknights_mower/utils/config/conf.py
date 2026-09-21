@@ -6,8 +6,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from arknights_mower import __rootdir__
+from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.performance import (
+    PERFORMANCE_PRESETS,
+    default_performance_mode,
+    default_performance_profile,
+)
 
 DEFAULT_LAUNCH_COMMAND = (
     "input keyevent KEYCODE_WAKEUP; "
@@ -59,6 +64,10 @@ class CluePart(ConfModel):
     "线索收集"
     leifeng_mode: int = 1
     "雷锋模式"
+    maa_mall_enable: bool = True
+    "信用商店购物开关"
+    maa_mall_mode: Literal["maa", "mower"] = "maa"
+    "信用商店购物处理方式：maa / mower"
     maa_mall_blacklist: str = "加急许可,碳,碳素,家具零件"
     "黑名单"
     maa_mall_buy: str = "招聘许可,技巧概要·卷2"
@@ -335,7 +344,11 @@ class RegularTaskPart(ConfModel):
     check_mail_enable: bool = True
     "领取邮件奖励"
     maa_enable: bool = True
-    "日常任务"
+    "日常任务（兼容旧字段）"
+    stage_plan_enable: bool = True
+    "刷理智周计划开关"
+    stage_plan_runner: Literal["maa", "mower"] = "maa"
+    "刷理智周计划执行方式：maa / mower"
     maa_gap: float = 3
     "日常任务间隔"
     medicine_expire_days: int = 0
@@ -401,6 +414,14 @@ class RIICPart(ConfModel):
         back_to_index: bool = False
         "跑单前返回基建首页"
 
+    class ProductSwitchingConf(ConfModel):
+        grandet_mode: bool = True
+        "仅使用不会超过损耗容限的无人机，余下时间自然等待"
+        drone_loss_seconds: int = Field(default=30, ge=0, le=180)
+        "允许额外一架无人机浪费的加速秒数"
+        waiting_seconds: int = Field(default=2, ge=0, le=60)
+        "制造站自然完成当前产物后的额外等待秒数"
+
     class WorkShopSetting(ConfModel):
         items: list[WorkShopItem] = []
         "材料列表"
@@ -411,6 +432,24 @@ class RIICPart(ConfModel):
         source: Literal["manual", "mastery", "stockpile"] = "manual"
         "配置来源；旧配置按手动配置保留"
 
+    performance_mode: Literal["auto", "high", "medium", "low", "custom"] = Field(
+        default_factory=default_performance_mode
+    )
+    "设备性能：自动 / 高 / 中 / 低 / 自定义"
+    selection_poll_interval: float = Field(
+        default_factory=lambda: default_performance_profile().poll_interval,
+        ge=0.1,
+        le=2,
+    )
+    "选人界面稳定帧采样间隔（秒）"
+    selection_transition_timeout: float = Field(default=2.5, ge=1, le=20)
+    "选人界面操作反馈超时（秒）"
+    low_frame_rate_mode: bool = Field(
+        default_factory=lambda: (
+            os.environ.get("MOWER_ANDROID") == "1" or __system__ == "android"
+        )
+    )
+    "旧版低帧率适配兼容字段；false 对应高，true 对应中"
     drone_count_limit: int = 100
     "无人机使用阈值"
     drone_room: str = ""
@@ -421,14 +460,62 @@ class RIICPart(ConfModel):
     "宿舍黑名单"
     reload_room: str = ""
     "搓玉补货房间"
-    run_order_delay: float = 3
+    run_order_delay: float = Field(
+        default_factory=lambda: default_performance_profile().run_order_delay
+    )
     "跑单前置延时"
     resting_threshold: float = 0.65
     "心情阈值"
+    version_update_resting_threshold: float = Field(default=0.8, ge=0, le=1)
+    "版本维护心情阈值"
+    version_update_threshold_advance_hours: float = Field(default=12, ge=0, le=168)
+    "版本维护心情阈值提前启用时长（小时）"
     run_order_grandet_mode: RunOrderGrandetModeConf = Field(
         default_factory=RunOrderGrandetModeConf
     )
     "葛朗台跑单"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_performance_mode(cls, data):
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "performance_mode" not in data:
+            grandet = data.get("run_order_grandet_mode")
+            has_custom_timing = any(
+                field in data
+                for field in (
+                    "screenshot_interval",
+                    "selection_poll_interval",
+                    "selection_transition_timeout",
+                    "run_order_delay",
+                )
+            ) or (isinstance(grandet, dict) and "buffer_time" in grandet)
+            if has_custom_timing:
+                data["performance_mode"] = "custom"
+            elif "low_frame_rate_mode" in data:
+                data["performance_mode"] = (
+                    "medium" if data["low_frame_rate_mode"] else "high"
+                )
+        mode = data.get("performance_mode")
+        if mode in PERFORMANCE_PRESETS:
+            profile = PERFORMANCE_PRESETS[mode]
+            data["low_frame_rate_mode"] = profile.low_frame_rate
+            data["screenshot_interval"] = profile.screenshot_interval
+            data["selection_poll_interval"] = profile.poll_interval
+            data["selection_transition_timeout"] = profile.transition_timeout
+            data["run_order_delay"] = profile.run_order_delay
+            grandet = dict(data.get("run_order_grandet_mode") or {})
+            grandet["buffer_time"] = profile.grandet_buffer_time
+            data["run_order_grandet_mode"] = grandet
+        return data
+
+    product_switching: ProductSwitchingConf = Field(
+        default_factory=ProductSwitchingConf
+    )
+    "葛朗台切产物与订单"
+
     free_room: bool = False
     "宿舍不养闲人模式"
     fia_fool: bool = True
@@ -488,8 +575,8 @@ class RIICPart(ConfModel):
     "不养闲人合并间隔"
     dorm_order: str = ""
     "宿舍优先级"
-    refresh_backup_plan_after_mood: bool = False
-    "缓存清零重启后读取心情并按载入心情数据模式重启"
+    refresh_backup_plan_after_mood: bool = True
+    "缓存清零重启后读取心情并按载入心情数据模式重启，默认开启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True
@@ -673,6 +760,16 @@ class Conf(
                 data["visit_friend_enable"] = old_visit_friend
             if "visit_friend_mode" not in data:
                 data["visit_friend_mode"] = "mower" if old_visit_friend else "maa"
+        if "maa_enable" in data:
+            old_maa_enable = bool(data["maa_enable"])
+            if "stage_plan_enable" not in data:
+                data["stage_plan_enable"] = old_maa_enable
+            if "stage_plan_runner" not in data:
+                data["stage_plan_runner"] = "maa" if old_maa_enable else "mower"
+            if "maa_mall_enable" not in data:
+                data["maa_mall_enable"] = old_maa_enable
+            if "maa_mall_mode" not in data:
+                data["maa_mall_mode"] = "maa"
         for old, new in _LEGACY_KEY_MIGRATIONS.items():
             if old not in data:
                 continue
@@ -708,6 +805,50 @@ class Conf(
     @property
     def RCL(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "rcl"
+
+    @property
+    def should_run_maa_stage_plan(self) -> bool:
+        return bool(self.stage_plan_enable and self.stage_plan_runner == "maa")
+
+    @property
+    def should_run_mower_stage_plan(self) -> bool:
+        return bool(self.stage_plan_enable and self.stage_plan_runner == "mower")
+
+    @property
+    def should_run_maa_mall(self) -> bool:
+        return bool(self.maa_mall_enable and self.maa_mall_mode == "maa")
+
+    @property
+    def should_run_mower_mall(self) -> bool:
+        return bool(self.maa_mall_enable and self.maa_mall_mode == "mower")
+
+    @property
+    def should_run_maa_visit_friend(self) -> bool:
+        return bool(self.visit_friend_enable and self.visit_friend_mode == "maa")
+
+    @property
+    def should_run_maa_mall_task(self) -> bool:
+        return self.should_run_maa_mall or self.should_run_maa_visit_friend
+
+    @property
+    def has_maa_daily_tasks(self) -> bool:
+        return (
+            self.should_run_maa_stage_plan
+            or self.should_run_maa_mall_task
+            or any(
+                [
+                    self.maa_mail,
+                    self.maa_recruit,
+                    self.maa_orundum,
+                    self.maa_mining,
+                    self.maa_specialaccess,
+                ]
+            )
+        )
+
+    @property
+    def has_maa_tasks(self) -> bool:
+        return self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL
 
     @property
     def run_order_buffer_time(self):

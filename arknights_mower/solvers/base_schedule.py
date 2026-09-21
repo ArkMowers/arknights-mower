@@ -19,7 +19,7 @@ from arknights_mower.data import (
     stage_data_full,
     workshop_formula,
 )
-from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.solvers.base_mixin import AgentSelectionNotReady, BaseMixin
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -61,6 +61,20 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.manufacture_product import (
+    DRONE_SECONDS,
+    MANUFACTURE_PRODUCTS,
+    TRADE_PRODUCTS,
+    current_unit_remaining,
+    drone_plan,
+    parse_product_task_meta,
+    product_task_meta,
+)
+from arknights_mower.utils.operation_timing import (
+    record_selection_retry,
+    timed_room,
+    timed_step,
+)
 from arknights_mower.utils.operators import (
     TRADE_ORDER_AGENTS,
     Operator,
@@ -90,6 +104,12 @@ from arknights_mower.utils.scheduler_task import (
 )
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.trading_order import TradingOrder
+from arknights_mower.utils.workshop_ui import (
+    CONFIRM_OPERATOR,
+    FORMULA_TABS,
+    OPEN_FORMULA,
+    scale_point,
+)
 
 
 def _is_mastery_busy(operator_name: str) -> bool:
@@ -144,6 +164,12 @@ _COLLECTIBLE_START_KEYS = (
 )
 
 
+class ProductSwitchDeferred(Exception):
+    def __init__(self, message: str, minutes: int = 15):
+        super().__init__(message)
+        self.minutes = minutes
+
+
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -191,6 +217,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.global_plan = {}
         self.local_operation_followup_time = None
         self.restart_after_mood_read = False
+        # 无运行缓存启动时，current_room 为空仅表示“尚未读取”，不能据此触发
+        # is_working() == False 一类副表条件。首次心情/房间扫描完成后再解除。
+        self.defer_backup_plan_until_mood_read = False
 
     def find_next_task(
         self,
@@ -223,6 +252,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 and current_party_time <= datetime.now()
             ):
                 self.op_data.party_time = value
+
+    def set_detected_party_time(self, value):
+        """写入会客室界面确认过的线索交流状态。
+
+        ``party_time`` 的普通 setter 会保留尚未到期的旧值，避免开始刷新时的
+        临时清空让依赖它的副表误切换。界面读取结果不是临时状态：读不到倒计时
+        表示交流已经结束，必须覆盖旧预测，哪怕旧预测时间仍在未来。
+        """
+        self._party_time = value
+        if self.op_data is not None:
+            self.op_data.party_time = value
+
+    def read_party_time(self):
+        """读取线索交流结束时间；空倒计时表示交流已经结束。"""
+        remaining = self.read_time(((1768, 438), (1902, 480)), None)
+        if remaining is None:
+            return None
+        return datetime.now() + timedelta(seconds=remaining)
+
+    def read_operator_time(self, room, index, cord):
+        """读取干员倒计时；空值按非工作状态或心情耗尽处理。"""
+        remaining = self.read_time(cord, None)
+        if remaining is None:
+            logger.info(
+                f"{self.translate_room(room)} {index + 1}号位未显示干员倒计时，"
+                "按非工作状态或心情耗尽处理"
+            )
+            return datetime.now()
+        return datetime.now() + timedelta(seconds=remaining)
 
     def run(self) -> None:
         """
@@ -259,7 +317,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         self.op_data.correct_dorm()
-        self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+        if not getattr(self, "defer_backup_plan_until_mood_read", False):
+            self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+            # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
+            self.queue_product_switches()
         logMsg = "||".join([str(t) for t in self.tasks])
         logger.debug("当前任务: " + logMsg)
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
@@ -430,6 +491,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         TaskTypes.SKILL_UPGRADE,
                         TaskTypes.SWAP_SUPPORT,
                         TaskTypes.REFRESH_TIME,
+                        TaskTypes.SWITCH_PRODUCT,
                     )
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
@@ -649,6 +711,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.task = None
                 self.skip()
                 return True
+            product_tasks = []
+            remove_current_task = True
             try:
                 if self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
@@ -663,6 +727,33 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     from arknights_mower.solvers.mastery import run_swap_support
 
                     run_swap_support(self)
+                elif self.task.type == TaskTypes.FURNITURE:
+                    from arknights_mower.solvers.furniture import FurnitureDismantler
+                    from arknights_mower.utils.furniture_task import (
+                        FurnitureNavigationError,
+                    )
+
+                    try:
+                        FurnitureDismantler(self).run()
+                    except (MowerExit, FurnitureNavigationError, ConnectionError):
+                        raise
+                    except Exception:
+                        # 保护失败、识别异常及提交结果不明都只执行一次。
+                        # 先移除再交给通用异常记录，避免下一轮重跑同一任务。
+                        self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                        raise
+                elif self.task.type == TaskTypes.SWITCH_PRODUCT:
+                    batch_cutoff = datetime.now()
+                    product_tasks = [
+                        task
+                        for task in self.tasks
+                        if task.type == TaskTypes.SWITCH_PRODUCT
+                        and task.time <= batch_cutoff
+                    ]
+                    self.switch_base_products(product_tasks)
+                    # switch_base_products 会自行移除已完成的任务，并保留、延期
+                    # 当前无法切换的低等级贸易站任务。
+                    remove_current_task = False
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:
@@ -756,11 +847,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     self.overtake_room()
                 elif self.task.type == TaskTypes.CLUE_PARTY:
-                    self.party_time = None
-                    self.last_clue = None
-                    self.clue_new()
-                    self.last_clue = datetime.now()
-                    self.skip(["collect_notification"])
+                    self._run_clue_flow()
+                elif self.task.type == TaskTypes.CLUE:
+                    # 手动触发的会客室任务，与定时触发走同一条路径
+                    self._run_clue_flow()
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     self.plan_run_order(self.task.meta_data)
                     self.skip(["todo_task", "collect_notification"])
@@ -768,9 +858,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.仓库扫描()
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
-                self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                if remove_current_task:
+                    self.tasks[:] = [t for t in self.tasks if t is not self.task]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
+            except ProductSwitchDeferred as e:
+                retry_time = datetime.now() + timedelta(minutes=e.minutes)
+                pending_ids = {id(task) for task in self.tasks}
+                deferred_tasks = [
+                    task
+                    for task in product_tasks or [self.task]
+                    if id(task) in pending_ids
+                ]
+                for task in deferred_tasks:
+                    task.time = max(task.time, retry_time)
+                self.tasks.sort(key=lambda task: task.time)
+                logger.warning(
+                    f"{e}，未完成的切换任务推迟至 {retry_time.strftime('%H:%M:%S')}"
+                )
+                self.skip()
             except MowerExit:
                 raise
             except Exception as e:
@@ -793,6 +899,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
                     mood_result = self.agent_get_mood(skip_dorm=True)
+                    # agent_get_mood 已读取所有需要刷新的房间；从此 current_room
+                    # 可以用于副表条件。若配置了读取后重启，重启流程会用这份新缓存
+                    # 在 simulate() 初始化阶段统一刷新副表。
+                    self.defer_backup_plan_until_mood_read = False
                     if self.restart_after_mood_read:
                         self.restart_after_mood_read = False
                         logger.info("缓存清零重启后心情读取完成，准备载入心情数据重启")
@@ -890,14 +1000,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if v.need_to_refresh() and v.room in base_room_list
         )
 
+        # 专精计划可能没有训练室固定排班，仍要通过原有心情扫描核对现场。
+        if config.conf.enable_mastery:
+            from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+            if get_reconcile_plans():
+                need_read.add("train")
+
         for room in need_read:
+            if room == "train":
+                last_read = getattr(self, "last_train_mood_read", None)
+                if last_read and datetime.now() - last_read < timedelta(hours=2.5):
+                    continue
             error_count = 0
-            # 训练室与其他房间一致：当前房内干员都近期读过则跳过（2026-08-16 审计——
-            # 原 room != "train" 免除使训练室在「计划在训练室但未进驻的陈旧干员」把
-            # 训练室推进待读集合时每轮循环都强制进房读心情，2h 内十多次）。训练室进房
-            # 时的顺路 reconcile（破重启待收取死锁）不受影响：重启后无 current_room=
-            # "train" 的干员 → current_working 空 → 不跳过；平时占用干员心情 2.5h
-            # 陈旧 → 不跳过 → 照常读+reconcile。
+            # 近期读过的房内干员无需重复扫描。训练室为空或识别失败时，上面的
+            # 房间级时间同样限频，避免没有固定干员的训练室每轮被强制读取。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
@@ -917,6 +1034,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.debug(e.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
+            if room == "train":
+                self.last_train_mood_read = datetime.now()
             while True:
                 try:
                     self.enter_room(room)
@@ -1343,10 +1462,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
                 return
             tab_pos = {
-                "基建材料": (self.recog.w * 0.1, self.recog.h * 0.18),
-                "精英材料": (self.recog.w * 0.1, self.recog.h * 0.31),
-                "技巧概要": (self.recog.w * 0.1, self.recog.h * 0.45),
-                "芯片": (self.recog.w * 0.1, self.recog.h * 0.57),
+                name: scale_point(self.recog, point)
+                for name, point in FORMULA_TABS.items()
             }
             current_material = None
             current_name = None
@@ -1375,7 +1492,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif self.find("arrange_check_in") or self.find(
                     "arrange_check_in_small"
                 ):
-                    self.tap((self.recog.w * 0.25, self.recog.h * 0.95), interval=0.5)
+                    self.tap(scale_point(self.recog, CONFIRM_OPERATOR), interval=0.5)
                 elif scene == Scene.FACTORY_DASHBOARD:
                     if tasks[0] == "enter":
                         if is_9colored:
@@ -1383,9 +1500,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
-                        self.tap(
-                            (self.recog.w * 0.45, self.recog.h * 0.65), interval=0.5
-                        )
+                        self.tap(scale_point(self.recog, OPEN_FORMULA), interval=0.5)
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
                         inventory_data = get_inventory_counts()
@@ -2034,6 +2149,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
+                    self.queue_product_switches()
                     # 回班时间和岗位依赖生效排班；副表可能改变用尽、回满或组员岗位。
                     # 已生成的宿舍任务不能继续沿用切换前的急救预测。
                     if any(
@@ -2255,6 +2371,79 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         Operators.current_room_changed_callback = self.current_room_changed
         return self.op_data.init_and_validate()
 
+    def queue_product_switches(self):
+        """仅为已识别且与当前排班目标不一致的生产站生成任务。"""
+        products = getattr(self.op_data, "products", None)
+        if products is None:
+            return
+        plan = getattr(self.op_data, "plan", {})
+        facility_states = getattr(self.op_data, "facility_states", {})
+        configured_rooms = set()
+        for room, target_product in products.items():
+            room_plan = plan.get(room) or []
+            if not room_plan:
+                continue
+            facility = room_plan[0].facility
+            supported = (
+                facility == "制造站" and target_product in MANUFACTURE_PRODUCTS
+            ) or (facility == "贸易站" and target_product in TRADE_PRODUCTS)
+            if not supported:
+                continue
+            configured_rooms.add(room)
+
+            existing = [
+                task
+                for task in self.tasks
+                if task.type == TaskTypes.SWITCH_PRODUCT
+                and task.meta_data.split(",", 1)[0] == room
+            ]
+            state = facility_states.get(room)
+            expected_facility = "manufacture" if facility == "制造站" else "trade"
+            if not state or state.get("facility") != expected_facility:
+                self.tasks[:] = [task for task in self.tasks if task not in existing]
+                logger.debug(
+                    f"{self.translate_room(room)}尚无设施状态缓存，暂不生成切换任务"
+                )
+                continue
+            if state.get("product") == target_product:
+                if existing:
+                    self.tasks[:] = [
+                        task for task in self.tasks if task not in existing
+                    ]
+                    logger.info(
+                        f"{self.translate_room(room)}实际产物或订单已符合排班，"
+                        "移除待切换任务"
+                    )
+                continue
+
+            target_meta = product_task_meta(room, target_product)
+            if len(existing) == 1 and existing[0].meta_data == target_meta:
+                continue
+            self.tasks[:] = [task for task in self.tasks if task not in existing]
+            self.tasks.append(
+                SchedulerTask(
+                    task_type=TaskTypes.SWITCH_PRODUCT,
+                    meta_data=target_meta,
+                )
+            )
+            logger.info(
+                f"生成{self.translate_room(room)}切换产物或订单的任务：{target_product}"
+            )
+
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.type != TaskTypes.SWITCH_PRODUCT
+            or task.meta_data.split(",", 1)[0] in configured_rooms
+        ]
+        selected = getattr(self, "task", None)
+        if (
+            selected is not None
+            and selected.type == TaskTypes.SWITCH_PRODUCT
+            and selected not in self.tasks
+        ):
+            self.task = None
+
     def check_fia(self):
         if "菲亚梅塔" in self.op_data.operators.keys() and self.op_data.operators[
             "菲亚梅塔"
@@ -2271,23 +2460,56 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
         )
 
-    def _wait_drone_interface(self, interval=0.5, accelerate_template=None):
-        """#85：等待进入无人机界面（出现预期的加速按钮）。
+    @timed_step("order_navigation")
+    def _wait_drone_interface(
+        self, interval=0.2, accelerate_template=None, page_template=None
+    ):
+        """#85：等待进入订单或制造详情界面。
 
         ``accelerate_template`` 用于贸易站专属流程；未指定时制造站/贸易站任一
-        加速按钮都视为成功。
+        加速按钮都视为成功。``page_template`` 用于没有加速按钮的空订单页面，
+        且仅在已点击页面入口后才接受，避免把设施信息遮罩后的背景误判为成功。
         """
-        error_count = 0
         templates = (
             (accelerate_template,)
             if accelerate_template is not None
-            else ("factory_accelerate", "bill_accelerate")
+            else ("manufacture_accelerate", "bill_accelerate")
         )
-        while all(self.find(template) is None for template in templates):
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=interval)
-            error_count += 1
+        pending = None
+        retry_ready = False
+        for _ in range(10):
+            if self.find("connecting"):
+                retry_ready = False
+                self.sleep()
+                continue
+            if any(self.find(template) is not None for template in templates):
+                return
+            close = self.find("arrange_check_in_on")
+            action = "close_detail" if close is not None else "open_order"
+            if (
+                page_template is not None
+                and pending == "open_order"
+                and self.find(page_template) is not None
+            ):
+                return
+            if pending == action and not retry_ready:
+                # 等上次点击的反馈；旧面板仍在时先换帧，不连续戳同一入口。
+                retry_ready = True
+                self.sleep(0.2)
+                continue
+            self.tap(
+                close
+                if close is not None
+                else (self.recog.w * 0.05, self.recog.h * 0.95),
+                interval=interval,
+            )
+            pending, retry_ready = action, False
+        # 最后一次点击之后也要读到结果，再交回原有房间恢复流程。
+        ready = any(self.find(template) is not None for template in templates)
+        if page_template is not None and pending == "open_order":
+            ready = ready or self.find(page_template) is not None
+        if self.find("connecting") or not ready:
+            raise RecognizeError("未成功进入订单或制造详情界面")
 
     def get_run_order_time(self, room):
         logger.info("基建：读取插拔时间")
@@ -2328,6 +2550,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 可能被产物收取提示挡住，所以直接点位置
             self.tap((1840, 140))
             self.todo_task = True
+
+    def _run_clue_flow(self):
+        """跑一次完整会客室流程。
+
+        定时趴体（线索交流结束后触发）和手动「线索任务」共用这一条路径。
+        先清掉缓存的线索交流结束时间，让 clue_new() 从界面上重新读取；跑完
+        刷新 last_clue，把下一次定时触发顺延一小时。
+        """
+        self.party_time = None
+        self.clue_new()
+        self.last_clue = datetime.now()
+        self.skip(["collect_notification"])
+
+    def _run_clue_shop(self):
+        conf = config.conf
+        if getattr(
+            conf,
+            "should_run_mower_mall",
+            getattr(conf, "maa_mall_enable", True)
+            and getattr(conf, "maa_mall_mode", "maa") == "mower",
+        ):
+            shop_solver = CreditShop(self.device, self.recog)
+            shop_solver.run()
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
 
     def clue_new(self):
         try:
@@ -2435,26 +2681,47 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if scene == Scene.INFRA_DETAILS:
                     logger.info("INFRA_DETAILS")
                     if ctm.task == "message_board":
+                        # 左下角 (680, 1000) 在这个界面上有两处用途：一是信息板入口
+                        # 没露出来时按它唤出入口，二是关掉领取信用后的确认页
+                        bottom_left = (680, 1000)
+
+                        # 线索交流提示占住右上角一小块，会挡住会客室界面，先点掉
                         if self.find("clue/title_party"):
                             self.tap_element("clue/title_party")
-                        self.tap((680, 1000))
 
-                        board_pos = None
-                        for _ in range(3):
-                            self.recog.update()
-                            board_pos = self.find("clue/message_board")
-                            if board_pos:
-                                break
-                            self.sleep(0.5)
+                        # 提示关掉后入口可能已经露出来了，先匹配一次。
+                        # tap_element 不会重新抓帧，这里得先取一帧再匹配，否则
+                        # 找的还是关提示之前那张图
+                        self.recog.update()
+                        board_pos = self.find("clue/message_board")
+
+                        if board_pos is None:
+                            # 入口没露出来：按左下角把它唤出，再匹配几次等动画走完
+                            self.tap(bottom_left)
+                            for _ in range(3):
+                                self.recog.update()
+                                board_pos = self.find("clue/message_board")
+                                if board_pos:
+                                    break
+                                self.sleep(0.5)
 
                         if board_pos:
                             logger.info("打开会客室信息板")
                             self.tap(board_pos)
-                            self.sleep(0.5)
 
-                            for _ in range(3):
+                            # 用信息板页面自己的场景判断有没有进去，好处是日志里
+                            # 会留下一条 get_scene: Scene 229。不能用 room/meeting：
+                            # 它匹配的是会客室顶栏，信息板页面上同样可见，会在刚
+                            # 进入时就把人退出来
+                            opened = False
+                            for _ in range(6):
+                                self.sleep(0.5)
                                 self.recog.update()
+                                if self.scene() == Scene.CLUE_MESSAGE_BOARD:
+                                    opened = True
+                                    break
 
+                            if opened:
                                 if collect := self.find("clue/message_board_collect"):
                                     logger.info("领取信息板信用")
                                     self.tap(collect)
@@ -2462,25 +2729,32 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                         self.sleep(0.5)
                                         self.recog.update()
                                         if not self.find("clue/message_board_collect"):
-                                            self.tap((680, 1000))
+                                            # 领取后弹「领取物资」确认页，点任意位置关掉
+                                            self.tap(bottom_left)
                                             break
-                                    break
 
-                                if self.find("room/meeting"):
-                                    self.back()
-                                    break
-
-                                self.tap((680, 1000))
-                                self.sleep(0.5)
+                                self.back()
+                                # 等淡出结束、确实回到房间详情页再往下走，否则后续的
+                                # tap((330, 1000)) 会打在还在淡出的信息板上
+                                for _ in range(4):
+                                    self.recog.update()
+                                    if self.scene() == Scene.INFRA_DETAILS:
+                                        break
+                                    self.sleep(0.5)
+                            else:
+                                # 没进去就不按返回：可能只是板子还没淡入完，下一轮循环
+                                # 识别到 Scene.CLUE_MESSAGE_BOARD 时会把它退掉
+                                logger.info("信息板未打开，跳过")
+                        else:
+                            logger.info("未找到信息板入口，跳过")
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
-                        self.party_time = self.double_read_time(
-                            ((1768, 438), (1902, 480))
-                        )
-                        if self.party_time > datetime.now():
+                        party_time = self.read_party_time()
+                        if party_time is not None and party_time > datetime.now():
+                            self.set_detected_party_time(party_time)
                             logger.info(f"线索交流结束时间：{self.party_time}")
                             if not find_next_task(
                                 self.tasks,
@@ -2494,12 +2768,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     )
                                 )
                         else:
-                            self.party_time = None
-                            logger.info("线索交流未开启")
+                            self.set_detected_party_time(None)
+                            logger.info("线索交流未开启或已结束")
+                        # party_time 是副表表达式可引用的状态。界面确认状态后立即
+                        # 重算，不能等下一轮调度，否则跃跃等会客室副表不会及时触发。
+                        self.backup_plan_solver()
                         ctm.complete("party_time")
                     else:
                         # 点击左下角，关闭进驻信息，进入线索界面
                         self.tap((330, 1000))
+
+                elif scene == Scene.CLUE_MESSAGE_BOARD:
+                    # 停在信息板页面上：退回房间详情，后面的任务都在那里继续。
+                    # 兜底用——message_board 分支正常会自己退出来，这里接住
+                    # 淡出中途被识别成信息板、或者上一次没退干净的情况
+                    logger.info("CLUE_MESSAGE_BOARD")
+                    self.back()
 
                 elif scene == Scene.INFRA_CONFIDENTIAL:
                     logger.info("INFRA_CONFIDENTIAL")
@@ -2688,9 +2972,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 else:
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
                     self.enter_room("meeting")
-            shop_solver = CreditShop(self.device, self.recog)
-            shop_solver.run()
-            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            self._run_clue_shop()
         except Exception as e:
             save_exception(e)
             logger.exception(e)
@@ -2785,6 +3067,466 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 break
         raise RecognizeError(f"无人机加速面板未出现：未识别到 {all_in_res}")
 
+    def _tap_product_point(self, point, interval=0.5):
+        x, y = point
+        self.tap(
+            (self.recog.w * x // 1920, self.recog.h * y // 1080),
+            interval=interval,
+        )
+
+    def _wait_product_resource(self, resource, *, present=True, retries=8):
+        for _ in range(retries):
+            found = self.find(resource)
+            if bool(found) == present:
+                return found
+            self.sleep(0.5)
+            self.recog.update()
+        state = "出现" if present else "消失"
+        raise RecognizeError(f"等待 {resource} {state}超时")
+
+    def _product_ocr_text(self, scope) -> str:
+        if rapidocr.engine is None:
+            rapidocr.initialize_ocr()
+        roi = cropimg(self.recog.img, scope)
+        result = rapidocr.engine(
+            roi,
+            use_det=True,
+            use_cls=False,
+            use_rec=True,
+        )[0]
+        texts = []
+
+        def collect(value):
+            if isinstance(value, str):
+                texts.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    collect(item)
+
+        collect(result)
+        return "".join(texts).replace(" ", "")
+
+    def read_manufacture_product(self) -> str:
+        product_scope = (
+            (self.recog.w * 1540 // 1920, self.recog.h * 330 // 1080),
+            (self.recog.w * 1835 // 1920, self.recog.h * 430 // 1080),
+        )
+        text = self._product_ocr_text(product_scope)
+        for product_id in ("gold", "exp3"):
+            product = MANUFACTURE_PRODUCTS[product_id]
+            if product.name in text:
+                logger.info(f"识别到当前制造产物：{product.name}")
+                return product_id
+
+        # 源石碎片标题位于复杂背景上，实机 OCR 可能为空；材料名位于纯色背景，
+        # 同时还能直接区分固源岩和装置配方。
+        material_scope = (
+            (self.recog.w * 430 // 1920, self.recog.h * 330 // 1080),
+            (self.recog.w * 650 // 1920, self.recog.h * 430 // 1080),
+        )
+        material_text = self._product_ocr_text(material_scope)
+        material_products = {
+            "固源岩": "orirock",
+            "装置": "orirock_device",
+        }
+        for material, product_id in material_products.items():
+            if material in material_text:
+                logger.info(
+                    f"识别到当前制造产物：{MANUFACTURE_PRODUCTS[product_id].name}"
+                )
+                return product_id
+        if "源石碎片" in text:
+            raise RecognizeError(
+                f"无法识别源石碎片配方：{material_text or 'OCR 无结果'}"
+            )
+        raise RecognizeError(f"无法识别当前制造产物：{text or 'OCR 无结果'}")
+
+    def _manufacture_is_idle(self) -> bool:
+        """识别制造站因缺少材料且未补货而没有正在制造的状态。"""
+        status_scope = (
+            (self.recog.w * 1540 // 1920, self.recog.h * 430 // 1080),
+            (self.recog.w * 1835 // 1920, self.recog.h * 700 // 1080),
+        )
+        text = self._product_ocr_text(status_scope)
+        return "已完成" in text or "空闲中" in text or "00:00:00" in text
+
+    def _cache_facility_state(self, room: str, facility: str, product: str) -> None:
+        op_data = getattr(self, "op_data", None)
+        if op_data is not None:
+            op_data.update_facility_state(room, facility, product)
+
+    def refresh_facility_state(self, room: str) -> None:
+        """进入房间读取心情时，顺带刷新生产设施的实际产物或订单。"""
+        room_plan = self.op_data.plan.get(room) or []
+        if not room_plan:
+            return
+        facility_name = getattr(room_plan[0], "facility", "")
+        if facility_name not in ("制造站", "贸易站"):
+            return
+
+        try:
+            if facility_name == "制造站":
+                self._wait_drone_interface(
+                    interval=3, accelerate_template="manufacture_accelerate"
+                )
+                product = self.read_manufacture_product()
+                facility = "manufacture"
+                label = MANUFACTURE_PRODUCTS[product].name
+            else:
+                self._wait_drone_interface(
+                    interval=3,
+                    accelerate_template="bill_accelerate",
+                    page_template="order_label",
+                )
+                product, _ = self._read_trade_product_card()
+                facility = "trade"
+                label = TRADE_PRODUCTS[product].strategy_name
+            self._cache_facility_state(room, facility, product)
+            logger.info(f"已刷新{self.translate_room(room)}设施状态：{label}")
+        except MowerExit:
+            raise
+        except Exception as e:
+            logger.warning(f"刷新{self.translate_room(room)}设施状态失败：{e}")
+        self.scene_graph_navigation(Scene.INFRA_DETAILS)
+
+    def _confirm_drone_count(self, count: int):
+        """在已打开的加速面板中精确选择无人机数量并确认。"""
+        if count <= 0:
+            return
+        for _ in range(count):
+            self._tap_product_point((1320, 502), interval=0.1)
+        self._tap_product_point((1440, 864), interval=0.5)
+        if self.scene() in self.waiting_scene:
+            if not self.waiting_solver():
+                raise RecognizeError("无人机加速确认后界面未恢复")
+
+    def _select_manufacture_product(self, target_product: str):
+        product = MANUFACTURE_PRODUCTS[target_product]
+        self._tap_product_point((1680, 500))
+        self._wait_product_resource("manufacture_product_select")
+        self._tap_product_point(product.category)
+        self._tap_product_point(product.recipe)
+        self._wait_product_resource("manufacture_product_change_confirm")
+        self._tap_product_point((1425, 895))
+        self._wait_product_resource("manufacture_product_change_confirm", present=False)
+
+        # 更换配方还会二次确认取消旧制造计划。
+        self._wait_product_resource("manufacture_product_cancel_confirm")
+        self._tap_product_point((1440, 742))
+        self._wait_product_resource("manufacture_product_cancel_confirm", present=False)
+
+        # 新配方默认只排一份；补到当前仓库容量允许的最大值。
+        self._tap_product_point((1450, 305))
+        self._wait_product_resource("manufacture_product_change_confirm")
+        self._tap_product_point((1425, 895))
+        self._wait_product_resource("manufacture_product_change_confirm", present=False)
+
+    def _open_manufacture_product_detail(self, room: str):
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
+        self.enter_room(room)
+        self._wait_drone_interface(
+            interval=3, accelerate_template="manufacture_accelerate"
+        )
+
+    def _read_manufacture_total_seconds(self) -> int:
+        hours, minutes, seconds = self.digit_reader.识别制造加速总剩余时间(
+            self.recog.gray, self.recog.h, self.recog.w
+        )
+        return hours * 3600 + minutes * 60 + seconds
+
+    def _survey_manufacture_switch(self, room: str, target_product: str) -> dict:
+        """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
+        self._open_manufacture_product_detail(room)
+        current_product = self.read_manufacture_product()
+        self._cache_facility_state(room, "manufacture", current_product)
+        observation = {
+            "room": room,
+            "facility": "manufacture",
+            "target_product": target_product,
+            "current_product": current_product,
+            "needs_switch": current_product != target_product,
+        }
+        if not observation["needs_switch"]:
+            return observation
+
+        observation["available_drones"] = self.digit_reader.get_drone(
+            self.recog.gray, self.recog.h, self.recog.w
+        )
+        if self._manufacture_is_idle():
+            observation.update(
+                total_seconds=0,
+                current_remaining=0,
+                drone_count=0,
+                wait_seconds=0,
+            )
+            logger.info(f"{self.translate_room(room)}当前空闲，无需使用无人机")
+            return observation
+        self._tap_drone_accelerate("manufacture_accelerate", "all_in")
+        total_seconds = self._read_manufacture_total_seconds()
+        self._tap_product_point((480, 864))
+        unit_seconds = MANUFACTURE_PRODUCTS[current_product].unit_seconds
+        setting = getattr(config.conf, "product_switching", None)
+        max_loss_seconds = (
+            getattr(setting, "drone_loss_seconds", 30)
+            if getattr(setting, "grandet_mode", True)
+            else DRONE_SECONDS
+        )
+        drone_count, wait_seconds = drone_plan(
+            total_seconds, unit_seconds, max_loss_seconds
+        )
+        observation.update(
+            total_seconds=total_seconds,
+            current_remaining=current_unit_remaining(total_seconds, unit_seconds),
+            drone_count=drone_count,
+            wait_seconds=wait_seconds,
+        )
+        logger.info(
+            f"{self.translate_room(room)}计划：使用{drone_count}架无人机，"
+            f"余下至多等待{wait_seconds}秒"
+        )
+        return observation
+
+    def _execute_manufacture_acceleration(self, observation: dict) -> int:
+        """按快照复核当前份进度，只允许把计划中的无人机数向下修正。"""
+        self._open_manufacture_product_detail(observation["room"])
+        current_product = self.read_manufacture_product()
+        if current_product == observation["target_product"]:
+            return 0
+        if current_product != observation["current_product"]:
+            raise RecognizeError(
+                f"{self.translate_room(observation['room'])}产物在规划期间发生变化"
+            )
+
+        if self._manufacture_is_idle():
+            logger.info(
+                f"{self.translate_room(observation['room'])}当前空闲，直接切换产物"
+            )
+            return 0
+
+        available_drones = self.digit_reader.get_drone(
+            self.recog.gray, self.recog.h, self.recog.w
+        )
+        self._tap_drone_accelerate("manufacture_accelerate", "all_in")
+        current_total = self._read_manufacture_total_seconds()
+        progressed = max(0, observation["total_seconds"] - current_total)
+        remaining = max(0, observation["current_remaining"] - progressed)
+        setting = getattr(config.conf, "product_switching", None)
+        max_loss_seconds = (
+            getattr(setting, "drone_loss_seconds", 30)
+            if getattr(setting, "grandet_mode", True)
+            else DRONE_SECONDS
+        )
+        unit_seconds = MANUFACTURE_PRODUCTS[current_product].unit_seconds
+        drone_count, wait_seconds = drone_plan(
+            remaining, unit_seconds, max_loss_seconds
+        )
+        drone_count = min(drone_count, observation["drone_count"])
+        if available_drones < drone_count:
+            self._tap_product_point((480, 864))
+            raise ProductSwitchDeferred(
+                f"无人机不足：需要{drone_count}架，当前{available_drones}架"
+            )
+        if drone_count:
+            self._confirm_drone_count(drone_count)
+        else:
+            self._tap_product_point((480, 864))
+        logger.info(
+            f"{self.translate_room(observation['room'])}执行计划："
+            f"使用{drone_count}架无人机，余下至多等待{wait_seconds}秒"
+        )
+        return wait_seconds
+
+    def _change_manufacture_product(self, observation: dict):
+        self._open_manufacture_product_detail(observation["room"])
+        current_product = self.read_manufacture_product()
+        self._cache_facility_state(observation["room"], "manufacture", current_product)
+        if current_product == observation["target_product"]:
+            return
+        self._select_manufacture_product(observation["target_product"])
+        self.recog.update()
+        final_product = self.read_manufacture_product()
+        self._cache_facility_state(observation["room"], "manufacture", final_product)
+        if final_product != observation["target_product"]:
+            raise RecognizeError(
+                f"制造站产物切换校验失败：期望"
+                f"{MANUFACTURE_PRODUCTS[observation['target_product']].name}，"
+                f"实际{MANUFACTURE_PRODUCTS[final_product].name}"
+            )
+
+    def _open_trade_product_detail(self, room: str):
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
+        self.enter_room(room)
+        self._wait_drone_interface(
+            interval=3,
+            accelerate_template="bill_accelerate",
+            page_template="order_label",
+        )
+
+    def _read_trade_product_card(self) -> tuple[str, bool]:
+        """从订单列表右下角卡片读取订单类型及是否允许切换。"""
+        scope = (
+            (self.recog.w * 1400 // 1920, self.recog.h * 840 // 1080),
+            (self.recog.w * 1810 // 1920, self.recog.h * 1040 // 1080),
+        )
+        text = self._product_ocr_text(scope)
+        locked = "3级后可切换" in text or ("3级" in text and "切换" in text)
+        if "开采协力" in text:
+            product_id = "orundum"
+        elif "龙门商法" in text or locked:
+            product_id = "lmd"
+        else:
+            raise RecognizeError(f"无法识别当前贸易站订单类型：{text or 'OCR 无结果'}")
+        logger.info(
+            f"识别到当前贸易站订单类型：{TRADE_PRODUCTS[product_id].strategy_name}"
+        )
+        if locked:
+            logger.info("识别到低等级贸易站，订单类型固定为龙门商法")
+        return product_id, not locked
+
+    def _close_trade_product_select(self):
+        # 订单类型点击后立即生效，但选择弹窗不会自行关闭。
+        self._tap_product_point((1600, 200))
+        self._wait_product_resource("trade_strategy_select", present=False)
+
+    def _survey_trade_switch(self, room: str, target_product: str) -> dict:
+        self._open_trade_product_detail(room)
+        current_product, switchable = self._read_trade_product_card()
+        self._cache_facility_state(room, "trade", current_product)
+        return {
+            "room": room,
+            "facility": "trade",
+            "target_product": target_product,
+            "current_product": current_product,
+            "needs_switch": current_product != target_product,
+            "switchable": switchable,
+        }
+
+    def _change_trade_product(self, observation: dict):
+        self._open_trade_product_detail(observation["room"])
+        current_product, switchable = self._read_trade_product_card()
+        self._cache_facility_state(observation["room"], "trade", current_product)
+        if current_product == observation["target_product"]:
+            return
+        if not switchable:
+            if observation["target_product"] == "lmd":
+                return
+            raise ProductSwitchDeferred(
+                f"{self.translate_room(observation['room'])}等级不足，"
+                "无法切换至开采协力",
+                minutes=60,
+            )
+        self._tap_product_point((1580, 955))
+        self._wait_product_resource("trade_strategy_select")
+        self._tap_product_point(TRADE_PRODUCTS[observation["target_product"]].option)
+        self._close_trade_product_select()
+        self.recog.update()
+        final_product, _ = self._read_trade_product_card()
+        self._cache_facility_state(observation["room"], "trade", final_product)
+        if final_product != observation["target_product"]:
+            raise RecognizeError(
+                f"贸易站订单切换校验失败：期望"
+                f"{TRADE_PRODUCTS[observation['target_product']].strategy_name}，"
+                f"实际{TRADE_PRODUCTS[final_product].strategy_name}"
+            )
+
+    def switch_base_products(self, tasks: list[SchedulerTask]):
+        """先巡检全部目标站，再统一执行最省无人机的产物与订单计划。"""
+        task_observations = []
+        for task in tasks:
+            room, target_product = parse_product_task_meta(task.meta_data)
+            if target_product in MANUFACTURE_PRODUCTS:
+                observation = self._survey_manufacture_switch(room, target_product)
+            else:
+                observation = self._survey_trade_switch(room, target_product)
+            task_observations.append((task, observation))
+
+        locked_trade = [
+            (task, observation)
+            for task, observation in task_observations
+            if observation["facility"] == "trade"
+            and observation["needs_switch"]
+            and not observation.get("switchable", True)
+        ]
+        if locked_trade:
+            rooms = "、".join(
+                self.translate_room(observation["room"])
+                for _, observation in locked_trade
+            )
+            retry_time = datetime.now() + timedelta(minutes=60)
+            for task, _ in locked_trade:
+                task.time = max(task.time, retry_time)
+            logger.warning(
+                f"{rooms}等级不足，无法切换至开采协力；"
+                f"对应任务推迟至 {retry_time.strftime('%H:%M:%S')}"
+            )
+            locked_task_ids = {id(task) for task, _ in locked_trade}
+            task_observations = [
+                item for item in task_observations if id(item[0]) not in locked_task_ids
+            ]
+
+        # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
+        for _, observation in task_observations:
+            if observation["facility"] == "trade" and observation["needs_switch"]:
+                self._change_trade_product(observation)
+        resolved_before_manufacture = {
+            id(task)
+            for task, observation in task_observations
+            if observation["facility"] == "trade" or not observation["needs_switch"]
+        }
+        self.tasks[:] = [
+            task for task in self.tasks if id(task) not in resolved_before_manufacture
+        ]
+
+        pending_manufacture = [
+            observation
+            for _, observation in task_observations
+            if observation["facility"] == "manufacture" and observation["needs_switch"]
+        ]
+        planned_drones = sum(item["drone_count"] for item in pending_manufacture)
+        available = min(
+            (item["available_drones"] for item in pending_manufacture),
+            default=planned_drones,
+        )
+        if available == 201:
+            raise RecognizeError("无人机数量识别异常")
+        logger.info(
+            f"制造站批量切产物计划共需至多{planned_drones}架无人机，"
+            f"当前可用{available}架"
+        )
+        if planned_drones > available:
+            raise ProductSwitchDeferred(
+                f"批量切产物无人机不足：需要{planned_drones}架，当前{available}架"
+            )
+
+        # 余数大的站先处理，把更快自然跨过三分钟边界的站留到后面；
+        # 每站执行前会复核，争取让实际消耗低于快照计划。
+        execution_order = sorted(
+            pending_manufacture,
+            key=lambda item: (item["wait_seconds"], item["drone_count"]),
+            reverse=True,
+        )
+        waits = [
+            self._execute_manufacture_acceleration(item) for item in execution_order
+        ]
+        if waits:
+            setting = getattr(config.conf, "product_switching", None)
+            if getattr(setting, "grandet_mode", True):
+                wait_seconds = max(waits)
+                buffer_seconds = max(0, getattr(setting, "waiting_seconds", 2))
+                self.sleep(wait_seconds + buffer_seconds)
+                self.recog.update()
+
+        for observation in pending_manufacture:
+            self._change_manufacture_product(observation)
+
+        task_ids = {id(task) for task, _ in task_observations}
+        self.tasks[:] = [task for task in self.tasks if id(task) not in task_ids]
+        self.tasks.sort(key=lambda task: task.time)
+        logger.info(
+            f"基建批量切换完成，共处理{len(task_observations)}个生产站，"
+            f"延期{len(locked_trade)}个低等级贸易站"
+        )
+
     def drone(
         self,
         room: str,
@@ -2806,7 +3548,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 关闭掉房间总览
         self._wait_drone_interface(interval=3)
 
-        accelerate = self.find("factory_accelerate")
+        accelerate = self.find("manufacture_accelerate")
         if accelerate:
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
@@ -2814,7 +3556,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
                 return
             logger.info("制造站加速")
-            all_in_scope = self._tap_drone_accelerate("factory_accelerate", "all_in")
+            all_in_scope = self._tap_drone_accelerate(
+                "manufacture_accelerate", "all_in"
+            )
             # 如果不是全部all in
             if all_in > 0:
                 tap_times = (
@@ -2874,15 +3618,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     #     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
     #     # 关闭掉房间总览
     #     error_count = 0
-    #     while self.find('factory_accelerate') is None:
+    #     while self.find('manufacture_accelerate') is None:
     #         if error_count > 5:
     #             raise Exception('未成功进入制造详情界面')
     #         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
     #         error_count += 1
-    #     accelerate = self.find('factory_accelerate')
+    #     accelerate = self.find('manufacture_accelerate')
     #     无人机数量 = self.digit_reader.get_drone(self.recog.gray, self.recog.h, self.recog.w)
     #     if accelerate:
-    #         self.tap_element('factory_accelerate')
+    #         self.tap_element('manufacture_accelerate')
     #         self.recog.update()
     #         剩余制造加速总时间 = self.digit_reader.识别制造加速总剩余时间(self.recog.gray, self.recog.h, self.recog.w)
     #         # logger.info(f'制造站 B{room[5]}0{room[7]} 剩余制造总时间为 {剩余制造加速总时间}')
@@ -2974,6 +3718,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             return False, ["技能", "false"]
 
+    @timed_step("confirm")
     def tap_confirm(self, room, new_plan=None):
         if new_plan is None:
             new_plan = {}
@@ -2994,26 +3739,56 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if wait_confirm > 0:
                 logger.info(f"等待跑单 {str(wait_confirm)} 秒")
                 self.sleep(wait_confirm)
-        retry_count = 0
-        while self.find("confirm_blue") and retry_count < 4:
-            self.tap_element("confirm_blue")
-            self.sleep(0.5)
-            self.recog.update()
-            retry_count += 1
-        retry_count = 0
-        while self.find("confirm_train") and retry_count < 4:
-            self.tap_element("confirm_train")
-            self.sleep(0.5)
-            self.recog.update()
-            retry_count += 1
-        retry_count = 0
-        while self.find("arrange_confirm") and retry_count < 4:
-            _x0 = self.recog.w // 3 * 2  # double confirm
-            _y0 = self.recog.h - 10
-            self.tap((_x0, _y0))
-            self.sleep(0.5)
-            self.recog.update()
-            retry_count += 1
+        for template in ("confirm_blue", "confirm_train", "arrange_confirm"):
+            clicks = 0
+            retry_ready = False
+            for _ in range(12):
+                if self.find("connecting"):
+                    retry_ready = False
+                    self.sleep()
+                    continue
+                # 已点击后提高按钮清晰度要求，避免再次点击淡出动画里的残影。
+                # 初次按钮沿用原识别规则，兼容不同背景和训练室。
+                pos = self.find(template, score=0.9) if clicks else self.find(template)
+                if pos is None:
+                    if not clicks:
+                        break
+                    if self.find(template) is None and any(
+                        self.find(destination)
+                        for destination in (
+                            "confirm_blue",
+                            "confirm_train",
+                            "arrange_confirm",
+                            "room_detail",
+                            "arrange_check_in",
+                            "arrange_check_in_small",
+                            "arrange_check_in_on",
+                        )
+                        if destination != template
+                    ):
+                        break
+                    # 按钮消失但目标页尚未出现也是过渡帧，不能漏掉迟到的二次确认。
+                    retry_ready = False
+                    self.sleep(0.2)
+                    continue
+                if clicks and not retry_ready:
+                    # 可能仍是点击前的旧帧；再观察一次才判断点击未生效。
+                    retry_ready = True
+                    self.sleep(0.2)
+                    continue
+                if clicks >= 4:
+                    raise RecognizeError("干员确认点击未生效，返回房间重试")
+                target = (
+                    (self.recog.w // 3 * 2, self.recog.h - 10)
+                    if template == "arrange_confirm"
+                    else pos
+                )
+                # tap 自己完成一次等待及缓存失效，不再叠加 sleep(0.5)。
+                self.tap(target, interval=0.2)
+                clicks += 1
+                retry_ready = False
+            else:
+                raise RecognizeError("干员确认画面仍未稳定，返回房间重试")
 
     def _open_check_in_detail(self):
         """#92：训练室主页面点 arrange_check_in（屏幕左侧 ~(101,441)）开进驻信息浮窗。
@@ -3131,32 +3906,38 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.profession_filter(profession)
         if ope == "Free":
             self.profession_filter("ALL")
-        first_ret = None
         right_swipe = 0
         max_swipe = 50
+        observation = None
+        previous_page = None
         while not found:
             sel, ret = self.scan_agent(
                 [ope] if ope != "Free" else self.get_free_list([]),
                 max_agent_count=1,
                 train=True,
+                observation=observation,
             )
-            if sel == [ope] or ope == "Free":
+            observation = None
+            if sel and (sel == [ope] or ope == "Free"):
                 ope = sel[0]
                 found = True
                 break
-            if ret == first_ret and right_swipe >= 3:
-                max_swipe = right_swipe
-            else:
-                first_ret = ret
-            st = ret[-2][1][0]  # 起点
-            ed = ret[0][1][0]  # 终点
-            self.swipe_noinertia(st, (ed[0] - st[0], 0))
-            right_swipe += 1
-            if right_swipe >= 3:
-                self.sleep(0.3)
             if right_swipe >= max_swipe:
-                break
-        right_swipe = self.swipe_left(right_swipe, special_filter=profession)
+                raise AgentSelectionNotReady("训练干员搜索达到上限，返回房间重试")
+            if (
+                not self.low_frame_rate_mode
+                and right_swipe >= 3
+                and ret == previous_page
+            ):
+                raise AgentSelectionNotReady("训练干员列表已到末尾，返回房间重试")
+            previous_page = ret
+            moved, observation = self.swipe_agent_page(
+                ret, [ope], train=True, return_page=True
+            )
+            right_swipe += moved
+        right_swipe = self.swipe_left(
+            right_swipe, special_filter=profession, train=True
+        )
         self.ctap((1280, 60), 0.3)
         self.ctap((1280, 60), 0.3)
         logger.debug("验证训练位干员选择")
@@ -3269,6 +4050,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             elif current is not None:
                 agents[index] = current.name
 
+    @timed_step("selection")
     def choose_agent(
         self,
         agents: list[str],
@@ -3280,7 +4062,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
-        first_name = ""
         max_swipe = 50
         position = [
             (0.35, 0.35),
@@ -3345,7 +4126,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.recog.w * position[pos][0],
                             self.recog.h * position[pos][1],
                         ),
-                        interval=0,
+                        interval=0.2 if self.low_frame_rate_mode else 0,
                     )
             agent = [x for x in agents if x not in exists]
         logger.info(f"安排干员 ：{agent}")
@@ -3357,6 +4138,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         free_num = agent.count("Free")
         for i in range(agent.count("Free")):
             agent.remove("Free")
+        single_visible_target = (
+            room.startswith("room") and free_num == 0 and len(agent) == 1
+        )
         index_change = False
         pre_order = ["技能", False]
         right_swipe = 0
@@ -3369,6 +4153,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         siege = False  # 推进之王
         last_special_filter = "ALL"
         start_time, finish_time = datetime.now(), datetime.now()
+        observation = None
+        previous_page = None
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -3401,13 +4187,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.op_data.operators[agent[0]].room.startswith("dormitory")
                 ):
                     arrange_type = ("心情", "true")
-                # 如果重新排序则滑到最左边
+                # 如果重新排序则复位到列表起点
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
                     self.switch_arrange_order(arrange_type[0], room, arrange_type[1])
-                    # 滑倒最左边
-                    self.sleep(interval=0.5)
+                    # 适配模式已确认排序变化及连续稳定画面，无需再等固定动画时间。
+                    if not self.low_frame_rate_mode:
+                        self.sleep(interval=0.5)
                     if not siege:
-                        right_swipe = self.swipe_left(right_swipe, last_special_filter)
+                        if single_visible_target and len(agent) == 1:
+                            # 单个生产房目标已经可见时先选择，最终刷新排序并校验完整名单。
+                            changed, ret = self.scan_agent(
+                                agent, full_scan=last_special_filter == "ALL"
+                            )
+                            if changed:
+                                selected.extend(changed)
+                                logger.debug(
+                                    f"排序后已在当前页选中目标{changed}，继续最终名单校验"
+                                )
+                                break
+                        right_swipe, observation = self.swipe_left(
+                            right_swipe, last_special_filter, return_page=True
+                        )
                     pre_order = arrange_type
             first_time = False
             if (
@@ -3443,47 +4243,51 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     right_swipe = 0
                     last_special_filter = "ALL"
                 if (
-                    agent[0] in self.op_data.operators
+                    not self.low_frame_rate_mode
+                    and agent[0] in self.op_data.operators
                     and self.op_data.operators[agent[0]].is_resting()
                     and fast_mode
                     and is_dorm
                     and agent[0] != "阿米娅"
                     and agent[0] not in self.choose_error
                 ):
-                    # 如果在休息，则直接翻最后:
+                    # 普通设备保留休息干员的末页快路；低帧率设备逐页确认。
                     swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
-                    skip_swipe_count = swipe_map[
+                    right_swipe = swipe_map[
                         self.profession_labels.index(last_special_filter)
                     ]
-                    for i in range(skip_swipe_count):
+                    for _ in range(right_swipe):
                         self.swipe_noinertia(
                             (0.8 * self.recog.w, 0.5 * self.recog.h),
                             (-1900, 0),
                             interval=0,
                         )
-                    right_swipe = skip_swipe_count
                     self.sleep(1)
             changed, ret = self.scan_agent(
-                agent, full_scan=last_special_filter == "ALL"
+                agent,
+                full_scan=last_special_filter == "ALL",
+                observation=observation,
             )
+            observation = None
             if changed:
                 selected.extend(changed)
                 # 如果找到了
                 index_change = True
                 siege = False
             else:
-                # 如果没找到 而且右移次数大于5
-                if ret[0][0] == first_name and right_swipe >= 3:
-                    max_swipe = right_swipe
-                else:
-                    first_name = ret[0][0]
                 index_change = False
-                st = ret[-2][1][0]  # 起点
-                ed = ret[0][1][0]  # 终点
-                self.swipe_noinertia(st, (ed[0] - st[0], 0))
-                right_swipe += 1
-                if right_swipe >= 3:
-                    self.sleep(0.3)
+                if (
+                    not self.low_frame_rate_mode
+                    and right_swipe >= 3
+                    and ret == previous_page
+                ):
+                    self.choose_error.add(agent[0])
+                    raise AgentSelectionNotReady("干员列表已到末尾，返回房间重试")
+                previous_page = ret
+                moved, observation = self.swipe_agent_page(
+                    ret, agent, full_scan=last_special_filter == "ALL", return_page=True
+                )
+                right_swipe += moved
             if len(agent) == 0:
                 if siege:
                     if last_special_filter != "ALL":
@@ -3494,18 +4298,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if free_num:
             if free_num == len(agents):
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-            if not first_time:
-                # 滑动到最左边
-                right_swipe = self.swipe_left(right_swipe, last_special_filter)
             if last_special_filter != "ALL":
+                # Free 搜索的目标就是 ALL；真实切换本身会复位列表，
+                # 无需先恢复原职业再切一次 ALL。
                 self.profession_filter("ALL")
                 last_special_filter = "ALL"
                 right_swipe = 0
+            elif not first_time:
+                right_swipe = self.swipe_left(right_swipe, last_special_filter)
             self.switch_arrange_order("心情", room, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = self.get_free_list(agents)
             selection_time = datetime.now()
+            observation = None
+            previous_page = None
             while free_num:
                 if not free_list or right_swipe > max_swipe:
                     raise Exception("没有找到足够的可用宿舍候选干员")
@@ -3521,7 +4328,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     candidates,
                     max_agent_count=free_num,
                     full_scan=last_special_filter == "ALL",
+                    observation=observation,
                 )
+                observation = None
                 selected.extend(selected_name)
                 free_num -= len(selected_name)
                 changed = bool(selected_name)
@@ -3534,10 +4343,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif changed:
                     right_swipe = self.swipe_left(right_swipe, last_special_filter)
                 else:
-                    st = ret[-2][1][0]  # 起点
-                    ed = ret[0][1][0]  # 终点
-                    self.swipe_noinertia(st, (ed[0] - st[0], 0))
-                    right_swipe += 1
+                    if right_swipe >= max_swipe:
+                        raise AgentSelectionNotReady(
+                            "空闲干员搜索达到上限，返回房间重试"
+                        )
+                    if (
+                        not self.low_frame_rate_mode
+                        and right_swipe >= 3
+                        and ret == previous_page
+                    ):
+                        raise AgentSelectionNotReady(
+                            "空闲干员列表已到末尾，返回房间重试"
+                        )
+                    previous_page = ret
+                    moved, observation = self.swipe_agent_page(
+                        ret,
+                        free_list,
+                        full_scan=last_special_filter == "ALL",
+                        return_page=True,
+                    )
+                    right_swipe += moved
         # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
         # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
         if last_special_filter != "ALL":
@@ -3545,11 +4370,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             last_special_filter = "ALL"
             right_swipe = 0
         # 排序
+        verified = False
         if len(agents) != 1:
-            # 左移
-            right_swipe = self.swipe_left(right_swipe, last_special_filter)
             self.switch_arrange_order("技能", room)
-            exists.extend(selected)
+            # 未翻页时先定位目标卡片，名字匹配后无需再切筛选复位。
+            exists = None
+            if right_swipe == 0:
+                try:
+                    exists = self.wait_for_arranged_agents(agents, ordered=False)
+                except AgentSelectionNotReady:
+                    logger.debug("当前已选名单尚不能确认，筛选复位后再校验")
+            if exists is None:
+                right_swipe, observation = self.swipe_left(
+                    right_swipe, last_special_filter, return_page=True
+                )
+                exists = self.wait_for_arranged_agents(
+                    agents, ordered=False, observation=observation
+                )
+            if exists is None:
+                raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
             click_order = []
             for a in agents:
@@ -3558,15 +4397,29 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 else:
                     raise Exception("检测到干员选择错误，重新选择")
             if click_order:
-                # 清空
+                # 名字前缀相同不能证明卡片已选中：漏点的目标可能恰好排在
+                # 已选干员之后。保留多人清空重选，再刷新排序并校验。
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                 for p_idx in click_order:
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
-                    self.tap((x, y), interval=0)
-        logger.debug("验证干员选择..")
-        self.swipe_left(right_swipe, last_special_filter)
-        self.switch_arrange_order("技能", room)
+                    self.tap((x, y), interval=0.2 if self.low_frame_rate_mode else 0)
+            else:
+                # 空目标没有需要重排和校验的卡片。
+                verified = True
+        if not verified:
+            logger.debug("验证干员选择..")
+            self.switch_arrange_order("技能", room)
+            if right_swipe == 0:
+                try:
+                    verified = self.verify_agent(agents, room)
+                except AgentSelectionNotReady:
+                    logger.debug("当前已选顺序尚不能确认，筛选复位后再校验")
+            if not verified:
+                _, observation = self.swipe_left(
+                    right_swipe, last_special_filter, return_page=True
+                )
+                verified = self.verify_agent(agents, room, observation=observation)
         finish_time = datetime.now()
         if finish_time - start_time > timedelta(seconds=15) * len(agents):
             # 如果超过5分钟，则所有里面的干员自动用职介筛选
@@ -3574,7 +4427,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if agent != "阿米娅" and agent:
                     logger.debug(f"检测到{agent}选择时间过长，自动使用职介筛选")
                     self.op_data.profession_filter.add(agent)
-        if not self.verify_agent(agents, room):
+        if not verified:
             logger.debug(agents)
             logger.debug(room)
             raise Exception("检测到干员选择错误，重新选择")
@@ -3585,20 +4438,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if self.op_data.operators[_operator].room == room:
                 self.op_data.operators[_operator].time_stamp = None
 
+    @timed_step("room_detail")
     def turn_on_room_detail(self, room):
         for enter_times in range(3):
-            for retry_times in range(10):
-                if pos := self.find("room_detail"):
+            pending = False
+            for retry_times in range(19):
+                if self.find("connecting"):
+                    self.sleep()
+                elif pos := self.find("room_detail"):
                     if all(self.get_color((1233, 1)) > [252] * 3):
                         return
                     logger.info("等待动画")
                     self.sleep(interval=0.5)
-                elif pos := self.find("arrange_check_in"):
-                    self.tap(pos, interval=0.7)
-                elif pos := self.find("arrange_check_in_small"):
-                    self.tap(pos, interval=0.7)
+                elif (pos := self.find("arrange_check_in")) or (
+                    pos := self.find("arrange_check_in_small")
+                ):
+                    if pending:
+                        pending = False
+                        self.sleep(0.2)
+                    else:
+                        self.tap(pos, interval=0.2)
+                        pending = True
                 else:
                     self.sleep()
+            if (
+                not self.find("connecting")
+                and self.find("room_detail")
+                and all(self.get_color((1233, 1)) > [252] * 3)
+            ):
+                return
             for back_time in range(3):
                 if pos := self.find("control_central"):
                     break
@@ -3608,6 +4476,28 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.enter_room(room)
         self.reset_room_time(room)
         raise Exception("未成功进入房间")
+
+    def scroll_room_operators(self, *, bottom):
+        """滚动房间详情名单；弹窗或滚动不生效时交回原有房间重试。"""
+        point = (1800, 930 if bottom else 138)
+        direction = -1 if bottom else 1
+        self.recog.update()
+        for attempt in range(7):
+            if self.find("confirm") or self.find("double_confirm/main"):
+                raise RecognizeError("读取房间名单时出现确认弹窗，返回场景导航处理")
+            if not self.find("room_detail"):
+                raise RecognizeError("读取房间名单时已离开房间详情，重新定位")
+            if self.get_color(point)[0] <= 51:
+                return
+            if attempt == 6:
+                break
+            self.swipe(
+                (self.recog.w * 0.8, self.recog.h * 0.5),
+                (0, direction * self.recog.h * 0.45),
+                duration=500,
+                interval=1,
+            )
+        raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
@@ -3621,6 +4511,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f"当前拥有线索数量为{self.clue_count}")
+        self.refresh_facility_state(room)
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):
@@ -3637,13 +4528,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             length = len(self.op_data.plan[room])
         if length > 3:
-            while self.get_color((1800, 138))[0] > 51:
-                self.swipe(
-                    (self.recog.w * 0.8, self.recog.h * 0.5),
-                    (0, self.recog.h * 0.45),
-                    duration=500,
-                    interval=1,
-                )
+            self.scroll_room_operators(bottom=False)
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
         name_p = [tuple(zip(name_x, y)) for y in name_y]
@@ -3658,13 +4543,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                while self.get_color((1800, 930))[0] > 51:
-                    self.swipe(
-                        (self.recog.w * 0.8, self.recog.h * 0.5),
-                        (0, -self.recog.h * 0.45),
-                        duration=500,
-                        interval=1,
-                    )
+                self.scroll_room_operators(bottom=True)
                 swiped = True
             data = {}
             if self.find("infra_no_operator", scope=name_p[i]):
@@ -3705,12 +4584,37 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             data["agent"] = _name
             data["mood"] = _mood
             if i in read_time_index and _name != "":
-                if _mood == 24 or room in ["meeting", "factory"] and not update_time:
+                exhausted_working = False
+                if (
+                    room == "central"
+                    and room in self.op_data.true_exhaust_room
+                    and _name != "菲亚梅塔"
+                    and update_time
+                    and _mood == 0
+                    and agent.is_working()
+                ):
+                    # 中枢耗尽后不再显示倒计时；换帧复核房间、干员和心情，
+                    # 不用缓存估算值或一次空 OCR 推断耗尽，宿舍恢复时间仍照常读。
+                    self.recog.update()
+                    exhausted_working = (
+                        not self.find("connecting")
+                        and self.find("room_detail") is not None
+                        and self.detect_room() == room
+                        and self.read_screen(
+                            cropimg(self.recog.gray, name_p[i]), type="name"
+                        )
+                        == _name
+                        and self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
+                        == 0
+                    )
+                if exhausted_working:
+                    data["time"] = datetime.now()
+                    logger.debug(f"中枢干员 {_name} 已复核心情耗尽，无需读取倒计时")
+                elif _mood == 24 or room in ["meeting", "factory"] and not update_time:
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    # 房间干员倒计时随行号变化；订单模板只识别无人机界面的固定区域。
-                    data["time"] = self.double_read_time(time_p[i])
+                    data["time"] = self.read_operator_time(room, i, time_p[i])
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
@@ -3754,13 +4658,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def current_room_changed(self, instance):
         if not self.op_data.first_init:
             logger.info(f"{instance.name} 房间变动")
-            ref_rooms = (
-                instance.refresh_order_room[1]
-                if instance.refresh_order_room[1]
-                else list(self.op_data.run_order_rooms.keys())
-            )
-            for ref_room in ref_rooms:
-                self.refresh_run_order_time(ref_room)
+            if instance.refresh_order_room[0]:
+                ref_rooms = (
+                    instance.refresh_order_room[1]
+                    if instance.refresh_order_room[1]
+                    else list(self.op_data.run_order_rooms.keys())
+                )
+                for ref_room in ref_rooms:
+                    self.refresh_run_order_time(ref_room)
             if (
                 instance.name in self.op_data.operators
                 and self.op_data.operators[instance.name].refresh_drained
@@ -3892,6 +4797,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.info(f"宿舍单回排序确认：{room} 目标 {target.name}，恢复原位")
         return True
 
+    @timed_room
     def agent_arrange_room(
         self, new_plan, room, plan, skip_enter=False, get_time=False
     ):
@@ -4106,6 +5012,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except Exception as e:
                 save_exception(e)
                 logger.exception(e)
+                record_selection_retry()
                 choose_error += 1
                 self.recog.update()
                 if "检测到漏单！" in str(e):
@@ -4141,6 +5048,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         not_take = True
         while self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
             if not_take:
+                # 动画过渡防抖：若首帧已充分定格则直接放行，否则最多等待 2 次采样 (~0.3s)
+                scores = self.order_reader.get_buff_scores(self.recog.img)
+                if not self.order_reader.has_distinct_buff(scores):
+                    for _ in range(2):
+                        self.sleep(0.15)
+                        self.recog.update()
+                        new_scores = self.order_reader.get_buff_scores(self.recog.img)
+                        if self.order_reader.has_distinct_buff(
+                            new_scores
+                        ) or self.order_reader.is_stable(scores, new_scores):
+                            break
+                        scores = new_scores
+
                 self.recog.save_screencap("run_order")
                 self.order_reader.save(self.recog.img)
                 not_take = False
@@ -4439,7 +5359,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.MAA.append_task(
                 "Mall",
                 {
-                    "shopping": True,
+                    "shopping": getattr(
+                        conf,
+                        "should_run_maa_mall",
+                        getattr(conf, "maa_mall_enable", True)
+                        and getattr(conf, "maa_mall_mode", "maa") == "maa",
+                    ),
                     "buy_first": conf.maa_mall_buy.split(","),
                     "blacklist": conf.maa_mall_blacklist.split(","),
                     "credit_fight": conf.maa_credit_fight
@@ -4447,8 +5372,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.credit_fight is None,
                     "formation_index": max(0, min(4, conf.credit_fight.squad)),
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
-                    "visit_friends": conf.visit_friend_enable
-                    and conf.visit_friend_mode == "maa",
+                    "visit_friends": getattr(
+                        conf,
+                        "should_run_maa_visit_friend",
+                        getattr(conf, "visit_friend_enable", False)
+                        and getattr(conf, "visit_friend_mode", "maa") == "maa",
+                    ),
                     "only_buy_discount": conf.maa_mall_only_buy_discount,
                     "reserve_max_credit": conf.maa_mall_reserve_max_credit,
                 },
@@ -4557,6 +5486,45 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.MAA.stop()
                 self.recog.reset_after_external_control()
 
+    def has_maa_daily_tasks(self) -> bool:
+        conf = config.conf
+        if hasattr(conf, "has_maa_daily_tasks"):
+            return conf.has_maa_daily_tasks
+        return (
+            (
+                getattr(conf, "stage_plan_enable", True)
+                and getattr(conf, "stage_plan_runner", "maa") == "maa"
+            )
+            or (
+                getattr(conf, "maa_mall_enable", True)
+                and getattr(conf, "maa_mall_mode", "maa") == "maa"
+            )
+            or (
+                getattr(conf, "visit_friend_enable", False)
+                and getattr(conf, "visit_friend_mode", "maa") == "maa"
+            )
+            or any(
+                [
+                    getattr(conf, "maa_mail", False),
+                    getattr(conf, "maa_recruit", False),
+                    getattr(conf, "maa_orundum", False),
+                    getattr(conf, "maa_mining", False),
+                    getattr(conf, "maa_specialaccess", False),
+                ]
+            )
+        )
+
+    def has_maa_tasks(self) -> bool:
+        conf = config.conf
+        if hasattr(conf, "has_maa_tasks"):
+            return conf.has_maa_tasks
+        return (
+            self.has_maa_daily_tasks()
+            or getattr(conf, "RG", False)
+            or getattr(conf, "SSS", False)
+            or getattr(conf, "RCL", False)
+        )
+
     def maa_plan_solver(self, tasks="All", one_time=False):
         """清日常"""
         try:
@@ -4576,13 +5544,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 > timedelta()
             ):
                 logger.info(f"{format_time(delta.total_seconds())}后开始做日常任务")
+            elif tasks == "All" and not self.has_maa_daily_tasks():
+                logger.info("没有启用的 MAA 日常任务，跳过日常")
             else:
                 send_message("启动MAA")
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Mall", "Award"]
+                    tasks = ["StartUp"]
+                    if getattr(
+                        conf,
+                        "should_run_maa_stage_plan",
+                        getattr(conf, "stage_plan_enable", True)
+                        and getattr(conf, "stage_plan_runner", "maa") == "maa",
+                    ):
+                        tasks.append("Fight")
+                    if getattr(
+                        conf,
+                        "should_run_maa_mall_task",
+                        (
+                            getattr(conf, "maa_mall_enable", True)
+                            and getattr(conf, "maa_mall_mode", "maa") == "maa"
+                        )
+                        or (
+                            getattr(conf, "visit_friend_enable", False)
+                            and getattr(conf, "visit_friend_mode", "maa") == "maa"
+                        ),
+                    ):
+                        tasks.append("Mall")
+                    tasks.append("Award")
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 self.MAA.start()
@@ -5487,9 +6478,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         scheduled 来自 auto_schedule_mastery_tasks（已按链级材料核算），元素带
         char_id/skill_index。按 (char_id, skill_index) 匹配 DB 里 status=='idle' 的
-        计划（get_all_plans 按 priority 排序 → 高优先级计划先入队先开始），入队一条
+        计划（get_all_plans 按 priority, id 排序 → 高优先级计划先入队先开始），入队一条
         plan_key=计划id 的开始任务（meta_data 仅描述性标签，无逻辑标记）。TASK-01 按
         plan_key 去重恒 ≤1 条，重复扫描原地刷新；计划开始训练后该任务原位升级为收取任务。
+
+        两轮扫描，兜住存量库里的重复计划（同干员同技能多行，见
+        doc/mastery-constraints.md §5.1）：第一轮记下正被 reconcile 管着的键
+        （arranging/training/waiting_collect），第二轮每个键只对第一条 idle 行派发。
+        否则「按行派发」会给同一个技能各发一条一模一样的任务，只有一条能真跑、其余
+        扑空报错（实测 `scheduled=1` 却打出「已为 7 个……安排开始训练」）。
         """
         if not scheduled:
             return
@@ -5501,13 +6498,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (entry.get("char_id"), entry.get("skill_index")): entry
             for entry in scheduled
         }
+        plans = get_all_plans()  # 非终态，按 priority, id 排序
+        # 第一轮：这些键正被 reconcile 管着，同键的重复行不该再去开训练
+        managed = {
+            (plan["char_id"], plan["skill_index"])
+            for plan in plans
+            if plan["status"] in ("arranging", "training", "waiting_collect")
+        }
+        # 第二轮：每个键只对第一条 idle 行派发（排序后第一条就是该管的那个）
         dispatched = 0
-        for plan in get_all_plans():  # 非终态，按 priority, id 排序
+        seen: set = set()
+        for plan in plans:
             if plan["status"] != "idle":
                 continue
-            entry = confirmed.get((plan["char_id"], plan["skill_index"]))
+            key = (plan["char_id"], plan["skill_index"])
+            if key in managed or key in seen:
+                continue
+            entry = confirmed.get(key)
             if entry is None:
                 continue
+            seen.add(key)
             step_level = entry.get("current_level", 0) + 1
             _schedule_scan_start(self, plan, step_level=step_level)
             dispatched += 1
@@ -5516,7 +6526,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 f"仓库扫描: 已为 {dispatched} 个材料足够的空闲专精计划安排开始训练"
             )
 
-    def _idle_sleep(self, remaining_time):
+    def _idle_sleep(self, remaining_time, allow_wakeup=True):
         """任务之间真正的休眠——全工程里唯一维护 `sleeping` 状态的地方。
 
         所有「等到下一个任务」的等待都必须经过这里，这样 /status 读到的
@@ -5525,14 +6535,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         #141：web 一键专精派发 now 任务后设 `config.wake_scheduler` 事件打断休眠，
         让调度器下一轮立即执行新任务（不依赖 csleep——csleep 全工程共用，不能全局
         加唤醒检查）。轮询每 ~1s，保持 csleep 的停止检查粒度；结束时照常 recog.update
-        刷新场景缓存（原 self.sleep 结尾行为）。
+        刷新场景缓存（原 self.sleep 结尾行为）。维护等待传 allow_wakeup=False，避免普通
+        配置唤醒导致维护期间提前执行任务；停止信号仍由 csleep 正常响应。
         """
         self.sleeping = True
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
             while datetime.now() < end_time:
                 refresh_resource_at_boundary()
-                if config.wake_scheduler.is_set():
+                if allow_wakeup and config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
                     break
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))

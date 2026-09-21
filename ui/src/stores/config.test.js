@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import axios from 'axios'
 import { useConfigStore } from './config'
 
-vi.mock('axios', () => ({ default: { post: vi.fn() } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 let pinia
 let store
 afterEach(() => {
@@ -199,5 +199,200 @@ describe('native Android setting ownership', () => {
         theme: 'dark'
       })
     }
+  })
+})
+
+describe('low frame rate adaptation', () => {
+  it.each([
+    ['android', undefined, true],
+    ['android', false, false],
+    ['android', true, true],
+    ['darwin', undefined, false],
+    ['windows', undefined, false],
+    ['linux', undefined, false],
+    ['darwin', true, true]
+  ])('loads %s with setting %s as %s and saves user changes', async (platform, value, expected) => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    // Minimal /conf response containing the fields that require string/object operations.
+    const response = {
+      runtime_platform: platform,
+      low_frame_rate_mode: value,
+      free_blacklist: '',
+      reload_room: '',
+      dorm_order: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: response })
+    axios.post.mockResolvedValue({ data: {} })
+    await store.load_config()
+    expect(store.low_frame_rate_mode).toBe(expected)
+    expect(store.build_config().low_frame_rate_mode).toBe(expected)
+    loaded.value = true
+    await nextTick()
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalled())
+    store.low_frame_rate_mode = !expected
+    await nextTick()
+    const savedValue = store.performance_mode === 'auto' ? expected : !expected
+    await vi.waitFor(() => expect(axios.post.mock.lastCall[1].low_frame_rate_mode).toBe(savedValue))
+    loaded.value = false
+    response.low_frame_rate_mode = axios.post.mock.lastCall[1].low_frame_rate_mode
+    await store.load_config()
+    expect(store.low_frame_rate_mode).toBe(savedValue)
+  })
+
+  it('loads and saves stage plan and mall settings with backward-compatible defaults', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+
+    // 1. Old response with only maa_enable: 1
+    const legacyResponse = {
+      maa_enable: 1,
+      free_blacklist: '',
+      reload_room: '',
+      dorm_order: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: legacyResponse })
+    await store.load_config()
+    expect(store.stage_plan_enable).toBe(true)
+    expect(store.stage_plan_runner).toBe('maa')
+    expect(store.maa_mall_enable).toBe(true)
+    expect(store.maa_mall_mode).toBe('maa')
+
+    // 2. Modify values and check build_config output
+    store.stage_plan_enable = false
+    store.stage_plan_runner = 'mower'
+    store.maa_mall_enable = false
+    store.maa_mall_mode = 'mower'
+    store.maa_adb_path = '/custom/adb'
+    let payload = store.build_config()
+    expect(payload.maa_adb_path).toBe('/custom/adb')
+    expect(payload.stage_plan_enable).toBe(false)
+    expect(payload.stage_plan_runner).toBe('mower')
+    expect(payload.maa_mall_enable).toBe(false)
+    expect(payload.maa_mall_mode).toBe('mower')
+    expect(payload.maa_enable).toBe(0)
+
+    // 2b. stage_plan disabled but maa_mall executed by maa -> maa_enable must be 1
+    store.stage_plan_enable = false
+    store.stage_plan_runner = 'mower'
+    store.maa_mall_enable = true
+    store.maa_mall_mode = 'maa'
+    payload = store.build_config()
+    expect(payload.maa_enable).toBe(1)
+
+    // 2c. stage_plan enabled with maa but maa_mall executed by mower -> maa_enable must be 1
+    store.stage_plan_enable = true
+    store.stage_plan_runner = 'maa'
+    store.maa_mall_enable = true
+    store.maa_mall_mode = 'mower'
+    payload = store.build_config()
+    expect(payload.maa_enable).toBe(1)
+
+    // 3. New response with explicit settings
+    const modernResponse = {
+      stage_plan_enable: true,
+      stage_plan_runner: 'mower',
+      maa_mall_enable: false,
+      maa_mall_mode: 'mower',
+      free_blacklist: '',
+      reload_room: '',
+      dorm_order: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: modernResponse })
+    await store.load_config()
+    expect(store.stage_plan_enable).toBe(true)
+    expect(store.stage_plan_runner).toBe('mower')
+    expect(store.maa_mall_enable).toBe(false)
+    expect(store.maa_mall_mode).toBe('mower')
+  })
+})
+
+describe('factory product switching policy', () => {
+  it('defaults drone loss tolerance to 30 seconds and serializes edits', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    axios.get.mockResolvedValue({
+      data: {
+        free_blacklist: '',
+        reload_room: '',
+        dorm_order: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+    })
+
+    await store.load_config()
+    expect(store.product_switching).toEqual({
+      grandet_mode: true,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2
+    })
+
+    store.product_switching.grandet_mode = false
+    store.product_switching.drone_loss_seconds = 45
+    store.product_switching.waiting_seconds = 4
+    expect(store.build_config().product_switching).toEqual({
+      grandet_mode: false,
+      drone_loss_seconds: 45,
+      waiting_seconds: 4
+    })
+  })
+})
+
+describe('version update mood policy', () => {
+  it('defaults to 80% and 12 hours and serializes user edits', () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+
+    expect(store.version_update_resting_threshold).toBe(80)
+    expect(store.version_update_threshold_advance_hours).toBe(12)
+    store.version_update_resting_threshold = 85
+    store.version_update_threshold_advance_hours = 18
+
+    expect(store.build_config()).toMatchObject({
+      version_update_resting_threshold: 0.85,
+      version_update_threshold_advance_hours: 18
+    })
   })
 })

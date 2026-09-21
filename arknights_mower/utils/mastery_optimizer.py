@@ -1,11 +1,16 @@
 """Pure duration calculation and bounded search for consecutive mastery stages."""
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import product
 
 from .mastery_support_data import rate
-from .mastery_support_types import BASE_HOURS, StageSpec, SupportPlanError
+from .mastery_support_types import (
+    BASE_HOURS,
+    StageSpec,
+    SupportPlanError,
+    swap_buffer_minutes,
+)
 
 
 def _duration(first, reducer, spec):
@@ -26,6 +31,14 @@ def _duration(first, reducer, spec):
 
 
 def stage_route(first, reducer, spec):
+    configured_buffer = spec.buffer
+    inherited = spec.work <= BASE_HOURS[spec.level] / 2
+    spec = replace(
+        spec,
+        buffer=swap_buffer_minutes(
+            spec.level, spec.buffer, central=spec.central, inherited=inherited
+        ),
+    )
     duration = _duration(first, reducer, spec)
     if duration is None:
         return None
@@ -40,6 +53,8 @@ def stage_route(first, reducer, spec):
         "swap_efficiency": reducer["efficiency"] if reducer else 0,
         "central_bonus": spec.central,
         "mastery_swap_buffer": max(1, spec.buffer),
+        "configured_swap_buffer": configured_buffer,
+        "half_inherited": inherited,
         "hours": hours,
         "switch_after": switch_after,
     }
@@ -75,7 +90,7 @@ def _mark_carry(route, last, carry, step):
     earned = (
         step.level < step.target
         and last["halves"]
-        and last_hours >= (300 + max(1, step.buffer)) / 60
+        and last_hours >= (300 + route["mastery_swap_buffer"]) / 60
     )
     route.update(
         activate_with=carry,

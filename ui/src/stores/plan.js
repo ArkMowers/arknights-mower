@@ -2,8 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
-import { useConfigStore } from '@/stores/config'
-import { storeToRefs } from 'pinia'
+import { factory_product_ids } from '@/utils/base_products'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
@@ -81,7 +80,7 @@ export const usePlanStore = defineStore('plan', () => {
             full_plan[i].product = 'lmd'
           }
         } else if (full_plan[i].name == '制造站') {
-          if (!['gold', 'exp3', 'orirock'].includes(full_plan[i].product)) {
+          if (!factory_product_ids.includes(full_plan[i].product)) {
             full_plan[i].product = 'gold'
           }
         }
@@ -135,11 +134,7 @@ export const usePlanStore = defineStore('plan', () => {
     return plan1
   }
 
-  async function load_plan({ resetDormOrder = true } = {}) {
-    const config_store = useConfigStore()
-    const { dorm_order } = storeToRefs(config_store)
-    // 新排班表重置宿舍优先级
-    if (resetDormOrder) dorm_order.value = []
+  async function load_plan() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
@@ -237,18 +232,10 @@ export const usePlanStore = defineStore('plan', () => {
   let planSaveRequest = Promise.resolve()
 
   function save_plan() {
-    const configStore = useConfigStore()
     const payload = JSON.parse(JSON.stringify(build_plan()))
     planSaveRequest = planSaveRequest
       .catch(() => {})
       .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, payload))
-      .then((response) => {
-        if (response.data?.dorm_order_reset) {
-          // 同步后端的重置，防止下一次配置自动保存又写回旧优先级。
-          configStore.dorm_order = []
-        }
-        return response
-      })
     return planSaveRequest
   }
 
@@ -281,6 +268,7 @@ export const usePlanStore = defineStore('plan', () => {
 
   return {
     autosave_paused,
+    wait_for_plan_save: () => planSaveRequest,
     save_plan,
     load_plan,
     load_operators,

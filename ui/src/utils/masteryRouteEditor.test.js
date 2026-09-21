@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
-import { renderToString } from '@vue/server-renderer'
+import { renderToString } from 'vue/server-renderer'
 import { NDynamicInput } from 'naive-ui'
 import { completeMasterySupports } from './masteryRoute.js'
 

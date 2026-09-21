@@ -66,6 +66,12 @@ describe('optional component updates', () => {
       { headers: { 'X-Mower-Update': '1' } }
     )
   })
+  it('supports the shared check action and retains independent errors', async () => {
+    state.client.post.mockRejectedValue(new Error('interface offline'))
+    await component.check()
+    expect(component.error.value).toBe('interface offline')
+    expect(component.busy.value).toBe(false)
+  })
   it('waits for confirmation before install or reset', async () => {
     component.confirm('install')
     expect(state.client.post).not.toHaveBeenCalled()

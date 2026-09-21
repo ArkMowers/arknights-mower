@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
 
 import { folder_dialog } from '@/utils/dialog'
+import { performanceProfile } from '@/utils/performanceProfile'
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -13,6 +14,11 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
+  low_frame_rate_mode,
+  performance_mode,
+  performance_effective_mode,
+  selection_poll_interval,
+  selection_transition_timeout,
   dorm_order,
   drone_room,
   drone_count_limit,
@@ -24,6 +30,8 @@ const {
   simulator,
   theme,
   resting_threshold,
+  version_update_resting_threshold,
+  version_update_threshold_advance_hours,
   fia_threshold,
   rescue_threshold,
   favorite,
@@ -34,6 +42,7 @@ const {
   screenshot,
   screenshot_interval,
   run_order_grandet_mode,
+  product_switching,
   webview,
   runtime_platform,
   fix_mumu12_adb_disconnect,
@@ -57,6 +66,49 @@ const {
   ai_type,
   ai_key
 } = storeToRefs(config_store)
+
+const performance_mode_options = [
+  { label: '自动', value: 'auto' },
+  { label: '高性能', value: 'high' },
+  { label: '中性能', value: 'medium' },
+  { label: '低性能', value: 'low' },
+  { label: '自定义', value: 'custom' }
+]
+const performance_effective_label = computed(
+  () =>
+    ({ high: '高性能', medium: '中性能', low: '低性能' })[performance_effective_mode.value] ||
+    performance_effective_mode.value
+)
+
+function apply_performance_mode(mode) {
+  performance_mode.value = mode
+  if (mode === 'custom') return
+  const profile = performanceProfile(mode, runtime_platform.value)
+  low_frame_rate_mode.value = profile.lowFrameRateMode
+  screenshot_interval.value = profile.screenshotInterval
+  selection_poll_interval.value = profile.selectionPollInterval
+  selection_transition_timeout.value = profile.selectionTransitionTimeout
+  run_order_delay.value = profile.runOrderDelay
+  run_order_grandet_mode.value.buffer_time = profile.grandetBufferTime
+}
+
+function set_custom_parameter(target, value) {
+  const parameters = {
+    selection_poll_interval,
+    selection_transition_timeout,
+    screenshot_interval,
+    run_order_delay
+  }
+  parameters[target].value = value
+  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
+
+function set_custom_buffer(value) {
+  run_order_grandet_mode.value.buffer_time = value
+  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
 
 const hide_macos_menu_bar = computed({
   get: () => !webview.value.tray,
@@ -443,9 +495,54 @@ if (return_home_when_idle.value) {
                 <div>（截图用时{{ elapsed }}ms）</div>
               </n-flex>
             </n-form-item>
+            <n-form-item label="设备性能适配">
+              <n-radio-group :value="performance_mode" @update:value="apply_performance_mode">
+                <n-flex>
+                  <n-radio
+                    v-for="option in performance_mode_options"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </n-radio>
+                </n-flex>
+              </n-radio-group>
+              <help-text>
+                自动档根据截图耗时选择高、中、低档；Android 默认自动，其他平台默认高性能。
+                切换档位会同步修改截图最短间隔、跑单前置延时和葛朗台缓冲时间。当前自动判定：{{
+                  performance_effective_label
+                }}。修改任一性能参数会切换为自定义。
+              </help-text>
+            </n-form-item>
             <n-form-item label="截图最短间隔">
-              <mower-input-number v-model:value="screenshot_interval" :precision="0">
+              <mower-input-number
+                :value="screenshot_interval"
+                :precision="0"
+                @update:value="(value) => set_custom_parameter('screenshot_interval', value)"
+              >
                 <template #suffix>毫秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item label="选人采样间隔">
+              <mower-input-number
+                :value="selection_poll_interval"
+                :min="0.1"
+                :max="2"
+                @update:value="(value) => set_custom_parameter('selection_poll_interval', value)"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item label="操作反馈超时">
+              <mower-input-number
+                :value="selection_transition_timeout"
+                :min="1"
+                :max="20"
+                @update:value="
+                  (value) => set_custom_parameter('selection_transition_timeout', value)
+                "
+              >
+                <template #suffix>秒</template>
               </mower-input-number>
             </n-form-item>
             <n-form-item v-if="runtime_platform !== 'android'" :show-feedback="screenshot === 0">
@@ -586,6 +683,10 @@ if (return_home_when_idle.value) {
                 </n-checkbox>
               </n-flex>
             </n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
+              Android
+              默认使用自动性能适配。性能档位会同时设置选人等待、跑单前置延时和葛朗台缓冲时间；手动修改会切换为自定义。
+            </n-alert>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>
@@ -594,19 +695,26 @@ if (return_home_when_idle.value) {
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <mower-input-number v-model:value="run_order_delay">
+              <mower-input-number
+                :value="run_order_delay"
+                @update:value="(value) => set_custom_parameter('run_order_delay', value)"
+              >
                 <template #suffix>分钟</template>
               </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
             </n-form-item>
-            <n-form-item v-if="run_order_grandet_mode.enable">
+            <n-form-item>
               <template #label>
                 <span>葛朗台缓冲时间</span>
                 <help-text>推荐范围：15-30</help-text>
               </template>
-              <mower-input-number v-model:value="run_order_grandet_mode.buffer_time">
+              <mower-input-number
+                :value="run_order_grandet_mode.buffer_time"
+                :disabled="!run_order_grandet_mode.enable"
+                @update:value="set_custom_buffer"
+              >
                 <template #suffix>秒</template>
               </mower-input-number>
             </n-form-item>
@@ -614,6 +722,47 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
                 跑单前返回主界面以保持登录状态
               </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="product_switching.grandet_mode">
+                葛朗台切产物
+                <help-text>
+                  开启时按损耗容限节省无人机，并等待当前一份自然完成；关闭时直接使用足量无人机完成当前一份后切换。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>葛朗台无人机损耗容限</span>
+                <help-text>
+                  允许最后一架无人机浪费的加速时间。默认 30 秒，即当前一份余下至少 2 分 30
+                  秒时使用无人机完成，否则等待自然完成。
+                </help-text>
+              </template>
+              <mower-input-number
+                v-model:value="product_switching.drone_loss_seconds"
+                :disabled="!product_switching.grandet_mode"
+                :min="0"
+                :max="180"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>葛朗台切换等待缓冲</span>
+                <help-text>
+                  葛朗台切产物开启时，在计算出的自然完成时间之外额外等待，避免动画或网络延迟导致过早切换。
+                </help-text>
+              </template>
+              <mower-input-number
+                v-model:value="product_switching.waiting_seconds"
+                :disabled="!product_switching.grandet_mode"
+                :min="0"
+                :max="60"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
             </n-form-item>
             <n-form-item>
               <template #label>
@@ -679,6 +828,46 @@ if (return_home_when_idle.value) {
                 </mower-input-number>
               </div>
             </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>版本维护心情阈值</span>
+                <help-text>
+                  <div>检测到需要更新客户端的大版本维护后，在维护前指定时长内临时使用此阈值</div>
+                  <div>只修改运行中的排班阈值，不覆盖上方的日常心情阈值</div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider
+                  v-model:value="version_update_resting_threshold"
+                  :step="5"
+                  :min="50"
+                  :max="100"
+                  :format-tooltip="(v) => `${v}%`"
+                />
+                <mower-input-number
+                  v-model:value="version_update_resting_threshold"
+                  :step="5"
+                  :min="50"
+                  :max="100"
+                >
+                  <template #suffix>%</template>
+                </mower-input-number>
+              </div>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>版本维护阈值提前时长</span>
+                <help-text>维护开始前多久切换到版本维护心情阈值</help-text>
+              </template>
+              <mower-input-number
+                v-model:value="version_update_threshold_advance_hours"
+                :step="1"
+                :min="0"
+                :max="168"
+              >
+                <template #suffix>小时</template>
+              </mower-input-number>
+            </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="free_room">
                 宿舍不养闲人
@@ -712,8 +901,7 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
                 读取心情后先刷新副表
                 <help-text
-                  >开启后，仅在缓存清零重启时，Mower
-                  会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
+                  >默认开启。缓存清零重启时，会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班；若关闭，则沿用普通首次规划流程。</help-text
                 >
               </n-checkbox>
             </n-form-item>
@@ -811,10 +999,7 @@ if (return_home_when_idle.value) {
       <div><ResourceUpdate /></div>
     </div>
     <div class="settings-network">
-      <ConfigBackup
-        :save-network="() => networkSettings.save()"
-        :save-updates="() => softwareUpdate.flushSettings()"
-      />
+      <ConfigBackup />
     </div>
     <div class="settings-network">
       <ProcessControl v-if="runtime_platform !== 'android'" />
@@ -840,9 +1025,16 @@ if (return_home_when_idle.value) {
     max-width: 600px;
   }
 
-  @media (min-width: 1400px) {
+  @container (min-width: 1180px) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 5px;
+  }
+
+  @supports not (container-type: inline-size) {
+    @media (min-width: 1400px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+    }
   }
 }
 
@@ -928,11 +1120,14 @@ h4 {
 }
 
 .waiting-table {
+  width: 100%;
+  max-width: 100%;
+
   th,
   td {
     padding: 4px;
-    min-width: 70px;
-    width: 100px;
+    min-width: 50px;
+    width: 80px;
 
     &:first-child {
       width: auto;
@@ -943,35 +1138,35 @@ h4 {
 </style>
 
 <style>
-/*小于1400的内容！*/
-@media (max-width: 1399px) {
-  .grid-two {
-    margin: 0 0 -10px 0;
-    width: 100%;
-    max-width: 600px;
-  }
-
-  .grid-left {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-  }
-
-  .grid-right {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-    margin-top: 10px;
-  }
+/* 默认单栏布局（窄屏或可用宽度不足） */
+.grid-two {
+  margin: 0 0 -10px 0;
+  width: 100%;
+  max-width: 600px;
 }
 
-/*双栏 大于1400的内容 */
-@media (min-width: 1400px) {
+.grid-left {
+  display: grid;
+  row-gap: 10px;
+  grid-template-columns: 100%;
+}
+
+.grid-right {
+  display: grid;
+  row-gap: 10px;
+  grid-template-columns: 100%;
+  margin-top: 10px;
+}
+
+/* 容器查询：内容区可用宽度足够容纳双栏时（>= 1180px）智能双栏 */
+@container (min-width: 1180px) {
   .grid-two {
     display: grid;
     grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
     align-items: flex-start;
     gap: 5px;
+    max-width: 1210px;
+    margin: 0;
   }
 
   .grid-left {
@@ -986,6 +1181,36 @@ h4 {
     gap: 5px;
     grid-template-columns: 100%;
     max-width: 600px;
+    margin-top: 0;
+  }
+}
+
+/* 不支持容器查询时的兜底 */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1400px) {
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
+      align-items: flex-start;
+      gap: 5px;
+      max-width: 1210px;
+      margin: 0;
+    }
+
+    .grid-left {
+      display: grid;
+      gap: 5px;
+      grid-template-columns: 100%;
+      max-width: 600px;
+    }
+
+    .grid-right {
+      display: grid;
+      gap: 5px;
+      grid-template-columns: 100%;
+      max-width: 600px;
+      margin-top: 0;
+    }
   }
 }
 

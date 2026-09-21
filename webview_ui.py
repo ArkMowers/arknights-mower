@@ -283,10 +283,10 @@ def webview_window(
     from arknights_mower.utils import config
     from arknights_mower.utils.config.gui import load_window_ratio, save_window_ratio
     from arknights_mower.utils.window_shell import (
-        DESKTOP_WINDOW_MIN_SIZE,
         WindowSize,
         attach_window_shell,
         default_desktop_window_size,
+        desktop_window_min_size,
         is_windows,
         ratio_from_window_size,
         window_background_color,
@@ -335,6 +335,7 @@ def webview_window(
         if logical is not None:
             width, height = logical
 
+    min_size = desktop_window_min_size()
     window = webview.create_window(
         window_title(instance_name, port),
         url,
@@ -342,7 +343,7 @@ def webview_window(
         confirm_close=not tray,
         width=width,
         height=height,
-        min_size=DESKTOP_WINDOW_MIN_SIZE,
+        min_size=min_size,
         resizable=True,
         frameless=shell_enabled,
         easy_drag=False,
@@ -359,7 +360,7 @@ def webview_window(
         install_windows_frameless_resize(
             window,
             WindowSize(width, height),
-            DESKTOP_WINDOW_MIN_SIZE,
+            min_size,
         )
 
     def recv_msg():

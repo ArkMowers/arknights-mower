@@ -1,3 +1,4 @@
+import ast
 import copy
 from datetime import datetime, timedelta
 from itertools import product
@@ -5,6 +6,10 @@ from itertools import product
 from evalidate import Expr, base_eval_model
 
 from arknights_mower.utils import config
+from arknights_mower.utils.manufacture_product import (
+    MANUFACTURE_PRODUCTS,
+    TRADE_PRODUCTS,
+)
 from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
 from arknights_mower.utils.resting_priority import (
     RestingTier,
@@ -14,11 +19,128 @@ from arknights_mower.utils.resting_priority import (
 )
 
 from ..data import agent_arrange_order, agent_list, base_room_list
-from ..solvers.record import save_action_to_sqlite_decorator
+from ..solvers.record import get_inventory_counts, save_action_to_sqlite_decorator
 from ..utils.log import logger
+from ..utils.news_checker import NewsChecker
 
 # 赤金交易订单干员常量
 TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
+FACILITY_TYPE_IDS = {
+    "贸易站": "trade",
+    "制造站": "manufacture",
+    "发电站": "power",
+}
+
+_MAX_EXPRESSION_LENGTH = 2048
+_MAX_EXPRESSION_NODES = 128
+_MAX_INTEGER_LITERAL_BITS = 256
+_MAX_STRING_LITERAL_LENGTH = 512
+_MAX_POWER_EXPONENT = 64
+_MAX_NUMERIC_RESULT_BITS = 4096
+_NUMERIC_EXPRESSION_CALLS = {
+    "current_mood",
+    "facility_operator_count",
+    "facility_product_count",
+    "facility_product_type_count",
+    "group_max_mood",
+    "group_min_mood",
+    "inventory_count",
+    "major_maintenance_remaining_hours",
+}
+
+
+def _integer_literal(node: ast.AST) -> int | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, (ast.UAdd, ast.USub))
+        and isinstance(node.operand, ast.Constant)
+        and isinstance(node.operand.value, int)
+    ):
+        value = node.operand.value
+        return value if isinstance(node.op, ast.UAdd) else -value
+    return None
+
+
+def _numeric_result_bits(node: ast.AST) -> int | None:
+    """保守估算整数结果位数；非数值或无法确定时返回 None。"""
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool):
+            return 1
+        if isinstance(node.value, int):
+            return max(1, node.value.bit_length())
+        if isinstance(node.value, (float, complex)):
+            return 64
+        return None
+    if isinstance(node, ast.UnaryOp):
+        return _numeric_result_bits(node.operand)
+    if isinstance(node, (ast.Compare, ast.BoolOp)):
+        return 1
+    if isinstance(node, ast.IfExp):
+        body_bits = _numeric_result_bits(node.body)
+        else_bits = _numeric_result_bits(node.orelse)
+        if body_bits is None or else_bits is None:
+            return None
+        return max(body_bits, else_bits)
+    if isinstance(node, ast.BinOp):
+        left_bits = _numeric_result_bits(node.left)
+        right_bits = _numeric_result_bits(node.right)
+        if left_bits is None or right_bits is None:
+            return None
+        if isinstance(node.op, ast.Pow):
+            exponent = _integer_literal(node.right)
+            if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
+                return None
+            return max(1, left_bits * exponent)
+        if isinstance(node.op, ast.Mult):
+            return left_bits + right_bits
+        if isinstance(node.op, (ast.Add, ast.Sub)):
+            return max(left_bits, right_bits) + 1
+        if isinstance(node.op, (ast.Div, ast.FloorDiv, ast.Mod)):
+            return max(left_bits, right_bits)
+        return None
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        return 64 if node.func.attr in _NUMERIC_EXPRESSION_CALLS else None
+    return None
+
+
+def _validate_expression_resources(expression: str) -> None:
+    """在 evalidate 执行前拦截可能产生超大中间值的表达式。"""
+    if len(expression) > _MAX_EXPRESSION_LENGTH:
+        raise ValueError("表达式过长")
+    tree = ast.parse(expression, mode="eval")
+    nodes = list(ast.walk(tree))
+    if len(nodes) > _MAX_EXPRESSION_NODES:
+        raise ValueError("表达式过于复杂")
+
+    for node in nodes:
+        if isinstance(node, ast.Constant):
+            if (
+                isinstance(node.value, int)
+                and node.value.bit_length() > _MAX_INTEGER_LITERAL_BITS
+            ):
+                raise ValueError("整数常量过大")
+            if (
+                isinstance(node.value, (str, bytes))
+                and len(node.value) > _MAX_STRING_LITERAL_LENGTH
+            ):
+                raise ValueError("字符串常量过长")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+            result_bits = _numeric_result_bits(node)
+            if result_bits is None:
+                raise ValueError("乘法仅支持数值表达式")
+            if result_bits > _MAX_NUMERIC_RESULT_BITS:
+                raise ValueError("乘法结果过大")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            exponent = _integer_literal(node.right)
+            result_bits = _numeric_result_bits(node)
+            if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
+                raise ValueError(
+                    f"幂运算指数必须是 0 到 {_MAX_POWER_EXPONENT} 的整数常量"
+                )
+            if result_bits is None or result_bits > _MAX_NUMERIC_RESULT_BITS:
+                raise ValueError("幂运算结果过大")
 
 
 def build_global_plan():
@@ -28,6 +150,7 @@ def build_global_plan():
     from ..utils.plan import Plan, PlanConfig, Room
 
     plan1 = {}
+    default_products = {}
     plan = config.plan.model_dump(exclude_none=True)
     conf = config.conf
     plan_config = PlanConfig(
@@ -45,6 +168,8 @@ def build_global_plan():
         free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():
+        if product_id := obj.get("product"):
+            default_products[room] = product_id
         plan1[room] = [
             Room(
                 op["agent"],
@@ -56,13 +181,16 @@ def build_global_plan():
             for op in obj["plans"]
         ]
     # 默认任务
-    plan["default_plan"] = Plan(plan1, plan_config)
+    plan["default_plan"] = Plan(plan1, plan_config, products=default_products)
     # 备用自定义任务
     backup_plans: list[Plan] = []
 
     for i in plan["backup_plans"]:
         backup_plan: dict[str, Room] = {}
+        backup_products = {}
         for room, obj in i["plan"].items():
+            if product_id := obj.get("product"):
+                backup_products[room] = product_id
             backup_plan[room] = [
                 Room(
                     op["agent"],
@@ -98,6 +226,7 @@ def build_global_plan():
                 task=backup_task,
                 trigger_timing=backup_trigger_timing,
                 name=i.get("name"),
+                products=backup_products,
             )
         )
     plan["backup_plans"] = backup_plans
@@ -135,9 +264,12 @@ class Operators:
         self.clues = []
         self.current_room_changed_callback = None
         self.party_time = None
+        self.facility_states = {}
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
-        self.eval_model.nodes.extend(["Call", "Attribute", "Is", "IsNot"])
+        self.eval_model.nodes.extend(
+            ["Call", "Attribute", "Is", "IsNot", "Mult", "FloorDiv", "Pow"]
+        )
         self.eval_model.attributes.extend(
             [
                 "operators",
@@ -146,6 +278,17 @@ class Operators:
                 "is_resting",
                 "current_mood",
                 "current_room",
+                "inventory_count",
+                "facility_type",
+                "facility_product",
+                "facility_operator_count",
+                "facility_product_count",
+                "facility_product_type_count",
+                "facility_has_mastery_plan",
+                "facility_is_training",
+                "major_maintenance_remaining_hours",
+                "group_min_mood",
+                "group_max_mood",
             ]
         )
         self.power_plant_count = 0
@@ -156,10 +299,12 @@ class Operators:
 
     def swap_plan(self, condition, refresh=False):
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+        self.products = copy.deepcopy(self.global_plan["default_plan"].products)
         self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
         for index, success in enumerate(condition):
             if success:
                 self.plan, self.config = self.merge_plan(index, self.config, self.plan)
+                self.products.update(self.global_plan["backup_plans"][index].products)
         self.plan_condition = condition
         if refresh:
             self.first_init = True
@@ -302,35 +447,21 @@ class Operators:
                     if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
-            if config.conf.dorm_order == "":
-                logger.debug(self.dorm)
-                config.conf.dorm_order = ",".join(
-                    [
-                        dorm.position[0] + "_" + str(dorm.position[1])
-                        for dorm in self.dorm
-                    ]
-                )
-                logger.debug(config.conf.dorm_order)
-                config.save_conf()  # 保存配置
-            else:
-                dorm_order = config.conf.dorm_order.split(",")
-                current_dorm_names = {
-                    dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
-                }
-                saved_dorm_names = set(dorm_order)
-                if saved_dorm_names == current_dorm_names:
+            dorm_order = [name for name in config.conf.dorm_order.split(",") if name]
+            current_dorm_names = {
+                dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
+            }
+            if dorm_order:
+                if set(dorm_order) == current_dorm_names:
                     self.dorm.sort(
                         key=lambda dorm: dorm_order.index(
                             dorm.position[0] + "_" + str(dorm.position[1])
                         )
                     )
                 else:
-                    logger.info("宿舍休息位已变化，按当前排班重新生成宿舍优先级")
-                    config.conf.dorm_order = ",".join(
-                        dorm.position[0] + "_" + str(dorm.position[1])
-                        for dorm in self.dorm
+                    return (
+                        "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
                     )
-                    config.save_conf()
         else:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
@@ -434,13 +565,148 @@ class Operators:
 
     def evaluate_expression(self, expression):
         try:
+            _validate_expression_resources(expression)
             model = {e: e for e in base_room_list}
+            model.update({e: e for e in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS})
+            model.update({e: e for e in FACILITY_TYPE_IDS.values()})
             model["op_data"] = self
             result = Expr(expression, self.eval_model).eval(model)
             return result
         except Exception as e:
             logger.exception(f"附表格式出错: {e}")
             return None
+
+    def inventory_count(self, item_name: str) -> int:
+        """返回副表条件可用的仓库数量。"""
+        if item_name == "全部经验（计算）":
+            experience_values = {
+                "基础作战记录": 200,
+                "初级作战记录": 400,
+                "中级作战记录": 1000,
+                "高级作战记录": 2000,
+            }
+            counts = get_inventory_counts(list(experience_values))
+            return sum(
+                counts.get(name, 0) * value for name, value in experience_values.items()
+            )
+        allowed_items = {"赤金", "源石碎片", "固源岩", "装置", "龙门币"}
+        if item_name not in allowed_items:
+            raise ValueError(f"不支持的副表仓库资源：{item_name}")
+        return get_inventory_counts([item_name]).get(item_name, 0)
+
+    def major_maintenance_remaining_hours(self) -> float:
+        """返回距离下一次停服大版本维护的小时数。"""
+        info = NewsChecker.get_maintenance()
+        if info is None or info.update_type != "major" or info.is_flash_update:
+            return float("inf")
+        return max(0.0, (info.start - datetime.now()).total_seconds() / 3600)
+
+    def _group_moods(self, group: str) -> list[float]:
+        members = self.groups.get(group)
+        if not members:
+            raise ValueError(f"不存在的绑组：{group}")
+        moods = [
+            self.operators[name].current_mood()
+            for name in members
+            if not self.operators[name].workaholic
+        ]
+        if not moods:
+            raise ValueError(f"绑组内没有可统计心情的干员：{group}")
+        return moods
+
+    def group_min_mood(self, group: str) -> float:
+        """排除0心情工作干员后返回指定绑组的最小心情。"""
+        return min(self._group_moods(group))
+
+    def group_max_mood(self, group: str) -> float:
+        """排除0心情工作干员后返回指定绑组的最大心情。"""
+        return max(self._group_moods(group))
+
+    def update_facility_state(
+        self, room: str, facility: str, product: str, updated_at: str | None = None
+    ) -> None:
+        """记录生产设施最近一次从游戏界面识别到的实际状态。"""
+        supported = (facility == "manufacture" and product in MANUFACTURE_PRODUCTS) or (
+            facility == "trade" and product in TRADE_PRODUCTS
+        )
+        if room not in base_room_list or not supported:
+            raise ValueError(f"不支持的设施状态：{room}, {facility}, {product}")
+        self.facility_states[room] = {
+            "facility": facility,
+            "product": product,
+            "updated_at": updated_at or datetime.now().isoformat(timespec="seconds"),
+        }
+
+    def facility_product(self, room: str) -> str | None:
+        """返回指定设施产物；未读取实际状态时使用主表配置。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        cached = self.facility_states.get(room, {}).get("product")
+        if cached in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS:
+            return cached
+        return self.global_plan["default_plan"].products.get(room)
+
+    def facility_type(self, room: str) -> str | None:
+        """从当前排班复用指定位置的设施类型。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        room_plan = self.plan.get(room) or []
+        if not room_plan:
+            return None
+        return FACILITY_TYPE_IDS.get(getattr(room_plan[0], "facility", None))
+
+    def facility_operator_count(self, room: str) -> int:
+        """根据已有干员位置缓存返回指定设施的进驻干员数量。"""
+        if room not in base_room_list:
+            raise ValueError(f"不支持的设施位置：{room}")
+        return sum(
+            operator.current_room == room for operator in self.operators.values()
+        )
+
+    @staticmethod
+    def _validate_training_room(room: str) -> None:
+        if room != "train":
+            raise ValueError(f"不支持的训练室位置：{room}")
+
+    def facility_has_mastery_plan(self, room: str) -> bool:
+        """复用专精计划库，判断训练室是否存在未完结的计划。"""
+        self._validate_training_room(room)
+        from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+        return bool(get_reconcile_plans())
+
+    def facility_is_training(self, room: str) -> bool:
+        """复用专精计划状态，判断训练室是否正在训练。"""
+        self._validate_training_room(room)
+        from arknights_mower.utils.mastery_db import get_active_plan
+
+        plan = get_active_plan()
+        return plan is not None and plan.get("status") == "training"
+
+    def facility_product_count(self, product: str) -> int:
+        """返回当前生产指定产物或订单类型的设施数量。"""
+        if product not in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS:
+            raise ValueError(f"不支持的产物或订单类型：{product}")
+        rooms = (
+            self.global_plan["default_plan"].products.keys()
+            | self.facility_states.keys()
+        )
+        return sum(self.facility_product(room) == product for room in rooms)
+
+    def facility_product_type_count(self) -> int:
+        """返回当前产物和订单类型的种类数，缓存为空时使用主表。"""
+        rooms = (
+            self.global_plan["default_plan"].products.keys()
+            | self.facility_states.keys()
+        )
+        return len(
+            {
+                product
+                for room in rooms
+                if (product := self.facility_product(room))
+                in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS
+            }
+        )
 
     def get_current_room(self, room, bypass=False, current_index=None):
         room_data = {
@@ -486,6 +752,18 @@ class Operators:
             agent = self.operators[name]
             if agent.room.startswith("dorm"):
                 agent.time_stamp = None
+
+    def restore_dorm_state(self, saved_dorms):
+        """按床位恢复宿舍状态，保留当前排班生成的顺序和床位集合。"""
+        saved_by_position = {
+            tuple(dorm.position): dorm
+            for dorm in saved_dorms
+            if hasattr(dorm, "position")
+        }
+        for dorm in self.dorm:
+            if saved := saved_by_position.get(tuple(dorm.position)):
+                dorm.name = saved.name
+                dorm.time = saved.time
 
     @save_action_to_sqlite_decorator
     def update_detail(self, name, mood, current_room, current_index, update_time=False):
@@ -1155,13 +1433,13 @@ class Operator:
         refresh_order_room=None,
         refresh_drained=False,
     ):
+        self.name = name
         if refresh_order_room is not None:
             self.refresh_order_room = refresh_order_room
             logger.debug(f"设置{self.name}刷新交易所房间为{self.refresh_order_room}")
         else:
             self.refresh_order_room = [False, []]
         self.refresh_drained = refresh_drained
-        self.name = name
         self.room = room
         self.operator_type = operator_type
         self.index = index

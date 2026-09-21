@@ -32,7 +32,9 @@ const error = ref(false)
 const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
+  { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
   { label: '仓库扫描', value: '仓库扫描' },
+  { label: '线索任务', value: '线索任务' },
   { label: '空任务', value: '空任务' }
 ]
 const workshopOperatorOptions = computed(() => {
@@ -126,6 +128,11 @@ async function saveTasks() {
       msg.value = `已添加 ${mastery_operator.value} 技能${mastery_skill.value} 专${mastery_target_level.value} 计划`
       error.value = false
       if (results[0].warning) message.warning(results[0].warning)
+    } else if (results[0]?.status === 'existing' || results[0]?.status === 'insufficient') {
+      // 后端按 (干员, 技能) 拦重复：已有计划不再新建一行，直接复用那条去派发。
+      // 材料不足也明说，不再白建一行后回「已添加」。两者都不是错误，用绿字。
+      msg.value = results[0].reason || '已在计划中，已安排立即开始'
+      error.value = false
     } else {
       msg.value = results[0]?.reason || '添加失败'
       error.value = true
@@ -139,8 +146,8 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
-  } else if (task_type.value == '仓库扫描') {
-    // 仓库扫描任务无需房间 plan：到点由调度器触发基地仓库扫描
+  } else if (['仓库扫描', '分解所有重复家具', '线索任务'].includes(task_type.value)) {
+    // 独立任务不携带房间排班。
     task.plan = {}
   }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task })).data
@@ -203,9 +210,10 @@ const level_list = [
         <n-select
           v-model:value="task_type"
           :options="taskTypeOptions"
+          :consistent-menu-width="false"
           placeholder="任务类别"
           class="dropdown-select"
-          style="width: 120px"
+          :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
         />
         <n-select
           v-if="task_type == '技能专精'"
@@ -307,6 +315,9 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
+      <n-text v-if="task_type == '分解所有重复家具'" depth="3">
+        进入加工站家具页，只分解超出一整套所需数量的家具；无法确认套装数量时跳过。无需选择干员，不消耗心情。
+      </n-text>
       <div class="task_row" v-if="task_type == '技能专精'">
         <label>协助方式：</label>
         <n-select
@@ -360,6 +371,7 @@ const level_list = [
   align-items: center;
   gap: 8px;
   width: 100%;
+  padding: 2px;
 
   .n-input {
     width: 140px;

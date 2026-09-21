@@ -147,5 +147,40 @@ class TestPressHandover(unittest.TestCase):
         self.assertEqual(fake.SendMessageW.calls[0][2], self.module._HTCAPTION)
 
 
+class TestDesktopWindowMinSize(unittest.TestCase):
+    def test_default_minimum_size_for_standard_work_area(self):
+        from unittest.mock import patch
+
+        from arknights_mower.utils import window_shell
+        from arknights_mower.utils.window_shell import (
+            WindowSize,
+            configured_desktop_window_size,
+            desktop_window_min_size,
+        )
+
+        with patch.object(
+            window_shell, "_screen_work_area", return_value=WindowSize(1920, 1040)
+        ):
+            size = desktop_window_min_size()
+            self.assertEqual(size, WindowSize(600, 400))
+
+        with patch.object(
+            window_shell, "_screen_work_area", return_value=WindowSize(1000, 800)
+        ):
+            size = desktop_window_min_size()
+            self.assertEqual(size, WindowSize(350, 320))
+
+        with patch.object(
+            window_shell, "_screen_work_area", return_value=WindowSize(1920, 1040)
+        ):
+            # Smaller than minimum: clamped to (600, 400)
+            size = configured_desktop_window_size(WindowSize(450, 350))
+            self.assertEqual(size, WindowSize(600, 400))
+
+            # Larger than minimum: preserved
+            size = configured_desktop_window_size(WindowSize(800, 600))
+            self.assertEqual(size, WindowSize(800, 600))
+
+
 if __name__ == "__main__":
     unittest.main()

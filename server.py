@@ -10,6 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from threading import RLock, Thread
 from uuid import uuid4
+from zlib import error as ZlibError
 
 from flask import Flask, abort, g, request, send_file, send_from_directory
 from flask_cors import CORS
@@ -88,6 +89,19 @@ def _mower_busy_response():
         and not base_scheduler.sleeping
     ):
         return {"ok": False, "message": "有任务正在运行，请等待任务结束后再更新"}
+    return None
+
+
+def _maa_busy_response():
+    """仅在 MAA 实际被任务或连接测试使用时阻止 MAA 更新。"""
+    from arknights_mower.utils.maa_backup import maa_in_use
+
+    _collect_maa_check_result()
+    if maa_check_job["status"] == "running" or maa_in_use():
+        return {
+            "ok": False,
+            "message": "MAA 正在使用中，请等待当前 MAA 任务或连接测试结束后再更新",
+        }
     return None
 
 
@@ -686,6 +700,22 @@ def load_config():
 
         data = read_user_config()
         data["runtime_platform"] = __system__
+        from arknights_mower.utils.performance import effective_performance_profile
+
+        performance = effective_performance_profile(
+            config.conf, config.screenshot_avg, config.screenshot_count
+        )
+        data["performance_effective_mode"] = performance.mode
+        if config.conf.performance_mode == "auto":
+            data["low_frame_rate_mode"] = performance.low_frame_rate
+            data["screenshot_interval"] = performance.screenshot_interval
+            data["selection_poll_interval"] = performance.poll_interval
+            data["selection_transition_timeout"] = performance.transition_timeout
+            data["run_order_delay"] = performance.run_order_delay
+            data["run_order_grandet_mode"] = {
+                **data["run_order_grandet_mode"],
+                "buffer_time": performance.grandet_buffer_time,
+            }
         if manager is not None:
             data["maa_weekly_plan_active"] = manager.get_active_plan_key()
         return data
@@ -749,21 +779,13 @@ def load_plan_from_json():
         plan = config.PlanModel(**request.json)
         with workshop_lock:
             previous_plan = config.plan
-            previous_dorm_order = config.conf.dorm_order
-            changed = plan != previous_plan
             config.plan = plan
             try:
                 config.save_plan()
-                # 排班实际改变后丢弃旧床位顺序；相同内容的自动保存不重置手动排序。
-                if changed and previous_dorm_order:
-                    config.conf.dorm_order = ""
-                    config.save_conf()
             except Exception:
-                # 任一步写盘失败都恢复比较基准，重试仍需重置并通知前端。
                 config.plan = previous_plan
-                config.conf.dorm_order = previous_dorm_order
                 raise
-        return {"message": "New plan saved。", "dorm_order_reset": changed}
+        return {"message": "New plan saved。"}
 
 
 @app.route("/operator")
@@ -771,6 +793,21 @@ def operator_list():
     from arknights_mower.data import agent_list
 
     return agent_list
+
+
+@app.route("/facility-state")
+def facility_state():
+    """返回运行中或最近一次运行缓存里的生产设施状态。"""
+    states = {}
+    if mower_thread and mower_thread.is_alive():
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and base_scheduler.op_data:
+            states = base_scheduler.op_data.facility_states
+    if not states:
+        saved = load_state() or {}
+        states = saved.get("facility_states", {})
+    return {room: dict(state) for room, state in states.items()}
 
 
 @app.route("/shop")
@@ -929,6 +966,8 @@ def start(start_type):
         saved_state = {} if start_type == "2" else (load_state() or {})
         if start_type == "1":
             saved_state["tasks"] = []
+        # 清空缓存后 current_room 与心情均未知。开关默认开启：首次读取完成后
+        # 按新缓存重载调度器，确保副表先于主表规划刷新。
         restart_after_mood_read = (
             start_type == "2" and config.conf.refresh_backup_plan_after_mood
         )
@@ -1057,30 +1096,49 @@ def open_folder_dialog():
     return conn_send("folder")
 
 
+def _upload_matches(upload, extension, mimetype):
+    return upload.mimetype == mimetype or (upload.filename or "").lower().endswith(
+        extension
+    )
+
+
 @app.route("/import", methods=["POST"])
 @require_token
 def import_from_image():
     img = request.files["img"]
-    if img.mimetype == "application/json":
-        data = json.load(img)
-    else:
-        try:
+    try:
+        from arknights_mower.utils.config.plan import parse_plan_document
+
+        if _upload_matches(img, ".zip", "application/zip"):
+            from arknights_mower.utils.config_backup import (
+                MAX_BACKUP_BYTES,
+                plan_from_archive,
+                read_archive,
+            )
+
+            imported_plan = plan_from_archive(
+                read_archive(img.stream.read(MAX_BACKUP_BYTES + 1))
+            )
+        elif _upload_matches(img, ".json", "application/json"):
+            imported_plan = parse_plan_document(json.load(img))
+        else:
             from PIL import Image
 
             from arknights_mower.utils import qrcode
 
             img = Image.open(img)
-            data = qrcode.decode(img)
-        except Exception as e:
-            msg = f"排班表导入失败：{e}"
-            logger.exception(msg)
-            return msg
-    if data:
-        config.plan = config.PlanModel(**data)
+            imported_plan = parse_plan_document(qrcode.decode(img))
+    except (ValueError, TypeError, RecursionError, OSError, ZlibError):
+        return "排班表导入失败：请选择有效的排班 JSON、排班图片或包含 config 文件夹的 ZIP 备份"
+    previous_plan = config.plan
+    try:
+        config.plan = imported_plan
         config.save_plan()
-        return "排班已加载"
-    else:
-        return "排班表导入失败！"
+    except OSError:
+        config.plan = previous_plan
+        logger.exception("排班表写入失败")
+        return "排班表导入失败：文件写入失败，原排班已保留"
+    return "排班已加载"
 
 
 @app.route("/sss-copilot", methods=["GET", "POST"])
@@ -1259,9 +1317,7 @@ def get_maa_update_info():
         channel=channel,
     )
     cached_latest = str(cached_check.get("latest_version") or "")
-    supported = __system__ in {"darwin", "linux"} or (
-        __system__ == "windows" and not installed
-    )
+    supported = __system__ in {"darwin", "linux", "windows"}
     arch = ""
     if __system__ in {"linux", "windows"}:
         try:
@@ -1272,8 +1328,7 @@ def get_maa_update_info():
             )
         except MaaUpdateError as e:
             arch_error = str(e)
-            if __system__ != "windows" or not installed:
-                supported = False
+            supported = False
 
     result = {
         "ok": True,
@@ -1292,10 +1347,10 @@ def get_maa_update_info():
         "installed": installed,
         "installed_version": installed_version,
         "latest": {"tag": cached_latest} if cached_latest else None,
-        "check_required": installed and __system__ in {"darwin", "linux"},
+        "check_required": installed and __system__ in {"darwin", "linux", "windows"},
         "job": job,
     }
-    if __system__ in {"linux", "windows"} and not supported and not installed:
+    if __system__ in {"linux", "windows"} and not supported:
         result["ok"] = False
         result["message"] = arch_error
         return result
@@ -1329,9 +1384,7 @@ def check_maa_update():
     target = str(Path(resolve_config_path(target_text)).expanduser())
     if not has_maa_installation(target):
         return {"ok": False, "message": "当前目录未检测到 MAA，请使用下载功能"}
-    if __system__ == "windows":
-        return {"ok": False, "message": "请手动打开 MAA 检查并完成更新"}
-    if __system__ not in {"darwin", "linux"}:
+    if __system__ not in {"darwin", "linux", "windows"}:
         return {"ok": False, "message": "当前平台不使用 Mower 的 MAA 更新功能"}
 
     source = str(payload.get("source") or "github").strip()
@@ -1359,9 +1412,18 @@ def check_maa_update():
                 mirror_token,
                 system=__system__,
                 channel=channel,
+                installed_version=(
+                    installed_version if __system__ == "windows" else ""
+                ),
             )
             if source == "mirrorchyan"
-            else get_latest_release(system=__system__, channel=channel)
+            else get_latest_release(
+                system=__system__,
+                channel=channel,
+                installed_version=(
+                    installed_version if __system__ == "windows" else ""
+                ),
+            )
         )
         available = is_maa_version_newer(release.tag, installed_version)
     except MaaUpdateError as e:
@@ -1407,7 +1469,7 @@ def start_maa_update():
 
     if __system__ not in {"darwin", "linux", "windows"}:
         return {"ok": False, "message": "当前系统不使用 Mower 的 MAA 下载流程"}
-    if busy := _mower_busy_response():
+    if busy := _maa_busy_response():
         return busy
 
     payload = request.get_json(silent=True) or {}
@@ -1427,11 +1489,6 @@ def start_maa_update():
     target = str(Path(resolve_config_path(target)).expanduser())
     installed = has_maa_installation(target)
     operation = "更新" if installed else "下载"
-    if __system__ == "windows" and installed:
-        return {
-            "ok": False,
-            "message": "已检测到 Windows MAA，请手动打开 MAA 进行更新",
-        }
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": f"未知的 MAA {operation}源"}
     if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
@@ -1730,8 +1787,8 @@ def start_maa_resource_update():
         config.save_conf()
 
     with maa_maintenance_lock:
-        if mower_thread and mower_thread.is_alive():
-            return {"ok": False, "message": "请先停止 Mower，再更新 MAA 资源"}
+        if busy := _maa_busy_response():
+            return busy
         if active_job():
             return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}
         if _job_running(maa_update_job):

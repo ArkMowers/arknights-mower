@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 
@@ -323,11 +323,13 @@ class TestClassifyRoom(unittest.TestCase):
             "training",
         )
 
-    def test_empty_countdown_no_identity_no_icon_empty(self):
-        # 倒计时为空 + 无名无亮点 → 空闲
+    def test_empty_countdown_without_idle_marker_is_conservative(self):
+        # 倒计时为空 + 无名无亮点：三项都是否定式证据，没有「读到了空」的正证据 →
+        # 不再返回 empty，改成保守的 ocr_fail（重试 5 次后按训练中处理）。
+        # 空闲要的正证据是「空闲中」模板，见 _classify_panel。
         self.assertEqual(
             reader.classify_room_state(Scene.TRAIN_MAIN, "failed", False, False),
-            "empty",
+            "ocr_fail",
         )
 
     def test_inconsistent_combos_ocr_fail(self):
@@ -606,21 +608,45 @@ class TestReadRoomState(unittest.TestCase):
     """fake solver 驱动真实 read_room_state：进房读面板+三态倒计时+图标+分类。"""
 
     def _solver(
-        self, countdown_seconds, panel_text="[测试干员]测试技能", tier_columns=(0, 1, 2)
+        self,
+        countdown_seconds,
+        panel_text="[测试干员]测试技能",
+        tier_columns=(0, 1, 2),
+        scenes=None,
     ):
+        """fake solver：场景默认 TRAIN_MAIN。
+
+        开进驻浮窗（`get_agent_from_room`）之后紧接着的那次 `train_scene` 返回
+        INFRA_DETAILS——`_read_slots_checked` 读后要确认浮窗确实开了（205），否则槽位
+        被当不可靠清空。这样按「事件」而不是按下标喂场景，重试次数变化不会打乱它。
+
+        scenes 可预先安排前几次 `train_scene` 的返回值（画面漂移用）。
+        """
         solver = MagicMock()
-        solver.train_scene.side_effect = [
-            Scene.TRAIN_MAIN,  # _settle_in_room 收敛
-            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
-            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开
-        ]
+        pending = list(scenes or [])
+        slot_open = {"pending": False}
+
+        def _scene():
+            if pending:
+                return pending.pop(0)
+            if slot_open["pending"]:
+                slot_open["pending"] = False
+                return Scene.INFRA_DETAILS
+            return Scene.TRAIN_MAIN
+
+        solver.train_scene.side_effect = _scene
         # #73 三态倒计时：read_time 返回秒（None=读失败 / 0=00:00:00 / >0=有值）
         solver.read_time.return_value = countdown_seconds
         solver.read_screen.return_value = panel_text
-        solver.find.side_effect = lambda res, *a, **k: (
-            None if res == "training_completed" else MagicMock()
-        )
+        # 默认没有「空闲中」标记（面板可读的训练/待收取房）；training_completed 也没有
+        solver.find.side_effect = lambda res, *a, **k: None
         solver.enter_room = MagicMock()
+
+        def _open_slots(*args, **kwargs):
+            slot_open["pending"] = True
+            return solver.get_agent_from_room.return_value
+
+        solver.get_agent_from_room.side_effect = _open_slots
         solver.recog.w = 1920
         solver.recog.h = 1080
         img = np.zeros((1080, 1920, 3), dtype=np.uint8)
@@ -641,16 +667,35 @@ class TestReadRoomState(unittest.TestCase):
         self.assertEqual(room.panel.mastery_tier, 3)
         self.assertEqual(room.panel.countdown_state, "active")
 
-    def test_empty_state_when_countdown_unreadable(self):
-        # 倒计时读失败 + 无名无亮点 → 空闲
-        solver = self._solver(None, panel_text="", tier_columns=())
-        room = reader.read_room_state(solver)
+    def test_training_state_reads_slots(self):
+        # 训练中也开进驻浮窗读槽位（判定日志据此对照「读数跳变时协助位是谁」）。
+        # 槽位留空 = 没读，不是没人——两种情况必须在日志里分得清。
+        solver = self._solver(7200)
+        solver.get_agent_from_room.return_value = [
+            {"agent": "逻各斯"},
+            {"agent": "测试干员"},
+        ]
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "training")
+        self.assertTrue(room.slots_read)
+        self.assertEqual(room.support_slot, "逻各斯")
+        self.assertEqual(room.train_slot, "测试干员")
+
+    def test_empty_state_needs_idle_marker(self):
+        # 倒计时读失败 + 无名无亮点 + 「空闲中」标记命中 → 空闲（标记是正证据）
+        solver = self._idle_marker_solver(None, panel_text="", tier_columns=())
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
         self.assertEqual(room.state, "empty")
+        self.assertTrue(room.panel.idle_marker)
+        warning.assert_not_called()
 
-    def _with_idle_marker(self, solver):
-        """面板读空时「空闲中」标记命中（scope 内真实返回矩形，非命中返回 None）。"""
+    def _idle_marker_solver(self, *args, **kwargs):
+        """面板读空时「空闲中」标记命中（非命中返回 None）。"""
+        solver = self._solver(*args, **kwargs)
 
-        def fake_find(res, *args, **kwargs):
+        def fake_find(res, *a, **k):
             if res == "training_idle":
                 return ((658, 976), (758, 1016))
             return None
@@ -659,66 +704,151 @@ class TestReadRoomState(unittest.TestCase):
         return solver
 
     def test_idle_marker_skips_countdown_retry(self):
-        # 面板读不出归属 + 「空闲中」标记 → 直接判空闲，不进 read_time 的 5 次重试
-        # （空闲房每次进房白等约 2.5 秒，结论一样）。
-        # 两种面板读法都要覆盖：真读空（""）与 OCR 失败哨兵（read_screen 返回 limit+1
-        # =25，经 _parse_panel_text 变 skill_name="25"——实机空闲房走的是这条）。
+        # 「空闲中」标记 → 直接判空闲，面板/图标/倒计时三项都不读（标记优先级最高）。
+        # 旧版要靠 read_time 读空去反推，空闲房每次进房白等约 2.5 秒。两种面板读法都要
+        # 覆盖：真读空（""）与 OCR 失败哨兵（read_screen 返回 limit+1=25）。
         for panel_text in ("", 25):
             with self.subTest(panel_text=panel_text):
-                solver = self._with_idle_marker(
-                    self._solver(None, panel_text=panel_text, tier_columns=())
+                solver = self._idle_marker_solver(
+                    None, panel_text=panel_text, tier_columns=()
                 )
                 room = reader.read_room_state(solver)
                 self.assertEqual(room.state, "empty")
-                self.assertEqual(room.panel.countdown_state, "failed")
+                self.assertTrue(room.panel.idle_marker)
                 solver.read_time.assert_not_called()
+                solver.read_screen.assert_not_called()
 
-    def test_no_idle_marker_keeps_countdown_read(self):
-        # 面板读不出归属但没有标记 → 原路径：照常读倒计时（三态由 read_time 给）
+    def test_no_idle_marker_conservative_training(self):
+        # 面板读不出归属、也没有标记 → 三项否定式证据不足以判空房：仍照常读倒计时
+        # （三态由 read_time 给），读不出来就保守按训练中，绝不当空房重置重开。
         solver = self._solver(None, panel_text=25, tier_columns=())
-        solver.find.side_effect = lambda res, *a, **k: None
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "training")
+        self.assertTrue(room.read_failed)
+        solver.read_time.assert_called()
+        self.assertTrue(
+            any("连续 5 次不一致" in c.args[0] for c in warning.call_args_list)
+        )
+
+    def test_idle_marker_wins_over_readable_panel(self):
+        # 定案 3：标记优先级最高——面板能读出干员名也照样判空闲（旧规则是「面板能读
+        # 就不采信标记」，已按定案反过来了）。
+        solver = self._idle_marker_solver(
+            7200, panel_text="[测试干员]测试技能", tier_columns=(0, 1, 2)
+        )
         room = reader.read_room_state(solver)
         self.assertEqual(room.state, "empty")
-        solver.read_time.assert_called()
+        solver.read_time.assert_not_called()
+        solver.read_screen.assert_not_called()
 
-    def test_idle_marker_ignored_when_panel_readable(self):
-        # 面板读出干员名 → 不采信标记，照旧走状态矩阵（§16.2：倒计时空 + 名/图标可读
-        # 一般是倒计时 OCR 出错，仍原地重试，不直接下结论为空闲）
-        solver = self._with_idle_marker(
-            self._solver(7200, panel_text="[测试干员]测试技能", tier_columns=())
-        )
+    def test_idle_marker_wins_over_lit_mastery_icon(self):
+        # 定案 3：专精图标亮着也不改判——标记优先（训练中模板误匹配的代价由定案 7 接受）
+        solver = self._idle_marker_solver(None, panel_text=25, tier_columns=(0, 1, 2))
         room = reader.read_room_state(solver)
-        solver.read_time.assert_called()
-        self.assertEqual(room.panel.countdown_state, "active")
+        self.assertEqual(room.state, "empty")
+        solver.read_time.assert_not_called()
+        self.assertEqual(room.panel.mastery_tier, 0, "标记命中时图标三项不读")
 
-    def test_idle_marker_ignored_when_mastery_icon_lit(self):
-        # 面板名不可读但专精图标亮着 → 训练位有人，不采信标记（真机：训练中/待收取
-        # 面板名读失败时靠这条兜底）
-        solver = self._with_idle_marker(
-            self._solver(None, panel_text=25, tier_columns=(0, 1, 2))
+    def test_idle_marker_miss_is_logged(self):
+        # 定案 6：未命中也留观测（现在只有命中才留痕），跑一段数据再谈阈值
+        solver = self._solver(7200, panel_text="[测试干员]测试技能")
+        with patch.object(reader.logger, "debug") as debug:
+            reader.read_room_state(solver)
+        self.assertIn(
+            "[mastery] 「空闲中」标记未命中",
+            [c.args[0] for c in debug.call_args_list],
         )
-        room = reader.read_room_state(solver)
-        solver.read_time.assert_called()
-        self.assertGreater(room.panel.mastery_tier, 0)
+
+    def test_explicit_img_skips_scene_and_idle_marker_checks(self):
+        # 调用方传入 img 时，「画面确认」与「空闲中」标记都不做：两者走的都是 solver.find /
+        # train_scene（即 recog.img，当前屏），与传入的 img 不保证同帧，拿旧帧判据否掉
+        # 新帧读数只会误作废、把非空闲房误判成空闲。传入 img 的调用方自行负责场景。
+        solver = self._idle_marker_solver(None, panel_text="[测试干员]测试技能")
+        room = reader.read_main_panel(solver, img=solver.recog.img)
+        self.assertIsNotNone(room)
+        self.assertFalse(room.idle_marker, "传 img 时不采信当前屏的空闲标记")
+        self.assertEqual(room.operator_name, "测试干员")
+        self.assertEqual(room.skill_name, "测试技能")
+
+    def test_reader_captured_frame_still_checks_scene_and_marker(self):
+        # img=None（本函数自己截图）时两条判据照旧生效：画面不是主页面就作废；
+        # 画面是主页面且标记命中 → 直接判空闲
+        solver = self._solver(7200, scenes=[Scene.TRAIN_SKILL_SELECT])
+        self.assertIsNone(reader.read_main_panel(solver))
+        solver = self._idle_marker_solver(7200, panel_text="[测试干员]测试技能")
+        room = reader.read_main_panel(solver)
+        self.assertTrue(room.idle_marker)
+
+    def test_panel_read_leaving_main_page_is_conservative(self):
+        # 读取时画面被换掉（读面板前确认不是训练室主界面）→ 读数作废，保守按训练中：
+        # 不读倒计时、不开进驻浮窗，也就不会产生「空房间」判定。
+        solver = self._solver(7200, scenes=[Scene.TRAIN_MAIN, Scene.TRAIN_SKILL_SELECT])
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "training")
+        self.assertFalse(room.slots_read)
+        solver.read_time.assert_not_called()
+        solver.get_agent_from_room.assert_not_called()
+        self.assertTrue(
+            any("画面不是训练室主界面" in c.args[0] for c in warning.call_args_list)
+        )
+
+    def test_retry_ocr_stops_when_leaving_main_page(self):
+        # 重试期间画面漂到非主页面 → 立刻结束重试、保守按训练中（旧行为要读完 5 次、
+        # 每次重新截图，白白拉长「看画面到下结论」的窗口）。
+        solver = self._solver(
+            7200,
+            panel_text="[测试干员]测试技能",
+            tier_columns=(),
+            scenes=[Scene.TRAIN_MAIN, Scene.TRAIN_MAIN, Scene.TRAIN_SKILL_SELECT],
+        )
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "training")
+        self.assertTrue(room.read_failed)
+        self.assertEqual(
+            solver.read_time.call_count, 1, "只读了确认页那一次，重试立即结束"
+        )
+        self.assertTrue(
+            any(
+                "重读时画面已不在训练室主界面" in c.args[0]
+                for c in warning.call_args_list
+            )
+        )
 
     def test_zero_countdown_is_waiting_collect(self):
         # §16.8 修复点：完成房间（00:00:00）→ 待收取，不再被当空房重置重开
         solver = self._solver(0)
-        room = reader.read_room_state(solver)
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
         self.assertEqual(room.state, "waiting_collect")
+        warning.assert_not_called()
 
     def test_waiting_collect_when_finish_scene(self):
-        solver = self._solver(0)
-        solver.train_scene.side_effect = [Scene.TRAIN_FINISH]
+        solver = self._solver(0, scenes=[Scene.TRAIN_FINISH])
         room = reader.read_room_state(solver)
         self.assertEqual(room.state, "waiting_collect")
 
     def test_ocr_fail_retries_then_conservative_training(self):
         # §16.2：active+身份+无图标 → 每次重读都 ocr_fail → 5 次后保守训练中（read_failed）
         solver = self._solver(7200, panel_text="[测试干员]测试技能", tier_columns=())
-        room = reader.read_room_state(solver)
+        with patch.object(reader.logger, "warning") as warning:
+            room = reader.read_room_state(solver)
         self.assertEqual(room.state, "training")
         self.assertTrue(room.read_failed)
+        self.assertEqual(
+            warning.call_args_list,
+            [
+                call(f"[mastery] 训练室倒计时与面板状态不一致（第{i}次），重读截图")
+                for i in range(1, 6)
+            ]
+            + [
+                call(
+                    "[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理"
+                )
+            ],
+        )
 
     def test_ocr_fail_resolves_on_retry(self):
         # 重读过程中出现图标亮点 → 恢复训练中（非保守）
@@ -774,8 +904,7 @@ class TestReadRoomState(unittest.TestCase):
 
     def test_want_mood_finish_scene_empty_mood(self):
         # TRAIN_FINISH（完成横幅页）只读面板：浮窗不可靠 → 心情返回空列表
-        solver = self._solver(0)
-        solver.train_scene.side_effect = [Scene.TRAIN_FINISH]
+        solver = self._solver(0, scenes=[Scene.TRAIN_FINISH])
         room, mood = reader.read_room_state(solver, want_mood=True)
         self.assertEqual(room.state, "waiting_collect")
         self.assertEqual(mood, [])
@@ -790,8 +919,7 @@ class TestReadRoomState(unittest.TestCase):
     def test_other_scene_does_not_read_panel(self):
         # #140：非 217/220 房内场景（技能选择页 219/未知）→ 不读左下角面板——
         # 219 面板区域是协助位天赋文本，读了是垃圾身份/假倒计时；空面板 = 不可读 = 保守
-        solver = self._solver(7200)
-        solver.train_scene.side_effect = [Scene.TRAIN_SKILL_SELECT]
+        solver = self._solver(7200, scenes=[Scene.TRAIN_SKILL_SELECT])
         room = reader.read_room_state(solver)
         self.assertEqual(room.state, "training")  # 保守视为占用
         self.assertEqual(room.panel.operator_name, "")
@@ -2203,6 +2331,9 @@ class TestReconcile73(unittest.TestCase):
 class TestComputeProtected(unittest.TestCase):
     """§16.5 保护检查（现读现判）：逻各斯/艾丽妮 + 待收取/空闲的判定。"""
 
+    def setUp(self):
+        self.solver = MagicMock()
+
     def _room(self, state, support, train, tier):
         return reader.RoomState(
             state=state,
@@ -2215,13 +2346,13 @@ class TestComputeProtected(unittest.TestCase):
         # §16.3 第1格：专三完成 → 无论如何不保护 → 可排班
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("waiting_collect", "逻各斯", "", 3)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_waiting_collect_below_m3_protected(self):
         # 非专三（链未走完）+ 逻各斯/艾丽妮 → 保护
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("waiting_collect", "艾丽妮", "", 2)
-            self.assertTrue(reader._compute_protected(MagicMock(), room))
+            self.assertTrue(reader._compute_protected(self.solver, room))
 
     def test_empty_with_occupant_deep_read(self):
         # 空闲 + 逻各斯 + 训练位有人 → 深读技能页（有专一/专二 → 保护）
@@ -2230,25 +2361,67 @@ class TestComputeProtected(unittest.TestCase):
             patch.object(reader, "_train_slot_has_mastery", return_value=True),
         ):
             room = self._room("empty", "逻各斯", "能天使", 0)
-            self.assertTrue(reader._compute_protected(MagicMock(), room))
+            self.assertTrue(reader._compute_protected(self.solver, room))
         with (
             patch.object(reader.config.conf, "enable_mastery", True),
             patch.object(reader, "_train_slot_has_mastery", return_value=False),
         ):
             room = self._room("empty", "逻各斯", "能天使", 0)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_empty_no_train_slot_not_protected(self):
         # 空闲 + 逻各斯 + 训练位没人 → 可排班
         with patch.object(reader.config.conf, "enable_mastery", True):
             room = self._room("empty", "逻各斯", "", 0)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
 
     def test_off_no_protection(self):
         # §16.11 OFF：保护全停
         with patch.object(reader.config.conf, "enable_mastery", False):
             room = self._room("waiting_collect", "逻各斯", "", 2)
-            self.assertFalse(reader._compute_protected(MagicMock(), room))
+            self.assertFalse(reader._compute_protected(self.solver, room))
+
+    @patch.object(reader, "_train_slot_has_mastery")
+    def test_bypass_deep_read_when_train_slot_matches_scan_plan(self, mock_has_mastery):
+        # 用户实际场景：协助位逻各斯，训练位凛御银灰，计划为凛御银灰
+        room = make_room(state="empty", support_slot="逻各斯", train_slot="凛御银灰")
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
+
+        self.assertFalse(is_protected)
+        mock_has_mastery.assert_not_called()
+
+    @patch.object(reader, "_train_slot_has_mastery", return_value=True)
+    def test_deep_read_when_train_slot_mismatches_scan_plan(self, mock_has_mastery):
+        room = make_room(state="empty", support_slot="逻各斯", train_slot="异客")
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
+
+        self.assertTrue(is_protected)
+        mock_has_mastery.assert_called_once_with(self.solver)
+
+    @patch.object(reader, "_train_slot_has_mastery", return_value=True)
+    def test_deep_read_when_scan_plan_is_none(self, mock_has_mastery):
+        room = make_room(state="empty", support_slot="逻各斯", train_slot="凛御银灰")
+
+        with patch.object(reader.config.conf, "enable_mastery", True):
+            is_protected = reader._compute_protected(self.solver, room, scan_plan=None)
+
+        self.assertTrue(is_protected)
+        mock_has_mastery.assert_called_once_with(self.solver)
+
+    @patch.object(reader, "_fill_slots_and_protection")
+    @patch.object(reader, "_classify_panel", return_value="empty")
+    @patch.object(reader, "_safe_read_panel", return_value=reader.RoomPanel())
+    def test_retry_ocr_preserves_scan_plan(self, mock_read, mock_classify, mock_fill):
+        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        reader._retry_ocr(self.solver, scan_plan=plan)
+        mock_fill.assert_called_once()
+        self.assertIs(mock_fill.call_args[1]["scan_plan"], plan)
 
 
 class TestPromotePlan(unittest.TestCase):
@@ -2812,6 +2985,57 @@ class TestReconcileProtectedRelease(unittest.TestCase):
         )
         (result, _, _) = self._call(room, plan)
         self.assertIsNone(result[0])
+
+
+class TestTrainSlotHasMastery(unittest.TestCase):
+    """深读技能页保护判定：确保进入技能页后在 finally 必定 back 回主界面。"""
+
+    def setUp(self):
+        self.solver = MagicMock()
+        self.solver.recog.w = 1920
+        self.solver.recog.h = 1080
+
+    @patch.object(reader, "_read_slot_mastery_tier", side_effect=[0, 0, 0])
+    def test_normal_navigation_and_always_backs_out(self, mock_read_tier):
+        # 场景演进：TRAIN_MAIN -> 点击后进入 TRAIN_SKILL_SELECT -> back 回 TRAIN_MAIN
+        scenes = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,
+        ]
+        self.solver.train_scene.side_effect = lambda: (
+            scenes.pop(0) if scenes else Scene.TRAIN_MAIN
+        )
+
+        res = reader._train_slot_has_mastery(self.solver)
+        self.assertFalse(res, "全专0不保护")
+        self.solver.tap.assert_called_once()
+        self.solver.back.assert_called_once()
+
+    @patch.object(reader, "_read_slot_mastery_tier", side_effect=Exception("OCR crash"))
+    def test_exception_in_skill_select_still_backs_out(self, mock_read_tier):
+        scenes = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,
+        ]
+        self.solver.train_scene.side_effect = lambda: (
+            scenes.pop(0) if scenes else Scene.TRAIN_MAIN
+        )
+
+        res = reader._train_slot_has_mastery(self.solver)
+        self.assertTrue(res, "异常保守保护")
+        self.solver.back.assert_called_once()
+
+    def test_transition_timeout_does_not_back_from_train_main(self):
+        # 点击后卡在主界面未成功跳转，不应在主界面执行 back 误退房间
+        self.solver.train_scene.return_value = Scene.TRAIN_MAIN
+
+        res = reader._train_slot_has_mastery(self.solver)
+        self.assertTrue(res, "超时保守保护")
+        self.solver.back.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -33,15 +33,19 @@ def next_skill(monkeypatch, tmp_path):
     config.conf.workshop_generation = 0
     config.conf.workshop_deer_fodder = config.Conf().workshop_deer_fodder
     cultivate = tmp_path / "cultivate.json"
-    data = json.loads((Path(__file__).parents[1] / "data/skill_data.json").read_text())
+    data = json.loads(
+        (Path(__file__).parents[1] / "data/skill_data.json").read_text(encoding="utf-8")
+    )
     stock = [
         {"id": key, "count": 300}
         for key, item in data["items"].items()
         if item.get("rarity") == 3 or key == "3302"
     ]
-    cultivate.write_text(json.dumps({"data": {"characters": [], "items": stock}}))
+    cultivate.write_text(
+        json.dumps({"data": {"characters": [], "items": stock}}), encoding="utf-8"
+    )
     skills = tmp_path / "skill_data.json"
-    skills.write_text(json.dumps({"items": data["items"]}))
+    skills.write_text(json.dumps({"items": data["items"]}), encoding="utf-8")
     monkeypatch.setattr(rec, "get_path", lambda _: cultivate)
     monkeypatch.setattr(rec, "_find_skill_data", lambda: skills)
     plans = [

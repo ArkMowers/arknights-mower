@@ -2,8 +2,8 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { swap } from '@/utils/common'
-import { swapTask, updateTrigger } from '@/utils/plan_edit'
+import { swapPlanFacilities } from '@/utils/plan_edit'
+import { plan_facility_type_options } from '@/utils/base_facilities'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -14,11 +14,7 @@ const { theme } = storeToRefs(config_store)
 
 const outer = ref(null)
 
-const facility_types = [
-  { label: '贸易站', value: '贸易站' },
-  { label: '制造站', value: '制造站' },
-  { label: '发电站', value: '发电站' }
-]
+const facility_types = plan_facility_type_options
 
 const facility = inject('facility')
 
@@ -151,27 +147,7 @@ function drag_facility(room, event) {
 function drop_facility(target, event) {
   const source = event.dataTransfer.getData('text/plain')
 
-  // 1. 更新当前 current_plan 表
-  swap(source, target, current_plan.value)
-
-  // 2. 更新所有副表和主表（除当前表以外）
-  const allPlans = ['main', ...backup_plans.value]
-
-  allPlans.forEach((item, index) => {
-    if ((sub_plan.value === 'main' && item === 'main') || sub_plan.value + 1 === index) {
-      return
-    }
-    // 执行更新操作
-    if (item !== 'main') {
-      swap(source, target, item.plan)
-      // 副表才需要更新trigger 和 task
-      swapTask(item.task, source, target)
-      updateTrigger(item.trigger, source, target)
-    } else {
-      // plan 是主表
-      swap(source, target, plan.value)
-    }
-  })
+  swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
 
   event.preventDefault()
 }
@@ -186,6 +162,7 @@ defineExpose({
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
+import { factory_product_options } from '@/utils/base_products'
 
 function fill_with_free() {
   for (let i = 0; i < operator_limit.value; ++i) {
@@ -200,11 +177,7 @@ const trading_products = [
   { label: '合成玉订单', value: 'orundum' }
 ]
 
-const factory_products = [
-  { label: '赤金', value: 'gold' },
-  { label: '中级作战记录', value: 'exp3' },
-  { label: '源石碎片', value: 'orirock' }
-]
+const factory_products = factory_product_options
 
 import { NAvatar } from 'naive-ui'
 
@@ -220,9 +193,10 @@ const render_product = (option) => {
     },
     [
       h(NAvatar, {
-        src: '/product/' + option.value + '.png',
+        src: '/product/' + (option.icon || option.value) + '.png',
         round: true,
-        size: 'small'
+        size: 'small',
+        style: { flexShrink: 0 }
       }),
       option.label
     ]
@@ -574,7 +548,13 @@ function set_facility(e) {
             <span v-else class="type-select">{{ right_side_facility_name }}</span>
           </td>
           <template v-if="['制造站', '贸易站'].includes(current_plan[facility].name)">
-            <td>产物<help-text>切产物功能暂未实装</help-text></td>
+            <td>
+              产物
+              <help-text v-if="current_plan[facility].name == '制造站'">
+                制造站会随排班自动核对并切换产物。
+              </help-text>
+              <help-text v-else> 贸易站会随排班自动核对并切换订单类型。 </help-text>
+            </td>
             <td>
               <n-select
                 v-model:value="current_plan[facility].product"

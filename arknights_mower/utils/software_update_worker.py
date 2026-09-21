@@ -15,7 +15,6 @@ import stat
 import subprocess
 import sys
 import tarfile
-import tempfile
 import threading
 import time
 import traceback
@@ -25,7 +24,6 @@ from pathlib import Path, PurePosixPath
 
 if __package__:
     from .github_download import download_url
-    from .source_pr_merge import merge_source_pulls
     from .update_runtime import (
         InstanceScanError,
         detached_options,
@@ -40,7 +38,6 @@ if __package__:
     )
 else:
     from github_download import download_url
-    from source_pr_merge import merge_source_pulls
     from update_runtime import (
         InstanceScanError,
         detached_options,
@@ -343,10 +340,10 @@ class Worker:
         if code:
             raise subprocess.CalledProcessError(code, args)
 
-    def git_output(self, *args):
+    def git_output(self, *args, cwd=None):
         return subprocess.check_output(
             [self.job["git"], *args],
-            cwd=self.root,
+            cwd=cwd or self.root,
             env=self.env,
             text=True,
             encoding="utf-8",
@@ -384,38 +381,15 @@ class Worker:
         )
         self.report("downloading", "获取目标源码")
         if self.job.get("source_prs"):
-            self.report("downloading", "获取并复核所选 PR 的合并结果")
-            with tempfile.TemporaryDirectory(
-                prefix="pr-merge-", dir=self.work
-            ) as directory:
-                commit = merge_source_pulls(
-                    self.job["git"],
-                    self.job["source_url"],
-                    self.job,
-                    directory,
-                    self.env,
-                    run=self.run_command,
-                )
-                if commit != self.job["commit"]:
-                    raise ValueError("PR 合并结果已改变，请重新检查并确认更新")
-                self.run_command(
-                    [self.job["git"], "fetch", "--no-tags", directory, commit]
-                )
-        else:
-            self.run_command(
-                [
-                    self.job["git"],
-                    "fetch",
-                    "--no-tags",
-                    self.job.get("source_url", "origin"),
-                    self.job["ref"],
-                ]
+            raise ValueError("已取消多 PR 合并，请刷新页面后重新选择一个 PR")
+        if self.job.get("source_pr"):
+            self.fetch_source(
+                "refs/heads/" + self.job["source_branch"], self.job["base_commit"]
             )
-            if (
-                self.git_output("rev-parse", "FETCH_HEAD^{commit}")
-                != self.job["commit"]
-            ):
-                raise ValueError("远端版本已改变，请重新检查更新")
+            self.fetch_source(self.job["ref"], self.job["head_commit"])
+            self.merge_source_pull()
+        else:
+            self.fetch_source(self.job["ref"], self.job["commit"])
         try:
             self.git_output(
                 "cat-file",
@@ -434,23 +408,109 @@ class Worker:
                 raise ValueError(
                     "目标版本使用 Git LFS，请安装 Git LFS 并确保启动环境可以运行 git lfs；当前实例尚未停止"
                 ) from exc
-            commits = (
-                (
-                    [self.job["base_commit"]]
-                    + [pull["sha"] for pull in self.job["source_prs"]]
-                )
-                if self.job.get("source_prs")
-                else [self.job["commit"]]
-            )
             self.run_command(
                 [
                     self.job["git"],
                     "lfs",
                     "fetch",
                     self.job.get("source_url", "origin"),
-                    *commits,
+                    *(
+                        [self.job["base_commit"], self.job["head_commit"]]
+                        if self.job.get("source_pr")
+                        else [self.job["commit"]]
+                    ),
                 ]
             )
+            if self.stage_attempted:
+                self.run_command(
+                    [self.job["git"], "lfs", "checkout"], cwd=self.source_stage
+                )
+
+    def fetch_source(self, ref, expected):
+        self.run_command(
+            [
+                self.job["git"],
+                "fetch",
+                "--no-tags",
+                self.job.get("source_url", "origin"),
+                ref,
+            ]
+        )
+        if self.git_output("rev-parse", "FETCH_HEAD^{commit}") != expected:
+            raise ValueError("远端版本已改变，请重新检查更新")
+
+    def merge_source_pull(self):
+        self.report(
+            "preparing",
+            f"在临时工作目录合并 PR #{self.job['source_pr']}，当前实例继续运行",
+        )
+        # Share the existing object database. No temporary clone or history fetch.
+        # LFS content is fetched only after the merged tree has been validated.
+        git = [
+            self.job["git"],
+            "-c",
+            f"core.hooksPath={self.work / 'no-hooks'}",
+            "-c",
+            "filter.lfs.process=",
+            "-c",
+            "filter.lfs.smudge=",
+            "-c",
+            "filter.lfs.clean=",
+            "-c",
+            "filter.lfs.required=false",
+            "-c",
+            "rerere.enabled=false",
+        ]
+        self.stage_attempted = True
+        self.run_command(
+            [
+                *git,
+                "worktree",
+                "add",
+                "--detach",
+                self.source_stage,
+                self.job["base_commit"],
+            ]
+        )
+        environment = {
+            **self.env,
+            "GIT_AUTHOR_NAME": "Mower",
+            "GIT_AUTHOR_EMAIL": "mower@localhost",
+            "GIT_COMMITTER_NAME": "Mower",
+            "GIT_COMMITTER_EMAIL": "mower@localhost",
+        }
+        try:
+            self.run_command(
+                [
+                    *git,
+                    "merge",
+                    "--no-ff",
+                    "--no-edit",
+                    "--no-gpg-sign",
+                    "--no-verify-signatures",
+                    "-m",
+                    f"Merge PR #{self.job['source_pr']} for Mower update",
+                    self.job["head_commit"],
+                ],
+                cwd=self.source_stage,
+                env=environment,
+            )
+        except subprocess.CalledProcessError as exc:
+            conflicts = self.git_output(
+                "diff", "--name-only", "--diff-filter=U", cwd=self.source_stage
+            )
+            if conflicts:
+                raise ValueError(
+                    f"PR #{self.job['source_pr']} 与目标分支存在合并冲突，当前实例未停止：\n{conflicts}"
+                ) from exc
+            raise ValueError(
+                f"PR #{self.job['source_pr']} 合并失败，请查看日志；当前实例未停止"
+            ) from exc
+        self.job["commit"] = self.git_output("rev-parse", "HEAD", cwd=self.source_stage)
+        self.job["version"] = "PR@" + self.job["commit"][:7]
+        self.status["version"] = self.job["version"]
+        write_json(self.job_path, self.job)
+        self.report("preparing", "PR 合并完成：" + self.job["commit"])
 
     def ensure_installer(self):
         if self.job.get("in_place_environment"):
@@ -473,17 +533,18 @@ class Worker:
 
     def prepare_source_payload(self):
         self.report("preparing", "在临时目录准备目标版本，当前实例继续运行")
-        self.stage_attempted = True
-        self.run_command(
-            [
-                self.job["git"],
-                "worktree",
-                "add",
-                "--detach",
-                self.source_stage,
-                self.job["commit"],
-            ]
-        )
+        if not self.stage_attempted:
+            self.stage_attempted = True
+            self.run_command(
+                [
+                    self.job["git"],
+                    "worktree",
+                    "add",
+                    "--detach",
+                    self.source_stage,
+                    self.job["commit"],
+                ]
+            )
         # Only reuse an environment for unchanged, ordinary index requirements.
         # Local paths, included files and VCS requirements need fresh resolution.
         requirements = self.source_stage / "requirements.in"

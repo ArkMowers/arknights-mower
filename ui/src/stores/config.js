@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { normalizePerformanceMode, performanceProfile } from '@/utils/performanceProfile'
 import { defineStore } from 'pinia'
 import { inject, ref, watch, watchEffect } from 'vue'
 import { createWorkshopState } from '@/utils/workshopConfig'
@@ -16,6 +17,10 @@ export const useConfigStore = defineStore('config', () => {
   const free_blacklist = ref([])
   const maa_adb_path = ref('')
   const maa_enable = ref(false)
+  const stage_plan_enable = ref(true)
+  const stage_plan_runner = ref('maa')
+  const maa_mall_enable = ref(true)
+  const maa_mall_mode = ref('maa')
   const maa_path = ref('')
   const maa_mirrorchyan_token = ref('')
   const maa_update_channel = ref('stable')
@@ -47,6 +52,11 @@ export const useConfigStore = defineStore('config', () => {
   const package_type = ref('official')
   const reload_room = ref('')
   const run_order_delay = ref(10)
+  const low_frame_rate_mode = ref(false)
+  const performance_mode = ref('high')
+  const performance_effective_mode = ref('high')
+  const selection_poll_interval = ref(0.1)
+  const selection_transition_timeout = ref(2.5)
   const dorm_order = ref([])
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
@@ -56,6 +66,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_gap = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
+  const version_update_resting_threshold = ref(80)
+  const version_update_threshold_advance_hours = ref(12)
   const fia_threshold = ref(90)
   const rescue_threshold = ref(75)
   const favorite = ref([])
@@ -119,6 +131,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_robot = ref(true)
   const recruit_auto_only5 = ref(true)
   const run_order_grandet_mode = ref({})
+  const product_switching = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
@@ -134,7 +147,7 @@ export const useConfigStore = defineStore('config', () => {
   const free_room = ref(false)
   const merge_interval = ref(10)
   const fia_fool = ref(true)
-  const refresh_backup_plan_after_mood = ref(false)
+  const refresh_backup_plan_after_mood = ref(true)
   const assistant_follows_schedule = ref(false)
   const enable_mastery = ref(true)
   const sign_in = ref({ enable: true })
@@ -410,6 +423,25 @@ export const useConfigStore = defineStore('config', () => {
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     runtime_platform.value = response.data.runtime_platform || ''
+    performance_mode.value = normalizePerformanceMode(
+      response.data.performance_mode,
+      response.data.low_frame_rate_mode,
+      runtime_platform.value
+    )
+    performance_effective_mode.value =
+      response.data.performance_effective_mode ||
+      (performance_mode.value === 'auto'
+        ? runtime_platform.value === 'android'
+          ? 'medium'
+          : 'high'
+        : performance_mode.value)
+    const fallbackProfile = performanceProfile(performance_mode.value, runtime_platform.value)
+    low_frame_rate_mode.value =
+      response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
+    selection_poll_interval.value =
+      response.data.selection_poll_interval ?? fallbackProfile.selectionPollInterval
+    selection_transition_timeout.value =
+      response.data.selection_transition_timeout ?? fallbackProfile.selectionTransitionTimeout
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
@@ -420,6 +452,16 @@ export const useConfigStore = defineStore('config', () => {
       response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
     maa_adb_path.value = response.data.maa_adb_path
     maa_enable.value = response.data.maa_enable != 0
+    stage_plan_enable.value =
+      response.data.stage_plan_enable !== undefined
+        ? Boolean(response.data.stage_plan_enable)
+        : response.data.maa_enable != 0
+    stage_plan_runner.value = response.data.stage_plan_runner === 'mower' ? 'mower' : 'maa'
+    maa_mall_enable.value =
+      response.data.maa_mall_enable !== undefined
+        ? Boolean(response.data.maa_mall_enable)
+        : response.data.maa_enable != 0
+    maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
     maa_path.value = response.data.maa_path
     maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
     maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
@@ -448,7 +490,7 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
-    run_order_delay.value = response.data.run_order_delay
+    run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
 
     dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
     start_automatically.value = response.data.start_automatically
@@ -459,6 +501,10 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap.value = response.data.maa_gap
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold * 100
+    version_update_resting_threshold.value =
+      (response.data.version_update_resting_threshold ?? 0.8) * 100
+    version_update_threshold_advance_hours.value =
+      response.data.version_update_threshold_advance_hours ?? 12
     fia_threshold.value = response.data.fia_threshold * 100
     rescue_threshold.value = response.data.rescue_threshold * 100
     favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
@@ -482,7 +528,8 @@ export const useConfigStore = defineStore('config', () => {
     rogue.value = response.data.rogue
     sss.value = response.data.sss
     screenshot.value = response.data.screenshot
-    screenshot_interval.value = response.data.screenshot_interval
+    screenshot_interval.value =
+      response.data.screenshot_interval ?? fallbackProfile.screenshotInterval
     mail_subject.value = response.data.mail_subject
     skland_enable.value = response.data.skland_enable != 0
     ai_key.value = response.data.ai_key
@@ -492,7 +539,18 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
     recruit_auto_only5.value = response.data.recruit_auto_only5
-    run_order_grandet_mode.value = response.data.run_order_grandet_mode
+    run_order_grandet_mode.value = {
+      enable: false,
+      buffer_time: fallbackProfile.grandetBufferTime,
+      back_to_index: false,
+      ...(response.data.run_order_grandet_mode || {})
+    }
+    product_switching.value = {
+      grandet_mode: true,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2,
+      ...(response.data.product_switching || {})
+    }
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
@@ -507,7 +565,7 @@ export const useConfigStore = defineStore('config', () => {
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
     fia_fool.value = response.data.fia_fool
-    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? false
+    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
     enable_mastery.value = response.data.enable_mastery ?? true
     sign_in.value = response.data.sign_in
@@ -549,7 +607,15 @@ export const useConfigStore = defineStore('config', () => {
       leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
       maa_adb_path: maa_adb_path.value,
-      maa_enable: maa_enable.value ? 1 : 0,
+      maa_enable:
+        (stage_plan_enable.value && stage_plan_runner.value === 'maa') ||
+        (maa_mall_enable.value && maa_mall_mode.value === 'maa')
+          ? 1
+          : 0,
+      stage_plan_enable: stage_plan_enable.value,
+      stage_plan_runner: stage_plan_runner.value,
+      maa_mall_enable: maa_mall_enable.value,
+      maa_mall_mode: maa_mall_mode.value,
       maa_path: maa_path.value,
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
       maa_update_channel: maa_update_channel.value,
@@ -575,6 +641,13 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
+      low_frame_rate_mode:
+        performance_mode.value === 'auto'
+          ? performanceProfile('auto', runtime_platform.value).lowFrameRateMode
+          : low_frame_rate_mode.value,
+      performance_mode: performance_mode.value,
+      selection_poll_interval: selection_poll_interval.value,
+      selection_transition_timeout: selection_transition_timeout.value,
       dorm_order: dorm_order.value.join(','),
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
@@ -583,6 +656,8 @@ export const useConfigStore = defineStore('config', () => {
       simulator: simulator.value,
       ...(runtime_platform.value === 'android' ? {} : { theme: theme.value }),
       resting_threshold: resting_threshold.value / 100,
+      version_update_resting_threshold: version_update_resting_threshold.value / 100,
+      version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,
       favorite: favorite.value.join(','),
@@ -628,6 +703,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_robot: recruit_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
+      product_switching: product_switching.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
@@ -721,14 +797,14 @@ export const useConfigStore = defineStore('config', () => {
     return configSaveRequest
   }
 
-  async function flush_pending_saves() {
+  async function flush_config_saves() {
     if (weeklyPlanSyncTimer) {
       clearTimeout(weeklyPlanSyncTimer)
       weeklyPlanSyncTimer = null
       await sync_active_weekly_plan()
     }
     await weeklyPlanSaveRequest
-    await save_config()
+    await configSaveRequest
   }
 
   watchEffect(() => {
@@ -739,7 +815,7 @@ export const useConfigStore = defineStore('config', () => {
 
   return {
     autosave_paused,
-    flush_pending_saves,
+    flush_config_saves,
     adb,
     load_config,
     save_config,
@@ -751,6 +827,10 @@ export const useConfigStore = defineStore('config', () => {
     free_blacklist,
     maa_adb_path,
     maa_enable,
+    stage_plan_enable,
+    stage_plan_runner,
+    maa_mall_enable,
+    maa_mall_mode,
     maa_path,
     maa_mirrorchyan_token,
     maa_update_channel,
@@ -782,6 +862,11 @@ export const useConfigStore = defineStore('config', () => {
     package_type,
     reload_room,
     run_order_delay,
+    low_frame_rate_mode,
+    performance_mode,
+    performance_effective_mode,
+    selection_poll_interval,
+    selection_transition_timeout,
     dorm_order,
     start_automatically,
     maa_mall_buy,
@@ -795,6 +880,8 @@ export const useConfigStore = defineStore('config', () => {
     defaultLaunchCommand,
     simulator,
     resting_threshold,
+    version_update_resting_threshold,
+    version_update_threshold_advance_hours,
     fia_threshold,
     rescue_threshold,
     favorite,
@@ -842,6 +929,7 @@ export const useConfigStore = defineStore('config', () => {
     ai_key,
     skland_info,
     run_order_grandet_mode,
+    product_switching,
     check_mail_enable,
     report_enable,
     recruit_gap,

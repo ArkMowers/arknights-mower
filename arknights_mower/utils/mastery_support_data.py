@@ -44,8 +44,8 @@ def check_schedule_name(name, blocked):
         )
 
 
-def training_room_group_error(plan=None):
-    """Protect training-room groups declared in primary and backup schedules."""
+def training_room_group_warning(plan=None):
+    """Describe training-room groups declared in primary and backup schedules."""
     if plan is None:
         from arknights_mower.utils import config
 
@@ -64,10 +64,7 @@ def training_room_group_error(plan=None):
             if name not in IGNORED_NAMES and group:
                 conflicts.append(f"{label}：{name}（组名：{group}）")
     if conflicts:
-        return (
-            f"训练室排班含绑组干员：{'；'.join(conflicts)}。"
-            "已阻止自动专精换人，请先解除训练室干员绑组后重试"
-        )
+        return f"训练室排班含绑组干员：{'；'.join(conflicts)}"
     return None
 
 

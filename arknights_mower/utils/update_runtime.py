@@ -50,13 +50,13 @@ def read_json(path, default=None):
         return default
 
 
-def write_json(path, value):
+def write_json(path, value, *, indent=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False)
+            json.dump(value, stream, ensure_ascii=False, indent=indent)
         replace_with_retry(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)

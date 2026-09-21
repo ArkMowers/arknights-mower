@@ -93,3 +93,104 @@ def test_sync_endpoint_reports_actual_update_result(updated):
         response = server.app.test_client().get("/cultivate-fetch")
     assert response.status_code == 200
     assert response.json["success"] is updated, response.json
+
+
+@pytest.fixture
+def stock_db(tmp_path, monkeypatch):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "_tables_created", False)
+    monkeypatch.setattr(
+        record,
+        "get_path",
+        lambda name: tmp_path / "data.db" if name.endswith(".db") else tmp_path,
+    )
+    return record
+
+
+def test_fresh_sync_repairs_stock_but_cached_reads_keep_later_crafting(
+    syncer, stock_db, monkeypatch, tmp_path
+):
+    import csv
+
+    from arknights_mower.data import key_mapping
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": key_mapping["固源岩组"][0], "count": "280"}],
+        },
+    }
+    # Model a stock count corrupted by the former partial-scan bug.
+    stock_db.save_inventory_counts({"固源岩组": 0, "提纯源岩": 3, "碳": 100})
+    stock_db.apply_workshop_inventory({"固源岩组": 0})
+    monkeypatch.setattr(module, "time", lambda: 10_000_000_000)
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = payload
+        assert syncer.start() is True
+    assert stock_db.get_inventory_counts()["固源岩组"] == 280
+    assert stock_db.get_inventory_counts()["提纯源岩"] == 0
+    assert stock_db.get_inventory_counts()["碳"] == 100
+    with patch.object(stock_db, "datetime") as clock:
+        clock.now.return_value.timestamp.return_value = 10_000_000_001
+        stock_db.apply_workshop_inventory({"固源岩组": -4, "提纯源岩": 1})
+    with (tmp_path / "depotresult.csv").open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow([10_000_000_002, json.dumps({"碳": 90}), "{}"])
+    for _ in range(2):
+        depot.读取仓库()
+        assert stock_db.get_inventory_counts()["固源岩组"] == 276
+        assert stock_db.get_inventory_counts()["提纯源岩"] == 1
+        assert stock_db.get_inventory_counts()["碳"] == 90
+    monkeypatch.setattr(module, "time", lambda: 10_000_000_003)
+    payload["data"]["items"][0]["count"] = "290"
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = payload
+        assert syncer.start() is True
+    assert stock_db.get_inventory_counts()["固源岩组"] == 290
+
+
+def test_craft_during_sync_is_not_overwritten(syncer, stock_db, monkeypatch):
+    from arknights_mower.data import key_mapping
+
+    stock_db.save_inventory_counts({"固源岩组": 280})
+    monkeypatch.setattr(module, "time", lambda: 100)
+
+    def respond(*args, **kwargs):
+        with patch.object(stock_db, "datetime") as clock:
+            clock.now.return_value.timestamp.return_value = 101
+            stock_db.apply_workshop_inventory({"固源岩组": -4})
+        return SimpleNamespace(
+            json=lambda: {
+                "code": 0,
+                "data": {
+                    "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+                    "items": [{"id": key_mapping["固源岩组"][0], "count": "280"}],
+                },
+            }
+        )
+
+    monkeypatch.setattr(module, "request_with_retry", respond)
+    assert syncer.start() is True
+    assert stock_db.get_inventory_counts()["固源岩组"] == 276
+
+
+@pytest.mark.parametrize("items", [{}, [None], [{"id": "30013", "count": "bad"}]])
+def test_invalid_stock_does_not_replace_cache_or_database(syncer, stock_db, items):
+    stock_db.save_inventory_counts({"固源岩组": 276})
+    syncer.record_path.write_text('{"previous": true}')
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = {
+            "code": 0,
+            "data": {"characters": [{"id": "char_2027_wang"}], "items": items},
+        }
+        with pytest.raises(ValueError):
+            syncer.start()
+    assert stock_db.get_inventory_counts() == {"固源岩组": 276}
+    assert json.loads(syncer.record_path.read_text()) == {"previous": True}

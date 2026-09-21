@@ -1,4 +1,5 @@
 import json
+from time import time
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config import atomic_write
@@ -31,6 +32,7 @@ class cultivate:
             if i.get("gameId") == 1 and item.cultivate_select == i.get("isOfficial"):
                 body = {"gameId": 1, "uid": i.get("uid")}
                 ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
+                observed_at = time()
                 resp = request_with_retry(
                     "get",
                     ingame,
@@ -40,12 +42,34 @@ class cultivate:
                 if isinstance(resp, dict) and resp.get("code") != 0:
                     raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
                 parse_roster(resp)
+                items = resp.get("data", {}).get("items")
+                if items is not None:
+                    if not isinstance(items, list) or any(
+                        not isinstance(entry, dict)
+                        or not isinstance(entry.get("id"), str)
+                        or not str(entry.get("count", "")).isdigit()
+                        for entry in items
+                    ):
+                        raise ValueError("森空岛返回的库存数据无效")
+                    # Use request start, not completion: a concurrent craft must win.
+                    resp = {**resp, "_mower_inventory_observed_at": observed_at}
 
                 def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
 
                 # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
                 atomic_write(self.record_path, dump)
+                if items is not None:
+                    from arknights_mower.solvers.record import save_inventory_counts
+                    from arknights_mower.utils.depot import cloud_inventory_snapshot
+
+                    counts, timestamp = cloud_inventory_snapshot(resp)
+                    save_inventory_counts(
+                        counts,
+                        scanned_counts={},
+                        cloud_counts=counts,
+                        cloud_at=timestamp,
+                    )
                 updated = True
         return updated
 

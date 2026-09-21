@@ -1,3 +1,19 @@
+export const DEFAULT_MASTERY_SWAP_BUFFERS = Object.freeze({
+  no_central: 10,
+  central: 15,
+  central_unhalved_m2: 30
+})
+
+export function normalizeMasterySwapBuffers(settings = {}) {
+  const configured = settings.mastery_swap_buffers
+  return Object.fromEntries(
+    Object.entries(DEFAULT_MASTERY_SWAP_BUFFERS).map(([key, fallback]) => {
+      const value = configured && typeof configured === 'object' ? configured[key] : undefined
+      return [key, Number.isInteger(value) && value >= 0 ? value : fallback]
+    })
+  )
+}
+
 function normalizeMatch(value) {
   if (value === true) return 'yes'
   if (value === false) return 'no'

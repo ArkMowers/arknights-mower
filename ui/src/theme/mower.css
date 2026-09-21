@@ -112,8 +112,8 @@ html[data-mower-theme='dark'] .n-checkbox-box {
    keeps its height cap; content scrolls inside `.n-card-content`/`.n-dialog__content`
    below, which is a separate node, so popovers still fly above it. */
 .n-modal {
-  max-width: calc(var(--app-width, 100vw) - 48px);
-  max-height: calc(var(--app-height, 100dvh) - 48px);
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
 }
 
 .n-modal.n-card,

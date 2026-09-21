@@ -1,6 +1,6 @@
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
@@ -24,6 +24,7 @@ from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
     TaskTypes,
     find_next_task,
+    set_type_enum,
 )
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
@@ -250,6 +251,49 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
                     ],
                 )
 
+    def test_fresh_start_defers_backup_plan_until_mood_read(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+
+        self.main.simulate(None)
+
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+
+    def test_saved_state_does_not_defer_backup_plan(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+
+        self.main.simulate({"tasks": []})
+
+        self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
+
+    def test_saved_mood_state_refreshes_backup_plan_before_run(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = None
+        scheduler.op_data.validate_backup_plans.return_value = {"success": True}
+        scheduler.op_data.backup_plans = [object()]
+        scheduler.run.side_effect = base_schedule.MowerExit
+        self.initialize.return_value = scheduler
+        saved = {
+            "tasks": [],
+            "operators": {},
+            "dorm": [],
+            "facility_states": {},
+            "party_time": None,
+            "daily_visit_friend": date.min,
+            "daily_report": date.min,
+            "daily_skland": date.min,
+            "daily_mail": date.min,
+            "task_count": 0,
+        }
+
+        self.main.simulate(saved)
+
+        scheduler.backup_plan_solver.assert_called_once_with()
+        scheduler.run.assert_called_once_with()
+
     def use_real_connection_retries(self, failures):
         from arknights_mower.utils.device.device import Device
         from arknights_mower.utils.solver import BaseSolver
@@ -461,7 +505,7 @@ class TestBaseScheduler(unittest.TestCase):
         bill_results = iter((None, object()))
         solver.find = MagicMock(
             side_effect=lambda template: (
-                next(bill_results) if template == "bill_accelerate" else object()
+                next(bill_results) if template == "bill_accelerate" else None
             )
         )
         solver.tap = MagicMock()
@@ -470,7 +514,13 @@ class TestBaseScheduler(unittest.TestCase):
 
         self.assertEqual(
             solver.find.call_args_list,
-            [call("bill_accelerate"), call("bill_accelerate")],
+            [
+                call("connecting"),
+                call("bill_accelerate"),
+                call("arrange_check_in_on"),
+                call("connecting"),
+                call("bill_accelerate"),
+            ],
         )
         solver.tap.assert_called_once_with((96, 1026), interval=1)
 
@@ -478,12 +528,19 @@ class TestBaseScheduler(unittest.TestCase):
     def test_wait_drone_interface_accepts_either_button_by_default(self):
         solver = BaseSchedulerSolver()
         solver.recog = MagicMock(w=1920, h=1080)
-        solver.find = MagicMock(return_value=object())
+        solver.find = MagicMock(
+            side_effect=lambda template: (
+                object() if template == "manufacture_accelerate" else None
+            )
+        )
         solver.tap = MagicMock()
 
         solver._wait_drone_interface()
 
-        solver.find.assert_called_once_with("factory_accelerate")
+        self.assertEqual(
+            solver.find.call_args_list,
+            [call("connecting"), call("manufacture_accelerate")],
+        )
         solver.tap.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -704,6 +761,47 @@ class TestBaseScheduler(unittest.TestCase):
             self.assertTrue(
                 all(not condition for condition in solver.op_data.plan_condition)
             )
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_detected_party_end_overwrites_unexpired_prediction(self):
+        solver = BaseSchedulerSolver()
+        predicted_end = datetime.now() + timedelta(hours=1)
+        solver._party_time = predicted_end
+        solver.op_data = MagicMock()
+        solver.op_data.party_time = predicted_end
+
+        # 刷新前的临时清空仍保留旧预测，维持 PR #765 的防抖语义。
+        solver.party_time = None
+        self.assertEqual(solver.op_data.party_time, predicted_end)
+
+        # 会客室界面确认无倒计时后，旧预测必须被清掉。
+        solver.set_detected_party_time(None)
+        self.assertIsNone(solver.party_time)
+        self.assertIsNone(solver.op_data.party_time)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_party_time_read_failure_means_party_ended(self):
+        solver = BaseSchedulerSolver()
+        solver.read_time = MagicMock(return_value=None)
+
+        self.assertIsNone(solver.read_party_time())
+        solver.read_time.assert_called_once_with(((1768, 438), (1902, 480)), None)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_operator_time_read_failure_means_not_working_or_depleted(self):
+        solver = BaseSchedulerSolver()
+        solver.read_time = MagicMock(return_value=None)
+        before = datetime.now()
+
+        with patch.object(base_schedule.logger, "info") as log_info:
+            result = solver.read_operator_time("room_1_2", 1, ((1, 2), (3, 4)))
+
+        self.assertGreaterEqual(result, before)
+        self.assertLessEqual(result, datetime.now())
+        solver.read_time.assert_called_once_with(((1, 2), (3, 4)), None)
+        log_info.assert_called_once_with(
+            "B102 2号位未显示干员倒计时，按非工作状态或心情耗尽处理"
+        )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_backup_plan_solver_GreyytheLightningbearer(self):
@@ -1064,12 +1162,66 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual([item["agent"] for item in result], ["", ""])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_defers_beginning_backup_plan_before_initial_mood_read(self):
+        plan_config = PlanConfig("", "", "")
+        solver = BaseSchedulerSolver()
+        solver.global_plan = {
+            "default_plan": Plan(
+                {"meeting": [Room("能天使", "", ["陈"])]}, plan_config
+            ),
+            "backup_plans": [
+                Plan(
+                    {},
+                    plan_config,
+                    trigger=LogicExpression(
+                        "op_data.operators['能天使'].is_working()", "==", "False"
+                    ),
+                    task={"meeting": ["Current"]},
+                    trigger_timing="BEGINNING",
+                )
+            ],
+        }
+        with patch.object(base_schedule.config, "save_conf"):
+            solver.initialize_operators()
+        solver.tasks = []
+        solver._party_time = None
+        solver.free_clue = None
+        solver.credit_fight = None
+        solver.defer_backup_plan_until_mood_read = True
+        solver.handle_error = MagicMock()
+
+        with (
+            patch.object(base_schedule.SceneGraphSolver, "run", return_value=True),
+            patch.object(base_schedule, "save_log"),
+        ):
+            self.assertTrue(solver.run())
+
+        # current_room 仍为空（未知），但负向工作条件没有被误判为已满足。
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.tasks, [])
+
+        # 完成首次读取后，实际确认在岗；任务开始判定仍不应触发副表。
+        operator = solver.op_data.operators["能天使"]
+        operator.current_room = "meeting"
+        operator.current_index = 0
+        solver.defer_backup_plan_until_mood_read = False
+        with (
+            patch.object(base_schedule.SceneGraphSolver, "run", return_value=True),
+            patch.object(base_schedule, "save_log"),
+        ):
+            self.assertTrue(solver.run())
+
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.tasks, [])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_infra_main_requests_restart_after_mood_read(self):
         solver = BaseSchedulerSolver()
         solver.task = None
         solver.planned = False
         solver.tasks = []
         solver.restart_after_mood_read = True
+        solver.defer_backup_plan_until_mood_read = True
 
         with (
             patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1086,43 +1238,16 @@ class TestBaseScheduler(unittest.TestCase):
 
         self.assertEqual(result, "restart_after_mood_read")
         self.assertFalse(solver.restart_after_mood_read)
+        self.assertFalse(solver.defer_backup_plan_until_mood_read)
         mock_agent_get_mood.assert_called_once_with(skip_dorm=True)
         mock_run_order.assert_not_called()
         mock_plan.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_get_mood_keeps_self_correction_when_backup_refresh_disabled(self):
+    def test_agent_get_mood_defers_backup_refresh_to_restart(self):
         solver, read_meeting = self._create_backup_refresh_solver()
 
         with (
-            patch.object(
-                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
-            ),
-            patch.object(BaseSchedulerSolver, "enter_room"),
-            patch.object(
-                BaseSchedulerSolver,
-                "get_agent_from_room",
-                side_effect=read_meeting,
-            ),
-            patch.object(BaseSchedulerSolver, "back"),
-        ):
-            result = solver.agent_get_mood(skip_dorm=True)
-
-        self.assertEqual(result, "self_correction")
-        self.assertEqual(solver.op_data.plan_condition, [False])
-        self.assertEqual(solver.op_data.plan["meeting"][0].agent, "伊内丝")
-        self.assertTrue(
-            any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
-        )
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_get_mood_does_not_refresh_backup_plan_by_default(self):
-        solver, read_meeting = self._create_backup_refresh_solver()
-
-        with (
-            patch.object(
-                base_schedule.config.conf, "refresh_backup_plan_after_mood", True
-            ),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(
                 BaseSchedulerSolver,
@@ -2026,6 +2151,59 @@ class TestScanDispatchMastery(unittest.TestCase):
         self.assertEqual(len(upgrades), 1)
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_dispatch_scan_start_tasks_one_task_per_skill(self):
+        # 存量库同一 (干员, 技能) 有多行（insert_plan 无去重）→ 每个键只派第一条 idle
+        # 行：旧实现按行派发，7 行数据会发 7 条一模一样的「开始训练」，只有一条能真跑
+        # （实测 `scheduled=1` 却打出「已为 7 个……安排开始训练」）。
+        solver = self._solver()
+        rows = [
+            self._idle_plan(pid=1, char_id="char_a", skill_index=1),
+            self._idle_plan(pid=2, char_id="char_a", skill_index=1),
+            self._idle_plan(pid=3, char_id="char_a", skill_index=1),
+            # 同一时刻另一个技能的任务必须保留（按时间判重会把这条吞掉）
+            self._idle_plan(pid=4, char_id="char_b", skill_index=1),
+        ]
+        with (
+            patch("arknights_mower.utils.mastery_db.get_all_plans", return_value=rows),
+            patch.object(base_schedule.logger, "info") as info,
+        ):
+            base_schedule.BaseSchedulerSolver._dispatch_scan_start_tasks(
+                solver,
+                [
+                    {"char_id": "char_a", "skill_index": 1},
+                    {"char_id": "char_b", "skill_index": 1},
+                ],
+            )
+        self.assertEqual(
+            [t.plan_key for t in solver.tasks],
+            ["1", "4"],
+            "同键只派第一条 idle 行，不同技能各自保留",
+        )
+        self.assertTrue(
+            any("已为 2 个" in c.args[0] for c in info.call_args_list),
+            "日志里的 N 要与实际入队数一致",
+        )
+
+    @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_dispatch_scan_start_tasks_skips_key_managed_by_reconcile(self):
+        # 同键已有 arranging/training/waiting_collect 的行（正被 reconcile 管着）→
+        # 同键的重复 idle 行不该再去开训练
+        solver = self._solver()
+        managed = self._idle_plan(pid=1, char_id="char_a", skill_index=1)
+        managed["status"] = "training"
+        duplicate = self._idle_plan(pid=2, char_id="char_a", skill_index=1)
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_all_plans",
+                return_value=[managed, duplicate],
+            ),
+        ):
+            base_schedule.BaseSchedulerSolver._dispatch_scan_start_tasks(
+                solver, [{"char_id": "char_a", "skill_index": 1}]
+            )
+        self.assertEqual(solver.tasks, [], "该键已被 reconcile 管着，不再派发")
+
+    @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_auto_schedule_mastery_after_scan_gates_on_enable_mastery(self):
         # §16.11 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
         # 照跑；加工配置钩子在 OFF 时仅恢复手动配置。三个钩子被调 + dispatch 不被调
@@ -2249,7 +2427,7 @@ class TestDroneAccelerate(unittest.TestCase):
                 solver,
                 "find",
                 side_effect=lambda res, **kw: (
-                    accelerate_scope if res == "factory_accelerate" else None
+                    accelerate_scope if res == "manufacture_accelerate" else None
                 ),
             ),
             patch.object(solver, "_wait_drone_interface"),
@@ -2262,7 +2440,7 @@ class TestDroneAccelerate(unittest.TestCase):
             solver.drone("factory", not_customize=True)
 
         # 制造站走确认面板的 helper，避免在详情页误触
-        mock_helper.assert_called_once_with("factory_accelerate", "all_in")
+        mock_helper.assert_called_once_with("manufacture_accelerate", "all_in")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_infra_main_keeps_run_order_task_alive_across_two_passes(self):
@@ -2338,3 +2516,36 @@ class TestWorkshopMaterialScope(unittest.TestCase):
                 scene.assert_not_called()
                 errors.assert_not_called()
                 self.assertEqual(settings[0].items[0].item_names, [material])
+
+
+class TestManualClueTask(unittest.TestCase):
+    """手动「线索任务」由 infra_main 派发，与定时触发共用 clue_new()。
+
+    前端下拉提交的是显示名，set_type_enum 只按 display_value 匹配、对不上会静默
+    退化成空任务，所以名字契约和派发一起钉住。
+    """
+
+    def test_display_name_resolves_to_clue(self):
+        self.assertIs(set_type_enum("线索任务"), TaskTypes.CLUE)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_infra_main_dispatches_clue_task(self):
+        task = SchedulerTask(
+            time=datetime.now(), task_plan={}, task_type=TaskTypes.CLUE
+        )
+        solver = BaseSchedulerSolver()
+        solver.task = task
+        solver.tasks = [task]
+        # __init__ 被 stub 掉，party_time 的 setter 需要 op_data 存在才能走下去
+        solver.op_data = None
+        with (
+            patch.object(solver, "find", return_value=((0, 0), (10, 10))),
+            patch.object(solver, "clue_new") as clue_new,
+            patch.object(solver, "skip") as skip,
+        ):
+            solver.infra_main()
+        clue_new.assert_called_once_with()
+        self.assertIsNotNone(solver.last_clue)  # 手动触发同样刷新定时器
+        # 与定时触发共用同一条路径，收尾也要一致
+        skip.assert_any_call(["collect_notification"])
+        self.assertEqual(solver.tasks, [])  # 任务已消费
