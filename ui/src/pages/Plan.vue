@@ -563,16 +563,6 @@ function movePlanForward() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>宿舍优先级排序</span>
-        <help-text>
-          当前排班独立使用的动态床位顺序；切换主表或副表时会切换到各自保存的顺序。
-          留空时使用默认顺序。
-        </help-text>
-      </template>
-      <slick-dorm-select v-model="current_conf.dorm_order"></slick-dorm-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
         <span>干员休息优先级</span>
         <help-text>
           <p>名单中的干员属于最高休息层级；名单内部按当前心情从低到高排序，不按填写顺序。</p>
@@ -580,6 +570,16 @@ function movePlanForward() {
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.ope_resting_priority"></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>宿舍优先级排序</span>
+        <help-text>
+          <p>仅在当前主表或副表生效；留空时使用当前排班自动生成的床位顺序。</p>
+          <p>副表生效后会应用该副表自己的顺序，不再读取全局设置。</p>
+        </help-text>
+      </template>
+      <slick-dorm-select v-model="current_conf.dorm_order"></slick-dorm-select>
     </n-form-item>
   </n-form>
   <n-modal

@@ -29,7 +29,7 @@ def storage(tmp_path, monkeypatch):
     monkeypatch.setattr(
         config,
         "conf",
-        config.Conf(account="before", dorm_order="dormitory_3,dormitory_1"),
+        config.Conf(account="before"),
     )
     monkeypatch.setattr(config, "plan", config.PlanModel())
     config.save_conf()
@@ -114,6 +114,8 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
     storage, populated_plan
 ):
     original_plan = populated_plan.model_dump(exclude_none=True)
+    migrated_plan = json.loads(json.dumps(original_plan))
+    migrated_plan["conf"]["dorm_order"] = "dormitory_2_4,dormitory_1_3"
     raw = incoming(
         **{
             "conf.yml": (
@@ -134,9 +136,10 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
         config.load_conf()
         config.load_plan()
         assert config.conf.account == "restored"
-        assert config.conf.dorm_order == "dormitory_2_4,dormitory_1_3"
-        assert config.plan.model_dump(exclude_none=True) == original_plan
-    assert config.plan_path.read_bytes() == json.dumps(original_plan).encode()
+        assert config.plan.conf.dorm_order == "dormitory_2_4,dormitory_1_3"
+        assert config.plan.model_dump(exclude_none=True) == migrated_plan
+    assert json.loads(config.plan_path.read_text()) == migrated_plan
+    assert "dorm_order" not in config.conf_path.read_text()
     assert (
         config.conf_path.parent / "nested/custom.yml"
     ).read_bytes() == b"# retained raw\nkey: value\n"

@@ -36,8 +36,10 @@ describe('宿舍休息候补配置', () => {
     const saved = store.build_plan()
     expect(saved.conf.resting_priority).toBe('斯卡蒂')
     expect(saved.conf.resting_standby).toBe('')
+    expect(saved.conf.dorm_order).toBe('')
     expect(saved.backup_plans[0].conf.resting_priority).toBe('幽灵鲨')
     expect(saved.backup_plans[0].conf.resting_standby).toBe('')
+    expect(saved.backup_plans[0].conf.dorm_order).toBe('')
   })
 
   it('主副表候补名单和宿舍顺序导入后独立保存', async () => {

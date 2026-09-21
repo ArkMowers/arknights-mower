@@ -127,8 +127,13 @@ def save_conf():
     atomic_write(conf_path, dump)
 
 
+_legacy_dorm_order = ""
+
+
 def load_conf():
-    global conf
+    """读取全局配置，并暂存待迁入排班文件的旧宿舍顺序。"""
+    global conf, _legacy_dorm_order
+    _legacy_dorm_order = ""
     if not conf_path.is_file():
         conf_path.parent.mkdir(exist_ok=True)
         conf = Conf()
@@ -137,7 +142,9 @@ def load_conf():
     with conf_path.open("r", encoding="utf-8") as f:
         # 旧键 → 新键的兼容（exipring_medicine_on_weekend）由 Conf 校验层统一处理，
         # 读文件与 /conf POST 等所有构造路径都走同一套迁移。
-        conf = Conf(**(yaml.load(f, Loader=CoreLoader) or {}))
+        raw = yaml.load(f, Loader=CoreLoader) or {}
+    _legacy_dorm_order = str(raw.pop("dorm_order", "") or "")
+    conf = Conf(**raw)
 
 
 conf: Conf
@@ -152,23 +159,22 @@ def save_plan():
 
 
 def load_plan():
-    global plan
-    if not plan_path.is_file():
+    global plan, _legacy_dorm_order
+    created = not plan_path.is_file()
+    if created:
         plan_path.parent.mkdir(exist_ok=True)
         plan = PlanModel()
-        migrated = migrate_legacy_dorm_order(plan, {}, conf.dorm_order)
+        data = {}
+    else:
+        # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
+        with plan_path.open("r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+        plan = PlanModel(**data)
+    migrated = migrate_legacy_dorm_order(plan, data, _legacy_dorm_order)
+    if created or migrated:
         save_plan()
-        if migrated:
-            conf.dorm_order = ""
-            save_conf()
-        return
-    # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
-    with plan_path.open("r", encoding="utf-8-sig") as f:
-        data = json.load(f)
-    plan = PlanModel(**data)
-    if migrate_legacy_dorm_order(plan, data, conf.dorm_order):
-        save_plan()
-        conf.dorm_order = ""
+    if _legacy_dorm_order:
+        _legacy_dorm_order = ""
         save_conf()
 
 

@@ -71,12 +71,9 @@ def test_stale_or_incomplete_order_keeps_original_validation(saved, old):
 
 
 def test_empty_order_uses_runtime_default_without_rewriting_setting(saved):
-    config.conf.dorm_order = ",".join(reversed(DEFAULT))
     op = operators()
     assert op.init_and_validate() is None
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
-    # The deprecated global setting is no longer a runtime source.
-    assert config.conf.dorm_order == ",".join(reversed(DEFAULT))
     saved.assert_not_called()
 
 
@@ -86,6 +83,21 @@ def test_valid_manual_order_is_used_without_rewriting_setting(saved):
     assert op.init_and_validate() is None
     assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == order
     saved.assert_not_called()
+
+
+def test_backup_plan_applies_its_own_dorm_order(saved):
+    op = operators(",".join(DEFAULT))
+    op.global_plan["backup_plans"] = [
+        Plan({}, PlanConfig("", "", "", dorm_order=",".join(reversed(DEFAULT))))
+    ]
+    op.backup_plans = op.global_plan["backup_plans"]
+
+    assert op.swap_plan([True], refresh=True) is None
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == list(
+        reversed(DEFAULT)
+    )
+    assert op.swap_plan([False], refresh=True) is None
+    assert [f"{d.position[0]}_{d.position[1]}" for d in op.dorm] == DEFAULT
 
 
 def test_saved_state_restores_values_without_overriding_regenerated_order(saved):
@@ -104,7 +116,6 @@ def test_saved_state_restores_values_without_overriding_regenerated_order(saved)
     assert (op.dorm[0].name, op.dorm[0].time) == ("冰酿", first_time)
     assert (op.dorm[-1].name, op.dorm[-1].time) == ("流明", last_time)
     assert all(dorm.position[0] != "dormitory_3" for dorm in op.dorm)
-    assert config.conf.dorm_order == ""
     saved.assert_not_called()
 
 
@@ -180,11 +191,12 @@ def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path
     )
     monkeypatch.setattr(config, "plan_path", plan_path)
     monkeypatch.setattr(config, "conf_path", conf_path)
-    monkeypatch.setattr(config, "conf", config.Conf(dorm_order=legacy))
+    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "_legacy_dorm_order", legacy)
 
     config.load_plan()
 
-    assert config.conf.dorm_order == ""
+    assert config._legacy_dorm_order == ""
     assert config.plan.conf.dorm_order == legacy
     assert config.plan.backup_plans[0].conf.dorm_order == legacy
     saved_plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -192,32 +204,31 @@ def test_loading_legacy_files_moves_global_order_into_plan(monkeypatch, tmp_path
     assert saved_plan["backup_plans"][0]["conf"]["dorm_order"] == legacy
 
 
-def test_plan_save_never_changes_dorm_order(saved, monkeypatch):
+def test_plan_save_persists_plan_dorm_order(saved, monkeypatch):
     import server
 
     monkeypatch.setattr(config, "plan", config.PlanModel())
     monkeypatch.setattr(config, "save_plan", MagicMock())
     client = server.app.test_client()
-    config.conf.dorm_order = ",".join(reversed(DEFAULT))
     payload = config.plan.model_dump(mode="json", exclude_none=True)
+    payload["conf"]["dorm_order"] = ",".join(reversed(DEFAULT))
     response = client.post("/plan", json=payload)
     assert response.status_code == 200
-    assert "dorm_order_reset" not in response.json
+    assert config.plan.conf.dorm_order == ",".join(reversed(DEFAULT))
     saved.assert_not_called()
     payload["conf"]["ling_xi"] = 2
     response = client.post("/plan", json=payload)
     assert response.status_code == 200
-    assert config.conf.dorm_order == ",".join(reversed(DEFAULT))
+    assert config.plan.conf.dorm_order == ",".join(reversed(DEFAULT))
     saved.assert_not_called()
 
 
-def test_failed_plan_save_restores_plan_and_keeps_dorm_order(monkeypatch, tmp_path):
+def test_failed_plan_save_restores_plan_dorm_order(monkeypatch, tmp_path):
     import server
 
     original_plan = config.PlanModel()
-    original_order = ",".join(reversed(DEFAULT))
     monkeypatch.setattr(config, "plan", original_plan)
-    monkeypatch.setattr(config, "conf", config.Conf(dorm_order=original_order))
+    monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "plan_path", tmp_path / "plan.json")
     monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
     config.save_plan()
@@ -237,13 +248,14 @@ def test_failed_plan_save_restores_plan_and_keeps_dorm_order(monkeypatch, tmp_pa
     client = server.app.test_client()
     payload = original_plan.model_dump(mode="json", exclude_none=True)
     payload["conf"]["ling_xi"] = 2
+    payload["conf"]["dorm_order"] = ",".join(reversed(DEFAULT))
 
     response = client.post("/plan", json=payload)
     assert response.status_code == 500
     assert config.plan is original_plan
-    assert config.conf.dorm_order == original_order
+    assert config.plan.conf.dorm_order == ""
 
     response = client.post("/plan", json=payload)
     assert response.status_code == 200
     assert config.plan.conf.ling_xi == 2
-    assert config.conf.dorm_order == original_order
+    assert config.plan.conf.dorm_order == ",".join(reversed(DEFAULT))

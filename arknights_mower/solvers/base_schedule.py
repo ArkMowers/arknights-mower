@@ -2056,11 +2056,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.op_data._slot_takable(bed, True, requester=op.name)
                     for bed in self.op_data.dorm
                 )
-                if _high_done and not (can_standby or can_preempt):
+                has_group_dorm_bed = op.group and self.op_data.group_dorm_bed_count(
+                    self.op_data.groups[op.group]
+                )
+                if _high_done and not (
+                    can_standby or can_preempt or has_group_dorm_bed
+                ):
                     continue
                 if (
                     not can_standby
                     and not can_preempt
+                    and not has_group_dorm_bed
                     and current_resting + len(_replacement) >= self.ideal_resting_count
                     and self.op_data.available_free() == 0
                 ):
@@ -2218,14 +2224,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ]
         if dorm_agents:
             agents = [name for name in agents if name not in dorm_agents]
+        work_agents = set(agents)
         __replacement = []
         __plan = {}
+        group_dorm_assignments = []
+        group_dorm_resting = set()
         required = 0
         for x in agents:
             op = self.op_data.operators[x]
             if op.workaholic or op.room.startswith("dorm"):
                 continue
             required += 1
+        required -= self.op_data.group_dorm_bed_count([*agents, *dorm_agents])
         logger.debug(f"需求:{current_resting} 当前休息")
         logger.debug(f"需求:{required}宿舍空位")
         logger.debug(f"需求:{exist_replacement} 当前安排")
@@ -2255,25 +2265,38 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 如果干员已经被安排了
                 success = False
                 break
-            _rep = next(
-                (
-                    obj
-                    for obj in self.op_data.replacement_candidates(x)
-                    if (
-                        not (
-                            self.op_data.operators[obj].current_room != ""
-                            and not self.op_data.operators[obj].is_resting()
-                        )
-                    )
-                    and obj not in TRADE_ORDER_AGENTS
+
+            def replacement_available(obj):
+                replacement = self.op_data.operators[obj]
+                same_group_dorm = self.op_data.is_same_group_dorm_replacement(x, obj)
+                departing_for_dorm = (
+                    same_group_dorm
+                    and obj in work_agents
+                    and replacement.room in __plan
+                    and __plan[replacement.room][replacement.index] != "Current"
+                )
+                if (
+                    replacement.current_room != ""
+                    and not replacement.is_resting()
+                    and not departing_for_dorm
+                ):
+                    return False
+                return (
+                    obj not in TRADE_ORDER_AGENTS
                     and not _is_mastery_busy(obj)
                     and obj not in exist_replacement
                     and obj not in __replacement
                     and not self.op_data.is_dorm_replacement(obj)
                     and (
-                        x.room.startswith("dorm")
-                        or self.op_data.operators[obj].current_room != x.room
+                        x.room.startswith("dorm") or replacement.current_room != x.room
                     )
+                )
+
+            _rep = next(
+                (
+                    obj
+                    for obj in self.op_data.replacement_candidates(x)
+                    if replacement_available(obj)
                 ),
                 None,
             )
@@ -2282,6 +2305,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if x.room not in __plan.keys():
                     __plan[x.room] = ["Current"] * len(self.op_data.plan[x.room])
                 __plan[x.room][x.index] = _rep
+                if self.op_data.is_same_group_dorm_replacement(x, _rep):
+                    group_dorm_assignments.append((x.room, x.index, _rep))
+                    group_dorm_resting.add(_rep)
             else:
                 success = False
         if success:
@@ -2290,6 +2316,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 for x in agents
                 if not self.op_data.operators[x].workaholic
                 and not self.op_data.operators[x].room.startswith("dorm")
+                and x not in group_dorm_resting
             ]
             # 床位判断和分配使用同一套规则。先为整组模拟预留，避免低优占床
             # 提前挡住大组，也避免分到一半才失败留下脏状态。
@@ -2298,6 +2325,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if dorms is None:
                 return
             self.restore_displaced_resting(previous, __plan)
+            for room, index, name in group_dorm_assignments:
+                dorm = self.op_data.get_group_dorm(room, index)
+                if dorm is not None:
+                    dorm.name = name
+                    dorm.time = None
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
             logger.debug(dorms)

@@ -52,7 +52,6 @@ describe('MAA restore theme config', () => {
     const legacy = {
       free_blacklist: '',
       reload_room: '',
-      dorm_order: '',
       maa_mall_buy: '',
       maa_mall_blacklist: '',
       maa_weekly_plan_active: '默认',

@@ -78,10 +78,11 @@ def apply_plan(solver, plan):
             op = solver.op_data.operators[name]
             op.current_room, op.current_index = room, index
             op.time_stamp = datetime.now()
-    for dorm in solver.op_data.dorm:
+    for dorm in solver.op_data.all_dorms():
         op = solver.op_data.get_current_operator(*dorm.position)
-        dorm.name = op.name if op else ""
-        dorm.time = datetime.now() + timedelta(hours=4) if op else None
+        tracked = op is not None and solver.op_data.is_recovery_dorm(dorm, op.name)
+        dorm.name = op.name if tracked else ""
+        dorm.time = datetime.now() + timedelta(hours=4) if tracked else None
 
 
 def shift_off(solver):
@@ -91,6 +92,25 @@ def shift_off(solver):
     apply_plan(solver, plan)
     apply_plan(solver, beds)
     return plan, replacements
+
+
+def configure_same_group_cover(solver):
+    resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
+    resident.replacement = ["伊内丝"]
+    assert solver.initialize_operators() is None
+    for name in ["泥岩", "能天使", "年"]:
+        solver.op_data.add(Operator(name, ""))
+    apply_plan(
+        solver,
+        {
+            "meeting": ["伊内丝", "银灰"],
+            "contact": ["讯使"],
+            "dormitory_1": ["塑心", "冰酿", "泥岩", "能天使", "年"],
+        },
+    )
+    for op in solver.op_data.operators.values():
+        op.time_stamp = datetime.now()
+        op.mood = 5 if op.group and not op.room.startswith("dorm") else 24
 
 
 def test_group_larger_than_bed_count_validates_and_round_trip_converges(solver):
@@ -291,6 +311,47 @@ def test_multiple_residents_swap_without_using_extra_beds(solver):
     assert plan["dormitory_1"][:2] == ["黑角", "砾"]
     assert {d.name for d in solver.op_data.dorm} == {"伊内丝", "银灰", "讯使"}
     assert solver.agent_get_mood() is None
+
+
+def test_same_group_worker_uses_resident_slot_as_resting_bed(solver):
+    configure_same_group_cover(solver)
+
+    plan, replacements = shift_off(solver)
+
+    assert plan == {
+        "meeting": ["陈", "初雪"],
+        "contact": ["红"],
+        "dormitory_1": ["伊内丝", "Current", "Current", "Current", "Current"],
+    }
+    assert len(replacements) == len(set(replacements)) == 4
+    assert {d.name for d in solver.op_data.dorm} == {"银灰", "讯使", "年"}
+    assert solver.op_data.group_dorm[0].name == "伊内丝"
+    assert solver.op_data.get_dorm_by_name("伊内丝")[1] is solver.op_data.group_dorm[0]
+
+    tasks = generate_plan_by_drom(
+        {datetime.now() + timedelta(hours=4): (solver.op_data.all_dorms(), True)},
+        solver.op_data,
+    )
+    assert len(tasks) == 1
+    assert tasks[0].plan["meeting"] == ["伊内丝", "银灰"]
+    assert tasks[0].plan["contact"] == ["讯使"]
+    assert tasks[0].plan["dormitory_1"][0] == "塑心"
+
+
+def test_same_group_resident_slot_reduces_required_free_beds(solver):
+    configure_same_group_cover(solver)
+    # 三名工作成员只需要两个 Free 床位；第三个床位由不可接管的主力占用。
+    solver.op_data.operators["泥岩"].operator_type = "high"
+    apply_plan(
+        solver,
+        {"dormitory_1": ["Current", "Current", "泥岩", "Current", "Current"]},
+    )
+    for name in ["伊内丝", "银灰", "讯使"]:
+        solver.op_data.operators[name].mood = 5
+
+    plan, _ = shift_off(solver)
+    assert plan["dormitory_1"][0] == "伊内丝"
+    assert {d.name for d in solver.op_data.dorm} == {"泥岩", "银灰", "讯使"}
 
 
 def test_mood_driven_resting_schedules_resident_cover(solver, monkeypatch):

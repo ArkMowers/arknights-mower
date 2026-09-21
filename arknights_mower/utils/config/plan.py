@@ -25,7 +25,7 @@ class PlanConf(BaseModel):
     ope_resting_priority: str = ""
     "休息排序优先级"
     dorm_order: str = ""
-    "动态宿舍床位优先级"
+    "当前排班的宿舍床位优先级"
 
 
 class BackupPlanConf(PlanConf):

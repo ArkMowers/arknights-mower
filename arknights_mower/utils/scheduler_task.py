@@ -451,7 +451,7 @@ def plan_metadata(op_data, tasks):
     grouped_dorms = defaultdict(list)
     free_rooms = []
     # 分组 dorm 对象
-    for dorm in op_data.dorm:
+    for dorm in op_data.all_dorms():
         if dorm.name and dorm.name in op_data.operators:
             operator = op_data.operators[dorm.name]
             grouped_dorms[operator.group].append(dorm)
