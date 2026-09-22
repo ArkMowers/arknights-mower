@@ -9,7 +9,7 @@ from arknights_mower.solvers import record
 from arknights_mower.utils import config
 
 
-def test_agent_action_schema_adds_related_operator_to_legacy_table():
+def test_agent_action_schema_adds_fiammetta_fields_to_legacy_table():
     connection = sqlite3.connect(":memory:")
     connection.execute(
         """
@@ -24,7 +24,7 @@ def test_agent_action_schema_adds_related_operator_to_legacy_table():
     record._ensure_tables(connection)
 
     columns = [row[1] for row in connection.execute("PRAGMA table_info(agent_action)")]
-    assert columns[-1] == "related_operator"
+    assert columns[-2:] == ["related_operator", "mood_event"]
     connection.close()
     record._tables_created = False
 
@@ -78,6 +78,7 @@ def test_fiammetta_curve_point_contains_charged_operator(monkeypatch):
             7.5,
             "2026-09-22 10:00:00.000000",
             "伊内丝",
+            "fiammetta_charge",
         )
     ]
     monkeypatch.setattr(record, "_fetchall", lambda *args: rows)
@@ -100,4 +101,61 @@ def test_fiammetta_curve_point_contains_charged_operator(monkeypatch):
         "x": "2026-09-22T10:00:00.000000+08:00",
         "y": 7.5,
         "relatedOperator": "伊内丝",
+        "moodEvent": "fiammetta_charge",
     }
+
+
+def test_charged_operator_curve_contains_before_and_after_points(monkeypatch):
+    rows = [
+        (
+            "歌蕾蒂娅",
+            "control",
+            "dormitory_1",
+            1,
+            "深海猎人",
+            0,
+            "2026-09-22 10:00:00.000000",
+            "菲亚梅塔",
+            "fiammetta_before",
+        ),
+        (
+            "歌蕾蒂娅",
+            "control",
+            "dormitory_1",
+            1,
+            "深海猎人",
+            24,
+            "2026-09-22 10:00:01.000000",
+            "菲亚梅塔",
+            "fiammetta_after",
+        ),
+    ]
+    monkeypatch.setattr(record, "_fetchall", lambda *args: rows)
+    monkeypatch.setattr(
+        record,
+        "get_work_rest_ratios",
+        lambda: {
+            "歌蕾蒂娅": {
+                "labels": ["休息时间", "工作时间"],
+                "datasets": [{"data": [1, 0]}],
+            }
+        },
+    )
+    monkeypatch.setattr(config, "conf", config.Conf())
+
+    points = record.get_mood_ratios()[0]["moodData"]["datasets"][0]["data"]
+
+    assert points == [
+        {
+            "x": "2026-09-22T10:00:00.000000+08:00",
+            "y": 0,
+            "relatedOperator": "菲亚梅塔",
+            "moodEvent": "fiammetta_before",
+        },
+        {
+            "x": "2026-09-22T10:00:01.000000+08:00",
+            "y": 24,
+            "relatedOperator": "菲亚梅塔",
+            "moodEvent": "fiammetta_after",
+        },
+    ]
