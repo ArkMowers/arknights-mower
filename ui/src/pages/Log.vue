@@ -126,6 +126,15 @@ watch(sc_preview, (enabled) => {
   updateScreenshotPreview()
   nextTick(apply_log_layout)
 })
+
+watch(
+  plan_condition,
+  () => {
+    nextTick(apply_log_layout)
+  },
+  { deep: true }
+)
+
 function scroll_last_line() {
   nextTick(() => {
     const container = document.querySelector('.log .n-scrollbar-container')
