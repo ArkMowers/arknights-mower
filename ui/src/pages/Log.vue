@@ -352,7 +352,11 @@ async function db_delete(keys) {
 </script>
 
 <template>
-  <div ref="log_layout" class="home-container" :class="{ 'with-screenshot': sc_preview }">
+  <div
+    ref="log_layout"
+    class="home-container"
+    :class="{ 'with-screenshot': sc_preview, 'has-tasks': task_list.length > 0 }"
+  >
     <div class="log-bg"></div>
     <n-image
       v-if="sc_preview"
@@ -367,7 +371,7 @@ async function db_delete(keys) {
       @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
     ></div>
 
-    <div class="task-table-scroll">
+    <div v-if="task_list.length > 0" class="task-table-scroll">
       <n-table class="task-table" size="small" :single-line="false">
         <thead>
           <tr>
@@ -407,6 +411,7 @@ async function db_delete(keys) {
       </span>
     </div>
     <div
+      v-if="task_list.length > 0"
       class="log-resizer log-resizer-task"
       @pointerdown="(event) => resize_log_pane(event, 'task')"
     ></div>
@@ -560,15 +565,22 @@ async function db_delete(keys) {
 .home-container {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 0 0 minmax(0, var(--log-task-h, 1fr)) auto 8px minmax(120px, 1fr) auto;
+  grid-template-rows: 0 0 0 auto 0 minmax(120px, 1fr) auto;
+  gap: 0;
   min-height: 0;
   overflow: hidden;
   position: relative;
 
   &.with-screenshot {
-    grid-template-rows:
-      var(--log-sc-h, 270px) 8px minmax(0, var(--log-task-h, 1fr))
-      auto 8px minmax(120px, 1fr) auto;
+    grid-template-rows: var(--log-sc-h, 270px) 8px 0 auto 0 minmax(120px, 1fr) auto;
+  }
+
+  &.has-tasks {
+    grid-template-rows: 0 0 auto auto 8px minmax(120px, 1fr) auto;
+
+    &.with-screenshot {
+      grid-template-rows: var(--log-sc-h, 270px) 8px auto auto 8px minmax(120px, 1fr) auto;
+    }
   }
 }
 
@@ -618,8 +630,9 @@ async function db_delete(keys) {
   grid-row: 3;
   width: 100%;
   max-width: 600px;
-  height: 100%;
+  height: auto;
   min-height: 0;
+  max-height: var(--log-task-h, min(600px, 36vh));
   overflow: auto;
   scrollbar-gutter: stable;
   justify-self: start;
