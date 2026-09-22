@@ -123,6 +123,15 @@ def _is_mastery_busy(operator_name: str) -> bool:
         return False
 
 
+def _merge_dorm_arrangement(plan: dict, dorm_plan: dict) -> None:
+    """把同一轮演算出的动态床位直接并入下班任务。"""
+    for room, names in dorm_plan.items():
+        target = plan.setdefault(room, ["Current"] * len(names))
+        for index, name in enumerate(names):
+            if name != "Current":
+                target[index] = name
+
+
 def _add_group_to_fix_plan(fix_plan: dict, op_data: Operators, group: str) -> None:
     """把组内真正不在岗的成员写进 fix_plan；已在静态槽位的成员跳过。
 
@@ -356,18 +365,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         plan = {}
         self.get_resting_plan(candidates, [], plan, current_resting)
         if len(plan.items()) > 0:
+            re_order_dorm_plan = try_reorder(self.op_data, plan)
+            if re_order_dorm_plan:
+                logger.debug(f"合并宿舍任务{re_order_dorm_plan}")
+                _merge_dorm_arrangement(plan, re_order_dorm_plan)
             self.tasks.append(
                 SchedulerTask(
                     datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
                 )
             )
-            re_order_dorm_plan = try_reorder(self.op_data, plan)
-            if re_order_dorm_plan:
-                logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
-                task = SchedulerTask(
-                    task_plan=re_order_dorm_plan, task_type=TaskTypes.SHIFT_OFF
-                )
-                self.tasks.append(task)
         else:
             msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
             send_message(msg, level="ERROR")
@@ -2104,12 +2110,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 更新宿舍任务
         re_order_dorm_plan = try_reorder(self.op_data, new_plan)
         if re_order_dorm_plan:
-            logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
-            task = SchedulerTask(
-                task_plan=re_order_dorm_plan,
-                task_type=TaskTypes.SHIFT_OFF if new_plan else TaskTypes.NOT_SPECIFIC,
-            )
-            self.tasks.append(task)
+            if new_plan:
+                # resting() 已把 new_plan 原对象放入 SHIFT_OFF；直接合并可确保
+                # 工作站换班与宿舍入住一次执行，副表不会在两者之间看到
+                # “已离岗但尚未入住宿舍”的瞬时状态并错误叫回整组。
+                logger.debug(f"合并宿舍任务{re_order_dorm_plan}")
+                _merge_dorm_arrangement(new_plan, re_order_dorm_plan)
+            else:
+                logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
+                self.tasks.append(
+                    SchedulerTask(
+                        task_plan=re_order_dorm_plan,
+                        task_type=TaskTypes.NOT_SPECIFIC,
+                    )
+                )
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_workshop_tasks(self.op_data, self.tasks)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):

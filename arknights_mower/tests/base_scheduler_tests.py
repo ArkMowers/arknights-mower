@@ -2586,6 +2586,47 @@ class TestGroupToFixPlan(unittest.TestCase):
         self.assertNotIn("central", fix_plan)
 
 
+class TestDormShiftOffMerge(unittest.TestCase):
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_plan_solver_keeps_work_and_dorm_in_one_shift_off_task(self):
+        solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(operators={}, print=lambda: "{}")
+        solver.tasks = []
+        solver.find_next_task = MagicMock(return_value=None)
+        solver.plan_metadata = MagicMock()
+        solver.agent_get_mood = MagicMock(return_value="done")
+        solver.backup_plan_solver = MagicMock()
+        work_plan = {
+            "meeting": ["陈", "初雪"],
+            "dormitory_1": ["Current", "Current", "Free", "Current", "Current"],
+        }
+
+        def resting():
+            solver.tasks.append(
+                SchedulerTask(task_plan=work_plan, task_type=TaskTypes.SHIFT_OFF)
+            )
+            return work_plan
+
+        solver.resting = resting
+        dorm_plan = {
+            "dormitory_1": ["Current", "Current", "银灰", "讯使", "Current"]
+        }
+        with (
+            patch.object(base_schedule, "try_reorder", return_value=dorm_plan),
+            patch.object(base_schedule, "try_workshop_tasks"),
+            patch.object(base_schedule, "try_add_release_dorm"),
+        ):
+            solver.plan_solver()
+
+        shift_off = [task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF]
+        self.assertEqual(len(shift_off), 1)
+        self.assertEqual(shift_off[0].plan["meeting"], ["陈", "初雪"])
+        self.assertEqual(
+            shift_off[0].plan["dormitory_1"],
+            ["Current", "Current", "银灰", "讯使", "Current"],
+        )
+
+
 class TestDroneAccelerate(unittest.TestCase):
     """#907：无人机加速面板首次点击未生效时不应误消费跑单任务。
 
