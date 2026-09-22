@@ -25,7 +25,8 @@ _DB_TABLE_STMTS = (
     "agent_group TEXT,"
     "mood REAL,"
     "current_time TEXT,"
-    "related_operator TEXT"
+    "related_operator TEXT,"
+    "mood_event TEXT"
     ")",
     "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)",
     "CREATE TABLE IF NOT EXISTS trading_history ("
@@ -70,6 +71,8 @@ def _ensure_tables(conn):
         }
         if "related_operator" not in agent_action_columns:
             conn.execute("ALTER TABLE agent_action ADD COLUMN related_operator TEXT")
+        if "mood_event" not in agent_action_columns:
+            conn.execute("ALTER TABLE agent_action ADD COLUMN mood_event TEXT")
         conn.commit()
         _tables_created = True
 
@@ -97,6 +100,50 @@ def _fetchall(sql, *params):
         return conn.execute(sql, params).fetchall()
 
 
+def save_agent_action(
+    name,
+    agent_current_room,
+    current_room,
+    is_high,
+    agent_group,
+    mood,
+    related_operator=None,
+    mood_event=None,
+    current_time=None,
+):
+    """写入一条心情历史；允许充能事件指定成对的展示时间。"""
+    current_time = current_time or datetime.now()
+    try:
+        with _conn() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_action (
+                    name, agent_current_room, current_room, is_high,
+                    agent_group, mood, current_time, related_operator, mood_event
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    agent_current_room,
+                    current_room,
+                    int(is_high),
+                    agent_group,
+                    mood,
+                    str(current_time),
+                    related_operator,
+                    mood_event,
+                ),
+            )
+            connection.commit()
+        logger.debug(
+            f"Saved action to SQLite: Name: {name}, Agent's Room: {agent_current_room}, "
+            f"Agent's group: {agent_group}, Current Room: {current_room}, "
+            f"Is High: {is_high}, Current Time: {current_time}, Mood Event: {mood_event}"
+        )
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {e}")
+
+
 # 记录干员进出站以及心情数据，将记录信息存入agent_action表里
 def save_action_to_sqlite_decorator(func):
     def wrapper(
@@ -107,6 +154,8 @@ def save_action_to_sqlite_decorator(func):
         current_index,
         update_time=False,
         related_operator=None,
+        mood_event=None,
+        recorded_at=None,
     ):
         agent = self.operators[name]  # 干员
 
@@ -117,41 +166,17 @@ def save_action_to_sqlite_decorator(func):
         result = func(self, name, mood, current_room, current_index, update_time)
         if not update_time:
             return
-        # 保存到数据库
-        current_time = datetime.now()
-
-        try:
-            with _conn() as connection:
-                cursor = connection.cursor()
-                # Insert data
-                cursor.execute(
-                    """
-                    INSERT INTO agent_action (
-                        name, agent_current_room, current_room, is_high,
-                        agent_group, mood, current_time, related_operator
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        name,
-                        agent_current_room,
-                        current_room,
-                        int(agent_is_high),
-                        agent.group,
-                        mood,
-                        str(current_time),
-                        related_operator,
-                    ),
-                )
-                connection.commit()
-
-            # Log the action
-            logger.debug(
-                f"Saved action to SQLite: Name: {name}, Agent's Room: {agent_current_room}, Agent's group: {agent.group}, "
-                f"Current Room: {current_room}, Is High: {agent_is_high}, Current Time: {current_time}"
-            )
-
-        except sqlite3.Error as e:
-            logger.error(f"SQLite error: {e}")
+        save_agent_action(
+            name,
+            agent_current_room,
+            current_room,
+            agent_is_high,
+            agent.group,
+            mood,
+            related_operator=related_operator,
+            mood_event=mood_event,
+            current_time=recorded_at,
+        )
 
         return result
 
@@ -397,9 +422,12 @@ def get_mood_ratios():
         mood_label = row[0]  # Assuming 'name' is at index 0
         mood_value = row[5]  # Assuming 'mood' is at index 5
         related_operator = row[7] if len(row) > 7 else None
+        mood_event = row[8] if len(row) > 8 else None
         point = {"x": current_time, "y": mood_value}
-        if mood_label == "菲亚梅塔" and related_operator:
+        if related_operator:
             point["relatedOperator"] = related_operator
+        if mood_event:
+            point["moodEvent"] = mood_event
 
         if mood_label in [dataset["label"] for dataset in mood_data["datasets"]]:
             # if mood_label == mood_data['datasets'][0]['label']:

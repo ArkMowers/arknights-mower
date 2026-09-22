@@ -127,7 +127,20 @@ const chartOptions = ref({
       callbacks: {
         afterLabel: (context) => {
           const relatedOperator = context.raw?.relatedOperator
-          return relatedOperator ? `被充能干员：${relatedOperator}` : ''
+          const moodEvent = context.raw?.moodEvent
+          if (
+            moodEvent === 'fiammetta_charge' ||
+            (context.dataset.label === '菲亚梅塔' && relatedOperator)
+          ) {
+            return `被充能干员：${relatedOperator}`
+          }
+          if (moodEvent === 'fiammetta_before') {
+            return `被肥鸭充能（交换前）`
+          }
+          if (moodEvent === 'fiammetta_after') {
+            return `被肥鸭充能（交换后）`
+          }
+          return relatedOperator ? `关联干员：${relatedOperator}` : ''
         }
       }
     }

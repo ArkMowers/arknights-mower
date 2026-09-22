@@ -40,6 +40,7 @@ from arknights_mower.solvers.record import (
     apply_workshop_inventory,
     get_inventory_counts,
     invalidate_workshop_inventory,
+    save_agent_action,
     save_exception,
     save_log,
 )
@@ -4921,6 +4922,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             read_time_index = []
         if related_operators is None:
             related_operators = {}
+        swap_target = None
+        swap_recorded_at = None
+        swap_target_snapshot = None
+        swap_moods = {}
+        if (
+            related_operators
+            and self.task is not None
+            and self.task.type == TaskTypes.FIAMMETTA
+            and self.task.meta_data in self.op_data.operators
+        ):
+            swap_target = self.task.meta_data
+            swap_recorded_at = datetime.now()
+            target = self.op_data.operators[swap_target]
+            swap_target_snapshot = {
+                "agent_current_room": target.current_room,
+                "is_high": target.is_high(),
+                "agent_group": target.group,
+            }
         if room == "meeting" and not self.leifeng_mode:
             self.sleep(0.5)
             self.recog.update()
@@ -5016,12 +5035,29 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     update_time,
                 )
                 related_operator = related_operators.get(i)
-                if _name == "菲亚梅塔" and related_operator:
-                    high_no_time = self.op_data.update_detail(
-                        *update_args, related_operator=related_operator
-                    )
-                else:
-                    high_no_time = self.op_data.update_detail(*update_args)
+                record_kwargs = {}
+                if update_time:
+                    if _name == "菲亚梅塔" and related_operator:
+                        record_kwargs = {
+                            "related_operator": related_operator,
+                            "mood_event": "fiammetta_charge",
+                        }
+                        if swap_recorded_at is not None:
+                            record_kwargs["recorded_at"] = swap_recorded_at
+                    if (
+                        swap_recorded_at is not None
+                        and _name == "菲亚梅塔"
+                        and related_operator == swap_target
+                    ):
+                        swap_moods["before"] = _mood
+                    elif swap_recorded_at is not None and _name == swap_target:
+                        record_kwargs = {
+                            "related_operator": "菲亚梅塔",
+                            "mood_event": "fiammetta_after",
+                            "recorded_at": swap_recorded_at + timedelta(seconds=1),
+                        }
+                        swap_moods["after"] = _mood
+                high_no_time = self.op_data.update_detail(*update_args, **record_kwargs)
                 data["depletion_rate"] = agent.depletion_rate
                 if high_no_time is not None and high_no_time not in read_time_index:
                     logger.debug(
@@ -5067,6 +5103,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
+        if (
+            swap_target_snapshot is not None
+            and "before" in swap_moods
+            and "after" in swap_moods
+        ):
+            save_agent_action(
+                swap_target,
+                swap_target_snapshot["agent_current_room"],
+                room,
+                swap_target_snapshot["is_high"],
+                swap_target_snapshot["agent_group"],
+                swap_moods["before"],
+                related_operator="菲亚梅塔",
+                mood_event="fiammetta_before",
+                current_time=swap_recorded_at,
+            )
         for _operator in self.op_data.operators.keys():
             if self.op_data.operators[
                 _operator
@@ -5450,12 +5502,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     if fia_arrangement:
                         fia_index = plan[room].index("菲亚梅塔")
-                        # 充能后同时读目标与菲亚梅塔：目标心情
-                        # 已回满，只读菲亚梅塔会让目标缓存继续停在
-                        # 充能前的低心情。
-                        read_time_index.extend(range(len(plan[room])))
+                        # 菲亚梅塔的读数代表目标交换前心情；目标自身的
+                        # 读数代表交换后心情，两点在历史曲线上相差一秒。
+                        read_time_index.append(fia_index)
                         if self.task.meta_data:
                             related_operators[fia_index] = self.task.meta_data
+                            if self.task.meta_data in plan[room]:
+                                read_time_index.append(
+                                    plan[room].index(self.task.meta_data)
+                                )
+                        read_time_index = sorted(set(read_time_index))
                         logger.info("肥鸭换入完成，读取交换后心情")
                     elif get_time or recovery_ordered:
                         refresh_indexes = self.op_data.get_refresh_index(
