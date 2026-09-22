@@ -730,6 +730,50 @@ def test_run_order_mood_read_skips_trade_order_refresh():
     solver.scene_graph_navigation.assert_not_called()
 
 
+def test_run_order_accept_caches_trade_type_on_current_order_page():
+    room = "room_1_1"
+    conf = PlanConfig("", "", "")
+    plan = {
+        "default_plan": Plan(
+            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
+            conf,
+            products={room: "lmd"},
+        ),
+        "backup_plans": [],
+    }
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver.task = SchedulerTask(
+        task_plan={room: ["Lancet-2"]},
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data=room,
+    )
+    solver._read_trade_product_card = MagicMock(return_value=("orundum", True))
+    solver.find = MagicMock(return_value=None)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver.translate_room = MagicMock(return_value="B101")
+
+    solver.accept_order()
+
+    assert solver.op_data.facility_product(room) == "orundum"
+    solver._read_trade_product_card.assert_called_once_with()
+
+
+def test_current_manufacture_page_caches_product_without_navigation():
+    room, plan = product_plan()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver.read_manufacture_product = MagicMock(return_value="exp3")
+    solver.translate_room = MagicMock(return_value="B102")
+    solver.scene_graph_navigation = MagicMock()
+
+    solver._refresh_facility_state_on_current_page(room, "manufacture")
+
+    assert solver.op_data.facility_product(room) == "exp3"
+    solver.scene_graph_navigation.assert_not_called()
+
+
 def test_trade_order_page_can_open_without_drone_button():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(w=1920, h=1080)
