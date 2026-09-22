@@ -207,9 +207,15 @@ def _defer_work_before_swap(tasks, swap, timing):
 
 def _merge_deferred_dorm_schedules(tasks):
     """把同一批延期任务里的宿舍中间态合成一次最终安排。"""
+    mergeable_types = {
+        TaskTypes.SHIFT_OFF,
+        TaskTypes.SHIFT_ON,
+        TaskTypes.RE_ORDER,
+    }
+    mergeable_tasks = [task for task in tasks if task.type in mergeable_types]
     dorm_tasks = [
         task
-        for task in tasks
+        for task in mergeable_tasks
         if any(room.startswith("dormitory_") for room in task.plan)
     ]
     if len(dorm_tasks) < 2:
@@ -225,7 +231,7 @@ def _merge_deferred_dorm_schedules(tasks):
                 if current == name:
                     agents[index] = "Free"
 
-    for task in tasks:
+    for task in mergeable_tasks:
         # agent_arrange 同一任务内先处理工作站；回班人员不应再出现在最终宿舍。
         for room, agents in task.plan.items():
             if room.startswith("dormitory_"):

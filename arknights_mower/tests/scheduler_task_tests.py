@@ -8,6 +8,7 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    _merge_deferred_dorm_schedules,
     find_next_task,
     plan_metadata,
     rebalance_plan_swap_dorms,
@@ -189,6 +190,43 @@ class TestScheduling(unittest.TestCase):
                 run_order.time + timedelta(seconds=2),
             ),
         )
+
+    def test_deferred_dorm_merge_preserves_special_tasks(self):
+        special_cases = (
+            (
+                TaskTypes.FIAMMETTA,
+                "充能目标",
+                ["菲亚梅塔", "充能目标", "Current", "Current", "Current"],
+            ),
+            (
+                TaskTypes.RELEASE_DORM,
+                "待释放干员",
+                ["Free", "Current", "Current", "Current", "Current"],
+            ),
+        )
+        for task_type, meta_data, agents in special_cases:
+            with self.subTest(task_type=task_type):
+                shift_off = SchedulerTask(
+                    task_plan={"dormitory_1": ["休息者", "Current"]},
+                    task_type=TaskTypes.SHIFT_OFF,
+                )
+                reorder = SchedulerTask(
+                    task_plan={"dormitory_1": ["Current", "候补者"]},
+                    task_type=TaskTypes.RE_ORDER,
+                )
+                special_plan = {"dormitory_2": agents}
+                special = SchedulerTask(
+                    task_plan=copy.deepcopy(special_plan),
+                    task_type=task_type,
+                    meta_data=meta_data,
+                )
+
+                result = _merge_deferred_dorm_schedules([shift_off, special, reorder])
+
+                self.assertTrue(any(task is special for task in result))
+                self.assertEqual(special.type, task_type)
+                self.assertEqual(special.meta_data, meta_data)
+                self.assertEqual(special.plan, special_plan)
 
     def test_find_next(self):
         # 测试 方程有效
