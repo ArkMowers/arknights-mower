@@ -36,7 +36,7 @@ describe('process-control recovery across page navigation', () => {
       post: vi.fn(async () => ({ data: { ok: true, id: 'restart-test', message: '已提交' } })),
       get: vi.fn(async (url) => ({
         data: url.endsWith('/info')
-          ? { ok: true, supported: true }
+          ? { ok: true, supported: true, running: true }
           : { ok: true, status: 'failed', message: '重启失败' }
       }))
     }
@@ -93,6 +93,25 @@ describe('process-control recovery across page navigation', () => {
       expect(state.config.autosave_paused).toBe(true)
     }
   )
+
+  it('uses the existing save and pending-job flow for restart resume', async () => {
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/info')
+        ? { ok: true, supported: true, running: true }
+        : { ok: true, status: 'succeeded', message: '续接完成' }
+    }))
+    await mount()
+    await component.submit('restart_resume')
+    expect(state.client.post).toHaveBeenCalledWith(
+      '/process-control/action',
+      { action: 'restart_resume' },
+      { headers: { 'X-Mower-Control': '1' } }
+    )
+    expect(state.config.autosave_paused).toBe(true)
+    expect(state.plan.autosave_paused).toBe(true)
+    expect(window.location.reload).toHaveBeenCalledOnce()
+    expect(session.size).toBe(0)
+  })
 
   it('leaves saving enabled after an explicit rejection and remount', async () => {
     state.client.post.mockResolvedValueOnce({ data: { ok: false, message: '已拒绝' } })

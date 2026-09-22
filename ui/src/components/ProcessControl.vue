@@ -4,6 +4,10 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
 
+const props = defineProps({
+  compact: { type: Boolean, default: false }
+})
+
 const axios = inject('axios')
 const config = useConfigStore()
 const plan = usePlanStore()
@@ -42,7 +46,9 @@ async function poll(pending) {
       busy.value = false
       failed.value = data.status === 'failed'
       sessionStorage.removeItem(pendingKey)
-      if (!failed.value && pending.action === 'restart') window.location.reload()
+      if (!failed.value && ['restart', 'restart_resume'].includes(pending.action)) {
+        window.location.reload()
+      }
       return
     }
   } catch (error) {
@@ -129,22 +135,54 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card title="进程操作">
+  <template v-if="props.compact">
+    <n-popconfirm
+      style="max-width: min(360px, calc(100vw - 32px))"
+      @positive-click="submit(info?.running ? 'restart_resume' : 'restart')"
+    >
+      <template #trigger>
+        <n-button
+          class="quick-run-btn"
+          :type="info?.running ? 'info' : 'default'"
+          :loading="busy"
+          :disabled="busy || savesPaused || !info?.supported"
+          :title="failed ? message : ''"
+        >
+          {{ info?.running ? '重启续接' : '重启程序' }}
+        </n-button>
+      </template>
+      <template v-if="info?.running">
+        保存当前配置后重启当前实例，并保留任务队列继续运行。
+      </template>
+      <template v-else>保存当前配置后重启当前实例，不自动开始任务。</template>
+    </n-popconfirm>
+  </template>
+  <n-card v-else title="进程操作">
     <n-space vertical>
-      <n-text depth="3"
-        >仅操作当前实例{{
-          info?.name ? `（${info.name}）` : ''
-        }}，其他实例和多开管理器不受影响。</n-text
-      >
+      <n-text depth="3">
+        仅操作当前实例{{ info?.name ? `（${info.name}）` : '' }}，其他实例和多开管理器不受影响。
+      </n-text>
       <n-space>
+        <n-popconfirm
+          v-if="info?.running"
+          style="max-width: min(360px, calc(100vw - 32px))"
+          @positive-click="submit('restart_resume')"
+        >
+          <template #trigger>
+            <n-button size="small" type="info" :disabled="busy || savesPaused || !info?.supported">
+              重启续接
+            </n-button>
+          </template>
+          保存当前配置后重启当前实例，并保留任务队列继续运行。
+        </n-popconfirm>
         <n-popconfirm
           style="max-width: min(360px, calc(100vw - 32px))"
           @positive-click="submit('restart')"
         >
           <template #trigger>
-            <n-button size="small" :disabled="busy || savesPaused || !info?.supported"
-              >重启 Mower 进程</n-button
-            >
+            <n-button size="small" :disabled="busy || savesPaused || !info?.supported">
+              重启 Mower 进程
+            </n-button>
           </template>
           重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
         </n-popconfirm>
@@ -158,8 +196,9 @@ onUnmounted(() => {
               type="error"
               secondary
               :disabled="busy || savesPaused || !info?.supported"
-              >结束 Mower 进程</n-button
             >
+              结束 Mower 进程
+            </n-button>
           </template>
           正常停止当前任务并结束此实例，网页连接将断开。
         </n-popconfirm>
@@ -168,9 +207,16 @@ onUnmounted(() => {
         配置自动保存已暂停。配置导入或进程操作结束后，请刷新页面重新读取配置再编辑。
         <n-button v-if="!busy" size="small" @click="reload">刷新页面</n-button>
       </n-alert>
-      <n-alert v-if="message" :type="failed ? 'error' : 'info'" aria-live="polite">{{
-        message
-      }}</n-alert>
+      <n-alert v-if="message" :type="failed ? 'error' : 'info'" aria-live="polite">
+        {{ message }}
+      </n-alert>
     </n-space>
   </n-card>
 </template>
+
+<style scoped>
+.quick-run-btn {
+  width: 108px;
+  flex: 0 0 108px;
+}
+</style>

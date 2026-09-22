@@ -129,6 +129,36 @@ class ProcessControlTests(unittest.TestCase):
             [record["executable"], *record["argv"][1:]],
         )
 
+    def test_restart_resume_uses_saved_task_mode(self):
+        record = {"running": True, "background": False}
+        resume = control.restart_environment(
+            record, {"id": "resume", "action": "restart_resume"}
+        )
+        normal = control.restart_environment(
+            record, {"id": "normal", "action": "restart"}
+        )
+
+        self.assertEqual(resume["MOWER_RESUME_MODE"], "0")
+        self.assertEqual(resume["MOWER_RESUME_RUN"], "1")
+        self.assertNotIn("MOWER_RESUME_MODE", normal)
+        self.assertEqual(normal["MOWER_RESUME_RUN"], "1")
+
+    def test_restart_resume_requires_running_instance(self):
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(runtime, "state_dir", return_value=Path(folder)),
+            patch.object(runtime, "active_job", return_value=False),
+            patch.object(
+                control,
+                "current_instance",
+                return_value={"running": False, "kind": "instance"},
+            ),
+            patch.object(subprocess, "Popen") as launch,
+        ):
+            with self.assertRaisesRegex(ValueError, "未在运行"):
+                control.request_action("restart_resume")
+            launch.assert_not_called()
+
     def test_only_current_instance_is_selected(self):
         records = [
             {"pid": os.getpid() + 1, "kind": "instance"},
