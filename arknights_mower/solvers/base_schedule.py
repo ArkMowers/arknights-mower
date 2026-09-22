@@ -133,6 +133,27 @@ def _merge_dorm_arrangement(plan: dict, dorm_plan: dict) -> None:
                 target[index] = name
 
 
+def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
+    """把内存演算的一层结果覆盖到最终任务，不产生中间任务。"""
+    for room, names in overlay.items():
+        if room not in op_data.plan:
+            continue
+        target = plan.setdefault(room, ["Current"] * len(op_data.plan[room]))
+        for index, name in enumerate(names[: len(target)]):
+            if name != "Current":
+                target[index] = name
+
+
+def _assigned_operator_names(plan: dict) -> set[str]:
+    return {
+        name
+        for room, names in plan.items()
+        if not room.startswith("dormitory_")
+        for name in names
+        if name not in ("", "Current", "Free")
+    }
+
+
 def _add_group_to_fix_plan(fix_plan: dict, op_data: Operators, group: str) -> None:
     """把组内真正不在岗的成员写进 fix_plan；已在静态槽位的成员跳过。
 
@@ -328,7 +349,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.initialize_operators()
         self.op_data.correct_dorm()
         if not getattr(self, "defer_backup_plan_until_mood_read", False):
-            self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+            if self.op_data.experimental_dorm_logic:
+                self.backup_plan_solver()
+            else:
+                self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
             # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
             self.queue_product_switches()
         logMsg = "||".join([str(t) for t in self.tasks])
@@ -850,33 +874,41 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.skip()
                     elif get_time:
                         generated_tasks = []
-                        if not self.backup_plan_solver(
-                            PlanTriggerTiming.BEFORE_PLANNING,
-                            generated_tasks=generated_tasks,
-                        ):
-                            self.plan_metadata()
+                        if self.op_data.experimental_dorm_logic:
+                            if not self.backup_plan_solver(
+                                generated_tasks=generated_tasks,
+                            ):
+                                self.plan_metadata()
+                            else:
+                                logger.info("排班表切换已在缓存中收敛为单次最终任务")
                         else:
-                            # 当前下班任务已经完成了物理操作，但要到
-                            # infra_main 收尾才从队列移除。切表后先按新表生成
-                            # 一次纠错，再执行副表自带的任务，避免用错位
-                            # 的缓存直接继续上/下班。
-                            if generated_tasks:
-                                existing_ids = {id(task) for task in self.tasks}
-                                self.agent_get_mood(force=True)
-                                corrections = [
-                                    task
-                                    for task in self.tasks
-                                    if id(task) not in existing_ids
-                                    and task.type == TaskTypes.SELF_CORRECTION
-                                ]
-                                anchor = min(task.time for task in generated_tasks)
-                                for offset, correction in enumerate(
-                                    corrections, start=1
-                                ):
-                                    correction.time = anchor - timedelta(
-                                        microseconds=offset
-                                    )
-                            logger.info("检测到排班表切换，先纠错再执行切表任务")
+                            if not self.backup_plan_solver(
+                                PlanTriggerTiming.BEFORE_PLANNING,
+                                generated_tasks=generated_tasks,
+                            ):
+                                self.plan_metadata()
+                            else:
+                                # 当前下班任务已经完成了物理操作，但要到
+                                # infra_main 收尾才从队列移除。切表后先按新表生成
+                                # 一次纠错，再执行副表自带的任务，避免用错位
+                                # 的缓存直接继续上/下班。
+                                if generated_tasks:
+                                    existing_ids = {id(task) for task in self.tasks}
+                                    self.agent_get_mood(force=True)
+                                    corrections = [
+                                        task
+                                        for task in self.tasks
+                                        if id(task) not in existing_ids
+                                        and task.type == TaskTypes.SELF_CORRECTION
+                                    ]
+                                    anchor = min(task.time for task in generated_tasks)
+                                    for offset, correction in enumerate(
+                                        corrections, start=1
+                                    ):
+                                        correction.time = anchor - timedelta(
+                                            microseconds=offset
+                                        )
+                                logger.info("检测到排班表切换，先纠错再执行切表任务")
                     if (
                         not arrangement_deferred
                         and TaskTypes.RE_ORDER == self.task.type
@@ -911,7 +943,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.tasks
                     and self.tasks[0].type in [TaskTypes.SHIFT_ON]
                 ):
-                    self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
+                    if self.op_data.experimental_dorm_logic:
+                        self.backup_plan_solver()
+                    else:
+                        self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
             except ProductSwitchDeferred as e:
                 retry_time = datetime.now() + timedelta(minutes=e.minutes)
                 pending_ids = {id(task) for task in self.tasks}
@@ -948,6 +983,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not self.no_pending_task(1):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
+                    # 正常运行保留原有心情读取间隔：缓存未过期直接信任，过期
+                    # 才进房复核；缓存清零后 time_stamp 为空，会自然触发全量读取。
                     mood_result = self.agent_get_mood(skip_dorm=True)
                     # agent_get_mood 已读取所有需要刷新的房间；从此 current_room
                     # 可以用于副表条件。若配置了读取后重启，重启流程会用这份新缓存
@@ -1042,16 +1079,33 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
-    def agent_get_mood(self, skip_dorm=False, force=False):
+    def agent_get_mood(
+        self,
+        skip_dorm=False,
+        force=False,
+        *,
+        read_rooms=True,
+        return_plan=False,
+    ):
+        """刷新缓存并生成纠偏计划。
+
+        ``read_rooms=False`` 只使用已经缓存的干员位置和心情。副表切换使用
+        这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
+        ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
+        """
         # 暂时规定纠错只适用于主班表
-        need_read = set(
-            v.room
-            for k, v in self.op_data.operators.items()
-            if v.need_to_refresh() and v.room in base_room_list
+        need_read = (
+            {
+                v.room
+                for v in self.op_data.operators.values()
+                if v.need_to_refresh() and v.room in base_room_list
+            }
+            if read_rooms
+            else set()
         )
 
         # 专精计划可能没有训练室固定排班，仍要通过原有心情扫描核对现场。
-        if config.conf.enable_mastery:
+        if read_rooms and config.conf.enable_mastery:
             from arknights_mower.utils.mastery_db import get_reconcile_plans
 
             if get_reconcile_plans():
@@ -1345,6 +1399,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         if self.op_data.has_dorm_groups():
             correct_group_dorms(self.op_data, fix_plan, _is_mastery_busy)
+        if return_plan:
+            return fix_plan
         if len(fix_plan.keys()) > 0:
             # 如果5分钟之内有任务则跳过心情读取
             next_task = self.find_next_task()
@@ -2299,7 +2355,103 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return self._REST_TIER_MARKED_LOW
         return self._REST_TIER_REPLACEMENT
 
-    def backup_plan_solver(
+    def _cached_exhausted_replacement_plan(self, reserved=None):
+        """仅凭缓存为已耗尽的常驻干员选择可用替班。
+
+        这一步是副表切换收敛的一部分。例如埃癸斯从会客室主力降回
+        Lancet-2 的替班后，如果 Lancet-2 已经 0 心情，就直接把埃癸斯
+        放回发电站，而不是先把他迁到宿舍、下一轮再纠错。
+        """
+        reserved = set(reserved or ())
+        result = {}
+        now = datetime.now()
+        for room, slots in self.op_data.plan.items():
+            if room.startswith("dormitory_"):
+                continue
+            for index, slot in enumerate(slots):
+                primary = self.op_data.operators.get(slot.agent)
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    primary is None
+                    or current is None
+                    or current.name != primary.name
+                    or not primary.workaholic
+                    or primary.current_mood(now) > primary.lower_limit
+                ):
+                    continue
+                candidates = []
+                for order, name in enumerate(
+                    self.op_data.replacement_candidates(primary)
+                ):
+                    candidate = self.op_data.operators.get(name)
+                    if (
+                        candidate is None
+                        or name in reserved
+                        or name in TRADE_ORDER_AGENTS
+                        or _is_mastery_busy(name)
+                        or self.op_data.is_dorm_replacement(name)
+                        or (
+                            candidate.current_room
+                            and not candidate.is_resting()
+                            and (candidate.current_room, candidate.current_index)
+                            != (room, index)
+                        )
+                    ):
+                        continue
+                    mood = resting_mood(candidate, now)
+                    candidates.append(
+                        (
+                            mood == float("inf"),
+                            -mood if mood != float("inf") else 0,
+                            order,
+                            candidate.name,
+                        )
+                    )
+                if not candidates:
+                    continue
+                replacement = min(candidates)[3]
+                result.setdefault(
+                    room, ["Current"] * len(self.op_data.plan[room])
+                )[index] = replacement
+                reserved.add(replacement)
+                logger.info(
+                    "%s 已耗尽，副表内存演算选择 %s 接替 %s[%s]",
+                    primary.name,
+                    replacement,
+                    room,
+                    index,
+                )
+        return result
+
+    def _cached_changed_slot_plan(self, previous_plan):
+        """只纠偏副表真正改动的工作槽位，避免全基地纠错。"""
+        result = {}
+        for room, slots in self.op_data.plan.items():
+            if room.startswith("dormitory_"):
+                continue
+            old_slots = previous_plan.get(room, [])
+            for index, slot in enumerate(slots):
+                old = old_slots[index] if index < len(old_slots) else None
+                unchanged = old is not None and (
+                    old.agent,
+                    old.group,
+                    tuple(old.replacement),
+                ) == (slot.agent, slot.group, tuple(slot.replacement))
+                if unchanged:
+                    continue
+                current = self.op_data.get_current_operator(room, index)
+                if current is not None and (
+                    current.name == slot.agent
+                    or current.name in slot.replacement
+                    and current.name not in TRADE_ORDER_AGENTS
+                ):
+                    continue
+                result.setdefault(
+                    room, ["Current"] * len(self.op_data.plan[room])
+                )[index] = slot.agent
+        return result
+
+    def _legacy_backup_plan_solver(
         self,
         timing=None,
         append_empty_task=True,
@@ -2345,9 +2497,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     if name != "Current"
                                 )
                     else:
-                        # 不切换
                         con[idx] = current_con[idx]
-                # 不满足条件且为其他排班表，则切换回来
                 if con != current_con:
                     logger.info(
                         f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}"
@@ -2408,8 +2558,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.tasks.append(generated)
                             if generated_tasks is not None:
                                 generated_tasks.append(generated)
-                    # 回班时间和岗位依赖生效排班；副表可能改变用尽、回满或组员岗位。
-                    # 已生成的宿舍任务不能继续沿用切换前的急救预测。
                     if any(
                         task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM)
                         for task in self.tasks
@@ -2418,6 +2566,169 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if append_empty_task and not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
             return new_task
+        except MowerExit:
+            raise
+        except Exception as e:
+            save_exception(e)
+            logger.exception(e)
+        return False
+
+    def backup_plan_solver(
+        self,
+        timing=None,
+        append_empty_task=True,
+        custom_task_time=None,
+        generated_tasks=None,
+        restore_on_deactivate=False,
+    ):
+        """用缓存状态一次性收敛副表，并只生成一张最终差异任务。
+
+        ``timing``、``append_empty_task`` 和 ``restore_on_deactivate`` 仅为旧调用
+        兼容保留。副表不再按进入工作站/宿舍等阶段逐次切换；每次检查都会计算
+        全部条件直到稳定，再把副表任务、岗位纠偏、0 心情替班和宿舍迁移合并。
+        """
+        if not getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False):
+            return self._legacy_backup_plan_solver(
+                timing=timing,
+                append_empty_task=append_empty_task,
+                custom_task_time=custom_task_time,
+                generated_tasks=generated_tasks,
+                restore_on_deactivate=restore_on_deactivate,
+            )
+        try:
+            if not self.op_data.backup_plans:
+                return False
+
+            original = list(self.op_data.plan_condition)
+            previous_plan = copy.deepcopy(self.op_data.plan)
+            previous_dorms = copy.deepcopy(self.op_data.all_dorms())
+            previous_dorm_layout = dorm_rebalance_signature(self.op_data)
+            seen = {tuple(original)}
+            current = original
+            while True:
+                conditions = []
+                for bp in self.op_data.backup_plans:
+                    func = str(bp.trigger)
+                    logger.debug(func)
+                    conditions.append(bool(self.op_data.evaluate_expression(func)))
+                if conditions == current:
+                    break
+                key = tuple(conditions)
+                if key in seen:
+                    logger.error(
+                        "副表条件在内存演算中出现循环 %s -> %s，保持切换前状态",
+                        current,
+                        conditions,
+                    )
+                    if current != original:
+                        self.op_data.swap_plan(original, refresh=True)
+                    return False
+                seen.add(key)
+                error = self.op_data.swap_plan(conditions, refresh=True)
+                if error:
+                    logger.error("副表内存演算失败：%s", error)
+                    self.op_data.swap_plan(original, refresh=True)
+                    return False
+                current = conditions
+
+            if current == original:
+                return False
+
+            logger.info("副表条件一次性收敛：%s -> %s", original, current)
+            had_rest_schedule = any(
+                task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM)
+                for task in self.tasks
+            )
+            self.queue_product_switches()
+
+            transition_plan = {}
+            deactivated_slots = {}
+            # 退出副表时恢复其任务写过的槽位；切入任务在最后覆盖，确保多个
+            # 同时生效的副表与合并排班表的覆盖顺序一致。
+            for index, bp in enumerate(self.op_data.backup_plans):
+                if original[index] and not current[index] and bp.task:
+                    for room, names in bp.task.items():
+                        indexes = deactivated_slots.setdefault(room, set())
+                        indexes.update(
+                            i for i, name in enumerate(names) if name != "Current"
+                        )
+            restore_plan = {}
+            for room, indexes in deactivated_slots.items():
+                active_room = self.op_data.plan.get(room)
+                if active_room is None:
+                    continue
+                names = ["Current"] * len(active_room)
+                for index in indexes:
+                    if index < len(active_room):
+                        names[index] = active_room[index].agent
+                if any(name != "Current" for name in names):
+                    restore_plan[room] = names
+
+            correction = self._cached_changed_slot_plan(previous_plan)
+            _merge_plan_overlay(transition_plan, correction, self.op_data)
+            _merge_plan_overlay(transition_plan, restore_plan, self.op_data)
+
+            for index, bp in enumerate(self.op_data.backup_plans):
+                if not original[index] and current[index] and bp.task:
+                    _merge_plan_overlay(
+                        transition_plan, copy.deepcopy(bp.task), self.op_data
+                    )
+
+            replacement_plan = self._cached_exhausted_replacement_plan(
+                _assigned_operator_names(transition_plan)
+            )
+            _merge_plan_overlay(transition_plan, replacement_plan, self.op_data)
+
+            current_dorm_layout = dorm_rebalance_signature(self.op_data)
+            if (
+                previous_dorm_layout is None
+                or previous_dorm_layout != current_dorm_layout
+            ):
+                dorm_migration = rebalance_plan_swap_dorms(
+                    self.op_data,
+                    previous_dorms,
+                    reserved_names=_assigned_operator_names(transition_plan),
+                )
+                _merge_plan_overlay(transition_plan, dorm_migration, self.op_data)
+            else:
+                logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
+
+            transition_plan = {
+                room: names
+                for room, names in transition_plan.items()
+                if any(name != "Current" for name in names)
+            }
+            generated = None
+            if transition_plan:
+                generated = SchedulerTask(
+                    time=custom_task_time,
+                    task_plan=transition_plan,
+                    task_type=TaskTypes.RE_ORDER
+                    if any(
+                        room.startswith("dormitory_") for room in transition_plan
+                    )
+                    else TaskTypes.SELF_CORRECTION,
+                    meta_data="副表内存收敛",
+                )
+                self.tasks.append(generated)
+                if generated_tasks is not None:
+                    generated_tasks.append(generated)
+                logger.info("副表最终差异任务：%s", transition_plan)
+
+            # 已有回班队列时按最终排班重建一次；没有回班队列时只放入
+            # 唤醒用空任务，避免一次副表切换凭缓存状态凭空制造普通回班。
+            if had_rest_schedule:
+                self.plan_metadata()
+            elif append_empty_task:
+                followup = SchedulerTask(
+                    time=custom_task_time,
+                    task_plan={},
+                    task_type=TaskTypes.NOT_SPECIFIC,
+                )
+                self.tasks.append(followup)
+                if generated_tasks is not None:
+                    generated_tasks.append(followup)
+            return generated is not None
         except MowerExit:
             raise
         except Exception as e:
@@ -5655,6 +5966,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         new_plan = {}
         before_work_checked = False
         before_dorm_checked = False
+        experimental_dorm_logic = bool(
+            getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False)
+        )
         # 优先替换工作站再替换宿舍
         rooms.sort(
             key=lambda x: (
@@ -5663,86 +5977,83 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         )
         for room in rooms:
-            if not room.startswith("dormitory_") and not before_work_checked:
-                before_work_checked = True
-                custom_task_time = self.task.time - timedelta(microseconds=1)
-                generated_tasks = []
-                if self.backup_plan_solver(
-                    PlanTriggerTiming.BEFORE_WORK,
-                    append_empty_task=False,
-                    custom_task_time=custom_task_time,
-                    generated_tasks=generated_tasks,
-                    restore_on_deactivate=True,
-                ):
-                    generated_ids = {id(task) for task in generated_tasks}
-                    anchor = min(
-                        (
-                            task.time
-                            for task in self.tasks
-                            if id(task) not in generated_ids
-                        ),
-                        default=self.task.time,
-                    )
-                    for offset, generated in enumerate(
-                        reversed(generated_tasks), start=1
+            if not experimental_dorm_logic:
+                if not room.startswith("dormitory_") and not before_work_checked:
+                    before_work_checked = True
+                    custom_task_time = self.task.time - timedelta(microseconds=1)
+                    generated_tasks = []
+                    if self.backup_plan_solver(
+                        PlanTriggerTiming.BEFORE_WORK,
+                        append_empty_task=False,
+                        custom_task_time=custom_task_time,
+                        generated_tasks=generated_tasks,
+                        restore_on_deactivate=True,
                     ):
-                        generated.time = anchor - timedelta(microseconds=offset)
-                    # 先执行切表生成的任务；它明确写入的槽位不再由旧任务覆盖，
-                    # 旧任务中其他房间或其他槽位仍在下一轮续行。
-                    for generated in generated_tasks:
-                        for generated_room, generated_agents in generated.plan.items():
-                            if generated_room not in plan:
-                                continue
-                            for index, name in enumerate(generated_agents):
-                                if (
-                                    index < len(plan[generated_room])
-                                    and name != "Current"
-                                ):
-                                    plan[generated_room][index] = "Current"
-                    for pending_room in list(plan):
-                        if all(name == "Current" for name in plan[pending_room]):
-                            del plan[pending_room]
-                    logger.info("进入工作站前触发副表任务，先执行切表任务")
-                    return False
-            if room.startswith("dormitory_") and not before_dorm_checked:
-                before_dorm_checked = True
-                custom_task_time = self.task.time - timedelta(microseconds=1)
-                generated_tasks = []
-                if self.backup_plan_solver(
-                    PlanTriggerTiming.BEFORE_DORM,
-                    append_empty_task=False,
-                    custom_task_time=custom_task_time,
-                    generated_tasks=generated_tasks,
-                    restore_on_deactivate=True,
-                ):
-                    generated_ids = {id(task) for task in generated_tasks}
-                    anchor = min(
-                        (
-                            task.time
-                            for task in self.tasks
-                            if id(task) not in generated_ids
-                        ),
-                        default=self.task.time,
-                    )
-                    for offset, generated in enumerate(
-                        reversed(generated_tasks), start=1
+                        generated_ids = {id(task) for task in generated_tasks}
+                        anchor = min(
+                            (
+                                task.time
+                                for task in self.tasks
+                                if id(task) not in generated_ids
+                            ),
+                            default=self.task.time,
+                        )
+                        for offset, generated in enumerate(
+                            reversed(generated_tasks), start=1
+                        ):
+                            generated.time = anchor - timedelta(microseconds=offset)
+                        for generated in generated_tasks:
+                            for generated_room, generated_agents in generated.plan.items():
+                                if generated_room not in plan:
+                                    continue
+                                for index, name in enumerate(generated_agents):
+                                    if (
+                                        index < len(plan[generated_room])
+                                        and name != "Current"
+                                    ):
+                                        plan[generated_room][index] = "Current"
+                        for pending_room in list(plan):
+                            if all(name == "Current" for name in plan[pending_room]):
+                                del plan[pending_room]
+                        logger.info("进入工作站前触发副表任务，先执行切表任务")
+                        return False
+                if room.startswith("dormitory_") and not before_dorm_checked:
+                    before_dorm_checked = True
+                    custom_task_time = self.task.time - timedelta(microseconds=1)
+                    generated_tasks = []
+                    if self.backup_plan_solver(
+                        PlanTriggerTiming.BEFORE_DORM,
+                        append_empty_task=False,
+                        custom_task_time=custom_task_time,
+                        generated_tasks=generated_tasks,
+                        restore_on_deactivate=True,
                     ):
-                        generated.time = anchor - timedelta(microseconds=offset)
-                    # 副表宿舍任务代替原任务中的同一宿舍；原任务只续行剩余
-                    # 未被副表覆盖的宿舍，避免副表完成后又执行旧的房间安排。
-                    superseded_dorms = set()
-                    for generated in generated_tasks:
-                        for dorm in generated.plan:
-                            if dorm not in plan or not dorm.startswith("dormitory_"):
-                                continue
-                            superseded_dorms.add(dorm)
-                    for dorm in superseded_dorms:
-                        del plan[dorm]
-                    logger.info(
-                        "入住宿舍前触发副表任务，"
-                        f"覆盖原任务宿舍: {sorted(superseded_dorms)}"
-                    )
-                    return False
+                        generated_ids = {id(task) for task in generated_tasks}
+                        anchor = min(
+                            (
+                                task.time
+                                for task in self.tasks
+                                if id(task) not in generated_ids
+                            ),
+                            default=self.task.time,
+                        )
+                        for offset, generated in enumerate(
+                            reversed(generated_tasks), start=1
+                        ):
+                            generated.time = anchor - timedelta(microseconds=offset)
+                        superseded_dorms = set()
+                        for generated in generated_tasks:
+                            for dorm in generated.plan:
+                                if dorm not in plan or not dorm.startswith("dormitory_"):
+                                    continue
+                                superseded_dorms.add(dorm)
+                        for dorm in superseded_dorms:
+                            del plan[dorm]
+                        logger.info(
+                            "入住宿舍前触发副表任务，"
+                            f"覆盖原任务宿舍: {sorted(superseded_dorms)}"
+                        )
+                        return False
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
         if len(new_plan) == 1 and room != "train":
             if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:

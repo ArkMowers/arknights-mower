@@ -202,10 +202,15 @@ def test_unrelated_experimental_backup_switch_skips_dorm_reorder(solver, monkeyp
 def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
     enable_experimental_dorm_logic(solver)
     solver.op_data.backup_plans[0].plan["dormitory_1"] = [
-        *[Room("Current", "", []) for _ in range(4)],
+        Room("Current", "", []),
+        Room("Current", "", []),
         Room("夜莺", "", []),
+        Room("Free", "", []),
+        Room("Free", "", []),
     ]
-    reorder = MagicMock(return_value={"dormitory_1": ["Current"] * 5})
+    reorder = MagicMock(
+        return_value={"dormitory_1": ["夜莺", "Current", "Current", "Current", "Current"]}
+    )
     monkeypatch.setattr(base, "rebalance_plan_swap_dorms", reorder)
 
     assert solver.backup_plan_solver() is True

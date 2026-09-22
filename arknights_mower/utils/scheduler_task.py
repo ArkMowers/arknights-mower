@@ -635,7 +635,9 @@ def dorm_rebalance_signature(op_data):
     return tuple(op_data.config.dorm_order), tuple(beds)
 
 
-def rebalance_plan_swap_dorms(op_data, previous_dorms=None):
+def rebalance_plan_swap_dorms(
+    op_data, previous_dorms=None, reserved_names: set[str] | None = None
+):
     """主副表切换后按新顺序迁移仍需恢复的入住者。
 
     previous_dorms 用于保留切表前的“原床位顺序”。因此即使床位集合不变、
@@ -643,21 +645,30 @@ def rebalance_plan_swap_dorms(op_data, previous_dorms=None):
     """
     if not getattr(op_data, "experimental_dorm_logic", False):
         return {}
+    reserved_names = reserved_names or set()
     if previous_dorms is not None:
         sources = [
-            bed for bed in previous_dorms if bed.name and bed.name in op_data.operators
+            bed
+            for bed in previous_dorms
+            if bed.name
+            and bed.name in op_data.operators
+            and bed.name not in reserved_names
         ]
     else:
         sources = [
             *(
                 bed
                 for bed in op_data.dorm
-                if bed.name and bed.name in op_data.operators
+                if bed.name
+                and bed.name in op_data.operators
+                and bed.name not in reserved_names
             ),
             *(
                 bed
                 for bed in getattr(op_data, "displaced_dorms", [])
-                if bed.name and bed.name in op_data.operators
+                if bed.name
+                and bed.name in op_data.operators
+                and bed.name not in reserved_names
             ),
         ]
     if not sources:
