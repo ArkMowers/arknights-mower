@@ -539,12 +539,7 @@ class Operators:
                     return (
                         "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
                     )
-        # 跑单
-        for x, y in self.plan.items():
-            if not x.startswith("room"):
-                continue
-            if any(char in obj.replacement for obj in y for char in TRADE_ORDER_AGENTS):
-                self.run_order_rooms[x] = {}
+        self.refresh_run_order_rooms()
         for key in self.groups:
             total_count = 0
             _replacement = []
@@ -728,6 +723,35 @@ class Operators:
             "product": product,
             "updated_at": updated_at or datetime.now().isoformat(timespec="seconds"),
         }
+
+    def is_run_order_room(self, room: str) -> bool:
+        """按生效排班和实际订单过滤跑单；卖玉及切换中的卖玉房间不插拔。"""
+        return (
+            room.startswith("room")
+            and self.products.get(room) != "orundum"
+            and self.facility_states.get(room, {}).get("product") != "orundum"
+            and any(
+                name in slot.replacement
+                for slot in self.plan.get(room, [])
+                for name in TRADE_ORDER_AGENTS
+            )
+        )
+
+    def refresh_run_order_rooms(self):
+        if self.experimental_dorm_logic:
+            self.run_order_rooms = {
+                room: self.run_order_rooms.get(room, {})
+                for room in self.plan
+                if self.is_run_order_room(room)
+            }
+            return
+        for room, slots in self.plan.items():
+            if room.startswith("room") and any(
+                name in slot.replacement
+                for slot in slots
+                for name in TRADE_ORDER_AGENTS
+            ):
+                self.run_order_rooms[room] = {}
 
     def facility_product(self, room: str) -> str | None:
         """返回指定设施产物；未读取实际状态时使用主表配置。"""

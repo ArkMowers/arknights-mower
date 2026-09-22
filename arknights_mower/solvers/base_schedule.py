@@ -322,6 +322,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.handle_error(True)
 
         while True:
+            self._sync_run_order_tasks()
             scheduling(self.tasks)
             protect_support_swaps(self.tasks)
             if self._fill_dorm_after_run_order_deferral():
@@ -1932,7 +1933,33 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             save_exception(e)
             logger.exception(e)
 
+    def _sync_run_order_tasks(self):
+        op_data = getattr(self, "op_data", None)
+        if not getattr(op_data, "experimental_dorm_logic", False):
+            return
+        op_data.refresh_run_order_rooms()
+        # 无房间标记的 RUN_ORDER 可能是插拔后的原班恢复，不得一并删除。
+        invalid = [
+            task
+            for task in self.tasks
+            if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+            and task.meta_data
+            and task.meta_data not in op_data.run_order_rooms
+        ]
+        if invalid:
+            logger.info(
+                "移除不再参与跑单的房间任务：%s",
+                sorted({task.meta_data for task in invalid}),
+            )
+            invalid_ids = {id(task) for task in invalid}
+            self.tasks[:] = [task for task in self.tasks if id(task) not in invalid_ids]
+
     def plan_run_order(self, room):
+        experimental = bool(getattr(self.op_data, "experimental_dorm_logic", False))
+        if experimental:
+            self._sync_run_order_tasks()
+            if room not in self.op_data.run_order_rooms:
+                return
         plan = self.op_data.plan
         if self.find_next_task(meta_data=room, task_type=TaskTypes.RUN_ORDER):
             return
@@ -1943,9 +1970,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 for char in TRADE_ORDER_AGENTS
             ):
                 in_out_plan[room][idx] = x.replacement[0]
+        execute_time = self.get_run_order_time(room)
+        if experimental:
+            # 读取订单页可能首次发现实际仍在卖玉，不能据此创建空转任务。
+            self._sync_run_order_tasks()
+            if room not in self.op_data.run_order_rooms:
+                return
         self.tasks.append(
             SchedulerTask(
-                time=self.get_run_order_time(room),
+                time=execute_time,
                 task_plan=in_out_plan,
                 task_type=TaskTypes.RUN_ORDER,
                 meta_data=room,
@@ -1953,6 +1986,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
 
     def run_order_solver(self):
+        self._sync_run_order_tasks()
         plan = self.op_data.plan
         if len(self.op_data.run_order_rooms) > 0:
             # 旧逻辑依赖完整宿舍扫描来避免在状态未知时读取跑单时间。
@@ -1975,8 +2009,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if valid:
                 # 处理龙舌兰/但书/佩佩的插拔
                 run_order_rooms = self.op_data.run_order_rooms
-                for k, v in run_order_rooms.items():
+                for k in list(run_order_rooms):
                     self.plan_run_order(k)
+                run_order_rooms = self.op_data.run_order_rooms
                 adj_tasks = scheduling(
                     self.tasks
                 )  # 修改scheduling 同时输出撞在一起的前后两个任务
@@ -2678,6 +2713,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 return False
 
             logger.info("副表条件一次性收敛：%s -> %s", original, current)
+            self._sync_run_order_tasks()
             had_rest_schedule = any(
                 task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM)
                 for task in self.tasks

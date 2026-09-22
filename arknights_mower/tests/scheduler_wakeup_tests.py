@@ -44,7 +44,9 @@ def scheduler(monkeypatch):
         Clock.now() + timedelta(hours=1), task_type=TaskTypes.SKILL_UPGRADE
     )
     solver.tasks = [shift, recheck]
-    solver.op_data = SimpleNamespace(plan={}, operators={}, correct_dorm=MagicMock())
+    solver.op_data = SimpleNamespace(
+        plan={}, operators={}, correct_dorm=MagicMock(), experimental_dorm_logic=False
+    )
     solver.recog = MagicMock()
     solver._simulator_closed_for_idle = False
     solver.party_time = solver.free_clue = solver.credit_fight = None
@@ -52,6 +54,7 @@ def scheduler(monkeypatch):
     solver.find = MagicMock(return_value=True)
     solver.check_current_focus = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.queue_product_switches = MagicMock()
     solver.agent_get_mood = MagicMock(return_value=True)
     solver.restart_after_mood_read = False
     solver.agent_arrange = MagicMock(side_effect=lambda *args: solver.skip())
@@ -109,6 +112,29 @@ def scheduler(monkeypatch):
     monkeypatch.setattr(FurnitureDismantler, "run", state.dismantle)
     monkeypatch.setattr(base_schedule, "csleep", sleep)
     return state
+
+
+@pytest.mark.parametrize("during_wait", [False, True])
+def test_invalid_run_order_is_removed_before_scheduling(scheduler, during_wait):
+    solver = scheduler.solver
+    solver.op_data.experimental_dorm_logic = True
+    solver.op_data.run_order_rooms = {"room_1_1": {}} if during_wait else {}
+    solver.op_data.refresh_run_order_rooms = MagicMock()
+    stale = SchedulerTask(
+        scheduler.clock.now() + timedelta(minutes=2 if during_wait else -1),
+        {"room_1_1": ["Current"]},
+        TaskTypes.RUN_ORDER,
+        meta_data="room_1_1",
+    )
+    solver.tasks.insert(0, stale)
+    if during_wait:
+        scheduler.on_sleep = solver.op_data.run_order_rooms.clear
+
+    solver.run()
+
+    assert all(task is not stale for task in solver.tasks)
+    solver.agent_arrange.assert_called_once_with(scheduler.shift.plan, False)
+    assert scheduler.clock.now() == scheduler.shift.time
 
 
 def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
