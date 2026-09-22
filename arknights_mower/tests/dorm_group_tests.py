@@ -98,9 +98,9 @@ def shift_off(solver):
     return plan, replacements
 
 
-def configure_same_group_cover(solver):
+def configure_explicit_free_bed(solver):
     resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
-    resident.replacement = ["伊内丝"]
+    resident.replacement = ["Free"]
     assert solver.initialize_operators() is None
     for name in ["泥岩", "能天使", "年"]:
         solver.op_data.add(Operator(name, ""))
@@ -206,7 +206,7 @@ def test_restart_with_absent_stale_resident_preserves_cover(solver):
 
 
 def test_room_scan_clears_stale_occupant_from_closed_group_bed(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     bed = next(d for d in data.dorm if d.position == ("dormitory_1", 0))
     stale = data.operators["陈"]
@@ -232,6 +232,39 @@ def test_room_scan_clears_stale_occupant_from_closed_group_bed(solver):
     assert (stale.current_room, stale.current_index) == ("", -1)
     assert (bed.name, bed.time) == ("", None)
     assert data.is_effective_free_slot(bed) is False
+
+
+def test_room_scan_keeps_new_occupant_when_clearing_stale_operator(solver):
+    data = solver.op_data
+    bed = next(d for d in data.dorm if d.position == ("dormitory_1", 3))
+    stale = data.operators["陈"]
+    incoming = data.operators["能天使"]
+    stale.current_room, stale.current_index = bed.position
+    incoming.current_room, incoming.current_index = "", -1
+    bed.name = stale.name
+    bed.time = datetime.now() + timedelta(hours=4)
+
+    solver.task = None
+    solver.recog = MagicMock(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.detect_product_complete = MagicMock(return_value=False)
+    solver.scroll_room_operators = MagicMock()
+    solver.find = MagicMock(return_value=None)
+    solver.read_screen = MagicMock(
+        side_effect=["塑心", "冰酿", "泥岩", incoming.name, "年"]
+    )
+    solver.read_accurate_mood = MagicMock(return_value=5)
+    solver.read_operator_time = MagicMock(
+        return_value=datetime.now() + timedelta(hours=4)
+    )
+
+    solver.get_agent_from_room("dormitory_1")
+
+    assert (stale.current_room, stale.current_index) == ("", -1)
+    assert (incoming.current_room, incoming.current_index) == bed.position
+    assert bed.name == incoming.name
+    assert bed.time is not None
 
 
 def test_correction_completes_partial_dorm_shift_and_restores_after_return(solver):
@@ -347,8 +380,17 @@ def test_multiple_residents_swap_without_using_extra_beds(solver):
     assert solver.agent_get_mood() is None
 
 
-def test_same_group_worker_uses_resident_slot_as_resting_bed(solver):
-    configure_same_group_cover(solver)
+def test_same_group_name_cannot_be_used_as_dorm_replacement(solver):
+    resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
+    resident.replacement = ["伊内丝"]
+
+    assert solver.initialize_operators() == (
+        "替换组不可用高效组干员: 房间->dormitory_1, 干员->伊内丝"
+    )
+
+
+def test_explicit_free_uses_resident_slot_as_resting_bed(solver):
+    configure_explicit_free_bed(solver)
 
     plan, replacements = shift_off(solver)
 
@@ -374,8 +416,18 @@ def test_same_group_worker_uses_resident_slot_as_resting_bed(solver):
     assert tasks[0].plan["dormitory_1"][0] == "塑心"
 
 
-def test_same_group_resident_slot_reduces_required_free_beds(solver):
-    configure_same_group_cover(solver)
+def test_explicit_free_correction_can_remove_fixed_resident(solver):
+    configure_explicit_free_bed(solver)
+    solver.task = None
+    agents = ["Free", "冰酿", "泥岩", "能天使", "年"]
+
+    solver.preserve_resting_crafters(agents, "dormitory_1")
+
+    assert agents[0] == "Free"
+
+
+def test_explicit_free_resident_slot_reduces_required_free_beds(solver):
+    configure_explicit_free_bed(solver)
     # 三名工作成员只需要两个 Free 床位；第三个床位由不可接管的主力占用。
     solver.op_data.operators["泥岩"].operator_type = "high"
     apply_plan(
@@ -396,7 +448,7 @@ def test_same_group_resident_slot_reduces_required_free_beds(solver):
 
 
 def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     now = datetime.now()
     occupants = ["泥岩", "陈", "能天使", "年"]
@@ -429,7 +481,7 @@ def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(sol
 
 
 def test_closing_bed_keeps_existing_single_recovery_target(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     now = datetime.now()
     occupants = ["泥岩", "陈", "能天使", "年"]
@@ -458,7 +510,7 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
 
 
 def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     data.config.experimental_dorm_logic = False
     data.dorm[0].name = "泥岩"
@@ -473,7 +525,7 @@ def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
 
 
 def test_auto_free_occupant_can_be_replaced_after_recovery_finishes(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     data.config.free_room = True
     bed = data.dorm[0]

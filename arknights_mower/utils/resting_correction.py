@@ -177,16 +177,7 @@ def correct_group_dorms(op_data, fix_plan, is_busy):
                             name not in TRADE_ORDER_AGENTS
                             and name not in reserved
                             and not is_busy(name)
-                            and (
-                                not op_data.operators[name].is_high()
-                                or op_data.is_same_group_dorm_replacement(op, name)
-                                and (
-                                    actual is not None
-                                    and actual.name == name
-                                    or not op_data.operators[name].current_room
-                                    or op_data.operators[name].is_resting()
-                                )
-                            )
+                            and not op_data.operators[name].is_high()
                             and (
                                 actual is not None
                                 and actual.name == name

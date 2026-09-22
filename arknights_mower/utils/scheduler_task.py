@@ -847,7 +847,7 @@ def plan_metadata(op_data, tasks):
             if v.is_high()
             and not v.room.startswith("dorm")
             and not v.is_resting()
-            and not op_data.is_group_standby(v.name)
+            and not op_data.is_standby(v.name)
         ),
         key=lambda x: x.current_mood() - x.lower_limit,
     )
@@ -977,9 +977,28 @@ def plan_metadata(op_data, tasks):
                     new_task[task_time] = ([room], None)
                 else:
                     new_task[task_time] = (new_task[task_time][0].append(room), None)
-    tasks.extend(
-        generate_plan_by_drom(new_task, op_data, existing_targets=existing_targets)
+    generated = generate_plan_by_drom(
+        new_task, op_data, existing_targets=existing_targets
     )
+    standalone_standby = [
+        op
+        for op in op_data.operators.values()
+        if not op.group and op_data.is_standby(op.name)
+    ]
+    if standalone_standby:
+        return_task = next(
+            (task for task in generated if task.type == TaskTypes.SHIFT_ON), None
+        )
+        if return_task is not None:
+            for op in standalone_standby:
+                return_task.plan.setdefault(
+                    op.room, ["Current"] * len(op_data.plan[op.room])
+                )[op.index] = op.name
+            logger.info(
+                "未绑组候补将随下一批宿舍干员回班：%s",
+                [op.name for op in standalone_standby],
+            )
+    tasks.extend(generated)
     return tasks
 
 

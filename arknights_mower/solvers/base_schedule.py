@@ -1210,7 +1210,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for k, v in self.op_data.operators.items()
             if v.not_valid()
             and not (v.group and v.room.startswith("dorm"))
-            and not self.op_data.is_group_standby(k)
+            and not self.op_data.is_standby(k)
             and not (
                 train_blocked
                 and v.room == "train"
@@ -2124,6 +2124,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         experimental = self.op_data.experimental_dorm_logic
         if experimental:
             now = datetime.now()
+            for op in self.op_data.operators.values():
+                self.op_data.update_standby_low_priority(op, now)
             self.total_agent.sort(
                 key=lambda op: resting_key(self.op_data, op.name, now)
             )
@@ -2169,9 +2171,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if experimental and self._resting_tier(op) == RestingTier.EXCLUDED:
                 continue
             if experimental and op.is_high():
-                can_standby = op.group and self.op_data.group_standby_candidates(
-                    self.op_data.groups[op.group]
-                )
+                standby_scope = self.op_data.groups[op.group] if op.group else [op.name]
+                can_standby = self.op_data.standby_candidates(standby_scope)
                 can_preempt = self._resting_tier(op) <= RestingTier.LOW_MAIN and any(
                     bed.name
                     and resting_tier(self.op_data, bed.name) > self._resting_tier(op)
@@ -2196,9 +2197,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     continue
             elif not experimental:
                 if op.is_high() and not op.is_workshop():
-                    can_standby = op.group and self.op_data.group_standby_candidates(
-                        self.op_data.groups[op.group]
+                    standby_scope = (
+                        self.op_data.groups[op.group] if op.group else [op.name]
                     )
+                    can_standby = self.op_data.standby_candidates(standby_scope)
                     if _high_done and not can_standby:
                         continue
                     if (
@@ -2215,7 +2217,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             if (
                 op.is_resting()
-                or self.op_data.is_group_standby(op.name)
+                or self.op_data.is_standby(op.name)
                 or op.current_room in ["factory"]
                 or (op.current_room in ["train"] and has_active_mastery)
                 or op.room in ["factory"]
@@ -2671,12 +2673,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if op is None or not op.is_high():
                 continue
             members = self.op_data.groups[op.group] if op.group else [name]
-            if self.op_data._can_group_standby(op) and any(
-                bed.name in members
-                and self.op_data.operators[bed.name].resting_priority == "high"
-                for bed in self.op_data.dorm
-                if bed.name
-            ):
+            if op.name in self.op_data.standby_candidates(members):
                 logger.info(f"{name}的候补床位被接管，随组待命")
                 continue
             recalled.update(members)
@@ -4458,6 +4455,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 full = mood != float("inf") and mood >= current.upper_limit
                 # 主班通过自己的上下班任务移动，Free 不隐式召回整组。
                 if current.is_high():
+                    slot = self.op_data.plan[room][index]
+                    opening_explicit_free = (
+                        self.op_data.is_auto_free_dorm_slot(room, index)
+                        and slot.agent == current.name
+                    )
+                    if opening_explicit_free:
+                        continue
                     agents[index] = current.name
                     continue
                 if not full:
@@ -5151,7 +5155,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]:
                 if room.startswith("dorm"):
                     _idx, dorm = self.op_data.get_dorm_by_name(_operator)
-                    if dorm is not None:
+                    # 该床可能已在本次读取中写入新入住者。旧入住者仍保留
+                    # 旧坐标时只能清理自己的缓存，不能把新入住者一并抹掉。
+                    if dorm is not None and dorm.name == _operator:
                         dorm.reset()
                 self.op_data.operators[_operator].current_room = ""
                 self.op_data.operators[_operator].current_index = -1

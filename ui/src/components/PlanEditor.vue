@@ -10,7 +10,7 @@ const plan_store = usePlanStore()
 const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme } = storeToRefs(config_store)
+const { theme, experimental_dorm_logic } = storeToRefs(config_store)
 
 const outer = ref(null)
 
@@ -605,7 +605,7 @@ function set_facility(e) {
           <td class="select-label">
             <span>组</span>
             <help-text>
-              可以将有联动基建技能的干员或者心情掉率相等的干员编入同组。宿舍常驻干员填写同组并设置替换后，会在该组下班时由替班接替宿舍原位，回班时恢复本人；不额外占用休息位。仅绑组宿舍的多个替班优先选择已知心情最低的可用干员，无心情数据时按配置顺序选择，已入驻的有效替班保持不变。组内需有可轮休的非宿舍干员，Free和菲亚梅塔不参与此功能，菲亚梅塔沿用原有充能规则。
+              可以将有联动基建技能的干员或者心情掉率相等的干员编入同组。宿舍常驻干员填写同组并设置替换后，会在该组下班时由替班接替宿舍原位，回班时恢复本人；不额外占用休息位。仅绑组宿舍的多个替班优先选择已知心情最低的可用干员，无心情数据时按配置顺序选择，已入驻的有效替班保持不变。测试宿舍逻辑下，宿舍常驻干员的替换填写Free时，该位置会在组下班期间转为动态休息位；具体替班仍须填写非主班干员，同组主班不能作为宿舍替班。组内需有可轮休的非宿舍干员，菲亚梅塔沿用原有充能规则。
             </help-text>
           </td>
           <td class="table-space group">
@@ -619,6 +619,7 @@ function set_facility(e) {
             <n-form-item :show-label="false" :show-feedback="false">
               <slick-operator-select
                 :disabled="!current_plan[facility].plans[i - 1].agent"
+                :include-free="experimental_dorm_logic && facility.startsWith('dorm')"
                 v-model="current_plan[facility].plans[i - 1].replacement"
                 class="replacement-select"
               />

@@ -161,7 +161,7 @@ def test_deep_group_one_empty_bed_round_trip_without_correction(solver, occupant
     shift_off(solver)
     data = solver.op_data
     expected_standby = set(DEEP[1:]) if occupants != "replacement" else set()
-    assert {name for name in DEEP if data.is_group_standby(name)} == expected_standby
+    assert {name for name in DEEP if data.is_standby(name)} == expected_standby
     assert data.operators[DEEP[0]].is_resting()
     assert [data.operators[n].resting_priority for n in DEEP] == [
         "high",
@@ -184,7 +184,7 @@ def test_deep_group_one_empty_bed_round_trip_without_correction(solver, occupant
     assert set(DEEP) <= {name for names in back[0].plan.values() for name in names}
     apply_plan(solver, back[0].plan)
     assert solver.agent_get_mood(skip_dorm=True) is None
-    assert not any(data.is_group_standby(name) for name in DEEP)
+    assert not any(data.is_standby(name) for name in DEEP)
     assert all(data.operators[n].current_room == data.operators[n].room for n in DEEP)
     solver.enter_room.assert_not_called()
 
@@ -199,7 +199,7 @@ def test_unrelated_correction_does_not_recall_standby_group(solver):
     assert plan == {"dormitory_1": ["Current", "冰酿", "Current", "Current", "Current"]}
     apply_plan(solver, plan)
     assert solver.agent_get_mood() is None
-    assert all(solver.op_data.is_group_standby(n) for n in DEEP[1:])
+    assert all(solver.op_data.is_standby(n) for n in DEEP[1:])
 
 
 @pytest.mark.parametrize(
@@ -271,7 +271,7 @@ def test_restart_rebuilds_standby_from_observed_rooms(solver):
     apply_plan(solver, observed)
     for name in DEEP[1:]:
         solver.op_data.operators[name].time_stamp = None
-    assert all(solver.op_data.is_group_standby(n) for n in DEEP[1:])
+    assert all(solver.op_data.is_standby(n) for n in DEEP[1:])
     assert solver.agent_get_mood() is None
     assert solver.tasks == []
 
@@ -280,7 +280,7 @@ def test_missing_cover_is_repaired_without_recalling_standby_group(solver):
     occupy_beds(solver, "low")
     shift_off(solver)
     apply_plan(solver, {"meeting": ["Free", "Current"]})
-    assert not solver.op_data.is_group_standby(DEEP[1])
+    assert not solver.op_data.is_standby(DEEP[1])
     assert solver.agent_get_mood() == "self_correction"
     plan = solver.tasks.pop().plan
     assert plan == {"meeting": [COVERS[1], "Current"]}
@@ -303,7 +303,7 @@ def test_standby_does_not_hide_invalid_group_state(solver, invalid):
         data.operators[DEEP[1]].current_room = "contact"
     else:
         data.operators[DEEP[1]].resting_priority = "high"
-    assert not data.is_group_standby(DEEP[1])
+    assert not data.is_standby(DEEP[1])
 
 
 def test_ordinary_low_cannot_evict_resting_main_or_another_replacement(solver):
@@ -347,21 +347,20 @@ def test_low_main_requires_beds_but_can_take_resting_replacements(solver, occupa
     "name,invalid",
     [
         (COVERS[0], "replacement"),
-        (OTHERS[0], "ungrouped"),
         ("塑心", "dorm"),
         (DEEP[1], "workaholic"),
         (DEEP[1], "exhaust_require"),
         (DEEP[1], "rest_in_full"),
     ],
 )
-def test_candidate_setting_only_applies_to_eligible_grouped_main(solver, name, invalid):
+def test_candidate_setting_only_applies_to_eligible_main(solver, name, invalid):
     conf = solver.global_plan["default_plan"].config
     conf.resting_standby = [name]
     if invalid in ("workaholic", "exhaust_require", "rest_in_full"):
         setattr(conf, invalid, [name])
     assert solver.initialize_operators() is None
     assert solver.op_data.operators[name].resting_priority != "standby"
-    assert not solver.op_data._can_group_standby(solver.op_data.operators[name])
+    assert not solver.op_data._can_standby(solver.op_data.operators[name])
 
 
 def test_workshop_selection_does_not_disable_group_standby(solver):
@@ -370,7 +369,106 @@ def test_workshop_selection_does_not_disable_group_standby(solver):
     config.conf.t5_operators = [name]
     assert solver.initialize_operators() is None
     assert solver.op_data.operators[name].resting_priority == "standby"
-    assert solver.op_data._can_group_standby(solver.op_data.operators[name])
+    assert solver.op_data._can_standby(solver.op_data.operators[name])
+
+
+def test_ungrouped_candidate_waits_without_bed_and_returns_with_next_anchor(solver):
+    name = OTHERS[0]
+    observed = {
+        room: [slot.agent for slot in slots]
+        for room, slots in solver.op_data.plan.items()
+    }
+    solver.global_plan["default_plan"].config.resting_standby = [name]
+    assert solver.initialize_operators() is None
+    apply_plan(solver, observed)
+    data = solver.op_data
+    now = datetime.now()
+
+    occupants = [OTHERS[1], *OTHERS[2:], DEEP[0], DEEP[1]]
+    assert len(occupants) == len(data.dorm)
+    for index, (bed, occupant_name) in enumerate(zip(data.dorm, occupants)):
+        occupant = data.operators[occupant_name]
+        occupant.current_room, occupant.current_index = bed.position
+        occupant.resting_priority = "high"
+        occupant.mood = 5
+        occupant.time_stamp = now
+        bed.name = occupant_name
+        bed.time = now + timedelta(hours=1 if index == 0 else 2)
+
+    candidate = data.operators[name]
+    # 默认急救线为 50% 换班阈值 × 75% 急救阈值，即 9 点；10 点仍为候补。
+    candidate.mood = 10
+    candidate.time_stamp = now
+    solver.total_agent = [candidate]
+
+    plan = solver.resting()
+
+    assert plan == {"room_1_1": [OTHER_COVERS[0], "Current", "Current"]}
+    assert candidate.resting_priority == "standby"
+    assert data.get_dorm_by_name(name)[0] is None
+    apply_plan(solver, plan)
+    assert data.is_standby(name)
+
+    tasks = plan_metadata(data, [])
+    return_task = min(
+        (task for task in tasks if task.type == TaskTypes.SHIFT_ON),
+        key=lambda task: task.time,
+    )
+    assert return_task.plan["room_1_1"][0] == name
+
+
+def test_candidate_below_rescue_line_stays_low_until_return(solver):
+    data = solver.op_data
+    candidate = data.operators[DEEP[1]]
+    now = datetime.now()
+    candidate.time_stamp = now
+    candidate.mood = 8.9
+
+    data.update_standby_low_priority(candidate, now)
+    assert candidate.standby_low_priority
+    assert solver._resting_tier(candidate).name == "LOW_MAIN"
+    assert not data._can_standby(candidate)
+
+    # 恢复越过急救线也不在休息途中降回候补。
+    candidate.current_room, candidate.current_index = data.dorm[0].position
+    candidate.mood = 20
+    data.update_standby_low_priority(candidate, now)
+    assert candidate.standby_low_priority
+    assert solver._resting_tier(candidate).name == "LOW_MAIN"
+
+    # 实际回到自己的工作位后解除本轮升级。
+    candidate.current_room, candidate.current_index = candidate.room, candidate.index
+    data.update_standby_low_priority(candidate, now)
+    assert not candidate.standby_low_priority
+    assert solver._resting_tier(candidate).name == "STANDBY"
+
+
+def test_candidate_below_rescue_line_cannot_wait_without_bed(solver):
+    occupy_beds(solver, "high")
+    data = solver.op_data
+    candidate = data.operators[DEEP[1]]
+    candidate.mood = 8.9
+    candidate.time_stamp = datetime.now()
+    data.update_standby_low_priority(candidate)
+
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    plan, replacements = {}, []
+    solver.get_resting_plan(data.groups["深海"], replacements, plan, 0)
+
+    assert plan == {}
+    assert replacements == []
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+
+
+def test_ungrouped_candidate_extension_is_disabled_with_stable_logic(solver):
+    name = OTHERS[0]
+    conf = solver.global_plan["default_plan"].config
+    conf.resting_standby = [name]
+    conf.experimental_dorm_logic = False
+
+    assert solver.initialize_operators() is None
+    assert solver.op_data.operators[name].resting_priority != "standby"
+    assert not solver.op_data._can_standby(solver.op_data.operators[name])
 
 
 def test_normal_low_gets_last_spare_bed_before_candidate(solver):
@@ -417,7 +515,8 @@ def test_normal_low_precedes_candidate_in_resting_and_dorm_order(solver):
     data = solver.op_data
     data.operators[DEEP[1]].resting_priority = "low"
     data.operators[DEEP[1]].mood = 20
-    data.operators[DEEP[2]].mood = 1
+    # 高于默认 9 点急救线，仍保持候补层级。
+    data.operators[DEEP[2]].mood = 10
     assert solver._resting_tier(data.operators[DEEP[1]]) < solver._resting_tier(
         data.operators[DEEP[2]]
     )
