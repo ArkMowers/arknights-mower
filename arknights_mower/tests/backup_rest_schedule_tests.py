@@ -132,6 +132,22 @@ def test_completed_shift_off_queues_new_plan_correction_before_backup_task(solve
     solver.agent_get_mood.assert_called_once_with(force=True)
 
 
+def test_truthy_switch_without_generated_tasks_does_not_start_correction(solver):
+    current = SchedulerTask(
+        time=datetime(2026, 9, 11, 16),
+        task_plan={"contact": ["红"]},
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    solver.task = current
+    solver.tasks = [current]
+    solver.backup_plan_solver = MagicMock(return_value=True)
+    solver.agent_get_mood = MagicMock()
+
+    solver.infra_main()
+
+    solver.agent_get_mood.assert_not_called()
+
+
 @pytest.mark.parametrize("custom_task", [None, {"central": ["Current"]}])
 def test_switch_rebuilds_existing_return_and_preserves_other_tasks(solver, custom_task):
     solver.op_data.backup_plans[0].task = custom_task

@@ -852,15 +852,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             # infra_main 收尾才从队列移除。切表后先按新表生成
                             # 一次纠错，再执行副表自带的任务，避免用错位
                             # 的缓存直接继续上/下班。
-                            existing_ids = {id(task) for task in self.tasks}
-                            self.agent_get_mood(force=True)
-                            corrections = [
-                                task
-                                for task in self.tasks
-                                if id(task) not in existing_ids
-                                and task.type == TaskTypes.SELF_CORRECTION
-                            ]
-                            if corrections and generated_tasks:
+                            if generated_tasks:
+                                existing_ids = {id(task) for task in self.tasks}
+                                self.agent_get_mood(force=True)
+                                corrections = [
+                                    task
+                                    for task in self.tasks
+                                    if id(task) not in existing_ids
+                                    and task.type == TaskTypes.SELF_CORRECTION
+                                ]
                                 anchor = min(task.time for task in generated_tasks)
                                 for offset, correction in enumerate(
                                     corrections, start=1
