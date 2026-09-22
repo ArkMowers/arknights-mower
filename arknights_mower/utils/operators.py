@@ -1627,6 +1627,11 @@ class Operators:
         return ret
 
     def validate_backup_plans(self):
+        from arknights_mower.utils.schedule_roster import validate_owned_operators
+
+        if error := validate_owned_operators(self.global_plan):
+            return {"success": False, "message": error}
+
         backup_count = len(self.backup_plans)
         if backup_count == 0:
             return {"success": True, "message": "没有备用计划，无需验证"}
