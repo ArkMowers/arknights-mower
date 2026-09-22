@@ -43,6 +43,19 @@ def product_plan(default="gold", backup="exp3"):
     }
 
 
+def trade_plan(default="lmd"):
+    room = "room_1_1"
+    conf = PlanConfig("", "", "")
+    return room, {
+        "default_plan": Plan(
+            {room: [Room("Lancet-2", "", [], "贸易站", default)]},
+            conf,
+            products={room: default},
+        ),
+        "backup_plans": [],
+    }
+
+
 def test_build_global_plan_keeps_products_separate_from_operator_slots(monkeypatch):
     configured = PlanModel(
         plan1={
@@ -672,16 +685,7 @@ def test_mood_room_visit_refreshes_manufacture_state_before_operator_detail():
 
 
 def test_mood_room_visit_refreshes_trade_order_state():
-    room = "room_1_1"
-    conf = PlanConfig("", "", "")
-    plan = {
-        "default_plan": Plan(
-            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
-            conf,
-            products={room: "lmd"},
-        ),
-        "backup_plans": [],
-    }
+    room, plan = trade_plan()
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = Operators(plan)
     solver._wait_drone_interface = MagicMock()
@@ -701,16 +705,7 @@ def test_mood_room_visit_refreshes_trade_order_state():
 
 
 def test_run_order_mood_read_skips_trade_order_refresh():
-    room = "room_1_1"
-    conf = PlanConfig("", "", "")
-    plan = {
-        "default_plan": Plan(
-            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
-            conf,
-            products={room: "lmd"},
-        ),
-        "backup_plans": [],
-    }
+    room, plan = trade_plan()
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = Operators(plan)
     solver.task = SchedulerTask(
@@ -731,16 +726,7 @@ def test_run_order_mood_read_skips_trade_order_refresh():
 
 
 def test_run_order_accept_caches_trade_type_on_current_order_page():
-    room = "room_1_1"
-    conf = PlanConfig("", "", "")
-    plan = {
-        "default_plan": Plan(
-            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
-            conf,
-            products={room: "lmd"},
-        ),
-        "backup_plans": [],
-    }
+    room, plan = trade_plan()
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = Operators(plan)
     solver.task = SchedulerTask(
@@ -768,10 +754,18 @@ def test_current_manufacture_page_caches_product_without_navigation():
     solver.translate_room = MagicMock(return_value="B102")
     solver.scene_graph_navigation = MagicMock()
 
-    solver._refresh_facility_state_on_current_page(room, "manufacture")
+    result = solver._cache_facility_state_from_current_page(room, "manufacture")
 
+    assert result is None
     assert solver.op_data.facility_product(room) == "exp3"
     solver.scene_graph_navigation.assert_not_called()
+
+
+def test_current_page_refresh_rejects_unknown_facility():
+    solver = object.__new__(base.BaseSchedulerSolver)
+
+    with pytest.raises(ValueError, match="未知设施类型"):
+        solver._cache_facility_state_from_current_page("room_1_1", "unknown")
 
 
 def test_trade_order_page_can_open_without_drone_button():
@@ -803,16 +797,7 @@ def test_trade_order_page_can_open_without_drone_button():
 
 
 def test_mood_room_visit_caches_locked_trade_as_lmd_without_opening_selector():
-    room = "room_1_1"
-    conf = PlanConfig("", "", "")
-    plan = {
-        "default_plan": Plan(
-            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
-            conf,
-            products={room: "lmd"},
-        ),
-        "backup_plans": [],
-    }
+    room, plan = trade_plan()
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = Operators(plan)
     solver._wait_drone_interface = MagicMock()
