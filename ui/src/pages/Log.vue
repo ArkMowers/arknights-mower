@@ -362,7 +362,7 @@ async function db_delete(keys) {
       v-if="sc_preview"
       width="100%"
       class="sc"
-      :src="sc_blob || '/bg2.webp'"
+      :src="sc_blob == '' ? '/bg2.webp' : sc_blob"
       object-fit="scale-down"
     />
     <div
