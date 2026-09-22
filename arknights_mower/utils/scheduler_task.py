@@ -1012,26 +1012,34 @@ def try_reorder(op_data, new_plan):
     for idx in blocked_indices:
         dorm[idx].name = ""
         dorm[idx].time = None
-    dorm_info = [
-        {
-            "name": dorm[idx].name,
-            "index": idx,
-            "time": dorm[idx].time,
-            "priority": get_ranking(dorm[idx].name),
-        }
-        for idx in effective_free_indices
-    ]
-
     if experimental:
         now = datetime.now()
-        # 空床位最后；相同等级和心情保留原位次序，不凭字典顺序反复调位。
-        dorm_info.sort(
-            key=lambda item: (
-                not bool(item["name"]),
-                resting_key(op_data, item["name"], now),
+        candidates = sorted(
+            (
+                resting_key(op_data, dorm[idx].name, now),
+                idx,
+                dorm[idx].name,
+                dorm[idx].time,
             )
+            for idx in effective_free_indices
+            if dorm[idx].name
         )
+        beds = [dorm[idx] for idx in effective_free_indices]
+        assignments, _dropped = _recovery_aware_assignments(op_data, beds, candidates)
+        for bed in beds:
+            candidate = assignments.get(bed.position)
+            bed.name = candidate[2] if candidate else ""
+            bed.time = candidate[3] if candidate else None
     else:
+        dorm_info = [
+            {
+                "name": dorm[idx].name,
+                "index": idx,
+                "time": dorm[idx].time,
+                "priority": get_ranking(dorm[idx].name),
+            }
+            for idx in effective_free_indices
+        ]
         priority_list = op_data.config.ope_resting_priority
         priority_order = {
             "high": len(priority_list),
@@ -1047,9 +1055,9 @@ def try_reorder(op_data, new_plan):
                 item["index"],
             )
         )
-    for target_idx, info in zip(effective_free_indices, dorm_info):
-        dorm[target_idx].name = info["name"]
-        dorm[target_idx].time = info["time"]
+        for target_idx, info in zip(effective_free_indices, dorm_info):
+            dorm[target_idx].name = info["name"]
+            dorm[target_idx].time = info["time"]
     plan = {}
     logger.debug(f"更新房间信息{dorm}")
     destinations = {bed.position for bed in dorm if bed.name}
