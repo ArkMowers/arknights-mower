@@ -4,12 +4,14 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from arknights_mower.solvers import base_schedule, record
 from arknights_mower.solvers import mastery_reader as reader
-from arknights_mower.solvers import record
-from arknights_mower.utils import mastery_db
+from arknights_mower.utils import mastery_db, mastery_support_data
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -123,6 +125,7 @@ class MasteryRestartTests(unittest.TestCase):
         solver.task = None
         solver.tasks = []
         solver.last_train_mood_read = None
+        solver._scan_training_room_during_mood = True
         names = ["协助干员", "测试干员"][: count or 0]
         solver.op_data.plan = (
             {}
@@ -227,13 +230,53 @@ class MasteryRestartTests(unittest.TestCase):
                 self.assertEqual(solver.tasks, [])
                 self.assertEqual(self.plan()["status"], "idle")
 
-    def test_no_plan_or_disabled_does_not_force_training_room_scan(self):
-        with patch.object(reader, "read_room_state") as read:
-            with patch.object(reader.config.conf, "enable_mastery", False):
-                self.read_mood(self.mood_solver())
-            mastery_db.update_plan_status(self.plan_id, "completed")
+    def test_mood_scan_checks_training_room_without_plan_or_mastery(self):
+        mastery_db.update_plan_status(self.plan_id, "completed")
+        empty_room = reader.RoomState(state="empty", slots_reliable=True)
+        with (
+            patch.object(
+                reader, "read_room_state", return_value=(empty_room, [])
+            ) as read,
+            patch.object(reader, "reconcile_short"),
+        ):
             self.read_mood(self.mood_solver())
-        read.assert_not_called()
+        read.assert_called_once()
+
+        solver = self.mood_solver()
+        solver.get_agent_from_room.return_value = [
+            {"agent": "", "mood": -1},
+            {"agent": "", "mood": -1},
+        ]
+        with patch.object(reader.config.conf, "enable_mastery", False):
+            self.read_mood(solver)
+        solver.get_agent_from_room.assert_called_once_with("train", None)
+
+    def test_mood_scan_stops_when_manual_trainee_is_in_nontraining_schedule(self):
+        mastery_db.update_plan_status(self.plan_id, "completed")
+        room = reader.RoomState(
+            state="training",
+            panel=reader.RoomPanel(operator_name="测试干员"),
+            train_slot="测试干员",
+            slots_reliable=True,
+        )
+        stop = Event()
+        with (
+            patch.object(reader, "read_room_state", return_value=(room, [])),
+            patch.object(reader, "reconcile_short") as reconcile,
+            patch.object(
+                mastery_support_data,
+                "trainee_schedule_conflict",
+                return_value="测试干员 出现在非训练室排班（room_1_1），不能进行专精训练",
+            ),
+            patch.object(base_schedule.config, "stop_mower", stop),
+            patch.object(base_schedule, "send_message") as notify,
+        ):
+            with self.assertRaises(MowerExit):
+                self.read_mood(self.mood_solver())
+        self.assertTrue(stop.is_set())
+        notify.assert_called_once()
+        self.assertIn("已停止 Mower", notify.call_args.args[0])
+        reconcile.assert_not_called()
 
     def test_finished_training_is_collected_with_empty_queue(self):
         mastery_db.update_plan_status(self.plan_id, "waiting_collect")

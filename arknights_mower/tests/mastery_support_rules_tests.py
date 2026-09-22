@@ -53,6 +53,17 @@ def test_schedule_excludes_every_nontraining_room_and_ignores_placeholders():
     assert central == 0
 
 
+def test_scheduled_trainee_conflict_uses_primary_backup_and_replacements():
+    plan = {
+        "plan1": {"room_1_1": facility("甲", ["乙"])},
+        "backup_plans": [{"plan": {"meeting": facility("丙")}}],
+    }
+    assert "room_1_1" in support.trainee_schedule_conflict("甲", plan)
+    assert "room_1_1" in support.trainee_schedule_conflict("乙", plan)
+    assert "meeting" in support.trainee_schedule_conflict("丙", plan)
+    assert support.trainee_schedule_conflict("丁", plan) is None
+
+
 def test_generated_resources_cover_unskilled_trainers_and_reducer_unlocks(game):
     data, ids = game
     assert data[ids["芬"]]["subProfessionId"]

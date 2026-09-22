@@ -776,6 +776,7 @@ def auto_schedule_mastery_tasks():
         return result
 
     operators = rec_result.get("operators", [])
+    from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     cultivate_path = get_path("@app/tmp/cultivate.json")
     inventory = {}
@@ -804,6 +805,7 @@ def auto_schedule_mastery_tasks():
     for op in operators:
         if op.get("mastery_error"):
             continue
+        schedule_conflict = trainee_schedule_conflict(op["name"])
         for rec in op.get("recommendations", []):
             if (op["char_id"], rec["skill_index"]) not in plan_set:
                 continue
@@ -833,7 +835,11 @@ def auto_schedule_mastery_tasks():
                 "achievable": all_materials_sufficient,
                 "current_level": rec.get("current_level", 0),
             }
-            if all_materials_sufficient:
+            if schedule_conflict:
+                entry["achievable"] = False
+                entry["reason"] = schedule_conflict
+                result["skipped"].append(entry)
+            elif all_materials_sufficient:
                 result["scheduled"].append(entry)
             else:
                 result["skipped"].append(entry)
