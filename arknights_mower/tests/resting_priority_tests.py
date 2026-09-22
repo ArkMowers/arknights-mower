@@ -106,21 +106,20 @@ def test_same_tier_uses_absolute_mood_not_lower_limit_or_priority_list_order(op_
     ]
 
 
-def test_dorm_reorder_uses_same_mood_order_and_settles(op_data):
+def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
     set_tier(op_data, "陈", RestingTier.REPLACEMENT, 3)
     op_data.plan[ROOM][3] = Room("Free", "", [])
     op_data.dorm = [Dormitory((ROOM, 3), "红"), Dormitory((ROOM, 4), "陈")]
     for bed in op_data.dorm:
         op = op_data.operators[bed.name]
         op.current_room, op.current_index = bed.position
-    plan = try_reorder(op_data, {})
-    assert plan[ROOM][3:] == ["陈", "红"]
-    for index, name in enumerate(plan[ROOM]):
-        if name != "Current":
-            op_data.operators[name].current_index = index
-    for bed in op_data.dorm:
-        bed.name = plan[ROOM][bed.position[1]]
     assert try_reorder(op_data, {}) == {}
+
+    set_tier(op_data, "空爆", RestingTier.IDLE, 1)
+    op_data.plan[ROOM][2] = Room("Free", "", [])
+    op_data.dorm.insert(0, Dormitory((ROOM, 2), "空爆"))
+    plan = try_reorder(op_data, {})
+    assert plan == {ROOM: ["Current", "Current", "空爆", "Current", "Current"]}
 
 
 def test_dorm_reorder_keeps_active_recovery_target_in_its_room(op_data):

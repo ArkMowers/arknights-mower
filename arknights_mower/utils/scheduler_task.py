@@ -1055,25 +1055,11 @@ def try_reorder(op_data, new_plan):
     for idx in blocked_indices:
         dorm[idx].name = ""
         dorm[idx].time = None
-    if experimental:
-        now = datetime.now()
-        candidates = sorted(
-            (
-                resting_key(op_data, dorm[idx].name, now),
-                idx,
-                dorm[idx].name,
-                dorm[idx].time,
-            )
-            for idx in effective_free_indices
-            if dorm[idx].name
-        )
-        beds = [dorm[idx] for idx in effective_free_indices]
-        assignments, _dropped = _recovery_aware_assignments(op_data, beds, candidates)
-        for bed in beds:
-            candidate = assignments.get(bed.position)
-            bed.name = candidate[2] if candidate else ""
-            bed.time = candidate[3] if candidate else None
-    else:
+    # 测试逻辑的 assign_dorm/group 已经为本轮新休息者选择了床位。这里若
+    # 再按实时心情全量映射所有入住者，不同宿舍的恢复速度会改变心情顺序，
+    # 下一轮又得到相反映射，最终造成宿舍间反复搬动。日常排班只落实已选
+    # 床位；副表切换和临时床关闭仍由各自的重排函数统一演算。
+    if not experimental:
         dorm_info = [
             {
                 "name": dorm[idx].name,
