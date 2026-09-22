@@ -180,6 +180,43 @@ def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
     assert all(t.type != TaskTypes.SHIFT_ON for t in solver.tasks)
 
 
+def enable_experimental_dorm_logic(solver):
+    solver.op_data.config.experimental_dorm_logic = True
+    solver.op_data.global_plan["default_plan"].config.experimental_dorm_logic = True
+    for backup in solver.op_data.global_plan["backup_plans"]:
+        backup.config.experimental_dorm_logic = True
+    assert solver.op_data.swap_plan([False], refresh=True) is None
+
+
+def test_unrelated_experimental_backup_switch_skips_dorm_reorder(solver, monkeypatch):
+    enable_experimental_dorm_logic(solver)
+    reorder = MagicMock(return_value={"dormitory_1": ["Current"] * 5})
+    monkeypatch.setattr(base, "rebalance_plan_swap_dorms", reorder)
+
+    assert solver.backup_plan_solver() is False
+
+    reorder.assert_not_called()
+    assert [task.type for task in solver.tasks] == [TaskTypes.NOT_SPECIFIC]
+
+
+def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
+    enable_experimental_dorm_logic(solver)
+    solver.op_data.backup_plans[0].plan["dormitory_1"] = [
+        *[Room("Current", "", []) for _ in range(4)],
+        Room("夜莺", "", []),
+    ]
+    reorder = MagicMock(return_value={"dormitory_1": ["Current"] * 5})
+    monkeypatch.setattr(base, "rebalance_plan_swap_dorms", reorder)
+
+    assert solver.backup_plan_solver() is True
+
+    reorder.assert_called_once()
+    assert [task.type for task in solver.tasks] == [
+        TaskTypes.RE_ORDER,
+        TaskTypes.NOT_SPECIFIC,
+    ]
+
+
 def test_plan_swap_dorm_reorder_adds_empty_followup_with_future_mastery(
     solver, monkeypatch
 ):

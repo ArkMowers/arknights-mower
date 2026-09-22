@@ -608,6 +608,33 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
     return recalled
 
 
+def dorm_rebalance_signature(op_data):
+    """Return the dorm layout state that can require a plan-swap migration.
+
+    Backup plans may change products, operators, or other settings without changing
+    dorm recovery beds.  Those switches must not reshuffle every current sleeper.
+    """
+    if not getattr(op_data, "experimental_dorm_logic", False):
+        return None
+    beds = []
+    for bed in op_data.dorm:
+        room, index = bed.position
+        slot = op_data.plan[room][index]
+        if slot.agent == "Free":
+            slot_type = ("free",)
+        else:
+            slot_type = ("auto_free", slot.agent, slot.group)
+        beds.append(
+            (
+                bed.position,
+                slot_type,
+                op_data.is_effective_free_slot(bed),
+                bed.name,
+            )
+        )
+    return tuple(op_data.config.dorm_order), tuple(beds)
+
+
 def rebalance_plan_swap_dorms(op_data, previous_dorms=None):
     """主副表切换后按新顺序迁移仍需恢复的入住者。
 

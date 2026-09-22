@@ -95,6 +95,7 @@ from arknights_mower.utils.resting_priority import (
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    dorm_rebalance_signature,
     find_next_task,
     plan_metadata,
     protect_support_swaps,
@@ -2353,11 +2354,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     logger.info(f"新条件列表:{con}")
                     previous_dorms = copy.deepcopy(self.op_data.all_dorms())
+                    previous_dorm_layout = dorm_rebalance_signature(self.op_data)
                     self.op_data.swap_plan(con, refresh=True)
                     self.queue_product_switches()
-                    dorm_migration = rebalance_plan_swap_dorms(
-                        self.op_data, previous_dorms
-                    )
+                    current_dorm_layout = dorm_rebalance_signature(self.op_data)
+                    if (
+                        previous_dorm_layout is None
+                        or previous_dorm_layout != current_dorm_layout
+                    ):
+                        dorm_migration = rebalance_plan_swap_dorms(
+                            self.op_data, previous_dorms
+                        )
+                    else:
+                        logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
+                        dorm_migration = {}
                     if dorm_migration:
                         new_task = True
                         generated = SchedulerTask(
