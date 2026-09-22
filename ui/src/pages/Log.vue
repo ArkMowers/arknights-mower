@@ -4,6 +4,12 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
+import {
+  clampScreenshotHeight,
+  clampTaskHeight,
+  LOG_MIN_HEIGHT,
+  RESIZER_HEIGHT
+} from '@/utils/logLayout'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 const mower_store = useMowerStore()
 const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
@@ -16,17 +22,56 @@ const auto_scroll = ref(true)
 const sc_preview = ref(true)
 const sc_blob = ref('')
 const log_layout = ref(null)
+const layout_preference = {
+  screenshot_height: null,
+  task_height: null
+}
+let layoutObserver
 
-async function restore_log_layout() {
+function layout_bottom_reserve(container) {
+  const conditionHeight =
+    container.querySelector('.plan-condition')?.getBoundingClientRect().height ?? 0
+  const actionHeight =
+    container.querySelector('.action-container')?.getBoundingClientRect().height ?? 0
+  return LOG_MIN_HEIGHT + RESIZER_HEIGHT + conditionHeight + actionHeight
+}
+
+function apply_log_layout() {
   const container = log_layout.value
   if (!container) return
+  const bounds = container.getBoundingClientRect()
+  const bottomReserve = layout_bottom_reserve(container)
+
+  if (sc_preview.value) {
+    const preferred = layout_preference.screenshot_height ?? 270
+    const height = clampScreenshotHeight(preferred, bounds.height, bottomReserve)
+    container.style.setProperty('--log-sc-h', `${height}px`)
+  } else {
+    container.style.removeProperty('--log-sc-h')
+  }
+
+  if (layout_preference.task_height === null) {
+    container.style.removeProperty('--log-task-h')
+    return
+  }
+  const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
+  if (!task) return
+  const height = clampTaskHeight(
+    layout_preference.task_height,
+    bounds.bottom - task.top,
+    bottomReserve
+  )
+  container.style.setProperty('--log-task-h', `${height}px`)
+}
+
+async function restore_log_layout() {
   try {
     const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/ui-state/log-layout`)
-    if (data?.screenshot_height) {
-      container.style.setProperty('--log-sc-h', `${data.screenshot_height}px`)
-    }
-    if (data?.task_height) container.style.setProperty('--log-task-h', `${data.task_height}px`)
+    layout_preference.screenshot_height = data?.screenshot_height ?? null
+    layout_preference.task_height = data?.task_height ?? null
   } catch {}
+  await nextTick()
+  apply_log_layout()
 }
 
 function resize_log_pane(event, pane) {
@@ -38,19 +83,17 @@ function resize_log_pane(event, pane) {
   let savedSize = null
   const onMove = (moveEvent) => {
     const bounds = container.getBoundingClientRect()
+    const bottomReserve = layout_bottom_reserve(container)
     let size
-    let max
     if (pane === 'screenshot') {
-      size = moveEvent.clientY - bounds.top
-      max = Math.max(90, Math.min(500, bounds.height * 0.55))
+      size = clampScreenshotHeight(moveEvent.clientY - bounds.top, bounds.height, bottomReserve)
     } else {
       const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
       if (!task) return
-      size = moveEvent.clientY - task.top
-      max = Math.max(90, Math.min(600, bounds.bottom - 180 - task.top))
+      size = clampTaskHeight(moveEvent.clientY - task.top, bounds.bottom - task.top, bottomReserve)
     }
-    size = Math.round(Math.max(90, Math.min(max, size)))
     savedSize = size
+    layout_preference[stateKey] = size
     container.style.setProperty(variable, `${size}px`)
   }
   const onUp = () => {
@@ -81,6 +124,7 @@ function updateScreenshotPreview() {
 watch(sc_preview, (enabled) => {
   localStorage.setItem('sc_preview', JSON.stringify(enabled))
   updateScreenshotPreview()
+  nextTick(apply_log_layout)
 })
 function scroll_last_line() {
   nextTick(() => {
@@ -114,6 +158,8 @@ onMounted(() => {
   }
   document.addEventListener('visibilitychange', updateScreenshotPreview)
   updateScreenshotPreview()
+  layoutObserver = new ResizeObserver(apply_log_layout)
+  if (log_layout.value) layoutObserver.observe(log_layout.value)
   restore_log_layout()
   db_load_stats()
 })
@@ -122,6 +168,7 @@ onUnmounted(() => {
   clearTimeout(get_task_id.value)
   clearInterval(runningTimer)
   document.removeEventListener('visibilitychange', updateScreenshotPreview)
+  layoutObserver?.disconnect()
   screenshotPreview.stop()
 })
 
@@ -504,14 +551,14 @@ async function db_delete(keys) {
 .home-container {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 0 0 minmax(90px, var(--log-task-h, 1fr)) auto 8px minmax(120px, 1fr) auto;
+  grid-template-rows: 0 0 minmax(0, var(--log-task-h, 1fr)) auto 8px minmax(120px, 1fr) auto;
   min-height: 0;
   overflow: hidden;
   position: relative;
 
   &.with-screenshot {
     grid-template-rows:
-      var(--log-sc-h, 270px) 8px minmax(90px, var(--log-task-h, 1fr))
+      var(--log-sc-h, 270px) 8px minmax(0, var(--log-task-h, 1fr))
       auto 8px minmax(120px, 1fr) auto;
   }
 }
