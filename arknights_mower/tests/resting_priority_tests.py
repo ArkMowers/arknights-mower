@@ -123,6 +123,26 @@ def test_dorm_reorder_uses_same_mood_order_and_settles(op_data):
     assert try_reorder(op_data, {}) == {}
 
 
+def test_dorm_reorder_keeps_active_recovery_target_in_its_room(op_data):
+    second_room = "dormitory_2"
+    op_data.plan[second_room] = [
+        Room(name, "", []) for name in ["杜林", "闪灵", "爱丽丝", "Free"]
+    ]
+    protected_bed = op_data.dorm[0]
+    other_bed = Dormitory((second_room, 3), "陈")
+    op_data.dorm.append(other_bed)
+
+    protected = set_tier(op_data, "红", RestingTier.REPLACEMENT, 20)
+    other = set_tier(op_data, "陈", RestingTier.REPLACEMENT, 1)
+    protected.current_room, protected.current_index = protected_bed.position
+    protected.dorm_recovery_room = protected.current_room
+    protected_bed.name = protected.name
+    other.current_room, other.current_index = other_bed.position
+
+    assert try_reorder(op_data, {}) == {}
+    assert protected.dorm_recovery_room == protected.current_room
+
+
 def test_train_support_keeps_replacement_tier_during_recovery_and_restart(op_data):
     op = op_data.operators["空爆"]
     op_data.update_detail(op.name, 8, "train", 0, True)

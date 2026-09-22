@@ -98,6 +98,56 @@ def test_shift_off_recomputes_emergency_return_after_backup_switch(solver):
     solver.agent_arrange.assert_called_once_with({"contact": ["红"]}, True)
 
 
+def test_completed_shift_off_queues_new_plan_correction_before_backup_task(solver):
+    backup = solver.op_data.backup_plans[0]
+    backup.trigger_timing = PlanTriggerTiming.BEFORE_PLANNING
+    backup.task = {"central": ["Current"]}
+    current = SchedulerTask(
+        time=datetime(2026, 9, 11, 16),
+        task_plan={"contact": ["红"]},
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    solver.task = current
+    solver.tasks = [current]
+
+    def queue_correction(*, force=False):
+        assert force
+        solver.tasks.append(
+            SchedulerTask(
+                task_plan={"contact": ["黑键"]},
+                task_type=TaskTypes.SELF_CORRECTION,
+            )
+        )
+        return "self_correction"
+
+    solver.agent_get_mood = MagicMock(side_effect=queue_correction)
+    solver.infra_main()
+
+    correction = next(
+        task for task in solver.tasks if task.type == TaskTypes.SELF_CORRECTION
+    )
+    backup_task = next(task for task in solver.tasks if task.plan == backup.task)
+    assert correction.time < backup_task.time
+    assert current not in solver.tasks
+    solver.agent_get_mood.assert_called_once_with(force=True)
+
+
+def test_truthy_switch_without_generated_tasks_does_not_start_correction(solver):
+    current = SchedulerTask(
+        time=datetime(2026, 9, 11, 16),
+        task_plan={"contact": ["红"]},
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    solver.task = current
+    solver.tasks = [current]
+    solver.backup_plan_solver = MagicMock(return_value=True)
+    solver.agent_get_mood = MagicMock()
+
+    solver.infra_main()
+
+    solver.agent_get_mood.assert_not_called()
+
+
 @pytest.mark.parametrize("custom_task", [None, {"central": ["Current"]}])
 def test_switch_rebuilds_existing_return_and_preserves_other_tasks(solver, custom_task):
     solver.op_data.backup_plans[0].task = custom_task

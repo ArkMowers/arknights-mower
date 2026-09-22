@@ -107,12 +107,16 @@ def test_fiammetta_keeps_countdown_even_when_in_central(room_reader):
     solver.recog.update.assert_not_called()
 
 
-def test_fiammetta_swap_reads_only_fiammetta_mood(room_reader):
+def test_fiammetta_swap_reads_target_and_fiammetta_mood(room_reader):
     target_solver, target, _ = room_reader(room="dormitory_1", name="伊内丝", mood=7.5)
-    target_solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    target_solver.task = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA, meta_data="伊内丝"
+    )
     target.need_to_refresh.return_value = True
-    target_solver.get_agent_from_room("dormitory_1")
-    target_solver.read_accurate_mood.assert_not_called()
+    target_solver.read_accurate_mood.return_value = 24
+    result = target_solver.get_agent_from_room("dormitory_1", [0])
+    target_solver.read_accurate_mood.assert_called_once()
+    assert result[0]["mood"] == target.mood == 24
 
     fia_solver, fia, _ = room_reader(room="dormitory_1", name="菲亚梅塔", mood=7.5)
     fia_solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, meta_data="伊内丝")
@@ -129,6 +133,53 @@ def test_fiammetta_swap_reads_only_fiammetta_mood(room_reader):
         True,
         related_operator="伊内丝",
     )
+
+
+def test_fiammetta_arrangement_requests_both_mood_indexes():
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.task = SchedulerTask(
+        task_plan={"dormitory_1": ["伊内丝", "菲亚梅塔"]},
+        task_type=TaskTypes.FIAMMETTA,
+        meta_data="伊内丝",
+    )
+    solver.tasks = [solver.task]
+    target = SimpleNamespace(room="meeting", time_stamp=datetime.now())
+    fia = SimpleNamespace(room="dormitory_1", time_stamp=datetime.now())
+
+    def current_room(room, _refresh=True):
+        if room == "dormitory_1":
+            return ["杜林", "菲亚梅塔"]
+        return ["伊内丝"]
+
+    solver.op_data = SimpleNamespace(
+        operators={"伊内丝": target, "菲亚梅塔": fia},
+        get_current_room=MagicMock(side_effect=current_room),
+        run_order_rooms={},
+    )
+    solver.enter_room = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.refresh_current_room = MagicMock(return_value=["杜林", "菲亚梅塔"])
+    solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    solver.find = MagicMock(return_value=True)
+    solver.choose_agent = MagicMock()
+    solver.tap_confirm = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        return_value=[{"agent": "伊内丝"}, {"agent": "菲亚梅塔"}]
+    )
+    solver.scene = MagicMock()
+    solver.waiting_scene = []
+    solver.back = MagicMock()
+
+    plan = solver.task.plan
+    restored = solver.agent_arrange_room({}, "dormitory_1", plan)
+
+    solver.get_agent_from_room.assert_called_once_with(
+        "dormitory_1", [0, 1], {1: "伊内丝"}
+    )
+    assert restored == {
+        "dormitory_1": ["杜林", "菲亚梅塔"],
+        "meeting": ["伊内丝"],
+    }
 
 
 def test_nonzero_central_keeps_measured_working_countdown(room_reader):
