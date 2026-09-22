@@ -3512,6 +3512,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         facility_name = getattr(room_plan[0], "facility", "")
         if facility_name not in ("制造站", "贸易站"):
             return
+        if (
+            facility_name == "贸易站"
+            and getattr(getattr(self, "task", None), "type", None)
+            == TaskTypes.RUN_ORDER
+        ):
+            logger.debug("跑单换人后跳过贸易站订单类型刷新")
+            return
 
         try:
             if facility_name == "制造站":

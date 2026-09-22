@@ -700,6 +700,36 @@ def test_mood_room_visit_refreshes_trade_order_state():
     solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
 
 
+def test_run_order_mood_read_skips_trade_order_refresh():
+    room = "room_1_1"
+    conf = PlanConfig("", "", "")
+    plan = {
+        "default_plan": Plan(
+            {room: [Room("Lancet-2", "", [], "贸易站", "lmd")]},
+            conf,
+            products={room: "lmd"},
+        ),
+        "backup_plans": [],
+    }
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver.task = SchedulerTask(
+        task_plan={room: ["Lancet-2"]},
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data=room,
+    )
+    solver._wait_drone_interface = MagicMock()
+    solver._read_trade_product_card = MagicMock(return_value=("orundum", True))
+    solver.scene_graph_navigation = MagicMock()
+
+    solver.refresh_facility_state(room)
+
+    assert solver.op_data.facility_product(room) == "lmd"
+    solver._wait_drone_interface.assert_not_called()
+    solver._read_trade_product_card.assert_not_called()
+    solver.scene_graph_navigation.assert_not_called()
+
+
 def test_trade_order_page_can_open_without_drone_button():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(w=1920, h=1080)
