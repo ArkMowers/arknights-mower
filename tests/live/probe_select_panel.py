@@ -12,11 +12,15 @@
 用法（项目根目录）：
     .venv\\Scripts\\python.exe tests\\live\\probe_select_panel.py --room dormitory_2
     .venv\\Scripts\\python.exe tests\\live\\probe_select_panel.py --room dormitory_2 --slot 2
+    .venv\\Scripts\\python.exe tests\\live\\probe_select_panel.py --room dormitory_2 --seconds 120
 
 安全性：
   - 只 tap 一次「空位」，其余全是 back 返回
   - 结束前强制退回到 INFRA_MAIN
   - 不写入任何状态、不提交任何变更
+  - `--seconds` 墙钟上限（默认 300）：到点置 stop 标志，`_AbortOnStop.wait_if_paused()`
+    随即抛 `MowerExit`，把控制流从 `Navigator` 内部硬拽出来（不是等它自己走完）
+  - `finally` 里 `request_stop()`；`Ctrl+C` 可安全中断
 """
 
 import argparse
@@ -34,19 +38,34 @@ for _parent in Path(__file__).resolve().parents:
 # 副作用：把仓库根写入 sys.path
 from tests._bootstrap import REPO_ROOT  # noqa: E402,F401
 
+from tests.live.t1_common import WallClockStop, no_save_conf  # noqa: E402
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--room", default="dormitory_2")
-    parser.add_argument("--slot", type=int, default=0, help="点第几个空位(默认0=左上)")
-    args = parser.parse_args()
 
+def _make_pause_class():
+    """返回「stop 后立刻抛 MowerExit」的 PauseController 子类。
+
+    继承而非替换 `wait_if_paused`，是为了保留 pause 语义；额外做的只是把
+    `is_stopped` 变成**可中断信号**。`Navigator` 已 `except MowerExit: return False`，
+    因此墙钟到点能真正打断导航循环，而不是等它跑完。
+    """
+    from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
+    from arknights_mower.utils.csleep import MowerExit
+
+    class _AbortOnStop(ThreadPauseController):
+        def wait_if_paused(self) -> None:
+            super().wait_if_paused()
+            if self.is_stopped:
+                raise MowerExit
+
+    return _AbortOnStop
+
+
+def _probe(args, pause) -> int:
     import logging
 
     from arknights_mower.scheduler.constants import INFRA_ROOM_SLOT_TAP
     from arknights_mower.scheduler.graph import build_default_graph
     from arknights_mower.scheduler.infra.pc_device_port import PCDevicePort
-    from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
     from arknights_mower.scheduler.navigator import Navigator
     from arknights_mower.scheduler.scene import Scene
     from arknights_mower.utils.character_recognize import operator_list
@@ -59,7 +78,6 @@ def main() -> int:
         h.setLevel(logging.INFO)
 
     room = args.room
-    pause = ThreadPauseController()
     dev = Device()
     port = PCDevicePort(dev, pause)
     recog = Recognizer(dev)
@@ -128,7 +146,11 @@ def main() -> int:
     from arknights_mower.scheduler.state import SchedulerState
     from arknights_mower.utils.operators import build_global_plan
 
-    state = SchedulerState(global_plan=build_global_plan())
+    # 规约 3：构造 SchedulerState 前把 save_conf 换成 no-op，
+    # 避免 `dorm_order == ""` 分支写用户的 conf.yml（本脚本只读探测）。
+    with no_save_conf() as save_calls:
+        state = SchedulerState(global_plan=build_global_plan())
+    print(f"    (save_conf 被拦截次数 = {len(save_calls)})")
     planned = [r.agent for r in state.plan.get(room, [])]
     print(f"    计划 = {planned}")
     for p in planned:
@@ -150,6 +172,35 @@ def main() -> int:
 
     print("\n[OK] 探测结束，未提交任何变更")
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--room", default="dormitory_2")
+    parser.add_argument("--slot", type=int, default=0, help="点第几个空位(默认0=左上)")
+    parser.add_argument("--seconds", type=int, default=300, help="墙钟上限（秒）")
+    args = parser.parse_args()
+
+    PauseClass = _make_pause_class()
+    pause = PauseClass()
+    clock = WallClockStop(args.seconds, on_timeout=pause.request_stop).start()
+    print(f"[0] 墙钟上限 = {args.seconds}s")
+
+    code = 1
+    try:
+        code = _probe(args, pause)
+    except KeyboardInterrupt:
+        print("\n    Ctrl+C，正在停止...")
+    except Exception as exc:  # noqa: BLE001 - 探测脚本需报告任何中断原因
+        print(f"\n[ABORT] {type(exc).__name__}: {exc}")
+    finally:
+        clock.cancel()
+        pause.request_stop()
+
+    if clock.timed_out:
+        print(f"[WARN] 达到墙钟上限 {args.seconds}s，已强制 request_stop()")
+        return 1
+    return code
 
 
 if __name__ == "__main__":
