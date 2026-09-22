@@ -2420,7 +2420,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 can_standby = self.op_data.standby_candidates(standby_scope)
                 can_preempt = self._resting_tier(op) <= RestingTier.LOW_MAIN and any(
                     bed.name
-                    and resting_tier(self.op_data, bed.name) > self._resting_tier(op)
                     and self.op_data._slot_takable(bed, True, requester=op.name)
                     for bed in self.op_data.dorm
                 )

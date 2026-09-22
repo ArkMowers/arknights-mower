@@ -15,6 +15,7 @@ from arknights_mower.utils.resting_priority import (
     RestingTier,
     resting_key,
     resting_mood,
+    resting_priority_rank,
     resting_tier,
 )
 
@@ -1699,11 +1700,21 @@ class Operators:
         # 已预留、尚未执行入驻的床位不能被本轮后续组重复分配。
         if (op.current_room, op.current_index) != dorm.position:
             return False
-        tier = resting_tier(self, name)
-        # 候补及以上只按层级、心情换床位顺序；一旦入住便不被其他休息者踢出。
-        if tier <= RestingTier.STANDBY:
-            return False
         if requester is None:
+            return False
+
+        incoming_rank = resting_priority_rank(self, requester)
+        occupant_rank = resting_priority_rank(self, name)
+        if incoming_rank is not None:
+            # 显式名单按拖拽顺序硬排序：前面的可接管后面或未填写者。
+            return occupant_rank is None or incoming_rank < occupant_rank
+        if occupant_rank is not None:
+            # 未填写者不能反向接管显式优先干员的动态床。
+            return False
+
+        tier = resting_tier(self, name)
+        # 未配置显式顺序时保留原规则：候补及以上入住后不被同级休息者踢出。
+        if tier <= RestingTier.STANDBY:
             return False
         incoming_tier = resting_tier(self, requester)
         if incoming_tier >= tier:

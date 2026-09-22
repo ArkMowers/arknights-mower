@@ -12,6 +12,7 @@ from arknights_mower.utils.plan import Room
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     resting_key,
+    resting_priority_rank,
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import try_reorder
@@ -53,7 +54,21 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
     expected = False
-    if occupant > RestingTier.STANDBY and incoming < occupant:
+    incoming_rank = (
+        data.config.ope_resting_priority.index(request.name)
+        if request.name in data.config.ope_resting_priority
+        else None
+    )
+    occupant_rank = (
+        data.config.ope_resting_priority.index(current.name)
+        if current.name in data.config.ope_resting_priority
+        else None
+    )
+    if incoming_rank is not None:
+        expected = occupant_rank is None or incoming_rank < occupant_rank
+    elif (
+        occupant_rank is None and occupant > RestingTier.STANDBY and incoming < occupant
+    ):
         expected = incoming <= RestingTier.LOW_MAIN
         if incoming == RestingTier.STANDBY and occupant == RestingTier.REPLACEMENT:
             expected = True
@@ -112,19 +127,60 @@ def test_blacklist_and_zero_mood_work_are_excluded_but_actual_zero_mood_is_not(o
     assert op_data.assign_dorm("红") is not None
 
 
-def test_same_tier_uses_absolute_mood_not_lower_limit_or_priority_list_order(op_data):
+def test_explicit_priority_uses_list_order_before_mood(op_data):
     set_tier(op_data, "银灰", RestingTier.PRIORITY, 15)
     set_tier(op_data, "红", RestingTier.PRIORITY, 10)
     op_data.operators["银灰"].lower_limit = 12
-    assert sorted(["银灰", "红"], key=lambda n: resting_key(op_data, n)) == [
-        "红",
+    assert resting_priority_rank(op_data, "银灰") == 0
+    assert resting_priority_rank(op_data, "红") == 1
+    assert sorted(["红", "银灰"], key=lambda n: resting_key(op_data, n)) == [
         "银灰",
+        "红",
     ]
     op_data.operators["红"].time_stamp = None
     assert sorted(["红", "银灰"], key=lambda n: resting_key(op_data, n)) == [
         "银灰",
         "红",
     ]
+
+
+def _occupy_dynamic_bed(op_data, name):
+    op = op_data.operators[name]
+    op.current_room, op.current_index = ROOM, 4
+    op_data.dorm[0].name = name
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=4)
+
+
+def test_explicit_priority_preempts_unlisted_main(op_data):
+    set_tier(op_data, "银灰", RestingTier.PRIORITY, 15)
+    set_tier(op_data, "空爆", RestingTier.MAIN, 3)
+    _occupy_dynamic_bed(op_data, "空爆")
+
+    assert op_data.assign_dorm("银灰") is not None
+
+
+def test_earlier_explicit_priority_preempts_later_priority(op_data):
+    set_tier(op_data, "银灰", RestingTier.PRIORITY, 15)
+    set_tier(op_data, "红", RestingTier.PRIORITY, 1)
+    _occupy_dynamic_bed(op_data, "红")
+
+    assert op_data.assign_dorm("银灰") is not None
+
+
+def test_later_priority_cannot_preempt_earlier_priority(op_data):
+    set_tier(op_data, "银灰", RestingTier.PRIORITY, 15)
+    set_tier(op_data, "红", RestingTier.PRIORITY, 1)
+    _occupy_dynamic_bed(op_data, "银灰")
+
+    assert op_data.assign_dorm("红") is None
+
+
+def test_unlisted_main_cannot_preempt_explicit_priority(op_data):
+    set_tier(op_data, "红", RestingTier.PRIORITY, 10)
+    set_tier(op_data, "银灰", RestingTier.MAIN, 1)
+    _occupy_dynamic_bed(op_data, "红")
+
+    assert op_data.assign_dorm("银灰") is None
 
 
 def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):

@@ -57,8 +57,27 @@ def resting_mood(op, now=None):
     return mood if 0 <= mood <= 24 else float("inf")
 
 
+def resting_priority_rank(op_data, name):
+    """显式休息优先级的拖拽顺序；忽略空值和重复项。"""
+    rank = 0
+    seen = set()
+    for item in op_data.config.ope_resting_priority:
+        if not item or item in seen:
+            continue
+        if item == name:
+            return rank
+        seen.add(item)
+        rank += 1
+    return None
+
+
 def resting_key(op_data, name, now=None):
-    return resting_tier(op_data, name), resting_mood(op_data.operators.get(name), now)
+    tier = resting_tier(op_data, name)
+    if getattr(op_data, "experimental_dorm_logic", False):
+        rank = resting_priority_rank(op_data, name)
+        if rank is not None:
+            return tier, rank
+    return tier, resting_mood(op_data.operators.get(name), now)
 
 
 def busy_resting_names():

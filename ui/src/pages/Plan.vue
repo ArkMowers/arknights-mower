@@ -757,9 +757,9 @@ function movePlanForward() {
         <span>干员休息优先级</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
-            <p>名单 → 普通主班 → 低优主班 → 候补 → 替班 → 空闲；同级心情低者优先。</p>
+            <p>名单按拖拽顺序优先分配动态床位；靠前干员排在靠后及未列名干员之前。</p>
             <p>
-              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
+              仅满足正常下班条件且床位当前有效时，才可接管较低优先级的占用者；固定宿舍位不会被接管。
             </p>
           </template>
           <template v-else>按名单顺序优先分床，不改变下班顺序。</template>
