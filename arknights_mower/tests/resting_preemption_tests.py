@@ -30,14 +30,14 @@ def try_admit_newcomer(solver):
     return newcomer, plan
 
 
-def test_explicit_priority_cannot_displace_resting_standby(solver):
+def test_unlisted_cannot_displace_resting_standby(solver):
     shift_off(solver)
     fill_remaining_beds(solver, OTHERS[1:])
     data = solver.op_data
     before = [(bed.name, bed.time) for bed in data.dorm]
     solver.tasks = plan_metadata(data, [])
     tasks_before = [task.plan for task in solver.tasks]
-    data.config.ope_resting_priority.append(OTHERS[0])
+    # Without an explicit priority override, settled standby occupants stay protected.
 
     newcomer, plan = try_admit_newcomer(solver)
 
@@ -48,7 +48,7 @@ def test_explicit_priority_cannot_displace_resting_standby(solver):
     assert all(data.operators[name].is_resting() for name in DEEP)
 
 
-def test_explicit_priority_cannot_displace_resting_low_main(solver):
+def test_unlisted_cannot_displace_resting_low_main(solver):
     data = solver.op_data
     data.config.ope_resting_priority = []
     for name in DEEP:
@@ -56,7 +56,7 @@ def test_explicit_priority_cannot_displace_resting_low_main(solver):
     shift_off(solver)
     fill_remaining_beds(solver, OTHERS[1:])
     before = [(bed.name, bed.time) for bed in data.dorm]
-    data.config.ope_resting_priority = [OTHERS[0]]
+    # Unlisted low-main newcomers cannot displace settled low-main occupants.
 
     newcomer, plan = try_admit_newcomer(solver)
 
@@ -64,6 +64,23 @@ def test_explicit_priority_cannot_displace_resting_low_main(solver):
     assert not newcomer.is_resting()
     assert [(bed.name, bed.time) for bed in data.dorm] == before
     assert all(data.operators[name].is_resting() for name in DEEP)
+
+
+def test_explicit_priority_can_preempt_unlisted_standby_without_eviction_of_ranked_anchor(
+    solver,
+):
+    shift_off(solver)
+    fill_remaining_beds(solver, OTHERS[1:])
+    data = solver.op_data
+    anchor = DEEP[0]
+    assert any(bed.name == anchor for bed in data.dorm)
+    data.config.ope_resting_priority.append(OTHERS[0])
+
+    newcomer, plan = try_admit_newcomer(solver)
+
+    assert plan
+    assert newcomer.name in [bed.name for bed in data.dorm]
+    assert any(bed.name == anchor for bed in data.dorm)
 
 
 def test_low_main_still_preempts_ordinary_replacement_for_942(solver):
