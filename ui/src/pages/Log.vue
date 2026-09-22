@@ -359,13 +359,12 @@ async function db_delete(keys) {
   >
     <div class="log-bg"></div>
     <n-image
-      v-if="sc_preview && sc_blob"
+      v-if="sc_preview"
       width="100%"
       class="sc"
-      :src="sc_blob"
+      :src="sc_blob || '/bg2.webp'"
       object-fit="scale-down"
     />
-    <div v-else-if="sc_preview" class="sc sc-placeholder"></div>
     <div
       v-if="sc_preview"
       class="log-resizer log-resizer-sc"
@@ -596,10 +595,6 @@ async function db_delete(keys) {
   :deep(img) {
     object-position: left top !important;
   }
-}
-
-.sc-placeholder {
-  background: #000;
 }
 
 .log-resizer {
