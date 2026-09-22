@@ -44,6 +44,7 @@ from arknights_mower.views.network import network_bp
 from arknights_mower.views.process_control import process_control_bp
 from arknights_mower.views.software_update import software_update_bp
 from arknights_mower.views.task import set_mower_thread, task_bp
+from arknights_mower.views.ui_state import ui_state_bp
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -2564,3 +2565,4 @@ app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(
     or resource_update.running()
 )
 app.register_blueprint(process_control_bp)
+app.register_blueprint(ui_state_bp)

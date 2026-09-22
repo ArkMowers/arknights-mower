@@ -63,10 +63,19 @@ export const useMowerStore = defineStore('mower', () => {
   }
 
   async function get_running() {
+    const wasRunning = running.value
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
     running.value = response.data['status'] !== 'stopped'
     auto_start_handled.value = response.data.auto_start_handled === true
     plan_condition.value = response.data['plan_condition']
+    if (running.value && !wasRunning) {
+      clearTimeout(get_task_id.value)
+      get_tasks()
+    } else if (!running.value && wasRunning) {
+      clearTimeout(get_task_id.value)
+      get_task_id.value = 0
+      task_list.value = []
+    }
   }
 
   async function get_tasks() {
