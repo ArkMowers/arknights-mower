@@ -3,6 +3,7 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+from arknights_mower.utils import config
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import (
@@ -162,8 +163,10 @@ class TestScheduling(unittest.TestCase):
             task_type=TaskTypes.RUN_ORDER,
         )
         tasks = [shift_off, reorder, followup, shift_on, run_order]
+        stable_tasks = copy.deepcopy(tasks)
 
-        scheduling(tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
+        with patch.object(config.conf, "experimental_dorm_logic", True):
+            scheduling(tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
 
         self.assertEqual(
             [task.type for task in tasks],
@@ -189,6 +192,26 @@ class TestScheduling(unittest.TestCase):
                 run_order.time + timedelta(seconds=1),
                 run_order.time + timedelta(seconds=2),
             ),
+        )
+
+        with patch.object(config.conf, "experimental_dorm_logic", False):
+            scheduling(stable_tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
+        self.assertEqual(
+            [task.type for task in stable_tasks],
+            [
+                TaskTypes.RUN_ORDER,
+                TaskTypes.SHIFT_OFF,
+                TaskTypes.RE_ORDER,
+                TaskTypes.NOT_SPECIFIC,
+                TaskTypes.SHIFT_ON,
+            ],
+        )
+        self.assertEqual(
+            sum(
+                any(room.startswith("dormitory_") for room in task.plan)
+                for task in stable_tasks
+            ),
+            3,
         )
 
     def test_deferred_dorm_merge_preserves_special_tasks(self):

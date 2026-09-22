@@ -113,12 +113,13 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     conflict = _schedule_run_orders(ordinary, run_order_delay, execution_time, time_now)
     if enabled:
         # ordinary 是为保护专精换人而创建的浅拷贝；同步其中被合并掉的任务。
-        ordinary_ids = {id(task) for task in ordinary}
-        tasks[:] = [
-            task
-            for task in tasks
-            if task.type == TaskTypes.SWAP_SUPPORT or id(task) in ordinary_ids
-        ]
+        if config.conf.experimental_dorm_logic:
+            ordinary_ids = {id(task) for task in ordinary}
+            tasks[:] = [
+                task
+                for task in tasks
+                if task.type == TaskTypes.SWAP_SUPPORT or id(task) in ordinary_ids
+            ]
         swap_conflict = protect_support_swaps(
             tasks, run_order_delay, execution_time, time_now
         )
@@ -370,9 +371,9 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                         logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
                         logger.debug("||".join([str(t) for t in tasks]))
                         next_priority_0_time = tasks[next_priority_0_index].time
-                        pending = _merge_deferred_dorm_schedules(
-                            tasks[i:next_priority_0_index]
-                        )
+                        pending = tasks[i:next_priority_0_index]
+                        if config.conf.experimental_dorm_logic:
+                            pending = _merge_deferred_dorm_schedules(pending)
                         tasks[i:next_priority_0_index] = pending
                         for pending_task in pending:
                             if pending_task.adjusted:
