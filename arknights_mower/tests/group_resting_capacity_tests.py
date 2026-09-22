@@ -18,6 +18,7 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     TaskTypes,
     plan_metadata,
+    try_add_release_dorm,
     try_reorder,
 )
 
@@ -372,7 +373,7 @@ def test_workshop_selection_does_not_disable_group_standby(solver):
     assert solver.op_data._can_standby(solver.op_data.operators[name])
 
 
-def test_ungrouped_candidate_waits_without_bed_and_returns_with_next_anchor(solver):
+def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     name = OTHERS[0]
     observed = {
         room: [slot.agent for slot in slots]
@@ -410,11 +411,69 @@ def test_ungrouped_candidate_waits_without_bed_and_returns_with_next_anchor(solv
     assert data.is_standby(name)
 
     tasks = plan_metadata(data, [])
-    return_task = min(
-        (task for task in tasks if task.type == TaskTypes.SHIFT_ON),
-        key=lambda task: task.time,
+    assert all(
+        name not in {agent for agents in task.plan.values() for agent in agents}
+        for task in tasks
+        if task.type == TaskTypes.SHIFT_ON
     )
-    assert return_task.plan["room_1_1"][0] == name
+
+    data.config.free_room = True
+    bed = next(
+        bed
+        for bed in data.dorm
+        if data.is_effective_free_slot(bed) and bed.name
+    )
+    occupant = data.get_current_operator(*bed.position)
+    occupant.current_room, occupant.current_index = "", -1
+    bed.reset()
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    assert tasks
+    room, index = bed.position
+    assert tasks[0].plan[room][index] == name
+
+
+def test_grouped_candidate_fills_later_free_bed_without_changing_return_time(solver):
+    occupy_beds(solver, "high")
+    shift_off(solver)
+    data = solver.op_data
+    candidate = DEEP[1]
+    assert data.is_standby(candidate)
+
+    data.config.free_room = True
+    baseline_tasks = plan_metadata(data, [])
+    baseline_return_time = min(
+        task.time
+        for task in baseline_tasks
+        if task.type == TaskTypes.SHIFT_ON
+    )
+    bed = next(
+        bed
+        for bed in data.dorm
+        if data.is_effective_free_slot(bed)
+        and bed.name
+        and bed.name not in DEEP
+    )
+    occupant = data.get_current_operator(*bed.position)
+    occupant.current_room, occupant.current_index = "", -1
+    bed.reset()
+
+    tasks = plan_metadata(data, [])
+    return_tasks = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
+    assert return_tasks
+    fill_tasks = [
+        task
+        for task in tasks
+        if task.type != TaskTypes.SHIFT_ON
+        and candidate in {agent for agents in task.plan.values() for agent in agents}
+    ]
+    assert fill_tasks
+    room, index = bed.position
+    assert fill_tasks[0].plan[room][index] == candidate
+    assert (
+        abs(min(task.time for task in return_tasks) - baseline_return_time)
+        < timedelta(seconds=1)
+    )
 
 
 def test_candidate_below_rescue_line_stays_low_until_return(solver):

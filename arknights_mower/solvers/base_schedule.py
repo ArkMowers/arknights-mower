@@ -1423,11 +1423,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.skip()
                 return
             else:
-                self.tasks.append(
-                    SchedulerTask(
-                        task_plan=fix_plan, task_type=TaskTypes.SELF_CORRECTION
-                    )
+                correction = SchedulerTask(
+                    task_plan=fix_plan, task_type=TaskTypes.SELF_CORRECTION
                 )
+                if getattr(self.op_data, "experimental_dorm_logic", False):
+                    current_task = getattr(self, "task", None)
+                    duplicate = next(
+                        (
+                            task
+                            for task in self.tasks
+                            if task is not current_task
+                            and task.type == TaskTypes.SELF_CORRECTION
+                            and task.plan == fix_plan
+                        ),
+                        None,
+                    )
+                    if duplicate is not None:
+                        logger.info("已存在相同纠错任务，跳过重复生成")
+                        return "self_correction"
+                self.tasks.append(correction)
                 logger.info(f"纠错任务为-->{fix_plan}")
                 return "self_correction"
 
@@ -1921,14 +1935,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def run_order_solver(self):
         plan = self.op_data.plan
         if len(self.op_data.run_order_rooms) > 0:
-            # 判定宿舍是否满员
-            valid = True
-            for key in plan.keys():
-                if "dormitory" in key:
-                    dorm = self.op_data.get_current_room(key)
-                    if dorm is not None and len(dorm) == 5:
-                        continue
-                    else:
+            # 旧逻辑依赖完整宿舍扫描来避免在状态未知时读取跑单时间。
+            # 测试宿舍逻辑允许动态空床和候补待命，宿舍未满不再代表状态
+            # 不可用，因此不能阻塞贸易站跑单任务的生成。
+            experimental = bool(
+                getattr(self.op_data, "experimental_dorm_logic", False)
+            )
+            valid = experimental
+            if not experimental:
+                valid = True
+                for key in plan.keys():
+                    if "dormitory" in key:
+                        dorm = self.op_data.get_current_room(key)
+                        if dorm is not None and len(dorm) == 5:
+                            continue
                         valid = False
                         logger.info("宿舍未满员,跳过读取插拔时间")
                         break

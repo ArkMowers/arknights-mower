@@ -198,6 +198,16 @@ def test_working_group_does_not_treat_resident_as_resting_witness(solver):
     }
 
 
+def test_experimental_correction_does_not_duplicate_pending_plan(solver):
+    solver.op_data.operators["冰酿"].current_room = ""
+    solver.op_data.operators["冰酿"].current_index = -1
+
+    assert solver.agent_get_mood() == "self_correction"
+    assert len(solver.tasks) == 1
+    assert solver.agent_get_mood() == "self_correction"
+    assert len(solver.tasks) == 1
+
+
 def test_restart_with_absent_stale_resident_preserves_cover(solver):
     shift_off(solver)
     solver.op_data.operators["塑心"].time_stamp = None

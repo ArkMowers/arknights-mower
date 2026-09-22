@@ -1035,25 +1035,12 @@ def plan_metadata(op_data, tasks):
     generated = generate_plan_by_drom(
         new_task, op_data, existing_targets=existing_targets
     )
-    standalone_standby = [
-        op
-        for op in op_data.operators.values()
-        if not op.group and op_data.is_standby(op.name)
-    ]
-    if standalone_standby:
-        return_task = next(
-            (task for task in generated if task.type == TaskTypes.SHIFT_ON), None
-        )
-        if return_task is not None:
-            for op in standalone_standby:
-                return_task.plan.setdefault(
-                    op.room, ["Current"] * len(op_data.plan[op.room])
-                )[op.index] = op.name
-            logger.info(
-                "未绑组候补将随下一批宿舍干员回班：%s",
-                [op.name for op in standalone_standby],
-            )
     tasks.extend(generated)
+    # 测试宿舍逻辑下，候补的待命只表示“等待空床”，不表示要跟随下一批
+    # 宿舍干员回班。宿舍释放或排班重算后，立即用当前可用动态床位补入候补；
+    # 这不会改写原有 SHIFT_ON 的时间或工作岗位计划。
+    if getattr(op_data, "experimental_dorm_logic", False):
+        try_add_release_dorm({}, None, op_data, tasks)
     return tasks
 
 
@@ -1271,12 +1258,18 @@ def try_add_release_dorm(plan, time, op_data, tasks):
             # 查看是否有未满心情的人
             logger.info("启动不养闲人安排空余宿舍位")
             now = datetime.now()
+            standby_waiting = {
+                op.name
+                for op in op_data.operators.values()
+                if op_data.is_standby(op.name)
+            }
             reserved = {
                 name
                 for task in tasks
                 for names in task.plan.values()
                 for name in names
                 if name not in ("", "Current", "Free")
+                and not (name in standby_waiting and task.type == TaskTypes.SHIFT_ON)
             }
             reserved_slots = {
                 (room, index)
@@ -1288,11 +1281,14 @@ def try_add_release_dorm(plan, time, op_data, tasks):
             waiting_list = [
                 op
                 for op in op_data.operators.values()
-                if not op.is_high()
+                if (not op.is_high() or op.name in standby_waiting)
                 and not op.current_room
                 and op.name not in reserved
                 and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
-                and resting_mood(op, now) < op.upper_limit
+                and (
+                    op.name in standby_waiting
+                    or resting_mood(op, now) < op.upper_limit
+                )
             ]
             busy = busy_resting_names()
             waiting_list = [op for op in waiting_list if op.name not in busy]

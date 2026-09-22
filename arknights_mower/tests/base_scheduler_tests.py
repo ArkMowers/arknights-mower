@@ -613,6 +613,46 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks[0].type, TaskTypes.EXHAUST_OFF)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_order_solver_reads_with_open_experimental_dorm_beds(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.drone_room = None
+        solver.op_data = MagicMock()
+        solver.op_data.experimental_dorm_logic = True
+        solver.op_data.plan = {
+            "dormitory_1": [Room("Free", "", []) for _ in range(5)],
+            "meeting": [Room("但书", "", [])],
+        }
+        solver.op_data.run_order_rooms = {"meeting": "但书"}
+        solver.plan_run_order = MagicMock()
+        solver.check_fia = MagicMock(return_value=(None, None))
+
+        solver.run_order_solver()
+
+        solver.plan_run_order.assert_called_once_with("meeting")
+        solver.op_data.get_current_room.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_order_solver_keeps_legacy_dorm_scan_gate(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.drone_room = None
+        solver.op_data = MagicMock()
+        solver.op_data.experimental_dorm_logic = False
+        solver.op_data.plan = {
+            "dormitory_1": [Room("Free", "", []) for _ in range(5)],
+            "meeting": [Room("但书", "", [])],
+        }
+        solver.op_data.run_order_rooms = {"meeting": "但书"}
+        solver.op_data.get_current_room.return_value = None
+        solver.plan_run_order = MagicMock()
+        solver.check_fia = MagicMock(return_value=(None, None))
+
+        solver.run_order_solver()
+
+        solver.plan_run_order.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_handle_error_appends_immediate_empty_task_after_clearing(self):
         # #144：错误分支「检测到超过15分钟的任务」清空非专精任务后，补一条立即
         # 空任务，让下一次 run() 走正常 planned 分支重读心情/换班/跑单，而不是
