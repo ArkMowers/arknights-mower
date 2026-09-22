@@ -715,6 +715,12 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
         task_recalled = set()
         exhaust_exist = False
         for room in dorms:
+            # 前一个回班批次可能关闭临时 Free 床并重排整个宿舍池，
+            # 从而把后续批次仍引用的同一个 Dormitory 对象清空。此时
+            # 后续计划已经失效，等待本批任务执行后重新计算即可。
+            if not room.name or room.name not in op_data.operators:
+                logger.debug(f"跳过已失效的宿舍回班项：{room}")
+                continue
             if room.name in planned:
                 continue
             op = op_data.operators[room.name]
@@ -722,6 +728,15 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
                 exhaust_exist = True
             if not op.is_high():
                 # 释放宿舍类别
+                if (
+                    op.current_room not in op_data.plan
+                    or not 0 <= op.current_index < len(op_data.plan[op.current_room])
+                ):
+                    logger.debug(
+                        f"跳过位置已失效的宿舍释放项：{op.name},"
+                        f"{op.current_room},{op.current_index}"
+                    )
+                    continue
                 if op.current_room not in plan:
                     plan[op.current_room] = ["Current"] * len(
                         op_data.plan[op.current_room]
@@ -759,6 +774,8 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
                     plan[target_room][target_index] = agent
                     planned.add(agent)
                     task_recalled.add(agent)
+        if not plan:
+            continue
         if rest_in_full is not None:
             planned.update(rebalance_closing_dorm_slots(op_data, plan, task_recalled))
         if rest_in_full:

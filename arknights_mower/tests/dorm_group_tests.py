@@ -12,7 +12,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
-from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.operators import Dormitory, Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
@@ -414,6 +414,54 @@ def test_explicit_free_uses_resident_slot_as_resting_bed(solver):
     assert tasks[0].plan["meeting"] == ["伊内丝", "银灰"]
     assert tasks[0].plan["contact"] == ["讯使"]
     assert tasks[0].plan["dormitory_1"][0] == "塑心"
+
+
+def test_later_return_ignores_bed_cleared_by_earlier_closing_rebalance(solver):
+    configure_explicit_free_bed(solver)
+    data = solver.op_data
+    now = datetime.now()
+    occupants = ["泥岩", "陈", "能天使", "年"]
+    for bed, name in zip(data.dorm, occupants):
+        bed.name = name
+        bed.time = now + timedelta(hours=4)
+        op = data.operators[name]
+        op.current_room, op.current_index = bed.position
+        op.time_stamp = now
+
+    # 第一批回班会让塑心回到 0 号位并关闭临时 Free 床；第二批仍持有
+    # 同一个 0 号 Dormitory 对象，旧实现会在其被 reset 后查询 operators[""]。
+    closing = Dormitory(data.dorm[0].position, "伊内丝", now + timedelta(hours=1))
+    future = data.dorm[0]
+    tasks = generate_plan_by_drom(
+        {
+            now + timedelta(hours=1): ([closing], False),
+            now + timedelta(hours=4): ([future], None),
+        },
+        data,
+    )
+
+    assert future.name == ""
+    assert len(tasks) == 1
+    assert tasks[0].type == TaskTypes.SHIFT_ON
+    assert tasks[0].plan["dormitory_1"][0] == "塑心"
+
+
+def test_release_ignores_operator_with_stale_empty_position(solver):
+    data = solver.op_data
+    bed = data.dorm[0]
+    bed.name = "年"
+    bed.time = datetime.now() + timedelta(hours=1)
+    data.operators["年"].current_room = ""
+    data.operators["年"].current_index = -1
+    data.config.free_room = True
+
+    assert (
+        generate_plan_by_drom(
+            {bed.time: ([bed], None)},
+            data,
+        )
+        == []
+    )
 
 
 def test_explicit_free_correction_can_remove_fixed_resident(solver):
