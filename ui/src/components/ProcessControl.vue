@@ -1,11 +1,12 @@
 <script setup>
-import { inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
 
 const props = defineProps({
-  compact: { type: Boolean, default: false }
+  compact: { type: Boolean, default: false },
+  running: { default: null }
 })
 
 const axios = inject('axios')
@@ -19,6 +20,7 @@ const busy = ref(false)
 const message = ref('')
 const failed = ref(false)
 const pendingKey = `mower-process-control:${base}`
+const effectiveRunning = computed(() => props.running ?? info.value?.running ?? false)
 let timer
 let disposed = false
 
@@ -138,20 +140,20 @@ onUnmounted(() => {
   <template v-if="props.compact">
     <n-popconfirm
       style="max-width: min(360px, calc(100vw - 32px))"
-      @positive-click="submit(info?.running ? 'restart_resume' : 'restart')"
+      @positive-click="submit(effectiveRunning ? 'restart_resume' : 'restart')"
     >
       <template #trigger>
         <n-button
           class="quick-run-btn"
-          :type="info?.running ? 'info' : 'default'"
+          :type="effectiveRunning ? 'info' : 'default'"
           :loading="busy"
           :disabled="busy || savesPaused || !info?.supported"
           :title="failed ? message : ''"
         >
-          {{ info?.running ? '重启续接' : '重启程序' }}
+          {{ effectiveRunning ? '重启续接' : '重启程序' }}
         </n-button>
       </template>
-      <template v-if="info?.running">
+      <template v-if="effectiveRunning">
         保存当前配置后重启当前实例，并保留任务队列继续运行。
       </template>
       <template v-else>保存当前配置后重启当前实例，不自动开始任务。</template>

@@ -20,7 +20,7 @@ vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 
 describe('process-control recovery across page navigation', () => {
-  let scope, component, session
+  let scope, component, session, props
 
   beforeEach(() => {
     session = new Map()
@@ -30,6 +30,7 @@ describe('process-control recovery across page navigation', () => {
       removeItem: (key) => session.delete(key)
     })
     vi.stubGlobal('window', { location: { reload: vi.fn() } })
+    props = reactive({ compact: false, running: null })
     state.config = reactive({ autosave_paused: false, flush_config_saves: vi.fn(async () => {}) })
     state.plan = reactive({ autosave_paused: false, wait_for_plan_save: vi.fn(async () => {}) })
     state.client = {
@@ -46,7 +47,7 @@ describe('process-control recovery across page navigation', () => {
     state.mounted = []
     state.unmounted = []
     scope = effectScope()
-    component = scope.run(() => ProcessControl.setup({}, { expose: () => {} }))
+    component = scope.run(() => ProcessControl.setup(props, { expose: () => {} }))
     await Promise.all(state.mounted.map((callback) => callback()))
     await nextTick()
   }
@@ -93,6 +94,21 @@ describe('process-control recovery across page navigation', () => {
       expect(state.config.autosave_paused).toBe(true)
     }
   )
+
+  it('keeps compact restart mode synchronized with the live running prop', async () => {
+    props.compact = true
+    props.running = false
+    await mount()
+    expect(component.effectiveRunning.value).toBe(false)
+
+    props.running = true
+    await nextTick()
+    expect(component.effectiveRunning.value).toBe(true)
+
+    props.running = false
+    await nextTick()
+    expect(component.effectiveRunning.value).toBe(false)
+  })
 
   it('uses the existing save and pending-job flow for restart resume', async () => {
     state.client.get.mockImplementation(async (url) => ({

@@ -325,7 +325,7 @@ async function db_delete(keys) {
           <span class="btn-text">开始执行</span>
         </n-button>
       </drop-down>
-      <ProcessControl compact />
+      <ProcessControl compact :running="running" />
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
         <template #icon>
