@@ -129,15 +129,20 @@ const stop_options = [
 const start_options = [
   {
     label: '载入心情任务',
-    key: '0'
+    key: '0',
+    props: { title: '继续上次任务：保留心情、位置和原任务队列。' }
   },
   {
     label: '载入心情数据',
-    key: '1'
+    key: '1',
+    props: {
+      title: '按当前排班重排：保留心情、位置，清空旧任务后重新生成任务。修改排班后使用。'
+    }
   },
   {
     label: '缓存清零重启',
-    key: '2'
+    key: '2',
+    props: { title: '重新读取现场：不使用旧运行缓存，重新读取心情和位置。' }
   }
 ]
 
