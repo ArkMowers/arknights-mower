@@ -359,12 +359,13 @@ async function db_delete(keys) {
   >
     <div class="log-bg"></div>
     <n-image
-      v-if="sc_preview"
+      v-if="sc_preview && sc_blob"
       width="100%"
       class="sc"
-      :src="sc_blob == '' ? '/bg.webp' : sc_blob"
+      :src="sc_blob"
       object-fit="scale-down"
     />
+    <div v-else-if="sc_preview" class="sc sc-placeholder"></div>
     <div
       v-if="sc_preview"
       class="log-resizer log-resizer-sc"
@@ -566,21 +567,20 @@ async function db_delete(keys) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 0 0 0 auto 0 minmax(120px, 1fr) auto;
+  gap: 0;
   min-height: 0;
   overflow: hidden;
   position: relative;
 
   &.with-screenshot {
-    grid-template-rows:
-      var(--log-sc-h, 270px) 8px 0 auto 0 minmax(120px, 1fr) auto;
+    grid-template-rows: var(--log-sc-h, 270px) 8px 0 auto 0 minmax(120px, 1fr) auto;
   }
 
   &.has-tasks {
     grid-template-rows: 0 0 auto auto 8px minmax(120px, 1fr) auto;
 
     &.with-screenshot {
-      grid-template-rows:
-        var(--log-sc-h, 270px) 8px auto auto 8px minmax(120px, 1fr) auto;
+      grid-template-rows: var(--log-sc-h, 270px) 8px auto auto 8px minmax(120px, 1fr) auto;
     }
   }
 }
@@ -596,6 +596,10 @@ async function db_delete(keys) {
   :deep(img) {
     object-position: left top !important;
   }
+}
+
+.sc-placeholder {
+  background: #000;
 }
 
 .log-resizer {
