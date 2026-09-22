@@ -841,12 +841,34 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         remove_current_task = not self.task.plan
                         self.skip()
                     elif get_time:
+                        generated_tasks = []
                         if not self.backup_plan_solver(
-                            PlanTriggerTiming.BEFORE_PLANNING
+                            PlanTriggerTiming.BEFORE_PLANNING,
+                            generated_tasks=generated_tasks,
                         ):
                             self.plan_metadata()
                         else:
-                            logger.info("检测到排班表切换，跳过plan")
+                            # 当前下班任务已经完成了物理操作，但要到
+                            # infra_main 收尾才从队列移除。切表后先按新表生成
+                            # 一次纠错，再执行副表自带的任务，避免用错位
+                            # 的缓存直接继续上/下班。
+                            existing_ids = {id(task) for task in self.tasks}
+                            self.agent_get_mood(force=True)
+                            corrections = [
+                                task
+                                for task in self.tasks
+                                if id(task) not in existing_ids
+                                and task.type == TaskTypes.SELF_CORRECTION
+                            ]
+                            if corrections and generated_tasks:
+                                anchor = min(task.time for task in generated_tasks)
+                                for offset, correction in enumerate(
+                                    corrections, start=1
+                                ):
+                                    correction.time = anchor - timedelta(
+                                        microseconds=offset
+                                    )
+                            logger.info("检测到排班表切换，先纠错再执行切表任务")
                     if (
                         not arrangement_deferred
                         and TaskTypes.RE_ORDER == self.task.type
@@ -1325,11 +1347,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 else (next_task.time - datetime.now()).total_seconds()
             )
             # 如果下个任务的操作时间超过下个任务，则跳过
+            shift_off_blocks = next_shift_off is not None and not (
+                force and next_shift_off is self.task
+            )
             if (
                 not force
                 and next_task is not None
                 and len(fix_plan.keys()) * 45 > second
-            ) or next_shift_off is not None:
+            ) or shift_off_blocks:
                 logger.info("有未完成的任务，跳过纠错")
                 self.skip()
                 return
@@ -4973,7 +4998,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.task is not None
                     and self.task.type == TaskTypes.FIAMMETTA
                 ):
-                    should_read_mood = _name == "菲亚梅塔" and i in read_time_index
+                    fia_read_names = {"菲亚梅塔"}
+                    if self.task.meta_data:
+                        fia_read_names.add(self.task.meta_data)
+                    should_read_mood = _name in fia_read_names and i in read_time_index
                 if should_read_mood:
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
@@ -5422,7 +5450,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     if fia_arrangement:
                         fia_index = plan[room].index("菲亚梅塔")
-                        read_time_index.append(fia_index)
+                        # 充能后同时读目标与菲亚梅塔：目标心情
+                        # 已回满，只读菲亚梅塔会让目标缓存继续停在
+                        # 充能前的低心情。
+                        read_time_index.extend(range(len(plan[room])))
                         if self.task.meta_data:
                             related_operators[fia_index] = self.task.meta_data
                         logger.info("肥鸭换入完成，读取交换后心情")
