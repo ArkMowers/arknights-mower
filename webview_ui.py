@@ -281,7 +281,12 @@ def webview_window(
         mower_log.bind_mp_queue(log_queue)
 
     from arknights_mower.utils import config
-    from arknights_mower.utils.config.gui import load_window_ratio, save_window_ratio
+    from arknights_mower.utils.config.gui import (
+        load_window_mode,
+        load_window_ratio,
+        save_window_mode,
+        save_window_ratio,
+    )
     from arknights_mower.utils.window_shell import (
         WindowSize,
         attach_window_shell,
@@ -304,6 +309,13 @@ def webview_window(
         width, height = window_size_from_ratio(ratio)
     else:
         width, height = default_desktop_window_size()
+    startup_mode = load_window_mode() if is_windows() else "normal"
+    # Guard the initial window setup and teardown; pywebview can emit transient
+    # resize/restore events in both phases.
+    mode_ready = False
+    closing = False
+    startup_maximize_pending = startup_mode == "maximized"
+
     # 无边框自绘标题栏是 Windows 专属：原生非客户区缩放/DPI 都依赖下面的 Win32
     # hook，其余平台沿用原生窗口。否则会得到一个既不能拖拽也不能缩放的裸窗口。
     shell_enabled = is_windows()
@@ -330,6 +342,23 @@ def webview_window(
     def window_size(w, h):
         global width
         global height
+        if closing or (shell_enabled and (not mode_ready or startup_maximize_pending)):
+            return
+        if shell_enabled:
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                from arknights_mower.utils.windows_frameless import _winforms_hwnd
+
+                hwnd = _winforms_hwnd(window)
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.IsZoomed.argtypes = [wintypes.HWND]
+                user32.IsIconic.argtypes = [wintypes.HWND]
+                if user32.IsZoomed(hwnd) or user32.IsIconic(hwnd):
+                    return  # Never persist maximized dimensions as normal size.
+            except Exception:
+                return  # An unavailable native state is not a valid size sample.
         scale = current_dpi_scale()
         logical = sanitize_window_size(round(w / scale), round(h / scale))
         if logical is not None:
@@ -352,6 +381,21 @@ def webview_window(
     )
     window.events.resized += window_size
     bridge = attach_window_shell(window, initial_size=WindowSize(width, height))
+
+    def on_closing():
+        nonlocal closing
+        closing = True
+
+    def remember_mode(mode: str):
+        nonlocal startup_maximize_pending
+        if mode == "maximized":
+            startup_maximize_pending = False
+        if mode_ready and not closing:
+            save_window_mode(mode)
+
+    window.events.closing += on_closing
+    window.events.maximized += lambda: remember_mode("maximized")
+    window.events.restored += lambda: remember_mode("normal")
     if bridge.get_platform()["platform"] == "windows":
         from arknights_mower.utils.windows_frameless import (
             install_windows_frameless_resize,
@@ -363,6 +407,20 @@ def webview_window(
             min_size,
         )
 
+        def restore_startup_mode():
+            nonlocal mode_ready
+            if mode_ready:
+                return
+            # Registered after the native layout refresher: maximize after the
+            # corrected WebView client bounds, not before the sizing hook.
+            if startup_mode == "maximized":
+                window.maximize()
+            mode_ready = True
+
+        window.events.loaded += restore_startup_mode
+    else:
+        mode_ready = True
+
     def recv_msg():
         while True:
             try:
@@ -370,6 +428,7 @@ def webview_window(
             except (EOFError, OSError):
                 return
             if msg == "exit":
+                on_closing()
                 window.confirm_close = False
                 window.destroy()
                 return

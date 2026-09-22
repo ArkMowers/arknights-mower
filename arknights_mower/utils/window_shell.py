@@ -149,9 +149,17 @@ def configured_desktop_window_size(size: WindowSize) -> WindowSize:
 
 
 def default_desktop_window_size() -> WindowSize:
-    """Return the default startup footprint for the shell within the display."""
+    """Keep Restore visibly smaller than Maximize on small work areas."""
+    work_area = _screen_work_area()
+    if work_area is None:
+        return configured_desktop_window_size(
+            WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT)
+        )
     return configured_desktop_window_size(
-        WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT)
+        WindowSize(
+            min(DESKTOP_WINDOW_WIDTH, round(work_area.width * 0.8)),
+            min(DESKTOP_WINDOW_HEIGHT, round(work_area.height * 0.9)),
+        )
     )
 
 
@@ -257,6 +265,40 @@ class WindowShellBridge:
             return False
 
     def get_window_state(self) -> dict[str, Any]:
+        # The initial maximize event can arrive before Vue registers its
+        # listener. A query must reflect the actual native window, not that
+        # potentially stale event cache.
+        if self._platform == "windows":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                from arknights_mower.utils.windows_frameless import _winforms_hwnd
+
+                handle = _winforms_hwnd(self._window)
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.IsWindow.argtypes = [wintypes.HWND]
+                user32.IsWindow.restype = wintypes.BOOL
+                user32.IsIconic.argtypes = [wintypes.HWND]
+                user32.IsIconic.restype = wintypes.BOOL
+                user32.IsZoomed.argtypes = [wintypes.HWND]
+                user32.IsZoomed.restype = wintypes.BOOL
+                if user32.IsWindow(handle):
+                    state = (
+                        "minimized"
+                        if user32.IsIconic(handle)
+                        else "maximized"
+                        if user32.IsZoomed(handle)
+                        else "normal"
+                    )
+                    with self._lock:
+                        self._state.update(
+                            state=state,
+                            maximized=state == "maximized",
+                            minimized=state == "minimized",
+                        )
+            except Exception:
+                logger.debug("Native window state probe unavailable", exc_info=True)
         with self._lock:
             return {"protocol": WINDOW_SHELL_PROTOCOL, **self._state}
 
