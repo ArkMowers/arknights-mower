@@ -96,20 +96,21 @@ def process_alive(pid):
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         kernel.OpenProcess.restype = wintypes.HANDLE
-        kernel.GetExitCodeProcess.argtypes = [
-            wintypes.HANDLE,
-            ctypes.POINTER(wintypes.DWORD),
-        ]
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
         kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-        handle = kernel.OpenProcess(0x1000, False, pid)
+        # PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE.  An exit code can
+        # already be published while Windows is still running process teardown
+        # (DLL detach / handle cleanup).  Only a signaled process handle means
+        # the process has fully terminated and its resources are releasable.
+        handle = kernel.OpenProcess(0x1000 | 0x00100000, False, pid)
         if not handle:
             return ctypes.get_last_error() == 5  # Access denied: conservatively alive.
         try:
-            code = wintypes.DWORD()
-            return (
-                not kernel.GetExitCodeProcess(handle, ctypes.byref(code))
-                or code.value == 259
-            )
+            result = kernel.WaitForSingleObject(handle, 0)
+            if result == 0:  # WAIT_OBJECT_0: fully terminated.
+                return False
+            return True  # WAIT_TIMEOUT / WAIT_FAILED: conservatively alive.
         finally:
             kernel.CloseHandle(handle)
     try:
