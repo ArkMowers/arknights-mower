@@ -2866,6 +2866,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.enter_room(room)
         # 进入房间详情
         self._wait_drone_interface(interval=1, accelerate_template="bill_accelerate")
+        self._cache_facility_state_from_current_page(room, "trade")
         execute_time = self.double_read_time(
             self._run_order_time_region(),
             use_digit_reader=True,
@@ -3510,28 +3511,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if not room_plan:
             return
         facility_name = getattr(room_plan[0], "facility", "")
-        if facility_name not in ("制造站", "贸易站"):
+        facility_by_name = {"制造站": "manufacture", "贸易站": "trade"}
+        facility = facility_by_name.get(facility_name)
+        if facility is None:
+            return
+        if (
+            facility == "trade"
+            and getattr(getattr(self, "task", None), "type", None)
+            == TaskTypes.RUN_ORDER
+        ):
+            logger.debug("跑单换人后跳过贸易站订单类型刷新")
             return
 
         try:
-            if facility_name == "制造站":
+            if facility == "manufacture":
                 self._wait_drone_interface(
                     interval=3, accelerate_template="manufacture_accelerate"
                 )
-                product = self.read_manufacture_product()
-                facility = "manufacture"
-                label = MANUFACTURE_PRODUCTS[product].name
             else:
                 self._wait_drone_interface(
                     interval=3,
                     accelerate_template="bill_accelerate",
                     page_template="order_label",
                 )
-                product, _ = self._read_trade_product_card()
-                facility = "trade"
-                label = TRADE_PRODUCTS[product].strategy_name
-            self._cache_facility_state(room, facility, product)
-            logger.info(f"已刷新{self.translate_room(room)}设施状态：{label}")
+            self._cache_facility_state_from_current_page(room, facility)
         except MowerExit:
             raise
         except Exception as e:
@@ -3732,6 +3735,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("识别到低等级贸易站，订单类型固定为龙门商法")
         return product_id, not locked
 
+    def _cache_facility_state_from_current_page(
+        self, room: str, facility: Literal["manufacture", "trade"]
+    ) -> None:
+        """在当前生产页面顺带更新设施状态，不进入或退出任何页面。"""
+        if facility not in ("manufacture", "trade"):
+            raise ValueError(f"未知设施类型：{facility}")
+        try:
+            if facility == "manufacture":
+                product = self.read_manufacture_product()
+                label = MANUFACTURE_PRODUCTS[product].name
+            else:
+                product, _ = self._read_trade_product_card()
+                label = TRADE_PRODUCTS[product].strategy_name
+            self._cache_facility_state(room, facility, product)
+            logger.info(f"已在当前页面刷新{self.translate_room(room)}设施状态：{label}")
+        except MowerExit:
+            raise
+        except Exception as e:
+            logger.warning(f"刷新{self.translate_room(room)}设施状态失败：{e}")
+
     def _close_trade_product_select(self):
         # 订单类型点击后立即生效，但选择弹窗不会自行关闭。
         self._tap_product_point((1600, 200))
@@ -3899,6 +3922,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         accelerate = self.find("manufacture_accelerate")
         if accelerate:
+            self._cache_facility_state_from_current_page(room, "manufacture")
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
             if drone_count < config.conf.drone_count_limit:
@@ -5151,42 +5175,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             _current_room = self.op_data.get_current_room(room, True)
         return _current_room
 
-    def get_run_order_state(self) -> tuple[str, float | None]:
-        """同一帧判定贸易站跑单状态。
-        返回 (state, remaining_seconds):
-        - 'ready': 界面已出现 order_ready (可交付) 按钮
-        - 'zero': 倒计时成功识别且为 00:00:00 (remaining_seconds == 0.0)
-        - 'active': 倒计时成功识别且大于 0 (remaining_seconds > 0)
-        - 'failed': 未检测到就绪按钮，且倒计时识别失败
-        """
-        self._wait_drone_interface()
-        self.recog.update()
-        if self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
-            return "ready", 0.0
-        try:
-            gray = self.recog.gray
-            height, width = gray.shape[:2]
-            time_str = self.digit_reader.get_time(gray, height, width)
-            logger.debug(time_str)
-            h, m, s = str(time_str).split(":")
-            if int(m) > 60 or int(s) > 60:
-                raise ValueError(f"无效的倒计时格式: {time_str}")
-            res = int(h) * 3600 + int(m) * 60 + int(s)
-            if res == 0:
-                return "zero", 0.0
-            return "active", float(res)
-        except Exception as exc:
-            logger.debug(f"跑单倒计时读取失败（{type(exc).__name__}）：{exc}")
-            return "failed", None
-
     def get_order_remaining_time(self):
-        state, remaining_time = self.get_run_order_state()
-        if state == "failed":
-            logger.warning(
-                "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
-            )
-            return 0.0
-        return remaining_time
+        self._wait_drone_interface()
+        # 订单剩余时间
+        execute_time = self.double_read_time(
+            self._run_order_time_region(),
+            use_digit_reader=True,
+        )
+        return round((execute_time - datetime.now()).total_seconds(), 1)
 
     def current_room_changed(self, instance):
         if not self.op_data.first_init:
@@ -5477,38 +5473,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if item1 != item2:
                             same = False
                 if not same:
-                    # choose_error <= 0 选人如果失败则马上重新选过
-                    if (
-                        len(new_plan) == 1
-                        and config.conf.run_order_buffer_time > 0
-                        and choose_error <= 0
-                    ):
-                        state, remaining_time = self.get_run_order_state()
-                        if state in ("ready", "zero"):
-                            pass
-                        elif (
-                            state == "active"
-                            and 0
-                            < remaining_time
-                            < (config.conf.run_order_delay + 10) * 60
-                        ):
-                            if config.conf.run_order_buffer_time > 0:
-                                self.task.time = (
-                                    datetime.now()
-                                    + timedelta(seconds=remaining_time)
-                                    - timedelta(minutes=config.conf.run_order_delay)
-                                )
-                                logger.info(f"订单倒计时 {remaining_time}秒")
-                                self.back()
-                                self.turn_on_room_detail(room)
-                        elif self.task.adjusted:
-                            self.back()
-                            self.turn_on_room_detail(room)
-                        else:
-                            logger.info("检测到漏单")
-                            send_message("检测到漏单！", level="WARNING")
-                            self.reset_room_time(room)
-                            raise Exception("检测到漏单！")
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
@@ -5619,6 +5583,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return new_plan
 
     def accept_order(self):
+        task = getattr(self, "task", None)
+        if task is not None and task.type == TaskTypes.RUN_ORDER and task.meta_data:
+            self._cache_facility_state_from_current_page(task.meta_data, "trade")
         wait = 0
         # 等待订单完成
         while self.find("order_ready", scope=((450, 675), (600, 750))) is None:
@@ -5761,13 +5728,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     raise
             else:
                 # 葛朗台跑单模式
-                state, wait_time = self.get_run_order_state()
-                if state in ("ready", "zero"):
-                    pass
-                elif (
-                    state == "active"
-                    and 0 < wait_time < config.conf.run_order_delay * 60
-                ):
+                # agent_arrange_room 已完成换人并读屏校验进驻结果；
+                # 此时才进入订单页读倒计时，避免换人前往返进入房间。
+                wait_time = self.get_order_remaining_time()
+                logger.debug(f"订单剩余时间 {wait_time} 秒")
+                if 0 < wait_time < config.conf.run_order_delay * 60:
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
