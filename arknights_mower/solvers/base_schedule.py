@@ -5158,42 +5158,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             _current_room = self.op_data.get_current_room(room, True)
         return _current_room
 
-    def get_run_order_state(self) -> tuple[str, float | None]:
-        """同一帧判定贸易站跑单状态。
-        返回 (state, remaining_seconds):
-        - 'ready': 界面已出现 order_ready (可交付) 按钮
-        - 'zero': 倒计时成功识别且为 00:00:00 (remaining_seconds == 0.0)
-        - 'active': 倒计时成功识别且大于 0 (remaining_seconds > 0)
-        - 'failed': 未检测到就绪按钮，且倒计时识别失败
-        """
-        self._wait_drone_interface()
-        self.recog.update()
-        if self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
-            return "ready", 0.0
-        try:
-            gray = self.recog.gray
-            height, width = gray.shape[:2]
-            time_str = self.digit_reader.get_time(gray, height, width)
-            logger.debug(time_str)
-            h, m, s = str(time_str).split(":")
-            if int(m) > 60 or int(s) > 60:
-                raise ValueError(f"无效的倒计时格式: {time_str}")
-            res = int(h) * 3600 + int(m) * 60 + int(s)
-            if res == 0:
-                return "zero", 0.0
-            return "active", float(res)
-        except Exception as exc:
-            logger.debug(f"跑单倒计时读取失败（{type(exc).__name__}）：{exc}")
-            return "failed", None
-
     def get_order_remaining_time(self):
-        state, remaining_time = self.get_run_order_state()
-        if state == "failed":
-            logger.warning(
-                "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
-            )
-            return 0.0
-        return remaining_time
+        self._wait_drone_interface()
+        # 订单剩余时间
+        execute_time = self.double_read_time(
+            self._run_order_time_region(),
+            use_digit_reader=True,
+        )
+        return round((execute_time - datetime.now()).total_seconds(), 1)
 
     def current_room_changed(self, instance):
         if not self.op_data.first_init:
@@ -5490,15 +5462,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         and config.conf.run_order_buffer_time > 0
                         and choose_error <= 0
                     ):
-                        state, remaining_time = self.get_run_order_state()
-                        if state in ("ready", "zero"):
-                            pass
-                        elif (
-                            state == "active"
-                            and 0
-                            < remaining_time
-                            < (config.conf.run_order_delay + 10) * 60
-                        ):
+                        remaining_time = self.get_order_remaining_time()
+                        if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
                             if config.conf.run_order_buffer_time > 0:
                                 self.task.time = (
                                     datetime.now()
@@ -5768,13 +5733,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     raise
             else:
                 # 葛朗台跑单模式
-                state, wait_time = self.get_run_order_state()
-                if state in ("ready", "zero"):
-                    pass
-                elif (
-                    state == "active"
-                    and 0 < wait_time < config.conf.run_order_delay * 60
-                ):
+                self._wait_drone_interface()
+                # 订单剩余时间
+                execute_time = self.double_read_time(
+                    self._run_order_time_region(),
+                    use_digit_reader=True,
+                )
+                wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
+                logger.debug(f"停止{wait_time}秒等待订单完成")
+                if 0 < wait_time < config.conf.run_order_delay * 60:
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
