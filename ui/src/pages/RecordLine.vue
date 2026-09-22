@@ -54,7 +54,6 @@
 import { ref, onMounted } from 'vue'
 import { Line } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'
-import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { useRecordStore } from '@/stores/record'
 import {
   CategoryScale,
@@ -84,8 +83,7 @@ ChartJS.register(
   Tooltip,
   Legend,
   Colors,
-  ArcElement,
-  ChartDataLabels
+  ArcElement
 )
 
 const expand_card = ref(-1)
@@ -120,12 +118,18 @@ const chartOptions = ref({
     }
   },
   plugins: {
-    datalabels: {
-      display: (context) => Boolean(context.raw?.relatedOperator),
-      formatter: (_value, context) => context.raw.relatedOperator,
-      align: 'top',
-      anchor: 'end',
-      clamp: true
+    tooltip: {
+      backgroundColor: 'rgba(15, 15, 20, 0.92)',
+      titleColor: '#ffffff',
+      bodyColor: '#ffffff',
+      borderColor: 'rgba(255, 255, 255, 0.18)',
+      borderWidth: 1,
+      callbacks: {
+        afterLabel: (context) => {
+          const relatedOperator = context.raw?.relatedOperator
+          return relatedOperator ? `被充能干员：${relatedOperator}` : ''
+        }
+      }
     }
   }
 })
