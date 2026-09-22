@@ -2666,6 +2666,40 @@ class TestDormShiftOffMerge(unittest.TestCase):
             ["Current", "Current", "银灰", "讯使", "Current"],
         )
 
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_empty_dorm_is_filled_only_once_after_run_order_deferral(self):
+        solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(
+            experimental_dorm_logic=True,
+            operators={},
+            print=lambda: "{}",
+        )
+        ordinary = SchedulerTask()
+        ordinary.deferred_by_run_order = True
+        solver.tasks = [ordinary]
+        fill_task = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "Idle", "Current", "Current", "Current"]}
+        )
+        with patch.object(
+            base_schedule,
+            "try_add_release_dorm",
+            side_effect=lambda plan, time, op_data, tasks: tasks.append(fill_task),
+        ) as fill:
+            self.assertTrue(solver._fill_dorm_after_run_order_deferral())
+            self.assertFalse(solver._fill_dorm_after_run_order_deferral())
+
+        fill.assert_called_once_with({}, None, solver.op_data, [ordinary, fill_task])
+        self.assertFalse(ordinary.deferred_by_run_order)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_empty_dorm_is_not_filled_without_run_order_deferral(self):
+        solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(experimental_dorm_logic=True)
+        solver.tasks = [SchedulerTask()]
+        with patch.object(base_schedule, "try_add_release_dorm") as fill:
+            self.assertFalse(solver._fill_dorm_after_run_order_deferral())
+        fill.assert_not_called()
+
 
 class TestDroneAccelerate(unittest.TestCase):
     """#907：无人机加速面板首次点击未生效时不应误消费跑单任务。

@@ -113,6 +113,31 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(tasks[2].plan["task"], "Task 4")
         self.assertEqual(res, None)
 
+    def test_experimental_dorm_only_tasks_run_before_run_order(self):
+        now = datetime(2026, 9, 23, 2, 15)
+        dorm_tasks = [
+            SchedulerTask(
+                time=now,
+                task_plan={f"dormitory_{index}": ["Free"] * 5},
+                task_type=TaskTypes.RE_ORDER,
+            )
+            for index in range(1, 5)
+        ]
+        run_order = SchedulerTask(
+            time=now + timedelta(minutes=3),
+            task_plan={"room_2_1": ["跑单组"]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        tasks = [*dorm_tasks, run_order]
+
+        with patch.object(config.conf, "experimental_dorm_logic", True):
+            scheduling(tasks, time_now=now)
+
+        self.assertEqual([task.time for task in dorm_tasks], [now] * 4)
+        self.assertEqual(tasks[-1], run_order)
+        self.assertEqual(run_order.time, now + timedelta(minutes=3))
+        self.assertFalse(any(task.deferred_by_run_order for task in dorm_tasks))
+
     def test_deferred_dorm_schedules_are_merged_before_run_order(self):
         shift_off = SchedulerTask(
             time=datetime(2026, 9, 22, 5, 18, 15),
@@ -193,6 +218,8 @@ class TestScheduling(unittest.TestCase):
                 run_order.time + timedelta(seconds=2),
             ),
         )
+        self.assertTrue(shift_off.deferred_by_run_order)
+        self.assertTrue(shift_on.deferred_by_run_order)
 
         with patch.object(config.conf, "experimental_dorm_logic", False):
             scheduling(stable_tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))

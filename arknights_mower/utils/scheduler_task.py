@@ -188,6 +188,18 @@ def _ordinary_task_minutes(task, execution_time):
     return minutes * 2 if task.type == TaskTypes.SHIFT_OFF else minutes
 
 
+def _is_dorm_only_task(task):
+    return task.type in (
+        TaskTypes.SHIFT_OFF,
+        TaskTypes.SHIFT_ON,
+        TaskTypes.RE_ORDER,
+        TaskTypes.RELEASE_DORM,
+        TaskTypes.NOT_SPECIFIC,
+    ) and bool(task.plan) and all(
+        room.startswith("dormitory_") for room in task.plan
+    )
+
+
 def _defer_work_before_swap(tasks, swap, timing):
     now, execution_time = timing
     cursor = now
@@ -373,11 +385,17 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                         next_priority_0_time = tasks[next_priority_0_index].time
                         pending = tasks[i:next_priority_0_index]
                         if config.conf.experimental_dorm_logic:
+                            if all(_is_dorm_only_task(task) for task in pending):
+                                logger.info(
+                                    "实验宿舍逻辑下待处理任务仅涉及宿舍，保留原定时间"
+                                )
+                                break
                             pending = _merge_deferred_dorm_schedules(pending)
                         tasks[i:next_priority_0_index] = pending
                         for pending_task in pending:
                             if pending_task.adjusted:
                                 continue
+                            pending_task.deferred_by_run_order = True
                             pending_task.time = next_priority_0_time + timedelta(
                                 seconds=1
                             )
@@ -743,6 +761,14 @@ def rebalance_plan_swap_dorms(
 def generate_plan_by_drom(tasks, op_data, existing_targets=None):
     if not tasks:
         return []
+    experimental = bool(getattr(op_data, "experimental_dorm_logic", False))
+    if experimental:
+        # 未来回班只能修改演算快照，不能提前释放正在休息的真实床位。
+        # 批次另行复制，避免床位换人后把原入住者的时间套给新入住者。
+        op_data = copy.copy(op_data)
+        op_data.dorm = copy.deepcopy(op_data.dorm)
+        op_data.operators = copy.deepcopy(op_data.operators)
+        tasks = copy.deepcopy(tasks)
     ordered = sorted(tasks.items())
     result = []
     planned = set()
@@ -750,12 +776,8 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
-        task_recalled = set()
         exhaust_exist = False
         for room in dorms:
-            # 前一个回班批次可能关闭临时 Free 床并重排整个宿舍池，
-            # 从而把后续批次仍引用的同一个 Dormitory 对象清空。此时
-            # 后续计划已经失效，等待本批任务执行后重新计算即可。
             if not room.name or room.name not in op_data.operators:
                 logger.debug(f"跳过已失效的宿舍回班项：{room}")
                 continue
@@ -775,11 +797,18 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
                         f"{op.current_room},{op.current_index}"
                     )
                     continue
-                if op.current_room not in plan:
-                    plan[op.current_room] = ["Current"] * len(
-                        op_data.plan[op.current_room]
+                target_room, target_index = op.current_room, op.current_index
+                if experimental:
+                    projected_bed = next(
+                        (bed for bed in op_data.dorm if bed.name == op.name), None
                     )
-                plan[op.current_room][op.current_index] = "Free"
+                    if projected_bed is None:
+                        continue
+                    target_room, target_index = projected_bed.position
+                    projected_bed.reset()
+                plan.setdefault(
+                    target_room, ["Current"] * len(op_data.plan[target_room])
+                )[target_index] = "Free"
             else:
                 # 拉全组
                 agents = op_data.groups[op.group] if op.group != "" else [op.name]
@@ -811,11 +840,10 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
                             )
                     plan[target_room][target_index] = agent
                     planned.add(agent)
-                    task_recalled.add(agent)
         if not plan:
             continue
         if rest_in_full is not None:
-            planned.update(rebalance_closing_dorm_slots(op_data, plan, task_recalled))
+            planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
         if rest_in_full:
             if exhaust_exist:
                 time = max(time, current_time)
@@ -1036,11 +1064,6 @@ def plan_metadata(op_data, tasks):
         new_task, op_data, existing_targets=existing_targets
     )
     tasks.extend(generated)
-    # 测试宿舍逻辑下，候补的待命只表示“等待空床”，不表示要跟随下一批
-    # 宿舍干员回班。宿舍释放或排班重算后，立即用当前可用动态床位补入候补；
-    # 这不会改写原有 SHIFT_ON 的时间或工作岗位计划。
-    if getattr(op_data, "experimental_dorm_logic", False):
-        try_add_release_dorm({}, None, op_data, tasks)
     return tasks
 
 
@@ -1474,6 +1497,7 @@ class SchedulerTask:
         self.type = set_type_enum(task_type)
         self.meta_data = meta_data
         self.adjusted = adjusted
+        self.deferred_by_run_order = False
 
     def format(self, time_offset=0):
         res = copy.deepcopy(self)

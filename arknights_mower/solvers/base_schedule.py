@@ -324,6 +324,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         while True:
             scheduling(self.tasks)
             protect_support_swaps(self.tasks)
+            if self._fill_dorm_after_run_order_deferral():
+                continue
             self.task = self.tasks[0] if self.tasks else None
             if self.task is None:
                 break
@@ -359,6 +361,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.debug("当前任务: " + logMsg)
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
         return super().run()
+
+    def _fill_dorm_after_run_order_deferral(self):
+        """仅消费跑单保护事件，给长等待期间补一次动态宿舍床位。"""
+        op_data = getattr(self, "op_data", None)
+        if op_data is None or not getattr(op_data, "experimental_dorm_logic", False):
+            return False
+        deferred = [
+            task
+            for task in self.tasks
+            if getattr(task, "deferred_by_run_order", False)
+        ]
+        if not deferred:
+            return False
+        for task in self.tasks:
+            task.deferred_by_run_order = False
+        had_tasks = len(self.tasks)
+        try_add_release_dorm({}, None, op_data, self.tasks)
+        return len(self.tasks) > had_tasks
 
     def transition(self) -> None:
         if (scene := self.scene()) == Scene.INFRA_MAIN:
@@ -2203,7 +2223,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_workshop_tasks(self.op_data, self.tasks)
-        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+        if (
+            not getattr(self.op_data, "experimental_dorm_logic", False)
+            and not self.find_next_task(datetime.now() + timedelta(minutes=5))
+        ):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")

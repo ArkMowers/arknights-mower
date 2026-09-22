@@ -16,6 +16,7 @@ from arknights_mower.utils.log import logger  # noqa: E402
 from arknights_mower.utils.operators import Operator, build_global_plan  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
+    SchedulerTask,
     TaskTypes,
     plan_metadata,
     try_add_release_dorm,
@@ -433,7 +434,7 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     assert tasks[0].plan[room][index] == name
 
 
-def test_grouped_candidate_fills_later_free_bed_without_changing_return_time(solver):
+def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver):
     occupy_beds(solver, "high")
     shift_off(solver)
     data = solver.op_data
@@ -461,6 +462,14 @@ def test_grouped_candidate_fills_later_free_bed_without_changing_return_time(sol
     tasks = plan_metadata(data, [])
     return_tasks = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
     assert return_tasks
+    solver.tasks = tasks
+    assert not solver._fill_dorm_after_run_order_deferral()
+    assert all(task.type == TaskTypes.SHIFT_ON for task in tasks)
+    deferred = SchedulerTask()
+    deferred.deferred_by_run_order = True
+    tasks.append(deferred)
+    assert solver._fill_dorm_after_run_order_deferral()
+    assert not solver._fill_dorm_after_run_order_deferral()
     fill_tasks = [
         task
         for task in tasks
