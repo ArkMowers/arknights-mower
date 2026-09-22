@@ -106,6 +106,17 @@ def test_empty_dynamic_bed_also_accepts_waiting_operator(op_data):
     assert tasks[0].plan[ROOM][-1] == "红"
 
 
+def test_legacy_empty_dynamic_bed_also_accepts_waiting_operator(op_data):
+    op_data.config.experimental_dorm_logic = False
+    op_data.dorm[0].reset()
+    op_data.operators["空爆"].current_room = ""
+    tasks = []
+
+    try_add_release_dorm({}, None, op_data, tasks)
+
+    assert tasks[0].plan[ROOM][-1] == "红"
+
+
 @pytest.mark.parametrize(
     "excluded", ["blacklist", "workaholic", "full", "unknown", "working"]
 )

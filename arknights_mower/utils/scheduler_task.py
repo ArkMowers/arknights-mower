@@ -1308,9 +1308,16 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
         for dorm in op_data.dorm:
             if not op_data.is_effective_free_slot(dorm):
                 continue
+            if not waiting_list:
+                break
+            if not dorm.name:
+                replacement = heapq.heappop(waiting_list)
+                release_plan.setdefault(
+                    dorm.position[0],
+                    ["Current"] * len(op_data.plan[dorm.position[0]]),
+                )[dorm.position[1]] = replacement[2]
+                continue
             if dorm.name in op_data.operators:
-                if not waiting_list:
-                    break
                 occupant = op_data.operators[dorm.name]
                 logger.debug(str(dorm))
                 if not occupant.is_high() and (
