@@ -559,7 +559,8 @@ const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
 const showUpdateNoticeModal = ref(false)
 
 const resource_version_store = useResourceVersionStore()
-const { installResource, loadResourceVersion, loadResourceJob } = resource_version_store
+const { installResource, loadResourceVersion, loadResourceVersionLocal, loadResourceJob } =
+  resource_version_store
 // 标题栏版本：软件版固定（取启动快照的前半段），资源版实时取当前生效的资源包展示版本；
 // 资源包在别处更新时后端广播 resource_updated → loadResourceVersionLocal 刷新这里。
 const windowTitleVersion = computed(() => {
@@ -690,6 +691,7 @@ onMounted(async () => {
       if (await loadResourceJob()) {
         await Promise.all([load_shop(), load_item(), load_operators()])
       }
+      await loadResourceVersionLocal()
       if (hot_update_enable.value) {
         const resourceInfo = await loadResourceVersion()
         if (hot_update_auto_update.value && resourceInfo.update_available === true) {

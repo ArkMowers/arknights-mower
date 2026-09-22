@@ -189,4 +189,25 @@ describe('resource version store', () => {
     await expect(store.installResource()).resolves.toBe(false)
     expect(store.install_message).toBe('任务正在运行')
   })
+
+  it('loads local resource version without remote check', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { current_version: 'v2026.09.21', current_display: '烘焙趣#0921' }
+    })
+    const store = useResourceVersionStore()
+    await store.loadResourceVersionLocal()
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/resource-version?local=1'))
+    expect(store.info.current_version).toBe('v2026.09.21')
+    expect(store.info.current_display).toBe('烘焙趣#0921')
+    expect(store.info.remote_version).toBe('')
+    expect(store.info.remote_display).toBe('')
+    expect(store.info.update_available).toBeNull()
+  })
+
+  it('silently ignores local version read errors', async () => {
+    axios.get.mockRejectedValueOnce(new Error('disk read failed'))
+    const store = useResourceVersionStore()
+    await expect(store.loadResourceVersionLocal()).resolves.toBeUndefined()
+    expect(store.info.current_display).toBe('')
+  })
 })
