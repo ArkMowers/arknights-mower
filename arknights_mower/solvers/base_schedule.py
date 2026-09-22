@@ -5480,31 +5480,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if item1 != item2:
                             same = False
                 if not same:
-                    # choose_error <= 0 选人如果失败则马上重新选过
-                    if (
-                        len(new_plan) == 1
-                        and config.conf.run_order_buffer_time > 0
-                        and choose_error <= 0
-                    ):
-                        remaining_time = self.get_order_remaining_time()
-                        if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
-                            if config.conf.run_order_buffer_time > 0:
-                                self.task.time = (
-                                    datetime.now()
-                                    + timedelta(seconds=remaining_time)
-                                    - timedelta(minutes=config.conf.run_order_delay)
-                                )
-                                logger.info(f"订单倒计时 {remaining_time}秒")
-                                self.back()
-                                self.turn_on_room_detail(room)
-                        elif self.task.adjusted:
-                            self.back()
-                            self.turn_on_room_detail(room)
-                        else:
-                            logger.info("检测到漏单")
-                            send_message("检测到漏单！", level="WARNING")
-                            self.reset_room_time(room)
-                            raise Exception("检测到漏单！")
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
@@ -5760,13 +5735,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     raise
             else:
                 # 葛朗台跑单模式
-                self._wait_drone_interface()
-                # 订单剩余时间
-                execute_time = self.double_read_time(
-                    self._run_order_time_region(),
-                    use_digit_reader=True,
-                )
-                wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
+                # agent_arrange_room 已完成换人并读屏校验进驻结果；
+                # 此时才进入订单页读倒计时，避免换人前往返进入房间。
+                wait_time = self.get_order_remaining_time()
                 logger.debug(f"停止{wait_time}秒等待订单完成")
                 if 0 < wait_time < config.conf.run_order_delay * 60:
                     logger.info(f"停止{wait_time}秒等待订单完成")
