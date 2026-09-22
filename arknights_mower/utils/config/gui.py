@@ -76,3 +76,34 @@ def load_window_ratio() -> WindowRatio | None:
 def save_window_ratio(ratio: WindowRatio) -> None:
     """写入窗口尺寸比例（调用方已消毒，非法值不进盘），走原子写。"""
     _update_gui_data(ratio={"width": ratio.width, "height": ratio.height})
+
+
+def load_close_preference() -> dict:
+    value = _read_gui_data().get("close_preference")
+    if not isinstance(value, dict):
+        return {"choice": "tray", "remember": False}
+    return {
+        "choice": value.get("choice")
+        if value.get("choice") in ("tray", "exit")
+        else "tray",
+        "remember": value.get("remember") is True,
+    }
+
+
+def save_close_preference(choice: str, remember: bool) -> bool:
+    if choice not in ("tray", "exit") or type(remember) is not bool:
+        raise ValueError("Invalid close preference")
+    _update_gui_data(close_preference={"choice": choice, "remember": remember})
+    return True
+
+
+def load_window_launch_mode() -> str:
+    mode = _read_gui_data().get("window_launch_mode")
+    return mode if mode in ("last", "normal", "maximized") else "last"
+
+
+def save_window_launch_mode(mode: str) -> bool:
+    if mode not in ("last", "normal", "maximized"):
+        raise ValueError("Invalid launch mode")
+    _update_gui_data(window_launch_mode=mode)
+    return True

@@ -3,6 +3,7 @@ import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
+import { readProcessActionStatus, submitProcessAction } from '@/utils/processAction'
 
 const props = defineProps({
   compact: { type: Boolean, default: false },
@@ -41,11 +42,7 @@ async function poll(pending) {
     return
   }
   try {
-    const { data } = await axios.get(`${base}/status`, {
-      params: { id: pending.id },
-      timeout: 3000
-    })
-    if (!data.ok) throw new Error(data.message)
+    const data = await readProcessActionStatus({ axios, base, pending })
     message.value = data.message
     if (data.status !== 'running') {
       busy.value = false
@@ -80,34 +77,22 @@ async function poll(pending) {
 
 async function submit(action) {
   if (busy.value || savesPaused.value) return
-  let mayHaveSubmitted = false
   busy.value = true
   failed.value = false
   try {
-    await saves.pauseAndDrain()
-    // Once submitted, a lost response does not prove the restart was rejected.
-    // Keep autosave paused until a fresh page reads the destination's config.
-    mayHaveSubmitted = true
-    const { data } = await axios.post(
-      `${base}/action`,
-      { action },
-      { headers: { 'X-Mower-Control': '1' } }
-    )
-    if (!data.ok) {
-      mayHaveSubmitted = false
-      throw new Error(data.message)
-    }
-    const pending = { id: data.id, action, startedAt: Date.now() }
-    sessionStorage.setItem(pendingKey, JSON.stringify(pending))
+    const { data, pending } = await submitProcessAction({
+      axios,
+      saves,
+      action,
+      base,
+      pendingKey
+    })
     message.value = data.message
     await poll(pending)
   } catch (error) {
     busy.value = false
     failed.value = true
     message.value = errorMessage(error)
-    if (!mayHaveSubmitted || (error.response?.status >= 400 && error.response.status < 500)) {
-      saves.resume()
-    }
   }
 }
 
