@@ -12,6 +12,7 @@ import {
   getGameWeekdayIndex,
   isStageAvailableOnWeekday
 } from '@/utils/maa_weekly_plan'
+import { getStagePlanMode, selectStagePlanMode } from '@/utils/stage_plan_mode'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
 import MaaStageInventory from './MaaStageInventory.vue'
 import WeeklyPlanSelector from './WeeklyPlanSelector.vue'
@@ -30,6 +31,26 @@ const {
 } = storeToRefs(store)
 
 const mobile = inject('mobile')
+
+// A single explicit choice backed by the existing two backend fields.
+// Pausing retains the last selected executor and every weekly-plan setting.
+const executionMode = computed({
+  get: () => getStagePlanMode(stage_plan_enable.value, stage_plan_runner.value),
+  set: (mode) => {
+    const next = selectStagePlanMode(mode, stage_plan_runner.value)
+    stage_plan_runner.value = next.stage_plan_runner
+    stage_plan_enable.value = next.stage_plan_enable
+  }
+})
+const executionStatus = computed(() => {
+  if (executionMode.value === 'off') {
+    const previous = stage_plan_runner.value === 'mower' ? 'Mower' : 'MAA'
+    return `周计划已暂停：不自动刷理智，保留方案和上次执行方式（${previous}）。不影响其他已启用任务。`
+  }
+  return executionMode.value === 'maa'
+    ? '周计划已启用：由 MAA 执行刷理智。'
+    : '周计划已启用：由 Mower 内置作战逻辑执行刷理智。'
+})
 
 // 最近开启活动（后端供给，热更后最新）：prepend 到关卡下拉最前
 const latestActivityOptions = ref([])
@@ -226,11 +247,9 @@ function cancelCopyDialogLongPress() {
 <template>
   <n-card>
     <template #header>
-      <n-checkbox v-model:checked="stage_plan_enable">
-        <div class="card-title">刷理智周计划</div>
-      </n-checkbox>
+      <div class="card-title">刷理智周计划</div>
       <help-text>
-        <div>支持 MAA 支持的所有关卡。</div>
+        <div>可选择暂停周计划，或使用 MAA / Mower 执行刷理智；暂停不会删除已设置的方案。</div>
         <div>操作流程：</div>
         <div>1. 先在"方案"里选择已有方案，或输入新方案名后按回车创建。</div>
         <div>2. 列表计划与表格计划编辑同一份配置，切换视图后会立即同步。</div>
@@ -265,19 +284,24 @@ function cancelCopyDialogLongPress() {
     >
       <n-form-item :show-label="false">
         <n-flex vertical :size="8">
-          <n-flex align="center">
-            <span>执行方式</span>
-            <n-radio-group v-model:value="stage_plan_runner" :disabled="!stage_plan_enable">
-              <n-space>
+          <n-flex class="stage-plan-mode" align="center">
+            <span>刷理智</span>
+            <n-radio-group v-model:value="executionMode" name="stage-plan-execution">
+              <n-space :vertical="mobile">
+                <n-radio value="off">不启动</n-radio>
                 <n-radio value="maa">MAA</n-radio>
                 <n-radio value="mower">Mower</n-radio>
               </n-space>
             </n-radio-group>
             <help-text>
-              <div>MAA：调用 MAA 客户端完成关卡战斗，支持掉落上报与异常恢复。</div>
-              <div>Mower：使用 Mower 内置本地寻路与作战逻辑，不依赖 MAA。</div>
+              <div>不启动：仅暂停自动刷理智，保留周计划和上次执行方式，不影响其他任务。</div>
+              <div>MAA：调用 MAA 客户端执行周计划，可按配置上报掉落。</div>
+              <div>Mower：使用 Mower 内置作战逻辑执行周计划，不依赖 MAA。</div>
             </help-text>
           </n-flex>
+          <div class="stage-plan-status" role="status" aria-live="polite">
+            {{ executionStatus }}
+          </div>
           <n-flex class="weekly-plan-toolbar" align="center">
             <span>使用还剩</span>
             <mower-input-number
@@ -308,7 +332,7 @@ function cancelCopyDialogLongPress() {
               只在周末服用过期的理智药
             </n-checkbox>
           </n-flex>
-          <n-flex align="center" v-if="stage_plan_runner === 'maa'">
+          <n-flex align="center" v-if="executionMode === 'maa'">
             <span>企鹅物流 id</span>
             <n-input
               v-model:value="maa_penguin_id"
@@ -316,7 +340,7 @@ function cancelCopyDialogLongPress() {
               style="width: 200px"
             />
           </n-flex>
-          <n-flex align="center" v-if="stage_plan_runner === 'maa'">
+          <n-flex align="center" v-if="executionMode === 'maa'">
             <n-checkbox v-model:checked="maa_report_to_yituliu">上报至一图流</n-checkbox>
             <n-input
               v-model:value="maa_yituliu_id"
@@ -341,7 +365,7 @@ function cancelCopyDialogLongPress() {
           </n-flex>
           <n-flex align="center">
             <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
-            <n-flex align="center" v-if="stage_plan_runner === 'mower'">
+            <n-flex align="center" v-if="executionMode === 'mower'">
               <span>关卡体力默认值</span>
               <mower-input-number
                 v-model:value="ap_fallback"
@@ -373,7 +397,7 @@ function cancelCopyDialogLongPress() {
             <tr>
               <th class="weekday-column">日期</th>
               <th>关卡</th>
-              <th v-if="stage_plan_runner === 'maa'" class="number-column">每次吃药</th>
+              <th v-if="executionMode === 'maa'" class="number-column">每次吃药</th>
               <th class="number-column">体力阈值</th>
             </tr>
           </thead>
@@ -395,7 +419,7 @@ function cancelCopyDialogLongPress() {
                   :on-create="createTag"
                 />
               </td>
-              <td v-if="stage_plan_runner === 'maa'" class="number-column">
+              <td v-if="executionMode === 'maa'" class="number-column">
                 <mower-input-number
                   v-model:value="plan.medicine"
                   :min="0"
@@ -477,6 +501,18 @@ function cancelCopyDialogLongPress() {
 </template>
 
 <style scoped lang="scss">
+.stage-plan-mode {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stage-plan-status {
+  width: 100%;
+  font-size: 12px;
+  opacity: 0.74;
+  line-height: 1.5;
+}
+
 .weekly-plan-table {
   width: 100%;
   border-collapse: collapse;
