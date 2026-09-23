@@ -453,90 +453,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             )
         else:
-            msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
-            send_message(msg, level="ERROR")
-            logger.error(msg)
-            # 简单暴力一点，移除所有非回满的
-            # 智能情况的话，得在人数和替换冲突中做出选择
-            required = 0
-            for x in candidates:
-                op = self.op_data.operators[x]
-                if op.workaholic or op.room.startswith("dorm"):
-                    continue
-                required += 1
-            remove_name = set()
-            effective_dorms = [
-                dorm
-                for dorm in self.op_data.dorm
-                if self.op_data.is_effective_free_slot(dorm)
-            ]
-            # 按心情降序排序
-            sorted_dorms = sorted(
-                effective_dorms,
-                key=lambda dorm: (
-                    self.op_data.operators[dorm.name].mood
-                    if dorm.name in self.op_data.operators
-                    else 25
-                ),
-                reverse=True,
-            )
-            for idx, dorm in enumerate(sorted_dorms):
-                if not dorm.name or dorm.name not in self.op_data.operators:
-                    continue
-                if dorm.time is not None and dorm.time < datetime.now():
-                    logger.debug(f"跳过{str(dorm)}，休息完毕")
-                    continue
-                operator = self.op_data.operators[dorm.name]
-                if (operator.rest_in_full and operator.exhaust_require) or (
-                    operator.group in self.op_data.rest_in_full_group
-                    and operator.group in self.op_data.exhaust_group
-                ):
-                    # 如果回满，则跳过
-                    logger.debug(f"跳过{str(dorm)}，用尽回满")
-                    continue
-                if not operator.is_high():
-                    # 跳过非高优
-                    continue
-                if operator.group and operator.name not in remove_name:
-                    # 增加当前宿舍组的所有在休息中的干员
-                    for name in self.op_data.groups[operator.group]:
-                        if self.op_data.operators[name].is_resting():
-                            _, dorm = self.op_data.get_dorm_by_name(name)
-                            if dorm is None:
-                                continue
-                            # 跳过已经计算的休息完毕的人
-                            if dorm.time is not None and dorm.time < datetime.now():
-                                continue
-                            remove_name.add(name)
-                else:
-                    remove_name.add(dorm.name)
-
-                # 检查条件是否满足
-                if current_resting - len(remove_name) + required <= len(
-                    effective_dorms
-                ):
-                    break
-            if current_resting - len(remove_name) + required > len(effective_dorms):
-                msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
-                send_message(msg, level="ERROR")
-                return
-            logger.debug(f"需要提前移出宿舍的干员: {remove_name}")
-            planned = set()
-            for name in remove_name:
-                if name in planned:
-                    continue
-                op = self.op_data.operators[name]
-                group = [op.name] if not op.group else self.op_data.groups[op.group]
-                for agent in group:
-                    o = self.op_data.operators[agent]
-                    if o.room not in plan:
-                        plan[o.room] = ["Current"] * len(self.op_data.plan[o.room])
-                    plan[o.room][o.index] = agent
-                    planned.add(o.name)
-            logger.debug(f"生成顶替上班任务{plan}")
-            if plan:
-                self.tasks.append(SchedulerTask(task_plan=plan))
-                # 执行完提前换班任务再次执行本任务
+            support = self._plan_exhaust_support(candidates)
+            if support:
+                logger.info(f"用尽下班优先协调替班和床位：{support}")
+                self.tasks.append(
+                    SchedulerTask(
+                        task_plan=support, task_type=TaskTypes.SELF_CORRECTION
+                    )
+                )
+                # 先确认占用方接岗，再重算用尽下班；不能直接从工作站抽走替班。
                 self.tasks.append(
                     SchedulerTask(
                         task_plan=copy.deepcopy(self.task.plan),
@@ -545,10 +470,41 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                 )
             else:
-                msg = f"无法完成 {self.task.meta_data} 的排班，请检查是否有替换组冲突"
+                msg = f"无法完成 {self.task.meta_data} 的排班：没有同时满足替班和床位的方案"
                 logger.warning(msg)
                 send_message(msg, level="ERROR")
             self.skip()
+
+    def _plan_exhaust_support(self, candidates):
+        from arknights_mower.utils.exhaust_replacement import plan_exhaust_support
+
+        def can_rest(data):
+            simulation = copy.copy(self)
+            simulation.op_data = copy.deepcopy(data)
+            simulation.tasks = copy.deepcopy(self.tasks)
+            result = {}
+            simulation.get_resting_plan(
+                candidates.copy(), [], result, data.active_high_resting_count()
+            )
+            return bool(result)
+
+        protected = set()
+        train_state = getattr(self, "train_room_state", None)
+        if config.conf.enable_mastery and (
+            self._train_mastery_active()
+            or self._train_protected()
+            or getattr(train_state, "locked", False)
+            or getattr(train_state, "state", None) in ("training", "waiting_collect")
+        ):
+            protected.update(
+                op.name
+                for op in self.op_data.operators.values()
+                if op.room == "train" or op.current_room == "train"
+            )
+        fia, _ = self.check_fia()
+        return plan_exhaust_support(
+            self.op_data, candidates, can_rest, _is_mastery_busy, protected, fia
+        )
 
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:

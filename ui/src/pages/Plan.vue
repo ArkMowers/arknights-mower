@@ -495,12 +495,15 @@ function movePlanForward() {
       </n-radio-group>
     </n-form-item>
     <n-form-item>
-      <template #label><span>需要回满心情的干员</span><help-text>请查阅文档</help-text></template>
+      <template #label
+        ><span>需要回满心情的干员</span><help-text>休息到满心情后回班。</help-text></template
+      >
       <slick-operator-select v-model="current_conf.rest_in_full"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>需要用尽心情的干员</span><help-text>仅推荐写入具有暖机技能的干员</help-text>
+        <span>需要用尽心情的干员</span
+        ><help-text>用尽后下班，优先取得替班；被占用时先换替班，否则叫回占用组。</help-text>
       </template>
       <slick-operator-select v-model="current_conf.exhaust_require"></slick-operator-select>
     </n-form-item>
@@ -515,22 +518,9 @@ function movePlanForward() {
         <span>宿舍低优先级干员</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
-            <p>
-              只降低宿舍分床和单回竞争的优先级，不改变下班候选顺序。低于普通主班，高于宿舍休息候补；同级按当前绝对心情从低到高安排。
-            </p>
-            <p>
-              仍须取得床位才能下班。可接管普通替班或空闲干员的床位，不受 22
-              心情门槛限制；不能踢出正在恢复的主班或候补。
-            </p>
-            <p>
-              低优干员也可使用单回位。更高排名的新入住者取得床位后，可以换到该单回位；原入住者继续在其他床位休息，不因此回班。
-            </p>
+            低于普通主班，高于候补；同级心情低者优先。需有床才能下班，不改变下班顺序。
           </template>
-          <template v-else>
-            <p>
-              降低宿舍分床优先级，优先使用普通休息位；仍需满足轮休的床位条件，不改变下班候选顺序。
-            </p>
-          </template>
+          <template v-else>降低宿舍分床优先级，不改变下班顺序。</template>
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.resting_priority"></slick-operator-select>
@@ -540,19 +530,12 @@ function movePlanForward() {
         <span>宿舍休息候补干员</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
-            <p>
-              对符合条件的主班生效，宿舍优先级低于「宿舍低优先级干员」，不改变下班候选顺序。有床则休息；无床时，绑组候补随组待命并随组回班，未绑组候补随下一批宿舍干员回班。
-            </p>
-            <p>
-              无床待命需要已有能入住宿舍休息的正常优先级主班提供回班时机；否则仍须取得床位。待命期间不恢复心情。低于急救线后，本轮升级为低优主班，必须有床，直到实际回班才恢复候补身份。
-            </p>
+            有床休息，无床待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线须有床。
           </template>
           <template v-else>
-            <p>
-              仅对已绑组且符合候补条件的主班生效。整组下班时，有床则休息；无床且同组有正常优先级恢复者时，可以撤下待命并随组回班。待命期间不恢复心情。
-            </p>
+            仅限绑组。有床休息；无床且同组有正常优先级主班在休息时，可待命并随组回班。
           </template>
-          <p>用尽、回满、宿舍固定干员不转为候补；零心情工作干员绑组后随组上下班，但不入住宿舍。</p>
+          <p>待命不恢复心情；用尽、回满、固定宿舍和零心情工作干员不适用。</p>
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.resting_standby"></slick-operator-select>
@@ -587,10 +570,10 @@ function movePlanForward() {
       <template #label>
         <span>宿舍黑名单</span>
         <help-text>
-          <template v-if="experimental_dorm_logic">
-            名单中的干员不参与动态宿舍分床和不养闲人补床，不影响固定宿舍岗位。
-          </template>
-          <template v-else>不希望进行填充宿舍的干员。</template>
+          <template v-if="experimental_dorm_logic"
+            >不参与动态分床和补床，固定宿舍岗位不受影响。</template
+          >
+          <template v-else>不参与空闲干员补床。</template>
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.free_blacklist"></slick-operator-select>
@@ -600,24 +583,12 @@ function movePlanForward() {
         <span>干员休息优先级</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
+            <p>名单 → 普通主班 → 低优主班 → 候补 → 替班 → 空闲；同级心情低者优先。</p>
             <p>
-              名单中的干员属于最高宿舍优先级，其后依次为普通主班、低优主班、候补、普通替班、其他空闲干员。同级按当前绝对心情从低到高排序，不按名单填写顺序。
-            </p>
-            <p>
-              这些优先级只影响宿舍分床和单回竞争，不会让干员优先下班。下班候选仍按「当前心情减个人心情下限」从低到高尝试，并检查换班条件。
-            </p>
-            <p>
-              新入住者先取得床位，再沿宿舍顺序竞争单回位：层级更高，或同级但心情更低时换位；同级同心情不交换。被替换者继续竞争后面的单回位，或使用腾出的普通床位继续休息。
-            </p>
-            <p>
-              可接管普通替班或空闲干员的床位，但不能踢出正在恢复的主班或候补。原单回目标离开时，不额外清房，让游戏在同宿舍自然接续。非主班干员请谨慎填写。
+              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
             </p>
           </template>
-          <template v-else>
-            <p>
-              稳定版宿舍分床按名单填写顺序排列，名单中的干员排在其他主班与替班之前；不改变下班候选顺序。
-            </p>
-          </template>
+          <template v-else>按名单顺序优先分床，不改变下班顺序。</template>
         </help-text>
       </template>
       <slick-operator-select v-model="current_conf.ope_resting_priority"></slick-operator-select>
@@ -626,12 +597,7 @@ function movePlanForward() {
       <template #label>
         <span>宿舍优先级排序</span>
         <help-text>
-          <p>仅在当前主表或副表生效，按宿舍房间排序；同一房间内按床位位置排列。</p>
-          <p>
-            用于新入住分床、单回竞争和必要迁移。已入住的普通床位不会仅因宿舍顺序或心情变化而互换；床位关闭等确实需要迁移的情况除外。
-          </p>
-          <p>主表默认顺序为宿舍 1→2→3→4；副表留空时继承此前生效的顺序，不会覆盖前一张副表。</p>
-          <p>副表实际选择或拖动顺序后，才会显式覆盖此前顺序。</p>
+          按所选顺序分床，日常不搬动已入住者。主表默认 1→2→3→4；副表留空继承，调整后覆盖。
         </help-text>
       </template>
       <slick-dorm-select
