@@ -8,7 +8,7 @@ import time
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
-from threading import RLock, Thread
+from threading import RLock, Thread, Timer
 from uuid import uuid4
 from zlib import error as ZlibError
 
@@ -72,6 +72,47 @@ if token := config.conf.webview.token:
 
 mower_thread = None
 log_stream = LogStream()
+scheduled_start_lock = RLock()
+scheduled_start_timer = None
+scheduled_start_at = None
+
+
+def _cancel_scheduled_start():
+    global scheduled_start_timer, scheduled_start_at
+    with scheduled_start_lock:
+        if scheduled_start_timer is not None:
+            scheduled_start_timer.cancel()
+        scheduled_start_timer = None
+        scheduled_start_at = None
+
+
+def _run_scheduled_start(timer):
+    global scheduled_start_timer, scheduled_start_at
+    with backup_lock:
+        with scheduled_start_lock:
+            if scheduled_start_timer is not timer:
+                return
+            scheduled_start_timer = None
+            scheduled_start_at = None
+        if _start_mower("2"):
+            logger.info("预约时间已到，Mower 开始执行")
+        else:
+            logger.warning("预约时间已到，但 Mower 当前无法启动")
+
+
+def _schedule_start(delay_seconds):
+    global scheduled_start_timer, scheduled_start_at
+    with scheduled_start_lock:
+        if scheduled_start_timer is not None:
+            scheduled_start_timer.cancel()
+        scheduled_start_at = datetime.datetime.now().astimezone() + datetime.timedelta(
+            seconds=delay_seconds
+        )
+        timer = Timer(delay_seconds, lambda: _run_scheduled_start(timer))
+        timer.daemon = True
+        scheduled_start_timer = timer
+        timer.start()
+        return scheduled_start_at.isoformat()
 
 
 def _mower_busy_response():
@@ -522,15 +563,20 @@ def require_token(f):
 @app.before_request
 def serialize_configuration_requests():
     # Export/restore must not interleave with form saves, plan edits or startup.
-    if request.path in {
-        "/conf",
-        "/plan",
-        "/import",
-        "/sss-copilot",
-        "/network/settings",
-        "/software-update/settings",
-    } or request.path.startswith(
-        ("/config-backup/", "/weekly-plans", "/mastery-", "/workshop-", "/start/")
+    if (
+        request.path
+        in {
+            "/conf",
+            "/plan",
+            "/import",
+            "/sss-copilot",
+            "/network/settings",
+            "/software-update/settings",
+        }
+        or request.path.startswith(
+            ("/config-backup/", "/weekly-plans", "/mastery-", "/workshop-", "/start/")
+        )
+        or request.path == "/scheduled-start"
     ):
         backup_lock.acquire()
         g.configuration_locked = True
@@ -908,10 +954,13 @@ def stage_inventory_rules():
 
 @app.route("/status")
 def get_status():
+    with scheduled_start_lock:
+        start_at = scheduled_start_at.isoformat() if scheduled_start_at else None
     response = {
         "auto_start_handled": bool(os.environ.get("MOWER_RESTART_JOB")),
         "plan_condition": [],
         "status": "stopped",
+        "scheduled_start_at": start_at,
         "next_task_time": None,
         "remaining_seconds": None,
     }
@@ -944,10 +993,14 @@ def get_status():
 @app.route("/start/<start_type>")
 @require_token
 def start(start_type):
+    return str(_start_mower(start_type)).lower()
+
+
+def _start_mower(start_type):
     global mower_thread
 
     if active_job():
-        return "false"
+        return False
 
     with maa_maintenance_lock:
         if (
@@ -957,7 +1010,7 @@ def start(start_type):
             or _job_running(maa_resource_update_job)
             or resource_update.running()
         ):
-            return "false"
+            return False
         # 创建 tmp 文件夹
         tmp_dir = get_path("@app/tmp")
         tmp_dir.mkdir(exist_ok=True)
@@ -981,8 +1034,33 @@ def start(start_type):
         set_mower_thread(mower_thread)
         log_stream.clear()
         mower_thread.start()
+        _cancel_scheduled_start()
 
-        return "true"
+        return True
+
+
+@app.route("/scheduled-start", methods=["PUT", "DELETE"])
+@require_token
+def scheduled_start():
+    if request.method == "DELETE":
+        _cancel_scheduled_start()
+        logger.info("已取消预约启动")
+        return {"scheduled_start_at": None}
+
+    payload = request.get_json(silent=True) or {}
+    delay_seconds = payload.get("delay_seconds")
+    if (
+        isinstance(delay_seconds, bool)
+        or not isinstance(delay_seconds, (int, float))
+        or not 0 < delay_seconds <= 30 * 24 * 3600
+    ):
+        return {"error": "预约时间必须在未来 30 天内"}, 400
+    with maa_maintenance_lock:
+        if mower_thread and mower_thread.is_alive():
+            return {"error": "Mower 正在运行"}, 409
+        start_at = _schedule_start(delay_seconds)
+    logger.info(f"已预约在 {start_at} 启动 Mower")
+    return {"scheduled_start_at": start_at}
 
 
 @app.route("/stop")
