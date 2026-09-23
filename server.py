@@ -12,14 +12,6 @@ from threading import RLock, Thread
 from uuid import uuid4
 from zlib import error as ZlibError
 
-from arknights_mower.views.config_backup import config_backup_bp
-from arknights_mower.views.db_admin import db_admin_bp
-from arknights_mower.views.mastery import mastery_bp
-from arknights_mower.views.network import network_bp
-from arknights_mower.views.process_control import process_control_bp
-from arknights_mower.views.software_update import software_update_bp
-from arknights_mower.views.task import set_mower_thread, task_bp
-from arknights_mower.views.ui_state import ui_state_bp
 from flask import Flask, abort, g, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
@@ -45,6 +37,14 @@ from arknights_mower.utils.path import get_path, resolve_config_path
 from arknights_mower.utils.resource_pkg import register_resource_reload
 from arknights_mower.utils.resource_update_job import ResourceUpdateJob
 from arknights_mower.utils.update_runtime import active_job
+from arknights_mower.views.config_backup import config_backup_bp
+from arknights_mower.views.db_admin import db_admin_bp
+from arknights_mower.views.mastery import mastery_bp
+from arknights_mower.views.network import network_bp
+from arknights_mower.views.process_control import process_control_bp
+from arknights_mower.views.software_update import software_update_bp
+from arknights_mower.views.task import set_mower_thread, task_bp
+from arknights_mower.views.ui_state import ui_state_bp
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -857,7 +857,6 @@ def stage_latest_activity():
     该材料缺档时按 0 完整显示。
     """
     from arknights_mower.data import key_mapping, stage_data_full
-
     from arknights_mower.utils.weekly_stage import (
         build_options,
         select_latest_activity_stages,
