@@ -379,7 +379,10 @@ def test_pending_migration_release_uses_destination_and_preserves_other_returns(
     assert data.dorm[2].name == "九色鹿"
 
 
-@pytest.mark.parametrize("task_type", [TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER])
+@pytest.mark.parametrize(
+    "task_type",
+    [TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER, TaskTypes.NOT_SPECIFIC],
+)
 def test_completed_arrangement_rebuilds_from_observed_beds(
     meeting_transition, task_type
 ):
@@ -388,7 +391,10 @@ def test_completed_arrangement_rebuilds_from_observed_beds(
     current = SchedulerTask(
         time=base.datetime.now(),
         task_type=task_type,
-        task_plan={"meeting": ["信仰搅拌机", "跃跃"]},
+        task_plan={
+            "meeting": ["信仰搅拌机", "跃跃"],
+            "dormitory_1": ["Current"] * 3 + ["歌蕾蒂娅", "Current"],
+        },
     )
     solver.task = current
     solver.tasks.append(current)

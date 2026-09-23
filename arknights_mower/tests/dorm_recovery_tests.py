@@ -16,7 +16,11 @@ from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.dorm_recovery import recovery_order_plan  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
+from arknights_mower.utils.scheduler_task import (  # noqa: E402
+    SchedulerTask,
+    TaskTypes,
+    prioritize_new_dorm_recovery,
+)
 
 ROOM = "dormitory_1"
 FINAL = ["杜林", "琴柳", "红", "银灰", "陈"]
@@ -192,6 +196,30 @@ def test_changing_target_clears_previous_single_recovery_recipient(solver):
     assert solver.confirms[-2] == ["杜林", "琴柳", "陈", "", ""]
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
     assert solver.op_data.operators["陈"].dorm_recovery_room == ROOM
+
+
+def test_higher_priority_admission_reestablishes_single_recovery_and_reads_times(
+    solver,
+):
+    solver.op_data.config.experimental_dorm_logic = True
+    arrange(solver)
+    # 银灰已经获得单回；陈尚在宿舍外，计划新入住最后一个动态位。
+    solver.physical[-1] = ""
+    solver.get_agent_from_room(ROOM)
+    solver.op_data.config.ope_resting_priority = ["陈"]
+    plan = prioritize_new_dorm_recovery(
+        solver.op_data, {ROOM: ["Current"] * 4 + ["陈"]}
+    )
+    assert plan[ROOM][3:] == ["陈", "银灰"]
+    arrange(solver, plan[ROOM])
+    assert solver.confirms[-2:] == [
+        ["杜林", "琴柳", "陈", "", ""],
+        ["杜林", "琴柳", "红", "陈", "银灰"],
+    ]
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
+    assert solver.op_data.operators["陈"].dorm_recovery_room == ROOM
+    assert {3, 4}.issubset(solver.reads[-1])
+    assert solver.op_data.operators["银灰"].current_room == ROOM
 
 
 def test_full_replacement_kept_and_full_free_occupant_temporarily_removed(solver):

@@ -1174,6 +1174,70 @@ def plan_metadata(op_data, tasks):
     return tasks
 
 
+def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_plan=None):
+    """新入住者优先竞争单回位，其余入住者保留已选床位。
+
+    先投影完整入住计划，再按宿舍顺序比较每房首个动态位。仅让排名
+    更高的新入住者与目标交换床位，被替换者继续竞争后面的单回位。
+    不增加/淘汰休息者，也不因已有入住者心情交叉而搬床。返回计划
+    副本，不提前改变真实位置或单回标记。
+    """
+    if not op_data.experimental_dorm_logic or not plan:
+        return plan
+    projected = op_data.project_arrangements([preceding_plan or {}, plan])
+    beds = [bed for bed in projected.dorm if projected.is_effective_free_slot(bed)]
+    explicit_names = {name for names in plan.values() for name in names}
+    locked_rooms = {
+        room for room, _ in set(reserved_slots) | set(op_data.reserved_product_beds)
+    }
+    # 其他任务已选好但尚未实际入住的床位，不参与本轮交换。
+    for bed in op_data.dorm:
+        op = op_data.operators.get(bed.name)
+        if (
+            op is not None
+            and bed.name not in explicit_names
+            and (op.current_room, op.current_index) != bed.position
+        ):
+            locked_rooms.add(bed.position[0])
+    beds = [bed for bed in beds if bed.position[0] not in locked_rooms]
+    arrivals = []
+    for bed in beds:
+        op = op_data.operators.get(bed.name)
+        if (
+            op is not None
+            and op.name in explicit_names
+            and not op_data.is_dynamic_dorm_position(
+                op.current_room, op.current_index, op.name
+            )
+        ):
+            arrivals.append(op.name)
+    if not arrivals:
+        return plan
+    now = datetime.now()
+    arrivals.sort(key=lambda name: resting_key(op_data, name, now))
+    targets = {}
+    for bed in beds:
+        targets.setdefault(bed.position[0], bed)
+    result = copy.deepcopy(plan)
+    for name in arrivals:
+        source = next(bed for bed in beds if bed.name == name)
+        for target in targets.values():
+            if target is source:
+                # 已获得本房单回位，不为更低顺序的宿舍继续搬动。
+                break
+            if not target.name or resting_key(op_data, source.name, now) >= resting_key(
+                op_data, target.name, now
+            ):
+                continue
+            source.name, target.name = target.name, source.name
+            for bed in (source, target):
+                room, index = bed.position
+                result.setdefault(room, ["Current"] * len(op_data.plan[room]))[
+                    index
+                ] = bed.name or "Free"
+    return result
+
+
 def try_reorder(op_data, new_plan):
     experimental = bool(getattr(op_data, "experimental_dorm_logic", False))
     # 移除被拉去上班的替班
@@ -1212,8 +1276,8 @@ def try_reorder(op_data, new_plan):
         dorm[idx].time = None
     # 测试逻辑的 assign_dorm/group 已经为本轮新休息者选择了床位。这里若
     # 再按实时心情全量映射所有入住者，不同宿舍的恢复速度会改变心情顺序，
-    # 下一轮又得到相反映射，最终造成宿舍间反复搬动。日常排班只落实已选
-    # 床位；副表切换和临时床关闭仍由各自的重排函数统一演算。
+    # 下一轮又得到相反映射，最终造成宿舍间反复搬动。先落实已选床位，
+    # 再让本轮新入住者竞争单回位；副表切换和临时床关闭单独演算。
     if not experimental:
         dorm_info = [
             {
@@ -1263,7 +1327,7 @@ def try_reorder(op_data, new_plan):
                         op.current_index
                     ] = "Free"
     # 生成移动任务
-    return plan
+    return prioritize_new_dorm_recovery(op_data, plan, preceding_plan=new_plan)
 
 
 def next_workshop_task_time(tasks, earliest=None):
@@ -1455,6 +1519,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     rest.name
                 )
             if plan:
+                plan = prioritize_new_dorm_recovery(op_data, plan, reserved_slots)
                 logger.debug(f"不养闲人任务：{plan}")
                 logger.info("添加不养闲人任务完成")
                 task = SchedulerTask(task_plan=plan)

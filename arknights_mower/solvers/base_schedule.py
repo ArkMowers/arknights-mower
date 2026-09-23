@@ -848,11 +848,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type or (
-                        self.task.type
-                        in (TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER)
+                        (
+                            self.task.type
+                            in (TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER)
+                            or (
+                                self.task.type == TaskTypes.NOT_SPECIFIC
+                                and any(
+                                    room.startswith("dorm") for room in self.task.plan
+                                )
+                            )
+                        )
                         and self.op_data.experimental_dorm_logic
                     ):
-                        # 纠偏／迁移完成后以实际读到的床位时间重建派生回班。
+                        # 纠偏／迁移／补床都可能更换单回目标；完成后以实际
+                        # 读到的床位时间重建派生回班。
                         get_time = True
                     if TaskTypes.RELEASE_DORM == self.task.type:
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
