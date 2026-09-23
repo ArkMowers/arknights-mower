@@ -942,7 +942,6 @@ class BaseMixin:
         if cord is not None:
             img = cropimg(img, cord)
         if type == "name":
-            img = cropimg(img, ((169, 22), (513, 80)))
             return self.read_operator_in_room(img)
         try:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
