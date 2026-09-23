@@ -464,6 +464,107 @@ def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
     ]
 
 
+@pytest.mark.parametrize("append_empty_task", [False, True])
+def test_backup_reorder_wakes_planning_even_with_existing_return(
+    solver, monkeypatch, append_empty_task
+):
+    enable_experimental_dorm_logic(solver)
+    solver.plan_metadata()
+    monkeypatch.setattr(
+        base, "dorm_rebalance_signature", lambda data: tuple(data.plan_condition)
+    )
+    monkeypatch.setattr(
+        base,
+        "rebalance_plan_swap_dorms",
+        MagicMock(
+            return_value={
+                "dormitory_1": ["Current", "冰酿", "Current", "Current", "Current"]
+            }
+        ),
+    )
+    generated = []
+
+    assert solver.backup_plan_solver(
+        append_empty_task=append_empty_task, generated_tasks=generated
+    )
+
+    assert any(t.type == TaskTypes.SHIFT_ON for t in solver.tasks)
+    wakeups = [t for t in solver.tasks if t.type == TaskTypes.NOT_SPECIFIC]
+    assert len(wakeups) == int(append_empty_task)
+    if append_empty_task:
+        assert wakeups[0].time == generated[0].time
+        assert wakeups[0] in generated
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
+    solver, monkeypatch, experimental
+):
+    solver.global_plan["default_plan"].plan["room_1_1"] = [
+        Room("鸿雪", "", ["但书", "深巡"])
+    ]
+    if experimental:
+        enable_experimental_dorm_logic(solver)
+    else:
+        assert solver.op_data.swap_plan([False], refresh=True) is None
+    # 原版常规规划要求宿舍满员；让两种模式在相同可用状态下比较。
+    for index, name in ((3, "陈"), (4, "红")):
+        solver.op_data.operators[name].current_room = "dormitory_1"
+        solver.op_data.operators[name].current_index = index
+    solver.plan_metadata()
+    # 时间较远的跑单仍沿用原版规则：换班时删除，常规规划负责重建。
+    old_order = SchedulerTask(
+        time=base.datetime.now() + timedelta(minutes=30),
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_1": ["但书"]},
+        meta_data="room_1_1",
+    )
+    solver.tasks.append(old_order)
+    solver.refresh_run_order_time("room_1_1")
+    assert old_order not in solver.tasks
+    assert all(t.type != TaskTypes.REFRESH_TIME for t in solver.tasks)
+
+    solver.op_data.backup_plans[0].config.dorm_order = ["dormitory_1"]
+    monkeypatch.setattr(
+        base, "dorm_rebalance_signature", lambda data: tuple(data.plan_condition)
+    )
+    monkeypatch.setattr(
+        base,
+        "rebalance_plan_swap_dorms",
+        MagicMock(
+            return_value={
+                "dormitory_1": ["Current", "冰酿", "Current", "Current", "Current"]
+            }
+        ),
+    )
+    assert solver.backup_plan_solver()
+    solver.task = next(t for t in solver.tasks if t.type == TaskTypes.RE_ORDER)
+    solver.agent_arrange.side_effect = lambda plan, get_time: plan.clear()
+    solver.skip = base.BaseSchedulerSolver.skip.__get__(solver)
+    solver.infra_main()
+    assert solver.planned  # 重排完成仍按原流程跳过本轮常规规划。
+
+    wakeup = next(t for t in solver.tasks if t.type == TaskTypes.NOT_SPECIFIC)
+    # 下一次 run() 重置 planned；消费空任务后进入正常规划，无需等待回班。
+    solver.task, solver.planned = wakeup, False
+    solver.infra_main()
+    solver.agent_get_mood = MagicMock(return_value=None)
+    solver.restart_after_mood_read = False
+    solver.plan_solver = MagicMock()
+    solver.op_data.operators["歌蕾蒂娅"].mood = 24
+    solver.op_data.operators["歌蕾蒂娅"].time_stamp = base.datetime.now()
+    solver.get_run_order_time = MagicMock(
+        return_value=base.datetime.now() + timedelta(hours=1)
+    )
+    solver.infra_main()
+
+    orders = [t for t in solver.tasks if t.type == TaskTypes.RUN_ORDER]
+    assert len(orders) == 1
+    assert orders[0].meta_data == "room_1_1"
+    assert orders[0].time == solver.get_run_order_time.return_value
+    solver.get_run_order_time.assert_called_once_with("room_1_1")
+
+
 def test_plan_swap_dorm_reorder_adds_empty_followup_with_future_mastery(
     solver, monkeypatch
 ):

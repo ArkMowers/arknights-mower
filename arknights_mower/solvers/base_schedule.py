@@ -2862,11 +2862,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     generated_tasks.append(generated)
                 logger.info("副表最终差异任务：%s", transition_plan)
 
-            # 已有回班队列时按最终排班重建一次；没有回班队列时只放入
-            # 唤醒用空任务，避免一次副表切换凭缓存状态凭空制造普通回班。
+            # 只重建已有的回班队列，不凭切表制造普通回班。
             if had_rest_schedule:
                 self.plan_metadata()
-            elif append_empty_task:
+            # 与原版重排流程一致：回班重建和唤醒常规规划是两个独立步骤。
+            # RE_ORDER 执行后会 skip()；即使有远期回班，也要唤醒下一轮
+            # run_order_solver，补回换班时因倒计时失效而移除的跑单。
+            if append_empty_task:
                 followup = SchedulerTask(
                     time=custom_task_time,
                     task_plan={},
