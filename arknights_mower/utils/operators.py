@@ -10,7 +10,7 @@ from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
 )
-from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
+from arknights_mower.utils.plan import BaseProduct, PlanConfig
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     resting_key,
@@ -1636,15 +1636,7 @@ class Operators:
         if backup_count == 0:
             return {"success": True, "message": "没有备用计划，无需验证"}
 
-        def collect_agents(plan: Plan) -> set[str]:
-            agents = set()
-            for room_info in plan.plan.values():
-                for op in room_info:
-                    if op.agent not in ("Current", "Free"):
-                        agents.add(op.agent)
-            return agents
-
-        agent_sets = [collect_agents(plan) for plan in self.backup_plans]
+        agent_sets = [plan.primary_names() for plan in self.backup_plans]
         adjacency = [set() for _ in range(backup_count)]
         for i in range(backup_count):
             for j in range(i + 1, backup_count):
@@ -1907,15 +1899,7 @@ def validate_backup_plans_offline():
     if backup_count == 0:
         return {"success": True, "message": "没有备用计划，无需验证"}
 
-    def collect_agents(plan: Plan) -> set[str]:
-        agents = set()
-        for room_info in plan.plan.values():
-            for op in room_info:
-                if op.agent not in ("Current", "Free"):
-                    agents.add(op.agent)
-        return agents
-
-    agent_sets = [collect_agents(plan) for plan in backup_plans]
+    agent_sets = [plan.primary_names() for plan in backup_plans]
     adjacency = [set() for _ in range(backup_count)]
     for i in range(backup_count):
         for j in range(i + 1, backup_count):
@@ -1959,9 +1943,9 @@ def validate_backup_plans_offline():
                 continue
             combined_agents = set()
             for plan in active_plans:
-                combined_agents.update(collect_agents(plan))
+                combined_agents.update(plan.primary_names())
             if len(combined_agents) < sum(
-                len(collect_agents(plan)) for plan in active_plans
+                len(plan.primary_names()) for plan in active_plans
             ):
                 return {
                     "success": False,
