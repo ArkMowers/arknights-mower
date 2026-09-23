@@ -1878,6 +1878,26 @@ def get_mood_ratios():
     return record.get_mood_ratios()
 
 
+@app.route("/record/mood-available-operators")
+@require_token
+def get_mood_available_operators():
+    from arknights_mower.solvers.mood_history_query import available_mood_operators
+
+    return available_mood_operators(get_path("@app/tmp") / "data.db")
+
+
+@app.route("/record/mood-series")
+@require_token
+def get_selected_mood_series():
+    from arknights_mower.solvers.mood_history_query import selected_mood_series
+
+    try:
+        names = json.loads(request.args.get("names", "[]"))
+        return selected_mood_series(get_path("@app/tmp") / "data.db", names)
+    except (ValueError, TypeError) as exc:
+        return {"error": str(exc)}, 400
+
+
 @app.route("/report/restore-trading-history")
 def restoreTradingHistory():
     from arknights_mower.utils.trading_order import TradingOrder
