@@ -352,7 +352,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.initialize_operators()
         self.op_data.correct_dorm()
         if not getattr(self, "defer_backup_plan_until_mood_read", False):
-            if self.op_data.experimental_dorm_logic:
+            if getattr(self.op_data, "experimental_dorm_logic", False):
                 self.backup_plan_solver()
             else:
                 self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
@@ -369,9 +369,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if op_data is None or not getattr(op_data, "experimental_dorm_logic", False):
             return False
         deferred = [
-            task
-            for task in self.tasks
-            if getattr(task, "deferred_by_run_order", False)
+            task for task in self.tasks if getattr(task, "deferred_by_run_order", False)
         ]
         if not deferred:
             return False
@@ -1992,9 +1990,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 旧逻辑依赖完整宿舍扫描来避免在状态未知时读取跑单时间。
             # 测试宿舍逻辑允许动态空床和候补待命，宿舍未满不再代表状态
             # 不可用，因此不能阻塞贸易站跑单任务的生成。
-            experimental = bool(
-                getattr(self.op_data, "experimental_dorm_logic", False)
-            )
+            experimental = bool(getattr(self.op_data, "experimental_dorm_logic", False))
             valid = experimental
             if not experimental:
                 valid = True
@@ -2258,10 +2254,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_workshop_tasks(self.op_data, self.tasks)
-        if (
-            not getattr(self.op_data, "experimental_dorm_logic", False)
-            and not self.find_next_task(datetime.now() + timedelta(minutes=5))
-        ):
+        if not getattr(
+            self.op_data, "experimental_dorm_logic", False
+        ) and not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
@@ -2488,9 +2483,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not candidates:
                     continue
                 replacement = min(candidates)[3]
-                result.setdefault(
-                    room, ["Current"] * len(self.op_data.plan[room])
-                )[index] = replacement
+                result.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
+                    index
+                ] = replacement
                 reserved.add(replacement)
                 logger.info(
                     "%s 已耗尽，副表内存演算选择 %s 接替 %s[%s]",
@@ -2524,9 +2519,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and current.name not in TRADE_ORDER_AGENTS
                 ):
                     continue
-                result.setdefault(
-                    room, ["Current"] * len(self.op_data.plan[room])
-                )[index] = slot.agent
+                result.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
+                    index
+                ] = slot.agent
         return result
 
     def _legacy_backup_plan_solver(
@@ -2665,7 +2660,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         兼容保留。副表不再按进入工作站/宿舍等阶段逐次切换；每次检查都会计算
         全部条件直到稳定，再把副表任务、岗位纠偏、0 心情替班和宿舍迁移合并。
         """
-        if not getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False):
+        if not getattr(
+            getattr(self, "op_data", None), "experimental_dorm_logic", False
+        ):
             return self._legacy_backup_plan_solver(
                 timing=timing,
                 append_empty_task=append_empty_task,
@@ -2783,9 +2780,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     time=custom_task_time,
                     task_plan=transition_plan,
                     task_type=TaskTypes.RE_ORDER
-                    if any(
-                        room.startswith("dormitory_") for room in transition_plan
-                    )
+                    if any(room.startswith("dormitory_") for room in transition_plan)
                     else TaskTypes.SELF_CORRECTION,
                     meta_data="副表内存收敛",
                 )
@@ -5842,17 +5837,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 return new_plan
                 self.turn_on_room_detail(room)
                 if reconcile_after_confirmation:
-                    actual = [
-                        item["agent"] for item in self.get_agent_from_room(room)
-                    ]
+                    actual = [item["agent"] for item in self.get_agent_from_room(room)]
                     reconcile_after_confirmation = False
                     if len(actual) == len(plan[room]) and all(
                         current == target or target == "Free"
                         for current, target in zip(actual, plan[room])
                     ):
-                        logger.info(
-                            f"{room} 确认后实际驻员已符合目标，结束排班"
-                        )
+                        logger.info(f"{room} 确认后实际驻员已符合目标，结束排班")
                         finished = True
                         if room in getattr(self.task, "dorm_recovery_restore", []):
                             self.task.dorm_recovery_restore.remove(room)
@@ -6108,7 +6099,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         ):
                             generated.time = anchor - timedelta(microseconds=offset)
                         for generated in generated_tasks:
-                            for generated_room, generated_agents in generated.plan.items():
+                            for (
+                                generated_room,
+                                generated_agents,
+                            ) in generated.plan.items():
                                 if generated_room not in plan:
                                     continue
                                 for index, name in enumerate(generated_agents):
@@ -6149,7 +6143,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         superseded_dorms = set()
                         for generated in generated_tasks:
                             for dorm in generated.plan:
-                                if dorm not in plan or not dorm.startswith("dormitory_"):
+                                if dorm not in plan or not dorm.startswith(
+                                    "dormitory_"
+                                ):
                                     continue
                                 superseded_dorms.add(dorm)
                         for dorm in superseded_dorms:

@@ -420,9 +420,7 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
 
     data.config.free_room = True
     bed = next(
-        bed
-        for bed in data.dorm
-        if data.is_effective_free_slot(bed) and bed.name
+        bed for bed in data.dorm if data.is_effective_free_slot(bed) and bed.name
     )
     occupant = data.get_current_operator(*bed.position)
     occupant.current_room, occupant.current_index = "", -1
@@ -444,16 +442,12 @@ def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver
     data.config.free_room = True
     baseline_tasks = plan_metadata(data, [])
     baseline_return_time = min(
-        task.time
-        for task in baseline_tasks
-        if task.type == TaskTypes.SHIFT_ON
+        task.time for task in baseline_tasks if task.type == TaskTypes.SHIFT_ON
     )
     bed = next(
         bed
         for bed in data.dorm
-        if data.is_effective_free_slot(bed)
-        and bed.name
-        and bed.name not in DEEP
+        if data.is_effective_free_slot(bed) and bed.name and bed.name not in DEEP
     )
     occupant = data.get_current_operator(*bed.position)
     occupant.current_room, occupant.current_index = "", -1
@@ -479,10 +473,9 @@ def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver
     assert fill_tasks
     room, index = bed.position
     assert fill_tasks[0].plan[room][index] == candidate
-    assert (
-        abs(min(task.time for task in return_tasks) - baseline_return_time)
-        < timedelta(seconds=1)
-    )
+    assert abs(
+        min(task.time for task in return_tasks) - baseline_return_time
+    ) < timedelta(seconds=1)
 
 
 def test_candidate_below_rescue_line_stays_low_until_return(solver):

@@ -2648,9 +2648,7 @@ class TestDormShiftOffMerge(unittest.TestCase):
             return work_plan
 
         solver.resting = resting
-        dorm_plan = {
-            "dormitory_1": ["Current", "Current", "银灰", "讯使", "Current"]
-        }
+        dorm_plan = {"dormitory_1": ["Current", "Current", "银灰", "讯使", "Current"]}
         with (
             patch.object(base_schedule, "try_reorder", return_value=dorm_plan),
             patch.object(base_schedule, "try_workshop_tasks"),
@@ -2678,7 +2676,9 @@ class TestDormShiftOffMerge(unittest.TestCase):
         ordinary.deferred_by_run_order = True
         solver.tasks = [ordinary]
         fill_task = SchedulerTask(
-            task_plan={"dormitory_1": ["Current", "Idle", "Current", "Current", "Current"]}
+            task_plan={
+                "dormitory_1": ["Current", "Idle", "Current", "Current", "Current"]
+            }
         )
         with patch.object(
             base_schedule,

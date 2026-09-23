@@ -189,14 +189,17 @@ def _ordinary_task_minutes(task, execution_time):
 
 
 def _is_dorm_only_task(task):
-    return task.type in (
-        TaskTypes.SHIFT_OFF,
-        TaskTypes.SHIFT_ON,
-        TaskTypes.RE_ORDER,
-        TaskTypes.RELEASE_DORM,
-        TaskTypes.NOT_SPECIFIC,
-    ) and bool(task.plan) and all(
-        room.startswith("dormitory_") for room in task.plan
+    return (
+        task.type
+        in (
+            TaskTypes.SHIFT_OFF,
+            TaskTypes.SHIFT_ON,
+            TaskTypes.RE_ORDER,
+            TaskTypes.RELEASE_DORM,
+            TaskTypes.NOT_SPECIFIC,
+        )
+        and bool(task.plan)
+        and all(room.startswith("dormitory_") for room in task.plan)
     )
 
 
@@ -231,7 +234,9 @@ def _merge_deferred_dorm_schedules(tasks):
         for task in mergeable_tasks
         if any(room.startswith("dormitory_") for room in task.plan)
     ]
-    if len(dorm_tasks) < 2:
+    if len(dorm_tasks) < 2 and not any(
+        task.type == TaskTypes.SHIFT_OFF for task in dorm_tasks
+    ):
         return tasks
 
     merged = {}
@@ -269,15 +274,18 @@ def _merge_deferred_dorm_schedules(tasks):
         dorm_tasks[-1],
     )
     dorm_ids = {id(task) for task in dorm_tasks}
-    redundant_followup_ids = {
-        id(tasks[index + 1])
-        for index, task in enumerate(tasks[:-1])
-        if task is not anchor
-        and task.type == TaskTypes.RE_ORDER
-        and tasks[index + 1].type == TaskTypes.NOT_SPECIFIC
-        and not tasks[index + 1].plan
-        and tasks[index + 1].time == task.time
-    }
+    redundant_followup_ids = set()
+    for index, task in enumerate(tasks[:-1]):
+        if (
+            id(task) in dorm_ids
+            and task.type == TaskTypes.RE_ORDER
+            and id(tasks[index + 1]) not in dorm_ids
+            and tasks[index + 1].type == TaskTypes.NOT_SPECIFIC
+            and not tasks[index + 1].plan
+            and tasks[index + 1].time == task.time
+        ):
+            redundant_followup_ids.add(id(tasks[index + 1]))
+    redundant_followup_ids.difference_update(dorm_ids)
     for task in dorm_tasks:
         for room in list(task.plan):
             if room.startswith("dormitory_"):
@@ -286,7 +294,12 @@ def _merge_deferred_dorm_schedules(tasks):
 
     result = []
     for task in tasks:
-        if task is not anchor and id(task) in dorm_ids and not task.plan:
+        if (
+            task is not anchor
+            and id(task) in dorm_ids
+            and task.type != TaskTypes.SHIFT_OFF
+            and not task.plan
+        ):
             continue
         # RE_ORDER 后的空任务只是为了唤醒下一轮；RE_ORDER 已合并时不再需要。
         if id(task) in redundant_followup_ids:
@@ -1309,8 +1322,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 and op.name not in reserved
                 and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
                 and (
-                    op.name in standby_waiting
-                    or resting_mood(op, now) < op.upper_limit
+                    op.name in standby_waiting or resting_mood(op, now) < op.upper_limit
                 )
             ]
             busy = busy_resting_names()

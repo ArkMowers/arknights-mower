@@ -124,7 +124,9 @@ def test_sync_removes_only_invalid_order_and_order_refresh_tasks(solver):
     solver._sync_run_order_tasks()
 
     assert solver.tasks == kept
-    assert {name: op.time_stamp for name, op in solver.op_data.operators.items()} == timestamps
+    assert {
+        name: op.time_stamp for name, op in solver.op_data.operators.items()
+    } == timestamps
 
 
 def test_backup_convergence_removes_queued_orders_immediately(solver):
@@ -160,9 +162,7 @@ def test_orundum_room_still_gets_normal_mood_scan(solver):
     solver._sync_run_order_tasks()
     solver.enter_room = MagicMock()
     solver.back = MagicMock()
-    solver.get_agent_from_room = MagicMock(
-        return_value=[{"agent": "鸿雪", "mood": 10}]
-    )
+    solver.get_agent_from_room = MagicMock(return_value=[{"agent": "鸿雪", "mood": 10}])
 
     solver.agent_get_mood(return_plan=True)
 

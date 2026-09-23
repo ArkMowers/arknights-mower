@@ -209,7 +209,9 @@ def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
         Room("Free", "", []),
     ]
     reorder = MagicMock(
-        return_value={"dormitory_1": ["夜莺", "Current", "Current", "Current", "Current"]}
+        return_value={
+            "dormitory_1": ["夜莺", "Current", "Current", "Current", "Current"]
+        }
     )
     monkeypatch.setattr(base, "rebalance_plan_swap_dorms", reorder)
 

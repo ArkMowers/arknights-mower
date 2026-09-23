@@ -278,6 +278,38 @@ class TestScheduling(unittest.TestCase):
                 self.assertEqual(special.meta_data, meta_data)
                 self.assertEqual(special.plan, special_plan)
 
+    def test_deferred_dorm_merge_keeps_empty_shift_off_and_its_followup(self):
+        shift_off = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "Current"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "临时休息者"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder.time)
+
+        result = _merge_deferred_dorm_schedules([reorder, followup, shift_off])
+
+        self.assertEqual(result, [shift_off])
+        self.assertEqual(shift_off.plan, {"dormitory_1": ["Current", "临时休息者"]})
+
+    def test_deferred_dorm_merge_keeps_followup_for_anchor_reorder(self):
+        shift_off = SchedulerTask(
+            task_plan={"room_1_1": ["替班"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "临时休息者"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder.time)
+
+        result = _merge_deferred_dorm_schedules([shift_off, reorder, followup])
+
+        self.assertEqual(result, [shift_off, reorder, followup])
+        self.assertEqual(reorder.plan, {"dormitory_1": ["Current", "临时休息者"]})
+
     def test_find_next(self):
         # 测试 方程有效
         task1 = SchedulerTask(
@@ -365,9 +397,7 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
-        self.assertEqual(
-            plan["dormitory_1"][2:], ["麒麟R夜刀", "凯尔希", "夕"]
-        )
+        self.assertEqual(plan["dormitory_1"][2:], ["麒麟R夜刀", "凯尔希", "夕"])
         self.assertEqual(plan["dormitory_2"][2], "Free")
 
     def test_reorder_2(self):
@@ -381,12 +411,8 @@ class TestScheduling(unittest.TestCase):
 
         plan = try_reorder(op_data, {})
         self.assertEqual(len(plan), 2)
-        self.assertEqual(
-            plan["dormitory_1"][2:], ["麒麟R夜刀", "凯尔希", "夕"]
-        )
-        self.assertEqual(
-            plan["dormitory_2"][2:4], ["见行者", "森蚺"]
-        )
+        self.assertEqual(plan["dormitory_1"][2:], ["麒麟R夜刀", "凯尔希", "夕"])
+        self.assertEqual(plan["dormitory_2"][2:4], ["见行者", "森蚺"])
 
     def test_reorder_3(self):
         # 未执行前重复演算得到同一结果，不会在两种宿舍布局间振荡。

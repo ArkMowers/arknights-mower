@@ -468,9 +468,7 @@ def test_future_return_does_not_clear_live_resting_state(solver):
     shift_off(solver)
     data = solver.op_data
     before_beds = deepcopy([vars(bed) for bed in data.dorm])
-    before_operators = deepcopy(
-        {name: vars(op) for name, op in data.operators.items()}
-    )
+    before_operators = deepcopy({name: vars(op) for name, op in data.operators.items()})
     batches = {datetime.now() + timedelta(hours=4): (data.dorm, True)}
 
     first = generate_plan_by_drom(batches, data)
@@ -485,9 +483,7 @@ def test_future_return_does_not_clear_live_resting_state(solver):
 
 
 def test_repeated_metadata_keeps_resting_group_and_prevents_false_fill(solver):
-    solver.global_plan["default_plan"].plan["factory"] = [
-        Room("鸿雪", "", ["空弦"])
-    ]
+    solver.global_plan["default_plan"].plan["factory"] = [Room("鸿雪", "", ["空弦"])]
     configure_explicit_free_bed(solver)
     apply_plan(solver, {"factory": ["鸿雪"]})
     shift_off(solver)
@@ -514,11 +510,7 @@ def test_repeated_metadata_keeps_resting_group_and_prevents_false_fill(solver):
     assert [(bed.name, bed.time) for bed in data.dorm] == before
     fill_tasks = []
     try_add_release_dorm({}, None, data, fill_tasks)
-    protected = {
-        bed.position
-        for bed in data.dorm
-        if bed.name in data.groups["联动"]
-    }
+    protected = {bed.position for bed in data.dorm if bed.name in data.groups["联动"]}
     assert not any(
         names[index] != "Current" and (room, index) in protected
         for task in fill_tasks
