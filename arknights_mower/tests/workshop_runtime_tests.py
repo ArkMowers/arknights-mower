@@ -62,6 +62,23 @@ def test_t4_scopes_apply_to_old_category_lists_and_keep_deer_building_fodder(
     }
 
 
+def test_deer_fodder_scope_keeps_books_and_green_materials():
+    from arknights_mower.utils.workshop_recipes import scope_workshop_items
+
+    formulas = {
+        "技巧概要·卷3": recipe(2, "技巧概要"),
+        "糖": recipe(1),
+        "糖组": recipe(2),
+        "碳素": recipe(2, "基建材料"),
+    }
+    items = [item(name) for name in formulas]
+    assert [
+        name
+        for entry in scope_workshop_items("九色鹿", items, formulas)
+        for name in entry["item_names"]
+    ] == ["技巧概要·卷3", "糖", "碳素"]
+
+
 @pytest.mark.parametrize("missing_box", [False, True])
 def test_saved_runtime_configs_are_scoped_before_dispatch_without_mutating_them(
     game, missing_box
