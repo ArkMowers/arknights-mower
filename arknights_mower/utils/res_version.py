@@ -27,6 +27,8 @@ RES_PACKAGE_MODELS = (
     "arknights_mower/models/operator_select.model",
     "arknights_mower/models/operator_train.model",
 )
+# Older resource packages do not contain this model; runtime OCR remains available.
+RES_PACKAGE_OPTIONAL_MODELS = ("arknights_mower/models/mastery_panel.model",)
 RES_PACKAGE_DATA = (
     "arknights_mower/data/agent.json",
     "arknights_mower/data/agent_profession.json",
@@ -52,7 +54,7 @@ def package_file_paths(root) -> list:
         d = root / rel
         if d.is_dir():
             rels.extend(p.relative_to(root) for p in d.rglob("*") if p.is_file())
-    for rel in RES_PACKAGE_MODELS + RES_PACKAGE_DATA:
+    for rel in RES_PACKAGE_MODELS + RES_PACKAGE_OPTIONAL_MODELS + RES_PACKAGE_DATA:
         p = root / rel
         if p.is_file():
             rels.append(p.relative_to(root))

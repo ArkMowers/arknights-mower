@@ -21,6 +21,7 @@ from arknights_mower.utils.res_version import (
     pick_latest_activity,
     pick_latest_gacha,
 )
+from build_mastery_panel_model import build_default_model
 
 # 字体目录：生成期从 MowerFonts 检出读取（环境变量 MOWERFONTS_DIR），
 # 未设置时回退到 ./ArknightsGameResource/fonts（本地手动放置/双击可用）。
@@ -1246,6 +1247,9 @@ print("训练训练室干员名的模型,完成")
 
 数据处理器.提取专精数据()
 print("提取专精数据,完成")
+
+build_default_model()
+print("训练室面板姓名与技能模板,完成")
 
 数据处理器.generate_version_info()
 print("生成 version.json,完成")

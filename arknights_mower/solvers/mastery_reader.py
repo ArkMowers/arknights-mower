@@ -30,6 +30,7 @@ from arknights_mower.data import agent_list
 from arknights_mower.utils import config
 from arknights_mower.utils.image import cropimg, rgb2gray, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_panel_template import recognize_skill
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
@@ -437,6 +438,41 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
                 operator_name, skill_name = retry_name, retry_skill
         except Exception as e:
             logger.debug(f"训练室面板二次识别失败: {e}")
+    if operator_name in agent_list:
+        # OCR can confidently drop one character (e.g. 沙缚镣锁 → 沙缚锁).
+        # Compare the same pixels with this operator's known skill templates.
+        from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+        data = get_skill_data()
+        named = [
+            c
+            for c in data.get("characters", {}).values()
+            if c.get("name") == operator_name
+            and any(s.get("name") for s in c.get("skills", []))
+        ]
+        if named:
+            ocr_skill_index = resolve_panel_skill(operator_name, skill_name)
+            result = recognize_skill(cropimg(img, PANEL_REGION), operator_name, data)
+            if result is not None:
+                matched_index, matched_name, name_score, skill_score, margin = result
+                if ocr_skill_index is None:
+                    logger.info(
+                        f"训练室面板模板纠正技能：{operator_name} {skill_name!r} → "
+                        f"{matched_name}（姓名 {name_score:.3f}，技能 {skill_score:.3f}，"
+                        f"差距 {margin:.3f}）"
+                    )
+                    skill_name = matched_name
+                elif matched_index != ocr_skill_index:
+                    logger.warning(
+                        f"训练室技能 OCR 与模板冲突：{operator_name} "
+                        f"OCR={skill_name!r}，模板={matched_name}，本次按未知处理"
+                    )
+                    skill_name = ""
+            elif ocr_skill_index is None:
+                logger.debug(
+                    f"训练室技能 OCR 未能由模板确认：{operator_name} {skill_name!r}"
+                )
+                skill_name = ""
     return RoomPanel(operator_name=operator_name, skill_name=skill_name)
 
 

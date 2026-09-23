@@ -95,3 +95,53 @@ def test_real_device_panel_passes_identity_check(monkeypatch):
         {"char_name": "八幡海铃", "skill_index": 0, "skill_name": "一技能·颤栗之弦"},
         reader.RoomState("training", panel),
     )
+
+
+def test_template_recovers_carnelian_skill_dropped_by_ocr():
+    from pathlib import Path
+
+    import cv2
+
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    fixture = Path(__file__).with_name("fixtures") / "mastery_panel_carnelian.png"
+    image[930:972, 235:755] = cv2.imread(str(fixture))
+    solver = MagicMock()
+    solver.read_screen.return_value = "[卡涅利安]沙缚锁"
+
+    panel = reader._read_panel_text(solver, image)
+
+    assert (panel.operator_name, panel.skill_name) == ("卡涅利安", "沙缚镣锁")
+    assert reader._plan_matches_room(
+        {"char_name": "卡涅利安", "skill_index": 1, "skill_name": "二技能·沙缚镣锁"},
+        reader.RoomState("training", panel),
+    )
+
+
+def test_ocr_template_conflict_stays_unknown():
+    from pathlib import Path
+
+    import cv2
+
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    fixture = Path(__file__).with_name("fixtures") / "mastery_panel_carnelian.png"
+    image[930:972, 235:755] = cv2.imread(str(fixture))
+    solver = MagicMock()
+    solver.read_screen.return_value = "[卡涅利安]沙暴守卫"
+
+    panel = reader._read_panel_text(solver, image)
+
+    assert panel.operator_name == "卡涅利安"
+    assert panel.skill_name == ""
+
+
+def test_unconfirmed_skill_does_not_become_mismatch():
+    solver = solver_with_text("[卡涅利安]沙缚锁")
+
+    panel = reader._read_panel_text(solver)
+
+    assert panel.operator_name == "卡涅利安"
+    assert panel.skill_name == ""
+    plan = {"char_name": "卡涅利安", "skill_index": 1, "skill_name": "二技能·沙缚镣锁"}
+    room = reader.RoomState("training", panel)
+    assert reader._plan_matches_room(plan, room)
+    assert not reader._can_adopt_expiry(plan, room)
