@@ -60,6 +60,69 @@ class TestOperatorRoomRecognition(unittest.TestCase):
             "凯尔希",
         )
 
+    def test_empty_or_narrow_image_returns_empty_string(self):
+        import numpy as np
+
+        solver = BaseMixin()
+        # Pure black image
+        black = np.zeros((58, 344), dtype=np.uint8)
+        self.assertEqual(solver.read_operator_in_room(black), "")
+
+        # Extremely narrow noise (width < 20px)
+        narrow = np.zeros((58, 344), dtype=np.uint8)
+        narrow[10:30, 10:25] = 255
+        self.assertEqual(solver.read_operator_in_room(narrow), "")
+
+    def test_low_confidence_noise_rejected(self):
+        import numpy as np
+
+        solver = BaseMixin()
+        # Random noise strokes that do not form any real operator
+        noise = np.zeros((58, 344), dtype=np.uint8)
+        noise[10:15, 20:60] = 255
+        noise[30:35, 40:80] = 255
+        self.assertEqual(solver.read_operator_in_room(noise), "")
+
+    def test_get_agent_from_room_retries_inplace_on_empty_read(self):
+        from unittest.mock import MagicMock, patch
+
+        from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+        solver = BaseSchedulerSolver.__new__(BaseSchedulerSolver)
+        solver.leifeng_mode = False
+        solver.task = None
+        solver.tasks = []
+        solver.op_data = MagicMock()
+        solver.op_data.plan = {"room_1": [MagicMock()]}
+        silverash = MagicMock()
+        silverash.need_to_refresh.return_value = False
+        silverash.current_mood.return_value = 24
+        silverash.mood = 24
+        silverash.depletion_rate = 0
+        solver.op_data.operators = {"银灰": silverash}
+        solver.op_data.update_detail.return_value = None
+        solver.recog = MagicMock()
+        solver.recog.gray = None
+        solver.recog.update = MagicMock()
+        solver.sleep = MagicMock()
+        solver.find = MagicMock(return_value=None)
+        solver.refresh_facility_state = MagicMock()
+        solver.turn_on_room_detail = MagicMock()
+        solver.detect_product_complete = MagicMock(return_value=False)
+        solver.scroll_room_operators = MagicMock()
+
+        # First call returns "" (low confidence), second returns "银灰"
+        solver.read_screen = MagicMock(side_effect=["", "银灰"])
+        solver.read_accurate_mood = MagicMock(return_value=24)
+
+        with patch("arknights_mower.solvers.base_schedule.cropimg", return_value=None):
+            result = solver.get_agent_from_room("room_1")
+
+        self.assertEqual(result[0]["agent"], "银灰")
+        self.assertEqual(solver.read_screen.call_count, 2)
+        solver.sleep.assert_called_with(0.25)
+        solver.recog.update.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
