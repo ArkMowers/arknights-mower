@@ -199,6 +199,19 @@ def test_unrelated_experimental_backup_switch_skips_dorm_reorder(solver, monkeyp
     assert [task.type for task in solver.tasks] == [TaskTypes.NOT_SPECIFIC]
 
 
+def test_experimental_backup_keeps_zero_mood_worker_on_shift(solver):
+    solver.op_data.global_plan["default_plan"].config.workaholic = ["歌蕾蒂娅"]
+    enable_experimental_dorm_logic(solver)
+    worker = solver.op_data.operators["歌蕾蒂娅"]
+    worker.mood = 0
+    worker.time_stamp = datetime(2026, 9, 11, 16, 2, 21)
+
+    assert worker.workaholic
+    assert solver.backup_plan_solver() is False
+    assert solver.op_data.plan_condition == [True]
+    assert all("central" not in task.plan for task in solver.tasks)
+
+
 def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
     enable_experimental_dorm_logic(solver)
     solver.op_data.backup_plans[0].plan["dormitory_1"] = [

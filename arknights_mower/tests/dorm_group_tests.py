@@ -148,6 +148,27 @@ def test_group_larger_than_bed_count_validates_and_round_trip_converges(solver):
     assert shift_off(solver)[0]["dormitory_1"][0] == "黑角"
 
 
+def test_zero_mood_worker_only_follows_group_shift(solver):
+    worker = solver.op_data.operators["讯使"]
+    worker.workaholic = True
+    worker.mood = 0
+    solver.op_data.workaholic_agent.add(worker.name)
+
+    plan, _ = shift_off(solver)
+
+    assert plan["contact"] == ["红"]
+    assert worker.current_room == ""
+    assert all(dorm.name != worker.name for dorm in solver.op_data.dorm)
+
+    tasks = generate_plan_by_drom(
+        {datetime.now() + timedelta(hours=4): (solver.op_data.dorm, True)},
+        solver.op_data,
+    )
+    assert len(tasks) == 1
+    assert tasks[0].type == TaskTypes.SHIFT_ON
+    assert tasks[0].plan["contact"] == [worker.name]
+
+
 @pytest.mark.parametrize("failure", ["busy", "working", "missing", "duplicate", "beds"])
 def test_failed_group_assignment_is_atomic(solver, monkeypatch, failure):
     data = solver.op_data

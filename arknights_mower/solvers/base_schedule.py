@@ -2428,74 +2428,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return self._REST_TIER_MARKED_LOW
         return self._REST_TIER_REPLACEMENT
 
-    def _cached_exhausted_replacement_plan(self, reserved=None):
-        """仅凭缓存为已耗尽的常驻干员选择可用替班。
-
-        这一步是副表切换收敛的一部分。例如埃癸斯从会客室主力降回
-        Lancet-2 的替班后，如果 Lancet-2 已经 0 心情，就直接把埃癸斯
-        放回发电站，而不是先把他迁到宿舍、下一轮再纠错。
-        """
-        reserved = set(reserved or ())
-        result = {}
-        now = datetime.now()
-        for room, slots in self.op_data.plan.items():
-            if room.startswith("dormitory_"):
-                continue
-            for index, slot in enumerate(slots):
-                primary = self.op_data.operators.get(slot.agent)
-                current = self.op_data.get_current_operator(room, index)
-                if (
-                    primary is None
-                    or current is None
-                    or current.name != primary.name
-                    or not primary.workaholic
-                    or primary.current_mood(now) > primary.lower_limit
-                ):
-                    continue
-                candidates = []
-                for order, name in enumerate(
-                    self.op_data.replacement_candidates(primary)
-                ):
-                    candidate = self.op_data.operators.get(name)
-                    if (
-                        candidate is None
-                        or name in reserved
-                        or name in TRADE_ORDER_AGENTS
-                        or _is_mastery_busy(name)
-                        or self.op_data.is_dorm_replacement(name)
-                        or (
-                            candidate.current_room
-                            and not candidate.is_resting()
-                            and (candidate.current_room, candidate.current_index)
-                            != (room, index)
-                        )
-                    ):
-                        continue
-                    mood = resting_mood(candidate, now)
-                    candidates.append(
-                        (
-                            mood == float("inf"),
-                            -mood if mood != float("inf") else 0,
-                            order,
-                            candidate.name,
-                        )
-                    )
-                if not candidates:
-                    continue
-                replacement = min(candidates)[3]
-                result.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                    index
-                ] = replacement
-                reserved.add(replacement)
-                logger.info(
-                    "%s 已耗尽，副表内存演算选择 %s 接替 %s[%s]",
-                    primary.name,
-                    replacement,
-                    room,
-                    index,
-                )
-        return result
-
     def _cached_changed_slot_plan(self, previous_plan):
         """只纠偏副表真正改动的工作槽位，避免全基地纠错。"""
         result = {}
@@ -2658,7 +2590,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         ``timing``、``append_empty_task`` 和 ``restore_on_deactivate`` 仅为旧调用
         兼容保留。副表不再按进入工作站/宿舍等阶段逐次切换；每次检查都会计算
-        全部条件直到稳定，再把副表任务、岗位纠偏、0 心情替班和宿舍迁移合并。
+        全部条件直到稳定，再把副表任务、岗位纠偏和宿舍迁移合并。
         """
         if not getattr(
             getattr(self, "op_data", None), "experimental_dorm_logic", False
@@ -2749,11 +2681,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     _merge_plan_overlay(
                         transition_plan, copy.deepcopy(bp.task), self.op_data
                     )
-
-            replacement_plan = self._cached_exhausted_replacement_plan(
-                _assigned_operator_names(transition_plan)
-            )
-            _merge_plan_overlay(transition_plan, replacement_plan, self.op_data)
 
             current_dorm_layout = dorm_rebalance_signature(self.op_data)
             if (
