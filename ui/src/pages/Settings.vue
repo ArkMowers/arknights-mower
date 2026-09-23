@@ -732,6 +732,14 @@ if (return_home_when_idle.value) {
                 </help-text>
               </n-checkbox>
             </n-form-item>
+            <n-form-item v-if="product_switching.grandet_mode" :show-label="false">
+              <n-checkbox v-model:checked="product_switching.use_drones_when_leaving_orirock">
+                切出源石碎片时使用无人机
+                <help-text>
+                  关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient">
                 允许无人机不足时直接切换产物

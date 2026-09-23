@@ -417,6 +417,8 @@ class RIICPart(ConfModel):
     class ProductSwitchingConf(ConfModel):
         grandet_mode: bool = True
         "仅使用不会超过损耗容限的无人机，余下时间自然等待"
+        use_drones_when_leaving_orirock: bool = True
+        "切出源石碎片时允许使用无人机完成当前一份"
         direct_when_drones_insufficient: bool = False
         "无人机不足时取消当前份制造进度并直接切换产物"
         drone_loss_seconds: int = Field(default=30, ge=0, le=180)
