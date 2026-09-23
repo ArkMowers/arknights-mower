@@ -1410,9 +1410,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     is not None
                     and (
-                        _agent.current_mood() == _agent.upper_limit
-                        or _agent.workaholic
-                        or _agent.mood == _agent.upper_limit
+                        _agent.workaholic
+                        or _agent.time_stamp is not None
+                        and (
+                            _agent.current_mood() == _agent.upper_limit
+                            or _agent.mood == _agent.upper_limit
+                        )
                     )
                 ):
                     logger.debug(f"跳过检查{_agent}")
@@ -1438,6 +1441,44 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     fix_plan[moved_room][moved_index] = self.op_data.plan[moved_room][
                         moved_index
                     ].agent
+        # 还要确保同一组在同时上班
+        for g in self.op_data.groups:
+            g_agents = [
+                name
+                for name in self.op_data.groups[g]
+                if not self.op_data.operators[name].room.startswith("dorm")
+            ]
+            is_any_working = next(
+                (
+                    x
+                    for x in g_agents
+                    if self.op_data.operators[x].current_room != ""
+                    and not self.op_data.operators[x].is_resting()
+                ),
+                None,
+            )
+            if is_any_working is not None:
+                # 确保所有人同时在上班
+                is_any_resting = next(
+                    (
+                        x
+                        for x in g_agents
+                        if self.op_data.operators[x].current_room == ""
+                        or self.op_data.operators[x].is_resting()
+                    ),
+                    None,
+                )
+                if is_any_resting is not None:
+                    # 生成纠错任务
+                    for x in g_agents:
+                        if (
+                            self.op_data.operators[x].current_room == ""
+                            or self.op_data.operators[x].is_resting()
+                        ):
+                            room = self.op_data.operators[x].room
+                            if room not in fix_plan:
+                                fix_plan[room] = ["Current"] * len(plan[room])
+                            fix_plan[room][self.op_data.operators[x].index] = x
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
             remove_keys = []
@@ -1458,44 +1499,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if len(remove_keys) > 0:
                 for item in remove_keys:
                     del fix_plan[item]
-            # 还要确保同一组在同时上班
-            for g in self.op_data.groups:
-                g_agents = [
-                    name
-                    for name in self.op_data.groups[g]
-                    if not self.op_data.operators[name].room.startswith("dorm")
-                ]
-                is_any_working = next(
-                    (
-                        x
-                        for x in g_agents
-                        if self.op_data.operators[x].current_room != ""
-                        and not self.op_data.operators[x].is_resting()
-                    ),
-                    None,
-                )
-                if is_any_working is not None:
-                    # 确保所有人同时在上班
-                    is_any_resting = next(
-                        (
-                            x
-                            for x in g_agents
-                            if self.op_data.operators[x].current_room == ""
-                            or self.op_data.operators[x].is_resting()
-                        ),
-                        None,
-                    )
-                    if is_any_resting is not None:
-                        # 生成纠错任务
-                        for x in g_agents:
-                            if (
-                                self.op_data.operators[x].current_room == ""
-                                or self.op_data.operators[x].is_resting()
-                            ):
-                                room = self.op_data.operators[x].room
-                                if room not in fix_plan:
-                                    fix_plan[room] = ["Current"] * len(plan[room])
-                                fix_plan[room][self.op_data.operators[x].index] = x
             # #207：训练室受专精管理或受保护时不参与纠错——弹掉 fix_plan 里的 train 项
             # （受保护时发节流提醒邮件）。fix_plan 拿 op_data 缓存比对静态计划，专精
             # 活跃/受保护时缓存与计划必然错位，不弹会每轮生成训练室纠错（反复进出）。
@@ -1507,6 +1510,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
 
             prefer_resting_replacements(self.op_data, fix_plan, _is_mastery_busy)
+            # 整组回班可能补入训练位，仍须经过相同的专精保护。
+            self._suppress_train_correction(fix_plan)
         from arknights_mower.utils.resting_correction import correct_group_dorms
 
         if self.op_data.has_dorm_groups():

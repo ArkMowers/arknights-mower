@@ -1151,6 +1151,12 @@ class Operators:
             and (self.experimental_dorm_logic or not op.is_workshop())
         )
 
+    def rescue_mood_threshold(self, op):
+        """按个人心情上下限换算现有急救阈值。"""
+        return op.lower_limit + (op.upper_limit - op.lower_limit) * (
+            self.config.resting_threshold * config.conf.rescue_threshold
+        )
+
     def update_standby_low_priority(self, op, now=None, *, returned_to_post=False):
         """候补低于急救线后升为低优，直到实际回班。
 
@@ -1167,10 +1173,7 @@ class Operators:
             op.standby_low_priority = False
             return
         mood = resting_mood(op, now)
-        threshold = op.lower_limit + (op.upper_limit - op.lower_limit) * (
-            self.config.resting_threshold * config.conf.rescue_threshold
-        )
-        if mood < threshold:
+        if mood < self.rescue_mood_threshold(op):
             op.standby_low_priority = True
 
     def is_standby(self, name):
@@ -1335,8 +1338,26 @@ class Operators:
         return False
 
     def replacement_candidates(self, operator):
-        """仅绑组宿舍的替班按心情排序；菲亚梅塔充能名单保留原顺序。"""
+        """工作替班避让缓存中的急救低心情；宿舍和肥鸭沿用各自规则。"""
         candidates = [name for name in operator.replacement if name != "Free"]
+        if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
+            now = datetime.now()
+
+            def below_rescue_line(name):
+                candidate = self.operators.get(name)
+                if (
+                    candidate is None
+                    or candidate.time_stamp is None
+                    or not 0 <= candidate.mood <= 24
+                ):
+                    # 未知心情保留原有可用性，不把默认 24 当成实测满心情。
+                    return False
+                return candidate.current_mood(now) < self.rescue_mood_threshold(
+                    candidate
+                )
+
+            # 稳定排序只延后已知低于急救线者；全部低心情仍可按原顺序替班。
+            return sorted(candidates, key=below_rescue_line)
         if not self.experimental_dorm_logic:
             if (
                 not operator.room.startswith("dorm")
