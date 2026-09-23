@@ -546,6 +546,7 @@ export const useConfigStore = defineStore('config', () => {
       ...(response.data.run_order_grandet_mode || {})
     }
     product_switching.value = {
+      max_drones_per_switch: 0,
       grandet_mode: true,
       use_drones_when_leaving_orirock: true,
       direct_when_drones_insufficient: false,

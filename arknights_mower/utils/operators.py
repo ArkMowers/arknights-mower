@@ -295,6 +295,8 @@ class Operators:
         self.current_room_changed_callback = None
         self.party_time = None
         self.facility_states = {}
+        self.reserved_product_beds = {}
+        self.reserved_product_replacements = set()
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(
@@ -1449,6 +1451,14 @@ class Operators:
         """按严格层级接管；主班免额外心情门槛，同级恢复者不互踢。"""
         if not self.is_effective_free_slot(dorm, active_groups=active_groups):
             return False
+        if self.experimental_dorm_logic:
+            reserved_for = self.reserved_product_beds.get(dorm.position)
+            if reserved_for and requester != reserved_for:
+                if requester is None or resting_tier(self, requester) not in (
+                    RestingTier.REPLACEMENT,
+                    RestingTier.IDLE,
+                ):
+                    return False
         name = dorm.name
         if name == "" or name not in self.operators:
             return True

@@ -892,6 +892,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         TaskTypes.RE_ORDER,
                         TaskTypes.SELF_CORRECTION,
                     ):
+                        if getattr(
+                            getattr(self, "op_data", None),
+                            "experimental_dorm_logic",
+                            False,
+                        ):
+                            self._defer_conflicting_product_shift_slots(self.task)
                         self._switch_products_before_arrangement(self.task)
                     arrangement_deferred = (
                         self.agent_arrange(self.task.plan, get_time) is False
@@ -971,6 +977,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     pass
                 if remove_current_task:
                     self.tasks[:] = [t for t in self.tasks if t is not self.task]
+                    if getattr(
+                        getattr(self, "op_data", None), "experimental_dorm_logic", False
+                    ):
+                        self._refresh_deferred_product_reservations()
                 if (
                     not arrangement_deferred
                     and self.tasks
@@ -990,6 +1000,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ]
                 for task in deferred_tasks:
                     task.time = max(task.time, retry_time)
+                if getattr(
+                    getattr(self, "op_data", None), "experimental_dorm_logic", False
+                ):
+                    self._refresh_deferred_product_reservations()
                 self.tasks.sort(key=lambda task: task.time)
                 logger.warning(
                     f"{e}，未完成的切换任务推迟至 {retry_time.strftime('%H:%M:%S')}"
@@ -2281,6 +2295,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def resting(self):
         experimental = self.op_data.experimental_dorm_logic
         if experimental:
+            self._refresh_deferred_product_reservations()
+            reserved_names = self.op_data.reserved_product_replacements
             now = datetime.now()
             for op in self.op_data.operators.values():
                 self.op_data.update_standby_low_priority(op, now)
@@ -2327,6 +2343,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _low_used = set()
         for op in self.total_agent:
             if experimental and self._resting_tier(op) == RestingTier.EXCLUDED:
+                continue
+            if experimental and op.name in reserved_names:
                 continue
             if experimental and op.is_high():
                 standby_scope = self.op_data.groups[op.group] if op.group else [op.name]
@@ -2592,6 +2610,58 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.exception(e)
         return False
 
+    def _switch_products_before_backup_plan(self):
+        """独立条件触发副表时，等切产物任务完成再切表。"""
+        pending = [
+            task
+            for task in self.tasks
+            if getattr(task, "pending_backup_product_switch", False)
+        ]
+        desired_products, desired_plan = self._products_after_arrangement({})
+        targets = {}
+        for room, target in desired_products.items():
+            if target == self.op_data.products.get(room):
+                continue
+            room_plan = desired_plan.get(room) or []
+            if not room_plan:
+                continue
+            facility = room_plan[0].facility
+            if not (
+                facility == "制造站"
+                and target in MANUFACTURE_PRODUCTS
+                or facility == "贸易站"
+                and target in TRADE_PRODUCTS
+            ):
+                continue
+            targets[room] = target
+        existing = {}
+        stale_ids = set()
+        for task in pending:
+            room, product = parse_product_task_meta(task.meta_data)
+            if targets.get(room) != product or room in existing:
+                stale_ids.add(id(task))
+            else:
+                existing[room] = task
+        self.tasks[:] = [task for task in self.tasks if id(task) not in stale_ids]
+        waiting = False
+        for room, target in targets.items():
+            current = existing.get(room)
+            if current is not None:
+                waiting = True
+                continue
+            if self.op_data.facility_states.get(room, {}).get("product") == target:
+                continue
+            task = SchedulerTask(
+                task_type=TaskTypes.SWITCH_PRODUCT,
+                meta_data=product_task_meta(room, target),
+            )
+            task.pending_backup_product_switch = True
+            task.pending_product_targets = {room: target}
+            self.tasks.append(task)
+            waiting = True
+            logger.info("副表产物先切换%s：%s", self.translate_room(room), target)
+        return not waiting
+
     def backup_plan_solver(
         self,
         timing=None,
@@ -2619,6 +2689,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             if not self.op_data.backup_plans:
                 return False
+
+            if any(
+                getattr(plan, "products", None) for plan in self.op_data.backup_plans
+            ):
+                if not self._switch_products_before_backup_plan():
+                    return False
 
             original = list(self.op_data.plan_condition)
             previous_plan = copy.deepcopy(self.op_data.plan)
@@ -2798,6 +2874,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return self._get_resting_plan_legacy(
                 agents, exist_replacement, plan, current_resting
             )
+        self._refresh_deferred_product_reservations()
+        reserved_names = self.op_data.reserved_product_replacements
+        if any(name in reserved_names for name in agents):
+            logger.debug("整组含延期切产物换班预留干员，暂缓规划：%s", agents)
+            return
         # 宿舍成员只跟随换班，不以自身心情抢占组内替班或休息优先级。
         dorm_agents = [
             name
@@ -2866,6 +2947,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and not _is_mastery_busy(obj)
                     and obj not in exist_replacement
                     and obj not in __replacement
+                    and obj not in reserved_names
                     and not self.op_data.is_dorm_replacement(obj)
                     and (
                         x.room.startswith("dorm") or replacement.current_room != x.room
@@ -3069,6 +3151,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def queue_product_switches(self):
         """仅为已识别且与当前排班目标不一致的生产站生成任务。"""
+        if not getattr(self.op_data, "experimental_dorm_logic", False):
+            self.tasks[:] = [
+                task
+                for task in self.tasks
+                if not getattr(task, "pending_backup_product_switch", False)
+            ]
         products = getattr(self.op_data, "products", None)
         if products is None:
             return
@@ -3097,8 +3185,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 and task.meta_data.split(",", 1)[0] == room
             ]
             if room in pending_targets:
-                # 切换由关联换班任务执行，防止旧排班在等待无人机时切回去。
-                self.tasks[:] = [task for task in self.tasks if task not in existing]
+                # 关联换班或副表前置任务负责切换，不能被旧排班反向覆盖。
+                obsolete_ids = {
+                    id(task)
+                    for task in existing
+                    if not getattr(task, "pending_backup_product_switch", False)
+                }
+                self.tasks[:] = [
+                    task for task in self.tasks if id(task) not in obsolete_ids
+                ]
                 continue
             state = facility_states.get(room)
             expected_facility = "manufacture" if facility == "制造站" else "trade"
@@ -3190,6 +3285,154 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             projected.swap_plan(conditions)
         return projected.products, projected.plan
 
+    @staticmethod
+    def _plan_for_slots(plan, slots):
+        return {
+            room: [
+                name if (room, index) in slots else "Current"
+                for index, name in enumerate(names)
+            ]
+            for room, names in plan.items()
+            if any((room, index) in slots for index in range(len(names)))
+        }
+
+    def _product_dependent_slots(self, plan, rooms, baseline, projected):
+        """用单人变动及撤销单人变动的反事实找出触发副表的槽位。"""
+        changed = {
+            (room, index)
+            for room, names in plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        }
+        occupants = {
+            (op.current_room, op.current_index): op.name
+            for op in self.op_data.operators.values()
+        }
+        involved = {}
+        for room, index in changed:
+            name = plan[room][index]
+            for operator in (name, occupants.get((room, index))):
+                if operator in self.op_data.operators:
+                    involved.setdefault(operator, set()).add((room, index))
+        held = set()
+        for operator, slots in involved.items():
+            only, _ = self._products_after_arrangement(
+                self._plan_for_slots(plan, slots)
+            )
+            without, _ = self._products_after_arrangement(
+                self._plan_for_slots(plan, changed - slots)
+            )
+            if any(
+                only.get(room) != baseline.get(room)
+                or without.get(room) != projected.get(room)
+                for room in rooms
+            ):
+                held.update(slots)
+                logger.debug("%s的排班动作影响副表产物", operator)
+        return held or changed
+
+    def _reserve_deferred_product_shift(self, task, slots):
+        changed = {
+            (room, index)
+            for room, names in task.plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        }
+        if not changed:
+            return
+        if slots != changed:
+            independent = self._plan_for_slots(task.plan, changed - slots)
+            self.tasks.append(
+                SchedulerTask(
+                    task_plan=independent,
+                    task_type=task.type,
+                    meta_data=task.meta_data,
+                )
+            )
+            task.plan = self._plan_for_slots(task.plan, slots)
+            logger.info("副表依赖的换班槽位延期，其余槽位继续：%s", independent)
+        task.product_shift_locked = True
+        task.product_lock_slots = slots
+        task.product_lock_names = {
+            name
+            for room, names in task.plan.items()
+            for name in names
+            if name in self.op_data.operators
+        }
+        for room, index in slots:
+            if room.startswith("dormitory_"):
+                continue
+            current = self.op_data.get_current_operator(room, index)
+            if current is not None:
+                task.product_lock_names.add(current.name)
+
+    def _deferred_product_locks(self, exclude=None):
+        return [
+            task
+            for task in self.tasks
+            if task is not exclude and getattr(task, "product_shift_locked", False)
+        ]
+
+    def _refresh_deferred_product_reservations(self):
+        if not getattr(self.op_data, "experimental_dorm_logic", False):
+            return
+        locks = self._deferred_product_locks()
+        self.op_data.reserved_product_beds = {
+            (room, index): names[index]
+            for task in locks
+            for room, names in task.plan.items()
+            if room.startswith("dormitory_")
+            for index, name in enumerate(names)
+            if name in self.op_data.operators
+        }
+        self.op_data.reserved_product_replacements = (
+            set().union(*(task.product_lock_names for task in locks))
+            if locks
+            else set()
+        )
+
+    def _defer_conflicting_product_shift_slots(self, task):
+        locks = self._deferred_product_locks(exclude=task)
+        if not locks:
+            return
+        reserved_slots = set().union(*(lock.product_lock_slots for lock in locks))
+        reserved_names = set().union(*(lock.product_lock_names for lock in locks))
+        conflicting = {
+            (room, index)
+            for room, names in task.plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+            and (
+                (room, index) in reserved_slots
+                or name in reserved_names
+                or (current := self.op_data.get_current_operator(room, index))
+                is not None
+                and current.name in reserved_names
+            )
+        }
+        if not conflicting:
+            return
+        changed = {
+            (room, index)
+            for room, names in task.plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        }
+        retry = max(lock.time for lock in locks) + timedelta(seconds=1)
+        if changed - conflicting:
+            blocked = SchedulerTask(
+                time=retry,
+                task_plan=self._plan_for_slots(task.plan, conflicting),
+                task_type=task.type,
+                meta_data=task.meta_data,
+            )
+            self.tasks.append(blocked)
+            task.plan = self._plan_for_slots(task.plan, changed - conflicting)
+            logger.info("与延期换班共享床位或替班的槽位延后：%s", blocked.plan)
+            return
+        delay = max(1, (retry - datetime.now()).total_seconds() / 60)
+        raise ProductSwitchDeferred("床位或替班已为切产物后的换班预留", minutes=delay)
+
     def _switch_products_before_arrangement(self, task):
         """把将由本次换班触发的切产物作为换班的前置操作。"""
         if not getattr(self.op_data, "products", None) and not any(
@@ -3197,10 +3440,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for plan in getattr(self.op_data, "backup_plans", [])
         ):
             return
+        baseline = self.op_data.products
+        experimental = bool(getattr(self.op_data, "experimental_dorm_logic", False))
+        if experimental:
+            baseline, _ = self._products_after_arrangement({})
         products, projected_plan = self._products_after_arrangement(task.plan)
         targets = {}
         switches = []
         for room, target in products.items():
+            if experimental and target == baseline.get(room):
+                continue
             room_plan = projected_plan.get(room) or []
             if not room_plan:
                 continue
@@ -3226,7 +3475,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
         task.pending_product_targets = targets
         logger.info("换班前先切换产物或订单：%s", targets)
-        self.switch_base_products(switches, before_arrangement=True)
+        try:
+            self.switch_base_products(switches, before_arrangement=True)
+        except ProductSwitchDeferred:
+            if experimental:
+                slots = self._product_dependent_slots(
+                    task.plan, targets, baseline, products
+                )
+                self._reserve_deferred_product_shift(task, slots)
+                self._refresh_deferred_product_reservations()
+            raise
         unfinished = {
             room: target
             for room, target in targets.items()
@@ -4014,7 +4272,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if not self.waiting_solver():
                 raise RecognizeError("无人机加速确认后界面未恢复")
 
-    def _select_manufacture_product(self, target_product: str):
+    def _select_manufacture_product(
+        self, target_product: str, confirm_after: datetime | None = None
+    ):
         product = MANUFACTURE_PRODUCTS[target_product]
         self._tap_product_point((1680, 500))
         self._wait_product_resource("manufacture_product_select")
@@ -4026,6 +4286,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         # 更换配方还会二次确认取消旧制造计划。
         self._wait_product_resource("manufacture_product_cancel_confirm")
+        if confirm_after is not None:
+            remaining = (confirm_after - datetime.now()).total_seconds()
+            if remaining > 0:
+                logger.info("在制造计划取消确认页等待%.1f秒后确认", remaining)
+                self.sleep(remaining)
+                self.recog.update()
+                self._wait_product_resource("manufacture_product_cancel_confirm")
         self._tap_product_point((1440, 742))
         self._wait_product_resource("manufacture_product_cancel_confirm", present=False)
 
@@ -4080,6 +4347,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if not 0.1 <= speed <= 10:
             raise RecognizeError(f"制造站生产力无效：{text}")
         return speed
+
+    def _product_switch_drone_plan(self, remaining: int, unit: int, max_loss: int):
+        count, wait = drone_plan(remaining, unit, max_loss)
+        limit = (
+            getattr(
+                getattr(config.conf, "product_switching", None),
+                "max_drones_per_switch",
+                0,
+            )
+            if getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False)
+            else 0
+        )
+        if limit and count > limit:
+            count = limit
+            wait = max(0, remaining - count * DRONE_SECONDS)
+        return count, wait
 
     def _survey_manufacture_switch(self, room: str, target_product: str) -> dict:
         """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
@@ -4141,11 +4424,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if getattr(setting, "grandet_mode", True)
             else DRONE_SECONDS
         )
-        drone_count, wait_seconds = drone_plan(
+        drone_count, wait_seconds = self._product_switch_drone_plan(
             total_seconds, unit_seconds, max_loss_seconds
         )
         natural_only = (
-            getattr(setting, "grandet_mode", True)
+            getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False)
+            and getattr(setting, "grandet_mode", True)
             and not getattr(setting, "use_drones_when_leaving_orirock", True)
             and current_product in {"orirock", "orirock_device"}
             and target_product not in {"orirock", "orirock_device"}
@@ -4196,7 +4480,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     ),
                 )
                 unit = MANUFACTURE_PRODUCTS[item["current_product"]].unit_seconds
-                required += drone_plan(remaining, unit, max_loss)[0]
+                required += self._product_switch_drone_plan(remaining, unit, max_loss)[
+                    0
+                ]
             return required
 
         high = max(
@@ -4268,10 +4554,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else DRONE_SECONDS
         )
         unit_seconds = MANUFACTURE_PRODUCTS[current_product].unit_seconds
-        drone_count, wait_seconds = drone_plan(
+        drone_count, wait_seconds = self._product_switch_drone_plan(
             remaining, unit_seconds, max_loss_seconds
         )
         drone_count = min(drone_count, observation["drone_count"])
+        if getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False):
+            wait_seconds = max(0, remaining - drone_count * DRONE_SECONDS)
         if available_drones < drone_count:
             self._tap_product_point((480, 864))
             raise ProductSwitchDeferred(
@@ -4287,13 +4575,48 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         return wait_seconds
 
-    def _change_manufacture_product(self, observation: dict):
+    def _change_manufacture_product(self, observation: dict, direct=False):
         self._open_manufacture_product_detail(observation["room"])
         current_product = self.read_manufacture_product()
         self._cache_facility_state(observation["room"], "manufacture", current_product)
         if current_product == observation["target_product"]:
             return
-        self._select_manufacture_product(observation["target_product"])
+        confirm_after = None
+        if (
+            getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False)
+            and not direct
+            and not self._manufacture_is_idle()
+        ):
+            try:
+                rate = self._read_manufacture_speed()
+            except MowerExit:
+                raise
+            except Exception as e:
+                logger.warning("切换前重读生产力失败：%s，使用巡检值", e)
+                rate = observation.get("production_rate", 1.0)
+            self._tap_drone_accelerate("manufacture_accelerate", "all_in")
+            current_total = self._read_manufacture_total_seconds()
+            self._tap_product_point((480, 864))
+            boundary = observation["total_seconds"] - observation["current_remaining"]
+            remaining_base = max(0, current_total - boundary)
+            setting = config.conf.product_switching
+            buffer_seconds = (
+                getattr(setting, "waiting_seconds", 2)
+                if getattr(setting, "grandet_mode", True)
+                else 0
+            )
+            wait_seconds = math.ceil(remaining_base / rate) + buffer_seconds
+            lead = self._product_switch_entry_lead_seconds()
+            if wait_seconds > lead:
+                raise ProductSwitchDeferred(
+                    f"{self.translate_room(observation['room'])}当前一份尚需约"
+                    f"{wait_seconds}秒，稍后进入切换确认页",
+                    minutes=max(15, wait_seconds - lead) / 60,
+                )
+            confirm_after = datetime.now() + timedelta(seconds=wait_seconds)
+        self._select_manufacture_product(
+            observation["target_product"], confirm_after=confirm_after
+        )
         self.recog.update()
         final_product = self.read_manufacture_product()
         self._cache_facility_state(observation["room"], "manufacture", final_product)
@@ -4471,7 +4794,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             f"当前可用{available}架"
         )
         insufficient_drones = planned_drones > available
-        allow_direct = getattr(
+        experimental = bool(
+            getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False)
+        )
+        allow_direct = experimental and getattr(
             getattr(config.conf, "product_switching", None),
             "direct_when_drones_insufficient",
             False,
@@ -4499,29 +4825,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 waited_for_drones=True,
             )
 
-        def natural_wait_seconds():
-            now = datetime.now()
-            return max(
+        # 入站时间可以提前，但确认必须在这一份完成之后。无人机上限也会
+        # 增加自然等待时间，过早到站时先延期，不在确认页长时间占用界面。
+        lead = self._product_switch_entry_lead_seconds()
+        now = datetime.now()
+        for item in pending_manufacture if experimental else natural_only:
+            if insufficient_drones and allow_direct and not item.get("natural_only"):
+                continue
+            remaining_base = max(
                 0,
-                max(
-                    math.ceil(
-                        item["current_remaining"] / item.get("production_rate", 1.0)
-                        - max(
-                            0,
-                            (now - item.get("observed_at", now)).total_seconds(),
-                        )
-                    )
-                    for item in natural_only
-                ),
+                item.get("current_remaining", 0) - item["drone_count"] * DRONE_SECONDS,
             )
-
-        if natural_only:
-            natural_wait = natural_wait_seconds()
-            lead = self._product_switch_entry_lead_seconds()
-            if natural_wait > lead:
+            elapsed = max(0, (now - item.get("observed_at", now)).total_seconds())
+            wait_seconds = max(
+                0,
+                math.ceil(remaining_base / item.get("production_rate", 1.0) - elapsed),
+            )
+            if wait_seconds > lead:
                 raise ProductSwitchDeferred(
-                    f"切出源石碎片需等待当前一份自然完成，约{natural_wait}秒后完成",
-                    minutes=max(15, natural_wait - lead) / 60,
+                    f"{self.translate_room(item['room'])}当前一份还需约{wait_seconds}秒，"
+                    "稍后进入切换确认页",
+                    minutes=max(15, wait_seconds - lead) / 60,
                 )
 
         # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
@@ -4570,44 +4894,53 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.translate_room(item["room"]),
                 )
                 direct_switch_rooms.add(item["room"])
-        if waits:
-            setting = getattr(config.conf, "product_switching", None)
-            if getattr(setting, "grandet_mode", True):
-                wait_seconds = max(waits)
-                buffer_seconds = max(0, getattr(setting, "waiting_seconds", 2))
-                self.sleep(wait_seconds + buffer_seconds)
+
+        if not experimental:
+            if waits and config.conf.product_switching.grandet_mode:
+                self.sleep(max(waits) + config.conf.product_switching.waiting_seconds)
                 self.recog.update()
-
-        for observation in accelerated_manufacture:
-            if observation["room"] in direct_switch_rooms:
-                continue
-            if not self._natural_manufacture_unit_finished(observation):
-                raise ProductSwitchDeferred(
-                    f"{self.translate_room(observation['room'])}当前产物尚未完成",
-                    minutes=1,
-                )
-
-        if natural_only:
-            natural_wait = natural_wait_seconds()
-            if natural_wait:
-                buffer_seconds = max(
-                    0,
-                    getattr(config.conf.product_switching, "waiting_seconds", 2),
-                )
-                logger.info("提前进入制造站，等待%d秒完成当前源石碎片", natural_wait)
-                self.sleep(natural_wait + buffer_seconds)
-            for observation in natural_only:
+            for observation in accelerated_manufacture:
+                if observation["room"] in direct_switch_rooms:
+                    continue
                 if not self._natural_manufacture_unit_finished(observation):
                     raise ProductSwitchDeferred(
-                        f"{self.translate_room(observation['room'])}当前源石碎片尚未完成",
+                        f"{self.translate_room(observation['room'])}当前产物尚未完成",
                         minutes=1,
                     )
+            if natural_only:
+                now = datetime.now()
+                natural_wait = max(
+                    0,
+                    max(
+                        math.ceil(
+                            item["current_remaining"] / item.get("production_rate", 1.0)
+                            - max(
+                                0,
+                                (now - item.get("observed_at", now)).total_seconds(),
+                            )
+                        )
+                        for item in natural_only
+                    ),
+                )
+                if natural_wait:
+                    self.sleep(
+                        natural_wait + config.conf.product_switching.waiting_seconds
+                    )
+                for observation in natural_only:
+                    if not self._natural_manufacture_unit_finished(observation):
+                        raise ProductSwitchDeferred(
+                            f"{self.translate_room(observation['room'])}当前源石碎片尚未完成",
+                            minutes=1,
+                        )
 
-        # 所有制造站确认完成后，再切出源石碎片和其他产物。
+        # 每个站各自在取消旧计划的确认页等待，完成约两秒后再点击。
         for observation in natural_only:
             self._change_manufacture_product(observation)
         for observation in accelerated_manufacture:
-            self._change_manufacture_product(observation)
+            if experimental and observation["room"] in direct_switch_rooms:
+                self._change_manufacture_product(observation, direct=True)
+            else:
+                self._change_manufacture_product(observation)
         if before_arrangement:
             for _, observation in task_observations:
                 if observation["facility"] == "trade" and observation["needs_switch"]:

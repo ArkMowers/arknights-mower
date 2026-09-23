@@ -357,6 +357,7 @@ describe('factory product switching policy', () => {
 
     await store.load_config()
     expect(store.product_switching).toEqual({
+      max_drones_per_switch: 0,
       grandet_mode: true,
       use_drones_when_leaving_orirock: true,
       direct_when_drones_insufficient: false,
@@ -364,12 +365,14 @@ describe('factory product switching policy', () => {
       waiting_seconds: 2
     })
 
+    store.product_switching.max_drones_per_switch = 12
     store.product_switching.grandet_mode = false
     store.product_switching.use_drones_when_leaving_orirock = false
     store.product_switching.direct_when_drones_insufficient = true
     store.product_switching.drone_loss_seconds = 45
     store.product_switching.waiting_seconds = 4
     expect(store.build_config().product_switching).toEqual({
+      max_drones_per_switch: 12,
       grandet_mode: false,
       use_drones_when_leaving_orirock: false,
       direct_when_drones_insufficient: true,

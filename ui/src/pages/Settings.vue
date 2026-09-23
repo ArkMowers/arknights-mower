@@ -724,6 +724,20 @@ if (return_home_when_idle.value) {
                 跑单前返回主界面以保持登录状态
               </n-checkbox>
             </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>切产物单次无人机上限</span>
+                <help-text>仅测试宿舍逻辑生效。0 表示不限制；达到上限后等待当前一份自然完成，再确认切换。</help-text>
+              </template>
+              <mower-input-number
+                v-model:value="product_switching.max_drones_per_switch"
+                :disabled="!experimental_dorm_logic"
+                :min="0"
+                :max="200"
+              >
+                <template #suffix>架</template>
+              </mower-input-number>
+            </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="product_switching.grandet_mode">
                 葛朗台切产物
@@ -733,18 +747,18 @@ if (return_home_when_idle.value) {
               </n-checkbox>
             </n-form-item>
             <n-form-item v-if="product_switching.grandet_mode" :show-label="false">
-              <n-checkbox v-model:checked="product_switching.use_drones_when_leaving_orirock">
+              <n-checkbox v-model:checked="product_switching.use_drones_when_leaving_orirock" :disabled="!experimental_dorm_logic">
                 切出源石碎片时使用无人机
                 <help-text>
-                  关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
+                  仅测试宿舍逻辑生效。关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
                 </help-text>
               </n-checkbox>
             </n-form-item>
             <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient">
+              <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient" :disabled="!experimental_dorm_logic">
                 允许无人机不足时直接切换产物
                 <help-text>
-                  开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
+                  仅测试宿舍逻辑生效。开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
                 </help-text>
               </n-checkbox>
             </n-form-item>
@@ -767,9 +781,9 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item>
               <template #label>
-                <span>葛朗台切换等待缓冲</span>
+                <span>葛朗台切产物缓冲时间</span>
                 <help-text>
-                  葛朗台切产物开启时，在计算出的自然完成时间之外额外等待，避免动画或网络延迟导致过早切换。
+                  测试宿舍逻辑开启时，当前一份完成后在制造计划取消确认页等待这段时间再确认；关闭时沿用原有等待流程。默认 2 秒。
                 </help-text>
               </template>
               <mower-input-number
