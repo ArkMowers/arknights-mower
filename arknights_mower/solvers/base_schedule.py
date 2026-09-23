@@ -895,7 +895,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.skip()
                     elif get_time:
                         generated_tasks = []
-                        if self.op_data.experimental_dorm_logic:
+                        if getattr(self.op_data, "experimental_dorm_logic", False):
                             if not self.backup_plan_solver(
                                 generated_tasks=generated_tasks,
                             ):
@@ -964,7 +964,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.tasks
                     and self.tasks[0].type in [TaskTypes.SHIFT_ON]
                 ):
-                    if self.op_data.experimental_dorm_logic:
+                    if getattr(self.op_data, "experimental_dorm_logic", False):
                         self.backup_plan_solver()
                     else:
                         self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
@@ -2421,7 +2421,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     _REST_TIER_REPLACEMENT = 3
 
     def _resting_tier(self, op):
-        if self.op_data.experimental_dorm_logic:
+        if getattr(self.op_data, "experimental_dorm_logic", False):
             return resting_tier(self.op_data, op.name)
         if op.is_workshop():
             return 4
@@ -5760,7 +5760,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         finished = False
         choose_error = 0
         checked = False
+        reconcile_after_confirmation = False
         while not finished:
+            confirmation_pending = False
             try:
                 error_count = 0
                 if not skip_enter:
@@ -5839,6 +5841,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 self.back()
                                 return new_plan
                 self.turn_on_room_detail(room)
+                if reconcile_after_confirmation:
+                    actual = [
+                        item["agent"] for item in self.get_agent_from_room(room)
+                    ]
+                    reconcile_after_confirmation = False
+                    if len(actual) == len(plan[room]) and all(
+                        current == target or target == "Free"
+                        for current, target in zip(actual, plan[room])
+                    ):
+                        logger.info(
+                            f"{room} 确认后实际驻员已符合目标，结束排班"
+                        )
+                        finished = True
+                        if room in getattr(self.task, "dorm_recovery_restore", []):
+                            self.task.dorm_recovery_restore.remove(room)
+                        del plan[room]
+                        break
                 error_count = 0
                 if not checked:
                     if (
@@ -5883,6 +5902,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if plan[room] != self.op_data.get_current_room(room):
                             self.refresh_run_order_time(room)
                 checked = True
+                confirmation_pending = True
                 recovery_ordered = self.ensure_dorm_recovery_order(
                     room, plan[room], fast_mode=choose_error <= 0
                 )
@@ -5912,6 +5932,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             )
                         else:
                             self.choose_agent(plan[room], room, choose_error <= 0)
+                        confirmation_pending = True
                         self.tap_confirm(room, new_plan)
                     read_time_index = []
                     related_operators = {}
@@ -5983,9 +6004,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.recog.update()
                 if "检测到漏单！" in str(e):
                     return {}
+                if confirmation_pending:
+                    reconcile_after_confirmation = True
                 if choose_error > 3:
                     raise e
-                if "检测到安排干员未成功" in str(e):
+                if (
+                    "检测到安排干员未成功" in str(e)
+                    and not reconcile_after_confirmation
+                ):
                     skip_enter = True
                     continue
                 back_count = 0

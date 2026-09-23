@@ -292,6 +292,28 @@ def test_restore_failure_retries_without_repeating_successful_clear(solver):
     assert solver.confirms == [["杜林", "琴柳", "银灰", "", ""], FINAL]
 
 
+def test_confirmation_error_reconciles_already_arranged_room(solver):
+    confirm = solver.tap_confirm.side_effect
+    calls = 0
+
+    def arrange_then_fail(room, new_plan):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            confirm(room, new_plan)
+            raise RuntimeError("post-confirm read failed")
+        return confirm(room, new_plan)
+
+    solver.tap_confirm.side_effect = arrange_then_fail
+    solver.detect_room = MagicMock(return_value=ROOM)
+
+    arrange(solver)
+
+    assert solver.confirms == [["杜林", "琴柳", "银灰", "", ""], FINAL]
+    assert solver.choose_agent.call_count == 2
+    assert solver.task.plan == {}
+
+
 def test_shadow_rebuild_and_pickle_preserve_cycle(solver):
     arrange(solver)
     target = solver.op_data.operators["银灰"]
