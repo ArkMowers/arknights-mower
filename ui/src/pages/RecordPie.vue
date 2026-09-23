@@ -1,6 +1,17 @@
 <template>
   <div>
     <h1 class="page-title">工作休息比例报表</h1>
+    <mood-order-controls
+      :group-options="groupOptions"
+      :operator-options="operatorOptions"
+      :pinned-groups="moodPrefs.pinnedGroups"
+      :pinned-operators="moodPrefs.pinnedOperators"
+      @update:pinned-groups="setPinnedGroups"
+      @update:pinned-operators="setPinnedOperators"
+    />
+    <p v-if="hasPriorities" class="order-note">
+      有置顶条件时暂停拖动；清空置顶条件后可以继续手动排列编组。
+    </p>
     <div style="text-align: center; display: flex; justify-content: center; margin-bottom: 20px">
       <n-date-picker
         v-model:value="selectedTime"
@@ -27,21 +38,28 @@
       responsive="screen"
     >
       <n-gi
-        v-for="(groupData, index) in reportData"
-        :key="index"
+        v-for="groupData in orderedReportData"
+        :key="groupData.groupName"
         class="report-card"
-        draggable="true"
+        :draggable="!hasPriorities"
         @dragover.prevent
         @dragenter.prevent
-        @dragstart="onDragStart(index, $event)"
-        @drop="onDrop(index, $event)"
-        @dragend="saveOrder"
+        @dragstart="onDragStart(groupData.groupName, $event)"
+        @drop="onDrop(groupData.groupName, $event)"
       >
-        <n-button type="info" secondary class="button_class" @click="handleClick(index)">{{
-          groupData.groupName
-        }}</n-button>
-        <Pie v-if="!showCard[index]" :data="groupData.work_break_group" :options="pieOptions" />
-        <n-card v-if="showCard[index]" style="margin-top: 10px">
+        <n-button
+          type="info"
+          secondary
+          class="button_class"
+          @click="handleClick(groupData.groupName)"
+          >{{ groupData.groupName }}</n-button
+        >
+        <Pie
+          v-if="!showCard[groupData.groupName]"
+          :data="groupData.work_break_group"
+          :options="pieOptions"
+        />
+        <n-card v-if="showCard[groupData.groupName]" style="margin-top: 10px">
           <div
             class="text_agent"
             v-for="(agent_work, index2) in groupData.moodData.datasets"
@@ -67,7 +85,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import MoodOrderControls from '@/components/MoodOrderControls.vue'
+import {
+  normalizeMoodPreferences,
+  orderMoodGroups,
+  readMoodPreferences,
+  reorderedGroupNames,
+  saveMoodPreferences
+} from '@/utils/mood_order'
 import { Pie } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
@@ -104,17 +130,41 @@ ChartJS.register(
   ArcElement,
   ChartDataLabels
 )
-// Mock report data
 const reportData = ref([])
+const moodPrefs = ref(normalizeMoodPreferences())
+const orderedReportData = computed(() => orderMoodGroups(reportData.value, moodPrefs.value))
+const hasPriorities = computed(
+  () => moodPrefs.value.pinnedGroups.length > 0 || moodPrefs.value.pinnedOperators.length > 0
+)
+const groupOptions = computed(() =>
+  [...new Set(reportData.value.map((item) => item.groupName))].map((name) => ({
+    label: name,
+    value: name
+  }))
+)
+const operatorOptions = computed(() =>
+  [
+    ...new Set(
+      reportData.value.flatMap((item) => item.moodData?.datasets?.map((d) => d.label) ?? [])
+    )
+  ]
+    .filter(Boolean)
+    .map((name) => ({ label: name, value: name }))
+)
+
+function setPinnedGroups(names) {
+  moodPrefs.value = normalizeMoodPreferences({ ...moodPrefs.value, pinnedGroups: names })
+  saveMoodPreferences(window.localStorage, moodPrefs.value)
+}
+
+function setPinnedOperators(names) {
+  moodPrefs.value = normalizeMoodPreferences({ ...moodPrefs.value, pinnedOperators: names })
+  saveMoodPreferences(window.localStorage, moodPrefs.value)
+}
+
 onMounted(async () => {
+  moodPrefs.value = readMoodPreferences(window.localStorage)
   reportData.value = await getMoodRatios()
-  // 读取本地持久化的顺序数据
-  const savedOrder = JSON.parse(localStorage.getItem('reportDataOrder') || '[]')
-  if (savedOrder.length) {
-    reportData.value.sort((a, b) => {
-      return savedOrder.indexOf(a.groupName) - savedOrder.indexOf(b.groupName)
-    })
-  }
   reportData.value.forEach((i) => {
     i.moodData.datasets.forEach((item) => {
       // 是一个数组，里面有x,y两个值，x是时间戳，y是心情值，对其遍历，如果y小于前一个值的y，说明在工作，反之说明在休息
@@ -233,40 +283,28 @@ const clearData = async () => {
   }
 }
 
-const onDragStart = (index, event) => {
-  event.dataTransfer.setData('text/plain', index)
-}
-
-const onDrop = (index, event) => {
-  const draggedIndex = parseInt(event.dataTransfer.getData('text/plain'))
-  if (draggedIndex !== index) {
-    // Swap the two items
-    const temp = reportData.value[index]
-    reportData.value[index] = reportData.value[draggedIndex]
-    reportData.value[draggedIndex] = temp
-
-    // 交换卡片同时交换展示的状态
-    const tempShow = showCard.value[index]
-    showCard.value[index] = showCard.value[draggedIndex]
-    showCard.value[draggedIndex] = tempShow
+const onDragStart = (groupName, event) => {
+  if (hasPriorities.value) {
+    event.preventDefault()
+    return
   }
-  event.preventDefault()
-}
-const saveOrder = () => {
-  // 保存顺序到本地存储或服务器
-  localStorage.setItem(
-    'reportDataOrder',
-    JSON.stringify(reportData.value.map((item) => item.groupName))
-  )
-  console.log(
-    '保存顺序:',
-    reportData.value.map((item) => item.groupName)
-  )
+  event.dataTransfer.setData('text/plain', groupName)
+  event.dataTransfer.effectAllowed = 'move'
 }
 
-const showCard = ref(reportData.value.map(() => false))
-function handleClick(index) {
-  showCard.value[index] = !showCard.value[index]
+const onDrop = (groupName, event) => {
+  event.preventDefault()
+  if (hasPriorities.value) return
+  const draggedName = event.dataTransfer.getData('text/plain')
+  const names = reorderedGroupNames(orderedReportData.value, draggedName, groupName)
+  if (!names.includes(draggedName) || draggedName === groupName) return
+  moodPrefs.value = { ...moodPrefs.value, groupOrder: names }
+  saveMoodPreferences(window.localStorage, moodPrefs.value)
+}
+
+const showCard = ref({})
+function handleClick(groupName) {
+  showCard.value[groupName] = !showCard.value[groupName]
 }
 </script>
 
@@ -274,6 +312,13 @@ function handleClick(index) {
 .button_class {
   margin-top: 40px;
   margin-bottom: 10px;
+}
+
+.order-note {
+  margin: -10px 0 14px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.7;
 }
 
 .page-title {
