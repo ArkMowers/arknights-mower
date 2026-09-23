@@ -387,7 +387,7 @@ def simulate(saved, restart_after_mood_read=False):
         return
     validation_msg = base_scheduler.op_data.validate_backup_plans()
     if not validation_msg["success"]:
-        logger.error(f"备用计划验证失败: {validation_msg['message']}")
+        logger.error(f"排班验证失败: {validation_msg['message']}")
         return
     _apply_version_update_resting_threshold(
         NewsChecker.get_maintenance(), base_scheduler
