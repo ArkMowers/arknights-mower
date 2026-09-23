@@ -4231,7 +4231,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             self.sleep()
 
-    def choose_train(self, agents: list[str], fast_mode=True):
+    def choose_train(self, agents: list[str], fast_mode=True, choose_error=0):
         tasks = ["scan"]
         select_targets = []
         unknown_cnt = 0
@@ -4314,9 +4314,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             continue
                         # #53：选人用 desired[idx]（Current 已替换为实际干员名），
                         # 不能用 agents[idx]——否则 Current 会被当干员名选人、必然失败
-                        self.choose_agent([desired[idx]], "train", fast_mode)
+                        if choose_error:
+                            self.choose_agent(
+                                [desired[idx]],
+                                "train",
+                                fast_mode,
+                                choose_error=choose_error,
+                            )
+                        else:
+                            self.choose_agent([desired[idx]], "train", fast_mode)
                     else:
-                        self.choose_train_ope(desired[idx])
+                        if choose_error:
+                            self.choose_train_ope(
+                                desired[idx], choose_error=choose_error
+                            )
+                        else:
+                            self.choose_train_ope(desired[idx])
                     self.tap_confirm("train")
                     select_targets.pop(0)
                     if select_targets:
@@ -4325,7 +4338,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 self.back_to_infrastructure()
 
-    def choose_train_ope(self, ope: str):
+    def choose_train_ope(self, ope: str, choose_error=0):
         found = False
         profession = "ALL"
         if ope != "阿米娅" and ope not in ["Current", "Free"]:
@@ -4356,6 +4369,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 and right_swipe >= 3
                 and ret == previous_page
             ):
+                if choose_error >= 2:
+                    logger.warning(
+                        f"训练位干员列表中未找到 ['{ope}']，请检查是否为 ['{ope}'] 设置了特别关注"
+                    )
+                if hasattr(self, "choose_error") and self.choose_error is not None:
+                    self.choose_error.add(ope)
                 raise AgentSelectionNotReady("训练干员列表已到末尾，返回房间重试")
             previous_page = ret
             moved, observation = self.swipe_agent_page(
@@ -4537,6 +4556,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         fast_mode=True,
         train_index=0,
         preserve_dorm_occupants=False,
+        choose_error=0,
     ) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
@@ -4767,7 +4787,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and right_swipe >= 3
                     and ret == previous_page
                 ):
-                    self.choose_error.add(agent[0])
+                    if choose_error >= 2:
+                        if room == "train":
+                            logger.warning(
+                                f"训练位干员列表中未找到 ['{agent[0]}']，请检查是否为 ['{agent[0]}'] 设置了特别关注"
+                            )
+                    if hasattr(self, "choose_error") and self.choose_error is not None:
+                        self.choose_error.add(agent[0])
                     raise AgentSelectionNotReady("干员列表已到末尾，返回房间重试")
                 previous_page = ret
                 moved, observation = self.swipe_agent_page(
@@ -5067,12 +5093,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.scroll_room_operators(bottom=True)
                 swiped = True
             data = {}
-            if self.find("infra_no_operator", scope=name_p[i]):
-                _name = ""
-            else:
+            _name = ""
+            for read_try in range(3):
+                if self.find("infra_no_operator", scope=name_p[i]):
+                    _name = ""
+                    break
                 _name = self.read_screen(
                     cropimg(self.recog.gray, name_p[i]), type="name"
                 )
+                if _name != "":
+                    break
+                if read_try < 2:
+                    logger.debug(
+                        f"房间 {room} 第 {i + 1} 槽位干员未识别或置信度过低，等待 0.25s 原地重试 ({read_try + 1}/2)"
+                    )
+                    self.sleep(0.25)
+                    self.recog.update()
             _mood = 24
             # 如果房间不为空
             update_time = False
@@ -5516,17 +5552,72 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 recovery_ordered = self.ensure_dorm_recovery_order(
                     room, plan[room], fast_mode=choose_error <= 0
                 )
-                current_room = self.op_data.get_current_room(room, True)
-                same = len(plan[room]) == len(current_room)
-                if same:
-                    for item1, item2 in zip(plan[room], current_room):
-                        if item1 != item2:
-                            same = False
+                read_time_index = []
+                related_operators = {}
+                fia_arrangement = (
+                    self.task is not None
+                    and self.task.type == TaskTypes.FIAMMETTA
+                    and "菲亚梅塔" in plan[room]
+                )
+                if fia_arrangement:
+                    fia_index = plan[room].index("菲亚梅塔")
+                    # 菲亚梅塔的读数代表目标交换前心情；目标自身的
+                    # 读数代表交换后心情，两点在历史曲线上相差一秒。
+                    read_time_index.append(fia_index)
+                    if self.task is not None and self.task.meta_data:
+                        related_operators[fia_index] = self.task.meta_data
+                        if self.task.meta_data in plan[room]:
+                            read_time_index.append(
+                                plan[room].index(self.task.meta_data)
+                            )
+                    read_time_index = sorted(set(read_time_index))
+                    logger.info("肥鸭换入完成，读取交换后心情")
+                elif get_time or recovery_ordered:
+                    refresh_indexes = self.op_data.get_refresh_index(room, plan[room])
+                    if recovery_ordered:
+                        refresh_indexes = [
+                            i
+                            for i, slot in enumerate(self.op_data.plan[room])
+                            if slot.agent == "Free"
+                        ]
+                    read_time_index = list(
+                        dict.fromkeys([*read_time_index, *refresh_indexes])
+                    )
+
+                if choose_error > 0:
+                    if len(new_plan) > 1:
+                        self.op_data.operators["菲亚梅塔"].time_stamp = None
+                        self.op_data.operators[plan[room][0]].time_stamp = None
+                    if related_operators:
+                        current = self.get_agent_from_room(
+                            room, read_time_index, related_operators
+                        )
+                    else:
+                        current = self.get_agent_from_room(room, read_time_index)
+                    same = True
+                    for idx, name in enumerate(plan[room]):
+                        if current[idx]["agent"] != name and name != "Free":
+                            if not (room == "train" and idx == 1):
+                                same = False
+                                break
+                    if same:
+                        logger.info(f"重试复核发现 {room} 目标干员已在岗并完成采样")
+                else:
+                    current_room = self.op_data.get_current_room(room, True)
+                    same = len(plan[room]) == len(current_room)
+                    if same:
+                        for item1, item2 in zip(plan[room], current_room):
+                            if item1 != item2:
+                                same = False
                 if not same:
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
-                        self.choose_train(plan[room], choose_error <= 0)
+                        self.choose_train(
+                            plan[room],
+                            fast_mode=choose_error <= 0,
+                            choose_error=choose_error,
+                        )
                     else:
                         while self.find("confirm_blue") is None:
                             if error_count > 3:
@@ -5537,44 +5628,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.choose_agent(
                                 plan[room],
                                 room,
-                                choose_error <= 0,
+                                fast_mode=choose_error <= 0,
                                 preserve_dorm_occupants=True,
+                                choose_error=choose_error,
                             )
                         else:
-                            self.choose_agent(plan[room], room, choose_error <= 0)
+                            self.choose_agent(
+                                plan[room],
+                                room,
+                                fast_mode=choose_error <= 0,
+                                choose_error=choose_error,
+                            )
                         self.tap_confirm(room, new_plan)
-                    read_time_index = []
-                    related_operators = {}
-                    fia_arrangement = (
-                        self.task.type == TaskTypes.FIAMMETTA
-                        and "菲亚梅塔" in plan[room]
-                    )
-                    if fia_arrangement:
-                        fia_index = plan[room].index("菲亚梅塔")
-                        # 菲亚梅塔的读数代表目标交换前心情；目标自身的
-                        # 读数代表交换后心情，两点在历史曲线上相差一秒。
-                        read_time_index.append(fia_index)
-                        if self.task.meta_data:
-                            related_operators[fia_index] = self.task.meta_data
-                            if self.task.meta_data in plan[room]:
-                                read_time_index.append(
-                                    plan[room].index(self.task.meta_data)
-                                )
-                        read_time_index = sorted(set(read_time_index))
-                        logger.info("肥鸭换入完成，读取交换后心情")
-                    elif get_time or recovery_ordered:
-                        refresh_indexes = self.op_data.get_refresh_index(
-                            room, plan[room]
-                        )
-                        if recovery_ordered:
-                            refresh_indexes = [
-                                i
-                                for i, slot in enumerate(self.op_data.plan[room])
-                                if slot.agent == "Free"
-                            ]
-                        read_time_index = list(
-                            dict.fromkeys([*read_time_index, *refresh_indexes])
-                        )
                     if len(new_plan) > 1:
                         self.op_data.operators["菲亚梅塔"].time_stamp = None
                         self.op_data.operators[plan[room][0]].time_stamp = None
@@ -5591,7 +5656,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     f"检测到的干员{current[idx]['agent']},需要安排的干员{name}"
                                 )
                                 raise Exception("检测到安排干员未成功")
-                else:
+                elif choose_error == 0:
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                 finished = True
                 skip_enter = False
