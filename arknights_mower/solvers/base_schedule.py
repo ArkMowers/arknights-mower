@@ -123,7 +123,7 @@ def _is_mastery_busy(operator_name: str) -> bool:
         return False
 
 
-def _stop_if_scheduled_trainee(trainee: str) -> None:
+def _stop_if_scheduled_trainee(solver, trainee: str, *, detail_open=False) -> None:
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     reason = trainee_schedule_conflict(trainee)
@@ -138,6 +138,19 @@ def _stop_if_scheduled_trainee(trainee: str) -> None:
         send_message(message, level="WARNING")
     except Exception as exc:
         logger.warning(f"训练室排班冲突通知发送失败: {exc}")
+    # 通用心情读取停在进驻详情浮窗；先关浮窗，再退出训练室。
+    try:
+        if detail_open:
+            solver.back()
+        solver.back()
+    except Exception as exc:
+        logger.warning(f"训练室排班冲突后退出房间失败: {exc}")
+    try:
+        from arknights_mower.solvers.record import save_current_state
+
+        save_current_state()
+    except Exception as exc:
+        logger.warning(f"训练室排班冲突后保存状态失败: {exc}")
     config.stop_mower.set()
     raise MowerExit
 
@@ -239,7 +252,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.local_operation_followup_time = None
         self.restart_after_mood_read = False
         self.train_room_state = None
-        self._scan_training_room_during_mood = True
 
     def find_next_task(
         self,
@@ -1065,8 +1077,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         # 每轮心情刷新都把训练室纳入扫描；房间级 2.5 小时限频避免调度循环反复进房。
         # 即使训练室静态排班为空，也要发现用户手动专精占用的工作干员。
-        if getattr(self, "_scan_training_room_during_mood", False) is True:
-            need_read.add("train")
+        need_read.add("train")
 
         for room in need_read:
             if room == "train":
@@ -1116,10 +1127,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     self, enter=False, want_mood=True
                                 )
                                 self.train_room_state = room_state
-                                trainee = room_state.train_slot or getattr(
-                                    room_state.panel, "operator_name", ""
-                                )
-                                _stop_if_scheduled_trainee(trainee)
+                                if room_state.read_failed or room_state.state not in (
+                                    "empty",
+                                    "training",
+                                    "waiting_collect",
+                                ):
+                                    logger.warning(
+                                        "训练室房态读取不可信，本轮跳过训练位排班冲突判定"
+                                    )
+                                else:
+                                    trainee = room_state.train_slot or getattr(
+                                        room_state.panel, "operator_name", ""
+                                    )
+                                    _stop_if_scheduled_trainee(self, trainee)
                                 mood_info = [
                                     f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                     for item in mood_data
@@ -1152,7 +1172,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 if len(_mood_data) > 1
                                 else ""
                             )
-                            _stop_if_scheduled_trainee(trainee)
+                            _stop_if_scheduled_trainee(self, trainee, detail_open=True)
                             mood_info = [
                                 f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                 for item in _mood_data

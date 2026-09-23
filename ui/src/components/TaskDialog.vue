@@ -128,9 +128,9 @@ async function saveTasks() {
       msg.value = `已添加 ${mastery_operator.value} 技能${mastery_skill.value} 专${mastery_target_level.value} 计划`
       error.value = false
       if (results[0].warning) message.warning(results[0].warning)
-    } else if (results[0]?.status === 'existing' || results[0]?.status === 'insufficient') {
+    } else if (['existing', 'insufficient', 'deferred'].includes(results[0]?.status)) {
       // 后端按 (干员, 技能) 拦重复：已有计划不再新建一行，直接复用那条去派发。
-      // 材料不足也明说，不再白建一行后回「已添加」。两者都不是错误，用绿字。
+      // 材料不足或排班冲突时展示暂缓原因；计划已保存，两者都不是创建错误。
       msg.value = results[0].reason || '已在计划中，已安排立即开始'
       error.value = false
     } else {

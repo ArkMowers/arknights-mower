@@ -116,7 +116,7 @@
 
 ### 2.4 幂等更新与通知去重
 - 数据库的所有状态变更必须通过统一入口函数完成，禁止零散的裸 SQL 写入。
-- 针对用户的所有邮件与系统通知，均需通过 `mastery_notify` 表并结合特定业务维度的去重键（`dedup_key`）进行去重，确保同类型事件在单次生命周期内至多发送一次。
+- 专精计划生命周期通知通过 `mastery_notify` 表按业务维度的去重键（`dedup_key`）去重。训练室心情扫描触发的全局停机告警不关联计划，每次重启后再次命中时仍会发送。
 
 ---
 
@@ -493,7 +493,7 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 
 - **推荐门槛**：干员已提升至精英二阶（`evolvePhase >= 2`），且技能当前等级尚未达到专三。
 - **目标等级对齐**：所有推荐与创建入口（Web UI、Agent 工具）统一默认目标等级为专三（`target_level = 3`）。
-- **整链材料核算**：从当前专精等级提升至目标等级所需的全部精英材料与技巧概要实行链路级汇总。在自动排程（`auto_schedule_mastery_tasks`）计算中，按计划优先级顺序扣减虚拟仓库库存，只有**整条升级链所需全部材料库存均满足**时，计划才被标记为 `scheduled`。
+- **整链材料核算**：从当前专精等级提升至目标等级所需的全部精英材料与技巧概要实行链路级汇总。在自动排程（`auto_schedule_mastery_tasks`）计算中，按计划优先级顺序扣减虚拟仓库库存，只有**整条升级链所需全部材料库存均满足**、且被训练干员不在非训练室排班中时，计划才被标记为 `scheduled`。排班冲突时计划保持 `idle`，不立即补排任务；用户解除冲突后，由下一次仓库扫描重新评估并派发，等待时间取决于仓库扫描调度。开训前复核发现冲突时也遵循相同规则。
 
 ### 9.2 加工站自动备料联动
 
@@ -518,7 +518,7 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 | HTTP 路由 | 方法 | 功能描述 | 请求参数 / 载荷规范 | 响应结构 |
 |---|---|---|---|---|
 | `/mastery-plan` | `GET` | 获取计划列表与历史记录 | 无 | `{"plans": [...], "history": [...]}` |
-| `/mastery-plan` | `POST` | 创建专精计划并尝试即时派发 | `{"items": [{"name": str, "skill_index": int, "target_level": int, "support_mode": "auto"\|"route"}]}` 或扁平字典 `{"干员名": skill_index}` | `{"results": [{"key": str, "status": "added"\|"existing"\|"insufficient"\|"error", "id": int, "reason": str}]}`。`added` = 新建并派发；`existing` = 该技能已有计划，未新建（`reason` 说明是已在计划中 / 已在训练中 / 此前失败已重新排入待执行）；`insufficient` = 材料不足，暂不开始；`error` = 校验失败，`reason` 为原因 |
+| `/mastery-plan` | `POST` | 创建专精计划并尝试即时派发 | `{"items": [{"name": str, "skill_index": int, "target_level": int, "support_mode": "auto"\|"route"}]}` 或扁平字典 `{"干员名": skill_index}` | `{"results": [{"key": str, "status": "added"\|"existing"\|"insufficient"\|"deferred"\|"error", "id": int, "reason": str}]}`。`added` = 新建并派发；`existing` = 该技能已有计划，未新建（`reason` 说明是已在计划中 / 已在训练中 / 此前失败已重新排入待执行）；`insufficient` = 材料不足，暂不开始；`deferred` = 排班冲突，`reason` 给出冲突房间，待下次仓库扫描重试；`error` = 校验失败，`reason` 为原因 |
 | `/mastery-plan` | `DELETE` | 删除指定计划并清空残留调度 | `{"id": int}`（强类型校验，拒绝非整数与布尔值） | `{"status": "ok"}` |
 | `/mastery-plan/order` | `PATCH` | 批量更新计划优先级 | `[{"id": int, "priority": int}]` | `{"status": "ok"}` |
 | `/mastery-plan/supports` | `GET` | 获取可用协助者与中枢加成推导 | 无 | `{"operators": [{"name": str, "blocked": [str]}], "central_bonus": int}` |
@@ -530,7 +530,7 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 
 ### 10.2 统一通知矩阵
 
-系统统一定义了 11 类通知，通过 `mastery_notify` 表实施去重，确保业务生命周期内绝不重复打扰：
+专精计划相关通知通过 `mastery_notify` 表去重，确保同一事件在计划生命周期内不重复发送。训练室心情扫描发现正在训练的干员与排班冲突时属于停机告警，不关联某条专精计划；每次启动后再次发现冲突都会发送 WARNING。
 
 | 编号 | 通知类型 (`notify_type`) | 触发时机 | 级别 | 去重键格式 (`dedup_key`) | 核心内容 |
 |---|---|---|---|---|---|
@@ -545,6 +545,7 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 | ⑨ | `support_swap` | 逐计划协助换人执行失败或减半时长累计不足 | WARNING | `{plan_id}:{level}` | 提示特定阶段换人失败，已降级保全正常收取 |
 | ⑩ | `arrange_error` | 安排训练中途抛出异常（`MowerExit` 除外），计划仍停在 `arranging` | ERROR | `str(plan_id)` | 提示本次安排失败并附异常原文，状态已置失败、待仓库扫描重试 |
 | ⑪ | `collect_schedule` | 训练已开始后，到点收取任务没排上 | WARNING | `str(plan_id)` | 提示少了一次到点收取，稍后进训练室会顺路收取（训练本身不受影响） |
+| ⑫ | `trainee_schedule_conflict` | 开训前复核发现被训练干员占用非训练室排班 | WARNING | `str(plan_id)` | 计划保持 `idle`，同一计划只通知一次；解除冲突后等待下次仓库扫描派发 |
 
 ---
 

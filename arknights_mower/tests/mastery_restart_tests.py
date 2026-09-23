@@ -125,7 +125,6 @@ class MasteryRestartTests(unittest.TestCase):
         solver.task = None
         solver.tasks = []
         solver.last_train_mood_read = None
-        solver._scan_training_room_during_mood = True
         names = ["协助干员", "测试干员"][: count or 0]
         solver.op_data.plan = (
             {}
@@ -255,7 +254,7 @@ class MasteryRestartTests(unittest.TestCase):
         mastery_db.update_plan_status(self.plan_id, "completed")
         room = reader.RoomState(
             state="training",
-            panel=reader.RoomPanel(operator_name="测试干员"),
+            panel=reader.RoomPanel(operator_name="面板干员"),
             train_slot="测试干员",
             slots_reliable=True,
         )
@@ -267,16 +266,67 @@ class MasteryRestartTests(unittest.TestCase):
                 mastery_support_data,
                 "trainee_schedule_conflict",
                 return_value="测试干员 出现在非训练室排班（room_1_1），不能进行专精训练",
-            ),
+            ) as conflict,
             patch.object(base_schedule.config, "stop_mower", stop),
             patch.object(base_schedule, "send_message") as notify,
+            patch.object(record, "save_current_state") as save,
         ):
+            solver = self.mood_solver()
+            solver.back.side_effect = lambda: self.assertFalse(stop.is_set())
             with self.assertRaises(MowerExit):
-                self.read_mood(self.mood_solver())
+                self.read_mood(solver)
         self.assertTrue(stop.is_set())
+        conflict.assert_called_once_with("测试干员")
         notify.assert_called_once()
         self.assertIn("已停止 Mower", notify.call_args.args[0])
+        solver.back.assert_called_once_with()
+        save.assert_called_once_with()
         reconcile.assert_not_called()
+
+    def test_mood_scan_does_not_stop_on_failed_room_read(self):
+        solver = self.mood_solver()
+        with (
+            patch.object(
+                reader, "_settle_in_room", return_value=reader.Scene.TRAIN_MAIN
+            ),
+            patch.object(
+                reader,
+                "read_main_panel",
+                return_value=reader.RoomPanel(operator_name="测试干员"),
+            ),
+            patch.object(reader, "_classify_panel", return_value="ocr_fail"),
+            patch.object(reader, "reconcile_short"),
+            patch.object(mastery_support_data, "trainee_schedule_conflict") as conflict,
+        ):
+            self.read_mood(solver)
+        conflict.assert_not_called()
+        self.assertTrue(solver.train_room_state.read_failed)
+        solver.back.assert_called_once_with()
+
+    def test_mood_scan_closes_detail_before_stop_when_mastery_disabled(self):
+        solver = self.mood_solver()
+        solver.get_agent_from_room.return_value = [
+            {"agent": "协助干员", "mood": 24},
+            {"agent": "测试干员", "mood": 24},
+        ]
+        stop = Event()
+        solver.back.side_effect = lambda: self.assertFalse(stop.is_set())
+        with (
+            patch.object(reader.config.conf, "enable_mastery", False),
+            patch.object(
+                mastery_support_data,
+                "trainee_schedule_conflict",
+                return_value="测试干员 出现在非训练室排班（room_1_1）",
+            ) as conflict,
+            patch.object(base_schedule.config, "stop_mower", stop),
+            patch.object(base_schedule, "send_message"),
+            patch.object(record, "save_current_state"),
+        ):
+            with self.assertRaises(MowerExit):
+                self.read_mood(solver)
+        conflict.assert_called_once_with("测试干员")
+        self.assertEqual(solver.back.call_count, 2)
+        self.assertTrue(stop.is_set())
 
     def test_finished_training_is_collected_with_empty_queue(self):
         mastery_db.update_plan_status(self.plan_id, "waiting_collect")

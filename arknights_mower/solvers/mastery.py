@@ -755,7 +755,14 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
     _warn_training_room_group(plan)
 
-    schedule_conflict = trainee_schedule_conflict(_plan_char_label(plan))
+    trainee = _plan_char_label(plan)
+    if not trainee or trainee == plan["char_id"]:
+        logger.warning(
+            f"[mastery] 暂不开始训练：无法解析 {plan['char_id']} 的干员名，"
+            "排班冲突未复核；请更新游戏资源后重试"
+        )
+        return
+    schedule_conflict = trainee_schedule_conflict(trainee)
     if schedule_conflict:
         logger.warning(f"[mastery] 暂不开始训练：{schedule_conflict}")
         try:

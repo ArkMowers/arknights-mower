@@ -947,7 +947,7 @@ async function toggleSkillPlan(op, rec, draft = false) {
         plan.value[k] = true
         await refreshPlanFromServer()
         message.success(results[0]?.reason || '已在计划中，已安排立即开始')
-      } else if (results[0]?.status === 'insufficient') {
+      } else if (results[0]?.status === 'insufficient' || results[0]?.status === 'deferred') {
         message.warning(results[0]?.reason || '材料不足，暂不开始')
       } else {
         message.warning(results[0]?.reason || '添加失败')
@@ -1012,7 +1012,7 @@ async function addAllToPlan(op, draft = false) {
         // #65：target_level 由服务端默认专三（与推荐一致）
         planStatus.value[k] = { id: res.id, status: 'idle', target_level: 3, priority: 0 }
         if (res.status === 'existing') infos.push(res.reason || '已在计划中')
-      } else if (res.status === 'insufficient') {
+      } else if (res.status === 'insufficient' || res.status === 'deferred') {
         infos.push(`${rec.skill_index + 1}技能：${res.reason || '材料不足，暂不开始'}`)
       } else {
         errs.push(res.reason || '添加失败')
@@ -1072,8 +1072,8 @@ async function savePlanFn() {
     if (err.length) {
       message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
     } else {
-      // 材料不足的项同样没排上，别静默当成全部保存成功
-      const poor = results.filter((x) => x.status === 'insufficient')
+      // 材料不足和排班冲突的项都没排上，展示服务端返回的真实原因
+      const poor = results.filter((x) => x.status === 'insufficient' || x.status === 'deferred')
       if (poor.length) {
         message.info(`保存完成；${poor.length} 项暂未开始: ${poor.map((x) => x.reason).join('；')}`)
       }
@@ -1674,7 +1674,7 @@ async function doAddTask() {
       // 已有计划：服务端复用那条并立即派发，不再靠新建重复行开训
       await refreshPlanFromServer()
       message.success(results[0]?.reason || '已在计划中，已安排立即开始')
-    } else if (results[0]?.status === 'insufficient') {
+    } else if (results[0]?.status === 'insufficient' || results[0]?.status === 'deferred') {
       message.warning(results[0]?.reason || '材料不足，暂不开始')
     } else {
       message.warning(results[0]?.reason || '添加失败')
