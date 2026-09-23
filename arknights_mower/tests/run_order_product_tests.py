@@ -2,7 +2,7 @@
 
 import sys
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -166,8 +166,9 @@ def test_orundum_room_still_gets_normal_mood_scan(solver):
 
     solver.agent_get_mood(return_plan=True)
 
-    solver.enter_room.assert_called_once_with("room_1_1")
-    solver.get_agent_from_room.assert_called_once_with("room_1_1", None)
+    # 常规巡检还会检查训练室；这里约束卖玉房间仍被正常扫描一次。
+    assert solver.enter_room.call_args_list.count(call("room_1_1")) == 1
+    assert solver.get_agent_from_room.call_args_list.count(call("room_1_1", None)) == 1
 
 
 def test_sync_does_not_change_legacy_queue(solver):

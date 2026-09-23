@@ -847,7 +847,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     remove_current_task = False
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
-                    if TaskTypes.SHIFT_OFF == self.task.type:
+                    if TaskTypes.SHIFT_OFF == self.task.type or (
+                        self.task.type
+                        in (TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER)
+                        and self.op_data.experimental_dorm_logic
+                    ):
+                        # 纠偏／迁移完成后以实际读到的床位时间重建派生回班。
                         get_time = True
                     if TaskTypes.RELEASE_DORM == self.task.type:
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
@@ -3294,32 +3299,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.task = None
 
     def _products_after_arrangement(self, plan):
-        """在干员位置的浅拷贝上推演换班后的副表，不改动真实排班缓存。"""
-        projected = copy.copy(self.op_data)
-        projected.operators = {
-            name: copy.copy(operator)
-            for name, operator in self.op_data.operators.items()
-        }
-        positions = {
-            name: (operator.current_room, operator.current_index)
-            for name, operator in projected.operators.items()
-        }
-        changed_slots = {
-            (room, index)
-            for room, agents in plan.items()
-            for index, name in enumerate(agents)
-            if name != "Current"
-        }
-        for name, position in positions.items():
-            if position in changed_slots:
-                positions[name] = ("", -1)
-        for room, agents in plan.items():
-            for index, name in enumerate(agents):
-                if name in projected.operators:
-                    positions[name] = (room, index)
-        for name, (room, index) in positions.items():
-            projected.operators[name]._current_room = room
-            projected.operators[name].current_index = index
+        """在排班快照上推演换班后的副表，不改动真实排班缓存。"""
+        projected = self.op_data.project_arrangements([plan])
 
         seen = {tuple(projected.plan_condition)}
         while projected.backup_plans:

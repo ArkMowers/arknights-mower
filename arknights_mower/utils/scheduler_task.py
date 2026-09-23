@@ -784,7 +784,26 @@ def rebalance_plan_swap_dorms(
     }
 
 
-def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=None):
+def _arrangement_resources(plan):
+    return (
+        {
+            name
+            for names in plan.values()
+            for name in names
+            if name not in ("Current", "Free", "")
+        },
+        {
+            (room, index)
+            for room, names in plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        },
+    )
+
+
+def generate_plan_by_drom(
+    tasks, op_data, existing_targets=None, release_tasks=None, pending_arrangements=()
+):
     # 同时刻的回班与释放床位必须分别保留类型，并共用一次未来状态演算。
     batches = list(tasks.items()) + list((release_tasks or {}).items())
     if not batches:
@@ -801,6 +820,9 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=N
     result = []
     planned = set()
     current_time = datetime.now()
+    pending_resources = [
+        (task.time, *_arrangement_resources(task.plan)) for task in pending_arrangements
+    ]
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
@@ -872,11 +894,21 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=N
             continue
         if rest_in_full is not None:
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
+        names, slots = _arrangement_resources(plan)
+        # 从迁移后的床位派生的任务必须晚于迁移本身；不拖延无关房间的回班。
+        earliest = max(
+            (
+                ready + timedelta(seconds=1)
+                for ready, moving, changed in pending_resources
+                if names & moving or slots & changed
+            ),
+            default=datetime.min,
+        )
         if rest_in_full:
             if exhaust_exist:
-                time = max(time, current_time)
+                time = max(time, current_time, earliest)
             else:
-                time = max(time - timedelta(minutes=8), current_time)
+                time = max(time - timedelta(minutes=8), current_time, earliest)
             result.append(
                 SchedulerTask(
                     task_plan=plan,
@@ -901,7 +933,9 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=N
                         SchedulerTask(
                             task_plan=plan,
                             time=max(
-                                result[idx].time, current_time - timedelta(seconds=1)
+                                result[idx].time,
+                                current_time - timedelta(seconds=1),
+                                earliest,
                             ),
                             task_type=TaskTypes.RELEASE_DORM
                             if rest_in_full is None
@@ -914,11 +948,12 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=N
                 result.append(
                     SchedulerTask(
                         task_plan=plan,
-                        time=max(time, current_time - timedelta(seconds=1))
+                        time=max(time, current_time - timedelta(seconds=1), earliest)
                         if rest_in_full is None
                         else max(
                             time - timedelta(minutes=8),
                             current_time - timedelta(seconds=1),
+                            earliest,
                         ),
                         task_type=TaskTypes.RELEASE_DORM
                         if rest_in_full is None
@@ -926,6 +961,9 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=N
                     )
                 )
     interval = config.conf.merge_interval
+    if pending_arrangements:
+        # 依赖安排可能使原本较早的释放批次延后；合并器按执行时间遍历。
+        result.sort(key=lambda task: task.time)
     merge_release_dorm(result, interval)
     logger.debug("生成任务: " + ("||".join([str(t) for t in result])))
     return result
@@ -963,6 +1001,21 @@ def plan_metadata(op_data, tasks):
         if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
         or id(t) in locked_ids
     ]
+    pending_arrangements = []
+    if op_data.experimental_dorm_logic:
+        # 纠偏／重排是已经确定的安排，普通回班属于其后的派生计划。
+        # 从最终驻员和床位计算，避免两个规划器各自从旧床位召回同一个人。
+        # 已锁定的产物任务继续由上面的资源锁管理，不能提前视为完成。
+        pending_arrangements = [
+            task
+            for task in sorted(tasks, key=lambda task: task.time)
+            if task.type in (TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER)
+            and id(task) not in locked_ids
+            and task.plan
+        ]
+        op_data = op_data.project_arrangements(
+            task.plan for task in pending_arrangements
+        )
     _time = datetime.max
     min_resting_time = datetime.max
     _plan = {}
@@ -1115,6 +1168,7 @@ def plan_metadata(op_data, tasks):
         op_data,
         existing_targets=existing_targets,
         release_tasks=release_tasks,
+        pending_arrangements=pending_arrangements,
     )
     tasks.extend(generated)
     return tasks

@@ -1276,6 +1276,43 @@ class Operators:
             self.is_auto_free_dorm_operator(self.operators[name]) for name in names
         )
 
+    def project_arrangements(self, plans):
+        """按执行顺序推演排班后的驻员和恢复床位，不产生实际换人副作用。
+
+        已知的恢复时间随入住者迁移；新入住者的时间留待实际读屏。
+        产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
+        """
+        projected = copy.copy(self)
+        projected.operators = copy.deepcopy(self.operators)
+        projected.dorm = copy.deepcopy(self.dorm)
+        for plan in plans:
+            changed_slots = {
+                (room, index)
+                for room, names in plan.items()
+                for index, name in enumerate(names)
+                if name != "Current"
+            }
+            recovery_times = {bed.name: bed.time for bed in projected.dorm if bed.name}
+            for op in projected.operators.values():
+                if (op.current_room, op.current_index) in changed_slots:
+                    op._current_room, op.current_index = "", -1
+            for room, names in plan.items():
+                for index, name in enumerate(names):
+                    if name in projected.operators:
+                        op = projected.operators[name]
+                        # 不触发 current_room 的通知／记账回调。
+                        op._current_room, op.current_index = room, index
+            for bed in projected.dorm:
+                occupant = projected.get_current_operator(*bed.position)
+                if occupant is not None and projected.is_recovery_dorm(
+                    bed, occupant.name
+                ):
+                    bed.name = occupant.name
+                    bed.time = recovery_times.get(occupant.name)
+                else:
+                    bed.reset()
+        return projected
+
     def all_dorms(self):
         """返回全部潜在动态床位。"""
         return self.dorm

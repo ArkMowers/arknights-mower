@@ -188,6 +188,233 @@ def enable_experimental_dorm_logic(solver):
     assert solver.op_data.swap_plan([False], refresh=True) is None
 
 
+@pytest.fixture
+def meeting_transition(solver):
+    """alex 的切表场景：一人已在宿舍回满，另一人待命，独立副表仍开启。"""
+    solver.global_plan = {
+        "default_plan": Plan(
+            {
+                "meeting": [
+                    Room("信仰搅拌机", "", ["陈"]),
+                    Room("跃跃", "", ["见行者"]),
+                ],
+                "central": [Room("歌蕾蒂娅", "", ["红"])],
+                "room_2_1": [Room("野鬃", "", ["结城理"])],
+                "dormitory_1": [
+                    Room("塑心", "", []),
+                    Room("冰酿", "", []),
+                    *[Room("Free", "", []) for _ in range(3)],
+                ],
+            },
+            PlanConfig("", "", "", experimental_dorm_logic=True),
+        ),
+        "backup_plans": [
+            Plan(
+                {},
+                PlanConfig("", "", ""),
+                trigger=LogicExpression("True", "==", "True"),
+            ),
+            Plan(
+                {
+                    "meeting": [
+                        Room("埃癸斯", "", ["信仰搅拌机"]),
+                        Room("虎狼丸", "", ["跃跃"]),
+                    ],
+                },
+                PlanConfig("", "", ""),
+                trigger=LogicExpression(
+                    "op_data.operators['结城理'].is_working()", "==", "True"
+                ),
+            ),
+        ],
+    }
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    assert data.swap_plan([True, True], refresh=True) is None
+    actual = {
+        "meeting": ["埃癸斯", "虎狼丸"],
+        "central": ["红"],
+        "room_2_1": ["野鬃"],
+        "dormitory_1": ["塑心", "冰酿", "信仰搅拌机", "歌蕾蒂娅", "Free"],
+    }
+    for op in data.operators.values():
+        op.current_room, op.current_index = "", -1
+        op.mood, op.time_stamp, op.depletion_rate = 24, base.datetime.now(), 0
+    for room, names in actual.items():
+        for index, name in enumerate(names):
+            if name != "Free":
+                data.operators[name].current_room = room
+                data.operators[name].current_index = index
+    data.dorm[0].name = "信仰搅拌机"
+    data.dorm[0].time = base.datetime.now() - timedelta(hours=1)
+    data.dorm[1].name = "歌蕾蒂娅"
+    data.dorm[1].time = base.datetime.now() + timedelta(hours=2)
+    data.operators["歌蕾蒂娅"].mood = 12
+    solver.tasks = [
+        SchedulerTask(
+            time=data.dorm[1].time,
+            task_type=TaskTypes.SHIFT_ON,
+            task_plan={"central": ["歌蕾蒂娅"]},
+        )
+    ]
+    config.conf.experimental_dorm_logic = True
+    return solver
+
+
+def test_backup_deactivation_uses_pending_final_arrangement(meeting_transition):
+    solver = meeting_transition
+    assert solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [True, False]
+    # 重算多次、以及跑单把最终安排延期后，都不能再制造会客室中间态。
+    correction = next(t for t in solver.tasks if "meeting" in t.plan)
+    correction.time += timedelta(minutes=5)
+    for _ in range(2):
+        solver.plan_metadata()
+        meeting_tasks = [t for t in solver.tasks if "meeting" in t.plan]
+        assert meeting_tasks == [correction]
+        assert correction.plan == {"meeting": ["信仰搅拌机", "跃跃"]}
+        assert return_task(solver).plan == {"central": ["歌蕾蒂娅"]}
+        assert return_task(solver).time == base.datetime.now() + timedelta(
+            hours=2, minutes=-8
+        )
+    # 计划中的回班不应提前清空真实床位，也不能触发真实位置变更回调。
+    assert solver.op_data.dorm[0].name == "信仰搅拌机"
+    assert solver.op_data.operators["信仰搅拌机"].current_room == "dormitory_1"
+
+
+def test_cancelled_arrangement_restores_return_planning(meeting_transition):
+    solver = meeting_transition
+    assert solver.backup_plan_solver()
+    solver.tasks = [t for t in solver.tasks if t.type != TaskTypes.SELF_CORRECTION]
+    solver.plan_metadata()
+    assert any(
+        t.type == TaskTypes.SHIFT_ON
+        and t.plan.get("meeting") == ["信仰搅拌机", "Current"]
+        for t in solver.tasks
+    )
+
+
+def test_arrangement_projection_moves_timers_without_touching_live_state(
+    meeting_transition, monkeypatch
+):
+    data = meeting_transition.op_data
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    callback = MagicMock()
+    monkeypatch.setattr(operators.Operators, "current_room_changed_callback", callback)
+    data.operators["信仰搅拌机"].refresh_drained = True
+    projected = data.project_arrangements(
+        [
+            {
+                "meeting": ["信仰搅拌机", "Current"],
+                "dormitory_1": ["Current", "Current", "歌蕾蒂娅", "Free", "Current"],
+            }
+        ]
+    )
+
+    assert projected.get_current_operator("meeting", 0).name == "信仰搅拌机"
+    assert projected.get_current_operator("meeting", 1).name == "虎狼丸"
+    assert projected.operators["埃癸斯"].current_room == ""
+    assert (projected.dorm[0].name, projected.dorm[0].time) == before[1]
+    assert projected.dorm[1].name == ""
+    assert projected.dorm[1].time is None
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+    assert data.operators["信仰搅拌机"].current_room == "dormitory_1"
+    callback.assert_not_called()
+
+
+@pytest.mark.parametrize("task_type", [TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER])
+def test_pending_migration_precedes_dependent_return(meeting_transition, task_type):
+    solver = meeting_transition
+    assert solver.op_data.swap_plan([True, False], refresh=True) is None
+    migration = SchedulerTask(
+        time=base.datetime.now() + timedelta(hours=3),
+        task_type=task_type,
+        task_plan={
+            "dormitory_1": ["Current", "Current", "Current", "Free", "歌蕾蒂娅"]
+        },
+    )
+    solver.tasks.append(migration)
+    solver.plan_metadata()
+
+    dependent = next(t for t in solver.tasks if t.plan.get("central") == ["歌蕾蒂娅"])
+    independent = next(t for t in solver.tasks if "meeting" in t.plan)
+    assert dependent.time > migration.time
+    assert independent.time < migration.time
+    assert independent.plan == {"meeting": ["信仰搅拌机", "Current"]}
+
+
+def test_pending_migration_release_uses_destination_and_preserves_other_returns(
+    meeting_transition,
+):
+    solver = meeting_transition
+    data = solver.op_data
+    assert data.swap_plan([True, False], refresh=True) is None
+    data.config.free_room = True
+    data.add(operators.Operator("九色鹿", ""))
+    deer = data.operators["九色鹿"]
+    deer.current_room, deer.current_index = data.dorm[2].position
+    deer.mood, deer.time_stamp = 12, base.datetime.now()
+    data.dorm[2].name, data.dorm[2].time = (
+        "九色鹿",
+        base.datetime.now() + timedelta(hours=1),
+    )
+    migration = SchedulerTask(
+        time=base.datetime.now() + timedelta(hours=3),
+        task_type=TaskTypes.RE_ORDER,
+        task_plan={
+            "meeting": ["信仰搅拌机", "跃跃"],
+            "dormitory_1": ["Current", "Current", "九色鹿", "Current", "Free"],
+        },
+    )
+    solver.tasks.append(migration)
+    solver.plan_metadata()
+
+    release = next(t for t in solver.tasks if t.type == TaskTypes.RELEASE_DORM)
+    assert release.plan == {
+        "dormitory_1": ["Current", "Current", "Free", "Current", "Current"]
+    }
+    assert release.time > migration.time
+    assert return_task(solver).plan == {"central": ["歌蕾蒂娅"]}
+    assert return_task(solver).time < migration.time
+    assert data.dorm[2].name == "九色鹿"
+
+
+@pytest.mark.parametrize("task_type", [TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER])
+def test_completed_arrangement_rebuilds_from_observed_beds(
+    meeting_transition, task_type
+):
+    solver = meeting_transition
+    assert solver.op_data.swap_plan([True, False], refresh=True) is None
+    current = SchedulerTask(
+        time=base.datetime.now(),
+        task_type=task_type,
+        task_plan={"meeting": ["信仰搅拌机", "跃跃"]},
+    )
+    solver.task = current
+    solver.tasks.append(current)
+
+    def arrange(plan, read_time):
+        assert read_time
+        # 替代设备读屏：第一人回班；另一休息者的完成时间已重新测量。
+        data = solver.op_data
+        data.dorm[0].reset()
+        data.operators["信仰搅拌机"].current_room = "meeting"
+        data.operators["信仰搅拌机"].current_index = 0
+        data.operators["跃跃"].current_room = "meeting"
+        data.operators["跃跃"].current_index = 1
+        data.dorm[1].time = base.datetime.now() + timedelta(hours=4)
+        plan.clear()
+
+    solver.agent_arrange.side_effect = arrange
+    solver.infra_main()
+
+    assert current not in solver.tasks
+    assert all("meeting" not in t.plan for t in solver.tasks)
+    assert return_task(solver).time == base.datetime.now() + timedelta(
+        hours=4, minutes=-8
+    )
+
+
 def test_unrelated_experimental_backup_switch_skips_dorm_reorder(solver, monkeypatch):
     enable_experimental_dorm_logic(solver)
     reorder = MagicMock(return_value={"dormitory_1": ["Current"] * 5})
