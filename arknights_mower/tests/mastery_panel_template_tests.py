@@ -23,10 +23,31 @@ DATA = ROOT / "data/skill_data.json"
 MODEL = ROOT / "models/mastery_panel.model"
 
 
+class _BuiltinOnlyUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        raise AssertionError(f"模型依赖外部 Python 类：{module}.{name}")
+
+
+def test_incompatible_old_model_falls_back_to_ocr(monkeypatch):
+    from arknights_mower.utils import mastery_panel_template as template
+
+    def missing_numpy_module(_stream):
+        raise ModuleNotFoundError("No module named 'numpy._core.numeric'")
+
+    template.reload_mastery_panel_model()
+    try:
+        with monkeypatch.context() as patcher:
+            patcher.setattr(template.pickle, "load", missing_numpy_module)
+            assert template._load_model() is None
+    finally:
+        template.reload_mastery_panel_model()
+
+
 def test_bundled_model_covers_current_named_skills():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     with lzma.open(MODEL, "rb") as stream:
-        model = pickle.load(stream)
+        model = _BuiltinOnlyUnpickler(stream).load()
+    assert model["schema"] == 2
     assert model["roster_sha256"] == skill_roster_digest(data)
     assert model["font_size"] == FONT_SIZE
     assert model["pixel_threshold"] == PIXEL_THRESHOLD
@@ -37,6 +58,12 @@ def test_bundled_model_covers_current_named_skills():
         for skill in char.get("skills", [])
     )
     assert sum(len(entry["skills"]) for entry in model["entries"].values()) == expected
+    for entry in model["entries"].values():
+        for height, width, pixels in [
+            entry["name_template"],
+            *(template for _, _, template in entry["skills"]),
+        ]:
+            assert len(pixels) == height * width
 
 
 def test_real_panels_match_only_their_own_skill():

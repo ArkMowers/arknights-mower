@@ -45,6 +45,20 @@ def render_template(text, font):
     return binary[y : y + height, x : x + width].copy()
 
 
+def pack_template(image):
+    """Store pixels as built-in types, independent of the build NumPy version."""
+    height, width = image.shape
+    return height, width, image.tobytes()
+
+
+def unpack_template(packed):
+    """Rebuild an image only after the model has been loaded at runtime."""
+    height, width, pixels = packed
+    if height <= 0 or width <= 0 or len(pixels) != height * width:
+        raise ValueError("训练室文字模板尺寸不正确")
+    return np.frombuffer(pixels, dtype=np.uint8).reshape(height, width)
+
+
 def build_model(data, font_path, output_path, charset_path=None):
     """Rebuild all named 4–6 star skills from current skill_data.json."""
     from PIL import ImageFont
@@ -74,7 +88,7 @@ def build_model(data, font_path, output_path, charset_path=None):
         if char.get("rarity") not in (4, 5, 6) or not char.get("name"):
             continue
         skills = [
-            (index, skill["name"], render_template(skill["name"], font))
+            (index, skill["name"], pack_template(render_template(skill["name"], font)))
             for index, skill in enumerate(char.get("skills", []))
             if skill.get("name")
         ]
@@ -84,11 +98,11 @@ def build_model(data, font_path, output_path, charset_path=None):
         entries[cid] = {
             "name": name,
             "prefix_width": round(font.getlength(f"[{name}]")),
-            "name_template": render_template(f"[{name}]", font),
+            "name_template": pack_template(render_template(f"[{name}]", font)),
             "skills": skills,
         }
     model = {
-        "schema": 1,
+        "schema": 2,
         "roster_sha256": skill_roster_digest(data),
         "font_sha256": hashlib.sha256(font_path.read_bytes()).hexdigest(),
         "font_size": FONT_SIZE,

@@ -8,6 +8,7 @@ import cv2
 from arknights_mower.utils.mastery_panel_model import (
     PIXEL_THRESHOLD,
     skill_roster_digest,
+    unpack_template,
 )
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -29,9 +30,23 @@ def _load_model():
         try:
             with lzma.open(resource_pkg_path(MODEL_PATH), "rb") as stream:
                 candidate = pickle.load(stream)
-            if isinstance(candidate, dict) and candidate.get("schema") == 1:
+            if isinstance(candidate, dict) and candidate.get("schema") == 2:
+                for entry in candidate["entries"].values():
+                    entry["name_template"] = unpack_template(entry["name_template"])
+                    entry["skills"] = [
+                        (index, name, unpack_template(template))
+                        for index, name, template in entry["skills"]
+                    ]
                 _model = candidate
-        except (OSError, EOFError, ValueError, pickle.UnpicklingError):
+        except (
+            OSError,
+            EOFError,
+            ImportError,
+            KeyError,
+            TypeError,
+            ValueError,
+            pickle.UnpicklingError,
+        ):
             _model = None
     return _model
 
