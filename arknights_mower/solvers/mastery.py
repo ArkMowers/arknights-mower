@@ -751,8 +751,31 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         get_mastery_requirement_error,
     )
     from arknights_mower.utils.mastery_support import SupportPlanError
+    from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     _warn_training_room_group(plan)
+
+    trainee = _plan_char_label(plan)
+    if not trainee or trainee == plan["char_id"]:
+        logger.warning(
+            f"[mastery] 暂不开始训练：无法解析 {plan['char_id']} 的干员名，"
+            "排班冲突未复核；请更新游戏资源后重试"
+        )
+        return
+    schedule_conflict = trainee_schedule_conflict(trainee)
+    if schedule_conflict:
+        logger.warning(f"[mastery] 暂不开始训练：{schedule_conflict}")
+        try:
+            from arknights_mower.utils.email import send_message
+            from arknights_mower.utils.mastery_db import should_notify
+
+            if should_notify("trainee_schedule_conflict", str(plan["id"])):
+                send_message(
+                    f"{_plan_fail_label(plan)}：{schedule_conflict}", level="WARNING"
+                )
+        except Exception as notify_exc:
+            logger.warning(f"[mastery] 排班冲突通知发送失败: {notify_exc}")
+        return
 
     requirement_error = get_mastery_requirement_error(plan["char_id"])
     if requirement_error:

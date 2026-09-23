@@ -56,6 +56,8 @@ def solver(monkeypatch):
     instance.enter_room = MagicMock(
         side_effect=AssertionError("unexpected device read")
     )
+    # 本夹具只验证宿舍调度；模拟训练室刚被扫描，避免无设备实例进入读房流程。
+    instance.last_train_mood_read = datetime.now()
     instance._suppress_train_correction = lambda plan: None
     for name in ["泥岩", "能天使", "年"]:
         instance.op_data.add(Operator(name, ""))

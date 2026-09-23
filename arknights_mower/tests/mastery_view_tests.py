@@ -685,6 +685,29 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(result["status"], "insufficient")
         self.assertEqual(result["reason"], "材料不足，暂不开始")
 
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_post_schedule_conflict_reports_real_reason(
+        self, get_level, get_skill, insert, get_existing, dispatch
+    ):
+        get_skill.return_value = self._char_table()
+        get_level.return_value = 1
+        insert.return_value = 5
+        reason = "阿米娅 出现在非训练室排班（room_1_1），不能进行专精训练"
+        dispatch.return_value = {
+            "scheduled": [],
+            "skipped": [{"char_id": "char_001", "skill_index": 0, "reason": reason}],
+        }
+        response = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = response.get_json()["results"][0]
+        self.assertEqual(result["status"], "deferred")
+        self.assertEqual(result["reason"], reason)
+
     def test_dispatch_new_plans_targets_filter(self):
         # targets 给了就只派发这几条（定案 2：按钮字面意思优先）
         from arknights_mower.views.mastery import _dispatch_new_plans_immediately

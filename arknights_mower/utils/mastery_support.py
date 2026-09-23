@@ -13,6 +13,9 @@ from .mastery_support_data import (
     rate as rate,
 )
 from .mastery_support_data import (
+    trainee_schedule_conflict as trainee_schedule_conflict,
+)
+from .mastery_support_data import (
     trainer_stats as trainer_stats,
 )
 from .mastery_support_data import (
