@@ -50,6 +50,12 @@ def test_default_materials_are_retained_and_empty_selection_stays_empty(next_ski
     assert deer_fodder_items() == []
 
 
+def test_new_options_do_not_change_default_fodder_selection(next_skill):
+    defaults = config.Conf().workshop_deer_fodder
+    assert len(defaults) == 1
+    assert defaults[0].item_names == ["碳素", "碳素组", "家具零件_碳素组"]
+
+
 def test_custom_fodder_is_used_by_auto_config_and_survives_backup_restore(
     next_skill, monkeypatch
 ):
