@@ -84,6 +84,15 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         noise[30:35, 40:80] = 255
         self.assertEqual(solver.read_operator_in_room(noise), "")
 
+    def test_read_screen_uses_entire_pre_cropped_room_name(self):
+        sample = np.zeros((55, 325), dtype=np.uint8)
+        template = OP_ROOM["凯尔希·思衡托"]
+        sample[4 : 4 + template.shape[0], 4 : 4 + template.shape[1]] = template
+
+        self.assertEqual(
+            BaseMixin().read_screen(sample, type="name"), "凯尔希·思衡托"
+        )
+
     def test_get_agent_from_room_retries_inplace_on_empty_read(self):
         from unittest.mock import MagicMock
 
