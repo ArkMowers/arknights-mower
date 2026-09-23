@@ -42,8 +42,10 @@ const emit = defineEmits(['toggle'])
     >
       <span class="mood-badge-stroke" :style="{ backgroundColor: entry.color }"></span>
       <strong class="mood-badge-name">{{ entry.name }}</strong>
-      <span class="mood-badge-rate">↓{{ formatMoodRate(entry.consumption) }}</span>
-      <span class="mood-badge-rate">↑{{ formatMoodRate(entry.recovery) }}</span>
+      <span class="mood-badge-rate-pair">
+        <span class="mood-badge-rate">↓{{ formatMoodRate(entry.consumption) }}</span>
+        <span class="mood-badge-rate">↑{{ formatMoodRate(entry.recovery) }}</span>
+      </span>
     </button>
     <span v-if="!entries.length" class="mood-rate-empty">暂无可用心情记录</span>
   </div>
@@ -103,7 +105,19 @@ const emit = defineEmits(['toggle'])
   font-weight: 650;
   overflow-wrap: anywhere;
 }
+/* Both rates are one indivisible unit: if there is insufficient room after
+   the operator name, move the WHOLE pair to the next row inside the badge. */
+.mood-badge-rate-pair {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+  white-space: nowrap;
+}
 .mood-badge-rate {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
