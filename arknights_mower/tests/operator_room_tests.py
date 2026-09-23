@@ -89,9 +89,7 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         template = OP_ROOM["凯尔希·思衡托"]
         sample[4 : 4 + template.shape[0], 4 : 4 + template.shape[1]] = template
 
-        self.assertEqual(
-            BaseMixin().read_screen(sample, type="name"), "凯尔希·思衡托"
-        )
+        self.assertEqual(BaseMixin().read_screen(sample, type="name"), "凯尔希·思衡托")
 
     def test_get_agent_from_room_retries_inplace_on_empty_read(self):
         from unittest.mock import MagicMock
