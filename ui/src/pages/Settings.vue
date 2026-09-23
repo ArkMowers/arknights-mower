@@ -732,6 +732,14 @@ if (return_home_when_idle.value) {
                 </help-text>
               </n-checkbox>
             </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient">
+                允许无人机不足时直接切换产物
+                <help-text>
+                  开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>葛朗台无人机损耗容限</span>

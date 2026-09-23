@@ -547,6 +547,7 @@ export const useConfigStore = defineStore('config', () => {
     }
     product_switching.value = {
       grandet_mode: true,
+      direct_when_drones_insufficient: false,
       drone_loss_seconds: 30,
       waiting_seconds: 2,
       ...(response.data.product_switching || {})

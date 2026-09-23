@@ -1,7 +1,9 @@
 import copy
 import json
+import math
 import os
 import pathlib
+import re
 import sys
 from collections import defaultdict, deque
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
@@ -883,6 +885,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.refresh_connecting = True
                         return
                     self.refresh_connecting = False
+                    if self.task.type in (
+                        TaskTypes.SHIFT_OFF,
+                        TaskTypes.SHIFT_ON,
+                        TaskTypes.EXHAUST_OFF,
+                        TaskTypes.RE_ORDER,
+                        TaskTypes.SELF_CORRECTION,
+                    ):
+                        self._switch_products_before_arrangement(self.task)
                     arrangement_deferred = (
                         self.agent_arrange(self.task.plan, get_time) is False
                     )
@@ -928,6 +938,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                             microseconds=offset
                                         )
                                 logger.info("检测到排班表切换，先纠错再执行切表任务")
+                    if not arrangement_deferred and getattr(
+                        self.task, "product_switched_before_arrangement", False
+                    ):
+                        self._refresh_orders_after_product_switch()
                     if (
                         not arrangement_deferred
                         and TaskTypes.RE_ORDER == self.task.type
@@ -3061,7 +3075,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         plan = getattr(self.op_data, "plan", {})
         facility_states = getattr(self.op_data, "facility_states", {})
         configured_rooms = set()
-        for room, target_product in products.items():
+        pending_targets = {}
+        for task in self.tasks:
+            pending_targets.update(getattr(task, "pending_product_targets", {}))
+        for room, target_product in (products | pending_targets).items():
             room_plan = plan.get(room) or []
             if not room_plan:
                 continue
@@ -3079,6 +3096,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if task.type == TaskTypes.SWITCH_PRODUCT
                 and task.meta_data.split(",", 1)[0] == room
             ]
+            if room in pending_targets:
+                # 切换由关联换班任务执行，防止旧排班在等待无人机时切回去。
+                self.tasks[:] = [task for task in self.tasks if task not in existing]
+                continue
             state = facility_states.get(room)
             expected_facility = "manufacture" if facility == "制造站" else "trade"
             if not state or state.get("facility") != expected_facility:
@@ -3125,6 +3146,109 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             and selected not in self.tasks
         ):
             self.task = None
+
+    def _products_after_arrangement(self, plan):
+        """在干员位置的浅拷贝上推演换班后的副表，不改动真实排班缓存。"""
+        projected = copy.copy(self.op_data)
+        projected.operators = {
+            name: copy.copy(operator)
+            for name, operator in self.op_data.operators.items()
+        }
+        positions = {
+            name: (operator.current_room, operator.current_index)
+            for name, operator in projected.operators.items()
+        }
+        changed_slots = {
+            (room, index)
+            for room, agents in plan.items()
+            for index, name in enumerate(agents)
+            if name != "Current"
+        }
+        for name, position in positions.items():
+            if position in changed_slots:
+                positions[name] = ("", -1)
+        for room, agents in plan.items():
+            for index, name in enumerate(agents):
+                if name in projected.operators:
+                    positions[name] = (room, index)
+        for name, (room, index) in positions.items():
+            projected.operators[name]._current_room = room
+            projected.operators[name].current_index = index
+
+        seen = {tuple(projected.plan_condition)}
+        while projected.backup_plans:
+            conditions = [
+                bool(projected.evaluate_expression(str(bp.trigger)))
+                for bp in projected.backup_plans
+            ]
+            if conditions == projected.plan_condition:
+                break
+            if tuple(conditions) in seen:
+                logger.warning("换班前副表产物推演出现循环，维持当前目标")
+                break
+            seen.add(tuple(conditions))
+            projected.swap_plan(conditions)
+        return projected.products, projected.plan
+
+    def _switch_products_before_arrangement(self, task):
+        """把将由本次换班触发的切产物作为换班的前置操作。"""
+        products, projected_plan = self._products_after_arrangement(task.plan)
+        targets = {}
+        switches = []
+        for room, target in products.items():
+            room_plan = projected_plan.get(room) or []
+            if not room_plan:
+                continue
+            facility = room_plan[0].facility
+            valid = (facility == "制造站" and target in MANUFACTURE_PRODUCTS) or (
+                facility == "贸易站" and target in TRADE_PRODUCTS
+            )
+            if not valid:
+                continue
+            actual = self.op_data.facility_states.get(room, {}).get("product")
+            if actual == target or (
+                actual is None and target == self.op_data.products.get(room)
+            ):
+                continue
+            targets[room] = target
+            switches.append(
+                SchedulerTask(
+                    task_type=TaskTypes.SWITCH_PRODUCT,
+                    meta_data=product_task_meta(room, target),
+                )
+            )
+        if not switches:
+            return
+        task.pending_product_targets = targets
+        logger.info("换班前先切换产物或订单：%s", targets)
+        self.switch_base_products(switches, before_arrangement=True)
+        unfinished = {
+            room: target
+            for room, target in targets.items()
+            if self.op_data.facility_states.get(room, {}).get("product") != target
+        }
+        if unfinished:
+            raise ProductSwitchDeferred(f"换班前切换未完成：{unfinished}", minutes=5)
+        task.product_switched_before_arrangement = True
+
+    def _refresh_orders_after_product_switch(self):
+        """产物和驻员均已变化，废弃旧订单倒计时并重新从游戏读取。"""
+        rooms = set(self.op_data.run_order_rooms)
+        if not rooms:
+            return
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if not (
+                task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+                and task.meta_data in rooms
+            )
+        ]
+        for room in rooms:
+            self.tasks.append(
+                SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+            )
+        logger.info("切产物并换班后重新读取订单倒计时：%s", sorted(rooms))
 
     def check_fia(self):
         if "菲亚梅塔" in self.op_data.operators.keys() and self.op_data.operators[
@@ -3919,6 +4043,39 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         return hours * 3600 + minutes * 60 + seconds
 
+    def _read_manufacture_adjusted_total_seconds(self) -> int:
+        """读取制造站产品卡上计入生产力加成的总剩余时间。"""
+        scope = (
+            (self.recog.w * 1580 // 1920, self.recog.h * 615 // 1080),
+            (self.recog.w * 1790 // 1920, self.recog.h * 680 // 1080),
+        )
+        text = self._product_ocr_text(scope).replace("：", ":")
+        match = re.search(r"(\d{1,3}):(\d{2}):(\d{2})", text)
+        if not match:
+            raise RecognizeError(f"无法识别制造站实际剩余时间：{text}")
+        hours, minutes, seconds = map(int, match.groups())
+        if minutes >= 60 or seconds >= 60:
+            raise RecognizeError(f"制造站实际剩余时间无效：{text}")
+        return hours * 3600 + minutes * 60 + seconds
+
+    def _read_manufacture_speed(self) -> float:
+        """从制造站页面的生产力一栏读取 1 + 干员加成。"""
+        scope = (
+            (self.recog.w * 1130 // 1920, self.recog.h * 940 // 1080),
+            (self.recog.w * 1380 // 1920, self.recog.h * 1000 // 1080),
+        )
+        text = self._product_ocr_text(scope).replace("−", "-").replace("－", "-")
+        expression = re.match(r"1(?:[+-]\d+(?:\.\d+)?)*", text)
+        if expression is None:
+            raise RecognizeError(f"无法识别制造站生产力：{text}")
+        speed = 1 + sum(
+            float(value)
+            for value in re.findall(r"[+-]\d+(?:\.\d+)?", expression.group())
+        )
+        if not 0.1 <= speed <= 10:
+            raise RecognizeError(f"制造站生产力无效：{text}")
+        return speed
+
     def _survey_manufacture_switch(self, room: str, target_product: str) -> dict:
         """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
         self._open_manufacture_product_detail(room)
@@ -3946,9 +4103,32 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             logger.info(f"{self.translate_room(room)}当前空闲，无需使用无人机")
             return observation
+        rate = None
+        adjusted_total = None
+        try:
+            rate = self._read_manufacture_speed()
+        except MowerExit:
+            raise
+        except Exception as e:
+            logger.warning("读取制造站生产力失败：%s，尝试用页面倒计时估算", e)
+            try:
+                adjusted_total = self._read_manufacture_adjusted_total_seconds()
+                adjusted_at = datetime.now()
+            except MowerExit:
+                raise
+            except Exception as timer_error:
+                logger.warning("读取制造站实际倒计时失败：%s", timer_error)
         self._tap_drone_accelerate("manufacture_accelerate", "all_in")
         total_seconds = self._read_manufacture_total_seconds()
         self._tap_product_point((480, 864))
+        if rate is None and adjusted_total:
+            adjusted_now = max(
+                1, adjusted_total - (datetime.now() - adjusted_at).total_seconds()
+            )
+            rate = total_seconds / adjusted_now
+        if rate is None or not 0.1 <= rate <= 10:
+            logger.warning("制造速度估算异常，使用基础速度")
+            rate = 1.0
         unit_seconds = MANUFACTURE_PRODUCTS[current_product].unit_seconds
         setting = getattr(config.conf, "product_switching", None)
         max_loss_seconds = (
@@ -3964,12 +4144,59 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             current_remaining=current_unit_remaining(total_seconds, unit_seconds),
             drone_count=drone_count,
             wait_seconds=wait_seconds,
+            production_rate=rate,
         )
         logger.info(
             f"{self.translate_room(room)}计划：使用{drone_count}架无人机，"
             f"余下至多等待{wait_seconds}秒"
         )
         return observation
+
+    def _estimate_product_switch_retry_minutes(self, observations, available):
+        """基础剩余量按页面生产速度减少，同时估算无人机恢复。"""
+        setting = getattr(config.conf, "product_switching", None)
+        max_loss = (
+            getattr(setting, "drone_loss_seconds", 30)
+            if getattr(setting, "grandet_mode", True)
+            else DRONE_SECONDS
+        )
+
+        def required_after(seconds):
+            required = 0
+            for item in observations:
+                remaining = max(
+                    0,
+                    math.ceil(
+                        item["current_remaining"]
+                        - item.get("production_rate", 1.0) * seconds
+                    ),
+                )
+                unit = MANUFACTURE_PRODUCTS[item["current_product"]].unit_seconds
+                required += drone_plan(remaining, unit, max_loss)[0]
+            return required
+
+        high = max(
+            math.ceil(item["current_remaining"] / item.get("production_rate", 1.0))
+            for item in observations
+        )
+        low = 0
+        while low < high:
+            middle = (low + high) // 2
+            # 充能加成、当前一架的部分进度只会使实际可用时间更早。
+            if required_after(middle) <= available + middle // 360:
+                high = middle
+            else:
+                low = middle + 1
+        logger.info(
+            "换班前切产物预计约%d秒后无人机足够，实测制造速率=%s",
+            low,
+            [round(item.get("production_rate", 1.0), 2) for item in observations],
+        )
+        # 提前一分钟复核，吸收加速技能及无人机当前充能进度的不确定性。
+        minutes = max(1, math.ceil(max(0, low - 60) / 60))
+        if any("production_rate" not in item for item in observations):
+            minutes = min(minutes, 5)
+        return minutes
 
     def _execute_manufacture_acceleration(self, observation: dict) -> int:
         """按快照复核当前份进度，只允许把计划中的无人机数向下修正。"""
@@ -4134,7 +4361,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 f"实际{TRADE_PRODUCTS[final_product].strategy_name}"
             )
 
-    def switch_base_products(self, tasks: list[SchedulerTask]):
+    def switch_base_products(
+        self, tasks: list[SchedulerTask], before_arrangement: bool = False
+    ):
         """先巡检全部目标站，再统一执行最省无人机的产物与订单计划。"""
         task_observations = []
         for task in tasks:
@@ -4152,6 +4381,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             and observation["needs_switch"]
             and not observation.get("switchable", True)
         ]
+        if locked_trade and before_arrangement:
+            rooms = "、".join(
+                self.translate_room(observation["room"])
+                for _, observation in locked_trade
+            )
+            raise ProductSwitchDeferred(
+                f"{rooms}等级不足，换班前无法切换订单", minutes=60
+            )
         if locked_trade:
             rooms = "、".join(
                 self.translate_room(observation["room"])
@@ -4169,19 +4406,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 item for item in task_observations if id(item[0]) not in locked_task_ids
             ]
 
-        # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
-        for _, observation in task_observations:
-            if observation["facility"] == "trade" and observation["needs_switch"]:
-                self._change_trade_product(observation)
-        resolved_before_manufacture = {
-            id(task)
-            for task, observation in task_observations
-            if observation["facility"] == "trade" or not observation["needs_switch"]
-        }
-        self.tasks[:] = [
-            task for task in self.tasks if id(task) not in resolved_before_manufacture
-        ]
-
         pending_manufacture = [
             observation
             for _, observation in task_observations
@@ -4198,21 +4422,62 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             f"制造站批量切产物计划共需至多{planned_drones}架无人机，"
             f"当前可用{available}架"
         )
-        if planned_drones > available:
+        insufficient_drones = planned_drones > available
+        allow_direct = getattr(
+            getattr(config.conf, "product_switching", None),
+            "direct_when_drones_insufficient",
+            False,
+        )
+        if insufficient_drones and before_arrangement and not allow_direct:
+            retry_minutes = self._estimate_product_switch_retry_minutes(
+                pending_manufacture, available
+            )
+            raise ProductSwitchDeferred(
+                f"换班前切产物无人机不足：需要{planned_drones}架，当前{available}架；"
+                "等待制造进度和无人机恢复后重试",
+                minutes=retry_minutes,
+            )
+
+        # 订单不使用无人机，巡检完成后直接切换，不受制造站无人机余量影响。
+        for _, observation in task_observations:
+            if observation["facility"] == "trade" and observation["needs_switch"]:
+                self._change_trade_product(observation)
+        resolved_before_manufacture = {
+            id(task)
+            for task, observation in task_observations
+            if observation["facility"] == "trade" or not observation["needs_switch"]
+        }
+        self.tasks[:] = [
+            task for task in self.tasks if id(task) not in resolved_before_manufacture
+        ]
+
+        if insufficient_drones and not allow_direct:
             raise ProductSwitchDeferred(
                 f"批量切产物无人机不足：需要{planned_drones}架，当前{available}架"
             )
 
-        # 余数大的站先处理，把更快自然跨过三分钟边界的站留到后面；
-        # 每站执行前会复核，争取让实际消耗低于快照计划。
-        execution_order = sorted(
-            pending_manufacture,
-            key=lambda item: (item["wait_seconds"], item["drone_count"]),
-            reverse=True,
-        )
-        waits = [
-            self._execute_manufacture_acceleration(item) for item in execution_order
-        ]
+        if insufficient_drones:
+            logger.warning("无人机不足，按设置直接取消当前份进度并切换产物")
+            execution_order = []
+        else:
+            # 余数大的站先处理，把更快自然跨过三分钟边界的站留到后面。
+            execution_order = sorted(
+                pending_manufacture,
+                key=lambda item: (item["wait_seconds"], item["drone_count"]),
+                reverse=True,
+            )
+
+        waits = []
+        for item in execution_order:
+            try:
+                waits.append(self._execute_manufacture_acceleration(item))
+            except ProductSwitchDeferred:
+                if not allow_direct:
+                    raise
+                logger.warning(
+                    "%s无人机在执行前变得不足，直接切换产物",
+                    self.translate_room(item["room"]),
+                )
         if waits:
             setting = getattr(config.conf, "product_switching", None)
             if getattr(setting, "grandet_mode", True):
