@@ -17,7 +17,7 @@ def custom_fodder():
     )
 
 
-def test_options_are_usable_building_fodder_not_elite_crit_materials(next_skill):
+def test_options_include_books_and_green_materials_but_not_higher_tiers(next_skill):
     import server
     from arknights_mower.data import workshop_formula
 
@@ -26,7 +26,16 @@ def test_options_are_usable_building_fodder_not_elite_crit_materials(next_skill)
     assert response.status_code == 200
     assert "碳素组" in response.json
     assert "家具零件_碳" in response.json
-    assert all(workshop_formula[name]["tab"] == "基建材料" for name in response.json)
+    assert "技巧概要·卷2" in response.json
+    assert "技巧概要·卷3" in response.json
+    assert "糖" in response.json
+    assert "糖组" not in response.json
+    assert all(
+        recipe["tab"] == "基建材料"
+        or recipe["tab"] == "技巧概要"
+        or (recipe["tab"] == "精英材料" and recipe["apCost"] == 1)
+        for recipe in (workshop_formula[name] for name in response.json)
+    )
     assert set(response.json) < set(client.get("/item").json)
 
 
@@ -95,9 +104,15 @@ def test_invalid_fodder_limits_do_not_replace_saved_configuration(
 
 def test_invalid_or_removed_recipes_are_not_added_to_generated_fodder(next_skill):
     config.conf.workshop_deer_fodder = [
-        WorkshopDeerFodderItem(item_names=["糖聚块", "不存在", "碳素"])
+        WorkshopDeerFodderItem(
+            item_names=["糖聚块", "技巧概要·卷3", "糖", "不存在", "碳素"]
+        )
     ]
-    assert deer_fodder_items()[0]["item_names"] == ["碳素"]
+    assert deer_fodder_items()[0]["item_names"] == [
+        "技巧概要·卷3",
+        "糖",
+        "碳素",
+    ]
 
 
 def test_old_browser_config_save_does_not_reset_independent_fodder(next_skill):

@@ -25,7 +25,18 @@ def operator_recipe_allowed(name, recipe, *, fodder=False):
     """Apply user material scopes using original recipe cost, before reductions."""
     t4 = recipe.get("tab") == "精英材料" and recipe.get("apCost") == 4
     if name in T4_PREFERRED:
-        return t4 or (name == "九色鹿" and fodder and recipe.get("tab") == "基建材料")
+        deer_fodder = (
+            name == "九色鹿"
+            and fodder
+            and (
+                recipe.get("tab") in {"基建材料", "技巧概要"}
+                or (
+                    recipe.get("tab") == "精英材料"
+                    and recipe.get("apCost") == 1
+                )
+            )
+        )
+        return t4 or deer_fodder
     return name != "莱伊" or not t4
 
 

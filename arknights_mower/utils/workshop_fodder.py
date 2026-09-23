@@ -9,7 +9,9 @@ def deer_fodder_materials():
     return [
         name
         for name, recipe in workshop_formula.items()
-        if recipe.get("tab") == "基建材料" and recipe.get("apCost", 0) > 0
+        if recipe.get("tab") == "基建材料"
+        or recipe.get("tab") == "技巧概要"
+        or (recipe.get("tab") == "精英材料" and recipe.get("apCost") == 1)
     ]
 
 
