@@ -156,6 +156,38 @@ def _assigned_operator_names(plan: dict) -> set[str]:
     }
 
 
+def _stop_if_scheduled_trainee(solver, trainee: str, *, detail_open=False) -> None:
+    from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
+
+    reason = trainee_schedule_conflict(trainee)
+    if reason is None:
+        return
+    message = (
+        f"训练室检测到排班冲突：{reason}。为避免工作干员被手动专精占用导致卡表，"
+        "已停止 Mower；请结束训练或从非训练室排班中移除该干员后再启动"
+    )
+    logger.warning(message)
+    try:
+        send_message(message, level="WARNING")
+    except Exception as exc:
+        logger.warning(f"训练室排班冲突通知发送失败: {exc}")
+    # 通用心情读取停在进驻详情浮窗；先关浮窗，再退出训练室。
+    try:
+        if detail_open:
+            solver.back()
+        solver.back()
+    except Exception as exc:
+        logger.warning(f"训练室排班冲突后退出房间失败: {exc}")
+    try:
+        from arknights_mower.solvers.record import save_current_state
+
+        save_current_state()
+    except Exception as exc:
+        logger.warning(f"训练室排班冲突后保存状态失败: {exc}")
+    config.stop_mower.set()
+    raise MowerExit
+
+
 def _add_group_to_fix_plan(fix_plan: dict, op_data: Operators, group: str) -> None:
     """把组内真正不在岗的成员写进 fix_plan；已在静态槽位的成员跳过。
 
@@ -1151,12 +1183,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else set()
         )
 
-        # 专精计划可能没有训练室固定排班，仍要通过原有心情扫描核对现场。
-        if read_rooms and config.conf.enable_mastery:
-            from arknights_mower.utils.mastery_db import get_reconcile_plans
-
-            if get_reconcile_plans():
-                need_read.add("train")
+        # 正常心情刷新始终检查训练室，包含未启用专精时的手动训练。
+        # 副表纯缓存推演不得进房；实际扫描仍受房间级 2.5 小时限频保护。
+        if read_rooms:
+            need_read.add("train")
 
         for room in need_read:
             if room == "train":
@@ -1206,6 +1236,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     self, enter=False, want_mood=True
                                 )
                                 self.train_room_state = room_state
+                                if room_state.read_failed or room_state.state not in (
+                                    "empty",
+                                    "training",
+                                    "waiting_collect",
+                                ):
+                                    logger.warning(
+                                        "训练室房态读取不可信，本轮跳过训练位排班冲突判定"
+                                    )
+                                else:
+                                    trainee = room_state.train_slot or getattr(
+                                        room_state.panel, "operator_name", ""
+                                    )
+                                    _stop_if_scheduled_trainee(self, trainee)
                                 mood_info = [
                                     f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                     for item in mood_data
@@ -1224,6 +1267,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     reconcile_short(
                                         self, room_state, defer_collect=False
                                     )
+                            except MowerExit:
+                                raise
                             except Exception as e:
                                 logger.warning(f"训练室顺路更新状态失败: {e}")
                         else:
@@ -1231,6 +1276,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             # 通用心情读取；清空专精状态缓存，避免消费陈旧锁定。
                             self.train_room_state = None
                             _mood_data = self.get_agent_from_room(room, None)
+                            trainee = (
+                                _mood_data[1].get("agent", "")
+                                if len(_mood_data) > 1
+                                else ""
+                            )
+                            _stop_if_scheduled_trainee(self, trainee, detail_open=True)
                             mood_info = [
                                 f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                 for item in _mood_data

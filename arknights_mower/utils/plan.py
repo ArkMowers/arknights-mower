@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Optional, Self
 
 from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 
 DEFAULT_DORM_ROOM_ORDER = [f"dormitory_{index}" for index in range(1, 5)]
 
@@ -244,6 +245,27 @@ class Plan:
         )
         self.name = name
         self.products = products or {}
+
+    def scheduled_names(self, include_tasks: bool = False) -> set[str]:
+        """Return assigned operators, including replacements and optional tasks."""
+        names = {
+            name
+            for room in self.plan.values()
+            for slot in room
+            for name in (slot.agent, *slot.replacement)
+        }
+        if include_tasks:
+            names.update(name for task in (self.task or {}).values() for name in task)
+        return names - IGNORED_NAMES
+
+    def primary_names(self) -> set[str]:
+        """Return primary assignments used to compare backup plans."""
+        return {
+            slot.agent
+            for room in self.plan.values()
+            for slot in room
+            if slot.agent not in IGNORED_NAMES
+        }
 
     @property
     def exit_trigger_timing(self) -> PlanTriggerTiming:

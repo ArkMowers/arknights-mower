@@ -155,7 +155,7 @@ def _dispatch_new_plans_immediately(chars=None, targets=None):
     的批量派发刻意不一致）。None = 不限（批量派发路径）。
 
     返回按 targets 过滤后的 {"scheduled": [...], "skipped": [...]}：调用方据此把
-    「材料不足，暂不开始」明说给用户，而不是白建一行还回「已添加」。
+    材料不足或排班冲突的真实原因明说给用户。
     """
     nothing = {"scheduled": [], "skipped": []}
     if not config.conf.enable_mastery:
@@ -436,16 +436,16 @@ class MasteryPlanView(MethodView):
             info = _dispatch_new_plans_immediately(
                 chars=added_char_ids, targets=[target for _, target in pending]
             )
-            insufficient = {
-                (entry.get("char_id"), entry.get("skill_index"))
+            skipped = {
+                (entry.get("char_id"), entry.get("skill_index")): entry
                 for entry in (info or {}).get("skipped", [])
             }
             for result, target in pending:
-                if target in insufficient:
-                    # 材料不足也要明说（不静默跳过、不白建一行）——对「已有计划但材料
-                    # 仍不足」同样适用，此时给的是材料不足而不是「已在计划中」。
-                    result["status"] = "insufficient"
-                    result["reason"] = "材料不足，暂不开始"
+                if target in skipped:
+                    # 排班冲突与材料不足都暂缓，但要把真实原因返回给用户。
+                    reason = skipped[target].get("reason")
+                    result["status"] = "deferred" if reason else "insufficient"
+                    result["reason"] = reason or "材料不足，暂不开始"
         return {"results": results}
 
     def delete(self):

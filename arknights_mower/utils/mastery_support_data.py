@@ -44,6 +44,17 @@ def check_schedule_name(name, blocked):
         )
 
 
+def trainee_schedule_conflict(name, plan=None):
+    """Return why a trainee cannot leave its non-training schedule, if any."""
+    if not name:
+        return None
+    blocked, _ = schedule_context(plan)
+    rooms = blocked.get(name)
+    if not rooms:
+        return None
+    return f"{name} 出现在非训练室排班（{'、'.join(sorted(rooms))}），不能进行专精训练"
+
+
 def training_room_group_warning(plan=None):
     """Describe training-room groups declared in primary and backup schedules."""
     if plan is None:
