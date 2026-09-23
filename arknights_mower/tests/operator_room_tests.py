@@ -1,6 +1,7 @@
 import unittest
 
 import cv2
+import numpy as np
 
 from arknights_mower.solvers.base_mixin import (
     OP_ROOM,
@@ -84,7 +85,7 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         self.assertEqual(solver.read_operator_in_room(noise), "")
 
     def test_get_agent_from_room_retries_inplace_on_empty_read(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
@@ -102,7 +103,8 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         solver.op_data.operators = {"银灰": silverash}
         solver.op_data.update_detail.return_value = None
         solver.recog = MagicMock()
-        solver.recog.gray = None
+        gray = np.arange(1080 * 1920, dtype=np.uint8).reshape(1080, 1920)
+        solver.recog.gray = gray
         solver.recog.update = MagicMock()
         solver.sleep = MagicMock()
         solver.find = MagicMock(return_value=None)
@@ -115,11 +117,16 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         solver.read_screen = MagicMock(side_effect=["", "银灰"])
         solver.read_accurate_mood = MagicMock(return_value=24)
 
-        with patch("arknights_mower.solvers.base_schedule.cropimg", return_value=None):
-            result = solver.get_agent_from_room("room_1")
+        result = solver.get_agent_from_room("room_1")
 
         self.assertEqual(result[0]["agent"], "银灰")
         self.assertEqual(solver.read_screen.call_count, 2)
+        np.testing.assert_array_equal(
+            solver.read_screen.call_args_list[0][0][0], gray[160:215, 1460:1785]
+        )
+        solver.find.assert_any_call(
+            "infra_no_operator", scope=((1288, 135), (1869, 326))
+        )
         solver.sleep.assert_called_with(0.25)
         solver.recog.update.assert_called_once()
 
