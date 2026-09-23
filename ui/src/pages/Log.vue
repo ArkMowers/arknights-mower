@@ -11,6 +11,7 @@ import {
   RESIZER_HEIGHT
 } from '@/utils/logLayout'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
+import StartSchedule from '@/components/StartSchedule.vue'
 const mower_store = useMowerStore()
 const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
   storeToRefs(mower_store)
@@ -201,7 +202,6 @@ function stop() {
 
 const show_feedback = ref(false)
 
-import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
 import ServerOutlineIcon from '@vicons/ionicons5/ServerOutline'
@@ -432,22 +432,12 @@ async function db_delete(keys) {
           <span class="btn-text">立即停止</span>
         </n-button>
       </drop-down>
-      <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
-        <n-button
-          v-if="!running"
-          type="primary"
-          @click="start"
-          :loading="waiting"
-          :disabled="waiting"
-        >
-          <template #icon>
-            <n-icon>
-              <play-icon />
-            </n-icon>
-          </template>
-          <span class="btn-text">开始执行</span>
-        </n-button>
-      </drop-down>
+      <start-schedule
+        v-if="!running"
+        :start="start"
+        :start-options="start_options"
+        :waiting="waiting"
+      />
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
         <template #icon>
