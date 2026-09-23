@@ -2356,16 +2356,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             now = datetime.now()
             for op in self.op_data.operators.values():
                 self.op_data.update_standby_low_priority(op, now)
-            self.total_agent.sort(
-                key=lambda op: resting_key(self.op_data, op.name, now)
-            )
-        else:
-            self.total_agent.sort(
-                key=lambda op: (
-                    self._resting_tier(op),
-                    op.current_mood() - op.lower_limit,
-                )
-            )
+        # 沿用原下班顺序：只比较距心情下限的余量。显式名单、高低优和
+        # 候补均属于宿舍分床规则，不能让仍有心情的组抢走红脸组的替班。
+        self.total_agent.sort(key=lambda op: op.current_mood() - op.lower_limit)
+        shift_candidates = [op for op in self.total_agent if op.is_high()]
+        fill_candidates = [op for op in self.total_agent if not op.is_high()]
+        if experimental:
+            fill_candidates.sort(key=lambda op: resting_key(self.op_data, op.name, now))
         self.plan_metadata()
         # 理想休息人数只描述主力轮休；低优占床另由 available_free("low")
         # 管理，不能抬高这里的当前人数或挡住可接管床位上的大组。
@@ -2397,7 +2394,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _plan = {}
         _high_done = False
         _low_used = set()
-        for op in self.total_agent:
+        # 先确定工作组换班，再用剩余床位补普通休息者；补床不能提前占用
+        # 尚未执行的主班床位预约（#942）。补床内部仍按宿舍优先级排序。
+        for op in shift_candidates + fill_candidates:
             if experimental and self._resting_tier(op) == RestingTier.EXCLUDED:
                 continue
             if experimental and op.name in reserved_names:
