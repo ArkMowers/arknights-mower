@@ -134,9 +134,19 @@ onBeforeUnmount(removePointerListeners)
 <style scoped>
 .mood-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   align-items: stretch;
+}
+@media (max-width: 850px) {
+  .mood-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 540px) {
+  .mood-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .mood-grid-card {
   position: relative;

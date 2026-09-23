@@ -66,6 +66,10 @@ export const useMoodBoardStore = defineStore('mood-board', () => {
     ])
     if (next.length !== views.value.length + (id ? 0 : 1)) return false
     views.value = next
+    if (!id) {
+      groupOrder.value = ['custom:' + identifier, ...groupOrder.value]
+      persistOrder()
+    }
     saveMoodViews(storage(), next)
     return identifier
   }

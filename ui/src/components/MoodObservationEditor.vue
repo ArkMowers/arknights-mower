@@ -65,7 +65,7 @@ function close() {
         <span>观察表名称</span>
         <n-input v-model:value="name" maxlength="30" placeholder="例如：重点干员" />
       </label>
-      <label>
+      <div class="observation-field">
         <span>选择干员（可跨任意原始编组）</span>
         <n-select
           v-model:value="selected"
@@ -78,7 +78,7 @@ function close() {
           :max="MAX_MOOD_VIEW_OPERATORS"
           placeholder="搜索已有历史的干员；也可输入无记录的名字"
         />
-      </label>
+      </div>
       <p class="observation-help">
         可搜索历史记录中的任意干员。没有记录时会明确提示；不会更改排班、采样或实际调度。
       </p>
@@ -100,7 +100,8 @@ function close() {
   flex-direction: column;
   gap: 15px;
 }
-.observation-fields label {
+.observation-fields label,
+.observation-field {
   display: flex;
   flex-direction: column;
   gap: 8px;

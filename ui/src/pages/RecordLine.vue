@@ -22,10 +22,10 @@
             <n-button
               size="tiny"
               secondary
-              :aria-label="'展开或收起' + group.groupName"
-              @click="expandCard = expandCard === group.boardKey ? '' : group.boardKey"
+              :aria-label="'全屏查看' + group.groupName"
+              @click="fullscreenKey = group.boardKey"
             >
-              {{ expandCard === group.boardKey ? '收起' : '展开' }}
+              全屏
             </n-button>
           </div>
         </header>
@@ -56,10 +56,7 @@
           :entries="rateEntries.get(group.boardKey) ?? []"
           @toggle="toggleLine(group.boardKey, $event)"
         />
-        <div
-          class="line-outer-container"
-          :class="{ 'card-expanded': expandCard === group.boardKey }"
-        >
+        <div class="line-outer-container">
           <div
             v-if="group.moodData.datasets.length"
             class="line-inner-container"
@@ -77,6 +74,34 @@
       </template>
     </mood-card-grid>
 
+    <n-modal
+      :show="!!fullscreenGroup"
+      preset="card"
+      :title="fullscreenGroup?.groupName || '心情曲线'"
+      style="width: min(96vw, 1600px); height: 92vh"
+      content-style="display:flex; flex-direction:column; min-height:0"
+      @update:show="
+        (show) => {
+          if (!show) fullscreenKey = ''
+        }
+      "
+    >
+      <template v-if="fullscreenGroup">
+        <mood-rate-legend
+          :group-name="fullscreenGroup.groupName"
+          :entries="rateEntries.get(fullscreenGroup.boardKey) ?? []"
+          @toggle="toggleLine(fullscreenGroup.boardKey, $event)"
+        />
+        <div class="fullscreen-chart">
+          <Line
+            v-if="fullscreenGroup.moodData.datasets.length"
+            :data="fullscreenGroup.moodData"
+            :options="chartOptions"
+          />
+          <p v-else class="no-history">暂无历史记录</p>
+        </div>
+      </template>
+    </n-modal>
     <mood-observation-editor
       v-model:show="editorShow"
       :view="editingView"
@@ -109,7 +134,6 @@ import MoodRateLegend from '@/components/MoodRateLegend.vue'
 import MoodObservationEditor from '@/components/MoodObservationEditor.vue'
 import { useMoodBoardStore } from '@/stores/mood_board'
 import { useRecordStore } from '@/stores/record'
-import { orderMoodGroups } from '@/utils/mood_order'
 import { moodStroke } from '@/utils/mood_colors'
 import { buildObservationGroups, mergeOperatorCatalog } from '@/utils/mood_observation'
 import {
@@ -143,7 +167,7 @@ const loadError = ref('')
 const formError = ref('')
 const editorShow = ref(false)
 const editingId = ref('')
-const expandCard = ref('')
+const fullscreenKey = ref('')
 const expandChart = ref({})
 const hiddenLines = ref({})
 const chartRefs = new Map()
@@ -151,14 +175,22 @@ const chartIntervalCache = new WeakMap()
 
 const fullCatalog = computed(() => mergeOperatorCatalog(catalog.value, reportData.value))
 const editingView = computed(() => board.views.find((view) => view.id === editingId.value) || null)
+const fullscreenGroup = computed(
+  () => orderedReportData.value.find((group) => group.boardKey === fullscreenKey.value) || null
+)
 const orderedReportData = computed(() => {
   const custom = buildObservationGroups(board.views, reportData.value, fetchedSeries.value)
   const original = reportData.value.map((group) => ({ ...group, boardKey: group.groupName }))
-  const groups = orderMoodGroups([...original, ...custom], {
-    groupOrder: board.groupOrder,
-    pinnedGroups: [],
-    pinnedOperators: []
-  })
+  // Newly created observation cards lead unless the user has dragged them elsewhere.
+  const manual = board.groupOrder
+  const preferred = [
+    ...custom.map((group) => group.boardKey).filter((key) => !manual.includes(key)),
+    ...manual
+  ]
+  const rank = new Map(preferred.map((key, index) => [key, index]))
+  const groups = [...custom, ...original].sort(
+    (a, b) => (rank.get(a.boardKey) ?? Infinity) - (rank.get(b.boardKey) ?? Infinity)
+  )
   return groups.map((group) => {
     const key = group.boardKey
     const hidden = hiddenLines.value[key] || []
@@ -426,13 +458,25 @@ const chartOptions = {
   flex: 1;
   min-height: 130px;
   overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
   margin-top: 4px;
 }
 .line-inner-container {
   box-sizing: border-box;
   height: 100%;
-  padding: 0 3px 8px;
+  padding: 0 3px 12px;
   min-width: 100%;
+}
+.fullscreen-chart {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.fullscreen-chart :deep(canvas),
+.line-inner-container :deep(canvas) {
+  max-height: 100%;
 }
 .no-history {
   display: flex;
