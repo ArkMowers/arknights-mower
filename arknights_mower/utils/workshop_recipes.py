@@ -30,10 +30,7 @@ def operator_recipe_allowed(name, recipe, *, fodder=False):
             and fodder
             and (
                 recipe.get("tab") in {"基建材料", "技巧概要"}
-                or (
-                    recipe.get("tab") == "精英材料"
-                    and recipe.get("apCost") == 1
-                )
+                or (recipe.get("tab") == "精英材料" and recipe.get("apCost") == 1)
             )
         )
         return t4 or deer_fodder
