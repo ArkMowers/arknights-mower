@@ -19,11 +19,15 @@ def _open_history(database: str | Path):
     file = Path(database)
     if not file.is_file():
         return None
-    connection = sqlite3.connect(f"{file.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
+    connection = sqlite3.connect(
+        f"{file.resolve().as_uri()}?mode=ro", uri=True, timeout=3
+    )
     connection.row_factory = sqlite3.Row
     if "agent_action" not in {
         row["name"]
-        for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
     }:
         connection.close()
         return None
@@ -64,7 +68,11 @@ def _names(values) -> list[str]:
         raise ValueError("names must be an array")
     result = []
     for value in values:
-        if not isinstance(value, str) or not value.strip() or len(value.strip()) > MAX_NAME_LENGTH:
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or len(value.strip()) > MAX_NAME_LENGTH
+        ):
             raise ValueError("invalid operator name")
         name = value.strip()
         if name not in result:
@@ -102,7 +110,9 @@ def selected_mood_series(database: str | Path, names: list[str]) -> list[dict]:
     if connection is None:
         return [{"name": name, "data": []} for name in names]
     try:
-        columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_action)")}
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(agent_action)")
+        }
         related_column = "related_operator" if "related_operator" in columns else "NULL"
         event_column = "mood_event" if "mood_event" in columns else "NULL"
         result = []
@@ -119,7 +129,9 @@ def selected_mood_series(database: str | Path, names: list[str]) -> list[dict]:
             ).fetchall()
             points = []
             for row in reversed(rows):
-                point = _point(row["current_time"], row["mood"], row["related"], row["event"])
+                point = _point(
+                    row["current_time"], row["mood"], row["related"], row["event"]
+                )
                 if point is not None:
                     points.append(point)
             result.append({"name": name, "data": points})

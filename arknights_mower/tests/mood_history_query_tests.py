@@ -42,7 +42,8 @@ class MoodHistoryQueryTests(unittest.TestCase):
                 data.extend(["阿米娅", "fiammetta_before"])
             placeholders = ", ".join("?" for _ in data)
             connection.execute(
-                f"INSERT INTO agent_action ({columns_sql}) VALUES ({placeholders})", data
+                f"INSERT INTO agent_action ({columns_sql}) VALUES ({placeholders})",
+                data,
             )
         connection.commit()
         connection.close()
@@ -59,7 +60,9 @@ class MoodHistoryQueryTests(unittest.TestCase):
         self.create_data()
         catalog = available_mood_operators(self.database)
         self.assertEqual({r["name"] for r in catalog}, {"阿米娅", "低优先记录干员"})
-        self.assertEqual(next(r["sampleCount"] for r in catalog if r["name"] == "阿米娅"), 2)
+        self.assertEqual(
+            next(r["sampleCount"] for r in catalog if r["name"] == "阿米娅"), 2
+        )
         results = selected_mood_series(self.database, ["阿米娅", "无历史"])
         self.assertEqual([r["name"] for r in results], ["阿米娅", "无历史"])
         self.assertEqual([r["data"][0]["y"] for r in results[:1]], [24])
