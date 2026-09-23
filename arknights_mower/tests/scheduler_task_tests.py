@@ -138,6 +138,51 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(run_order.time, now + timedelta(minutes=3))
         self.assertFalse(any(task.deferred_by_run_order for task in dorm_tasks))
 
+    def test_dorm_wakeup_preserves_only_experimental_dorm_batch(self):
+        for experimental, work_room in [(True, False), (False, False), (True, True)]:
+            for wake_type in (TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER):
+                with self.subTest(
+                    experimental=experimental, work_room=work_room, wake_type=wake_type
+                ):
+                    now = datetime(2026, 9, 23, 12)
+                    dorm = SchedulerTask(
+                        time=now,
+                        task_type=TaskTypes.RE_ORDER,
+                        task_plan={"dormitory_1": ["Current", "Free"]},
+                    )
+                    wake = SchedulerTask(time=now, task_type=wake_type)
+                    order = SchedulerTask(
+                        time=now + timedelta(seconds=30),
+                        task_type=TaskTypes.RUN_ORDER,
+                        task_plan={"room_1_1": ["Current"]},
+                    )
+                    tasks = [dorm, wake, order]
+                    if work_room:
+                        tasks.insert(
+                            0,
+                            SchedulerTask(
+                                time=now,
+                                task_type=TaskTypes.SHIFT_OFF,
+                                task_plan={"central": ["阿米娅"]},
+                            ),
+                        )
+                    with (
+                        patch.object(
+                            config.conf, "experimental_dorm_logic", experimental
+                        ),
+                        patch(
+                            "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+                            return_value=(None, None),
+                        ),
+                    ):
+                        scheduling(tasks, time_now=now)
+                    if experimental and not work_room:
+                        self.assertEqual(dorm.time, now)
+                        self.assertEqual(wake.time, now)
+                        self.assertFalse(dorm.deferred_by_run_order)
+                    else:
+                        self.assertGreater(dorm.time, order.time)
+
     def test_deferred_dorm_schedules_are_merged_before_run_order(self):
         shift_off = SchedulerTask(
             time=datetime(2026, 9, 22, 5, 18, 15),

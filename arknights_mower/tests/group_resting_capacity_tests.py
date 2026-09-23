@@ -498,10 +498,30 @@ def test_candidate_below_rescue_line_stays_low_until_return(solver):
     assert solver._resting_tier(candidate).name == "LOW_MAIN"
 
     # 实际回到自己的工作位后解除本轮升级。
-    candidate.current_room, candidate.current_index = candidate.room, candidate.index
-    data.update_standby_low_priority(candidate, now)
+    data.update_detail(candidate.name, 20, candidate.room, candidate.index)
     assert not candidate.standby_low_priority
     assert solver._resting_tier(candidate).name == "STANDBY"
+
+
+@pytest.mark.parametrize("previous_room", ["dormitory_1", ""])
+def test_low_mood_return_resets_rescue_but_working_candidate_can_escalate(
+    solver, previous_room
+):
+    data = solver.op_data
+    candidate = data.operators[DEEP[1]]
+    candidate.current_room = previous_room
+    candidate.current_index = 2 if previous_room else -1
+    candidate.standby_low_priority = True
+    candidate.time_stamp = datetime.now()
+
+    data.update_detail(candidate.name, 8.9, candidate.room, candidate.index)
+    assert not candidate.standby_low_priority
+    assert data._can_standby(candidate)
+
+    # 下一次在岗读数仍低于急救线时，可开启新一轮急救，不能永久豁免。
+    data.update_detail(candidate.name, 8.8, candidate.room, candidate.index)
+    assert candidate.standby_low_priority
+    assert not data._can_standby(candidate)
 
 
 def test_candidate_below_rescue_line_cannot_wait_without_bed(solver):

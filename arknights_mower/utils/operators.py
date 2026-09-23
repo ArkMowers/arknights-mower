@@ -914,6 +914,10 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
+        returned_to_post = (agent.current_room, agent.current_index) != (
+            agent.room,
+            agent.index,
+        ) and (current_room, current_index) == (agent.room, agent.index)
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
             if agent.time_stamp is not None and agent.mood > mood:
@@ -948,7 +952,7 @@ class Operators:
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
-        self.update_standby_low_priority(agent)
+        self.update_standby_low_priority(agent, returned_to_post=returned_to_post)
         if current_room == "train" and current_index == 0:
             agent.resting_from_train = True
         elif (current_room and not to_dorm) or mood >= 24:
@@ -1147,7 +1151,7 @@ class Operators:
             and (self.experimental_dorm_logic or not op.is_workshop())
         )
 
-    def update_standby_low_priority(self, op, now=None):
+    def update_standby_low_priority(self, op, now=None, *, returned_to_post=False):
         """候补低于急救线后升为低优，直到实际回班。
 
         急救线与现有急救模式共用同一计算：排班心情阈值乘全局
@@ -1158,8 +1162,10 @@ class Operators:
         ):
             op.standby_low_priority = False
             return
-        if op.current_room == op.room and op.current_index == op.index:
+        # 回班是读取到的位置迁移事件；持续在岗的低心情候补仍需正常急救。
+        if returned_to_post:
             op.standby_low_priority = False
+            return
         mood = resting_mood(op, now)
         threshold = op.lower_limit + (op.upper_limit - op.lower_limit) * (
             self.config.resting_threshold * config.conf.rescue_threshold

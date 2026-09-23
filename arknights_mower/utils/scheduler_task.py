@@ -203,6 +203,19 @@ def _is_dorm_only_task(task):
     )
 
 
+def _is_dorm_only_batch(tasks):
+    # 宿舍重排附带的空唤醒任务不涉及工作站，但不能让任意空批次绕过保护。
+    return any(_is_dorm_only_task(task) for task in tasks) and all(
+        _is_dorm_only_task(task)
+        or (
+            task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER)
+            and not task.plan
+            and not task.meta_data
+        )
+        for task in tasks
+    )
+
+
 def _defer_work_before_swap(tasks, swap, timing):
     now, execution_time = timing
     cursor = now
@@ -398,7 +411,7 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                         next_priority_0_time = tasks[next_priority_0_index].time
                         pending = tasks[i:next_priority_0_index]
                         if config.conf.experimental_dorm_logic:
-                            if all(_is_dorm_only_task(task) for task in pending):
+                            if _is_dorm_only_batch(pending):
                                 logger.info(
                                     "实验宿舍逻辑下待处理任务仅涉及宿舍，保留原定时间"
                                 )
@@ -771,8 +784,10 @@ def rebalance_plan_swap_dorms(
     }
 
 
-def generate_plan_by_drom(tasks, op_data, existing_targets=None):
-    if not tasks:
+def generate_plan_by_drom(tasks, op_data, existing_targets=None, release_tasks=None):
+    # 同时刻的回班与释放床位必须分别保留类型，并共用一次未来状态演算。
+    batches = list(tasks.items()) + list((release_tasks or {}).items())
+    if not batches:
         return []
     experimental = bool(getattr(op_data, "experimental_dorm_logic", False))
     if experimental:
@@ -781,8 +796,8 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
         op_data = copy.copy(op_data)
         op_data.dorm = copy.deepcopy(op_data.dorm)
         op_data.operators = copy.deepcopy(op_data.operators)
-        tasks = copy.deepcopy(tasks)
-    ordered = sorted(tasks.items())
+        batches = copy.deepcopy(batches)
+    ordered = sorted(batches, key=lambda batch: batch[0])
     result = []
     planned = set()
     current_time = datetime.now()
@@ -917,6 +932,20 @@ def generate_plan_by_drom(tasks, op_data, existing_targets=None):
 
 
 def plan_metadata(op_data, tasks):
+    locked_tasks = [
+        task
+        for task in tasks
+        if op_data.experimental_dorm_logic
+        and getattr(task, "product_shift_locked", False)
+    ]
+    locked_names = {name for task in locked_tasks for name in task.product_lock_names}
+    locked_groups = {
+        op_data.operators[name].group
+        for name in locked_names
+        if name in op_data.operators and op_data.operators[name].group
+    }
+    locked_slots = {slot for task in locked_tasks for slot in task.product_lock_slots}
+    locked_ids = {id(task) for task in locked_tasks}
     # 仅当副表处于激活状态时，保留既有回班任务中的工位快照，避免副表临时调整工位覆盖回班目标；
     # 当所有副表均已失效（恢复纯主表）时，所有干员统一按主表规划回班，避免副表工位粘滞。
     existing_targets = {}
@@ -927,9 +956,12 @@ def plan_metadata(op_data, tasks):
                     for idx, name in enumerate(agents):
                         if name not in ("Current", "Free", ""):
                             existing_targets[name] = (room, idx)
-    # 清除，重新添加刷新
+    # 切产物延期任务保留原对象、重试时间与资源锁，只重算其他回班/释放任务。
     tasks = [
-        t for t in tasks if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
+        t
+        for t in tasks
+        if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
+        or id(t) in locked_ids
     ]
     _time = datetime.max
     min_resting_time = datetime.max
@@ -965,6 +997,12 @@ def plan_metadata(op_data, tasks):
             continue
         if dorm.name and dorm.name in op_data.operators:
             operator = op_data.operators[dorm.name]
+            if (
+                dorm.name in locked_names
+                or operator.group in locked_groups
+                or dorm.position in locked_slots
+            ):
+                continue
             grouped_dorms[operator.group].append(dorm)
             if not operator.is_high():
                 free_rooms.append(dorm)
@@ -1060,21 +1098,23 @@ def plan_metadata(op_data, tasks):
                             combined,
                             new_task[task_time][1] or rest_in_full,
                         )
+    release_tasks = {}
     if op_data.config.free_room:
         for room in free_rooms:
             # 防止时间和前面重复
-            min_resting_time += timedelta(seconds=10)
+            if min_resting_time != datetime.max:
+                min_resting_time += timedelta(seconds=10)
             if room.time and room.name:
                 task_time = min(room.time, min_resting_time)
                 if task_time < datetime.now():
                     # 如果干员休息完毕，则不再生成
                     continue
-                if task_time not in new_task:
-                    new_task[task_time] = ([room], None)
-                else:
-                    new_task[task_time] = (new_task[task_time][0].append(room), None)
+                release_tasks.setdefault(task_time, ([], None))[0].append(room)
     generated = generate_plan_by_drom(
-        new_task, op_data, existing_targets=existing_targets
+        new_task,
+        op_data,
+        existing_targets=existing_targets,
+        release_tasks=release_tasks,
     )
     tasks.extend(generated)
     return tasks

@@ -512,6 +512,11 @@ def test_repeated_metadata_keeps_resting_group_and_prevents_false_fill(solver):
     data.config.free_room = True
     data.operators["泥岩"].mood = 2
     data.operators["能天使"].mood = 2
+    # 固定相同的完成时间，避免 datetime.now() 的微秒差掩盖批次碰撞。
+    completed_at = datetime.now() + timedelta(hours=4)
+    for bed in data.dorm:
+        if bed.name:
+            bed.time = completed_at
     before = [(bed.name, bed.time) for bed in data.dorm]
 
     solver.plan_metadata()
@@ -541,6 +546,70 @@ def test_repeated_metadata_keeps_resting_group_and_prevents_false_fill(solver):
     solver.tasks = []
     assert solver.agent_get_mood() is None
     assert solver.tasks == []
+
+
+def test_equal_time_releases_keep_return_task_type(solver):
+    configure_explicit_free_bed(solver)
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    completed_at = datetime.now() + timedelta(hours=4)
+    for bed in data.dorm:
+        if bed.name:
+            bed.time = completed_at
+
+    solver.plan_metadata()
+
+    returns = [task for task in solver.tasks if task.type == TaskTypes.SHIFT_ON]
+    releases = [task for task in solver.tasks if task.type == TaskTypes.RELEASE_DORM]
+    assert returns and releases
+    assert returns[0].plan["meeting"] == ["伊内丝", "银灰"]
+    assert all(room.startswith("dormitory_") for task in releases for room in task.plan)
+    assert all(task.time == completed_at for task in releases)
+
+
+def test_metadata_preserves_product_locked_return_and_other_releases(solver):
+    apply_plan(
+        solver,
+        {
+            "meeting": ["陈", "初雪"],
+            "dormitory_1": ["塑心", "冰酿", "伊内丝", "银灰", "年"],
+        },
+    )
+    solver.op_data.config.free_room = True
+    solver.plan_metadata()
+    locked = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_ON)
+    slots = {
+        (room, index)
+        for room, names in locked.plan.items()
+        for index, name in enumerate(names)
+        if name != "Current"
+    }
+    solver._reserve_deferred_product_shift(locked, slots)
+    locked.time += timedelta(hours=1)
+    locked.pending_product_targets = {"room_3_1": "exp3"}
+    solver._refresh_deferred_product_reservations()
+    before = deepcopy(vars(locked))
+    reserved = solver.op_data.reserved_product_replacements.copy()
+    beds_before = deepcopy([vars(bed) for bed in solver.op_data.dorm])
+
+    for _ in range(2):
+        solver.plan_metadata()
+        solver._refresh_deferred_product_reservations()
+        assert any(task is locked for task in solver.tasks)
+        assert vars(locked) == before
+        assert solver.op_data.reserved_product_replacements == reserved
+        assert [task for task in solver.tasks if task.type == TaskTypes.SHIFT_ON] == [
+            locked
+        ]
+        assert any(task.type == TaskTypes.RELEASE_DORM for task in solver.tasks)
+        assert [vars(bed) for bed in solver.op_data.dorm] == beds_before
+
+    solver.tasks.remove(locked)
+    solver._refresh_deferred_product_reservations()
+    solver.plan_metadata()
+    assert not solver.op_data.reserved_product_replacements
+    assert any(task.type == TaskTypes.SHIFT_ON for task in solver.tasks)
 
 
 def test_release_ignores_operator_with_stale_empty_position(solver):
@@ -994,3 +1063,22 @@ def test_normal_group_keeps_legacy_in_place_order(legacy_solver, operation):
         legacy_solver.rearrange_resting_priority("联动")
     assert data.groups["联动"] is original
     assert original == ["讯使", "银灰", "伊内丝"]
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+def test_multiple_idle_beds_finishing_together_generate_release(solver, experimental):
+    data = solver.op_data
+    data.config.experimental_dorm_logic = experimental
+    data.config.free_room = True
+    completed_at = datetime.now() + timedelta(hours=1)
+    for bed in data.dorm:
+        bed.time = completed_at
+
+    solver.plan_metadata()
+
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0].type == TaskTypes.RELEASE_DORM
+    assert solver.tasks[0].time == completed_at
+    assert solver.tasks[0].plan == {
+        "dormitory_1": ["Current", "Current", "Free", "Free", "Free"]
+    }
