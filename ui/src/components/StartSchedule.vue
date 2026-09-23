@@ -17,11 +17,8 @@ const message = useMessage()
 const { scheduled_start_at } = storeToRefs(useMowerStore())
 const now = ref(Date.now())
 const showModal = ref(false)
-const mode = ref('datetime')
 const date = ref(Date.now())
 const time = ref(Date.now())
-const hours = ref(0)
-const minutes = ref(30)
 const busy = ref(false)
 let clock
 
@@ -55,9 +52,6 @@ function openModal() {
     : Date.now() + 30 * 60000
   date.value = target
   time.value = target
-  hours.value = 0
-  minutes.value = 30
-  mode.value = 'datetime'
   showModal.value = true
 }
 
@@ -75,7 +69,11 @@ async function schedule(delaySeconds) {
     scheduled_start_at.value = data.scheduled_start_at
     showModal.value = false
   } catch (error) {
-    message.error(error.response?.data?.error || '设置定时启动失败')
+    message.error(
+      error.response?.status === 404
+        ? '当前 Mower 进程尚未加载定时启动功能，请更新并重启进程'
+        : error.response?.data?.error || '设置定时启动失败'
+    )
   } finally {
     busy.value = false
   }
@@ -95,10 +93,6 @@ async function cancel() {
 }
 
 function confirm() {
-  if (mode.value === 'delay') {
-    schedule(((hours.value || 0) * 60 + (minutes.value || 0)) * 60)
-    return
-  }
   const d = new Date(date.value)
   const t = new Date(time.value)
   const target = new Date(
@@ -115,7 +109,7 @@ function confirm() {
 function select(key) {
   if (key === 'custom') openModal()
   else if (key === 'cancel') cancel()
-  else if (key === 'start') props.start('0')
+  else if (key === 'start') props.start('2')
   else props.start(key)
 }
 </script>
@@ -158,24 +152,13 @@ function select(key) {
     title="定时启动"
     style="width: min(420px, calc(100vw - 32px))"
   >
-    <n-tabs v-model:value="mode" type="segment">
-      <n-tab-pane name="datetime" tab="指定时间">
-        <n-space vertical>
-          <n-date-picker v-model:value="date" type="date" style="width: 100%" />
-          <n-time-picker v-model:value="time" style="width: 100%" />
-        </n-space>
-      </n-tab-pane>
-      <n-tab-pane name="delay" tab="等待时长">
-        <n-space>
-          <n-input-number v-model:value="hours" :min="0" :max="720" style="width: 120px">
-            <template #suffix>小时</template>
-          </n-input-number>
-          <n-input-number v-model:value="minutes" :min="0" :max="59" style="width: 120px">
-            <template #suffix>分钟</template>
-          </n-input-number>
-        </n-space>
-      </n-tab-pane>
-    </n-tabs>
+    <n-text depth="3" style="display: block; margin-bottom: 12px">
+      到达预约时间后，将清空运行缓存并启动 Mower。
+    </n-text>
+    <n-space vertical>
+      <n-date-picker v-model:value="date" type="date" style="width: 100%" />
+      <n-time-picker v-model:value="time" style="width: 100%" />
+    </n-space>
     <template #footer>
       <n-space justify="end">
         <n-button @click="showModal = false">取消</n-button>

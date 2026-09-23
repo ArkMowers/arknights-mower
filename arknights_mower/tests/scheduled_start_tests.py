@@ -82,7 +82,7 @@ class ScheduledStartTests(unittest.TestCase):
             FakeTimer.instances[0].callback()
             start.assert_not_called()
             FakeTimer.instances[1].callback()
-            start.assert_called_once_with("0")
+            start.assert_called_once_with("2")
             self.assertIsNone(self.client.get("/status").json["scheduled_start_at"])
 
     def test_manual_start_cancels_reservation(self):

@@ -94,7 +94,7 @@ def _run_scheduled_start(timer):
                 return
             scheduled_start_timer = None
             scheduled_start_at = None
-        if _start_mower("0"):
+        if _start_mower("2"):
             logger.info("预约时间已到，Mower 开始执行")
         else:
             logger.warning("预约时间已到，但 Mower 当前无法启动")
