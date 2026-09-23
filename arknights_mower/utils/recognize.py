@@ -169,6 +169,9 @@ class Recognizer:
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        # 导航栏会覆盖在原场景上；下层的制造站收取等特征仍可能可见。
+        elif self.find("nav_bar"):
+            self.scene = Scene.NAVIGATION_BAR
 
         # 平均色匹配
         elif self.find("trade_strategy_select"):
@@ -185,8 +188,6 @@ class Recognizer:
             self.scene = Scene.DRONE_ACCELERATE
         elif self.find("factory_collect"):
             self.scene = Scene.FACTORY_ROOMS
-        elif self.find("nav_bar"):
-            self.scene = Scene.NAVIGATION_BAR
         elif self.find("read_mail"):
             self.scene = Scene.MAIL
         elif self.find("navigation/record_restoration"):
