@@ -483,12 +483,13 @@ def _active_recovery_room(op_data, name):
 def _recovery_aware_assignments(
     op_data, beds, candidates, *, clear_invalid_recovery=True
 ):
-    """按正常排名选人，再豁免已有单回目标并尽量留在原宿舍。
+    """按正常排名选人，保留有效原床位，只迁移床位失效的入住者。
 
-    candidates 的统一布局为 ``(排序键, 原床位顺序, 姓名, 时间, ...)``。
+    candidates 的统一布局为 ``(排序键, 原床位顺序, 姓名, 时间, 原位置)``。
     单回目标若原本会因缩容落选，会替换保留区末尾的非单回目标；若目标
-    所在宿舍仍有动态床，优先保留原床或同房床。确实换房/离床时清除旧
-    标记，使后续宿舍任务重新执行一次单回入驻。
+    所在宿舍仍有动态床，优先保留原床或同房床。普通床也保留原位，
+    不因房间排序或心情变化互换。确实换房/离床时清除旧标记，使后续
+    宿舍任务重新执行一次单回入驻。
     """
     capacity = len(beds)
     protected = {
@@ -521,6 +522,7 @@ def _recovery_aware_assignments(
     available = list(beds)
     assignments = {}
     assigned_names = set()
+    original_positions = {candidate[2]: candidate[4] for candidate in kept}
     # 单回目标先占原宿舍；同房内优先原床，避免无意义地重做单回。
     for candidate in kept:
         name = candidate[2]
@@ -542,6 +544,20 @@ def _recovery_aware_assignments(
         assignments[bed.position] = candidate
         assigned_names.add(name)
         available.remove(bed)
+
+    # 排名决定缩容时谁保留，不意味着保留者必须按名次重新映射床位。
+    for candidate in kept:
+        name = candidate[2]
+        if name in assigned_names:
+            continue
+        bed = next(
+            (item for item in available if item.position == original_positions[name]),
+            None,
+        )
+        if bed is not None:
+            assignments[bed.position] = candidate
+            assigned_names.add(name)
+            available.remove(bed)
 
     remaining = [candidate for candidate in kept if candidate[2] not in assigned_names]
     for bed, candidate in zip(available, remaining):
@@ -609,7 +625,13 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
                 continue
             seen.add(name)
             candidates.append(
-                (resting_key(op_data, name, now), order, name, saved_time)
+                (
+                    resting_key(op_data, name, now),
+                    order,
+                    name,
+                    saved_time,
+                    _bed.position,
+                )
             )
         candidates.sort(key=lambda item: (item[0], item[1]))
         _assignments, dropped = _recovery_aware_assignments(
@@ -617,7 +639,7 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
         )
         dropped_groups = {
             op_data.operators[name].group
-            for _key, _order, name, _time in dropped
+            for _key, _order, name, _time, _position in dropped
             if op_data.operators[name].is_high()
             and op_data.operators[name].group
             and op_data.operators[name].group not in inactive_groups
@@ -682,10 +704,10 @@ def dorm_rebalance_signature(op_data):
 def rebalance_plan_swap_dorms(
     op_data, previous_dorms=None, reserved_names: set[str] | None = None
 ):
-    """主副表切换后按新顺序迁移仍需恢复的入住者。
+    """主副表切换后，仅迁移失去有效原床位的入住者。
 
-    previous_dorms 用于保留切表前的“原床位顺序”。因此即使床位集合不变、
-    只修改了副表宿舍房间优先级，也能生成实际的宿舍重排任务。
+    previous_dorms 保留切表前的床位位置和恢复计时。单独改变房间优先级
+    不移动已入住者；新顺序仅用于分配确实需要迁移的干员。
     """
     if not getattr(op_data, "experimental_dorm_logic", False):
         return {}

@@ -13,6 +13,7 @@ from arknights_mower.utils.resting_priority import RestingTier
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     prioritize_new_dorm_recovery,
+    rebalance_plan_swap_dorms,
     try_add_release_dorm,
     try_reorder,
 )
@@ -67,6 +68,42 @@ def test_mood_crossing_without_arrival_does_not_reorder(residents):
     other.current_room, other.current_index = ROOM, 4
     data.dorm[1].name = other.name
     assert try_reorder(data, {}) == {}
+
+
+def test_departing_single_target_does_not_force_other_sleepers_to_move(residents):
+    data = residents
+    other = set_tier(data, "红", RestingTier.REPLACEMENT, 1)
+    other.current_room, other.current_index = ROOM, 4
+    data.dorm[1].name = other.name
+    work_plan = {"meeting": ["银灰"]}
+    assert prioritize_new_dorm_recovery(data, work_plan) == work_plan
+    assert try_reorder(data, work_plan) == {}
+
+
+@pytest.mark.parametrize("marked_target", [False, True])
+def test_backup_reordering_preserves_ordinary_beds_despite_priority_and_mood_changes(
+    residents, marked_target
+):
+    data = residents
+    if not marked_target:
+        data.operators["银灰"].clear_dorm_recovery()
+    other = set_tier(data, "红", RestingTier.REPLACEMENT, 1)
+    other.current_room, other.current_index = ROOM, 4
+    data.dorm[1].name = other.name
+    second = "dormitory_2"
+    data.plan[second] = [Room("Free", "", []), Room("Free", "", [])]
+    data.dorm += [Dormitory((second, 0), "陈"), Dormitory((second, 1), "空爆")]
+    for bed in data.dorm[2:]:
+        op = set_tier(data, bed.name, RestingTier.REPLACEMENT, 20)
+        op.current_room, op.current_index = bed.position
+        bed.time = datetime.now() + timedelta(hours=4)
+    before = {bed.position: (bed.name, bed.time) for bed in data.dorm}
+    previous = copy.deepcopy(data.dorm)
+    data.dorm = data.dorm[2:] + data.dorm[:2]
+    data.operators["空爆"].mood = 0
+    data.operators["红"].mood = 23
+    assert rebalance_plan_swap_dorms(data, previous) == {}
+    assert {bed.position: (bed.name, bed.time) for bed in data.dorm} == before
 
 
 @pytest.mark.parametrize("reverse_rooms", [False, True])

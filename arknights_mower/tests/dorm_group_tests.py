@@ -689,10 +689,10 @@ def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(sol
     }
     rebalance_closing_dorm_slots(data, plan, returning)
 
-    # 泥岩虽然原本在即将关闭的 1 号位，仍与其他入住者一起按层级、
-    # 心情重排；容量缩为三张后，只淘汰排序最低且心情最高的年。
-    assert plan["dormitory_1"] == ["塑心", "Current", "泥岩", "陈", "能天使"]
-    assert [bed.name for bed in data.dorm] == ["", "泥岩", "陈", "能天使"]
+    # 容量缩为三张后，只淘汰排序最低且心情最高的年；陈和能天使保留
+    # 有效原床，泥岩迁入年腾出的床，不把整间宿舍按排名重新搬一遍。
+    assert plan["dormitory_1"] == ["塑心", "Current", "Current", "Current", "泥岩"]
+    assert [bed.name for bed in data.dorm] == ["", "陈", "能天使", "泥岩"]
     assert all(bed.time == now + timedelta(hours=4) for bed in data.dorm[1:])
 
 
