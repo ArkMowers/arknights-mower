@@ -1000,6 +1000,15 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
+        retained_time = None
+        if self.experimental_dorm_logic:
+            _, previous_bed = self.get_dorm_by_name(name)
+            if (
+                previous_bed is not None
+                and previous_bed.name == name
+                and previous_bed.position == (current_room, current_index)
+            ):
+                retained_time = previous_bed.time
         returned_to_post = (agent.current_room, agent.current_index) != (
             agent.room,
             agent.index,
@@ -1050,6 +1059,8 @@ class Operators:
             idx, dorm = self.get_dorm_by_name(name)
             if dorm:
                 dorm.name = name
+                if self.experimental_dorm_logic:
+                    dorm.time = retained_time
                 if dorm.time is None:
                     return current_index
         if agent.name == "菲亚梅塔" and (
@@ -1067,6 +1078,12 @@ class Operators:
             if dorm.position[0] == room and dorm.position[1] == index:
                 if not Operators.is_recovery_dorm(self, dorm, _name):
                     continue
+                if (
+                    getattr(self, "experimental_dorm_logic", False)
+                    and dorm.name == _name
+                    and dorm.time is not None
+                ):
+                    break
                 if _name in self.operators.keys() or _name in agent_list:
                     _agent = self.operators[_name]
                     dorm.name = _name
@@ -1387,7 +1404,7 @@ class Operators:
     def project_arrangements(self, plans):
         """按执行顺序推演排班后的驻员和恢复床位，不产生实际换人副作用。
 
-        已知的恢复时间随入住者迁移；新入住者的时间留待实际读屏。
+        位置未变保留恢复时间；换床位或换宿舍后，由正常读房重新采样。
         产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
         """
         projected = copy.copy(self)
@@ -1400,7 +1417,9 @@ class Operators:
                 for index, name in enumerate(names)
                 if name != "Current"
             }
-            recovery_times = {bed.name: bed.time for bed in projected.dorm if bed.name}
+            recovery_times = {
+                bed.name: (bed.position, bed.time) for bed in projected.dorm if bed.name
+            }
             for op in projected.operators.values():
                 if (op.current_room, op.current_index) in changed_slots:
                     op._current_room, op.current_index = "", -1
@@ -1416,7 +1435,15 @@ class Operators:
                     bed, occupant.name
                 ):
                     bed.name = occupant.name
-                    bed.time = recovery_times.get(occupant.name)
+                    old_position, old_time = recovery_times.get(
+                        occupant.name, (None, None)
+                    )
+                    bed.time = (
+                        old_time
+                        if not self.experimental_dorm_logic
+                        or old_position == bed.position
+                        else None
+                    )
                 else:
                     bed.reset()
         return projected
@@ -1453,7 +1480,7 @@ class Operators:
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
             now = datetime.now()
 
-            def below_rescue_line(name):
+            def rescue_order(name):
                 candidate = self.operators.get(name)
                 if (
                     candidate is None
@@ -1461,13 +1488,17 @@ class Operators:
                     or not 0 <= candidate.mood <= 24
                 ):
                     # 未知心情保留原有可用性，不把默认 24 当成实测满心情。
-                    return False
-                return candidate.current_mood(now) < self.rescue_mood_threshold(
-                    candidate
+                    return (False, 0)
+                mood = candidate.current_mood(now)
+                below = mood < self.rescue_mood_threshold(candidate)
+                return (
+                    below,
+                    -mood if below and self.experimental_dorm_logic else 0,
                 )
 
-            # 稳定排序只延后已知低于急救线者；全部低心情仍可按原顺序替班。
-            return sorted(candidates, key=below_rescue_line)
+            # 正常/未知心情沿用名单顺序；测试逻辑的急救候选优先使用
+            # 心情较高者，避免所有人都过线后仍征用名单首位的零心情干员。
+            return sorted(candidates, key=rescue_order)
         if not self.experimental_dorm_logic:
             if (
                 not operator.room.startswith("dorm")

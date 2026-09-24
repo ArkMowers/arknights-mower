@@ -1012,19 +1012,6 @@ if (return_home_when_idle.value) {
               </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="free_room">
-                宿舍不养闲人
-                <help-text>
-                  <template v-if="experimental_dorm_logic">
-                    按宿舍优先级补床，支持待命候补和新入住者单回竞争；保留恢复中的主班、候补及固定宿舍岗位。
-                  </template>
-                  <template v-else>
-                    将未满心情的空闲干员补入可释放床位；加工干员优先级由自动加工设置控制。
-                  </template>
-                </help-text>
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
               <n-checkbox v-model:checked="experimental_dorm_logic">
                 测试宿舍逻辑
                 <help-text>
@@ -1034,6 +1021,19 @@ if (return_home_when_idle.value) {
                   </template>
                   <template v-else> 已关闭：使用原宿舍规则，休息优先名单按填写顺序分床。 </template>
                   <p>两种模式均按「心情－个人下限」排序下班。</p>
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="free_room">
+                宿舍不养闲人
+                <help-text>
+                  <template v-if="experimental_dorm_logic">
+                    按宿舍优先级补床，支持待命候补和新入住者单回竞争；保留恢复中的主班、候补及固定宿舍岗位。
+                  </template>
+                  <template v-else>
+                    将未满心情的空闲干员补入可释放床位；加工干员优先级由自动加工设置控制。
+                  </template>
                 </help-text>
               </n-checkbox>
             </n-form-item>

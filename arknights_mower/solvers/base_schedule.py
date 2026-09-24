@@ -2408,6 +2408,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 先确定工作组换班，再用剩余床位补普通休息者；补床不能提前占用
         # 尚未执行的主班床位预约（#942）。补床内部仍按宿舍优先级排序。
         for op in shift_candidates + fill_candidates:
+            if experimental and op.name in _replacement:
+                # 本轮已接工作替班的人不能又预约休息床位。
+                continue
             if experimental and self._resting_tier(op) == RestingTier.EXCLUDED:
                 continue
             if experimental and op.name in reserved_names:
@@ -6146,6 +6149,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
     def get_agent_from_room(self, room, read_time_index=None, related_operators=None):
+        retain_dorm_time = room.startswith("dorm") and getattr(
+            self.op_data, "experimental_dorm_logic", False
+        )
         if read_time_index is None:
             read_time_index = []
         if related_operators is None:
@@ -6308,6 +6314,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 _mood = -1
             data["agent"] = _name
             data["mood"] = _mood
+            if retain_dorm_time and _name in self.op_data.operators:
+                _, bed = self.op_data.get_dorm_by_name(_name)
+                if bed is not None and bed.name == _name and bed.time is not None:
+                    # 位置没变时沿用预计回满记录，换位后的缺失记录顺带读取。
+                    data["time"] = bed.time
+                    result.append(data)
+                    continue
             if i in read_time_index and _name != "":
                 exhausted_working = False
                 if (
