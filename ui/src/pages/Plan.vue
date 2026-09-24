@@ -484,6 +484,7 @@ function movePlanForward() {
           <div>感知：夕心情-令心情=12</div>
           <div>烟火：令心情-夕心情=12</div>
           <div>均衡：夕令心情一样</div>
+          <div>达到模式心情上限即离宿、不再入宿，不受“不养闲人”开关影响。</div>
         </help-text>
       </template>
       <n-radio-group v-model:value="current_conf.ling_xi">

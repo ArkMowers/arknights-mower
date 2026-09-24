@@ -41,7 +41,7 @@ def _resting_members(op_data):
                 and (
                     op_data._can_standby(op)
                     or op.time_stamp is not None
-                    and op.mood == op.upper_limit
+                    and op.mood >= op.upper_limit
                 )
             )
             for op in members

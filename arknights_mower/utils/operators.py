@@ -605,6 +605,19 @@ class Operators:
             self.operators[name].upper_limit = upper_limit
             self.operators[name].lower_limit = lower_limit
 
+    def is_ling_xi_limited(self, name):
+        """当前令夕模式中需要在 12 心情停止休息的干员。"""
+        return name == {1: "令", 2: "夕"}.get(self.config.ling_xi)
+
+    def ling_xi_rest_complete(self, name):
+        op = self.operators.get(name)
+        return (
+            self.is_ling_xi_limited(name)
+            and op is not None
+            and op.time_stamp is not None
+            and op.current_mood() >= op.upper_limit
+        )
+
     def init_mood_limit(self):
         # 设置心情阈值 for 夕，令，
         if self.config.ling_xi == 1:
@@ -613,7 +626,7 @@ class Operators:
         elif self.config.ling_xi == 2:
             self.set_mood_limit("夕", upper_limit=12)
             self.set_mood_limit("令", lower_limit=12)
-        elif self.config.ling_xi == 0:
+        elif self.config.ling_xi in (0, 3):
             self.set_mood_limit("夕")
             self.set_mood_limit("令")
         # 设置同组心情阈值
@@ -631,7 +644,7 @@ class Operators:
                     ].room.startswith("dorm"):
                         if self.config.ling_xi in [1, 2]:
                             self.set_mood_limit(group_name, lower_limit=12)
-                        elif self.config.ling_xi == 0:
+                        elif self.config.ling_xi in (0, 3):
                             self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
 
@@ -1339,7 +1352,14 @@ class Operators:
 
     def replacement_candidates(self, operator):
         """工作替班避让缓存中的急救低心情；宿舍和肥鸭沿用各自规则。"""
-        candidates = [name for name in operator.replacement if name != "Free"]
+        candidates = [
+            name
+            for name in operator.replacement
+            if name != "Free"
+            and not (
+                operator.room.startswith("dorm") and self.ling_xi_rest_complete(name)
+            )
+        ]
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
             now = datetime.now()
 
@@ -1561,6 +1581,8 @@ class Operators:
         )
 
     def _find_dorm_slot(self, name, used, *, group_resting=False, active_groups=None):
+        if self.ling_xi_rest_complete(name):
+            return None
         operator = self.operators[name]
         if not self.experimental_dorm_logic:
             is_high = operator.resting_priority == "high" and not operator.is_workshop()
@@ -1657,6 +1679,8 @@ class Operators:
 
     def assign_dorm_group(self, names, active_groups=None):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
+        # 令夕达到模式上限后随组离岗即可，不再占床恢复。
+        names = [name for name in names if not self.ling_xi_rest_complete(name)]
         used = set()
         assignments = []
         optional = self.standby_candidates(names)

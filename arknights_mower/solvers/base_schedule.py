@@ -820,9 +820,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 读到的床位时间重建派生回班。
                         get_time = True
                     if TaskTypes.RELEASE_DORM == self.task.type:
+                        if getattr(self.task, "strict_mood_limit", False) and not (
+                            self.op_data.is_ling_xi_limited(self.task.meta_data)
+                        ):
+                            # 切表或修改令夕模式后，旧上限释放任务失效。
+                            self.task.plan = {}
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
-                        free_room = list(self.task.plan.keys())[0]
-                        if "Free" in self.task.plan[free_room]:
+                        free_room = next(iter(self.task.plan), None)
+                        if free_room and "Free" in self.task.plan[free_room]:
                             free_index = self.task.plan[free_room].index("Free")
                             if self.task.meta_data in self.op_data.operators.keys():
                                 free_agent = self.op_data.operators[self.task.meta_data]
@@ -1369,8 +1374,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         _agent.workaholic
                         or _agent.time_stamp is not None
                         and (
-                            _agent.current_mood() == _agent.upper_limit
-                            or _agent.mood == _agent.upper_limit
+                            _agent.current_mood() >= _agent.upper_limit
+                            or _agent.mood >= _agent.upper_limit
                         )
                     )
                 ):
@@ -5454,6 +5459,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if v.name not in agents
             and v.operator_type != "high"
             and v.current_room == ""
+            and (
+                v.name not in ("令", "夕")
+                or not self.op_data.ling_xi_rest_complete(v.name)
+            )
         ]
         free_list.extend(
             [
@@ -5574,6 +5583,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if name != "Free":
                 continue
             current = self.op_data.get_current_operator(room, index)
+            if (
+                current is not None
+                and getattr(self.task, "strict_mood_limit", False)
+                and self.task.meta_data == current.name
+                and self.op_data.is_ling_xi_limited(current.name)
+            ):
+                # 上限释放必须真正换出本人，不能被主班床位保护抵消。
+                current = None
             if current is not None and current.name in (set(agents) | moving):
                 current = None
             if current is not None:
@@ -5648,6 +5665,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
                 __agent = self.op_data.operators[agents[idx]]
                 if (
+                    agents[idx] in ("令", "夕")
+                    and self.op_data.ling_xi_rest_complete(agents[idx])
+                ) or (
                     (
                         not experimental_dorm_logic
                         or getattr(self.op_data.config, "free_room", False)

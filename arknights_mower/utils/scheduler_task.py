@@ -107,19 +107,19 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     time_now = time_now or datetime.now()
     # Keep swaps out of the mutable run-order schedule: their deadline cannot move.
     enabled = config.conf.enable_mastery
-    ordinary = (
-        [t for t in tasks if t.type != TaskTypes.SWAP_SUPPORT] if enabled else tasks
-    )
+    fixed = {
+        id(t)
+        for t in tasks
+        if getattr(t, "strict_mood_limit", False)
+        or enabled
+        and t.type == TaskTypes.SWAP_SUPPORT
+    }
+    ordinary = [t for t in tasks if id(t) not in fixed] if fixed else tasks
     conflict = _schedule_run_orders(ordinary, run_order_delay, execution_time, time_now)
+    if fixed and config.conf.experimental_dorm_logic:
+        ordinary_ids = {id(task) for task in ordinary}
+        tasks[:] = [task for task in tasks if id(task) in fixed | ordinary_ids]
     if enabled:
-        # ordinary 是为保护专精换人而创建的浅拷贝；同步其中被合并掉的任务。
-        if config.conf.experimental_dorm_logic:
-            ordinary_ids = {id(task) for task in ordinary}
-            tasks[:] = [
-                task
-                for task in tasks
-                if task.type == TaskTypes.SWAP_SUPPORT or id(task) in ordinary_ids
-            ]
         swap_conflict = protect_support_swaps(
             tasks, run_order_delay, execution_time, time_now
         )
@@ -222,6 +222,7 @@ def _defer_work_before_swap(tasks, swap, timing):
     for task in sorted(tasks, key=lambda t: t.time):
         if (
             task.type in (TaskTypes.SWAP_SUPPORT, TaskTypes.RUN_ORDER)
+            or getattr(task, "strict_mood_limit", False)
             or task.time > swap.time
         ):
             continue
@@ -1024,6 +1025,8 @@ def plan_metadata(op_data, tasks):
         or id(t) in locked_ids
     ]
     pending_arrangements = []
+    # 按实际床位定时；迁移完成读房后会重建，避免清理尚未发生的未来位置。
+    limited_releases = plan_mood_limit_releases(op_data)
     if op_data.experimental_dorm_logic:
         # 纠偏／重排是已经确定的安排，普通回班属于其后的派生计划。
         # 从最终驻员和床位计算，避免两个规划器各自从旧床位召回同一个人。
@@ -1079,7 +1082,7 @@ def plan_metadata(op_data, tasks):
             ):
                 continue
             grouped_dorms[operator.group].append(dorm)
-            if not operator.is_high():
+            if not operator.is_high() and not op_data.is_ling_xi_limited(dorm.name):
                 free_rooms.append(dorm)
     new_task = {}
     for group_name, dorms in grouped_dorms.items():
@@ -1185,6 +1188,7 @@ def plan_metadata(op_data, tasks):
                     # 如果干员休息完毕，则不再生成
                     continue
                 release_tasks.setdefault(task_time, ([], None))[0].append(room)
+    # 独立的个人离宿时刻不受整组回满、不养闲人和任务合并影响。
     generated = generate_plan_by_drom(
         new_task,
         op_data,
@@ -1193,7 +1197,41 @@ def plan_metadata(op_data, tasks):
         pending_arrangements=pending_arrangements,
     )
     tasks.extend(generated)
+    tasks.extend(limited_releases)
     return tasks
+
+
+def plan_mood_limit_releases(op_data):
+    now = datetime.now()
+    result = []
+    for bed in op_data.all_dorms():
+        if not op_data.is_ling_xi_limited(bed.name):
+            continue
+        op = op_data.operators.get(bed.name)
+        if op is None or (op.current_room, op.current_index) != bed.position:
+            continue
+        if not op_data.is_recovery_dorm(bed, op.name):
+            continue
+        if op_data.ling_xi_rest_complete(op.name):
+            due = now
+        elif bed.time is not None:
+            due = max(now, bed.time)
+        else:
+            # 未读到恢复时间时不能凭默认心情提前释放。
+            continue
+        room, index = bed.position
+        names = ["Current"] * len(op_data.plan[room])
+        names[index] = "Free"
+        result.append(
+            SchedulerTask(
+                time=due,
+                task_plan={room: names},
+                task_type=TaskTypes.RELEASE_DORM,
+                meta_data=op.name,
+                strict_mood_limit=True,
+            )
+        )
+    return result
 
 
 def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_plan=None):
@@ -1499,6 +1537,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 for op in op_data.operators.values()
                 if (not op.is_high() or op.name in standby_waiting)
                 and not op.current_room
+                and not op_data.ling_xi_rest_complete(op.name)
                 and op.name not in reserved
                 and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
                 and (
@@ -1655,7 +1694,9 @@ def merge_release_dorm(tasks, merge_interval):
             continue
         task = tasks[-idx]
         last_not_release = None
-        if task.type != TaskTypes.RELEASE_DORM:
+        if task.type != TaskTypes.RELEASE_DORM or getattr(
+            task, "strict_mood_limit", False
+        ):
             continue
         for index_last_not_release in range(idx + 1, len(tasks) + 1):
             if tasks[-index_last_not_release].type != TaskTypes.RELEASE_DORM and tasks[
@@ -1680,7 +1721,13 @@ class SchedulerTask:
     meta_data = ""
 
     def __init__(
-        self, time=None, task_plan={}, task_type="", meta_data="", adjusted=False
+        self,
+        time=None,
+        task_plan={},
+        task_type="",
+        meta_data="",
+        adjusted=False,
+        strict_mood_limit=False,
     ):
         if time is None:
             self.time = datetime.now()
@@ -1691,6 +1738,7 @@ class SchedulerTask:
         self.meta_data = meta_data
         self.adjusted = adjusted
         self.deferred_by_run_order = False
+        self.strict_mood_limit = strict_mood_limit
 
     def format(self, time_offset=0):
         res = copy.deepcopy(self)
