@@ -3165,6 +3165,38 @@ class TestClueProductCompleteWait(unittest.TestCase):
         self.assertTrue(mixin.wait_product_complete())
         mixin.sleep.assert_called_once_with(1)
 
+    def test_live_party_time_read_from_adb_screenshot(self):
+        """实机截图：展开交流详情后读取真实倒计时。"""
+        from rapidocr_onnxruntime import RapidOCR
+
+        from arknights_mower.utils import rapidocr
+        from arknights_mower.utils.image import bytes2img
+
+        fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
+        before_data = (fixtures_dir / "clue_live_party_before.png").read_bytes()
+        time_data = (fixtures_dir / "clue_live_party_time.png").read_bytes()
+        device = MagicMock()
+        before = Recognizer(device, before_data)
+        self.assertIsNotNone(before.find("clue/check_party"))
+
+        device.screencap.return_value = (
+            time_data,
+            bytes2img(time_data),
+            bytes2img(time_data, True),
+        )
+        solver = BaseSchedulerSolver(device=device, recog=Recognizer(device, time_data))
+        with patch.object(rapidocr, "engine", RapidOCR(text_score=0.3)):
+            start = datetime.now()
+            end = solver.read_party_time()
+
+        self.assertIsNotNone(end)
+        self.assertAlmostEqual(
+            (end - start).total_seconds(),
+            18 * 3600 + 46 * 60 + 14,
+            delta=2,
+        )
+        device.screencap.assert_called_once()
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_clue_new_waits_for_product_complete(self):
         solver = BaseSchedulerSolver()
