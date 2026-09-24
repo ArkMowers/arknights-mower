@@ -97,7 +97,7 @@ describe('process-control recovery across page navigation', () => {
     }
   )
 
-  it('keeps compact restart mode synchronized with the live running prop', async () => {
+  it('keeps compact process actions synchronized with the live running prop', async () => {
     props.compact = true
     props.running = false
     await mount()
