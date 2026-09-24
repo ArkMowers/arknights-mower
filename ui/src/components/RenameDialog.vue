@@ -1,6 +1,10 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, ref, watch } from 'vue'
 const show = inject('show_name_editor')
+const edit_locked = inject('planEditLocked', ref(false))
+watch(edit_locked, (locked) => {
+  if (locked) show.value = false
+})
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
@@ -19,7 +23,7 @@ const { sub_plan, backup_plans } = storeToRefs(plan_store)
   >
     <div class="dropdown-container">
       <label class="dropdown-label">副表名称 </label>
-      <n-input v-model:value="backup_plans[sub_plan].name"> </n-input>
+      <n-input v-model:value="backup_plans[sub_plan].name" :disabled="edit_locked"> </n-input>
     </div>
   </n-modal>
 </template>

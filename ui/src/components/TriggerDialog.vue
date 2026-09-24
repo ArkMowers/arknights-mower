@@ -1,6 +1,10 @@
 <script setup>
-import { inject, watch } from 'vue'
+import { inject, ref, watch } from 'vue'
 const show = inject('show_trigger_editor')
+const edit_locked = inject('planEditLocked', ref(false))
+watch(edit_locked, (locked) => {
+  if (locked) show.value = false
+})
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
@@ -37,6 +41,7 @@ const exitTriggerTimingOptions = [
 ]
 
 function update_trigger(data) {
+  if (edit_locked.value) return
   backup_plans.value[sub_plan.value].trigger = data
 }
 </script>
@@ -66,6 +71,7 @@ function update_trigger(data) {
       </label>
       <n-select
         v-model:value="backup_plans[sub_plan].trigger_timing"
+        :disabled="edit_locked"
         :options="triggerTimingOptions"
         placeholder="Select Trigger Timing"
         class="dropdown-select"
@@ -82,6 +88,7 @@ function update_trigger(data) {
       </label>
       <n-select
         v-model:value="backup_plans[sub_plan].exit_trigger_timing"
+        :disabled="edit_locked"
         :options="exitTriggerTimingOptions"
         placeholder="与切入阶段一致"
         class="dropdown-select"
