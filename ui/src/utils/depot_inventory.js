@@ -313,12 +313,12 @@ export function buildBaselineEndOptions(snapshots) {
 }
 
 export const BASELINE_PRESETS = [
-  { key: 'previous', label: '单次环比', shortLabel: '单次' },
-  { key: 'today', label: '当天', shortLabel: '当天' },
+  { key: 'previous', label: '较上次', shortLabel: '较上次' },
+  { key: 'today', label: '今天', shortLabel: '今天' },
   { key: '7d', label: '近 7 天', shortLabel: '7d' },
   { key: '14d', label: '近 14 天', shortLabel: '14d' },
   { key: '30d', label: '近 30 天', shortLabel: '30d' },
-  { key: 'all', label: '全部历史', shortLabel: '全部' }
+  { key: 'all', label: '最早至今', shortLabel: '最早至今' }
 ]
 
 export function computePresetRange(presetKey, nowMs = Date.now()) {

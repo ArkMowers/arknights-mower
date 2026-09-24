@@ -3,7 +3,7 @@
     <n-popover
       v-model:show="popoverOpen"
       trigger="click"
-      placement="bottom-start"
+      placement="bottom-end"
       raw
       :show-arrow="false"
       class="baseline-popover-panel"
@@ -36,10 +36,10 @@
         </button>
       </template>
 
-      <!-- 弹出卡片主体 -->
+      <!-- 弹出卡片主体（紧凑单列设计，避免溢出窗口） -->
       <div class="baseline-popover-card">
-        <!-- 顶部：快捷周期选择标签 -->
-        <div class="popover-presets-row">
+        <!-- 顶部：快捷周期标签 -->
+        <div class="popover-presets-grid">
           <button
             v-for="p in BASELINE_PRESETS"
             :key="p.key"
@@ -52,108 +52,85 @@
           </button>
         </div>
 
-        <div class="popover-main-grid">
-          <!-- 左侧：起止时间微调与匹配摘要 -->
-          <div class="popover-left-pane">
-            <div class="pane-section-title">支持日期与时间</div>
+        <div class="popover-divider" />
 
-            <!-- 开始时间输入卡片 -->
-            <div
-              class="time-input-card"
-              :class="{ focused: activeInput === 'start' }"
-              @click="activeInput = 'start'"
-            >
-              <div class="time-card-header">
-                <span class="time-card-label">开始时间</span>
-              </div>
-              <n-date-picker
-                v-model:value="draftStartMs"
-                type="datetime"
-                size="small"
-                :clearable="false"
-                class="time-card-picker"
-                placeholder="选择开始时间"
-                @update:value="onManualTimeChange"
-              />
-            </div>
+        <!-- 中部：起止时间微调与选项 -->
+        <div class="popover-time-form">
+          <div class="pane-section-title">自定义起止时间</div>
 
-            <!-- 结束时间输入卡片 -->
-            <div
-              class="time-input-card"
-              :class="{ focused: activeInput === 'end', disabled: draftFollowLatest }"
-              @click="activeInput = 'end'"
-            >
-              <div class="time-card-header">
-                <span class="time-card-label">结束时间</span>
-              </div>
-              <n-date-picker
-                v-model:value="draftEndMs"
-                type="datetime"
-                size="small"
-                :clearable="false"
-                :disabled="draftFollowLatest"
-                class="time-card-picker"
-                placeholder="选择结束时间"
-                @update:value="onManualTimeChange"
-              />
-            </div>
-
-            <!-- 结束时间跟随最新记录 -->
-            <div class="follow-latest-row">
-              <n-checkbox
-                v-model:checked="draftFollowLatest"
-                size="small"
-                @update:checked="onFollowLatestChange"
-              >
-                结束时间跟随最新扫描
-              </n-checkbox>
-            </div>
-
-            <!-- 匹配快照反馈与摘要 -->
-            <div class="match-summary-card">
-              <template v-if="alignmentPreview.matchedCount >= 2">
-                <div class="match-count-text">
-                  已匹配 <b>{{ alignmentPreview.matchedCount }}</b> 次有效快照
-                </div>
-                <div class="match-range-text">
-                  {{ formatTimestamp(alignmentPreview.startSnapshot.at).slice(5) }} 至
-                  {{ formatTimestamp(alignmentPreview.endSnapshot.at).slice(5) }}
-                </div>
-              </template>
-              <template v-else-if="alignmentPreview.matchedCount === 1">
-                <div class="match-count-text warning-text">所选区间内仅 1 次快照</div>
-                <div class="match-range-text">单次快照无差额对比，请扩大时间范围</div>
-              </template>
-              <template v-else>
-                <div class="match-count-text warning-text">所选时间段内暂无快照</div>
-                <div class="match-range-text">未匹配到有效扫描记录，请重新选择</div>
-              </template>
-            </div>
-
-            <!-- 操作按钮 -->
-            <div class="popover-action-row">
-              <n-button size="small" class="action-btn" @click="handleCancel">取消</n-button>
-              <n-button
-                size="small"
-                type="primary"
-                class="action-btn confirm-btn"
-                :disabled="alignmentPreview.matchedCount < 2"
-                @click="handleApply"
-              >
-                确定
-              </n-button>
-            </div>
+          <!-- 开始时间输入卡片 -->
+          <div class="time-input-card">
+            <span class="time-card-label">开始时间</span>
+            <n-date-picker
+              v-model:value="draftStartMs"
+              type="datetime"
+              size="small"
+              :clearable="false"
+              class="time-card-picker"
+              placeholder="选择开始时间"
+              @update:value="onManualTimeChange"
+            />
           </div>
 
-          <!-- 右侧：日历范围点选（桌面端） -->
-          <div class="popover-right-pane desktop-only">
+          <!-- 结束时间输入卡片 -->
+          <div class="time-input-card" :class="{ disabled: draftFollowLatest }">
+            <span class="time-card-label">结束时间</span>
             <n-date-picker
-              v-model:value="draftDateRange"
-              type="daterange"
-              panel
-              class="inline-calendar-panel"
-              @update:value="onCalendarRangeChange"
+              v-model:value="draftEndMs"
+              type="datetime"
+              size="small"
+              :clearable="false"
+              :disabled="draftFollowLatest"
+              class="time-card-picker"
+              placeholder="选择结束时间"
+              @update:value="onManualTimeChange"
             />
+          </div>
+
+          <!-- 结束时间跟随最新记录 -->
+          <div class="follow-latest-row">
+            <n-checkbox
+              v-model:checked="draftFollowLatest"
+              size="small"
+              @update:checked="onFollowLatestChange"
+            >
+              结束时间跟随最新扫描
+            </n-checkbox>
+          </div>
+
+          <!-- 匹配快照反馈与摘要 -->
+          <div class="match-summary-card">
+            <template v-if="alignmentPreview.matchedCount >= 2">
+              <div class="match-count-text">
+                已匹配 <b>{{ alignmentPreview.matchedCount }}</b> 次有效快照
+              </div>
+              <div class="match-range-text">
+                {{ formatTimestamp(alignmentPreview.startSnapshot.at).slice(5) }} 至
+                {{ formatTimestamp(alignmentPreview.endSnapshot.at).slice(5) }}
+              </div>
+            </template>
+            <template v-else-if="alignmentPreview.matchedCount === 1">
+              <div class="match-count-text warning-text">所选区间内仅 1 次快照</div>
+              <div class="match-range-text">单次快照无差额对比，请扩大时间范围</div>
+            </template>
+            <template v-else>
+              <div class="match-count-text warning-text">所选时间段内暂无快照</div>
+              <div class="match-range-text">未匹配到有效扫描记录，请重新选择</div>
+            </template>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="popover-action-row">
+            <n-button size="small" class="action-btn" @click="handleCancel">取消</n-button>
+            <n-button
+              size="small"
+              type="primary"
+              class="action-btn confirm-btn"
+              :disabled="alignmentPreview.matchedCount < 2"
+              @click="handleApply"
+            >
+              确定
+            </n-button>
           </div>
         </div>
       </div>
@@ -162,7 +139,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import {
   alignSnapshotsToRange,
   BASELINE_PRESETS,
@@ -189,13 +166,11 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change'])
 
 const popoverOpen = ref(false)
-const activeInput = ref('start')
 
 // 草稿状态（打开弹窗时克隆，确定时提交，取消时回滚）
 const draftPreset = ref('previous')
 const draftStartMs = ref(null)
 const draftEndMs = ref(null)
-const draftDateRange = ref(null)
 const draftFollowLatest = ref(true)
 
 const usable = computed(() => usableSnapshots(props.history))
@@ -215,13 +190,11 @@ function initDraftFromValue() {
   if (range && range[0] && range[1]) {
     draftStartMs.value = range[0]
     draftEndMs.value = range[1]
-    draftDateRange.value = [range[0], range[1]]
   } else if (usable.value.length >= 2) {
     const prev = usable.value[usable.value.length - 2]
     const latest = usable.value[usable.value.length - 1]
     draftStartMs.value = prev.at * 1000
     draftEndMs.value = latest.at * 1000
-    draftDateRange.value = [prev.at * 1000, latest.at * 1000]
   }
 }
 
@@ -253,7 +226,6 @@ function selectPreset(presetKey) {
     const latest = usable.value[usable.value.length - 1]
     draftStartMs.value = prev.at * 1000
     draftEndMs.value = latest.at * 1000
-    draftDateRange.value = [prev.at * 1000, latest.at * 1000]
     draftFollowLatest.value = true
     return
   }
@@ -263,7 +235,6 @@ function selectPreset(presetKey) {
     const latest = usable.value[usable.value.length - 1]
     draftStartMs.value = first.at * 1000
     draftEndMs.value = latest.at * 1000
-    draftDateRange.value = [first.at * 1000, latest.at * 1000]
     draftFollowLatest.value = true
     return
   }
@@ -272,27 +243,12 @@ function selectPreset(presetKey) {
   if (range && range[0] && range[1]) {
     draftStartMs.value = range[0]
     draftEndMs.value = range[1]
-    draftDateRange.value = [range[0], range[1]]
     draftFollowLatest.value = true
-  }
-}
-
-function onCalendarRangeChange(range) {
-  if (range && range[0] && range[1]) {
-    const start = new Date(range[0])
-    start.setHours(0, 0, 0, 0)
-    const end = new Date(range[1])
-    end.setHours(23, 59, 59, 999)
-
-    draftStartMs.value = start.getTime()
-    draftEndMs.value = end.getTime()
-    draftPreset.value = 'custom'
   }
 }
 
 function onManualTimeChange() {
   if (draftStartMs.value && draftEndMs.value) {
-    draftDateRange.value = [draftStartMs.value, draftEndMs.value]
     draftPreset.value = 'custom'
   }
 }
@@ -300,9 +256,6 @@ function onManualTimeChange() {
 function onFollowLatestChange(checked) {
   if (checked && usable.value.length) {
     draftEndMs.value = usable.value[usable.value.length - 1].at * 1000
-    if (draftDateRange.value && draftDateRange.value[0]) {
-      draftDateRange.value = [draftDateRange.value[0], draftEndMs.value]
-    }
   }
 }
 
@@ -337,7 +290,7 @@ const activeTriggerLabel = computed(() => {
     return `对比：${startStr} ~ ${endStr}`
   }
 
-  return '对比：单次环比'
+  return '对比：较上次'
 })
 </script>
 
@@ -415,34 +368,33 @@ const activeTriggerLabel = computed(() => {
   transform: rotate(180deg);
 }
 
-/* 浮层卡片主体 */
+/* 浮层卡片主体（紧凑单列设计，340px，防止右侧溢出） */
 .baseline-popover-card {
-  width: 620px;
-  max-width: calc(100vw - 24px);
+  width: 340px;
+  max-width: calc(100vw - 32px);
   padding: 14px;
   border-radius: 12px;
   background: var(--mower-surface, #ffffff);
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.12));
   box-shadow:
-    0 4px 16px -2px rgba(0, 0, 0, 0.14),
-    0 1px 4px rgba(0, 0, 0, 0.08);
+    0 6px 20px -3px rgba(0, 0, 0, 0.15),
+    0 2px 6px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   gap: 12px;
   box-sizing: border-box;
 }
 
-/* 顶部快捷 Pills */
-.popover-presets-row {
-  display: flex;
-  align-items: center;
+/* 快捷 Pills 栅格：2 行 3 列平分 */
+.popover-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
-  flex-wrap: wrap;
 }
 
 .preset-pill-btn {
   height: 28px;
-  padding: 0 12px;
+  padding: 0 4px;
   border-radius: 6px;
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.1));
   background: var(--mower-control-surface, #f7f7f5);
@@ -450,7 +402,11 @@ const activeTriggerLabel = computed(() => {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .preset-pill-btn:hover {
@@ -464,15 +420,13 @@ const activeTriggerLabel = computed(() => {
   color: #ffffff;
 }
 
-/* 主体栅格：左侧表单 + 右侧日历面板 */
-.popover-main-grid {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 14px;
-  align-items: start;
+.popover-divider {
+  height: 1px;
+  background: var(--mower-border, rgba(0, 0, 0, 0.08));
 }
 
-.popover-left-pane {
+/* 中部表单 */
+.popover-time-form {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -485,7 +439,7 @@ const activeTriggerLabel = computed(() => {
 }
 
 .time-input-card {
-  padding: 8px 10px;
+  padding: 6px 10px 8px;
   border-radius: 8px;
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.12));
   background: var(--mower-control-surface, #fafaf9);
@@ -493,10 +447,6 @@ const activeTriggerLabel = computed(() => {
   flex-direction: column;
   gap: 4px;
   transition: border-color 0.16s ease;
-}
-
-.time-input-card.focused {
-  border-color: var(--mower-primary, #18a058);
 }
 
 .time-input-card.disabled {
@@ -555,34 +505,6 @@ const activeTriggerLabel = computed(() => {
   min-width: 60px;
 }
 
-/* 右侧内嵌日历面板 */
-.popover-right-pane {
-  display: flex;
-  justify-content: center;
-  border-left: 1px solid var(--mower-border, rgba(0, 0, 0, 0.08));
-  padding-left: 14px;
-}
-
-.inline-calendar-panel {
-  width: 100%;
-}
-
-/* 移动端自适应 */
-@media (max-width: 720px) {
-  .baseline-popover-card {
-    width: calc(100vw - 32px);
-    padding: 12px;
-  }
-
-  .popover-main-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .desktop-only {
-    display: none !important;
-  }
-}
-
 /* 暗色主题适配 */
 html[data-mower-theme='dark'] .baseline-trigger-btn {
   background: var(--mower-control-surface, rgb(36, 36, 42));
@@ -601,6 +523,10 @@ html[data-mower-theme='dark'] .preset-pill-btn {
   color: #eeeeee;
 }
 
+html[data-mower-theme='dark'] .popover-divider {
+  background: var(--mower-border, rgba(255, 255, 255, 0.08));
+}
+
 html[data-mower-theme='dark'] .time-input-card {
   background: var(--mower-control-surface, rgb(36, 36, 42));
   border-color: var(--mower-border, rgba(255, 255, 255, 0.12));
@@ -608,9 +534,5 @@ html[data-mower-theme='dark'] .time-input-card {
 
 html[data-mower-theme='dark'] .match-summary-card {
   background: var(--mower-segment-rail, rgb(36, 36, 42));
-}
-
-html[data-mower-theme='dark'] .popover-right-pane {
-  border-left-color: rgba(255, 255, 255, 0.08);
 }
 </style>
