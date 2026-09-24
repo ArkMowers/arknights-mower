@@ -1674,6 +1674,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 return
             settings = snapshot.settings
             is_9colored = agent == "九色鹿"
+
+            def deer_gap():
+                for attempt in range(3):
+                    self.recog.update()
+                    causality = self.digit_reader.get_deer_causality(self.recog.gray)
+                    if causality is not None:
+                        return 40 - causality
+                    if attempt < 2:
+                        self.sleep()
+                logger.error("九色鹿因果数字模板匹配失败，停止加工")
+                return None
+
             if agent not in [s.operator for s in settings]:
                 logger.info(f"当前干员{agent}不在加工站配置中")
                 return
@@ -1779,7 +1791,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif scene == Scene.FACTORY_DASHBOARD:
                     if tasks[0] == "enter":
                         if is_9colored:
-                            gap = 40 - self.get_number((290, 335, 95, 200))
+                            gap = deer_gap()
+                            if gap is None:
+                                return
                             logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
@@ -1813,7 +1827,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         is_crit = ap_cost == 4 and material_tab == "精英材料"
                         if is_9colored:
                             mood = self.op_data.operators[agent].mood
-                            gap = 40 - self.get_number((290, 335, 95, 200))
+                            gap = deer_gap()
+                            if gap is None:
+                                return
                             logger.debug(f"九色鹿技能差值{gap}")
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
