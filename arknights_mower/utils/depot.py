@@ -6,7 +6,11 @@ from datetime import datetime
 from arknights_mower.data import key_mapping, workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils.config import atomic_write
-from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
+from arknights_mower.utils.csv_utils import (
+    EmptyDataError,
+    append_dict_rows,
+    read_csv_rows,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -50,9 +54,10 @@ def 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片
     口径：600 合成玉一抽；1 至纯源石 = 180 合成玉（0.3 抽）；源石碎片 2 片算一抽
     （20 合成玉）；固源岩 2 块搓 1 碎片，再按碎片折算。寻访凭证按十连 ×10 并入。
 
-    这是全项目唯一的抽数换算实现：读取仓库写派生条目、读取仓库历史回填历史快照都调
-    这里，前端不再重算。两处各写一份迟早会在舍入边界上对不上——Python 的 round() 是
-    银行家舍入，JS 的 Math.round() 遇 .5 一律进位，同一份仓库能差出 0.1 抽。
+    后端只有这一处换算：读取仓库的派生条目、读取仓库历史的回填都从这里出。前端在
+    旧快照缺派生键时会按同一口径兜底（depot_inventory.js 的 fallbackDrawCount），
+    但两边舍入并不等价——Python 的 round() 是银行家舍入，JS 的 Math.round() 遇 .5
+    一律进位，同一份仓库能差出 0.1 抽，所以派生键在的时候前端一律以它为准。
     """
     基础 = 合成玉数量 / 600 + 寻访凭证数量
     含源石 = (合成玉数量 + 源石数量 * 180) / 600 + 寻访凭证数量
@@ -67,6 +72,29 @@ def 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片
         "额外+碎片": round(含碎片, 1),
         "额外+碎片+土": round(含固源岩, 1),
     }
+
+
+def _物品数量(items, name):
+    """取物品数量，缺键或读不出来的值都按 0。"""
+    try:
+        return int(items.get(name, 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def 折算库存抽数(items):
+    """按 {物品名: 数量} 折算四档抽数（口径见 折算抽数），缺键按 0。
+
+    读取仓库与读取仓库历史原本各拼一遍入参，"十连寻访凭证 ×10 并入"这种口径漏改
+    一处，页面上的抽数卡片和历史趋势线就会各说各话，所以只留这一份拼法。
+    """
+    return 折算抽数(
+        _物品数量(items, "合成玉"),
+        _物品数量(items, "寻访凭证") + _物品数量(items, "十连寻访凭证") * 10,
+        _物品数量(items, "至纯源石"),
+        _物品数量(items, "源石碎片"),
+        _物品数量(items, "固源岩"),
+    )
 
 
 # 派生档位的键名，供剔除旧值时引用；顺序与 折算抽数 的插入顺序一致（Python 3.7+
@@ -192,18 +220,17 @@ def 记录合并快照(at, 物品):
             continue
         if number > 0:
             counts[name] = number
-    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
-    with open(path, "a", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
-        if write_header:
-            writer.writerow(["Timestamp", "Data", "json"])
-        writer.writerow(
-            [
-                int(at),
-                json.dumps(counts, ensure_ascii=False),
-                json.dumps({"完整": True}, ensure_ascii=False),
-            ]
-        )
+    # 表头与列序沿用两份历史文件共用的 Timestamp,Data,json；追加与首次写表头交给
+    # csv_utils，别再手抄一遍"文件不存在就写表头"。
+    append_dict_rows(
+        path,
+        {
+            "Timestamp": int(at),
+            "Data": json.dumps(counts, ensure_ascii=False),
+            "json": json.dumps({"完整": True}, ensure_ascii=False),
+        },
+        fieldnames=["Timestamp", "Data", "json"],
+    )
 
 
 # 读取结果按 (mtime, size) 缓存。depotresult.csv 只追加不清理，而每次打开仓库页都会读
@@ -223,6 +250,25 @@ def _读取快照行(path):
     return rows
 
 
+def _解析快照行(row):
+    """把一行 CSV 解析成 (秒级时戳, 物品字典)，坏行返回 None。
+
+    列顺序固定为 Timestamp,Data,json；列数异常、时戳或 JSON 坏掉的残行一律跳过，
+    占位行"还未开始过扫描"没有可比较的物料，也一并跳过。
+    """
+    if len(row) < 2:
+        return None
+    try:
+        at = int(float(row[0]))
+        payload = json.loads(row[1])
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError 也要收：int(float("inf")) 会抛它，而 json.loads 也接受 Infinity。
+        return None
+    if not isinstance(payload, dict) or "还未开始过扫描" in payload:
+        return None
+    return at, payload
+
+
 def 最后有效快照(rows):
     """从后往前找最后一条既有时戳又有物品字典的扫描记录，返回 (秒级时戳, 物品字典)。
 
@@ -231,18 +277,10 @@ def 最后有效快照(rows):
     能用的记录。找不到时返回 (None, None)，调用方按"还没有历史"处理。
     """
     for row in reversed(rows or []):
-        # 列顺序固定为 Timestamp,Data,json；列数异常的残行直接跳过。
-        if len(row) < 2:
+        parsed = _解析快照行(row)
+        if parsed is None:
             continue
-        try:
-            at = int(float(row[0]))
-            payload = json.loads(row[1])
-        except (TypeError, ValueError, OverflowError):
-            # OverflowError 也要收：int(float("inf")) 会抛它，而 json.loads 也接受 Infinity。
-            continue
-        if not isinstance(payload, dict) or "还未开始过扫描" in payload:
-            continue
-        return at, payload
+        return parsed
     return None, None
 
 
@@ -320,7 +358,7 @@ def 读取仓库(记录快照时刻=None):
     新物品 = {
         name: count
         for name, count in db_dict.items()
-        if name in key_mapping and "信物" not in name
+        if name in key_mapping and not 是信物(name)
     }
     新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
     sort = {
@@ -462,16 +500,15 @@ def 读取仓库(记录快照时刻=None):
         "sort": 9999999,
         "icon": "EXP",
     }
-    合成玉数量 = classified_data["A常用"].get("合成玉", {"number": 0})["number"]
-    寻访凭证数量 = (
-        classified_data["A常用"].get("寻访凭证", {"number": 0})["number"]
-        + classified_data["A常用"].get("十连寻访凭证", {"number": 0})["number"] * 10
-    )
-    源石数量 = classified_data["A常用"].get("至纯源石", {"number": 0})["number"]
-    源石碎片 = classified_data["K未分类"].get("源石碎片", {"number": 0})["number"]
-    土 = classified_data["F稀有度2"].get("固源岩", {"number": 0})["number"]
+    # 各分类的 物品名 → 数量 拍平成一张表再交给 折算库存抽数：抽数来源散在 A常用 /
+    # K未分类 / F稀有度2 三个分类里，逐个点名取一次，就等于把折算的入参口径又抄一遍。
+    数量表 = {
+        name: entry["number"]
+        for category in classified_data.values()
+        for name, entry in category.items()
+    }
 
-    抽数 = 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片, 土)
+    抽数 = 折算库存抽数(数量表)
     for 档位, 数值 in 抽数.items():
         classified_data["A常用"][档位] = {
             "number": 数值,
@@ -511,18 +548,10 @@ def _读取历史行(path):
 
     parsed = []
     for row in rows:
-        if len(row) < 2:
+        entry = _解析快照行(row)
+        if entry is None:
             continue
-        try:
-            at = int(float(row[0]))
-            payload = json.loads(row[1])
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if not isinstance(payload, dict):
-            continue
-        # 占位行/空快照没有可比较的物料，参与环比只会制造假变化。
-        if "还未开始过扫描" in payload:
-            continue
+        at, payload = entry
         完整 = False
         if len(row) > 2:
             try:
@@ -591,15 +620,7 @@ def 读取仓库历史(limit=60):
         for 档位 in 抽数档位:
             items.pop(档位, None)
         if 记录["完整"] or any(来源 in items for 来源 in 抽数来源):
-            items.update(
-                折算抽数(
-                    items.get("合成玉", 0),
-                    items.get("寻访凭证", 0) + items.get("十连寻访凭证", 0) * 10,
-                    items.get("至纯源石", 0),
-                    items.get("源石碎片", 0),
-                    items.get("固源岩", 0),
-                )
-            )
+            items.update(折算库存抽数(items))
         快照 = {"at": at, "items": items}
         if 记录["完整"]:
             快照["complete"] = True
