@@ -21,6 +21,9 @@ const message = ref('')
 const failed = ref(false)
 const pendingKey = `mower-process-control:${base}`
 const effectiveRunning = computed(() => props.running ?? info.value?.running ?? false)
+const canRunProcessAction = computed(
+  () => !!(effectiveRunning.value && info.value?.supported && !busy.value && !savesPaused.value)
+)
 let timer
 let disposed = false
 
@@ -48,7 +51,10 @@ async function poll(pending) {
       busy.value = false
       failed.value = data.status === 'failed'
       sessionStorage.removeItem(pendingKey)
-      if (!failed.value && ['restart', 'restart_resume'].includes(pending.action)) {
+      if (
+        !failed.value &&
+        ['restart', 'restart_resume', 'apply_schedule'].includes(pending.action)
+      ) {
         window.location.reload()
       }
       return
@@ -105,6 +111,16 @@ async function submit(action) {
   }
 }
 
+function applySchedule() {
+  if (canRunProcessAction.value) return submit('apply_schedule')
+}
+
+function restartResume() {
+  if (canRunProcessAction.value) return submit('restart_resume')
+}
+
+defineExpose({ canRunProcessAction, applySchedule, restartResume })
+
 function reload() {
   window.location.reload()
 }
@@ -139,25 +155,27 @@ onUnmounted(() => {
 <template>
   <template v-if="props.compact">
     <n-popconfirm
+      v-if="!effectiveRunning"
       style="max-width: min(360px, calc(100vw - 32px))"
-      @positive-click="submit(effectiveRunning ? 'restart_resume' : 'restart')"
+      @positive-click="submit('restart')"
     >
       <template #trigger>
         <n-button
           class="quick-run-btn"
-          :type="effectiveRunning ? 'info' : 'default'"
           :loading="busy"
           :disabled="busy || savesPaused || !info?.supported"
           :title="failed ? message : ''"
         >
-          {{ effectiveRunning ? '重启续接' : '重启程序' }}
+          重启程序
         </n-button>
       </template>
-      <template v-if="effectiveRunning">
-        保存当前配置后重启当前实例，并保留任务队列继续运行。
-      </template>
-      <template v-else>保存当前配置后重启当前实例，不自动开始任务。</template>
+      保存当前配置后重启当前实例，不自动开始任务。
     </n-popconfirm>
+    <n-text v-else-if="busy" depth="3" aria-live="polite">正在重启…</n-text>
+    <n-space v-if="failed" align="center">
+      <n-text type="error" aria-live="polite">{{ message }}</n-text>
+      <n-button v-if="savesPaused" size="small" @click="reload">刷新页面</n-button>
+    </n-space>
   </template>
   <n-card v-else title="进程操作">
     <n-space vertical>

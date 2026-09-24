@@ -76,6 +76,31 @@ class ProcessControlTests(unittest.TestCase):
             load.assert_called_once_with()
             self.assertEqual(thread.call_args.kwargs["args"], (saved_state, False))
 
+    def test_schedule_start_rebuilds_tasks_from_saved_mood(self):
+        import server
+
+        saved_state = {"tasks": ["old-task"], "operators": {"operator": "saved-mood"}}
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(server, "active_job", return_value=False),
+            patch.object(server, "_job_running", return_value=False),
+            patch.object(server, "mower_thread", None),
+            patch.object(server, "log_stream"),
+            patch.object(server, "get_path", return_value=Path(folder)),
+            patch.object(server.config, "stop_mower"),
+            patch.object(server, "load_state", return_value=saved_state),
+            patch.object(server, "Thread") as thread,
+            patch.object(server, "set_mower_thread"),
+        ):
+            headers = {"token": getattr(server.app, "token", "")}
+            response = server.app.test_client().get("/start/1", headers=headers)
+            self.assertEqual(response.get_data(as_text=True), "true")
+            state, restart_after_mood_read = thread.call_args.kwargs["args"]
+            self.assertEqual(state["tasks"], [])
+            self.assertEqual(state["operators"], {"operator": "saved-mood"})
+            self.assertFalse(restart_after_mood_read)
+            self.assertNotIn("kwargs", thread.call_args.kwargs)
+
     def test_route_requires_token_and_intent_header(self):
         app = Flask(__name__)
         app.token = "private-fixture"
@@ -143,6 +168,14 @@ class ProcessControlTests(unittest.TestCase):
         self.assertNotIn("MOWER_RESUME_MODE", normal)
         self.assertEqual(normal["MOWER_RESUME_RUN"], "1")
 
+    def test_apply_schedule_uses_replan_mode(self):
+        env = control.restart_environment(
+            {"running": True, "background": False},
+            {"id": "schedule", "action": "apply_schedule"},
+        )
+        self.assertEqual(env["MOWER_RESUME_MODE"], "1")
+        self.assertEqual(env["MOWER_RESUME_RUN"], "1")
+
     def test_restart_resume_requires_running_instance(self):
         with (
             tempfile.TemporaryDirectory() as folder,
@@ -157,6 +190,8 @@ class ProcessControlTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "未在运行"):
                 control.request_action("restart_resume")
+            with self.assertRaisesRegex(ValueError, "未在运行"):
+                control.request_action("apply_schedule")
             launch.assert_not_called()
 
     def test_only_current_instance_is_selected(self):

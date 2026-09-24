@@ -20,7 +20,7 @@ vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 
 describe('process-control recovery across page navigation', () => {
-  let scope, component, session, props
+  let scope, component, exposed, session, props
 
   beforeEach(() => {
     session = new Map()
@@ -47,7 +47,9 @@ describe('process-control recovery across page navigation', () => {
     state.mounted = []
     state.unmounted = []
     scope = effectScope()
-    component = scope.run(() => ProcessControl.setup(props, { expose: () => {} }))
+    component = scope.run(() =>
+      ProcessControl.setup(props, { expose: (value) => (exposed = value) })
+    )
     await Promise.all(state.mounted.map((callback) => callback()))
     await nextTick()
   }
@@ -110,23 +112,48 @@ describe('process-control recovery across page navigation', () => {
     expect(component.effectiveRunning.value).toBe(false)
   })
 
-  it('uses the existing save and pending-job flow for restart resume', async () => {
-    state.client.get.mockImplementation(async (url) => ({
-      data: url.endsWith('/info')
-        ? { ok: true, supported: true, running: true }
-        : { ok: true, status: 'succeeded', message: '续接完成' }
-    }))
+  it.each(['restart_resume', 'apply_schedule'])(
+    'uses the existing save and pending-job flow for %s',
+    async (action) => {
+      state.client.get.mockImplementation(async (url) => ({
+        data: url.endsWith('/info')
+          ? { ok: true, supported: true, running: true }
+          : { ok: true, status: 'succeeded', message: '续接完成' }
+      }))
+      await mount()
+      await component.submit(action)
+      expect(state.client.post).toHaveBeenCalledWith(
+        '/process-control/action',
+        { action },
+        { headers: { 'X-Mower-Control': '1' } }
+      )
+      expect(state.config.autosave_paused).toBe(true)
+      expect(state.plan.autosave_paused).toBe(true)
+      expect(window.location.reload).toHaveBeenCalledOnce()
+      expect(session.size).toBe(0)
+    }
+  )
+
+  it.each([
+    ['applySchedule', 'apply_schedule'],
+    ['restartResume', 'restart_resume']
+  ])('allows %s only while running and ready', async (method, action) => {
+    props.compact = true
+    props.running = false
     await mount()
-    await component.submit('restart_resume')
+    expect(exposed.canRunProcessAction.value).toBe(false)
+    await exposed[method]()
+    expect(state.client.post).not.toHaveBeenCalled()
+
+    props.running = true
+    await nextTick()
+    expect(exposed.canRunProcessAction.value).toBe(true)
+    await exposed[method]()
     expect(state.client.post).toHaveBeenCalledWith(
       '/process-control/action',
-      { action: 'restart_resume' },
+      { action },
       { headers: { 'X-Mower-Control': '1' } }
     )
-    expect(state.config.autosave_paused).toBe(true)
-    expect(state.plan.autosave_paused).toBe(true)
-    expect(window.location.reload).toHaveBeenCalledOnce()
-    expect(session.size).toBe(0)
   })
 
   it('leaves saving enabled after an explicit rejection and remount', async () => {

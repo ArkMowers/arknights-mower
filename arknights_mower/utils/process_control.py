@@ -52,7 +52,7 @@ def status(job_id):
 
 
 def request_action(action):
-    if action not in ("restart", "restart_resume", "stop"):
+    if action not in ("restart", "restart_resume", "apply_schedule", "stop"):
         raise ValueError("未知进程操作")
     state = runtime.state_dir()
     with runtime.submission_lock(state):
@@ -63,6 +63,8 @@ def request_action(action):
             raise ValueError("当前服务不是已注册的 Mower 实例")
         if action == "restart_resume" and not record.get("running"):
             raise ValueError("当前实例未在运行，无需续接任务")
+        if action == "apply_schedule" and not record.get("running"):
+            raise ValueError("当前实例未在运行，无需应用排班")
         job_id = uuid4().hex
         work = job_folder(job_id)
         work.mkdir(parents=True, mode=0o700)
@@ -124,6 +126,8 @@ def restart_environment(record, job):
     env = runtime.launch_environment(record, job["id"], record.get("background", False))
     if job["action"] == "restart_resume":
         env["MOWER_RESUME_MODE"] = "0"
+    elif job["action"] == "apply_schedule":
+        env["MOWER_RESUME_MODE"] = "1"
     else:
         env.pop("MOWER_RESUME_MODE", None)
     return env
@@ -183,11 +187,11 @@ def execute(job_path):
                 and item.get("restart_job") == job["id"]
                 for item in records
             ):
-                message = (
-                    "当前实例已重启，正在续接原任务"
-                    if job["action"] == "restart_resume"
-                    else "当前实例已重启，原运行状态将自动恢复"
-                )
+                message = {
+                    "restart_resume": "当前实例已重启，正在续接原任务",
+                    "apply_schedule": "当前实例已重启，正在按新排班生成任务",
+                    "restart": "当前实例已重启，原运行状态将自动恢复",
+                }[job["action"]]
                 report(message, "succeeded")
                 return
             if child.poll() is not None:

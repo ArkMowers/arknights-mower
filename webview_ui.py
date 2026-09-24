@@ -625,12 +625,12 @@ def run_desktop():
         if registration.shutdown_requested():
             return
         with server.app.test_request_context(headers={"token": token or ""}):
-            if resume_mode == "0":
-                server.start("0")
+            if resume_mode in ("0", "1"):
+                server.start(resume_mode)
             else:
                 server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
 
-    resume = resume_mode == "0" or (
+    resume = resume_mode in ("0", "1") or (
         os.environ.get("MOWER_RESUME_RUN") == "1"
         if os.environ.get("MOWER_RESTART_JOB")
         else background and conf.start_automatically
