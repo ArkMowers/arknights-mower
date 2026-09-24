@@ -534,9 +534,11 @@ class TestArrangingConvergence(unittest.TestCase):
         ]
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
         solver.read_time.side_effect = fake_read
-        solver.read_screen.return_value = "[凛御银灰]测试技能"
+        solver.read_screen.return_value = "[凛御银灰]御敌的锋锐"
         solver.find.return_value = ((1563, 832), (1880, 1048))  # skill_confirm
-        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        plan = make_plan(
+            char_id="char_1045_svash2", char_name="凛御银灰", skill_name="御敌的锋锐"
+        )
         room = mastery_reader.RoomState(
             "empty", support_slot="逻各斯", train_slot="凛御银灰"
         )
@@ -570,9 +572,11 @@ class TestArrangingConvergence(unittest.TestCase):
         ]
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
         solver.read_time.side_effect = fake_read
-        solver.read_screen.return_value = "[凛御银灰]测试技能"
+        solver.read_screen.return_value = "[凛御银灰]御敌的锋锐"
         solver.find.return_value = ((1563, 832), (1880, 1048))  # skill_confirm
-        plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
+        plan = make_plan(
+            char_id="char_1045_svash2", char_name="凛御银灰", skill_name="御敌的锋锐"
+        )
         room = mastery_reader.RoomState(
             "empty", support_slot="逻各斯", train_slot="凛御银灰"
         )
@@ -801,6 +805,35 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertEqual(result, "timeout")
         training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
         self.assertFalse(training_calls, "面板不可读时不得把陌生人的倒计时写进计划")
+
+    def test_confirm_unreadable_skill_does_not_write(self):
+        """干员可读但技能未确认时，也不得凭倒计时写入 training。"""
+
+        class _Advance(FixedDateTime):
+            @classmethod
+            def now(cls, tz=None):
+                FixedDateTime.now_value += timedelta(minutes=1)
+                if tz is not None:
+                    return FixedDateTime.now_value.replace(tzinfo=tz)
+                return FixedDateTime.now_value
+
+        solver = self.make_solver(
+            scene=Scene.TRAIN_MAIN,
+            execute_time=START + timedelta(hours=2),
+        )
+        solver.read_screen.return_value = "[测试干员]"
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", _Advance),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+
+        self.assertEqual(result, "timeout")
+        assert not [c for c in upd.call_args_list if c.args[1] == "training"]
 
     def test_arranging_no_wrong_start_on_mismatch(self):
         """#69/B2 全流程（#72 真实页面模型）：219 经训练位确认进入、不读面板文字，

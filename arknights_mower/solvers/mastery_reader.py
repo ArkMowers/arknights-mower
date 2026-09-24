@@ -30,6 +30,7 @@ from arknights_mower.data import agent_list
 from arknights_mower.utils import config
 from arknights_mower.utils.image import cropimg, rgb2gray, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_panel_template import recognize_skill
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
@@ -145,11 +146,11 @@ _joint_panel_cache = None
 
 
 def _joint_panel_candidates():
-    """(干员名, char_id) 候选，按名字长度倒序；撞名的干员整条丢弃。
+    """干员名候选，按名字长度倒序。
 
     用于「只有左括号、右括号丢了」时的名字边界消歧：右括号没了就没有定界符，
     单靠字符串切不出名字到哪结束，改成拿「干员名 + 技能名」这一对回查
-    `skill_data.json` 校验。撞名干员无法确定身份，一律不参与消歧。
+    `skill_data.json` 校验；同名多形态由技能真名消歧。
     """
     global _joint_panel_cache
     if _joint_panel_cache is None:
@@ -159,14 +160,9 @@ def _joint_panel_candidates():
             characters = get_skill_data().get("characters", {})
         except Exception:
             characters = {}
-        seen = {}
-        for char_id, char in characters.items():
-            name = char.get("name")
-            if name:
-                seen.setdefault(name, []).append(char_id)
         _joint_panel_cache = sorted(
-            ((name, ids[0]) for name, ids in seen.items() if len(ids) == 1),
-            key=lambda item: len(item[0]),
+            {char["name"] for char in characters.values() if char.get("name")},
+            key=len,
             reverse=True,
         )
     return _joint_panel_cache
@@ -199,7 +195,7 @@ def _split_name_by_skill_data(remainder, skip_leading_noise=False):
         if first_cjk == -1:
             return None
         start = first_cjk
-    for name, _char_id in _joint_panel_candidates():
+    for name in _joint_panel_candidates():
         if not remainder.startswith(name, start):
             continue
         rest = remainder[start + len(name) :].strip()
@@ -437,6 +433,43 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
                 operator_name, skill_name = retry_name, retry_skill
         except Exception as e:
             logger.debug(f"训练室面板二次识别失败: {e}")
+    if operator_name in agent_list:
+        # OCR can confidently drop one character (e.g. 沙缚镣锁 → 沙缚锁).
+        # Compare the same pixels with this operator's known skill templates.
+        from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+        data = get_skill_data()
+        # Only named skill rosters can make a failed template check meaningful;
+        # operators absent from skill_data keep the OCR-only behavior.
+        has_named_skills = any(
+            any(s.get("name") for s in c.get("skills", []))
+            for c in data.get("characters", {}).values()
+            if c.get("name") == operator_name
+        )
+        if has_named_skills:
+            ocr_skill_index = resolve_panel_skill(operator_name, skill_name)
+            result = recognize_skill(cropimg(img, PANEL_REGION), operator_name, data)
+            if result is not None:
+                if ocr_skill_index is None:
+                    logger.info(
+                        f"训练室面板模板纠正技能：{operator_name} {skill_name!r} → "
+                        f"{result.name}（姓名 {result.name_score:.3f}，"
+                        f"技能 {result.skill_score:.3f}，差距 {result.margin:.3f}）"
+                    )
+                    skill_name = result.name
+                elif result.index != ocr_skill_index or not panel_skill_matches(
+                    skill_name, result.name
+                ):
+                    logger.warning(
+                        f"训练室技能 OCR 与模板冲突：{operator_name} "
+                        f"OCR={skill_name!r}，模板={result.name}，本次按未知处理"
+                    )
+                    skill_name = ""
+            elif ocr_skill_index is None:
+                logger.debug(
+                    f"训练室技能 OCR 未能由模板确认：{operator_name} {skill_name!r}"
+                )
+                skill_name = ""
     return RoomPanel(operator_name=operator_name, skill_name=skill_name)
 
 
@@ -843,7 +876,7 @@ def _plan_skill_matches(plan, operator_name, panel_skill) -> bool:
     """
     if not panel_skill:
         return True
-    resolved = resolve_panel_skill(operator_name, panel_skill)
+    resolved = resolve_panel_skill(operator_name, panel_skill, plan.get("char_id"))
     if resolved is not None:
         return resolved == plan.get("skill_index")
     if is_placeholder_skill_name(plan.get("skill_name")):
@@ -915,7 +948,7 @@ def _can_recover_plan(plan, room: RoomState) -> bool:
         return False
     if not _plan_operator_matches(plan, op):
         return False
-    resolved = resolve_panel_skill(op, sk)
+    resolved = resolve_panel_skill(op, sk, plan.get("char_id"))
     return resolved is not None and resolved == plan.get("skill_index")
 
 

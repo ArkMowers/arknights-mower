@@ -28,6 +28,7 @@ from arknights_mower.utils.res_version import (
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
+    RES_PACKAGE_OPTIONAL_MODELS,
 )
 from arknights_mower.utils.resource_store import (
     MARKER as _RESOURCE_MARKER,
@@ -269,7 +270,7 @@ def resource_pkg_path(rel):
     selected = _selection()
     managed = (
         rel == _RESOURCE_MARKER
-        or rel in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS)
+        or rel in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS, *RES_PACKAGE_OPTIONAL_MODELS)
         or any(rel.startswith(d + "/") for d in RES_PACKAGE_DIRS)
     )
     if selected.root is not None and managed:
@@ -341,7 +342,12 @@ def _extract_package(data, callback=None):
                 raise ValueError("资源包含非法路径或符号链接")
             if not item.is_dir() and not (
                 name == _RESOURCE_MARKER
-                or name in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS)
+                or name
+                in (
+                    *RES_PACKAGE_DATA,
+                    *RES_PACKAGE_MODELS,
+                    *RES_PACKAGE_OPTIONAL_MODELS,
+                )
                 or any(name.startswith(d + "/") for d in RES_PACKAGE_DIRS)
             ):
                 raise ValueError(f"资源包包含未声明文件：{name}")

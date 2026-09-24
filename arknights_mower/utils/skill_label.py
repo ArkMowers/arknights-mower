@@ -146,31 +146,45 @@ def _resolve_operator_char_id(operator_name) -> Optional[str]:
     return None
 
 
-def resolve_panel_skill(operator_name, panel_skill_text) -> Optional[int]:
+def resolve_panel_skill(operator_name, panel_skill_text, char_id=None) -> Optional[int]:
     """面板技能文本 → 干员已知技能序号（skill_data 对照解析）。
 
     已知技能 ≤3（skill_data.json characters[char_id].skills[].name）。面板文本对
     每个有名字的已知技能做归一化互含匹配（面板 ⊂ 真名 或 真名 ⊂ 面板，容忍长名截断
-    与 OCR 首尾噪声）；命中**唯一**技能才返回序号；查无干员 / 无命名技能 / 0 或多候选
-    → 返回 None（调用方回退 panel_skill_matches 现行为）。
+    与 OCR 首尾噪声）；同名多形态干员也逐形态比对。已知计划 char_id 且姓名一致时
+    只查该形态。命中**唯一**技能才返回序号；
+    查无干员 / 无命名技能 / 0 或多候选 → 返回 None。
     """
     if not operator_name or not panel_skill_text:
         return None
-    char_id = _resolve_operator_char_id(operator_name)
-    if char_id is None:
-        return None
     from arknights_mower.utils.mastery_recommendation import get_skill_data
 
-    skills = get_skill_data().get("characters", {}).get(char_id, {}).get("skills", [])
+    characters = get_skill_data().get("characters", {})
+    if operator_name in characters:
+        candidates = [characters[operator_name]]
+    elif char_id in characters and characters[char_id].get("name") == operator_name:
+        candidates = [characters[char_id]]
+    else:
+        unique_id = _resolve_operator_char_id(operator_name)
+        candidates = (
+            [characters[unique_id]]
+            if unique_id is not None
+            else [
+                char
+                for char in characters.values()
+                if char.get("name") == operator_name
+            ]
+        )
     panel = normalize_skill_text(panel_skill_text)
     if not panel:
         return None
     hits = []
-    for idx, skill in enumerate(skills):
-        name = skill.get("name") if isinstance(skill, dict) else None
-        if not name:
-            continue
-        known = normalize_skill_text(name)
-        if known and (panel in known or known in panel):
-            hits.append(idx)
+    for char in candidates:
+        for idx, skill in enumerate(char.get("skills", [])):
+            name = skill.get("name") if isinstance(skill, dict) else None
+            if not name:
+                continue
+            known = normalize_skill_text(name)
+            if known and (panel in known or known in panel):
+                hits.append(idx)
     return hits[0] if len(hits) == 1 else None

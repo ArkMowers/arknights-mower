@@ -1097,9 +1097,10 @@ def _confirm_training_started(
                         step_level=plan_step,
                     )
                     return "failed"
-                if not panel.operator_name:
+                if not panel.operator_name or not panel.skill_name:
                     logger.debug(
-                        "训练室已出有效倒计时但面板干员名不可读，暂不写入 training，等待归属可读"
+                        "训练室已出有效倒计时但面板干员或技能不可确认，"
+                        "暂不写入 training，等待归属可读"
                     )
                     solver.sleep(1)
                     continue

@@ -19,6 +19,7 @@ from arknights_mower.utils.res_version import (
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
+    RES_PACKAGE_OPTIONAL_MODELS,
 )
 from arknights_mower.utils.resource_store import (
     compatibility_error,
@@ -28,8 +29,12 @@ from arknights_mower.utils.resource_store import (
 from build_assets import _collect_arknights_mower_datas
 
 
-def resource_zip(version="v2026.08.23-aaaaaaa", *, manifest=None, remove=None):
+def resource_zip(
+    version="v2026.08.23-aaaaaaa", *, manifest=None, remove=None, optional=False
+):
     files = {name: "{}" for name in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS)}
+    if optional:
+        files.update({name: "model" for name in RES_PACKAGE_OPTIONAL_MODELS})
     files.update({name + "/x.webp": "WEBP" for name in RES_PACKAGE_DIRS})
     files[rp._RESOURCE_MARKER] = json.dumps(
         {"res_version": version, **(manifest or {})}
@@ -99,6 +104,15 @@ class TestSharedResourceScope(unittest.TestCase):
 
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
+    def test_optional_mastery_model_can_be_installed_or_absent(self):
+        model = RES_PACKAGE_OPTIONAL_MODELS[0]
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        self.assertFalse(rp.resource_pkg_path(model).exists())
+        self.assertTrue(
+            rp.install_resource_pkg(resource_zip("v2026.08.24-bbbbbbb", optional=True))
+        )
+        self.assertEqual(rp.resource_pkg_path(model).read_text(), "model")
+
     def test_valid_install_selects_complete_persistent_package(self):
         self.assertTrue(rp.install_resource_pkg(resource_zip()))
         selected = rp.resource_pkg_path(rp._RESOURCE_MARKER)

@@ -21,6 +21,7 @@ from arknights_mower.utils.res_version import (
     pick_latest_activity,
     pick_latest_gacha,
 )
+from build_mastery_panel_model import build_default_model
 
 # 字体目录：生成期从 MowerFonts 检出读取（环境变量 MOWERFONTS_DIR），
 # 未设置时回退到 ./ArknightsGameResource/fonts（本地手动放置/双击可用）。
@@ -62,6 +63,9 @@ class Arknights数据处理器:
         )
         self.干员表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/character_table.json"
+        )
+        self.干员形态表 = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/char_patch_table.json"
         )
         self.技能表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/skill_table.json"
@@ -955,7 +959,12 @@ class Arknights数据处理器:
         skill_count = 0
         skipped = 0
 
-        for char_id, char_info in self.干员表.items():
+        # Amiya's Guard and Medic forms live in char_patch_table.patchChars,
+        # not character_table. Keep their char_ids so each form retains its
+        # own skill indices and mastery materials.
+        for char_id, char_info in (
+            self.干员表 | self.干员形态表.get("patchChars", {})
+        ).items():
             skills_raw = char_info.get("skills", [])
             if not skills_raw:
                 skipped += 1
@@ -1246,6 +1255,9 @@ print("训练训练室干员名的模型,完成")
 
 数据处理器.提取专精数据()
 print("提取专精数据,完成")
+
+build_default_model()
+print("训练室面板姓名与技能模板,完成")
 
 数据处理器.generate_version_info()
 print("生成 version.json,完成")
