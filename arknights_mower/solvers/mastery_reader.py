@@ -146,11 +146,11 @@ _joint_panel_cache = None
 
 
 def _joint_panel_candidates():
-    """(干员名, char_id) 候选，按名字长度倒序；撞名的干员整条丢弃。
+    """干员名候选，按名字长度倒序。
 
     用于「只有左括号、右括号丢了」时的名字边界消歧：右括号没了就没有定界符，
     单靠字符串切不出名字到哪结束，改成拿「干员名 + 技能名」这一对回查
-    `skill_data.json` 校验。撞名干员无法确定身份，一律不参与消歧。
+    `skill_data.json` 校验；同名多形态由技能真名消歧。
     """
     global _joint_panel_cache
     if _joint_panel_cache is None:
@@ -160,14 +160,9 @@ def _joint_panel_candidates():
             characters = get_skill_data().get("characters", {})
         except Exception:
             characters = {}
-        seen = {}
-        for char_id, char in characters.items():
-            name = char.get("name")
-            if name:
-                seen.setdefault(name, []).append(char_id)
         _joint_panel_cache = sorted(
-            ((name, ids[0]) for name, ids in seen.items() if len(ids) == 1),
-            key=lambda item: len(item[0]),
+            {char["name"] for char in characters.values() if char.get("name")},
+            key=len,
             reverse=True,
         )
     return _joint_panel_cache
@@ -200,7 +195,7 @@ def _split_name_by_skill_data(remainder, skip_leading_noise=False):
         if first_cjk == -1:
             return None
         start = first_cjk
-    for name, _char_id in _joint_panel_candidates():
+    for name in _joint_panel_candidates():
         if not remainder.startswith(name, start):
             continue
         rest = remainder[start + len(name) :].strip()
@@ -879,7 +874,7 @@ def _plan_skill_matches(plan, operator_name, panel_skill) -> bool:
     """
     if not panel_skill:
         return True
-    resolved = resolve_panel_skill(operator_name, panel_skill)
+    resolved = resolve_panel_skill(operator_name, panel_skill, plan.get("char_id"))
     if resolved is not None:
         return resolved == plan.get("skill_index")
     if is_placeholder_skill_name(plan.get("skill_name")):
@@ -951,7 +946,7 @@ def _can_recover_plan(plan, room: RoomState) -> bool:
         return False
     if not _plan_operator_matches(plan, op):
         return False
-    resolved = resolve_panel_skill(op, sk)
+    resolved = resolve_panel_skill(op, sk, plan.get("char_id"))
     return resolved is not None and resolved == plan.get("skill_index")
 
 

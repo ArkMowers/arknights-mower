@@ -84,29 +84,30 @@ def recognize_skill(img, operator_name, data):
         for cid, char in data.get("characters", {}).items()
         if char.get("rarity") in (4, 5, 6) and char.get("name") == operator_name
     ]
-    if len(matching_ids) != 1:
-        return None
-    cid = matching_ids[0]
-    entry = model["entries"].get(cid)
-    if entry is None or entry["name"] != operator_name:
+    if not matching_ids:
         return None
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     binary = cv2.threshold(img, PIXEL_THRESHOLD, 255, cv2.THRESH_BINARY)[1]
-    prefix_width = entry["prefix_width"]
-    name_score = _score(binary[:, : prefix_width + 10], entry["name_template"])
-    if name_score < NAME_MIN_SCORE:
-        return None
-    skill_region = binary[:, max(0, prefix_width - 10) :]
-    scores = [
-        (index, name, _score(skill_region, template))
-        for index, name, template in entry["skills"]
-    ]
+    scores = []
+    for cid in matching_ids:
+        entry = model["entries"].get(cid)
+        if entry is None or entry["name"] != operator_name:
+            continue
+        prefix_width = entry["prefix_width"]
+        name_score = _score(binary[:, : prefix_width + 10], entry["name_template"])
+        if name_score < NAME_MIN_SCORE:
+            continue
+        skill_region = binary[:, max(0, prefix_width - 10) :]
+        scores.extend(
+            (index, name, name_score, _score(skill_region, template))
+            for index, name, template in entry["skills"]
+        )
     if not scores:
         return None
-    scores.sort(key=lambda row: row[2], reverse=True)
-    index, name, score = scores[0]
-    runner_up = scores[1][2] if len(scores) > 1 else 0.0
+    scores.sort(key=lambda row: row[3], reverse=True)
+    index, name, name_score, score = scores[0]
+    runner_up = scores[1][3] if len(scores) > 1 else 0.0
     margin = score - runner_up
     if score < SKILL_MIN_SCORE or margin < SKILL_MIN_MARGIN:
         return None

@@ -64,6 +64,9 @@ class Arknights数据处理器:
         self.干员表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/character_table.json"
         )
+        self.干员形态表 = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/char_patch_table.json"
+        )
         self.技能表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/skill_table.json"
         )
@@ -956,7 +959,12 @@ class Arknights数据处理器:
         skill_count = 0
         skipped = 0
 
-        for char_id, char_info in self.干员表.items():
+        # Amiya's Guard and Medic forms live in char_patch_table.patchChars,
+        # not character_table. Keep their char_ids so each form retains its
+        # own skill indices and mastery materials.
+        for char_id, char_info in (
+            self.干员表 | self.干员形态表.get("patchChars", {})
+        ).items():
             skills_raw = char_info.get("skills", [])
             if not skills_raw:
                 skipped += 1

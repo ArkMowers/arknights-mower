@@ -9,11 +9,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from PIL import ImageFont
 
 from arknights_mower.utils.mastery_panel_model import (
     FONT_SIZE,
     PIXEL_THRESHOLD,
     build_model,
+    render_template,
     skill_roster_digest,
 )
 from arknights_mower.utils.mastery_panel_template import recognize_skill
@@ -79,6 +81,26 @@ def test_real_panels_match_only_their_own_skill():
         assert match[0] == expected_index
         assert match[2] >= 0.80 and match[3] >= 0.80 and match[4] >= 0.15
         assert recognize_skill(image, "泡泡", data) is None
+
+
+def test_amiya_forms_are_collected_and_recognized():
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    expected = {
+        "char_002_amiya": ["战术咏唱·γ型", "精神爆发", "奇美拉"],
+        "char_1001_amiya2": ["影霄·奔夜", "影霄·绝影"],
+        "char_1037_amiya3": ["哀恸共情", "慈悲愿景"],
+    }
+    font = ImageFont.truetype(
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+    )
+    for cid, names in expected.items():
+        assert [skill["name"] for skill in data["characters"][cid]["skills"]] == names
+        for index, name in enumerate(names):
+            rendered = render_template(f"[阿米娅]{name}", font)
+            image = np.zeros((42, 520), dtype=np.uint8)
+            image[: rendered.shape[0], : rendered.shape[1]] = rendered
+            match = recognize_skill(image, "阿米娅", data)
+            assert match is not None and match[:2] == (index, name)
 
 
 def test_stale_skill_data_and_blank_frame_never_confirm():

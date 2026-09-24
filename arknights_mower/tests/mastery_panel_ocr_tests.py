@@ -179,3 +179,43 @@ def test_unconfirmed_skill_does_not_become_mismatch():
     room = reader.RoomState("training", panel)
     assert reader._plan_matches_room(plan, room)
     assert not reader._can_adopt_expiry(plan, room)
+
+
+@pytest.mark.parametrize(
+    ("char_id", "skill_name", "index"),
+    [
+        ("char_002_amiya", "精神爆发", 1),
+        ("char_1001_amiya2", "影霄·绝影", 1),
+        ("char_1037_amiya3", "哀恸共情", 0),
+    ],
+)
+def test_amiya_ocr_keeps_known_skill_without_optional_model(
+    monkeypatch, char_id, skill_name, index
+):
+    from arknights_mower.utils.skill_label import resolve_panel_skill
+
+    monkeypatch.setattr(reader, "recognize_skill", lambda *_: None)
+    solver = solver_with_text(f"[阿米娅]{skill_name}")
+    panel = reader._read_panel_text(solver)
+
+    assert (panel.operator_name, panel.skill_name) == ("阿米娅", skill_name)
+    assert resolve_panel_skill("阿米娅", skill_name) == index
+    plan = {
+        "char_id": char_id,
+        "char_name": "阿米娅",
+        "skill_index": index,
+        "skill_name": skill_name,
+    }
+    assert reader._plan_matches_room(plan, reader.RoomState("training", panel))
+
+
+def test_amiya_same_skill_index_does_not_mix_forms():
+    room = reader.RoomState("training", reader.RoomPanel("阿米娅", "影霄·绝影"))
+    caster_plan = {
+        "char_id": "char_002_amiya",
+        "char_name": "阿米娅",
+        "skill_index": 1,
+        "skill_name": "精神爆发",
+    }
+    assert not reader._plan_matches_room(caster_plan, room)
+    assert not reader._can_recover_plan(caster_plan, room)
