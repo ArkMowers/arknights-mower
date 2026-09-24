@@ -613,6 +613,46 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks[0].type, TaskTypes.EXHAUST_OFF)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_order_solver_reads_with_open_experimental_dorm_beds(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.drone_room = None
+        solver.op_data = MagicMock()
+        solver.op_data.experimental_dorm_logic = True
+        solver.op_data.plan = {
+            "dormitory_1": [Room("Free", "", []) for _ in range(5)],
+            "meeting": [Room("但书", "", [])],
+        }
+        solver.op_data.run_order_rooms = {"meeting": "但书"}
+        solver.plan_run_order = MagicMock()
+        solver.check_fia = MagicMock(return_value=(None, None))
+
+        solver.run_order_solver()
+
+        solver.plan_run_order.assert_called_once_with("meeting")
+        solver.op_data.get_current_room.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_order_solver_keeps_legacy_dorm_scan_gate(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.drone_room = None
+        solver.op_data = MagicMock()
+        solver.op_data.experimental_dorm_logic = False
+        solver.op_data.plan = {
+            "dormitory_1": [Room("Free", "", []) for _ in range(5)],
+            "meeting": [Room("但书", "", [])],
+        }
+        solver.op_data.run_order_rooms = {"meeting": "但书"}
+        solver.op_data.get_current_room.return_value = None
+        solver.plan_run_order = MagicMock()
+        solver.check_fia = MagicMock(return_value=(None, None))
+
+        solver.run_order_solver()
+
+        solver.plan_run_order.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_handle_error_appends_immediate_empty_task_after_clearing(self):
         # #144：错误分支「检测到超过15分钟的任务」清空非专精任务后，补一条立即
         # 空任务，让下一次 run() 走正常 planned 分支重读心情/换班/跑单，而不是
@@ -2609,6 +2649,81 @@ class TestGroupToFixPlan(unittest.TestCase):
         self.assertIn("train", fix_plan)
         self.assertEqual(fix_plan["train"][0], "褐果")
         self.assertNotIn("central", fix_plan)
+
+
+class TestDormShiftOffMerge(unittest.TestCase):
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_plan_solver_keeps_work_and_dorm_in_one_shift_off_task(self):
+        solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(operators={}, print=lambda: "{}")
+        solver.tasks = []
+        solver.find_next_task = MagicMock(return_value=None)
+        solver.plan_metadata = MagicMock()
+        solver.agent_get_mood = MagicMock(return_value="done")
+        solver.backup_plan_solver = MagicMock()
+        work_plan = {
+            "meeting": ["陈", "初雪"],
+            "dormitory_1": ["Current", "Current", "Free", "Current", "Current"],
+        }
+
+        def resting():
+            solver.tasks.append(
+                SchedulerTask(task_plan=work_plan, task_type=TaskTypes.SHIFT_OFF)
+            )
+            return work_plan
+
+        solver.resting = resting
+        dorm_plan = {"dormitory_1": ["Current", "Current", "银灰", "讯使", "Current"]}
+        with (
+            patch.object(base_schedule, "try_reorder", return_value=dorm_plan),
+            patch.object(base_schedule, "try_workshop_tasks"),
+            patch.object(base_schedule, "try_add_release_dorm"),
+        ):
+            solver.plan_solver()
+
+        shift_off = [task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF]
+        self.assertEqual(len(shift_off), 1)
+        self.assertEqual(shift_off[0].plan["meeting"], ["陈", "初雪"])
+        self.assertEqual(
+            shift_off[0].plan["dormitory_1"],
+            ["Current", "Current", "银灰", "讯使", "Current"],
+        )
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_empty_dorm_is_filled_only_once_after_run_order_deferral(self):
+        solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(
+            experimental_dorm_logic=True,
+            operators={},
+            print=lambda: "{}",
+        )
+        ordinary = SchedulerTask()
+        ordinary.deferred_by_run_order = True
+        solver.tasks = [ordinary]
+        fill_task = SchedulerTask(
+            task_plan={
+                "dormitory_1": ["Current", "Idle", "Current", "Current", "Current"]
+            }
+        )
+        with patch.object(
+            base_schedule,
+            "try_add_release_dorm",
+            side_effect=lambda plan, time, op_data, tasks: tasks.append(fill_task),
+        ) as fill:
+            self.assertTrue(solver._fill_dorm_after_run_order_deferral())
+            self.assertFalse(solver._fill_dorm_after_run_order_deferral())
+
+        fill.assert_called_once_with({}, None, solver.op_data, [ordinary, fill_task])
+        self.assertFalse(ordinary.deferred_by_run_order)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_empty_dorm_is_not_filled_without_run_order_deferral(self):
+        solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(experimental_dorm_logic=True)
+        solver.tasks = [SchedulerTask()]
+        with patch.object(base_schedule, "try_add_release_dorm") as fill:
+            self.assertFalse(solver._fill_dorm_after_run_order_deferral())
+        fill.assert_not_called()
 
 
 class TestDroneAccelerate(unittest.TestCase):

@@ -415,12 +415,18 @@ class RIICPart(ConfModel):
         "跑单前返回基建首页"
 
     class ProductSwitchingConf(ConfModel):
+        max_drones_per_switch: int = Field(default=0, ge=0, le=200)
+        "单次切换产物最多使用的无人机数量；0 表示不限制"
         grandet_mode: bool = True
         "仅使用不会超过损耗容限的无人机，余下时间自然等待"
+        use_drones_when_leaving_orirock: bool = True
+        "切出源石碎片时允许使用无人机完成当前一份"
+        direct_when_drones_insufficient: bool = False
+        "无人机不足时取消当前份制造进度并直接切换产物"
         drone_loss_seconds: int = Field(default=30, ge=0, le=180)
         "允许额外一架无人机浪费的加速秒数"
         waiting_seconds: int = Field(default=2, ge=0, le=60)
-        "制造站自然完成当前产物后的额外等待秒数"
+        "测试宿舍逻辑下为制造计划确认前缓冲；旧逻辑沿用自然完成后的等待"
 
     class WorkShopSetting(ConfModel):
         items: list[WorkShopItem] = []

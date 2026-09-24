@@ -28,11 +28,29 @@ def _resting_members(op_data):
             if op.group:
                 groups.add(op.group)
     for group in groups:
-        resting.update(
-            name
+        members = [
+            op_data.operators[name]
             for name in op_data.groups[group]
-            if not op_data.operators[name].workaholic
-        )
+            if not op_data.operators[name].room.startswith("dorm")
+            and not op_data.operators[name].workaholic
+        ]
+        if any(
+            not op.is_resting()
+            and not (
+                not op.current_room
+                and (
+                    op_data._can_standby(op)
+                    or op.time_stamp is not None
+                    and op.mood >= op.upper_limit
+                )
+            )
+            for op in members
+        ):
+            # 半组在岗、或成员离岗却没有有效满心情记录，不能当作整组
+            # 正常轮休。让原有整组纠错完成回班，而不是逐人保留休息。
+            resting.difference_update(op_data.groups[group])
+        else:
+            resting.update(op.name for op in members)
     return resting
 
 
@@ -71,7 +89,7 @@ def _can_move(op, room, plan, resting):
 
 
 def prefer_resting_replacements(op_data, fix_plan, is_busy):
-    """Try replacements; otherwise retain the original correction's recall."""
+    """完整轮休组优先维持替班；任一岗位无法替班时整组回班。"""
     if not fix_plan:
         return
     resting = _resting_members(op_data)
@@ -81,6 +99,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
     reserved = _reserved_names(op_data, requested, resting)
     is_busy = cache(is_busy)
     current = {room: op_data.get_current_room(room, True) for room in fix_plan}
+    recalling_groups = set()
     for room, slots in fix_plan.items():
         if room.startswith("dorm"):
             continue
@@ -96,7 +115,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
             ):
                 slots[index] = "Current"
                 continue
-            for candidate in op.replacement:
+            for candidate in op_data.replacement_candidates(op):
                 cover = op_data.operators.get(candidate)
                 if (
                     cover is None
@@ -112,9 +131,22 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 reserved.add(candidate)
                 break
             else:
+                if op.group:
+                    recalling_groups.add(op.group)
                 logger.debug(
                     f"{name}所在组正在休息，{room}暂无可用替班，保留原纠错叫回安排"
                 )
+    # 回班以组为单位覆盖之前逐槽尝试的替班结果，不能只叫回失败那一人。
+    # 宿舍固定成员交给 correct_group_dorms，训练室仍尊重调用方的保护。
+    for group in recalling_groups:
+        for name in op_data.groups[group]:
+            op = op_data.operators[name]
+            if op.room.startswith("dorm"):
+                continue
+            current.setdefault(op.room, op_data.get_current_room(op.room, True))
+            fix_plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))[
+                op.index
+            ] = name
     for room, slots in list(fix_plan.items()):
         for index, name in enumerate(slots):
             if name not in PLACEHOLDERS and name == current[room][index]:
@@ -177,16 +209,7 @@ def correct_group_dorms(op_data, fix_plan, is_busy):
                             name not in TRADE_ORDER_AGENTS
                             and name not in reserved
                             and not is_busy(name)
-                            and (
-                                not op_data.operators[name].is_high()
-                                or op_data.is_same_group_dorm_replacement(op, name)
-                                and (
-                                    actual is not None
-                                    and actual.name == name
-                                    or not op_data.operators[name].current_room
-                                    or op_data.operators[name].is_resting()
-                                )
-                            )
+                            and not op_data.operators[name].is_high()
                             and (
                                 actual is not None
                                 and actual.name == name

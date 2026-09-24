@@ -159,7 +159,7 @@ def test_backup_plan_applies_its_own_dorm_order(saved):
     )
 
 
-def test_backup_order_only_change_generates_physical_reorder(saved):
+def test_backup_order_only_change_preserves_occupied_beds(saved):
     op = operators("", ["dormitory_2,dormitory_1,dormitory_3,dormitory_4"])
     assert op.init_and_validate() is None
     first, second = op.dorm[:2]
@@ -175,8 +175,11 @@ def test_backup_order_only_change_generates_physical_reorder(saved):
     assert op.swap_plan([True], refresh=True) is None
     plan = rebalance_plan_swap_dorms(op, previous)
 
-    assert plan["dormitory_2"][2:4] == ["至简", "蜜莓"]
-    assert [bed.name for bed in op.dorm[:2]] == ["至简", "蜜莓"]
+    assert plan == {}
+    assert {bed.position: bed.name for bed in op.dorm if bed.name} == {
+        first.position: "至简",
+        second.position: "蜜莓",
+    }
 
 
 def test_saved_state_restores_values_without_overriding_regenerated_order(saved):

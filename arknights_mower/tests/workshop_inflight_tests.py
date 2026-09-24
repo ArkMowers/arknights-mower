@@ -135,6 +135,48 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         assert selected == []
 
 
+def test_infra_main_release_task_supports_legacy_operator_data(monkeypatch):
+    from arknights_mower.solvers import base_schedule as base
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data="赫拉格",
+        task_plan={"dormitory_1": ["Free"]},
+    )
+    solver.tasks = [solver.task]
+    solver.op_data = SimpleNamespace(
+        operators={
+            "赫拉格": SimpleNamespace(
+                current_room="dormitory_1",
+                current_index=0,
+                mood=24,
+                is_high=lambda: False,
+            )
+        }
+    )
+    solver.agent_arrange = MagicMock(return_value=True)
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.plan_metadata = MagicMock()
+    solver.planned = True
+    solver.todo_task = True
+    solver.refresh_connecting = False
+    solver.skip = MagicMock()
+    solver.recog = MagicMock()
+    solver.scene = MagicMock(return_value=base.Scene.INFRA_MAIN)
+    solver.find = MagicMock(return_value=True)
+    solver.tap = MagicMock()
+    solver.back = MagicMock()
+    solver.transition = MagicMock()
+
+    monkeypatch.setattr(base, "save_exception", MagicMock())
+    solver.infra_main()
+
+    solver.agent_arrange.assert_called_once()
+    solver.backup_plan_solver.assert_called_once()
+
+
 def test_running_task_uses_a_deep_snapshot(next_skill):
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 

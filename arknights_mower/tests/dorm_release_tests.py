@@ -125,7 +125,7 @@ def test_legacy_empty_dynamic_bed_also_accepts_waiting_operator(op_data):
 
 
 @pytest.mark.parametrize(
-    "excluded", ["blacklist", "workaholic", "full", "unknown", "working"]
+    "excluded", ["blacklist", "workaholic", "full", "unknown_idle", "working"]
 )
 def test_ineligible_waiting_operator_not_selected(op_data, excluded):
     op = op_data.operators["红"]
@@ -135,8 +135,9 @@ def test_ineligible_waiting_operator_not_selected(op_data, excluded):
         op.workaholic = True
     elif excluded == "full":
         op.mood = 24
-    elif excluded == "unknown":
+    elif excluded == "unknown_idle":
         op.time_stamp = None
+        op_data.plan["meeting"][0].replacement.remove(op.name)
     else:
         op.current_room = "train"
     tasks = []
@@ -167,6 +168,22 @@ def test_free_room_obeys_idle_takeover_limit(op_data, mood, expected):
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert bool(tasks) == expected
+
+
+@pytest.mark.parametrize("cached_mood", [None, -1, 25])
+def test_free_room_unknown_replacement_takes_over_recovering_idle(op_data, cached_mood):
+    op_data.operators["空爆"].mood = 2
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=5)
+    replacement = op_data.operators["红"]
+    replacement.mood = 24 if cached_mood is None else cached_mood
+    if cached_mood is None:
+        replacement.time_stamp = None
+    tasks = []
+
+    try_add_release_dorm({}, None, op_data, tasks)
+
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+    assert op_data.dorm[0].name == "空爆"  # 规划阶段不改真实入住者
 
 
 def test_missing_countdown_in_explicit_plan_does_not_raise(op_data):

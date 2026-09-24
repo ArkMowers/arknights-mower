@@ -113,6 +113,76 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(tasks[2].plan["task"], "Task 4")
         self.assertEqual(res, None)
 
+    def test_experimental_dorm_only_tasks_run_before_run_order(self):
+        now = datetime(2026, 9, 23, 2, 15)
+        dorm_tasks = [
+            SchedulerTask(
+                time=now,
+                task_plan={f"dormitory_{index}": ["Free"] * 5},
+                task_type=TaskTypes.RE_ORDER,
+            )
+            for index in range(1, 5)
+        ]
+        run_order = SchedulerTask(
+            time=now + timedelta(minutes=3),
+            task_plan={"room_2_1": ["跑单组"]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        tasks = [*dorm_tasks, run_order]
+
+        with patch.object(config.conf, "experimental_dorm_logic", True):
+            scheduling(tasks, time_now=now)
+
+        self.assertEqual([task.time for task in dorm_tasks], [now] * 4)
+        self.assertEqual(tasks[-1], run_order)
+        self.assertEqual(run_order.time, now + timedelta(minutes=3))
+        self.assertFalse(any(task.deferred_by_run_order for task in dorm_tasks))
+
+    def test_dorm_wakeup_preserves_only_experimental_dorm_batch(self):
+        for experimental, work_room in [(True, False), (False, False), (True, True)]:
+            for wake_type in (TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER):
+                with self.subTest(
+                    experimental=experimental, work_room=work_room, wake_type=wake_type
+                ):
+                    now = datetime(2026, 9, 23, 12)
+                    dorm = SchedulerTask(
+                        time=now,
+                        task_type=TaskTypes.RE_ORDER,
+                        task_plan={"dormitory_1": ["Current", "Free"]},
+                    )
+                    wake = SchedulerTask(time=now, task_type=wake_type)
+                    order = SchedulerTask(
+                        time=now + timedelta(seconds=30),
+                        task_type=TaskTypes.RUN_ORDER,
+                        task_plan={"room_1_1": ["Current"]},
+                    )
+                    tasks = [dorm, wake, order]
+                    if work_room:
+                        tasks.insert(
+                            0,
+                            SchedulerTask(
+                                time=now,
+                                task_type=TaskTypes.SHIFT_OFF,
+                                task_plan={"central": ["阿米娅"]},
+                            ),
+                        )
+                    with (
+                        patch.object(
+                            config.conf, "experimental_dorm_logic", experimental
+                        ),
+                        patch(
+                            "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+                            return_value=(None, None),
+                        ),
+                    ):
+                        scheduling(tasks, time_now=now)
+                    if experimental and not work_room:
+                        self.assertEqual(dorm.time, now)
+                        self.assertEqual(wake.time, now)
+                        self.assertFalse(dorm.deferred_by_run_order)
+                    else:
+                        self.assertGreater(dorm.time, order.time)
+
     def test_deferred_dorm_schedules_are_merged_before_run_order(self):
         shift_off = SchedulerTask(
             time=datetime(2026, 9, 22, 5, 18, 15),
@@ -193,6 +263,8 @@ class TestScheduling(unittest.TestCase):
                 run_order.time + timedelta(seconds=2),
             ),
         )
+        self.assertTrue(shift_off.deferred_by_run_order)
+        self.assertTrue(shift_on.deferred_by_run_order)
 
         with patch.object(config.conf, "experimental_dorm_logic", False):
             scheduling(stable_tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
@@ -250,6 +322,38 @@ class TestScheduling(unittest.TestCase):
                 self.assertEqual(special.type, task_type)
                 self.assertEqual(special.meta_data, meta_data)
                 self.assertEqual(special.plan, special_plan)
+
+    def test_deferred_dorm_merge_keeps_empty_shift_off_and_its_followup(self):
+        shift_off = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "Current"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "临时休息者"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder.time)
+
+        result = _merge_deferred_dorm_schedules([reorder, followup, shift_off])
+
+        self.assertEqual(result, [shift_off])
+        self.assertEqual(shift_off.plan, {"dormitory_1": ["Current", "临时休息者"]})
+
+    def test_deferred_dorm_merge_keeps_followup_for_anchor_reorder(self):
+        shift_off = SchedulerTask(
+            task_plan={"room_1_1": ["替班"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "临时休息者"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder.time)
+
+        result = _merge_deferred_dorm_schedules([shift_off, reorder, followup])
+
+        self.assertEqual(result, [shift_off, reorder, followup])
+        self.assertEqual(reorder.plan, {"dormitory_1": ["Current", "临时休息者"]})
 
     def test_find_next(self):
         # 测试 方程有效
@@ -330,7 +434,7 @@ class TestScheduling(unittest.TestCase):
         self.assertNotEqual(res, None)
 
     def test_reorder_1(self):
-        # 高优先级被拉前面
+        # 新主班夕优先取得单回位；已有休息者凯尔希仍落实已选床位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -338,10 +442,11 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2], "夕")
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_2"][2], "Free")
 
     def test_reorder_2(self):
-        # 非高优高效不会被移动
+        # 两个新主班分别取得单回位，原普通替班继续留在其他床位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -349,15 +454,13 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[3].name = "见行者"
         op_data.dorm[4].name = "森蚺"
 
-        # op_data.config.ope_resting_priority=["森蚺","夕"]
         plan = try_reorder(op_data, {})
         self.assertEqual(len(plan), 2)
-        self.assertEqual(plan["dormitory_1"][2], "夕")
-        self.assertEqual(plan["dormitory_1"][3], "森蚺")
-        self.assertEqual(plan["dormitory_1"][4], "见行者")
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "见行者"])
 
     def test_reorder_3(self):
-        # 如果高优都占了，则不动
+        # 未执行前重复演算得到同一结果，不会在两种宿舍布局间振荡。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "夕"
         op_data.dorm[1].name = "焰尾"
@@ -366,11 +469,11 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["见行者"].current_room = "dormitory_2"
         op_data.operators["见行者"].current_index = 2
         op_data.dorm[4].name = "见行者"
-        try_reorder(op_data, {})
-        plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2], "夕")
-        self.assertEqual(plan["dormitory_1"][3], "焰尾")
-        self.assertEqual(plan["dormitory_2"][2], "Current")
+        first = try_reorder(op_data, {})
+        second = try_reorder(op_data, {})
+        self.assertEqual(first, second)
+        self.assertEqual(first["dormitory_1"][2:], ["夕", "玛恩纳", "森蚺"])
+        self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "见行者"])
 
     def add_dorm_overlay_backup(self, op_data):
         op_data.global_plan["default_plan"].config.free_room = True

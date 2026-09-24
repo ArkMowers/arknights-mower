@@ -10,7 +10,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils.operators import Dormitory, Operator, Operators  # noqa: E402
-from arknights_mower.utils.plan import Room  # noqa: E402
+from arknights_mower.utils.plan import PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.resting_correction import (  # noqa: E402
     prefer_resting_replacements,
 )
@@ -19,6 +19,7 @@ from arknights_mower.utils.resting_correction import (  # noqa: E402
 @pytest.fixture
 def solver():
     data = object.__new__(Operators)
+    data.config = PlanConfig("", "", "")
     data.plan = {
         "central": [Room("歌蕾蒂娅", "深海", ["薇薇安娜"])],
         "room_2_2": [Room("引星棘刺", "自动化", ["淬羽赫默"])],
@@ -106,7 +107,7 @@ def test_backup_room_change_converges_using_replacements(solver, monkeypatch):
     solver.enter_room.assert_not_called()
 
 
-def test_partial_group_at_work_does_not_wake_resting_member(solver):
+def test_partial_group_at_work_recalls_whole_group_even_without_other_errors(solver):
     apply_plan(
         solver,
         {
@@ -115,11 +116,14 @@ def test_partial_group_at_work_does_not_wake_resting_member(solver):
             "room_3_3": ["斯卡蒂", "幽灵鲨"],
         },
     )
-    # The protected training room still seeds the legacy group-synchronization pass.
-    assert solver.agent_get_mood() is None
-    assert solver.tasks == []
+    apply_plan(solver, {"train": ["逻各斯"]})
+    assert solver.agent_get_mood(read_rooms=False) == "self_correction"
+    plan = solver.tasks.pop().plan
+    assert plan == {"central": ["歌蕾蒂娅"]}
     assert solver.op_data.operators["歌蕾蒂娅"].mood == 0
-    assert solver.op_data.operators["歌蕾蒂娅"].is_resting()
+    apply_plan(solver, plan)
+    assert solver.agent_get_mood(skip_dorm=True, read_rooms=False) is None
+    assert solver.tasks == []
 
 
 @pytest.mark.parametrize("configured_slots", [0, 1])
@@ -162,7 +166,7 @@ def test_replacements_in_other_working_rooms_are_not_taken(solver):
     plan = {"room_3_3": ["斯卡蒂", "幽灵鲨"]}
     busy = MagicMock(return_value=False)
     prefer_resting_replacements(solver.op_data, plan, busy)
-    assert plan == {"room_3_3": ["斯卡蒂", "幽灵鲨"]}
+    assert plan == {"room_3_3": ["斯卡蒂", "幽灵鲨"], "central": ["歌蕾蒂娅"]}
     busy.assert_not_called()
 
 
@@ -173,7 +177,7 @@ def test_shared_replacement_is_assigned_only_once(solver):
     plan = {"room_3_3": ["斯卡蒂", "幽灵鲨"]}
     busy = MagicMock(return_value=False)
     prefer_resting_replacements(data, plan, busy)
-    assert plan == {"room_3_3": ["多萝西", "幽灵鲨"]}
+    assert plan == {"room_3_3": ["斯卡蒂", "幽灵鲨"], "central": ["歌蕾蒂娅"]}
     busy.assert_called_once_with("多萝西")
 
 
@@ -184,7 +188,7 @@ def test_mastery_busy_replacement_is_not_used_and_checked_once(solver):
     plan = {"room_3_3": ["斯卡蒂", "幽灵鲨"]}
     busy = MagicMock(return_value=True)
     prefer_resting_replacements(data, plan, busy)
-    assert plan == {"room_3_3": ["斯卡蒂", "幽灵鲨"]}
+    assert plan == {"room_3_3": ["斯卡蒂", "幽灵鲨"], "central": ["歌蕾蒂娅"]}
     busy.assert_called_once_with("多萝西")
 
 
@@ -195,7 +199,8 @@ def test_replacement_reserved_by_another_correction_is_not_reused(solver):
     prefer_resting_replacements(data, plan, MagicMock(return_value=False))
     assert plan == {
         "room_3_2": ["Current", "多萝西"],
-        "room_3_3": ["斯卡蒂", "淬羽赫默"],
+        "room_3_3": ["斯卡蒂", "幽灵鲨"],
+        "central": ["歌蕾蒂娅"],
     }
 
 
@@ -205,7 +210,7 @@ def test_correctly_placed_replacement_is_not_stolen_for_another_slot(solver):
     data.operators["幽灵鲨"].replacement = ["多萝西"]
     plan = {"room_3_3": ["Current", "幽灵鲨"]}
     prefer_resting_replacements(data, plan, MagicMock(return_value=False))
-    assert plan == {"room_3_3": ["Current", "幽灵鲨"]}
+    assert plan == {"room_3_3": ["斯卡蒂", "幽灵鲨"], "central": ["歌蕾蒂娅"]}
 
 
 @pytest.mark.parametrize("end", [None, "future"])
@@ -264,3 +269,81 @@ def test_correction_outside_planned_slot_is_not_silently_removed(solver):
     plan = {"room_3_2": ["斯卡蒂", "Current"]}
     prefer_resting_replacements(solver.op_data, plan, MagicMock(return_value=False))
     assert plan == {"room_3_2": ["斯卡蒂", "Current"]}
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_idle_group_member_requires_observed_full_mood(solver, cached):
+    """重启后的默认 24 不能把未完成入住当成满心情待命。"""
+    apply_plan(
+        solver,
+        {
+            "room_2_2": ["引星棘刺"],
+            "room_3_2": ["清流", "温蒂"],
+            "room_3_3": ["多萝西", "淬羽赫默"],
+            "train": ["逻各斯"],
+        },
+    )
+    idle = solver.op_data.operators["斯卡蒂"]
+    idle.time_stamp = datetime.now() if cached else None
+    assert idle.mood == 24 and idle.current_room == ""
+    plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    if cached:
+        assert plan == {}
+    else:
+        assert plan == {"central": ["歌蕾蒂娅"], "room_3_3": ["斯卡蒂", "幽灵鲨"]}
+        apply_plan(solver, plan)
+        idle.time_stamp = datetime.now()  # 实际安排后的采样
+        assert (
+            solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
+            == {}
+        )
+    solver.enter_room.assert_not_called()
+
+
+def test_correction_prefers_cached_healthy_cover(solver):
+    data = solver.op_data
+    data.operators["斯卡蒂"].replacement = ["多萝西", "砾"]
+    data.operators["多萝西"].current_room = ""
+    data.operators["多萝西"].mood = 0
+    plan = {"room_3_3": ["斯卡蒂", "Current"]}
+    prefer_resting_replacements(data, plan, MagicMock(return_value=False))
+    assert plan == {"room_3_3": ["砾", "Current"]}
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+@pytest.mark.parametrize(
+    "moods,expected",
+    [
+        ([6, 12, 20], [1, 2, 0]),
+        ([9, 12, 20], [0, 1, 2]),
+        ([6, 5, 4], [0, 1, 2]),
+        ([6, None, 20], [1, 2, 0]),
+        ([None, 12, 20], [0, 1, 2]),
+    ],
+)
+def test_work_replacement_cache_soft_preference(
+    solver, monkeypatch, experimental, moods, expected
+):
+    from arknights_mower.utils import config
+
+    monkeypatch.setattr(config.conf, "rescue_threshold", 0.75)
+    data = solver.op_data
+    data.config.experimental_dorm_logic = experimental
+    op = data.operators["斯卡蒂"]
+    names = ["多萝西", "砾", "淬羽赫默"]
+    op.replacement = names.copy()
+    for name, mood in zip(names, moods):
+        data.operators[name].mood = mood if mood is not None else 24
+        data.operators[name].time_stamp = datetime.now() if mood is not None else None
+    assert data.replacement_candidates(op) == [names[index] for index in expected]
+    assert op.replacement == names
+
+
+def test_work_replacement_uses_own_mood_limits(solver):
+    data = solver.op_data
+    op = data.operators["斯卡蒂"]
+    op.replacement = ["多萝西", "砾"]
+    cover = data.operators["多萝西"]
+    cover.lower_limit, cover.upper_limit, cover.mood = 12, 24, 15
+    assert data.replacement_candidates(op) == ["砾", "多萝西"]

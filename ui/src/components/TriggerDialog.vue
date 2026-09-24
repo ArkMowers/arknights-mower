@@ -11,9 +11,12 @@ import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
+import { useConfigStore } from '@/stores/config'
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
+const config_store = useConfigStore()
+const { experimental_dorm_logic } = storeToRefs(config_store)
 const depot_store = usedepotStore()
 const facility_store = useFacilityStore()
 const mastery_store = useMasteryStore()
@@ -55,7 +58,7 @@ function update_trigger(data) {
     transform-origin="center"
     style="width: auto; max-width: 90vw"
   >
-    <div class="dropdown-container">
+    <div v-if="!experimental_dorm_logic" class="dropdown-container">
       <label class="dropdown-label"
         >最早切入阶段
         <help-text :max-width="560" nowrap>
@@ -78,7 +81,7 @@ function update_trigger(data) {
       >
       </n-select>
     </div>
-    <div class="dropdown-container">
+    <div v-if="!experimental_dorm_logic" class="dropdown-container">
       <label class="dropdown-label"
         >最早切出阶段
         <help-text :max-width="560" nowrap>

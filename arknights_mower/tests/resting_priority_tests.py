@@ -43,10 +43,12 @@ def set_tier(data, name, tier, mood=10):
 
 @pytest.mark.parametrize("incoming", list(RestingTier)[:6])
 @pytest.mark.parametrize("occupant", list(RestingTier)[:6])
-@pytest.mark.parametrize("mood", [22, 22.01])
+@pytest.mark.parametrize("mood", [22, 22.01, None])
 def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
     data = op_data
-    request = set_tier(data, "银灰", incoming, mood)
+    request = set_tier(data, "银灰", incoming, 24 if mood is None else mood)
+    if mood is None:
+        request.time_stamp = None
     current = set_tier(data, "空爆", occupant, 3)
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
@@ -59,17 +61,36 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
             incoming in (RestingTier.STANDBY, RestingTier.REPLACEMENT)
             and occupant == RestingTier.IDLE
         ):
-            expected = mood <= 22
+            expected = mood is None or mood <= 22
     assert (
         data._find_dorm_slot(request.name, set(), group_resting=True) is not None
     ) == expected
 
 
-def test_unknown_mood_cannot_evict_idle_occupant_as_replacement(op_data):
+@pytest.mark.parametrize("tier", [RestingTier.STANDBY, RestingTier.REPLACEMENT])
+@pytest.mark.parametrize("mood", [-1, 25])
+def test_invalid_cached_mood_allows_idle_takeover(op_data, tier, mood):
     op_data.dorm[0].time = datetime.now() + timedelta(hours=1)
     op_data.operators["空爆"].mood = 3
+    set_tier(op_data, "红", tier, mood)
+    assert op_data.assign_dorm("红") is op_data.dorm[0]
+
+
+def test_free_selection_allows_unknown_replacement_to_take_idle_bed(op_data):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    op_data.operators["空爆"].mood = 3
+    op_data.operators["红"].mood = 24
     op_data.operators["红"].time_stamp = None
-    assert op_data.assign_dorm("红") is None
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = op_data
+    solver.task = None
+    solver.tasks = []
+    plan = ["Current"] * 4 + ["Free"]
+
+    solver.preserve_resting_crafters(plan, ROOM)
+
+    assert plan[-1] == "红"
 
 
 def test_unexecuted_bed_reservation_is_not_preempted(op_data):
@@ -106,21 +127,20 @@ def test_same_tier_uses_absolute_mood_not_lower_limit_or_priority_list_order(op_
     ]
 
 
-def test_dorm_reorder_uses_same_mood_order_and_settles(op_data):
+def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
     set_tier(op_data, "陈", RestingTier.REPLACEMENT, 3)
     op_data.plan[ROOM][3] = Room("Free", "", [])
     op_data.dorm = [Dormitory((ROOM, 3), "红"), Dormitory((ROOM, 4), "陈")]
     for bed in op_data.dorm:
         op = op_data.operators[bed.name]
         op.current_room, op.current_index = bed.position
-    plan = try_reorder(op_data, {})
-    assert plan[ROOM][3:] == ["陈", "红"]
-    for index, name in enumerate(plan[ROOM]):
-        if name != "Current":
-            op_data.operators[name].current_index = index
-    for bed in op_data.dorm:
-        bed.name = plan[ROOM][bed.position[1]]
     assert try_reorder(op_data, {}) == {}
+
+    set_tier(op_data, "空爆", RestingTier.IDLE, 1)
+    op_data.plan[ROOM][2] = Room("Free", "", [])
+    op_data.dorm.insert(0, Dormitory((ROOM, 2), "空爆"))
+    plan = try_reorder(op_data, {})
+    assert plan == {ROOM: ["Current", "Current", "空爆", "Current", "Current"]}
 
 
 def test_dorm_reorder_keeps_active_recovery_target_in_its_room(op_data):

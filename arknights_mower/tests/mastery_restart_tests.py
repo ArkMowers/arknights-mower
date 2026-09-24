@@ -250,6 +250,25 @@ class MasteryRestartTests(unittest.TestCase):
             self.read_mood(solver)
         solver.get_agent_from_room.assert_called_once_with("train", None)
 
+    def test_cached_mood_projection_does_not_scan_training_room(self):
+        for enabled in (False, True):
+            with self.subTest(enable_mastery=enabled):
+                solver = self.mood_solver()
+                with (
+                    patch.object(reader.config.conf, "enable_mastery", enabled),
+                    patch.object(reader, "read_room_state") as read,
+                ):
+                    plan = base_schedule.BaseSchedulerSolver.agent_get_mood(
+                        solver, skip_dorm=True, read_rooms=False, return_plan=True
+                    )
+                self.assertEqual(plan, {})
+                read.assert_not_called()
+                solver.enter_room.assert_not_called()
+                solver.get_agent_from_room.assert_not_called()
+                solver.back.assert_not_called()
+                self.assertIsNone(solver.last_train_mood_read)
+                self.assertEqual(solver.tasks, [])
+
     def test_mood_scan_stops_when_manual_trainee_is_in_nontraining_schedule(self):
         mastery_db.update_plan_status(self.plan_id, "completed")
         room = reader.RoomState(

@@ -724,11 +724,50 @@ if (return_home_when_idle.value) {
                 跑单前返回主界面以保持登录状态
               </n-checkbox>
             </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>切产物单次无人机上限</span>
+                <help-text
+                  >仅测试宿舍逻辑生效。0
+                  表示不限制；达到上限后等待当前一份自然完成，再确认切换。</help-text
+                >
+              </template>
+              <mower-input-number
+                v-model:value="product_switching.max_drones_per_switch"
+                :disabled="!experimental_dorm_logic"
+                :min="0"
+                :max="200"
+              >
+                <template #suffix>架</template>
+              </mower-input-number>
+            </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="product_switching.grandet_mode">
                 葛朗台切产物
                 <help-text>
                   开启时按损耗容限节省无人机，并等待当前一份自然完成；关闭时直接使用足量无人机完成当前一份后切换。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item v-if="product_switching.grandet_mode" :show-label="false">
+              <n-checkbox
+                v-model:checked="product_switching.use_drones_when_leaving_orirock"
+                :disabled="!experimental_dorm_logic"
+              >
+                切出源石碎片时使用无人机
+                <help-text>
+                  仅测试宿舍逻辑生效。关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox
+                v-model:checked="product_switching.direct_when_drones_insufficient"
+                :disabled="!experimental_dorm_logic"
+              >
+                允许无人机不足时直接切换产物
+                <help-text>
+                  仅测试宿舍逻辑生效。开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
                 </help-text>
               </n-checkbox>
             </n-form-item>
@@ -751,9 +790,10 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item>
               <template #label>
-                <span>葛朗台切换等待缓冲</span>
+                <span>葛朗台切产物缓冲时间</span>
                 <help-text>
-                  葛朗台切产物开启时，在计算出的自然完成时间之外额外等待，避免动画或网络延迟导致过早切换。
+                  测试宿舍逻辑开启时，当前一份完成后在制造计划取消确认页等待这段时间再确认；关闭时沿用原有等待流程。默认
+                  2 秒。
                 </help-text>
               </template>
               <mower-input-number
@@ -874,12 +914,10 @@ if (return_home_when_idle.value) {
                 宿舍不养闲人
                 <help-text>
                   <template v-if="experimental_dorm_logic">
-                    有可用的未满心情干员时，按统一休息优先级和心情替换动态床位中的满心情普通干员，也会补入空床位。
-                    主班按轮休任务回班，固定宿舍岗位不清除；执行时机受任务队列及合并间隔影响。
+                    按宿舍优先级补床，支持待命候补和新入住者单回竞争；保留恢复中的主班、候补及固定宿舍岗位。
                   </template>
                   <template v-else>
-                    使用稳定版逻辑，把未满心情的空闲干员安排到可释放的动态宿舍床位。
-                    加工名单中的干员是否使用最低休息优先级，由自动加工页面的设置控制。
+                    将未满心情的空闲干员补入可释放床位；加工干员优先级由自动加工设置控制。
                   </template>
                 </help-text>
               </n-checkbox>
@@ -888,8 +926,12 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="experimental_dorm_logic">
                 测试宿舍逻辑
                 <help-text>
-                  默认关闭。开启后使用统一休息优先级、床位抢占保护、绑组宿舍临时
-                  Free、主副表独立房间排序及新版不养闲人逻辑。
+                  <template v-if="experimental_dorm_logic">
+                    已开启：按层级和心情分床，支持候补补床、临时 Free
+                    床位及新入住者单回竞争，日常保留床位。
+                  </template>
+                  <template v-else> 已关闭：使用原宿舍规则，休息优先名单按填写顺序分床。 </template>
+                  <p>两种模式均按「心情－个人下限」排序下班。</p>
                 </help-text>
               </n-checkbox>
             </n-form-item>

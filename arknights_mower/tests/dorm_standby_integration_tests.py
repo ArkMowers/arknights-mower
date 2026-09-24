@@ -55,9 +55,9 @@ def test_combined_group_round_trip_preserves_other_beds(combined_solver, occupan
     shift_off(solver)
     assert data.operators["塑心"].resting_priority != "standby"
     assert data.operators["塑心"].current_room == ""
-    assert not data.is_group_standby("塑心")
+    assert not data.is_standby("塑心")
     expected = set(DEEP[1:]) if occupants != "replacement" else set()
-    assert {name for name in DEEP if data.is_group_standby(name)} == expected
+    assert {name for name in DEEP if data.is_standby(name)} == expected
     assert "塑心" not in {bed.name for bed in data.dorm}
     if occupants != "replacement":
         assert [(bed.position, bed.name, bed.time) for bed in data.dorm[1:]] == before
@@ -75,7 +75,7 @@ def test_combined_group_round_trip_preserves_other_beds(combined_solver, occupan
     assert set(DEEP) <= {name for names in back[0].plan.values() for name in names}
     apply_plan(solver, back[0].plan)
     assert solver.agent_get_mood(skip_dorm=True) is None
-    assert not any(data.is_group_standby(name) for name in DEEP)
+    assert not any(data.is_standby(name) for name in DEEP)
     assert data.operators["隐德来希"].current_room == ""
     solver.enter_room.assert_not_called()
 
@@ -130,7 +130,7 @@ def test_combined_group_recovers_missing_dorm_cover_without_recalling_standby(
     }
     apply_plan(solver, correction)
     assert solver.agent_get_mood() is None
-    assert all(solver.op_data.is_group_standby(name) for name in DEEP[1:])
+    assert all(solver.op_data.is_standby(name) for name in DEEP[1:])
 
 
 def test_combined_group_unavailable_dorm_cover_leaves_beds_unchanged(combined_solver):

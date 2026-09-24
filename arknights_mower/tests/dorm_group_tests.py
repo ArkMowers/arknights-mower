@@ -1,6 +1,7 @@
 """宿舍成员跟随工作组换班，固定岗位不占用轮休床位。"""
 
 import sys
+from copy import deepcopy
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -12,7 +13,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
-from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.operators import Dormitory, Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
@@ -100,9 +101,9 @@ def shift_off(solver):
     return plan, replacements
 
 
-def configure_same_group_cover(solver):
+def configure_explicit_free_bed(solver):
     resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
-    resident.replacement = ["伊内丝"]
+    resident.replacement = ["Free"]
     assert solver.initialize_operators() is None
     for name in ["泥岩", "能天使", "年"]:
         solver.op_data.add(Operator(name, ""))
@@ -147,6 +148,27 @@ def test_group_larger_than_bed_count_validates_and_round_trip_converges(solver):
     assert data.operators["黑角"].current_room == ""
     # 下一轮仍可使用相同替班。
     assert shift_off(solver)[0]["dormitory_1"][0] == "黑角"
+
+
+def test_zero_mood_worker_only_follows_group_shift(solver):
+    worker = solver.op_data.operators["讯使"]
+    worker.workaholic = True
+    worker.mood = 0
+    solver.op_data.workaholic_agent.add(worker.name)
+
+    plan, _ = shift_off(solver)
+
+    assert plan["contact"] == ["红"]
+    assert worker.current_room == ""
+    assert all(dorm.name != worker.name for dorm in solver.op_data.dorm)
+
+    tasks = generate_plan_by_drom(
+        {datetime.now() + timedelta(hours=4): (solver.op_data.dorm, True)},
+        solver.op_data,
+    )
+    assert len(tasks) == 1
+    assert tasks[0].type == TaskTypes.SHIFT_ON
+    assert tasks[0].plan["contact"] == [worker.name]
 
 
 @pytest.mark.parametrize("failure", ["busy", "working", "missing", "duplicate", "beds"])
@@ -200,6 +222,16 @@ def test_working_group_does_not_treat_resident_as_resting_witness(solver):
     }
 
 
+def test_experimental_correction_does_not_duplicate_pending_plan(solver):
+    solver.op_data.operators["冰酿"].current_room = ""
+    solver.op_data.operators["冰酿"].current_index = -1
+
+    assert solver.agent_get_mood() == "self_correction"
+    assert len(solver.tasks) == 1
+    assert solver.agent_get_mood() == "self_correction"
+    assert len(solver.tasks) == 1
+
+
 def test_restart_with_absent_stale_resident_preserves_cover(solver):
     shift_off(solver)
     solver.op_data.operators["塑心"].time_stamp = None
@@ -208,7 +240,7 @@ def test_restart_with_absent_stale_resident_preserves_cover(solver):
 
 
 def test_room_scan_clears_stale_occupant_from_closed_group_bed(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     bed = next(d for d in data.dorm if d.position == ("dormitory_1", 0))
     stale = data.operators["陈"]
@@ -234,6 +266,39 @@ def test_room_scan_clears_stale_occupant_from_closed_group_bed(solver):
     assert (stale.current_room, stale.current_index) == ("", -1)
     assert (bed.name, bed.time) == ("", None)
     assert data.is_effective_free_slot(bed) is False
+
+
+def test_room_scan_keeps_new_occupant_when_clearing_stale_operator(solver):
+    data = solver.op_data
+    bed = next(d for d in data.dorm if d.position == ("dormitory_1", 3))
+    stale = data.operators["陈"]
+    incoming = data.operators["能天使"]
+    stale.current_room, stale.current_index = bed.position
+    incoming.current_room, incoming.current_index = "", -1
+    bed.name = stale.name
+    bed.time = datetime.now() + timedelta(hours=4)
+
+    solver.task = None
+    solver.recog = MagicMock(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.detect_product_complete = MagicMock(return_value=False)
+    solver.scroll_room_operators = MagicMock()
+    solver.find = MagicMock(return_value=None)
+    solver.read_screen = MagicMock(
+        side_effect=["塑心", "冰酿", "泥岩", incoming.name, "年"]
+    )
+    solver.read_accurate_mood = MagicMock(return_value=5)
+    solver.read_operator_time = MagicMock(
+        return_value=datetime.now() + timedelta(hours=4)
+    )
+
+    solver.get_agent_from_room("dormitory_1")
+
+    assert (stale.current_room, stale.current_index) == ("", -1)
+    assert (incoming.current_room, incoming.current_index) == bed.position
+    assert bed.name == incoming.name
+    assert bed.time is not None
 
 
 def test_correction_completes_partial_dorm_shift_and_restores_after_return(solver):
@@ -349,8 +414,17 @@ def test_multiple_residents_swap_without_using_extra_beds(solver):
     assert solver.agent_get_mood() is None
 
 
-def test_same_group_worker_uses_resident_slot_as_resting_bed(solver):
-    configure_same_group_cover(solver)
+def test_same_group_name_cannot_be_used_as_dorm_replacement(solver):
+    resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
+    resident.replacement = ["伊内丝"]
+
+    assert solver.initialize_operators() == (
+        "替换组不可用高效组干员: 房间->dormitory_1, 干员->伊内丝"
+    )
+
+
+def test_explicit_free_uses_resident_slot_as_resting_bed(solver):
+    configure_explicit_free_bed(solver)
 
     plan, replacements = shift_off(solver)
 
@@ -376,8 +450,200 @@ def test_same_group_worker_uses_resident_slot_as_resting_bed(solver):
     assert tasks[0].plan["dormitory_1"][0] == "塑心"
 
 
-def test_same_group_resident_slot_reduces_required_free_beds(solver):
-    configure_same_group_cover(solver)
+def test_later_release_follows_occupant_after_projected_bed_closure(solver):
+    configure_explicit_free_bed(solver)
+    data = solver.op_data
+    now = datetime.now()
+    occupants = ["泥岩", "陈", "能天使", "年"]
+    for bed, name in zip(data.dorm, occupants):
+        bed.name = name
+        bed.time = now + timedelta(hours=4)
+        op = data.operators[name]
+        op.current_room, op.current_index = bed.position
+        op.time_stamp = now
+
+    # 未来回班关闭 0 号位后，泥岩会迁到其他床；释放任务必须跟人，
+    # 不能因为原床被清空而消失，也不能提前修改当前真实床位。
+    data.config.free_room = True
+    closing = Dormitory(data.dorm[0].position, "伊内丝", now + timedelta(hours=1))
+    future = data.dorm[0]
+    tasks = generate_plan_by_drom(
+        {
+            now + timedelta(hours=1): ([closing], False),
+            now + timedelta(hours=4): ([future], None),
+        },
+        data,
+    )
+
+    assert future.name == "泥岩"
+    assert len(tasks) == 2
+    assert tasks[0].type == TaskTypes.SHIFT_ON
+    assert tasks[0].plan["dormitory_1"][0] == "塑心"
+    destination = tasks[0].plan["dormitory_1"].index("泥岩")
+    assert tasks[1].type == TaskTypes.RELEASE_DORM
+    assert tasks[1].time == now + timedelta(hours=4)
+    assert tasks[1].plan["dormitory_1"][destination] == "Free"
+    assert tasks[1].plan["dormitory_1"][0] == "Current"
+
+
+def test_future_return_does_not_clear_live_resting_state(solver):
+    configure_explicit_free_bed(solver)
+    shift_off(solver)
+    data = solver.op_data
+    before_beds = deepcopy([vars(bed) for bed in data.dorm])
+    before_operators = deepcopy({name: vars(op) for name, op in data.operators.items()})
+    batches = {datetime.now() + timedelta(hours=4): (data.dorm, True)}
+
+    first = generate_plan_by_drom(batches, data)
+    second = generate_plan_by_drom(batches, data)
+
+    assert [vars(bed) for bed in data.dorm] == before_beds
+    assert {name: vars(op) for name, op in data.operators.items()} == before_operators
+    assert [(task.time, task.type, task.plan) for task in first] == [
+        (task.time, task.type, task.plan) for task in second
+    ]
+    assert first[0].plan["dormitory_1"][0] == "塑心"
+
+
+def test_repeated_metadata_keeps_resting_group_and_prevents_false_fill(solver):
+    solver.global_plan["default_plan"].plan["factory"] = [Room("鸿雪", "", ["空弦"])]
+    configure_explicit_free_bed(solver)
+    apply_plan(solver, {"factory": ["鸿雪"]})
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    data.operators["泥岩"].mood = 2
+    data.operators["能天使"].mood = 2
+    # 固定相同的完成时间，避免 datetime.now() 的微秒差掩盖批次碰撞。
+    completed_at = datetime.now() + timedelta(hours=4)
+    for bed in data.dorm:
+        if bed.name:
+            bed.time = completed_at
+    before = [(bed.name, bed.time) for bed in data.dorm]
+
+    solver.plan_metadata()
+    first = [
+        (task.time, task.plan)
+        for task in solver.tasks
+        if task.type == TaskTypes.SHIFT_ON
+    ]
+    solver.plan_metadata()
+    second = [
+        (task.time, task.plan)
+        for task in solver.tasks
+        if task.type == TaskTypes.SHIFT_ON
+    ]
+
+    assert first and first == second
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+    fill_tasks = []
+    try_add_release_dorm({}, None, data, fill_tasks)
+    protected = {bed.position for bed in data.dorm if bed.name in data.groups["联动"]}
+    assert not any(
+        names[index] != "Current" and (room, index) in protected
+        for task in fill_tasks
+        for room, names in task.plan.items()
+        for index in range(len(names))
+    )
+    solver.tasks = []
+    assert solver.agent_get_mood() is None
+    assert solver.tasks == []
+
+
+def test_equal_time_releases_keep_return_task_type(solver):
+    configure_explicit_free_bed(solver)
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    completed_at = datetime.now() + timedelta(hours=4)
+    for bed in data.dorm:
+        if bed.name:
+            bed.time = completed_at
+
+    solver.plan_metadata()
+
+    returns = [task for task in solver.tasks if task.type == TaskTypes.SHIFT_ON]
+    releases = [task for task in solver.tasks if task.type == TaskTypes.RELEASE_DORM]
+    assert returns and releases
+    assert returns[0].plan["meeting"] == ["伊内丝", "银灰"]
+    assert all(room.startswith("dormitory_") for task in releases for room in task.plan)
+    assert all(task.time == completed_at for task in releases)
+
+
+def test_metadata_preserves_product_locked_return_and_other_releases(solver):
+    apply_plan(
+        solver,
+        {
+            "meeting": ["陈", "初雪"],
+            "dormitory_1": ["塑心", "冰酿", "伊内丝", "银灰", "年"],
+        },
+    )
+    solver.op_data.config.free_room = True
+    solver.plan_metadata()
+    locked = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_ON)
+    slots = {
+        (room, index)
+        for room, names in locked.plan.items()
+        for index, name in enumerate(names)
+        if name != "Current"
+    }
+    solver._reserve_deferred_product_shift(locked, slots)
+    locked.time += timedelta(hours=1)
+    locked.pending_product_targets = {"room_3_1": "exp3"}
+    solver._refresh_deferred_product_reservations()
+    before = deepcopy(vars(locked))
+    reserved = solver.op_data.reserved_product_replacements.copy()
+    beds_before = deepcopy([vars(bed) for bed in solver.op_data.dorm])
+
+    for _ in range(2):
+        solver.plan_metadata()
+        solver._refresh_deferred_product_reservations()
+        assert any(task is locked for task in solver.tasks)
+        assert vars(locked) == before
+        assert solver.op_data.reserved_product_replacements == reserved
+        assert [task for task in solver.tasks if task.type == TaskTypes.SHIFT_ON] == [
+            locked
+        ]
+        assert any(task.type == TaskTypes.RELEASE_DORM for task in solver.tasks)
+        assert [vars(bed) for bed in solver.op_data.dorm] == beds_before
+
+    solver.tasks.remove(locked)
+    solver._refresh_deferred_product_reservations()
+    solver.plan_metadata()
+    assert not solver.op_data.reserved_product_replacements
+    assert any(task.type == TaskTypes.SHIFT_ON for task in solver.tasks)
+
+
+def test_release_ignores_operator_with_stale_empty_position(solver):
+    data = solver.op_data
+    bed = data.dorm[0]
+    bed.name = "年"
+    bed.time = datetime.now() + timedelta(hours=1)
+    data.operators["年"].current_room = ""
+    data.operators["年"].current_index = -1
+    data.config.free_room = True
+
+    assert (
+        generate_plan_by_drom(
+            {bed.time: ([bed], None)},
+            data,
+        )
+        == []
+    )
+
+
+def test_explicit_free_correction_can_remove_fixed_resident(solver):
+    configure_explicit_free_bed(solver)
+    solver.task = None
+    agents = ["Free", "冰酿", "泥岩", "能天使", "年"]
+
+    solver.preserve_resting_crafters(agents, "dormitory_1")
+
+    assert agents[0] == "Free"
+
+
+def test_explicit_free_resident_slot_reduces_required_free_beds(solver):
+    configure_explicit_free_bed(solver)
     # 三名工作成员只需要两个 Free 床位；第三个床位由不可接管的主力占用。
     solver.op_data.operators["泥岩"].operator_type = "high"
     apply_plan(
@@ -398,7 +664,7 @@ def test_same_group_resident_slot_reduces_required_free_beds(solver):
 
 
 def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     now = datetime.now()
     occupants = ["泥岩", "陈", "能天使", "年"]
@@ -423,15 +689,15 @@ def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(sol
     }
     rebalance_closing_dorm_slots(data, plan, returning)
 
-    # 泥岩虽然原本在即将关闭的 1 号位，仍与其他入住者一起按层级、
-    # 心情重排；容量缩为三张后，只淘汰排序最低且心情最高的年。
-    assert plan["dormitory_1"] == ["塑心", "Current", "泥岩", "陈", "能天使"]
-    assert [bed.name for bed in data.dorm] == ["", "泥岩", "陈", "能天使"]
+    # 容量缩为三张后，只淘汰排序最低且心情最高的年；陈和能天使保留
+    # 有效原床，泥岩迁入年腾出的床，不把整间宿舍按排名重新搬一遍。
+    assert plan["dormitory_1"] == ["塑心", "Current", "Current", "Current", "泥岩"]
+    assert [bed.name for bed in data.dorm] == ["", "陈", "能天使", "泥岩"]
     assert all(bed.time == now + timedelta(hours=4) for bed in data.dorm[1:])
 
 
 def test_closing_bed_keeps_existing_single_recovery_target(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     now = datetime.now()
     occupants = ["泥岩", "陈", "能天使", "年"]
@@ -460,7 +726,7 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
 
 
 def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     data.config.experimental_dorm_logic = False
     data.dorm[0].name = "泥岩"
@@ -475,7 +741,7 @@ def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
 
 
 def test_auto_free_occupant_can_be_replaced_after_recovery_finishes(solver):
-    configure_same_group_cover(solver)
+    configure_explicit_free_bed(solver)
     data = solver.op_data
     data.config.free_room = True
     bed = data.dorm[0]
@@ -799,3 +1065,22 @@ def test_normal_group_keeps_legacy_in_place_order(legacy_solver, operation):
         legacy_solver.rearrange_resting_priority("联动")
     assert data.groups["联动"] is original
     assert original == ["讯使", "银灰", "伊内丝"]
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+def test_multiple_idle_beds_finishing_together_generate_release(solver, experimental):
+    data = solver.op_data
+    data.config.experimental_dorm_logic = experimental
+    data.config.free_room = True
+    completed_at = datetime.now() + timedelta(hours=1)
+    for bed in data.dorm:
+        bed.time = completed_at
+
+    solver.plan_metadata()
+
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0].type == TaskTypes.RELEASE_DORM
+    assert solver.tasks[0].time == completed_at
+    assert solver.tasks[0].plan == {
+        "dormitory_1": ["Current", "Current", "Free", "Free", "Free"]
+    }
