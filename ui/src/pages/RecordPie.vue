@@ -1,7 +1,10 @@
 <template>
-  <div>
+  <div class="mood-page">
     <h1 class="page-title">工作休息比例报表</h1>
-    <div style="text-align: center; display: flex; justify-content: center; margin-bottom: 20px">
+    <p class="order-note">
+      拖动卡片调整编组顺序，折线图自动同步。自定义观察表请在折线图中创建和查看。
+    </p>
+    <div class="cleanup-toolbar">
       <n-date-picker
         v-model:value="selectedTime"
         type="datetime"
@@ -14,64 +17,47 @@
       v-model:show="showConfirm"
       preset="dialog"
       title="确认删除"
-      content="您确定要删除选择时间之前的所有心情数据吗？该行为不可逆，如有需要，请前往temp文件夹备份db文件"
+      content="您确定要删除选择时间之前的所有心情数据吗？该行为不可逆，如有需要，请前往 temp 文件夹备份数据库。"
       positive-text="确定"
       negative-text="取消"
       @positive-click="clearData"
     />
-    <n-grid
-      :x-gap="12"
-      :y-gap="8"
-      :collapsed="false"
-      cols="1 s:1 m:2 l:3 xl:4 2xl:5"
-      responsive="screen"
-    >
-      <n-gi
-        v-for="(groupData, index) in reportData"
-        :key="index"
-        class="report-card"
-        draggable="true"
-        @dragover.prevent
-        @dragenter.prevent
-        @dragstart="onDragStart(index, $event)"
-        @drop="onDrop(index, $event)"
-        @dragend="saveOrder"
-      >
-        <n-button type="info" secondary class="button_class" @click="handleClick(index)">{{
-          groupData.groupName
-        }}</n-button>
-        <Pie v-if="!showCard[index]" :data="groupData.work_break_group" :options="pieOptions" />
-        <n-card v-if="showCard[index]" style="margin-top: 10px">
-          <div
-            class="text_agent"
-            v-for="(agent_work, index2) in groupData.moodData.datasets"
-            :key="index2"
+    <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
+    <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
+      <template #default="{ group }">
+        <header class="group-head">
+          <n-button
+            type="info"
+            secondary
+            class="group-title"
+            :title="'点击展开或收起 ' + group.groupName + ' 的干员占比'"
+            @click="handleClick(group.boardKey)"
           >
-            <span>{{ agent_work.label }}</span>
-
-            <span
-              :style="{
-                color:
-                  groupData.work_break_group.datasets[0].data[1] == agent_work.work_break_ratio
-                    ? 'red'
-                    : ''
-              }"
-            >
-              {{ agent_work.work_break_ratio + '%' }}
-            </span>
+            {{ group.groupName }}
+          </n-button>
+        </header>
+        <div v-if="!showCard[group.boardKey] && group.hasValidRatio" class="pie-area">
+          <Pie :data="group.work_break_group" :options="pieOptions" />
+        </div>
+        <div v-else-if="!showCard[group.boardKey]" class="no-history">暂无有效工休比数据</div>
+        <div v-else class="agent-details">
+          <div v-for="operator in group.operatorRatios" :key="operator.name" class="agent-detail">
+            <span>{{ operator.name }}</span>
+            <span>{{ operator.ratio == null ? '暂无记录' : operator.ratio.toFixed(2) + '%' }}</span>
           </div>
-        </n-card>
-      </n-gi>
-    </n-grid>
+        </div>
+        <p class="card-hint">点击编组标题切换比例 / 干员明细</p>
+      </template>
+    </mood-card-grid>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import axios from 'axios'
 import { Pie } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
-import { useRecordStore } from '@/stores/record'
 import {
   CategoryScale,
   TimeScale,
@@ -86,9 +72,10 @@ import {
   Tooltip,
   ArcElement
 } from 'chart.js'
-import axios from 'axios'
-const recordStore = useRecordStore()
-const { getMoodRatios } = recordStore
+import MoodCardGrid from '@/components/MoodCardGrid.vue'
+import { useMoodBoardStore } from '@/stores/mood_board'
+import { useRecordStore } from '@/stores/record'
+import { orderMoodGroups } from '@/utils/mood_order'
 
 ChartJS.register(
   CategoryScale,
@@ -104,194 +91,189 @@ ChartJS.register(
   ArcElement,
   ChartDataLabels
 )
-// Mock report data
+
+function durationRatio(points) {
+  let work = 0
+  let rest = 0
+  if (!Array.isArray(points)) return null
+  for (let index = 1; index < points.length; index++) {
+    const previous = points[index - 1]
+    const current = points[index]
+    const hours = (new Date(current.x).getTime() - new Date(previous.x).getTime()) / 3600000
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) continue
+    if (!Number.isFinite(previous.y) || !Number.isFinite(current.y)) continue
+    if (previous.moodEvent || current.moodEvent) continue
+    if (current.y <= previous.y) work += hours
+    else rest += hours
+  }
+  return work + rest > 0 ? (work / (work + rest)) * 100 : null
+}
+
+function decorateGroup(group) {
+  const ratios = (group.moodData?.datasets || []).map((dataset) => ({
+    name: dataset.label,
+    ratio: dataset.label === '菲亚梅塔' ? 0 : durationRatio(dataset.data)
+  }))
+  const quartet = ['歌蕾蒂娅', '乌尔比安', '斯卡蒂', '幽灵鲨']
+  const isSpecial = quartet.every((name) => ratios.some((operator) => operator.name === name))
+  const numeric = ratios.map((item) => item.ratio).filter((ratio) => ratio != null)
+  const positive = numeric.filter((ratio) => ratio > 0)
+  const result =
+    ratios.length === 1
+      ? ratios[0].ratio
+      : positive.length
+        ? isSpecial
+          ? Math.max(...positive)
+          : Math.min(...positive)
+        : numeric.length
+          ? 0
+          : null
+  return {
+    ...group,
+    boardKey: group.groupName,
+    operatorRatios: ratios,
+    hasValidRatio: result != null,
+    work_break_group: {
+      datasets: [{ data: result == null ? [0, 0] : [100 - result, result] }],
+      labels: ['休息时间', '工作时间']
+    }
+  }
+}
+
+const board = useMoodBoardStore()
+const { getMoodRatios } = useRecordStore()
 const reportData = ref([])
-onMounted(async () => {
-  reportData.value = await getMoodRatios()
-  // 读取本地持久化的顺序数据
-  const savedOrder = JSON.parse(localStorage.getItem('reportDataOrder') || '[]')
-  if (savedOrder.length) {
-    reportData.value.sort((a, b) => {
-      return savedOrder.indexOf(a.groupName) - savedOrder.indexOf(b.groupName)
-    })
-  }
-  reportData.value.forEach((i) => {
-    i.moodData.datasets.forEach((item) => {
-      // 是一个数组，里面有x,y两个值，x是时间戳，y是心情值，对其遍历，如果y小于前一个值的y，说明在工作，反之说明在休息
-      item.data.map((a, b) => {
-        if (b === 0) return
-        if (a.y <= (item.data[b - 1] ? item.data[b - 1].y : 0)) {
-          a.working_status = '工作'
-        } else {
-          a.working_status = '休息'
-        }
-        // 计算工作或休息时间
-        // 将x转换为时间戳（毫秒）
-        const currentTimestamp = new Date(a.x).getTime()
-        const prevTimestamp = new Date(item.data[b - 1].x).getTime()
-        a.status_duration = Number(((currentTimestamp - prevTimestamp) / 3600000).toFixed(3))
-      })
-      // 统计工作和休息的总时长
-      let work_time = 0
-      let break_time = 0
-      item.data.forEach((point) => {
-        if (point.working_status === '工作') {
-          work_time += point.status_duration || 0
-        } else if (point.working_status === '休息') {
-          break_time += point.status_duration || 0
-        }
-      })
-      item.work_time = work_time
-
-      item.break_time = break_time
-      item.work_break_ratio = Number(((work_time / (work_time + break_time)) * 100).toFixed(2)) || 0
-    })
-  })
-  // 饼图工休比计算更新：1、有组的，计算组内所有的干员心情工休比，取最低值显示；
-  // 遍历每组数据，计算组内工休比
-  reportData.value.forEach((group) => {
-    // 特殊干员名单
-    // 必须同时包含这四名干员
-    const specialOperators = ['歌蕾蒂娅', '乌尔比安', '斯卡蒂', '幽灵鲨']
-    // 判断组内是否同时包含全部特殊干员
-    const hasSpecial = specialOperators.every((op) =>
-      group.moodData.datasets.some((ds) => ds.label === op)
-    )
-
-    if (group.moodData.datasets.length === 1) {
-      // 只有一个人，直接取该人的工休比
-      const agent = group.moodData.datasets[0]
-      // 如果是菲娅梅塔，设置工作时间为0
-      if (agent.label === '菲亚梅塔') {
-        group.work_break_group = {
-          datasets: [
-            {
-              data: [100, 0]
-            }
-          ],
-          labels: ['休息时间', '工作时间']
-        }
-      } else {
-        group.work_break_group = {
-          datasets: [
-            {
-              data: [(100 - agent.work_break_ratio).toFixed(2), agent.work_break_ratio]
-            }
-          ],
-          labels: ['休息时间', '工作时间']
-        }
-      }
-    } else if (group.moodData.datasets.length > 1) {
-      // 多个人，取最大或最小的工休比
-      const ratios = group.moodData.datasets.map((ds) => ds.work_break_ratio)
-      const filtered = ratios.filter((r) => r > 0)
-      let ratioValue = 0
-      if (filtered.length > 0) {
-        ratioValue = hasSpecial ? Math.max(...filtered) : Math.min(...filtered)
-      }
-      group.work_break_group = {
-        datasets: [{ data: [(100 - ratioValue).toFixed(2), ratioValue] }],
-        labels: ['休息时间', '工作时间']
-      }
-    } else {
-      group.work_break_group = {
-        datasets: [{ data: [0, 0] }],
-        labels: ['休息时间', '工作时间']
-      }
-    }
-  })
-})
-
-// Chart.js options
-
-const pieOptions = ref({
-  plugins: {
-    datalabels: {
-      color: 'black',
-      formatter: function (value, context) {
-        let total = context.dataset.data.reduce((sum, currentValue) => sum + currentValue, 0)
-        return value + '%'
-      }
-    },
-    legend: {
-      display: false
-    }
-  }
-})
-const selectedTime = ref(new Date().getTime())
+const loadError = ref('')
+const showCard = ref({})
+const selectedTime = ref(Date.now())
 const showConfirm = ref(false)
-const clearData = async () => {
+
+const orderedReportData = computed(() =>
+  orderMoodGroups(reportData.value.map(decorateGroup), {
+    groupOrder: board.groupOrder,
+    pinnedGroups: [],
+    pinnedOperators: []
+  })
+)
+
+function reorderCards(source, target) {
+  board.reorder(orderedReportData.value, source, target)
+}
+
+function handleClick(key) {
+  showCard.value = { ...showCard.value, [key]: !showCard.value[key] }
+}
+
+async function clearData() {
   try {
-    const req = { date_time: selectedTime.value }
-    await axios.delete(`${import.meta.env.VITE_HTTP_URL}/record/clear-data`, { data: req })
+    await axios.delete(`${import.meta.env.VITE_HTTP_URL || ''}/record/clear-data`, {
+      data: { date_time: selectedTime.value }
+    })
     alert('数据已清除')
-  } catch (error) {
-    console.error('清除数据失败', error)
-    alert('清除数据失败，请重试')
+    reportData.value = await getMoodRatios()
+  } catch {
+    alert('清除数据失败；若当前为只读验收页面，请先返回主界面确认操作权限。')
   } finally {
     showConfirm.value = false
   }
 }
 
-const onDragStart = (index, event) => {
-  event.dataTransfer.setData('text/plain', index)
-}
-
-const onDrop = (index, event) => {
-  const draggedIndex = parseInt(event.dataTransfer.getData('text/plain'))
-  if (draggedIndex !== index) {
-    // Swap the two items
-    const temp = reportData.value[index]
-    reportData.value[index] = reportData.value[draggedIndex]
-    reportData.value[draggedIndex] = temp
-
-    // 交换卡片同时交换展示的状态
-    const tempShow = showCard.value[index]
-    showCard.value[index] = showCard.value[draggedIndex]
-    showCard.value[draggedIndex] = tempShow
+onMounted(async () => {
+  board.load()
+  try {
+    reportData.value = await getMoodRatios()
+  } catch {
+    loadError.value = '工休比数据读取失败，请检查本地 Mower 后端。'
   }
-  event.preventDefault()
-}
-const saveOrder = () => {
-  // 保存顺序到本地存储或服务器
-  localStorage.setItem(
-    'reportDataOrder',
-    JSON.stringify(reportData.value.map((item) => item.groupName))
-  )
-  console.log(
-    '保存顺序:',
-    reportData.value.map((item) => item.groupName)
-  )
-}
+})
 
-const showCard = ref(reportData.value.map(() => false))
-function handleClick(index) {
-  showCard.value[index] = !showCard.value[index]
+const pieOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    datalabels: {
+      color: '#18232a',
+      formatter: (value) => Number(value).toFixed(1) + '%'
+    },
+    legend: { display: false }
+  }
 }
 </script>
 
 <style scoped>
-.button_class {
-  margin-top: 40px;
-  margin-bottom: 10px;
+.mood-page {
+  min-width: 0;
+  padding: 4px 12px 18px;
 }
-
 .page-title {
   text-align: center;
   font-size: 24px;
-  margin-bottom: 20px;
+  margin: 6px 0 9px;
 }
-
-.text_agent {
+.order-note {
+  text-align: center;
+  margin: 0 auto 12px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.cleanup-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.group-head {
+  display: flex;
+  justify-content: center;
+  padding: 27px 5px 3px;
+}
+.group-title {
+  min-width: 100px;
+  max-width: 100%;
+  font-size: 16px;
+}
+.pie-area {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  padding: 3px 18px;
+  box-sizing: border-box;
+}
+.agent-details {
+  overflow: auto;
+  flex: 1;
+  margin-top: 9px;
+}
+.agent-detail {
   display: flex;
   justify-content: space-between;
-  padding: 5px 10px;
-  border-bottom: 1px solid #eaeaea;
-  font-size: 12.5px;
-  box-sizing: border-box;
-  background-color: #81d8cf;
-  max-width: 100%;
-  max-height: 100%;
-  overflow: auto;
+  border-bottom: 1px solid var(--n-border-color);
+  padding: 6px;
+  gap: 8px;
+  font-size: 12px;
+}
+.no-history {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.66;
+}
+.card-hint {
+  font-size: 10px;
+  text-align: center;
+  opacity: 0.6;
+  padding-top: 3px;
+}
+.load-error {
+  color: #b67424;
+  text-align: center;
+}
+@media (max-width: 450px) {
+  .mood-page {
+    padding: 2px 5px 10px;
+  }
 }
 </style>

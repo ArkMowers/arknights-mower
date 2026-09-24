@@ -3,7 +3,12 @@ import { effectScope, nextTick, ref } from 'vue'
 
 import LogPage from './Log.vue'
 
-const state = vi.hoisted(() => ({ client: null, mower: null, config: null, warning: null }))
+const state = vi.hoisted(() => ({
+  client: null,
+  mower: null,
+  config: null,
+  warning: null
+}))
 
 vi.mock('pinia', async (original) => ({
   ...(await original()),
@@ -27,7 +32,7 @@ vi.mock('@/utils/screenshotPreview', () => ({
   createScreenshotPreview: () => ({ start: vi.fn(), stop: vi.fn() })
 }))
 
-describe('running stop menu', () => {
+describe('log page', () => {
   let scope
 
   beforeEach(() => {
@@ -37,7 +42,7 @@ describe('running stop menu', () => {
       refs: {
         log: ref(''),
         log_mobile: ref(''),
-        running: ref(true),
+        running: ref(false),
         plan_condition: ref([]),
         log_lines: ref([]),
         task_list: ref([]),
@@ -49,6 +54,12 @@ describe('running stop menu', () => {
     }
     state.config = { refs: { theme: ref('light') } }
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn() })
+    vi.stubGlobal('document', {
+      hidden: false,
+      querySelector: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    })
     scope = effectScope()
   })
 
@@ -58,6 +69,7 @@ describe('running stop menu', () => {
   })
 
   it('runs both process actions directly through ProcessControl', async () => {
+    state.mower.refs.running.value = true
     const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
     const applySchedule = vi.fn()
     const restartResume = vi.fn()
@@ -86,5 +98,44 @@ describe('running stop menu', () => {
 
     component.select_stop_action('maa')
     expect(state.client.get).toHaveBeenCalledWith('/stop-maa')
+  })
+
+  it('reclamps panes when plan conditions appear after the initial layout pass', async () => {
+    let conditionHeight = 0
+    const setProperty = vi.fn()
+    const container = {
+      getBoundingClientRect: () => ({ top: 0, bottom: 620, height: 620 }),
+      querySelector: (selector) => {
+        if (selector === '.plan-condition') {
+          return conditionHeight
+            ? { getBoundingClientRect: () => ({ height: conditionHeight }) }
+            : null
+        }
+        if (selector === '.action-container') {
+          return { getBoundingClientRect: () => ({ height: 52 }) }
+        }
+        if (selector === '.task-table-scroll') {
+          return { getBoundingClientRect: () => ({ top: 258 }) }
+        }
+        return null
+      },
+      style: { setProperty, removeProperty: vi.fn() }
+    }
+
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    component.log_layout.value = container
+    component.layout_preference.screenshot_height = 500
+    component.layout_preference.task_height = 600
+    component.apply_log_layout()
+    const initialTaskHeight = setProperty.mock.calls.at(-1)[1]
+
+    conditionHeight = 40
+    state.mower.refs.plan_condition.value = ['副表一']
+    await nextTick()
+    await nextTick()
+
+    expect(setProperty.mock.calls.length).toBeGreaterThan(2)
+    expect(setProperty.mock.calls.at(-1)).toEqual(['--log-task-h', '142px'])
+    expect(setProperty.mock.calls.at(-1)[1]).not.toBe(initialTaskHeight)
   })
 })

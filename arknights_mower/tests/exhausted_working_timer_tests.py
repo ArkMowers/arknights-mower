@@ -10,6 +10,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
+from arknights_mower.solvers import base_schedule as base  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
@@ -132,6 +133,85 @@ def test_fiammetta_swap_reads_target_and_fiammetta_mood(room_reader):
         0,
         True,
         related_operator="伊内丝",
+        mood_event="fiammetta_charge",
+    )
+
+
+def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
+    monkeypatch,
+):
+    def operator(name, room, mood):
+        return SimpleNamespace(
+            name=name,
+            current_room=room,
+            current_index=0,
+            mood=mood,
+            time_stamp=datetime.now(),
+            depletion_rate=0,
+            lower_limit=0,
+            exhaust_time=None,
+            group="深海猎人" if name == "歌蕾蒂娅" else "",
+            need_to_refresh=MagicMock(return_value=False),
+            current_mood=MagicMock(return_value=mood),
+            is_working=MagicMock(return_value=False),
+            is_high=MagicMock(return_value=name == "歌蕾蒂娅"),
+        )
+
+    target = operator("歌蕾蒂娅", "control", 0)
+    fia = operator("菲亚梅塔", "dormitory_2", 24)
+    op_data = SimpleNamespace(
+        operators={"歌蕾蒂娅": target, "菲亚梅塔": fia},
+        plan={
+            "dormitory_1": [
+                SimpleNamespace(agent="Free"),
+                SimpleNamespace(agent="Free"),
+            ]
+        },
+        true_exhaust_room=set(),
+        dorm=[],
+        config=SimpleNamespace(free_room=False),
+        update_detail=MagicMock(return_value=None),
+        refresh_dorm_time=MagicMock(),
+    )
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = op_data
+    solver.tasks = []
+    solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, meta_data="歌蕾蒂娅")
+    solver.leifeng_mode = True
+    solver.recog = MagicMock(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.detect_product_complete = MagicMock(return_value=False)
+    solver.find = MagicMock(return_value=None)
+    solver.read_screen = MagicMock(side_effect=["歌蕾蒂娅", "菲亚梅塔"])
+    solver.read_accurate_mood = MagicMock(side_effect=[24, 0])
+    solver.read_operator_time = MagicMock(return_value=datetime.now())
+    save_history = MagicMock()
+    monkeypatch.setattr(base, "save_agent_action", save_history)
+
+    result = solver.get_agent_from_room(
+        "dormitory_1", [0, 1], related_operators={1: "歌蕾蒂娅"}
+    )
+
+    assert [item["mood"] for item in result] == [24, 0]
+    target_call, fia_call = op_data.update_detail.call_args_list
+    assert target_call.args[:5] == ("歌蕾蒂娅", 24, "dormitory_1", 0, True)
+    assert target_call.kwargs["mood_event"] == "fiammetta_after"
+    assert fia_call.args[:5] == ("菲亚梅塔", 0, "dormitory_1", 1, True)
+    assert fia_call.kwargs["mood_event"] == "fiammetta_charge"
+    assert target_call.kwargs["recorded_at"] - fia_call.kwargs[
+        "recorded_at"
+    ] == timedelta(seconds=1)
+    save_history.assert_called_once_with(
+        "歌蕾蒂娅",
+        "control",
+        "dormitory_1",
+        True,
+        "深海猎人",
+        0,
+        related_operator="菲亚梅塔",
+        mood_event="fiammetta_before",
+        current_time=fia_call.kwargs["recorded_at"],
     )
 
 

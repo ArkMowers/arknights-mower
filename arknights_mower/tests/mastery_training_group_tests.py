@@ -96,6 +96,58 @@ def test_start_group_only_warns_when_not_following_schedule(
         assert notify.call_args.kwargs["level"] == "WARNING"
 
 
+def test_start_does_not_mutate_training_room_for_scheduled_trainee():
+    plan = {
+        "id": 1,
+        "char_id": "test",
+        "char_name": "异客",
+        "skill_index": 1,
+        "skill_name": "聚焦指令",
+        "target_level": 3,
+    }
+    solver = MagicMock()
+    reason = "异客 出现在非训练室排班（room_1_1），不能进行专精训练"
+    with (
+        patch(
+            "arknights_mower.utils.mastery_support_data.trainee_schedule_conflict",
+            return_value=reason,
+        ),
+        patch("arknights_mower.utils.mastery_db.update_plan_status") as update,
+        patch("arknights_mower.utils.mastery_db.should_notify", return_value=True),
+        patch("arknights_mower.utils.email.send_message") as notify,
+    ):
+        mastery._start_new_training(solver, plan)
+    assert solver.mock_calls == []
+    update.assert_not_called()
+    notify.assert_called_once()
+    assert reason in notify.call_args.args[0]
+
+
+def test_start_defers_when_trainee_name_cannot_be_resolved():
+    plan = {
+        "id": 1,
+        "char_id": "char_missing",
+        "char_name": None,
+        "skill_index": 1,
+        "skill_name": "测试技能",
+        "target_level": 3,
+    }
+    solver = MagicMock()
+    with (
+        patch.object(mastery, "get_char_name", return_value="char_missing"),
+        patch(
+            "arknights_mower.utils.mastery_support_data.trainee_schedule_conflict"
+        ) as conflict,
+        patch("arknights_mower.utils.mastery_db.update_plan_status") as update,
+        patch.object(mastery.logger, "warning") as warning,
+    ):
+        mastery._start_new_training(solver, plan)
+    conflict.assert_not_called()
+    update.assert_not_called()
+    assert solver.mock_calls == []
+    assert "排班冲突未复核" in warning.call_args.args[0]
+
+
 def test_pending_swap_warns_but_continues_dispatch():
     plan = {
         "id": 1,

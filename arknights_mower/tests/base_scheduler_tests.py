@@ -2844,3 +2844,97 @@ class TestManualClueTask(unittest.TestCase):
         # 与定时触发共用同一条路径，收尾也要一致
         skip.assert_any_call(["collect_notification"])
         self.assertEqual(solver.tasks, [])  # 任务已消费
+
+
+class TestRunOrderCountdownTiming(unittest.TestCase):
+    def setUp(self):
+        self.conf = SimpleNamespace(
+            run_order_buffer_time=30,
+            run_order_delay=1,
+        )
+        self.conf_patch = patch.object(base_schedule.config, "conf", self.conf)
+        self.conf_patch.start()
+        self.addCleanup(self.conf_patch.stop)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_arrange_room_does_not_read_countdown_before_check_in(self):
+        """换人阶段只确认并校验进驻，不应提前进入订单页。"""
+        room = "room_1_1"
+        solver = BaseSchedulerSolver()
+        solver.task = SchedulerTask(
+            time=datetime.now(),
+            task_plan={room: ["但书"]},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data=room,
+        )
+        solver.op_data = MagicMock()
+        solver.op_data.run_order_rooms = {room: ["但书"]}
+        solver.op_data.get_current_room.return_value = ["旧干员"]
+        solver.recog = MagicMock()
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        solver.waiting_scene = []
+        solver.enter_room = MagicMock()
+        solver.turn_on_room_detail = MagicMock()
+        solver.refresh_current_room = MagicMock(return_value=["旧干员"])
+        solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+        solver.find = MagicMock(return_value=(100, 100))
+        solver.choose_agent = MagicMock()
+        events = []
+        solver.tap_confirm = MagicMock(side_effect=lambda *_: events.append("confirm"))
+        solver.get_agent_from_room = MagicMock(
+            side_effect=lambda *_: events.append("verify") or [{"agent": "但书"}]
+        )
+        solver.get_order_remaining_time = MagicMock()
+        solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
+        solver.back = MagicMock()
+
+        plan = {room: ["但书"]}
+        result = solver.agent_arrange_room({}, room, plan)
+
+        self.assertEqual(events, ["confirm", "verify"])
+        solver.get_order_remaining_time.assert_not_called()
+        self.assertEqual(result, {room: ["旧干员"]})
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_arrange_reads_countdown_after_arrangement_verification(self):
+        """倒计时只在 agent_arrange_room 完成进驻校验后读取。"""
+        room = "room_1_1"
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_plan={room: ["Lancet-2"]},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data=room,
+        )
+        solver = BaseSchedulerSolver()
+        solver.task = task
+        solver.tasks = [task]
+        solver.op_data = MagicMock()
+        solver.op_data.run_order_rooms = {room: ["Lancet-2"]}
+        solver.drone_room = "room_1_2"
+        solver.waiting_scene = []
+        solver.backup_plan_solver = MagicMock(return_value=False)
+        events = []
+
+        def arrange_room(_new_plan, _room, _plan, skip_enter=False, **_kwargs):
+            events.append("restore" if skip_enter else "arranged_and_verified")
+            return {room: ["Lancet-2"]}
+
+        solver.agent_arrange_room = MagicMock(side_effect=arrange_room)
+        solver.get_order_remaining_time = MagicMock(
+            side_effect=lambda: events.append("countdown") or 5
+        )
+        solver.accept_order = MagicMock(
+            side_effect=lambda: events.append("accept_order")
+        )
+        solver.sleep = MagicMock()
+        solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
+        solver.find = MagicMock(return_value=None)
+
+        solver.agent_arrange(task.plan)
+
+        self.assertEqual(
+            events,
+            ["arranged_and_verified", "countdown", "accept_order", "restore"],
+        )
+        solver.get_order_remaining_time.assert_called_once_with()

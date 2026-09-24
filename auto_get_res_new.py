@@ -658,7 +658,11 @@ class Arknights数据处理器:
         # self.训练仓库的knn模型("MATERIAL", "./arknights_mower/models/MATERIAL.pkl")
 
     def 训练在房间内的干员名的模型(self):
-        font = ImageFont.truetype(字体路径("SourceHanSansCN-Medium.otf"), 37)
+        # 房间卡片使用游戏内 NotoSansHans-Medium；本字体按 agent.json
+        # 字符集精简，位于仓库内以便重新生成模型。
+        font = ImageFont.truetype(
+            "./arknights_mower/fonts/NotoSansHans-Medium-room.otf", 37
+        )
 
         data = {}
 

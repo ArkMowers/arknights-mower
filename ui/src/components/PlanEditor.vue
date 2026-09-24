@@ -4,7 +4,7 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { swapPlanFacilities } from '@/utils/plan_edit'
 import { plan_facility_type_options } from '@/utils/base_facilities'
-import { ref, computed, nextTick, watch, inject } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
 const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
@@ -17,6 +17,7 @@ const outer = ref(null)
 const facility_types = plan_facility_type_options
 
 const facility = inject('facility')
+const edit_locked = inject('planEditLocked', ref(false))
 
 const button_type = {
   贸易站: 'info',
@@ -32,28 +33,24 @@ const operator_limit = computed(() => {
 })
 
 function clear() {
-  current_plan.value[facility.value].name = ''
-  nextTick(() => {
-    const plans = []
-    for (let i = 0; i < operator_limit.value; ++i) {
-      plans.push({
-        agent: '',
-        group: '',
-        replacement: []
-      })
-    }
-    current_plan.value[facility.value].plans = plans
-  })
+  if (edit_locked.value) return
+  const room = current_plan.value[facility.value]
+  room.name = ''
+  room.plans = Array.from({ length: operator_limit.value }, () => ({
+    agent: '',
+    group: '',
+    replacement: []
+  }))
 }
 
 watch(
-  () => {
-    if (facility.value.startsWith('room')) {
-      return current_plan.value[facility.value].name
-    }
-    return ''
-  },
-  (new_name, old_name) => {
+  () => [
+    facility.value,
+    facility.value.startsWith('room') ? current_plan.value[facility.value].name : ''
+  ],
+  ([room, new_name], [old_room, old_name]) => {
+    // Browsing another room must never reflow its operator slots.
+    if (edit_locked.value || room !== old_room || !room.startsWith('room')) return
     if (new_name == '发电站') {
       const plans = current_plan.value[facility.value].plans
       while (plans.length > operator_limit.value) {
@@ -140,16 +137,20 @@ const color_map = computed(() => {
 })
 
 function drag_facility(room, event) {
+  if (edit_locked.value) {
+    event.preventDefault()
+    return
+  }
   event.dataTransfer.setData('text/plain', room)
   event.dataTransfer.dropEffect = 'move'
 }
 
 function drop_facility(target, event) {
+  event.preventDefault()
+  if (edit_locked.value) return
   const source = event.dataTransfer.getData('text/plain')
 
   swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
-
-  event.preventDefault()
 }
 
 const avatar_bg = computed(() => {
@@ -165,6 +166,7 @@ import { pinyin_match } from '@/utils/common'
 import { factory_product_options } from '@/utils/base_products'
 
 function fill_with_free() {
+  if (edit_locked.value) return
   for (let i = 0; i < operator_limit.value; ++i) {
     if (current_plan.value[facility.value].plans[i].agent == '') {
       current_plan.value[facility.value].plans[i].agent = 'Free'
@@ -248,7 +250,7 @@ function set_facility(e) {
             ></div>
             <div
               v-show="current_plan[r].name"
-              draggable="true"
+              :draggable="!edit_locked"
               @dragstart="drag_facility(r, $event)"
               @dragover.prevent
               @dragenter.prevent
@@ -541,6 +543,7 @@ function set_facility(e) {
           <td>
             <n-select
               v-model:value="current_plan[facility].name"
+              :disabled="edit_locked"
               :options="facility_types"
               class="type-select"
               v-if="facility.startsWith('room')"
@@ -558,6 +561,7 @@ function set_facility(e) {
             <td>
               <n-select
                 v-model:value="current_plan[facility].product"
+                :disabled="edit_locked"
                 :options="
                   current_plan[facility].name == '制造站' ? factory_products : trading_products
                 "
@@ -571,13 +575,14 @@ function set_facility(e) {
               ghost
               type="primary"
               @click="fill_with_free"
+              :disabled="edit_locked"
               v-if="facility.startsWith('dorm')"
             >
               此宿舍内空位填充Free
             </n-button>
           </td>
           <td>
-            <n-button ghost type="error" @click="clear" :disabled="facility_empty">
+            <n-button ghost type="error" @click="clear" :disabled="edit_locked || facility_empty">
               清空此设施内干员
             </n-button>
           </td>
@@ -598,6 +603,7 @@ function set_facility(e) {
               :options="operator_options(facility)"
               class="operator-select"
               v-model:value="current_plan[facility].plans[i - 1].agent"
+              :disabled="edit_locked"
               :filter="(p, o) => pinyin_match(o.label, p)"
               :render-label="render_op_label"
             />
@@ -611,14 +617,14 @@ function set_facility(e) {
           <td class="table-space group">
             <n-input
               v-model:value="current_plan[facility].plans[i - 1].group"
-              :disabled="!current_plan[facility].plans[i - 1].agent"
+              :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
             />
           </td>
           <td class="select-label">替换：</td>
           <td>
             <n-form-item :show-label="false" :show-feedback="false">
               <slick-operator-select
-                :disabled="!current_plan[facility].plans[i - 1].agent"
+                :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
                 v-model="current_plan[facility].plans[i - 1].replacement"
                 class="replacement-select"
               />

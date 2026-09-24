@@ -26,6 +26,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const scheduled_start_at = ref(null)
   const auto_start_handled = ref(false)
   const plan_condition = ref([])
   const waiting = ref(false)
@@ -63,10 +64,20 @@ export const useMowerStore = defineStore('mower', () => {
   }
 
   async function get_running() {
+    const wasRunning = running.value
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
     running.value = response.data['status'] !== 'stopped'
+    scheduled_start_at.value = response.data.scheduled_start_at ?? null
     auto_start_handled.value = response.data.auto_start_handled === true
     plan_condition.value = response.data['plan_condition']
+    if (running.value && !wasRunning) {
+      clearTimeout(get_task_id.value)
+      get_tasks()
+    } else if (!running.value && wasRunning) {
+      clearTimeout(get_task_id.value)
+      get_task_id.value = 0
+      task_list.value = []
+    }
   }
 
   async function get_tasks() {
@@ -85,6 +96,7 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    scheduled_start_at,
     auto_start_handled,
     plan_condition,
     waiting,

@@ -4,7 +4,14 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
+import {
+  clampScreenshotHeight,
+  clampTaskHeight,
+  LOG_MIN_HEIGHT,
+  RESIZER_HEIGHT
+} from '@/utils/logLayout'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
+import StartSchedule from '@/components/StartSchedule.vue'
 const mower_store = useMowerStore()
 const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
   storeToRefs(mower_store)
@@ -15,6 +22,92 @@ const mobile = inject('mobile')
 const auto_scroll = ref(true)
 const sc_preview = ref(true)
 const sc_blob = ref('')
+const log_layout = ref(null)
+const layout_preference = {
+  screenshot_height: null,
+  task_height: null
+}
+let layoutObserver
+
+function layout_bottom_reserve(container) {
+  const conditionHeight =
+    container.querySelector('.plan-condition')?.getBoundingClientRect().height ?? 0
+  const actionHeight =
+    container.querySelector('.action-container')?.getBoundingClientRect().height ?? 0
+  return LOG_MIN_HEIGHT + RESIZER_HEIGHT + conditionHeight + actionHeight
+}
+
+function apply_log_layout() {
+  const container = log_layout.value
+  if (!container) return
+  const bounds = container.getBoundingClientRect()
+  const bottomReserve = layout_bottom_reserve(container)
+
+  if (sc_preview.value) {
+    const preferred = layout_preference.screenshot_height ?? 270
+    const height = clampScreenshotHeight(preferred, bounds.height, bottomReserve)
+    container.style.setProperty('--log-sc-h', `${height}px`)
+  } else {
+    container.style.removeProperty('--log-sc-h')
+  }
+
+  if (layout_preference.task_height === null) {
+    container.style.removeProperty('--log-task-h')
+    return
+  }
+  const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
+  if (!task) return
+  const height = clampTaskHeight(
+    layout_preference.task_height,
+    bounds.bottom - task.top,
+    bottomReserve
+  )
+  container.style.setProperty('--log-task-h', `${height}px`)
+}
+
+async function restore_log_layout() {
+  try {
+    const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/ui-state/log-layout`)
+    layout_preference.screenshot_height = data?.screenshot_height ?? null
+    layout_preference.task_height = data?.task_height ?? null
+  } catch {}
+  await nextTick()
+  apply_log_layout()
+}
+
+function resize_log_pane(event, pane) {
+  event.preventDefault()
+  const container = log_layout.value
+  if (!container) return
+  const variable = pane === 'screenshot' ? '--log-sc-h' : '--log-task-h'
+  const stateKey = pane === 'screenshot' ? 'screenshot_height' : 'task_height'
+  let savedSize = null
+  const onMove = (moveEvent) => {
+    const bounds = container.getBoundingClientRect()
+    const bottomReserve = layout_bottom_reserve(container)
+    let size
+    if (pane === 'screenshot') {
+      size = clampScreenshotHeight(moveEvent.clientY - bounds.top, bounds.height, bottomReserve)
+    } else {
+      const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
+      if (!task) return
+      size = clampTaskHeight(moveEvent.clientY - task.top, bounds.bottom - task.top, bottomReserve)
+    }
+    savedSize = size
+    layout_preference[stateKey] = size
+    container.style.setProperty(variable, `${size}px`)
+  }
+  const onUp = () => {
+    document.removeEventListener('pointermove', onMove)
+    document.removeEventListener('pointerup', onUp)
+    if (savedSize === null) return
+    axios
+      .post(`${import.meta.env.VITE_HTTP_URL}/ui-state/log-layout`, { [stateKey]: savedSize })
+      .catch(() => {})
+  }
+  document.addEventListener('pointermove', onMove)
+  document.addEventListener('pointerup', onUp)
+}
 
 const screenshotPreview = createScreenshotPreview({
   fetchSnapshot: (options) =>
@@ -32,10 +125,21 @@ function updateScreenshotPreview() {
 watch(sc_preview, (enabled) => {
   localStorage.setItem('sc_preview', JSON.stringify(enabled))
   updateScreenshotPreview()
+  nextTick(apply_log_layout)
 })
+
+watch(
+  plan_condition,
+  () => {
+    nextTick(apply_log_layout)
+  },
+  { deep: true }
+)
+
 function scroll_last_line() {
   nextTick(() => {
-    document.querySelector('pre:last-child')?.scrollIntoView()
+    const container = document.querySelector('.log .n-scrollbar-container')
+    if (container) container.scrollTop = container.scrollHeight
   })
 }
 
@@ -64,6 +168,9 @@ onMounted(() => {
   }
   document.addEventListener('visibilitychange', updateScreenshotPreview)
   updateScreenshotPreview()
+  layoutObserver = new ResizeObserver(apply_log_layout)
+  if (log_layout.value) layoutObserver.observe(log_layout.value)
+  restore_log_layout()
   db_load_stats()
 })
 
@@ -71,6 +178,7 @@ onUnmounted(() => {
   clearTimeout(get_task_id.value)
   clearInterval(runningTimer)
   document.removeEventListener('visibilitychange', updateScreenshotPreview)
+  layoutObserver?.disconnect()
   screenshotPreview.stop()
 })
 
@@ -94,7 +202,6 @@ function stop() {
 
 const show_feedback = ref(false)
 
-import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
 import ServerOutlineIcon from '@vicons/ionicons5/ServerOutline'
@@ -270,7 +377,11 @@ async function db_delete(keys) {
 </script>
 
 <template>
-  <div class="home-container">
+  <div
+    ref="log_layout"
+    class="home-container"
+    :class="{ 'with-screenshot': sc_preview, 'has-tasks': task_list.length > 0 }"
+  >
     <div class="log-bg"></div>
     <n-image
       v-if="sc_preview"
@@ -279,44 +390,56 @@ async function db_delete(keys) {
       :src="sc_blob == '' ? '/bg2.webp' : sc_blob"
       object-fit="scale-down"
     />
+    <div
+      v-if="sc_preview"
+      class="log-resizer log-resizer-sc"
+      @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
+    ></div>
 
-    <n-table class="task-table" size="small" :single-line="false">
-      <thead>
-        <tr>
-          <th>时间</th>
-          <th :colspan="2">任务</th>
-        </tr>
-      </thead>
-      <tbody v-show="!mobile || show_task_table">
-        <template v-for="task in task_list">
-          <template v-if="Object.keys(task.plan).length">
-            <tr v-for="(value, key, idx) in task.plan">
-              <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
+    <div v-if="task_list.length > 0" class="task-table-scroll">
+      <n-table class="task-table" size="small" :single-line="false">
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th :colspan="2">任务</th>
+          </tr>
+        </thead>
+        <tbody v-show="!mobile || show_task_table">
+          <template v-for="task in task_list">
+            <template v-if="Object.keys(task.plan).length">
+              <tr v-for="(value, key, idx) in task.plan">
+                <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
+                  {{ task.time.split('T')[1].split('.')[0] }}
+                </td>
+                <td>{{ key }}</td>
+                <td>
+                  {{ value.map((x) => x || '_').join(', ') }}
+                </td>
+              </tr>
+            </template>
+            <tr v-else>
+              <td>
                 {{ task.time.split('T')[1].split('.')[0] }}
               </td>
-              <td>{{ key }}</td>
-              <td>
-                {{ value.map((x) => x || '_').join(', ') }}
+              <td :colspan="2">
+                {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
               </td>
             </tr>
           </template>
-          <tr v-else>
-            <td>
-              {{ task.time.split('T')[1].split('.')[0] }}
-            </td>
-            <td :colspan="2">
-              {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </n-table>
-    <div v-if="plan_condition.length > 0" style="display: flex; gap: 10px">
+        </tbody>
+      </n-table>
+    </div>
+    <div v-if="plan_condition.length > 0" class="plan-condition" style="display: flex; gap: 10px">
       <span>当前激活的副表为： </span>
       <span v-for="(x, index) in plan_condition" :key="index" style="color: green">
         {{ x }}
       </span>
     </div>
+    <div
+      v-if="task_list.length > 0"
+      class="log-resizer log-resizer-task"
+      @pointerdown="(event) => resize_log_pane(event, 'task')"
+    ></div>
     <n-log
       class="log"
       :log="mobile ? log_mobile : log"
@@ -340,22 +463,12 @@ async function db_delete(keys) {
           <span class="btn-text">立即停止</span>
         </n-button>
       </drop-down>
-      <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
-        <n-button
-          v-if="!running"
-          type="primary"
-          @click="start"
-          :loading="waiting"
-          :disabled="waiting"
-        >
-          <template #icon>
-            <n-icon>
-              <play-icon />
-            </n-icon>
-          </template>
-          <span class="btn-text">开始执行</span>
-        </n-button>
-      </drop-down>
+      <start-schedule
+        v-if="!running"
+        :start="start"
+        :start-options="start_options"
+        :waiting="waiting"
+      />
       <ProcessControl ref="process_control" compact :running="running" />
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
@@ -471,13 +584,88 @@ async function db_delete(keys) {
 </template>
 
 <style scoped lang="scss">
-.log {
+.home-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 0 0 0 auto 0 minmax(120px, 1fr) auto;
+  gap: 0;
+  min-height: 0;
   overflow: hidden;
-  flex: 1;
+  position: relative;
+
+  &.with-screenshot {
+    grid-template-rows: var(--log-sc-h, 270px) 8px 0 auto 0 minmax(120px, 1fr) auto;
+  }
+
+  &.has-tasks {
+    grid-template-rows: 0 0 auto auto 8px minmax(120px, 1fr) auto;
+
+    &.with-screenshot {
+      grid-template-rows: var(--log-sc-h, 270px) 8px auto auto 8px minmax(120px, 1fr) auto;
+    }
+  }
+}
+
+.sc {
+  grid-row: 1;
+  justify-self: start;
+  align-self: start;
+  height: 100%;
+  min-height: 0;
+  max-height: min(45vh, 500px);
+
+  :deep(img) {
+    object-position: left top !important;
+  }
+}
+
+.log-resizer {
+  width: 100%;
+  height: 8px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 25;
+  touch-action: none;
+  user-select: none;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgb(24 160 88 / 0%);
+    transition: background-color 0.15s ease;
+  }
+
+  &:hover::after {
+    background: rgb(24 160 88 / 45%);
+  }
+}
+
+.log-resizer-sc {
+  grid-row: 2;
+}
+
+.task-table-scroll {
+  grid-row: 3;
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  min-height: 0;
+  max-height: var(--log-task-h, min(600px, 36vh));
+  overflow: auto;
+  scrollbar-gutter: stable;
+  justify-self: start;
 }
 
 .task-table {
-  max-width: 600px;
+  width: 100%;
+
+  :deep(thead th) {
+    background: transparent !important;
+  }
 
   th {
     padding: 2px 16px;
@@ -493,7 +681,24 @@ async function db_delete(keys) {
   }
 }
 
+.plan-condition {
+  grid-row: 4;
+  min-height: 0;
+}
+
+.log-resizer-task {
+  grid-row: 5;
+}
+
+.log {
+  grid-row: 6;
+  height: 100% !important;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .action-container {
+  grid-row: 7;
   display: flex;
   align-items: center;
   flex-wrap: wrap;

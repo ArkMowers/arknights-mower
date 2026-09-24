@@ -2,6 +2,10 @@
 import { computed, inject, ref, watch } from 'vue'
 const show = inject('show_task')
 const isLogPage = inject('add_task') || ref(false)
+const edit_locked = inject('planEditLocked', ref(false))
+watch(edit_locked, (locked) => {
+  if (locked && !isLogPage.value) show.value = false
+})
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { useConfigStore } from '@/stores/config'
@@ -92,6 +96,7 @@ function clear() {
 }
 
 async function saveTasks() {
+  if (!isLogPage.value && edit_locked.value) return
   const plan = {}
   for (const i of task_list.value) {
     plan[i.room] = i.operators
@@ -128,9 +133,9 @@ async function saveTasks() {
       msg.value = `已添加 ${mastery_operator.value} 技能${mastery_skill.value} 专${mastery_target_level.value} 计划`
       error.value = false
       if (results[0].warning) message.warning(results[0].warning)
-    } else if (results[0]?.status === 'existing' || results[0]?.status === 'insufficient') {
+    } else if (['existing', 'insufficient', 'deferred'].includes(results[0]?.status)) {
       // 后端按 (干员, 技能) 拦重复：已有计划不再新建一行，直接复用那条去派发。
-      // 材料不足也明说，不再白建一行后回「已添加」。两者都不是错误，用绿字。
+      // 材料不足或排班冲突时展示暂缓原因；计划已保存，两者都不是创建错误。
       msg.value = results[0].reason || '已在计划中，已安排立即开始'
       error.value = false
     } else {
@@ -167,7 +172,7 @@ watch(
     for (const i of task_list.value) {
       result[i.room] = i.operators
     }
-    if (!isLogPage.value) {
+    if (!isLogPage.value && !edit_locked.value && sub_plan.value !== 'main') {
       backup_plans.value[sub_plan.value].task = result
     }
   },
@@ -268,21 +273,32 @@ const level_list = [
       v-if="!isLogPage || task_type == '空任务'"
       style="max-height: 80vh; margin-top: 8px"
     >
-      <n-dynamic-input v-model:value="task_list" :on-create="new_task">
+      <n-dynamic-input
+        v-model:value="task_list"
+        :on-create="new_task"
+        :disabled="!isLogPage && edit_locked"
+      >
         <template #create-button-default>添加任务</template>
         <template #default="{ value }">
           <div class="task_row">
             <n-select
               v-model:value="value.room"
+              :disabled="!isLogPage && edit_locked"
               :options="roomOptions"
               placeholder="选择房间"
               class="dropdown-select"
               style="width: 160px"
             />
-            <n-dynamic-tags v-model:value="value.operators" :max="5" size="large">
+            <n-dynamic-tags
+              v-model:value="value.operators"
+              :disabled="!isLogPage && edit_locked"
+              :max="5"
+              size="large"
+            >
               <template #input="{ submit, deactivate }">
                 <n-select
                   v-model:value="value.operators"
+                  :disabled="!isLogPage && edit_locked"
                   filterable
                   :options="operators_with_free_current"
                   :on-update:value="

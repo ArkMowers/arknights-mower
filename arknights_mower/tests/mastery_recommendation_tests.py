@@ -125,6 +125,27 @@ class TestAutoScheduleReadsDb(unittest.TestCase):
         self.assertEqual(result["scheduled"], [])
         self.assertEqual([e["char_id"] for e in result["skipped"]], ["char_A"])
 
+    def test_db_plan_skipped_when_trainee_is_in_nontraining_schedule(self):
+        with (
+            patch(
+                "arknights_mower.utils.mastery_db.get_all_plans",
+                return_value=[_plan(char_id="char_A", skill_index=1)],
+            ),
+            patch.object(
+                rec,
+                "get_mastery_recommendations",
+                return_value=_recommendations("char_A", 1, []),
+            ),
+            patch(
+                "arknights_mower.utils.mastery_support_data.trainee_schedule_conflict",
+                return_value="char_A 出现在非训练室排班（room_1_1），不能进行专精训练",
+            ),
+        ):
+            result = rec.auto_schedule_mastery_tasks()
+        self.assertEqual(result["scheduled"], [])
+        self.assertEqual(result["skipped"][0]["achievable"], False)
+        self.assertIn("room_1_1", result["skipped"][0]["reason"])
+
     def test_db_plan_skipped_when_materials_insufficient(self):
         mats = [{"name": "技巧概要·卷3", "count": 99}]
         with (
