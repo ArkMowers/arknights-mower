@@ -892,6 +892,31 @@ def generate_plan_by_drom(
                         continue
                     target_room, target_index = projected_bed.position
                     projected_bed.reset()
+                    if rest_in_full is None:
+                        # 执行端按姓名和床位双重校验；同刻回满也分别记录身份，
+                        # 避免空身份被跳过，或旧任务误清后来入住的人。
+                        if op_data.config.free_room:
+                            release_plan = {
+                                target_room: ["Current"]
+                                * len(op_data.plan[target_room])
+                            }
+                            release_plan[target_room][target_index] = "Free"
+                            result.append(
+                                SchedulerTask(
+                                    task_plan=release_plan,
+                                    time=max(
+                                        time,
+                                        current_time - timedelta(seconds=1),
+                                        _after_pending_arrangements(
+                                            release_plan, pending_resources
+                                        ),
+                                    ),
+                                    task_type=TaskTypes.RELEASE_DORM,
+                                    meta_data=op.name,
+                                )
+                            )
+                            planned.add(op.name)
+                        continue
                 plan.setdefault(
                     target_room, ["Current"] * len(op_data.plan[target_room])
                 )[target_index] = "Free"
@@ -1186,10 +1211,20 @@ def plan_metadata(op_data, tasks):
             # 防止时间和前面重复
             if min_resting_time != datetime.max:
                 min_resting_time += timedelta(seconds=10)
-            if room.time and room.name:
-                task_time = min(room.time, min_resting_time)
-                if task_time < datetime.now():
-                    # 如果干员休息完毕，则不再生成
+            operator = op_data.operators[room.name]
+            observed_full = (
+                op_data.experimental_dorm_logic
+                and operator.time_stamp is not None
+                and operator.mood >= operator.upper_limit
+            )
+            if (room.time or observed_full) and room.name:
+                task_time = (
+                    datetime.now()
+                    if observed_full
+                    else min(room.time, min_resting_time)
+                )
+                if task_time < datetime.now() and not op_data.experimental_dorm_logic:
+                    # 稳定逻辑沿用旧行为；测试逻辑补发仍占床的过期释放。
                     continue
                 release_tasks.setdefault(task_time, ([], None))[0].append(room)
     # 独立的个人离宿时刻不受整组回满、不养闲人和任务合并影响。
