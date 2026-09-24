@@ -121,6 +121,10 @@ def selection_solver(monkeypatch, residents=None):
         config=SimpleNamespace(free_blacklist=[], ope_resting_priority=[]),
         profession_filter=set(),
         get_current_room=lambda *args: current.copy(),
+        rest_mood_complete=lambda *args, **kwargs: False,
+        is_dynamic_dorm_position=lambda *args, **kwargs: False,
+        is_dorm_replacement_for_slot=lambda *args, **kwargs: False,
+        get_current_operator=lambda *args, **kwargs: None,
     )
     solver.last_room = ""
     solver.choose_error = set()
