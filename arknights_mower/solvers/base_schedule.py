@@ -835,20 +835,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         free_room = next(iter(self.task.plan), None)
                         if free_room and "Free" in self.task.plan[free_room]:
                             free_index = self.task.plan[free_room].index("Free")
-                            if (
-                                not self.task.meta_data
-                                and not getattr(
-                                    self.op_data, "experimental_dorm_logic", False
-                                )
-                                and not getattr(self.task, "strict_mood_limit", False)
-                            ):
-                                # 稳定逻辑旧释放任务未记录姓名，按实际槽位补齐，
-                                # 后续位置校验和加工判断共用同一个干员身份。
-                                occupant = self.op_data.get_current_operator(
-                                    free_room, free_index
-                                )
-                                if occupant is not None:
-                                    self.task.meta_data = occupant.name
                             if self.task.meta_data in self.op_data.operators.keys():
                                 free_agent = self.op_data.operators[self.task.meta_data]
                                 if (
@@ -5488,13 +5474,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             v.name
             for k, v in self.op_data.operators.items()
             if v.name not in agents
-            and (
-                v.operator_type != "high"
-                or (
-                    not self.op_data.experimental_dorm_logic
-                    and self.op_data.is_standby(v.name)
-                )
-            )
+            and v.operator_type != "high"
             and v.current_room == ""
             and not self.op_data.rest_mood_complete(v.name)
         ]

@@ -1598,13 +1598,6 @@ class Operators:
                     self.operators[name].time_stamp = time
         return available_high if free_type == "high" else available_low
 
-    def legacy_standby_can_yield(self, op):
-        """稳定逻辑候补可让床；强制恢复或低于急救线者仍占主班名额。"""
-        if self.experimental_dorm_logic or not self._can_standby(op):
-            return False
-        mood = resting_mood(op)
-        return mood != float("inf") and mood >= self.rescue_mood_threshold(op)
-
     def active_high_resting_count(self, time=None):
         """正在占用恢复床位的主班人数。"""
         if time is None:
@@ -1616,7 +1609,6 @@ class Operators:
                 if self.is_effective_free_slot(dorm)
                 and dorm.name in self.operators
                 and self.operators[dorm.name].is_high()
-                and not self.legacy_standby_can_yield(self.operators[dorm.name])
                 and not self.operators[dorm.name].is_workshop()
                 and not (dorm.time is not None and dorm.time < time)
             )
@@ -1648,15 +1640,6 @@ class Operators:
         if not self.experimental_dorm_logic:
             if dorm.time is not None and dorm.time < datetime.now():
                 return True
-            if self.legacy_standby_can_yield(op) and requester is not None:
-                incoming = self.operators[requester]
-                # 稳定逻辑允许候补给普通主班让床；低于急救线时保留床位。
-                if (
-                    incoming.is_high()
-                    and incoming.resting_priority == "high"
-                    and not incoming.is_workshop()
-                ):
-                    return True
             if op.is_workshop() and requester is not None:
                 incoming = self.operators[requester]
                 return not incoming.is_workshop() and (
