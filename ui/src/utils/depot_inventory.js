@@ -155,9 +155,6 @@ export function flattenItems(categories) {
   return rows.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, 'zh-CN'))
 }
 
-/** 前端兜底折算用的档位键；派生值一律以后端为准。 */
-const DRAW_TIER_KEYS = ['玉+卷', '玉+卷+石', '额外+碎片', '额外+碎片+土']
-
 /** 参与折算的原始物料；一个都没有时说明这条快照根本没有抽数，不该补 0。 */
 const DRAW_SOURCE_KEYS = ['合成玉', '寻访凭证', '十连寻访凭证', '至纯源石', '源石碎片', '固源岩']
 
@@ -177,8 +174,8 @@ export function computeDrawCount(items = {}, drawTierKey = '玉+卷') {
 
 /** 按 depot.py 折算抽数的口径在本地重算，仅用于派生项缺失的快照。 */
 function fallbackDrawCount(items = {}, drawTierKey = '玉+卷') {
-  // 六个来源键全缺时返回 NaN：让 buildDrawHistory 把它过滤掉，
-  // 而不是画出一个"抽数 0"的假点。
+  // 六个来源键全缺时返回 NaN：调用方按 Number.isFinite 判断"这次扫描没有抽数数据"，
+  // 既不画点也不算差额，而不是画出一个"抽数 0"的假点。
   if (!DRAW_SOURCE_KEYS.some((key) => Number.isFinite(Number(items?.[key])))) return NaN
 
   const jade = Number(items['合成玉'] ?? 0)
@@ -202,21 +199,6 @@ function fallbackDrawCount(items = {}, drawTierKey = '玉+卷') {
     default:
       return Math.round((jade / 600 + tickets) * 10) / 10
   }
-}
-
-/** 该快照是否带齐了后端派生档位；缺一个就整体按兜底公式处理。 */
-export function hasDerivedDrawTiers(items) {
-  return DRAW_TIER_KEYS.every((key) => Number.isFinite(Number(items?.[key])))
-}
-
-/** 抽数历史快照序列计算 */
-export function buildDrawHistory(snapshots, drawTierKey = '玉+卷') {
-  return usableSnapshots(snapshots)
-    .map((entry) => ({
-      at: entry.at,
-      value: computeDrawCount(entry.items || {}, drawTierKey)
-    }))
-    .filter((point) => Number.isFinite(point.value))
 }
 
 /**
@@ -260,8 +242,8 @@ export function buildBaselineStartOptions(snapshots) {
   const usable = usableSnapshots(snapshots)
   if (usable.length < 2) return []
 
-  const previous = usable[usable.length - 2]
-  const first = usable[0]
+  const previous = resolveSnapshot(usable, 'previous')
+  const first = resolveSnapshot(usable, 'first')
 
   const options = [
     {
@@ -294,7 +276,7 @@ export function buildBaselineEndOptions(snapshots) {
   const usable = usableSnapshots(snapshots)
   if (usable.length < 2) return []
 
-  const latest = usable[usable.length - 1]
+  const latest = resolveSnapshot(usable, 'latest')
 
   const options = [
     {
@@ -312,14 +294,60 @@ export function buildBaselineEndOptions(snapshots) {
   return dedupeOptions(options)
 }
 
+/**
+ * 对比基准的快捷选项。
+ *
+ * relative 标记的是"相对现在"的窗口（今天 / 近 N 天）：它们的起止时间必须每次按
+ * 当前时刻重算，落盘的那个绝对窗口只是当初点选时算出来的数；不标 relative 的
+ * previous/all 按快照序列取点，custom 才使用用户手上那对具体时间。
+ */
 export const BASELINE_PRESETS = [
   { key: 'previous', label: '较上次', shortLabel: '较上次' },
-  { key: 'today', label: '今天', shortLabel: '今天' },
-  { key: '7d', label: '近 7 天', shortLabel: '7d' },
-  { key: '14d', label: '近 14 天', shortLabel: '14d' },
-  { key: '30d', label: '近 30 天', shortLabel: '30d' },
-  { key: 'all', label: '最早至今', shortLabel: '最早至今' }
+  { key: 'today', label: '今天', shortLabel: '今天', relative: true },
+  { key: '7d', label: '近 7 天', shortLabel: '7d', relative: true },
+  { key: '14d', label: '近 14 天', shortLabel: '14d', relative: true },
+  { key: '30d', label: '近 30 天', shortLabel: '30d', relative: true },
+  { key: 'all', label: '最早至今', shortLabel: '最早至今' },
+  { key: 'custom', label: '自定义', shortLabel: '自定义' }
 ]
+
+/** 相对预设的键集合：对齐时以 now 重算，不吃持久化下来的绝对窗口。 */
+export const RELATIVE_PRESET_KEYS = new Set(
+  BASELINE_PRESETS.filter((preset) => preset.relative).map((preset) => preset.key)
+)
+
+const BASELINE_PRESET_KEYS = new Set(BASELINE_PRESETS.map((preset) => preset.key))
+
+/** 对比基准的两种挑法：按时间范围，或直接指定起止那两次扫描。 */
+export const BASELINE_MODES = [
+  { value: 'time', label: '按时间' },
+  { value: 'snapshot', label: '按快照' }
+]
+
+/**
+ * 起止快照的取值：'previous' / 'first' / 'latest' 或秒级时间戳字符串。
+ * 存进 localStorage 的东西不可信，认不出来就当没选。
+ */
+export function isValidSnapshotKey(key) {
+  if (typeof key !== 'string' || !key.trim()) return false
+  if (key === 'previous' || key === 'first' || key === 'latest') return true
+  return Number.isFinite(Number(key))
+}
+
+/**
+ * 一个可用的对比时间范围：两个有限数字、起点不晚于终点。
+ *
+ * localStorage 里的东西不可信（旧版本写的、手改的、写了一半的），半截配置一律
+ * 当没配，否则对齐时会算出 NaN 边界，页面表现为"永远匹配不到快照"。
+ */
+export function isValidBaselineRange(range) {
+  if (!Array.isArray(range) || range.length !== 2) return false
+  const [start, end] = range
+  // 这里不能用 Number() 先转一道：null / '' 会被它悄悄变成 0，于是 [null, null]
+  // 看起来像一个 1970 年的合法区间。必须是货真价实的有限数字。
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return false
+  return start <= end
+}
 
 export function computePresetRange(presetKey, nowMs = Date.now()) {
   const now = new Date(nowMs)
@@ -373,9 +401,35 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
     }
   }
 
+  // 按快照模式：用户直接指定"从哪一次扫描到哪一次扫描"，与时间范围无关。
+  // 起点晚于终点时按中间那段取（顺序反了不该变成"没有数据"，那只会让人以为坏了）。
+  if (options.mode === 'snapshot') {
+    const startSnapshot = resolveSnapshot(usable, options.startKey ?? 'previous', 0)
+    const endSnapshot = resolveSnapshot(usable, options.endKey ?? 'latest', -1)
+    const startIndex = usable.indexOf(startSnapshot)
+    const endIndex = usable.indexOf(endSnapshot)
+    if (startIndex < 0 || endIndex < 0) {
+      return {
+        matchedCount: 0,
+        startSnapshot: null,
+        endSnapshot: null,
+        effectiveRange: null,
+        matchedSnapshots: []
+      }
+    }
+    const matched = usable.slice(Math.min(startIndex, endIndex), Math.max(startIndex, endIndex) + 1)
+    return {
+      matchedCount: matched.length,
+      startSnapshot: matched[0],
+      endSnapshot: matched[matched.length - 1],
+      effectiveRange: [matched[0].at * 1000, matched[matched.length - 1].at * 1000],
+      matchedSnapshots: matched
+    }
+  }
+
   if (preset === 'previous') {
-    const startSnapshot = usable[usable.length - 2]
-    const endSnapshot = usable[usable.length - 1]
+    const startSnapshot = resolveSnapshot(usable, 'previous')
+    const endSnapshot = resolveSnapshot(usable, 'latest')
     return {
       matchedCount: 2,
       startSnapshot,
@@ -386,8 +440,8 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
   }
 
   if (preset === 'all') {
-    const startSnapshot = usable[0]
-    const endSnapshot = usable[usable.length - 1]
+    const startSnapshot = resolveSnapshot(usable, 'first')
+    const endSnapshot = resolveSnapshot(usable, 'latest')
     return {
       matchedCount: usable.length,
       startSnapshot,
@@ -397,12 +451,13 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
     }
   }
 
-  let range = options.range
-  if (!range || !Array.isArray(range) || range.length < 2) {
-    range = computePresetRange(preset, nowMs)
-  }
+  // 相对预设（今天/近 N 天）一律以 now 重算：持久化下来的 range 是当初点选那一刻
+  // 算出来的绝对窗口，第二天再打开页面，"对比：近 7 天"会比对一个几天前的旧区间。
+  // 只有自定义范围才认这对时间，其余走 computePresetRange。
+  let range = RELATIVE_PRESET_KEYS.has(preset) ? null : options.range
+  if (!isValidBaselineRange(range)) range = computePresetRange(preset, nowMs)
 
-  if (!range || !range[0] || !range[1]) {
+  if (!isValidBaselineRange(range)) {
     const startSnapshot = usable[0]
     const endSnapshot = usable[usable.length - 1]
     return {
@@ -477,54 +532,83 @@ export function resolveSnapshot(usable, key, fallbackIndex) {
 }
 
 /**
- * 扫描快照序列 → 任意两个快照点之间的物品差额。
+ * 扫描快照序列 → 任意两个快照点之间的物品差额，外加一份"未扫描"名单。
  *
- * 仅对比两端快照中均观测到的物品；快照中缺失的物品代表本次扫描未覆盖（而非确认为 0），
- * 不在此区间生成虚假的增减差额。
+ * deltas 只统计两端都能确定数值的物品。部分快照（扫仓库）里缺失代表本次扫描没覆盖
+ * （而不是确认为 0），按 0 算会造出假减少——扫描器漏认一格，页面上就是一次凭空的
+ * 掉货；完整库存快照（complete）里缺失就是 0，照常参与计算。代价是物品真的耗尽后
+ * 在部分快照之间也会从 deltas 里消失，所以另给一份 unobserved：起始快照里有、结束
+ * 快照里没再出现的名字。它多半就是耗尽，但也可能是这一格没认出来，因此界面单独标成
+ * "未扫描"，而不是折算成一个 −N。
+ *
+ * 只在结束快照里出现的名字两份都不进（部分快照场景）：那是首次观测，分不清"新拿到
+ * 的"和"上次漏认的"。
  *
  * startKey: 'previous' | 'first' | 时间戳
  * endKey: 'latest' | 时间戳
  */
-export function buildDeltaMap(snapshots, startKey = 'previous', endKey = 'latest') {
+export function buildDeltaDetail(snapshots, startKey = 'previous', endKey = 'latest') {
   const list = Array.isArray(snapshots) ? snapshots : []
   const usable = usableSnapshots(list)
-  if (usable.length < 2) return new Map()
+  const empty = { deltas: new Map(), unobserved: new Set() }
+  if (usable.length < 2) return empty
 
   const startSnapshot = resolveSnapshot(usable, startKey, usable.length - 2)
   const endSnapshot = resolveSnapshot(usable, endKey, usable.length - 1)
 
-  if (!startSnapshot || !endSnapshot || startSnapshot === endSnapshot) return new Map()
+  if (!startSnapshot || !endSnapshot || startSnapshot === endSnapshot) return empty
 
-  const delta = new Map()
+  const deltas = new Map()
+  const unobserved = new Set()
   const startItems = startSnapshot.items || {}
   const endItems = endSnapshot.items || {}
+  const startComplete = startSnapshot.complete === true
+  const endComplete = endSnapshot.complete === true
 
-  for (const [name, endValRaw] of Object.entries(endItems)) {
-    if (Object.prototype.hasOwnProperty.call(startItems, name)) {
-      const before = Number(startItems[name])
-      const after = Number(endValRaw)
-      if (Number.isFinite(before) && Number.isFinite(after)) {
-        const change = after - before
-        if (change !== 0) delta.set(name, change)
-      }
+  const names = new Set([...Object.keys(startItems), ...Object.keys(endItems)])
+  for (const name of names) {
+    const hasStart = Object.prototype.hasOwnProperty.call(startItems, name)
+    const hasEnd = Object.prototype.hasOwnProperty.call(endItems, name)
+    // null 表示"这一端确定不了它的数量"：部分快照里没出现，不等于 0。
+    const before = hasStart ? Number(startItems[name]) : startComplete ? 0 : null
+    const after = hasEnd ? Number(endItems[name]) : endComplete ? 0 : null
+
+    if (before === null || after === null) {
+      // 起始有、结束没出现，且结束不是完整库存：单独提示"未扫描"，不硬算成差额。
+      if (before !== null && before !== 0 && !hasEnd && !endComplete) unobserved.add(name)
+      continue
     }
+    if (!Number.isFinite(before) || !Number.isFinite(after)) continue
+    const change = after - before
+    if (change !== 0) deltas.set(name, change)
   }
-  return delta
+
+  return { deltas, unobserved }
 }
 
-/** 单个物品的历史曲线点，按时间升序。仅记录实际被扫描观测到的数据点，未扫描的快照直接跳过，避免将未观测物料误记为 0 导致曲线虚假下跌。 */
+/** 只要差额表的调用方走这里；需要区分"未扫描"时用 buildDeltaDetail。 */
+export function buildDeltaMap(snapshots, startKey = 'previous', endKey = 'latest') {
+  return buildDeltaDetail(snapshots, startKey, endKey).deltas
+}
+
+/** 单个物品的历史曲线点，按时间升序。
+ *
+ * 部分快照（扫仓库）只记录识别到的物品，缺名字代表"这次没扫到"，跳过，避免把未观测
+ * 的物料误记成 0 造成虚假下跌。完整库存快照（后端按森空岛+数据库记录的）相反：没列
+ * 出来就是真的 0，必须补一个 0 点，否则物品耗尽后曲线会停在最后一个非零点上。
+ */
 export function buildItemHistory(snapshots, itemName) {
-  return usableSnapshots(snapshots)
-    .filter(
-      (entry) =>
-        entry.items &&
-        Object.prototype.hasOwnProperty.call(entry.items, itemName) &&
-        Number.isFinite(Number(entry.items[itemName]))
-    )
-    .map((entry) => ({
-      at: entry.at,
-      value: Number(entry.items[itemName])
-    }))
+  const points = []
+  for (const entry of usableSnapshots(snapshots)) {
+    const items = entry.items || {}
+    if (Object.prototype.hasOwnProperty.call(items, itemName)) {
+      const value = Number(items[itemName])
+      if (Number.isFinite(value)) points.push({ at: entry.at, value })
+      continue
+    }
+    if (entry.complete === true) points.push({ at: entry.at, value: 0 })
+  }
+  return points
 }
 
 /** 该物品历史中的净增减，用于详情页"这段时间攒了多少"。 */
@@ -557,6 +641,7 @@ export function filterItems(
     showDerived = true,
     deltaFilter = 'all',
     deltaMap = new Map(),
+    unobserved = new Set(),
     favoriteOnly = false,
     favorites = []
   } = {}
@@ -565,6 +650,8 @@ export function filterItems(
   const favSet = new Set(Array.isArray(favorites) ? favorites : [])
   // ownedOnly 是 stockFilter 出现前的旧参数，保留以免调用方漏改后静默失去过滤。
   const stock = stockFilter === 'all' && ownedOnly ? 'owned' : stockFilter
+  // 起始快照里有、结束快照里没再出现的物品：算"减少"的一员，但界面上会标成未扫描。
+  const gone = unobserved instanceof Set ? unobserved : new Set(unobserved || [])
   return (items || []).filter((item) => {
     if (!showDerived && item.derived) return false
     if (stock === 'owned' && !(item.number > 0)) return false
@@ -576,13 +663,13 @@ export function filterItems(
       if (!(diff > 0)) return false
     } else if (deltaFilter === 'decreased') {
       const diff = deltaMap.get(item.name) ?? 0
-      if (!(diff < 0)) return false
+      if (!(diff < 0) && !gone.has(item.name)) return false
     } else if (deltaFilter === 'changed') {
       const diff = deltaMap.get(item.name) ?? 0
-      if (diff === 0) return false
+      if (diff === 0 && !gone.has(item.name)) return false
     } else if (deltaFilter === 'unchanged') {
       const diff = deltaMap.get(item.name) ?? 0
-      if (diff !== 0) return false
+      if (diff !== 0 || gone.has(item.name)) return false
     }
 
     if (!text) return true
@@ -838,8 +925,8 @@ export function countByTier(items) {
 
 /**
  * Hero 区要展示的四个数字。抽卡数直接取后端算好的派生项，而不是在前端重算：
- * 换算公式（600 玉一抽、源石 180、碎片两片一抽）只在 depot.py 里维护一份，
- * 前端重算迟早会和后端漂移。
+ * 换算公式（600 玉一抽、源石 180、碎片两片一抽）以后端 折算抽数 为唯一口径，
+ * 前端只在旧快照缺派生项时用 fallbackDrawCount 兜底，两边各算一份迟早漂移。
  */
 export function buildHighlights(categories) {
   const items = flattenItems(categories)
@@ -894,9 +981,12 @@ export function saveFavorites(
 export const BASELINE_STORAGE_KEY = 'mower_depot_baseline_config'
 
 export const DEFAULT_BASELINE_CONFIG = {
+  mode: 'time',
   preset: 'previous',
   range: null,
-  followLatest: true
+  followLatest: true,
+  startKey: 'previous',
+  endKey: 'latest'
 }
 
 export function loadBaselineConfig(
@@ -908,10 +998,20 @@ export function loadBaselineConfig(
     if (!raw) return { ...DEFAULT_BASELINE_CONFIG }
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_BASELINE_CONFIG }
+    // preset 必须是我们认识的键：把旧版本写下的、或手改出来的字符串带进
+    // alignSnapshotsToRange，会一路落到"整段历史"兜底分支，用户看到的是一个从没
+    // 选过的对比区间。认不出来就整套回到默认，别留一半旧配置。
+    if (!BASELINE_PRESET_KEYS.has(parsed.preset)) {
+      return { ...DEFAULT_BASELINE_CONFIG }
+    }
     return {
-      preset: typeof parsed.preset === 'string' ? parsed.preset : DEFAULT_BASELINE_CONFIG.preset,
-      range: Array.isArray(parsed.range) && parsed.range.length === 2 ? parsed.range : null,
-      followLatest: typeof parsed.followLatest === 'boolean' ? parsed.followLatest : true
+      // mode 是后加的字段：旧配置没有它，按"按时间"处理，行为与升级前一致。
+      mode: parsed.mode === 'snapshot' ? 'snapshot' : 'time',
+      preset: parsed.preset,
+      range: isValidBaselineRange(parsed.range) ? parsed.range.map((v) => Number(v)) : null,
+      followLatest: typeof parsed.followLatest === 'boolean' ? parsed.followLatest : true,
+      startKey: isValidSnapshotKey(parsed.startKey) ? parsed.startKey : 'previous',
+      endKey: isValidSnapshotKey(parsed.endKey) ? parsed.endKey : 'latest'
     }
   } catch {
     return { ...DEFAULT_BASELINE_CONFIG }
@@ -926,9 +1026,14 @@ export function saveBaselineConfig(
   try {
     if (!config || typeof config !== 'object') return
     const payload = {
-      preset: typeof config.preset === 'string' ? config.preset : 'previous',
-      range: Array.isArray(config.range) && config.range.length === 2 ? config.range : null,
-      followLatest: config.followLatest !== false
+      mode: config.mode === 'snapshot' ? 'snapshot' : 'time',
+      preset: BASELINE_PRESET_KEYS.has(config.preset)
+        ? config.preset
+        : DEFAULT_BASELINE_CONFIG.preset,
+      range: isValidBaselineRange(config.range) ? config.range.map((v) => Number(v)) : null,
+      followLatest: config.followLatest !== false,
+      startKey: isValidSnapshotKey(config.startKey) ? config.startKey : 'previous',
+      endKey: isValidSnapshotKey(config.endKey) ? config.endKey : 'latest'
     }
     storage.setItem(BASELINE_STORAGE_KEY, JSON.stringify(payload))
   } catch {
@@ -968,10 +1073,25 @@ function trimZero(value) {
   return value.toFixed(2).replace(/\.?0+$/, '')
 }
 
+/**
+ * 格式化器建一次就够。
+ *
+ * Intl 的构造比格式化本身贵得多，而这两个函数在每个卡片、每个快照下拉项上都会调用：
+ * 历史可以到三千条，下拉一次就是几千次构造，页面会卡在这一步。
+ */
+const NUMBER_FORMATTER = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 })
+const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+})
+
 export function formatNumber(value) {
   const number = Number(value)
   if (!Number.isFinite(number)) return '—'
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(number)
+  return NUMBER_FORMATTER.format(number)
 }
 
 /** 带符号的变化量，用于环比徽标。 */
@@ -986,13 +1106,7 @@ export function formatTimestamp(at) {
   const date =
     typeof at === 'number' ? new Date(at * 1000) : new Date(String(at).replace(/-/g, '/'))
   if (Number.isNaN(date.getTime())) return String(at)
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date)
+  return TIMESTAMP_FORMATTER.format(date)
 }
 
 /** 相对时间，用于"上次扫描：3 小时前"。 */

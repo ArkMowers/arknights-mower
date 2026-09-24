@@ -1008,15 +1008,14 @@ import DepotBaselinePicker from '@/components/DepotBaselinePicker.vue'
 import {
   SORT_MODES,
   alignSnapshotsToRange,
-  buildBaselineStartOptions,
-  buildBaselineEndOptions,
-  buildDeltaMap,
+  buildDeltaDetail,
   buildDepotExportFilename,
   buildFavoriteHighlights,
   buildHighlights,
   buildItemHistory,
   computeDrawCount,
   countByTier,
+  DEFAULT_BASELINE_CONFIG,
   filterItems,
   flattenItems,
   formatCompact,
@@ -1030,7 +1029,6 @@ import {
   loadFavorites,
   parseDepotResponse,
   resolveCopyText,
-  resolveSnapshot,
   saveBaselineConfig,
   saveFavorites,
   sortItems,
@@ -1145,29 +1143,51 @@ const alignedBaseline = computed(() => {
   return alignSnapshotsToRange(history.value, baselineConfig.value)
 })
 
+/** 对比基准是否还是默认（较上次）：筛选角标、重置按钮都靠它判断。 */
+const baselineIsDefault = computed(() => {
+  const config = baselineConfig.value || {}
+  return (config.mode || 'time') === 'time' && (config.preset || 'previous') === 'previous'
+})
+
 const activeBaselineSummary = computed(() => {
   const { matchedCount, startSnapshot, endSnapshot } = alignedBaseline.value
   if (!startSnapshot || !endSnapshot) return '暂无匹配快照'
 
-  if (baselineConfig.value.preset === 'previous') {
-    return `较上次 (${formatTimestamp(startSnapshot.at).slice(5)}) → 当前最新`
-  }
-  if (baselineConfig.value.preset === 'all') {
-    return `最早 (${formatTimestamp(startSnapshot.at).slice(5)}) → 当前最新`
-  }
-
   const startLabel = formatTimestamp(startSnapshot.at).slice(5)
   const endLabel = formatTimestamp(endSnapshot.at).slice(5)
+
+  if (baselineConfig.value.mode === 'snapshot') {
+    return `${startLabel} → ${endLabel} (共 ${matchedCount} 次扫描)`
+  }
+  if (baselineConfig.value.preset === 'previous') {
+    return `较上次 (${startLabel}) → 当前最新`
+  }
+  if (baselineConfig.value.preset === 'all') {
+    return `最早 (${startLabel}) → 当前最新`
+  }
   return `${startLabel} → ${endLabel} (共 ${matchedCount} 次扫描)`
 })
 
-const deltaMap = computed(() => {
+/** 起始快照里有、结束快照（最新一次扫描）里没有出现的物品，在卡片上的标记。 */
+const UNOBSERVED_LABEL = '未扫描'
+
+/**
+ * 差额表与"未扫描"名单。
+ *
+ * 只比值会漏掉物品耗尽：扫描器看不到的格子不会写进快照，差值也就无从谈起。数据层
+ * 把这类名字单独放在 unobserved 里，这里按两种语气呈现——能算出差值的照旧 ±N，
+ * 这次没出现的标"未扫描"，不硬折算成 −N（分不清是真的用完了还是这一格没认出来）。
+ */
+const deltaDetail = computed(() => {
   const { startSnapshot, endSnapshot } = alignedBaseline.value
   if (!startSnapshot || !endSnapshot || startSnapshot === endSnapshot) {
-    return new Map()
+    return { deltas: new Map(), unobserved: new Set() }
   }
-  return buildDeltaMap(history.value, startSnapshot, endSnapshot)
+  return buildDeltaDetail(history.value, startSnapshot, endSnapshot)
 })
+
+const deltaMap = computed(() => deltaDetail.value.deltas)
+const unobservedItems = computed(() => deltaDetail.value.unobserved)
 const highlights = computed(() => buildHighlights(parsed.value.categories))
 
 // 关注高亮看板与分页
@@ -1225,21 +1245,33 @@ const activeDrawTier = computed(() => {
   )
 })
 
-const drawDeltaText = computed(() => {
-  if (!activeDrawKey.value) return ''
+/**
+ * 抽数差额。以前是从显示文案里 includes('+')/includes('-') 反推增/减配色，文案一改
+ * （换个前缀、换成全角符号）配色就悄悄失效；这里留一份数值，文案和配色各取所需。
+ */
+const drawDelta = computed(() => {
+  if (!activeDrawKey.value) return null
   const usable = usableSnapshots(history.value)
-  if (usable.length < 2) return ''
+  if (usable.length < 2) return null
 
   const { startSnapshot, endSnapshot } = alignedBaseline.value
-  if (!startSnapshot || !endSnapshot) return ''
+  if (!startSnapshot || !endSnapshot) return null
 
   const startDraws = computeDrawCount(startSnapshot.items, activeDrawKey.value)
   const endDraws = computeDrawCount(endSnapshot.items, activeDrawKey.value)
-  if (!Number.isFinite(startDraws) || !Number.isFinite(endDraws)) return ''
+  if (!Number.isFinite(startDraws) || !Number.isFinite(endDraws)) return null
 
-  const diff = Math.round((endDraws - startDraws) * 10) / 10
+  return Math.round((endDraws - startDraws) * 10) / 10
+})
+
+const drawDeltaText = computed(() => {
+  const diff = drawDelta.value
+  if (diff === null) return ''
   const sign = diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '±0'
 
+  if (baselineConfig.value.mode === 'snapshot') {
+    return `区间变动 ${sign} 抽`
+  }
   if (baselineConfig.value.preset === 'previous') {
     return `较上次扫描 ${sign} 抽`
   }
@@ -1250,12 +1282,9 @@ const drawDeltaText = computed(() => {
 })
 
 const drawDeltaType = computed(() => {
-  if (!drawDeltaText.value) return 'default'
-  return drawDeltaText.value.includes('+')
-    ? 'success'
-    : drawDeltaText.value.includes('-')
-      ? 'error'
-      : 'default'
+  const diff = drawDelta.value
+  if (diff === null || diff === 0) return 'default'
+  return diff > 0 ? 'success' : 'error'
 })
 
 // 筛选与排序
@@ -1268,7 +1297,9 @@ const filteredItems = computed(() => {
     deltaFilter: deltaFilter.value,
     deltaMap: deltaMap.value,
     favoriteOnly: stockFilter.value === 'favorite',
-    favorites: favorites.value
+    favorites: favorites.value,
+    // 未扫描的条目也算"减少"的一员，否则筛"仅减少"永远看不到刚耗尽的物品。
+    unobserved: unobservedItems.value
   })
 })
 
@@ -1278,7 +1309,7 @@ const activeFilterCount = computed(() => {
   if (deltaFilter.value !== 'all') count++
   if (!showDerived.value) count++
   if (sortMode.value !== 'tier') count++
-  if (baselineConfig.value.preset !== 'previous') count++
+  if (!baselineIsDefault.value) count++
   return count
 })
 
@@ -1289,7 +1320,7 @@ const hasActiveFilters = computed(() => {
     deltaFilter.value !== 'all' ||
     !showDerived.value ||
     sortMode.value !== 'tier' ||
-    baselineConfig.value.preset !== 'previous'
+    !baselineIsDefault.value
   )
 })
 
@@ -1301,7 +1332,7 @@ function resetFilters() {
   deltaFilter.value = 'all'
   showDerived.value = true
   sortMode.value = 'tier'
-  baselineConfig.value = { preset: 'previous', range: null, followLatest: true }
+  baselineConfig.value = { ...DEFAULT_BASELINE_CONFIG }
 }
 
 const sortedItems = computed(() => {
@@ -1345,23 +1376,35 @@ watch(
 
 // 变化量与微缩图计算
 function deltaTextFor(name) {
-  const diff = deltaMap.value.get(name)
-  return formatDelta(diff)
+  if (unobservedItems.value.has(name)) return UNOBSERVED_LABEL
+  return formatDelta(deltaMap.value.get(name))
 }
 
 function deltaClassFor(name) {
+  if (unobservedItems.value.has(name)) return 'down gone'
   const diff = deltaMap.value.get(name)
   if (!diff) return ''
   return diff > 0 ? 'up' : 'down'
 }
 
+/** 迷你趋势线最多看最近这么多次扫描：它是 88×24 的装饰，不需要整份历史。 */
+const SPARKLINE_SNAPSHOTS = 120
+
+/**
+ * 卡片右下角的迷你趋势线。
+ *
+ * 只算当前筛选结果里的条目，且只喂最近一段快照：网格渲染的就是这一批，按全部物品 +
+ * 整份历史算，等于每次筛选都替几百个看不见的卡片重跑几十万次查找（历史可以到三千条）。
+ * 详情抽屉里的曲线不受影响，那里仍然用完整历史。
+ */
 const sparklines = computed(() => {
   const res = {}
   if (history.value.length < 2) return res
 
-  for (const item of allItems.value) {
+  const recent = history.value.slice(-SPARKLINE_SNAPSHOTS)
+  for (const item of sortedItems.value) {
     if (item.derived) continue
-    const points = buildItemHistory(history.value, item.name)
+    const points = buildItemHistory(recent, item.name)
     if (points.length < 2) continue
 
     const values = points.map((p) => p.value)
@@ -3107,6 +3150,12 @@ onUnmounted(() => {
   background: var(--mower-error-block);
 }
 
+/* 未扫描：大概率是耗尽，但也可能是这一格没认出来，用中性色而不是"减少"的红。 */
+.card-delta-tag.gone {
+  color: var(--mower-text-muted, rgba(31, 30, 28, 0.55));
+  background: var(--mower-surface-hover, rgba(0, 0, 0, 0.06));
+}
+
 .card-sparkline-svg {
   position: absolute;
   right: 6px;
@@ -3609,6 +3658,11 @@ onUnmounted(() => {
 
 .export-delta-text.down {
   color: #d03a52;
+}
+
+/* 导出的长图与页面同语气：未扫描用中性灰，别和真实减少混在一起。 */
+.export-delta-text.gone {
+  color: #8a8a8a;
 }
 
 .export-asset-val {

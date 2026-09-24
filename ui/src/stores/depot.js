@@ -4,6 +4,17 @@ import axios from 'axios'
 import { extract_inventory_counts } from '@/utils/trigger_inventory'
 
 export const usedepotStore = defineStore('depot', () => {
+  /**
+   * 缓存是否还在有效期内。
+   *
+   * 仓库页（report）与触发条件（inventory）各留一份缓存是故意的：前者要分类、档位、
+   * 扫描时间，后者只要一张扁平的数量表，刷新节奏也不同（15s / 30s）。但"什么时候算
+   * 过期"只能有一份实现，抄成两处迟早有一处把比较方向写反。
+   */
+  function isCacheFresh(loadedAt, ttl) {
+    return loadedAt > 0 && Date.now() - loadedAt < ttl
+  }
+
   const inventory = ref({})
   const inventoryLoaded = ref(false)
   const inventoryLoadError = ref('')
@@ -29,7 +40,7 @@ export const usedepotStore = defineStore('depot', () => {
   }
 
   async function loadInventory(force = false) {
-    if (!force && inventoryLoaded.value && Date.now() - inventoryLoadedAt < 30_000) {
+    if (!force && inventoryLoaded.value && isCacheFresh(inventoryLoadedAt, 30_000)) {
       return inventory.value
     }
     if (inventoryRequest) return inventoryRequest
@@ -51,8 +62,14 @@ export const usedepotStore = defineStore('depot', () => {
     return inventoryRequest
   }
 
-  /** 扫描快照序列，供环比与趋势使用。失败时只记错误、不抛，趋势不该拖垮整页。 */
-  async function loadHistory(limit = 500) {
+  /**
+   * 快照序列，供环比与趋势使用。失败时只记错误、不抛，趋势不该拖垮整页。
+   *
+   * 要三千条：按一天几次到十几次的扫描节奏，这是以年计的跨度，趋势能一直往回看。
+   * 代价是响应体积（完整库存快照约 2.4KB/条），所以页面里凡是只用到近期数据的地方
+   * 自己截断，别拿整份历史去算。服务端同样按 3000 截断。
+   */
+  async function loadHistory(limit = 3000) {
     if (historyRequest) return historyRequest
     historyLoading.value = true
     historyError.value = ''
@@ -81,7 +98,7 @@ export const usedepotStore = defineStore('depot', () => {
    * 页面据此提示刷新失败；历史失败在 loadHistory 内部已经降级成空数组。
    */
   async function loadReport({ force = false, ttl = 15_000 } = {}) {
-    if (!force && report.value && reportLoaded.value && Date.now() - reportLoadedAt < ttl) {
+    if (!force && report.value && reportLoaded.value && isCacheFresh(reportLoadedAt, ttl)) {
       return report.value
     }
     if (reportRequest) return reportRequest

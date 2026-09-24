@@ -1,9 +1,11 @@
+import csv
 import json
 
 import pytest
 
 import server
 from arknights_mower.utils import depot as module
+from arknights_mower.utils.csv_utils import read_csv_rows
 
 HEADER = ["Timestamp", "Data", "json"]
 
@@ -16,9 +18,18 @@ def history_path(tmp_path, monkeypatch):
     return path
 
 
-def write_rows(path, rows):
-    import csv
+@pytest.fixture
+def depot_lines(tmp_path, monkeypatch):
+    """两条快照线各指一个临时文件：扫描线 depotresult.csv、完整库存线 depotmerged.csv。"""
+    paths = {
+        "@app/tmp/depotresult.csv": tmp_path / "depotresult.csv",
+        "@app/tmp/depotmerged.csv": tmp_path / "depotmerged.csv",
+    }
+    monkeypatch.setattr(module, "get_path", lambda key: paths[key])
+    return paths
 
+
+def write_rows(path, rows):
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(HEADER)
@@ -126,15 +137,51 @@ def test_stale_derived_tiers_in_the_csv_are_recomputed(history_path):
     assert set(module.抽数档位) <= items.keys()
 
 
-def test_snapshot_without_draw_materials_still_carries_the_four_tiers(history_path):
-    """没有可折算物料时四个档位是 0，而不是缺键——前端按"四个键齐全"判断能否直读。"""
+def test_snapshot_without_draw_materials_has_no_fabricated_tiers(history_path):
+    """没看到抽卡物料时四个档位必须缺键，而不是补 0。
+
+    补 0 会被前端当成"这次扫描抽数为 0"，在下一次环比里造出一次假的 −20 抽；
+    缺键才会走"本次没有数据"，档位差额与趋势线直接跳过这一段。
+    """
     write_rows(history_path, [snapshot(1789895956, {"龙门币": 20000})])
 
     items = module.读取仓库历史()[0]["items"]
 
-    assert {档位: items[档位] for 档位 in module.抽数档位} == dict.fromkeys(
-        module.抽数档位, 0.0
+    assert items == {"龙门币": 20000}
+    assert not set(module.抽数档位) & items.keys()
+
+
+def test_non_finite_cells_are_skipped(history_path):
+    """inf / 1e999 会抛 OverflowError，不能让它把 /depot/history 变成 500。"""
+    write_rows(
+        history_path,
+        [
+            ["inf", json.dumps({"合成玉": 600}), json.dumps({"空": ""})],
+            [1789895956, json.dumps({"合成玉": float("inf")}), json.dumps({"空": ""})],
+            snapshot(1789982356, {"合成玉": 1200}),
+        ],
     )
+
+    history = module.读取仓库历史()
+
+    assert [entry["at"] for entry in history] == [1789982356]
+
+
+def test_torn_last_row_falls_back_to_the_previous_snapshot(history_path):
+    """append 写入被打断会在文件尾留下半行，当前库存要退回上一条完整快照。
+
+    旧代码直接 json.loads(depotinfo[-1][1])，一行半截数据就能让 /depot/readdepot
+    整个 500，页面连当前库存都看不到。
+    """
+    write_rows(history_path, [snapshot(1789895956, {"合成玉": 600})])
+    with open(history_path, "a", encoding="utf-8", newline="") as f:
+        f.write('1789982356,{"合成玉": 12')
+
+    _, rows = read_csv_rows(history_path)
+    at, items = module.最后有效快照(rows)
+
+    assert at == 1789895956
+    assert items == {"合成玉": 600}
 
 
 def test_undecodable_file_is_treated_as_no_history(history_path):
@@ -161,11 +208,76 @@ def test_corrupt_and_partial_rows_are_skipped(history_path):
     history = module.读取仓库历史()
 
     assert len(history) == 1
-    # 只有龙门币，四个派生档位都为 0。
-    assert history[0]["items"]["龙门币"] == 20000
-    assert {
-        档位: history[0]["items"][档位] for 档位 in module.抽数档位
-    } == dict.fromkeys(module.抽数档位, 0.0)
+    # 只有龙门币，没有看到任何抽卡物料，四个派生档位都不该出现。
+    assert history[0]["items"] == {"龙门币": 20000}
+
+
+def test_merged_snapshot_writes_only_owned_items_with_the_complete_flag(depot_lines):
+    """完整库存快照只写持有数量，并打上"完整"标记。
+
+    写全 790 个名字每行 18KB，只写持有的大约 2.4KB；读取端看到标记就把没列出来的
+    名字当成 0，所以"没写"不等于"这次没看到"。
+    """
+    module.记录合并快照(1789895956, {"固源岩": 600, "龙门币": 0, "至纯源石": 3})
+
+    text = depot_lines["@app/tmp/depotmerged.csv"].read_text(encoding="utf-8")
+    # 走一遍 csv 解析：Data/标记列里都是 JSON，直接被引号转义，别拿子串去比。
+    rows = list(csv.reader(text.splitlines()))
+
+    assert rows[0] == HEADER
+    assert len(rows) == 2
+    assert json.loads(rows[1][1]) == {"固源岩": 600, "至纯源石": 3}
+    assert json.loads(rows[1][2]) == {"完整": True}
+
+
+def test_scan_and_merged_rows_merge_into_one_complete_snapshot(depot_lines):
+    """同一次扫描写的两行必须并成一条：材料来自合并行，基础物品来自扫描行。
+
+    只有扫描行时历史里永远没有固源岩，第 4 档位也就永远等于第 3 档；并起来之后
+    "额外+碎片+土"才是真的按固源岩算出来的。
+    """
+    write_rows(
+        depot_lines["@app/tmp/depotresult.csv"],
+        [snapshot(1789895956, {"龙门币": 20000})],
+    )
+    module.记录合并快照(1789895956, {"龙门币": 20000, "固源岩": 600, "至纯源石": 3})
+
+    history = module.读取仓库历史()
+
+    assert len(history) == 1
+    快照 = history[0]
+    assert 快照["at"] == 1789895956
+    assert 快照["complete"] is True
+    assert 快照["items"]["龙门币"] == 20000
+    assert 快照["items"]["固源岩"] == 600
+    # 完整快照六个来源都在（缺席即 0），档位一律补算：
+    # (3 * 180 + int((0 + 600 / 2) / 2) * 20) / 600 = (540 + 3000) / 600 = 5.9
+    assert 快照["items"]["额外+碎片+土"] == 5.9
+    assert 快照["items"]["额外+碎片"] == 0.9
+
+
+def test_partial_scan_rows_are_not_marked_complete(depot_lines):
+    """只有扫描行时不能被当成完整库存：缺的名字是"没扫到"，不是 0。"""
+    write_rows(
+        depot_lines["@app/tmp/depotresult.csv"],
+        [snapshot(1789895956, {"龙门币": 20000})],
+    )
+
+    history = module.读取仓库历史()
+
+    assert "complete" not in history[0]
+    assert not set(module.抽数档位) & history[0]["items"].keys()
+
+
+def test_merged_row_without_a_scan_is_a_valid_snapshot(depot_lines):
+    """只有合并行的快照也要能读出来（例如扫描没跑成、但库存被记录了一次）。"""
+    module.记录合并快照(1789895956, {"固源岩": 600})
+
+    history = module.读取仓库历史()
+
+    assert len(history) == 1
+    assert history[0]["complete"] is True
+    assert history[0]["items"]["固源岩"] == 600
 
 
 def test_numeric_string_counts_are_coerced(history_path):
@@ -245,7 +357,7 @@ class TestDepotHistoryRoute:
         assert response.status_code == 200
         assert response.get_json()["snapshots"] == [{"at": 5, "items": {"龙门币": 1}}]
 
-    @pytest.mark.parametrize("raw,expected", [("0", 1), ("-3", 1), ("99999", 500)])
+    @pytest.mark.parametrize("raw,expected", [("0", 1), ("-3", 1), ("99999", 3000)])
     def test_route_clamps_limit(self, raw, expected, monkeypatch):
         seen = {}
 

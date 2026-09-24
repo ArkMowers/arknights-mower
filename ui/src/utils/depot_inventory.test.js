@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import {
   alignSnapshotsToRange,
+  BASELINE_MODES,
   BASELINE_PRESETS,
   BASELINE_STORAGE_KEY,
   DEFAULT_BASELINE_CONFIG,
   buildBaselineEndOptions,
   buildBaselineStartOptions,
+  buildDeltaDetail,
   buildDeltaMap,
   computePresetRange,
   buildDepotExportFilename,
-  buildDrawHistory,
   buildFavoriteHighlights,
   buildHighlights,
   buildItemHistory,
@@ -25,15 +26,17 @@ import {
   formatRelative,
   formatTimestamp,
   groupItemsByTier,
-  hasDerivedDrawTiers,
   isDerivedItem,
   isTokenItem,
+  isValidBaselineRange,
+  isValidSnapshotKey,
   itemIconUrl,
   loadBaselineConfig,
   loadFavorites,
   matchesNumericQuery,
   matchesPinyin,
   parseDepotResponse,
+  RELATIVE_PRESET_KEYS,
   resolveCopyText,
   resolveSnapshot,
   saveBaselineConfig,
@@ -278,6 +281,79 @@ describe('alignSnapshotsToRange and baseline presets', () => {
     expect(res.endSnapshot).toBeNull()
   })
 
+  it('recomputes relative presets from now instead of the stored window', () => {
+    // "近 7 天"在点选时会算出绝对窗口并随配置落盘。第二天打开页面若照用它，标签写的
+    // 是"近 7 天"、比较的却是当初那 7 天，所以相对预设必须按 now 重算。
+    const stale = [0, 100 * 1000] // 上次点选时存下来的窗口，只覆盖 at:100 之前
+
+    const res = alignSnapshotsToRange(
+      snapshots,
+      { preset: '7d', range: stale, followLatest: false },
+      3000 * 1000
+    )
+
+    // 按 now 重算后窗口是 [-7d, now]，四条快照全落在里面。
+    expect(res.matchedCount).toBe(4)
+    expect(res.startSnapshot.at).toBe(1000)
+  })
+
+  it('keeps honouring the stored window for custom ranges', () => {
+    const res = alignSnapshotsToRange(
+      snapshots,
+      { preset: 'custom', range: [1500 * 1000, 3500 * 1000], followLatest: false },
+      9_000_000_000
+    )
+
+    expect(res.matchedCount).toBe(2)
+    expect(res.startSnapshot.at).toBe(2000)
+  })
+
+  it('exposes which presets are relative and which ranges are usable', () => {
+    expect(RELATIVE_PRESET_KEYS.has('7d')).toBe(true)
+    expect(RELATIVE_PRESET_KEYS.has('previous')).toBe(false)
+    expect(BASELINE_PRESETS.map((preset) => preset.key)).toContain('custom')
+
+    expect(isValidBaselineRange([1000, 2000])).toBe(true)
+    expect(isValidBaselineRange([2000, 1000])).toBe(false)
+    expect(isValidBaselineRange([1000, null])).toBe(false)
+    expect(isValidBaselineRange([null, null])).toBe(false)
+    expect(isValidBaselineRange(['1000', '2000'])).toBe(false)
+    expect(isValidBaselineRange('1000-2000')).toBe(false)
+  })
+
+  it('aligns to an explicit pair of snapshots in snapshot mode', () => {
+    // 按快照模式不看时间范围，直接指定起止那两次扫描。
+    const res = alignSnapshotsToRange(snapshots, {
+      mode: 'snapshot',
+      startKey: '2000',
+      endKey: '4000'
+    })
+
+    expect(res.matchedCount).toBe(3)
+    expect(res.startSnapshot.at).toBe(2000)
+    expect(res.endSnapshot.at).toBe(4000)
+    expect(res.matchedSnapshots.map((snap) => snap.at)).toEqual([2000, 3000, 4000])
+  })
+
+  it('normalises a reversed snapshot pair and validates stored keys', () => {
+    const reversed = alignSnapshotsToRange(snapshots, {
+      mode: 'snapshot',
+      startKey: '4000',
+      endKey: '2000'
+    })
+    expect(reversed.matchedCount).toBe(3)
+    expect(reversed.startSnapshot.at).toBe(2000)
+    expect(reversed.endSnapshot.at).toBe(4000)
+
+    expect(BASELINE_MODES.map((mode) => mode.value)).toEqual(['time', 'snapshot'])
+    expect(isValidSnapshotKey('previous')).toBe(true)
+    expect(isValidSnapshotKey('latest')).toBe(true)
+    expect(isValidSnapshotKey('2000')).toBe(true)
+    expect(isValidSnapshotKey('nope')).toBe(false)
+    expect(isValidSnapshotKey('')).toBe(false)
+    expect(isValidSnapshotKey(null)).toBe(false)
+  })
+
   it('computes preset ranges accurately', () => {
     const fixedNow = 1700000000000
     const r7d = computePresetRange('7d', fixedNow)
@@ -355,6 +431,44 @@ describe('buildDeltaMap', () => {
     expect(buildDeltaMap([{ at: 100, items: { 龙门币: 1 } }]).size).toBe(0)
     expect(buildDeltaMap(null).size).toBe(0)
   })
+
+  it('reports items that stopped being observed instead of silently dropping them', () => {
+    // 起始有、结束没有 = 大概率耗尽；不折算成 −N，但也绝不能当没发生（否则
+    // "仅减少"永远看不到刚用完的物资）。只在结束出现的名字是首次观测，两份都不进。
+    const detail = buildDeltaDetail([
+      { at: 100, items: { 龙门币: 1000, 固源岩: 40, 至纯源石: 3 } },
+      { at: 200, items: { 龙门币: 1600, 至纯源石: 3, 芯片助剂: 2 } }
+    ])
+
+    expect(detail.deltas.get('龙门币')).toBe(600)
+    expect(detail.deltas.has('固源岩')).toBe(false)
+    expect([...detail.unobserved]).toEqual(['固源岩'])
+    expect(detail.deltas.has('芯片助剂')).toBe(false)
+    expect(detail.unobserved.has('芯片助剂')).toBe(false)
+  })
+
+  it('treats a missing name as zero when the snapshot is a complete inventory', () => {
+    // 完整库存快照（后端记的整份库存）没列出来就是 0：物品用完了要算成真实减少，
+    // 而不是像扫描快照那样标"未扫描"。
+    const detail = buildDeltaDetail([
+      { at: 100, items: { 固源岩: 40, 龙门币: 1000 }, complete: true },
+      { at: 200, items: { 龙门币: 1600 }, complete: true }
+    ])
+
+    expect(detail.deltas.get('固源岩')).toBe(-40)
+    expect(detail.deltas.get('龙门币')).toBe(600)
+    expect(detail.unobserved.size).toBe(0)
+  })
+
+  it('counts a newly observed item when the baseline snapshot is complete', () => {
+    const detail = buildDeltaDetail([
+      { at: 100, items: { 龙门币: 1000 }, complete: true },
+      { at: 200, items: { 龙门币: 1000, D32钢: 5 }, complete: true }
+    ])
+
+    expect(detail.deltas.get('D32钢')).toBe(5)
+    expect(detail.unobserved.size).toBe(0)
+  })
 })
 
 describe('buildItemHistory', () => {
@@ -378,6 +492,24 @@ describe('buildItemHistory', () => {
     expect(
       buildItemHistory([{ items: { 龙门币: 5 } }, { at: 1, items: { 龙门币: 5 } }], '龙门币')
     ).toHaveLength(1)
+  })
+
+  it('emits a real zero point for complete snapshots that omit the item', () => {
+    // 完整库存快照没列出来就是 0：不补这个点，物品耗尽后曲线会停在最后一个非零值上。
+    const points = buildItemHistory(
+      [
+        { at: 100, items: { 固源岩: 40 }, complete: true },
+        { at: 200, items: { 龙门币: 1000 }, complete: true },
+        { at: 300, items: { 固源岩: 10 } }
+      ],
+      '固源岩'
+    )
+
+    expect(points).toEqual([
+      { at: 100, value: 40 },
+      { at: 200, value: 0 },
+      { at: 300, value: 10 }
+    ])
   })
 })
 
@@ -406,7 +538,7 @@ describe('summarizeItemHistory', () => {
   })
 })
 
-describe('computeDrawCount and buildDrawHistory', () => {
+describe('computeDrawCount', () => {
   const derived = {
     '玉+卷': 20,
     '玉+卷+石': 23,
@@ -452,33 +584,11 @@ describe('computeDrawCount and buildDrawHistory', () => {
 
   it('reports a snapshot with no draw-bearing materials as non-finite', () => {
     // 六个来源键一个都没有时不能补 0，否则会画出一个"抽数 0"的假点。
+    // 后端 读取仓库历史 现在也不回填这种快照的派生档位，两边约定一致。
     expect(Number.isFinite(computeDrawCount({ 龙门币: 12 }, '玉+卷'))).toBe(false)
-    expect(hasDerivedDrawTiers(derived)).toBe(true)
-    expect(hasDerivedDrawTiers(rawItems)).toBe(false)
-  })
-
-  it('builds history series for draw counts across snapshots', () => {
-    const snapshots = [
-      { at: 100, items: { 合成玉: 600, 寻访凭证: 1 } },
-      { at: 200, items: { 合成玉: 1200, 寻访凭证: 2 } }
-    ]
-    const history = buildDrawHistory(snapshots, '玉+卷')
-    expect(history).toEqual([
-      { at: 100, value: 2 },
-      { at: 200, value: 4 }
-    ])
-  })
-
-  it('drops snapshots that carry no draw information at all', () => {
-    const history = buildDrawHistory(
-      [
-        { at: 100, items: { 龙门币: 1000 } },
-        { at: 200, items: { 合成玉: 600 } }
-      ],
-      '玉+卷'
+    expect(Number.isFinite(computeDrawCount({ 龙门币: 12, '玉+卷': undefined }, '玉+卷'))).toBe(
+      false
     )
-
-    expect(history).toEqual([{ at: 200, value: 1 }])
   })
 })
 
@@ -552,17 +662,21 @@ describe('filterItems', () => {
       ['D32钢', -2],
       ['模组数据块', 0]
     ])
+    const unobserved = new Set(['数据增补仪'])
 
     expect(filterItems(rows, { deltaFilter: 'increased', deltaMap }).map((r) => r.name)).toEqual([
       '合成玉'
     ])
-    expect(filterItems(rows, { deltaFilter: 'decreased', deltaMap }).map((r) => r.name)).toEqual([
-      'D32钢'
-    ])
-    expect(filterItems(rows, { deltaFilter: 'changed', deltaMap }).map((r) => r.name)).toEqual([
-      '合成玉',
-      'D32钢'
-    ])
+    expect(
+      filterItems(rows, { deltaFilter: 'decreased', deltaMap, unobserved }).map((r) => r.name)
+    ).toEqual(['D32钢', '数据增补仪'])
+    expect(
+      filterItems(rows, { deltaFilter: 'changed', deltaMap, unobserved }).map((r) => r.name)
+    ).toEqual(['合成玉', 'D32钢', '数据增补仪'])
+    // 未扫描不算"没有变化"：它已经从起始快照里消失，不能混进 unchanged。
+    expect(
+      filterItems(rows, { deltaFilter: 'unchanged', deltaMap, unobserved }).map((r) => r.name)
+    ).toEqual(['玉+卷', '模组数据块', '源岩'])
   })
 
   it('filters by comparison operators (<, <=, >, >=, =, !=, range)', () => {
@@ -658,10 +772,55 @@ describe('favorites persistence and highlights', () => {
 
     saveBaselineConfig({ preset: '7d', range: [1000, 2000], followLatest: false }, storage)
     expect(loadBaselineConfig(storage)).toEqual({
+      mode: 'time',
       preset: '7d',
       range: [1000, 2000],
-      followLatest: false
+      followLatest: false,
+      startKey: 'previous',
+      endKey: 'latest'
     })
+
+    // 按快照模式：时间范围清掉，起止两次扫描跟着走。
+    saveBaselineConfig(
+      { mode: 'snapshot', preset: 'previous', startKey: '100', endKey: '300', range: [1, 2] },
+      storage
+    )
+    expect(loadBaselineConfig(storage)).toEqual({
+      mode: 'snapshot',
+      preset: 'previous',
+      range: null,
+      followLatest: true,
+      startKey: '100',
+      endKey: '300'
+    })
+  })
+
+  it('refuses baseline configs it cannot act on', () => {
+    const storage = fakeStorage()
+
+    // 不认识的 preset 会让对齐一路落到"整段历史"，用户看到的是一个从没选过的区间。
+    storage.setItem(
+      BASELINE_STORAGE_KEY,
+      JSON.stringify({ preset: '上个版本', range: [1000, 2000], followLatest: true })
+    )
+    expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
+
+    // 半截/颠倒的 range 一律当没配，而不是算出一个 NaN 边界。
+    storage.setItem(
+      BASELINE_STORAGE_KEY,
+      JSON.stringify({ preset: 'custom', range: [2000, 1000], followLatest: true })
+    )
+    expect(loadBaselineConfig(storage)).toEqual({
+      mode: 'time',
+      preset: 'custom',
+      range: null,
+      followLatest: true,
+      startKey: 'previous',
+      endKey: 'latest'
+    })
+
+    saveBaselineConfig({ preset: '上个版本', range: [2000, 1000] }, storage)
+    expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
   })
 
   it('builds favorite highlights with deltas and compact formatting', () => {

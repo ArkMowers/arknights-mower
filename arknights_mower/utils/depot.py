@@ -11,6 +11,15 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 
+def 是信物(name):
+    """信物是升星/潜能的凭证，不是可消耗的仓库物资，页面与历史对比都不展示。
+
+    这个判断原先在云端快照、当前库存、历史快照里各写了一遍字符串包含，
+    少改一处就会出现"页面上没有、触发条件里还有"的错位，统一从这里取。
+    """
+    return isinstance(name, str) and "信物" in name
+
+
 def cloud_inventory_snapshot(payload):
     """Only a successful sync made by this version can replace local crafting counts."""
     observed_at = payload.get("_mower_inventory_observed_at", 0)
@@ -26,11 +35,11 @@ def cloud_inventory_snapshot(payload):
     counts = {
         name: 0
         for name, entry in key_mapping.items()
-        if name == entry[2] and entry[3] == "MATERIAL" and "信物" not in name
+        if name == entry[2] and entry[3] == "MATERIAL" and not 是信物(name)
     }
     for item in items:
         entry = key_mapping.get(item["id"])
-        if entry is not None and "信物" not in entry[2]:
+        if entry is not None and not 是信物(entry[2]):
             counts[entry[2]] = int(item["count"])
     return counts, observed_at
 
@@ -64,8 +73,101 @@ def 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片
 # 的 dict 保序，前端据此渲染档位按钮）。
 抽数档位 = ("玉+卷", "玉+卷+石", "额外+碎片", "额外+碎片+土")
 
+# 参与抽数折算的原始物料。历史快照里这些键一个都没有时说明这次扫描没看到抽卡资源，
+# 不能把四个档位当成 0 写进去（见 读取仓库历史）。
+抽数来源 = ("合成玉", "寻访凭证", "十连寻访凭证", "至纯源石", "源石碎片", "固源岩")
 
-def 读取仓库():
+# 合并库存快照：扫仓库认得出来的物品（基础物品/消耗品）之外，材料类只能靠森空岛同步
+# 和本地数据库，那两条路都没有时间序列。这里每次扫描记一条"当前完整库存"，材料的走势
+# 就从这个文件来；与 depotresult.csv 共用时间戳，读取时并成同一条快照。
+_MERGED_HISTORY_REL = "@app/tmp/depotmerged.csv"
+
+
+def _合并历史路径():
+    return get_path(_MERGED_HISTORY_REL)
+
+
+def 记录合并快照(at, 物品):
+    """把当前合并库存（森空岛 + 数据库 + 本次扫描）记一条带时间戳的快照。
+
+    只写数量大于 0 的条目，并在第三列打上"完整"标记：写全 790 个名字每行要 18KB，
+    只写持有的大约 2.4KB，而读取端看到标记就把"没写出来的名字"当成 0（持有为 0 的
+    物品本来也不该占地方），而不是"这次没看到"。少了这个标记，材料掉到 0 会被当成
+    未扫描，用户看到的是"未扫描"而不是真实的 −N。
+    """
+    path = _合并历史路径()
+    counts = {}
+    for name, count in 物品.items():
+        # 信物不进历史：调用方（读取仓库）已经筛过一遍，这里再挡一次，免得以后换个
+        # 调用点就把信物写进文件，回头还要靠读取端兜。
+        if not isinstance(name, str) or 是信物(name):
+            continue
+        try:
+            number = int(count)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if number > 0:
+            counts[name] = number
+    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow(
+            [
+                int(at),
+                json.dumps(counts, ensure_ascii=False),
+                json.dumps({"完整": True}, ensure_ascii=False),
+            ]
+        )
+
+
+# 读取结果按 (mtime, size) 缓存。depotresult.csv 只追加不清理，而每次打开仓库页都会读
+# 它：没有这层缓存，扫描记录越多、刷新越慢，同一份文件还要被解析两遍（当前库存 + 历史）。
+_快照行缓存 = None
+
+
+def _读取快照行(path):
+    """读 depotresult.csv 的数据行；文件没变时直接复用上一次的解析结果。"""
+    global _快照行缓存
+    stat = os.stat(path)
+    key = (path, stat.st_mtime_ns, stat.st_size)
+    if _快照行缓存 is not None and _快照行缓存[0] == key:
+        return _快照行缓存[1]
+    _, rows = read_csv_rows(path)
+    _快照行缓存 = (key, rows)
+    return rows
+
+
+def 最后有效快照(rows):
+    """从后往前找最后一条既有时戳又有物品字典的扫描记录，返回 (秒级时戳, 物品字典)。
+
+    两个写入方都是 append 模式，掉电或磁盘满会在文件尾部留下半行。旧代码直接读
+    depotinfo[-1]，一行坏数据就能让 /depot/readdepot 整个 500，而这页其实只需要一条
+    能用的记录。找不到时返回 (None, None)，调用方按"还没有历史"处理。
+    """
+    for row in reversed(rows or []):
+        # 列顺序固定为 Timestamp,Data,json；列数异常的残行直接跳过。
+        if len(row) < 2:
+            continue
+        try:
+            at = int(float(row[0]))
+            payload = json.loads(row[1])
+        except (TypeError, ValueError, OverflowError):
+            # OverflowError 也要收：int(float("inf")) 会抛它，而 json.loads 也接受 Infinity。
+            continue
+        if not isinstance(payload, dict) or "还未开始过扫描" in payload:
+            continue
+        return at, payload
+    return None, None
+
+
+def 读取仓库(记录快照时刻=None):
+    """读当前库存并返回页面要的分类结构。
+
+    记录快照时刻 只有扫仓库那条路会传：那时才顺手把"当前完整库存"记一条带时间戳的
+    快照（见 记录合并快照）。仓库页本身会频繁调用这里，默认不传就不会一直追加记录。
+    """
     path = get_path("@app/tmp/cultivate.json")
     if not os.path.exists(path):
         创建json()
@@ -86,14 +188,24 @@ def 读取仓库():
         新物品1[entry[2]] = int(item["count"])
 
     csv_path = get_path("@app/tmp/depotresult.csv")
-    if not os.path.exists(csv_path):
+    if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
         创建csv()
 
-    # 读取CSV文件
-    _, depotinfo = read_csv_rows(csv_path)
+    # 读取CSV文件（按 mtime/size 缓存，扫描写入后自动失效）
+    try:
+        depotinfo = _读取快照行(csv_path)
+    except (EmptyDataError, OSError, UnicodeDecodeError, csv.Error) as error:
+        # 文件被别的编辑器存成 GBK、或写入中途被截断时，当前库存仍然要能打开，
+        # 不能因为历史这一侧坏掉就让整页进错误态。
+        logger.warning(f"仓库扫描: 读取 {csv_path} 失败，按无历史处理：{error}")
+        depotinfo = []
 
-    # 取出最后一行数据中的物品信息并进行合并
-    最后一行物品 = json.loads(depotinfo[-1][1])
+    # 取出最后一条可用记录中的物品信息并进行合并
+    最后一行时刻, 最后一行物品 = 最后有效快照(depotinfo)
+    if 最后一行物品 is None:
+        logger.warning("仓库扫描: 没有可用的历史快照，仅使用本次扫描结果")
+        最后一行时刻 = int(datetime.now().timestamp())
+        最后一行物品 = {}
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
     新物品json = {}
     db_dict = {}
@@ -108,7 +220,7 @@ def 读取仓库():
             continue
         新物品json[entry[0]] = count
         db_dict[entry[2]] = count
-    time = depotinfo[-1][0]
+    time = 最后一行时刻
     scanned_counts = {
         key_mapping[name][2]: count
         for name, count in 最后一行物品.items()
@@ -117,7 +229,7 @@ def 读取仓库():
     db_dict = save_inventory_counts(
         db_dict,
         scanned_counts=scanned_counts,
-        scanned_at=float(depotinfo[-1][0]),
+        scanned_at=float(最后一行时刻),
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
     )
@@ -282,6 +394,12 @@ def 读取仓库():
             "sort": 9999999,
             "icon": "寻访凭证",
         }
+
+    # 新物品 是页面看到的同一份合并库存（森空岛 + 数据库 + 本次扫描，已去掉信物，
+    # 也没掺派生条目），直接拿它当"完整库存快照"的内容，两边口径不会分叉。
+    if 记录快照时刻 is not None:
+        记录合并快照(记录快照时刻, 新物品)
+
     return [
         classified_data,
         json.dumps(新物品json),
@@ -289,75 +407,119 @@ def 读取仓库():
     ]
 
 
-def 读取仓库历史(limit=60):
-    """读取 depotresult.csv 的扫描快照序列，供仓库页趋势使用。
+def _读取历史行(path):
+    """读一份快照 CSV，返回 [(秒级时戳, 物品字典, 是否完整库存)]。
 
-    返回 [{at: 秒级时间戳, items: {物品名: 数量}}]，按时间升序，只保留最近 limit 条。
-    文件不存在、只有占位行或全部损坏时返回 []，调用方不必判空。
-
-    CSV 的 Data 列是每次扫描的**全量**快照（不是增量），所以相邻两条的差值就是
-    这段时间的净变化；创建文件时写入的占位行 "还未开始过扫描" 必须排除，
-    否则第一次真实扫描会相对它产生一整份假增量。
-
-    每条快照的 items 会回填四个派生档位（玉+卷 … 额外+碎片+土）。CSV 里只存了原始
-    物料，抽数得现算；在这里补上，前端就能直接读，不必自己再折算一遍，页面上的
-    "折合寻访抽数" 卡片与趋势线也就不会因为舍入口径不同而对不上。
+    列顺序固定为 Timestamp,Data,json；列数异常、时戳或 JSON 坏掉的残行直接跳过。
+    第三列只有合并快照会写 {"完整": true}，扫描行写的是别的占位内容，解析不出来就
+    当"部分快照"处理。
     """
-    path = get_path("@app/tmp/depotresult.csv")
-    if not os.path.exists(path) or os.path.getsize(path) == 0:
+    if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
         return []
 
     try:
-        _, rows = read_csv_rows(path)
+        rows = _读取快照行(path)
     except (EmptyDataError, OSError, UnicodeDecodeError, csv.Error) as error:
         # UnicodeDecodeError 也要收：文件可能被别的编辑器存成 GBK，或写入中途被截断，
         # 让这点瑕疵把整个 /depot/history 变成 500 不值得。
         logger.warning(f"仓库历史: 读取 {path} 失败，按无历史处理：{error}")
         return []
 
-    snapshots = []
+    parsed = []
     for row in rows:
-        # 列顺序固定为 Timestamp,Data,json；列数异常的残行直接跳过。
         if len(row) < 2:
             continue
         try:
             at = int(float(row[0]))
-        except (TypeError, ValueError):
-            continue
-        try:
             payload = json.loads(row[1])
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if not isinstance(payload, dict):
             continue
         # 占位行/空快照没有可比较的物料，参与环比只会制造假变化。
         if "还未开始过扫描" in payload:
             continue
+        完整 = False
+        if len(row) > 2:
+            try:
+                标记 = json.loads(row[2])
+            except (TypeError, ValueError):
+                标记 = None
+            完整 = isinstance(标记, dict) and 标记.get("完整") is True
+        parsed.append((at, payload, 完整))
+    return parsed
+
+
+def 读取仓库历史(limit=60):
+    """读取仓库快照序列，供仓库页趋势使用。
+
+    返回 [{at: 秒级时间戳, items: {物品名: 数量}, complete?: True}]，按时间升序，
+    只保留最近 limit 条。两条记录线都不存在或全部损坏时返回 []，调用方不必判空。
+
+    两条线：
+    - depotresult.csv：每次扫仓库写一行，记录**识别到了什么**。识别模型只覆盖
+      基础物品/消耗品，材料类（固源岩…）从来不在里面。
+    - depotmerged.csv：每次扫描同时写一行**当前完整库存**（森空岛 + 数据库 + 扫描），
+      材料就靠它进历史。它只写数量大于 0 的条目，所以带 complete 标记告诉前端
+      "没列出来的名字是 0"，而不是"这次没扫描到"。
+
+    两条线用同一个时间戳，这里按时间戳并成一条快照：不并的话两端物品集合对不上，
+    材料与基础物品之间的差额永远算不出来。
+
+    CSV 的 Data 列是全量快照（不是增量），相邻两条的差值就是这段时间的净变化；
+    创建文件时写入的占位行 "还未开始过扫描" 必须排除，否则第一次真实扫描会相对它
+    产生一整份假增量。
+
+    每条快照的 items 会回填四个派生档位（玉+卷 … 额外+碎片+土）。CSV 里只存了原始
+    物料，抽数得现算；在这里补上，前端就能直接读，不必自己再折算一遍，页面上的
+    "折合寻访抽数" 卡片与趋势线也就不会因为舍入口径不同而对不上。
+
+    部分快照只有这次扫描真的看到了抽卡物料（抽数来源）才回填：全都缺席时补 0 会被
+    前端当成"这次扫描抽数为 0"，在环比里造出一次假的 −20 抽。完整快照不一样，
+    没列出来就是 0，所以一律补算。
+    """
+    # 同一次扫描的两行先按时间戳归拢：扫描行给"看到了什么"，合并行给"完整库存"。
+    逐条 = {}
+    for at, payload, _完整 in _读取历史行(get_path("@app/tmp/depotresult.csv")):
+        逐条.setdefault(at, {"items": {}, "完整": False})["items"].update(payload)
+    for at, payload, 完整 in _读取历史行(_合并历史路径()):
+        记录 = 逐条.setdefault(at, {"items": {}, "完整": False})
+        记录["items"].update(payload)
+        # 只认带标记的那种：没有标记的行（老版本写的）不能当成完整库存。
+        记录["完整"] = 记录["完整"] or 完整
+
+    snapshots = []
+    for at in sorted(逐条):
+        记录 = 逐条[at]
         items = {}
-        for name, count in payload.items():
-            if not isinstance(name, str) or "信物" in name:
+        for name, count in 记录["items"].items():
+            if not isinstance(name, str) or 是信物(name):
                 continue
             try:
                 # 与 读取仓库 一致：取整，反向解析出的浮点值（"1.2万"）向下取整。
                 items[name] = int(count)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 continue
-        if not items:
+        if not items and not 记录["完整"]:
             continue
-        # 派生档位以当前换算为准：旧快照里可能残留上一版公式写下的同名键，
-        # 直接更新会留下旧值，所以先剔掉再统一补算。
+        # 旧快照里可能残留上一版公式写下的同名键，无论这次算不算都要先剔掉：
+        # 留着会被下一层当成"原始物料"，也会把上一版的值当成本次观测。
         for 档位 in 抽数档位:
             items.pop(档位, None)
-        items.update(
-            折算抽数(
-                items.get("合成玉", 0),
-                items.get("寻访凭证", 0) + items.get("十连寻访凭证", 0) * 10,
-                items.get("至纯源石", 0),
-                items.get("源石碎片", 0),
-                items.get("固源岩", 0),
+        if 记录["完整"] or any(来源 in items for 来源 in 抽数来源):
+            items.update(
+                折算抽数(
+                    items.get("合成玉", 0),
+                    items.get("寻访凭证", 0) + items.get("十连寻访凭证", 0) * 10,
+                    items.get("至纯源石", 0),
+                    items.get("源石碎片", 0),
+                    items.get("固源岩", 0),
+                )
             )
-        )
-        snapshots.append({"at": at, "items": items})
+        快照 = {"at": at, "items": items}
+        if 记录["完整"]:
+            快照["complete"] = True
+        snapshots.append(快照)
 
     # 排序必须先于截断：CSV 正常是追加写的，但换机/合并/时钟回拨都可能留下乱序行，
     # 若先截断就会取到"文件里最后 limit 行"而不是"最近 limit 次扫描"。
