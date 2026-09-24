@@ -37,7 +37,7 @@
           </n-button>
         </header>
         <div v-if="!showCard[group.boardKey] && group.hasValidRatio" class="pie-area">
-          <Pie :data="group.work_break_group" :options="pieOptions" />
+          <Pie :data="group.work_break_group" :options="pieOptions" :plugins="[ChartDataLabels]" />
         </div>
         <div v-else-if="!showCard[group.boardKey]" class="no-history">暂无有效工休比数据</div>
         <div v-else class="agent-details">
@@ -88,8 +88,7 @@ ChartJS.register(
   Tooltip,
   Legend,
   Colors,
-  ArcElement,
-  ChartDataLabels
+  ArcElement
 )
 
 function durationRatio(points) {
