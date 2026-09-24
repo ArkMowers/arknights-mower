@@ -2,7 +2,7 @@ import platform
 import sys
 from pathlib import Path
 
-__version__ = "4.1.6-alpha.7"
+__version__ = "4.1.6-alpha.8"
 __release_system__ = ""
 __release_arch__ = ""
 __release_archive__ = ""

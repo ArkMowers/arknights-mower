@@ -1,5 +1,66 @@
 # CHANGELOG
 
+## 4.1.6-alpha.7 - 2026-09-21
+
+### New
+
+- 支持入住宿舍前切表并重建单回顺序 [(#1087)](https://github.com/ArkMowers/arknights-mower/pull/1087) @ALEXsun0
+- 规范训练室判定日志按中文语义与高亮规则展示进驻状态 @NiceAfternoon
+- 支持按排班切换基建产物与订单 [(#1079)](https://github.com/ArkMowers/arknights-mower/pull/1079) @ALEXsun0
+- 优化窗口在不同缩放比例下的最小尺寸限制与排版布局 @NiceAfternoon
+- 支持 Windows MAA OTA 更新 [(#1080)](https://github.com/ArkMowers/arknights-mower/pull/1080) @ALEXsun0
+- 联动截图间隔并调整性能档位控件 [(#1077)](https://github.com/ArkMowers/arknights-mower/pull/1077) @ALEXsun0
+- 添加自适应设备性能预设 [(#1076)](https://github.com/ArkMowers/arknights-mower/pull/1076) @ALEXsun0
+- 完善版本更新维护调度 [(#1075)](https://github.com/ArkMowers/arknights-mower/pull/1075) @ALEXsun0
+- 随 Mower 更新 Python 环境并联合检查 MAA 接口 [(#1069)](https://github.com/ArkMowers/arknights-mower/pull/1069) @ALEXsun0
+
+### Bug Fixes
+
+- 统一宿舍休息优先级并修复不养闲人换床 [(#1039)](https://github.com/ArkMowers/arknights-mower/pull/1039) @ALEXsun0
+- 修复副表切换时覆盖原上班任务的问题 [(#1090)](https://github.com/ArkMowers/arknights-mower/pull/1090) @NiceAfternoon
+- 副表宿舍任务覆盖原宿舍安排 @ALEXsun0
+- 修复干员进驻出现二次确认弹窗时识别超时导致排班中断的问题 [(#1089)](https://github.com/ArkMowers/arknights-mower/pull/1089) @NiceAfternoon
+- 修复 Mower 刷理智任务未正常消费导致提前休眠的问题 [(#1088)](https://github.com/ArkMowers/arknights-mower/pull/1088) @NiceAfternoon
+- 修复副表固定干员与动态宿舍反复抢位 [(#1086)](https://github.com/ArkMowers/arknights-mower/pull/1086) @983122046 @ALEXsun0
+- 修复关闭自动专精后训练室纠错被跳过的问题 @NiceAfternoon
+- 修复开始训练时核验训练位干员报错的问题 @NiceAfternoon
+- 修复关闭自动专精功能时训练室排班纠错被意外跳过的问题 @NiceAfternoon
+- 修复训练室面板括号文本残缺时无法识别训练干员的问题 @NiceAfternoon
+- 修复训练位浮窗读取失败时误判为空位执行换人的问题 @NiceAfternoon
+- 修复训练室处于训练状态时排班任务反复进出房间的问题 @NiceAfternoon
+- 修复干员名包含全角括号时读取失败导致训练室反复重读的问题 @NiceAfternoon
+- 修复训练位为空时未按计划换入干员导致无法启动专精的问题 @NiceAfternoon
+- 修复关闭进驻详情浮窗时误退回基建总览界面的问题 @NiceAfternoon
+- 修复输入框聚焦高亮轮廓被窗口边框遮挡的问题 @NiceAfternoon
+- 允许训练室绑组继续自动专精 [(#1083)](https://github.com/ArkMowers/arknights-mower/pull/1083) @ALEXsun0
+- 按四点切换理智周计划日期 [(#1082)](https://github.com/ArkMowers/arknights-mower/pull/1082) @ALEXsun0
+- 完善加工站设置说明 [(#1081)](https://github.com/ArkMowers/arknights-mower/pull/1081) @ALEXsun0
+- 分解后保留列表位置避免从头扫描 [(#1078)](https://github.com/ArkMowers/arknights-mower/pull/1078) @ALEXsun0
+- 修复清缓存重启时副表误触发 [(#1074)](https://github.com/ArkMowers/arknights-mower/pull/1074) @ALEXsun0
+- 修复重复发起森空岛签到的问题 [(#1073)](https://github.com/ArkMowers/arknights-mower/pull/1073) @NiceAfternoon
+- 修复任务结束后无法正常休息 [(#1072)](https://github.com/ArkMowers/arknights-mower/pull/1072) @NiceAfternoon
+- 修复在保存设置时因遗漏 ADB 路径而导致配置丢失与设备连接异常 [(#1071)](https://github.com/ArkMowers/arknights-mower/pull/1071) @NiceAfternoon
+- 修复训练室协助位保护场景下专精任务无法启动的问题 [(#1070)](https://github.com/ArkMowers/arknights-mower/pull/1070) @NiceAfternoon
+- 以新同步的森空岛库存校正加工计数 [(#1068)](https://github.com/ArkMowers/arknights-mower/pull/1068) @ALEXsun0
+
+### Improvements
+
+- 统一训练室读取与调度流程中的重排缓冲时间配置 @NiceAfternoon
+- 优化进驻详情浮窗已开启时直接读取训练位槽位数据 @NiceAfternoon
+
+### Documentation
+
+- 更新专精自动化模块说明文档与内部说明 @NiceAfternoon
+
+### Other
+
+- prerelease v4.1.6-alpha.7 [(#1091)](https://github.com/ArkMowers/arknights-mower/pull/1091) @NiceAfternoon
+- 修正训练室纠错测试用例在未满足前置条件时的误通过问题 @NiceAfternoon
+- 隔离导航测试用例执行期间对数据文件的持久化修改 @NiceAfternoon
+- 验证训练室被外部干员占用时不生成排班纠错任务 @NiceAfternoon
+
+**Full Changelog**: [v4.1.6-alpha.6...v4.1.6-alpha.7](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.6...v4.1.6-alpha.7)
+
 ## 4.1.6-alpha.6 - 2026-09-16
 
 ### New
