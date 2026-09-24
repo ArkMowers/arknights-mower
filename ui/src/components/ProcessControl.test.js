@@ -20,7 +20,7 @@ vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 
 describe('process-control recovery across page navigation', () => {
-  let scope, component, session
+  let scope, component, exposed, session, props
 
   beforeEach(() => {
     session = new Map()
@@ -30,13 +30,14 @@ describe('process-control recovery across page navigation', () => {
       removeItem: (key) => session.delete(key)
     })
     vi.stubGlobal('window', { location: { reload: vi.fn() } })
+    props = reactive({ compact: false, running: null })
     state.config = reactive({ autosave_paused: false, flush_config_saves: vi.fn(async () => {}) })
     state.plan = reactive({ autosave_paused: false, wait_for_plan_save: vi.fn(async () => {}) })
     state.client = {
       post: vi.fn(async () => ({ data: { ok: true, id: 'restart-test', message: '已提交' } })),
       get: vi.fn(async (url) => ({
         data: url.endsWith('/info')
-          ? { ok: true, supported: true }
+          ? { ok: true, supported: true, running: true }
           : { ok: true, status: 'failed', message: '重启失败' }
       }))
     }
@@ -46,7 +47,9 @@ describe('process-control recovery across page navigation', () => {
     state.mounted = []
     state.unmounted = []
     scope = effectScope()
-    component = scope.run(() => ProcessControl.setup({}, { expose: () => {} }))
+    component = scope.run(() =>
+      ProcessControl.setup(props, { expose: (value) => (exposed = value) })
+    )
     await Promise.all(state.mounted.map((callback) => callback()))
     await nextTick()
   }
@@ -93,6 +96,65 @@ describe('process-control recovery across page navigation', () => {
       expect(state.config.autosave_paused).toBe(true)
     }
   )
+
+  it('keeps compact restart mode synchronized with the live running prop', async () => {
+    props.compact = true
+    props.running = false
+    await mount()
+    expect(component.effectiveRunning.value).toBe(false)
+
+    props.running = true
+    await nextTick()
+    expect(component.effectiveRunning.value).toBe(true)
+
+    props.running = false
+    await nextTick()
+    expect(component.effectiveRunning.value).toBe(false)
+  })
+
+  it.each(['restart_resume', 'apply_schedule'])(
+    'uses the existing save and pending-job flow for %s',
+    async (action) => {
+      state.client.get.mockImplementation(async (url) => ({
+        data: url.endsWith('/info')
+          ? { ok: true, supported: true, running: true }
+          : { ok: true, status: 'succeeded', message: '续接完成' }
+      }))
+      await mount()
+      await component.submit(action)
+      expect(state.client.post).toHaveBeenCalledWith(
+        '/process-control/action',
+        { action },
+        { headers: { 'X-Mower-Control': '1' } }
+      )
+      expect(state.config.autosave_paused).toBe(true)
+      expect(state.plan.autosave_paused).toBe(true)
+      expect(window.location.reload).toHaveBeenCalledOnce()
+      expect(session.size).toBe(0)
+    }
+  )
+
+  it.each([
+    ['applySchedule', 'apply_schedule'],
+    ['restartResume', 'restart_resume']
+  ])('allows %s only while running and ready', async (method, action) => {
+    props.compact = true
+    props.running = false
+    await mount()
+    expect(exposed.canRunProcessAction.value).toBe(false)
+    await exposed[method]()
+    expect(state.client.post).not.toHaveBeenCalled()
+
+    props.running = true
+    await nextTick()
+    expect(exposed.canRunProcessAction.value).toBe(true)
+    await exposed[method]()
+    expect(state.client.post).toHaveBeenCalledWith(
+      '/process-control/action',
+      { action },
+      { headers: { 'X-Mower-Control': '1' } }
+    )
+  })
 
   it('leaves saving enabled after an explicit rejection and remount', async () => {
     state.client.post.mockResolvedValueOnce({ data: { ok: false, message: '已拒绝' } })

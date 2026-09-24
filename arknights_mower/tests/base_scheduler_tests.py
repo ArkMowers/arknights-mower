@@ -1284,6 +1284,31 @@ class TestBaseScheduler(unittest.TestCase):
         mock_plan.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_replan_scans_stale_mood_before_calculating_tasks(self):
+        solver = BaseSchedulerSolver()
+        solver.task = None
+        solver.planned = False
+        solver.tasks = []
+        solver.restart_after_mood_read = False
+        solver.defer_backup_plan_until_mood_read = False
+
+        with (
+            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "no_pending_task", return_value=True),
+            patch.object(
+                BaseSchedulerSolver, "agent_get_mood", return_value=None
+            ) as read_mood,
+            patch.object(BaseSchedulerSolver, "run_order_solver") as run_order,
+            patch.object(BaseSchedulerSolver, "plan_solver") as plan,
+        ):
+            solver.infra_main()
+
+        read_mood.assert_called_once_with(skip_dorm=True)
+        run_order.assert_called_once_with()
+        plan.assert_called_once_with()
+        self.assertTrue(solver.planned)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_defers_backup_refresh_to_restart(self):
         solver, read_meeting = self._create_backup_refresh_solver()
 

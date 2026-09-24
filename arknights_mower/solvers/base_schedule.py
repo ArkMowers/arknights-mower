@@ -6157,9 +6157,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             length = len(self.op_data.plan[room])
         if length > 3:
             self.scroll_room_operators(bottom=False)
-        name_x = (1288, 1869)
-        name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
-        name_p = [tuple(zip(name_x, y)) for y in name_y]
+        slot_x = (1288, 1869)
+        slot_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
+        slot_p = [tuple(zip(slot_x, y)) for y in slot_y]
+        # 姓名从 x≈1470 开始；整张槽位卡片含头像和心情条，模板只保留
+        # 左上角 265×46 像素时会截断长姓名。空槽检测仍使用完整槽位范围。
+        name_x = (1460, 1785)
+        name_p = [tuple(zip(name_x, (top + 25, top + 80))) for top, _ in slot_y]
         time_x = (1650, 1780)
         time_y = [(270, 305), (480, 515), (690, 725), (668, 703), (877, 912)]
         time_p = [tuple(zip(time_x, y)) for y in time_y]
@@ -6176,7 +6180,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             data = {}
             _name = ""
             for read_try in range(3):
-                if self.find("infra_no_operator", scope=name_p[i]):
+                if self.find("infra_no_operator", scope=slot_p[i]):
                     _name = ""
                     break
                 _name = self.read_screen(

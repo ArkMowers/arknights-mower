@@ -30,6 +30,7 @@ def info():
     return {
         "ok": True,
         "supported": record is not None,
+        "running": bool(record and record.get("running")),
         "name": (record.get("name") or "默认实例") if record else "",
         "message": "" if record else "请通过 Mower 桌面启动器启动实例后使用",
     }
@@ -51,7 +52,7 @@ def status(job_id):
 
 
 def request_action(action):
-    if action not in ("restart", "stop"):
+    if action not in ("restart", "restart_resume", "apply_schedule", "stop"):
         raise ValueError("未知进程操作")
     state = runtime.state_dir()
     with runtime.submission_lock(state):
@@ -60,6 +61,10 @@ def request_action(action):
         record = current_instance()
         if record is None:
             raise ValueError("当前服务不是已注册的 Mower 实例")
+        if action == "restart_resume" and not record.get("running"):
+            raise ValueError("当前实例未在运行，无需续接任务")
+        if action == "apply_schedule" and not record.get("running"):
+            raise ValueError("当前实例未在运行，无需应用排班")
         job_id = uuid4().hex
         work = job_folder(job_id)
         work.mkdir(parents=True, mode=0o700)
@@ -117,6 +122,17 @@ def restart_command(record, frozen):
     return [executable, *argv[1:]] if frozen else [executable, *argv]
 
 
+def restart_environment(record, job):
+    env = runtime.launch_environment(record, job["id"], record.get("background", False))
+    if job["action"] == "restart_resume":
+        env["MOWER_RESUME_MODE"] = "0"
+    elif job["action"] == "apply_schedule":
+        env["MOWER_RESUME_MODE"] = "1"
+    else:
+        env.pop("MOWER_RESUME_MODE", None)
+    return env
+
+
 def execute(job_path):
     job_path = Path(job_path)
     job = runtime.read_json(job_path)
@@ -143,9 +159,7 @@ def execute(job_path):
             report("当前实例已结束", "succeeded")
             return
         report("正在恢复当前实例及原启动参数")
-        env = runtime.launch_environment(
-            record, job["id"], record.get("background", False)
-        )
+        env = restart_environment(record, job)
         with (job_path.parent / "restart.log").open("ab") as log:
             child = subprocess.Popen(
                 restart_command(record, job["frozen"]),
@@ -173,7 +187,12 @@ def execute(job_path):
                 and item.get("restart_job") == job["id"]
                 for item in records
             ):
-                report("当前实例已重启，原运行状态将自动恢复", "succeeded")
+                message = {
+                    "restart_resume": "当前实例已重启，正在续接原任务",
+                    "apply_schedule": "当前实例已重启，正在按新排班生成任务",
+                    "restart": "当前实例已重启，原运行状态将自动恢复",
+                }[job["action"]]
+                report(message, "succeeded")
                 return
             if child.poll() is not None:
                 break
