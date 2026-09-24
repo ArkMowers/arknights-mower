@@ -126,6 +126,117 @@ T1 是 **S13 的分片执行**，只覆盖与 Wave 1（S1–S5）相关的三项
 
 ---
 
+## T2 — S13 点击类分片（第 2/3/4/5/8 项）
+
+T2 是 **S13 的第二个分片**，覆盖 Wave 1 遗留的**点击类**项。
+**不包含** S13 第 7 项（六个新 executor，属 S7–S12 / Wave 3，**尚未实现**，无可测对象），
+因此 **T2 完成 ≠ S13 结案**。
+
+**T2 全程会点击游戏**，因此必须：MuMu 已启动、游戏已登录、`adb 127.0.0.1:16416` 在线。
+每项跑完游戏可能停在 `INFRA_ARRANGE_ORDER(207)` / `INFRA_DETAILS_OPEN(230)`，
+下一项开始前都会先做环境归一（`recover_if_stuck` / `dismiss_leave_infra_dialog` / `setup_to_infra_main`）。
+
+| 项 | 脚本 | S13 | 需游戏运行 | 副作用 | 回滚 | 判定 |
+|---|---|---|---|---|---|---|
+| T2.1 | `t2_1_navigation.py` | item 2 | **是** | 写 `mower.db` | `Copy-Item` 备份 → `finally` 还原 | ❌ 失败（缺陷 A/C） |
+| T2.2 | `t2_2_free_fill.py` | item 3 | **是** | **真实补位 3 人** + 写 `mower.db` | 游戏内手工调宿舍 | ✅ 15/15 |
+| T2.3 | `t2_3_bug2_report.py` | item 4 | **是** | 写 `mower.db`（**不点任何干员**） | `Copy-Item` 备份 → `finally` 还原 | ❌ 失败（代码问题） |
+| T2.4 | `t2_4_real_swap.py` | item 5 | **是** | **真实换人** + 写 `mower.db` | 游戏内手工调宿舍 | ✅ 12/12 |
+| T2.5 | `t2_5_read_confidence.py` | item 8 | **是**（只读面板） | 写 `mower.db` | `Copy-Item` 备份 → `finally` 还原 | ❌ 失败 8/10（代码问题） |
+
+共享工具（**文件名均不以 `_tests.py` 结尾**，故不进 G1）：
+`t2_common.py`（设备/状态/备份）、`t2_nav.py`（导航腿 + 看门狗）、`t2_probe.py`（调用记账、
+scene 采样、日志计数）、`t2_read.py`（稳定读数 + 滚动复位）、`t2_runner.py`（统一 `main()` 脚手架）、
+`t2_task.py`（真实 `MainLoop` 驱动 + 房间读数）。
+
+**每项脚本自带的统一保障**（`t2_runner.run_probe_script`）
+
+- `--seconds` 墙钟上限 + `WallClockStop` 安全网（比观察窗口晚 `CLOCK_GRACE_SECONDS`）
+- `mower.db` / `conf.yml` **前后 SHA256** 打印；`db_backup_t2` 用 `Copy-Item` 备份、
+  `finally` 还原，并断言**无 `.t2bak` 残留**
+- `finally: request_stop()`（正常结束 / `Ctrl+C` / 异常三条路径都收敛）
+- `SchedulerState` 全程 `no_save_conf()`
+- 证伪 / 正控对照（每项至少一条）
+
+### `t2_1_navigation.py` — 导航全链路
+
+**安全边界**：会点击（进房间、开详情、退首页）。**只进入并退出房间，不打开干员选择面板、
+不点击任何干员、不提交任何变更**。
+
+**为什么不得把「零点击」写成硬判据**：S13 要求"首页 → 基建 → 任意房间，scene 序列正确"，
+而 `Navigator.enter_room()` 在 `navigator.py:134` **无条件**点一次房间中心，**没有任何
+提前返回路径**。因此"零 tap/swipe"与"真的进入房间"**互斥**，脚本按**分腿点击预算**
+下实质判据，并把字面零点击判据**如实记为 FAIL**（未放宽）。
+
+**结果**：实质判据 **13/16**。全部房间腿通过；三项 FAIL（`到达首页 INDEX`、
+`首页腿点击预算 ≤3`（实测 99）、`无任何腿被墙钟打断`）**同源于缺陷 A**。
+
+### `t2_2_free_fill.py` — 自由位补位（A6 / BUG-1）
+
+**安全边界**：真实补位（`Free` 位会真的被填上 3 人）→ 房间构成**会变**，需在游戏内手工回滚。
+**证伪对照**：把补位判定静默化 → `free tap` 必须为 **0** 次。
+
+**结果**：**15/15 通过**。`free tap` 3 次且互不相同、`swipe page` 0 次、
+`uncheck slots=[2,3,4]`、终点 5 位全非空、保留位未被误动。
+
+### `t2_3_bug2_report.py` — BUG-2 失败可上报
+
+**安全边界**：进 `room_1_2` → 开选择面板 → 翻页扫描。`TARGET` 是一个**非真实干员名**
+（`T2_不存在的干员_zzz`），因此**面板上永远不可能命中它** → **全程不点任何干员**，
+无半成品排班。
+
+**⚠️ 本项为何用"构造"而非"塞一个真不存在的干员名"**：S13 原方案实测**走不到**失败点。
+名字不认识 ⇒ `DEFAULT_FILTER="ALL"` ⇒ 需翻 27+ 页，翻到第 5~20 页游戏切
+`LOGIN_LOADING(104)`，`agent_swap_base.py:110` 直接 abort；换成职介明确的真实名字后，
+面板职介筛选**实际没有收窄**列表（实测 `filter=MEDIC` 却扫出 `能天使`(SNIPER)、
+`德克萨斯`(PIONEER)），同样要 27+ 页。故改用**产品自身**的翻页上限守卫：
+把 `MAX_PAGE`（`constants.py`，**产品代码不改**）50 → 3，由 `_advance_page` 抛
+`AgentSwapError("max page reached")` —— 与"目标扫不到"**同一语义**，只是更快到达。
+
+**结果**：**11/11 预测成立 → 失败（代码问题）**。主臂：`AgentSwapError` 正常抛出，但被
+`agent_swap_base.py:126-128` 的 `except Exception: return False` **吞掉** ⇒
+`state.error` 恒为 `False`、任务悬挂。**正控臂**：仅把该处改成 `raise` ⇒ 立即
+`executor failed for task` → `task failed` → `state.error=True` 且队列清空 ⇒
+**下游 dispatch/loop 完好，缺陷位置唯一确定**。
+
+### `t2_4_real_swap.py` — 拆分后唯一真实换人
+
+**安全边界**：**真实换人**（会改房间构成）→ 需游戏内手工回滚。
+
+**结果**：**12/12 通过**。真实点击换入 `流明`/`琴柳`，自由位按预期补 `Free`，
+房间构成按预期变化、无残留。
+
+### `t2_5_read_confidence.py` — 读数可信度
+
+**安全边界**：会导航并点一次 `arrange_check_in` 打开详情面板，但**不打开干员选择面板、
+不点击任何干员、不提交任何变更**。自证段用 `MockDevicePort` + 空存储，**不连真机、不碰数据库**。
+
+**两件事**：① **自证**（把 `RoomReader._read_name` 猴补丁成交替返回两个值 → 必须判
+`INVALID`；若工具恒绿，则 T2.2/T2.4 的读数结论**全部作废**）；② **实机连读 3 次**。
+
+**结果**：**8/10 → 失败（代码问题）**。A 臂（不复位滚动）第 2/3 次读出
+`缄默德克萨斯×3`（同屏重名**物理不可能**）⇒ 证明**一致性 ≠ 正确性**；
+B 臂（每次读数前复位滚动）3 次完全一致。
+
+---
+
+## T2 实测发现的产品缺陷（**只上报，不修复**）
+
+T2 是**验证方**，`arknights_mower/` 下**未改一行**。缺陷清单（详见报告）：
+
+| 编号 | 类型 | 位置 | 要点 |
+|---|---|---|---|
+| A | 代码问题 | `constants.py:104` | `TapPosition.CONFIRM_YES=(1371,998)` 落在 `224 离开基建` 确认框外（实测框 `(835,683)-(1082,800)`，正确 ≈`(1080,741)`）⇒ 224 永不可关 ⇒ `navigate(INDEX)` 空转 |
+| B | **识别问题** | `agent_swap_arrange.py:35-51` | `_detect_arrange` 先查降序窗口，`心情` 列静态字形恒命中 ⇒ 永远返回 `('心情', False)`，宿舍定向换人**挂死**（`StepRetry` 无 guard/超时） |
+| C | 代码问题 | `navigator.py:99-136` | `enter_room` 先 `clip` 再判越界 ⇒ 两个 panic-swipe 分支是**死代码**；屏外房间永不可达，函数仍 `return True` |
+| D | 代码问题 | `room_reader.py:52-59` | `scan_room` 上滑读 3-4 槽位后**不回滚** ⇒ 后续读数错行；`_read_name` 无分数下限 ⇒ 静默返回错名 |
+| E | 代码问题 | `agent_swap_base.py:126-128` | 普通异常被降级为 `return False` ⇒ 业务失败不可上报（T2.3 主证） |
+| 待定 | 识别/代码 | `agent_swap_arrange.py:_open_filter` | 职介筛选**未真正收窄**列表（T2.3 run3 实证），归因未定 |
+
+**需主控裁定**：T2.1 的「零 tap/swipe」与「真的进入房间」互斥（见上）。
+
+---
+
 ## 既有脚本（S0 从 `scripts/` 迁入）
 
 ### `verify_scheduler_live.py`
