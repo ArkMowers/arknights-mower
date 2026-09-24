@@ -11,6 +11,8 @@ const { free_blacklist, theme, experimental_dorm_logic } = storeToRefs(config_st
 const plan_store = usePlanStore()
 const {
   ling_xi,
+  mood_limits,
+  operator_mood_limits,
   resting_priority,
   resting_standby,
   exhaust_require,
@@ -50,6 +52,10 @@ import { useDialog, useMessage, NAlert } from 'naive-ui'
 const plan_editor = ref(null)
 
 const generating_image = ref(false)
+const show_mood_limits_dialog = ref(false)
+watch(experimental_dorm_logic, (enabled) => {
+  if (!enabled) show_mood_limits_dialog.value = false
+})
 
 const message = useMessage()
 const dialog = useDialog()
@@ -175,6 +181,8 @@ function create_sub_plan() {
       exhaust_require: [],
       free_blacklist: [],
       ling_xi: ling_xi.value,
+      mood_limits: null,
+      operator_mood_limits: {},
       rest_in_full: [],
       resting_priority: [],
       resting_standby: [],
@@ -214,6 +222,8 @@ function update_dorm_order_override(value) {
 
 const current_conf = ref({
   ling_xi: ling_xi.value,
+  mood_limits: mood_limits.value,
+  operator_mood_limits: operator_mood_limits.value,
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
   resting_standby: resting_standby.value,
@@ -227,6 +237,8 @@ watchEffect(() => {
   if (sub_plan.value == 'main') {
     current_conf.value = {
       ling_xi: ling_xi.value,
+      mood_limits: mood_limits.value,
+      operator_mood_limits: operator_mood_limits.value,
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
       resting_standby: resting_standby.value,
@@ -246,6 +258,8 @@ watchEffect(() => {
 watchEffect(() => {
   if (sub_plan.value == 'main') {
     ling_xi.value = current_conf.value.ling_xi
+    mood_limits.value = current_conf.value.mood_limits
+    operator_mood_limits.value = current_conf.value.operator_mood_limits
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
@@ -324,7 +338,8 @@ function replace_main_conf() {
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
     free_blacklist: free_blacklist.value,
-    ope_resting_priority: ope_resting_priority.value
+    ope_resting_priority: ope_resting_priority.value,
+    operator_mood_limits: operator_mood_limits.value
   }
 }
 
@@ -609,7 +624,10 @@ function movePlanForward() {
     label-width="160"
     label-align="left"
   >
-    <n-form-item>
+    <n-form-item v-if="experimental_dorm_logic" :show-label="false">
+      <n-button @click="show_mood_limits_dialog = true">设置心情上下限</n-button>
+    </n-form-item>
+    <n-form-item v-else>
       <template #label>
         <span>令夕模式</span>
         <help-text>
@@ -618,7 +636,6 @@ function movePlanForward() {
           <div>感知：夕心情-令心情=12</div>
           <div>烟火：令心情-夕心情=12</div>
           <div>均衡：夕令心情一样</div>
-          <div>达到模式心情上限即离宿、不再入宿，不受“不养闲人”开关影响。</div>
         </help-text>
       </template>
       <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
@@ -631,7 +648,7 @@ function movePlanForward() {
     </n-form-item>
     <n-form-item>
       <template #label
-        ><span>需要回满心情的干员</span><help-text>休息到满心情后回班。</help-text></template
+        ><span>需要回满心情的干员</span><help-text>休息到当前心情上限后回班。</help-text></template
       >
       <slick-operator-select
         :disabled="edit_locked"
@@ -768,6 +785,52 @@ function movePlanForward() {
       ></slick-dorm-select>
     </n-form-item>
   </n-form>
+  <n-modal
+    v-if="experimental_dorm_logic"
+    v-model:show="show_mood_limits_dialog"
+    :auto-focus="false"
+    preset="card"
+    title="设置心情上下限"
+    :style="{ width: '680px', maxWidth: 'calc(100vw - 24px)' }"
+    :content-style="{ maxHeight: '70vh', overflowY: 'auto' }"
+  >
+    <n-form label-placement="top" :show-feedback="false">
+      <n-form-item>
+        <template #label>
+          <span>令夕模式</span>
+          <help-text>
+            <div>令夕上班时起作用</div>
+            <div>启动Mower前需要手动对齐心情</div>
+            <div>感知：夕心情-令心情=12</div>
+            <div>烟火：令心情-夕心情=12</div>
+            <div>均衡：夕令心情一样</div>
+            <div>个人设置优先于令夕模式，令夕模式优先于全体设置。</div>
+          </help-text>
+        </template>
+        <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
+          <n-space>
+            <n-radio :value="1">感知信息</n-radio>
+            <n-radio :value="2">人间烟火</n-radio>
+            <n-radio :value="3">均衡模式</n-radio>
+          </n-space>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item label="自定义上下限">
+        <mood-limits-editor
+          v-model:defaults="current_conf.mood_limits"
+          v-model:overrides="current_conf.operator_mood_limits"
+          :disabled="edit_locked"
+          :operators="operators"
+          :is-backup="sub_plan !== 'main'"
+        />
+      </n-form-item>
+    </n-form>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="show_mood_limits_dialog = false">完成</n-button>
+      </n-space>
+    </template>
+  </n-modal>
   <n-modal
     v-model:show="show_replace_dialog"
     preset="card"

@@ -180,6 +180,8 @@ def build_global_plan():
         resting_priority=config.plan.conf.resting_priority,
         resting_standby=config.plan.conf.resting_standby,
         ling_xi=config.plan.conf.ling_xi,
+        mood_limits=plan["conf"].get("mood_limits"),
+        operator_mood_limits=plan["conf"].get("operator_mood_limits", {}),
         workaholic=config.plan.conf.workaholic,
         free_blacklist=conf.free_blacklist,
         ope_resting_priority=config.plan.conf.ope_resting_priority,
@@ -229,6 +231,8 @@ def build_global_plan():
             i["conf"]["exhaust_require"],
             i["conf"]["resting_priority"],
             ling_xi=i["conf"]["ling_xi"],
+            mood_limits=i["conf"].get("mood_limits"),
+            operator_mood_limits=i["conf"].get("operator_mood_limits", {}),
             workaholic=i["conf"]["workaholic"],
             free_blacklist=i["conf"]["free_blacklist"],
             ope_resting_priority=i["conf"]["ope_resting_priority"],
@@ -362,6 +366,9 @@ class Operators:
         return default_plan, ext_config.merge_config(plan.config)
 
     def init_and_validate(self, update=False):
+        for name in self.config.operator_mood_limits:
+            if name not in agent_list:
+                return f"心情上下限中的干员名无效：{name}"
         experimental = self.experimental_dorm_logic
         saved_dorms = copy.deepcopy(self.all_dorms()) if update and experimental else []
         self.displaced_dorms = []
@@ -589,7 +596,7 @@ class Operators:
             self.group_dorm = []
         if update and experimental:
             self.displaced_dorms = self.restore_dorm_state(saved_dorms)
-        # 设定令夕模式的心情阈值
+        # 应用心情上下限：个人设置优先，其次令夕模式、全体设置。
         self.init_mood_limit()
         for name in self.workaholic_agent:
             if name not in self.config.free_blacklist:
@@ -601,24 +608,48 @@ class Operators:
         )
 
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
-        if name in self.operators:
+        if name in self.operators and self.is_planned_operator(name):
             self.operators[name].upper_limit = upper_limit
             self.operators[name].lower_limit = lower_limit
 
-    def is_ling_xi_limited(self, name):
-        """当前令夕模式中需要在 12 心情停止休息的干员。"""
-        return name == {1: "令", 2: "夕"}.get(self.config.ling_xi)
+    def has_rest_mood_limit(self, name):
+        """自定义上下限或令夕自动规则要求到上限立即离宿。"""
+        return self.is_planned_operator(name) and (
+            self.custom_mood_limits(name) is not None
+            or name == {1: "令", 2: "夕"}.get(self.config.ling_xi)
+        )
 
-    def ling_xi_rest_complete(self, name):
+    def is_planned_operator(self, name):
+        return any(
+            name == slot.agent or name in slot.replacement
+            for slots in self.plan.values()
+            for slot in slots
+        )
+
+    def custom_mood_limits(self, name):
+        return (
+            self.config.custom_mood_limits(name)
+            if self.experimental_dorm_logic and self.is_planned_operator(name)
+            else None
+        )
+
+    def rest_mood_complete(self, name):
         op = self.operators.get(name)
         return (
-            self.is_ling_xi_limited(name)
+            self.has_rest_mood_limit(name)
             and op is not None
-            and op.time_stamp is not None
+            and resting_mood(op) != float("inf")
             and op.current_mood() >= op.upper_limit
         )
 
-    def init_mood_limit(self):
+    def apply_custom_mood_limits(self, operator):
+        limits = self.custom_mood_limits(operator.name)
+        if limits is not None:
+            self.set_mood_limit(
+                operator.name, lower_limit=limits["lower"], upper_limit=limits["upper"]
+            )
+
+    def apply_ling_xi_mood_limits(self):
         # 设置心情阈值 for 夕，令，
         if self.config.ling_xi == 1:
             self.set_mood_limit("令", upper_limit=12)
@@ -638,7 +669,7 @@ class Operators:
                 and self.operators[name].group != ""
                 and self.operators[name].group not in finished
             ):
-                for group_name in self.groups[self.operators[name].group]:
+                for group_name in self.groups.get(self.operators[name].group, []):
                     if group_name not in ["夕", "令"] and not self.operators[
                         group_name
                     ].room.startswith("dorm"):
@@ -647,6 +678,18 @@ class Operators:
                         elif self.config.ling_xi in (0, 3):
                             self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
+        # 模式覆盖全体默认，但明确的个人设置仍优先。
+        if self.experimental_dorm_logic:
+            for name, limits in self.config.operator_mood_limits.items():
+                self.set_mood_limit(
+                    name, lower_limit=limits["lower"], upper_limit=limits["upper"]
+                )
+
+    def init_mood_limit(self):
+        previous = getattr(self, "_applied_mood_limits", {})
+        for op in self.operators.values():
+            op.lower_limit, op.upper_limit = 0, 24
+        self.apply_ling_xi_mood_limits()
 
         # 设置铅踝心情阈值
         # 三种情况：
@@ -664,6 +707,36 @@ class Operators:
                 self.set_mood_limit(TOTTER, upper_limit=12, lower_limit=8)
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
+
+        for op in self.operators.values():
+            self.apply_custom_mood_limits(op)
+        if self.experimental_dorm_logic:
+            # 按个人设置、令夕模式、全体设置的优先顺序收敛。
+            self.apply_ling_xi_mood_limits()
+        # 已读倒计时指向旧上限，切表后按同一恢复速度换算到新上限。
+        for bed in self.all_dorms():
+            op = self.operators.get(bed.name)
+            if op is None or bed.time is None:
+                continue
+            old_upper = previous.get(op.name, op.upper_limit)
+            if old_upper == op.upper_limit:
+                continue
+            if resting_mood(op) == float("inf"):
+                bed.time = None
+                op.time_stamp = None
+            elif op.mood >= op.upper_limit:
+                bed.time = datetime.now()
+            elif old_upper > op.mood:
+                bed.time = op.time_stamp + (bed.time - op.time_stamp) * (
+                    (op.upper_limit - op.mood) / (old_upper - op.mood)
+                )
+            else:
+                # 旧目标已完成，无法反推恢复速度，交给现有读房流程重采样。
+                bed.time = None
+                op.time_stamp = None
+        self._applied_mood_limits = {
+            name: op.upper_limit for name, op in self.operators.items()
+        }
 
     def evaluate_expression(self, expression):
         try:
@@ -1121,6 +1194,9 @@ class Operators:
                 exist, "standby_low_priority", False
             )
         self.operators[operator.name] = operator
+        self.apply_custom_mood_limits(operator)
+        if self.experimental_dorm_logic:
+            self.apply_ling_xi_mood_limits()
         # 需要用尽心情干员逻辑
         if operator.exhaust_require and not (
             operator.group and operator.room.startswith("dorm")
@@ -1173,6 +1249,17 @@ class Operators:
         """按个人心情上下限换算现有急救阈值。"""
         return op.lower_limit + (op.upper_limit - op.lower_limit) * (
             self.config.resting_threshold * config.conf.rescue_threshold
+        )
+
+    def resting_mood_threshold(self, op):
+        threshold = (
+            op.lower_limit
+            + (op.upper_limit - op.lower_limit) * self.config.resting_threshold
+        )
+        return (
+            threshold
+            if self.custom_mood_limits(op.name) is not None
+            else int(threshold)
         )
 
     def update_standby_low_priority(self, op, now=None, *, returned_to_post=False):
@@ -1361,9 +1448,7 @@ class Operators:
             name
             for name in operator.replacement
             if name != "Free"
-            and not (
-                operator.room.startswith("dorm") and self.ling_xi_rest_complete(name)
-            )
+            and not (operator.room.startswith("dorm") and self.rest_mood_complete(name))
         ]
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
             now = datetime.now()
@@ -1588,7 +1673,7 @@ class Operators:
         )
 
     def _find_dorm_slot(self, name, used, *, group_resting=False, active_groups=None):
-        if self.ling_xi_rest_complete(name):
+        if self.rest_mood_complete(name):
             return None
         operator = self.operators[name]
         if not self.experimental_dorm_logic:
@@ -1686,8 +1771,8 @@ class Operators:
 
     def assign_dorm_group(self, names, active_groups=None):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
-        # 令夕达到模式上限后随组离岗即可，不再占床恢复。
-        names = [name for name in names if not self.ling_xi_rest_complete(name)]
+        # 达到个人上限后随组离岗即可，不再占床恢复。
+        names = [name for name in names if not self.rest_mood_complete(name)]
         used = set()
         assignments = []
         optional = self.standby_candidates(names)

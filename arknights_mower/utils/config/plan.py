@@ -2,12 +2,27 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
+
+
+class MoodLimits(BaseModel):
+    lower: float = Field(default=0, ge=0, lt=24, allow_inf_nan=False)
+    upper: float = Field(default=24, gt=0, le=24, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.lower >= self.upper:
+            raise ValueError("心情下限必须小于上限")
+        return self
 
 
 class PlanConf(BaseModel):
     ling_xi: int = 1
     "令夕模式，1感知 2烟火 3均衡"
+    mood_limits: Optional[MoodLimits] = None
+    "全体干员自定义心情上下限；空值沿用自动规则"
+    operator_mood_limits: dict[str, MoodLimits] = Field(default_factory=dict)
+    "指定干员上下限，优先于全体设置"
     exhaust_require: str = ""
     "耗尽"
     rest_in_full: str = ""
