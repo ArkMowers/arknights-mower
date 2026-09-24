@@ -3781,6 +3781,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if scene == Scene.INFRA_DETAILS:
                     logger.info("INFRA_DETAILS")
                     if ctm.task == "message_board":
+                        self.wait_product_complete()
+
                         # 左下角 (680, 1000) 在这个界面上有两处用途：一是信息板入口
                         # 没露出来时按它唤出入口，二是关掉领取信用后的确认页
                         bottom_left = (680, 1000)
@@ -3849,6 +3851,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.info("未找到信息板入口，跳过")
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
+                        self.wait_product_complete()
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
@@ -3926,11 +3929,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 elif scene == Scene.CLUE_RECEIVE:
                     logger.info("CLUE_RECEIVE")
-                    if self.find(
-                        "infra_trust_complete",
-                        scope=((1230, 0), (1920, 1080)),
-                        score=0.1,
-                    ):
+                    if self.detect_product_complete():
                         self.sleep()
                         continue
                     if clue := clue_cls("receive"):
@@ -6182,9 +6181,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 read_time_index = list(
                     dict.fromkeys([*read_time_index, *dorm_read_time_index])
                 )
-        while self.detect_product_complete():
-            logger.info("检测到产物收取提示")
-            self.sleep(1)
+        self.wait_product_complete()
         if room == "train":
             length = 2
         else:
