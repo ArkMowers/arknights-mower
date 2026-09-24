@@ -286,10 +286,12 @@ describe('alignSnapshotsToRange and baseline presets', () => {
     // 是"近 7 天"、比较的却是当初那 7 天，所以相对预设必须按 now 重算。
     const stale = [0, 100 * 1000] // 上次点选时存下来的窗口，只覆盖 at:100 之前
 
+    // now 必须落在最后一条快照之后：关掉 followLatest 时窗口右端就是 now，取在
+    // at:4000 前面会把那条挡在窗口外，断言就变成在测右端而不是"按 now 重算"。
     const res = alignSnapshotsToRange(
       snapshots,
       { preset: '7d', range: stale, followLatest: false },
-      3000 * 1000
+      5000 * 1000
     )
 
     // 按 now 重算后窗口是 [-7d, now]，四条快照全落在里面。
@@ -816,6 +818,26 @@ describe('favorites persistence and highlights', () => {
       range: null,
       followLatest: true,
       startKey: 'previous',
+      endKey: 'latest'
+    })
+
+    // 按快照模式的时间范围一律丢掉：比的是哪两次扫描，留一对时间只会在切回
+    // "按时间"时冒出一个从没选过的区间。
+    storage.setItem(
+      BASELINE_STORAGE_KEY,
+      JSON.stringify({
+        mode: 'snapshot',
+        preset: 'previous',
+        range: [1000, 2000],
+        startKey: '100'
+      })
+    )
+    expect(loadBaselineConfig(storage)).toEqual({
+      mode: 'snapshot',
+      preset: 'previous',
+      range: null,
+      followLatest: true,
+      startKey: '100',
       endKey: 'latest'
     })
 

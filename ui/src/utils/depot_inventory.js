@@ -989,6 +989,17 @@ export const DEFAULT_BASELINE_CONFIG = {
   endKey: 'latest'
 }
 
+/**
+ * 配置里的时间范围归一化：只有"按时间"模式用得上它，按快照模式比的是哪两次扫描。
+ *
+ * 存的时候和读的时候走同一个口径，别指望调用方每次都记得传 null：留下一对标着
+ * "按快照"的起止时间，下次打开弹窗切回"按时间"就是一个从没选过的区间。
+ */
+function normalizeBaselineRange(mode, range) {
+  if (mode === 'snapshot') return null
+  return isValidBaselineRange(range) ? range.map((v) => Number(v)) : null
+}
+
 export function loadBaselineConfig(
   storage = typeof localStorage !== 'undefined' ? localStorage : null
 ) {
@@ -1004,11 +1015,12 @@ export function loadBaselineConfig(
     if (!BASELINE_PRESET_KEYS.has(parsed.preset)) {
       return { ...DEFAULT_BASELINE_CONFIG }
     }
+    // mode 是后加的字段：旧配置没有它，按"按时间"处理，行为与升级前一致。
+    const mode = parsed.mode === 'snapshot' ? 'snapshot' : 'time'
     return {
-      // mode 是后加的字段：旧配置没有它，按"按时间"处理，行为与升级前一致。
-      mode: parsed.mode === 'snapshot' ? 'snapshot' : 'time',
+      mode,
       preset: parsed.preset,
-      range: isValidBaselineRange(parsed.range) ? parsed.range.map((v) => Number(v)) : null,
+      range: normalizeBaselineRange(mode, parsed.range),
       followLatest: typeof parsed.followLatest === 'boolean' ? parsed.followLatest : true,
       startKey: isValidSnapshotKey(parsed.startKey) ? parsed.startKey : 'previous',
       endKey: isValidSnapshotKey(parsed.endKey) ? parsed.endKey : 'latest'
@@ -1025,12 +1037,13 @@ export function saveBaselineConfig(
   if (!storage) return
   try {
     if (!config || typeof config !== 'object') return
+    const mode = config.mode === 'snapshot' ? 'snapshot' : 'time'
     const payload = {
-      mode: config.mode === 'snapshot' ? 'snapshot' : 'time',
+      mode,
       preset: BASELINE_PRESET_KEYS.has(config.preset)
         ? config.preset
         : DEFAULT_BASELINE_CONFIG.preset,
-      range: isValidBaselineRange(config.range) ? config.range.map((v) => Number(v)) : null,
+      range: normalizeBaselineRange(mode, config.range),
       followLatest: config.followLatest !== false,
       startKey: isValidSnapshotKey(config.startKey) ? config.startKey : 'previous',
       endKey: isValidSnapshotKey(config.endKey) ? config.endKey : 'latest'
