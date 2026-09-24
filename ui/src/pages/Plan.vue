@@ -804,7 +804,7 @@ function movePlanForward() {
             <div>感知：夕心情-令心情=12</div>
             <div>烟火：令心情-夕心情=12</div>
             <div>均衡：夕令心情一样</div>
-            <div>令夕模式优先于个人和全体设置，自动设置令夕及同组上下限。</div>
+            <div>个人设置优先于令夕模式，令夕模式优先于全体设置。</div>
           </help-text>
         </template>
         <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">

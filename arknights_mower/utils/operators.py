@@ -596,7 +596,7 @@ class Operators:
             self.group_dorm = []
         if update and experimental:
             self.displaced_dorms = self.restore_dorm_state(saved_dorms)
-        # 应用心情上下限，令夕模式优先于自定义设置。
+        # 应用心情上下限：个人设置优先，其次令夕模式、全体设置。
         self.init_mood_limit()
         for name in self.workaholic_agent:
             if name not in self.config.free_blacklist:
@@ -678,6 +678,12 @@ class Operators:
                         elif self.config.ling_xi in (0, 3):
                             self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
+        # 模式覆盖全体默认，但明确的个人设置仍优先。
+        if self.experimental_dorm_logic:
+            for name, limits in self.config.operator_mood_limits.items():
+                self.set_mood_limit(
+                    name, lower_limit=limits["lower"], upper_limit=limits["upper"]
+                )
 
     def init_mood_limit(self):
         previous = getattr(self, "_applied_mood_limits", {})
@@ -705,7 +711,7 @@ class Operators:
         for op in self.operators.values():
             self.apply_custom_mood_limits(op)
         if self.experimental_dorm_logic:
-            # 令夕模式优先于个人及全体设置，沿用同一套自动规则。
+            # 按个人设置、令夕模式、全体设置的优先顺序收敛。
             self.apply_ling_xi_mood_limits()
         # 已读倒计时指向旧上限，切表后按同一恢复速度换算到新上限。
         for bed in self.all_dorms():

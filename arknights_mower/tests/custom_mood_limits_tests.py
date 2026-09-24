@@ -138,7 +138,7 @@ def test_backup_limits_inherit_override_and_restore(op_data):
     assert op_data.operators["红"].upper_limit == 20
 
 
-def test_ling_xi_has_priority_over_global_and_individual_limits(legacy_solver):
+def test_individual_limits_override_mode_while_mode_overrides_global(legacy_solver):
     data = legacy_solver.op_data
     data.config.experimental_dorm_logic = True
     name = data.plan["central"][0].agent
@@ -148,8 +148,8 @@ def test_ling_xi_has_priority_over_global_and_individual_limits(legacy_solver):
     data.config.operator_mood_limits = {name: bounds(4, 16)}
     data.init_mood_limit()
     assert (data.operators[name].lower_limit, data.operators[name].upper_limit) == (
-        0,
-        12,
+        4,
+        16,
     )
     assert (data.operators["絮雨"].lower_limit, data.operators["絮雨"].upper_limit) == (
         12,
@@ -422,6 +422,17 @@ def test_mode_changes_override_saved_custom_ranges(legacy_solver, mode):
     data.config.operator_mood_limits = {name: bounds(4, 16), "絮雨": bounds(3, 18)}
     data.config.ling_xi = mode
     data.init_mood_limit()
+    assert (data.operators[name].lower_limit, data.operators[name].upper_limit) == (
+        4,
+        16,
+    )
+    assert (data.operators["絮雨"].lower_limit, data.operators["絮雨"].upper_limit) == (
+        3,
+        18,
+    )
+    # 移除个人设置后，模式恢复并覆盖仍启用的全体范围。
+    data.config.operator_mood_limits = {}
+    data.init_mood_limit()
     expected = (
         (0, 24)
         if mode == 3
@@ -435,14 +446,14 @@ def test_mode_changes_override_saved_custom_ranges(legacy_solver, mode):
         0 if mode == 3 else 12,
         24,
     )
-    assert data.config.operator_mood_limits[name] == bounds(4, 16)
 
 
-def test_late_registered_ling_replacement_obeys_mode(op_data):
+@pytest.mark.parametrize("individual", [False, True])
+def test_late_registered_ling_replacement_obeys_priority(op_data, individual):
     op_data.config.ling_xi = 1
     op_data.config.mood_limits = bounds(3, 20)
-    op_data.config.operator_mood_limits = {"令": bounds(5, 18)}
+    op_data.config.operator_mood_limits = {"令": bounds(5, 18)} if individual else {}
     op_data.plan["meeting"][0].replacement.append("令")
     op_data.add(Operator("令", ""))
     op = op_data.operators["令"]
-    assert (op.lower_limit, op.upper_limit) == (0, 12)
+    assert (op.lower_limit, op.upper_limit) == ((5, 18) if individual else (0, 12))

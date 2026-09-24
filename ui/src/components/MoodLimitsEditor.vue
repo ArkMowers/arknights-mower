@@ -111,7 +111,7 @@ function removeOperator(name) {
       <n-button :disabled="disabled || !selected" @click="addOperator">添加</n-button>
     </div>
     <n-text depth="3">
-      令夕模式优先，其次单独设置、全体设置；未设置沿用{{
+      单独设置优先，其次令夕模式、全体设置；未设置沿用{{
         isBackup ? '主表或此前副表' : '令夕等自动规则'
       }}。 仅对当前排班内主班、替班生效。阈值按上下限换算，到上限离宿、不再入宿，固定宿管保留。
     </n-text>
