@@ -362,6 +362,8 @@ const chartOptions = {
     y: { beginAtZero: true, suggestedMax: 24, ticks: { stepSize: 4 } }
   },
   plugins: {
+    // Other chart routes must not enable per-point text in high-density mood curves.
+    datalabels: { display: false },
     legend: { display: false },
     tooltip: {
       backgroundColor: 'rgba(15,15,20,.92)',
