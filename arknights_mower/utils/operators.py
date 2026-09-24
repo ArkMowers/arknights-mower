@@ -1524,6 +1524,7 @@ class Operators:
                 if self.is_effective_free_slot(dorm)
                 and dorm.name in self.operators
                 and self.operators[dorm.name].is_high()
+                and self.operators[dorm.name].resting_priority != "standby"
                 and not self.operators[dorm.name].is_workshop()
                 and not (dorm.time is not None and dorm.time < time)
             )
@@ -1555,6 +1556,18 @@ class Operators:
         if not self.experimental_dorm_logic:
             if dorm.time is not None and dorm.time < datetime.now():
                 return True
+            # standby 占床时，任何高优 high 都可以接管（不限于同组），
+            # 让 standby 随时把床位让给真正需要恢复的高优。
+            # standby_low_priority 已跌破急救线，按低优处理，不让位。
+            if (
+                op.is_high()
+                and op.resting_priority == "standby"
+                and not getattr(op, "standby_low_priority", False)
+                and requester is not None
+            ):
+                incoming = self.operators[requester]
+                if incoming.is_high() and incoming.resting_priority == "high":
+                    return True
             if op.is_workshop() and requester is not None:
                 incoming = self.operators[requester]
                 return not incoming.is_workshop() and (
