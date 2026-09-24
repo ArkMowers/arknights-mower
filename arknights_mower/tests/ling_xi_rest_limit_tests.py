@@ -199,9 +199,23 @@ def test_rebuild_uses_confirmed_new_bed(solver):
         [{"dormitory_1": ["Current", "Current", "Current", "Free", name]}]
     )
     solver.plan_metadata()
+    if solver.op_data.experimental_dorm_logic:
+        # 换床后的旧倒计时失效；实际读房取得新时间后才重建上限任务。
+        assert not any(t.strict_mood_limit for t in solver.tasks)
+        _, bed = solver.op_data.get_dorm_by_name(name)
+        assert bed.time is None
+        solver.op_data.refresh_dorm_time(
+            *bed.position,
+            {"agent": name, "time": NOW + timedelta(hours=3)},
+        )
+        solver.plan_metadata()
     task = release(solver)
     assert task is not old
     assert task.plan["dormitory_1"] == ["Current"] * 4 + ["Free"]
+    # 当前心情 6、上限 12：读到回满 24 需三小时，换算到上限需一小时。
+    assert task.time == (
+        NOW + timedelta(hours=1) if solver.op_data.experimental_dorm_logic else old.time
+    )
 
 
 @pytest.mark.parametrize("stale", [False, True])
