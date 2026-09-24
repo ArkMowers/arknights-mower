@@ -119,6 +119,10 @@ export function parseDepotResponse(response) {
   }
 }
 
+export function isTokenItem(name) {
+  return typeof name === 'string' && name.includes('信物')
+}
+
 /** 一个分类字典 → 条目数组，带档位、派生标记，并按后端给的 sort 升序。 */
 export function flattenItems(categories) {
   const rows = []
@@ -127,6 +131,8 @@ export function flattenItems(categories) {
     if (!items || typeof items !== 'object') continue
     const tier = tierOf(categoryName)
     for (const [name, data] of Object.entries(items)) {
+      // 过滤信物类物品，不予在仓库中展示
+      if (isTokenItem(name)) continue
       // 同名条目理论上归属唯一分类；真出现重复时保留首个，避免 grid key 冲突。
       if (used.has(name)) continue
       used.set(name, true)

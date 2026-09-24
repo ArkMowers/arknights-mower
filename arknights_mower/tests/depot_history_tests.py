@@ -189,6 +189,44 @@ def test_numeric_string_counts_are_coerced(history_path):
     assert isinstance(items["至纯源石"], int)
 
 
+def test_tokens_are_excluded_from_history(history_path):
+    """信物类物品不应出现在仓库历史快照中。"""
+    write_rows(
+        history_path,
+        [
+            [
+                1789895956,
+                json.dumps({"合成玉": 3630, "阿米娅的信物": 1, "先锋皇家信物": 4}),
+                "{}",
+            ]
+        ],
+    )
+
+    items = module.读取仓库历史()[0]["items"]
+
+    assert "合成玉" in items
+    assert "阿米娅的信物" not in items
+    assert "先锋皇家信物" not in items
+
+
+def test_tokens_are_excluded_from_cloud_snapshot():
+    payload = {
+        "_mower_inventory_observed_at": 1789895956,
+        "data": {
+            "items": [
+                {"id": "30012", "count": 100},
+                {"id": "p_char_002_amiya", "count": 1},
+            ]
+        },
+    }
+    counts, observed_at = module.cloud_inventory_snapshot(payload)
+    assert observed_at == 1789895956
+    assert "固源岩" in counts
+    assert counts["固源岩"] == 100
+    assert "阿米娅的信物" not in counts
+    assert not any("信物" in name for name in counts)
+
+
 class TestDepotHistoryRoute:
     """路由层：limit 参数钳制与空数据兜底。"""
 

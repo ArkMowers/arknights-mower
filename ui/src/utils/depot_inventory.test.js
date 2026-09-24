@@ -22,6 +22,7 @@ import {
   groupItemsByTier,
   hasDerivedDrawTiers,
   isDerivedItem,
+  isTokenItem,
   itemIconUrl,
   loadFavorites,
   matchesNumericQuery,
@@ -151,6 +152,15 @@ describe('flattenItems', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0].tier).toBe('A')
+  })
+
+  it('filters out token items from display', () => {
+    const categories = {
+      A常用: { 合成玉: item(600, 1) },
+      K未分类: { 阿米娅的信物: item(1, 3), 先锋皇家信物: item(4, 4), 纯金: item(50, 2) }
+    }
+    const rows = flattenItems(categories)
+    expect(rows.map((row) => row.name)).toEqual(['合成玉', '纯金'])
   })
 
   it('skips malformed buckets without throwing', () => {
@@ -811,6 +821,14 @@ describe('formatting helpers', () => {
     expect(isDerivedItem('额外+碎片+土')).toBe(true)
     expect(isDerivedItem('全部经验（计算）')).toBe(true)
     expect(isDerivedItem('合成玉')).toBe(false)
+  })
+
+  it('identifies token items', () => {
+    expect(isTokenItem('阿米娅的信物')).toBe(true)
+    expect(isTokenItem('先锋皇家信物')).toBe(true)
+    expect(isTokenItem('合成玉')).toBe(false)
+    expect(isTokenItem(null)).toBe(false)
+    expect(isTokenItem(123)).toBe(false)
   })
 
   it('builds depot export filenames cleanly', () => {

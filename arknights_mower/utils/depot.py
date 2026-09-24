@@ -26,11 +26,11 @@ def cloud_inventory_snapshot(payload):
     counts = {
         name: 0
         for name, entry in key_mapping.items()
-        if name == entry[2] and entry[3] == "MATERIAL"
+        if name == entry[2] and entry[3] == "MATERIAL" and "信物" not in name
     }
     for item in items:
         entry = key_mapping.get(item["id"])
-        if entry is not None:
+        if entry is not None and "信物" not in entry[2]:
             counts[entry[2]] = int(item["count"])
     return counts, observed_at
 
@@ -121,7 +121,11 @@ def 读取仓库():
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
     )
-    新物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
+    新物品 = {
+        name: count
+        for name, count in db_dict.items()
+        if name in key_mapping and "信物" not in name
+    }
     新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
     sort = {
         "A常用": [
@@ -331,7 +335,7 @@ def 读取仓库历史(limit=60):
             continue
         items = {}
         for name, count in payload.items():
-            if not isinstance(name, str):
+            if not isinstance(name, str) or "信物" in name:
                 continue
             try:
                 # 与 读取仓库 一致：取整，反向解析出的浮点值（"1.2万"）向下取整。
