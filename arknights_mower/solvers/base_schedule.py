@@ -3929,9 +3929,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 elif scene == Scene.CLUE_RECEIVE:
                     logger.info("CLUE_RECEIVE")
-                    if self.detect_product_complete():
-                        self.sleep()
-                        continue
+                    self.wait_product_complete()
                     if clue := clue_cls("receive"):
                         name_scope = ((1580, 220), (1880, 255))
                         name_img = cropimg(self.recog.gray, name_scope)

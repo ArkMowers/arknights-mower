@@ -3105,30 +3105,65 @@ class TestClueProductCompleteWait(unittest.TestCase):
         self.assertEqual(solver.sleep.call_count, 1)
 
     def test_detect_product_complete_with_actual_fixtures(self):
-        """测试使用真实截图 fixture 识别 credit 和 info 产物提示。"""
+        """用真实截图分别验证新增的信用与情报模板。"""
         fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
         credit_fixture = fixtures_dir / "clue_credit_prompt.png"
         info_fixture = fixtures_dir / "clue_info_prompt.png"
 
-        if not credit_fixture.exists() or not info_fixture.exists():
-            self.skipTest("线索 fixture 文件不存在")
+        self.assertTrue(credit_fixture.exists())
+        self.assertTrue(info_fixture.exists())
 
         mixin = BaseMixin()
         dummy_device = MagicMock()
+        scope = ((1230, 0), (1920, 1080))
 
         # 测试 credit 提示截图
         with open(credit_fixture, "rb") as f:
             recog_credit = Recognizer(dummy_device, f.read())
         mixin.find = recog_credit.find
-        credit_pos = mixin.detect_product_complete()
-        self.assertIsNotNone(credit_pos)
+        self.assertIsNotNone(
+            recog_credit.find("infra_credit_complete", scope=scope, score=0.1)
+        )
+        self.assertIsNotNone(mixin.detect_product_complete())
 
         # 测试 info 提示截图
         with open(info_fixture, "rb") as f:
             recog_info = Recognizer(dummy_device, f.read())
         mixin.find = recog_info.find
-        info_pos = mixin.detect_product_complete()
-        self.assertIsNotNone(info_pos)
+        self.assertIsNotNone(
+            recog_info.find("infra_info_complete", scope=scope, score=0.1)
+        )
+        self.assertIsNotNone(mixin.detect_product_complete())
+
+    def test_live_credit_prompt_appears_and_clears(self):
+        """实机截图：接收线索后提示出现，消失后才能继续。"""
+        fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
+        scope = ((1230, 0), (1920, 1080))
+        dummy_device = MagicMock()
+
+        def recog(name):
+            screenshot = (fixtures_dir / name).read_bytes()
+            return Recognizer(dummy_device, screenshot)
+
+        room = recog("clue_live_room_details.png")
+        before = recog("clue_live_receive_before.png")
+        prompt = recog("clue_live_credit_prompt.png")
+        after = recog("clue_live_receive_after.png")
+        mixin = BaseMixin()
+
+        for frame in (room, before, after):
+            mixin.find = frame.find
+            self.assertIsNone(mixin.detect_product_complete())
+
+        mixin.find = prompt.find
+        self.assertIsNotNone(
+            prompt.find("infra_credit_complete", scope=scope, score=0.1)
+        )
+        mixin.sleep = MagicMock(
+            side_effect=lambda _: setattr(mixin, "find", after.find)
+        )
+        self.assertTrue(mixin.wait_product_complete())
+        mixin.sleep.assert_called_once_with(1)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_clue_new_waits_for_product_complete(self):
