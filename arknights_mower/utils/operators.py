@@ -596,7 +596,7 @@ class Operators:
             self.group_dorm = []
         if update and experimental:
             self.displaced_dorms = self.restore_dorm_state(saved_dorms)
-        # 先应用自动规则，再应用个人／全体自定义上下限。
+        # 应用心情上下限，令夕模式优先于自定义设置。
         self.init_mood_limit()
         for name in self.workaholic_agent:
             if name not in self.config.free_blacklist:
@@ -615,7 +615,7 @@ class Operators:
     def has_rest_mood_limit(self, name):
         """自定义上下限或令夕自动规则要求到上限立即离宿。"""
         return self.is_planned_operator(name) and (
-            self.config.custom_mood_limits(name) is not None
+            self.custom_mood_limits(name) is not None
             or name == {1: "令", 2: "夕"}.get(self.config.ling_xi)
         )
 
@@ -629,7 +629,7 @@ class Operators:
     def custom_mood_limits(self, name):
         return (
             self.config.custom_mood_limits(name)
-            if self.is_planned_operator(name)
+            if self.experimental_dorm_logic and self.is_planned_operator(name)
             else None
         )
 
@@ -649,10 +649,7 @@ class Operators:
                 operator.name, lower_limit=limits["lower"], upper_limit=limits["upper"]
             )
 
-    def init_mood_limit(self):
-        previous = getattr(self, "_applied_mood_limits", {})
-        for op in self.operators.values():
-            op.lower_limit, op.upper_limit = 0, 24
+    def apply_ling_xi_mood_limits(self):
         # 设置心情阈值 for 夕，令，
         if self.config.ling_xi == 1:
             self.set_mood_limit("令", upper_limit=12)
@@ -672,7 +669,7 @@ class Operators:
                 and self.operators[name].group != ""
                 and self.operators[name].group not in finished
             ):
-                for group_name in self.groups[self.operators[name].group]:
+                for group_name in self.groups.get(self.operators[name].group, []):
                     if group_name not in ["夕", "令"] and not self.operators[
                         group_name
                     ].room.startswith("dorm"):
@@ -681,6 +678,12 @@ class Operators:
                         elif self.config.ling_xi in (0, 3):
                             self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
+
+    def init_mood_limit(self):
+        previous = getattr(self, "_applied_mood_limits", {})
+        for op in self.operators.values():
+            op.lower_limit, op.upper_limit = 0, 24
+        self.apply_ling_xi_mood_limits()
 
         # 设置铅踝心情阈值
         # 三种情况：
@@ -701,6 +704,9 @@ class Operators:
 
         for op in self.operators.values():
             self.apply_custom_mood_limits(op)
+        if self.experimental_dorm_logic:
+            # 令夕模式优先于个人及全体设置，沿用同一套自动规则。
+            self.apply_ling_xi_mood_limits()
         # 已读倒计时指向旧上限，切表后按同一恢复速度换算到新上限。
         for bed in self.all_dorms():
             op = self.operators.get(bed.name)
@@ -1183,6 +1189,8 @@ class Operators:
             )
         self.operators[operator.name] = operator
         self.apply_custom_mood_limits(operator)
+        if self.experimental_dorm_logic:
+            self.apply_ling_xi_mood_limits()
         # 需要用尽心情干员逻辑
         if operator.exhaust_require and not (
             operator.group and operator.room.startswith("dorm")

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
+import { render_op_label } from '@/utils/op_select'
 
 const defaults = defineModel('defaults', { default: null })
 const overrides = defineModel('overrides', { default: () => ({}) })
@@ -100,6 +101,7 @@ function removeOperator(name) {
         class="operator-select"
         :disabled="disabled"
         :options="choices"
+        :render-label="render_op_label"
         :filter="(input, option) => pinyin_match(option.label, input)"
         filterable
         clearable
@@ -109,8 +111,9 @@ function removeOperator(name) {
       <n-button :disabled="disabled || !selected" @click="addOperator">添加</n-button>
     </div>
     <n-text depth="3">
-      单独设置优先于全体设置；未设置沿用{{ isBackup ? '主表或此前副表' : '令夕等自动规则' }}。
-      仅对当前排班内主班、替班生效。阈值按上下限换算，到上限离宿、不再入宿，固定宿管保留。
+      令夕模式优先，其次单独设置、全体设置；未设置沿用{{
+        isBackup ? '主表或此前副表' : '令夕等自动规则'
+      }}。 仅对当前排班内主班、替班生效。阈值按上下限换算，到上限离宿、不再入宿，固定宿管保留。
     </n-text>
   </div>
 </template>

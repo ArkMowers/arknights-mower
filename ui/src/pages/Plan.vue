@@ -53,6 +53,9 @@ const plan_editor = ref(null)
 
 const generating_image = ref(false)
 const show_mood_limits_dialog = ref(false)
+watch(experimental_dorm_logic, (enabled) => {
+  if (!enabled) show_mood_limits_dialog.value = false
+})
 
 const message = useMessage()
 const dialog = useDialog()
@@ -621,8 +624,27 @@ function movePlanForward() {
     label-width="160"
     label-align="left"
   >
-    <n-form-item :show-label="false">
+    <n-form-item v-if="experimental_dorm_logic" :show-label="false">
       <n-button @click="show_mood_limits_dialog = true">设置心情上下限</n-button>
+    </n-form-item>
+    <n-form-item v-else>
+      <template #label>
+        <span>令夕模式</span>
+        <help-text>
+          <div>令夕上班时起作用</div>
+          <div>启动Mower前需要手动对齐心情</div>
+          <div>感知：夕心情-令心情=12</div>
+          <div>烟火：令心情-夕心情=12</div>
+          <div>均衡：夕令心情一样</div>
+        </help-text>
+      </template>
+      <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
+        <n-space>
+          <n-radio :value="1">感知信息</n-radio>
+          <n-radio :value="2">人间烟火</n-radio>
+          <n-radio :value="3">均衡模式</n-radio>
+        </n-space>
+      </n-radio-group>
     </n-form-item>
     <n-form-item>
       <template #label
@@ -764,7 +786,9 @@ function movePlanForward() {
     </n-form-item>
   </n-form>
   <n-modal
+    v-if="experimental_dorm_logic"
     v-model:show="show_mood_limits_dialog"
+    :auto-focus="false"
     preset="card"
     title="设置心情上下限"
     :style="{ width: '680px', maxWidth: 'calc(100vw - 24px)' }"
@@ -780,7 +804,7 @@ function movePlanForward() {
             <div>感知：夕心情-令心情=12</div>
             <div>烟火：令心情-夕心情=12</div>
             <div>均衡：夕令心情一样</div>
-            <div>自动设置令夕及同组上下限；手动设置优先于模式。</div>
+            <div>令夕模式优先于个人和全体设置，自动设置令夕及同组上下限。</div>
           </help-text>
         </template>
         <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
