@@ -97,6 +97,40 @@ def test_real_device_panel_passes_identity_check(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("state", ["running", "complete"])
+def test_orchid_panel_ocr_and_template_in_both_training_states(monkeypatch, state):
+    from pathlib import Path
+    from types import MethodType
+
+    from rapidocr_onnxruntime import RapidOCR
+
+    from arknights_mower.solvers.base_mixin import BaseMixin
+    from arknights_mower.utils import rapidocr
+    from arknights_mower.utils.image import loadimg
+    from arknights_mower.utils.mastery_panel_template import recognize_skill
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    card = loadimg(
+        str(Path(__file__).with_name("fixtures") / f"mastery_card_orchid_{state}.png")
+    )
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    image[925:1020, 220:780] = card
+    monkeypatch.setattr(rapidocr, "engine", RapidOCR(text_score=0.3))
+    solver = MagicMock()
+    solver.read_screen = MethodType(BaseMixin.read_screen, solver)
+
+    panel = reader._read_panel_text(solver, image)
+    match = recognize_skill(card[5:47, 15:535], "焰狐龙梓兰", get_skill_data())
+
+    assert (panel.operator_name, panel.skill_name) == ("焰狐龙梓兰", "飞翔瞪射")
+    assert match is not None and match[:2] == (1, "飞翔瞪射")
+    assert match[2] >= 0.80 and match[3] >= 0.80 and match[4] >= 0.15
+    assert reader._plan_matches_room(
+        {"char_name": "焰狐龙梓兰", "skill_index": 1, "skill_name": "二技能·飞翔瞪射"},
+        reader.RoomState("training", panel),
+    )
+
+
 def test_template_recovers_carnelian_skill_dropped_by_ocr():
     from pathlib import Path
 
