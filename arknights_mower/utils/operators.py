@@ -1013,19 +1013,24 @@ class Operators:
         for idx, dorm in enumerate(self.all_dorms()):
             if dorm.position[0] == room:
                 for i, _name in enumerate(plan):
-                    if _name not in self.operators.keys():
+                    if _name in ("Free", "Current", "") or _name not in agent_list:
+                        continue
+                    if _name not in self.operators:
                         self.add(Operator(_name, ""))
-                    if not self.config.free_room:
-                        if self.operators[_name].is_high() and not self.operators[
-                            _name
-                        ].room.startswith("dorm"):
+                    if _name in self.operators:
+                        if not self.config.free_room:
+                            if self.operators[_name].is_high() and not self.operators[
+                                _name
+                            ].room.startswith("dorm"):
+                                ret.append(i)
+                        elif not self.operators[_name].room.startswith("dorm"):
                             ret.append(i)
-                    elif not self.operators[_name].room.startswith("dorm"):
-                        ret.append(i)
                 break
         return ret
 
     def get_dorm_by_name(self, name):
+        if name not in self.operators:
+            return None, None
         _op = self.operators[name]
         logger.debug(name)
         for idx, dorm in enumerate(self.all_dorms()):
