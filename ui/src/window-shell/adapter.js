@@ -131,6 +131,7 @@ export function createWindowShellAdapter({
   let initializePromise = null
   let activeProtocol = null
   let listeningEvent = null
+  let initialSyncTimer = null
 
   const controlSide = computed(() => (platform.value === 'macos' ? 'start' : 'end'))
   const controls = computed(() => {
@@ -186,6 +187,20 @@ export function createWindowShellAdapter({
       active.value = true
       windowObject?.addEventListener?.(event, onNativeState)
       listeningEvent = event
+      // The first maximize can happen while WebView2 is still initializing,
+      // before the page receives its native state event. One later read is
+      // sufficient; do not introduce a state polling loop.
+      initialSyncTimer = setTimeout(async () => {
+        if (bridge !== candidate || !active.value) return
+        try {
+          const current = await withTimeout(candidate.get_window_state(), callTimeoutMs)
+          if (bridge === candidate && validState(current, activeProtocol)) {
+            state.value = { ...current }
+          }
+        } catch {
+          // A closing WebView has no state to synchronize.
+        }
+      }, 350)
       return true
     } catch {
       disposeListener()
@@ -214,7 +229,19 @@ export function createWindowShellAdapter({
   const maximize = () => runControl('maximize')
   const restore = () => runControl('restore')
   const close = () => runControl('close')
-  const toggleMaximize = () => (state.value.maximized ? restore() : maximize())
+  const toggleMaximize = async () => {
+    // The startup maximize event can precede listener registration. Query the
+    // existing bridge immediately before deciding which native action to send.
+    if (bridge) {
+      try {
+        const current = await withTimeout(bridge.get_window_state(), callTimeoutMs)
+        if (validState(current, activeProtocol)) state.value = { ...current }
+      } catch {
+        // Fall back to the last native event if the window is already closing.
+      }
+    }
+    return state.value.maximized ? restore() : maximize()
+  }
 
   async function startMove() {
     if (!active.value || !bridge) return false
@@ -257,6 +284,8 @@ export function createWindowShellAdapter({
   }
 
   function dispose() {
+    if (initialSyncTimer) clearTimeout(initialSyncTimer)
+    initialSyncTimer = null
     disposeListener()
     active.value = false
     activeProtocol = null

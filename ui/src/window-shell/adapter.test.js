@@ -113,8 +113,49 @@ describe('window shell adapter', () => {
 
     expect(adapter.state.value.maximized).toBe(true)
     expect(adapter.controls.value[1].icon).toBe('restore')
+    bridge.get_window_state.mockResolvedValue({
+      protocol: PROTOCOL,
+      state: 'maximized',
+      maximized: true,
+      minimized: false,
+      width: 1920,
+      height: 1040
+    })
     await adapter.toggleMaximize()
     expect(bridge.restore).toHaveBeenCalledOnce()
+    adapter.dispose()
+  })
+
+  it('checks real state before clicking if the initial maximize event was missed', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeBridge()
+    const maximizedState = {
+      protocol: PROTOCOL,
+      state: 'maximized',
+      maximized: true,
+      minimized: false,
+      width: 1920,
+      height: 1040
+    }
+    bridge.get_window_state
+      .mockResolvedValueOnce({
+        protocol: PROTOCOL,
+        state: 'normal',
+        maximized: false,
+        minimized: false,
+        width: 1450,
+        height: 850
+      })
+      .mockResolvedValue(maximizedState)
+    desktopWindow.pywebview = { api: bridge }
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+    await adapter.initialize()
+    expect(adapter.state.value.maximized).toBe(false)
+
+    await adapter.toggleMaximize()
+    expect(bridge.restore).toHaveBeenCalledOnce()
+    expect(bridge.maximize).not.toHaveBeenCalled()
+    adapter.dispose()
   })
 
   it('degrades safely when bridge validation or a control call fails', async () => {
