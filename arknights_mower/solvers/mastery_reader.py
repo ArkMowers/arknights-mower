@@ -439,28 +439,30 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 
         data = get_skill_data()
-        named = [
-            c
+        # Only named skill rosters can make a failed template check meaningful;
+        # operators absent from skill_data keep the OCR-only behavior.
+        has_named_skills = any(
+            any(s.get("name") for s in c.get("skills", []))
             for c in data.get("characters", {}).values()
             if c.get("name") == operator_name
-            and any(s.get("name") for s in c.get("skills", []))
-        ]
-        if named:
+        )
+        if has_named_skills:
             ocr_skill_index = resolve_panel_skill(operator_name, skill_name)
             result = recognize_skill(cropimg(img, PANEL_REGION), operator_name, data)
             if result is not None:
-                matched_index, matched_name, name_score, skill_score, margin = result
                 if ocr_skill_index is None:
                     logger.info(
                         f"训练室面板模板纠正技能：{operator_name} {skill_name!r} → "
-                        f"{matched_name}（姓名 {name_score:.3f}，技能 {skill_score:.3f}，"
-                        f"差距 {margin:.3f}）"
+                        f"{result.name}（姓名 {result.name_score:.3f}，"
+                        f"技能 {result.skill_score:.3f}，差距 {result.margin:.3f}）"
                     )
-                    skill_name = matched_name
-                elif matched_index != ocr_skill_index:
+                    skill_name = result.name
+                elif result.index != ocr_skill_index or not panel_skill_matches(
+                    skill_name, result.name
+                ):
                     logger.warning(
                         f"训练室技能 OCR 与模板冲突：{operator_name} "
-                        f"OCR={skill_name!r}，模板={matched_name}，本次按未知处理"
+                        f"OCR={skill_name!r}，模板={result.name}，本次按未知处理"
                     )
                     skill_name = ""
             elif ocr_skill_index is None:

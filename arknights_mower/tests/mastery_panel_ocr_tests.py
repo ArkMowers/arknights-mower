@@ -219,3 +219,27 @@ def test_amiya_same_skill_index_does_not_mix_forms():
     }
     assert not reader._plan_matches_room(caster_plan, room)
     assert not reader._can_recover_plan(caster_plan, room)
+
+
+def test_amiya_ocr_template_conflict_with_same_skill_index_stays_unknown():
+    from pathlib import Path
+
+    from PIL import ImageFont
+
+    from arknights_mower.utils.mastery_panel_model import FONT_SIZE, render_template
+
+    font = ImageFont.truetype(
+        str(Path(__file__).parents[1] / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+    )
+    rendered = render_template("[阿米娅]影霄·绝影", font)
+    solver = solver_with_text("[阿米娅]精神爆发")
+    solver.recog.img[:] = 0
+    solver.recog.img[930 : 930 + rendered.shape[0], 235 : 235 + rendered.shape[1]] = (
+        rendered[:, :, None]
+    )
+
+    panel = reader._read_panel_text(solver)
+
+    assert panel.operator_name == "阿米娅"
+    assert panel.skill_name == ""

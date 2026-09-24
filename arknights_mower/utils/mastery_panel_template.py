@@ -2,6 +2,7 @@
 
 import lzma
 import pickle
+from typing import NamedTuple
 
 import cv2
 
@@ -21,6 +22,14 @@ SKILL_MIN_SCORE = 0.80
 SKILL_MIN_MARGIN = 0.15
 _model = None
 _model_loaded = False
+
+
+class SkillMatch(NamedTuple):
+    index: int
+    name: str
+    name_score: float
+    skill_score: float
+    margin: float
 
 
 def _load_model():
@@ -72,7 +81,7 @@ def _score(region, template):
 
 
 def recognize_skill(img, operator_name, data):
-    """Return (index, name, name_score, skill_score, margin), or None.
+    """Return the confirmed skill match, or None.
 
     A low score means *unknown*, never proof that the selected skill differs.
     """
@@ -111,4 +120,4 @@ def recognize_skill(img, operator_name, data):
     margin = score - runner_up
     if score < SKILL_MIN_SCORE or margin < SKILL_MIN_MARGIN:
         return None
-    return index, name, name_score, score, margin
+    return SkillMatch(index, name, name_score, score, margin)
