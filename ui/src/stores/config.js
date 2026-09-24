@@ -113,6 +113,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rg_sleep_max = ref('00:00')
   const maa_credit_fight = ref(true)
   const maa_depot_enable = ref(false)
+  const depot_history_limit = ref(3000)
+  const depot_history_keep = ref(0)
   const maa_rg_theme = ref('Mizuki')
   const maa_rcl_theme = ref('Tales')
   const rcl = ref({})
@@ -522,6 +524,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
     maa_credit_fight.value = response.data.maa_credit_fight
     maa_depot_enable.value = response.data.maa_depot_enable
+    depot_history_limit.value = response.data.depot_history_limit ?? 3000
+    depot_history_keep.value = response.data.depot_history_keep ?? 0
     maa_rg_theme.value = response.data.maa_rg_theme
     maa_rcl_theme.value = response.data.maa_rcl_theme
     rcl.value = response.data.rcl
@@ -690,6 +694,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_rg_sleep_min: maa_rg_sleep_min.value,
       maa_credit_fight: maa_credit_fight.value,
       maa_depot_enable: maa_depot_enable.value,
+      depot_history_limit: depot_history_limit.value,
+      depot_history_keep: depot_history_keep.value,
       maa_rg_theme: maa_rg_theme.value,
       maa_rcl_theme: maa_rcl_theme.value,
       rcl: rcl.value,
@@ -917,6 +923,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_sleep_max,
     maa_credit_fight,
     maa_depot_enable,
+    depot_history_limit,
+    depot_history_keep,
     maa_rg_theme,
     maa_rcl_theme,
     rcl,
