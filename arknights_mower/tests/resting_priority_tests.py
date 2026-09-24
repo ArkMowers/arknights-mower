@@ -43,10 +43,12 @@ def set_tier(data, name, tier, mood=10):
 
 @pytest.mark.parametrize("incoming", list(RestingTier)[:6])
 @pytest.mark.parametrize("occupant", list(RestingTier)[:6])
-@pytest.mark.parametrize("mood", [22, 22.01])
+@pytest.mark.parametrize("mood", [22, 22.01, None])
 def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
     data = op_data
-    request = set_tier(data, "银灰", incoming, mood)
+    request = set_tier(data, "银灰", incoming, 24 if mood is None else mood)
+    if mood is None:
+        request.time_stamp = None
     current = set_tier(data, "空爆", occupant, 3)
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
@@ -59,17 +61,36 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
             incoming in (RestingTier.STANDBY, RestingTier.REPLACEMENT)
             and occupant == RestingTier.IDLE
         ):
-            expected = mood <= 22
+            expected = mood is None or mood <= 22
     assert (
         data._find_dorm_slot(request.name, set(), group_resting=True) is not None
     ) == expected
 
 
-def test_unknown_mood_cannot_evict_idle_occupant_as_replacement(op_data):
+@pytest.mark.parametrize("tier", [RestingTier.STANDBY, RestingTier.REPLACEMENT])
+@pytest.mark.parametrize("mood", [-1, 25])
+def test_invalid_cached_mood_allows_idle_takeover(op_data, tier, mood):
     op_data.dorm[0].time = datetime.now() + timedelta(hours=1)
     op_data.operators["空爆"].mood = 3
+    set_tier(op_data, "红", tier, mood)
+    assert op_data.assign_dorm("红") is op_data.dorm[0]
+
+
+def test_free_selection_allows_unknown_replacement_to_take_idle_bed(op_data):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    op_data.operators["空爆"].mood = 3
+    op_data.operators["红"].mood = 24
     op_data.operators["红"].time_stamp = None
-    assert op_data.assign_dorm("红") is None
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = op_data
+    solver.task = None
+    solver.tasks = []
+    plan = ["Current"] * 4 + ["Free"]
+
+    solver.preserve_resting_crafters(plan, ROOM)
+
+    assert plan[-1] == "红"
 
 
 def test_unexecuted_bed_reservation_is_not_preempted(op_data):

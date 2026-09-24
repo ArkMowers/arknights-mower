@@ -1578,7 +1578,9 @@ class Operators:
         if incoming_tier <= RestingTier.LOW_MAIN:
             return True
         if tier == RestingTier.IDLE:
-            return resting_mood(self.operators[requester]) <= 22
+            mood = resting_mood(self.operators[requester])
+            # 未知心情不代表满心情；只有有效读数超过 22 才阻止接管空闲者。
+            return mood == float("inf") or mood <= 22
         return (
             incoming_tier == RestingTier.STANDBY
             and tier == RestingTier.REPLACEMENT

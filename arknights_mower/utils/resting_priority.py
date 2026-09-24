@@ -50,7 +50,7 @@ def resting_tier(op_data, name):
 
 
 def resting_mood(op, now=None):
-    """无有效读数时排在同级末尾，也不能据未知心情踢出休息者。"""
+    """无有效读数时返回未知标记，排序排在同级末尾。"""
     if op is None or op.time_stamp is None or not 0 <= op.mood <= 24:
         return float("inf")
     mood = op.current_mood(now)
