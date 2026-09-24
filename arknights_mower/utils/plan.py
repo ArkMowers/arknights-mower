@@ -76,6 +76,8 @@ class PlanConfig:
         dorm_order: str = "",
         dorm_order_override: Optional[bool] = None,
         experimental_dorm_logic: bool = False,
+        mood_limits: Optional[dict] = None,
+        operator_mood_limits: Optional[dict] = None,
     ):
         """排班的设置
 
@@ -100,6 +102,17 @@ class PlanConfig:
         # 1 为感知信息模式
         # 2 为人间烟火模式
         self.ling_xi = ling_xi
+        from arknights_mower.utils.config.plan import MoodLimits
+
+        self.mood_limits = (
+            MoodLimits.model_validate(mood_limits).model_dump()
+            if mood_limits is not None
+            else None
+        )
+        self.operator_mood_limits = {
+            name: MoodLimits.model_validate(limits).model_dump()
+            for name, limits in (operator_mood_limits or {}).items()
+        }
         self.resting_threshold = resting_threshold
         self.free_room = free_room
         # 格式为 干员名字+ 括弧 +指定房间（逗号分隔）
@@ -123,6 +136,9 @@ class PlanConfig:
 
     def is_rest_in_full(self, agent_name) -> bool:
         return agent_name in self.rest_in_full
+
+    def custom_mood_limits(self, name):
+        return self.operator_mood_limits.get(name, self.mood_limits)
 
     def is_exhaust_require(self, agent_name) -> bool:
         return agent_name in self.exhaust_require
@@ -179,6 +195,9 @@ class PlanConfig:
         if self.experimental_dorm_logic and target.dorm_order_override:
             n.dorm_order = copy.deepcopy(target.dorm_order)
             n.dorm_order_override = True
+        if target.mood_limits is not None:
+            n.mood_limits = copy.deepcopy(target.mood_limits)
+        n.operator_mood_limits.update(copy.deepcopy(target.operator_mood_limits))
         return n
 
 

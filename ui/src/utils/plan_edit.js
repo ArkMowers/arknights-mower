@@ -92,6 +92,10 @@ export function replace_plan_operators(plan, source, target) {
 
 export function replace_conf_operators(conf, source, target) {
   if (!conf) return
+  if (conf.operator_mood_limits && Object.hasOwn(conf.operator_mood_limits, source)) {
+    conf.operator_mood_limits[target] = conf.operator_mood_limits[source]
+    delete conf.operator_mood_limits[source]
+  }
   for (const field of OPERATOR_CONF_FIELDS) {
     replace_in_list(conf[field], source, target)
   }
@@ -151,6 +155,7 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
   }
   const collect_conf = (conf) => {
     if (!conf) return
+    for (const name of Object.keys(conf.operator_mood_limits ?? {})) add(name)
     for (const field of OPERATOR_CONF_FIELDS) {
       for (const name of conf[field] || []) add(name)
     }

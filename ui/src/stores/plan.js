@@ -6,6 +6,8 @@ import { factory_product_ids } from '@/utils/base_products'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
+  const mood_limits = ref(null)
+  const operator_mood_limits = ref({})
   const exhaust_require = ref([])
   const rest_in_full = ref([])
   const ope_resting_priority = ref([])
@@ -163,6 +165,8 @@ export const usePlanStore = defineStore('plan', () => {
   async function load_plan() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
+    mood_limits.value = response.data.conf.mood_limits ?? null
+    operator_mood_limits.value = response.data.conf.operator_mood_limits ?? {}
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
@@ -189,6 +193,8 @@ export const usePlanStore = defineStore('plan', () => {
 
     backup_plans.value = response.data.backup_plans ?? []
     for (let b of backup_plans.value) {
+      b.conf.mood_limits ??= null
+      b.conf.operator_mood_limits ??= {}
       if (!Object.prototype.hasOwnProperty.call(b, 'exit_trigger_timing')) {
         b.exit_trigger_timing = null
       }
@@ -217,6 +223,8 @@ export const usePlanStore = defineStore('plan', () => {
       plan1: strip_plan(plan.value),
       conf: {
         ling_xi: ling_xi.value,
+        mood_limits: deepcopy(mood_limits.value),
+        operator_mood_limits: deepcopy(operator_mood_limits.value),
         exhaust_require: list2str(exhaust_require.value),
         rest_in_full: list2str(rest_in_full.value),
         ope_resting_priority: list2str(ope_resting_priority.value),
@@ -304,6 +312,8 @@ export const usePlanStore = defineStore('plan', () => {
     load_plan,
     load_operators,
     ling_xi,
+    mood_limits,
+    operator_mood_limits,
     exhaust_require,
     rest_in_full,
     resting_priority,

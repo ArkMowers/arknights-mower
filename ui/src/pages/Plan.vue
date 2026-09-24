@@ -11,6 +11,8 @@ const { free_blacklist, theme, experimental_dorm_logic } = storeToRefs(config_st
 const plan_store = usePlanStore()
 const {
   ling_xi,
+  mood_limits,
+  operator_mood_limits,
   resting_priority,
   resting_standby,
   exhaust_require,
@@ -175,6 +177,8 @@ function create_sub_plan() {
       exhaust_require: [],
       free_blacklist: [],
       ling_xi: ling_xi.value,
+      mood_limits: null,
+      operator_mood_limits: {},
       rest_in_full: [],
       resting_priority: [],
       resting_standby: [],
@@ -214,6 +218,8 @@ function update_dorm_order_override(value) {
 
 const current_conf = ref({
   ling_xi: ling_xi.value,
+  mood_limits: mood_limits.value,
+  operator_mood_limits: operator_mood_limits.value,
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
   resting_standby: resting_standby.value,
@@ -227,6 +233,8 @@ watchEffect(() => {
   if (sub_plan.value == 'main') {
     current_conf.value = {
       ling_xi: ling_xi.value,
+      mood_limits: mood_limits.value,
+      operator_mood_limits: operator_mood_limits.value,
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
       resting_standby: resting_standby.value,
@@ -246,6 +254,8 @@ watchEffect(() => {
 watchEffect(() => {
   if (sub_plan.value == 'main') {
     ling_xi.value = current_conf.value.ling_xi
+    mood_limits.value = current_conf.value.mood_limits
+    operator_mood_limits.value = current_conf.value.operator_mood_limits
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
@@ -324,7 +334,8 @@ function replace_main_conf() {
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
     free_blacklist: free_blacklist.value,
-    ope_resting_priority: ope_resting_priority.value
+    ope_resting_priority: ope_resting_priority.value,
+    operator_mood_limits: operator_mood_limits.value
   }
 }
 
@@ -618,7 +629,7 @@ function movePlanForward() {
           <div>感知：夕心情-令心情=12</div>
           <div>烟火：令心情-夕心情=12</div>
           <div>均衡：夕令心情一样</div>
-          <div>达到模式心情上限即离宿、不再入宿，不受“不养闲人”开关影响。</div>
+          <div>自动设置令夕及同组上下限；手动设置优先于模式。</div>
         </help-text>
       </template>
       <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
@@ -629,9 +640,18 @@ function movePlanForward() {
         </n-space>
       </n-radio-group>
     </n-form-item>
+    <n-form-item label="心情上下限">
+      <mood-limits-editor
+        v-model:defaults="current_conf.mood_limits"
+        v-model:overrides="current_conf.operator_mood_limits"
+        :disabled="edit_locked"
+        :operators="operators"
+        :is-backup="sub_plan !== 'main'"
+      />
+    </n-form-item>
     <n-form-item>
       <template #label
-        ><span>需要回满心情的干员</span><help-text>休息到满心情后回班。</help-text></template
+        ><span>需要回满心情的干员</span><help-text>休息到当前心情上限后回班。</help-text></template
       >
       <slick-operator-select
         :disabled="edit_locked"
