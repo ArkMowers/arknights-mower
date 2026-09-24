@@ -381,6 +381,9 @@ def test_manufacture_product_change_handles_both_confirms_and_fills_queue():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver._tap_product_point = MagicMock()
     solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(
+        side_effect=lambda resource: resource == "manufacture_product_change_confirm"
+    )
 
     solver._select_manufacture_product("exp3")
 
@@ -399,6 +402,37 @@ def test_manufacture_product_change_handles_both_confirms_and_fills_queue():
     )
 
 
+def test_manufacture_product_change_accepts_return_to_factory_list():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(side_effect=lambda resource: resource == "factory_collect")
+
+    solver._select_manufacture_product("exp3")
+
+    taps = [item.args[0] for item in solver._tap_product_point.call_args_list]
+    assert taps[-2:] == [(1440, 742), (1450, 305)]
+    assert (
+        sum(
+            item.args == ("manufacture_product_change_confirm",)
+            and item.kwargs == {"present": False}
+            for item in solver._wait_product_resource.call_args_list
+        )
+        == 1
+    )
+
+
+def test_manufacture_product_change_fails_when_neither_result_appears():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(return_value=None)
+    solver.sleep = MagicMock()
+
+    with pytest.raises(base.RecognizeError, match="补满队列确认或返回设施列表超时"):
+        solver._select_manufacture_product("exp3")
+
+
 @pytest.mark.parametrize(
     ("product_id", "recipe"),
     [("orirock", (500, 250)), ("orirock_device", (1240, 250))],
@@ -407,6 +441,7 @@ def test_manufacture_product_change_selects_each_orundum_recipe(product_id, reci
     solver = object.__new__(base.BaseSchedulerSolver)
     solver._tap_product_point = MagicMock()
     solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(return_value="confirmed")
 
     solver._select_manufacture_product(product_id)
 
