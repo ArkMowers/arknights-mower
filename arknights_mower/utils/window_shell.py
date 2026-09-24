@@ -149,9 +149,17 @@ def configured_desktop_window_size(size: WindowSize) -> WindowSize:
 
 
 def default_desktop_window_size() -> WindowSize:
-    """Return the default startup footprint for the shell within the display."""
+    """Keep Restore visibly smaller than Maximize on small work areas."""
+    work_area = _screen_work_area()
+    if work_area is None:
+        return configured_desktop_window_size(
+            WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT)
+        )
     return configured_desktop_window_size(
-        WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT)
+        WindowSize(
+            min(DESKTOP_WINDOW_WIDTH, round(work_area.width * 0.8)),
+            min(DESKTOP_WINDOW_HEIGHT, round(work_area.height * 0.9)),
+        )
     )
 
 
@@ -198,8 +206,10 @@ class WindowShellBridge:
         initial_size: WindowSize = WindowSize(
             DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT
         ),
+        tray_enabled: bool = True,
     ):
         self._window = window
+        self._tray_enabled = tray_enabled
         self._platform = normalize_platform(system)
         self._lock = Lock()
         self._state = {
@@ -224,6 +234,28 @@ class WindowShellBridge:
         # the existing tray lifecycle remains owned by webview_ui.
         self._window.confirm_close = False
         return self._call_window("destroy")
+
+    def get_close_preference(self) -> dict:
+        from arknights_mower.utils.config.gui import load_close_preference
+
+        return {**load_close_preference(), "tray_enabled": self._tray_enabled}
+
+    def set_close_preference(self, choice: str, remember: bool) -> bool:
+        from arknights_mower.utils.config.gui import save_close_preference
+
+        if choice == "tray" and not self._tray_enabled:
+            raise ValueError("System tray is disabled")
+        return save_close_preference(choice, remember)
+
+    def get_window_launch_mode(self) -> str:
+        from arknights_mower.utils.config.gui import load_window_launch_mode
+
+        return load_window_launch_mode()
+
+    def set_window_launch_mode(self, mode: str) -> bool:
+        from arknights_mower.utils.config.gui import save_window_launch_mode
+
+        return save_window_launch_mode(mode)
 
     def start_move(self) -> bool:
         """Hand a title bar press to the shell so it runs the drag itself.
@@ -257,6 +289,40 @@ class WindowShellBridge:
             return False
 
     def get_window_state(self) -> dict[str, Any]:
+        # The initial maximize event can arrive before Vue registers its
+        # listener. A query must reflect the actual native window, not that
+        # potentially stale event cache.
+        if self._platform == "windows":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                from arknights_mower.utils.windows_frameless import _winforms_hwnd
+
+                handle = _winforms_hwnd(self._window)
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.IsWindow.argtypes = [wintypes.HWND]
+                user32.IsWindow.restype = wintypes.BOOL
+                user32.IsIconic.argtypes = [wintypes.HWND]
+                user32.IsIconic.restype = wintypes.BOOL
+                user32.IsZoomed.argtypes = [wintypes.HWND]
+                user32.IsZoomed.restype = wintypes.BOOL
+                if user32.IsWindow(handle):
+                    state = (
+                        "minimized"
+                        if user32.IsIconic(handle)
+                        else "maximized"
+                        if user32.IsZoomed(handle)
+                        else "normal"
+                    )
+                    with self._lock:
+                        self._state.update(
+                            state=state,
+                            maximized=state == "maximized",
+                            minimized=state == "minimized",
+                        )
+            except Exception:
+                logger.debug("Native window state probe unavailable", exc_info=True)
         with self._lock:
             return {"protocol": WINDOW_SHELL_PROTOCOL, **self._state}
 
@@ -317,8 +383,9 @@ def attach_window_shell(
     window: Any,
     system: str | None = None,
     initial_size: WindowSize = WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT),
+    tray_enabled: bool = True,
 ) -> WindowShellBridge:
-    bridge = WindowShellBridge(window, system, initial_size)
+    bridge = WindowShellBridge(window, system, initial_size, tray_enabled)
 
     # pywebview 5.1 Window.expose only serializes the functions passed here.
     # Never pass the bridge or Window object itself to js_api.
@@ -331,6 +398,10 @@ def attach_window_shell(
         bridge.start_resize,
         bridge.get_window_state,
         bridge.get_platform,
+        bridge.get_close_preference,
+        bridge.set_close_preference,
+        bridge.get_window_launch_mode,
+        bridge.set_window_launch_mode,
     )
 
     window.events.maximized += bridge._on_maximized

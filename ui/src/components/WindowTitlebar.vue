@@ -51,7 +51,7 @@
         :aria-label="control.label"
         :title="control.label"
         :data-window-control="control.id"
-        :disabled="busy[control.action || control.id]"
+        :disabled="busy[control.action || control.id] || control.disabled"
         @mousedown.stop
         @click="onControl(control.action || control.id)"
       >

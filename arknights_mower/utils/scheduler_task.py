@@ -824,6 +824,19 @@ def _arrangement_resources(plan):
     )
 
 
+def _after_pending_arrangements(plan, pending_resources):
+    names, slots = _arrangement_resources(plan)
+    # 从迁移后的状态派生的任务须晚于相关迁移，不拖延无关房间的回班。
+    return max(
+        (
+            ready + timedelta(seconds=1)
+            for ready, moving, changed in pending_resources
+            if names & moving or slots & changed
+        ),
+        default=datetime.min,
+    )
+
+
 def generate_plan_by_drom(
     tasks, op_data, existing_targets=None, release_tasks=None, pending_arrangements=()
 ):
@@ -879,6 +892,31 @@ def generate_plan_by_drom(
                         continue
                     target_room, target_index = projected_bed.position
                     projected_bed.reset()
+                    if rest_in_full is None:
+                        # 执行端按姓名和床位双重校验；同刻回满也分别记录身份，
+                        # 避免空身份被跳过，或旧任务误清后来入住的人。
+                        if op_data.config.free_room:
+                            release_plan = {
+                                target_room: ["Current"]
+                                * len(op_data.plan[target_room])
+                            }
+                            release_plan[target_room][target_index] = "Free"
+                            result.append(
+                                SchedulerTask(
+                                    task_plan=release_plan,
+                                    time=max(
+                                        time,
+                                        current_time - timedelta(seconds=1),
+                                        _after_pending_arrangements(
+                                            release_plan, pending_resources
+                                        ),
+                                    ),
+                                    task_type=TaskTypes.RELEASE_DORM,
+                                    meta_data=op.name,
+                                )
+                            )
+                            planned.add(op.name)
+                        continue
                 plan.setdefault(
                     target_room, ["Current"] * len(op_data.plan[target_room])
                 )[target_index] = "Free"
@@ -917,16 +955,7 @@ def generate_plan_by_drom(
             continue
         if rest_in_full is not None:
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
-        names, slots = _arrangement_resources(plan)
-        # 从迁移后的床位派生的任务必须晚于迁移本身；不拖延无关房间的回班。
-        earliest = max(
-            (
-                ready + timedelta(seconds=1)
-                for ready, moving, changed in pending_resources
-                if names & moving or slots & changed
-            ),
-            default=datetime.min,
-        )
+        earliest = _after_pending_arrangements(plan, pending_resources)
         if rest_in_full:
             if exhaust_exist:
                 time = max(time, current_time, earliest)
@@ -1082,7 +1111,7 @@ def plan_metadata(op_data, tasks):
             ):
                 continue
             grouped_dorms[operator.group].append(dorm)
-            if not operator.is_high() and not op_data.is_ling_xi_limited(dorm.name):
+            if not operator.is_high() and not op_data.has_rest_mood_limit(dorm.name):
                 free_rooms.append(dorm)
     new_task = {}
     for group_name, dorms in grouped_dorms.items():
@@ -1182,10 +1211,20 @@ def plan_metadata(op_data, tasks):
             # 防止时间和前面重复
             if min_resting_time != datetime.max:
                 min_resting_time += timedelta(seconds=10)
-            if room.time and room.name:
-                task_time = min(room.time, min_resting_time)
-                if task_time < datetime.now():
-                    # 如果干员休息完毕，则不再生成
+            operator = op_data.operators[room.name]
+            observed_full = (
+                op_data.experimental_dorm_logic
+                and operator.time_stamp is not None
+                and operator.mood >= operator.upper_limit
+            )
+            if (room.time or observed_full) and room.name:
+                task_time = (
+                    datetime.now()
+                    if observed_full
+                    else min(room.time, min_resting_time)
+                )
+                if task_time < datetime.now() and not op_data.experimental_dorm_logic:
+                    # 稳定逻辑沿用旧行为；测试逻辑补发仍占床的过期释放。
                     continue
                 release_tasks.setdefault(task_time, ([], None))[0].append(room)
     # 独立的个人离宿时刻不受整组回满、不养闲人和任务合并影响。
@@ -1197,6 +1236,66 @@ def plan_metadata(op_data, tasks):
         pending_arrangements=pending_arrangements,
     )
     tasks.extend(generated)
+    # 全组都已达到各自上限并离宿时，不再有床位能派生回班任务。
+    # 复用原回班及临时床关闭流程，避免最后一次离宿后把整组留在空闲。
+    returning = {
+        name for task in generated for names in task.plan.values() for name in names
+    }
+    busy = busy_resting_names()
+    pending_resources = [
+        (task.time, *_arrangement_resources(task.plan)) for task in pending_arrangements
+    ]
+    for op in op_data.operators.values():
+        if (
+            not op.is_high()
+            or op.room.startswith("dorm")
+            or op.current_room
+            or not op_data.rest_mood_complete(op.name)
+        ):
+            continue
+        members = set(op_data.groups[op.group]) if op.group else {op.name}
+        if members & (returning | locked_names | busy) or op.group in locked_groups:
+            continue
+        workers = [
+            op_data.operators[name]
+            for name in members
+            if not op_data.operators[name].room.startswith("dorm")
+            and not op_data.operators[name].workaholic
+        ]
+        if not all(
+            not worker.current_room
+            and (
+                op_data._can_standby(worker)
+                or (
+                    resting_mood(worker) != float("inf")
+                    and worker.current_mood() >= worker.upper_limit
+                )
+            )
+            for worker in workers
+        ):
+            continue
+        plan = {}
+        _native_return(op_data, plan, members)
+        recalled = rebalance_closing_dorm_slots(
+            op_data.project_arrangements([]), plan, members
+        )
+        if recalled & (locked_names | busy) or any(
+            (room, index) in locked_slots
+            for room, names in plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        ):
+            continue
+        tasks.append(
+            SchedulerTask(
+                task_plan=plan,
+                time=max(
+                    datetime.now(), _after_pending_arrangements(plan, pending_resources)
+                ),
+                task_type=TaskTypes.SHIFT_ON,
+            )
+        )
+        returning.update(members | recalled)
     tasks.extend(limited_releases)
     return tasks
 
@@ -1205,14 +1304,14 @@ def plan_mood_limit_releases(op_data):
     now = datetime.now()
     result = []
     for bed in op_data.all_dorms():
-        if not op_data.is_ling_xi_limited(bed.name):
+        if not op_data.has_rest_mood_limit(bed.name):
             continue
         op = op_data.operators.get(bed.name)
         if op is None or (op.current_room, op.current_index) != bed.position:
             continue
         if not op_data.is_recovery_dorm(bed, op.name):
             continue
-        if op_data.ling_xi_rest_complete(op.name):
+        if op_data.rest_mood_complete(op.name):
             due = now
         elif bed.time is not None:
             due = max(now, bed.time)
@@ -1229,6 +1328,7 @@ def plan_mood_limit_releases(op_data):
                 task_type=TaskTypes.RELEASE_DORM,
                 meta_data=op.name,
                 strict_mood_limit=True,
+                mood_limit=op.upper_limit,
             )
         )
     return result
@@ -1537,7 +1637,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 for op in op_data.operators.values()
                 if (not op.is_high() or op.name in standby_waiting)
                 and not op.current_room
-                and not op_data.ling_xi_rest_complete(op.name)
+                and not op_data.rest_mood_complete(op.name)
                 and op.name not in reserved
                 and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
                 and (
@@ -1595,7 +1695,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
 
 
 def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
-    """测试宿舍逻辑关闭时保留 alpha 的不养闲人算法。"""
+    """稳定宿舍不养闲人：普通空闲者及已随组下班的待命候补补床。"""
     for names in plan.values():
         for name in names:
             if name != "Current":
@@ -1609,7 +1709,7 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
         waiting_list = []
         for name, op in op_data.operators.items():
             if (
-                not op.is_high()
+                (not op.is_high() or op_data.is_standby(name))
                 and op.current_mood() < op.upper_limit
                 and op.current_room == ""
                 and op.name not in op_data.config.free_blacklist
@@ -1643,7 +1743,7 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
             if dorm.name in op_data.operators:
                 occupant = op_data.operators[dorm.name]
                 logger.debug(str(dorm))
-                if not occupant.is_high() and (
+                if (not occupant.is_high() or op_data._can_standby(occupant)) and (
                     occupant.current_mood() >= occupant.upper_limit
                     or (dorm.time is not None and dorm.time < datetime.now())
                 ):
@@ -1733,6 +1833,7 @@ class SchedulerTask:
         meta_data="",
         adjusted=False,
         strict_mood_limit=False,
+        mood_limit=None,
     ):
         if time is None:
             self.time = datetime.now()
@@ -1744,6 +1845,7 @@ class SchedulerTask:
         self.adjusted = adjusted
         self.deferred_by_run_order = False
         self.strict_mood_limit = strict_mood_limit
+        self.mood_limit = mood_limit
 
     def format(self, time_offset=0):
         res = copy.deepcopy(self)

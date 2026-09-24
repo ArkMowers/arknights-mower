@@ -60,6 +60,16 @@ function make_state() {
 }
 
 describe('apply_operator_replace 覆盖范围', () => {
+  it('替换主副表的个人上下限并更新已使用干员', () => {
+    const state = make_state()
+    state.main_conf.operator_mood_limits = { 令: { lower: 0, upper: 12 } }
+    state.backup_plans[0].conf.operator_mood_limits = { 令: { lower: 2, upper: 16 } }
+    expect(collect_plan_operators(state)).toContain('令')
+    apply_operator_replace(state, '令', '夕')
+    expect(state.main_conf.operator_mood_limits).toEqual({ 夕: { lower: 0, upper: 12 } })
+    expect(state.backup_plans[0].conf.operator_mood_limits).toEqual({ 夕: { lower: 2, upper: 16 } })
+    expect(collect_plan_operators(state)).not.toContain('令')
+  })
   it('替换主副表的宿舍休息候补名单，并纳入已使用干员集合', () => {
     const state = make_state()
     state.main_conf.resting_standby = ['乌尔比安']

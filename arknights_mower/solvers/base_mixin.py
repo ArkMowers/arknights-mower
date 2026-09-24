@@ -889,13 +889,38 @@ class BaseMixin:
             return 24
 
     def detect_product_complete(self):
-        for product in ["gold", "exp", "lmd", "ori", "oru", "trust"]:
+        for product in [
+            "gold",
+            "exp",
+            "lmd",
+            "ori",
+            "oru",
+            "trust",
+            "credit",
+            "info",
+        ]:
             if pos := self.find(
                 f"infra_{product}_complete",
                 scope=((1230, 0), (1920, 1080)),
                 score=0.1,
             ):
                 return pos
+
+    def wait_product_complete(self, max_retries: int = 5) -> bool:
+        """等待产物收取提示浮动动画结束并消失，避免遮挡后续 UI。
+
+        :param max_retries: 最多等待轮数（每轮 1 秒），防止低阈值误判导致死循环。
+        :return: 若提示消失返回 True，若达到最大重试次数仍未消失返回 False。
+        """
+        for _ in range(max_retries):
+            if not self.detect_product_complete():
+                return True
+            logger.info("检测到产物收取提示，等待消失")
+            self.sleep(1)
+        if self.detect_product_complete():
+            logger.warning("产物收取提示等待超时，继续执行后续流程")
+            return False
+        return True
 
     def read_operator_in_room(self, img):
         img = thres2(img, 200)

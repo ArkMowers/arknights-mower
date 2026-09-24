@@ -119,6 +119,56 @@ class TestGuiWindowRatio(unittest.TestCase):
                 self.assertIsNone(gui.load_window_ratio())
 
 
+class TestGuiWindowMode(unittest.TestCase):
+    def test_size_and_mode_share_existing_gui_file_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
+                self.assertEqual(gui.load_window_mode(), "normal")
+                gui.save_window_ratio(WindowRatio(0.72, 0.81))
+                gui.save_window_mode("maximized")
+                self.assertEqual(gui.load_window_ratio(), WindowRatio(0.72, 0.81))
+                gui.save_window_ratio(WindowRatio(0.65, 0.75))
+                self.assertEqual(gui.load_window_mode(), "maximized")
+                self.assertEqual(gui.load_window_ratio(), WindowRatio(0.65, 0.75))
+
+    def test_unknown_window_mode_falls_back_to_normal(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "gui.yml"
+            path.write_text("window_mode: invalid\n", encoding="utf-8")
+            with mock.patch.object(gui, "gui_path", path):
+                self.assertEqual(gui.load_window_mode(), "normal")
+                with self.assertRaises(ValueError):
+                    gui.save_window_mode("fullscreen")
+
+
+class TestGuiDesktopPreferences(unittest.TestCase):
+    def test_preferences_share_existing_gui_file_without_losing_ratio(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
+                gui.save_window_ratio(WindowRatio(0.7, 0.8))
+                gui.save_window_mode("maximized")
+                gui.save_close_preference("exit", True)
+                gui.save_window_launch_mode("normal")
+                self.assertEqual(gui.load_window_ratio(), WindowRatio(0.7, 0.8))
+                self.assertEqual(gui.load_window_mode(), "maximized")
+                self.assertEqual(
+                    gui.load_close_preference(), {"choice": "exit", "remember": True}
+                )
+                self.assertEqual(gui.load_window_launch_mode(), "normal")
+
+    def test_invalid_preferences_and_missing_values_have_safe_defaults(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
+                self.assertEqual(gui.load_window_launch_mode(), "last")
+                self.assertEqual(
+                    gui.load_close_preference(), {"choice": "tray", "remember": False}
+                )
+                with self.assertRaises(ValueError):
+                    gui.save_close_preference("killall", True)
+                with self.assertRaises(ValueError):
+                    gui.save_window_launch_mode("fullscreen")
+
+
 class TestWindowTitle(unittest.TestCase):
     def test_composes_app_and_resource_version(self):
         # 标题 = 应用版本 + 资源包版本 + 实例标识；资源包版本来自 title_version 的尽力读取。

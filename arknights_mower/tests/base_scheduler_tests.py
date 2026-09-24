@@ -1,6 +1,7 @@
 import sys
 import unittest
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
@@ -12,6 +13,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers import mastery_reader  # noqa: E402
+from arknights_mower.solvers.base_mixin import BaseMixin  # noqa: E402
 from arknights_mower.solvers.base_schedule import (  # noqa: E402
     BaseSchedulerSolver,
     _add_group_to_fix_plan,
@@ -19,7 +21,11 @@ from arknights_mower.solvers.base_schedule import (  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
-from arknights_mower.utils.recognize import RecognizeError, Scene  # noqa: E402
+from arknights_mower.utils.recognize import (  # noqa: E402
+    RecognizeError,
+    Recognizer,
+    Scene,
+)
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
     TaskTypes,
@@ -3053,3 +3059,188 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
             ["arranged_and_verified", "countdown", "accept_order", "restore"],
         )
         solver.get_order_remaining_time.assert_called_once_with()
+
+
+class TestClueProductCompleteWait(unittest.TestCase):
+    """测试会客室处理线索流程中等待产物收取提示消失的逻辑。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_detect_product_complete_searches_credit_and_info(self):
+        solver = BaseSchedulerSolver()
+        queried = []
+
+        def mock_find(res, **kwargs):
+            queried.append(res)
+            return None
+
+        solver.find = mock_find
+        solver.detect_product_complete()
+        self.assertIn("infra_credit_complete", queried)
+        self.assertIn("infra_info_complete", queried)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_wait_product_complete_stops_on_timeout(self):
+        solver = BaseSchedulerSolver()
+        solver.sleep = MagicMock()
+        solver.detect_product_complete = MagicMock(
+            return_value=((1400, 100), (1500, 200))
+        )
+
+        # 验证有产物提示但持续存在时，达到 max_retries 后返回 False 并退出，不会死循环
+        result = solver.wait_product_complete(max_retries=3)
+        self.assertFalse(result)
+        self.assertEqual(solver.sleep.call_count, 3)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_wait_product_complete_succeeds_when_cleared(self):
+        solver = BaseSchedulerSolver()
+        solver.sleep = MagicMock()
+        # 第一次有提示，第二次消失
+        solver.detect_product_complete = MagicMock(
+            side_effect=[((1400, 100), (1500, 200)), None]
+        )
+
+        result = solver.wait_product_complete(max_retries=5)
+        self.assertTrue(result)
+        self.assertEqual(solver.sleep.call_count, 1)
+
+    def test_detect_product_complete_with_actual_fixtures(self):
+        """用真实截图分别验证新增的信用与情报模板。"""
+        fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
+        credit_fixture = fixtures_dir / "clue_credit_prompt.png"
+        info_fixture = fixtures_dir / "clue_info_prompt.png"
+
+        self.assertTrue(credit_fixture.exists())
+        self.assertTrue(info_fixture.exists())
+
+        mixin = BaseMixin()
+        dummy_device = MagicMock()
+        scope = ((1230, 0), (1920, 1080))
+
+        # 测试 credit 提示截图
+        with open(credit_fixture, "rb") as f:
+            recog_credit = Recognizer(dummy_device, f.read())
+        mixin.find = recog_credit.find
+        self.assertIsNotNone(
+            recog_credit.find("infra_credit_complete", scope=scope, score=0.1)
+        )
+        self.assertIsNotNone(mixin.detect_product_complete())
+
+        # 测试 info 提示截图
+        with open(info_fixture, "rb") as f:
+            recog_info = Recognizer(dummy_device, f.read())
+        mixin.find = recog_info.find
+        self.assertIsNotNone(
+            recog_info.find("infra_info_complete", scope=scope, score=0.1)
+        )
+        self.assertIsNotNone(mixin.detect_product_complete())
+
+    def test_live_credit_prompt_appears_and_clears(self):
+        """实机截图：接收线索后提示出现，消失后才能继续。"""
+        fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
+        scope = ((1230, 0), (1920, 1080))
+        dummy_device = MagicMock()
+
+        def recog(name):
+            screenshot = (fixtures_dir / name).read_bytes()
+            return Recognizer(dummy_device, screenshot)
+
+        room = recog("clue_live_room_details.png")
+        before = recog("clue_live_receive_before.png")
+        prompt = recog("clue_live_credit_prompt.png")
+        after = recog("clue_live_receive_after.png")
+        mixin = BaseMixin()
+
+        for frame in (room, before, after):
+            mixin.find = frame.find
+            self.assertIsNone(mixin.detect_product_complete())
+
+        mixin.find = prompt.find
+        self.assertIsNotNone(
+            prompt.find("infra_credit_complete", scope=scope, score=0.1)
+        )
+        mixin.sleep = MagicMock(
+            side_effect=lambda _: setattr(mixin, "find", after.find)
+        )
+        self.assertTrue(mixin.wait_product_complete())
+        mixin.sleep.assert_called_once_with(1)
+
+    def test_live_party_time_read_from_adb_screenshot(self):
+        """实机截图：展开交流详情后读取真实倒计时。"""
+        from rapidocr_onnxruntime import RapidOCR
+
+        from arknights_mower.utils import rapidocr
+        from arknights_mower.utils.image import bytes2img
+
+        fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
+        before_data = (fixtures_dir / "clue_live_party_before.png").read_bytes()
+        time_data = (fixtures_dir / "clue_live_party_time.png").read_bytes()
+        device = MagicMock()
+        before = Recognizer(device, before_data)
+        self.assertIsNotNone(before.find("clue/check_party"))
+
+        device.screencap.return_value = (
+            time_data,
+            bytes2img(time_data),
+            bytes2img(time_data, True),
+        )
+        solver = BaseSchedulerSolver(device=device, recog=Recognizer(device, time_data))
+        with patch.object(rapidocr, "engine", RapidOCR(text_score=0.3)):
+            start = datetime.now()
+            end = solver.read_party_time()
+
+        self.assertIsNotNone(end)
+        self.assertAlmostEqual(
+            (end - start).total_seconds(),
+            18 * 3600 + 46 * 60 + 14,
+            delta=2,
+        )
+        device.screencap.assert_called_once()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_clue_new_waits_for_product_complete(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.leifeng_mode = False
+        solver.clue_count = 0
+        solver.clue_count_limit = 0
+        solver._run_clue_shop = MagicMock()
+        solver.scene_graph_navigation = MagicMock()
+        solver.enter_room = MagicMock()
+        solver.recog = MagicMock()
+        solver.tap = MagicMock()
+        solver.ctap = MagicMock()
+        solver.tap_element = MagicMock()
+        solver.back = MagicMock()
+        solver.sleep = MagicMock()
+        solver.backup_plan_solver = MagicMock()
+        solver.read_party_time = MagicMock(return_value=None)
+        solver.set_detected_party_time = MagicMock()
+
+        scenes = [
+            Scene.INFRA_DETAILS,
+            Scene.INFRA_CONFIDENTIAL,
+            Scene.INFRA_CONFIDENTIAL,
+            Scene.INFRA_CONFIDENTIAL,
+            Scene.INFRA_CONFIDENTIAL,
+            Scene.CLUE_GIVE_AWAY,
+            Scene.INFRA_CONFIDENTIAL,
+            Scene.INFRA_DETAILS,
+        ]
+        solver.scene = MagicMock(
+            side_effect=lambda: scenes.pop(0) if scenes else Scene.INDEX
+        )
+
+        wait_calls = []
+
+        def mock_wait_product():
+            wait_calls.append("wait_product_complete")
+            return True
+
+        solver.wait_product_complete = MagicMock(side_effect=mock_wait_product)
+        solver.find = MagicMock(return_value=None)
+
+        solver.clue_new()
+
+        # 验证在 message_board 与 party_time 阶段均调用了 wait_product_complete
+        self.assertEqual(len(wait_calls), 2)

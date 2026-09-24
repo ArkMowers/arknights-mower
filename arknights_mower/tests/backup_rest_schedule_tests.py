@@ -294,7 +294,7 @@ def test_cancelled_arrangement_restores_return_planning(meeting_transition):
     )
 
 
-def test_arrangement_projection_moves_timers_without_touching_live_state(
+def test_arrangement_projection_invalidates_moved_timer_without_touching_live_state(
     meeting_transition, monkeypatch
 ):
     data = meeting_transition.op_data
@@ -314,7 +314,8 @@ def test_arrangement_projection_moves_timers_without_touching_live_state(
     assert projected.get_current_operator("meeting", 0).name == "信仰搅拌机"
     assert projected.get_current_operator("meeting", 1).name == "虎狼丸"
     assert projected.operators["埃癸斯"].current_room == ""
-    assert (projected.dorm[0].name, projected.dorm[0].time) == before[1]
+    assert projected.dorm[0].name == before[1][0]
+    assert projected.dorm[0].time is None
     assert projected.dorm[1].name == ""
     assert projected.dorm[1].time is None
     assert [(bed.name, bed.time) for bed in data.dorm] == before
@@ -336,11 +337,23 @@ def test_pending_migration_precedes_dependent_return(meeting_transition, task_ty
     solver.tasks.append(migration)
     solver.plan_metadata()
 
-    dependent = next(t for t in solver.tasks if t.plan.get("central") == ["歌蕾蒂娅"])
+    # 换位后恢复时间未知，不能把旧床位的时间套在新床位上。
+    assert not any(t.plan.get("central") == ["歌蕾蒂娅"] for t in solver.tasks)
     independent = next(t for t in solver.tasks if "meeting" in t.plan)
-    assert dependent.time > migration.time
     assert independent.time < migration.time
     assert independent.plan == {"meeting": ["信仰搅拌机", "Current"]}
+    assert migration in solver.tasks
+    solver.op_data = solver.op_data.project_arrangements([migration.plan])
+    solver.tasks.remove(migration)
+    _, bed = solver.op_data.get_dorm_by_name("歌蕾蒂娅")
+    assert bed.time is None
+    solver.op_data.refresh_dorm_time(
+        *bed.position,
+        {"agent": bed.name, "time": migration.time + timedelta(hours=2)},
+    )
+    solver.plan_metadata()
+    dependent = next(t for t in solver.tasks if t.plan.get("central") == ["歌蕾蒂娅"])
+    assert dependent.time > migration.time
 
 
 def test_pending_migration_release_uses_destination_and_preserves_other_returns(
@@ -369,14 +382,24 @@ def test_pending_migration_release_uses_destination_and_preserves_other_returns(
     solver.tasks.append(migration)
     solver.plan_metadata()
 
-    release = next(t for t in solver.tasks if t.type == TaskTypes.RELEASE_DORM)
-    assert release.plan == {
-        "dormitory_1": ["Current", "Current", "Free", "Current", "Current"]
-    }
-    assert release.time > migration.time
+    assert not any(t.type == TaskTypes.RELEASE_DORM for t in solver.tasks)
     assert return_task(solver).plan == {"central": ["歌蕾蒂娅"]}
     assert return_task(solver).time < migration.time
     assert data.dorm[2].name == "九色鹿"
+    solver.op_data = data.project_arrangements([migration.plan])
+    solver.tasks.remove(migration)
+    _, bed = solver.op_data.get_dorm_by_name("九色鹿")
+    assert bed.time is None
+    solver.op_data.refresh_dorm_time(
+        *bed.position,
+        {"agent": bed.name, "time": migration.time + timedelta(hours=1)},
+    )
+    solver.plan_metadata()
+    release = next(t for t in solver.tasks if t.type == TaskTypes.RELEASE_DORM)
+    assert release.meta_data == "九色鹿"
+    assert release.plan == {
+        "dormitory_1": ["Current", "Current", "Free", "Current", "Current"]
+    }
 
 
 @pytest.mark.parametrize(

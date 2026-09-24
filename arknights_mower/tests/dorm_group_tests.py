@@ -559,6 +559,7 @@ def test_equal_time_releases_keep_return_task_type(solver):
     for bed in data.dorm:
         if bed.name:
             bed.time = completed_at
+            data.operators[bed.name].mood = 10
 
     solver.plan_metadata()
 
@@ -1075,12 +1076,26 @@ def test_multiple_idle_beds_finishing_together_generate_release(solver, experime
     completed_at = datetime.now() + timedelta(hours=1)
     for bed in data.dorm:
         bed.time = completed_at
+        data.operators[bed.name].mood = 10
 
     solver.plan_metadata()
 
-    assert len(solver.tasks) == 1
-    assert solver.tasks[0].type == TaskTypes.RELEASE_DORM
-    assert solver.tasks[0].time == completed_at
-    assert solver.tasks[0].plan == {
-        "dormitory_1": ["Current", "Current", "Free", "Free", "Free"]
-    }
+    if experimental:
+        assert len(solver.tasks) == 3
+        assert {task.meta_data for task in solver.tasks} == {
+            bed.name for bed in data.dorm
+        }
+        for task in solver.tasks:
+            assert task.type == TaskTypes.RELEASE_DORM
+            assert completed_at <= task.time <= completed_at + timedelta(seconds=1)
+            op = data.operators[task.meta_data]
+            expected = ["Current"] * 5
+            expected[op.current_index] = "Free"
+            assert task.plan == {op.current_room: expected}
+    else:
+        assert len(solver.tasks) == 1
+        assert solver.tasks[0].type == TaskTypes.RELEASE_DORM
+        assert solver.tasks[0].time == completed_at
+        assert solver.tasks[0].plan == {
+            "dormitory_1": ["Current", "Current", "Free", "Free", "Free"]
+        }

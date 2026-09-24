@@ -821,14 +821,34 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         get_time = True
                     if TaskTypes.RELEASE_DORM == self.task.type:
                         if getattr(self.task, "strict_mood_limit", False) and not (
-                            self.op_data.is_ling_xi_limited(self.task.meta_data)
+                            self.op_data.has_rest_mood_limit(self.task.meta_data)
+                            and self.task.meta_data in self.op_data.operators
+                            and getattr(self.task, "mood_limit", None)
+                            in (
+                                None,
+                                self.op_data.operators[self.task.meta_data].upper_limit,
+                            )
                         ):
-                            # 切表或修改令夕模式后，旧上限释放任务失效。
+                            # 切表或修改上下限后，旧上限释放任务失效。
                             self.task.plan = {}
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
                         free_room = next(iter(self.task.plan), None)
                         if free_room and "Free" in self.task.plan[free_room]:
                             free_index = self.task.plan[free_room].index("Free")
+                            if (
+                                not self.task.meta_data
+                                and not getattr(
+                                    self.op_data, "experimental_dorm_logic", False
+                                )
+                                and not getattr(self.task, "strict_mood_limit", False)
+                            ):
+                                # 稳定逻辑旧释放任务未记录姓名，按实际槽位补齐，
+                                # 后续位置校验和加工判断共用同一个干员身份。
+                                occupant = self.op_data.get_current_operator(
+                                    free_room, free_index
+                                )
+                                if occupant is not None:
+                                    self.task.meta_data = occupant.name
                             if self.task.meta_data in self.op_data.operators.keys():
                                 free_agent = self.op_data.operators[self.task.meta_data]
                                 if (
@@ -1654,6 +1674,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 return
             settings = snapshot.settings
             is_9colored = agent == "九色鹿"
+
+            def deer_gap():
+                for attempt in range(3):
+                    self.recog.update()
+                    causality = self.digit_reader.get_deer_causality(self.recog.gray)
+                    if causality is not None:
+                        return 40 - causality
+                    if attempt < 2:
+                        self.sleep()
+                logger.error("九色鹿因果数字模板匹配失败，停止加工")
+                return None
+
             if agent not in [s.operator for s in settings]:
                 logger.info(f"当前干员{agent}不在加工站配置中")
                 return
@@ -1759,7 +1791,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif scene == Scene.FACTORY_DASHBOARD:
                     if tasks[0] == "enter":
                         if is_9colored:
-                            gap = 40 - self.get_number((290, 335, 95, 200))
+                            gap = deer_gap()
+                            if gap is None:
+                                return
                             logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
@@ -1793,7 +1827,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         is_crit = ap_cost == 4 and material_tab == "精英材料"
                         if is_9colored:
                             mood = self.op_data.operators[agent].mood
-                            gap = 40 - self.get_number((290, 335, 95, 200))
+                            gap = deer_gap()
+                            if gap is None:
+                                return
                             logger.debug(f"九色鹿技能差值{gap}")
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
@@ -2372,6 +2408,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 先确定工作组换班，再用剩余床位补普通休息者；补床不能提前占用
         # 尚未执行的主班床位预约（#942）。补床内部仍按宿舍优先级排序。
         for op in shift_candidates + fill_candidates:
+            if experimental and op.name in _replacement:
+                # 本轮已接工作替班的人不能又预约休息床位。
+                continue
             if experimental and self._resting_tier(op) == RestingTier.EXCLUDED:
                 continue
             if experimental and op.name in reserved_names:
@@ -2431,17 +2470,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 continue
             # 忽略掉心情太高的
-            if op.upper_limit - op.current_mood() < 2:
+            if (
+                op.current_mood() >= op.upper_limit
+                if self.op_data.custom_mood_limits(op.name) is not None
+                else op.upper_limit - op.current_mood() < 2
+            ):
                 continue
             # 忽略 用尽，已经处理
             if op.name in self.op_data.exhaust_agent:
                 continue
             # 忽略掉心情值没低于上限的的
-            if op.current_mood() > int(
-                (op.upper_limit - op.lower_limit)
-                * self.op_data.config.resting_threshold
-                + op.lower_limit
-            ):
+            if op.current_mood() > self.op_data.resting_mood_threshold(op):
                 continue
             if not op.is_high():
                 previous = (
@@ -3761,6 +3800,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if scene == Scene.INFRA_DETAILS:
                     logger.info("INFRA_DETAILS")
                     if ctm.task == "message_board":
+                        self.wait_product_complete()
+
                         # 左下角 (680, 1000) 在这个界面上有两处用途：一是信息板入口
                         # 没露出来时按它唤出入口，二是关掉领取信用后的确认页
                         bottom_left = (680, 1000)
@@ -3829,6 +3870,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.info("未找到信息板入口，跳过")
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
+                        self.wait_product_complete()
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
@@ -3906,13 +3948,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 elif scene == Scene.CLUE_RECEIVE:
                     logger.info("CLUE_RECEIVE")
-                    if self.find(
-                        "infra_trust_complete",
-                        scope=((1230, 0), (1920, 1080)),
-                        score=0.1,
-                    ):
-                        self.sleep()
-                        continue
+                    self.wait_product_complete()
                     if clue := clue_cls("receive"):
                         name_scope = ((1580, 220), (1880, 255))
                         name_img = cropimg(self.recog.gray, name_scope)
@@ -5468,12 +5504,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             v.name
             for k, v in self.op_data.operators.items()
             if v.name not in agents
-            and v.operator_type != "high"
-            and v.current_room == ""
             and (
-                v.name not in ("令", "夕")
-                or not self.op_data.ling_xi_rest_complete(v.name)
+                v.operator_type != "high"
+                or (
+                    not self.op_data.experimental_dorm_logic
+                    and self.op_data.is_standby(v.name)
+                )
             )
+            and v.current_room == ""
+            and not self.op_data.rest_mood_complete(v.name)
         ]
         free_list.extend(
             [
@@ -5598,7 +5637,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 current is not None
                 and getattr(self.task, "strict_mood_limit", False)
                 and self.task.meta_data == current.name
-                and self.op_data.is_ling_xi_limited(current.name)
+                and self.op_data.has_rest_mood_limit(current.name)
             ):
                 # 上限释放必须真正换出本人，不能被主班床位保护抵消。
                 current = None
@@ -5676,8 +5715,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
                 __agent = self.op_data.operators[agents[idx]]
                 if (
-                    agents[idx] in ("令", "夕")
-                    and self.op_data.ling_xi_rest_complete(agents[idx])
+                    self.op_data.rest_mood_complete(agents[idx])
+                    and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
                 ) or (
                     (
                         not experimental_dorm_logic
@@ -6110,6 +6149,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
     def get_agent_from_room(self, room, read_time_index=None, related_operators=None):
+        retain_dorm_time = room.startswith("dorm") and getattr(
+            self.op_data, "experimental_dorm_logic", False
+        )
         if read_time_index is None:
             read_time_index = []
         if related_operators is None:
@@ -6159,9 +6201,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 read_time_index = list(
                     dict.fromkeys([*read_time_index, *dorm_read_time_index])
                 )
-        while self.detect_product_complete():
-            logger.info("检测到产物收取提示")
-            self.sleep(1)
+        self.wait_product_complete()
         if room == "train":
             length = 2
         else:
@@ -6274,6 +6314,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 _mood = -1
             data["agent"] = _name
             data["mood"] = _mood
+            if retain_dorm_time and _name in self.op_data.operators:
+                _, bed = self.op_data.get_dorm_by_name(_name)
+                if bed is not None and bed.name == _name and bed.time is not None:
+                    # 位置没变时沿用预计回满记录，换位后的缺失记录顺带读取。
+                    data["time"] = bed.time
+                    result.append(data)
+                    continue
             if i in read_time_index and _name != "":
                 exhausted_working = False
                 if (

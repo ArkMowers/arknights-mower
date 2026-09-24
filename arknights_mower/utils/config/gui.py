@@ -8,11 +8,52 @@
 @app/config/，走 atomic_write，旧 @app/gui.yml 由 migrate_app_config_paths 搬进来。
 """
 
+from threading import RLock
+
 import yaml
 from yamlcore import CoreDumper, CoreLoader
 
 from arknights_mower.utils.config import atomic_write, gui_path
 from arknights_mower.utils.window_shell import WindowRatio
+
+_gui_lock = RLock()
+
+
+def _read_gui_data() -> dict:
+    if not gui_path.is_file():
+        return {}
+    try:
+        with gui_path.open("r", encoding="utf-8") as stream:
+            data = yaml.load(stream, Loader=CoreLoader) or {}
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, yaml.YAMLError):
+        return {}
+
+
+def _update_gui_data(**changes) -> None:
+    # Window size and mode share the existing GUI-only file; preserve both
+    # whenever either setting is saved.
+    with _gui_lock:
+        data = _read_gui_data()
+        data.update(changes)
+
+        def dump(stream):
+            yaml.dump(
+                data, stream, Dumper=CoreDumper, encoding="utf-8", allow_unicode=True
+            )
+
+        atomic_write(gui_path, dump)
+
+
+def load_window_mode() -> str:
+    mode = _read_gui_data().get("window_mode")
+    return mode if mode in ("normal", "maximized") else "normal"
+
+
+def save_window_mode(mode: str) -> None:
+    if mode not in ("normal", "maximized"):
+        raise ValueError("Unsupported window mode")
+    _update_gui_data(window_mode=mode)
 
 
 def load_window_ratio() -> WindowRatio | None:
@@ -21,12 +62,8 @@ def load_window_ratio() -> WindowRatio | None:
     存比例而不是绝对像素：窗口大小是设备相关的配置，换电脑/换分辨率时绝对像素
     会不匹配；比例则始终按当前屏幕换算。文件缺失或内容非法返回 None。
     """
-    if not gui_path.is_file():
-        return None
     try:
-        with gui_path.open("r", encoding="utf-8") as f:
-            data = yaml.load(f, Loader=CoreLoader) or {}
-        ratio = data["ratio"]
+        ratio = _read_gui_data()["ratio"]
         width = float(ratio["width"])
         height = float(ratio["height"])
         if not (0 < width <= 3 and 0 < height <= 3):
@@ -38,15 +75,35 @@ def load_window_ratio() -> WindowRatio | None:
 
 def save_window_ratio(ratio: WindowRatio) -> None:
     """写入窗口尺寸比例（调用方已消毒，非法值不进盘），走原子写。"""
-    width, height = ratio.width, ratio.height
+    _update_gui_data(ratio={"width": ratio.width, "height": ratio.height})
 
-    def dump(f):
-        yaml.dump(
-            {"ratio": {"width": width, "height": height}},
-            f,
-            Dumper=CoreDumper,
-            encoding="utf-8",
-            allow_unicode=True,
-        )
 
-    atomic_write(gui_path, dump)
+def load_close_preference() -> dict:
+    value = _read_gui_data().get("close_preference")
+    if not isinstance(value, dict):
+        return {"choice": "tray", "remember": False}
+    return {
+        "choice": value.get("choice")
+        if value.get("choice") in ("tray", "exit")
+        else "tray",
+        "remember": value.get("remember") is True,
+    }
+
+
+def save_close_preference(choice: str, remember: bool) -> bool:
+    if choice not in ("tray", "exit") or type(remember) is not bool:
+        raise ValueError("Invalid close preference")
+    _update_gui_data(close_preference={"choice": choice, "remember": remember})
+    return True
+
+
+def load_window_launch_mode() -> str:
+    mode = _read_gui_data().get("window_launch_mode")
+    return mode if mode in ("last", "normal", "maximized") else "last"
+
+
+def save_window_launch_mode(mode: str) -> bool:
+    if mode not in ("last", "normal", "maximized"):
+        raise ValueError("Invalid launch mode")
+    _update_gui_data(window_launch_mode=mode)
+    return True
