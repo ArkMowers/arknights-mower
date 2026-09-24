@@ -29,13 +29,45 @@
       :mower-port="mowerPort"
       :emulator-name="emulatorName"
       :adb-port="adbPort"
-      :on-control="windowShell.runControl"
+      :on-control="handleWindowControl"
       :on-toggle-maximize="windowShell.toggleMaximize"
       :resizable="windowShellPlatform === 'windows' && !windowShellState.maximized"
       :on-resize="windowShell.startResize"
       :on-move="windowShell.startMove"
     />
     <n-dialog-provider>
+      <n-modal
+        v-model:show="closeModal"
+        preset="card"
+        title="关闭 Mower"
+        style="max-width: 430px"
+        :mask-closable="!closeBusy"
+        :closable="!closeBusy"
+      >
+        <n-space vertical :size="16">
+          <n-text depth="3">关闭窗口不一定会停止后台调度。请选择本次操作：</n-text>
+          <n-radio-group v-model:value="closeChoice" :disabled="closeBusy">
+            <n-space vertical>
+              <n-radio v-if="closeTrayAvailable" value="tray">收起到托盘（继续运行）</n-radio>
+              <n-radio value="exit">停止任务并彻底退出</n-radio>
+            </n-space>
+          </n-radio-group>
+          <n-checkbox v-model:checked="closeRemember" :disabled="closeBusy">
+            记住我的选择（可在「界面缩放」中更改）
+          </n-checkbox>
+          <n-alert v-if="closeError" type="error">{{ closeError }}</n-alert>
+          <n-text v-if="closeStatus" depth="3">{{ closeStatus }}</n-text>
+          <n-space justify="end">
+            <n-button :disabled="closeBusy" @click="closeModal = false">取消</n-button>
+            <n-button
+              type="primary"
+              :loading="closeBusy"
+              @click="performWindowClose(closeChoice, closeRemember)"
+              >确定</n-button
+            >
+          </n-space>
+        </n-space>
+      </n-modal>
       <n-message-provider>
         <n-loading-bar-provider>
           <n-watermark
@@ -282,10 +314,21 @@ import {
 } from '@/theme/mower'
 import '@/theme/mower.css'
 import { createWindowShellAdapter, formatWindowTitle } from '@/window-shell/adapter.js'
+import { createSaveCoordinator } from '@/utils/configPersistence'
+import { readProcessActionStatus, submitProcessAction } from '@/utils/processAction'
+import { resolveCloseIntent } from '@/utils/closePreference'
 import { installModalDragging } from '@/utils/modal-drag.js'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
 const windowShell = createWindowShellAdapter()
+const closeModal = ref(false)
+const closeBusy = ref(false)
+const closeTrayAvailable = ref(true)
+const closeChoice = ref('tray')
+const closeRemember = ref(false)
+const closeError = ref('')
+const closeStatus = ref('')
+let closePollTimer = null
 const {
   active: windowShellActive,
   busy: windowShellBusy,
@@ -573,6 +616,119 @@ const windowTitleVersion = computed(() => {
 
 const axios = inject('axios')
 
+function finishClosePolling(pendingKey) {
+  clearTimeout(closePollTimer)
+  closePollTimer = null
+  sessionStorage.removeItem(pendingKey)
+  closeBusy.value = false
+}
+
+async function pollCloseOperation(pending, base, pendingKey) {
+  if (Date.now() - pending.startedAt > 240000) {
+    closeError.value = '等待退出超时，请检查当前实例和进程操作日志'
+    finishClosePolling(pendingKey)
+    return
+  }
+  try {
+    const data = await readProcessActionStatus({ axios, base, pending })
+    closeStatus.value = data.message || '正在停止当前实例…'
+    if (data.status === 'running') {
+      closePollTimer = setTimeout(() => pollCloseOperation(pending, base, pendingKey), 1000)
+      return
+    }
+    if (data.status === 'failed') {
+      closeError.value = data.message || '彻底退出失败，请检查进程操作日志'
+    }
+    finishClosePolling(pendingKey)
+  } catch (error) {
+    if (error.response) {
+      closeError.value = error.response.data?.message || error.message
+    } else {
+      // The old HTTP server normally disappears before the desktop window
+      // closes. Connection loss alone cannot prove that the exit succeeded.
+      closeStatus.value = '当前实例连接已断开，请确认托盘图标和进程已退出'
+    }
+    finishClosePolling(pendingKey)
+  }
+}
+
+async function performWindowClose(choice, remember) {
+  if (closeBusy.value) return false
+  if (choice === 'tray' && !closeTrayAvailable.value) {
+    closeError.value = '未启用系统托盘，无法收起窗口'
+    return false
+  }
+  closeBusy.value = true
+  closeError.value = ''
+  closeStatus.value = ''
+  let submitted = false
+  try {
+    const api = window.pywebview?.api
+    if (api?.set_close_preference) {
+      const saved = await api.set_close_preference(choice, remember)
+      if (saved !== true) throw new Error('关闭偏好保存失败')
+    }
+    if (choice === 'tray') {
+      const closed = await windowShell.close()
+      if (!closed) throw new Error('无法关闭当前窗口')
+      closeModal.value = false
+      return true
+    }
+    const base = (import.meta.env.VITE_HTTP_URL || '') + '/process-control'
+    const pendingKey = 'mower-process-control:' + base
+    if (sessionStorage.getItem(pendingKey)) {
+      throw new Error('已有进程操作正在进行，请等待完成后重试')
+    }
+    const saves = createSaveCoordinator(config_store, plan_store)
+    const { pending } = await submitProcessAction({
+      axios,
+      saves,
+      action: 'stop',
+      base,
+      pendingKey
+    })
+    submitted = true
+    closeStatus.value = '彻底退出请求已提交，正在等待任务停止和实例退出…'
+    void pollCloseOperation(pending, base, pendingKey)
+    return true
+  } catch (error) {
+    closeError.value =
+      error.response?.data?.message || error.message || '退出结果尚未确认，请检查托盘和进程操作状态'
+    return false
+  } finally {
+    if (!submitted) closeBusy.value = false
+  }
+}
+
+async function handleWindowControl(action) {
+  if (action !== 'close') return windowShell.runControl(action)
+  if (closeBusy.value) return false
+  const api = window.pywebview?.api
+  if (!api?.get_close_preference) return windowShell.close()
+  try {
+    const pref = await api.get_close_preference()
+    const intent = resolveCloseIntent(pref)
+    closeTrayAvailable.value = intent.trayAvailable
+    closeChoice.value = intent.choice
+    closeRemember.value = intent.remember
+    closeStatus.value = ''
+    closeError.value = ''
+    if (!intent.shouldPrompt) {
+      if (intent.choice === 'exit') closeModal.value = true
+      return performWindowClose(intent.choice, true)
+    }
+    closeModal.value = true
+    return true
+  } catch (error) {
+    // An unreadable preference must not silently result in an exit.
+    closeTrayAvailable.value = false
+    closeChoice.value = 'exit'
+    closeRemember.value = false
+    closeError.value = error.message || '读取关闭设置失败'
+    closeModal.value = true
+    return false
+  }
+}
 function start() {
   running.value = true
   log_lines.value = []
@@ -764,6 +920,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(closePollTimer)
   disposeModalDrag?.()
   windowShell.dispose()
   delete document.documentElement.dataset.windowShellTheme

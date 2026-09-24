@@ -141,6 +141,34 @@ class TestGuiWindowMode(unittest.TestCase):
                     gui.save_window_mode("fullscreen")
 
 
+class TestGuiDesktopPreferences(unittest.TestCase):
+    def test_preferences_share_existing_gui_file_without_losing_ratio(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
+                gui.save_window_ratio(WindowRatio(0.7, 0.8))
+                gui.save_window_mode("maximized")
+                gui.save_close_preference("exit", True)
+                gui.save_window_launch_mode("normal")
+                self.assertEqual(gui.load_window_ratio(), WindowRatio(0.7, 0.8))
+                self.assertEqual(gui.load_window_mode(), "maximized")
+                self.assertEqual(
+                    gui.load_close_preference(), {"choice": "exit", "remember": True}
+                )
+                self.assertEqual(gui.load_window_launch_mode(), "normal")
+
+    def test_invalid_preferences_and_missing_values_have_safe_defaults(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
+                self.assertEqual(gui.load_window_launch_mode(), "last")
+                self.assertEqual(
+                    gui.load_close_preference(), {"choice": "tray", "remember": False}
+                )
+                with self.assertRaises(ValueError):
+                    gui.save_close_preference("killall", True)
+                with self.assertRaises(ValueError):
+                    gui.save_window_launch_mode("fullscreen")
+
+
 class TestWindowTitle(unittest.TestCase):
     def test_composes_app_and_resource_version(self):
         # 标题 = 应用版本 + 资源包版本 + 实例标识；资源包版本来自 title_version 的尽力读取。

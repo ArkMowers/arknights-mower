@@ -24,6 +24,25 @@ class TestWindowSizing(unittest.TestCase):
         self.assertTrue(bridge.get_window_state()["maximized"])
 
 
+class TestCloseBridgePreferences(unittest.TestCase):
+    def test_disabled_tray_is_not_selectable(self):
+        import tempfile
+        from pathlib import Path
+
+        from arknights_mower.utils.config import gui
+
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gui, "gui_path", Path(d) / "gui.yml"):
+                bridge = window_shell.WindowShellBridge(
+                    mock.Mock(), system="Windows", tray_enabled=False
+                )
+                self.assertFalse(bridge.get_close_preference()["tray_enabled"])
+                with self.assertRaises(ValueError):
+                    bridge.set_close_preference("tray", True)
+                self.assertTrue(bridge.set_close_preference("exit", True))
+                self.assertEqual(bridge.get_close_preference()["choice"], "exit")
+
+
 @unittest.skipUnless(os.name == "nt", "Win32 native window probe")
 class TestWindowsLiveState(unittest.TestCase):
     def test_native_state_supersedes_early_stale_event(self):

@@ -2,7 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { computed, inject } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
 import { folder_dialog } from '@/utils/dialog'
 import { performanceProfile } from '@/utils/performanceProfile'
@@ -164,6 +164,80 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
 
 const new_scale = ref(webview.value.scale)
 
+const desktopPreferencesReady = ref(false)
+const desktopTrayEnabled = ref(true)
+const desktopCloseMode = ref('ask')
+const desktopLaunchMode = ref('last')
+const desktopPreferenceBusy = ref(false)
+const desktopPreferenceError = ref('')
+const closeOptions = computed(() => [
+  { label: '每次询问', value: 'ask' },
+  ...(desktopTrayEnabled.value ? [{ label: '收起到托盘', value: 'tray' }] : []),
+  { label: '彻底退出', value: 'exit' }
+])
+const launchOptions = [
+  { label: '记住上次', value: 'last' },
+  { label: '窗口', value: 'normal' },
+  { label: '最大化', value: 'maximized' }
+]
+
+async function loadDesktopPreferences() {
+  const api = window.pywebview?.api
+  if (!api?.get_close_preference || !api?.get_window_launch_mode) return
+  try {
+    const [close, launch] = await Promise.all([
+      api.get_close_preference(),
+      api.get_window_launch_mode()
+    ])
+    desktopTrayEnabled.value = close.tray_enabled !== false
+    desktopCloseMode.value = close.remember ? close.choice : 'ask'
+    desktopLaunchMode.value = launch
+    desktopPreferencesReady.value = true
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '窗口设置读取失败'
+  }
+}
+
+async function changeCloseMode(value) {
+  const api = window.pywebview?.api
+  if (!api?.set_close_preference || desktopPreferenceBusy.value) return
+  desktopPreferenceBusy.value = true
+  try {
+    const choice = value === 'ask' ? (desktopTrayEnabled.value ? 'tray' : 'exit') : value
+    const ok = await api.set_close_preference(choice, value !== 'ask')
+    if (ok !== true) throw new Error('无法保存关闭设置')
+    desktopCloseMode.value = value
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '关闭设置保存失败'
+  } finally {
+    desktopPreferenceBusy.value = false
+  }
+}
+
+async function changeLaunchMode(value) {
+  const api = window.pywebview?.api
+  if (!api?.set_window_launch_mode || desktopPreferenceBusy.value) return
+  desktopPreferenceBusy.value = true
+  try {
+    const ok = await api.set_window_launch_mode(value)
+    if (ok !== true) throw new Error('无法保存启动设置')
+    desktopLaunchMode.value = value
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '启动设置保存失败'
+  } finally {
+    desktopPreferenceBusy.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('pywebviewready', loadDesktopPreferences)
+  void loadDesktopPreferences()
+})
+onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPreferences))
+
 import { file_dialog } from '@/utils/dialog'
 
 async function select_maa_adb_path() {
@@ -224,7 +298,6 @@ const onSelectionChange = (newValue) => {
     simulator.value.index = '0'
   }
 }
-import { ref } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
 import SoftwareUpdate from '../components/SoftwareUpdate.vue'
 import NetworkSettings from '../components/NetworkSettings.vue'
@@ -596,21 +669,50 @@ if (return_home_when_idle.value) {
               <!-- {{ waiting_scene }} -->
             </n-form-item>
             <n-form-item label="界面缩放">
-              <n-slider
-                v-model:value="new_scale"
-                :step="0.25"
-                :min="0.5"
-                :max="3.0"
-                :marks="scale_marks"
-                :format-tooltip="(x) => `${x * 100}%`"
-              />
-              <n-button
-                class="scale-apply"
-                :disabled="new_scale == webview.scale"
-                @click="webview.scale = new_scale"
-              >
-                应用
-              </n-button>
+              <div class="desktop-scale-settings">
+                <div class="desktop-scale-controls">
+                  <n-slider
+                    v-model:value="new_scale"
+                    :step="0.25"
+                    :min="0.5"
+                    :max="3.0"
+                    :marks="scale_marks"
+                    :format-tooltip="(x) => `${x * 100}%`"
+                  />
+                  <n-button
+                    class="scale-apply"
+                    :disabled="new_scale == webview.scale"
+                    @click="webview.scale = new_scale"
+                  >
+                    应用
+                  </n-button>
+                </div>
+                <div v-if="desktopPreferencesReady" class="desktop-pref-inline">
+                  <div class="desktop-pref-item">
+                    <span>关闭窗口</span>
+                    <n-select
+                      :value="desktopCloseMode"
+                      :options="closeOptions"
+                      :disabled="desktopPreferenceBusy"
+                      size="small"
+                      @update:value="changeCloseMode"
+                    />
+                  </div>
+                  <div class="desktop-pref-item">
+                    <span>打开方式</span>
+                    <n-select
+                      :value="desktopLaunchMode"
+                      :options="launchOptions"
+                      :disabled="desktopPreferenceBusy"
+                      size="small"
+                      @update:value="changeLaunchMode"
+                    />
+                  </div>
+                </div>
+                <n-text v-if="desktopPreferenceError" type="error" depth="3">
+                  {{ desktopPreferenceError }}
+                </n-text>
+              </div>
             </n-form-item>
             <n-form-item v-if="runtime_platform !== 'android'" :show-label="false">
               <n-checkbox
@@ -1064,6 +1166,43 @@ if (return_home_when_idle.value) {
 </template>
 
 <style scoped lang="scss">
+.desktop-scale-settings {
+  width: 100%;
+  min-width: 0;
+}
+
+.desktop-scale-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  .n-slider {
+    flex: 1 1 200px;
+    min-width: 110px;
+  }
+}
+
+.desktop-pref-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(112, 153, 127, 0.25);
+  border-radius: 6px;
+}
+
+.desktop-pref-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+
+  .n-select {
+    width: 128px;
+  }
+}
+
 .settings-network {
   grid-column: 1 / -1;
   min-width: 0;

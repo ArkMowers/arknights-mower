@@ -282,6 +282,7 @@ def webview_window(
 
     from arknights_mower.utils import config
     from arknights_mower.utils.config.gui import (
+        load_window_launch_mode,
         load_window_mode,
         load_window_ratio,
         save_window_mode,
@@ -309,7 +310,8 @@ def webview_window(
         width, height = window_size_from_ratio(ratio)
     else:
         width, height = default_desktop_window_size()
-    startup_mode = load_window_mode() if is_windows() else "normal"
+    launch_mode = load_window_launch_mode() if is_windows() else "normal"
+    startup_mode = load_window_mode() if launch_mode == "last" else launch_mode
     # Guard the initial window setup and teardown; pywebview can emit transient
     # resize/restore events in both phases.
     mode_ready = False
@@ -380,7 +382,9 @@ def webview_window(
         background_color=window_background_color(theme),
     )
     window.events.resized += window_size
-    bridge = attach_window_shell(window, initial_size=WindowSize(width, height))
+    bridge = attach_window_shell(
+        window, initial_size=WindowSize(width, height), tray_enabled=tray
+    )
 
     def on_closing():
         nonlocal closing
