@@ -95,6 +95,7 @@ function onSubPlanKeydown(event) {
 }
 
 onMounted(() => {
+  edit_lock.start()
   document.addEventListener('pointerdown', onSubPlanOutsidePointer, true)
   document.addEventListener('keydown', onSubPlanKeydown, true)
 })
