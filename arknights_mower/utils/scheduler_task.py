@@ -1337,8 +1337,9 @@ def plan_mood_limit_releases(op_data):
 def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_plan=None):
     """新入住者优先竞争单回位，其余入住者保留已选床位。
 
-    先投影完整入住计划，再按宿舍顺序比较每房首个动态位。仅让排名
-    更高的新入住者与目标交换床位，被替换者继续竞争后面的单回位。
+    先投影完整入住计划，再按宿舍顺序比较每房首个动态位。新入住者
+    可填空位（含本轮替班腾出的位），或与排名更低的目标交换床位；
+    被替换者继续竞争后面的单回位，填入空位后结束本次交换。
     不增加/淘汰休息者，也不因已有入住者心情交叉而搬床。返回计划
     副本，不提前改变真实位置或单回标记。
     """
@@ -1385,7 +1386,7 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
             if target is source:
                 # 已获得本房单回位，不为更低顺序的宿舍继续搬动。
                 break
-            if not target.name or resting_key(op_data, source.name, now) >= resting_key(
+            if target.name and resting_key(op_data, source.name, now) >= resting_key(
                 op_data, target.name, now
             ):
                 continue
@@ -1395,6 +1396,9 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
                 result.setdefault(room, ["Current"] * len(op_data.plan[room]))[
                     index
                 ] = bed.name or "Free"
+            if not source.name:
+                # 空单回位已接住入住者，没有被挤出者需要继续分配。
+                break
     return result
 
 
