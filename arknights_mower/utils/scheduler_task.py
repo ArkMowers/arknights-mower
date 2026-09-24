@@ -1609,7 +1609,7 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
         waiting_list = []
         for name, op in op_data.operators.items():
             if (
-                not op.is_high()
+                (not op.is_high() or op.resting_priority == "standby")
                 and op.current_mood() < op.upper_limit
                 and op.current_room == ""
                 and op.name not in op_data.config.free_blacklist
@@ -1643,7 +1643,7 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
             if dorm.name in op_data.operators:
                 occupant = op_data.operators[dorm.name]
                 logger.debug(str(dorm))
-                if not occupant.is_high() and (
+                if (not occupant.is_high() or occupant.resting_priority == "standby") and (
                     occupant.current_mood() >= occupant.upper_limit
                     or (dorm.time is not None and dorm.time < datetime.now())
                 ):
