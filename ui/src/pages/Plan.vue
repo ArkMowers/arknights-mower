@@ -52,6 +52,7 @@ import { useDialog, useMessage, NAlert } from 'naive-ui'
 const plan_editor = ref(null)
 
 const generating_image = ref(false)
+const show_mood_limits_dialog = ref(false)
 
 const message = useMessage()
 const dialog = useDialog()
@@ -620,34 +621,8 @@ function movePlanForward() {
     label-width="160"
     label-align="left"
   >
-    <n-form-item>
-      <template #label>
-        <span>令夕模式</span>
-        <help-text>
-          <div>令夕上班时起作用</div>
-          <div>启动Mower前需要手动对齐心情</div>
-          <div>感知：夕心情-令心情=12</div>
-          <div>烟火：令心情-夕心情=12</div>
-          <div>均衡：夕令心情一样</div>
-          <div>自动设置令夕及同组上下限；手动设置优先于模式。</div>
-        </help-text>
-      </template>
-      <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
-        <n-space>
-          <n-radio :value="1">感知信息</n-radio>
-          <n-radio :value="2">人间烟火</n-radio>
-          <n-radio :value="3">均衡模式</n-radio>
-        </n-space>
-      </n-radio-group>
-    </n-form-item>
-    <n-form-item label="心情上下限">
-      <mood-limits-editor
-        v-model:defaults="current_conf.mood_limits"
-        v-model:overrides="current_conf.operator_mood_limits"
-        :disabled="edit_locked"
-        :operators="operators"
-        :is-backup="sub_plan !== 'main'"
-      />
+    <n-form-item :show-label="false">
+      <n-button @click="show_mood_limits_dialog = true">设置心情上下限</n-button>
     </n-form-item>
     <n-form-item>
       <template #label
@@ -788,6 +763,50 @@ function movePlanForward() {
       ></slick-dorm-select>
     </n-form-item>
   </n-form>
+  <n-modal
+    v-model:show="show_mood_limits_dialog"
+    preset="card"
+    title="设置心情上下限"
+    :style="{ width: '680px', maxWidth: 'calc(100vw - 24px)' }"
+    :content-style="{ maxHeight: '70vh', overflowY: 'auto' }"
+  >
+    <n-form label-placement="top" :show-feedback="false">
+      <n-form-item>
+        <template #label>
+          <span>令夕模式</span>
+          <help-text>
+            <div>令夕上班时起作用</div>
+            <div>启动Mower前需要手动对齐心情</div>
+            <div>感知：夕心情-令心情=12</div>
+            <div>烟火：令心情-夕心情=12</div>
+            <div>均衡：夕令心情一样</div>
+            <div>自动设置令夕及同组上下限；手动设置优先于模式。</div>
+          </help-text>
+        </template>
+        <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
+          <n-space>
+            <n-radio :value="1">感知信息</n-radio>
+            <n-radio :value="2">人间烟火</n-radio>
+            <n-radio :value="3">均衡模式</n-radio>
+          </n-space>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item label="自定义上下限">
+        <mood-limits-editor
+          v-model:defaults="current_conf.mood_limits"
+          v-model:overrides="current_conf.operator_mood_limits"
+          :disabled="edit_locked"
+          :operators="operators"
+          :is-backup="sub_plan !== 'main'"
+        />
+      </n-form-item>
+    </n-form>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="show_mood_limits_dialog = false">完成</n-button>
+      </n-space>
+    </template>
+  </n-modal>
   <n-modal
     v-model:show="show_replace_dialog"
     preset="card"
