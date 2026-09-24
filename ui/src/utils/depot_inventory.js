@@ -891,6 +891,51 @@ export function saveFavorites(
   }
 }
 
+export const BASELINE_STORAGE_KEY = 'mower_depot_baseline_config'
+
+export const DEFAULT_BASELINE_CONFIG = {
+  preset: 'previous',
+  range: null,
+  followLatest: true
+}
+
+export function loadBaselineConfig(
+  storage = typeof localStorage !== 'undefined' ? localStorage : null
+) {
+  if (!storage) return { ...DEFAULT_BASELINE_CONFIG }
+  try {
+    const raw = storage.getItem(BASELINE_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_BASELINE_CONFIG }
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_BASELINE_CONFIG }
+    return {
+      preset: typeof parsed.preset === 'string' ? parsed.preset : DEFAULT_BASELINE_CONFIG.preset,
+      range: Array.isArray(parsed.range) && parsed.range.length === 2 ? parsed.range : null,
+      followLatest: typeof parsed.followLatest === 'boolean' ? parsed.followLatest : true
+    }
+  } catch {
+    return { ...DEFAULT_BASELINE_CONFIG }
+  }
+}
+
+export function saveBaselineConfig(
+  config,
+  storage = typeof localStorage !== 'undefined' ? localStorage : null
+) {
+  if (!storage) return
+  try {
+    if (!config || typeof config !== 'object') return
+    const payload = {
+      preset: typeof config.preset === 'string' ? config.preset : 'previous',
+      range: Array.isArray(config.range) && config.range.length === 2 ? config.range : null,
+      followLatest: config.followLatest !== false
+    }
+    storage.setItem(BASELINE_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore
+  }
+}
+
 /** 关注物品高亮看板数据（含最新存量及基准差额） */
 export function buildFavoriteHighlights(allItems, favoriteNames = [], deltaMap = new Map()) {
   if (!Array.isArray(favoriteNames) || !favoriteNames.length) return []

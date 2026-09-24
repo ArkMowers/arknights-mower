@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   alignSnapshotsToRange,
   BASELINE_PRESETS,
+  BASELINE_STORAGE_KEY,
+  DEFAULT_BASELINE_CONFIG,
   buildBaselineEndOptions,
   buildBaselineStartOptions,
   buildDeltaMap,
@@ -27,12 +29,14 @@ import {
   isDerivedItem,
   isTokenItem,
   itemIconUrl,
+  loadBaselineConfig,
   loadFavorites,
   matchesNumericQuery,
   matchesPinyin,
   parseDepotResponse,
   resolveCopyText,
   resolveSnapshot,
+  saveBaselineConfig,
   saveFavorites,
   sortItems,
   summarizeItemHistory,
@@ -643,6 +647,21 @@ describe('favorites persistence and highlights', () => {
     const storage = fakeStorage()
     saveFavorites(['固源岩', '高级作战记录', '固源岩'], storage)
     expect(loadFavorites(storage)).toEqual(['固源岩', '高级作战记录'])
+  })
+
+  it('saves and loads baseline config correctly with fallback', () => {
+    const storage = fakeStorage()
+    expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
+
+    storage.setItem(BASELINE_STORAGE_KEY, 'corrupt-json')
+    expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
+
+    saveBaselineConfig({ preset: '7d', range: [1000, 2000], followLatest: false }, storage)
+    expect(loadBaselineConfig(storage)).toEqual({
+      preset: '7d',
+      range: [1000, 2000],
+      followLatest: false
+    })
   })
 
   it('builds favorite highlights with deltas and compact formatting', () => {

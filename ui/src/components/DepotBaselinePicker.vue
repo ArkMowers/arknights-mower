@@ -4,6 +4,7 @@
       v-model:show="popoverOpen"
       trigger="click"
       placement="bottom-end"
+      :flip="false"
       raw
       :show-arrow="false"
       class="baseline-popover-panel"
@@ -36,7 +37,7 @@
         </button>
       </template>
 
-      <!-- 弹出卡片主体（紧凑单列设计，避免溢出窗口） -->
+      <!-- 弹出卡片主体（单列紧凑，:flip="false" 始终向下弹出，杜绝遮挡） -->
       <div class="baseline-popover-card">
         <!-- 顶部：快捷周期标签 -->
         <div class="popover-presets-grid">
@@ -121,7 +122,9 @@
 
           <!-- 操作按钮 -->
           <div class="popover-action-row">
-            <n-button size="small" class="action-btn" @click="handleCancel">取消</n-button>
+            <n-button size="small" quaternary class="action-btn" @click="handleCancel">
+              取消
+            </n-button>
             <n-button
               size="small"
               type="primary"
@@ -372,6 +375,8 @@ const activeTriggerLabel = computed(() => {
 .baseline-popover-card {
   width: 340px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
   padding: 14px;
   border-radius: 12px;
   background: var(--mower-surface, #ffffff);
@@ -393,7 +398,7 @@ const activeTriggerLabel = computed(() => {
 }
 
 .preset-pill-btn {
-  height: 28px;
+  height: 30px;
   padding: 0 4px;
   border-radius: 6px;
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.1));
@@ -502,7 +507,7 @@ const activeTriggerLabel = computed(() => {
 }
 
 .action-btn {
-  min-width: 60px;
+  min-width: 64px;
 }
 
 /* 暗色主题适配 */

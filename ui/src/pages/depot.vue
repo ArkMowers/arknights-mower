@@ -1026,10 +1026,12 @@ import {
   formatTimestamp,
   groupItemsByTier,
   itemIconUrl,
+  loadBaselineConfig,
   loadFavorites,
   parseDepotResponse,
   resolveCopyText,
   resolveSnapshot,
+  saveBaselineConfig,
   saveFavorites,
   sortItems,
   summarizeItemHistory,
@@ -1075,11 +1077,15 @@ watch(query, (val) => {
 
 const stockFilter = ref('all') // 'all' | 'favorite' | 'owned' | 'empty'
 const deltaFilter = ref('all') // 'all' | 'increased' | 'decreased' | 'changed'
-const baselineConfig = ref({
-  preset: 'previous',
-  range: null,
-  followLatest: true
-})
+const baselineConfig = ref(loadBaselineConfig())
+
+watch(
+  baselineConfig,
+  (val) => {
+    saveBaselineConfig(val)
+  },
+  { deep: true }
+)
 const showDerived = ref(true)
 const sortMode = ref('tier')
 const activeDrawKey = ref('')
