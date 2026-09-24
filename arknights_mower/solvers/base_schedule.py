@@ -829,9 +829,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         free_room = next(iter(self.task.plan), None)
                         if free_room and "Free" in self.task.plan[free_room]:
                             free_index = self.task.plan[free_room].index("Free")
-                            if self.task.meta_data in self.op_data.operators.keys():
-                                free_agent = self.op_data.operators[self.task.meta_data]
-                                if (
+                            # meta_data 为空时（旧逻辑 generate_plan_by_drom 未填），
+                            # 从槽位反查实际占位者，避免任务被当成空任务静默清空。
+                            free_agent = None
+                            if self.task.meta_data:
+                                free_agent = self.op_data.operators.get(self.task.meta_data)
+                            if free_agent is None:
+                                free_agent = self.op_data.get_current_operator(free_room, free_index)
+                                if free_agent is not None:
+                                    logger.info(
+                                        f"RELEASE_DORM meta_data 为空，从槽位反查干员: "
+                                        f"{free_agent.name} @ ({free_room}, {free_index})"
+                                    )
+                            if free_agent is None:
+                                logger.info(
+                                    f"RELEASE_DORM 无法确定干员，清空 plan: "
+                                    f"meta_data={self.task.meta_data!r} "
+                                    f"free_room={free_room} "
+                                    f"free_index={free_index}"
+                                )
+                                self.task.plan = {}
+                            elif (
                                     free_agent.current_room == free_room
                                     and free_agent.current_index == free_index
                                 ):
@@ -5467,7 +5485,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         free_list = [
             v.name
             for k, v in self.op_data.operators.items()
-            if v.name not in agents
+            and (
+                v.operator_type != "high"
+                or v.resting_priority == "standby"
+            )
             and v.operator_type != "high"
             and v.current_room == ""
             and (
