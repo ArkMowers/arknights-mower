@@ -154,24 +154,7 @@ onUnmounted(() => {
 
 <template>
   <template v-if="props.compact">
-    <n-popconfirm
-      v-if="!effectiveRunning"
-      style="max-width: min(360px, calc(100vw - 32px))"
-      @positive-click="submit('restart')"
-    >
-      <template #trigger>
-        <n-button
-          class="quick-run-btn"
-          :loading="busy"
-          :disabled="busy || savesPaused || !info?.supported"
-          :title="failed ? message : ''"
-        >
-          重启程序
-        </n-button>
-      </template>
-      保存当前配置后重启当前实例，不自动开始任务。
-    </n-popconfirm>
-    <n-text v-else-if="busy" depth="3" aria-live="polite">正在重启…</n-text>
+    <n-text v-if="busy" depth="3" aria-live="polite">正在重启…</n-text>
     <n-space v-if="failed" align="center">
       <n-text type="error" aria-live="polite">{{ message }}</n-text>
       <n-button v-if="savesPaused" size="small" @click="reload">刷新页面</n-button>
@@ -233,10 +216,3 @@ onUnmounted(() => {
     </n-space>
   </n-card>
 </template>
-
-<style scoped>
-.quick-run-btn {
-  width: 108px;
-  flex: 0 0 108px;
-}
-</style>

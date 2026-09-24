@@ -4308,9 +4308,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         # 新配方默认只排一份；补到当前仓库容量允许的最大值。
         self._tap_product_point((1450, 305))
-        self._wait_product_resource("manufacture_product_change_confirm")
-        self._tap_product_point((1425, 895))
-        self._wait_product_resource("manufacture_product_change_confirm", present=False)
+        for _ in range(8):
+            if self.find("manufacture_product_change_confirm"):
+                self._tap_product_point((1425, 895))
+                self._wait_product_resource(
+                    "manufacture_product_change_confirm", present=False
+                )
+                break
+            # 配方切换后可能直接返回设施列表，不再弹出补满队列的确认框。
+            if self.find("factory_collect"):
+                logger.info("制造站已返回设施列表，跳过补满队列确认")
+                break
+            self.sleep(0.5)
+        else:
+            raise RecognizeError("等待制造站补满队列确认或返回设施列表超时")
 
     def _open_manufacture_product_detail(self, room: str):
         self.scene_graph_navigation(Scene.INFRA_MAIN)
