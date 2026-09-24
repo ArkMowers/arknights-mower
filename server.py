@@ -49,6 +49,7 @@ from arknights_mower.views.ui_state import ui_state_bp
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("image/webp", ".webp")
 
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25}

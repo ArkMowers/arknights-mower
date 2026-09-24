@@ -250,13 +250,15 @@ describe('buildDeltaMap', () => {
     expect(delta200to300.get('合成玉')).toBe(-50) // 250 - 300
   })
 
-  it('treats a newly appeared item as growth from zero', () => {
+  it('does not generate fake delta for items unobserved in one of the snapshots', () => {
     const delta = buildDeltaMap([
       { at: 100, items: { 龙门币: 1 } },
       { at: 200, items: { 龙门币: 1, 至纯源石: 5 } }
     ])
 
-    expect(delta.get('至纯源石')).toBe(5)
+    // 至纯源石在 at: 100 快照中未观测，不能得出 +5 的虚假增量
+    expect(delta.has('至纯源石')).toBe(false)
+    expect(delta.has('龙门币')).toBe(false)
   })
 
   it('returns an empty map rather than fake zeros with fewer than two snapshots', () => {
@@ -268,7 +270,7 @@ describe('buildDeltaMap', () => {
 })
 
 describe('buildItemHistory', () => {
-  it('emits an ascending series and fills missing scans with zero', () => {
+  it('emits an ascending series and skips missing scans instead of injecting fake zero', () => {
     const points = buildItemHistory(
       [
         { at: 100, items: { 龙门币: 10 } },
@@ -280,7 +282,6 @@ describe('buildItemHistory', () => {
 
     expect(points).toEqual([
       { at: 100, value: 10 },
-      { at: 200, value: 0 },
       { at: 300, value: 30 }
     ])
   })

@@ -333,15 +333,15 @@ export function resolveSnapshot(usable, key, fallbackIndex) {
 /**
  * 扫描快照序列 → 任意两个快照点之间的物品差额。
  *
+ * 仅对比两端快照中均观测到的物品；快照中缺失的物品代表本次扫描未覆盖（而非确认为 0），
+ * 不在此区间生成虚假的增减差额。
+ *
  * startKey: 'previous' | 'first' | 时间戳
  * endKey: 'latest' | 时间戳
  */
 export function buildDeltaMap(snapshots, startKey = 'previous', endKey = 'latest') {
   const list = Array.isArray(snapshots) ? snapshots : []
-  const usable = list.filter(
-    (entry) =>
-      entry && typeof entry.at === 'number' && entry.items && typeof entry.items === 'object'
-  )
+  const usable = usableSnapshots(list)
   if (usable.length < 2) return new Map()
 
   const startSnapshot = resolveSnapshot(usable, startKey, usable.length - 2)
@@ -350,30 +350,35 @@ export function buildDeltaMap(snapshots, startKey = 'previous', endKey = 'latest
   if (!startSnapshot || !endSnapshot || startSnapshot === endSnapshot) return new Map()
 
   const delta = new Map()
-  const allNames = new Set([
-    ...Object.keys(startSnapshot.items || {}),
-    ...Object.keys(endSnapshot.items || {})
-  ])
+  const startItems = startSnapshot.items || {}
+  const endItems = endSnapshot.items || {}
 
-  for (const name of allNames) {
-    const before = Number(startSnapshot.items?.[name] ?? 0)
-    const after = Number(endSnapshot.items?.[name] ?? 0)
-    const startVal = Number.isFinite(before) ? before : 0
-    const endVal = Number.isFinite(after) ? after : 0
-    const change = endVal - startVal
-    if (change !== 0) delta.set(name, change)
+  for (const [name, endValRaw] of Object.entries(endItems)) {
+    if (Object.prototype.hasOwnProperty.call(startItems, name)) {
+      const before = Number(startItems[name])
+      const after = Number(endValRaw)
+      if (Number.isFinite(before) && Number.isFinite(after)) {
+        const change = after - before
+        if (change !== 0) delta.set(name, change)
+      }
+    }
   }
   return delta
 }
 
-/** 单个物品的历史曲线点，按时间升序，缺测的扫描按 0 处理（等价于"该次扫描没有这件物品"）。 */
+/** 单个物品的历史曲线点，按时间升序。仅记录实际被扫描观测到的数据点，未扫描的快照直接跳过，避免将未观测物料误记为 0 导致曲线虚假下跌。 */
 export function buildItemHistory(snapshots, itemName) {
   return usableSnapshots(snapshots)
+    .filter(
+      (entry) =>
+        entry.items &&
+        Object.prototype.hasOwnProperty.call(entry.items, itemName) &&
+        Number.isFinite(Number(entry.items[itemName]))
+    )
     .map((entry) => ({
       at: entry.at,
-      value: Number(entry.items?.[itemName] ?? 0)
+      value: Number(entry.items[itemName])
     }))
-    .filter((point) => Number.isFinite(point.value))
 }
 
 /** 该物品历史中的净增减，用于详情页"这段时间攒了多少"。 */

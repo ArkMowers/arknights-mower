@@ -1085,6 +1085,20 @@ provide(
 const mobile = inject('mobile', ref(false))
 const mobileFilterOpen = ref(false)
 const query = ref('')
+const debouncedQuery = ref('')
+let queryDebounceTimer = null
+
+watch(query, (val) => {
+  if (queryDebounceTimer) clearTimeout(queryDebounceTimer)
+  if (!val) {
+    debouncedQuery.value = ''
+    return
+  }
+  queryDebounceTimer = setTimeout(() => {
+    debouncedQuery.value = val
+  }, 120)
+})
+
 const stockFilter = ref('all') // 'all' | 'favorite' | 'owned' | 'empty'
 const deltaFilter = ref('all') // 'all' | 'increased' | 'decreased' | 'changed'
 const baselineStartKey = ref('previous') // 'previous' | 'first' | timestamp
@@ -1268,7 +1282,7 @@ const drawDeltaType = computed(() => {
 // 筛选与排序
 const filteredItems = computed(() => {
   return filterItems(allItems.value, {
-    query: query.value,
+    query: debouncedQuery.value,
     // 库存状态（全部/有货/空）整个交给 filterItems，页面不再自己补一遍 empty 判断。
     stockFilter: stockFilter.value,
     showDerived: showDerived.value,
@@ -1302,7 +1316,9 @@ const hasActiveFilters = computed(() => {
 })
 
 function resetFilters() {
+  if (queryDebounceTimer) clearTimeout(queryDebounceTimer)
   query.value = ''
+  debouncedQuery.value = ''
   stockFilter.value = 'all'
   deltaFilter.value = 'all'
   showDerived.value = true
@@ -1789,14 +1805,16 @@ watch(
 )
 
 onMounted(async () => {
-  if (!depotStore.reportLoaded) {
-    depotStore.loadReport().catch(() => {})
-  }
+  depotStore.loadReport().catch(() => {})
   await nextTick()
   setupIntersectionObserver()
 })
 
 onUnmounted(() => {
+  if (queryDebounceTimer) {
+    clearTimeout(queryDebounceTimer)
+    queryDebounceTimer = null
+  }
   if (observer) {
     observer.disconnect()
     observer = null
@@ -2213,7 +2231,9 @@ onUnmounted(() => {
   cursor: pointer;
   overflow: hidden;
   box-sizing: border-box;
-  transition: all 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .asset-card:hover {
@@ -2842,6 +2862,8 @@ onUnmounted(() => {
   }
 
   .tier-group-section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 240px;
     scroll-margin-top: 98px;
   }
 
@@ -2902,6 +2924,8 @@ onUnmounted(() => {
 }
 
 .tier-group-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
   scroll-margin-top: 68px;
 }
 
@@ -2978,7 +3002,10 @@ onUnmounted(() => {
   cursor: pointer;
   overflow: hidden;
   box-sizing: border-box;
-  transition: all 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .inventory-card:hover,
@@ -3142,7 +3169,10 @@ onUnmounted(() => {
   color: var(--mower-segment-muted);
   opacity: 0;
   z-index: 2;
-  transition: all 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    color 0.15s ease;
 }
 
 .card-star-btn .star-svg {

@@ -19,6 +19,7 @@ export const usedepotStore = defineStore('depot', () => {
   const history = ref([])
   const historyError = ref('')
   const historyLoading = ref(false)
+  let reportLoadedAt = 0
   let reportRequest = null
   let historyRequest = null
 
@@ -51,7 +52,7 @@ export const usedepotStore = defineStore('depot', () => {
   }
 
   /** 扫描快照序列，供环比与趋势使用。失败时只记错误、不抛，趋势不该拖垮整页。 */
-  async function loadHistory(limit = 60) {
+  async function loadHistory(limit = 500) {
     if (historyRequest) return historyRequest
     historyLoading.value = true
     historyError.value = ''
@@ -79,8 +80,8 @@ export const usedepotStore = defineStore('depot', () => {
    * getDepotinfo 失败时走它的 catch（那里已写好 reportError）并让本函数 reject 出去，
    * 页面据此提示刷新失败；历史失败在 loadHistory 内部已经降级成空数组。
    */
-  async function loadReport({ force = false } = {}) {
-    if (!force && report.value && reportLoaded.value) {
+  async function loadReport({ force = false, ttl = 15_000 } = {}) {
+    if (!force && report.value && reportLoaded.value && Date.now() - reportLoadedAt < ttl) {
       return report.value
     }
     if (reportRequest) return reportRequest
@@ -96,6 +97,7 @@ export const usedepotStore = defineStore('depot', () => {
       .then(([response]) => {
         report.value = response
         reportLoaded.value = true
+        reportLoadedAt = Date.now()
         return response
       })
       .finally(() => {
