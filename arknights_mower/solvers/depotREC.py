@@ -202,6 +202,9 @@ class depotREC(SceneGraphSolver):
         ## 读取的时候会存入数据库；扫描成功时顺手记一条完整库存快照（材料就靠它进历史），
         ## 用同一个时间戳，读取端才能把两条记录并成一条完整快照。
         depot.读取仓库(记录快照时刻=扫描时刻)
+        if 扫描时刻 is not None:
+            # 保留条数由设置决定（0 = 不清理）；放在这里是因为一次扫描才写一次文件。
+            depot.清理历史()
         return True
 
     def 对比截图(self, image1, image2):

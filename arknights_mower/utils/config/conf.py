@@ -383,6 +383,10 @@ class RegularTaskPart(ConfModel):
     "多关卡物品库存比例规则"
     maa_depot_enable: bool = False
     "仓库物品混合读取"
+    depot_history_limit: int = 3000
+    "仓库页历史条数：趋势与快照对比取用多少条快照（完整快照约 2.4KB/条）"
+    depot_history_keep: int = 0
+    "仓库历史文件保留条数：每次扫描后裁到最近这么多条，0 表示不清理"
     visit_friend_enable: bool = True
     "访问好友"
     visit_friend_mode: str = "maa"

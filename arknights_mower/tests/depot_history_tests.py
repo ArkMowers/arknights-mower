@@ -280,6 +280,76 @@ def test_merged_row_without_a_scan_is_a_valid_snapshot(depot_lines):
     assert history[0]["items"]["固源岩"] == 600
 
 
+def test_history_limit_follows_the_setting(monkeypatch):
+    """取用条数以设置为上限：请求参数只能再往下收，缺失/写坏都按设置走。"""
+    from arknights_mower.utils import config as config_module
+
+    monkeypatch.setattr(config_module.conf, "depot_history_limit", 800)
+
+    assert module.历史条数() == 800
+    assert module.历史条数("100") == 100
+    assert module.历史条数("99999") == 800
+    assert module.历史条数("abc") == 800
+    assert module.历史条数("0") == 1
+
+
+def test_history_limit_survives_a_broken_setting(monkeypatch):
+    from arknights_mower.utils import config as config_module
+
+    monkeypatch.setattr(config_module.conf, "depot_history_limit", "not-a-number")
+    assert module.历史条数() == 3000
+
+    # 配置写太大时按防呆上限收，免得一次把整份历史吐出来
+    monkeypatch.setattr(config_module.conf, "depot_history_limit", 999999)
+    assert module.历史条数() == 20000
+
+
+def test_cleanup_keeps_only_the_newest_rows(depot_lines, monkeypatch):
+    """清理按设置的条数裁剪，表头保留，两份文件一起裁。"""
+    from arknights_mower.utils import config as config_module
+
+    monkeypatch.setattr(config_module.conf, "depot_history_keep", 3)
+    write_rows(
+        depot_lines["@app/tmp/depotresult.csv"],
+        [snapshot(1789895900 + i, {"龙门币": i}) for i in range(6)],
+    )
+    module.记录合并快照(1789895905, {"固源岩": 1})
+
+    module.清理历史()
+
+    rows = list(
+        csv.reader(
+            depot_lines["@app/tmp/depotresult.csv"]
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+    )
+    assert rows[0] == HEADER
+    assert [row[0] for row in rows[1:]] == ["1789895903", "1789895904", "1789895905"]
+    # 合并文件只有一条，没到上限就别动它
+    merged = (
+        depot_lines["@app/tmp/depotmerged.csv"].read_text(encoding="utf-8").splitlines()
+    )
+    assert len(merged) == 2
+
+
+def test_cleanup_is_off_by_default(depot_lines, monkeypatch):
+    from arknights_mower.utils import config as config_module
+
+    monkeypatch.setattr(config_module.conf, "depot_history_keep", 0)
+    write_rows(
+        depot_lines["@app/tmp/depotresult.csv"],
+        [snapshot(1789895900 + i, {"龙门币": i}) for i in range(6)],
+    )
+
+    module.清理历史()
+
+    lines = (
+        depot_lines["@app/tmp/depotresult.csv"].read_text(encoding="utf-8").splitlines()
+    )
+    assert len(lines) == 7  # 表头 + 6 条，一条没删
+
+
 def test_numeric_string_counts_are_coerced(history_path):
     """CSV 里数量可能以字符串/浮点形式落盘，统一收敛成 int。"""
     write_rows(
@@ -340,10 +410,17 @@ def test_tokens_are_excluded_from_cloud_snapshot():
 
 
 class TestDepotHistoryRoute:
-    """路由层：limit 参数钳制与空数据兜底。"""
+    """路由层：取用条数按设置钳制，以及空数据兜底。"""
 
     def setup_method(self):
         self.client = server.app.test_client()
+
+    @pytest.fixture(autouse=True)
+    def pinned_limit(self, monkeypatch):
+        """钉住设置里的条数，别让本机 config.json 影响断言。"""
+        from arknights_mower.utils import config as config_module
+
+        monkeypatch.setattr(config_module.conf, "depot_history_limit", 3000)
 
     def test_route_returns_snapshots(self, monkeypatch):
         monkeypatch.setattr(
@@ -372,7 +449,8 @@ class TestDepotHistoryRoute:
         assert seen["limit"] == expected
 
     @pytest.mark.parametrize("raw", ["abc", ""])
-    def test_route_falls_back_to_default_limit(self, raw, monkeypatch):
+    def test_route_falls_back_to_the_configured_limit(self, raw, monkeypatch):
+        """参数缺失/写坏都按设置里的"仓库历史条数"走，所以页面不用自己知道这个数。"""
         seen = {}
 
         def fake(limit):
@@ -383,7 +461,7 @@ class TestDepotHistoryRoute:
 
         self.client.get(f"/depot/history?limit={raw}")
 
-        assert seen["limit"] == 60
+        assert seen["limit"] == module.历史条数()
 
     def test_route_is_empty_when_no_history(self, monkeypatch):
         monkeypatch.setattr(module, "读取仓库历史", lambda limit: [])

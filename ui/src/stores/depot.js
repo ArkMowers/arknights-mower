@@ -65,16 +65,17 @@ export const usedepotStore = defineStore('depot', () => {
   /**
    * 快照序列，供环比与趋势使用。失败时只记错误、不抛，趋势不该拖垮整页。
    *
-   * 要三千条：按一天几次到十几次的扫描节奏，这是以年计的跨度，趋势能一直往回看。
-   * 代价是响应体积（完整库存快照约 2.4KB/条），所以页面里凡是只用到近期数据的地方
-   * 自己截断，别拿整份历史去算。服务端同样按 3000 截断。
+   * 默认不传 limit：取多少条由设置里的「仓库历史条数」决定（服务端按配置决定上限），
+   * 页面不需要知道那个数。要临时少取一点时才显式传。
    */
-  async function loadHistory(limit = 3000) {
+  async function loadHistory(limit) {
     if (historyRequest) return historyRequest
     historyLoading.value = true
     historyError.value = ''
     historyRequest = axios
-      .get(`${import.meta.env.VITE_HTTP_URL}/depot/history`, { params: { limit } })
+      .get(`${import.meta.env.VITE_HTTP_URL}/depot/history`, {
+        params: limit ? { limit } : {}
+      })
       .then((response) => {
         const snapshots = response.data?.snapshots
         history.value = Array.isArray(snapshots) ? snapshots : []

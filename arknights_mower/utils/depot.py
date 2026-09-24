@@ -82,6 +82,90 @@ def 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片
 # 就从这个文件来；与 depotresult.csv 共用时间戳，读取时并成同一条快照。
 _MERGED_HISTORY_REL = "@app/tmp/depotmerged.csv"
 
+# 取用多少条、文件留多少条都由用户在设置里配（depot_history_limit / depot_history_keep）。
+# 这里的两个数字只是防呆：配置写坏了也不至于一口气把整份历史吐给页面。
+_历史条数兜底 = 3000
+_历史条数上限 = 20000
+
+
+def 历史条数(请求值=None):
+    """这次取多少条快照：以用户配置为上限，请求参数只能在此之内再往下收。
+
+    参数缺失、写坏、或者配置本身不是数字，都回落到配置值/兜底值，所以前端不用自己
+    知道这个数——它不传参数，由服务端按设置决定。
+    """
+    from arknights_mower.utils import config
+
+    配置值 = getattr(config.conf, "depot_history_limit", _历史条数兜底)
+    try:
+        上限 = int(配置值)
+    except (TypeError, ValueError):
+        上限 = _历史条数兜底
+    上限 = max(1, min(上限, _历史条数上限))
+
+    if 请求值 is None:
+        return 上限
+    try:
+        值 = int(请求值)
+    except (TypeError, ValueError):
+        return 上限
+    return max(1, min(值, 上限))
+
+
+def 保留条数():
+    """用户配置的历史文件保留条数；0（默认）表示不清理。"""
+    from arknights_mower.utils import config
+
+    try:
+        值 = int(getattr(config.conf, "depot_history_keep", 0))
+    except (TypeError, ValueError):
+        return 0
+    # 只挡负数：填大了只是"不清理"，不会误删
+    return max(0, 值)
+
+
+def _裁剪快照文件(path, 保留):
+    """把一份快照 CSV 裁到最近 保留 条（表头保留）。整份重写，走 atomic_write。
+
+    一行就是一条记录：Data 与标记列都是 json.dumps 出来的，换行会被转义，不会出现
+    跨行的记录，所以按行裁剪是安全的。
+    """
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return
+    try:
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            lines = f.readlines()
+    except (OSError, UnicodeDecodeError) as error:
+        logger.warning(f"仓库历史: 清理 {path} 失败，保持原样：{error}")
+        return
+    if len(lines) <= 保留 + 1:
+        return
+    header, body = lines[0], lines[1:]
+    kept = [header, *body[-保留:]]
+    # atomic_write 的临时文件是文本模式（newline 默认），写入的 \n 会被翻成平台换行；
+    # 这里必须先把原换行去掉再加 \n，否则 Windows 上会叠成 \r\r\n。
+    try:
+        atomic_write(
+            path, lambda f: f.writelines([line.rstrip("\r\n") + "\n" for line in kept])
+        )
+    except OSError as error:
+        logger.warning(f"仓库历史: 重写 {path} 失败，保持原样：{error}")
+        return
+    logger.info(f"仓库历史: {os.path.basename(path)} 只保留最近 {保留} 条")
+
+
+def 清理历史():
+    """按设置把两份快照文件裁到最近 N 条，扫完仓库调用一次。
+
+    写方是 append、读方按 (mtime, size) 缓存，所以这里整份替换：读方永远看不到半截
+    文件，解析缓存也会因为 mtime/size 变化自动失效。
+    """
+    保留 = 保留条数()
+    if 保留 <= 0:
+        return
+    for path in (get_path("@app/tmp/depotresult.csv"), _合并历史路径()):
+        _裁剪快照文件(path, 保留)
+
 
 def _合并历史路径():
     return get_path(_MERGED_HISTORY_REL)

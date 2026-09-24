@@ -899,21 +899,14 @@ def read_depot():
 def depot_history():
     """仓库快照序列，供仓库页做环比与趋势。
 
-    limit 默认 60（够画一屏曲线），上限 3000：按一天几次到十几次的扫描节奏，这是以年计的
-    跨度，够看长期走势。要留意的是响应会跟着变大——完整库存快照每条约 2.4KB，3000 条就是
-    7MB 左右，页面上不需要那么深的时候把 limit 调小即可。数据源是 depotresult.csv 与
-    depotmerged.csv，为空/损坏时返回空数组而不是报错——趋势是锦上添花，不该让仓库页
-    整体进错误态。
+    取多少条由设置里的"仓库历史条数"决定（默认 3000）：请求参数只能在此之内再往下收，
+    参数缺失或写坏都按设置走，所以页面自己不用知道这个数。完整库存快照每条约 2.4KB，
+    3000 条约 7MB，觉得重就在设置里调小。数据源是 depotresult.csv 与 depotmerged.csv，
+    为空/损坏时返回空数组而不是报错——趋势是锦上添花，不该让仓库页整体进错误态。
     """
     from arknights_mower.utils import depot
 
-    try:
-        limit = int(request.args.get("limit", 60))
-    except (TypeError, ValueError):
-        limit = 60
-    limit = max(1, min(limit, 3000))
-
-    return {"snapshots": depot.读取仓库历史(limit)}
+    return {"snapshots": depot.读取仓库历史(depot.历史条数(request.args.get("limit")))}
 
 
 @app.route("/stage/latest-activity")
