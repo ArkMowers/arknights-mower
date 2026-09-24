@@ -718,6 +718,7 @@ class Recognizer:
         judge: bool = True,
         strict: bool = False,
         threshold: float = 0.0,
+        score: float | None = None,
     ) -> tp.Scope:
         """
         查找元素是否出现在画面中
@@ -732,6 +733,8 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
+        if score is not None:
+            threshold = score
         normalized_res = str(res).replace("\\", "/")
         force_feature_match = "navigation/stage/" in normalized_res
 
