@@ -384,9 +384,9 @@ class RegularTaskPart(ConfModel):
     maa_depot_enable: bool = False
     "仓库物品混合读取"
     depot_history_limit: int = 3000
-    "仓库页历史条数：趋势与快照对比取用多少条快照（完整快照约 2.4KB/条）"
+    "仓库页历史条数：趋势、环比与快照对比最多用多少次扫描记录"
     depot_history_keep: int = 0
-    "仓库历史文件保留条数：每次扫描后裁到最近这么多条，0 表示不清理"
+    "仓库历史保留条数：扫描记录最多留多少条，超出的从最早的删起，0 表示一直留着"
     visit_friend_enable: bool = True
     "访问好友"
     visit_friend_mode: str = "maa"

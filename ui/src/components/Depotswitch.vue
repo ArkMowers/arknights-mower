@@ -25,36 +25,57 @@ const { maa_depot_enable, skland_info, depot_history_limit, depot_history_keep }
       </div>
     </div>
 
-    <div class="depot-history-row">
-      <div class="row-label">
-        历史条数
-        <help-text>
-          <div>仓库页趋势与快照对比取用多少条快照</div>
-          <div>完整库存快照约 2.4KB/条，条数越多响应越大</div>
-        </help-text>
+    <div class="history-block">
+      <div class="block-title">仓库历史</div>
+      <div class="depot-history-row">
+        <div class="row-label">
+          历史条数
+          <help-text>
+            <div>仓库页的趋势、环比与快照对比最多用这么多次扫描记录</div>
+            <div>填得越大能往回看得越远，打开仓库页时加载也越慢</div>
+            <div>默认 3000 次，按每 3 小时扫一次约一年</div>
+          </help-text>
+        </div>
+        <mower-input-number
+          v-model:value="depot_history_limit"
+          :min="1"
+          :max="20000"
+          class="row-input"
+        />
       </div>
-      <mower-input-number v-model:value="depot_history_limit" :min="1" class="row-input" />
-    </div>
-    <div class="depot-history-row">
-      <div class="row-label">
-        文件保留
-        <help-text>
-          <div>每次扫描后把两份历史文件裁到最近这么多条</div>
-          <div>0 表示不清理，文件只追加</div>
-        </help-text>
+      <div class="depot-history-row">
+        <div class="row-label">
+          保留条数
+          <help-text>
+            <div>扫描记录最多留多少条，超出的从最早的删起</div>
+            <div>0 表示一直留着（默认）；改小后下一次扫仓库才生效</div>
+          </help-text>
+        </div>
+        <mower-input-number v-model:value="depot_history_keep" :min="0" class="row-input" />
       </div>
-      <mower-input-number v-model:value="depot_history_keep" :min="0" class="row-input" />
     </div>
   </n-card>
 </template>
 
 <style scoped>
+.history-block {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mower-border, rgba(0, 0, 0, 0.08));
+}
+
+.block-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
 .depot-history-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .row-label {
