@@ -91,6 +91,51 @@ class ProxyEnvironmentTests(unittest.TestCase):
                 self.assertIn("internal.example", result["no_proxy"])
 
 
+class ProcessAliveTests(unittest.TestCase):
+    class _Call:
+        def __init__(self, result):
+            self.result = result
+
+        def __call__(self, *args):
+            return self.result
+
+    class _Kernel:
+        def __init__(self, wait_result):
+            self.OpenProcess = ProcessAliveTests._Call(1)
+            self.WaitForSingleObject = ProcessAliveTests._Call(wait_result)
+            self.CloseHandle = ProcessAliveTests._Call(True)
+
+    def test_windows_wait_timeout_is_still_alive(self):
+        import ctypes
+
+        kernel = self._Kernel(258)  # WAIT_TIMEOUT
+        with (
+            patch.object(runtime.sys, "platform", "win32"),
+            patch.object(ctypes, "WinDLL", return_value=kernel, create=True),
+        ):
+            self.assertTrue(runtime.process_alive(1234))
+
+    def test_windows_signaled_process_is_dead(self):
+        import ctypes
+
+        kernel = self._Kernel(0)  # WAIT_OBJECT_0
+        with (
+            patch.object(runtime.sys, "platform", "win32"),
+            patch.object(ctypes, "WinDLL", return_value=kernel, create=True),
+        ):
+            self.assertFalse(runtime.process_alive(1234))
+
+    def test_windows_wait_failure_is_conservatively_alive(self):
+        import ctypes
+
+        kernel = self._Kernel(0xFFFFFFFF)  # WAIT_FAILED
+        with (
+            patch.object(runtime.sys, "platform", "win32"),
+            patch.object(ctypes, "WinDLL", return_value=kernel, create=True),
+        ):
+            self.assertTrue(runtime.process_alive(1234))
+
+
 class InstanceScanTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="mower 登记 ")

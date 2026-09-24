@@ -6,7 +6,8 @@ import LogPage from './Log.vue'
 const state = vi.hoisted(() => ({
   client: null,
   mower: null,
-  config: null
+  config: null,
+  warning: null
 }))
 
 vi.mock('pinia', async (original) => ({
@@ -16,13 +17,13 @@ vi.mock('pinia', async (original) => ({
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
-  inject: (key) => (key === 'axios' ? state.client : false),
+  inject: (key) => (key === 'axios' ? state.client : ref(false)),
   onMounted: vi.fn(),
   onUnmounted: vi.fn(),
   provide: vi.fn()
 }))
 vi.mock('naive-ui', () => ({
-  useDialog: () => ({ warning: vi.fn() }),
+  useDialog: () => ({ warning: state.warning }),
   useMessage: () => ({ error: vi.fn(), success: vi.fn() })
 }))
 vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
@@ -31,11 +32,12 @@ vi.mock('@/utils/screenshotPreview', () => ({
   createScreenshotPreview: () => ({ start: vi.fn(), stop: vi.fn() })
 }))
 
-describe('log layout reserve updates', () => {
+describe('log page', () => {
   let scope
 
   beforeEach(() => {
     state.client = { get: vi.fn(), post: vi.fn() }
+    state.warning = vi.fn()
     state.mower = {
       refs: {
         log: ref(''),
@@ -64,6 +66,38 @@ describe('log layout reserve updates', () => {
   afterEach(() => {
     scope.stop()
     vi.unstubAllGlobals()
+  })
+
+  it('runs both process actions directly through ProcessControl', async () => {
+    state.mower.refs.running.value = true
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    const applySchedule = vi.fn()
+    const restartResume = vi.fn()
+    expect(component.stop_options.value[1].disabled).toBe(true)
+    expect(component.stop_options.value[2].disabled).toBe(true)
+
+    component.process_control.value = {
+      canRunProcessAction: true,
+      applySchedule,
+      restartResume
+    }
+    await nextTick()
+    expect(component.stop_options.value.map((option) => option.label)).toEqual([
+      '停止MAA',
+      '应用排班',
+      '重启续接'
+    ])
+    expect(component.stop_options.value[1].disabled).toBe(false)
+    expect(component.stop_options.value[2].disabled).toBe(false)
+
+    component.select_stop_action('apply_schedule')
+    component.select_stop_action('restart_resume')
+    expect(applySchedule).toHaveBeenCalledOnce()
+    expect(restartResume).toHaveBeenCalledOnce()
+    expect(state.warning).not.toHaveBeenCalled()
+
+    component.select_stop_action('maa')
+    expect(state.client.get).toHaveBeenCalledWith('/stop-maa')
   })
 
   it('reclamps panes when plan conditions appear after the initial layout pass', async () => {

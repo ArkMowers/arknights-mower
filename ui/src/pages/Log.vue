@@ -227,24 +227,49 @@ function stop_maa() {
   axios.get(`${import.meta.env.VITE_HTTP_URL}/stop-maa`)
 }
 
-const stop_options = [
+const process_control = ref(null)
+const stop_options = computed(() => [
   {
     label: '停止MAA',
     key: 'maa'
+  },
+  {
+    label: '应用排班',
+    key: 'apply_schedule',
+    disabled: !process_control.value?.canRunProcessAction,
+    props: { title: '保存配置并重启当前实例，保留心情和位置，按当前排班重新生成任务。' }
+  },
+  {
+    label: '重启续接',
+    key: 'restart_resume',
+    disabled: !process_control.value?.canRunProcessAction,
+    props: { title: '保存配置并重启当前实例，保留原任务队列继续运行。' }
   }
-]
+])
+
+function select_stop_action(key) {
+  if (key === 'maa') return stop_maa()
+  if (!process_control.value?.canRunProcessAction) return
+  if (key === 'apply_schedule') return process_control.value.applySchedule()
+  if (key === 'restart_resume') return process_control.value.restartResume()
+}
 const start_options = [
   {
     label: '载入心情任务',
-    key: '0'
+    key: '0',
+    props: { title: '继续上次任务：保留心情、位置和原任务队列。' }
   },
   {
     label: '载入心情数据',
-    key: '1'
+    key: '1',
+    props: {
+      title: '按当前排班重排：保留心情、位置，清空旧任务后重新生成任务。修改排班后使用。'
+    }
   },
   {
     label: '缓存清零重启',
-    key: '2'
+    key: '2',
+    props: { title: '重新读取现场：不使用旧运行缓存，重新读取心情和位置。' }
   }
 ]
 
@@ -422,7 +447,13 @@ async function db_delete(keys) {
       style="user-select: text"
     />
     <div class="action-container">
-      <drop-down v-if="running" :select="stop_maa" :options="stop_options" type="error" :up="true">
+      <drop-down
+        v-if="running"
+        :select="select_stop_action"
+        :options="stop_options"
+        type="error"
+        :up="true"
+      >
         <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
           <template #icon>
             <n-icon>
@@ -438,6 +469,7 @@ async function db_delete(keys) {
         :start-options="start_options"
         :waiting="waiting"
       />
+      <ProcessControl ref="process_control" compact :running="running" />
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
         <template #icon>

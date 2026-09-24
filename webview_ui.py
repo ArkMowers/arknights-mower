@@ -617,15 +617,20 @@ def run_desktop():
 
     request_auto_check()
 
+    resume_mode = os.environ.pop("MOWER_RESUME_MODE", "")
+
     def resume_after_update():
         while runtime.active_job() and not registration.shutdown_requested():
             sleep(0.5)
         if registration.shutdown_requested():
             return
         with server.app.test_request_context(headers={"token": token or ""}):
-            server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
+            if resume_mode in ("0", "1"):
+                server.start(resume_mode)
+            else:
+                server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
 
-    resume = (
+    resume = resume_mode in ("0", "1") or (
         os.environ.get("MOWER_RESUME_RUN") == "1"
         if os.environ.get("MOWER_RESTART_JOB")
         else background and conf.start_automatically
