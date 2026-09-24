@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  alignSnapshotsToRange,
+  BASELINE_PRESETS,
   buildBaselineEndOptions,
   buildBaselineStartOptions,
   buildDeltaMap,
+  computePresetRange,
   buildDepotExportFilename,
   buildDrawHistory,
   buildFavoriteHighlights,
@@ -208,10 +211,81 @@ describe('buildBaselineStartOptions / buildBaselineEndOptions and two-point sele
     expect(resolveSnapshot(usable, 'previous')).toBe(usable[1])
     expect(resolveSnapshot(usable, 'first')).toBe(usable[0])
     expect(resolveSnapshot(usable, '200')).toBe(usable[1])
+    expect(resolveSnapshot(usable, usable[1])).toBe(usable[1])
     // 未知键退回 fallbackIndex，负数从尾部数。
     expect(resolveSnapshot(usable, 'nope', -1)).toBe(usable[2])
     expect(resolveSnapshot(usable, 'nope', 0)).toBe(usable[0])
     expect(resolveSnapshot([], 'latest')).toBeNull()
+  })
+})
+
+describe('alignSnapshotsToRange and baseline presets', () => {
+  const snapshots = [
+    { at: 1000, items: { 龙门币: 100 } },
+    { at: 2000, items: { 龙门币: 200 } },
+    { at: 3000, items: { 龙门币: 300 } },
+    { at: 4000, items: { 龙门币: 400 } }
+  ]
+
+  it('aligns to previous two snapshots by default', () => {
+    const res = alignSnapshotsToRange(snapshots, { preset: 'previous' })
+    expect(res.matchedCount).toBe(2)
+    expect(res.startSnapshot.at).toBe(3000)
+    expect(res.endSnapshot.at).toBe(4000)
+  })
+
+  it('aligns to first and latest for all preset', () => {
+    const res = alignSnapshotsToRange(snapshots, { preset: 'all' })
+    expect(res.matchedCount).toBe(4)
+    expect(res.startSnapshot.at).toBe(1000)
+    expect(res.endSnapshot.at).toBe(4000)
+  })
+
+  it('aligns to range timestamps in custom mode', () => {
+    const res = alignSnapshotsToRange(snapshots, {
+      preset: 'custom',
+      range: [1500 * 1000, 3500 * 1000],
+      followLatest: false
+    })
+    expect(res.matchedCount).toBe(2)
+    expect(res.startSnapshot.at).toBe(2000)
+    expect(res.endSnapshot.at).toBe(3000)
+  })
+
+  it('handles followLatest by overriding end time with latest snapshot', () => {
+    const res = alignSnapshotsToRange(snapshots, {
+      preset: 'custom',
+      range: [1500 * 1000, 2500 * 1000],
+      followLatest: true
+    })
+    expect(res.matchedCount).toBe(3)
+    expect(res.startSnapshot.at).toBe(2000)
+    expect(res.endSnapshot.at).toBe(4000)
+  })
+
+  it('handles zero matches gracefully', () => {
+    const res = alignSnapshotsToRange(snapshots, {
+      preset: 'custom',
+      range: [5000 * 1000, 6000 * 1000],
+      followLatest: false
+    })
+    expect(res.matchedCount).toBe(0)
+    expect(res.startSnapshot).toBeNull()
+    expect(res.endSnapshot).toBeNull()
+  })
+
+  it('computes preset ranges accurately', () => {
+    const fixedNow = 1700000000000
+    const r7d = computePresetRange('7d', fixedNow)
+    expect(r7d[1]).toBe(fixedNow)
+    expect(r7d[0]).toBe(fixedNow - 7 * 86400 * 1000)
+
+    const r30d = computePresetRange('30d', fixedNow)
+    expect(r30d[0]).toBe(fixedNow - 30 * 86400 * 1000)
+
+    const rAll = computePresetRange('all', fixedNow)
+    expect(rAll[0]).toBe(0)
+    expect(rAll[1]).toBe(fixedNow)
   })
 })
 

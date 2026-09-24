@@ -312,13 +312,153 @@ export function buildBaselineEndOptions(snapshots) {
   return dedupeOptions(options)
 }
 
+export const BASELINE_PRESETS = [
+  { key: 'previous', label: '单次环比', shortLabel: '单次' },
+  { key: 'today', label: '当天', shortLabel: '当天' },
+  { key: '7d', label: '近 7 天', shortLabel: '7d' },
+  { key: '14d', label: '近 14 天', shortLabel: '14d' },
+  { key: '30d', label: '近 30 天', shortLabel: '30d' },
+  { key: 'all', label: '全部历史', shortLabel: '全部' }
+]
+
+export function computePresetRange(presetKey, nowMs = Date.now()) {
+  const now = new Date(nowMs)
+  const endOfDay = nowMs
+
+  switch (presetKey) {
+    case 'today': {
+      const startOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).getTime()
+      return [startOfDay, endOfDay]
+    }
+    case '7d': {
+      return [nowMs - 7 * 24 * 60 * 60 * 1000, endOfDay]
+    }
+    case '14d': {
+      return [nowMs - 14 * 24 * 60 * 60 * 1000, endOfDay]
+    }
+    case '30d': {
+      return [nowMs - 30 * 24 * 60 * 60 * 1000, endOfDay]
+    }
+    case 'all': {
+      return [0, endOfDay]
+    }
+    default:
+      return null
+  }
+}
+
 /**
- * 对比起点/结束点下拉的取值：把 'previous' / 'first' / 'latest' / 秒级时间戳
+ * 将时间范围或快捷预设对齐到快照序列中的起止快照。
+ */
+export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now()) {
+  const usable = usableSnapshots(snapshots)
+  const preset = options.preset || 'previous'
+  const followLatest = options.followLatest !== false
+
+  if (usable.length < 2) {
+    return {
+      matchedCount: usable.length,
+      startSnapshot: usable[0] || null,
+      endSnapshot: usable[0] || null,
+      effectiveRange: usable[0] ? [usable[0].at * 1000, usable[0].at * 1000] : null,
+      matchedSnapshots: usable
+    }
+  }
+
+  if (preset === 'previous') {
+    const startSnapshot = usable[usable.length - 2]
+    const endSnapshot = usable[usable.length - 1]
+    return {
+      matchedCount: 2,
+      startSnapshot,
+      endSnapshot,
+      effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
+      matchedSnapshots: [startSnapshot, endSnapshot]
+    }
+  }
+
+  if (preset === 'all') {
+    const startSnapshot = usable[0]
+    const endSnapshot = usable[usable.length - 1]
+    return {
+      matchedCount: usable.length,
+      startSnapshot,
+      endSnapshot,
+      effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
+      matchedSnapshots: usable
+    }
+  }
+
+  let range = options.range
+  if (!range || !Array.isArray(range) || range.length < 2) {
+    range = computePresetRange(preset, nowMs)
+  }
+
+  if (!range || !range[0] || !range[1]) {
+    const startSnapshot = usable[0]
+    const endSnapshot = usable[usable.length - 1]
+    return {
+      matchedCount: usable.length,
+      startSnapshot,
+      endSnapshot,
+      effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
+      matchedSnapshots: usable
+    }
+  }
+
+  const startSec = Math.floor(range[0] / 1000)
+  const endSec = followLatest ? usable[usable.length - 1].at : Math.ceil(range[1] / 1000)
+
+  const matched = usable.filter((s) => s.at >= startSec && s.at <= endSec)
+
+  if (matched.length === 0) {
+    return {
+      matchedCount: 0,
+      startSnapshot: null,
+      endSnapshot: null,
+      effectiveRange: null,
+      matchedSnapshots: []
+    }
+  }
+
+  if (matched.length === 1) {
+    return {
+      matchedCount: 1,
+      startSnapshot: matched[0],
+      endSnapshot: matched[0],
+      effectiveRange: [matched[0].at * 1000, matched[0].at * 1000],
+      matchedSnapshots: matched
+    }
+  }
+
+  const startSnapshot = matched[0]
+  const endSnapshot = matched[matched.length - 1]
+
+  return {
+    matchedCount: matched.length,
+    startSnapshot,
+    endSnapshot,
+    effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
+    matchedSnapshots: matched
+  }
+}
+
+/**
+ * 对比起点/结束点下拉的取值：把 'previous' / 'first' / 'latest' / 秒级时间戳 / 快照对象
  * 统一解析成一条快照。depot.vue 的趋势标签与 deltaMap 都走这里，避免页面里再抄一份
  * 同样的分支级联。
  */
 export function resolveSnapshot(usable, key, fallbackIndex) {
   if (!usable || !usable.length) return null
+  if (typeof key === 'object' && key !== null && typeof key.at === 'number') return key
   if (key === 'latest') return usable[usable.length - 1]
   if (key === 'previous') return usable[Math.max(0, usable.length - 2)]
   if (key === 'first') return usable[0]

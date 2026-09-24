@@ -403,21 +403,7 @@
           <!-- 桌面端对比区间选择器 -->
           <div class="toolbar-baseline-wrap desktop-only" v-if="history.length >= 2">
             <span class="control-label">对比：</span>
-            <n-select
-              v-model:value="baselineStartKey"
-              :options="baselineStartOptions"
-              size="small"
-              class="toolbar-baseline-select"
-              placeholder="起始时间点"
-            />
-            <span class="baseline-arrow">至</span>
-            <n-select
-              v-model:value="baselineEndKey"
-              :options="baselineEndOptions"
-              size="small"
-              class="toolbar-baseline-select"
-              placeholder="结束时间点"
-            />
+            <depot-baseline-picker v-model="baselineConfig" :history="history" />
           </div>
 
           <!-- 移动端筛选展开/折叠按钮 -->
@@ -454,21 +440,7 @@
           <!-- 移动端对比区间选择器（置于展开筛选区内） -->
           <div class="toolbar-baseline-wrap mobile-only" v-if="history.length >= 2">
             <span class="control-label">对比：</span>
-            <n-select
-              v-model:value="baselineStartKey"
-              :options="baselineStartOptions"
-              size="small"
-              class="toolbar-baseline-select"
-              placeholder="起始时间点"
-            />
-            <span class="baseline-arrow">至</span>
-            <n-select
-              v-model:value="baselineEndKey"
-              :options="baselineEndOptions"
-              size="small"
-              class="toolbar-baseline-select"
-              placeholder="结束时间点"
-            />
+            <depot-baseline-picker v-model="baselineConfig" :history="history" />
           </div>
 
           <!-- 库存状态单选 -->
@@ -1032,8 +1004,10 @@ import { sleep } from '@/utils/sleep'
 import { usedepotStore } from '@/stores/depot'
 import { useConfigStore } from '@/stores/config'
 import HelpText from '@/components/HelpText.vue'
+import DepotBaselinePicker from '@/components/DepotBaselinePicker.vue'
 import {
   SORT_MODES,
+  alignSnapshotsToRange,
   buildBaselineStartOptions,
   buildBaselineEndOptions,
   buildDeltaMap,
@@ -1101,8 +1075,11 @@ watch(query, (val) => {
 
 const stockFilter = ref('all') // 'all' | 'favorite' | 'owned' | 'empty'
 const deltaFilter = ref('all') // 'all' | 'increased' | 'decreased' | 'changed'
-const baselineStartKey = ref('previous') // 'previous' | 'first' | timestamp
-const baselineEndKey = ref('latest') // 'latest' | timestamp
+const baselineConfig = ref({
+  preset: 'previous',
+  range: null,
+  followLatest: true
+})
 const showDerived = ref(true)
 const sortMode = ref('tier')
 const activeDrawKey = ref('')
@@ -1158,36 +1135,33 @@ const historyError = computed(() => depotStore.historyError)
 const parsed = computed(() => parseDepotResponse(depotStore.report))
 const allItems = computed(() => flattenItems(parsed.value.categories))
 
-const baselineStartOptions = computed(() => buildBaselineStartOptions(history.value))
-const baselineEndOptions = computed(() => buildBaselineEndOptions(history.value))
-
-const activeBaselineSummary = computed(() => {
-  let startLabel = '上次扫描'
-  if (baselineStartKey.value === 'previous') {
-    const prev = history.value[history.value.length - 2]
-    startLabel = prev ? `上次 (${formatTimestamp(prev.at).slice(5)})` : '上次扫描'
-  } else if (baselineStartKey.value === 'first') {
-    const first = history.value[0]
-    startLabel = first ? `最早 (${formatTimestamp(first.at).slice(5)})` : '最早记录'
-  } else {
-    const opt = baselineStartOptions.value.find((o) => o.value === baselineStartKey.value)
-    startLabel = opt ? formatTimestamp(opt.at).slice(5) : '指定点'
-  }
-
-  let endLabel = '当前最新'
-  if (baselineEndKey.value === 'latest') {
-    endLabel = '当前最新'
-  } else {
-    const opt = baselineEndOptions.value.find((o) => o.value === baselineEndKey.value)
-    endLabel = opt ? formatTimestamp(opt.at).slice(5) : '指定点'
-  }
-
-  return `${startLabel} → ${endLabel}`
+const alignedBaseline = computed(() => {
+  return alignSnapshotsToRange(history.value, baselineConfig.value)
 })
 
-const deltaMap = computed(() =>
-  buildDeltaMap(history.value, baselineStartKey.value, baselineEndKey.value)
-)
+const activeBaselineSummary = computed(() => {
+  const { matchedCount, startSnapshot, endSnapshot } = alignedBaseline.value
+  if (!startSnapshot || !endSnapshot) return '暂无匹配快照'
+
+  if (baselineConfig.value.preset === 'previous') {
+    return `较上次 (${formatTimestamp(startSnapshot.at).slice(5)}) → 当前最新`
+  }
+  if (baselineConfig.value.preset === 'all') {
+    return `最早 (${formatTimestamp(startSnapshot.at).slice(5)}) → 当前最新`
+  }
+
+  const startLabel = formatTimestamp(startSnapshot.at).slice(5)
+  const endLabel = formatTimestamp(endSnapshot.at).slice(5)
+  return `${startLabel} → ${endLabel} (共 ${matchedCount} 次扫描)`
+})
+
+const deltaMap = computed(() => {
+  const { startSnapshot, endSnapshot } = alignedBaseline.value
+  if (!startSnapshot || !endSnapshot || startSnapshot === endSnapshot) {
+    return new Map()
+  }
+  return buildDeltaMap(history.value, startSnapshot, endSnapshot)
+})
 const highlights = computed(() => buildHighlights(parsed.value.categories))
 
 // 关注高亮看板与分页
@@ -1250,21 +1224,20 @@ const drawDeltaText = computed(() => {
   const usable = usableSnapshots(history.value)
   if (usable.length < 2) return ''
 
-  const startSnap = resolveSnapshot(usable, baselineStartKey.value, usable.length - 2)
-  const endSnap = resolveSnapshot(usable, baselineEndKey.value, usable.length - 1)
-  if (!startSnap || !endSnap) return ''
+  const { startSnapshot, endSnapshot } = alignedBaseline.value
+  if (!startSnapshot || !endSnapshot) return ''
 
-  const startDraws = computeDrawCount(startSnap.items, activeDrawKey.value)
-  const endDraws = computeDrawCount(endSnap.items, activeDrawKey.value)
+  const startDraws = computeDrawCount(startSnapshot.items, activeDrawKey.value)
+  const endDraws = computeDrawCount(endSnapshot.items, activeDrawKey.value)
   if (!Number.isFinite(startDraws) || !Number.isFinite(endDraws)) return ''
 
   const diff = Math.round((endDraws - startDraws) * 10) / 10
   const sign = diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '±0'
 
-  if (baselineStartKey.value === 'previous' && baselineEndKey.value === 'latest') {
+  if (baselineConfig.value.preset === 'previous') {
     return `较上次扫描 ${sign} 抽`
   }
-  if (baselineStartKey.value === 'first' && baselineEndKey.value === 'latest') {
+  if (baselineConfig.value.preset === 'all') {
     return `较最早记录 ${sign} 抽`
   }
   return `区间变动 ${sign} 抽`
@@ -1299,7 +1272,7 @@ const activeFilterCount = computed(() => {
   if (deltaFilter.value !== 'all') count++
   if (!showDerived.value) count++
   if (sortMode.value !== 'tier') count++
-  if (baselineStartKey.value !== 'previous' || baselineEndKey.value !== 'latest') count++
+  if (baselineConfig.value.preset !== 'previous') count++
   return count
 })
 
@@ -1310,8 +1283,7 @@ const hasActiveFilters = computed(() => {
     deltaFilter.value !== 'all' ||
     !showDerived.value ||
     sortMode.value !== 'tier' ||
-    baselineStartKey.value !== 'previous' ||
-    baselineEndKey.value !== 'latest'
+    baselineConfig.value.preset !== 'previous'
   )
 })
 
@@ -1323,8 +1295,7 @@ function resetFilters() {
   deltaFilter.value = 'all'
   showDerived.value = true
   sortMode.value = 'tier'
-  baselineStartKey.value = 'previous'
-  baselineEndKey.value = 'latest'
+  baselineConfig.value = { preset: 'previous', range: null, followLatest: true }
 }
 
 const sortedItems = computed(() => {
