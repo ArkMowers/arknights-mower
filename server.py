@@ -894,6 +894,25 @@ def read_depot():
     return {"depot": data, "cultivate_ok": cultivate_ok, "cultivate_msg": cultivate_msg}
 
 
+@app.route("/depot/history")
+def depot_history():
+    """仓库扫描快照序列，供仓库页做环比与趋势。
+
+    limit 默认 60（够画一屏曲线），上限 500 防止前端传个巨大的值把 CSV 整个吐出去。
+    数据源是 @app/tmp/depotresult.csv，为空/损坏时返回空数组而不是报错——趋势是
+    锦上添花，不该让仓库页整体进错误态。
+    """
+    from arknights_mower.utils import depot
+
+    try:
+        limit = int(request.args.get("limit", 60))
+    except (TypeError, ValueError):
+        limit = 60
+    limit = max(1, min(limit, 500))
+
+    return {"snapshots": depot.读取仓库历史(limit)}
+
+
 @app.route("/stage/latest-activity")
 def stage_latest_activity():
     """刷理智周计划：最近开启活动（stage_data_full 热更后最新）的选中关。

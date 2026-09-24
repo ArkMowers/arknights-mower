@@ -10,6 +10,18 @@ export const usedepotStore = defineStore('depot', () => {
   let inventoryLoadedAt = 0
   let inventoryRequest = null
 
+  // 仓库页自己的状态。与上面的 inventory 分开存：trigger 只关心扁平的数量表，
+  // 仓库页还要分类、档位、扫描时间，把渲染需要的东西塞进 inventory 会污染调用方。
+  const report = ref(null)
+  const reportLoaded = ref(false)
+  const reportError = ref('')
+  const loading = ref(false)
+  const history = ref([])
+  const historyError = ref('')
+  const historyLoading = ref(false)
+  let reportRequest = null
+  let historyRequest = null
+
   async function getDepotinfo() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/depot/readdepot`)
     return response.data
@@ -38,11 +50,75 @@ export const usedepotStore = defineStore('depot', () => {
     return inventoryRequest
   }
 
+  /** 扫描快照序列，供环比与趋势使用。失败时只记错误、不抛，趋势不该拖垮整页。 */
+  async function loadHistory(limit = 60) {
+    if (historyRequest) return historyRequest
+    historyLoading.value = true
+    historyError.value = ''
+    historyRequest = axios
+      .get(`${import.meta.env.VITE_HTTP_URL}/depot/history`, { params: { limit } })
+      .then((response) => {
+        const snapshots = response.data?.snapshots
+        history.value = Array.isArray(snapshots) ? snapshots : []
+        return history.value
+      })
+      .catch((error) => {
+        historyError.value = error?.message || '读取历史失败'
+        history.value = []
+        return []
+      })
+      .finally(() => {
+        historyLoading.value = false
+        historyRequest = null
+      })
+    return historyRequest
+  }
+
+  /**
+   * 仓库页一次拉全量。两个请求并行且各自失败互不牵连：历史挂了仍然要能看当前仓库。
+   * getDepotinfo 失败时走它的 catch（那里已写好 reportError）并让本函数 reject 出去，
+   * 页面据此提示刷新失败；历史失败在 loadHistory 内部已经降级成空数组。
+   */
+  async function loadReport({ force = false } = {}) {
+    if (!force && report.value && reportLoaded.value) {
+      return report.value
+    }
+    if (reportRequest) return reportRequest
+    loading.value = true
+    reportError.value = ''
+    reportRequest = Promise.all([
+      getDepotinfo().catch((error) => {
+        reportError.value = error?.message || '读取仓库失败'
+        throw error
+      }),
+      loadHistory()
+    ])
+      .then(([response]) => {
+        report.value = response
+        reportLoaded.value = true
+        return response
+      })
+      .finally(() => {
+        loading.value = false
+        reportRequest = null
+      })
+    return reportRequest
+  }
+
   return {
     getDepotinfo,
     loadInventory,
+    loadHistory,
+    loadReport,
     inventory,
     inventoryLoaded,
-    inventoryLoadError
+    inventoryLoadError,
+    report,
+    reportLoaded,
+    reportError,
+    history,
+    historyError,
+    historyLoading,
+    loading
   }
 })

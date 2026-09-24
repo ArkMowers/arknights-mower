@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 from datetime import datetime
@@ -5,7 +6,7 @@ from datetime import datetime
 from arknights_mower.data import key_mapping, workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils.config import atomic_write
-from arknights_mower.utils.csv_utils import read_csv_rows
+from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -32,6 +33,36 @@ def cloud_inventory_snapshot(payload):
         if entry is not None:
             counts[entry[2]] = int(item["count"])
     return counts, observed_at
+
+
+def 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片, 土数量):
+    """把仓库物料折算成四档寻访抽数，返回 {档位: 抽数}。
+
+    口径：600 合成玉一抽；1 至纯源石 = 180 合成玉（0.3 抽）；源石碎片 2 片算一抽
+    （20 合成玉）；固源岩 2 块搓 1 碎片，再按碎片折算。寻访凭证按十连 ×10 并入。
+
+    这是全项目唯一的抽数换算实现：读取仓库写派生条目、读取仓库历史回填历史快照都调
+    这里，前端不再重算。两处各写一份迟早会在舍入边界上对不上——Python 的 round() 是
+    银行家舍入，JS 的 Math.round() 遇 .5 一律进位，同一份仓库能差出 0.1 抽。
+    """
+    基础 = 合成玉数量 / 600 + 寻访凭证数量
+    含源石 = (合成玉数量 + 源石数量 * 180) / 600 + 寻访凭证数量
+    含碎片 = (合成玉数量 + 源石数量 * 180 + int(源石碎片 / 2) * 20) / 600 + 寻访凭证数量
+    待定碎片 = int(土数量 / 2)
+    含固源岩 = (
+        合成玉数量 + 源石数量 * 180 + int((源石碎片 + 待定碎片) / 2) * 20
+    ) / 600 + 寻访凭证数量
+    return {
+        "玉+卷": round(基础, 1),
+        "玉+卷+石": round(含源石, 1),
+        "额外+碎片": round(含碎片, 1),
+        "额外+碎片+土": round(含固源岩, 1),
+    }
+
+
+# 派生档位的键名，供剔除旧值时引用；顺序与 折算抽数 的插入顺序一致（Python 3.7+
+# 的 dict 保序，前端据此渲染档位按钮）。
+抽数档位 = ("玉+卷", "玉+卷+石", "额外+碎片", "额外+碎片+土")
 
 
 def 读取仓库():
@@ -219,6 +250,8 @@ def 读取仓库():
                 "icon": key,
             }
 
+    # 派生条目的 icon 用资源包里真实存在的图：经验卡合计用 EXP.webp，
+    # 而不是「高级作战记录」（那是 B经验卡 分类下真实物料的图）。
     classified_data["B经验卡"]["全部经验（计算）"] = {
         "number": (
             classified_data["B经验卡"]["基础作战记录"]["number"] * 200
@@ -236,36 +269,15 @@ def 读取仓库():
     )
     源石数量 = classified_data["A常用"].get("至纯源石", {"number": 0})["number"]
     源石碎片 = classified_data["K未分类"].get("源石碎片", {"number": 0})["number"]
-
     土 = classified_data["F稀有度2"].get("固源岩", {"number": 0})["number"]
-    classified_data["A常用"]["玉+卷"] = {
-        "number": round(合成玉数量 / 600 + 寻访凭证数量, 1),
-        "sort": 9999999,
-        "icon": "寻访凭证",
-    }
-    classified_data["A常用"]["玉+卷+石"] = {
-        "number": round((合成玉数量 + 源石数量 * 180) / 600 + 寻访凭证数量, 1),
-        "sort": 9999999,
-        "icon": "寻访凭证",
-    }
-    classified_data["A常用"]["额外+碎片"] = {
-        "number": round(
-            (合成玉数量 + 源石数量 * 180 + int(源石碎片 / 2) * 20) / 600 + 寻访凭证数量,
-            1,
-        ),
-        "sort": 9999999,
-        "icon": "寻访凭证",
-    }
-    待定碎片 = int(土 / 2)
-    classified_data["A常用"]["额外+碎片+土"] = {
-        "number": round(
-            (合成玉数量 + 源石数量 * 180 + int((源石碎片 + 待定碎片) / 2) * 20) / 600
-            + 寻访凭证数量,
-            1,
-        ),
-        "sort": 9999999,
-        "icon": "寻访凭证",
-    }
+
+    抽数 = 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片, 土)
+    for 档位, 数值 in 抽数.items():
+        classified_data["A常用"][档位] = {
+            "number": 数值,
+            "sort": 9999999,
+            "icon": "寻访凭证",
+        }
     return [
         classified_data,
         json.dumps(新物品json),
@@ -273,9 +285,86 @@ def 读取仓库():
     ]
 
 
-def 创建csv():
-    import csv
+def 读取仓库历史(limit=60):
+    """读取 depotresult.csv 的扫描快照序列，供仓库页趋势使用。
 
+    返回 [{at: 秒级时间戳, items: {物品名: 数量}}]，按时间升序，只保留最近 limit 条。
+    文件不存在、只有占位行或全部损坏时返回 []，调用方不必判空。
+
+    CSV 的 Data 列是每次扫描的**全量**快照（不是增量），所以相邻两条的差值就是
+    这段时间的净变化；创建文件时写入的占位行 "还未开始过扫描" 必须排除，
+    否则第一次真实扫描会相对它产生一整份假增量。
+
+    每条快照的 items 会回填四个派生档位（玉+卷 … 额外+碎片+土）。CSV 里只存了原始
+    物料，抽数得现算；在这里补上，前端就能直接读，不必自己再折算一遍，页面上的
+    "折合寻访抽数" 卡片与趋势线也就不会因为舍入口径不同而对不上。
+    """
+    path = get_path("@app/tmp/depotresult.csv")
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return []
+
+    try:
+        _, rows = read_csv_rows(path)
+    except (EmptyDataError, OSError, UnicodeDecodeError, csv.Error) as error:
+        # UnicodeDecodeError 也要收：文件可能被别的编辑器存成 GBK，或写入中途被截断，
+        # 让这点瑕疵把整个 /depot/history 变成 500 不值得。
+        logger.warning(f"仓库历史: 读取 {path} 失败，按无历史处理：{error}")
+        return []
+
+    snapshots = []
+    for row in rows:
+        # 列顺序固定为 Timestamp,Data,json；列数异常的残行直接跳过。
+        if len(row) < 2:
+            continue
+        try:
+            at = int(float(row[0]))
+        except (TypeError, ValueError):
+            continue
+        try:
+            payload = json.loads(row[1])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        # 占位行/空快照没有可比较的物料，参与环比只会制造假变化。
+        if "还未开始过扫描" in payload:
+            continue
+        items = {}
+        for name, count in payload.items():
+            if not isinstance(name, str):
+                continue
+            try:
+                # 与 读取仓库 一致：取整，反向解析出的浮点值（"1.2万"）向下取整。
+                items[name] = int(count)
+            except (TypeError, ValueError):
+                continue
+        if not items:
+            continue
+        # 派生档位以当前换算为准：旧快照里可能残留上一版公式写下的同名键，
+        # 直接更新会留下旧值，所以先剔掉再统一补算。
+        for 档位 in 抽数档位:
+            items.pop(档位, None)
+        items.update(
+            折算抽数(
+                items.get("合成玉", 0),
+                items.get("寻访凭证", 0) + items.get("十连寻访凭证", 0) * 10,
+                items.get("至纯源石", 0),
+                items.get("源石碎片", 0),
+                items.get("固源岩", 0),
+            )
+        )
+        snapshots.append({"at": at, "items": items})
+
+    # 排序必须先于截断：CSV 正常是追加写的，但换机/合并/时钟回拨都可能留下乱序行，
+    # 若先截断就会取到"文件里最后 limit 行"而不是"最近 limit 次扫描"。
+    snapshots.sort(key=lambda entry: entry["at"])
+
+    if limit is None or limit <= 0:
+        return snapshots
+    return snapshots[-limit:]
+
+
+def 创建csv():
     path = get_path("@app/tmp/depotresult.csv")
     now_time = int(datetime.now().timestamp()) - 24 * 3600
     result = [
