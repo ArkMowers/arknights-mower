@@ -205,7 +205,7 @@ import {
   isValidBaselineRange,
   resolveSnapshot,
   usableSnapshots
-} from '../utils/depot_inventory'
+} from '@/utils/depot_inventory'
 
 const props = defineProps({
   history: {

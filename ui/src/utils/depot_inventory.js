@@ -391,14 +391,20 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
   const preset = options.preset || 'previous'
   const followLatest = options.followLatest !== false
 
+  // 里外共九条返回路径，字段却始终是这五个。以前每一处手抄一遍，漏一个 effectiveRange
+  // 或把空数组算成 [undefined, undefined] 都不会报错，失败要等页面渲染出 NaN 才发现。
+  const result = (matched) => ({
+    matchedCount: matched.length,
+    startSnapshot: matched[0] || null,
+    endSnapshot: matched[matched.length - 1] || null,
+    effectiveRange: matched.length
+      ? [matched[0].at * 1000, matched[matched.length - 1].at * 1000]
+      : null,
+    matchedSnapshots: matched
+  })
+
   if (usable.length < 2) {
-    return {
-      matchedCount: usable.length,
-      startSnapshot: usable[0] || null,
-      endSnapshot: usable[0] || null,
-      effectiveRange: usable[0] ? [usable[0].at * 1000, usable[0].at * 1000] : null,
-      matchedSnapshots: usable
-    }
+    return result(usable)
   }
 
   // 按快照模式：用户直接指定"从哪一次扫描到哪一次扫描"，与时间范围无关。
@@ -409,46 +415,20 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
     const startIndex = usable.indexOf(startSnapshot)
     const endIndex = usable.indexOf(endSnapshot)
     if (startIndex < 0 || endIndex < 0) {
-      return {
-        matchedCount: 0,
-        startSnapshot: null,
-        endSnapshot: null,
-        effectiveRange: null,
-        matchedSnapshots: []
-      }
+      return result([])
     }
     const matched = usable.slice(Math.min(startIndex, endIndex), Math.max(startIndex, endIndex) + 1)
-    return {
-      matchedCount: matched.length,
-      startSnapshot: matched[0],
-      endSnapshot: matched[matched.length - 1],
-      effectiveRange: [matched[0].at * 1000, matched[matched.length - 1].at * 1000],
-      matchedSnapshots: matched
-    }
+    return result(matched)
   }
 
   if (preset === 'previous') {
     const startSnapshot = resolveSnapshot(usable, 'previous')
     const endSnapshot = resolveSnapshot(usable, 'latest')
-    return {
-      matchedCount: 2,
-      startSnapshot,
-      endSnapshot,
-      effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
-      matchedSnapshots: [startSnapshot, endSnapshot]
-    }
+    return result([startSnapshot, endSnapshot])
   }
 
   if (preset === 'all') {
-    const startSnapshot = resolveSnapshot(usable, 'first')
-    const endSnapshot = resolveSnapshot(usable, 'latest')
-    return {
-      matchedCount: usable.length,
-      startSnapshot,
-      endSnapshot,
-      effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
-      matchedSnapshots: usable
-    }
+    return result(usable)
   }
 
   // 相对预设（今天/近 N 天）一律以 now 重算：持久化下来的 range 是当初点选那一刻
@@ -458,15 +438,7 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
   if (!isValidBaselineRange(range)) range = computePresetRange(preset, nowMs)
 
   if (!isValidBaselineRange(range)) {
-    const startSnapshot = usable[0]
-    const endSnapshot = usable[usable.length - 1]
-    return {
-      matchedCount: usable.length,
-      startSnapshot,
-      endSnapshot,
-      effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
-      matchedSnapshots: usable
-    }
+    return result(usable)
   }
 
   const startSec = Math.floor(range[0] / 1000)
@@ -474,36 +446,7 @@ export function alignSnapshotsToRange(snapshots, options = {}, nowMs = Date.now(
 
   const matched = usable.filter((s) => s.at >= startSec && s.at <= endSec)
 
-  if (matched.length === 0) {
-    return {
-      matchedCount: 0,
-      startSnapshot: null,
-      endSnapshot: null,
-      effectiveRange: null,
-      matchedSnapshots: []
-    }
-  }
-
-  if (matched.length === 1) {
-    return {
-      matchedCount: 1,
-      startSnapshot: matched[0],
-      endSnapshot: matched[0],
-      effectiveRange: [matched[0].at * 1000, matched[0].at * 1000],
-      matchedSnapshots: matched
-    }
-  }
-
-  const startSnapshot = matched[0]
-  const endSnapshot = matched[matched.length - 1]
-
-  return {
-    matchedCount: matched.length,
-    startSnapshot,
-    endSnapshot,
-    effectiveRange: [startSnapshot.at * 1000, endSnapshot.at * 1000],
-    matchedSnapshots: matched
-  }
+  return result(matched)
 }
 
 /**
@@ -586,11 +529,6 @@ export function buildDeltaDetail(snapshots, startKey = 'previous', endKey = 'lat
   return { deltas, unobserved }
 }
 
-/** 只要差额表的调用方走这里；需要区分"未扫描"时用 buildDeltaDetail。 */
-export function buildDeltaMap(snapshots, startKey = 'previous', endKey = 'latest') {
-  return buildDeltaDetail(snapshots, startKey, endKey).deltas
-}
-
 /** 单个物品的历史曲线点，按时间升序。
  *
  * 部分快照（扫仓库）只记录识别到的物品，缺名字代表"这次没扫到"，跳过，避免把未观测
@@ -637,7 +575,6 @@ export function filterItems(
   {
     query = '',
     stockFilter = 'all',
-    ownedOnly = false,
     showDerived = true,
     deltaFilter = 'all',
     deltaMap = new Map(),
@@ -648,14 +585,12 @@ export function filterItems(
 ) {
   const text = String(query || '').trim()
   const favSet = new Set(Array.isArray(favorites) ? favorites : [])
-  // ownedOnly 是 stockFilter 出现前的旧参数，保留以免调用方漏改后静默失去过滤。
-  const stock = stockFilter === 'all' && ownedOnly ? 'owned' : stockFilter
   // 起始快照里有、结束快照里没再出现的物品：算"减少"的一员，但界面上会标成未扫描。
   const gone = unobserved instanceof Set ? unobserved : new Set(unobserved || [])
   return (items || []).filter((item) => {
     if (!showDerived && item.derived) return false
-    if (stock === 'owned' && !(item.number > 0)) return false
-    if (stock === 'empty' && item.number > 0) return false
+    if (stockFilter === 'owned' && !(item.number > 0)) return false
+    if (stockFilter === 'empty' && item.number > 0) return false
     if (favoriteOnly && !favSet.has(item.name)) return false
 
     if (deltaFilter === 'increased') {
@@ -1054,6 +989,83 @@ export function saveBaselineConfig(
   }
 }
 
+export const VIEW_PREFS_STORAGE_KEY = 'mower_depot_view_prefs'
+
+/** 库存状态筛选的取值，与 filterItems 的 stockFilter 是同一套。 */
+export const STOCK_FILTERS = ['all', 'favorite', 'owned', 'empty']
+
+/** 变动方向筛选的取值。 */
+export const DELTA_FILTERS = ['all', 'increased', 'decreased', 'changed']
+
+/** 顶部看板的两个页签。 */
+export const SHOWCASE_TABS = ['core', 'favorites']
+
+const SORT_MODE_KEYS = new Set(SORT_MODES.map((mode) => mode.value))
+
+export const DEFAULT_VIEW_PREFS = {
+  stockFilter: 'all',
+  deltaFilter: 'all',
+  showDerived: true,
+  sortMode: 'tier',
+  showcaseTab: 'core'
+}
+
+/**
+ * 仓库页的筛选、排序与看板页签偏好。
+ *
+ * 这几项的默认值恰好都是"什么都没筛"，每次打开都弹回默认，等于把用户调好的口径
+ * 白扔掉；和关注、对比基准一样落盘，下次进来还是自己那一套。
+ *
+ * 查询词、分页、分类锚点不在这里：那些是"这一眼"的上下文，跨会话恢复只会让人
+ * 对不上自己刚看到的东西。
+ */
+export function loadViewPrefs(storage = typeof localStorage !== 'undefined' ? localStorage : null) {
+  if (!storage) return { ...DEFAULT_VIEW_PREFS }
+  try {
+    const raw = storage.getItem(VIEW_PREFS_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_VIEW_PREFS }
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_VIEW_PREFS }
+    // 取值必须是我们认识的：旧版本写下的、手改出来的字符串带回页面，筛选条会停在
+    // 一个界面上根本不存在的档位上，用户点也点不掉。
+    return {
+      stockFilter: STOCK_FILTERS.includes(parsed.stockFilter)
+        ? parsed.stockFilter
+        : DEFAULT_VIEW_PREFS.stockFilter,
+      deltaFilter: DELTA_FILTERS.includes(parsed.deltaFilter)
+        ? parsed.deltaFilter
+        : DEFAULT_VIEW_PREFS.deltaFilter,
+      showDerived: typeof parsed.showDerived === 'boolean' ? parsed.showDerived : true,
+      sortMode: SORT_MODE_KEYS.has(parsed.sortMode) ? parsed.sortMode : DEFAULT_VIEW_PREFS.sortMode,
+      showcaseTab: SHOWCASE_TABS.includes(parsed.showcaseTab)
+        ? parsed.showcaseTab
+        : DEFAULT_VIEW_PREFS.showcaseTab
+    }
+  } catch {
+    return { ...DEFAULT_VIEW_PREFS }
+  }
+}
+
+export function saveViewPrefs(
+  prefs,
+  storage = typeof localStorage !== 'undefined' ? localStorage : null
+) {
+  if (!storage) return
+  try {
+    if (!prefs || typeof prefs !== 'object') return
+    const payload = {
+      stockFilter: STOCK_FILTERS.includes(prefs.stockFilter) ? prefs.stockFilter : 'all',
+      deltaFilter: DELTA_FILTERS.includes(prefs.deltaFilter) ? prefs.deltaFilter : 'all',
+      showDerived: prefs.showDerived !== false,
+      sortMode: SORT_MODE_KEYS.has(prefs.sortMode) ? prefs.sortMode : 'tier',
+      showcaseTab: SHOWCASE_TABS.includes(prefs.showcaseTab) ? prefs.showcaseTab : 'core'
+    }
+    storage.setItem(VIEW_PREFS_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore
+  }
+}
+
 /** 关注物品高亮看板数据（含最新存量及基准差额） */
 export function buildFavoriteHighlights(allItems, favoriteNames = [], deltaMap = new Map()) {
   if (!Array.isArray(favoriteNames) || !favoriteNames.length) return []
@@ -1150,6 +1162,26 @@ export function resolveCopyText(parsed) {
 }
 
 /**
+ * 本地时间的补零片段。
+ *
+ * 导出文件名要 YYYYMMDD_HHMMSS、导出卡片上写给用户看的是 YYYY-MM-DD HH:MM:SS，
+ * 两边各自 pad 一遍迟早会分叉，这里算一次取用。
+ */
+function localTimeParts(now = new Date()) {
+  const d = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const hms = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return { ymd, hms, stamp: `${ymd.replace(/-/g, '')}_${hms.replace(/:/g, '')}` }
+}
+
+/** 导出卡片上的"当前时间"：给用户看的那一串。 */
+export function formatLocalDateTime(now = new Date()) {
+  const { ymd, hms } = localTimeParts(now)
+  return `${ymd} ${hms}`
+}
+
+/**
  * 格式化仓库库存图片导出的文件名。
  */
 export function buildDepotExportFilename(scannedAt, scope = 'all', now = new Date()) {
@@ -1161,15 +1193,7 @@ export function buildDepotExportFilename(scannedAt, scope = 'all', now = new Dat
     }
   }
   if (!timePart) {
-    const d = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    const yyyy = d.getFullYear()
-    const mm = pad(d.getMonth() + 1)
-    const dd = pad(d.getDate())
-    const hh = pad(d.getHours())
-    const mi = pad(d.getMinutes())
-    const ss = pad(d.getSeconds())
-    timePart = `${yyyy}${mm}${dd}_${hh}${mi}${ss}`
+    timePart = localTimeParts(now).stamp
   }
 
   const prefix = scope === 'filtered' ? 'mower-depot-filtered' : 'mower-depot'

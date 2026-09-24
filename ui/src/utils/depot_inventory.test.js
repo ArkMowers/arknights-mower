@@ -9,7 +9,6 @@ import {
   buildBaselineEndOptions,
   buildBaselineStartOptions,
   buildDeltaDetail,
-  buildDeltaMap,
   computePresetRange,
   buildDepotExportFilename,
   buildFavoriteHighlights,
@@ -17,11 +16,13 @@ import {
   buildItemHistory,
   computeDrawCount,
   countByTier,
+  DEFAULT_VIEW_PREFS,
   FAVORITES_STORAGE_KEY,
   filterItems,
   flattenItems,
   formatCompact,
   formatDelta,
+  formatLocalDateTime,
   formatNumber,
   formatRelative,
   formatTimestamp,
@@ -33,6 +34,7 @@ import {
   itemIconUrl,
   loadBaselineConfig,
   loadFavorites,
+  loadViewPrefs,
   matchesNumericQuery,
   matchesPinyin,
   parseDepotResponse,
@@ -41,10 +43,12 @@ import {
   resolveSnapshot,
   saveBaselineConfig,
   saveFavorites,
+  saveViewPrefs,
   sortItems,
   summarizeItemHistory,
   tierOf,
-  usableSnapshots
+  usableSnapshots,
+  VIEW_PREFS_STORAGE_KEY
 } from './depot_inventory'
 
 function item(number, sort = 1, icon = 'x') {
@@ -371,69 +375,7 @@ describe('alignSnapshotsToRange and baseline presets', () => {
   })
 })
 
-describe('buildDeltaMap', () => {
-  it('compares the two most recent snapshots by default', () => {
-    const delta = buildDeltaMap([
-      { at: 100, items: { 龙门币: 1000, 合成玉: 600 } },
-      { at: 200, items: { 龙门币: 1600, 合成玉: 600 } }
-    ])
-
-    expect(delta.get('龙门币')).toBe(600)
-    expect(delta.has('合成玉')).toBe(false)
-  })
-
-  it('can compare against the earliest snapshot or a custom timestamp', () => {
-    const snapshots = [
-      { at: 100, items: { 龙门币: 1000, 合成玉: 100 } },
-      { at: 200, items: { 龙门币: 1200, 合成玉: 200 } },
-      { at: 300, items: { 龙门币: 1600, 合成玉: 200 } }
-    ]
-
-    const deltaFirst = buildDeltaMap(snapshots, 'first')
-    expect(deltaFirst.get('龙门币')).toBe(600) // 1600 - 1000
-    expect(deltaFirst.get('合成玉')).toBe(100) // 200 - 100
-
-    const deltaAt200 = buildDeltaMap(snapshots, '200')
-    expect(deltaAt200.get('龙门币')).toBe(400) // 1600 - 1200
-    expect(deltaAt200.has('合成玉')).toBe(false)
-  })
-
-  it('supports comparing two arbitrary historical timestamps (startKey -> endKey)', () => {
-    const snapshots = [
-      { at: 100, items: { 龙门币: 1000, 合成玉: 100 } },
-      { at: 200, items: { 龙门币: 1200, 合成玉: 300 } },
-      { at: 300, items: { 龙门币: 1800, 合成玉: 250 } }
-    ]
-
-    // 对比 100 到 200 的变化
-    const delta100to200 = buildDeltaMap(snapshots, '100', '200')
-    expect(delta100to200.get('龙门币')).toBe(200) // 1200 - 1000
-    expect(delta100to200.get('合成玉')).toBe(200) // 300 - 100
-
-    // 对比 200 到 300 的变化
-    const delta200to300 = buildDeltaMap(snapshots, '200', '300')
-    expect(delta200to300.get('龙门币')).toBe(600) // 1800 - 1200
-    expect(delta200to300.get('合成玉')).toBe(-50) // 250 - 300
-  })
-
-  it('does not generate fake delta for items unobserved in one of the snapshots', () => {
-    const delta = buildDeltaMap([
-      { at: 100, items: { 龙门币: 1 } },
-      { at: 200, items: { 龙门币: 1, 至纯源石: 5 } }
-    ])
-
-    // 至纯源石在 at: 100 快照中未观测，不能得出 +5 的虚假增量
-    expect(delta.has('至纯源石')).toBe(false)
-    expect(delta.has('龙门币')).toBe(false)
-  })
-
-  it('returns an empty map rather than fake zeros with fewer than two snapshots', () => {
-    // 只有它自己对比自己会得到全 0，而"全 0 变化"和"没有数据"在界面上必须区分开。
-    expect(buildDeltaMap([]).size).toBe(0)
-    expect(buildDeltaMap([{ at: 100, items: { 龙门币: 1 } }]).size).toBe(0)
-    expect(buildDeltaMap(null).size).toBe(0)
-  })
-
+describe('buildDeltaDetail', () => {
   it('reports items that stopped being observed instead of silently dropping them', () => {
     // 起始有、结束没有 = 大概率耗尽；不折算成 −N，但也绝不能当没发生（否则
     // "仅减少"永远看不到刚用完的物资）。只在结束出现的名字是首次观测，两份都不进。
@@ -630,11 +572,6 @@ describe('filterItems', () => {
     // empty 以前是页面在 filterItems 外面自己补的一遍过滤，现在归 filterItems 管。
     const visible = filterItems(rows, { stockFilter: 'empty' })
     expect(visible.map((row) => row.name)).toEqual(['源岩'])
-  })
-
-  it('still honours the legacy ownedOnly flag', () => {
-    const visible = filterItems(rows, { ownedOnly: true })
-    expect(visible.map((row) => row.name)).not.toContain('源岩')
   })
 
   it('handles a null item list', () => {
@@ -874,6 +811,52 @@ describe('favorites persistence and highlights', () => {
       compact: '2 万',
       delta: -200
     })
+  })
+
+  it('persists the filter and sort preferences', () => {
+    const storage = fakeStorage()
+    expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
+
+    saveViewPrefs(
+      {
+        stockFilter: 'owned',
+        deltaFilter: 'decreased',
+        showDerived: false,
+        sortMode: 'count-desc',
+        showcaseTab: 'favorites'
+      },
+      storage
+    )
+    expect(loadViewPrefs(storage)).toEqual({
+      stockFilter: 'owned',
+      deltaFilter: 'decreased',
+      showDerived: false,
+      sortMode: 'count-desc',
+      showcaseTab: 'favorites'
+    })
+  })
+
+  it('falls back to defaults for view preferences it cannot act on', () => {
+    const storage = fakeStorage()
+
+    // 认不出来的取值带回页面，筛选条会停在一个界面上根本不存在的档位上。
+    storage.setItem(
+      VIEW_PREFS_STORAGE_KEY,
+      JSON.stringify({
+        stockFilter: 'missing',
+        deltaFilter: 'nope',
+        showDerived: 'yes',
+        sortMode: 'unknown',
+        showcaseTab: 'misc'
+      })
+    )
+    expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
+
+    storage.setItem(VIEW_PREFS_STORAGE_KEY, 'corrupt-json')
+    expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
+
+    saveViewPrefs(null, storage)
+    expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
   })
 })
 
@@ -1118,5 +1101,13 @@ describe('formatting helpers', () => {
     expect(buildDepotExportFilename(null, 'filtered', fixedNow)).toBe(
       'mower-depot-filtered-20260924_173000.png'
     )
+  })
+
+  it('renders the export timestamp in the same local time as the filename', () => {
+    // 两者共用 localTimeParts：以前各 pad 一遍，改一处就会出现"卡片写 17:30、文件名
+    // 写 173000"以外的第三种写法（比如月份不补零）。
+    const fixedNow = new Date('2026-09-24T17:30:00')
+    expect(formatLocalDateTime(fixedNow)).toBe('2026-09-24 17:30:00')
+    expect(buildDepotExportFilename(null, 'all', fixedNow)).toContain('20260924_173000')
   })
 })

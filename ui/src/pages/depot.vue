@@ -1020,6 +1020,7 @@ import {
   flattenItems,
   formatCompact,
   formatDelta,
+  formatLocalDateTime,
   formatNumber,
   formatRelative,
   formatTimestamp,
@@ -1027,10 +1028,12 @@ import {
   itemIconUrl,
   loadBaselineConfig,
   loadFavorites,
+  loadViewPrefs,
   parseDepotResponse,
   resolveCopyText,
   saveBaselineConfig,
   saveFavorites,
+  saveViewPrefs,
   sortItems,
   summarizeItemHistory,
   usableSnapshots
@@ -1073,8 +1076,9 @@ watch(query, (val) => {
   }, 120)
 })
 
-const stockFilter = ref('all') // 'all' | 'favorite' | 'owned' | 'empty'
-const deltaFilter = ref('all') // 'all' | 'increased' | 'decreased' | 'changed'
+const viewPrefs = loadViewPrefs()
+const stockFilter = ref(viewPrefs.stockFilter) // 'all' | 'favorite' | 'owned' | 'empty'
+const deltaFilter = ref(viewPrefs.deltaFilter) // 'all' | 'increased' | 'decreased' | 'changed'
 const baselineConfig = ref(loadBaselineConfig())
 
 watch(
@@ -1084,8 +1088,8 @@ watch(
   },
   { deep: true }
 )
-const showDerived = ref(true)
-const sortMode = ref('tier')
+const showDerived = ref(viewPrefs.showDerived)
+const sortMode = ref(viewPrefs.sortMode)
 const activeDrawKey = ref('')
 const activeTier = ref('')
 const detailItem = ref(null)
@@ -1113,9 +1117,20 @@ function toggleFavorite(name) {
 }
 
 // 顶部右侧看板模式
-const showcaseTab = ref('core') // 'core' | 'favorites'
+const showcaseTab = ref(viewPrefs.showcaseTab) // 'core' | 'favorites'
 const favPage = ref(0)
 const PAGE_SIZE = 8
+
+// 筛选、排序、看板页签跟着走：这些默认值都是"什么都没选"，不落盘等于每次回来重设一遍。
+watch([stockFilter, deltaFilter, showDerived, sortMode, showcaseTab], () => {
+  saveViewPrefs({
+    stockFilter: stockFilter.value,
+    deltaFilter: deltaFilter.value,
+    showDerived: showDerived.value,
+    sortMode: sortMode.value,
+    showcaseTab: showcaseTab.value
+  })
+})
 
 // 五角星路径：空态、缩略图、卡片角标、详情按钮四处共用一份，
 // 之前是同一串坐标抄四遍，改尺寸要四处对齐。
@@ -1148,6 +1163,18 @@ const baselineIsDefault = computed(() => {
   const config = baselineConfig.value || {}
   return (config.mode || 'time') === 'time' && (config.preset || 'previous') === 'previous'
 })
+
+/**
+ * 对比基准是否真的能比：历史不足两次扫描（含历史请求失败）时没有差额可言，
+ * 页面上的"变动"筛选这时也就无处可比。
+ */
+const baselineComparable = computed(() => {
+  const { startSnapshot, endSnapshot } = alignedBaseline.value
+  return Boolean(startSnapshot && endSnapshot && startSnapshot !== endSnapshot)
+})
+
+/** "变动"筛选是否真的在过滤：控件跟着 baselineComparable 一起隐藏，值不能留在暗处生效。 */
+const deltaFilterActive = computed(() => baselineComparable.value && deltaFilter.value !== 'all')
 
 const activeBaselineSummary = computed(() => {
   const { matchedCount, startSnapshot, endSnapshot } = alignedBaseline.value
@@ -1294,7 +1321,9 @@ const filteredItems = computed(() => {
     // 库存状态（全部/有货/空）整个交给 filterItems，页面不再自己补一遍 empty 判断。
     stockFilter: stockFilter.value,
     showDerived: showDerived.value,
-    deltaFilter: deltaFilter.value,
+    // 历史用不上时这个筛选项连控件都不显示，值更不能继续生效：差额表是空的，
+    // "仅增加/仅减少"会把整页滤成 0 项，而用户连改回来的入口都看不到。
+    deltaFilter: deltaFilterActive.value ? deltaFilter.value : 'all',
     deltaMap: deltaMap.value,
     favoriteOnly: stockFilter.value === 'favorite',
     favorites: favorites.value,
@@ -1303,26 +1332,24 @@ const filteredItems = computed(() => {
   })
 })
 
-const activeFilterCount = computed(() => {
-  let count = 0
-  if (stockFilter.value !== 'all') count++
-  if (deltaFilter.value !== 'all') count++
-  if (!showDerived.value) count++
-  if (sortMode.value !== 'tier') count++
-  if (!baselineIsDefault.value) count++
-  return count
-})
+/**
+ * 当前生效的筛选条件。
+ *
+ * 角标计数、重置按钮、重置动作以前各写一遍同样的判断，加一个条件就得记得改三处，
+ * 漏一处就是"角标说有筛选、重置却没清掉"这类对不上的状态。这里只留一份取值，
+ * 三处都读它。
+ */
+const activeFilters = computed(() => ({
+  query: query.value !== '',
+  stock: stockFilter.value !== 'all',
+  delta: deltaFilterActive.value,
+  derived: !showDerived.value,
+  sort: sortMode.value !== 'tier',
+  baseline: !baselineIsDefault.value
+}))
 
-const hasActiveFilters = computed(() => {
-  return (
-    query.value !== '' ||
-    stockFilter.value !== 'all' ||
-    deltaFilter.value !== 'all' ||
-    !showDerived.value ||
-    sortMode.value !== 'tier' ||
-    !baselineIsDefault.value
-  )
-})
+const activeFilterCount = computed(() => Object.values(activeFilters.value).filter(Boolean).length)
+const hasActiveFilters = computed(() => activeFilterCount.value > 0)
 
 function resetFilters() {
   if (queryDebounceTimer) clearTimeout(queryDebounceTimer)
@@ -1513,11 +1540,7 @@ const exportGroupedItems = computed(() => {
   return groupItemsByTier(exportItemsList.value, tierCounts.value)
 })
 
-const currentExportTime = computed(() => {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-})
+const currentExportTime = computed(() => formatLocalDateTime())
 
 async function exportDepotImage(scope = 'all') {
   if (exportingImage.value) return
