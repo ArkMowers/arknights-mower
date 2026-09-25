@@ -116,6 +116,9 @@ from arknights_mower.utils.workshop_ui import (
     scale_point,
 )
 
+# 只保留在当前进程；进房失败后即使重建调度器，也不再自动巡检训练室。
+_training_room_scan_disabled = False
+
 
 def _is_mastery_busy(operator_name: str) -> bool:
     try:
@@ -156,7 +159,17 @@ def _assigned_operator_names(plan: dict) -> set[str]:
     }
 
 
-def _stop_if_scheduled_trainee(solver, trainee: str, *, detail_open=False) -> None:
+def _stop_if_scheduled_trainee(
+    solver, trainee: str, room_state, *, detail_open=False
+) -> None:
+    # 进驻不等于开训；只用本次读到的有效训练倒计时阻断排班。
+    if (
+        room_state is None
+        or room_state.read_failed
+        or room_state.state != "training"
+        or getattr(room_state.panel, "countdown_state", None) != "active"
+    ):
+        return
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     reason = trainee_schedule_conflict(trainee)
@@ -1167,6 +1180,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
         ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
         """
+        global _training_room_scan_disabled
         # 暂时规定纠错只适用于主班表
         need_read = (
             {
@@ -1185,6 +1199,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         for room in need_read:
             if room == "train":
+                if _training_room_scan_disabled:
+                    continue
                 last_read = getattr(self, "last_train_mood_read", None)
                 if last_read and datetime.now() - last_read < timedelta(hours=2.5):
                     continue
@@ -1212,9 +1228,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             if room == "train":
                 self.last_train_mood_read = datetime.now()
+            skip_room_exit = False
+            room_entered = False
             while True:
                 try:
-                    self.enter_room(room)
+                    if room == "train":
+                        self.enter_room(room, max_attempts=1)
+                    else:
+                        self.enter_room(room)
+                    room_entered = True
                     if room == "train":
                         if config.conf.enable_mastery:
                             # #94 统一读取：一次 read_room_state(want_mood=True) 开一次
@@ -1243,7 +1265,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     trainee = room_state.train_slot or getattr(
                                         room_state.panel, "operator_name", ""
                                     )
-                                    _stop_if_scheduled_trainee(self, trainee)
+                                    _stop_if_scheduled_trainee(
+                                        self, trainee, room_state
+                                    )
                                 mood_info = [
                                     f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                     for item in mood_data
@@ -1266,17 +1290,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 raise
                             except Exception as e:
                                 logger.warning(f"训练室顺路更新状态失败: {e}")
+                                raise
                         else:
-                            # enable_mastery 关闭：不跑 mastery 读取器（铁律 10），保留
-                            # 通用心情读取；清空专精状态缓存，避免消费陈旧锁定。
+                            # 手动训练也读取当前面板，但不启动专精调度或收取。
+                            from arknights_mower.solvers.mastery_reader import (
+                                read_room_state,
+                            )
+
                             self.train_room_state = None
+                            manual_room_state = read_room_state(self, enter=False)
                             _mood_data = self.get_agent_from_room(room, None)
                             trainee = (
                                 _mood_data[1].get("agent", "")
                                 if len(_mood_data) > 1
                                 else ""
                             )
-                            _stop_if_scheduled_trainee(self, trainee, detail_open=True)
+                            _stop_if_scheduled_trainee(
+                                self, trainee, manual_room_state, detail_open=True
+                            )
                             mood_info = [
                                 f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                                 for item in _mood_data
@@ -1303,6 +1334,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 except MowerExit:
                     raise
                 except Exception as e:
+                    if room == "train":
+                        # 巡检不要求账号已建造训练室。进房本身已有有限重试，
+                        # 失败后不能再由心情读取／纠错重复进入同一未建造房间。
+                        self.train_room_state = None
+                        if not room_entered:
+                            _training_room_scan_disabled = True
+                            logger.warning(
+                                f"训练室未建造或进房失败，本次进程停用训练室巡检，继续其他房间：{e}"
+                            )
+                        else:
+                            logger.warning(f"训练室本次读取失败，跳过本轮巡检：{e}")
+                        self.back_to_infrastructure()
+                        skip_room_exit = True
+                        break
                     save_exception(e)
                     logger.exception(e)
                     if error_count > 3:
@@ -1310,7 +1355,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     error_count += 1
                     self.back()
                     continue
-            self.back()
+            if not skip_room_exit:
+                self.back()
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
@@ -1363,6 +1409,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             k: v
             for k, v in self.op_data.operators.items()
             if v.not_valid()
+            and not (v.room == "train" and _training_room_scan_disabled)
             and not (v.group and v.room.startswith("dorm"))
             and not self.op_data.is_standby(k)
             and not (
@@ -1582,6 +1629,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         保护完全停用」不得再据此弹纠错（兄弟判定 `_train_protected` 同样先门控）。
         """
         if "train" not in fix_plan:
+            return
+        if _training_room_scan_disabled:
+            fix_plan.pop("train")
+            logger.debug("本次进程已停用训练室巡检，跳过训练室纠错")
             return
         if self._train_mastery_active():
             fix_plan.pop("train")

@@ -8,6 +8,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
+from arknights_mower.solvers import mastery_reader  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
@@ -154,7 +155,12 @@ def test_returning_to_lmd_waits_for_actual_product_and_resumes(solver):
     assert solver.tasks[0].time == solver.get_run_order_time.return_value
 
 
-def test_orundum_room_still_gets_normal_mood_scan(solver):
+def test_orundum_room_still_gets_normal_mood_scan(solver, monkeypatch):
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *args, **kwargs: mastery_reader.RoomState(state="empty"),
+    )
     data = solver.op_data
     data.products["room_1_1"] = "orundum"
     target = data.operators["鸿雪"]

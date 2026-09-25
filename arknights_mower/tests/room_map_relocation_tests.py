@@ -204,6 +204,17 @@ def test_invalid_map_rectangles_do_not_exceed_existing_budget(monkeypatch):
     assert solver.back_to_infrastructure.call_count == 2
 
 
+def test_optional_room_check_does_not_repeat_home_relocation(monkeypatch):
+    solver, segmentation = navigation_solver(
+        monkeypatch, [map_frame(rectangle(100, -200, 400, -100))]
+    )
+    with pytest.raises(RuntimeError, match="未成功进入房间"):
+        solver.enter_room(ROOM, max_attempts=1)
+    assert segmentation.call_count == 5
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
 @pytest.mark.parametrize("stop_before", [True, False])
 def test_stop_during_map_adjustment_is_not_retried(monkeypatch, stop_before):
     solver, segmentation = navigation_solver(
