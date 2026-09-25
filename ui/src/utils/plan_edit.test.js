@@ -70,7 +70,7 @@ describe('apply_operator_replace 覆盖范围', () => {
     expect(state.backup_plans[0].conf.operator_mood_limits).toEqual({ 夕: { lower: 2, upper: 16 } })
     expect(collect_plan_operators(state)).not.toContain('令')
   })
-  it.each(['resting_standby', 'resting_priority_replacement'])(
+  it.each(['resting_standby', 'resting_priority_replacement', 'free_room_exclusions'])(
     '替换主副表的 %s 名单，并纳入已使用干员集合',
     (field) => {
       const state = make_state()

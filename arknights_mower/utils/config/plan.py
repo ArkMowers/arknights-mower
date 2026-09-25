@@ -31,6 +31,8 @@ class PlanConf(BaseModel):
     "低优先级"
     resting_priority_replacement: str = ""
     "测试宿舍逻辑：宿舍高优先级替班，仅提升替班身份"
+    free_room_exclusions: str = ""
+    "测试宿舍逻辑：不养闲人排除干员，保留床位至上班；心情上限优先"
     resting_standby: str = ""
     "宿舍休息候补干员"
     workaholic: str = ""

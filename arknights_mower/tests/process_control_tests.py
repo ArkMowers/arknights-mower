@@ -25,9 +25,17 @@ class ProcessControlTests(unittest.TestCase):
     def test_reset_start_skips_saved_state_and_respects_mood_reload_switch(self):
         import server
 
-        for enabled in (False, True):
+        for enabled, experimental in (
+            (False, False),
+            (True, False),
+            (False, True),
+            (True, True),
+        ):
             with (
-                self.subTest(enabled=enabled),
+                self.subTest(enabled=enabled, experimental=experimental),
+                patch.object(
+                    server.config.conf, "experimental_dorm_logic", experimental
+                ),
                 tempfile.TemporaryDirectory() as folder,
                 patch.object(server, "active_job", return_value=False),
                 patch.object(server, "_job_running", return_value=False),
@@ -52,7 +60,9 @@ class ProcessControlTests(unittest.TestCase):
                 response = server.app.test_client().get("/start/2", headers=headers)
                 self.assertEqual(response.get_data(as_text=True), "true")
                 load.assert_not_called()
-                self.assertEqual(thread.call_args.kwargs["args"], ({}, enabled))
+                self.assertEqual(
+                    thread.call_args.kwargs["args"], ({}, enabled and not experimental)
+                )
 
     def test_normal_start_still_loads_saved_state(self):
         import server

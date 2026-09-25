@@ -125,6 +125,9 @@ class MasteryRestartTests(unittest.TestCase):
 
     def mood_solver(self, count=None):
         solver = MagicMock()
+        solver._read_agent_mood = (
+            base_schedule.BaseSchedulerSolver._read_agent_mood.__get__(solver)
+        )
         solver.task = None
         solver.tasks = []
         solver.last_train_mood_read = None

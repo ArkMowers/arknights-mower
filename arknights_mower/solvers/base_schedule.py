@@ -834,6 +834,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 读到的床位时间重建派生回班。
                         get_time = True
                     if TaskTypes.RELEASE_DORM == self.task.type:
+                        if (
+                            getattr(self.op_data, "experimental_dorm_logic", False)
+                            and not getattr(self.task, "strict_mood_limit", False)
+                            and self.op_data.is_free_room_excluded(self.task.meta_data)
+                        ):
+                            # 修改名单后，缓存中尚未执行的普通清退任务也失效。
+                            self.task.plan = {}
                         if getattr(self.task, "strict_mood_limit", False) and not (
                             self.op_data.has_rest_mood_limit(self.task.meta_data)
                             and self.task.meta_data in self.op_data.operators
@@ -1073,10 +1080,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 else:
                     # 正常运行保留原有心情读取间隔：缓存未过期直接信任，过期
                     # 才进房复核；缓存清零后 time_stamp 为空，会自然触发全量读取。
-                    mood_result = self.agent_get_mood(skip_dorm=True)
-                    # agent_get_mood 已读取所有需要刷新的房间；从此 current_room
-                    # 可以用于副表条件。若配置了读取后重启，重启流程会用这份新缓存
-                    # 在 simulate() 初始化阶段统一刷新副表。
+                    if getattr(
+                        self, "defer_backup_plan_until_mood_read", False
+                    ) and getattr(self.op_data, "experimental_dorm_logic", False):
+                        # 首次读取不生成主表纠错；副表确定后才按最终排班规划。
+                        self._read_agent_mood()
+                        self.defer_backup_plan_until_mood_read = False
+                        self.restart_after_mood_read = False
+                        self.backup_plan_solver()
+                        self.queue_product_switches()
+                        # 先执行副表差异、产物切换或扫描恢复出的训练室任务，
+                        # 避免普通纠错覆盖这些任务的明确安排。
+                        if not self.no_pending_task(1):
+                            self.skip(["planned", "todo_task", "collect_notification"])
+                            return True
+                        mood_result = self.agent_get_mood(
+                            skip_dorm=True, read_rooms=False
+                        )
+                    else:
+                        mood_result = self.agent_get_mood(skip_dorm=True)
+                    # 旧宿舍可继续通过重载调度器刷新副表。
                     self.defer_backup_plan_until_mood_read = False
                     if self.restart_after_mood_read:
                         self.restart_after_mood_read = False
@@ -1167,36 +1190,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
-    def agent_get_mood(
-        self,
-        skip_dorm=False,
-        force=False,
-        *,
-        read_rooms=True,
-        return_plan=False,
-    ):
-        """刷新缓存并生成纠偏计划。
-
-        ``read_rooms=False`` 只使用已经缓存的干员位置和心情。副表切换使用
-        这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
-        ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
-        """
+    def _read_agent_mood(self):
+        """只刷新实际位置、心情及训练室状态，不按当前排班生成纠错。"""
         global _training_room_scan_disabled
         # 暂时规定纠错只适用于主班表
-        need_read = (
-            {
-                v.room
-                for v in self.op_data.operators.values()
-                if v.need_to_refresh() and v.room in base_room_list
-            }
-            if read_rooms
-            else set()
-        )
+        need_read = {
+            v.room
+            for v in self.op_data.operators.values()
+            if v.need_to_refresh() and v.room in base_room_list
+        }
 
         # 正常心情刷新始终检查训练室，包含未启用专精时的手动训练。
-        # 副表纯缓存推演不得进房；实际扫描仍受房间级 2.5 小时限频保护。
-        if read_rooms:
-            need_read.add("train")
+        # 实际扫描仍受房间级 2.5 小时限频保护。
+        need_read.add("train")
 
         for room in need_read:
             if room == "train":
@@ -1358,6 +1364,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     continue
             if not skip_room_exit:
                 self.back()
+
+    def agent_get_mood(
+        self,
+        skip_dorm=False,
+        force=False,
+        *,
+        read_rooms=True,
+        return_plan=False,
+    ):
+        """刷新缓存并生成纠偏计划。
+
+        ``read_rooms=False`` 只使用已经缓存的干员位置和心情。副表切换使用
+        这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
+        ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
+        """
+        if read_rooms:
+            self._read_agent_mood()
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
@@ -5642,7 +5665,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def preserve_resting_crafters(self, agents, room):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
-        if not room.startswith("dorm") or "Free" not in agents:
+        if not room.startswith("dorm"):
+            return
+        if self.op_data.experimental_dorm_logic:
+            moving = (
+                {
+                    name
+                    for names in self.task.plan.values()
+                    for name in names
+                    if name not in ("Current", "Free", "")
+                }
+                if self.task is not None
+                else set()
+            )
+            # 名单可能在任务入队后才修改；已写明新入住者的旧补床任务也须保床。
+            # 本次已明确上班或换床的原入住者不受保护，个人上限任务仍可离宿。
+            for index in range(len(agents)):
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    current is not None
+                    and current.name not in (set(agents) | moving)
+                    and self.op_data.is_free_room_excluded(current.name)
+                    and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                    and not (
+                        getattr(self.task, "strict_mood_limit", False)
+                        and self.task.meta_data == current.name
+                    )
+                ):
+                    agents[index] = current.name
+        if "Free" not in agents:
             return
         if not self.op_data.experimental_dorm_logic:
             replacements = sorted(
@@ -5671,16 +5722,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             return
         now = datetime.now()
-        moving = (
-            {
-                name
-                for names in self.task.plan.values()
-                for name in names
-                if name not in ("Current", "Free", "")
-            }
-            if self.task is not None
-            else set()
-        )
         replacements = [
             self.op_data.operators[name]
             for name in self.get_free_list(agents)
@@ -5792,6 +5833,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     and not preserve_dorm_occupants
                     and __agent.mood == __agent.upper_limit
+                    and not (
+                        __agent.is_resting()
+                        and self.op_data.is_free_room_excluded(__agent.name)
+                    )
                     and not __agent.room.startswith("dorm")
                     and not self.op_data.is_dorm_replacement_for_slot(
                         __agent.name, room, idx

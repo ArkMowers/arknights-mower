@@ -275,6 +275,15 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
 
         self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
 
+    def test_experimental_initialization_never_requests_mood_reload(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        with patch.object(base_schedule.config.conf, "experimental_dorm_logic", True):
+            self.main.simulate(None, restart_after_mood_read=True)
+        self.assertFalse(scheduler.restart_after_mood_read)
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+
     def test_saved_mood_state_refreshes_backup_plan_before_run(self):
         scheduler = MagicMock()
         scheduler.initialize_operators.return_value = None
@@ -947,8 +956,8 @@ class TestBaseScheduler(unittest.TestCase):
                 all(not condition for condition in solver.op_data.plan_condition)
             )
 
-    def _create_backup_refresh_solver(self):
-        agent_base_config = PlanConfig("", "", "")
+    def _create_backup_refresh_solver(self, experimental=False):
+        agent_base_config = PlanConfig("", "", "", experimental_dorm_logic=experimental)
         default_plan = {"meeting": [Room("伊内丝", "", ["陈"])]}
         backup_plan = {"meeting": [Room("见行者", "", ["陈"])]}
         plan = {
@@ -983,8 +992,8 @@ class TestBaseScheduler(unittest.TestCase):
 
         return solver, read_meeting
 
-    def _create_no_train_plan_solver(self):
-        agent_base_config = PlanConfig("", "", "")
+    def _create_no_train_plan_solver(self, experimental=False):
+        agent_base_config = PlanConfig("", "", "", experimental_dorm_logic=experimental)
         plan = {
             "default_plan": Plan(
                 {"meeting": [Room("伊内丝", "", ["陈"])]},
@@ -1268,6 +1277,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.tasks = []
         solver.restart_after_mood_read = True
         solver.defer_backup_plan_until_mood_read = True
+        solver.op_data = SimpleNamespace(experimental_dorm_logic=False)
 
         with (
             patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1313,6 +1323,100 @@ class TestBaseScheduler(unittest.TestCase):
         run_order.assert_called_once_with()
         plan.assert_called_once_with()
         self.assertTrue(solver.planned)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_experimental_first_scan_applies_backup_before_correction(self):
+        # 当前会客室里是副表干员，主表纠错不应先将其换回伊内丝。
+        solver, read_meeting = self._create_backup_refresh_solver(experimental=True)
+        solver.task = None
+        solver.planned = False
+        solver.defer_backup_plan_until_mood_read = True
+        solver.restart_after_mood_read = True
+        with (
+            patch.object(base_schedule, "_training_room_scan_disabled", True),
+            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "enter_room") as enter,
+            patch.object(
+                BaseSchedulerSolver, "get_agent_from_room", side_effect=read_meeting
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "plan_solver") as plan,
+            patch.object(BaseSchedulerSolver, "run_order_solver") as run_order,
+        ):
+            self.assertNotEqual(solver.infra_main(), "restart_after_mood_read")
+            self.assertEqual(solver.op_data.plan_condition, [True])
+            self.assertEqual(solver.op_data.plan["meeting"][0].agent, "见行者")
+            self.assertFalse(solver.restart_after_mood_read)
+            self.assertFalse(solver.defer_backup_plan_until_mood_read)
+            self.assertFalse(
+                any(
+                    "伊内丝" in names
+                    for task in solver.tasks
+                    for names in task.plan.values()
+                )
+            )
+            enter.assert_called_once_with("meeting")
+            # 副表唤醒任务消费后，只凭同一份缓存纠错即可，实际房间无须再读。
+            solver.tasks.clear()
+            self.assertIsNone(solver.agent_get_mood(skip_dorm=True, read_rooms=False))
+            enter.assert_called_once_with("meeting")
+            plan.assert_not_called()
+            run_order.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_experimental_initial_scan_without_backup_plans_normally(self):
+        solver = self._create_no_train_plan_solver(experimental=True)
+        solver.task = None
+        solver.planned = False
+        solver.defer_backup_plan_until_mood_read = True
+        solver.restart_after_mood_read = False
+        with (
+            patch.object(base_schedule, "_training_room_scan_disabled", True),
+            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "enter_room") as enter,
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                side_effect=self._read_no_train_meeting(solver),
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(BaseSchedulerSolver, "plan_solver") as plan,
+            patch.object(BaseSchedulerSolver, "run_order_solver") as run_order,
+        ):
+            solver.infra_main()
+        enter.assert_called_once_with("meeting")
+        plan.assert_called_once_with()
+        run_order.assert_called_once_with()
+        self.assertTrue(solver.planned)
+        self.assertEqual(solver.tasks, [])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_experimental_initial_scan_keeps_recovered_training_tasks(self):
+        for task_type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT):
+            with self.subTest(task_type=task_type):
+                solver = self._create_no_train_plan_solver(experimental=True)
+                solver.task = None
+                solver.planned = False
+                solver.defer_backup_plan_until_mood_read = True
+                solver.restart_after_mood_read = True
+                task = SchedulerTask(task_type=task_type)
+                with (
+                    patch.object(BaseSchedulerSolver, "find", return_value=True),
+                    patch.object(
+                        BaseSchedulerSolver,
+                        "_read_agent_mood",
+                        side_effect=lambda: solver.tasks.append(task),
+                    ),
+                    patch.object(BaseSchedulerSolver, "agent_get_mood") as correction,
+                    patch.object(BaseSchedulerSolver, "plan_solver") as plan,
+                    patch.object(BaseSchedulerSolver, "run_order_solver") as run_order,
+                ):
+                    self.assertTrue(solver.infra_main())
+                self.assertEqual(solver.tasks, [task])
+                self.assertFalse(solver.restart_after_mood_read)
+                correction.assert_not_called()
+                plan.assert_not_called()
+                run_order.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_get_mood_defers_backup_refresh_to_restart(self):

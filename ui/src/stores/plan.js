@@ -19,6 +19,7 @@ export const usePlanStore = defineStore('plan', () => {
   const dorm_order = ref([...default_dorm_order])
   const resting_priority = ref([])
   const resting_priority_replacement = ref([])
+  const free_room_exclusions = ref([])
   const resting_standby = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
@@ -90,6 +91,7 @@ export const usePlanStore = defineStore('plan', () => {
     'rest_in_full',
     'resting_priority',
     'resting_priority_replacement',
+    'free_room_exclusions',
     'resting_standby',
     'workaholic',
     'free_blacklist',
@@ -179,6 +181,7 @@ export const usePlanStore = defineStore('plan', () => {
     dorm_order.value = normalizeDormOrder(response.data.conf.dorm_order)
     resting_priority.value = str2list(response.data.conf.resting_priority)
     resting_priority_replacement.value = str2list(response.data.conf.resting_priority_replacement)
+    free_room_exclusions.value = str2list(response.data.conf.free_room_exclusions)
     resting_standby.value = str2list(response.data.conf.resting_standby)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
@@ -238,6 +241,7 @@ export const usePlanStore = defineStore('plan', () => {
         dorm_order: list2str(dorm_order.value),
         resting_priority: list2str(resting_priority.value),
         resting_priority_replacement: list2str(resting_priority_replacement.value),
+        free_room_exclusions: list2str(free_room_exclusions.value),
         resting_standby: list2str(resting_standby.value),
         workaholic: list2str(workaholic.value),
         refresh_trading: list2str(refresh_trading.value),
@@ -328,6 +332,7 @@ export const usePlanStore = defineStore('plan', () => {
     rest_in_full,
     resting_priority,
     resting_priority_replacement,
+    free_room_exclusions,
     resting_standby,
     ope_resting_priority,
     workaholic,
