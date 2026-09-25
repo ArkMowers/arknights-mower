@@ -28,6 +28,7 @@ from arknights_mower.utils.config.plan_advanced import (
 from arknights_mower.utils.config_backup import backup_lock
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.diagnostics import error_events, timeline
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.log_stream import LogStream
 from arknights_mower.utils.maa_check import (
@@ -1121,6 +1122,43 @@ def serve_screenshot(filename):
     """
     screenshot_dir = get_path("@app/screenshot")
     return send_from_directory(screenshot_dir, filename)
+
+
+@app.route("/diagnostics/timeline")
+@require_token
+def diagnostic_timeline():
+    timestamp = request.args.get("at", type=int)
+    if timestamp is None or timestamp < 0 or timestamp > (time.time() + 3600) * 1000:
+        return {"error": "请选择有效的查看时间"}, 400
+    try:
+        center = datetime.datetime.fromtimestamp(timestamp / 1000)
+    except (OverflowError, OSError, ValueError):
+        return {"error": "请选择有效的查看时间"}, 400
+    return {"logs": timeline(get_path("@app/log"), get_path("@app/screenshot"), center)}
+
+
+@app.route("/diagnostics/errors")
+@require_token
+def diagnostic_errors():
+    return {"events": error_events(get_path("@app/screenshot"))}
+
+
+@app.route("/diagnostics/errors/<archive_id>/logs")
+@require_token
+def diagnostic_error_logs(archive_id):
+    if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
+        abort(404)
+    folder = get_path("@app/screenshot") / "errors" / archive_id
+    if not (folder / "event.json").is_file():
+        abort(404)
+    saved = folder / "logs.json"
+    if saved.is_file():
+        return {"logs": json.loads(saved.read_text(encoding="utf-8"))}
+    try:
+        center = datetime.datetime.fromtimestamp(int(archive_id) / 10**9)
+    except (OverflowError, OSError, ValueError):
+        abort(404)
+    return {"logs": timeline(get_path("@app/log"), get_path("@app/screenshot"), center)}
 
 
 @app.route("/screenshot/latest")

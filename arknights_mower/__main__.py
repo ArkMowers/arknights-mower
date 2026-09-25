@@ -603,7 +603,7 @@ def simulate(saved, restart_after_mood_read=False):
         except DeviceRecoveryError:
             raise
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
-            logger.exception(e)
+            logger.exception("设备连接或页面识别失败：%s", e)
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
@@ -611,7 +611,7 @@ def simulate(saved, restart_after_mood_read=False):
                 continue
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
-                logger.warning("出现错误.尝试重启Mower")
+                logger.warning("正在重新连接设备并恢复运行")
                 # 内层重连循环加次数上限，最后失败抛错而非无限重启
                 retry = 0
                 while retry < reconnect_max_tries:
@@ -624,20 +624,20 @@ def simulate(saved, restart_after_mood_read=False):
                     except Exception as e:
                         if retry >= reconnect_max_tries:
                             raise
-                        logger.exception(e)
+                        logger.exception("重新连接设备失败，将再次尝试：%s", e)
                         base_scheduler.device.reconnect()
                 continue
             else:
                 raise e
         except RuntimeError as e:
-            logger.exception(f"程序出错-尝试恢复设备连接->{e}")
+            logger.exception("运行时发生错误，正在尝试恢复设备连接：%s", e)
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
                 continue
             base_scheduler.device.reconnect()
         except Exception as e:
-            logger.exception(f"程序出错--->{e}")
+            logger.exception("任务执行失败，正在刷新画面后继续：%s", e)
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return

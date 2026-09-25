@@ -1,5 +1,6 @@
 """在临时目录中验证截图读写隔离、故障恢复和清理并发。"""
 
+import json
 import os
 import tempfile
 import time
@@ -47,6 +48,99 @@ class ScreenshotTests(unittest.TestCase):
             self.root, lambda: self.retention, self.logger, **limits
         )
         self.addCleanup(self.store.close)
+
+    def test_error_window_archives_existing_and_future_screenshots(self):
+        event_time = time.time_ns()
+        previous_time = event_time - 2 * 60 * 10**9
+        old_time = event_time - 6 * 60 * 10**9
+        previous = self.seed(
+            datetime.fromtimestamp(previous_time / 10**9).strftime("%Y%m%d-%H"),
+            previous_time,
+        )
+        too_old = self.seed(
+            datetime.fromtimestamp(old_time / 10**9).strftime("%Y%m%d-%H"),
+            old_time,
+        )
+        archive_id = self.store.mark_error(event_time, "设备连接失败")
+        self.store.start()
+        future = self.store.submit(b"after error")
+        self.wait_idle()
+        archive = self.root / "errors" / archive_id
+        deadline = time.monotonic() + 3
+        while not (archive / previous.name).exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertEqual((archive / previous.name).read_bytes(), b"old")
+        self.assertEqual((archive / Path(future).name).read_bytes(), b"after error")
+        self.assertFalse((archive / too_old.name).exists())
+        self.assertIn("设备连接失败", (archive / "event.json").read_text())
+
+        self.retention = 0
+        self.store.cleanup()
+        self.assertFalse(previous.exists())
+        self.assertTrue((archive / previous.name).exists())
+        self.assertTrue((archive / Path(future).name).exists())
+
+    def test_error_log_archive_keeps_links_to_copied_screenshots(self):
+        event_time = time.time_ns()
+        image_time = event_time - 2 * 10**9
+        image = self.seed(
+            datetime.fromtimestamp(image_time / 10**9).strftime("%Y%m%d-%H"),
+            image_time,
+        )
+        log_folder = self.root.parent / "log"
+        log_folder.mkdir()
+        when = datetime.fromtimestamp(event_time / 10**9)
+        (log_folder / "runtime.log").write_text(
+            f"{when:%Y-%m-%d %H:%M:%S} task.py:1 ERROR 任务失败\n",
+            encoding="utf-8",
+        )
+        archive_id = self.store.mark_error(event_time, "任务失败")
+        self.store.start()
+        archived = self.root / "errors" / archive_id / image.name
+        deadline = time.monotonic() + 3
+        while not archived.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(archived.exists())
+        image.unlink()
+        self.store._save_error_logs(archive_id)
+        rows = json.loads((archived.parent / "logs.json").read_text())
+        self.assertEqual(rows[0]["screenshot"], f"errors/{archive_id}/{image.name}")
+
+    def test_pending_screenshots_in_error_window_are_not_evicted(self):
+        self.limit_store(max_pending_count=2)
+        before = self.store.submit(b"before")
+        self.store.mark_error(time.time_ns(), "任务失败")
+        after = self.store.submit(b"after")
+        dropped = self.store.submit(b"later")
+        self.assertEqual(
+            [frame.filename for frame in self.store._queue], [before, after]
+        )
+        self.assertEqual(self.store.stats()["dropped"], 1)
+        self.store.start()
+        self.wait_idle()
+        self.assertTrue((self.root / before).exists())
+        self.assertTrue((self.root / after).exists())
+        self.assertFalse((self.root / dropped).exists())
+
+    def test_restart_continues_error_window(self):
+        archive_id = self.store.mark_error(time.time_ns(), "运行出错")
+        self.store.start()
+        manifest = self.root / "errors" / archive_id / "event.json"
+        deadline = time.monotonic() + 3
+        while not manifest.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(manifest.exists())
+        self.store.close()
+
+        self.store = ScreenshotStore(self.root, lambda: self.retention, self.logger)
+        self.addCleanup(self.store.close)
+        self.store.start()
+        screenshot = self.store.submit(b"after restart")
+        self.wait_idle()
+        self.assertEqual(
+            (self.root / "errors" / archive_id / Path(screenshot).name).read_bytes(),
+            b"after restart",
+        )
 
     def test_limits_must_be_positive(self):
         for field in ("max_pending_count", "max_pending_bytes"):

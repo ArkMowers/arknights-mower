@@ -5,19 +5,22 @@
 """
 
 import heapq
+import json
 import logging
 import os
 import re
+import shutil
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Condition, Event, Lock, Thread
 from typing import Callable
 
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
 _IMPORTANT_FOLDERS = {"run_order", "workshop", "furniture", "solve_captcha"}
+_ERROR_WINDOW_NS = 5 * 60 * 10**9
 _STATUS_FIELDS = (
     "pending_count",
     "pending_bytes",
@@ -63,6 +66,7 @@ class ScreenshotStore:
         self._lock = Lock()
         self._ready = Condition(self._lock)
         self._cleanup_lock = Lock()
+        self._archive_lock = Lock()
         self._stop = Event()
         self._threads: list[Thread] = []
         self._latest: Screenshot | None = None
@@ -83,18 +87,59 @@ class ScreenshotStore:
         self._cleanup_failed = 0
         self._last_error_log = float("-inf")
         self._last_reported_state = (0,) * len(_STATUS_FIELDS)
+        self._error_windows: list[tuple[int, int, str]] = []
+        self._archive_queue: deque[tuple[int, int, str, str]] = deque()
+        self._log_archive_queue: list[tuple[int, str]] = []
 
     def start(self):
         with self._lock:
             if self._threads:
                 return
+            self._recover_error_windows()
             for name, target in (
                 ("screenshot-writer", self._writer),
                 ("screenshot-cleaner", self._cleaner),
+                ("screenshot-archiver", self._archiver),
             ):
                 thread = Thread(name=name, target=target, daemon=True)
                 self._threads.append(thread)
                 thread.start()
+
+    def _recover_error_windows(self):
+        """重启后继续归档尚未结束的报错窗口。调用时持有 _lock。"""
+        root = self.folder / "errors"
+        if not root.exists():
+            return
+        now = time.time_ns()
+        for folder in root.iterdir():
+            if not folder.is_dir() or not folder.name.isdigit():
+                continue
+            try:
+                event = json.loads((folder / "event.json").read_text(encoding="utf-8"))
+                timestamp = int(event["time_ns"])
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if timestamp + _ERROR_WINDOW_NS >= now:
+                self._error_windows.append(
+                    (
+                        timestamp - _ERROR_WINDOW_NS,
+                        timestamp + _ERROR_WINDOW_NS,
+                        folder.name,
+                    )
+                )
+                self._archive_queue.append(
+                    (
+                        timestamp - _ERROR_WINDOW_NS,
+                        timestamp,
+                        folder.name,
+                        event.get("message", "运行出错"),
+                    )
+                )
+            if not (folder / "logs.json").exists():
+                heapq.heappush(
+                    self._log_archive_queue,
+                    (max(now, timestamp + _ERROR_WINDOW_NS + 5 * 10**9), folder.name),
+                )
 
     def close(self, timeout=5):
         """正常关闭时排空写盘队列；磁盘卡住时不无限等待。"""
@@ -163,7 +208,10 @@ class ScreenshotStore:
         evicted = []
         if len(frame.data) <= self.max_pending_bytes:
             for waiting in self._queue:
-                if waiting.important:
+                if waiting.important or any(
+                    start <= waiting.captured_ns <= end
+                    for start, end, _ in self._error_windows
+                ):
                     continue
                 evicted.append(waiting)
                 count -= 1
@@ -202,6 +250,145 @@ class ScreenshotStore:
     def latest(self) -> Screenshot | None:
         with self._lock:
             return self._latest
+
+    def mark_error(self, timestamp_ns: int, message: str) -> str:
+        """安排错误前后五分钟的截图归档，不阻塞日志消费线程。"""
+        archive_id = str(timestamp_ns)
+        with self._ready:
+            self._error_windows = [
+                window for window in self._error_windows if window[1] >= timestamp_ns
+            ]
+            self._error_windows.append(
+                (
+                    timestamp_ns - _ERROR_WINDOW_NS,
+                    timestamp_ns + _ERROR_WINDOW_NS,
+                    archive_id,
+                )
+            )
+            self._archive_queue.append(
+                (timestamp_ns - _ERROR_WINDOW_NS, timestamp_ns, archive_id, message)
+            )
+            heapq.heappush(
+                self._log_archive_queue,
+                (timestamp_ns + _ERROR_WINDOW_NS + 5 * 10**9, archive_id),
+            )
+            self._ready.notify_all()
+        return archive_id
+
+    def _archive_frame(self, frame: Screenshot):
+        with self._lock:
+            self._error_windows = [
+                window
+                for window in self._error_windows
+                if window[1] >= frame.captured_ns
+            ]
+            windows = tuple(self._error_windows)
+        for start, end, archive_id in windows:
+            if start <= frame.captured_ns <= end:
+                destination = (
+                    self.folder / "errors" / archive_id / Path(frame.filename).name
+                )
+                try:
+                    with self._archive_lock:
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        temporary = destination.with_suffix(".jpg.tmp")
+                        try:
+                            temporary.write_bytes(frame.data)
+                            os.replace(temporary, destination)
+                        finally:
+                            temporary.unlink(missing_ok=True)
+                except OSError as exc:
+                    self._report_error("归档报错截图失败", exc)
+
+    def _copy_to_archive(self, source: Path, destination: Path):
+        with self._archive_lock:
+            temporary = destination.with_suffix(".jpg.tmp")
+            try:
+                shutil.copy2(source, temporary)
+                os.replace(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def _archiver(self):
+        while True:
+            with self._ready:
+                while not self._archive_queue and not self._stop.is_set():
+                    if self._log_archive_queue:
+                        deadline, archive_id = self._log_archive_queue[0]
+                        remaining = (deadline - time.time_ns()) / 10**9
+                        if remaining <= 0:
+                            heapq.heappop(self._log_archive_queue)
+                            break
+                        self._ready.wait(timeout=remaining)
+                    else:
+                        self._ready.wait()
+                else:
+                    if not self._archive_queue:
+                        return
+                    start, end, archive_id, message = self._archive_queue.popleft()
+                    deadline = None
+            if deadline is not None:
+                self._save_error_logs(archive_id)
+                continue
+            destination = self.folder / "errors" / archive_id
+            try:
+                destination.mkdir(parents=True, exist_ok=True)
+                (destination / "event.json").write_text(
+                    json.dumps(
+                        {"time_ns": end, "message": message}, ensure_ascii=False
+                    ),
+                    encoding="utf-8",
+                )
+                # 先扫描已落盘图片；尚在队列里的图片随后由写盘线程归档。
+                scan_end = min(end + _ERROR_WINDOW_NS, time.time_ns())
+                hour = datetime.fromtimestamp(start / 10**9).replace(
+                    minute=0, second=0, microsecond=0
+                )
+                last_hour = datetime.fromtimestamp(scan_end / 10**9)
+                hour_folders = set()
+                while hour <= last_hour:
+                    hour_folders.add(hour.strftime("%Y%m%d-%H"))
+                    hour += timedelta(hours=1)
+                for folder in self.folder.iterdir():
+                    if not folder.is_dir() or folder.name == "errors":
+                        continue
+                    if (
+                        _HOUR_FOLDER.fullmatch(folder.name)
+                        and folder.name not in hour_folders
+                    ):
+                        continue
+                    for timestamp, name in self._images(folder):
+                        if start <= timestamp <= scan_end:
+                            try:
+                                self._copy_to_archive(folder / name, destination / name)
+                            except FileNotFoundError:
+                                continue  # 清理线程可能刚删除到期原图。
+                for timestamp, name in self._images(self.folder):
+                    if start <= timestamp <= scan_end:
+                        try:
+                            self._copy_to_archive(
+                                self.folder / name, destination / name
+                            )
+                        except FileNotFoundError:
+                            continue
+            except OSError as exc:
+                self._report_error("归档报错截图失败", exc)
+
+    def _save_error_logs(self, archive_id: str):
+        from arknights_mower.utils.diagnostics import timeline
+
+        destination = self.folder / "errors" / archive_id
+        try:
+            center = datetime.fromtimestamp(int(archive_id) / 10**9)
+            rows = timeline(self.folder.parent / "log", destination, center)
+            for row in rows:
+                if row["screenshot"]:
+                    row["screenshot"] = f"errors/{archive_id}/{row['screenshot']}"
+            temporary = destination / "logs.json.tmp"
+            temporary.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+            os.replace(temporary, destination / "logs.json")
+        except (OSError, ValueError) as exc:
+            self._report_error("归档报错日志失败", exc)
 
     def last_saved(self) -> str:
         with self._lock:
@@ -269,6 +456,7 @@ class ScreenshotStore:
                         # 设置可能在入队后关闭，跳过尚未开始写入的截图。
                         continue
                     self._write(frame)
+                    self._archive_frame(frame)
                 except Exception as exc:
                     with self._lock:
                         self._failed += 1
@@ -343,9 +531,11 @@ class ScreenshotStore:
         with self._cleanup_lock:
             started = time.monotonic()
             try:
-                cutoff_ns = time.time_ns() - int(
-                    max(0, self.retention_hours()) * 3600 * 10**9
-                )
+                retention = max(0, self.retention_hours())
+                # 保存开启时至少留五分钟，供迟到的错误日志归档前置截图。
+                if retention:
+                    retention = max(retention, 5 / 60)
+                cutoff_ns = time.time_ns() - int(retention * 3600 * 10**9)
                 # 旧根目录仅做过期删除，不迁移也不建立路径映射。
                 self._remove_expired(self.folder, cutoff_ns)
                 if not self.folder.exists():
@@ -355,6 +545,8 @@ class ScreenshotStore:
                         if self._stop.is_set():
                             return
                         if not entry.is_dir(follow_symlinks=False):
+                            continue
+                        if entry.name == "errors":
                             continue
                         folder = Path(entry.path)
                         try:
