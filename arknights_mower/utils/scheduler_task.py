@@ -14,6 +14,7 @@ from arknights_mower.utils.furniture_task import (
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import NewsChecker
+from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import (
     RestingTier,
@@ -203,17 +204,32 @@ def _is_dorm_only_task(task):
     )
 
 
-def _is_dorm_only_batch(tasks):
-    # 宿舍重排附带的空唤醒任务不涉及工作站，但不能让任意空批次绕过保护。
-    return any(_is_dorm_only_task(task) for task in tasks) and all(
-        _is_dorm_only_task(task)
-        or (
-            task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER)
-            and not task.plan
-            and not task.meta_data
-        )
-        for task in tasks
+def defer_dorm_before_run_order(task, tasks, room, time_now=None):
+    """每间宿舍开工前重查时间，保留剩余计划供跑单结束后续行。"""
+    if (
+        not room.startswith("dormitory_")
+        or not _is_dorm_only_task(task)
+        or not config.conf.experimental_dorm_logic
+        or getattr(task, "strict_mood_limit", False)
+        or task.adjusted
+    ):
+        return False
+    now = time_now or datetime.now()
+    order = min(
+        (t for t in tasks if t.type == TaskTypes.RUN_ORDER),
+        key=lambda t: t.time,
+        default=None,
     )
+    if (
+        order is None
+        or now + timedelta(minutes=estimate_dorm_minutes(room)) <= order.time
+    ):
+        return False
+    task.time = max(now, order.time) + timedelta(seconds=1)
+    task.deferred_by_run_order = True
+    tasks.sort(key=lambda t: t.time)
+    logger.info(f"{room} 操作可能挤占跑单准备时间，剩余宿舍安排移至跑单后")
+    return True
 
 
 def _defer_work_before_swap(tasks, swap, timing):
@@ -387,6 +403,13 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                             if task_time == 0
                             else task_time
                         )
+                        if config.conf.experimental_dorm_logic and task_time == 0:
+                            estimate_time = sum(
+                                estimate_dorm_minutes(room, execution_time)
+                                if room.startswith("dormitory_")
+                                else execution_time
+                                for room in tasks[j].plan
+                            )
                         if tasks[j].type == TaskTypes.FURNITURE:
                             estimate_time = _ordinary_task_minutes(
                                 tasks[j], execution_time
@@ -412,11 +435,6 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
                         next_priority_0_time = tasks[next_priority_0_index].time
                         pending = tasks[i:next_priority_0_index]
                         if config.conf.experimental_dorm_logic:
-                            if _is_dorm_only_batch(pending):
-                                logger.info(
-                                    "实验宿舍逻辑下待处理任务仅涉及宿舍，保留原定时间"
-                                )
-                                break
                             pending = _merge_deferred_dorm_schedules(pending)
                         tasks[i:next_priority_0_index] = pending
                         for pending_task in pending:
@@ -873,7 +891,7 @@ def generate_plan_by_drom(
             if op.exhaust_require:
                 exhaust_exist = True
             if not op.is_high():
-                if rest_in_full is None and op_data.is_free_room_excluded(op.name):
+                if rest_in_full is None and op_data.skip_idle_dorm_release(op.name):
                     continue
                 # 释放宿舍类别
                 if (
@@ -1116,7 +1134,7 @@ def plan_metadata(op_data, tasks):
             if (
                 not operator.is_high()
                 and not op_data.has_rest_mood_limit(dorm.name)
-                and not op_data.is_free_room_excluded(dorm.name)
+                and not op_data.skip_idle_dorm_release(dorm.name)
             ):
                 free_rooms.append(dorm)
     new_task = {}
@@ -1642,14 +1660,22 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 for index, name in enumerate(names)
                 if name != "Current"
             }
-            waiting_list = [
+            busy = busy_resting_names()
+            candidates = [
                 op
                 for op in op_data.operators.values()
                 if (not op.is_high() or op.name in standby_waiting)
                 and not op.current_room
                 and not op_data.rest_mood_complete(op.name)
                 and op.name not in reserved
+                and op.name not in busy
                 and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
+            ]
+            candidates.sort(key=lambda op: resting_key(op_data, op.name, now))
+            waiting_list = [
+                op
+                for op in candidates
+                if not op_data.idle_rest_checked(op.name)
                 and (
                     resting_mood(op, now) < op.upper_limit
                     or (
@@ -1659,17 +1685,32 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     )
                 )
             ]
-            busy = busy_resting_names()
-            waiting_list = [op for op in waiting_list if op.name not in busy]
-            waiting_list.sort(key=lambda op: resting_key(op_data, op.name, now))
-            if not waiting_list:
+            full_list = [
+                op
+                for op in candidates
+                if op not in waiting_list
+                and not op.is_high()
+                and not op_data.has_rest_mood_limit(op.name)
+                and (
+                    resting_mood(op, now) != float("inf")
+                    or op_data.idle_rest_checked(op.name)
+                )
+            ]
+            full_list.sort(
+                key=lambda op: (resting_mood(op, now), resting_tier(op_data, op.name))
+            )
+            if not waiting_list and not full_list:
                 return
-            logger.debug(f"有{len(waiting_list)}个干员心情未满")
+            logger.debug(
+                f"有{len(waiting_list)}个干员需要恢复，{len(full_list)}个满心情候选可补空床"
+            )
             plan = {}
             # 有空床先入住，再竞争单回；不要在仍有空床时把候补提前踢出。
             for value in sorted(op_data.dorm, key=lambda bed: bool(bed.name)):
-                if not waiting_list:
+                if not waiting_list and not full_list:
                     break
+                if value.name and not waiting_list:
+                    continue
                 room, index = value.position
                 if (
                     value.position in reserved_slots
@@ -1693,7 +1734,24 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                         continue
                 elif value.name:
                     continue
-                rest = waiting_list.pop(0)
+                if op_data.is_full_dorm_fallback(value.name):
+                    # 最低者也满时，不再用下一位未知替班重复试床。
+                    rest = next(
+                        (
+                            op
+                            for op in waiting_list
+                            if resting_mood(op, now) < op.upper_limit
+                        ),
+                        None,
+                    )
+                    if rest is None:
+                        continue
+                    waiting_list.remove(rest)
+                elif waiting_list:
+                    rest = waiting_list.pop(0)
+                else:
+                    rest = full_list.pop(0)
+                    rest.dorm_mood_fallback = room
                 plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = (
                     rest.name
                 )
@@ -1773,7 +1831,7 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
 
 
 def add_release_dorm(tasks, op_data, name):
-    if op_data.is_free_room_excluded(name):
+    if op_data.skip_idle_dorm_release(name):
         return
     _idx, __dorm = op_data.get_dorm_by_name(name)
     if (

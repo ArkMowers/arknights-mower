@@ -799,7 +799,7 @@ function movePlanForward() {
     <n-form-item v-if="experimental_dorm_logic">
       <template #label>
         <span>不养闲人排除干员</span>
-        <help-text>开启不养闲人时，回满仍留宿，不让床，至上班离宿；心情上限优先。</help-text>
+        <help-text>开启不养闲人时，回满仍留宿，不让床，至上班离宿；个人及令夕上限优先。</help-text>
       </template>
       <slick-operator-select
         :disabled="edit_locked"
