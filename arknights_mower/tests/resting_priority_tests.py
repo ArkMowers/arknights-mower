@@ -26,35 +26,41 @@ def set_tier(data, name, tier, mood=10):
     op = data.operators[name]
     op.mood = mood
     op.time_stamp = datetime.now()
-    op.operator_type = "high" if tier <= RestingTier.STANDBY else "low"
+    op.operator_type = (
+        "high"
+        if tier <= RestingTier.STANDBY and tier != RestingTier.PRIORITY_REPLACEMENT
+        else "low"
+    )
     op.resting_priority = {
         RestingTier.LOW_MAIN: "low",
         RestingTier.STANDBY: "standby",
     }.get(tier, "high" if op.is_high() else "low")
     if tier == RestingTier.PRIORITY:
         data.config.ope_resting_priority.append(name)
-    if tier == RestingTier.REPLACEMENT:
+    if tier in (RestingTier.PRIORITY_REPLACEMENT, RestingTier.REPLACEMENT):
         data.plan["meeting"][0].replacement.append(name)
+    if tier == RestingTier.PRIORITY_REPLACEMENT:
+        data.config.resting_priority_replacement.append(name)
     if tier == RestingTier.STANDBY:
         op.room = "meeting"
         op.group = "候补组"
     return op
 
 
-@pytest.mark.parametrize("incoming", list(RestingTier)[:6])
-@pytest.mark.parametrize("occupant", list(RestingTier)[:6])
+@pytest.mark.parametrize("incoming", list(RestingTier)[:-1])
+@pytest.mark.parametrize("occupant", list(RestingTier)[:-1])
 @pytest.mark.parametrize("mood", [22, 22.01, None])
 def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
     data = op_data
     request = set_tier(data, "银灰", incoming, 24 if mood is None else mood)
     if mood is None:
         request.time_stamp = None
-    current = set_tier(data, "空爆", occupant, 3)
+    current = set_tier(data, "空爆", occupant, 12)
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
     expected = False
-    if occupant > RestingTier.STANDBY and incoming < occupant:
-        expected = incoming <= RestingTier.LOW_MAIN
+    if occupant > RestingTier.LOW_MAIN and incoming < occupant:
+        expected = incoming <= RestingTier.PRIORITY_REPLACEMENT
         if incoming == RestingTier.STANDBY and occupant == RestingTier.REPLACEMENT:
             expected = True
         if (
@@ -195,3 +201,34 @@ def test_explicit_priority_replacement_is_protected_from_equal_or_lower_tiers(op
     assert op_data.assign_dorm("银灰") is None
     op_data.config.ope_resting_priority.append("银灰")
     assert op_data.assign_dorm("银灰") is None
+
+
+@pytest.mark.parametrize("tier", list(RestingTier)[:-1])
+def test_priority_replacement_list_only_promotes_replacement_identity(op_data, tier):
+    set_tier(op_data, "陈", tier)
+    op_data.config.resting_priority_replacement = ["陈"]
+    expected = (
+        RestingTier.PRIORITY_REPLACEMENT if tier == RestingTier.REPLACEMENT else tier
+    )
+    assert resting_tier(op_data, "陈") == expected
+
+
+def test_priority_replacement_disabled_in_legacy_and_never_overrides_exclusions(
+    op_data,
+):
+    set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT)
+    op_data.config.experimental_dorm_logic = False
+    assert resting_tier(op_data, "红") == RestingTier.REPLACEMENT
+    op_data.config.experimental_dorm_logic = True
+    op_data.operators["红"].workaholic = True
+    assert resting_tier(op_data, "红") == RestingTier.EXCLUDED
+    op_data.operators["红"].workaholic = False
+    op_data.config.free_blacklist.append("红")
+    assert resting_tier(op_data, "红") == RestingTier.EXCLUDED
+
+
+def test_fiammetta_targets_are_not_promoted_to_priority_replacements(op_data):
+    op_data.add(Operator("陈", ""))
+    op_data.config.resting_priority_replacement = ["陈"]
+    op_data.plan["dormitory_2"] = [Room("菲亚梅塔", "", ["陈"])]
+    assert resting_tier(op_data, "陈") == RestingTier.IDLE

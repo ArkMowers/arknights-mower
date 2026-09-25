@@ -101,15 +101,13 @@ def test_finished_standby_can_be_replaced_in_both_modes(solver):
     )
 
 
-def test_only_legacy_high_main_can_displace_resting_standby(solver):
+def test_main_preempts_standby_and_experimental_also_allows_low_main(solver):
     data = solver.op_data
     _, bed = data.get_dorm_by_name(DEEP[1])
     newcomer = data.operators[OTHERS[0]]
-    assert data._slot_takable(bed, True, newcomer.name) is (
-        not data.experimental_dorm_logic
-    )
+    assert data._slot_takable(bed, True, newcomer.name)
     newcomer.resting_priority = "low"
-    assert not data._slot_takable(bed, True, newcomer.name)
+    assert data._slot_takable(bed, True, newcomer.name) is data.experimental_dorm_logic
 
 
 @pytest.mark.parametrize(

@@ -178,6 +178,7 @@ def build_global_plan():
         rest_in_full=config.plan.conf.rest_in_full,
         exhaust_require=config.plan.conf.exhaust_require,
         resting_priority=config.plan.conf.resting_priority,
+        resting_priority_replacement=config.plan.conf.resting_priority_replacement,
         resting_standby=config.plan.conf.resting_standby,
         ling_xi=config.plan.conf.ling_xi,
         mood_limits=plan["conf"].get("mood_limits"),
@@ -240,6 +241,9 @@ def build_global_plan():
             dorm_order_override=i["conf"].get("dorm_order_override", False),
             experimental_dorm_logic=conf.experimental_dorm_logic,
             resting_standby=i["conf"].get("resting_standby", ""),
+            resting_priority_replacement=i["conf"].get(
+                "resting_priority_replacement", ""
+            ),
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
@@ -1634,12 +1638,16 @@ class Operators:
                     self.operators[name].time_stamp = time
         return available_high if free_type == "high" else available_low
 
-    def legacy_standby_can_yield(self, op):
-        """稳定逻辑候补可让床；强制恢复或低于急救线者仍占主班名额。"""
-        if self.experimental_dorm_logic or not self._can_standby(op):
+    def standby_can_yield(self, op):
+        """候补有有效非急救心情且无强制恢复要求时，才可离宿待命。"""
+        if not self._can_standby(op):
             return False
         mood = resting_mood(op)
         return mood != float("inf") and mood >= self.rescue_mood_threshold(op)
+
+    def legacy_standby_can_yield(self, op):
+        """稳定逻辑沿用原候补让床条件。"""
+        return not self.experimental_dorm_logic and self.standby_can_yield(op)
 
     def active_high_resting_count(self, time=None):
         """正在占用恢复床位的主班人数。"""
@@ -1673,6 +1681,7 @@ class Operators:
             reserved_for = self.reserved_product_beds.get(dorm.position)
             if reserved_for and requester != reserved_for:
                 if requester is None or resting_tier(self, requester) not in (
+                    RestingTier.PRIORITY_REPLACEMENT,
                     RestingTier.REPLACEMENT,
                     RestingTier.IDLE,
                 ):
@@ -1705,15 +1714,18 @@ class Operators:
         if (op.current_room, op.current_index) != dorm.position:
             return False
         tier = resting_tier(self, name)
-        # 候补及以上只按层级、心情换床位顺序；一旦入住便不被其他休息者踢出。
-        if tier <= RestingTier.STANDBY:
+        # 必需休息的主班保留床位；普通候补可给更高层级让床，离宿后待命。
+        # 急救候补已提升到 LOW_MAIN，不会因此被踢出。
+        if tier <= RestingTier.LOW_MAIN:
+            return False
+        if tier == RestingTier.STANDBY and not self.standby_can_yield(op):
             return False
         if requester is None:
             return False
         incoming_tier = resting_tier(self, requester)
         if incoming_tier >= tier:
             return False
-        if incoming_tier <= RestingTier.LOW_MAIN:
+        if incoming_tier <= RestingTier.PRIORITY_REPLACEMENT:
             return True
         if tier == RestingTier.IDLE:
             mood = resting_mood(self.operators[requester])
