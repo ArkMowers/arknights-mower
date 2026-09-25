@@ -68,11 +68,7 @@ export async function updatePackageKind(file) {
       software ||= /(^|\/)(_internal|Contents\/Resources)\/arknights_mower\/__init__\.py$/.test(
         path
       )
-      resource ||= [
-        'arknights_mower/data/version.json',
-        'nav_steps.json',
-        'stage_data.json'
-      ].includes(path)
+      resource ||= path === 'arknights_mower/data/version.json'
     }
   } catch {
     throw new Error('无法读取更新包目录，请选择完整的 Mower 安装包')

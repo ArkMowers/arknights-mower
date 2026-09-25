@@ -1,27 +1,20 @@
 """导航步骤两层数据源（官方 + 本机）的读取与合并。
 
-- 官方层 `nav_steps.json`（热更目录 / 自带打包）：只读 overlay，程序不写它。
+- 官方层 `nav_steps.json`（随程序发布）：只读，程序不写它。
 - 本机层 `nav_trie_steps.json`（`persist_nav_steps` 每次导航成功后覆写）：用户自学。
 两层分开存、命名不同、互不覆盖；读取时合并，**用户已学会（success=true）条目优先，
 官方只补缺**——官方不会冲掉用户学过的步骤。
 """
 
 import json
-import re
 from pathlib import Path
 
 __all__ = [
     "empty_nav_steps",
     "load_nav_file",
-    "first_existing_path",
     "merge_nav_steps",
     "select_replay_steps",
-    "build_official_steps",
-    "merge_official_steps",
 ]
-
-# 与 NavigationSolver.is_stage_code 一致：至少一段连字符分隔的大写字母/数字段。
-_STAGE_CODE_RE = re.compile(r"^[A-Z0-9]+(?:-[A-Z0-9]+)+$")
 
 
 def empty_nav_steps() -> dict:
@@ -42,14 +35,6 @@ def load_nav_file(path: Path) -> dict:
     if not isinstance(data.get("patterns"), dict):
         data["patterns"] = {}
     return data
-
-
-def first_existing_path(*paths: Path | None) -> Path | None:
-    """返回第一个存在的路径；都不存在返回 None。"""
-    for p in paths:
-        if p is not None and p.exists():
-            return p
-    return None
 
 
 def merge_nav_steps(official: dict, user: dict) -> dict:
@@ -113,77 +98,3 @@ def select_replay_steps(
     if pattern_key:
         return _pick_success_steps(data.get("patterns", {}), pattern_key)
     return []
-
-
-def _is_stage_code(text: str) -> bool:
-    """是否关卡代号（与 NavigationSolver.is_stage_code 一致）。"""
-    return (
-        isinstance(text, str) and _STAGE_CODE_RE.match(text.strip().upper()) is not None
-    )
-
-
-def _pattern_key_for(stage: str) -> str | None:
-    """导出 pattern key（与 NavigationSolver.stage_pattern_key 一致）；非代号返回 None。"""
-    if not _is_stage_code(stage):
-        return None
-    norm = stage.strip().upper()
-    head, _, _ = norm.rpartition("-")
-    return f"{head}-*"
-
-
-def build_official_steps(records: list[dict]) -> dict:
-    """把一次录制收集的导航记录构建成官方层 nav_steps.json 字典。
-
-    每条记录形如 ``{"stage", "stage_type", "steps", "updated_at"}``；条目结构与
-    ``persist_nav_steps`` 写入 nav_trie_steps.json 的完全一致（stage 条目 + pattern 条目）。
-    无有效步骤（steps 非 list 或为空）、缺 stage、非 dict 的记录一律跳过。返回新 dict。
-    """
-    stages: dict = {}
-    patterns: dict = {}
-    for rec in records:
-        if not isinstance(rec, dict):
-            continue
-        stage = rec.get("stage")
-        if not stage:
-            continue
-        steps = rec.get("steps")
-        if not isinstance(steps, list) or not steps:
-            continue
-        entry = {
-            "updated_at": rec.get("updated_at") or "",
-            "stage_type": rec.get("stage_type") or "",
-            "success": True,
-            "steps": steps,
-        }
-        stages[stage] = entry
-        pattern_key = _pattern_key_for(stage)
-        if pattern_key:
-            patterns[pattern_key] = {**entry, "source_stage": stage}
-    return {"version": 1, "stages": stages, "patterns": patterns}
-
-
-def merge_official_steps(existing: dict, fresh: dict) -> dict:
-    """把新录制的官方层 fresh 并入现有官方层 existing（官方自我权威，同 key 覆盖）。
-
-    existing / fresh 均可为 ``{}`` 或 ``load_nav_file`` 的产物。返回新 dict，不改动入参。
-    """
-    merged: dict = {
-        "version": 1,
-        "stages": {
-            k: v
-            for k, v in (existing.get("stages") or {}).items()
-            if isinstance(v, dict)
-        },
-        "patterns": {
-            k: v
-            for k, v in (existing.get("patterns") or {}).items()
-            if isinstance(v, dict)
-        },
-    }
-    for key, entry in (fresh.get("stages") or {}).items():
-        if isinstance(entry, dict):
-            merged["stages"][key] = entry
-    for key, entry in (fresh.get("patterns") or {}).items():
-        if isinstance(entry, dict):
-            merged["patterns"][key] = entry
-    return merged

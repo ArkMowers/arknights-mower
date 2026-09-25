@@ -34,7 +34,7 @@ describe('manual update helpers', () => {
     const progress = []
     const client = {
       async post(url, body, config) {
-        expect(url).toBe('/hot-update/manual')
+        expect(url).toBe('/resource-update/manual')
         expect(body.get('update')).toBeInstanceOf(Blob)
         config.onUploadProgress({ loaded: 1, total: 4 })
         return { data: { ok: true, kind: 'resource' } }
@@ -42,7 +42,7 @@ describe('manual update helpers', () => {
     }
 
     await expect(
-      postManualUpdate(client, '/hot-update/manual', file, (event) => progress.push(event))
+      postManualUpdate(client, '/resource-update/manual', file, (event) => progress.push(event))
     ).resolves.toEqual({ ok: true, kind: 'resource' })
     expect(progress).toEqual([{ percent: 25 }])
   })
@@ -55,8 +55,8 @@ describe('content-based update routing', () => {
     [['mower/_internal/arknights_mower/__init__.py'], 'resources.zip', 'software'],
     [['Mower.app/Contents/Resources/arknights_mower/__init__.py'], 'renamed.zip (1)', 'software'],
     [['arknights_mower/data/version.json'], 'arknights-mower_4.9.9.zip', 'resource'],
-    [['nav_steps.json', 'version.json'], 'offline.bin', 'resource'],
-    [['stage_data.json'], 'offline (1).zip', 'resource'],
+    [['nav_steps.json', 'version.json'], 'offline.bin', null],
+    [['stage_data.json'], 'offline (1).zip', null],
     [['version.json'], 'arknights-mower_4.9.9.zip', null],
     [['README.md'], 'resource.zip', null],
     [['nested/arknights_mower/data/version.json'], 'resource.zip', null]

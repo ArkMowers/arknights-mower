@@ -79,7 +79,7 @@ async function drop(event) {
     const file = droppedUpdateFile(event)
     const kind = await updatePackageKind(file)
     if (disposed) return
-    if (!kind) throw new Error('未识别到 Mower 软件包、资源包或热更包')
+    if (!kind) throw new Error('未识别到 Mower 软件包或资源包')
     if (kind === 'software') {
       pendingSoftwarePackage.value = file
       show.value = false
@@ -104,7 +104,7 @@ async function installResource() {
   try {
     result.value = await postManualUpdate(
       axios,
-      `${import.meta.env.VITE_HTTP_URL || ''}/hot-update/manual`,
+      `${import.meta.env.VITE_HTTP_URL || ''}/resource-update/manual`,
       selected.value,
       ({ percent }) => {
         progress.value = percent
@@ -160,7 +160,7 @@ onUnmounted(() => {
     <div v-if="dragging || reading" class="global-update-drop" aria-live="polite">
       <div class="global-update-drop__content">
         <strong>{{ reading ? '正在读取更新包内容…' : '松开文件，准备更新' }}</strong>
-        <span>资源包 / 热更包 ZIP · Mower 软件安装包 ZIP、tar.gz、DMG</span>
+        <span>资源包 ZIP · Mower 软件安装包 ZIP、tar.gz、DMG</span>
         <span>一次一个文件，确认后安装</span>
       </div>
     </div>
@@ -168,7 +168,7 @@ onUnmounted(() => {
   <n-modal
     v-model:show="show"
     preset="card"
-    title="安装资源或热更包"
+    title="安装资源包"
     style="width: min(560px, calc(100vw - 32px))"
     :closable="!busy"
     :mask-closable="!busy"
@@ -176,7 +176,7 @@ onUnmounted(() => {
   >
     <n-space vertical :size="16">
       <n-text style="overflow-wrap: anywhere">{{ selected?.name }}</n-text>
-      <n-text depth="3">将按包内容识别资源包或热更包。资源包安装后直接生效，无需重启。</n-text>
+      <n-text depth="3">资源包安装后直接生效，无需重启。</n-text>
       <n-progress v-if="busy" type="line" :percentage="progress" />
       <n-alert v-if="result" :type="result.ok ? 'success' : 'error'" aria-live="polite">{{
         result.message

@@ -1,8 +1,8 @@
 """资源包 version.json 的客户端读取与更新检测。
 
-- 只读正式 ``data/version.json``（安装状态的权威记录由 hot_update.py 拥有），远端先拉 tmp 再比对，**不覆盖正式文件**。
+- 只读正式 ``data/version.json``（安装状态由资源包管理），远端先拉 tmp 再比对，**不覆盖正式文件**。
 - 展示用 ``display_version``（可读名+#MMDD），比较用 ``res_version``（日期+内容哈希，只升不降），两者分离。
-- 镜像 ``hot_update.py`` 模式：fetch 不抛异常、失败回退 tmp 缓存。
+- fetch 不抛异常、失败回退 tmp 缓存。
 """
 
 import json

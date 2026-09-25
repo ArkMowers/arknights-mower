@@ -18,13 +18,12 @@ import requests
 from flask import Flask
 
 from arknights_mower.utils import github_download as github
+from arknights_mower.utils import network_settings as network
 from arknights_mower.utils import (
-    hot_update,
     resource_pkg,
     resource_version,
     software_update,
 )
-from arknights_mower.utils import network_settings as network
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.maa_resource_update import (
     GITHUB_RESOURCE_ARCHIVE_URL,
@@ -497,21 +496,18 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.assertFalse(result["ok"])
         self.assertIn("连接失败", result["message"])
 
-    def test_resource_hot_update_and_raw_version_downloads_use_site(self):
+    def test_resource_and_raw_version_downloads_use_site(self):
         proxy, seen = self.start_server(
             lambda path: b'{"res_version":"v2026.09.05-test"}'
         )
         self.save(github_proxy=proxy)
         self.assertIsNotNone(resource_pkg.download_resource_pkg())
         self.assertIsNotNone(resource_version._fetch_remote_version_json())
-        with patch.object(hot_update, "_extract_zip", return_value=True):
-            self.assertTrue(hot_update._download_and_extract())
         self.assertEqual(
             seen,
             [
                 "/" + resource_pkg.RESOURCE_ZIP_URL,
                 "/" + resource_version.RESOURCE_VERSION_URL,
-                f"/https://github.com/{hot_update.HOT_UPDATE_REPO}/releases/latest/download/hot_update.zip",
             ],
         )
 

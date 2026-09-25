@@ -87,7 +87,7 @@ describe('global update drop routing', () => {
     state.client.post.mockResolvedValueOnce({ data: { ok: true, kind: 'resource' } })
     await component.installResource()
     expect(state.client.post).toHaveBeenCalledOnce()
-    expect(state.client.post.mock.calls[0][0]).toBe('/hot-update/manual')
+    expect(state.client.post.mock.calls[0][0]).toBe('/resource-update/manual')
     expect(state.resources.loadResourceVersionLocal).toHaveBeenCalledOnce()
   })
 

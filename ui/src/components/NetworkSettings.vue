@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
         />
       </n-form-item>
       <n-text depth="3">
-        用于 Mower 和 MAA 的 GitHub 安装包、资源包、热更包及原始文件。支持“站点地址/原始下载链接”
+        用于 Mower 和 MAA 的 GitHub 安装包、资源包及原始文件。支持“站点地址/原始下载链接”
         格式；GitHub API 和 Git / Git LFS 使用上方网络代理。
       </n-text>
       <n-text depth="3">填写后自动保存，所有实例共享，后续连接使用新的设置。</n-text>
