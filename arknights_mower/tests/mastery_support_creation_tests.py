@@ -14,9 +14,11 @@ from arknights_mower.tests.mastery_support_fixtures import (
 from arknights_mower.tests.mastery_support_fixtures import (
     game as game,
 )
+from arknights_mower.tests.mastery_support_fixtures import owned
 from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_support as support
 from arknights_mower.utils import mastery_support_data as support_data
+from arknights_mower.utils.mastery_recommendation import get_skill_data
 from arknights_mower.views.mastery import mastery_bp
 
 
@@ -70,6 +72,53 @@ def test_plan_api_allows_scheduled_trainee(database, context_game, legacy_payloa
     result = response.json["results"][0]
     assert result["status"] == "added"
     assert support.decode_supports(db.get_plan_by_id(result["id"]))["stages"]
+
+
+@pytest.mark.parametrize("legacy_payload", [False, True])
+def test_plan_api_resolves_operator_instead_of_same_named_summon(
+    database, context_game, legacy_payload
+):
+    _, ids = context_game
+    char_id = ids["Mon3tr"]
+    source = get_skill_data()
+    char_table = {
+        char_id: source["characters"][char_id],
+        "token_10002_kalts_mon3tr": source["characters"]["token_10002_kalts_mon3tr"],
+    }
+    skill_data = {"characters": char_table, "training": source["training"]}
+    roster = [*support_data.owned_roster(), owned(char_id)]
+    app = Flask(__name__)
+    app.register_blueprint(mastery_bp)
+    payload = (
+        {"Mon3tr": 0}
+        if legacy_payload
+        else {"items": [{"name": "Mon3tr", "skill_index": 0}]}
+    )
+    with (
+        patch("arknights_mower.views.mastery.config.conf") as conf,
+        patch("arknights_mower.views.mastery.get_skill_data", return_value=skill_data),
+        patch.object(support_data, "owned_roster", return_value=roster),
+        patch(
+            "arknights_mower.utils.mastery_recommendation.get_current_mastery_level",
+            return_value=0,
+        ),
+        patch(
+            "arknights_mower.utils.mastery_recommendation.get_mastery_requirement_error",
+            return_value=None,
+        ),
+        patch(
+            "arknights_mower.views.mastery._dispatch_new_plans_immediately",
+            return_value={"skipped": []},
+        ),
+    ):
+        conf.webview.token = ""
+        response = app.test_client().post("/mastery-plan", json=payload)
+    assert response.status_code == 200
+    result = response.json["results"][0]
+    assert result["status"] == "added"
+    plan = db.get_plan_by_id(result["id"])
+    assert plan["char_id"] == char_id
+    assert support.decode_supports(plan)["stages"]
 
 
 @pytest.mark.parametrize("legacy_payload", [False, True])

@@ -335,11 +335,17 @@ class MasteryPlanView(MethodView):
 
     def post(self):
         data = request.json or {}
-        char_table = get_skill_data().get("characters", {})
+        skill_data = get_skill_data()
+        char_table = skill_data.get("characters", {})
+        training_operators = skill_data.get("training", {}).get("operators")
         name_to_id = {
             info.get("name", ""): cid
             for cid, info in char_table.items()
+            # The character table also contains summons with upgradeable skills.
+            # Only playable operators can be trainees or appear in the BOX.
             if info.get("name")
+            and cid.startswith("char_")
+            and (training_operators is None or cid in training_operators)
         }
 
         results = []
