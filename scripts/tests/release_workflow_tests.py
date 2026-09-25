@@ -10,6 +10,7 @@ BUILD_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/release-build.yml"
 PREPARE_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/prepare-release.yml"
 VERSION = "${{ needs.prepare.outputs.version }}"
 TAG_NAME = "${{ needs.prepare.outputs.tag_name }}"
+RELEASE_SHA = "${{ needs.prepare.outputs.release_sha }}"
 
 
 def load_workflow(path: Path) -> dict:
@@ -89,6 +90,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             set(self.jobs),
             {
                 "prepare",
+                "validate-release",
                 "build-windows",
                 "build-linux",
                 "build-macos",
@@ -105,6 +107,32 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             {"prepare", "build-windows", "build-linux", "build-macos", "build-android"},
         )
 
+    def test_release_tag_is_tested_before_building(self):
+        validation = self.jobs["validate-release"]
+        self.assertEqual(validation["needs"], "prepare")
+        self.assertEqual(
+            find_step(validation, "Checkout tested commit")["with"]["ref"], RELEASE_SHA
+        )
+        self.assertIn(VERSION, find_step(validation, "Inject release version")["run"])
+        names = {step.get("name") for step in validation["steps"]}
+        self.assertTrue(
+            {
+                "Check Python formatting and lint",
+                "Run Python regression tests",
+                "Check GitHub Actions workflows",
+                "Run frontend regressions and build",
+            }.issubset(names)
+        )
+        for job_name in (
+            "build-windows",
+            "build-linux",
+            "build-macos",
+            "build-android",
+        ):
+            self.assertEqual(
+                set(self.jobs[job_name]["needs"]), {"prepare", "validate-release"}
+            )
+
     def test_version_is_validated_and_controls_release_type(self):
         prepare = self.jobs["prepare"]
         self.assertEqual(
@@ -112,6 +140,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             {
                 "version": "${{ steps.meta.outputs.version }}",
                 "tag_name": "${{ steps.meta.outputs.tag_name }}",
+                "release_sha": "${{ steps.meta.outputs.release_sha }}",
                 "prerelease": "${{ steps.meta.outputs.prerelease }}",
             },
         )
@@ -120,6 +149,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('git show-ref --verify --quiet "refs/tags/${tag_name}"', resolve)
         self.assertIn('"refs/tags/${tag_name}^{commit}"', resolve)
         self.assertIn('"${tag_sha}" != "${expected_sha}"', resolve)
+        self.assertIn('echo "release_sha=${tag_sha}"', resolve)
         self.assertIn('if [[ "${version}" == *-alpha.* ]]', resolve)
 
         publish = find_step(self.jobs["release"], "Publish GitHub Release")
@@ -135,7 +165,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('if [[ -n "${CALLED_TAG_NAME}" ]]; then', resolve)
         self.assertNotIn("GITHUB_EVENT_NAME", resolve)
 
-    def test_every_job_checks_out_the_resolved_tag(self):
+    def test_every_job_checks_out_the_verified_commit(self):
         prepare_checkout = find_step(self.jobs["prepare"], "Checkout repository")
         self.assertEqual(
             prepare_checkout["with"]["ref"],
@@ -146,9 +176,14 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             "build-linux",
             "build-macos",
             "build-android",
+            "release",
         ):
             checkout = find_step(self.jobs[job_name], "Checkout repository")
-            self.assertEqual(checkout["with"]["ref"], TAG_NAME)
+            self.assertEqual(checkout["with"]["ref"], RELEASE_SHA)
+        verify = find_step(
+            self.jobs["release"], "Verify release tag still points to tested commit"
+        )["run"]
+        self.assertIn('"$actual_sha" != "$RELEASE_SHA"', verify)
 
     def test_runner_labels(self):
         self.assertEqual(self.jobs["build-windows"]["runs-on"], "windows-latest")
