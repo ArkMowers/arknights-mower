@@ -85,14 +85,14 @@ class ScreenshotStoreStartupTest(MultiProcessLogTestBase):
         )
         self.assertIn("STORE: None", result.stdout)
 
-    def test_first_submit_starts_store_and_both_threads(self):
+    def test_first_submit_starts_store_and_background_threads(self):
         self.assertIsNone(log.get_screenshot_store())
         log.save_screenshot(b"jpeg bytes")
         store = log.get_screenshot_store()
         self.assertIsNotNone(store)
         self.assertEqual(
             sorted(thread.name for thread in store._threads),
-            ["screenshot-cleaner", "screenshot-writer"],
+            ["screenshot-archiver", "screenshot-cleaner", "screenshot-writer"],
         )
         self.assertEqual(store.folder, path.get_path("@app/screenshot"))
 
