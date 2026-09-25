@@ -1,5 +1,7 @@
 """Portable OTA reconstruction from a verified release asset."""
 
+import base64
+import bz2
 import hashlib
 import json
 import shutil
@@ -10,10 +12,38 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from arknights_mower.utils import software_update
-from arknights_mower.utils.software_update_worker import Worker, apply_ota_archive
+from arknights_mower.utils.software_update_worker import (
+    Worker,
+    apply_bsdiff,
+    apply_ota_archive,
+)
 
 
 class SoftwareOtaTests(unittest.TestCase):
+    BSDIFF_FIXTURE = base64.b64decode(
+        "QlNESUZGNDAvAAAAAAAAADIAAAAAAAAALAEAAAAAAABCWmg5MUFZJlNZzSEkTQAABlBAcBQABEAAIAAhkwQhgIkDeF28XckU4UJDNISRNEJaaDkxQVkmU1muwWlpAABP4ADAQAgAACCgADDNAFKJppMCeJxOJ8XckU4UJCuwWlpAQlpoORdyRThQkAAAAAA="
+    )
+
+    def test_bsdiff_accepts_seek_only_control_block(self):
+        def number(value):
+            return abs(value).to_bytes(8, "little")[:-1] + bytes(
+                [0x80 if value < 0 else 0]
+            )
+
+        control = b"".join(number(value) for value in (0, 0, 3, 3, 0, 0))
+        compressed_control = bz2.compress(control)
+        compressed_diff = bz2.compress(b"\0" * 3)
+        patch = (
+            b"BSDIFF40"
+            + number(len(compressed_control))
+            + number(len(compressed_diff))
+            + number(3)
+            + compressed_control
+            + compressed_diff
+            + bz2.compress(b"")
+        )
+        self.assertEqual(apply_bsdiff(b"abcdef", patch, 3), b"def")
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -79,6 +109,43 @@ class SoftwareOtaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "非法路径"):
             self.apply(self.package(file_name="mower/../outside"))
         self.assertFalse((self.root / "outside").exists())
+
+    def test_rebuilds_bsdiff_executable_and_checks_its_base(self):
+        old, new = b"old binary data" * 20, b"new binary data" * 20
+        (self.installed / "mower/binary").write_bytes(old)
+        manifest = {
+            "kind": "mower-ota",
+            "format": 2,
+            "from": "4.1.6-alpha.7",
+            "to": "4.1.6-alpha.8",
+            "platform": "windows",
+            "arch": "x64",
+            "files": {
+                "mower/binary": {
+                    "type": "file",
+                    "mode": 0o755,
+                    "sha256": hashlib.sha256(new).hexdigest(),
+                }
+            },
+            "changed": ["mower/binary"],
+            "patches": {
+                "mower/binary": {
+                    "type": "bsdiff",
+                    "base_sha256": hashlib.sha256(old).hexdigest(),
+                    "sha256": hashlib.sha256(self.BSDIFF_FIXTURE).hexdigest(),
+                    "size": len(new),
+                }
+            },
+        }
+        package = self.root / "binary-ota.zip"
+        with zipfile.ZipFile(package, "w") as archive:
+            archive.writestr("ota.json", json.dumps(manifest))
+            archive.writestr("patch/mower/binary", self.BSDIFF_FIXTURE)
+        self.apply(package)
+        self.assertEqual((self.root / "stage/mower/binary").read_bytes(), new)
+        (self.installed / "mower/binary").write_bytes(b"tampered")
+        with self.assertRaisesRegex(ValueError, "补丁起点"):
+            self.apply(package)
 
     def test_selects_exact_source_and_target_asset(self):
         name = "arknights-mower-ota_4.1.6-alpha.7_to_4.1.6-alpha.8_windows_x64.zip"
