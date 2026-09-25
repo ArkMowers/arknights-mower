@@ -28,6 +28,38 @@ class TestSimulatorReady(unittest.TestCase):
         self.popen.return_value.poll.return_value = 0
         self.popen.return_value.returncode = 0
         self.sleep = self.enterContext(patch.object(simulator, "csleep"))
+        self.enterContext(patch.object(simulator, "_last_launch", None))
+
+    def test_second_restart_waits_until_start_time_has_elapsed(self):
+        self.conf.simulator.wait_time = 30
+        events = []
+        self.sleep.side_effect = lambda seconds: events.append(("sleep", seconds))
+
+        def run_command(command, *_args):
+            events.append(("command", command))
+            return True
+
+        with (
+            patch.object(simulator.time, "monotonic", side_effect=[100, 102, 130]),
+            patch.object(simulator, "run_command", side_effect=run_command),
+        ):
+            self.assertTrue(simulator.restart_simulator(stop=False))
+            self.assertTrue(simulator.restart_simulator())
+
+        self.assertEqual(events[2], ("sleep", 28))
+        self.assertIn("shutdown_player", events[3][1])
+
+    def test_restart_after_start_time_does_not_wait_again(self):
+        self.conf.simulator.wait_time = 30
+        with (
+            patch.object(simulator.time, "monotonic", side_effect=[100, 131, 134]),
+            patch.object(simulator, "run_command", return_value=True),
+        ):
+            self.assertTrue(simulator.restart_simulator(stop=False))
+            self.assertTrue(simulator.restart_simulator())
+
+        self.sleep.assert_has_calls([call(3), call(3)])
+        self.assertEqual(self.sleep.call_count, 2)
 
     def test_only_device_state_is_ready(self):
         for target in (self.old_target, ""):

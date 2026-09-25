@@ -1,4 +1,5 @@
 import subprocess
+import time
 from dataclasses import dataclass
 from enum import Enum
 
@@ -28,6 +29,11 @@ class SimulatorCommandSet:
     blocking: bool = False
 
 
+# ADB 可能先于模拟器和 IPC 就绪。记录启动命令发出的时间，避免随后
+# 的连接/截图失败在配置的启动时间内再次关闭正在启动的模拟器。
+_last_launch: tuple[tuple[str, str, str], float] | None = None
+
+
 def _clear_mumu_adb_transport() -> None:
     """关闭 MuMu12 时清理目标实例的 adb 传输，但不结束共享的 adb server。
 
@@ -55,6 +61,7 @@ def restart_simulator(stop: bool = True, start: bool = True) -> bool:
 
 
 def _restart_simulator(stop: bool, start: bool, allow_retry: bool) -> bool:
+    global _last_launch
     data = config.conf.simulator
     simulator_type = data.name
 
@@ -71,6 +78,13 @@ def _restart_simulator(stop: bool, start: bool, allow_retry: bool) -> bool:
 
     commands = build_command_set(simulator_type, data.index)
 
+    target = (simulator_type, data.simulator_folder, str(data.index))
+    if stop and start and _last_launch is not None and _last_launch[0] == target:
+        remaining = max(0, data.wait_time) - (time.monotonic() - _last_launch[1])
+        if remaining > 0:
+            logger.info(f"模拟器仍在启动，等待 {remaining:.1f} 秒后再重启")
+            csleep(remaining)
+
     if stop:
         logger.info(f"关闭{simulator_type}模拟器")
         run_command(commands.stop, data.simulator_folder, 0, commands.blocking)
@@ -81,10 +95,12 @@ def _restart_simulator(stop: bool, start: bool, allow_retry: bool) -> bool:
             _clear_mumu_adb_transport()
 
     if not start:
+        _last_launch = None
         return True
 
     csleep(3)
     logger.info(f"启动{simulator_type}模拟器")
+    _last_launch = (target, time.monotonic())
     started = run_command(
         commands.start,
         data.simulator_folder,
