@@ -422,7 +422,9 @@ def test_plan_entry_keeps_runtime_plan_on_write_failure(
     assert config.plan_path.read_bytes() == previous_bytes
 
 
-def test_plan_advanced_settings_round_trip_without_drone_room(plan_client, populated_plan):
+def test_plan_advanced_settings_round_trip_without_drone_room(
+    plan_client, populated_plan
+):
     config.conf.drone_room = "room_1_1"
     config.conf.resting_threshold = 0.65
     config.save_conf()
