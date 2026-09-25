@@ -270,6 +270,35 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_bulk_keeps_draft_priority_before_dispatch(
+        self, get_level, get_skill, insert
+    ):
+        get_skill.return_value = self._char_table()
+        get_level.return_value = 0
+        insert.return_value = 9
+        response = self.client.post(
+            "/mastery-plan",
+            json={"items": [{"name": "阿米娅", "skill_index": 0, "priority": 4}]},
+        )
+        self.assertEqual(response.get_json()["results"][0]["status"], "added")
+        self.assertEqual(insert.call_args.kwargs["priority"], 4)
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_bulk_rejects_non_integer_priority(self, get_skill, insert):
+        get_skill.return_value = self._char_table()
+        for bad in (True, "1", 1.5):
+            response = self.client.post(
+                "/mastery-plan",
+                json={"items": [{"name": "阿米娅", "skill_index": 0, "priority": bad}]},
+            )
+            result = response.get_json()["results"][0]
+            self.assertEqual(result["reason"], "invalid priority")
+        insert.assert_not_called()
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
     def test_bulk_honors_explicit_target(self, get_level, get_skill, insert):
         # bulk 显式 target_level 被采纳（在范围内且低于当前等级）
         get_skill.return_value = self._char_table()

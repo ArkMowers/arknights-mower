@@ -425,12 +425,10 @@
           size="small"
           style="margin: 2px 0"
         />
-        <draggable
-          v-model="sortablePlanEntries"
-          item-key="key"
-          handle=".drag-handle"
-          @end="onPlanReorder"
-        >
+        <n-button size="small" :disabled="planEntries.length < 2" @click="interleavePlanEntries">
+          按职业交错排序
+        </n-button>
+        <draggable v-model="sortablePlanEntries" item-key="key" handle=".drag-handle">
           <template #item="{ element: e }">
             <n-tag
               closable
@@ -440,7 +438,7 @@
               style="margin: 2px 4px; cursor: move"
               class="drag-handle"
             >
-              {{ e.name }} {{ e.skill_name }}
+              {{ professionName(e.profession) }} · {{ e.name }} {{ e.skill_name }}
               <template v-if="e.status && e.status !== 'idle'">
                 ({{ getStatusLabel(e.status) }}{{ e.failed_reason ? '：' + e.failed_reason : '' }})
               </template>
@@ -681,6 +679,7 @@ import {
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
+import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
 
 const ListIcon = List
 const SettingsIcon = Settings
@@ -1042,42 +1041,27 @@ function clearPlan() {
   plan.value = {}
 }
 async function savePlanFn() {
+  const orderedKeys = sortablePlanEntries.value.map((entry) => entry.key)
   const toAdd = []
-  for (const k in plan.value) {
+  for (const [priority, k] of orderedKeys.entries()) {
+    if (!plan.value[k]) continue
     if (planStatus.value[k]?.id) continue // 已是后端计划
     const [cid, si] = parsePlanKey(k)
     const op = store.recommendations.find((o) => o.char_id === cid)
     if (op && si !== undefined) {
       // #65：不传 target_level，服务端默认专三
-      toAdd.push({ name: op.name, skill_index: parseInt(si) })
+      toAdd.push({ name: op.name, skill_index: parseInt(si), priority })
     }
   }
   // 草稿中被移除且未重新加回的计划（清空/单删/技能反选）
   const toDel = [...draftRemoved.value].filter((k) => !plan.value[k] && planStatus.value[k]?.id)
-  const orderUpdates = sortablePlanEntries.value
-    .map((e, idx) => ({ id: planStatus.value[e.key]?.id, priority: idx }))
+  const orderUpdates = orderedKeys
+    .map((key, priority) => ({ id: planStatus.value[key]?.id, priority }))
     .filter((u) => u.id)
   if (!toAdd.length && !toDel.length && !orderUpdates.length) {
     message.info('没有变更需要保存')
     showPlan.value = false
     return
-  }
-  if (toAdd.length) {
-    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items: toAdd })
-    const results = r.data?.results || []
-    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
-      message.warning(warning)
-    }
-    const err = results.filter((x) => x.status === 'error')
-    if (err.length) {
-      message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
-    } else {
-      // 材料不足和排班冲突的项都没排上，展示服务端返回的真实原因
-      const poor = results.filter((x) => x.status === 'insufficient' || x.status === 'deferred')
-      if (poor.length) {
-        message.info(`保存完成；${poor.length} 项暂未开始: ${poor.map((x) => x.reason).join('；')}`)
-      }
-    }
   }
   for (const k of toDel) {
     try {
@@ -1093,6 +1077,25 @@ async function savePlanFn() {
       await axios.patch(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/order`, orderUpdates)
     } catch (e) {
       message.error(`排序失败: ${e.message}`)
+      return
+    }
+  }
+  if (toAdd.length) {
+    // 先保存已有计划的顺序，再添加新计划；服务端立即派发时便能看到完整顺序。
+    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items: toAdd })
+    const results = r.data?.results || []
+    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
+      message.warning(warning)
+    }
+    const err = results.filter((x) => x.status === 'error')
+    if (err.length) {
+      message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
+    } else {
+      // 材料不足和排班冲突的项都没排上，展示服务端返回的真实原因
+      const poor = results.filter((x) => x.status === 'insufficient' || x.status === 'deferred')
+      if (poor.length) {
+        message.info(`保存完成；${poor.length} 项暂未开始: ${poor.map((x) => x.reason).join('；')}`)
+      }
     }
   }
   planJustSaved = true
@@ -1166,6 +1169,7 @@ const planEntries = computed(() => {
           skill_index: si,
           name: op.name,
           skill_name: rec.skill_name,
+          profession: op.profession,
           status: info.status || 'idle',
           priority: info.priority || 0,
           failed_reason: info.failed_reason
@@ -1185,16 +1189,21 @@ const sortablePlanEntries = ref([])
 watch(
   planEntries,
   (val) => {
-    sortablePlanEntries.value = [...val]
+    if (!showPlan.value) {
+      sortablePlanEntries.value = [...val]
+      return
+    }
+    // Adding/removing a draft entry must not discard a manual or automatic draft order.
+    const byKey = new Map(val.map((entry) => [entry.key, entry]))
+    const retained = sortablePlanEntries.value.map((entry) => byKey.get(entry.key)).filter(Boolean)
+    const seen = new Set(retained.map((entry) => entry.key))
+    sortablePlanEntries.value = [...retained, ...val.filter((entry) => !seen.has(entry.key))]
   },
   { immediate: true }
 )
 
-function onPlanReorder() {
-  // 草稿式排序：只更新本地优先级，保存时才写后端
-  sortablePlanEntries.value.forEach((e, idx) => {
-    if (planStatus.value[e.key]) planStatus.value[e.key].priority = idx
-  })
+function interleavePlanEntries() {
+  sortablePlanEntries.value = interleaveMasteryPlans(sortablePlanEntries.value)
 }
 
 const filteredPlanOperators = computed(() => {

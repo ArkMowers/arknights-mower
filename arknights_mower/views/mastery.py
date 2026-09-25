@@ -224,6 +224,7 @@ def _add_or_reuse_plan(
     target_level,
     support_mode,
     path=None,
+    priority=0,
 ):
     """按钮路径的单条处理：能建就建，已有计划就复用（绝不建重复行）。
 
@@ -248,6 +249,7 @@ def _add_or_reuse_plan(
         skill_name=skill_name,
         char_name=name,
         support_mode=support_mode,
+        priority=priority,
         path=path,
     )
     if plan_id > 0:
@@ -371,12 +373,22 @@ class MasteryPlanView(MethodView):
             for item in items:
                 name = item.get("name", "")
                 skill_index = item.get("skill_index", 0)
+                priority = item.get("priority", 0)
                 if type(skill_index) is not int or skill_index not in (0, 1, 2):
                     results.append(
                         {
                             "key": name,
                             "status": "error",
                             "reason": "invalid skill_index",
+                        }
+                    )
+                    continue
+                if type(priority) is not int:
+                    results.append(
+                        {
+                            "key": name,
+                            "status": "error",
+                            "reason": "invalid priority",
                         }
                     )
                     continue
@@ -402,6 +414,7 @@ class MasteryPlanView(MethodView):
                     target_level,
                     item.get("support_mode", "auto"),
                     path=None,
+                    priority=priority,
                 )
                 _record(result, target, is_new, char_id)
         else:
