@@ -24,7 +24,7 @@ from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 if __package__:
-    from .github_download import download_url
+    from .github_download import request_download
     from .update_runtime import (
         InstanceScanError,
         detached_options,
@@ -38,7 +38,7 @@ if __package__:
         write_json,
     )
 else:
-    from github_download import download_url
+    from github_download import request_download
     from update_runtime import (
         InstanceScanError,
         detached_options,
@@ -886,16 +886,18 @@ class Worker:
 
             proxy = self.job.get("proxy")
             with (
-                requests.get(
-                    download_url(asset["url"], self.job.get("github_proxy", "")),
+                request_download(
+                    requests,
+                    "get",
+                    asset["url"],
+                    proxy=self.job.get("github_proxy", ""),
                     headers={"User-Agent": "Mower-Software-Update"},
                     proxies={"http": proxy, "https": proxy} if proxy else None,
                     stream=True,
                     timeout=(10, 10),
-                ) as response,
+                )[0] as response,
                 package.open("wb") as out,
             ):
-                response.raise_for_status()
                 size = 0
                 for chunk in response.iter_content(64 * 1024):
                     self.check_cancelled()
@@ -958,16 +960,18 @@ class Worker:
         self.report("downloading", "下载跨版本 OTA 差异包")
         proxy = self.job.get("proxy")
         with (
-            requests.get(
-                download_url(asset["url"], self.job.get("github_proxy", "")),
+            request_download(
+                requests,
+                "get",
+                asset["url"],
+                proxy=self.job.get("github_proxy", ""),
                 headers={"User-Agent": "Mower-Software-Update"},
                 proxies={"http": proxy, "https": proxy} if proxy else None,
                 stream=True,
                 timeout=(10, 10),
-            ) as response,
+            )[0] as response,
             package.open("wb") as out,
         ):
-            response.raise_for_status()
             size = 0
             digest = hashlib.sha256()
             for chunk in response.iter_content(64 * 1024):

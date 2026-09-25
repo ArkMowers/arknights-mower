@@ -106,6 +106,38 @@ describe('offline software package installation', () => {
     expect(component.autoUpdate.value).toBe(false)
   })
 
+  it('loads a Release rollback choice and requires confirmation before installation', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    await Promise.all(state.mounted.map((callback) => callback()))
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/release/rollback-options')
+        ? { ok: true, options: [{ version: 'v4.1.6-alpha.3' }] }
+        : { ok: true, status: 'idle' }
+    }))
+    state.client.post.mockImplementation(async (url) => ({
+      data: url.endsWith('/release/rollback-check')
+        ? { ok: true, check_id: 'rollback', version: 'v4.1.6-alpha.3', downgrade: true }
+        : { ok: true, id: 'rollback-job' }
+    }))
+    await component.loadRollbackOptions()
+    expect(component.rollbackOptions.value).toEqual([
+      { label: 'v4.1.6-alpha.3', value: 'v4.1.6-alpha.3' }
+    ])
+    component.rollbackVersion.value = 'v4.1.6-alpha.3'
+    await component.requestRollback()
+    expect(state.client.post).toHaveBeenCalledWith(
+      '/software-update/release/rollback-check',
+      { channel: 'beta', version: 'v4.1.6-alpha.3' },
+      { headers: { 'X-Mower-Update': '1' } }
+    )
+    expect(state.warning.mock.calls[0][0].title).toBe('确认回退版本？')
+    await state.warning.mock.calls[0][0].onPositiveClick()
+    expect(state.client.post.mock.calls.find(([url]) => url.endsWith('/start'))[1]).toMatchObject({
+      check_id: 'rollback',
+      confirm_downgrade: true
+    })
+  })
+
   it.each([true, false])(
     'inspects local contents before confirming, install=%s',
     async (confirm) => {

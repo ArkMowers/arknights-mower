@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 
 from arknights_mower import __version__
-from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import display_version
@@ -51,7 +51,7 @@ def _write_tmp_cache(data: dict) -> None:
 
 def _fetch_remote_version_json() -> dict | None:
     try:
-        r = requests.get(download_url(RESOURCE_VERSION_URL), timeout=30)
+        r, _ = request_download(requests, "get", RESOURCE_VERSION_URL, timeout=30)
         if r.status_code != 200:
             logger.warning(f"资源版本拉取失败: HTTP {r.status_code}")
             return None

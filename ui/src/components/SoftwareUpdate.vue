@@ -20,6 +20,9 @@ const background = ref(true)
 const autoCheck = ref(false)
 const autoUpdate = ref(false)
 const checked = ref(null)
+const rollbackOptions = ref([])
+const rollbackVersion = ref(null)
+const rollbackLoading = ref(false)
 const job = ref({ status: 'idle' })
 const showProgress = useUpdateProgress(job)
 const busy = ref(false)
@@ -191,6 +194,58 @@ async function checkUpdate() {
   }
 }
 
+async function loadRollbackOptions() {
+  const requestedChannel = channel.value
+  rollbackLoading.value = true
+  rollbackOptions.value = []
+  rollbackVersion.value = null
+  error.value = ''
+  try {
+    const { data } = await axios.get(`${base}/release/rollback-options`, {
+      params: { channel: requestedChannel }
+    })
+    if (!data.ok) throw new Error(data.message)
+    if (channel.value !== requestedChannel) return
+    rollbackOptions.value = data.options.map((item) => ({
+      label: item.version,
+      value: item.version
+    }))
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    rollbackLoading.value = false
+  }
+}
+
+async function requestRollback() {
+  if (!rollbackVersion.value || running.value || rollbackLoading.value || blocked.value) return
+  const requestedChannel = channel.value
+  const requestedVersion = rollbackVersion.value
+  rollbackLoading.value = true
+  error.value = ''
+  try {
+    await settingsRequest
+    const { data } = await axios.post(
+      `${base}/release/rollback-check`,
+      { channel: requestedChannel, version: requestedVersion },
+      { headers }
+    )
+    if (!data.ok) throw new Error(data.message)
+    if (channel.value !== requestedChannel || rollbackVersion.value !== requestedVersion) return
+    confirmSoftwareInstall(
+      dialogs,
+      info.value.version,
+      data,
+      info.value.instances.length,
+      (confirmed) => install(false, null, confirmed)
+    )
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    rollbackLoading.value = false
+  }
+}
+
 async function requestInstall(manual = false) {
   if (running.value || (!manual && checking.value) || blocked.value) return
   let selection
@@ -325,6 +380,8 @@ async function requestForceUpdate() {
 
 watch(channel, () => {
   checked.value = null
+  rollbackOptions.value = []
+  rollbackVersion.value = null
   lastCheckAt = 0
 })
 watch(
@@ -438,6 +495,38 @@ onUnmounted(() => {
             强制更新
           </n-button>
         </n-space>
+      </n-form-item>
+      <n-form-item v-if="info?.rollback_supported" label="版本回退">
+        <n-space align="center">
+          <n-button
+            size="small"
+            :loading="rollbackLoading"
+            :disabled="running || checking"
+            @click="loadRollbackOptions"
+          >
+            查看可回退版本
+          </n-button>
+          <n-select
+            v-model:value="rollbackVersion"
+            size="small"
+            class="rollback-select"
+            placeholder="选择旧版本"
+            :options="rollbackOptions"
+            :disabled="running || rollbackLoading || !rollbackOptions.length"
+            :input-props="{ 'aria-label': '回退目标版本' }"
+          />
+          <n-button
+            size="small"
+            type="warning"
+            :disabled="blocked || running || rollbackLoading || !rollbackVersion"
+            @click="requestRollback"
+          >
+            回退并安装
+          </n-button>
+        </n-space>
+      </n-form-item>
+      <n-form-item v-if="info?.rollback_supported" :show-label="false">
+        <span class="hint">可选择当前版本之前同渠道最近 3 个兼容的 Release；回退需确认。</span>
       </n-form-item>
       <n-form-item v-if="checked?.message" :show-label="false">
         <span>{{ checked.message }}</span>
@@ -623,6 +712,9 @@ onUnmounted(() => {
 .version {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+.rollback-select {
+  width: 180px;
 }
 .manual-upload {
   width: 100%;

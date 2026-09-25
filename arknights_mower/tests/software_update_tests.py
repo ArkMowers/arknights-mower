@@ -63,6 +63,53 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         state.start()
         self.addCleanup(state.stop)
 
+    def test_release_rollback_is_limited_to_three_previous_channel_versions(self):
+        versions = [
+            release(
+                f"v4.1.6-alpha.{number}",
+                prerelease=True,
+                system="windows",
+                arch="x64",
+                published_at=f"2026-09-{number:02d}T00:00:00Z",
+            )
+            for number in range(4, 9)
+        ]
+        versions.append(
+            release(
+                "v4.1.5",
+                system="windows",
+                arch="x64",
+                published_at="2026-09-07T12:00:00Z",
+            )
+        )
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.8"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "list_releases", return_value=versions),
+            patch.object(update.network_settings, "apply_http_proxy"),
+            patch.object(
+                update.network_settings,
+                "get_effective_settings",
+                return_value={"http_proxy": ""},
+            ),
+        ):
+            options = update.release_rollback_options("beta")["options"]
+            self.assertEqual(
+                [item["version"] for item in options],
+                ["v4.1.6-alpha.7", "v4.1.6-alpha.6", "v4.1.6-alpha.5"],
+            )
+            checked = update.check_release_rollback("beta", "v4.1.6-alpha.6")
+            self.assertTrue(checked["downgrade"])
+            self.assertEqual(update._checks[checked["check_id"]]["asset"]["size"], 12)
+            with self.assertRaisesRegex(ValueError, "最近三个"):
+                update.check_release_rollback("beta", "v4.1.6-alpha.4")
+            with self.assertRaisesRegex(ValueError, "最近三个"):
+                update.check_release_rollback("beta", "v4.1.5")
+            with patch.object(runtime, "frozen", return_value=False):
+                with self.assertRaisesRegex(ValueError, "源码版本管理"):
+                    update.release_rollback_options("beta")
+
     def test_channels_are_separate_and_drafts_are_excluded(self):
         data = [
             release("v4.1.6-alpha.3", True),

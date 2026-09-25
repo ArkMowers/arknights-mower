@@ -7,7 +7,7 @@ import requests
 from flask import Blueprint, abort, current_app, request
 
 from arknights_mower.utils import network_settings
-from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.github_download import download_url, request_download
 
 network_bp = Blueprint("network", __name__, url_prefix="/network")
 FILE_TEST_URL = (
@@ -46,7 +46,7 @@ def settings():
     return {"ok": True, **settings}
 
 
-def _probe_connection(label, url, proxy):
+def _probe_connection(label, url, proxy, download_proxy=None):
     started = time.monotonic()
     result = {"label": label, "ok": False}
     try:
@@ -55,9 +55,20 @@ def _probe_connection(label, url, proxy):
             client.trust_env = False
             if proxy:
                 client.proxies = {"http": proxy, "https": proxy}
-            with client.head(url, timeout=(10, 10), allow_redirects=True) as response:
-                response.raise_for_status()
-        result.update(ok=True, message="连接成功")
+            response, selected_url = request_download(
+                client,
+                "head",
+                url,
+                proxy=download_proxy,
+                timeout=(10, 10),
+                allow_redirects=True,
+            )
+            with response:
+                used_fallback = not download_proxy and selected_url != url
+        result.update(
+            ok=True,
+            message="默认站点 ghfast.top 回退连接成功" if used_fallback else "连接成功",
+        )
     except requests.ConnectTimeout:
         result["message"] = "建立连接超过 10 秒，请稍后重试或检查代理服务"
     except requests.ReadTimeout:
@@ -76,9 +87,13 @@ def _probe_connection(label, url, proxy):
 def test_connections():
     """Probe the saved download route; callers save edited settings separately."""
     settings = network_settings.get_effective_settings()
-    url = download_url(FILE_TEST_URL, settings["github_proxy"])
     result = _probe_connection(
-        "GitHub 文件下载", url, network_settings.proxy_for_url(url)
+        "GitHub 文件下载",
+        FILE_TEST_URL,
+        network_settings.proxy_for_url(
+            download_url(FILE_TEST_URL, settings["github_proxy"])
+        ),
+        settings["github_proxy"],
     )
     return {"ok": True, "settings": settings, "results": [result]}
 
