@@ -27,6 +27,7 @@ from arknights_mower.utils.software_update_worker import (
 )
 
 REPO = "ArkMowers/arknights-mower"
+OTA_REPO = "ArkMowers/MowerRelease"
 API = f"https://api.github.com/repos/{REPO}"
 RELEASES_URL = f"https://github.com/{REPO}/releases"
 CHANNELS = [
@@ -642,6 +643,51 @@ def choose_asset(release):
     }
 
 
+def choose_ota_asset(target_version, current_version, proxy=""):
+    """Use a published direct OTA when available; full Release remains authoritative."""
+    system, arch = platform_asset()
+    if system not in ("windows", "linux"):
+        return None
+    source = current_version.split("+", 1)[0].removeprefix("v")
+    target = target_version.removeprefix("v")
+    if not VERSION_RE.fullmatch(source) or not VERSION_RE.fullmatch(target):
+        return None
+    name = f"arknights-mower-ota_{source}_to_{target}_{system}_{arch}.zip"
+    try:
+        release = github(
+            "/releases/tags/" + quote(target_version, safe=""),
+            proxy,
+            repo=OTA_REPO,
+        )
+    except (requests.RequestException, ValueError):
+        return None
+    if (
+        not isinstance(release, dict)
+        or release.get("draft")
+        or release.get("tag_name") != target_version
+    ):
+        return None
+    asset = next((a for a in release.get("assets", []) if a.get("name") == name), None)
+    if not asset:
+        return None
+    digest = asset.get("digest") or ""
+    url = asset.get("browser_download_url") or ""
+    if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest) or not url.startswith(
+        f"https://github.com/{OTA_REPO}/releases/download/"
+    ):
+        return None
+    if not isinstance(asset.get("size"), int) or asset["size"] <= 0:
+        return None
+    return {
+        "name": name,
+        "url": url,
+        "size": asset["size"],
+        "sha256": digest[7:].lower(),
+        "platform": system,
+        "arch": arch,
+    }
+
+
 def source_tool_path():
     paths = os.environ.get("PATH", os.defpath).split(os.pathsep)
     if sys.platform == "darwin":
@@ -867,6 +913,11 @@ def check(channel, proxy=None):
         available = version_key(plan["version"]) != version_key(__version__)
         if available:
             plan["asset"] = choose_asset(release)
+            if not plan.get("downgrade"):
+                ota = choose_ota_asset(plan["version"], __version__, proxy)
+                if ota and ota["size"] < plan["asset"]["size"]:
+                    plan["ota_asset"] = ota
+                    plan["current_version"] = __version__
     plan["available"] = available
     plan["force_available"] = deployment == "source" and (
         available or current == plan["commit"]
