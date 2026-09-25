@@ -380,7 +380,7 @@ class ScreenshotStore:
         destination = self.folder / "errors" / archive_id
         try:
             center = datetime.fromtimestamp(int(archive_id) / 10**9)
-            rows = timeline(self.folder.parent / "log", destination, center)
+            rows = timeline(self.folder.parent / "log", destination, center, limit=None)
             for row in rows:
                 if row["screenshot"]:
                     row["screenshot"] = f"errors/{archive_id}/{row['screenshot']}"

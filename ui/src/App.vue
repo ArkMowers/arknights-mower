@@ -176,12 +176,12 @@
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";((showModal2 = false), $router.push('/mowersettings'))">
+                        <n-button @click=";(showModal2 = false), $router.push('/mowersettings')">
                           mower设置
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
+                        <n-button @click=";(showModal2 = false), $router.push('/maasettings')">
                           MAA设置
                         </n-button>
                       </div>
@@ -200,45 +200,52 @@
                     专精
                   </div>
                 </n-tab>
-                <n-tab name="报表" @click="showModal = true">
+                <n-tab name="数据图表" @click="showModal = true">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
-                    报表
+                    图表
                   </div>
                   <n-modal v-model:show="showModal">
                     <n-card
                       style="width: 300px"
-                      title="基建报表"
+                      title="数据图表"
                       :bordered="false"
                       size="huge"
                       role="dialog"
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/line'))">
+                        <n-button @click=";(showModal = false), $router.push('/record/line')">
                           心情曲线
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/pie'))">
+                        <n-button @click=";(showModal = false), $router.push('/record/pie')">
                           心情饼图
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/depot'))">
+                        <n-button @click=";(showModal = false), $router.push('/record/depot')">
                           仓库
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/report'))">
+                        <n-button @click=";(showModal = false), $router.push('/record/report')">
                           基建报告
                         </n-button>
                       </div>
                       <div>
                         <n-button
-                          @click=";((showModal = false), $router.push('/record/trading_analysis'))"
+                          @click=";(showModal = false), $router.push('/record/trading_analysis')"
                         >
                           贸易订单分析
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button
+                          @click=";(showModal = false), $router.push('/record/log-schedule')"
+                        >
+                          日志调度
                         </n-button>
                       </div>
                     </n-card>
@@ -435,6 +442,12 @@ const menuOptions = [
           ),
         icon: renderIcon(Newspaper),
         key: 'go-to-trading-analysis'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
+        icon: renderIcon(ReaderOutline),
+        key: 'go-to-log-schedule'
       }
     ]
   },
@@ -1385,8 +1398,8 @@ html[data-mower-theme='dark'] .sider-fade-zone:hover .sider-fade-btn {
 
 pre {
   word-break: break-all !important;
-  font-family:
-    'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace !important;
+  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC',
+    monospace !important;
 }
 
 .n-dynamic-input-item__action {
