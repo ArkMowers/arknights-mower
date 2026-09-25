@@ -1916,7 +1916,8 @@ onUnmounted(() => {
    ========================================================================= */
 .depot-hero {
   border-radius: 12px;
-  background: radial-gradient(
+  background:
+    radial-gradient(
       120% 140% at 0% 0%,
       color-mix(in srgb, var(--mower-primary) 10%, transparent),
       transparent 60%
@@ -3421,9 +3422,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-    'Noto Color Emoji';
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
+    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
 .depot-export-view.theme-dark {
@@ -3435,8 +3436,8 @@ onUnmounted(() => {
   --exp-panel-border: rgba(255, 255, 255, 0.1);
   --exp-muted: rgba(255, 255, 255, 0.6);
   --exp-subtle: rgba(255, 255, 255, 0.38);
-  --exp-hero-bg: radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.16), transparent 60%),
-    #1f1f24;
+  --exp-hero-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.16), transparent 60%), #1f1f24;
   --exp-pill-bg: #2b2b32;
 }
 
@@ -3449,8 +3450,8 @@ onUnmounted(() => {
   --exp-panel-border: rgba(0, 0, 0, 0.08);
   --exp-muted: rgba(0, 0, 0, 0.58);
   --exp-subtle: rgba(0, 0, 0, 0.38);
-  --exp-hero-bg: radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.12), transparent 60%),
-    #ffffff;
+  --exp-hero-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.12), transparent 60%), #ffffff;
   --exp-pill-bg: #edf1f5;
 }
 
