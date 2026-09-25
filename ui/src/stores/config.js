@@ -11,6 +11,7 @@ export const useConfigStore = defineStore('config', () => {
   const adb = ref('')
   const drone_count_limit = ref(0)
   const drone_room = ref('')
+  const swap_contact_train = ref(false)
   const drone_interval = ref(4)
   const enable_party = ref(true)
   const leifeng_mode = ref(true)
@@ -577,6 +578,7 @@ export const useConfigStore = defineStore('config', () => {
     refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
     enable_mastery.value = response.data.enable_mastery ?? true
+    swap_contact_train.value = response.data.swap_contact_train ?? false
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     mumu12IPC.value = response.data.mumu12IPC
@@ -611,6 +613,7 @@ export const useConfigStore = defineStore('config', () => {
       adb: adb.value,
       drone_count_limit: drone_count_limit.value,
       drone_room: drone_room.value,
+      swap_contact_train: swap_contact_train.value,
       drone_interval: drone_interval.value,
       enable_party: enable_party.value ? 1 : 0,
       leifeng_mode: leifeng_mode.value ? 1 : 0,
@@ -857,6 +860,7 @@ export const useConfigStore = defineStore('config', () => {
     save_config,
     drone_count_limit,
     drone_room,
+    swap_contact_train,
     drone_interval,
     enable_party,
     leifeng_mode,

@@ -410,6 +410,9 @@ class WorkshopDeerFodderItem(WorkShopItem):
 
 
 class RIICPart(ConfModel):
+    swap_contact_train: bool = False
+    "右侧训练室在办公室上方；默认办公室在上、训练室在下"
+
     class RunOrderGrandetModeConf(ConfModel):
         enable: bool = True
         "葛朗台跑单开关"
