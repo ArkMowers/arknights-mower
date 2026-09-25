@@ -18,6 +18,7 @@ const {
   operator_mood_limits,
   resting_priority,
   resting_priority_replacement,
+  free_room_exclusions,
   resting_standby,
   exhaust_require,
   rest_in_full,
@@ -200,6 +201,7 @@ function create_sub_plan() {
       rest_in_full: [],
       resting_priority: [],
       resting_priority_replacement: [],
+      free_room_exclusions: [],
       resting_standby: [],
       workaholic: [],
       refresh_trading: [],
@@ -242,6 +244,7 @@ const current_conf = ref({
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
   resting_priority_replacement: resting_priority_replacement.value,
+  free_room_exclusions: free_room_exclusions.value,
   resting_standby: resting_standby.value,
   workaholic: workaholic.value,
   exhaust_require: exhaust_require.value,
@@ -258,6 +261,7 @@ watchEffect(() => {
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
       resting_priority_replacement: resting_priority_replacement.value,
+      free_room_exclusions: free_room_exclusions.value,
       resting_standby: resting_standby.value,
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
@@ -281,6 +285,7 @@ watchEffect(() => {
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
     resting_priority_replacement.value = current_conf.value.resting_priority_replacement
+    free_room_exclusions.value = current_conf.value.free_room_exclusions
     resting_standby.value = current_conf.value.resting_standby
     workaholic.value = current_conf.value.workaholic
     refresh_trading.value = current_conf.value.refresh_trading
@@ -353,6 +358,7 @@ function replace_main_conf() {
     workaholic: workaholic.value,
     resting_priority: resting_priority.value,
     resting_priority_replacement: resting_priority_replacement.value,
+    free_room_exclusions: free_room_exclusions.value,
     resting_standby: resting_standby.value,
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
@@ -788,6 +794,16 @@ function movePlanForward() {
       <slick-operator-select
         :disabled="edit_locked"
         v-model="current_conf.free_blacklist"
+      ></slick-operator-select>
+    </n-form-item>
+    <n-form-item v-if="experimental_dorm_logic">
+      <template #label>
+        <span>不养闲人排除干员</span>
+        <help-text>开启不养闲人时，回满仍留宿，不让床，至上班离宿；心情上限优先。</help-text>
+      </template>
+      <slick-operator-select
+        :disabled="edit_locked"
+        v-model="current_conf.free_room_exclusions"
       ></slick-operator-select>
     </n-form-item>
     <n-form-item>

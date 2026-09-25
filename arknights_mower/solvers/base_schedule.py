@@ -834,6 +834,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 读到的床位时间重建派生回班。
                         get_time = True
                     if TaskTypes.RELEASE_DORM == self.task.type:
+                        if (
+                            getattr(self.op_data, "experimental_dorm_logic", False)
+                            and not getattr(self.task, "strict_mood_limit", False)
+                            and self.op_data.is_free_room_excluded(self.task.meta_data)
+                        ):
+                            # 修改名单后，缓存中尚未执行的普通清退任务也失效。
+                            self.task.plan = {}
                         if getattr(self.task, "strict_mood_limit", False) and not (
                             self.op_data.has_rest_mood_limit(self.task.meta_data)
                             and self.task.meta_data in self.op_data.operators
@@ -5658,7 +5665,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def preserve_resting_crafters(self, agents, room):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
-        if not room.startswith("dorm") or "Free" not in agents:
+        if not room.startswith("dorm"):
+            return
+        if self.op_data.experimental_dorm_logic:
+            moving = (
+                {
+                    name
+                    for names in self.task.plan.values()
+                    for name in names
+                    if name not in ("Current", "Free", "")
+                }
+                if self.task is not None
+                else set()
+            )
+            # 名单可能在任务入队后才修改；已写明新入住者的旧补床任务也须保床。
+            # 本次已明确上班或换床的原入住者不受保护，个人上限任务仍可离宿。
+            for index in range(len(agents)):
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    current is not None
+                    and current.name not in (set(agents) | moving)
+                    and self.op_data.is_free_room_excluded(current.name)
+                    and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                    and not (
+                        getattr(self.task, "strict_mood_limit", False)
+                        and self.task.meta_data == current.name
+                    )
+                ):
+                    agents[index] = current.name
+        if "Free" not in agents:
             return
         if not self.op_data.experimental_dorm_logic:
             replacements = sorted(
@@ -5687,16 +5722,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             return
         now = datetime.now()
-        moving = (
-            {
-                name
-                for names in self.task.plan.values()
-                for name in names
-                if name not in ("Current", "Free", "")
-            }
-            if self.task is not None
-            else set()
-        )
         replacements = [
             self.op_data.operators[name]
             for name in self.get_free_list(agents)
@@ -5808,6 +5833,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     and not preserve_dorm_occupants
                     and __agent.mood == __agent.upper_limit
+                    and not (
+                        __agent.is_resting()
+                        and self.op_data.is_free_room_excluded(__agent.name)
+                    )
                     and not __agent.room.startswith("dorm")
                     and not self.op_data.is_dorm_replacement_for_slot(
                         __agent.name, room, idx

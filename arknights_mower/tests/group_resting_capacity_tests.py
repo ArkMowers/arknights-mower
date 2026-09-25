@@ -649,6 +649,9 @@ def test_candidate_config_round_trip_and_backup_merge(solver, monkeypatch):
     old = PlanModel(**raw)
     assert old.conf.resting_standby == ""
     assert old.conf.resting_priority_replacement == ""
+    assert old.conf.free_room_exclusions == ""
+    old.conf.free_room_exclusions = OTHER_COVERS[0]
+    old.backup_plans[0].conf.free_room_exclusions = ",".join(OTHER_COVERS[:2])
     old.conf.resting_priority_replacement = OTHER_COVERS[0]
     old.backup_plans[0].conf.resting_priority_replacement = ",".join(OTHER_COVERS[:2])
     old.conf.resting_standby = DEEP[1]
@@ -669,7 +672,9 @@ def test_candidate_config_round_trip_and_backup_merge(solver, monkeypatch):
         == RestingTier.PRIORITY_REPLACEMENT
     )
     assert solver.op_data.config.resting_priority_replacement == OTHER_COVERS[:2]
+    assert solver.op_data.config.free_room_exclusions == OTHER_COVERS[:2]
     assert solver.op_data.operators[DEEP[2]].resting_priority == "standby"
     assert solver.op_data.swap_plan([False], refresh=True) is None
+    assert solver.op_data.config.free_room_exclusions == [OTHER_COVERS[0]]
     assert resting_tier(solver.op_data, OTHER_COVERS[1]) == RestingTier.REPLACEMENT
     assert solver.op_data.operators[DEEP[2]].resting_priority == "high"

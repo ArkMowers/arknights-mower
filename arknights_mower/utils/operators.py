@@ -179,6 +179,7 @@ def build_global_plan():
         exhaust_require=config.plan.conf.exhaust_require,
         resting_priority=config.plan.conf.resting_priority,
         resting_priority_replacement=config.plan.conf.resting_priority_replacement,
+        free_room_exclusions=config.plan.conf.free_room_exclusions,
         resting_standby=config.plan.conf.resting_standby,
         ling_xi=config.plan.conf.ling_xi,
         mood_limits=plan["conf"].get("mood_limits"),
@@ -241,6 +242,7 @@ def build_global_plan():
             dorm_order_override=i["conf"].get("dorm_order_override", False),
             experimental_dorm_logic=conf.experimental_dorm_logic,
             resting_standby=i["conf"].get("resting_standby", ""),
+            free_room_exclusions=i["conf"].get("free_room_exclusions", ""),
             resting_priority_replacement=i["conf"].get(
                 "resting_priority_replacement", ""
             ),
@@ -649,6 +651,16 @@ class Operators:
             and op is not None
             and resting_mood(op) != float("inf")
             and op.current_mood() >= op.upper_limit
+        )
+
+    def is_free_room_excluded(self, name):
+        """名单内入住者不被清退或接管床位；达到个人上限仍须离宿。"""
+        return (
+            bool(name)
+            and self.experimental_dorm_logic
+            and getattr(self.config, "free_room", False)
+            and name in getattr(self.config, "free_room_exclusions", ())
+            and not self.rest_mood_complete(name)
         )
 
     def apply_custom_mood_limits(self, operator):
@@ -1690,6 +1702,8 @@ class Operators:
         if name == "" or name not in self.operators:
             return True
         op = self.operators[name]
+        if self.is_free_room_excluded(name):
+            return False
         if not self.experimental_dorm_logic:
             if dorm.time is not None and dorm.time < datetime.now():
                 return True

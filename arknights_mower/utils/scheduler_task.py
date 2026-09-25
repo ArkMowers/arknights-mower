@@ -873,6 +873,8 @@ def generate_plan_by_drom(
             if op.exhaust_require:
                 exhaust_exist = True
             if not op.is_high():
+                if rest_in_full is None and op_data.is_free_room_excluded(op.name):
+                    continue
                 # 释放宿舍类别
                 if (
                     op.current_room not in op_data.plan
@@ -1111,7 +1113,11 @@ def plan_metadata(op_data, tasks):
             ):
                 continue
             grouped_dorms[operator.group].append(dorm)
-            if not operator.is_high() and not op_data.has_rest_mood_limit(dorm.name):
+            if (
+                not operator.is_high()
+                and not op_data.has_rest_mood_limit(dorm.name)
+                and not op_data.is_free_room_excluded(dorm.name)
+            ):
                 free_rooms.append(dorm)
     new_task = {}
     for group_name, dorms in grouped_dorms.items():
@@ -1670,6 +1676,8 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     or not op_data.is_effective_free_slot(value)
                 ):
                     continue
+                if op_data.is_free_room_excluded(value.name):
+                    continue
                 agent = op_data.operators.get(value.name)
                 if agent is not None:
                     if (agent.current_room, agent.current_index) != value.position:
@@ -1765,6 +1773,8 @@ def _try_add_release_dorm_legacy(plan, time, op_data, tasks):
 
 
 def add_release_dorm(tasks, op_data, name):
+    if op_data.is_free_room_excluded(name):
+        return
     _idx, __dorm = op_data.get_dorm_by_name(name)
     if (
         __dorm.time > datetime.now()
