@@ -72,7 +72,9 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual((archive / previous.name).read_bytes(), b"old")
         self.assertEqual((archive / Path(future).name).read_bytes(), b"after error")
         self.assertFalse((archive / too_old.name).exists())
-        self.assertIn("设备连接失败", (archive / "event.json").read_text())
+        self.assertIn(
+            "设备连接失败", (archive / "event.json").read_text(encoding="utf-8")
+        )
 
         self.retention = 0
         self.store.cleanup()
@@ -103,7 +105,7 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(archived.exists())
         image.unlink()
         self.store._save_error_logs(archive_id)
-        rows = json.loads((archived.parent / "logs.json").read_text())
+        rows = json.loads((archived.parent / "logs.json").read_text(encoding="utf-8"))
         self.assertEqual(rows[0]["screenshot"], f"errors/{archive_id}/{image.name}")
 
     def test_pending_screenshots_in_error_window_are_not_evicted(self):
