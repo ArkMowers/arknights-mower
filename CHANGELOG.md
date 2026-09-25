@@ -1,5 +1,63 @@
 # CHANGELOG
 
+## 4.1.6-alpha.8 - 2026-09-25
+
+### New
+
+- 重构仓库页面并支持历史库存对比与走势分析 [(#1128)](https://github.com/ArkMowers/arknights-mower/pull/1128) @NiceAfternoon
+- 增加可记忆的关闭与启动偏好 [(#1113)](https://github.com/ArkMowers/arknights-mower/pull/1113) @983122046
+- 测试宿舍逻辑支持自定义心情上下限 [(#1132)](https://github.com/ArkMowers/arknights-mower/pull/1132) @ALEXsun0
+- 增加重启续接进程操作 [(#1104)](https://github.com/ArkMowers/arknights-mower/pull/1104) @983122046 @ALEXsun0
+- 手动编辑锁与副表下拉交互优化 [(#1117)](https://github.com/ArkMowers/arknights-mower/pull/1117) @983122046 @ALEXsun0
+- 日志页支持定时启动 [(#1121)](https://github.com/ArkMowers/arknights-mower/pull/1121) @ALEXsun0
+- 统一心情报表拖拽排序并支持自定义观察表 [(#1119)](https://github.com/ArkMowers/arknights-mower/pull/1119) @983122046
+- 记录肥鸭充能前后心情 [(#1103)](https://github.com/ArkMowers/arknights-mower/pull/1103) @ALEXsun0
+- 肥鸭心情曲线标注被充能干员 [(#1097)](https://github.com/ArkMowers/arknights-mower/pull/1097) @ALEXsun0
+- preserve recovery targets across plan reorder [(#1094)](https://github.com/ArkMowers/arknights-mower/pull/1094) @ALEXsun0
+- rebalance temporary group beds [(#1093)](https://github.com/ArkMowers/arknights-mower/pull/1093) @ALEXsun0
+
+### Bug Fixes
+
+- 保留恢复记录并修复测试逻辑满心情离宿 [(#1135)](https://github.com/ArkMowers/arknights-mower/pull/1135) @ALEXsun0
+- keep title bar active on desktop and support late bridge readiness [(#1133)](https://github.com/ArkMowers/arknights-mower/pull/1133) @NiceAfternoon
+- 使用模板匹配识别九色鹿因果 [(#1134)](https://github.com/ArkMowers/arknights-mower/pull/1134) @ALEXsun0
+- 修复 Windows 窗口尺寸记忆与最大化状态同步 [(#1112)](https://github.com/ArkMowers/arknights-mower/pull/1112) @983122046
+- 增加会客室线索流程在产物收取提示浮动时的等待处理 [(#1129)](https://github.com/ArkMowers/arknights-mower/pull/1129) @NiceAfternoon @ALEXsun0
+- 稳定宿舍逻辑，不养闲人修复及其与宿舍候补干员联动 [(#1131)](https://github.com/ArkMowers/arknights-mower/pull/1131) @Hul11n @ALEXsun0
+- 用游戏字体模板复核训练室技能 [(#1120)](https://github.com/ArkMowers/arknights-mower/pull/1120) @ALEXsun0
+- 修复宿舍排班包含空闲位时换班读取心情异常 [(#1126)](https://github.com/ArkMowers/arknights-mower/pull/1126) @NiceAfternoon
+- 避免切换产物后补队列确认误报超时 [(#1127)](https://github.com/ArkMowers/arknights-mower/pull/1127) @ALEXsun0
+- 将数据标签限定于饼图，避免干扰心情曲线 [(#1125)](https://github.com/ArkMowers/arknights-mower/pull/1125) @983122046
+- 恢复周计划控件并移除日志页重复操作 [(#1124)](https://github.com/ArkMowers/arknights-mower/pull/1124) @ALEXsun0
+- 优先识别已展开的导航栏 [(#1122)](https://github.com/ArkMowers/arknights-mower/pull/1122) @ALEXsun0
+- 校准房间姓名区域并训练模板 [(#1116)](https://github.com/ArkMowers/arknights-mower/pull/1116) @ALEXsun0
+- 明确刷理智周计划三种执行状态 [(#1118)](https://github.com/ArkMowers/arknights-mower/pull/1118) @983122046
+- 优化干员进驻的识别与选人流程 [(#1115)](https://github.com/ArkMowers/arknights-mower/pull/1115) @NiceAfternoon
+- 阻止排班干员进入专精训练 [(#1109)](https://github.com/ArkMowers/arknights-mower/pull/1109) @ALEXsun0
+- 验证排班时拦截未持有干员 [(#1111)](https://github.com/ArkMowers/arknights-mower/pull/1111) @ALEXsun0
+- 扩展九色鹿垫刀素材类型 [(#1114)](https://github.com/ArkMowers/arknights-mower/pull/1114) @ALEXsun0
+- 修正日志页空任务布局 [(#1108)](https://github.com/ArkMowers/arknights-mower/pull/1108) @ALEXsun0
+- 修复葛朗台跑单对已就绪订单误报漏单的问题 @NiceAfternoon
+- 优化运行日志布局与任务刷新 [(#1101)](https://github.com/ArkMowers/arknights-mower/pull/1101) @983122046 @ALEXsun0
+- 在心情提示框显示肥鸭充能对象 [(#1100)](https://github.com/ArkMowers/arknights-mower/pull/1100) @ALEXsun0
+- 合并延期排班并阻止单回宿舍循环 [(#1098)](https://github.com/ArkMowers/arknights-mower/pull/1098) @ALEXsun0
+- 修复窗口刚打开时标题栏不显示资源包版本的问题 [(#1099)](https://github.com/ArkMowers/arknights-mower/pull/1099) @NiceAfternoon
+- 修复重排后停摆与陈旧床位循环 [(#1096)](https://github.com/ArkMowers/arknights-mower/pull/1096) @ALEXsun0
+- inherit unset backup room order [(#1095)](https://github.com/ArkMowers/arknights-mower/pull/1095) @ALEXsun0
+- 使用包内版本信息校验手动安装包 [(#1092)](https://github.com/ArkMowers/arknights-mower/pull/1092) @ALEXsun0
+
+### Improvements
+
+- 重构测试宿舍逻辑的换班与副表调度 [(#1110)](https://github.com/ArkMowers/arknights-mower/pull/1110) @ALEXsun0
+- 移除跑单状态读取的重复进房流程 [(#1107)](https://github.com/ArkMowers/arknights-mower/pull/1107) @ALEXsun0
+
+### Other
+
+- prerelease v4.1.6-alpha.8 [(#1137)](https://github.com/ArkMowers/arknights-mower/pull/1137) @NiceAfternoon
+- 换床后重新采样令夕上限计时 [(#1136)](https://github.com/ArkMowers/arknights-mower/pull/1136) @ALEXsun0
+
+**Full Changelog**: [v4.1.6-alpha.7...v4.1.6-alpha.8](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.7...v4.1.6-alpha.8)
+
 ## 4.1.6-alpha.7 - 2026-09-21
 
 ### New
