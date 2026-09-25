@@ -29,6 +29,21 @@ function setup() {
 }
 
 describe('configuration restore autosave coordination', () => {
+  it('includes current advanced settings in saved plans without the drone room', async () => {
+    const { config, plan } = setup()
+    plan.set_advanced_settings_source(() => config.build_advanced_settings())
+    config.drone_room = 'room_1_1'
+    config.drone_count_limit = 140
+    config.resting_threshold = 75
+    config.product_switching = { waiting_seconds: 5 }
+    await plan.save_plan()
+    const saved = axios.post.mock.lastCall[1].advanced_settings
+    expect(saved.drone_count_limit).toBe(140)
+    expect(saved.resting_threshold).toBe(0.75)
+    expect(saved.product_switching.waiting_seconds).toBe(5)
+    expect(saved).not.toHaveProperty('drone_room')
+  })
+
   it('saves and reloads dorm order as part of the plan', async () => {
     const { plan } = setup()
     plan.dorm_order = ['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4']

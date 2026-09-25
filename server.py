@@ -21,6 +21,10 @@ from werkzeug.security import safe_join
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config, network_settings
+from arknights_mower.utils.config.plan_advanced import (
+    apply_advanced_settings,
+    export_advanced_settings,
+)
 from arknights_mower.utils.config_backup import backup_lock
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
@@ -815,6 +819,8 @@ def load_plan_from_json():
         from arknights_mower.utils.workshop_config import workshop_lock
 
         plan = config.PlanModel(**request.json)
+        # 校验随排班保存的设置；网页配置保存仍负责更新运行配置。
+        apply_advanced_settings(config.conf, plan.advanced_settings)
         with workshop_lock:
             previous_plan = config.plan
             config.plan = plan
@@ -1214,12 +1220,30 @@ def import_from_image():
             imported_plan = parse_plan_document(qrcode.decode(img))
     except (ValueError, TypeError, RecursionError, OSError, ZlibError):
         return "排班表导入失败：请选择有效的排班 JSON、排班图片或包含 config 文件夹的 ZIP 备份"
+    try:
+        imported_conf = apply_advanced_settings(
+            config.conf, imported_plan.advanced_settings
+        )
+    except (ValueError, TypeError):
+        return "排班表导入失败：高级设置无效"
     previous_plan = config.plan
+    previous_conf = config.conf
+    plan_saved = False
     try:
         config.plan = imported_plan
         config.save_plan()
+        plan_saved = True
+        if imported_plan.advanced_settings is not None:
+            config.conf = imported_conf
+            config.save_conf()
     except OSError:
         config.plan = previous_plan
+        config.conf = previous_conf
+        if plan_saved:
+            try:
+                config.save_plan()
+            except OSError:
+                logger.exception("排班表回滚失败")
         logger.exception("排班表写入失败")
         return "排班表导入失败：文件写入失败，原排班已保留"
     return "排班已加载"
@@ -1275,9 +1299,9 @@ def save_file_dialog():
 
     upper = Image.open(img)
 
-    img = qrcode.export(
-        config.plan.model_dump(exclude_none=True), upper, config.conf.theme
-    )
+    plan_data = config.plan.model_dump(exclude_none=True)
+    plan_data["advanced_settings"] = export_advanced_settings(config.conf)
+    img = qrcode.export(plan_data, upper, config.conf.theme)
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
     buffer.seek(0)
@@ -1287,7 +1311,13 @@ def save_file_dialog():
 @app.route("/export-json")
 @require_token
 def export_json():
-    return send_file(config.plan_path)
+    plan_data = config.plan.model_dump(exclude_none=True)
+    plan_data["advanced_settings"] = export_advanced_settings(config.conf)
+    return app.response_class(
+        json.dumps(plan_data, ensure_ascii=False, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": "attachment; filename=plan.json"},
+    )
 
 
 @app.route("/validate-plan", methods=["POST"])

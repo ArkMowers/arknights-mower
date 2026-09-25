@@ -589,6 +589,7 @@ const adbPort = computed(() => {
 })
 
 const plan_store = usePlanStore()
+plan_store.set_advanced_settings_source(() => config_store.build_advanced_settings())
 const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 

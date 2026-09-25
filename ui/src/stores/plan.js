@@ -5,6 +5,10 @@ import { deepcopy } from '@/utils/deepcopy'
 import { factory_product_ids } from '@/utils/base_products'
 
 export const usePlanStore = defineStore('plan', () => {
+  let advancedSettingsSource = null
+  function set_advanced_settings_source(source) {
+    advancedSettingsSource = source
+  }
   const ling_xi = ref(1)
   const mood_limits = ref(null)
   const operator_mood_limits = ref({})
@@ -237,6 +241,7 @@ export const usePlanStore = defineStore('plan', () => {
       },
       backup_plans: deepcopy(backup_plans.value)
     }
+    if (advancedSettingsSource) result.advanced_settings = advancedSettingsSource()
     for (const b of result.backup_plans) {
       for (const i of backup_conf_convert_list) {
         b.conf[i] = list2str(b.conf[i])
@@ -309,6 +314,7 @@ export const usePlanStore = defineStore('plan', () => {
     autosave_paused,
     wait_for_plan_save: () => planSaveRequest,
     save_plan,
+    set_advanced_settings_source,
     load_plan,
     load_operators,
     ling_xi,

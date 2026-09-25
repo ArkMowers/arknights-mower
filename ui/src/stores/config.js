@@ -768,6 +768,30 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  function build_advanced_settings() {
+    return {
+      product_switching: product_switching.value,
+      drone_count_limit: drone_count_limit.value,
+      drone_interval: drone_interval.value,
+      reload_room: Array.isArray(reload_room.value)
+        ? reload_room.value.join(',')
+        : reload_room.value,
+      resting_threshold: resting_threshold.value / 100,
+      version_update_resting_threshold: version_update_resting_threshold.value / 100,
+      version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
+      free_room: free_room.value,
+      experimental_dorm_logic: experimental_dorm_logic.value,
+      dorm_order: Array.isArray(dorm_order.value) ? dorm_order.value.join(',') : dorm_order.value,
+      merge_interval: merge_interval.value,
+      fia_fool: fia_fool.value,
+      refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
+      assistant_follows_schedule: assistant_follows_schedule.value,
+      fia_threshold: fia_threshold.value / 100,
+      rescue_threshold: rescue_threshold.value / 100,
+      favorite: Array.isArray(favorite.value) ? favorite.value.join(',') : favorite.value
+    }
+  }
+
   const loaded = inject('loaded')
   watch(
     maa_weekly_plan,
@@ -888,6 +912,7 @@ export const useConfigStore = defineStore('config', () => {
     item_list,
     maa_gap,
     build_config,
+    build_advanced_settings,
     defaultLaunchCommand,
     simulator,
     resting_threshold,
