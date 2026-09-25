@@ -23,6 +23,12 @@ Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 
 5. 将 tag 名称和提交 SHA 传给 `release-build.yml`，在同一次 workflow 链路中
    继续构建和发布。
 
+Release PR 合入后，维护者运行上述发布准备流程。`release-build.yml` 在完整包
+全部上传到主仓 Release 后请求 MowerRelease 镜像完整包并生成 OTA；因此每个版本
+不需要另开 OTA 发布 PR。即时跨仓库触发需要主仓配置仅授权 MowerRelease
+Contents 写入的 `MOWER_RELEASE_TOKEN`；未配置时，MowerRelease 每五分钟
+自动检查最新 Release 并补发 OTA。正式版没有完整安装包时会跳过镜像。
+
 这个入口只向当前仓库的 `origin` 写入内容。它不会根据 tag 查找来源分支，也
 不会向其他远端或固定名称的分支推送。
 

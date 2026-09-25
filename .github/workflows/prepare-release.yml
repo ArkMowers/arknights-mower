@@ -151,6 +151,8 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release-build.yml
+    secrets:
+      MOWER_RELEASE_TOKEN: ${{ secrets.MOWER_RELEASE_TOKEN }}
     with:
       tag_name: ${{ needs.prepare.outputs.tag_name }}
       release_sha: ${{ needs.prepare.outputs.release_sha }}

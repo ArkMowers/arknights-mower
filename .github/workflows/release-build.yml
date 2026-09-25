@@ -39,6 +39,10 @@ on:
         description: 发布 tag 必须指向的提交
         type: string
         required: true
+    secrets:
+      MOWER_RELEASE_TOKEN:
+        description: 用于触发 MowerRelease 打包的细粒度令牌
+        required: false
 
 concurrency:
   group: release-${{ github.repository }}-${{ inputs.tag_name || github.ref_name }}
@@ -637,3 +641,16 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           draft: false
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+
+      - name: Request MowerRelease OTA packaging
+        env:
+          GH_TOKEN: ${{ secrets.MOWER_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo '::notice::MOWER_RELEASE_TOKEN is unset; MowerRelease will find this release during its scheduled check.'
+            exit 0
+          fi
+          gh api --method POST repos/ArkMowers/MowerRelease/dispatches \
+            -f event_type=mower_release_published \
+            -f "client_payload[tag]=$RELEASE_TAG"
