@@ -1,5 +1,6 @@
 """用尽任务协调被占用的替班，不拆休息组、不提前改变实际床位。"""
 
+import ctypes
 import sys
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -269,3 +270,40 @@ def test_group_recall_restores_temporary_dorm_slot_and_keeps_occupant(solver):
     assert support["dormitory_1"][1] == "爱丽丝"
     finish_support(solver)
     assert solver.op_data.operators["砾"].is_resting()
+
+
+def test_exhaust_simulation_clones_mutable_state_without_copying_eval_capsule(
+    solver, monkeypatch
+):
+    """Regression for the PyCapsule deepcopy crash in exhausted-shift fallback."""
+    make_capsule = ctypes.pythonapi.PyCapsule_New
+    make_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    make_capsule.restype = ctypes.py_object
+    source = solver.op_data
+    # Real expression evaluators may contain extension-backed PyCapsules.
+    source._test_unpicklable_capsule = make_capsule(ctypes.c_void_p(42), None, None)
+    before_mood = source.operators["机械师"].mood
+    before_bed = source.dorm[0].name
+
+    def check_simulated_rest(instance, _names, _replacement, plan, _count):
+        assert instance is not solver
+        assert instance.op_data is not source
+        assert instance.op_data.eval_model is source.eval_model
+        assert (
+            instance.op_data._test_unpicklable_capsule
+            is source._test_unpicklable_capsule
+        )
+        assert instance.op_data.operators["机械师"] is not source.operators["机械师"]
+        assert instance.op_data.dorm[0] is not source.dorm[0]
+        instance.op_data.operators["机械师"].mood = 18
+        instance.op_data.dorm[0].name = "机械师"
+        plan["simulated"] = ["机械师"]
+
+    monkeypatch.setattr(BaseSchedulerSolver, "get_resting_plan", check_simulated_rest)
+    monkeypatch.setattr(
+        "arknights_mower.utils.exhaust_replacement.plan_exhaust_support",
+        lambda data, candidates, can_rest, _mastery, _protected, _fia: can_rest(data),
+    )
+    assert solver._plan_exhaust_support(["机械师"]) is True
+    assert source.operators["机械师"].mood == before_mood
+    assert source.dorm[0].name == before_bed

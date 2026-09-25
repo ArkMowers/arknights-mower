@@ -480,7 +480,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         def can_rest(data):
             simulation = copy.copy(self)
-            simulation.op_data = copy.deepcopy(data)
+            # Copy mutable scheduling state only: eval_model holds unpickleable PyCapsules.
+            simulation.op_data = data.project_arrangements([])
             simulation.tasks = copy.deepcopy(self.tasks)
             result = {}
             simulation.get_resting_plan(
