@@ -288,7 +288,7 @@ class SourceEnvironmentTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "仅支持源码"):
                     update.source_repository()
 
-    def test_cache_reset_only_removes_saved_state_for_each_instance(self):
+    def test_source_version_restart_preserves_saved_state(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             work = root / "work"
@@ -301,6 +301,8 @@ class SourceEnvironmentTests(unittest.TestCase):
                     "deployment": "source",
                     "operation": "source-version",
                     "version": "old",
+                    "background": False,
+                    "python": sys.executable,
                 },
             )
             records = [
@@ -336,22 +338,24 @@ class SourceEnvironmentTests(unittest.TestCase):
                         db.execute(f"CREATE TABLE {table} (value TEXT)")
                         db.execute(f"INSERT INTO {table} VALUES ('keep')")
                     db.commit()
-            Worker(work / "job.json").clear_source_runtime_snapshots(
-                records
-                + records
-                + [{"kind": "manager"}, {"kind": "instance", "space": "missing"}]
-            )
+            with patch.object(subprocess, "Popen") as process:
+                Worker(work / "job.json").restart(
+                    [dict(record, running=True, name="测试实例") for record in records],
+                    verify=False,
+                )
+            self.assertEqual(process.call_count, len(records))
+            for call in process.call_args_list:
+                self.assertEqual(call.kwargs["env"]["MOWER_RESUME_MODE"], "1")
             for path in paths:
                 with closing(sqlite3.connect(path / "tmp/data.db")) as db:
                     self.assertEqual(
-                        db.execute("SELECT COUNT(*) FROM saved_state").fetchone()[0], 0
+                        db.execute("SELECT COUNT(*) FROM saved_state").fetchone()[0], 1
                     )
                     for table in ("mastery_plan", "inventory", "history"):
                         self.assertEqual(
                             db.execute(f"SELECT value FROM {table}").fetchall(),
                             [("keep",)],
                         )
-            self.assertFalse((root / "missing").exists())
 
 
 if __name__ == "__main__":

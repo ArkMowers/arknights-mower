@@ -13,7 +13,6 @@ import posixpath
 import re
 import shutil
 import signal
-import sqlite3
 import stat
 import subprocess
 import sys
@@ -22,7 +21,6 @@ import threading
 import time
 import traceback
 import zipfile
-from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 if __package__:
@@ -1395,8 +1393,6 @@ class Worker:
         )
 
     def restart(self, records, verify=True):
-        if self.job.get("operation") in ("source-version", "source-pr"):
-            self.clear_source_runtime_snapshots(records)
         self.report("restarting", "恢复实例，等待网页服务就绪")
         processes = []
         if verify:
@@ -1411,6 +1407,10 @@ class Worker:
             ):
                 continue
             env = launch_environment(record, self.job["id"], self.job["background"])
+            if record["kind"] == "instance" and record.get("running"):
+                env["MOWER_RESUME_MODE"] = "1"
+            else:
+                env.pop("MOWER_RESUME_MODE", None)
             if self.job.get("tool_path"):
                 env["PATH"] = self.job["tool_path"]
             with (self.work / "restart.log").open("ab") as log:
@@ -1476,34 +1476,6 @@ class Worker:
         raise RuntimeError(
             "新版本启动失败或不支持更新恢复协议，准备恢复原版本；详情见 restart.log"
         )
-
-    def clear_source_runtime_snapshots(self, records):
-        """Old launchers may resume mode 0; remove only their runtime snapshots."""
-        self.report("resetting", "重置实例运行缓存，保留配置、专精计划和数据库记录")
-        databases = set()
-        for record in records:
-            if record.get("kind") != "instance":
-                continue
-            data = record.get("data_dir")
-            base = Path(data).expanduser() if data else self.root
-            if not base.is_absolute():
-                base = Path(record.get("cwd") or self.root) / base
-            database = (base / record.get("space", "") / "tmp/data.db").resolve()
-            if database in databases or not database.is_file():
-                continue
-            databases.add(database)
-            with (
-                closing(
-                    sqlite3.connect(
-                        database.as_uri() + "?mode=rw", uri=True, timeout=10
-                    )
-                ) as connection,
-                connection,
-            ):
-                if connection.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
-                ).fetchone():
-                    connection.execute("DELETE FROM saved_state")
 
     def rollback(self):
         self.report("rollback", "安装未完成，恢复原版本")

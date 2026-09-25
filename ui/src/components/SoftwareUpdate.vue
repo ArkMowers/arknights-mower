@@ -541,7 +541,7 @@ onUnmounted(() => {
       </n-form-item>
       <n-form-item v-if="info?.capabilities?.silent_restart !== false" :show-label="false">
         <span class="hint"
-          >更新后重启同一安装目录下所有运行实例；原本运行中的任务重置运行缓存后重新开始。在线更新与上传安装均使用上方的重启方式。</span
+          >更新后重启同一安装目录下所有运行实例；原本运行中的实例保留已保存的心情和位置，按当前排班重新生成任务。在线更新与上传安装均使用上方的重启方式。</span
         >
       </n-form-item>
       <n-form-item v-if="source" :show-label="false">
