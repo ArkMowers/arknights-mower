@@ -127,3 +127,30 @@ def test_idle_fill_waits_until_working_group_has_reserved_beds(solver):
 
     assert plan["room_1_1"] == ["伺夜"]
     assert {bed.name for bed in data.dorm} == {"令", "黑键"}
+
+
+@pytest.mark.parametrize("solver", [True], indirect=True)
+def test_newcomer_uses_vip_vacated_by_same_shift_replacement(solver):
+    data = solver.op_data
+    first, second = "dormitory_1", "dormitory_2"
+    # 首个宿舍只剩一个动态床位，正被本轮即将上岗的替班占用。
+    for index, name in ((3, "红"), (4, "陈")):
+        data.plan[first][index] = Room(name, "", [])
+    data.dorm = [bed for bed in data.dorm if data.is_effective_free_slot(bed)]
+    cover = data.operators["Mon3tr"]
+    cover.current_room, cover.current_index = first, 2
+    data.dorm[0].name = cover.name
+    data.config.ope_resting_priority = ["黑键"]
+    data.operators["黑键"].mood = 8
+
+    work_plan = solver.resting()
+
+    assert work_plan["central"][0] == "Mon3tr"
+    assert next(bed for bed in data.dorm if bed.name == "黑键").position[0] == second
+    dorm_plan = try_reorder(data, work_plan)
+    assert dorm_plan[first] == ["Current", "Current", "黑键", "Current", "Current"]
+    projected = data.project_arrangements([work_plan, dorm_plan])
+    assert projected.operators["Mon3tr"].current_room == "central"
+    assert projected.get_dorm_by_name("黑键")[1].position == (first, 2)
+    assert sorted(bed.name for bed in projected.dorm if bed.name) == ["令", "黑键"]
+    assert try_reorder(projected, {}) == {}

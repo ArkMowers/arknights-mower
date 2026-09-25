@@ -640,7 +640,7 @@ def test_explicit_free_correction_can_remove_fixed_resident(solver):
 
     solver.preserve_resting_crafters(agents, "dormitory_1")
 
-    assert agents[0] == "Free"
+    assert agents == ["冰酿", "泥岩", "能天使", "年", ""]
 
 
 def test_explicit_free_resident_slot_reduces_required_free_beds(solver):

@@ -491,7 +491,12 @@ class Operators:
                 if _dorm.agent == "Free" and _idx <= 1:
                     if "波登可" not in [_agent.agent for _agent in bed_plan[dorm]]:
                         return "宿舍必须安排2个宿管"
-                if _dorm.agent != "Free" and free_found:
+                # The experimental merged backup may replace individual Free beds.
+                if (
+                    _dorm.agent != "Free"
+                    and free_found
+                    and not (update and experimental)
+                ):
                     return "Free必须连续且安排在宿管后"
                 if (
                     _dorm.agent == "Free"

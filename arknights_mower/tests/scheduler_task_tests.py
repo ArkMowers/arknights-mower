@@ -434,7 +434,7 @@ class TestScheduling(unittest.TestCase):
         self.assertNotEqual(res, None)
 
     def test_reorder_1(self):
-        # 新主班夕优先取得单回位；已有休息者凯尔希仍落实已选床位。
+        # 夕取得首个单回位，夜刀续到空单回位；凯尔希仍落实已选普通床位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -442,11 +442,11 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
-        self.assertEqual(plan["dormitory_2"][2], "Free")
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
+        self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
 
     def test_reorder_2(self):
-        # 两个新主班分别取得单回位，原普通替班继续留在其他床位。
+        # 三个主班取得单回位，普通替班留在其余床位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -455,9 +455,10 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[4].name = "森蚺"
 
         plan = try_reorder(op_data, {})
-        self.assertEqual(len(plan), 2)
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
-        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "见行者"])
+        self.assertEqual(len(plan), 3)
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
+        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_3"][3], "见行者")
 
     def test_reorder_3(self):
         # 未执行前重复演算得到同一结果，不会在两种宿舍布局间振荡。
@@ -472,8 +473,15 @@ class TestScheduling(unittest.TestCase):
         first = try_reorder(op_data, {})
         second = try_reorder(op_data, {})
         self.assertEqual(first, second)
-        self.assertEqual(first["dormitory_1"][2:], ["夕", "玛恩纳", "森蚺"])
+        self.assertEqual(first["dormitory_1"][2:], ["夕", "Free", "玛恩纳"])
         self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "见行者"])
+        self.assertEqual(first["dormitory_3"][3], "森蚺")
+        projected = op_data.project_arrangements([first])
+        self.assertCountEqual(
+            [bed.name for bed in projected.dorm if bed.name],
+            ["夕", "焰尾", "森蚺", "玛恩纳", "见行者"],
+        )
+        self.assertEqual(try_reorder(projected, {}), {})
 
     def add_dorm_overlay_backup(self, op_data):
         op_data.global_plan["default_plan"].config.free_room = True

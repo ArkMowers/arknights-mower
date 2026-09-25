@@ -133,8 +133,12 @@ def test_cross_room_newcomer_uses_configured_room_order(residents, reverse_rooms
 
 
 @pytest.mark.parametrize("lock", ["queued", "product", "unexecuted"])
-def test_locked_room_is_not_used_for_single_recovery_swap(residents, lock):
+@pytest.mark.parametrize("vacant", [False, True])
+def test_locked_room_is_not_used_for_single_recovery_swap(residents, lock, vacant):
     data = residents
+    if vacant:
+        data.dorm[0].reset()
+        data.operators["银灰"].current_room = "meeting"
     set_tier(data, "红", RestingTier.PRIORITY, 1)
     plan = {ROOM: ["Current"] * 4 + ["红"]}
     reserved = set()
@@ -152,7 +156,73 @@ def test_departing_worker_is_not_brought_back_by_recovery_swap(residents):
     data = residents
     set_tier(data, "红", RestingTier.PRIORITY, 1)
     data.dorm[1].name = "红"
-    assert try_reorder(data, {"meeting": ["银灰"]}) == {ROOM: ["Current"] * 4 + ["红"]}
+    assert try_reorder(data, {"meeting": ["银灰"]}) == {
+        ROOM: ["Current"] * 3 + ["红", "Free"]
+    }
+
+
+@pytest.mark.parametrize("vacant_first", [False, True])
+def test_newcomer_recovery_chain_stops_at_empty_vip(residents, vacant_first):
+    data = residents
+    second, third = "dormitory_2", "dormitory_3"
+    for room in (second, third):
+        data.plan[room] = [Room("Free", "", []), Room("Free", "", [])]
+        data.dorm += [Dormitory((room, 0)), Dormitory((room, 1))]
+    if vacant_first:
+        data.dorm[0].reset()
+        data.operators["银灰"].current_room = "meeting"
+    set_tier(data, "红", RestingTier.PRIORITY, 20)
+    plan = {third: ["Current", "红"]}
+
+    result = prioritize_new_dorm_recovery(data, plan)
+
+    expected = {
+        ROOM: ["Current"] * 3 + ["红", "Current"],
+        third: ["Current", "Free"],
+    }
+    if not vacant_first:
+        expected[second] = ["银灰", "Current"]
+    assert result == expected
+    assert plan == {third: ["Current", "红"]}
+    projected = data.project_arrangements([result])
+    assert [bed.name for bed in projected.dorm if bed.name] == (
+        ["红"] if vacant_first else ["红", "银灰"]
+    )
+    assert try_reorder(projected, {}) == {}
+
+
+@pytest.mark.parametrize("reverse_rooms", [False, True])
+def test_multiple_arrivals_fill_empty_vips_in_priority_and_room_order(
+    residents, reverse_rooms
+):
+    data = residents
+    second, third = "dormitory_2", "dormitory_3"
+    data.dorm[0].reset()
+    data.operators["银灰"].current_room = "meeting"
+    for room in (second, third):
+        data.plan[room] = [Room("Free", "", []), Room("Free", "", [])]
+        data.dorm += [Dormitory((room, 0)), Dormitory((room, 1))]
+    if reverse_rooms:
+        data.dorm = data.dorm[2:4] + data.dorm[:2] + data.dorm[4:]
+    set_tier(data, "红", RestingTier.PRIORITY, 20)
+    set_tier(data, "陈", RestingTier.MAIN, 1)
+
+    result = prioritize_new_dorm_recovery(data, {third: ["陈", "红"]})
+
+    assert result[ROOM][3] == ("陈" if reverse_rooms else "红")
+    assert result[second][0] == ("红" if reverse_rooms else "陈")
+    assert result[third] == ["Free", "Free"]
+    projected = data.project_arrangements([result])
+    assert sorted(bed.name for bed in projected.dorm if bed.name) == ["红", "陈"]
+
+
+def test_inactive_slot_is_not_used_as_empty_vip(residents):
+    data = residents
+    data.dorm[0].reset()
+    data.plan[ROOM][3] = Room("银灰", "", [])
+    set_tier(data, "红", RestingTier.PRIORITY, 1)
+    plan = {ROOM: ["Current"] * 4 + ["红"]}
+    assert prioritize_new_dorm_recovery(data, plan) == plan
 
 
 def test_idle_filling_uses_same_recovery_allocation(residents):
