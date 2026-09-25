@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_order import interleave_mastery_plans
 from arknights_mower.utils.mastery_support_types import (
     DEFAULT_SWAP_BUFFER_MINUTES,
     DEFAULT_SWAP_BUFFERS,
@@ -522,6 +523,50 @@ def update_plan_priority(
             return True
     except Exception as e:
         logger.error(f"update_plan_priority failed: {e}")
+        return False
+
+
+def auto_interleave_new_plans(
+    new_plan_ids: list[int],
+    path: Optional[str] = None,
+    professions: Optional[dict[str, str]] = None,
+) -> bool:
+    """Append new operators to the current order, then alternate operator groups."""
+    if not new_plan_ids:
+        return True
+    if professions is None:
+        from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+        professions = {
+            char_id: info.get("profession", "")
+            for char_id, info in get_skill_data().get("characters", {}).items()
+        }
+    try:
+        with _conn(path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id, char_id, status, priority FROM mastery_plan "
+                    "WHERE status NOT IN ('completed', 'failed') ORDER BY priority, id"
+                ).fetchall()
+            ]
+            new_ids = set(new_plan_ids)
+            plans = [row for row in rows if row["id"] not in new_ids]
+            plans.extend(row for row in rows if row["id"] in new_ids)
+            ordered = interleave_mastery_plans(plans, professions)
+            conn.executemany(
+                "UPDATE mastery_plan SET priority=? WHERE id=?",
+                (
+                    (priority, plan["id"])
+                    for priority, plan in enumerate(ordered)
+                    if plan["priority"] != priority
+                ),
+            )
+            conn.commit()
+        return True
+    except Exception as exc:
+        logger.error(f"auto_interleave_new_plans failed: {exc}")
         return False
 
 

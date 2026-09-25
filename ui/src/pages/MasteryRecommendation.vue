@@ -947,6 +947,7 @@ async function toggleSkillPlan(op, rec, draft = false) {
         await refreshPlanFromServer()
         message.success(results[0]?.reason || '已在计划中，已安排立即开始')
       } else if (results[0]?.status === 'insufficient' || results[0]?.status === 'deferred') {
+        await refreshPlanFromServer()
         message.warning(results[0]?.reason || '材料不足，暂不开始')
       } else {
         message.warning(results[0]?.reason || '添加失败')
@@ -1017,6 +1018,7 @@ async function addAllToPlan(op, draft = false) {
         errs.push(res.reason || '添加失败')
       }
     })
+    await refreshPlanFromServer()
     if (errs.length) {
       message.warning(`${op.name} 有 ${errs.length} 项未加入: ${errs.join('；')}`)
     } else if (infos.length) {
@@ -1197,7 +1199,9 @@ watch(
     const byKey = new Map(val.map((entry) => [entry.key, entry]))
     const retained = sortablePlanEntries.value.map((entry) => byKey.get(entry.key)).filter(Boolean)
     const seen = new Set(retained.map((entry) => entry.key))
-    sortablePlanEntries.value = [...retained, ...val.filter((entry) => !seen.has(entry.key))]
+    const added = val.filter((entry) => !seen.has(entry.key))
+    const merged = [...retained, ...added]
+    sortablePlanEntries.value = added.length ? interleaveMasteryPlans(merged) : merged
   },
   { immediate: true }
 )

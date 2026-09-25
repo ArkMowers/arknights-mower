@@ -10,6 +10,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
+    auto_interleave_new_plans,
     delete_plan,
     get_all_history,
     get_all_plans,
@@ -352,6 +353,7 @@ class MasteryPlanView(MethodView):
 
         results = []
         added_char_ids = []
+        added_plan_ids = []
         # 本次点的那几条（result, (char_id, skill_index)）：轮完统一派发一次，
         # 派发范围收窄到这几条（定案 2）。
         pending = []
@@ -362,6 +364,7 @@ class MasteryPlanView(MethodView):
                 pending.append((result, target))
             if is_new:
                 added_char_ids.append(char_id)
+                added_plan_ids.append(result["id"])
 
         items = (
             data.get("items", [])
@@ -451,6 +454,17 @@ class MasteryPlanView(MethodView):
                     name, char_id, skill_index, skill_name, None, "auto", path=None
                 )
                 _record(result, target, is_new, char_id)
+        # Explicit priorities come from the modal's draft order; quick-add requests
+        # omit them and get a profession-interleaved default before dispatch.
+        auto_order = items is None or all("priority" not in item for item in items)
+        if added_plan_ids and auto_order:
+            auto_interleave_new_plans(
+                added_plan_ids,
+                professions={
+                    char_id: info.get("profession", "")
+                    for char_id, info in char_table.items()
+                },
+            )
         if pending:
             info = _dispatch_new_plans_immediately(
                 chars=added_char_ids, targets=[target for _, target in pending]
