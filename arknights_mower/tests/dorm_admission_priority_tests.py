@@ -70,6 +70,18 @@ def test_mood_crossing_without_arrival_does_not_reorder(residents):
     assert try_reorder(data, {}) == {}
 
 
+def test_priority_replacement_wins_single_recovery_without_evicting_standby(residents):
+    data = residents
+    set_tier(data, "银灰", RestingTier.STANDBY, 12)
+    set_tier(data, "红", RestingTier.PRIORITY_REPLACEMENT, 20)
+    assert data.assign_dorm_group(["红"]) is not None
+    plan = try_reorder(data, {})
+    assert plan[ROOM][3:] == ["红", "银灰"]
+    projected = data.project_arrangements([plan])
+    assert {bed.name for bed in projected.dorm} == {"红", "银灰"}
+    assert try_reorder(projected, {}) == {}
+
+
 def test_departing_single_target_does_not_force_other_sleepers_to_move(residents):
     data = residents
     other = set_tier(data, "红", RestingTier.REPLACEMENT, 1)

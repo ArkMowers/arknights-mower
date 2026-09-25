@@ -7,10 +7,19 @@ class RestingTier(IntEnum):
     PRIORITY = 0
     MAIN = 1
     LOW_MAIN = 2
-    STANDBY = 3
-    REPLACEMENT = 4
-    IDLE = 5
-    EXCLUDED = 6
+    PRIORITY_REPLACEMENT = 3
+    STANDBY = 4
+    REPLACEMENT = 5
+    IDLE = 6
+    EXCLUDED = 7
+
+
+def _replacement_tier(op_data, name):
+    if getattr(op_data, "experimental_dorm_logic", False) and name in getattr(
+        op_data.config, "resting_priority_replacement", ()
+    ):
+        return RestingTier.PRIORITY_REPLACEMENT
+    return RestingTier.REPLACEMENT
 
 
 def resting_tier(op_data, name):
@@ -23,7 +32,7 @@ def resting_tier(op_data, name):
         if (op.room == "train" and op.index == 0) or (
             op.current_room == "train" and op.current_index == 0
         ):
-            return RestingTier.REPLACEMENT
+            return _replacement_tier(op_data, name)
         if op.is_high():
             if (
                 getattr(op_data, "experimental_dorm_logic", False)
@@ -37,7 +46,7 @@ def resting_tier(op_data, name):
                 "standby": RestingTier.STANDBY,
             }[op.resting_priority]
         if getattr(op, "resting_from_train", False):
-            return RestingTier.REPLACEMENT
+            return _replacement_tier(op_data, name)
     # 菲亚梅塔的名单是充能目标，不是普通替班。
     if any(
         name in slot.replacement
@@ -45,7 +54,7 @@ def resting_tier(op_data, name):
         for slot in slots
         if slot.agent != "菲亚梅塔"
     ):
-        return RestingTier.REPLACEMENT
+        return _replacement_tier(op_data, name)
     return RestingTier.IDLE
 
 

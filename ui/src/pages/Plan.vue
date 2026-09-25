@@ -17,6 +17,7 @@ const {
   mood_limits,
   operator_mood_limits,
   resting_priority,
+  resting_priority_replacement,
   resting_standby,
   exhaust_require,
   rest_in_full,
@@ -198,6 +199,7 @@ function create_sub_plan() {
       operator_mood_limits: {},
       rest_in_full: [],
       resting_priority: [],
+      resting_priority_replacement: [],
       resting_standby: [],
       workaholic: [],
       refresh_trading: [],
@@ -239,6 +241,7 @@ const current_conf = ref({
   operator_mood_limits: operator_mood_limits.value,
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
+  resting_priority_replacement: resting_priority_replacement.value,
   resting_standby: resting_standby.value,
   workaholic: workaholic.value,
   exhaust_require: exhaust_require.value,
@@ -254,6 +257,7 @@ watchEffect(() => {
       operator_mood_limits: operator_mood_limits.value,
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
+      resting_priority_replacement: resting_priority_replacement.value,
       resting_standby: resting_standby.value,
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
@@ -276,6 +280,7 @@ watchEffect(() => {
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
+    resting_priority_replacement.value = current_conf.value.resting_priority_replacement
     resting_standby.value = current_conf.value.resting_standby
     workaholic.value = current_conf.value.workaholic
     refresh_trading.value = current_conf.value.refresh_trading
@@ -347,6 +352,7 @@ function replace_main_conf() {
     exhaust_require: exhaust_require.value,
     workaholic: workaholic.value,
     resting_priority: resting_priority.value,
+    resting_priority_replacement: resting_priority_replacement.value,
     resting_standby: resting_standby.value,
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
@@ -697,11 +703,22 @@ function movePlanForward() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
+        <span>宿舍高优先级干员</span>
+        <help-text>
+          <template v-if="experimental_dorm_logic">
+            <p>
+              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 → 空闲；同级心情低者优先。
+            </p>
+            <p>
+              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
+            </p>
+          </template>
+          <template v-else>按名单顺序优先分床，不改变下班顺序。</template>
+        </help-text>
       </template>
       <slick-operator-select
         :disabled="edit_locked"
-        v-model="current_conf.workaholic"
+        v-model="current_conf.ope_resting_priority"
       ></slick-operator-select>
     </n-form-item>
     <n-form-item>
@@ -709,7 +726,7 @@ function movePlanForward() {
         <span>宿舍低优先级干员</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
-            低于普通主班，高于候补；同级心情低者优先。需有床才能下班，不改变下班顺序。
+            低于普通主班，高于高优替班；同级心情低者优先。需有床才能下班，不改变下班顺序。
           </template>
           <template v-else>降低宿舍分床优先级，不改变下班顺序。</template>
         </help-text>
@@ -719,12 +736,24 @@ function movePlanForward() {
         v-model="current_conf.resting_priority"
       ></slick-operator-select>
     </n-form-item>
+    <n-form-item v-if="experimental_dorm_logic">
+      <template #label>
+        <span>宿舍高优先级替班</span>
+        <help-text
+          >仅替班生效，低于低优主班、高于候补；同级心情低者优先，可接管候补床位。</help-text
+        >
+      </template>
+      <slick-operator-select
+        :disabled="edit_locked"
+        v-model="current_conf.resting_priority_replacement"
+      ></slick-operator-select>
+    </n-form-item>
     <n-form-item>
       <template #label>
         <span>宿舍休息候补干员</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
-            有床休息，无床待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线须有床。
+            有床休息，无床或被更高优接管后待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线升为低优并保床。
           </template>
           <template v-else>
             仅限绑组，须同组有高优休息。随组待命、回班，空位可补床，非急救时可给高优让床。
@@ -735,6 +764,30 @@ function movePlanForward() {
       <slick-operator-select
         :disabled="edit_locked"
         v-model="current_conf.resting_standby"
+      ></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
+      </template>
+      <slick-operator-select
+        :disabled="edit_locked"
+        v-model="current_conf.workaholic"
+      ></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>宿舍黑名单</span>
+        <help-text>
+          <template v-if="experimental_dorm_logic"
+            >不参与动态分床和补床，固定宿舍岗位不受影响。</template
+          >
+          <template v-else>不参与空闲干员补床。</template>
+        </help-text>
+      </template>
+      <slick-operator-select
+        :disabled="edit_locked"
+        v-model="current_conf.free_blacklist"
       ></slick-operator-select>
     </n-form-item>
     <n-form-item>
@@ -765,39 +818,6 @@ function movePlanForward() {
       <slick-operator-select
         :disabled="edit_locked"
         v-model="current_conf.refresh_drained"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍黑名单</span>
-        <help-text>
-          <template v-if="experimental_dorm_logic"
-            >不参与动态分床和补床，固定宿舍岗位不受影响。</template
-          >
-          <template v-else>不参与空闲干员补床。</template>
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.free_blacklist"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>干员休息优先级</span>
-        <help-text>
-          <template v-if="experimental_dorm_logic">
-            <p>名单 → 普通主班 → 低优主班 → 候补 → 替班 → 空闲；同级心情低者优先。</p>
-            <p>
-              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
-            </p>
-          </template>
-          <template v-else>按名单顺序优先分床，不改变下班顺序。</template>
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.ope_resting_priority"
       ></slick-operator-select>
     </n-form-item>
     <n-form-item v-if="experimental_dorm_logic">

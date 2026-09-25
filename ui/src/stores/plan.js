@@ -18,6 +18,7 @@ export const usePlanStore = defineStore('plan', () => {
   const default_dorm_order = ['dormitory_1', 'dormitory_2', 'dormitory_3', 'dormitory_4']
   const dorm_order = ref([...default_dorm_order])
   const resting_priority = ref([])
+  const resting_priority_replacement = ref([])
   const resting_standby = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
@@ -88,6 +89,7 @@ export const usePlanStore = defineStore('plan', () => {
     'exhaust_require',
     'rest_in_full',
     'resting_priority',
+    'resting_priority_replacement',
     'resting_standby',
     'workaholic',
     'free_blacklist',
@@ -176,6 +178,7 @@ export const usePlanStore = defineStore('plan', () => {
     ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
     dorm_order.value = normalizeDormOrder(response.data.conf.dorm_order)
     resting_priority.value = str2list(response.data.conf.resting_priority)
+    resting_priority_replacement.value = str2list(response.data.conf.resting_priority_replacement)
     resting_standby.value = str2list(response.data.conf.resting_standby)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
@@ -234,6 +237,7 @@ export const usePlanStore = defineStore('plan', () => {
         ope_resting_priority: list2str(ope_resting_priority.value),
         dorm_order: list2str(dorm_order.value),
         resting_priority: list2str(resting_priority.value),
+        resting_priority_replacement: list2str(resting_priority_replacement.value),
         resting_standby: list2str(resting_standby.value),
         workaholic: list2str(workaholic.value),
         refresh_trading: list2str(refresh_trading.value),
@@ -323,6 +327,7 @@ export const usePlanStore = defineStore('plan', () => {
     exhaust_require,
     rest_in_full,
     resting_priority,
+    resting_priority_replacement,
     resting_standby,
     ope_resting_priority,
     workaholic,

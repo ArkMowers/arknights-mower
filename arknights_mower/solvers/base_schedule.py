@@ -5633,7 +5633,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             and (
                 resting_mood(op, now) < op.upper_limit
                 or resting_mood(op, now) == float("inf")
-                and resting_tier(self.op_data, name) == RestingTier.REPLACEMENT
+                and resting_tier(self.op_data, name)
+                in (RestingTier.PRIORITY_REPLACEMENT, RestingTier.REPLACEMENT)
             )
         ]
         # 未扫描的普通空闲者不能被逐个拉进宿舍试心情；未知替班仍可用。
@@ -5708,7 +5709,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 mood = resting_mood(current, now)
                 full = mood != float("inf") and mood >= current.upper_limit
                 # 主班通过自己的上下班任务移动，Free 不隐式召回整组。
-                if current.is_high() and not full:
+                if (
+                    current.is_high()
+                    and not full
+                    and not self.op_data.standby_can_yield(current)
+                ):
                     slot = self.op_data.plan[room][index]
                     opening_explicit_free = (
                         self.op_data.is_auto_free_dorm_slot(room, index)

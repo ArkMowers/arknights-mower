@@ -1647,7 +1647,8 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 and (
                     resting_mood(op, now) < op.upper_limit
                     or (
-                        resting_tier(op_data, op.name) == RestingTier.REPLACEMENT
+                        resting_tier(op_data, op.name)
+                        in (RestingTier.PRIORITY_REPLACEMENT, RestingTier.REPLACEMENT)
                         and resting_mood(op, now) == float("inf")
                     )
                 )
@@ -1659,7 +1660,8 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 return
             logger.debug(f"有{len(waiting_list)}个干员心情未满")
             plan = {}
-            for value in op_data.dorm:
+            # 有空床先入住，再竞争单回；不要在仍有空床时把候补提前踢出。
+            for value in sorted(op_data.dorm, key=lambda bed: bool(bed.name)):
                 if not waiting_list:
                     break
                 room, index = value.position
@@ -1676,7 +1678,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     full = (mood != float("inf") and mood >= agent.upper_limit) or (
                         value.time is not None and value.time <= now
                     )
-                    # 候补及以上在恢复期间受保护；休息完成后由不养闲人统一腾床。
+                    # 未恢复完成时复用层级接管规则；普通候补可向更高层级让床。
                     if not full and not op_data._slot_takable(
                         value, protect_resting=True, requester=waiting_list[0].name
                     ):
