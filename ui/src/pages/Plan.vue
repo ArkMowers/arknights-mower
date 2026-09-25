@@ -796,16 +796,6 @@ function movePlanForward() {
         v-model="current_conf.free_blacklist"
       ></slick-operator-select>
     </n-form-item>
-    <n-form-item v-if="experimental_dorm_logic">
-      <template #label>
-        <span>不养闲人排除干员</span>
-        <help-text>开启不养闲人时，回满仍留宿，不让床，至上班离宿；个人及令夕上限优先。</help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.free_room_exclusions"
-      ></slick-operator-select>
-    </n-form-item>
     <n-form-item>
       <template #label>
         <span>跑单时间刷新干员</span>
@@ -859,7 +849,10 @@ function movePlanForward() {
     :style="{ width: '800px', maxWidth: 'calc(100vw - 24px)' }"
     :content-style="{ maxHeight: '75vh', overflowY: 'auto' }"
   >
-    <PlanAdvancedSettings :disabled="edit_locked" />
+    <PlanAdvancedSettings
+      v-model:free-room-exclusions="current_conf.free_room_exclusions"
+      :disabled="edit_locked"
+    />
     <template #footer>
       <n-space justify="end">
         <n-button @click="show_advanced_settings_dialog = false">完成</n-button>
