@@ -1,6 +1,7 @@
 from arknights_mower.solvers.mastery import get_char_name, validate_route_supports
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
+    auto_interleave_new_plans,
     get_all_plans,
     get_route,
     retry_failed_plans,
@@ -21,6 +22,7 @@ def add_mastery_plan(
         char_name=get_char_name(char_id),
     )
     if plan_id > 0:
+        auto_interleave_new_plans([plan_id])
         return f"已添加专精计划: {char_id} 技能{skill_index + 1} 专{target_level}"
     return f"添加专精计划失败: {char_id} 技能{skill_index + 1}（{reason}）"
 

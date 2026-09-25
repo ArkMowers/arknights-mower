@@ -154,6 +154,11 @@ class TestMasteryRouteView(unittest.TestCase):
 class TestMasteryPlanView(unittest.TestCase):
     def setUp(self):
         stub_support_planner(self)
+        auto_order_patch = patch(
+            "arknights_mower.views.mastery.auto_interleave_new_plans"
+        )
+        self.auto_order = auto_order_patch.start()
+        self.addCleanup(auto_order_patch.stop)
         app = Flask(__name__)
         app.register_blueprint(mastery_bp)
         self.client = app.test_client()
@@ -266,6 +271,63 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(res["status"], "added")
         self.assertEqual(res["id"], 5)
         self.assertEqual(insert.call_args.kwargs["target_level"], 3)
+        self.auto_order.assert_called_once_with([5], professions={"char_001": ""})
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
+    def test_bulk_keeps_draft_priority_before_dispatch(
+        self, get_level, get_skill, insert
+    ):
+        get_skill.return_value = self._char_table()
+        get_level.return_value = 0
+        insert.return_value = 9
+        response = self.client.post(
+            "/mastery-plan",
+            json={"items": [{"name": "阿米娅", "skill_index": 0, "priority": 4}]},
+        )
+        self.assertEqual(response.get_json()["results"][0]["status"], "added")
+        self.assertEqual(insert.call_args.kwargs["priority"], 4)
+        self.auto_order.assert_not_called()
+
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_quick_add_auto_orders_before_dispatch(self, get_skill, add, dispatch):
+        data = self._char_table()
+        data["characters"]["char_001"]["profession"] = "CASTER"
+        get_skill.return_value = data
+        add.return_value = (
+            {"key": "阿米娅", "status": "added", "id": 7},
+            ("char_001", 0),
+            True,
+        )
+
+        def dispatch_after_order(**_kwargs):
+            self.auto_order.assert_called_once_with(
+                [7], professions={"char_001": "CASTER"}
+            )
+            return {"scheduled": [], "skipped": []}
+
+        dispatch.side_effect = dispatch_after_order
+        response = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        self.assertEqual(response.status_code, 200)
+        dispatch.assert_called_once()
+
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_bulk_rejects_non_integer_priority(self, get_skill, insert):
+        get_skill.return_value = self._char_table()
+        for bad in (True, "1", 1.5):
+            response = self.client.post(
+                "/mastery-plan",
+                json={"items": [{"name": "阿米娅", "skill_index": 0, "priority": bad}]},
+            )
+            result = response.get_json()["results"][0]
+            self.assertEqual(result["reason"], "invalid priority")
+        insert.assert_not_called()
 
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")

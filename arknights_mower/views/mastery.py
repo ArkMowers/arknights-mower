@@ -10,6 +10,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
+    auto_interleave_new_plans,
     delete_plan,
     get_all_history,
     get_all_plans,
@@ -224,6 +225,7 @@ def _add_or_reuse_plan(
     target_level,
     support_mode,
     path=None,
+    priority=0,
 ):
     """按钮路径的单条处理：能建就建，已有计划就复用（绝不建重复行）。
 
@@ -248,6 +250,7 @@ def _add_or_reuse_plan(
         skill_name=skill_name,
         char_name=name,
         support_mode=support_mode,
+        priority=priority,
         path=path,
     )
     if plan_id > 0:
@@ -350,6 +353,7 @@ class MasteryPlanView(MethodView):
 
         results = []
         added_char_ids = []
+        added_plan_ids = []
         # 本次点的那几条（result, (char_id, skill_index)）：轮完统一派发一次，
         # 派发范围收窄到这几条（定案 2）。
         pending = []
@@ -360,6 +364,7 @@ class MasteryPlanView(MethodView):
                 pending.append((result, target))
             if is_new:
                 added_char_ids.append(char_id)
+                added_plan_ids.append(result["id"])
 
         items = (
             data.get("items", [])
@@ -371,12 +376,22 @@ class MasteryPlanView(MethodView):
             for item in items:
                 name = item.get("name", "")
                 skill_index = item.get("skill_index", 0)
+                priority = item.get("priority", 0)
                 if type(skill_index) is not int or skill_index not in (0, 1, 2):
                     results.append(
                         {
                             "key": name,
                             "status": "error",
                             "reason": "invalid skill_index",
+                        }
+                    )
+                    continue
+                if type(priority) is not int:
+                    results.append(
+                        {
+                            "key": name,
+                            "status": "error",
+                            "reason": "invalid priority",
                         }
                     )
                     continue
@@ -402,6 +417,7 @@ class MasteryPlanView(MethodView):
                     target_level,
                     item.get("support_mode", "auto"),
                     path=None,
+                    priority=priority,
                 )
                 _record(result, target, is_new, char_id)
         else:
@@ -438,6 +454,17 @@ class MasteryPlanView(MethodView):
                     name, char_id, skill_index, skill_name, None, "auto", path=None
                 )
                 _record(result, target, is_new, char_id)
+        # Explicit priorities come from the modal's draft order; quick-add requests
+        # omit them and get a profession-interleaved default before dispatch.
+        auto_order = items is None or all("priority" not in item for item in items)
+        if added_plan_ids and auto_order:
+            auto_interleave_new_plans(
+                added_plan_ids,
+                professions={
+                    char_id: info.get("profession", "")
+                    for char_id, info in char_table.items()
+                },
+            )
         if pending:
             info = _dispatch_new_plans_immediately(
                 chars=added_char_ids, targets=[target for _, target in pending]
