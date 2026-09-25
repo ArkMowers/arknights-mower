@@ -758,7 +758,7 @@ if (return_home_when_idle.value) {
           >
             <n-form-item label="右侧房间位置">
               <n-checkbox v-model:checked="swap_contact_train">
-                训练室在办公室上方（如截图）
+                训练室在办公室上方
               </n-checkbox>
             </n-form-item>
             <n-form-item>
