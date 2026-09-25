@@ -11,6 +11,10 @@ Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 
 要求 workflow 已经存在于默认分支。维护者可以在运行时选择包含发布文件的目标
 分支，再输入版本号。
 
+当前默认分支 `main` 尚未包含此 workflow，因此 GitHub Actions 页面暂时没有可用的
+手动入口。本节描述的是入口进入默认分支后的流程；在此之前请使用下文的外部 tag
+入口，并在推送前自行检查目标提交与版本号。
+
 发布准备任务按照以下顺序处理目标分支：
 
 1. 确认运行目标是分支，并验证版本格式。
@@ -23,7 +27,7 @@ Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 
 5. 将 tag 名称和提交 SHA 传给 `release-build.yml`，在同一次 workflow 链路中
    继续构建和发布。
 
-Release PR 合入后，维护者运行上述发布准备流程。`release-build.yml` 在完整包
+发布准备入口可用后，Release PR 合入的维护者可运行上述流程。`release-build.yml` 在完整包
 全部上传到主仓 Release 后请求 MowerRelease 镜像完整包并生成 OTA；因此每个版本
 不需要另开 OTA 发布 PR。即时跨仓库触发需要主仓配置仅授权 MowerRelease
 Contents 写入的 `MOWER_RELEASE_TOKEN`；未配置时，MowerRelease 每五分钟
@@ -36,9 +40,11 @@ Contents 写入的 `MOWER_RELEASE_TOKEN`；未配置时，MowerRelease 每五分
 
 直接向当前仓库推送合法 tag 也会触发 `release-build.yml`。这个入口验证 tag
 格式、tag 指向的提交和 checkout 结果，只读取 tag 对应的代码，不修改任何分支。
+目前这是可用的发布入口。发布前应确认目标提交已合入目标分支，版本文件和
+`CHANGELOG.md` 已按需更新，再创建并推送 tag。
 
 共享构建本身没有 `workflow_dispatch` 入口。需要自动更新版本文件和
-`CHANGELOG.md` 时，应当运行发布准备流程。
+`CHANGELOG.md` 时，待发布准备入口可用后运行该流程。
 
 ## 版本与 Release 类型
 
@@ -47,8 +53,12 @@ Contents 写入的 `MOWER_RELEASE_TOKEN`；未配置时，MowerRelease 每五分
 | `vX.Y.Z` | `X.Y.Z` | 普通 Release |
 | `vX.Y.Z-alpha.N` | `X.Y.Z-alpha.N` | prerelease |
 
-两种 Release 都会直接发布，不创建 draft。构建任务使用经过验证的 tag checkout，
-确保版本注入、产物名称和 Release tag 对应同一个提交。
+两种 Release 都会直接发布，不创建 draft。发布准备任务验证 tag 并取得提交 SHA；
+校验、打包都从该提交检出，发布前再次检查 tag 是否仍指向该提交，确保版本注入、
+产物名称和 Release tag 对应同一个提交。
+tag 验证后，发布流水线会在同一 tag 上运行 Python 格式与回归测试、Actionlint、
+前端回归测试和构建；通过后才启动各平台打包。任何检查或打包失败都不会创建
+GitHub Release。
 
 发布准备流程会将 changelog 写入所选分支。外部 tag 入口只在 workflow 工作区生成
 Release 正文和带当前版本块的 `CHANGELOG.md`，并将后者放入打包产物，不写回

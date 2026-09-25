@@ -1,11 +1,12 @@
 # 正式版与 alpha 测试版共用的跨平台发布流水线（五个平台）
 #
 # - 外部合法 tag push 可以直接进入；发布准备流程通过 workflow_call 显式调用
-# - 两个入口都只从 tag checkout，不根据 tag 猜测来源分支，也不写回任何分支
+# - 两个入口先验证 tag；校验和打包固定检出 tag 对应的提交 SHA，不写回分支
 # - prepare 生成 Release 正文（body.md，含 unsigned 说明）和带当前版本块的
 #   CHANGELOG.md，上传为 release-metadata
 # - build-* 下载 release-metadata，用生成的 CHANGELOG 覆盖工作区文件，使打包产物
 #   包含本次变更记录
+# - 在经过验证的 tag 上运行代码回归测试；通过后再启动跨平台构建
 # - release 在全部构建成功后只调用一次 action-gh-release，一次性附加五个平台产物
 #   与统一 SHA-256 清单（SHA256SUMS）；alpha 为 prerelease，正式版为普通 Release
 #
@@ -63,6 +64,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag_name: ${{ steps.meta.outputs.tag_name }}
+      release_sha: ${{ steps.meta.outputs.release_sha }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - name: Checkout repository
@@ -118,6 +120,7 @@ jobs:
           {
             echo "version=${version}"
             echo "tag_name=${tag_name}"
+            echo "release_sha=${tag_sha}"
             echo "prerelease=${prerelease}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -149,16 +152,57 @@ jobs:
             body.md
             CHANGELOG.md
 
+  validate-release:
+    name: Test release commit
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Inject release version
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt pytest ruff
+      - name: Check Python formatting and lint
+        run: |
+          python -m ruff check .
+          python -m ruff format --check .
+      - name: Run Python regression tests
+        run: python -m pytest -q -o faulthandler_timeout=60
+      - name: Check GitHub Actions workflows
+        uses: rhysd/actionlint@v1.7.12
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: npm ci
+      - name: Run frontend regressions and build
+        working-directory: ui
+        run: npm test && npm run build
+
   build-windows:
     name: Build Windows x64
-    needs: prepare
+    needs: [prepare, validate-release]
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag_name }}
+          ref: ${{ needs.prepare.outputs.release_sha }}
 
       - name: Download release metadata
         uses: actions/download-artifact@v4
@@ -239,7 +283,7 @@ jobs:
 
   build-linux:
     name: Build Linux ${{ matrix.arch }}
-    needs: prepare
+    needs: [prepare, validate-release]
     strategy:
       fail-fast: false
       matrix:
@@ -254,7 +298,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag_name }}
+          ref: ${{ needs.prepare.outputs.release_sha }}
 
       - name: Download release metadata
         uses: actions/download-artifact@v4
@@ -402,7 +446,7 @@ jobs:
 
   build-macos:
     name: Build macOS ${{ matrix.arch }}
-    needs: prepare
+    needs: [prepare, validate-release]
     strategy:
       fail-fast: false
       matrix:
@@ -419,7 +463,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag_name }}
+          ref: ${{ needs.prepare.outputs.release_sha }}
 
       - name: Download release metadata
         uses: actions/download-artifact@v4
@@ -554,13 +598,13 @@ jobs:
 
   build-android:
     name: Package Android Mower update
-    needs: prepare
+    needs: [prepare, validate-release]
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag_name }}
+          ref: ${{ needs.prepare.outputs.release_sha }}
       - name: Download release metadata
         uses: actions/download-artifact@v4
         with:
@@ -604,7 +648,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag_name }}
+          ref: ${{ needs.prepare.outputs.release_sha }}
+      - name: Verify release tag still points to tested commit
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          actual_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          if [[ "$actual_sha" != "$RELEASE_SHA" ]]; then
+            echo "::error::release tag moved after validation" >&2
+            exit 1
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -643,6 +699,7 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
 
       - name: Request MowerRelease OTA packaging
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.MOWER_RELEASE_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag_name }}
