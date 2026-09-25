@@ -63,7 +63,11 @@ def room_solver(monkeypatch, *, enter_on=None, enter_after_reset=False):
     )
     solver.detect_room = MagicMock(side_effect=lambda: state["room"])
     polygon = np.array([[400, 550], [400, 680], [700, 680], [700, 550]])
-    monkeypatch.setattr(base_mixin.segment, "base", lambda *_: {"room_1_1": polygon})
+    monkeypatch.setattr(
+        base_mixin.segment,
+        "base",
+        lambda *_, **_kwargs: {"room_1_1": polygon},
+    )
     solver.adjust_room = MagicMock(side_effect=lambda p: p)
 
     def tap(*args, **kwargs):

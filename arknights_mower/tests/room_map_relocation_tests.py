@@ -23,6 +23,19 @@ def rectangle(x1, y1, x2, y2):
     return np.array([[x1, y1], [x1, y2], [x2, y2], [x2, y1]])
 
 
+def test_right_side_rooms_can_swap_without_moving_other_facilities():
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    anchor = ((400, 80), (600, 240))
+    ordinary = base_mixin.segment.base(image, anchor)
+    swapped = base_mixin.segment.base(image, anchor, swap_contact_train=True)
+
+    np.testing.assert_array_equal(swapped["train"], ordinary["contact"])
+    np.testing.assert_array_equal(swapped["contact"], ordinary["train"])
+    assert swapped.keys() == ordinary.keys()
+    for room in ordinary.keys() - {"train", "contact"}:
+        np.testing.assert_array_equal(swapped[room], ordinary[room])
+
+
 def adjustment_solver(monkeypatch, width=1920, height=1080):
     monkeypatch.setattr(config, "stop_mower", Event())
     solver = BaseMixin()
@@ -136,7 +149,7 @@ def navigation_solver(monkeypatch, frames):
             return frame["anchor"]
         return None
 
-    def segment(frame, anchor):
+    def segment(frame, anchor, *, swap_contact_train=False):
         assert frame["kind"] == "map" and anchor == frame["anchor"]
         return {ROOM: frame["room"]}
 
@@ -174,6 +187,16 @@ def test_drag_relocates_using_new_frame_and_new_central_anchor(
     assert solver.recog.captures == len(frames)
     solver.back_to_index.assert_not_called()
     solver.back_to_infrastructure.assert_not_called()
+
+
+def test_enter_room_passes_configured_right_side_layout(monkeypatch):
+    monkeypatch.setattr(config.conf, "swap_contact_train", True)
+    room = rectangle(450, 350, 750, 600)
+    solver, segmentation = navigation_solver(
+        monkeypatch, [map_frame(room), {"kind": "room"}]
+    )
+    solver.enter_room(ROOM)
+    assert segmentation.call_args.kwargs == {"swap_contact_train": True}
 
 
 def test_ineffective_drags_use_existing_attempt_and_home_budgets(monkeypatch):

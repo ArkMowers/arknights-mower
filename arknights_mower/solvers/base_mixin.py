@@ -746,7 +746,9 @@ class BaseMixin:
             logger.debug(f"{colored_room}B{digit_1}0{digit_2}")
             return f"room_{digit_1}_{digit_2}"
         elif colored_room == "训练室":
-            logger.debug("训练室B305")
+            logger.debug(
+                "训练室B205" if config.conf.swap_contact_train else "训练室B305"
+            )
             return "train"
         elif colored_room == "加工站":
             logger.debug("加工站B105")
@@ -772,7 +774,9 @@ class BaseMixin:
         elif room == "meeting":
             logger.debug("会客室1F02")
         else:
-            logger.debug("办公室B205")
+            logger.debug(
+                "办公室B305" if config.conf.swap_contact_train else "办公室B205"
+            )
         return room
 
     def adjust_room(self, _room):
@@ -838,7 +842,11 @@ class BaseMixin:
                     if actions >= 5:
                         break
                     actions += 1
-                    _room = segment.base(self.recog.img, pos)[room]
+                    _room = segment.base(
+                        self.recog.img,
+                        pos,
+                        swap_contact_train=config.conf.swap_contact_train,
+                    )[room]
                     logger.debug(
                         f"进入房间 {room}，第{enter_times + 1}轮第{retry_times + 1}次尝试"
                     )
