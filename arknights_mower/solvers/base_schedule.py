@@ -2938,6 +2938,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         兼容保留。副表不再按进入工作站/宿舍等阶段逐次切换；每次检查都会计算
         全部条件直到稳定，再把副表任务、岗位纠偏和宿舍迁移合并。
         """
+        # 肥鸭充能中的临时离岗不能作为副表条件；任务间隙和重启恢复时，
+        # 已到期的充能／回岗任务也属于同一流程，须等回岗完成再判断。
+        now = datetime.now()
+        if getattr(
+            getattr(self, "task", None), "type", None
+        ) == TaskTypes.FIAMMETTA or any(
+            task.type == TaskTypes.FIAMMETTA and task.time <= now
+            for task in getattr(self, "tasks", [])
+        ):
+            logger.debug("肥鸭充能或回岗任务尚未完成，跳过副表切换")
+            return False
         if not getattr(
             getattr(self, "op_data", None), "experimental_dorm_logic", False
         ):
