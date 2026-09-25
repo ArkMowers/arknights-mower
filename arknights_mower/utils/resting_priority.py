@@ -61,7 +61,7 @@ def resting_priority_rank(op_data, name):
     """显式休息优先级的拖拽顺序；忽略空值和重复项。"""
     rank = 0
     seen = set()
-    for item in op_data.config.ope_resting_priority:
+    for item in getattr(op_data.config, "ope_resting_priority", ()):
         if not item or item in seen:
             continue
         if item == name:

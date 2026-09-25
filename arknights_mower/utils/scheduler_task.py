@@ -1656,7 +1656,9 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 return
             logger.debug(f"有{len(waiting_list)}个干员心情未满")
             plan = {}
-            for value in op_data.dorm:
+            # Prefer unused effective beds before taking a resting occupant's slot.
+            # Explicit priority can still preempt when every usable bed is occupied.
+            for value in sorted(op_data.dorm, key=lambda bed: bool(bed.name)):
                 if not waiting_list:
                     break
                 room, index = value.position
