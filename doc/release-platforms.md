@@ -31,7 +31,11 @@ Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 
 全部上传到主仓 Release 后请求 MowerRelease 镜像完整包并生成 OTA；因此每个版本
 不需要另开 OTA 发布 PR。即时跨仓库触发需要主仓配置仅授权 MowerRelease
 Contents 写入的 `MOWER_RELEASE_TOKEN`；未配置时，MowerRelease 每五分钟
-自动检查最新 Release 并补发 OTA。正式版没有完整安装包时会跳过镜像。
+自动检查最新 Release 并补发 OTA。主仓随后向 Android 仓库发送 `mower-release`
+事件，提醒其检查新版本并按需打包 APK；这需要主仓配置仅授权
+`ALEXsun0/arknights-mower-android`、具有 Contents 写权限的
+`ANDROID_RELEASE_TOKEN`。未配置时，Android 仓库的定时检查仍会发现新版本；
+已有组件没有变化时不会重复发布 APK。正式版没有完整安装包时会跳过镜像。
 
 这个入口只向当前仓库的 `origin` 写入内容。它不会根据 tag 查找来源分支，也
 不会向其他远端或固定名称的分支推送。
