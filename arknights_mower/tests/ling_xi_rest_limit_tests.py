@@ -145,7 +145,7 @@ def test_departed_operator_waits_without_recalling_group_or_refilling(solver):
     solver.get_free_list = MagicMock(return_value=[])
     agents = task.plan["dormitory_1"].copy()
     solver.preserve_resting_crafters(agents, "dormitory_1")
-    assert agents[3] == "Free"
+    assert agents[3] == ("" if solver.op_data.experimental_dorm_logic else "Free")
     solver.op_data = solver.op_data.project_arrangements([task.plan])
     assert solver.op_data.operators[name].current_room == ""
     assert solver.op_data.operators["絮雨"].is_resting()

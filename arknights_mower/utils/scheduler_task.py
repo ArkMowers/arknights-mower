@@ -1645,8 +1645,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 and op.name not in reserved
                 and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
                 and (
-                    op.name in standby_waiting
-                    or resting_mood(op, now) < op.upper_limit
+                    resting_mood(op, now) < op.upper_limit
                     or (
                         resting_tier(op_data, op.name) == RestingTier.REPLACEMENT
                         and resting_mood(op, now) == float("inf")

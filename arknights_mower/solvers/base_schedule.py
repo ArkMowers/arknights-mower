@@ -1319,6 +1319,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             _current_room = self.op_data.get_current_room(key, True)
             # 训练室读取固定两格；纠错只管理排班中明确配置的槽位。
             for idx, name in enumerate(_current_room[: len(plan[key])]):
+                if (
+                    self.op_data.experimental_dorm_logic
+                    and key.startswith("dorm")
+                    and plan[key][idx].agent == "Free"
+                ):
+                    # 动态床位允许空着；补床由需要休息的候选触发。
+                    continue
                 # 如果是空房间
                 if name == "":
                     if not need_fix:
@@ -5568,15 +5575,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             and resting_tier(self.op_data, name) != RestingTier.EXCLUDED
             and name not in busy
         ]
-        needing_rest = [
+        free_list = [
             name
             for name in free_list
-            if (op := self.op_data.operators.get(name)) is None
-            or resting_mood(op, now) == float("inf")
-            or resting_mood(op, now) < op.upper_limit
+            if (op := self.op_data.operators.get(name)) is not None
+            and (
+                resting_mood(op, now) < op.upper_limit
+                or resting_mood(op, now) == float("inf")
+                and resting_tier(self.op_data, name) == RestingTier.REPLACEMENT
+            )
         ]
-        if needing_rest:
-            free_list = needing_rest
+        # 未扫描的普通空闲者不能被逐个拉进宿舍试心情；未知替班仍可用。
         return sorted(free_list, key=lambda name: resting_key(self.op_data, name, now))
 
     def preserve_resting_crafters(self, agents, room):
@@ -5648,7 +5657,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 mood = resting_mood(current, now)
                 full = mood != float("inf") and mood >= current.upper_limit
                 # 主班通过自己的上下班任务移动，Free 不隐式召回整组。
-                if current.is_high():
+                if current.is_high() and not full:
                     slot = self.op_data.plan[room][index]
                     opening_explicit_free = (
                         self.op_data.is_auto_free_dorm_slot(room, index)
@@ -5674,8 +5683,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         continue
             if replacements:
                 agents[index] = replacements.pop(0).name
-            elif current is not None:
-                agents[index] = current.name
+            else:
+                agents[index] = ""
+        # 游戏确认后会把空位挤到末尾，后续读房和恢复计时使用同一位置。
+        if "Current" not in agents:
+            agents[:] = [name for name in agents if name] + [""] * agents.count("")
 
     @timed_step("selection")
     def choose_agent(
@@ -5701,11 +5713,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (0.45, 0.75),
             (0.55, 0.35),
         ]
-        # 空位置跳过安排
-        if "" in agents:
+        if not experimental_dorm_logic and "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
-        if not preserve_dorm_occupants:
+        if not preserve_dorm_occupants and not experimental_dorm_logic:
             self.preserve_resting_crafters(agents, room)
         current_list = set()
         for idx, n in enumerate(agents):
@@ -5741,6 +5752,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             and current_free.mood < current_free.upper_limit
                         ):
                             agents[idx] = current_free.name
+        if not preserve_dorm_occupants and experimental_dorm_logic:
+            self.preserve_resting_crafters(agents, room)
+        # Free 解析后可以真正留空，不再强制找一个满心情者补上。
+        if "" in agents:
+            fast_mode = False
+            agents = [item for item in agents if item != ""]
+        if experimental_dorm_logic and not agents and not fast_mode:
+            self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
@@ -6711,6 +6730,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.refresh_run_order_time(room)
                 checked = True
                 confirmation_pending = True
+                if getattr(
+                    self.op_data, "experimental_dorm_logic", False
+                ) and room.startswith("dorm"):
+                    self.preserve_resting_crafters(plan[room], room)
                 recovery_ordered = self.ensure_dorm_recovery_order(
                     room, plan[room], fast_mode=choose_error <= 0
                 )

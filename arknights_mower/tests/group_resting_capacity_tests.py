@@ -434,6 +434,22 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     assert tasks[0].plan[room][index] == name
 
 
+def test_full_standby_does_not_refill_vacant_bed(solver):
+    occupy_beds(solver, "high")
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    for op in data.operators.values():
+        op.mood, op.depletion_rate, op.time_stamp = 24, 0, datetime.now()
+    assert data.is_standby(DEEP[1])
+    bed = data.dorm[-1]
+    data.operators[bed.name].current_room = ""
+    bed.reset()
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    assert tasks == []
+
+
 def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver):
     occupy_beds(solver, "high")
     shift_off(solver)
