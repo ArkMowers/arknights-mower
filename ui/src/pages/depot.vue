@@ -378,7 +378,7 @@
     </n-alert>
 
     <!-- ② 搜索、筛选与分类导航（吸顶固定） -->
-    <div class="depot-sticky-bar">
+    <div ref="stickyBarRef" class="depot-sticky-bar">
       <div class="depot-toolbar">
         <!-- 第一行：搜索栏 + 对比区间 (桌面端) + 筛选开关 (移动端) + 统计计数 -->
         <div class="toolbar-primary-row">
@@ -1659,13 +1659,20 @@ async function exportDepotImage(scope = 'all') {
 }
 
 const mobileRailRef = ref(null)
+const stickyBarRef = ref(null)
 
 function scrollRailToActive(key) {
   if (!mobileRailRef.value || !key) return
   const activeBtn = mobileRailRef.value.querySelector(`[data-key="${key}"]`)
-  if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
-    activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-  }
+  if (!activeBtn) return
+  const rail = mobileRailRef.value
+  const railRect = rail.getBoundingClientRect()
+  const buttonRect = activeBtn.getBoundingClientRect()
+  rail.scrollTo({
+    left:
+      rail.scrollLeft + buttonRect.left - railRect.left - (rail.clientWidth - buttonRect.width) / 2,
+    behavior: 'smooth'
+  })
 }
 
 function scrollToTier(tierKey) {
@@ -1673,6 +1680,8 @@ function scrollToTier(tierKey) {
   scrollRailToActive(tierKey)
   const target = sectionElements.get(tierKey)
   if (target) {
+    // 工具栏高度会随移动端筛选展开、换行和窗口宽度变化。
+    target.style.scrollMarginTop = `${(stickyBarRef.value?.getBoundingClientRect().height || 0) + 8}px`
     target.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
