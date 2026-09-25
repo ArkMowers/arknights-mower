@@ -17,6 +17,9 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 class MasteryRestartTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(
+            patch.object(base_schedule, "_training_room_scan_disabled", False)
+        )
         folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.db_path = folder / "data.db"
 
@@ -246,8 +249,13 @@ class MasteryRestartTests(unittest.TestCase):
             {"agent": "", "mood": -1},
             {"agent": "", "mood": -1},
         ]
-        with patch.object(reader.config.conf, "enable_mastery", False):
+        with (
+            patch.object(reader.config.conf, "enable_mastery", False),
+            patch.object(reader, "read_room_state", return_value=empty_room),
+            patch.object(reader, "reconcile_short") as reconcile,
+        ):
             self.read_mood(solver)
+        reconcile.assert_not_called()
         solver.get_agent_from_room.assert_called_once_with("train", None)
 
     def test_cached_mood_projection_does_not_scan_training_room(self):
@@ -269,11 +277,84 @@ class MasteryRestartTests(unittest.TestCase):
                 self.assertIsNone(solver.last_train_mood_read)
                 self.assertEqual(solver.tasks, [])
 
+    def test_unbuilt_training_room_disables_scan_for_entire_process(self):
+        for enabled in (False, True):
+            with (
+                self.subTest(enabled=enabled),
+                patch.object(base_schedule, "_training_room_scan_disabled", False),
+            ):
+                solver = self.mood_solver()
+                solver.enter_room.side_effect = RuntimeError("未成功进入房间 train")
+                with (
+                    patch.object(reader.config.conf, "enable_mastery", enabled),
+                    patch.object(reader, "read_room_state") as read,
+                ):
+                    self.read_mood(solver)
+                    self.read_mood(solver)
+                solver.enter_room.assert_called_once_with("train", max_attempts=1)
+                solver.back_to_infrastructure.assert_called_once()
+                solver.back.assert_not_called()
+                read.assert_not_called()
+                self.assertTrue(base_schedule._training_room_scan_disabled)
+                self.assertEqual(solver.tasks, [])
+                # 超过限频时间、进房恢复正常，也不再尝试。
+                solver.last_train_mood_read -= timedelta(hours=3)
+                solver.enter_room.side_effect = None
+                solver.get_agent_from_room.return_value = []
+                room = reader.RoomState(state="empty")
+                with (
+                    patch.object(reader.config.conf, "enable_mastery", enabled),
+                    patch.object(
+                        reader,
+                        "read_room_state",
+                        return_value=(room, []) if enabled else room,
+                    ),
+                    patch.object(reader, "reconcile_short"),
+                ):
+                    self.read_mood(solver)
+                    restarted_solver = self.mood_solver()
+                    self.read_mood(restarted_solver)
+                    restarted_solver.enter_room.assert_not_called()
+                solver.enter_room.assert_called_once_with("train", max_attempts=1)
+                self.assertTrue(base_schedule._training_room_scan_disabled)
+
+    def test_unavailable_training_does_not_block_other_rooms_or_create_correction(self):
+        solver = self.mood_solver(count=2)
+        op = SimpleNamespace(
+            room="meeting",
+            need_to_refresh=lambda: True,
+            current_room="meeting",
+            time_stamp=None,
+            not_valid=lambda: False,
+        )
+        solver.op_data.operators = {"干员": op}
+        solver.op_data.plan["meeting"] = [SimpleNamespace(agent="干员")]
+        solver.op_data.get_current_room.side_effect = lambda room, *args: (
+            ["干员"] if room == "meeting" else ["", ""]
+        )
+        solver.op_data.true_exhaust_room = set()
+
+        def enter(room, **kwargs):
+            if room == "train":
+                raise RuntimeError("未成功进入房间 train")
+
+        solver.enter_room.side_effect = enter
+        solver.get_agent_from_room.return_value = [{"agent": "干员", "mood": 12}]
+        solver._suppress_train_correction.side_effect = lambda plan: (
+            base_schedule.BaseSchedulerSolver._suppress_train_correction(solver, plan)
+        )
+        with patch.object(reader.config.conf, "enable_mastery", False):
+            plan = base_schedule.BaseSchedulerSolver.agent_get_mood(
+                solver, return_plan=True
+            )
+        solver.get_agent_from_room.assert_called_once_with("meeting", None)
+        self.assertNotIn("train", plan)
+
     def test_mood_scan_stops_when_manual_trainee_is_in_nontraining_schedule(self):
         mastery_db.update_plan_status(self.plan_id, "completed")
         room = reader.RoomState(
             state="training",
-            panel=reader.RoomPanel(operator_name="面板干员"),
+            panel=reader.RoomPanel(operator_name="面板干员", countdown_state="active"),
             train_slot="测试干员",
             slots_reliable=True,
         )
@@ -332,6 +413,7 @@ class MasteryRestartTests(unittest.TestCase):
         solver.back.side_effect = lambda: self.assertFalse(stop.is_set())
         with (
             patch.object(reader.config.conf, "enable_mastery", False),
+            patch.object(reader, "read_room_state", return_value=self.room),
             patch.object(
                 mastery_support_data,
                 "trainee_schedule_conflict",
@@ -346,6 +428,49 @@ class MasteryRestartTests(unittest.TestCase):
         conflict.assert_called_once_with("测试干员")
         self.assertEqual(solver.back.call_count, 2)
         self.assertTrue(stop.is_set())
+
+    def test_idle_finished_or_unreliable_trainee_does_not_stop_scheduling(self):
+        for enabled in (False, True):
+            for state, failed, countdown in (
+                ("empty", False, "failed"),
+                ("waiting_collect", False, "zero"),
+                ("training", True, "active"),
+                ("training", False, "failed"),
+            ):
+                with self.subTest(enabled=enabled, state=state, failed=failed):
+                    solver = self.mood_solver()
+                    moods = [
+                        {"agent": "协助干员", "mood": 24},
+                        {"agent": "测试干员", "mood": 24},
+                    ]
+                    solver.get_agent_from_room.return_value = moods
+                    room = reader.RoomState(
+                        state=state,
+                        train_slot="测试干员",
+                        panel=reader.RoomPanel(
+                            operator_name="测试干员", countdown_state=countdown
+                        ),
+                        read_failed=failed,
+                    )
+                    stop = Event()
+                    with (
+                        patch.object(reader.config.conf, "enable_mastery", enabled),
+                        patch.object(
+                            reader,
+                            "read_room_state",
+                            return_value=(room, moods) if enabled else room,
+                        ),
+                        patch.object(reader, "reconcile_short") as reconcile,
+                        patch.object(
+                            mastery_support_data, "trainee_schedule_conflict"
+                        ) as conflict,
+                        patch.object(base_schedule.config, "stop_mower", stop),
+                    ):
+                        self.read_mood(solver)
+                    conflict.assert_not_called()
+                    self.assertFalse(stop.is_set())
+                    if not enabled:
+                        reconcile.assert_not_called()
 
     def test_finished_training_is_collected_with_empty_queue(self):
         mastery_db.update_plan_status(self.plan_id, "waiting_collect")

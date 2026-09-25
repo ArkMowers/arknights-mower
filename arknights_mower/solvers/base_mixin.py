@@ -820,10 +820,10 @@ class BaseMixin:
         return None
 
     @timed_step("enter_room")
-    def enter_room(self, room):
+    def enter_room(self, room, *, max_attempts=3):
         """从基建首页进入房间"""
 
-        for enter_times in range(3):
+        for enter_times in range(max_attempts):
             pending = False
             actions = 0
             for retry_times in range(9):
@@ -857,11 +857,11 @@ class BaseMixin:
                 and self.detect_room() == room
             ):
                 return
-            if enter_times < 2:
+            if enter_times < max_attempts - 1:
                 # 仍停在全局视角时，原逻辑会一直点击同一位置；退出基建
                 # 再重新进入，重新定位房间。此处不重启或关闭游戏。
                 logger.warning(
-                    f"未确认进入房间 {room}，返回首页后重新定位（{enter_times + 1}/2）"
+                    f"未确认进入房间 {room}，返回首页后重新定位（{enter_times + 1}/{max_attempts - 1}）"
                 )
                 self.back_to_index()
                 self.back_to_infrastructure()

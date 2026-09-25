@@ -1319,6 +1319,16 @@ class TestBaseScheduler(unittest.TestCase):
         solver, read_meeting = self._create_backup_refresh_solver()
 
         with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=(
+                    mastery_reader.RoomState("empty", mastery_reader.RoomPanel()),
+                    [],
+                ),
+            ),
+            patch.object(mastery_reader, "reconcile_short"),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(
                 BaseSchedulerSolver,
@@ -1429,8 +1439,7 @@ class TestBaseScheduler(unittest.TestCase):
         mock_read.assert_called_once_with(solver, enter=False, want_mood=True)
         mock_reconcile.assert_called_once_with(solver, room_state, defer_collect=False)
 
-    @staticmethod
-    def _train_mismatch_solver(plan_agents, extra=None):
+    def _train_mismatch_solver(self, plan_agents, extra=None):
         """构造训练室缓存与静态计划错位的 solver（绕过 init_and_validate 的宿舍校验）。
 
         仅含训练室计划；训练室干员 current_room 留空 → get_current_room("train") 与
@@ -1439,6 +1448,17 @@ class TestBaseScheduler(unittest.TestCase):
         from arknights_mower.utils.operators import Operators
         from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
+        self.enterContext(
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                side_effect=lambda *args, **kwargs: (
+                    (mastery_reader.RoomState(state="empty"), [])
+                    if kwargs.get("want_mood")
+                    else mastery_reader.RoomState(state="empty")
+                ),
+            )
+        )
         plan_config = {"train": [Room(a, "", []) for a in plan_agents]}
         plan = {
             "default_plan": Plan(plan_config, PlanConfig("稀音", "稀音", "伺夜")),
@@ -1541,6 +1561,11 @@ class TestBaseScheduler(unittest.TestCase):
             state="empty", locked=False, protected=True
         )
         with (
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=mastery_reader.RoomState(state="empty"),
+            ),
             patch.object(base_schedule.config.conf, "enable_mastery", False),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(BaseSchedulerSolver, "back"),
@@ -1611,6 +1636,11 @@ class TestBaseScheduler(unittest.TestCase):
             state="training", locked=True, protected=False
         )
         with (
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=mastery_reader.RoomState(state="empty"),
+            ),
             patch.object(base_schedule.config.conf, "enable_mastery", False),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(BaseSchedulerSolver, "back"),
@@ -1689,6 +1719,8 @@ class TestBaseScheduler(unittest.TestCase):
         )
         observed = SimpleNamespace(
             state="training",
+            panel=mastery_reader.RoomPanel(countdown_state="active"),
+            read_failed=False,
             locked=True,
             support_slot="艾丽妮",
             train_slot="真言",
