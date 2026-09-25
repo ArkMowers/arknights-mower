@@ -378,7 +378,7 @@
     </n-alert>
 
     <!-- ② 搜索、筛选与分类导航（吸顶固定） -->
-    <div class="depot-sticky-bar">
+    <div ref="stickyBarRef" class="depot-sticky-bar">
       <div class="depot-toolbar">
         <!-- 第一行：搜索栏 + 对比区间 (桌面端) + 筛选开关 (移动端) + 统计计数 -->
         <div class="toolbar-primary-row">
@@ -1659,13 +1659,20 @@ async function exportDepotImage(scope = 'all') {
 }
 
 const mobileRailRef = ref(null)
+const stickyBarRef = ref(null)
 
 function scrollRailToActive(key) {
   if (!mobileRailRef.value || !key) return
   const activeBtn = mobileRailRef.value.querySelector(`[data-key="${key}"]`)
-  if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
-    activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-  }
+  if (!activeBtn) return
+  const rail = mobileRailRef.value
+  const railRect = rail.getBoundingClientRect()
+  const buttonRect = activeBtn.getBoundingClientRect()
+  rail.scrollTo({
+    left:
+      rail.scrollLeft + buttonRect.left - railRect.left - (rail.clientWidth - buttonRect.width) / 2,
+    behavior: 'smooth'
+  })
 }
 
 function scrollToTier(tierKey) {
@@ -1673,6 +1680,8 @@ function scrollToTier(tierKey) {
   scrollRailToActive(tierKey)
   const target = sectionElements.get(tierKey)
   if (target) {
+    // 工具栏高度会随移动端筛选展开、换行和窗口宽度变化。
+    target.style.scrollMarginTop = `${(stickyBarRef.value?.getBoundingClientRect().height || 0) + 8}px`
     target.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
@@ -1907,8 +1916,7 @@ onUnmounted(() => {
    ========================================================================= */
 .depot-hero {
   border-radius: 12px;
-  background:
-    radial-gradient(
+  background: radial-gradient(
       120% 140% at 0% 0%,
       color-mix(in srgb, var(--mower-primary) 10%, transparent),
       transparent 60%
@@ -3413,9 +3421,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
-    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
 }
 
 .depot-export-view.theme-dark {
@@ -3427,8 +3435,8 @@ onUnmounted(() => {
   --exp-panel-border: rgba(255, 255, 255, 0.1);
   --exp-muted: rgba(255, 255, 255, 0.6);
   --exp-subtle: rgba(255, 255, 255, 0.38);
-  --exp-hero-bg:
-    radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.16), transparent 60%), #1f1f24;
+  --exp-hero-bg: radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.16), transparent 60%),
+    #1f1f24;
   --exp-pill-bg: #2b2b32;
 }
 
@@ -3441,8 +3449,8 @@ onUnmounted(() => {
   --exp-panel-border: rgba(0, 0, 0, 0.08);
   --exp-muted: rgba(0, 0, 0, 0.58);
   --exp-subtle: rgba(0, 0, 0, 0.38);
-  --exp-hero-bg:
-    radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.12), transparent 60%), #ffffff;
+  --exp-hero-bg: radial-gradient(120% 140% at 0% 0%, rgba(24, 160, 88, 0.12), transparent 60%),
+    #ffffff;
   --exp-pill-bg: #edf1f5;
 }
 

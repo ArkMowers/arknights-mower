@@ -41,6 +41,30 @@ def snapshot(at, items):
     return [at, json.dumps(items, ensure_ascii=False), json.dumps({"空": ""})]
 
 
+def test_common_resources_include_gold_and_orundum_shards(tmp_path, monkeypatch):
+    paths = {
+        "@app/tmp/cultivate.json": tmp_path / "cultivate.json",
+        "@app/tmp/depotresult.csv": tmp_path / "depotresult.csv",
+    }
+    monkeypatch.setattr(module, "get_path", lambda key: paths[key])
+    monkeypatch.setattr(module, "save_inventory_counts", lambda counts, **_: counts)
+    paths["@app/tmp/cultivate.json"].write_text(
+        '{"data": {"items": []}}', encoding="utf-8"
+    )
+    write_rows(
+        paths["@app/tmp/depotresult.csv"],
+        [snapshot(1789895956, {"赤金": 12, "源石碎片": 8, "合成玉": 600})],
+    )
+
+    categories, _, _ = module.读取仓库()
+
+    assert categories["A常用"]["赤金"]["number"] == 12
+    assert categories["A常用"]["源石碎片"]["number"] == 8
+    assert "赤金" not in categories["K未分类"]
+    assert "源石碎片" not in categories["K未分类"]
+    assert categories["A常用"]["额外+碎片"]["number"] == 1.1
+
+
 def test_missing_file_returns_empty(history_path):
     assert module.读取仓库历史() == []
 
