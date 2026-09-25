@@ -171,7 +171,7 @@ def test_free_room_obeys_idle_takeover_limit(op_data, mood, expected):
 
 
 @pytest.mark.parametrize("cached_mood", [None, -1, 25])
-def test_free_room_unknown_replacement_takes_over_recovering_idle(op_data, cached_mood):
+def test_free_room_unknown_replacement_keeps_recovering_idle(op_data, cached_mood):
     op_data.operators["空爆"].mood = 2
     op_data.dorm[0].time = datetime.now() + timedelta(hours=5)
     replacement = op_data.operators["红"]
@@ -182,7 +182,7 @@ def test_free_room_unknown_replacement_takes_over_recovering_idle(op_data, cache
 
     try_add_release_dorm({}, None, op_data, tasks)
 
-    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+    assert tasks == []
     assert op_data.dorm[0].name == "空爆"  # 规划阶段不改真实入住者
 
 

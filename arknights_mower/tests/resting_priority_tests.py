@@ -11,7 +11,9 @@ from arknights_mower.utils.operators import Dormitory, Operator
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    has_resting_mood,
     resting_key,
+    resting_mood,
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import try_reorder
@@ -67,7 +69,7 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
             incoming in (RestingTier.STANDBY, RestingTier.REPLACEMENT)
             and occupant == RestingTier.IDLE
         ):
-            expected = mood is None or mood <= 22
+            expected = mood is not None and mood <= 22
     assert (
         data._find_dorm_slot(request.name, set(), group_resting=True) is not None
     ) == expected
@@ -75,14 +77,14 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
 
 @pytest.mark.parametrize("tier", [RestingTier.STANDBY, RestingTier.REPLACEMENT])
 @pytest.mark.parametrize("mood", [-1, 25])
-def test_invalid_cached_mood_allows_idle_takeover(op_data, tier, mood):
+def test_invalid_cached_mood_defaults_full_and_preserves_idle(op_data, tier, mood):
     op_data.dorm[0].time = datetime.now() + timedelta(hours=1)
     op_data.operators["空爆"].mood = 3
     set_tier(op_data, "红", tier, mood)
-    assert op_data.assign_dorm("红") is op_data.dorm[0]
+    assert op_data.assign_dorm("红") is None
 
 
-def test_free_selection_allows_unknown_replacement_to_take_idle_bed(op_data):
+def test_free_selection_keeps_idle_bed_with_unknown_replacement(op_data):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     op_data.operators["空爆"].mood = 3
@@ -96,7 +98,7 @@ def test_free_selection_allows_unknown_replacement_to_take_idle_bed(op_data):
 
     solver.preserve_resting_crafters(plan, ROOM)
 
-    assert plan[-1] == "红"
+    assert plan[-1] == "空爆"
 
 
 def test_unexecuted_bed_reservation_is_not_preempted(op_data):
@@ -232,3 +234,21 @@ def test_fiammetta_targets_are_not_promoted_to_priority_replacements(op_data):
     op_data.config.resting_priority_replacement = ["陈"]
     op_data.plan["dormitory_2"] = [Room("菲亚梅塔", "", ["陈"])]
     assert resting_tier(op_data, "陈") == RestingTier.IDLE
+
+
+@pytest.mark.parametrize(
+    "mood,has_timestamp", [(24, False), (3, False), (-1, True), (25, True)]
+)
+def test_unknown_mood_defaults_to_twenty_four_without_fabricating_reading(
+    mood, has_timestamp
+):
+    op = Operator(
+        "红", "", mood=mood, time_stamp=datetime.now() if has_timestamp else None
+    )
+    original = (op.mood, op.time_stamp)
+    assert resting_mood(op) == 24
+    assert not has_resting_mood(op)
+    assert (op.mood, op.time_stamp) == original
+    op.mood, op.time_stamp = 8, datetime.now()
+    assert resting_mood(op) == 8
+    assert has_resting_mood(op)

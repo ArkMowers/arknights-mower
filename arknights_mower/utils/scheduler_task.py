@@ -19,6 +19,7 @@ from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     busy_resting_names,
+    has_resting_mood,
     resting_key,
     resting_mood,
     resting_tier,
@@ -1291,7 +1292,7 @@ def plan_metadata(op_data, tasks):
             and (
                 op_data._can_standby(worker)
                 or (
-                    resting_mood(worker) != float("inf")
+                    has_resting_mood(worker)
                     and worker.current_mood() >= worker.upper_limit
                 )
             )
@@ -1676,14 +1677,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 op
                 for op in candidates
                 if not op_data.idle_rest_checked(op.name)
-                and (
-                    resting_mood(op, now) < op.upper_limit
-                    or (
-                        resting_tier(op_data, op.name)
-                        in (RestingTier.PRIORITY_REPLACEMENT, RestingTier.REPLACEMENT)
-                        and resting_mood(op, now) == float("inf")
-                    )
-                )
+                and resting_mood(op, now) < op.upper_limit
             ]
             full_list = [
                 op
@@ -1691,10 +1685,6 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 if op not in waiting_list
                 and not op.is_high()
                 and not op_data.has_rest_mood_limit(op.name)
-                and (
-                    resting_mood(op, now) != float("inf")
-                    or op_data.idle_rest_checked(op.name)
-                )
             ]
             full_list.sort(
                 key=lambda op: (resting_mood(op, now), resting_tier(op_data, op.name))
@@ -1724,7 +1714,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     if (agent.current_room, agent.current_index) != value.position:
                         continue
                     mood = resting_mood(agent, now)
-                    full = (mood != float("inf") and mood >= agent.upper_limit) or (
+                    full = (mood >= agent.upper_limit) or (
                         value.time is not None and value.time <= now
                     )
                     # 未恢复完成时复用层级接管规则；普通候补可向更高层级让床。

@@ -5675,14 +5675,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if (op := self.op_data.operators.get(name)) is not None
             and (
                 include_full
-                and resting_mood(op, now) != float("inf")
+                and not self.op_data.has_rest_mood_limit(name)
                 or resting_mood(op, now) < op.upper_limit
-                or resting_mood(op, now) == float("inf")
-                and resting_tier(self.op_data, name)
-                in (RestingTier.PRIORITY_REPLACEMENT, RestingTier.REPLACEMENT)
             )
         ]
-        # 未扫描的普通空闲者不能被逐个拉进宿舍试心情；未知替班仍可用。
+        # 未知心情按 24，只能作为补满空床的兜底，不逐个试住。
         if include_full:
             return sorted(
                 free_list,
@@ -5709,7 +5706,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             current is None
             or current.current_room != room
             or current.is_high()
-            or resting_mood(current) == float("inf")
             or resting_mood(current) < current.upper_limit
         ):
             return []
@@ -5717,14 +5713,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             agents, include_full=True, current_resident=current.name
         )
         # 全体上限是回满目标，超过目标的人仍可入住；继续比较真实心情。
-        # 无未知候选且原住者已最低时，无需重新选人。
+        # 未知心情按 24；没有更低心情的候选时保留原住者。
         if not any(
-            resting_mood(self.op_data.operators[name]) == float("inf")
-            or (
-                self.op_data.config.mood_limits is not None
-                and not self.op_data.has_rest_mood_limit(current.name)
-                and resting_mood(self.op_data.operators[name]) < resting_mood(current)
-            )
+            self.op_data.config.mood_limits is not None
+            and not self.op_data.has_rest_mood_limit(current.name)
+            and resting_mood(self.op_data.operators[name]) < resting_mood(current)
             for name in candidates
         ):
             return []
@@ -5794,11 +5787,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.op_data.operators[name]
             for name in self.get_free_list(agents)
             if name in self.op_data.operators
-            and (
-                resting_mood(self.op_data.operators[name], now) == float("inf")
-                or resting_mood(self.op_data.operators[name], now)
-                < self.op_data.operators[name].upper_limit
-            )
+            and resting_mood(self.op_data.operators[name], now)
+            < self.op_data.operators[name].upper_limit
         ]
         for index, name in enumerate(agents):
             if name != "Free":
@@ -5833,7 +5823,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 current = None
             if current is not None:
                 mood = resting_mood(current, now)
-                full = mood != float("inf") and mood >= current.upper_limit
+                full = mood >= current.upper_limit
                 # 主班通过自己的上下班任务移动，Free 不隐式召回整组。
                 if (
                     current.is_high()

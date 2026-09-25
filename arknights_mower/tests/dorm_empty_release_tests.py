@@ -68,14 +68,20 @@ def test_release_uses_cached_unfinished_replacement(solver):
     assert plan[4] == "红"
 
 
-def test_unknown_replacement_remains_eligible_but_unknown_idle_does_not(solver):
+def test_unknown_mood_only_fills_empty_beds(solver):
     instance, _ = solver
     instance.op_data.operators["红"].time_stamp = None
     instance.op_data.add(Operator("陈", ""))
     free = instance.get_free_list([])
-    assert "红" in free
+    assert "红" not in free
     assert "陈" not in free
     assert "空爆" not in free
+    assert {"红", "陈"} <= set(instance.get_free_list([], include_full=True))
+    # 未知心情不触发二次试住，也不清退已满的原住者。
+    plan = instance.task.plan[ROOM]
+    assert instance.dorm_mood_fallback_candidates(plan, ROOM) == []
+    instance.preserve_resting_crafters(plan, ROOM)
+    assert plan[-1] == "空爆"
 
 
 def test_clearing_inner_bed_tracks_compacted_positions(solver):
@@ -148,3 +154,24 @@ def test_empty_bed_remains_empty_if_all_candidates_have_reached_strict_cap(solve
     plan = ["Current"] * 4 + ["Free"]
     instance.preserve_resting_crafters(plan, ROOM)
     assert plan[-1] == ""
+
+
+@pytest.mark.parametrize("limit", [20, 24])
+def test_unknown_replacement_fills_empty_bed_and_real_read_controls_recovery(
+    solver, limit
+):
+    instance, _ = solver
+    data = instance.op_data
+    data.config.mood_limits = {"lower": 0, "upper": limit}
+    for op in data.operators.values():
+        data.apply_custom_mood_limits(op)
+    data.operators["红"].time_stamp = None
+    data.operators["空爆"].current_room = "meeting"
+    data.dorm[0].name = ""
+    data.dorm[0].time = None
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    assert tasks[0].plan[ROOM][-1] == "红"
+    data.update_detail("红", 8, ROOM, 4, True)
+    assert not data.is_full_dorm_fallback("红")
+    assert data.operators["红"].mood == 8

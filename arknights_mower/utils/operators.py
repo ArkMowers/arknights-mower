@@ -13,6 +13,7 @@ from arknights_mower.utils.manufacture_product import (
 from arknights_mower.utils.plan import BaseProduct, PlanConfig
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    has_resting_mood,
     resting_key,
     resting_mood,
     resting_tier,
@@ -650,8 +651,8 @@ class Operators:
         return (
             self.has_rest_mood_limit(name)
             and op is not None
-            and resting_mood(op) != float("inf")
-            and op.current_mood() >= op.upper_limit
+            and has_resting_mood(op)
+            and resting_mood(op) >= op.upper_limit
         )
 
     def is_free_room_excluded(self, name):
@@ -674,7 +675,6 @@ class Operators:
             and op.current_room.startswith("dorm")
             and getattr(op, "dorm_mood_fallback", "") == op.current_room
             and resting_mood(op) >= op.upper_limit
-            and resting_mood(op) != float("inf")
             and not self.has_rest_mood_limit(name)
         )
 
@@ -773,7 +773,7 @@ class Operators:
             old_upper = previous.get(op.name, op.upper_limit)
             if old_upper == op.upper_limit:
                 continue
-            if resting_mood(op) == float("inf"):
+            if not has_resting_mood(op):
                 bed.time = None
                 op.time_stamp = None
             elif op.mood >= op.upper_limit:
@@ -1719,7 +1719,7 @@ class Operators:
         if not self._can_standby(op):
             return False
         mood = resting_mood(op)
-        return mood != float("inf") and mood >= self.rescue_mood_threshold(op)
+        return has_resting_mood(op) and mood >= self.rescue_mood_threshold(op)
 
     def legacy_standby_can_yield(self, op):
         """稳定逻辑沿用原候补让床条件。"""
@@ -1807,8 +1807,8 @@ class Operators:
             return True
         if tier == RestingTier.IDLE:
             mood = resting_mood(self.operators[requester])
-            # 未知心情不代表满心情；只有有效读数超过 22 才阻止接管空闲者。
-            return mood == float("inf") or mood <= 22
+            # 无有效缓存按 24 心情，不抢占正在恢复的空闲者。
+            return mood <= 22
         return (
             incoming_tier == RestingTier.STANDBY
             and tier == RestingTier.REPLACEMENT

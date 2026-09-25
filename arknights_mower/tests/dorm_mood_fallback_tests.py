@@ -1,4 +1,4 @@
-"""未知替班入宿读满后，按游戏心情排序换一次；最低者也满就停止。"""
+"""全体上限的满员兜底保留；未知心情沿用默认 24，不反复试住。"""
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -22,10 +22,15 @@ ROOM = dorm_empty_release_tests.ROOM
 def fallback_solver(solver):
     instance, selected = solver
     data = instance.op_data
-    # 首名替班已入宿并读到24；其余两个替班缓存未知。
+    # 全体目标为20，现住者24，其他候选也达标但缓存心情更低。
     data.plan["meeting"][0].replacement.extend(["空爆", "陈"])
     data.add(Operator("陈", ""))
-    data.operators["红"].time_stamp = None
+    data.config.mood_limits = {"lower": 0, "upper": 20}
+    for op in data.operators.values():
+        data.apply_custom_mood_limits(op)
+    for name, mood in (("红", 23), ("陈", 21)):
+        data.operators[name].mood = mood
+        data.operators[name].time_stamp = datetime.now()
     data.config.resting_priority_replacement = ["红"]
     return instance, selected
 
@@ -146,37 +151,19 @@ def test_fallback_filters_reserved_blacklisted_working_and_capped(fallback_solve
     assert instance.dorm_mood_fallback_candidates(args, ROOM) == []
 
 
-@pytest.mark.parametrize("other_limit,expected_blocked", [(20, True), (24, False)])
-def test_limit_twenty_clears_lowest_and_only_blocks_reached_limits(
-    fallback_solver, other_limit, expected_blocked
-):
-    instance, selected = fallback_solver
+@pytest.mark.parametrize("limit", [12, 20, 24])
+def test_unknown_personal_limit_does_not_probe_or_fill_bed(fallback_solver, limit):
+    instance, _ = fallback_solver
     data = instance.op_data
     for name in ("空爆", "陈", "红"):
-        upper = other_limit if name == "红" else 20
-        data.config.operator_mood_limits[name] = {"lower": 0, "upper": upper}
-        data.operators[name].upper_limit = upper
+        data.config.operator_mood_limits[name] = {"lower": 0, "upper": limit}
+        data.operators[name].upper_limit = limit
+        data.operators[name].time_stamp = None
     instance.task.strict_mood_limit = True
-    # 先从真实心情排序里选陈；陈也已到20，只能清出，不能保留。
-    select_lowest(instance, selected)
-    data = finish_read(instance, 20)
-    assert not data.is_full_dorm_fallback("陈")
-    assert data.idle_rest_checked("红") == expected_blocked
-    strict = next(t for t in plan_metadata(data, []) if t.strict_mood_limit)
-    assert strict.meta_data == "陈"
-    instance.task = strict
-    agents = strict.plan[ROOM].copy()
+    assert instance.get_free_list([], include_full=True) == []
+    agents = instance.task.plan[ROOM].copy()
     instance.preserve_resting_crafters(agents, ROOM)
-    assert agents[-1] == ("" if expected_blocked else "Free")
-    if expected_blocked:
-        data.update_detail("陈", 20, "", -1, True)
-        tasks = plan_metadata(data, [])
-        try_add_release_dorm({}, None, data, tasks)
-        assert tasks == []
-        # 后续真实工作/心情读取或提高上限，候选可重新参与。
-        data.update_detail("红", 10, "", -1, True)
-        assert not data.idle_rest_checked("红")
-        assert "红" in instance.get_free_list([])
+    assert agents[-1] == ""
 
 
 def test_changed_idle_observation_invalidates_all_full_result(fallback_solver):
