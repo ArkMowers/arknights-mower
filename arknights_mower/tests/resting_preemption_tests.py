@@ -99,7 +99,6 @@ def test_idle_fill_priority_replacement_evicts_standby_and_preserves_return(solv
     data.config.free_room = True
     newcomer = OTHER_COVERS[0]
     data.config.resting_priority_replacement = [newcomer]
-    data.operators[newcomer].time_stamp = None
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
     assert len(tasks) == 1
@@ -145,4 +144,18 @@ def test_priority_replacement_fills_empty_bed_before_displacing_standby(solver):
     assert len(tasks) == 1
     apply_plan(solver, tasks[0].plan)
     assert data.operators[newcomer].is_resting()
+    assert all(data.operators[name].is_resting() for name in DEEP)
+
+
+def test_unknown_priority_replacement_does_not_evict_standby(solver):
+    shift_off(solver)
+    fill_remaining_beds(solver, OTHERS[1:])
+    data = solver.op_data
+    data.config.free_room = True
+    newcomer = OTHER_COVERS[0]
+    data.config.resting_priority_replacement = [newcomer]
+    data.operators[newcomer].time_stamp = None
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    assert tasks == []
     assert all(data.operators[name].is_resting() for name in DEEP)

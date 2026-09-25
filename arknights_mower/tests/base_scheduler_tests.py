@@ -1391,6 +1391,53 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks, [])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_initial_sampling_finishes_before_backup_and_normal_planning(self):
+        for completed in (False, True):
+            with self.subTest(completed=completed):
+                solver = self._create_no_train_plan_solver(experimental=True)
+                solver.task = None
+                solver.planned = False
+                solver.defer_backup_plan_until_mood_read = True
+                solver.restart_after_mood_read = False
+                events = []
+                with (
+                    patch.object(BaseSchedulerSolver, "find", return_value=True),
+                    patch.object(
+                        solver,
+                        "_read_agent_mood",
+                        side_effect=lambda: events.append("scan"),
+                    ),
+                    patch.object(
+                        solver,
+                        "_read_initial_dorm_mood",
+                        side_effect=lambda: (events.append("sample"), completed)[1],
+                    ),
+                    patch.object(
+                        solver,
+                        "backup_plan_solver",
+                        side_effect=lambda: events.append("backup"),
+                    ),
+                    patch.object(
+                        solver,
+                        "agent_get_mood",
+                        side_effect=lambda **kwargs: events.append("correct"),
+                    ),
+                    patch.object(solver, "plan_solver") as plan,
+                    patch.object(solver, "run_order_solver"),
+                ):
+                    solver.infra_main()
+                self.assertEqual(
+                    events,
+                    ["scan", "sample", "backup", "correct"]
+                    if completed
+                    else ["scan", "sample"],
+                )
+                self.assertEqual(
+                    solver.defer_backup_plan_until_mood_read, not completed
+                )
+                self.assertEqual(plan.call_count, int(completed))
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_experimental_initial_scan_keeps_recovered_training_tasks(self):
         for task_type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT):
             with self.subTest(task_type=task_type):

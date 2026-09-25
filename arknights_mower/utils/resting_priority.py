@@ -58,12 +58,19 @@ def resting_tier(op_data, name):
     return RestingTier.IDLE
 
 
+def has_resting_mood(op, now=None):
+    """是否有可用于恢复计时等操作的真实心情读数。"""
+    return (
+        op is not None
+        and op.time_stamp is not None
+        and 0 <= op.mood <= 24
+        and 0 <= op.current_mood(now) <= 24
+    )
+
+
 def resting_mood(op, now=None):
-    """无有效读数时返回未知标记，排序排在同级末尾。"""
-    if op is None or op.time_stamp is None or not 0 <= op.mood <= 24:
-        return float("inf")
-    mood = op.current_mood(now)
-    return mood if 0 <= mood <= 24 else float("inf")
+    """没有有效缓存时沿用默认 24 心情，读到实际心情后再更新。"""
+    return op.current_mood(now) if has_resting_mood(op, now) else 24
 
 
 def resting_key(op_data, name, now=None):

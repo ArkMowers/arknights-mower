@@ -936,3 +936,80 @@ def test_shift_on_slot_collision_falls_back_gracefully(solver):
     all_assigned = [agent for agents in plan.values() for agent in agents]
     assert "黑键" in all_assigned
     assert "陈" in all_assigned
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+@pytest.mark.parametrize("timing", [None, *PlanTriggerTiming])
+def test_active_fiammetta_blocks_every_backup_trigger(solver, experimental, timing):
+    if experimental:
+        enable_experimental_dorm_logic(solver)
+    data = solver.op_data
+    solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    data.evaluate_expression = MagicMock(wraps=data.evaluate_expression)
+    original = list(data.plan_condition)
+    generated = []
+    assert solver.backup_plan_solver(timing, generated_tasks=generated) is False
+    assert data.plan_condition == original
+    assert generated == []
+    assert solver.tasks == []
+    data.evaluate_expression.assert_not_called()
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+@pytest.mark.parametrize("phase", ["trigger", "charge", "restore"])
+def test_due_fiammetta_blocks_backup_between_tasks_and_after_restart(
+    solver, experimental, phase
+):
+    if experimental:
+        enable_experimental_dorm_logic(solver)
+    plans = {
+        "trigger": {},
+        "charge": {"dormitory_1": ["歌蕾蒂娅", "菲亚梅塔"]},
+        "restore": {"central": ["歌蕾蒂娅"]},
+    }
+    task = SchedulerTask(
+        time=base.datetime.now(), task_type=TaskTypes.FIAMMETTA, task_plan=plans[phase]
+    )
+    solver.tasks = [task]
+    solver.task = None
+    data = solver.op_data
+    data.evaluate_expression = MagicMock(wraps=data.evaluate_expression)
+    assert solver.backup_plan_solver() is False
+    assert data.plan_condition == [False]
+    assert solver.tasks == [task]
+    data.evaluate_expression.assert_not_called()
+
+    # 完成回岗后恢复正常判断；未来的下一次充能不能长期阻止副表。
+    task.time = base.datetime.now() + timedelta(hours=1)
+    solver.backup_plan_solver()
+    assert data.plan_condition == [True]
+    assert data.evaluate_expression.called
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+def test_gladiia_temporary_charge_does_not_activate_rest_backup(solver, experimental):
+    if experimental:
+        enable_experimental_dorm_logic(solver)
+    data = solver.op_data
+    data.backup_plans[0].trigger = LogicExpression(
+        "op_data.operators['歌蕾蒂娅'].is_resting()", "==", "True"
+    )
+    gladiia = data.operators["歌蕾蒂娅"]
+    gladiia.current_room, gladiia.current_index = "dormitory_1", 3
+    restore = SchedulerTask(
+        time=base.datetime.now(),
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={"central": ["歌蕾蒂娅"]},
+    )
+    solver.task = None
+    solver.tasks = [restore]
+    assert solver.backup_plan_solver() is False
+    assert data.plan_condition == [False]
+    gladiia.current_room, gladiia.current_index = "central", 0
+    solver.tasks = []
+    solver.backup_plan_solver()
+    assert data.plan_condition == [False]
+    # 真正下班时仍按原条件正常触发。
+    gladiia.current_room, gladiia.current_index = "dormitory_1", 3
+    solver.backup_plan_solver()
+    assert data.plan_condition == [True]
