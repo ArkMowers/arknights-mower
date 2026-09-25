@@ -525,16 +525,6 @@ def read_log():
 Thread(target=read_log, daemon=True).start()
 
 
-def _check_hot_update_on_launch():
-    """打开 mower 时后台检查一次热更（config 开关 + 节流内置，不阻塞启动）。"""
-    from arknights_mower.utils.hot_update import update as hot_update_update
-
-    hot_update_update()
-
-
-Thread(target=_check_hot_update_on_launch, daemon=True).start()
-
-
 def _watch_shared_resource_changes():
     """停止任务时刷新资源；运行期间由任务线程在安全边界主动刷新。"""
     from arknights_mower.utils.resource_pkg import reload_resource_caches_if_changed
@@ -911,7 +901,7 @@ def depot_history():
 
 @app.route("/stage/latest-activity")
 def stage_latest_activity():
-    """刷理智周计划：最近开启活动（stage_data_full 热更后最新）的选中关。
+    """刷理智周计划：最近开启活动（当前资源包 stage_data_full）的选中关。
 
     返回 [{value, label, code, materials}]，按代号尾号大到小。材料仅 MATERIAL 常规掉落
     （剔 ACTIVITY_ITEM/COMPLETE）；库存取自 @app/tmp/cultivate.json（{id: count}），
@@ -1259,13 +1249,10 @@ def upload_sss_copilot():
     }
 
 
-@app.route("/hot-update/manual", methods=["POST"])
+@app.route("/resource-update/manual", methods=["POST"])
 @require_token
-def hot_update_manual():
-    """手动应用一份更新包（拖入/选择），按 zip 内容自动识别热更包/资源包。
-
-    用于国内直连 GitHub 不稳时的人工兜底：热更走 apply_manual_zip，资源包走 overlay 原子安装。
-    """
+def resource_update_manual():
+    """手动应用资源包，供无法稳定连接 GitHub 时使用。"""
     from arknights_mower.utils.manual_update import apply_manual_update
 
     update_file = request.files.get("update")

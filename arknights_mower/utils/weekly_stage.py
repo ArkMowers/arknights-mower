@@ -1,6 +1,6 @@
 """刷理智周计划：最新活动关卡推荐（纯逻辑，可单测）。
 
-数据来自 stage_data_full（运行时、可被热更覆盖的版本）。每条记录关键字段：
+数据来自资源包提供的 stage_data_full。每条记录关键字段：
 id / name / stageType / zoneNameSecond（活动名，同活动各 zone 一致）/ endTs（可为
 {startTs, endTs} 结构或 None{无窗口}/-1{剿灭}）/ drop（[{type, id, dropType}]）/
 difficulty。id 即关卡代号（如 TO-9、TO-S-4）。

@@ -70,6 +70,21 @@ def check():
     return get_updater().check(data.get("channel"))
 
 
+@software_update_bp.get("/release/rollback-options")
+@result
+def rollback_options():
+    return get_updater().release_rollback_options(request.args.get("channel"))
+
+
+@software_update_bp.post("/release/rollback-check")
+@result
+def rollback_check():
+    data = request.get_json()
+    return get_updater().check_release_rollback(
+        data.get("channel"), data.get("version")
+    )
+
+
 @software_update_bp.post("/source/remote")
 @result
 def remember_source_remote():

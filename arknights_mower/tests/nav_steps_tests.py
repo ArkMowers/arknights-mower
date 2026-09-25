@@ -67,28 +67,6 @@ class TestLoadNavFile(unittest.TestCase):
         self.assertEqual(got["stages"]["PA-1"]["success"], True)
 
 
-class TestFirstExistingPath(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.dir = Path(self.tmp.name)
-
-    def test_none_exist(self):
-        self.assertIsNone(ns.first_existing_path(self.dir / "a", self.dir / "b"))
-
-    def test_first_wins(self):
-        a = self.dir / "a"
-        b = self.dir / "b"
-        a.write_text("x", encoding="utf-8")
-        b.write_text("y", encoding="utf-8")
-        self.assertEqual(ns.first_existing_path(a, b), a)
-
-    def test_second_when_first_missing(self):
-        b = self.dir / "b"
-        b.write_text("y", encoding="utf-8")
-        self.assertEqual(ns.first_existing_path(self.dir / "a", b), b)
-
-
 class TestMergeNavSteps(unittest.TestCase):
     """官方打底 + 本机优先：用户已学会(success=true)条目不被官方覆盖，官方只补缺。"""
 
@@ -211,15 +189,13 @@ class TestSelectReplaySteps(unittest.TestCase):
 
 
 class TestSolverMergedWiring(unittest.TestCase):
-    """solver 接线：官方层读取（热更目录优先、自带兜底）+ 合并 + persist 不吸收官方。"""
+    """solver 接线：内置官方步骤 + 本机步骤合并，persist 不吸收官方。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
-        self.hotupdate = self.dir / "hot_update"
         self.data = self.dir / "data"
-        self.hotupdate.mkdir()
         self.data.mkdir()
         (self.data / "nav_trie_steps.json").write_text(
             json.dumps(
@@ -237,40 +213,10 @@ class TestSolverMergedWiring(unittest.TestCase):
 
     def _patch(self):
         stack = ExitStack()
-        stack.enter_context(
-            patch.object(
-                nav_module, "get_path", return_value=self.hotupdate / "nav_steps.json"
-            )
-        )
         stack.enter_context(patch.object(nav_module, "__rootdir__", self.dir))
         return stack
 
-    def test_official_prefers_overlay_over_bundled(self):
-        (self.data / "nav_steps.json").write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "stages": {"AP-1": _entry(True, [{"action": "bundled"}])},
-                    "patterns": {},
-                }
-            ),
-            encoding="utf-8",
-        )
-        (self.hotupdate / "nav_steps.json").write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "stages": {"AP-1": _entry(True, [{"action": "overlay"}])},
-                    "patterns": {},
-                }
-            ),
-            encoding="utf-8",
-        )
-        with self._patch():
-            off = self._solver().load_official_nav_steps()
-        self.assertEqual(off["stages"]["AP-1"]["steps"], [{"action": "overlay"}])
-
-    def test_official_falls_back_to_bundled_when_no_overlay(self):
+    def test_official_uses_bundled(self):
         (self.data / "nav_steps.json").write_text(
             json.dumps(
                 {
@@ -291,7 +237,7 @@ class TestSolverMergedWiring(unittest.TestCase):
         self.assertEqual(off, ns.empty_nav_steps())
 
     def test_merged_user_wins_official_fills(self):
-        (self.hotupdate / "nav_steps.json").write_text(
+        (self.data / "nav_steps.json").write_text(
             json.dumps(
                 {
                     "version": 1,
@@ -310,7 +256,7 @@ class TestSolverMergedWiring(unittest.TestCase):
         self.assertEqual(merged["stages"]["AP-2"]["steps"], [{"action": "off2"}])
 
     def test_persist_does_not_absorb_official(self):
-        (self.hotupdate / "nav_steps.json").write_text(
+        (self.data / "nav_steps.json").write_text(
             json.dumps(
                 {
                     "version": 1,
@@ -332,157 +278,6 @@ class TestSolverMergedWiring(unittest.TestCase):
         )
         self.assertIn("NEW", raw["stages"])
         self.assertNotIn("OFF", raw["stages"])
-
-
-class TestForceRecordEntryFlow(unittest.TestCase):
-    """force_record 录制模式：跳过快速入口与历史回放，直接走在线构建录新步骤。"""
-
-    def _mk(self, force_record: bool = False, reuse_record: bool = False):
-        s = object.__new__(NavigationSolver)
-        s.name = "AT-8"
-        s.stageType = "ACTIVITY"
-        s.stage_meta = {"endTs": {"endTs": 9999999999}}
-        s.nav_steps = []
-        s.nav_route_success = True
-        s.force_record = force_record
-        s.reuse_record = reuse_record
-        s._activity_entry_done = False
-        s._activity_entry_failed = False
-        s._builder_attempted = False
-        s.success = False
-        return s
-
-    def _engine(self, stack: ExitStack):
-        stack.enter_context(patch.object(nav_module.rapidocr, "engine", object()))
-
-    def setUp(self):
-        # 录制成功后 try_activity_entry 会真的调 persist_nav_steps，把数据写进
-        # 仓库里的 data/nav_trie_steps.json；把 __rootdir__ 指到用例自己的 tmpdir，
-        # 让这类写入落在临时目录里。
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self._rootdir_patch = patch.object(
-            nav_module, "__rootdir__", Path(self.tmp.name)
-        )
-        self._rootdir_patch.start()
-        self.addCleanup(self._rootdir_patch.stop)
-
-    def test_force_record_skips_quick_and_replay(self):
-        s = self._mk(force_record=True)
-        with ExitStack() as stack:
-            self._engine(stack)
-            quick = stack.enter_context(
-                patch.object(s, "try_quick_entry_from_main", return_value=True)
-            )
-            replay = stack.enter_context(
-                patch.object(s, "try_replay_nav_steps", return_value=True)
-            )
-            build = stack.enter_context(
-                patch.object(s, "try_build_nav_steps_once", return_value=True)
-            )
-            persist = stack.enter_context(patch.object(s, "persist_nav_steps"))
-            ok = s.try_activity_entry()
-        self.assertTrue(ok)
-        quick.assert_not_called()
-        replay.assert_not_called()
-        build.assert_called_once()
-        persist.assert_called_once()
-        self.assertTrue(s.success)
-        self.assertTrue(s._builder_attempted)
-
-    def test_force_record_build_failure_terminates(self):
-        s = self._mk(force_record=True)
-        with ExitStack() as stack:
-            self._engine(stack)
-            stack.enter_context(
-                patch.object(s, "try_build_nav_steps_once", return_value=False)
-            )
-            ok = s.try_activity_entry()
-        self.assertFalse(ok)
-        self.assertTrue(s._activity_entry_failed)
-        self.assertFalse(s.success)
-
-    def test_normal_mode_still_tries_quick_then_replay(self):
-        s = self._mk(force_record=False)
-        with ExitStack() as stack:
-            self._engine(stack)
-            quick = stack.enter_context(
-                patch.object(s, "try_quick_entry_from_main", return_value=True)
-            )
-            replay = stack.enter_context(patch.object(s, "try_replay_nav_steps"))
-            build = stack.enter_context(patch.object(s, "try_build_nav_steps_once"))
-            ok = s.try_activity_entry()
-        self.assertTrue(ok)
-        quick.assert_called_once()
-        replay.assert_not_called()
-        build.assert_not_called()
-
-    def test_reuse_record_replays_with_recording(self):
-        s = self._mk(reuse_record=True)
-        with ExitStack() as stack:
-            self._engine(stack)
-            quick = stack.enter_context(
-                patch.object(s, "try_quick_entry_from_main", return_value=True)
-            )
-            replay = stack.enter_context(
-                patch.object(s, "try_replay_nav_steps", return_value=True)
-            )
-            build = stack.enter_context(patch.object(s, "try_build_nav_steps_once"))
-            ok = s.try_activity_entry()
-        self.assertTrue(ok)
-        quick.assert_not_called()
-        replay.assert_called_once_with(record=True)
-        build.assert_not_called()
-        self.assertTrue(s.success)
-
-    def test_reuse_record_fallback_to_build(self):
-        s = self._mk(reuse_record=True)
-        with ExitStack() as stack:
-            self._engine(stack)
-            replay = stack.enter_context(
-                patch.object(s, "try_replay_nav_steps", return_value=False)
-            )
-            build = stack.enter_context(
-                patch.object(s, "try_build_nav_steps_once", return_value=True)
-            )
-            persist = stack.enter_context(patch.object(s, "persist_nav_steps"))
-            ok = s.try_activity_entry()
-        self.assertTrue(ok)
-        replay.assert_called_once_with(record=True)
-        build.assert_called_once()
-        persist.assert_called_once()
-        self.assertTrue(s.success)
-
-    def test_reuse_record_truncates_partial_steps_on_fallback(self):
-        s = self._mk(reuse_record=True)
-        s.nav_steps = [{"action": "stale"}]
-        with ExitStack() as stack:
-            self._engine(stack)
-            stack.enter_context(
-                patch.object(s, "try_replay_nav_steps", return_value=False)
-            )
-            stack.enter_context(
-                patch.object(s, "try_build_nav_steps_once", return_value=True)
-            )
-            ok = s.try_activity_entry()
-        self.assertTrue(ok)
-        # 失败回放残留的定位步骤被截断，只保留进入 try_activity_entry 前的步骤
-        self.assertEqual(s.nav_steps, [{"action": "stale"}])
-
-    def test_reuse_record_both_fail_terminates(self):
-        s = self._mk(reuse_record=True)
-        with ExitStack() as stack:
-            self._engine(stack)
-            stack.enter_context(
-                patch.object(s, "try_replay_nav_steps", return_value=False)
-            )
-            stack.enter_context(
-                patch.object(s, "try_build_nav_steps_once", return_value=False)
-            )
-            ok = s.try_activity_entry()
-        self.assertFalse(ok)
-        self.assertTrue(s._activity_entry_failed)
-        self.assertFalse(s.success)
 
 
 class TestStoryEntryExclusion(unittest.TestCase):
@@ -508,24 +303,13 @@ class TestStoryEntryExclusion(unittest.TestCase):
         self.assertFalse(nav_module._is_story_entry(123))
 
 
-class TestReplayRecordsSteps(unittest.TestCase):
-    """try_replay_nav_steps 的 record 参数：录制时把回放的路由步骤记进 nav_steps。"""
+class TestReplaySteps(unittest.TestCase):
+    """回放步骤时不会把旧路线再次写入自学数据。"""
 
     _ROUTE = [
         {"action": "tap", "payload": {"pos": [490, 1014], "text": "main_entry"}},
         {"action": "swipe", "payload": {"start": [960, 700], "vector": [0, -910]}},
     ]
-
-    def setUp(self):
-        # 同 TestForceRecordEntryFlow：把 __rootdir__ 指到 tmpdir，
-        # 避免将来加用例时把数据写进仓库里的 data/nav_trie_steps.json。
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self._rootdir_patch = patch.object(
-            nav_module, "__rootdir__", Path(self.tmp.name)
-        )
-        self._rootdir_patch.start()
-        self.addCleanup(self._rootdir_patch.stop)
 
     def _solver(self):
         s = object.__new__(NavigationSolver)
@@ -534,9 +318,7 @@ class TestReplayRecordsSteps(unittest.TestCase):
         s._suppress_nav_recording = False
         return s
 
-    def _patch(
-        self, s, record: bool, verify: callable = None, stage_code: bool = False
-    ):
+    def _patch(self, s, verify: callable = None, stage_code: bool = False):
         stack = ExitStack()
         stack.enter_context(patch.object(s, "back_to_terminal_main", return_value=True))
         stack.enter_context(
@@ -552,22 +334,15 @@ class TestReplayRecordsSteps(unittest.TestCase):
             )
         return stack
 
-    def test_record_true_captures_route(self):
+    def test_replay_does_not_capture_existing_route(self):
         s = self._solver()
-        with self._patch(s, record=True):
-            ok = s.try_replay_nav_steps(record=True)
-        self.assertFalse(ok)  # is_stage_code=False，不触发验证，走完全部步骤返回 False
-        self.assertEqual(s.nav_steps, self._ROUTE)
-
-    def test_record_false_captures_nothing(self):
-        s = self._solver()
-        with self._patch(s, record=False):
-            ok = s.try_replay_nav_steps(record=False)
+        with self._patch(s):
+            ok = s.try_replay_nav_steps()
         self.assertFalse(ok)
         self.assertEqual(s.nav_steps, [])
 
     def test_verify_suppresses_recording(self):
-        # 验证阶段的定位滑动不该混入录制结果（否则攒一堆重复滑动）
+        # 验证阶段的定位滑动不该混入自学步骤。
         s = self._solver()
         observed = {}
 
@@ -575,11 +350,11 @@ class TestReplayRecordsSteps(unittest.TestCase):
             observed["suppress"] = s._suppress_nav_recording
             return False
 
-        with self._patch(s, record=True, verify=_verify, stage_code=True):
-            ok = s.try_replay_nav_steps(record=True)
+        with self._patch(s, verify=_verify, stage_code=True):
+            ok = s.try_replay_nav_steps()
         self.assertFalse(ok)
         self.assertTrue(observed["suppress"])
-        self.assertEqual(s.nav_steps, self._ROUTE)
+        self.assertEqual(s.nav_steps, [])
 
 
 if __name__ == "__main__":

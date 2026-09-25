@@ -31,7 +31,7 @@ const {
 
 const mobile = inject('mobile')
 
-// 最近开启活动（后端供给，热更后最新）：prepend 到关卡下拉最前
+// 最近开启活动（后端当前资源包）：prepend 到关卡下拉最前
 const latestActivityOptions = ref([])
 
 async function loadLatestActivityStages() {

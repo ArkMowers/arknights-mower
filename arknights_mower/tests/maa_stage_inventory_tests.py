@@ -178,7 +178,7 @@ class MaaStageInventoryTests(unittest.TestCase):
         self.assertEqual(result["stages"], ["1-7"])
         self.assertEqual(result["ratio_decisions"], [])
 
-    def test_activity_materials_use_selected_hot_update_entry(self):
+    def test_activity_materials_use_selected_stage_entry(self):
         stages = [
             {"id": "ACT-8", "drop": [{"id": "OLD"}]},
             {"id": "ACT-8", "drop": None},

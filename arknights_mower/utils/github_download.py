@@ -12,6 +12,7 @@ DOWNLOAD_HOSTS = {
     "codeload.github.com",
     "gist.githubusercontent.com",
 }
+FALLBACK_PROXY = "https://ghfast.top/"
 
 
 def normalize_proxy(value):
@@ -63,3 +64,41 @@ def download_url(url, proxy=None):
         return url
     proxy = get_proxy() if proxy is None else normalize_proxy(proxy)
     return proxy + url if proxy else url
+
+
+def download_urls(url, proxy=None):
+    """Try a configured station, or direct GitHub followed by the default station."""
+    proxy = get_proxy() if proxy is None else normalize_proxy(proxy)
+    primary = download_url(url, proxy)
+    if proxy or primary != url or urlsplit(url).hostname not in DOWNLOAD_HOSTS:
+        return (primary,)
+    fallback = download_url(url, FALLBACK_PROXY)
+    return (primary, fallback) if fallback != primary else (primary,)
+
+
+def request_download(client, method, url, *, proxy=None, **kwargs):
+    """Open a GitHub file response, retrying failed direct requests via ghfast.
+
+    The caller owns the response and must close it. A failure while reading the
+    body is reported to the caller, which can discard any partial download.
+    """
+    import requests
+
+    candidates = download_urls(url, proxy)
+    for index, candidate in enumerate(candidates):
+        try:
+            response = getattr(client, method)(candidate, **kwargs)
+            try:
+                response.raise_for_status()
+            except requests.HTTPError:
+                status = response.status_code
+                response.close()
+                retryable_status = status in (403, 429) or status >= 500
+                if index + 1 == len(candidates) or not retryable_status:
+                    raise
+                continue
+            return response, candidate
+        except (requests.ConnectionError, requests.Timeout):
+            if index + 1 == len(candidates):
+                raise
+    raise RuntimeError("没有可用的 GitHub 下载地址")

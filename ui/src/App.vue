@@ -511,8 +511,8 @@ const watermarkData = ref('mower')
 const config_store = useConfigStore()
 const { load_config, load_shop, load_item } = config_store
 const {
-  hot_update_enable,
-  hot_update_auto_update,
+  resource_update_enable,
+  resource_update_auto_update,
   simulator,
   start_automatically,
   theme,
@@ -848,9 +848,9 @@ onMounted(async () => {
         await Promise.all([load_shop(), load_item(), load_operators()])
       }
       await loadResourceVersionLocal()
-      if (hot_update_enable.value) {
+      if (resource_update_enable.value) {
         const resourceInfo = await loadResourceVersion()
-        if (hot_update_auto_update.value && resourceInfo.update_available === true) {
+        if (resource_update_auto_update.value && resourceInfo.update_available === true) {
           if (await installResource()) {
             await Promise.all([load_shop(), load_item(), load_operators()])
           }

@@ -34,7 +34,7 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 import requests
 from packaging.version import InvalidVersion, Version
 
-from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.maa_backup import maa_in_use, update_transaction
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
@@ -645,14 +645,14 @@ class HTTPRangeReader(io.RawIOBase):
         self._position = 0
         self._cache_start = 0
         self._cache = b""
-        request_url = download_url(url)
         try:
-            response = self._session.head(
-                request_url,
+            response, request_url = request_download(
+                self._session,
+                "head",
+                url,
                 allow_redirects=True,
                 timeout=REQUEST_TIMEOUT,
             )
-            response.raise_for_status()
         except requests.RequestException as e:
             raise MaaUpdateError(f"读取 MAA Python 包信息失败：{e}") from e
         try:
@@ -1374,12 +1374,13 @@ def download_asset(
     downloaded = 0
     digest = hashlib.sha256()
     try:
-        with client.get(
-            download_url(asset.url),
+        with request_download(
+            client,
+            "get",
+            asset.url,
             stream=True,
             timeout=REQUEST_TIMEOUT,
-        ) as response:
-            response.raise_for_status()
+        )[0] as response:
             total = int(response.headers.get("Content-Length") or asset.size or 0)
             with part_path.open("wb") as target:
                 for chunk in response.iter_content(DOWNLOAD_CHUNK_SIZE):

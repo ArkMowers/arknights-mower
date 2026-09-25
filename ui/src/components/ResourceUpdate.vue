@@ -8,10 +8,10 @@ import { useResourceVersionStore } from '@/stores/resourceVersion'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 
-const manual_url = `${import.meta.env.VITE_HTTP_URL}/hot-update/manual`
+const manual_url = `${import.meta.env.VITE_HTTP_URL}/resource-update/manual`
 
 const config_store = useConfigStore()
-const { hot_update_enable, hot_update_auto_update } = storeToRefs(config_store)
+const { resource_update_enable, resource_update_auto_update } = storeToRefs(config_store)
 const { load_item, load_shop } = config_store
 
 const plan_store = usePlanStore()
@@ -38,7 +38,7 @@ async function refresh_resource_options() {
 onMounted(() => {
   loadResourceJob()
   // 当前版本常驻显示；开启「启动时检查更新」时才顺带拉远端最新版本。
-  if (hot_update_enable.value) {
+  if (resource_update_enable.value) {
     loadResourceVersion()
   } else {
     loadResourceVersionLocal()
@@ -49,7 +49,7 @@ async function show_manual_result(data) {
   manual_result.value = data && typeof data.message === 'string' ? data.message : '更新包应用失败'
   if (data?.ok && data.kind === 'resource') {
     await refresh_resource_options()
-    if (hot_update_enable.value) {
+    if (resource_update_enable.value) {
       await loadResourceVersion(true)
     } else {
       await loadResourceVersionLocal()
@@ -97,16 +97,16 @@ function drop_manual_update(event) {
 }
 
 function set_auto_check(checked) {
-  hot_update_enable.value = checked
+  resource_update_enable.value = checked
   if (!checked) {
-    hot_update_auto_update.value = false
+    resource_update_auto_update.value = false
   }
 }
 
 function set_auto_update(checked) {
-  hot_update_auto_update.value = checked
+  resource_update_auto_update.value = checked
   if (checked) {
-    hot_update_enable.value = true
+    resource_update_enable.value = true
   }
 }
 </script>
@@ -115,16 +115,16 @@ function set_auto_update(checked) {
   <n-card title="资源更新">
     <n-form :show-feedback="false" label-placement="left" label-width="72">
       <n-form-item :show-label="false">
-        <n-checkbox :checked="hot_update_enable" @update:checked="set_auto_check">
+        <n-checkbox :checked="resource_update_enable" @update:checked="set_auto_check">
           自动检查更新
         </n-checkbox>
-        <span class="hint">打开 mower 时自动检查热更新和资源包</span>
+        <span class="hint">打开 Mower 时自动检查资源包</span>
       </n-form-item>
       <n-form-item :show-label="false">
-        <n-checkbox :checked="hot_update_auto_update" @update:checked="set_auto_update">
+        <n-checkbox :checked="resource_update_auto_update" @update:checked="set_auto_update">
           自动更新
         </n-checkbox>
-        <span class="hint">发现更新后自动应用热更新和资源包</span>
+        <span class="hint">发现新资源包后自动安装</span>
       </n-form-item>
       <n-form-item label="当前版本">
         <span>{{ info.current_display || '未安装' }}</span>
@@ -191,7 +191,7 @@ function set_auto_update(checked) {
         >
           <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="drop_manual_update">
             <div>点击或拖入更新包</div>
-            <div class="hint">自动识别热更包 / 资源包，用于直连 GitHub 不稳时的兜底</div>
+            <div class="hint">手动安装资源包，用于直连 GitHub 不稳时的兜底</div>
           </n-upload-dragger>
         </n-upload>
       </n-form-item>

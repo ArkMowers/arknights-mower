@@ -123,12 +123,18 @@ class TestMaaConfig(unittest.TestCase):
 
 class TestUpdateConfig(unittest.TestCase):
     def test_auto_update_enables_check_and_round_trips(self):
-        conf = Conf(hot_update={"enable": False, "auto_update": True})
-        self.assertTrue(conf.hot_update.enable)
-        self.assertTrue(conf.hot_update.auto_update)
+        conf = Conf(resource_update={"enable": False, "auto_update": True})
+        self.assertTrue(conf.resource_update.enable)
+        self.assertTrue(conf.resource_update.auto_update)
         restored = Conf(**conf.model_dump())
-        self.assertTrue(restored.hot_update.enable)
-        self.assertTrue(restored.hot_update.auto_update)
+        self.assertTrue(restored.resource_update.enable)
+        self.assertTrue(restored.resource_update.auto_update)
+
+    def test_old_update_settings_migrate_to_resource_update(self):
+        conf = Conf(hot_update={"enable": False, "auto_update": True})
+        self.assertTrue(conf.resource_update.enable)
+        self.assertTrue(conf.resource_update.auto_update)
+        self.assertNotIn("hot_update", conf.model_dump())
 
 
 class TestAtomicWrite(unittest.TestCase):

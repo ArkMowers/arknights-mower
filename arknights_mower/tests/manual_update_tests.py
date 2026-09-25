@@ -43,32 +43,24 @@ class TestApplyManualUpdate(unittest.TestCase):
             got = manual_update.apply_manual_update(data, busy)
         self.assertEqual(got, {"ok": False, "message": "busy", "kind": "resource"})
 
-    def test_applies_hot_update_package(self):
+    def test_legacy_hot_update_package_is_rejected(self):
         data = _zip_bytes({"nav_steps.json": "{}"})
-        with patch.object(
-            manual_update.hot_update, "apply_manual_zip", return_value=True
-        ):
-            got = manual_update.apply_manual_update(data)
-        self.assertEqual(
-            got, {"ok": True, "kind": "hot_update", "message": "热更包已应用"}
-        )
+        got = manual_update.apply_manual_update(data)
+        self.assertFalse(got["ok"])
+        self.assertEqual(got["kind"], "unknown")
 
     def test_invalid_zip_is_rejected(self):
         got = manual_update.apply_manual_update(b"not a zip")
         self.assertFalse(got["ok"])
         self.assertEqual(got["kind"], "unknown")
 
-    def test_legacy_binary_zip_is_not_applied_as_resource_or_hot_update(self):
+    def test_legacy_binary_zip_is_not_applied_as_resource(self):
         data = _zip_bytes({"mower.exe": "legacy package fixture"})
-        with (
-            patch.object(manual_update, "install_resource_pkg") as install_resource,
-            patch.object(manual_update.hot_update, "apply_manual_zip") as install_hot,
-        ):
+        with patch.object(manual_update, "install_resource_pkg") as install_resource:
             result = manual_update.apply_manual_update(data)
         self.assertFalse(result["ok"])
         self.assertEqual(result["kind"], "unknown")
         install_resource.assert_not_called()
-        install_hot.assert_not_called()
 
 
 if __name__ == "__main__":

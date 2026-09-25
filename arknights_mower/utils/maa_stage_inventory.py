@@ -18,7 +18,7 @@ UNBOUND_STAGE_IDS = frozenset({"", "Annihilation"})
 
 # 常驻关的常规掉落来自 PRTS「关卡一览 / 资源收集」及其关卡详情页。
 # stage_data_full 的 MAIN / DAILY 基线没有 drop，因此在这里保留稳定映射；活动关仍从
-# 可热更的 stage_data_full 动态读取 MATERIAL + NORMAL。
+# 资源包中的 stage_data_full 动态读取 MATERIAL + NORMAL。
 DEFAULT_STAGE_DROP_IDS = {
     "1-7": ["30012"],
     "LS-6": ["2004", "2003"],

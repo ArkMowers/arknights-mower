@@ -1,8 +1,8 @@
 """资源包 version.json 的客户端读取与更新检测。
 
-- 只读正式 ``data/version.json``（安装状态的权威记录由 hot_update.py 拥有），远端先拉 tmp 再比对，**不覆盖正式文件**。
+- 只读正式 ``data/version.json``（安装状态由资源包管理），远端先拉 tmp 再比对，**不覆盖正式文件**。
 - 展示用 ``display_version``（可读名+#MMDD），比较用 ``res_version``（日期+内容哈希，只升不降），两者分离。
-- 镜像 ``hot_update.py`` 模式：fetch 不抛异常、失败回退 tmp 缓存。
+- fetch 不抛异常、失败回退 tmp 缓存。
 """
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 
 from arknights_mower import __version__
-from arknights_mower.utils.github_download import download_url
+from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import display_version
@@ -51,7 +51,7 @@ def _write_tmp_cache(data: dict) -> None:
 
 def _fetch_remote_version_json() -> dict | None:
     try:
-        r = requests.get(download_url(RESOURCE_VERSION_URL), timeout=30)
+        r, _ = request_download(requests, "get", RESOURCE_VERSION_URL, timeout=30)
         if r.status_code != 200:
             logger.warning(f"资源版本拉取失败: HTTP {r.status_code}")
             return None

@@ -160,8 +160,8 @@ export const useConfigStore = defineStore('config', () => {
   const visit_friend_mode = ref('maa')
   const credit_fight = ref({})
   const custom_screenshot = ref({})
-  const hot_update_enable = ref(false)
-  const hot_update_auto_update = ref(false)
+  const resource_update_enable = ref(false)
+  const resource_update_auto_update = ref(false)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
   const expiring_medicine_on_weekend = ref(false)
@@ -592,8 +592,8 @@ export const useConfigStore = defineStore('config', () => {
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
-    hot_update_enable.value = response.data.hot_update?.enable ?? false
-    hot_update_auto_update.value = response.data.hot_update?.auto_update ?? false
+    resource_update_enable.value = response.data.resource_update?.enable ?? false
+    resource_update_auto_update.value = response.data.resource_update?.auto_update ?? false
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
     expiring_medicine_on_weekend.value = response.data.expiring_medicine_on_weekend
@@ -753,9 +753,9 @@ export const useConfigStore = defineStore('config', () => {
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
-      hot_update: {
-        enable: hot_update_enable.value,
-        auto_update: hot_update_auto_update.value
+      resource_update: {
+        enable: resource_update_enable.value,
+        auto_update: resource_update_auto_update.value
       },
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
@@ -970,8 +970,8 @@ export const useConfigStore = defineStore('config', () => {
     visit_friend_mode,
     credit_fight,
     custom_screenshot,
-    hot_update_enable,
-    hot_update_auto_update,
+    resource_update_enable,
+    resource_update_auto_update,
     notification_level,
     waiting_scene,
     expiring_medicine_on_weekend,

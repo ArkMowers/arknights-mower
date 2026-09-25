@@ -259,11 +259,11 @@ class LongTaskPart(ConfModel):
     sign_in: SignInConf = Field(default_factory=SignInConf)
     "签到活动"
 
-    class HotUpdateConf(ConfModel):
+    class ResourceUpdateConf(ConfModel):
         enable: bool = False
-        "热更新检查开关（默认关）"
+        "资源更新检查开关（默认关）"
         auto_update: bool = False
-        "发现热更新或资源包更新时自动安装"
+        "发现资源包更新时自动安装"
 
         @model_validator(mode="after")
         def auto_update_requires_check(self):
@@ -271,8 +271,8 @@ class LongTaskPart(ConfModel):
                 self.enable = True
             return self
 
-    hot_update: HotUpdateConf = Field(default_factory=HotUpdateConf)
-    "热更新"
+    resource_update: ResourceUpdateConf = Field(default_factory=ResourceUpdateConf)
+    "资源更新"
 
 
 class MaaPart(ConfModel):
@@ -737,6 +737,7 @@ class MaaRewardPart(ConfModel):
 # （没配过就不写新键、不注入默认值），新旧并存时以新键为准（不覆盖）。
 _LEGACY_KEY_MIGRATIONS = {
     "exipring_medicine_on_weekend": "expiring_medicine_on_weekend",
+    "hot_update": "resource_update",
 }
 
 

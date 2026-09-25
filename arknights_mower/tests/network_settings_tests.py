@@ -18,13 +18,12 @@ import requests
 from flask import Flask
 
 from arknights_mower.utils import github_download as github
+from arknights_mower.utils import network_settings as network
 from arknights_mower.utils import (
-    hot_update,
     resource_pkg,
     resource_version,
     software_update,
 )
-from arknights_mower.utils import network_settings as network
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.maa_resource_update import (
     GITHUB_RESOURCE_ARCHIVE_URL,
@@ -78,6 +77,37 @@ class ProxySettingsBase(unittest.TestCase):
 
 
 class ProxySettingsTests(ProxySettingsBase):
+    def test_unconfigured_download_retries_connection_failure_via_default_station(self):
+        url = resource_pkg.RESOURCE_ZIP_URL
+        response = Mock()
+        response.raise_for_status.return_value = None
+        client = Mock()
+        client.get.side_effect = [requests.ConnectionError("offline"), response]
+        actual, selected = github.request_download(client, "get", url, timeout=3)
+        self.assertIs(actual, response)
+        self.assertEqual(selected, "https://ghfast.top/" + url)
+        self.assertEqual(
+            [call.args[0] for call in client.get.call_args_list],
+            [url, "https://ghfast.top/" + url],
+        )
+
+    def test_custom_station_and_missing_asset_do_not_use_default_station(self):
+        url = resource_pkg.RESOURCE_ZIP_URL
+        client = Mock()
+        client.get.side_effect = requests.ConnectionError("offline")
+        with self.assertRaises(requests.ConnectionError):
+            github.request_download(client, "get", url, proxy="https://custom.test/")
+        client.get.assert_called_once_with("https://custom.test/" + url)
+        response = requests.Response()
+        response.status_code = 404
+        response.url = url
+        response._content_consumed = True
+        client.get.reset_mock(side_effect=True)
+        client.get.return_value = response
+        with self.assertRaises(requests.HTTPError):
+            github.request_download(client, "get", url, proxy="")
+        client.get.assert_called_once_with(url)
+
     def test_settings_round_trip_and_clear(self):
         self.assertEqual(network.get_settings(), {"http_proxy": "", "github_proxy": ""})
         self.save(" http://127.0.0.1:7897/ ", " https://ghfast.top ")
@@ -392,6 +422,25 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.addCleanup(server.shutdown)
         return f"http://127.0.0.1:{server.server_port}", seen
 
+    def test_resource_package_uses_default_station_after_direct_connection_failure(
+        self,
+    ):
+        station, seen = self.start_server(lambda path: b"fixture resource")
+        self.save()
+        direct_get = requests.get
+
+        def get(url, **kwargs):
+            if url == resource_pkg.RESOURCE_ZIP_URL:
+                raise requests.ConnectionError("GitHub unavailable")
+            return direct_get(url, **kwargs)
+
+        with (
+            patch.object(github, "FALLBACK_PROXY", station + "/"),
+            patch.object(requests, "get", side_effect=get),
+        ):
+            self.assertEqual(resource_pkg.download_resource_pkg(), b"fixture resource")
+        self.assertEqual(seen, ["/" + resource_pkg.RESOURCE_ZIP_URL])
+
     def test_maa_program_resource_and_range_downloads_use_github_station(self):
         def body(path):
             if path.endswith("version.json"):
@@ -497,21 +546,18 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.assertFalse(result["ok"])
         self.assertIn("连接失败", result["message"])
 
-    def test_resource_hot_update_and_raw_version_downloads_use_site(self):
+    def test_resource_and_raw_version_downloads_use_site(self):
         proxy, seen = self.start_server(
             lambda path: b'{"res_version":"v2026.09.05-test"}'
         )
         self.save(github_proxy=proxy)
         self.assertIsNotNone(resource_pkg.download_resource_pkg())
         self.assertIsNotNone(resource_version._fetch_remote_version_json())
-        with patch.object(hot_update, "_extract_zip", return_value=True):
-            self.assertTrue(hot_update._download_and_extract())
         self.assertEqual(
             seen,
             [
                 "/" + resource_pkg.RESOURCE_ZIP_URL,
                 "/" + resource_version.RESOURCE_VERSION_URL,
-                f"/https://github.com/{hot_update.HOT_UPDATE_REPO}/releases/latest/download/hot_update.zip",
             ],
         )
 

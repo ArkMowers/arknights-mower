@@ -168,7 +168,7 @@ _VERSION_RE = re.compile(r"^v?(\d{4})\.(\d{2})\.(\d{2})-([0-9a-fA-F]{6,40})$")
 def parse_version(v: str, require_v: bool = False) -> tuple[int, int, int, str] | None:
     """解析「日期-内容哈希」版本串 -> (年, 月, 日, 哈希)；非法返回 None。
 
-    热更 tag（``vYYYY.MM.DD-hash``，前导 v 强制）与资源 res_version（v 可选）共用。
+    资源版本允许可选前导 v；require_v 供需要严格前缀的调用方使用。
     """
     m = _VERSION_RE.match(v or "")
     if not m:

@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
         <n-input
           v-model:value="githubProxy"
           :input-props="{ 'aria-label': 'GitHub 下载代理站点' }"
-          placeholder="例如 https://ghfast.top/；留空直连 GitHub"
+          placeholder="留空时直连失败自动尝试 https://ghfast.top/"
           :disabled="loading || !ready"
           clearable
           @update:value="changed"
@@ -156,8 +156,9 @@ onBeforeUnmount(() => {
         />
       </n-form-item>
       <n-text depth="3">
-        用于 Mower 和 MAA 的 GitHub 安装包、资源包、热更包及原始文件。支持“站点地址/原始下载链接”
-        格式；GitHub API 和 Git / Git LFS 使用上方网络代理。
+        用于 Mower 和 MAA 的 GitHub 安装包、资源包及原始文件。留空时先直连，连接失败后自动尝试
+        ghfast.top；填写后优先使用指定站点。支持“站点地址/原始下载链接”格式；GitHub API 和 Git / Git
+        LFS 使用上方网络代理。
       </n-text>
       <n-text depth="3">填写后自动保存，所有实例共享，后续连接使用新的设置。</n-text>
       <n-space align="center">
@@ -174,7 +175,7 @@ onBeforeUnmount(() => {
           已应用到后续连接
         </n-text>
       </n-space>
-      <n-text depth="3">测试 GitHub 下载接口是否可达。</n-text>
+      <n-text depth="3">测试 GitHub 文件下载路径；留空时也会测试自动回退。</n-text>
       <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
       <n-alert
         v-for="result in results"

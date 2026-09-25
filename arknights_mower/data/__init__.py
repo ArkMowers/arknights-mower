@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 from .. import __rootdir__
-from ..utils.path import get_path
 from ..utils.resource_pkg import register_resource_reload, resource_pkg_path
 
 
@@ -16,60 +15,15 @@ def stage_data_path() -> Path:
     return _data_path("stage_data_full.json")
 
 
-def stage_data_overlay_path() -> Path:
-    """热更的活动关卡层（只含 ACTIVITY），运行时读，热更落地即生效。"""
-    return get_path("@app/tmp/hot_update/stage_data.json")
-
-
-# 全量基线：启动时读入，资源包更新后原位刷新（常驻关卡只在基线）。
+# 全量关卡数据：启动时读入，资源包更新后原位刷新。
 _stage_data_base = json.loads(stage_data_path().read_text("utf-8"))
 
 
-def _stage_key(item: dict) -> str | None:
-    """关卡唯一键：优先 id，缺省用 name，与调用方按 id/name 查询一致。"""
-    key = item.get("id")
-    if not key:
-        key = item.get("name")
-    return key
-
-
 class StageData:
-    """关卡信息合并视图：资源包全量基线 + 热更活动层（运行时读）。
-
-    常驻关卡（MAIN/DAILY/剿灭）只在基线；热更层按约定只含 ACTIVITY 活动关，
-    按 id（缺省 name）覆盖基线同名、补全新关。stageType 不做代码过滤——"只放活动关"
-    属于生成侧约定，代码过滤反而可能误丢合法活动关；"永久关被误覆盖"依赖生成侧不丢
-    永久 id，属数据契约。热更层缺失/损坏（读不到、非列表、元素非对象）时回退基线，
-    不抛异常。调用方 `for item in stage_data_full` / `item.get("id")` 保持不变。
-    """
-
-    def _merge(self) -> list:
-        base = list(_stage_data_base)
-        overlay_path = stage_data_overlay_path()
-        if overlay_path.exists():
-            try:
-                overlay = json.loads(overlay_path.read_text("utf-8"))
-            except (OSError, ValueError):
-                overlay = None
-            if isinstance(overlay, list) and all(
-                isinstance(item, dict) for item in overlay
-            ):
-                by_key = {}
-                for i, item in enumerate(base):
-                    key = _stage_key(item)
-                    if key:
-                        by_key.setdefault(key, i)
-                for item in overlay:
-                    key = _stage_key(item)
-                    if key and key in by_key:
-                        base[by_key[key]] = item
-                    elif key:
-                        base.append(item)
-                        by_key[key] = len(base) - 1
-        return base
+    """关卡数据视图，保留资源包更新后的实时可见性。"""
 
     def __iter__(self):
-        return iter(self._merge())
+        return iter(list(_stage_data_base))
 
 
 stage_data_full = StageData()
