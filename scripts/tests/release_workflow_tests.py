@@ -113,9 +113,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(
             find_step(validation, "Checkout tested commit")["with"]["ref"], RELEASE_SHA
         )
-        self.assertIn(
-            VERSION, find_step(validation, "Inject release version")["run"]
-        )
+        self.assertIn(VERSION, find_step(validation, "Inject release version")["run"])
         names = {step.get("name") for step in validation["steps"]}
         self.assertTrue(
             {
