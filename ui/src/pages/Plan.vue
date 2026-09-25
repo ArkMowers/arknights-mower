@@ -1,14 +1,17 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import PlanAdvancedSettings from '@/components/PlanAdvancedSettings.vue'
 import { storeToRefs } from 'pinia'
 import { swap } from '@/utils/common'
 import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edit'
+import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
 
 const config_store = useConfigStore()
 const { free_blacklist, theme, experimental_dorm_logic } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
+const import_saves = createSaveCoordinator(config_store, plan_store)
 const {
   ling_xi,
   mood_limits,
@@ -50,6 +53,7 @@ const current_plan = computed(() => {
 import { useDialog, useMessage, NAlert } from 'naive-ui'
 
 const plan_editor = ref(null)
+const show_advanced_settings_dialog = ref(false)
 
 const generating_image = ref(false)
 const show_mood_limits_dialog = ref(false)
@@ -69,8 +73,15 @@ function requireEditing() {
   return true
 }
 
-function beforeImport() {
-  return requireEditing()
+async function beforeImport() {
+  if (!requireEditing()) return false
+  try {
+    await import_saves.pauseAndDrain()
+    return true
+  } catch (error) {
+    message.error(error.message || '排班导入前保存失败')
+    return false
+  }
 }
 
 // Select menus teleport to body; consider the toolbar controls and the popup "inside".
@@ -123,6 +134,8 @@ import { render_op_label } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
 
 async function save() {
+  await drainConfigurationSaves(config_store, plan_store)
+  await plan_store.save_plan()
   generating_image.value = true
   loading_bar.start()
   if (facility.value != '') {
@@ -406,15 +419,27 @@ import Pencil from '@vicons/tabler/Pencil'
 import LockClosedOutline from '@vicons/ionicons5/LockClosedOutline'
 import LockOpenOutline from '@vicons/ionicons5/LockOpenOutline'
 
-function import_plan({ event }) {
-  const msg = event.target.response
-  if (msg == '排班已加载') {
-    sub_plan.value = 'main'
-    load_plan()
-    message.success('成功导入排班表！')
-  } else {
-    message.error(msg)
+async function import_plan({ event }) {
+  try {
+    const msg = event.target.response
+    if (msg == '排班已加载') {
+      sub_plan.value = 'main'
+      await config_store.load_config()
+      await load_plan()
+      message.success('成功导入排班表！')
+    } else {
+      message.error(msg)
+    }
+  } catch (error) {
+    message.error(error.message || '导入后读取排班失败')
+  } finally {
+    import_saves.resume()
   }
+}
+
+function import_error() {
+  import_saves.resume()
+  message.error('排班表上传失败')
 }
 
 const import_url = `${import.meta.env.VITE_HTTP_URL}/import`
@@ -429,10 +454,11 @@ const export_options = [
 ]
 
 async function export_json() {
+  await drainConfigurationSaves(config_store, plan_store)
+  await plan_store.save_plan()
   const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/export-json`, {
     responseType: 'blob'
   })
-  console.log(data)
   const url = window.URL.createObjectURL(data)
   const link = document.createElement('a')
   link.href = url
@@ -593,6 +619,7 @@ function movePlanForward() {
         :show-file-list="false"
         name="img"
         @finish="import_plan"
+        @error="import_error"
       >
         <n-button title="导入排班" :disabled="edit_locked">
           <template #icon>
@@ -617,6 +644,12 @@ function movePlanForward() {
     </div>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
+  <div class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
+    <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
+    <n-button v-if="experimental_dorm_logic" @click="show_mood_limits_dialog = true">
+      设置心情上下限
+    </n-button>
+  </div>
   <n-form
     class="w-980 mx-auto mb-12 px-12 mw-980"
     :label-placement="mobile ? 'top' : 'left'"
@@ -624,10 +657,7 @@ function movePlanForward() {
     label-width="160"
     label-align="left"
   >
-    <n-form-item v-if="experimental_dorm_logic" :show-label="false">
-      <n-button @click="show_mood_limits_dialog = true">设置心情上下限</n-button>
-    </n-form-item>
-    <n-form-item v-else>
+    <n-form-item v-if="!experimental_dorm_logic">
       <template #label>
         <span>令夕模式</span>
         <help-text>
@@ -786,6 +816,21 @@ function movePlanForward() {
     </n-form-item>
   </n-form>
   <n-modal
+    v-model:show="show_advanced_settings_dialog"
+    :auto-focus="false"
+    preset="card"
+    title="高级设置"
+    :style="{ width: '800px', maxWidth: 'calc(100vw - 24px)' }"
+    :content-style="{ maxHeight: '75vh', overflowY: 'auto' }"
+  >
+    <PlanAdvancedSettings :disabled="edit_locked" />
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="show_advanced_settings_dialog = false">完成</n-button>
+      </n-space>
+    </template>
+  </n-modal>
+  <n-modal
     v-if="experimental_dorm_logic"
     v-model:show="show_mood_limits_dialog"
     :auto-focus="false"
@@ -900,6 +945,13 @@ function movePlanForward() {
 </template>
 
 <style scoped lang="scss">
+.plan-advanced-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .w-980 {
   width: 100%;
   max-width: 980px;

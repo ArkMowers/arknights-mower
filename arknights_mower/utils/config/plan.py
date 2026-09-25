@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -148,6 +148,8 @@ class PlanModel(BaseModel):
     plan1: Plan1 = Plan1()
     conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []
+    # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
+    advanced_settings: Optional[dict[str, Any]] = None
 
 
 def parse_plan_document(data) -> PlanModel:
