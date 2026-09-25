@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { inject } from 'vue'
 
 const { disabled } = defineProps({ disabled: Boolean })
+const freeRoomExclusions = defineModel('freeRoomExclusions', { type: Array })
 const mobile = inject('mobile')
 const configStore = useConfigStore()
 const planStore = usePlanStore()
@@ -212,6 +213,19 @@ const { left_side_facility } = planStore
         </mower-input-number>
       </n-form-item>
       <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="experimental_dorm_logic">
+          测试宿舍逻辑
+          <help-text>
+            <template v-if="experimental_dorm_logic">
+              已开启：按层级和心情分床，支持候补补床、临时 Free
+              床位及新入住者单回竞争，日常保留床位。
+            </template>
+            <template v-else> 已关闭：使用原宿舍规则，休息优先名单按填写顺序分床。 </template>
+            <p>两种模式均按「心情－个人下限」排序下班。</p>
+          </help-text>
+        </n-checkbox>
+      </n-form-item>
+      <n-form-item :show-label="false">
         <n-checkbox v-model:checked="free_room">
           宿舍不养闲人
           <help-text>
@@ -224,18 +238,17 @@ const { left_side_facility } = planStore
           </help-text>
         </n-checkbox>
       </n-form-item>
-      <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="experimental_dorm_logic">
-          测试宿舍逻辑
-          <help-text>
-            <template v-if="experimental_dorm_logic">
-              已开启：按层级和心情分床，支持候补补床、临时 Free
-              床位及新入住者单回竞争，日常保留床位。
-            </template>
-            <template v-else> 已关闭：使用原宿舍规则，休息优先名单按填写顺序分床。 </template>
-            <p>两种模式均按「心情－个人下限」排序下班。</p>
-          </help-text>
-        </n-checkbox>
+      <n-form-item v-if="free_room && experimental_dorm_logic">
+        <template #label>
+          <span>不养闲人排除干员</span>
+          <help-text
+            >开启不养闲人时，回满仍留宿，不让床，至上班离宿；个人及令夕上限优先。</help-text
+          >
+        </template>
+        <slick-operator-select
+          v-model="freeRoomExclusions"
+          :disabled="disabled"
+        ></slick-operator-select>
       </n-form-item>
       <n-form-item v-if="!experimental_dorm_logic">
         <template #label>
