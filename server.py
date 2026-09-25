@@ -901,7 +901,7 @@ def depot_history():
 
 @app.route("/stage/latest-activity")
 def stage_latest_activity():
-    """刷理智周计划：最近开启活动（stage_data_full 热更后最新）的选中关。
+    """刷理智周计划：最近开启活动（当前资源包 stage_data_full）的选中关。
 
     返回 [{value, label, code, materials}]，按代号尾号大到小。材料仅 MATERIAL 常规掉落
     （剔 ACTIVITY_ITEM/COMPLETE）；库存取自 @app/tmp/cultivate.json（{id: count}），
