@@ -264,7 +264,7 @@ const { left_side_facility } = planStore
           >
         </n-checkbox>
       </n-form-item>
-      <n-form-item :show-label="false">
+      <n-form-item v-if="!experimental_dorm_logic" :show-label="false">
         <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
           读取心情后先刷新副表
           <help-text

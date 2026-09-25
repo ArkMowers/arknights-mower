@@ -1031,10 +1031,11 @@ def _start_mower(start_type):
         saved_state = {} if start_type == "2" else (load_state() or {})
         if start_type == "1":
             saved_state["tasks"] = []
-        # 清空缓存后 current_room 与心情均未知。开关默认开启：首次读取完成后
-        # 按新缓存重载调度器，确保副表先于主表规划刷新。
+        # 测试宿舍在首次扫描后直接收敛副表；旧宿舍保留可选重载流程。
         restart_after_mood_read = (
-            start_type == "2" and config.conf.refresh_backup_plan_after_mood
+            start_type == "2"
+            and not config.conf.experimental_dorm_logic
+            and config.conf.refresh_backup_plan_after_mood
         )
         from arknights_mower.__main__ import main
 

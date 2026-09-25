@@ -1073,10 +1073,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 else:
                     # 正常运行保留原有心情读取间隔：缓存未过期直接信任，过期
                     # 才进房复核；缓存清零后 time_stamp 为空，会自然触发全量读取。
-                    mood_result = self.agent_get_mood(skip_dorm=True)
-                    # agent_get_mood 已读取所有需要刷新的房间；从此 current_room
-                    # 可以用于副表条件。若配置了读取后重启，重启流程会用这份新缓存
-                    # 在 simulate() 初始化阶段统一刷新副表。
+                    if getattr(
+                        self, "defer_backup_plan_until_mood_read", False
+                    ) and getattr(self.op_data, "experimental_dorm_logic", False):
+                        # 首次读取不生成主表纠错；副表确定后才按最终排班规划。
+                        self._read_agent_mood()
+                        self.defer_backup_plan_until_mood_read = False
+                        self.restart_after_mood_read = False
+                        self.backup_plan_solver()
+                        self.queue_product_switches()
+                        # 先执行副表差异、产物切换或扫描恢复出的训练室任务，
+                        # 避免普通纠错覆盖这些任务的明确安排。
+                        if not self.no_pending_task(1):
+                            self.skip(["planned", "todo_task", "collect_notification"])
+                            return True
+                        mood_result = self.agent_get_mood(
+                            skip_dorm=True, read_rooms=False
+                        )
+                    else:
+                        mood_result = self.agent_get_mood(skip_dorm=True)
+                    # 旧宿舍可继续通过重载调度器刷新副表。
                     self.defer_backup_plan_until_mood_read = False
                     if self.restart_after_mood_read:
                         self.restart_after_mood_read = False
@@ -1167,36 +1183,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
-    def agent_get_mood(
-        self,
-        skip_dorm=False,
-        force=False,
-        *,
-        read_rooms=True,
-        return_plan=False,
-    ):
-        """刷新缓存并生成纠偏计划。
-
-        ``read_rooms=False`` 只使用已经缓存的干员位置和心情。副表切换使用
-        这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
-        ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
-        """
+    def _read_agent_mood(self):
+        """只刷新实际位置、心情及训练室状态，不按当前排班生成纠错。"""
         global _training_room_scan_disabled
         # 暂时规定纠错只适用于主班表
-        need_read = (
-            {
-                v.room
-                for v in self.op_data.operators.values()
-                if v.need_to_refresh() and v.room in base_room_list
-            }
-            if read_rooms
-            else set()
-        )
+        need_read = {
+            v.room
+            for v in self.op_data.operators.values()
+            if v.need_to_refresh() and v.room in base_room_list
+        }
 
         # 正常心情刷新始终检查训练室，包含未启用专精时的手动训练。
-        # 副表纯缓存推演不得进房；实际扫描仍受房间级 2.5 小时限频保护。
-        if read_rooms:
-            need_read.add("train")
+        # 实际扫描仍受房间级 2.5 小时限频保护。
+        need_read.add("train")
 
         for room in need_read:
             if room == "train":
@@ -1358,6 +1357,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     continue
             if not skip_room_exit:
                 self.back()
+
+    def agent_get_mood(
+        self,
+        skip_dorm=False,
+        force=False,
+        *,
+        read_rooms=True,
+        return_plan=False,
+    ):
+        """刷新缓存并生成纠偏计划。
+
+        ``read_rooms=False`` 只使用已经缓存的干员位置和心情。副表切换使用
+        这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
+        ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
+        """
+        if read_rooms:
+            self._read_agent_mood()
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
