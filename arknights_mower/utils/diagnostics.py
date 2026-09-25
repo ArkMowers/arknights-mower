@@ -5,6 +5,8 @@ import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from tempfile import SpooledTemporaryFile
+from zipfile import ZIP_STORED, ZipFile
 
 from arknights_mower.utils.screenshot import ScreenshotStore
 
@@ -38,7 +40,7 @@ def screenshots_between(folder: Path, start: datetime, end: datetime):
     return sorted(images)
 
 
-def timeline(log_folder: Path, screenshot_folder: Path, center: datetime):
+def timeline(log_folder: Path, screenshot_folder: Path, center: datetime, limit=1000):
     """返回指定时间前后五分钟的日志及最近截图。"""
     start, end = center - _WINDOW, center + _WINDOW
     images = screenshots_between(screenshot_folder, start, end)
@@ -84,7 +86,78 @@ def timeline(log_folder: Path, screenshot_folder: Path, center: datetime):
                         "screenshot": screenshot,
                     }
                 )
-    return rows[-1000:]
+    return rows[-limit:] if limit is not None else rows
+
+
+def export_bundle(
+    log_folder: Path, screenshot_folder: Path, center: datetime, archive_id=None
+):
+    """打包时间窗口内的完整日志和仍可读取的截图。调用方负责关闭返回的文件。"""
+    start, end = center - _WINDOW, center + _WINDOW
+    start_ns = int(start.timestamp() * 10**9)
+    end_ns = int(end.timestamp() * 10**9)
+    images = {}
+    for timestamp, relative in screenshots_between(screenshot_folder, start, end):
+        images[timestamp] = (screenshot_folder / relative, relative)
+
+    # 报错归档中的画面即使已从普通截图目录清理，也应进入下载包。
+    archive_root = screenshot_folder / "errors"
+    if archive_id is not None:
+        archives = [archive_root / archive_id]
+    elif archive_root.exists():
+        archives = [
+            path
+            for path in archive_root.iterdir()
+            if path.is_dir()
+            and path.name.isascii()
+            and path.name.isdigit()
+            and abs(int(path.name) - int(center.timestamp() * 10**9))
+            <= 2 * int(_WINDOW.total_seconds() * 10**9)
+        ]
+    else:
+        archives = []
+    for folder in archives:
+        if not folder.is_dir():
+            continue
+        for image in folder.glob("*.jpg"):
+            timestamp = ScreenshotStore._timestamp(image.name)
+            if timestamp is not None and start_ns <= timestamp <= end_ns:
+                relative = image.relative_to(screenshot_folder).as_posix()
+                if archive_id is not None or timestamp not in images:
+                    images[timestamp] = (image, relative)
+
+    saved = archive_root / archive_id / "logs.json" if archive_id else None
+    if saved is not None and saved.is_file():
+        rows = json.loads(saved.read_text(encoding="utf-8"))
+    else:
+        rows = timeline(log_folder, screenshot_folder, center, limit=None)
+
+    output = SpooledTemporaryFile(max_size=16 * 1024**2, mode="w+b")
+    try:
+        with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
+            bundle.writestr(
+                "说明.txt",
+                f"日志调度导出\n时间范围：{start:%Y-%m-%d %H:%M:%S} 至 "
+                f"{end:%Y-%m-%d %H:%M:%S}\n"
+                f"日志：{len(rows)} 条\n截图：{len(images)} 张\n"
+                "截图按采集时间排序；已过期或尚未写入的文件无法导出。\n",
+            )
+            bundle.writestr(
+                "日志.txt",
+                "\n".join(row["message"] for row in rows) + ("\n" if rows else ""),
+            )
+            bundle.writestr("日志.json", json.dumps(rows, ensure_ascii=False, indent=2))
+            for _, (image, relative) in sorted(images.items()):
+                try:
+                    bundle.write(image, f"截图/{relative}")
+                except FileNotFoundError:
+                    # 清理线程可能在打包期间删除普通截图。
+                    continue
+        output.seek(0)
+        return output
+    except Exception:
+        output.close()
+        raise
 
 
 def error_events(screenshot_folder: Path):

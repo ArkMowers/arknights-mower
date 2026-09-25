@@ -200,15 +200,15 @@
                     专精
                   </div>
                 </n-tab>
-                <n-tab name="报表" @click="showModal = true">
+                <n-tab name="数据图表" @click="showModal = true">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
-                    报表
+                    图表
                   </div>
                   <n-modal v-model:show="showModal">
                     <n-card
                       style="width: 300px"
-                      title="基建报表"
+                      title="数据图表"
                       :bordered="false"
                       size="huge"
                       role="dialog"
@@ -239,6 +239,13 @@
                           @click=";((showModal = false), $router.push('/record/trading_analysis'))"
                         >
                           贸易订单分析
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button
+                          @click=";((showModal = false), $router.push('/record/log-schedule'))"
+                        >
+                          日志调度
                         </n-button>
                       </div>
                     </n-card>
@@ -435,6 +442,12 @@ const menuOptions = [
           ),
         icon: renderIcon(Newspaper),
         key: 'go-to-trading-analysis'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
+        icon: renderIcon(ReaderOutline),
+        key: 'go-to-log-schedule'
       }
     ]
   },

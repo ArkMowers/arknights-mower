@@ -22,64 +22,6 @@ const mobile = inject('mobile')
 const auto_scroll = ref(true)
 const sc_preview = ref(true)
 const sc_blob = ref('')
-const show_diagnostics = ref(false)
-const diagnostic_time = ref(Date.now())
-const diagnostic_logs = ref([])
-const diagnostic_errors = ref([])
-const diagnostic_image = ref('')
-const diagnostic_event_images = ref([])
-const diagnostic_loading = ref(false)
-const diagnostic_error = ref('')
-
-function diagnostic_image_url(path) {
-  return `${import.meta.env.VITE_HTTP_URL}/screenshots/${path}`
-}
-
-async function load_diagnostics(archiveId = null) {
-  diagnostic_loading.value = true
-  diagnostic_error.value = ''
-  try {
-    const [history, errors] = await Promise.all([
-      archiveId
-        ? axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${archiveId}/logs`)
-        : axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/timeline`, {
-            params: { at: diagnostic_time.value }
-          }),
-      axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
-    ])
-    diagnostic_logs.value = history.data.logs || []
-    diagnostic_errors.value = errors.data.events || []
-  } catch {
-    diagnostic_error.value = '读取诊断记录失败，请稍后重试'
-  } finally {
-    diagnostic_loading.value = false
-  }
-}
-
-function open_diagnostics() {
-  diagnostic_time.value = Date.now()
-  diagnostic_image.value = ''
-  diagnostic_event_images.value = []
-  show_diagnostics.value = true
-  load_diagnostics()
-}
-
-function inspect_error(event) {
-  diagnostic_time.value = Math.floor(event.time_ns / 1000000)
-  diagnostic_event_images.value = (event.screenshots || []).map((path) => ({
-    label: new Date(
-      Number(path.split('/').at(-1).replace('.jpg', '')) / 1000000
-    ).toLocaleTimeString(),
-    value: path
-  }))
-  diagnostic_image.value = diagnostic_event_images.value[0]?.value || ''
-  load_diagnostics(event.id)
-}
-
-function inspect_log_screenshot(path) {
-  diagnostic_event_images.value = []
-  diagnostic_image.value = path
-}
 const log_layout = ref(null)
 const layout_preference = {
   screenshot_height: null,
@@ -566,59 +508,6 @@ async function db_delete(keys) {
         </template>
         <span class="btn-text">数据库管理</span>
       </n-button>
-      <n-button @click="open_diagnostics">日志与截图回看</n-button>
-      <n-modal
-        v-model:show="show_diagnostics"
-        preset="card"
-        title="日志与截图回看"
-        style="width: min(900px, 95vw)"
-      >
-        <div class="diagnostic-controls">
-          <n-date-picker v-model:value="diagnostic_time" type="datetime" :clearable="false" />
-          <n-button :loading="diagnostic_loading" @click="load_diagnostics()"
-            >查看前后 5 分钟</n-button
-          >
-        </div>
-        <p v-if="diagnostic_error">{{ diagnostic_error }}</p>
-        <p class="diagnostic-hint">
-          点击日志旁的“查看截图”可查看当时最近的截图。报错记录中的截图会单独保存。
-        </p>
-        <n-collapse>
-          <n-collapse-item title="报错记录" name="errors">
-            <div v-for="event in diagnostic_errors" :key="event.id" class="diagnostic-event">
-              <n-button text type="error" @click="inspect_error(event)">
-                {{ new Date(event.time_ns / 1000000).toLocaleString() }} {{ event.message }}
-              </n-button>
-              <span>（保存 {{ event.screenshots.length }} 张截图）</span>
-            </div>
-            <p v-if="!diagnostic_errors.length">暂无已保存的报错记录</p>
-          </n-collapse-item>
-        </n-collapse>
-        <n-scrollbar style="max-height: 320px">
-          <div v-for="(entry, index) in diagnostic_logs" :key="index" class="diagnostic-row">
-            <pre>{{ entry.message }}</pre>
-            <n-button
-              v-if="entry.screenshot"
-              text
-              type="primary"
-              @click="inspect_log_screenshot(entry.screenshot)"
-              >查看截图</n-button
-            >
-          </div>
-          <p v-if="!diagnostic_logs.length">这个时间段没有日志</p>
-        </n-scrollbar>
-        <div v-if="diagnostic_image" class="diagnostic-preview">
-          <n-select
-            v-if="diagnostic_event_images.length"
-            v-model:value="diagnostic_image"
-            :options="diagnostic_event_images"
-            filterable
-            placeholder="选择报错时段的截图"
-          />
-          <img :src="diagnostic_image_url(diagnostic_image)" alt="选中时间的截图" />
-          <span>{{ diagnostic_image }}</span>
-        </div>
-      </n-modal>
       <div class="expand"></div>
       <div class="scroll-container">
         <n-checkbox v-model:checked="sc_preview">
@@ -728,35 +617,6 @@ async function db_delete(keys) {
   :deep(img) {
     object-position: left top !important;
   }
-}
-
-.diagnostic-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.diagnostic-hint {
-  opacity: 0.7;
-}
-
-.diagnostic-event,
-.diagnostic-row {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.diagnostic-row pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: 0;
-}
-
-.diagnostic-preview img {
-  display: block;
-  max-width: 100%;
-  max-height: 45vh;
-  margin-top: 12px;
 }
 
 .log-resizer {

@@ -1,14 +1,52 @@
 """验证按时间回看日志和截图。"""
 
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
+from zipfile import ZipFile
 
-from arknights_mower.utils.diagnostics import error_events, timeline
+from arknights_mower.utils.diagnostics import error_events, export_bundle, timeline
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_export_route_validates_time_and_returns_zip(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "log").mkdir()
+            (root / "screenshot").mkdir()
+            center = datetime.now().replace(microsecond=0)
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                client = server.app.test_client()
+                self.assertEqual(client.get("/diagnostics/export").status_code, 403)
+                self.assertEqual(
+                    client.get(
+                        "/diagnostics/export?at=invalid",
+                        headers={"token": "diagnostics-test"},
+                    ).status_code,
+                    400,
+                )
+                response = client.get(
+                    f"/diagnostics/export?at={int(center.timestamp() * 1000)}",
+                    headers={"token": "diagnostics-test"},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.mimetype, "application/zip")
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+                with ZipFile(BytesIO(response.data)) as bundle:
+                    self.assertIn("日志.txt", bundle.namelist())
+                response.close()
+
     def test_log_rows_link_to_recent_screenshot(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -40,3 +78,72 @@ class DiagnosticTimelineTests(unittest.TestCase):
             (root / "123.jpg").write_bytes(b"image")
             events = error_events(root.parent.parent)
             self.assertEqual(events[0]["screenshots"], ["errors/123/123.jpg"])
+
+    def test_export_includes_window_logs_and_archived_screenshots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            shots = root / "screenshot"
+            logs.mkdir()
+            center = datetime.now().replace(microsecond=0)
+            archive_id = str(int(center.timestamp() * 10**9))
+            archive = shots / "errors" / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps({"time_ns": int(archive_id), "message": "运行失败"}),
+                encoding="utf-8",
+            )
+            before = center - timedelta(minutes=4)
+            after = center + timedelta(minutes=4)
+            outside = center + timedelta(minutes=6)
+            for when in (before, after, outside):
+                (archive / f"{int(when.timestamp() * 10**9)}.jpg").write_bytes(
+                    f"picture-{when.minute}".encode()
+                )
+            (logs / "runtime.log").write_text(
+                "".join(
+                    f"{when:%Y-%m-%d %H:%M:%S} task.py:1 INFO {label}\n"
+                    for when, label in (
+                        (before, "之前"),
+                        (after, "之后"),
+                        (outside, "窗口外"),
+                    )
+                ),
+                encoding="utf-8",
+            )
+            archived_rows = [
+                {
+                    "time": f"{center:%Y-%m-%d %H:%M:%S}",
+                    "message": "已保存日志",
+                    "screenshot": None,
+                }
+            ]
+            (archive / "logs.json").write_text(
+                json.dumps(archived_rows, ensure_ascii=False), encoding="utf-8"
+            )
+
+            for selected_id, expected_log in (
+                (None, "之前"),
+                (archive_id, "已保存日志"),
+            ):
+                with self.subTest(selected_id=selected_id):
+                    with export_bundle(logs, shots, center, selected_id) as data:
+                        with ZipFile(data) as bundle:
+                            names = bundle.namelist()
+                            self.assertEqual(
+                                len(
+                                    [name for name in names if name.startswith("截图/")]
+                                ),
+                                2,
+                            )
+                            self.assertIn(
+                                f"截图/errors/{archive_id}/{int(before.timestamp() * 10**9)}.jpg",
+                                names,
+                            )
+                            self.assertNotIn(
+                                f"截图/errors/{archive_id}/{int(outside.timestamp() * 10**9)}.jpg",
+                                names,
+                            )
+                            exported_log = bundle.read("日志.txt").decode("utf-8")
+                            self.assertIn(expected_log, exported_log)
+                            self.assertNotIn("窗口外", exported_log)

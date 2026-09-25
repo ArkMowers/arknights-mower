@@ -82,6 +82,12 @@ export const routes = [
             component: () => import('@/pages/trading_analysis.vue'),
             meta: { title: '贸易订单分析' },
             name: 'trading_analysis'
+          },
+          {
+            path: 'log-schedule',
+            component: () => import('@/pages/LogSchedule.vue'),
+            meta: { title: '日志调度' },
+            name: 'log_schedule'
           }
         ]
       }
