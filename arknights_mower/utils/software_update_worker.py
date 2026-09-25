@@ -1006,6 +1006,7 @@ class Worker:
 
     def prepare_package(self):
         payload_dir = self.work / "payload"
+        shutil.rmtree(payload_dir, ignore_errors=True)
         if self.job.get("ota_asset") and self.job.get("manual") is not True:
             try:
                 self.prepare_ota(payload_dir)
@@ -1036,6 +1037,7 @@ class Worker:
             )
         # Prepare on the same filesystem as the installation for atomic renames.
         self.prepared = self.root.with_name(f"{self.root.name}.new-{self.job['id']}")
+        shutil.rmtree(self.prepared, ignore_errors=True)
         shutil.copytree(
             payload, self.prepared, symlinks=True, copy_function=self.copy_package_file
         )
