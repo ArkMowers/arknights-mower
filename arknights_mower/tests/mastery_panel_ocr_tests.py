@@ -168,17 +168,17 @@ def test_ocr_template_conflict_stays_unknown():
     assert panel.skill_name == ""
 
 
-def test_unconfirmed_skill_does_not_become_mismatch():
+def test_missing_character_recovers_unique_four_character_skill():
     solver = solver_with_text("[卡涅利安]沙缚锁")
 
     panel = reader._read_panel_text(solver)
 
     assert panel.operator_name == "卡涅利安"
-    assert panel.skill_name == ""
+    assert panel.skill_name == "沙缚镣锁"
     plan = {"char_name": "卡涅利安", "skill_index": 1, "skill_name": "二技能·沙缚镣锁"}
     room = reader.RoomState("training", panel)
     assert reader._plan_matches_room(plan, room)
-    assert not reader._can_adopt_expiry(plan, room)
+    assert reader._can_adopt_expiry(plan, room)
 
 
 @pytest.mark.parametrize(
@@ -298,3 +298,9 @@ def test_ambiguous_majority_ocr_stays_unknown(monkeypatch):
     )
 
     assert resolve_panel_skill_fuzzy("测试干员", "战术咏唱·v型") is None
+
+
+def test_three_character_prefix_of_two_skills_stays_unknown():
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+
+    assert resolve_panel_skill_fuzzy("掠风", "此身为") is None

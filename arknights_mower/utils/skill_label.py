@@ -200,7 +200,7 @@ def resolve_panel_skill_fuzzy(
     such as β/γ variants must remain unknown when neither is clearly best.
     """
     panel = normalize_skill_text(panel_skill_text)
-    if not operator_name or len(panel) < 6:
+    if not operator_name or len(panel) < 3:
         return None
     from arknights_mower.utils.mastery_recommendation import get_skill_data
 
@@ -211,7 +211,7 @@ def resolve_panel_skill_fuzzy(
         for index, skill in enumerate(char.get("skills", [])):
             name = skill.get("name") if isinstance(skill, dict) else None
             known = normalize_skill_text(name)
-            if len(known) < 6:
+            if len(known) < 4:
                 continue
             candidates[(index, name)] = SequenceMatcher(None, panel, known).ratio()
     if not candidates:
