@@ -14,9 +14,16 @@ from arknights_mower.utils.solver import BaseSolver
 pytestmark = pytest.mark.usefixtures("low_frame_rate")
 
 
-@pytest.mark.parametrize("count", [0, 1, 3, 100])
-@pytest.mark.parametrize("profession", [None, "ALL", "MEDIC", "SPECIAL"])
-@pytest.mark.parametrize("train", [False, True])
+# 适配模式不按翻页次数分支：职业×布局跑一遍，再单独覆盖非零次数。
+@pytest.mark.parametrize(
+    "count,profession,train",
+    [
+        (0, profession, train)
+        for profession in (None, "ALL", "MEDIC", "SPECIAL")
+        for train in (False, True)
+    ]
+    + [(count, "ALL", False) for count in (1, 3, 100)],
+)
 def test_reset_switches_away_and_restores_filter_at_every_count(
     count, profession, train
 ):

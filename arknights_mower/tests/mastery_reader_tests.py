@@ -1276,18 +1276,6 @@ class TestReconcileRecoverSwap(unittest.TestCase):
             reader._maybe_recover_swap(solver, plan, self._room())
         sched.assert_not_called()
 
-    def test_recover_queued_swap_task_skips(self):
-        # 队列已有同计划 SWAP 任务（重启恢复的队列可能还留着旧任务）→ 不重复补排
-        solver = self._solver()
-        task = reader.SchedulerTask(
-            time=datetime.now(), task_type=reader.TaskTypes.SWAP_SUPPORT
-        )
-        task.plan_key = "1"
-        solver.tasks = [task]
-        with patch("arknights_mower.solvers.mastery._schedule_swap_if_needed") as sched:
-            reader._maybe_recover_swap(solver, self._training_plan(), self._room())
-        sched.assert_not_called()
-
     def test_recover_countdown_missing_skips(self):
         # 倒计时读不到 → 不补排（无法判剩余时间，铁律：以截图为准）
         solver = self._solver()
@@ -3128,8 +3116,9 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
         sc.assert_not_called()
 
     def test_queued_swap_task_skips_collect(self):
-        # 队列已有同计划 SWAP 任务 → _maybe_recover_swap 返回 True（不重复排）→ 不排收取
+        # 真实队列判断：已有同计划换人任务时，既不补排换人，也不排收取。
         solver = MagicMock()
+        solver.task = None
         task = reader.SchedulerTask(
             time=datetime.now(), task_type=reader.TaskTypes.SWAP_SUPPORT
         )
@@ -3138,11 +3127,22 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
         plan = make_plan(status="training", swap_frozen=0)
         with (
             patch.object(reader, "_update_expiry"),
-            patch.object(reader, "_maybe_recover_swap", return_value=True),
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value={"operator": "夜半", "swap_target": "逻各斯"},
+            ),
+            patch.object(
+                reader,
+                "_read_slots_checked",
+                return_value=("夜半", "测试干员", [], True),
+            ),
+            patch("arknights_mower.solvers.mastery._schedule_swap_if_needed") as sched,
             patch.object(reader, "_schedule_collect") as sc,
         ):
             reader._refresh_training_plan(solver, plan, self._room())
+        sched.assert_not_called()
         sc.assert_not_called()
+        self.assertEqual(solver.tasks, [task])
 
 
 class TestReconcileProtectedRelease(unittest.TestCase):
