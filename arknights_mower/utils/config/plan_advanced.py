@@ -14,6 +14,8 @@ ADVANCED_SETTING_KEYS = (
     "experimental_dorm_logic",
     "dorm_order",
     "merge_interval",
+    "group_rest_in_full_on_mood_gap",
+    "group_mood_gap_max_extra_wait_hours",
     "fia_fool",
     "refresh_backup_plan_after_mood",
     "assistant_follows_schedule",

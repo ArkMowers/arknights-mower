@@ -21,6 +21,8 @@ const {
   experimental_dorm_logic,
   dorm_order,
   merge_interval,
+  group_rest_in_full_on_mood_gap,
+  group_mood_gap_max_extra_wait_hours,
   fia_fool,
   refresh_backup_plan_after_mood,
   assistant_follows_schedule,
@@ -267,6 +269,34 @@ const { left_side_facility } = planStore
         </template>
         <mower-input-number v-model:value="merge_interval">
           <template #suffix>分钟</template>
+        </mower-input-number>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="group_rest_in_full_on_mood_gap">
+          组内心情差距过大时延后回班
+          <help-text
+            >默认开启。组内高优先干员的预计心情恢复时间差超过上限时，延后整组回班；2 电站上限为 1.5
+            小时，其他情况为 1
+            小时。关闭后按组内最早恢复时间安排回班；单独设置“回满”的干员仍会回满。</help-text
+          >
+        </n-checkbox>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>组内心情差距额外等待上限</span>
+          <help-text
+            >仅对上方“组内心情差距过大时延后回班”生效。以不延后时的预计回班时间为起点；0
+            表示不限时。单独设置“回满”的干员不受此限制。</help-text
+          >
+        </template>
+        <mower-input-number
+          v-model:value="group_mood_gap_max_extra_wait_hours"
+          :disabled="!group_rest_in_full_on_mood_gap"
+          :min="0"
+          :max="24"
+          :step="0.5"
+        >
+          <template #suffix>小时</template>
         </mower-input-number>
       </n-form-item>
       <n-form-item :show-label="false">

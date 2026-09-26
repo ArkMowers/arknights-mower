@@ -151,6 +151,8 @@ export const useConfigStore = defineStore('config', () => {
   const experimental_dorm_logic = ref(false)
   const dorm_order = ref([])
   const merge_interval = ref(10)
+  const group_rest_in_full_on_mood_gap = ref(true)
+  const group_mood_gap_max_extra_wait_hours = ref(0)
   const fia_fool = ref(true)
   const refresh_backup_plan_after_mood = ref(true)
   const assistant_follows_schedule = ref(false)
@@ -576,6 +578,9 @@ export const useConfigStore = defineStore('config', () => {
     experimental_dorm_logic.value = response.data.experimental_dorm_logic ?? false
     dorm_order.value = response.data.dorm_order ? response.data.dorm_order.split(',') : []
     merge_interval.value = response.data.merge_interval
+    group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
+    group_mood_gap_max_extra_wait_hours.value =
+      response.data.group_mood_gap_max_extra_wait_hours ?? 0
     fia_fool.value = response.data.fia_fool
     refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
@@ -739,6 +744,8 @@ export const useConfigStore = defineStore('config', () => {
       experimental_dorm_logic: experimental_dorm_logic.value,
       dorm_order: dorm_order.value.join(','),
       merge_interval: merge_interval.value,
+      group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
+      group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
       refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
@@ -789,6 +796,8 @@ export const useConfigStore = defineStore('config', () => {
       experimental_dorm_logic: experimental_dorm_logic.value,
       dorm_order: Array.isArray(dorm_order.value) ? dorm_order.value.join(',') : dorm_order.value,
       merge_interval: merge_interval.value,
+      group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
+      group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
       refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
@@ -992,6 +1001,8 @@ export const useConfigStore = defineStore('config', () => {
     experimental_dorm_logic,
     dorm_order,
     merge_interval,
+    group_rest_in_full_on_mood_gap,
+    group_mood_gap_max_extra_wait_hours,
     fia_fool,
     refresh_backup_plan_after_mood,
     assistant_follows_schedule,
