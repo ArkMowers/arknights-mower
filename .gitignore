@@ -233,3 +233,6 @@ openspec/
 
 # Official macOS ADB, staged during packaging
 /platform-tools/
+
+# Private per-device gacha archive and account authorization
+/config/gacha_local/
