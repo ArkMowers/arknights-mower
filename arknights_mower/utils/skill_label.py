@@ -7,7 +7,8 @@
 """
 
 import re
-from typing import Optional
+from difflib import SequenceMatcher
+from typing import Optional, Tuple
 
 CN_ORDINAL = {0: "一", 1: "二", 2: "三", 3: "四", 4: "五", 5: "六", 6: "七"}
 _CANONICAL_RE = re.compile(r"^[一二三四五六]技能·")
@@ -188,3 +189,36 @@ def resolve_panel_skill(operator_name, panel_skill_text, char_id=None) -> Option
             if known and (panel in known or known in panel):
                 hits.append(idx)
     return hits[0] if len(hits) == 1 else None
+
+
+def resolve_panel_skill_fuzzy(
+    operator_name, panel_skill_text
+) -> Optional[Tuple[int, str]]:
+    """Recover one mostly matching skill when exact OCR resolution failed.
+
+    Compare only skills belonging to the recognized operator. Similar names
+    such as β/γ variants must remain unknown when neither is clearly best.
+    """
+    panel = normalize_skill_text(panel_skill_text)
+    if not operator_name or len(panel) < 6:
+        return None
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    candidates = {}
+    for char in get_skill_data().get("characters", {}).values():
+        if char.get("name") != operator_name:
+            continue
+        for index, skill in enumerate(char.get("skills", [])):
+            name = skill.get("name") if isinstance(skill, dict) else None
+            known = normalize_skill_text(name)
+            if len(known) < 6:
+                continue
+            candidates[(index, name)] = SequenceMatcher(None, panel, known).ratio()
+    if not candidates:
+        return None
+    ranked = sorted(candidates.items(), key=lambda item: item[1], reverse=True)
+    (index, name), score = ranked[0]
+    runner_up = ranked[1][1] if len(ranked) > 1 else 0.0
+    if score < 0.80 or score - runner_up < 0.15:
+        return None
+    return index, name

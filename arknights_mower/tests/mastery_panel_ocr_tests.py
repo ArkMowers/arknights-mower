@@ -268,3 +268,16 @@ def test_gamma_skill_ocr_is_corrected_by_real_panel_template():
     room = reader.RoomState("training", panel)
     assert reader._plan_matches_room(plan, room)
     assert reader._can_adopt_expiry(plan, room)
+
+
+def test_unique_majority_ocr_recovers_when_template_is_unavailable(monkeypatch):
+    monkeypatch.setattr(reader, "recognize_skill", lambda *_: None)
+    panel = reader._read_panel_text(solver_with_text("[极境]支援号令·v型"))
+
+    assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·γ型")
+
+
+def test_ambiguous_majority_ocr_stays_unknown():
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+
+    assert resolve_panel_skill_fuzzy("预备干员-术师", "战术咏唱·v型") is None
