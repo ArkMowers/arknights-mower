@@ -898,6 +898,104 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(unrelated.exists())
         self.assertFalse(ordinary.exists())
 
+    def test_archive_limit_removes_oldest_by_last_error_time(self):
+        self.limit_store(archive_limit_mb=lambda: 1)
+        now = time.time_ns()
+        archive_root = self.root / "errors"
+        archives = []
+        for minutes_ago, last_error_minutes_ago in ((30, 2), (20, 20), (10, 10)):
+            archive_id = str(now - minutes_ago * 60 * 10**9)
+            archive = archive_root / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps(
+                    {
+                        "time_ns": int(archive_id),
+                        "last_error_ns": now - last_error_minutes_ago * 60 * 10**9,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (archive / "frame.jpg").write_bytes(b"x" * 600_000)
+            archives.append(archive)
+        self.store.cleanup()
+        self.assertFalse(archives[1].exists())
+        self.assertFalse(archives[2].exists())
+        self.assertTrue(archives[0].exists())
+        self.assertLessEqual(self.store._archive_bytes, 1024**2)
+
+    def test_archive_limit_can_be_changed_and_zero_disables_it(self):
+        limit = [0]
+        self.limit_store(archive_limit_mb=lambda: limit[0])
+        now = time.time_ns()
+        archives = []
+        for minutes_ago in (20, 10):
+            archive_id = str(now - minutes_ago * 60 * 10**9)
+            archive = self.root / "errors" / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps({"time_ns": int(archive_id)}), encoding="utf-8"
+            )
+            (archive / "frame.jpg").write_bytes(b"x" * 800_000)
+            archives.append(archive)
+        self.store.cleanup()
+        self.assertTrue(all(archive.exists() for archive in archives))
+        limit[0] = 1
+        self.store.cleanup()
+        self.assertFalse(archives[0].exists())
+        self.assertTrue(archives[1].exists())
+
+    def test_new_archive_evicts_old_archive_before_writing(self):
+        self.retention = 0
+        self.limit_store(archive_limit_mb=lambda: 1)
+        now = time.time_ns()
+        old_id = str(now - 30 * 60 * 10**9)
+        old = self.root / "errors" / old_id
+        old.mkdir(parents=True)
+        (old / "event.json").write_text(
+            json.dumps({"time_ns": int(old_id)}), encoding="utf-8"
+        )
+        (old / "frame.jpg").write_bytes(b"x" * 800_000)
+        archive_id = self.store.mark_error(now, "新错误")
+        self.store.start()
+        filename = self.store.submit(b"y" * 400_000)
+        self.wait_idle()
+        self.wait_archive_images(archive_id, filename)
+        self.assertFalse(old.exists())
+        self.assertLessEqual(self.store._archive_bytes, 1024**2)
+
+    def test_oversized_archive_frame_is_skipped(self):
+        self.retention = 0
+        self.limit_store(archive_limit_mb=lambda: 1)
+        archive_id = self.store.mark_error(time.time_ns(), "画面错误")
+        self.store.start()
+        filename = self.store.submit(b"x" * (1024**2 + 1))
+        self.wait_idle()
+        archive = self.root / "errors" / archive_id
+        deadline = time.monotonic() + 3
+        while not (archive / "event.json").exists() and time.monotonic() < deadline:
+            Event().wait(0.005)
+        self.assertTrue((archive / "event.json").exists())
+        self.assertFalse((archive / Path(filename).name).exists())
+        self.assertLessEqual(self.store._archive_bytes, 1024**2)
+
+    def test_archive_limit_discards_frame_if_manifest_cannot_fit(self):
+        self.retention = 0
+        self.limit_store(archive_limit_mb=lambda: 1)
+        archive_id = self.store.mark_error(time.time_ns(), "画面错误")
+        self.store.submit(b"x" * (1024**2 - 50))
+        self.assertTrue(self.store._archive_frame(self.store._queue[0]))
+        self.store.start()
+        deadline = time.monotonic() + 3
+        while (
+            archive_id not in self.store._deleted_archives
+            and time.monotonic() < deadline
+        ):
+            Event().wait(0.005)
+        self.assertIn(archive_id, self.store._deleted_archives)
+        self.assertFalse((self.root / "errors" / archive_id).exists())
+        self.assertLessEqual(self.store._archive_bytes, 1024**2)
+
     def test_important_retention_keeps_latest_100_including_new_arrival(self):
         old = time.time_ns() - 2 * 3600 * 10**9
         paths = [self.seed("run_order", old + i) for i in range(105)]

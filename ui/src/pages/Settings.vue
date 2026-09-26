@@ -31,6 +31,7 @@ const {
   return_home_when_idle,
   close_simulator_when_idle,
   screenshot,
+  screenshot_archive_limit_mb,
   screenshot_interval,
   run_order_grandet_mode,
   webview,
@@ -64,6 +65,13 @@ const performance_effective_label = computed(
     ({ high: '高性能', medium: '中性能', low: '低性能' })[performance_effective_mode.value] ||
     performance_effective_mode.value
 )
+const archive_limit_gib = computed({
+  get: () => screenshot_archive_limit_mb.value / 1024,
+  set: (value) => {
+    if (Number.isFinite(value))
+      screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
+  }
+})
 
 function apply_performance_mode(mode) {
   if (runtime_platform.value === 'android' && mode === 'high') mode = 'medium'
@@ -628,6 +636,18 @@ if (return_home_when_idle.value) {
               <template v-else-if="screenshot > 0 && screenshot < 5 / 60" #feedback>
                 <span role="status">截图会正常写盘，实际保存时间按 5 分钟处理。</span>
               </template>
+            </n-form-item>
+            <n-form-item label="报错归档空间上限">
+              <template #label>
+                <span>报错归档空间上限</span>
+                <help-text>
+                  默认 5 GiB。达到上限时优先清理较早的报错归档；设置为 0
+                  表示不限容量。普通截图仍按保存时间清理。
+                </help-text>
+              </template>
+              <mower-input-number v-model:value="archive_limit_gib" :min="0" :precision="2">
+                <template #suffix>GiB</template>
+              </mower-input-number>
             </n-form-item>
             <n-form-item label="等待时间">
               <n-table size="small" class="waiting-table">

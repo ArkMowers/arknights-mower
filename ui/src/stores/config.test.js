@@ -184,12 +184,14 @@ describe('native Android setting ownership', () => {
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
     store.return_home_when_idle = true
     store.screenshot = 2.5
+    store.screenshot_archive_limit_mb = 256
     store.theme = 'dark'
     store.runtime_platform = 'android'
     expect(store.build_config()).not.toHaveProperty('return_home_when_idle')
     expect(store.build_config()).not.toHaveProperty('exit_game_when_idle')
     expect(store.build_config()).not.toHaveProperty('close_simulator_when_idle')
     expect(store.build_config()).not.toHaveProperty('screenshot')
+    expect(store.build_config().screenshot_archive_limit_mb).toBe(256)
     expect(store.build_config()).not.toHaveProperty('theme')
     for (const platform of ['linux', 'windows', 'darwin']) {
       store.runtime_platform = platform
@@ -198,6 +200,7 @@ describe('native Android setting ownership', () => {
         exit_game_when_idle: false,
         close_simulator_when_idle: false,
         screenshot: 2.5,
+        screenshot_archive_limit_mb: 256,
         theme: 'dark'
       })
     }

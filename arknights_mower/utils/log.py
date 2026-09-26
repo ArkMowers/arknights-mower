@@ -209,6 +209,7 @@ def _store() -> ScreenshotStore:
                 get_path("@app/screenshot"),
                 lambda: config.conf.screenshot,
                 logger,
+                archive_limit_mb=lambda: config.conf.screenshot_archive_limit_mb,
             )
             store.start()
             atexit.register(store.close)

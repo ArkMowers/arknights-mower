@@ -122,6 +122,7 @@ export const useConfigStore = defineStore('config', () => {
   const rogue = ref({})
   const sss = ref({})
   const screenshot = ref(1)
+  const screenshot_archive_limit_mb = ref(5120)
   const screenshot_interval = ref(500)
   const mail_subject = ref('')
   const ai_type = ref('')
@@ -533,6 +534,7 @@ export const useConfigStore = defineStore('config', () => {
     rogue.value = response.data.rogue
     sss.value = response.data.sss
     screenshot.value = response.data.screenshot
+    screenshot_archive_limit_mb.value = response.data.screenshot_archive_limit_mb ?? 5120
     screenshot_interval.value =
       response.data.screenshot_interval ?? fallbackProfile.screenshotInterval
     mail_subject.value = response.data.mail_subject
@@ -705,6 +707,7 @@ export const useConfigStore = defineStore('config', () => {
       rogue: rogue.value,
       sss: sss.value,
       ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
+      screenshot_archive_limit_mb: screenshot_archive_limit_mb.value,
       screenshot_interval: screenshot_interval.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,
@@ -960,6 +963,7 @@ export const useConfigStore = defineStore('config', () => {
     rogue,
     sss,
     screenshot,
+    screenshot_archive_limit_mb,
     screenshot_interval,
     mail_subject,
     recruit_enable,
