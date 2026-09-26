@@ -3,6 +3,7 @@
 import copy
 import pickle
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,6 +14,18 @@ from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+
+@pytest.mark.parametrize("state", ["missing", "none", "legacy"])
+def test_backup_guard_preserves_legacy_dispatch_before_operators_are_ready(state):
+    instance = object.__new__(base.BaseSchedulerSolver)
+    if state != "missing":
+        instance.op_data = (
+            None if state == "none" else SimpleNamespace(experimental_dorm_logic=False)
+        )
+    instance._legacy_backup_plan_solver = MagicMock(return_value=False)
+    assert instance.backup_plan_solver() is False
+    instance._legacy_backup_plan_solver.assert_called_once()
 
 
 @pytest.fixture

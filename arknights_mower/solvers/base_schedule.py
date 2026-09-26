@@ -3018,12 +3018,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ):
             logger.debug("肥鸭充能或回岗任务尚未完成，跳过副表切换")
             return False
-        if getattr(self.op_data, "experimental_dorm_logic", False) and any(
-            getattr(task, "backup_shift_active", False)
-            for task in getattr(self, "tasks", [])
-        ):
-            logger.debug("换班最终安排尚未完成，避免用中间驻员状态重新切表")
-            return False
         if not getattr(
             getattr(self, "op_data", None), "experimental_dorm_logic", False
         ):
@@ -3034,6 +3028,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 generated_tasks=generated_tasks,
                 restore_on_deactivate=restore_on_deactivate,
             )
+        if any(
+            getattr(task, "backup_shift_active", False)
+            for task in getattr(self, "tasks", [])
+        ):
+            logger.debug("换班最终安排尚未完成，避免用中间驻员状态重新切表")
+            return False
         try:
             if not self.op_data.backup_plans:
                 return False
