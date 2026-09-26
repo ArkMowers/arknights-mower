@@ -23,6 +23,7 @@ from arknights_mower.utils.resting_priority import (
     resting_key,
     resting_mood,
     resting_tier,
+    unregistered_idle_candidates,
 )
 
 
@@ -1689,7 +1690,10 @@ def try_add_release_dorm(plan, time, op_data, tasks):
             full_list.sort(
                 key=lambda op: (resting_mood(op, now), resting_tier(op_data, op.name))
             )
-            if not waiting_list and not full_list:
+            idle_fallback = unregistered_idle_candidates(
+                op_data, reserved | busy | {op_data.get_train_support()}
+            )
+            if not waiting_list and not full_list and not idle_fallback:
                 return
             logger.debug(
                 f"有{len(waiting_list)}个干员需要恢复，{len(full_list)}个满心情候选可补空床"
@@ -1697,7 +1701,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
             plan = {}
             # 有空床先入住，再竞争单回；不要在仍有空床时把候补提前踢出。
             for value in sorted(op_data.dorm, key=lambda bed: bool(bed.name)):
-                if not waiting_list and not full_list:
+                if not waiting_list and not full_list and not idle_fallback:
                     break
                 if value.name and not waiting_list:
                     continue
@@ -1739,9 +1743,14 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     waiting_list.remove(rest)
                 elif waiting_list:
                     rest = waiting_list.pop(0)
-                else:
+                elif full_list:
                     rest = full_list.pop(0)
                     rest.dorm_mood_fallback = room
+                else:
+                    plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[
+                        index
+                    ] = "Free"
+                    continue
                 plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = (
                     rest.name
                 )

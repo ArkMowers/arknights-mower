@@ -2,6 +2,22 @@
 
 from enum import IntEnum
 
+from arknights_mower.data import agent_list
+
+
+def unregistered_idle_candidates(op_data, excluded=()):
+    """沿用 Free 选人的全名单兜底，实际持有者由游戏选人页确认。"""
+    excluded = (
+        set(excluded)
+        | set(op_data.config.free_blacklist)
+        | set(op_data.config.workaholic)
+    )
+    return [
+        name
+        for name in agent_list
+        if name not in op_data.operators and name not in excluded
+    ]
+
 
 class RestingTier(IntEnum):
     PRIORITY = 0

@@ -95,6 +95,7 @@ from arknights_mower.utils.resting_priority import (
     resting_key,
     resting_mood,
     resting_tier,
+    unregistered_idle_candidates,
 )
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -5888,7 +5889,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             and not self.op_data.rest_mood_complete(v.name)
         ]
         free_list.extend(
-            [
+            unregistered_idle_candidates(self.op_data, agents)
+            if self.op_data.experimental_dorm_logic
+            else [
                 _name
                 for _name in agent_list
                 if _name not in self.op_data.operators.keys() and _name not in agents
@@ -5948,11 +5951,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         free_list = [
             name
             for name in free_list
-            if (op := self.op_data.operators.get(name)) is not None
-            and (
+            if (
                 include_full
                 and not self.op_data.has_rest_mood_limit(name)
-                or resting_mood(op, now) < op.upper_limit
+                or (op := self.op_data.operators.get(name)) is not None
+                and resting_mood(op, now) < op.upper_limit
             )
         ]
         # 未知心情按 24，只能作为补满空床的兜底，不逐个试住。
@@ -5960,7 +5963,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return sorted(
                 free_list,
                 key=lambda name: (
-                    resting_mood(self.op_data.operators[name], now),
+                    resting_mood(self.op_data.operators.get(name), now),
                     resting_tier(self.op_data, name),
                 ),
             )
@@ -5985,9 +5988,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             or resting_mood(current) < current.upper_limit
         ):
             return []
-        candidates = self.get_free_list(
-            agents, include_full=True, current_resident=current.name
-        )
+        candidates = [
+            name
+            for name in self.get_free_list(
+                agents, include_full=True, current_resident=current.name
+            )
+            if name in self.op_data.operators
+        ]
         # 全体上限是回满目标，超过目标的人仍可入住；继续比较真实心情。
         # 未知心情按 24；没有更低心情的候选时保留原住者。
         if not any(
@@ -6156,9 +6163,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     current.dorm_mood_fallback = room
             else:
                 full_candidates = self.get_free_list(agents, include_full=True)
-                agents[index] = full_candidates[0] if full_candidates else ""
-                if full_candidates:
-                    self.op_data.operators[full_candidates[0]].dorm_mood_fallback = room
+                known = next(
+                    (
+                        name
+                        for name in full_candidates
+                        if name in self.op_data.operators
+                    ),
+                    None,
+                )
+                if known is not None:
+                    agents[index] = known
+                    self.op_data.operators[known].dorm_mood_fallback = room
+                else:
+                    # 未登记的人未必持有，保留 Free 到游戏页按心情选空闲者。
+                    agents[index] = "Free" if full_candidates else ""
         # 游戏确认后会把空位挤到末尾，后续读房和恢复计时使用同一位置。
         if "Current" not in agents:
             agents[:] = [name for name in agents if name] + [""] * agents.count("")
@@ -6242,7 +6260,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else []
         )
         fallback_selected = []
-        # Free 解析后可以真正留空，不再强制找一个满心情者补上。
+        # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
         if "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
@@ -6462,7 +6480,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             free_list = (
                 list(mood_fallback) if mood_fallback else self.get_free_list(agents)
             )
-            if mood_fallback:
+            idle_fallback = experimental_dorm_logic and not free_list
+            if idle_fallback:
+                free_list = self.get_free_list(agents, include_full=True)
+            if mood_fallback or idle_fallback:
                 right_swipe = self.swipe_left(right_swipe, last_special_filter)
             selection_time = datetime.now() if experimental_dorm_logic else None
             observation = None
@@ -6474,7 +6495,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     raise Exception("没有找到足够的可用宿舍候选干员")
                 # scan_agent 按屏幕顺序点击，单纯排序名单不能保证层级和心情顺序。
                 # 一次只允许选择当前最高优先级、最低已知心情的候选。
-                if experimental_dorm_logic and not mood_fallback:
+                if experimental_dorm_logic and not (mood_fallback or idle_fallback):
                     first_key = resting_key(self.op_data, free_list[0], selection_time)
                     candidates = [
                         name
@@ -6482,7 +6503,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if resting_key(self.op_data, name, selection_time) == first_key
                     ]
                 else:
-                    candidates = list(free_list) if mood_fallback else free_list
+                    candidates = (
+                        list(free_list) if mood_fallback or idle_fallback else free_list
+                    )
                 selected_name, ret = self.scan_agent(
                     candidates,
                     max_agent_count=free_num,
@@ -6491,7 +6514,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
                 observation = None
                 selected.extend(selected_name)
-                if mood_fallback:
+                if mood_fallback or idle_fallback:
                     fallback_selected.extend(selected_name)
                 free_num -= len(selected_name)
                 changed = bool(selected_name)
@@ -6595,11 +6618,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
         for name in fallback_selected:
+            if name not in self.op_data.operators:
+                self.op_data.add(Operator(name, ""))
             self.op_data.operators[name].dorm_mood_fallback = room
             self.op_data.operators[name].dorm_mood_peers = {
                 peer: self.op_data.operators[peer].time_stamp
                 for peer in mood_fallback
-                if peer != name
+                if peer != name and peer in self.op_data.operators
             }
             logger.info(f"按心情升序补入{name}；读满后停止连续试住，个人上限仍强制离宿")
 
