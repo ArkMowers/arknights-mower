@@ -27,6 +27,8 @@ def check(package: Path, version: str, revision: str) -> None:
                 "mower/"
             ):
                 raise ValueError(f"unexpected archive root: {name}")
+            if name.startswith("mower/ui/") and not name.startswith("mower/ui/dist/"):
+                raise ValueError(f"unbuilt WebUI file in update: {name}")
             if any(p in ("mower_android", "__pycache__", "tests") for p in path.parts):
                 raise ValueError(f"host or development files in update: {name}")
         meta = json.loads(archive.read("mower-android.json"))

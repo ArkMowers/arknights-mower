@@ -53,6 +53,8 @@ class AndroidPackageTests(unittest.TestCase):
             for name in (
                 *REQUIRED,
                 "arknights_mower/models/model.bin",
+                "ui/src/pages/basement_skill/skill.json",
+                "ui/src/pages/basement_skill/buffer.json",
                 "mower_android/maa.py",
                 "config/conf.yml",
                 "arknights_mower/tests/example.py",
@@ -72,8 +74,8 @@ class AndroidPackageTests(unittest.TestCase):
                 self.assertIn("python-runtime.zip.xz", z.namelist())
                 self.assertEqual(meta["version"], "4.2.0")
                 self.assertIn("mower/ui/dist/index.html", z.namelist())
-                self.assertIn(
-                    "mower/ui/src/pages/basement_skill/skill.json", z.namelist()
+                self.assertFalse(
+                    any(name.startswith("mower/ui/src/") for name in z.namelist())
                 )
                 self.assertEqual(z.read("mower/CHANGELOG.md"), b"payload")
                 self.assertIn("mower/arknights_mower/models/model.bin", z.namelist())
@@ -176,6 +178,7 @@ class AndroidArchiveValidationTests(unittest.TestCase):
             {"mower/arknights_mower/utils/git_revision": "b" * 40},
             {"mower/arknights_mower/__init__.py": '__version__ = "4.2.1"'},
             {"mower/mower_android/host.py": "payload"},
+            {"mower/ui/src/pages/basement_skill/skill.json": "{}"},
             {"../outside": "payload"},
             {"mower-android.json": "{}"},
         ]
