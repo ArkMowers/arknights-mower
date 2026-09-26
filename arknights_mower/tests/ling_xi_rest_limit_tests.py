@@ -194,7 +194,6 @@ def test_strict_release_is_not_delayed_by_merging_or_run_order(solver):
     merge_release_dorm(tasks, 10)
     scheduling(tasks, time_now=NOW)
     assert task.time == NOW
-    assert not task.deferred_by_run_order
 
 
 def test_rebuild_uses_confirmed_new_bed(solver):

@@ -60,7 +60,7 @@ from arknights_mower.utils.datetime import (
 )
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.dorm_candidates import dorm_candidates
+from arknights_mower.utils.dorm_candidates import dorm_candidates, vacant_dorm_slots
 from arknights_mower.utils.email import maa_template, send_message, task_template
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
@@ -374,10 +374,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         while True:
             self._sync_run_order_tasks()
+            self._fill_empty_dorms()
             scheduling(self.tasks)
             protect_support_swaps(self.tasks)
-            if self._fill_dorm_after_run_order_deferral():
-                continue
             self.task = self.tasks[0] if self.tasks else None
             if self.task is None:
                 break
@@ -414,20 +413,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
         return super().run()
 
-    def _fill_dorm_after_run_order_deferral(self):
-        """仅消费跑单保护事件，给长等待期间补一次动态宿舍床位。"""
+    def _fill_empty_dorms(self):
+        """统一空床入口：日常规划和调度前均检查，不等待五分钟空档或跑单延期事件。"""
         op_data = getattr(self, "op_data", None)
-        if op_data is None or not getattr(op_data, "experimental_dorm_logic", False):
+        if (
+            op_data is None
+            or getattr(self, "defer_backup_plan_until_mood_read", False)
+            or not getattr(op_data, "experimental_dorm_logic", False)
+            or not getattr(getattr(op_data, "config", None), "free_room", False)
+            or not vacant_dorm_slots(op_data)
+        ):
             return False
-        deferred = [
-            task for task in self.tasks if getattr(task, "deferred_by_run_order", False)
-        ]
-        if not deferred:
-            return False
-        for task in self.tasks:
-            task.deferred_by_run_order = False
         had_tasks = len(self.tasks)
-        try_add_release_dorm({}, None, op_data, self.tasks)
+        try_add_release_dorm({}, None, op_data, self.tasks, empty_only=True)
         return len(self.tasks) > had_tasks
 
     def transition(self) -> None:
@@ -973,7 +971,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.task.type
                             in (TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER)
                             or (
-                                self.task.type == TaskTypes.NOT_SPECIFIC
+                                self.task.type
+                                in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)
                                 and any(
                                     room.startswith("dorm") for room in self.task.plan
                                 )
@@ -2619,6 +2618,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         task_type=TaskTypes.NOT_SPECIFIC,
                     )
                 )
+        self._fill_empty_dorms()
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_workshop_tasks(self.op_data, self.tasks)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
@@ -2641,7 +2641,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 候补均属于宿舍分床规则，不能让仍有心情的组抢走红脸组的替班。
         self.total_agent.sort(key=lambda op: op.current_mood() - op.lower_limit)
         shift_candidates = [op for op in self.total_agent if op.is_high()]
-        fill_candidates = [op for op in self.total_agent if not op.is_high()]
+        # 开启测试不养闲人后，普通空闲者统一交给补床入口；否则这里先预约
+        # 床位并生成普通重排任务，会使真空床又被跑单避让推迟。
+        fill_candidates = (
+            []
+            if experimental and self.op_data.config.free_room
+            else [op for op in self.total_agent if not op.is_high()]
+        )
         if experimental:
             fill_candidates.sort(key=lambda op: resting_key(self.op_data, op.name, now))
         self.plan_metadata()

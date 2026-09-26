@@ -146,18 +146,19 @@ def test_missing_owned_candidate_stops_search_without_registering_catalogue(
     assert "陈" not in instance.op_data.operators
 
 
-@pytest.mark.parametrize("cached_candidate", [True, False])
+@pytest.mark.parametrize("cached_mood", [None, 10, 21])
 def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
-    solver, monkeypatch, cached_candidate
+    solver, monkeypatch, cached_mood
 ):
     instance, selected = solver
     data = instance.op_data
     empty_bed(instance, selected)
     data.operators["银灰"].current_room = "meeting"
+    cached_candidate = cached_mood is not None
     if cached_candidate:
         data.operators["红"].current_room = ""
-        # 心情高于下班阈值，但空床仍应由不养闲人补上。
-        data.operators["红"].mood = 21
+        # 下班阈值之上和之下都统一生成补位，不能再产生会被跑单延期的重排。
+        data.operators["红"].mood = cached_mood
     else:
         allow_unregistered(monkeypatch, instance, ["伊芙利特"])
         screen_only(instance, ["伊芙利特"])
@@ -167,6 +168,7 @@ def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
     monkeypatch.setattr(scheduler_task, "get_inventory_counts", lambda: {})
     instance.plan_solver()
     assert len(instance.tasks) == 1
+    assert instance.tasks[0].type == TaskTypes.FILL_DORM
     assert instance.tasks[0].plan == {
         ROOM: ["Current"] * 4 + ["红" if cached_candidate else "Free"]
     }
@@ -178,13 +180,22 @@ def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
     assert selected[-1] == ("红" if cached_candidate else "伊芙利特")
 
 
-def test_daily_refill_retains_original_nearby_task_guard(solver, monkeypatch):
+@pytest.mark.parametrize("order_delay", [-10, 30, 120])
+@pytest.mark.parametrize("cached_mood", [None, 10, 21])
+def test_daily_vacancy_fills_before_nearby_or_due_run_order(
+    solver, monkeypatch, order_delay, cached_mood
+):
     instance, selected = solver
     empty_bed(instance, selected)
     instance.op_data.operators["银灰"].current_room = "meeting"
-    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    target = "伊芙利特" if cached_mood is None else "红"
+    if cached_mood is None:
+        allow_unregistered(monkeypatch, instance, [target])
+    else:
+        instance.op_data.operators[target].current_room = ""
+        instance.op_data.operators[target].mood = cached_mood
     order = SchedulerTask(
-        time=datetime.now() + timedelta(minutes=2),
+        time=datetime.now() + timedelta(seconds=order_delay),
         task_type=TaskTypes.RUN_ORDER,
         task_plan={"room_1_1": ["但书"]},
     )
@@ -192,4 +203,103 @@ def test_daily_refill_retains_original_nearby_task_guard(solver, monkeypatch):
     instance.task = None
     instance.agent_get_mood = MagicMock(return_value={})
     instance.plan_solver()
-    assert instance.tasks == [order]
+    fill = next(task for task in instance.tasks if task.type == TaskTypes.FILL_DORM)
+    assert fill.plan == {
+        ROOM: ["Current"] * 4 + ["Free" if cached_mood is None else target]
+    }
+    original_order_time = order.time
+    scheduler_task.scheduling(instance.tasks)
+    assert instance.tasks[0] is fill
+    assert order.time == original_order_time
+    assert not scheduler_task.defer_dorm_before_run_order(fill, instance.tasks, ROOM)
+    instance.task = fill
+    plan = selected.copy() + [fill.plan[ROOM][-1]]
+    if cached_mood is None:
+        screen_only(instance, [target])
+    instance.choose_agent(plan, ROOM)
+    assert selected == plan
+    assert len(selected) == 5
+    assert selected[-1] == target
+
+
+def test_unknown_vacancy_fill_is_reserved_once_without_deferral_event(
+    solver, monkeypatch
+):
+    instance, selected = solver
+    empty_bed(instance, selected)
+    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    order = SchedulerTask(
+        time=datetime.now() + timedelta(seconds=5), task_type=TaskTypes.RUN_ORDER
+    )
+    instance.tasks, instance.task = [order], None
+    assert instance._fill_empty_dorms()
+    assert not instance._fill_empty_dorms()
+    assert len(instance.tasks) == 2
+    fill = next(t for t in instance.tasks if t.type == TaskTypes.FILL_DORM)
+    assert fill.plan[ROOM][-1] == "Free"
+
+
+def test_full_dorm_keeps_nearby_order_guard(solver):
+    instance, _ = solver
+    instance.op_data.operators["银灰"].current_room = "meeting"
+    instance.op_data.operators["红"].mood = 21
+    order = SchedulerTask(
+        time=datetime.now() + timedelta(seconds=30), task_type=TaskTypes.RUN_ORDER
+    )
+    instance.tasks, instance.task = [order], None
+    instance.agent_get_mood = MagicMock(return_value={})
+    instance.plan_solver()
+    assert order in instance.tasks
+    assert not any(
+        task.type in (TaskTypes.FILL_DORM, TaskTypes.NOT_SPECIFIC)
+        for task in instance.tasks
+    )
+    scheduler_task.scheduling(instance.tasks)
+    assert instance.tasks[0] is order
+
+
+def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(solver):
+    from arknights_mower.utils.operators import Dormitory, Operator
+    from arknights_mower.utils.plan import Room
+
+    instance, selected = solver
+    data = instance.op_data
+    empty_bed(instance, selected)
+    data.plan[ROOM][3] = Room("Free", "", [])
+    data.dorm.insert(
+        0, Dormitory((ROOM, 3), "桃金娘", datetime.now() - timedelta(minutes=1))
+    )
+    data.operators["红"].current_room = ""
+    data.operators["红"].mood = 10
+    data.add(Operator("陈", "", mood=12, time_stamp=datetime.now()))
+    data.plan["meeting"][0].replacement.append("陈")
+    instance.tasks, instance.task = [], None
+    assert instance._fill_empty_dorms()
+    assert instance.tasks[0].type == TaskTypes.FILL_DORM
+    assert instance.tasks[0].plan == {ROOM: ["Current"] * 4 + ["红"]}
+
+
+@pytest.mark.parametrize(
+    "blocked", ["disabled", "personal_cap", "reserved", "stale_empty", "initializing"]
+)
+def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked):
+    instance, selected = solver
+    data = instance.op_data
+    empty_bed(instance, selected)
+    data.operators["红"].current_room = ""
+    data.operators["红"].mood = 24
+    instance.tasks, instance.task = [], None
+    if blocked == "initializing":
+        instance.defer_backup_plan_until_mood_read = True
+    elif blocked == "disabled":
+        data.config.free_room = False
+    elif blocked == "personal_cap":
+        data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 12}
+        data.operators["红"].upper_limit = 12
+    elif blocked == "reserved":
+        instance.tasks = [SchedulerTask(task_plan={ROOM: ["Current"] * 4 + ["红"]})]
+    else:
+        # 床位记录虽然空了，实际位置缓存仍有人，不能误当空床插队换人。
+        data.operators["空爆"]._current_room = ROOM
+        data.operators["空爆"].current_index = 4
+    assert not instance._fill_empty_dorms()

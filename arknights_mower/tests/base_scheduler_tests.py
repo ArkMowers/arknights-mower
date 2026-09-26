@@ -2879,39 +2879,47 @@ class TestDormShiftOffMerge(unittest.TestCase):
         )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_empty_dorm_is_filled_only_once_after_run_order_deferral(self):
+    def test_empty_dorm_fill_does_not_require_run_order_deferral(self):
         solver = BaseSchedulerSolver()
         solver.op_data = SimpleNamespace(
             experimental_dorm_logic=True,
-            operators={},
-            print=lambda: "{}",
+            config=SimpleNamespace(free_room=True),
         )
-        ordinary = SchedulerTask()
-        ordinary.deferred_by_run_order = True
-        solver.tasks = [ordinary]
+        order = SchedulerTask(task_type=TaskTypes.RUN_ORDER)
+        solver.tasks = [order]
         fill_task = SchedulerTask(
             task_plan={
                 "dormitory_1": ["Current", "Idle", "Current", "Current", "Current"]
-            }
+            },
+            task_type=TaskTypes.FILL_DORM,
         )
-        with patch.object(
-            base_schedule,
-            "try_add_release_dorm",
-            side_effect=lambda plan, time, op_data, tasks: tasks.append(fill_task),
-        ) as fill:
-            self.assertTrue(solver._fill_dorm_after_run_order_deferral())
-            self.assertFalse(solver._fill_dorm_after_run_order_deferral())
-
-        fill.assert_called_once_with({}, None, solver.op_data, [ordinary, fill_task])
-        self.assertFalse(ordinary.deferred_by_run_order)
+        with (
+            patch.object(
+                base_schedule, "vacant_dorm_slots", return_value={("dormitory_1", 1)}
+            ),
+            patch.object(
+                base_schedule,
+                "try_add_release_dorm",
+                side_effect=lambda plan, time, op_data, tasks, **kwargs: tasks.append(
+                    fill_task
+                ),
+            ) as fill,
+        ):
+            self.assertTrue(solver._fill_empty_dorms())
+        fill.assert_called_once_with(
+            {}, None, solver.op_data, [order, fill_task], empty_only=True
+        )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_empty_dorm_is_not_filled_without_run_order_deferral(self):
+    def test_disabled_idle_fill_does_not_add_vacancy_tasks(self):
         solver = BaseSchedulerSolver()
-        solver.op_data = SimpleNamespace(experimental_dorm_logic=True)
+        solver.op_data = SimpleNamespace(
+            experimental_dorm_logic=True,
+            config=SimpleNamespace(free_room=False),
+        )
         solver.tasks = [SchedulerTask()]
         with patch.object(base_schedule, "try_add_release_dorm") as fill:
-            self.assertFalse(solver._fill_dorm_after_run_order_deferral())
+            self.assertFalse(solver._fill_empty_dorms())
         fill.assert_not_called()
 
 

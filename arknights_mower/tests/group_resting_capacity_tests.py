@@ -20,7 +20,6 @@ from arknights_mower.utils.resting_priority import (  # noqa: E402
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
-    SchedulerTask,
     TaskTypes,
     plan_metadata,
     try_add_release_dorm,
@@ -459,7 +458,7 @@ def test_full_standby_does_not_refill_vacant_bed(solver):
     assert DEEP[1] not in solver.get_free_list([], include_full=True)
 
 
-def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver):
+def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
     occupy_beds(solver, "high")
     shift_off(solver)
     data = solver.op_data
@@ -484,13 +483,9 @@ def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver
     return_tasks = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
     assert return_tasks
     solver.tasks = tasks
-    assert not solver._fill_dorm_after_run_order_deferral()
     assert all(task.type == TaskTypes.SHIFT_ON for task in tasks)
-    deferred = SchedulerTask()
-    deferred.deferred_by_run_order = True
-    tasks.append(deferred)
-    assert solver._fill_dorm_after_run_order_deferral()
-    assert not solver._fill_dorm_after_run_order_deferral()
+    assert solver._fill_empty_dorms()
+    assert not solver._fill_empty_dorms()
     fill_tasks = [
         task
         for task in tasks

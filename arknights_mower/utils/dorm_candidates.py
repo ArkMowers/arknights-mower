@@ -22,6 +22,18 @@ class DormCandidates:
     filling: list[str]
 
 
+def vacant_dorm_slots(op_data, reserved_slots=()):
+    """只认当前已经开放、实际缓存无人且尚未预约的动态床位。"""
+    return {
+        bed.position
+        for bed in op_data.dorm
+        if not bed.name
+        and bed.position not in reserved_slots
+        and op_data.is_effective_free_slot(bed)
+        and op_data.get_current_operator(*bed.position) is None
+    }
+
+
 def dorm_candidates(
     op_data, excluded=(), *, include_standby=False, current_residents=(), now=None
 ):
