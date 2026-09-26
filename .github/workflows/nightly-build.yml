@@ -59,9 +59,11 @@ jobs:
             git tag -a "$tag_name" "$release_sha" -m "Windows nightly from alpha ${release_sha}"
             git push origin "refs/tags/${tag_name}"
           fi
-          echo 'changed=true' >> "$GITHUB_OUTPUT"
-          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
-          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo 'changed=true'
+            echo "tag_name=$tag_name"
+            echo "release_sha=$release_sha"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     name: Build and publish Windows nightly
