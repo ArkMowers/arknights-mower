@@ -141,6 +141,8 @@ class ExtraPart(ConfModel):
     "截图最短间隔（毫秒）"
     screenshot: float = 1
     "截图保留时长（小时），0 不保存日常截图，正数不足 5 分钟按 5 分钟保留"
+    screenshot_archive_limit_mb: int = Field(default=5120, ge=0)
+    "报错归档磁盘上限（MiB），0 不限制"
     waiting_scene: WaitingSceneConf = Field(default_factory=WaitingSceneConf)
     "等待时间"
 

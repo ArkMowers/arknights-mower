@@ -58,6 +58,7 @@ class ScreenshotStore:
         max_pending_bytes: int = 64 * 1024**2,
         max_recent_count: int = _RECENT_FRAME_LIMIT,
         max_recent_bytes: int = _RECENT_BYTE_LIMIT,
+        archive_limit_mb: Callable[[], int] | None = None,
     ):
         if (
             min(
@@ -76,6 +77,9 @@ class ScreenshotStore:
         self.max_pending_bytes = max_pending_bytes
         self.max_recent_count = max_recent_count
         self.max_recent_bytes = max_recent_bytes
+        self.archive_limit_mb = archive_limit_mb or (lambda: 5120)
+        self._archive_bytes: int | None = None
+        self._last_archive_limit_log = float("-inf")
         self._queue: deque[Screenshot] = deque()
         self._lock = Lock()
         self._ready = Condition(self._lock)
@@ -358,14 +362,23 @@ class ScreenshotStore:
 
     def delete_error_archive(self, archive_id: str) -> bool:
         """删除单条报错归档，并阻止进行中的后台写入重建它。"""
-        destination = self.folder / "errors" / archive_id
         with self._archive_lock:
-            if not (destination / "event.json").is_file():
-                return False
-            self._deleted_archives.add(archive_id)
+            return self._delete_error_archive_locked(archive_id)
+
+    def _delete_error_archive_locked(
+        self, archive_id: str, *, require_manifest: bool = True
+    ) -> bool:
+        destination = self.folder / "errors" / archive_id
+        if not destination.is_dir() or (
+            require_manifest and not (destination / "event.json").is_file()
+        ):
+            return False
+        size = self._archive_size(destination) if self._archive_bytes is not None else 0
+        self._deleted_archives.add(archive_id)
         try:
-            with self._archive_lock:
-                shutil.rmtree(destination)
+            shutil.rmtree(destination)
+            if self._archive_bytes is not None:
+                self._archive_bytes = max(0, self._archive_bytes - size)
         finally:
             with self._ready:
                 self._error_windows = [
@@ -380,6 +393,71 @@ class ScreenshotStore:
                 heapq.heapify(self._log_archive_queue)
                 self._ready.notify_all()
         return True
+
+    @staticmethod
+    def _archive_size(folder: Path) -> int:
+        try:
+            with os.scandir(folder) as entries:
+                return sum(
+                    entry.stat(follow_symlinks=False).st_size
+                    for entry in entries
+                    if entry.is_file(follow_symlinks=False)
+                )
+        except FileNotFoundError:
+            return 0
+
+    def _archive_candidates_locked(self):
+        root = self.folder / "errors"
+        if not root.exists():
+            return []
+        candidates = []
+        with os.scandir(root) as entries:
+            for entry in entries:
+                if (
+                    not entry.is_dir(follow_symlinks=False)
+                    or not entry.name.isascii()
+                    or not entry.name.isdigit()
+                ):
+                    continue
+                try:
+                    event = json.loads(
+                        (Path(entry.path) / "event.json").read_text(encoding="utf-8")
+                    )
+                    last_error = int(event.get("last_error_ns", entry.name))
+                except (OSError, ValueError, TypeError, AttributeError):
+                    last_error = int(entry.name)
+                candidates.append((last_error, int(entry.name), entry.name))
+        return sorted(candidates)
+
+    def _archive_usage_locked(self) -> int:
+        if self._archive_bytes is None:
+            self._archive_bytes = sum(
+                self._archive_size(self.folder / "errors" / archive_id)
+                for _, _, archive_id in self._archive_candidates_locked()
+            )
+        return self._archive_bytes
+
+    def _ensure_archive_capacity_locked(self, additional: int, protected_id: str):
+        limit = self.archive_limit_mb() * 1024**2
+        if limit == 0:
+            return True
+        if additional > limit:
+            return False
+        if self._archive_usage_locked() + additional <= limit:
+            return True
+        for _, _, archive_id in self._archive_candidates_locked():
+            if archive_id == protected_id:
+                continue
+            self._delete_error_archive_locked(archive_id, require_manifest=False)
+            if self._archive_bytes + additional <= limit:
+                return True
+        return False
+
+    def _archive_limit_warning(self):
+        now = time.monotonic()
+        if now - self._last_archive_limit_log >= 30:
+            self._last_archive_limit_log = now
+            self.logger.warning("报错归档已达磁盘上限，部分新截图或日志未保存")
 
     def _archive_frame(self, frame: Screenshot):
         with self._lock:
@@ -402,11 +480,18 @@ class ScreenshotStore:
                         if destination.exists():
                             archived = True
                             continue
+                        if not self._ensure_archive_capacity_locked(
+                            len(frame.data), archive_id
+                        ):
+                            self._archive_limit_warning()
+                            continue
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         temporary = destination.with_suffix(".jpg.tmp")
                         try:
                             temporary.write_bytes(frame.data)
                             os.replace(temporary, destination)
+                            if self._archive_bytes is not None:
+                                self._archive_bytes += len(frame.data)
                             archived = True
                         finally:
                             temporary.unlink(missing_ok=True)
@@ -420,10 +505,16 @@ class ScreenshotStore:
                 return
             if destination.exists():
                 return
+            size = source.stat().st_size
+            if not self._ensure_archive_capacity_locked(size, destination.parent.name):
+                self._archive_limit_warning()
+                return
             temporary = destination.with_suffix(".jpg.tmp")
             try:
                 shutil.copy2(source, temporary)
                 os.replace(temporary, destination)
+                if self._archive_bytes is not None:
+                    self._archive_bytes += size
             finally:
                 temporary.unlink(missing_ok=True)
 
@@ -471,17 +562,33 @@ class ScreenshotStore:
                         event["last_error_ns"] = max(
                             int(event.get("last_error_ns", event["time_ns"])), end
                         )
+                    if increment and exists:
+                        # 窗口延长后先撤销旧快照，再为更新后的记录检查可用空间。
+                        old_logs = destination / "logs.json"
+                        if old_logs.exists():
+                            old_size = old_logs.stat().st_size
+                            old_logs.unlink()
+                            if self._archive_bytes is not None:
+                                self._archive_bytes -= old_size
+                    contents = json.dumps(event, ensure_ascii=False).encode("utf-8")
+                    previous_size = manifest.stat().st_size if exists else 0
+                    if not self._ensure_archive_capacity_locked(
+                        max(0, len(contents) - previous_size), archive_id
+                    ):
+                        self._archive_limit_warning()
+                        if not exists:
+                            self._delete_error_archive_locked(
+                                archive_id, require_manifest=False
+                            )
+                        continue
                     temporary = destination / "event.json.tmp"
                     try:
-                        temporary.write_text(
-                            json.dumps(event, ensure_ascii=False), encoding="utf-8"
-                        )
+                        temporary.write_bytes(contents)
                         os.replace(temporary, manifest)
+                        if self._archive_bytes is not None:
+                            self._archive_bytes += len(contents) - previous_size
                     finally:
                         temporary.unlink(missing_ok=True)
-                    if increment and exists:
-                        # 窗口延长后先撤销旧快照，页面会从运行日志读取完整新窗口。
-                        (destination / "logs.json").unlink(missing_ok=True)
                 while buffered:
                     self._archive_frame(buffered.popleft())
                 # 先扫描已落盘图片；尚在队列里的图片随后由写盘线程归档。
@@ -541,14 +648,25 @@ class ScreenshotStore:
             for row in rows:
                 if row["screenshot"]:
                     row["screenshot"] = f"errors/{archive_id}/{row['screenshot']}"
+            contents = json.dumps(rows, ensure_ascii=False).encode("utf-8")
             with self._archive_lock:
                 if archive_id in self._deleted_archives:
                     return
+                saved = destination / "logs.json"
+                previous_size = saved.stat().st_size if saved.exists() else 0
+                if not self._ensure_archive_capacity_locked(
+                    max(0, len(contents) - previous_size), archive_id
+                ):
+                    self._archive_limit_warning()
+                    return
                 temporary = destination / "logs.json.tmp"
-                temporary.write_text(
-                    json.dumps(rows, ensure_ascii=False), encoding="utf-8"
-                )
-                os.replace(temporary, destination / "logs.json")
+                try:
+                    temporary.write_bytes(contents)
+                    os.replace(temporary, saved)
+                    if self._archive_bytes is not None:
+                        self._archive_bytes += len(contents) - previous_size
+                finally:
+                    temporary.unlink(missing_ok=True)
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             self._report_error("归档报错日志失败", exc)
 
@@ -718,6 +836,22 @@ class ScreenshotStore:
                 except (OSError, ValueError, TypeError, AttributeError) as exc:
                     self._cleanup_error(exc)
 
+    def _trim_archive_limit(self):
+        with self._archive_lock:
+            limit = self.archive_limit_mb() * 1024**2
+            if limit == 0:
+                return
+            # 定期重新扫描，兼容程序外部增删归档文件以及运行中修改上限。
+            candidates = self._archive_candidates_locked()
+            self._archive_bytes = sum(
+                self._archive_size(self.folder / "errors" / archive_id)
+                for _, _, archive_id in candidates
+            )
+            for _, _, archive_id in candidates:
+                if self._archive_bytes <= limit or self._stop.is_set():
+                    break
+                self._delete_error_archive_locked(archive_id, require_manifest=False)
+
     def cleanup(self):
         # 防止手动清理和定时清理重叠，不占用预览/提交的锁。
         with self._cleanup_lock:
@@ -734,6 +868,7 @@ class ScreenshotStore:
                 if not self.folder.exists():
                     return
                 self._remove_expired_error_archives(now_ns - _LOG_RETENTION_NS)
+                self._trim_archive_limit()
                 with os.scandir(self.folder) as entries:
                     for entry in entries:
                         if self._stop.is_set():
@@ -776,11 +911,17 @@ class ScreenshotStore:
 
     def _cleaner(self):
         last_cleanup = float("-inf")
+        last_archive_limit = None
         poll_interval = min(30, self.cleanup_interval)
         while not self._stop.is_set():
-            if time.monotonic() - last_cleanup >= self.cleanup_interval:
+            archive_limit = self.archive_limit_mb()
+            if (
+                time.monotonic() - last_cleanup >= self.cleanup_interval
+                or archive_limit != last_archive_limit
+            ):
                 self.cleanup()
                 last_cleanup = time.monotonic()
+                last_archive_limit = archive_limit
             self._report_status()
             if self._stop.wait(poll_interval):
                 return
