@@ -401,19 +401,34 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         nightly = release(
             "v4.1.6-alpha.9.g12345678", True, system="windows", arch="x64"
         )
+        index = release_index(nightly)
+        index["full_assets"][0]["size"] = 100
+        ota_name = (
+            "arknights-mower-ota_4.1.6-alpha.9_to_"
+            "4.1.6-alpha.9.g12345678_windows_x64_v2.zip"
+        )
+        index["ota_assets"] = [
+            {
+                "name": ota_name,
+                "size": 9,
+                "digest": "sha256:" + "b" * 64,
+                "url": f"https://github.com/{update.OTA_REPO}/releases/download/{nightly['tag_name']}/{ota_name}",
+            }
+        ]
         with (
             patch.object(update, "__version__", "4.1.6-alpha.9"),
             patch.object(runtime, "frozen", return_value=True),
             patch.object(update, "platform_asset", return_value=("windows", "x64")),
-            patch.object(
-                update, "release_index", return_value=release_index(nightly)
-            ) as index,
+            patch.object(update, "release_index", return_value=index) as index,
             patch.object(update, "github") as source_api,
         ):
             result = update.check("dev")
             self.assertTrue(result["available"])
             self.assertFalse(result["downgrade"])
             self.assertEqual(result["version"], nightly["tag_name"])
+            self.assertEqual(
+                update._checks[result["check_id"]]["ota_asset"]["name"], ota_name
+            )
             index.assert_called_once_with("dev")
             source_api.assert_not_called()
 
