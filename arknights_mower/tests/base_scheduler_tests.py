@@ -37,6 +37,25 @@ with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass
 
 
+class TestSklandLogPrivacy(unittest.TestCase):
+    def test_scheduled_sign_failure_does_not_log_raw_exception(self):
+        solver = object.__new__(BaseSchedulerSolver)
+        secret = "账号 13800138000，令牌 secret-token"
+        with (
+            patch.object(base_schedule, "SKLand") as skland_solver,
+            patch.object(base_schedule, "save_log") as save_log,
+            patch.object(base_schedule, "save_exception") as save_exception,
+            patch.object(base_schedule, "send_message") as send_message,
+            patch.object(base_schedule.logger, "error") as error,
+        ):
+            skland_solver.return_value.start.side_effect = RuntimeError(secret)
+            solver.skland_plan_solver()
+        save_exception.assert_not_called()
+        for output in (save_log, send_message, error):
+            self.assertNotIn(secret, str(output.call_args_list))
+            self.assertIn("RuntimeError", str(output.call_args_list))
+
+
 class TestIdleSimulatorWake(unittest.TestCase):
     def setUp(self):
         self.solver = object.__new__(BaseSchedulerSolver)

@@ -8181,11 +8181,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             raise
         except Exception as e:
-            save_exception(e)
-            logger.exception(
-                f"森空岛签到失败:{e}", extra={"archive_screenshots": False}
-            )
-            send_message(f"森空岛签到失败: {e}", level="ERROR")
+            message = f"森空岛签到失败（{type(e).__name__}）"
+            save_log(message, level="ERROR")
+            logger.error(message, extra={"archive_screenshots": False})
+            send_message(message, level="ERROR")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 

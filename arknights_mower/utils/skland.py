@@ -288,7 +288,11 @@ def get_binding_list(sign_token):
     body = resp.json()
 
     if body["code"] != 0:
-        logger.info(f"请求角色列表出现问题：{body['message']}")
+        code = body.get("code")
+        logger.info(
+            "请求角色列表失败（状态码：%s）",
+            code if isinstance(code, int) else "未知",
+        )
         if body.get("message") == "用户未登录":
             logger.warning("用户登录可能失效了，请重新运行此程序！")
         return []

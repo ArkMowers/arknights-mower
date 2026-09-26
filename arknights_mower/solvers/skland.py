@@ -67,7 +67,10 @@ class SKLand:
                                 "reward": resp.get("message"),
                             }
                         )
-                        logger.info(f"{i.get('nickName')}：{resp.get('message')}")
+                        logger.info(
+                            "明日方舟签到失败（状态码：%s）",
+                            resp["code"] if isinstance(resp["code"], int) else "未知",
+                        )
                         continue
                     awards = resp["data"]["awards"]
                     for j in awards:
@@ -82,7 +85,7 @@ class SKLand:
                             }
                         )
                         logger.info(
-                            f"{i.get('nickName')}的明日方舟{i.get('channelName')}获得了{res['name']}×{j.get('count') or 1}"
+                            f"明日方舟{i.get('channelName')}签到获得了{res['name']}×{j.get('count') or 1}"
                         )
                 # 终末地森空岛签到
                 if i["gameId"] == 3 and item.endfield_isCheck:
@@ -131,7 +134,12 @@ class SKLand:
                                     "reward": resp.get("message"),
                                 }
                             )
-                            logger.info(f"{j.get('nickname')}：{resp.get('message')}")
+                            logger.info(
+                                "终末地签到失败（状态码：%s）",
+                                resp["code"]
+                                if isinstance(resp["code"], int)
+                                else "未知",
+                            )
                             continue
                         awards = resp["data"]["awardIds"]
                         resource = resp["data"]["resourceInfoMap"]
@@ -148,7 +156,7 @@ class SKLand:
                                 }
                             )
                             logger.info(
-                                f"{j.get('nickname')}的终末地{i.get('channelName')}获得了{res['name']}×{res.get('count') or 1}"
+                                f"终末地{i.get('channelName')}签到获得了{res['name']}×{res.get('count') or 1}"
                             )
         if len(self.reward) > 0:
             return self.record_log()
@@ -173,7 +181,7 @@ class SKLand:
     def record_log(self):
         self.test_writecsv = True
         date_str = datetime.datetime.now().strftime("%Y/%m/%d")
-        logger.info(f"存入{date_str}的数据{self.reward}")
+        logger.info("存入%s的森空岛签到数据，共%s条", date_str, len(self.reward))
         try:
             from arknights_mower.utils.csv_utils import append_dated_row
 
@@ -187,7 +195,7 @@ class SKLand:
                 )
         except Exception as e:
             self.test_writecsv = False
-            logger.exception(e)
+            logger.error("森空岛签到记录写入失败（%s）", type(e).__name__)
         return True
 
     def has_record(self, phone: str):
@@ -240,7 +248,7 @@ class SKLand:
                         and sign_endfield_official
                         and sign_endfield_bilibili
                     ):
-                        logger.info(f"{phone}今天签到过了")
+                        logger.info("森空岛账号今天已签到")
                         return True
             return False
         except PermissionError:
@@ -275,7 +283,7 @@ class SKLand:
 
             except Exception as e:
                 msg = "{}无法连接-{}".format(item.account, e)
-                logger.exception(msg)
+                logger.error("森空岛账号连接失败（%s）", type(e).__name__)
                 res.append(msg)
         return res
 
@@ -304,6 +312,6 @@ class SKLand:
                 return res
         except Exception as e:
             msg = "测试出错-{}".format(e)
-            logger.exception(msg)
+            logger.error("森空岛测试签到失败（%s）", type(e).__name__)
             res.append(msg)
         return res
