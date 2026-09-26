@@ -227,6 +227,17 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
             patch.object(main, "restart_simulator", return_value=True)
         )
 
+    def test_adb_connection_failures_do_not_need_screenshot_archives(self):
+        for error in (
+            ConnectionError("connection refused"),
+            RuntimeError("Can't start adb server"),
+            RuntimeError("Device connection failure"),
+        ):
+            with self.subTest(error=error):
+                self.assertTrue(self.main._is_adb_connection_failure(error))
+        self.assertFalse(self.main._is_adb_connection_failure(AttributeError("scene")))
+        self.assertFalse(self.main._is_adb_connection_failure(RuntimeError("ocr")))
+
     def test_outer_recovery_is_not_gated_by_idle_option(self):
         for close_when_idle in (False, True):
             with (

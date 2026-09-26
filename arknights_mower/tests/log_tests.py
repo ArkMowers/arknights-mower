@@ -106,24 +106,40 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         ):
             with self.subTest(source=source):
                 self.assertEqual(
-                    log.should_archive_error(self.record(source)), expected
+                    log.should_archive_record(self.record(source)), expected
                 )
         self.assertFalse(
-            log.should_archive_error(
+            log.should_archive_record(
                 self.record("solvers/base_schedule.py", level=logging.WARNING)
             )
         )
 
     def test_explicit_override_handles_main_loop_and_retry_errors(self):
-        self.assertFalse(log.should_archive_error(self.record("__main__.py")))
+        self.assertFalse(log.should_archive_record(self.record("__main__.py")))
         self.assertTrue(
-            log.should_archive_error(
+            log.should_archive_record(
                 self.record("__main__.py", archive_screenshots=True)
             )
         )
         self.assertFalse(
-            log.should_archive_error(
+            log.should_archive_record(
                 self.record("solvers/captcha_solver.py", archive_screenshots=False)
+            )
+        )
+
+    def test_only_explicit_visual_warnings_are_archived(self):
+        source = "solvers/base_schedule.py"
+        self.assertFalse(
+            log.should_archive_record(self.record(source, level=logging.WARNING))
+        )
+        self.assertTrue(
+            log.should_archive_record(
+                self.record(source, level=logging.WARNING, archive_screenshots=True)
+            )
+        )
+        self.assertFalse(
+            log.should_archive_record(
+                self.record(source, level=logging.INFO, archive_screenshots=True)
             )
         )
 
@@ -148,6 +164,22 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
             log.whlr.emit(self.record("solvers/base_schedule.py"))
         store.mark_error.assert_called_once()
         self.assertIn("记录编号 123", put.call_args.args[0])
+
+    def test_visual_warning_is_archived_with_severity_in_summary(self):
+        store = Mock()
+        store.mark_error.return_value = "456"
+        record = self.record(
+            "solvers/base_schedule.py",
+            level=logging.WARNING,
+            archive_screenshots=True,
+        )
+        with (
+            patch.object(log, "get_screenshot_store", return_value=store),
+            patch.object(log.config.log_queue, "put") as put,
+        ):
+            log.whlr.emit(record)
+        self.assertEqual(store.mark_error.call_args.args[1], "警告：运行失败")
+        self.assertIn("记录编号 456", put.call_args.args[0])
 
 
 class ScreenshotStoreStartupTest(MultiProcessLogTestBase):

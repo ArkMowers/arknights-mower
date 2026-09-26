@@ -604,7 +604,9 @@ class ReclamationAlgorithm(BaseSolver):
             if not self.unknown_time:
                 self.unknown_time = now
             elif now - self.unknown_time > self.timeout:
-                logger.warning("连续识别到未知场景")
+                logger.warning(
+                    "连续识别到未知场景", extra={"archive_screenshots": True}
+                )
                 try:
                     self.task_queue = None
                     self.in_adventure = False

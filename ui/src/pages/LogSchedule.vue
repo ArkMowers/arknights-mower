@@ -94,7 +94,7 @@ async function loadEvents() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
     events.value = response.data.events || []
   } catch {
-    eventError.value = '报错记录读取失败'
+    eventError.value = '异常记录读取失败'
   } finally {
     eventLoading.value = false
   }
@@ -269,18 +269,18 @@ onMounted(() => {
     <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
 
     <div class="workspace">
-      <aside class="panel events-panel mower-surface-panel" aria-label="报错记录">
+      <aside class="panel events-panel mower-surface-panel" aria-label="异常记录">
         <div class="panel-heading">
           <div>
             <span class="section-kicker">已归档</span>
-            <h2>报错记录</h2>
+            <h2>异常记录</h2>
           </div>
           <span class="count-pill">{{ events.length }}</span>
         </div>
         <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
         <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
-        <div v-else-if="eventLoading" class="state-message">正在读取报错记录…</div>
-        <div v-else-if="!events.length" class="state-message">暂无报错记录</div>
+        <div v-else-if="eventLoading" class="state-message">正在读取异常记录…</div>
+        <div v-else-if="!events.length" class="state-message">暂无异常记录</div>
         <div v-else class="event-list">
           <div v-for="event in events" :key="event.id" class="event-row">
             <button
@@ -293,7 +293,7 @@ onMounted(() => {
               <span class="event-time">{{ formatTime(event.time_ns) }}</span>
               <span class="event-message">{{ event.message }}</span>
               <span class="event-foot">
-                <template v-if="event.error_count > 1">{{ event.error_count }} 次报错 · </template>
+                <template v-if="event.error_count > 1">{{ event.error_count }} 次异常 · </template>
                 {{ event.screenshots.length }} 张截图
               </span>
               <span class="event-arrow" aria-hidden="true">查看记录 →</span>
@@ -302,7 +302,7 @@ onMounted(() => {
               class="event-delete"
               quaternary
               type="error"
-              :aria-label="`删除 ${formatTime(event.time_ns)} 的报错记录`"
+              :aria-label="`删除 ${formatTime(event.time_ns)} 的异常记录`"
               @click="confirmDelete(event)"
             >
               删除
@@ -314,7 +314,7 @@ onMounted(() => {
       <section class="panel logs-panel mower-surface-panel" aria-label="日志时间线">
         <div class="panel-heading">
           <div>
-            <span class="section-kicker">{{ activeEvent ? '报错窗口' : '时间窗口' }}</span>
+            <span class="section-kicker">{{ activeEvent ? '异常窗口' : '时间窗口' }}</span>
             <h2>日志时间线</h2>
           </div>
           <span class="count-pill">{{ visibleLogs.length }}</span>
@@ -379,12 +379,12 @@ onMounted(() => {
           </span>
         </div>
         <p class="panel-intro">
-          {{ imagePath ? imageTime(imagePath) : '选择报错记录或日志中的“查看画面”' }}
+          {{ imagePath ? imageTime(imagePath) : '选择异常记录或日志中的“查看画面”' }}
         </p>
         <div class="image-stage">
           <div v-if="!imagePath" class="image-empty">
             <strong>暂无选中截图</strong>
-            <span>从报错记录或日志中选择画面</span>
+            <span>从异常记录或日志中选择画面</span>
           </div>
           <div v-else-if="imageFailed" class="image-empty">截图文件暂时无法读取</div>
           <img
@@ -403,7 +403,7 @@ onMounted(() => {
             type="range"
             min="0"
             :max="archiveImages.length - 1"
-            aria-label="选择报错窗口中的截图"
+            aria-label="选择异常窗口中的截图"
             @input="onImageSeek"
           />
           <n-button
@@ -429,7 +429,7 @@ onMounted(() => {
     <n-modal
       :show="pendingDeleteEvent !== null"
       preset="card"
-      title="删除报错记录"
+      title="删除异常记录"
       style="width: min(440px, calc(100vw - 32px))"
       :closable="!deleting"
       :mask-closable="!deleting"
@@ -437,13 +437,13 @@ onMounted(() => {
       @update:show="handleDeleteModal"
     >
       <template v-if="pendingDeleteEvent">
-        <p class="delete-prompt">确定删除这条报错记录及其归档日志、截图吗？删除后无法恢复。</p>
+        <p class="delete-prompt">确定删除这条异常记录及其归档日志、截图吗？删除后无法恢复。</p>
         <div class="delete-target">
           <time>{{ formatTime(pendingDeleteEvent.time_ns) }}</time>
           <strong>{{ pendingDeleteEvent.message }}</strong>
           <span>
             <template v-if="pendingDeleteEvent.error_count > 1">
-              {{ pendingDeleteEvent.error_count }} 次报错 ·
+              {{ pendingDeleteEvent.error_count }} 次异常 ·
             </template>
             {{ pendingDeleteEvent.screenshots.length }} 张归档截图
           </span>

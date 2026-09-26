@@ -531,7 +531,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if self.scene() != Scene.UNKNOWN:
                     break
             else:
-                logger.warning("连续返回 5 次后仍无法识别场景，退出游戏重进")
+                logger.warning(
+                    "连续返回 5 次后仍无法识别场景，退出游戏重进",
+                    extra={"archive_screenshots": True},
+                )
                 self.device.exit()
                 self.check_current_focus()
         if self.error or force:

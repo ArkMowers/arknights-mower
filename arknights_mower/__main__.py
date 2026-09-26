@@ -29,6 +29,18 @@ _maintenance_timer_lock = Lock()
 _notified_maintenance_ids = set()
 _flash_probe_ids = set()
 
+_ADB_CONNECTION_FAILURES = {
+    "Can't start adb server",
+    "ADB server is not working",
+    "Device connection failure",
+}
+
+
+def _is_adb_connection_failure(error: Exception) -> bool:
+    return isinstance(error, ConnectionError) or (
+        isinstance(error, RuntimeError) and str(error) in _ADB_CONNECTION_FAILURES
+    )
+
 
 def _stop_for_major_update(info: MaintenanceInfo):
     """Stop the automation thread and tell the user to update the game client."""
@@ -606,7 +618,7 @@ def simulate(saved, restart_after_mood_read=False):
             logger.exception(
                 "设备连接或页面识别失败：%s",
                 e,
-                extra={"archive_screenshots": True},
+                extra={"archive_screenshots": not _is_adb_connection_failure(e)},
             )
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
@@ -637,7 +649,7 @@ def simulate(saved, restart_after_mood_read=False):
             logger.exception(
                 "运行时发生错误，正在尝试恢复设备连接：%s",
                 e,
-                extra={"archive_screenshots": True},
+                extra={"archive_screenshots": not _is_adb_connection_failure(e)},
             )
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():

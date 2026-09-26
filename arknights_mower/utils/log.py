@@ -60,12 +60,14 @@ _VISUAL_SOLVER_FILES = {
 }
 
 
-def should_archive_error(record: logging.LogRecord) -> bool:
-    if record.levelno < logging.ERROR:
+def should_archive_record(record: logging.LogRecord) -> bool:
+    if record.levelno < logging.WARNING:
         return False
     override = getattr(record, "archive_screenshots", None)
     if override is not None:
         return bool(override)
+    if record.levelno < logging.ERROR:
+        return False
     source = record.pathname.replace("\\", "/").partition("arknights_mower/")[2]
     if source.startswith("solvers/"):
         return source.removeprefix("solvers/") in _VISUAL_SOLVER_FILES
@@ -86,18 +88,23 @@ class Handler(logging.StreamHandler):
         if record.levelno >= logging.ERROR:
             if summary.startswith(("Error", "Exception")) or summary == str(record.msg):
                 summary = f"运行时发生错误：{summary}"
-            if should_archive_error(record):
-                try:
-                    store = get_screenshot_store() or (
-                        _store() if fhlr is not None else None
+        if should_archive_record(record):
+            try:
+                store = get_screenshot_store() or (
+                    _store() if fhlr is not None else None
+                )
+                if store is not None:
+                    archive_summary = (
+                        f"警告：{summary}"
+                        if record.levelno < logging.ERROR
+                        else summary
                     )
-                    if store is not None:
-                        archive_id = store.mark_error(
-                            int(record.created * 10**9), summary
-                        )
-                        summary += f"（已保存报错前后截图，记录编号 {archive_id}）"
-                except Exception:
-                    pass  # 日志输出不能因归档失败而中断。
+                    archive_id = store.mark_error(
+                        int(record.created * 10**9), archive_summary
+                    )
+                    summary += f"（已保存前后截图，记录编号 {archive_id}）"
+            except Exception:
+                pass  # 日志输出不能因归档失败而中断。
         msg = f"{record.asctime} {record.levelname} {summary}"
         if record.exc_info and record.levelno < logging.ERROR:
             msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
