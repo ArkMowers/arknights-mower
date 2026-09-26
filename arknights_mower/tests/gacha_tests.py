@@ -291,7 +291,8 @@ class GachaV2Tests(unittest.TestCase):
         self.assertEqual(fake_send.call_count, 1)
 
     def test_password_endpoint_only_returns_masked_phone(self):
-        from arknights_mower.utils.gacha_provider import GachaProvider as RealProvider, Role
+        from arknights_mower.utils.gacha_provider import GachaProvider as RealProvider
+        from arknights_mower.utils.gacha_provider import Role
         app = Flask("password-local-test")
         app.testing = True
         app.token = "test-gacha-token"
@@ -339,8 +340,9 @@ class GachaV3Tests(unittest.TestCase):
         self.assertTrue(stats["history_incomplete"])
 
     def test_local_skland_roster_requires_account_confirmation(self):
-        from arknights_mower.utils.gacha_roster import roster_preview
         from pathlib import Path
+
+        from arknights_mower.utils.gacha_roster import roster_preview
         base=Path(self.temp.name)
         (base/"tmp").mkdir()
         p=base/"_internal/arknights_mower/data"
