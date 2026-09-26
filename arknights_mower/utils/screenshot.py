@@ -91,7 +91,7 @@ class ScreenshotStore:
         self._last_error_log = float("-inf")
         self._last_reported_state = (0,) * len(_STATUS_FIELDS)
         self._error_windows: list[tuple[int, int, str]] = []
-        self._archive_queue: deque[tuple[int, int, str, str]] = deque()
+        self._archive_queue: deque[tuple[int, int, str, str, int]] = deque()
         self._log_archive_queue: list[tuple[int, str]] = []
         self._deleted_archives: set[str] = set()
 
@@ -121,30 +121,32 @@ class ScreenshotStore:
             try:
                 event = json.loads((folder / "event.json").read_text(encoding="utf-8"))
                 timestamp = int(event["time_ns"])
+                last_error = int(event.get("last_error_ns", timestamp))
             except (OSError, ValueError, KeyError, TypeError):
                 continue
-            if timestamp < now - _LOG_RETENTION_NS:
+            if last_error < now - _LOG_RETENTION_NS:
                 continue
-            if timestamp + _ERROR_WINDOW_NS >= now:
+            if last_error + 2 * _ERROR_WINDOW_NS >= now:
                 self._error_windows.append(
                     (
                         timestamp - _ERROR_WINDOW_NS,
-                        timestamp + _ERROR_WINDOW_NS,
+                        last_error + _ERROR_WINDOW_NS,
                         folder.name,
                     )
                 )
                 self._archive_queue.append(
                     (
                         timestamp - _ERROR_WINDOW_NS,
-                        timestamp,
+                        last_error,
                         folder.name,
                         event.get("message", "运行出错"),
+                        0,
                     )
                 )
             if not (folder / "logs.json").exists():
                 heapq.heappush(
                     self._log_archive_queue,
-                    (max(now, timestamp + _ERROR_WINDOW_NS + 5 * 10**9), folder.name),
+                    (max(now, last_error + _ERROR_WINDOW_NS + 5 * 10**9), folder.name),
                 )
 
     def close(self, timeout=5):
@@ -258,21 +260,42 @@ class ScreenshotStore:
             return self._latest
 
     def mark_error(self, timestamp_ns: int, message: str) -> str:
-        """安排错误前后五分钟的截图归档，不阻塞日志消费线程。"""
-        archive_id = str(timestamp_ns)
+        """同一截图窗口内的错误合并归档，并延长至末次报错后五分钟。"""
         with self._ready:
             self._error_windows = [
-                window for window in self._error_windows if window[1] >= timestamp_ns
+                window
+                for window in self._error_windows
+                if window[1] >= timestamp_ns - _ERROR_WINDOW_NS
             ]
-            self._error_windows.append(
+            existing = next(
                 (
-                    timestamp_ns - _ERROR_WINDOW_NS,
-                    timestamp_ns + _ERROR_WINDOW_NS,
-                    archive_id,
-                )
+                    window
+                    for window in reversed(self._error_windows)
+                    if int(window[2]) <= timestamp_ns
+                    and window[1] >= timestamp_ns - _ERROR_WINDOW_NS
+                    and window[2] not in self._deleted_archives
+                ),
+                None,
             )
+            if existing is None:
+                archive_id = str(timestamp_ns)
+                scan_start = timestamp_ns - _ERROR_WINDOW_NS
+                self._error_windows.append(
+                    (scan_start, timestamp_ns + _ERROR_WINDOW_NS, archive_id)
+                )
+            else:
+                start, old_end, archive_id = existing
+                scan_start = max(old_end + 1, timestamp_ns - _ERROR_WINDOW_NS)
+                self._error_windows.remove(existing)
+                self._error_windows.append(
+                    (start, max(old_end, timestamp_ns + _ERROR_WINDOW_NS), archive_id)
+                )
+                self._log_archive_queue = [
+                    item for item in self._log_archive_queue if item[1] != archive_id
+                ]
+                heapq.heapify(self._log_archive_queue)
             self._archive_queue.append(
-                (timestamp_ns - _ERROR_WINDOW_NS, timestamp_ns, archive_id, message)
+                (scan_start, timestamp_ns, archive_id, message, 1)
             )
             heapq.heappush(
                 self._log_archive_queue,
@@ -311,7 +334,7 @@ class ScreenshotStore:
             self._error_windows = [
                 window
                 for window in self._error_windows
-                if window[1] >= frame.captured_ns
+                if window[1] >= frame.captured_ns - _ERROR_WINDOW_NS
             ]
             windows = tuple(self._error_windows)
         for start, end, archive_id in windows:
@@ -360,7 +383,9 @@ class ScreenshotStore:
                 else:
                     if not self._archive_queue:
                         return
-                    start, end, archive_id, message = self._archive_queue.popleft()
+                    start, end, archive_id, message, increment = (
+                        self._archive_queue.popleft()
+                    )
                     deadline = None
             if deadline is not None:
                 self._save_error_logs(archive_id)
@@ -371,14 +396,36 @@ class ScreenshotStore:
                     if archive_id in self._deleted_archives:
                         continue
                     destination.mkdir(parents=True, exist_ok=True)
-                    (destination / "event.json").write_text(
-                        json.dumps(
-                            {"time_ns": end, "message": message}, ensure_ascii=False
-                        ),
-                        encoding="utf-8",
-                    )
+                    manifest = destination / "event.json"
+                    exists = manifest.exists()
+                    if exists:
+                        event = json.loads(manifest.read_text(encoding="utf-8"))
+                    elif increment:
+                        event = {"time_ns": int(archive_id), "message": message}
+                    else:
+                        continue
+                    if increment:
+                        event["error_count"] = (
+                            int(event.get("error_count", 1 if exists else 0)) + 1
+                        )
+                        event["last_error_ns"] = max(
+                            int(event.get("last_error_ns", event["time_ns"])), end
+                        )
+                    temporary = destination / "event.json.tmp"
+                    try:
+                        temporary.write_text(
+                            json.dumps(event, ensure_ascii=False), encoding="utf-8"
+                        )
+                        os.replace(temporary, manifest)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+                    if increment and exists:
+                        # 窗口延长后先撤销旧快照，页面会从运行日志读取完整新窗口。
+                        (destination / "logs.json").unlink(missing_ok=True)
                 # 先扫描已落盘图片；尚在队列里的图片随后由写盘线程归档。
                 scan_end = min(end + _ERROR_WINDOW_NS, time.time_ns())
+                if start > scan_end:
+                    continue
                 hour = datetime.fromtimestamp(start / 10**9).replace(
                     minute=0, second=0, microsecond=0
                 )
@@ -409,7 +456,7 @@ class ScreenshotStore:
                             )
                         except FileNotFoundError:
                             continue
-            except OSError as exc:
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
                 self._report_error("归档报错截图失败", exc)
 
     def _save_error_logs(self, archive_id: str):
@@ -417,8 +464,18 @@ class ScreenshotStore:
 
         destination = self.folder / "errors" / archive_id
         try:
-            center = datetime.fromtimestamp(int(archive_id) / 10**9)
-            rows = timeline(self.folder.parent / "log", destination, center, limit=None)
+            event = json.loads((destination / "event.json").read_text(encoding="utf-8"))
+            timestamp = int(event["time_ns"])
+            last_error = int(event.get("last_error_ns", timestamp))
+            center = datetime.fromtimestamp(timestamp / 10**9)
+            rows = timeline(
+                self.folder.parent / "log",
+                destination,
+                center,
+                limit=None,
+                start=datetime.fromtimestamp((timestamp - _ERROR_WINDOW_NS) / 10**9),
+                end=datetime.fromtimestamp((last_error + _ERROR_WINDOW_NS) / 10**9),
+            )
             for row in rows:
                 if row["screenshot"]:
                     row["screenshot"] = f"errors/{archive_id}/{row['screenshot']}"
@@ -430,7 +487,7 @@ class ScreenshotStore:
                     json.dumps(rows, ensure_ascii=False), encoding="utf-8"
                 )
                 os.replace(temporary, destination / "logs.json")
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             self._report_error("归档报错日志失败", exc)
 
     def last_saved(self) -> str:
@@ -585,8 +642,13 @@ class ScreenshotStore:
                 ):
                     continue
                 try:
+                    event = json.loads(
+                        (Path(entry.path) / "event.json").read_text(encoding="utf-8")
+                    )
+                    if int(event.get("last_error_ns", entry.name)) >= cutoff_ns:
+                        continue
                     self.delete_error_archive(entry.name)
-                except OSError as exc:
+                except (OSError, ValueError, TypeError, AttributeError) as exc:
                     self._cleanup_error(exc)
 
     def cleanup(self):

@@ -83,6 +83,89 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue((archive / previous.name).exists())
         self.assertTrue((archive / Path(future).name).exists())
 
+    def test_overlapping_errors_share_archive_and_backfill_extended_window(self):
+        second = time.time_ns()
+        first = second - 9 * 60 * 10**9
+        gap_time = second - 3 * 60 * 10**9
+        gap = self.seed(
+            datetime.fromtimestamp(gap_time / 10**9).strftime("%Y%m%d-%H"),
+            gap_time,
+        )
+        first_id = self.store.mark_error(first, "首次失败")
+        second_id = self.store.mark_error(second, "再次失败")
+        self.assertEqual(second_id, first_id)
+        self.assertEqual(len(self.store._error_windows), 1)
+        self.assertEqual(self.store._error_windows[0][1], second + 5 * 60 * 10**9)
+
+        self.store.start()
+        archive = self.root / "errors" / first_id
+        deadline = time.monotonic() + 3
+        while (
+            not (archive / gap.name).exists() or not (archive / "event.json").exists()
+        ) and time.monotonic() < deadline:
+            Event().wait(0.01)
+        event = json.loads((archive / "event.json").read_text(encoding="utf-8"))
+        self.assertEqual(event["error_count"], 2)
+        self.assertEqual(event["last_error_ns"], second)
+        self.assertEqual((archive / gap.name).read_bytes(), b"old")
+        self.assertEqual(len(list((self.root / "errors").iterdir())), 1)
+
+    def test_non_overlapping_errors_create_separate_archives(self):
+        now = time.time_ns()
+        first = self.store.mark_error(now - 11 * 60 * 10**9, "先前错误")
+        second = self.store.mark_error(now, "新错误")
+        self.assertNotEqual(first, second)
+
+    def test_later_error_invalidates_saved_logs_for_merged_window(self):
+        now = time.time_ns()
+        first_id = self.store.mark_error(now - 8 * 60 * 10**9, "首次失败")
+        self.store.start()
+        archive = self.root / "errors" / first_id
+        manifest = archive / "event.json"
+        deadline = time.monotonic() + 3
+        while not manifest.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(manifest.exists())
+        saved = archive / "logs.json"
+        deadline = time.monotonic() + 3
+        while not saved.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(saved.exists())
+
+        self.assertEqual(self.store.mark_error(now, "再次失败"), first_id)
+        deadline = time.monotonic() + 3
+        while saved.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertFalse(saved.exists())
+        event = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertEqual(event["error_count"], 2)
+        self.assertEqual(event["last_error_ns"], now)
+
+    def test_restart_continues_merging_recent_errors(self):
+        now = time.time_ns()
+        archive_id = self.store.mark_error(now - 2 * 60 * 10**9, "首次失败")
+        self.assertEqual(self.store.mark_error(now, "再次失败"), archive_id)
+        self.store.start()
+        manifest = self.root / "errors" / archive_id / "event.json"
+        deadline = time.monotonic() + 3
+        event = None
+        while time.monotonic() < deadline:
+            if manifest.exists():
+                event = json.loads(manifest.read_text(encoding="utf-8"))
+                if event.get("error_count") == 2:
+                    break
+            Event().wait(0.01)
+        self.assertIsNotNone(event)
+        self.assertEqual(event["error_count"], 2)
+        self.store.close()
+
+        self.store = ScreenshotStore(self.root, lambda: self.retention, self.logger)
+        self.addCleanup(self.store.close)
+        self.store.start()
+        self.assertEqual(
+            self.store.mark_error(time.time_ns(), "第三次失败"), archive_id
+        )
+
     def test_deleted_error_archive_is_not_recreated_by_pending_work(self):
         event_time = time.time_ns()
         archive_id = self.store.mark_error(event_time, "运行失败")
@@ -626,11 +709,19 @@ class ScreenshotTests(unittest.TestCase):
         archive_root = self.root / "errors"
         expired = archive_root / str(cutoff - 1)
         recent = archive_root / str(cutoff)
+        extended = archive_root / str(cutoff - hour_ns)
         unrelated = archive_root / "notes"
-        for archive in (expired, recent):
+        for archive in (expired, recent, extended):
             archive.mkdir(parents=True)
+            last_error = now if archive == extended else int(archive.name)
             (archive / "event.json").write_text(
-                json.dumps({"time_ns": int(archive.name), "message": "测试错误"}),
+                json.dumps(
+                    {
+                        "time_ns": int(archive.name),
+                        "last_error_ns": last_error,
+                        "message": "测试错误",
+                    }
+                ),
                 encoding="utf-8",
             )
             (archive / "frame.jpg").write_bytes(b"frame")
@@ -641,6 +732,7 @@ class ScreenshotTests(unittest.TestCase):
             self.store.cleanup()
         self.assertFalse(expired.exists())
         self.assertTrue(recent.exists())
+        self.assertTrue(extended.exists())
         self.assertTrue(unrelated.exists())
         self.assertFalse(ordinary.exists())
 

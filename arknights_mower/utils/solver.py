@@ -80,7 +80,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -579,7 +582,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -666,7 +672,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue

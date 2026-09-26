@@ -40,6 +40,38 @@ filter = PackagePathFilter()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# 只有画面能帮助定位的运行路径才自动归档；其他 ERROR 仍进入运行日志和实时日志。
+_VISUAL_ERROR_FILES = {
+    "utils/device/device.py",
+    "utils/graph.py",
+    "utils/matcher.py",
+    "utils/scheduler_task.py",
+    "utils/segment.py",
+    "utils/solver.py",
+}
+_VISUAL_SOLVER_FILES = {
+    "base_mixin.py",
+    "base_schedule.py",
+    "captcha_solver.py",
+    "operation.py",
+    "player_info.py",
+    "recruit.py",
+    "secret_front.py",
+}
+
+
+def should_archive_error(record: logging.LogRecord) -> bool:
+    if record.levelno < logging.ERROR:
+        return False
+    override = getattr(record, "archive_screenshots", None)
+    if override is not None:
+        return bool(override)
+    source = record.pathname.replace("\\", "/").partition("arknights_mower/")[2]
+    if source.startswith("solvers/"):
+        return source.removeprefix("solvers/") in _VISUAL_SOLVER_FILES
+    return source in _VISUAL_ERROR_FILES
+
+
 # d(ebug)hlr: 终端输出
 dhlr = logging.StreamHandler(stream=sys.stdout)
 dhlr.setFormatter(color_formatter)
@@ -54,7 +86,7 @@ class Handler(logging.StreamHandler):
         if record.levelno >= logging.ERROR:
             if summary.startswith(("Error", "Exception")) or summary == str(record.msg):
                 summary = f"运行时发生错误：{summary}"
-            if not record.pathname.endswith("screenshot.py"):
+            if should_archive_error(record):
                 try:
                     store = get_screenshot_store() or (
                         _store() if fhlr is not None else None

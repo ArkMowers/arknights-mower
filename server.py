@@ -30,7 +30,12 @@ from arknights_mower.utils.config.plan_advanced import (
 from arknights_mower.utils.config_backup import backup_lock
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
-from arknights_mower.utils.diagnostics import error_events, export_bundle, timeline
+from arknights_mower.utils.diagnostics import (
+    archive_window,
+    error_events,
+    export_bundle,
+    timeline,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.log_stream import LogStream
 from arknights_mower.utils.maa_check import (
@@ -1189,7 +1194,16 @@ def diagnostic_error_logs(archive_id):
         center = datetime.datetime.fromtimestamp(int(archive_id) / 10**9)
     except (OverflowError, OSError, ValueError):
         abort(404)
-    return {"logs": timeline(get_path("@app/log"), get_path("@app/screenshot"), center)}
+    start, end = archive_window(folder, center)
+    return {
+        "logs": timeline(
+            get_path("@app/log"),
+            get_path("@app/screenshot"),
+            center,
+            start=start,
+            end=end,
+        )
+    }
 
 
 @app.route("/diagnostics/errors/<archive_id>/export")

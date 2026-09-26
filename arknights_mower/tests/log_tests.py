@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import subprocess
@@ -6,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from queue import Queue
+from unittest.mock import Mock, patch
 
 from arknights_mower.utils import log, path
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
@@ -72,6 +74,80 @@ class LogFileHandlerTest(MultiProcessLogTestBase):
                 for thread in log.get_screenshot_store()._threads
             )
         )
+
+
+class ErrorArchivePolicyTest(MultiProcessLogTestBase):
+    @staticmethod
+    def record(source, level=logging.ERROR, archive_screenshots=None):
+        record = logging.LogRecord(
+            log.logger.name,
+            level,
+            f"/project/arknights_mower/{source}",
+            12,
+            "运行失败",
+            (),
+            None,
+        )
+        record.asctime = "2026-09-26 12:00:00"
+        if archive_screenshots is not None:
+            record.archive_screenshots = archive_screenshots
+        return record
+
+    def test_only_visual_runtime_errors_trigger_archive(self):
+        for source, expected in (
+            ("solvers/base_schedule.py", True),
+            ("solvers/captcha_solver.py", True),
+            ("utils/device/device.py", True),
+            ("utils/solver.py", True),
+            ("solvers/report.py", False),
+            ("utils/resource_pkg.py", False),
+            ("utils/config/app_state.py", False),
+            ("utils/screenshot.py", False),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(
+                    log.should_archive_error(self.record(source)), expected
+                )
+        self.assertFalse(
+            log.should_archive_error(
+                self.record("solvers/base_schedule.py", level=logging.WARNING)
+            )
+        )
+
+    def test_explicit_override_handles_main_loop_and_retry_errors(self):
+        self.assertFalse(log.should_archive_error(self.record("__main__.py")))
+        self.assertTrue(
+            log.should_archive_error(
+                self.record("__main__.py", archive_screenshots=True)
+            )
+        )
+        self.assertFalse(
+            log.should_archive_error(
+                self.record("solvers/captcha_solver.py", archive_screenshots=False)
+            )
+        )
+
+    def test_non_visual_error_still_reaches_live_log_without_archive(self):
+        store = Mock()
+        with (
+            patch.object(log, "get_screenshot_store", return_value=store),
+            patch.object(log.config.log_queue, "put") as put,
+        ):
+            log.whlr.emit(self.record("utils/resource_pkg.py"))
+        store.mark_error.assert_not_called()
+        put.assert_called_once()
+        self.assertIn("运行失败", put.call_args.args[0])
+
+    def test_visual_error_is_archived_and_linked_in_live_log(self):
+        store = Mock()
+        store.mark_error.return_value = "123"
+        with (
+            patch.object(log, "get_screenshot_store", return_value=store),
+            patch.object(log.config.log_queue, "put") as put,
+        ):
+            log.whlr.emit(self.record("solvers/base_schedule.py"))
+        store.mark_error.assert_called_once()
+        self.assertIn("记录编号 123", put.call_args.args[0])
 
 
 class ScreenshotStoreStartupTest(MultiProcessLogTestBase):

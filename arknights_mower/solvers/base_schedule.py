@@ -666,8 +666,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 except Exception as e:
                     last_agent = None
                     save_exception(e)
-                    logger.error(f"工厂任务失败: {e}")
-                    logger.exception(e)
+                    logger.exception("工厂任务失败: %s", e)
                     break
                 # 首个任务仍由 infra_main 收尾，后续任务按对象身份移除。
                 if self.task is not first_task:
@@ -692,8 +691,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 raise
             except Exception as e:
                 save_exception(e)
-                logger.error(f"加工后恢复干员失败: {e}")
-                logger.exception(e)
+                logger.exception("加工后恢复干员失败: %s", e)
 
     def _next_workshop_task(self, first_task):
         # 每次交接重新检查队列，兼容新增/删除任务和专精换人保护。
@@ -7558,7 +7556,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("MAA Python模块导入成功")
         except Exception as e:
             save_exception(e)
-            logger.exception(f"MAA Python模块导入失败：{str(e)}")
+            logger.exception(
+                f"MAA Python模块导入失败：{str(e)}",
+                extra={"archive_screenshots": False},
+            )
             raise Exception("MAA Python模块导入失败")
 
         try:
@@ -7578,7 +7579,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 f.write(res)
             logger.info("MAA活动关卡导航更新成功")
         except Exception as e:
-            logger.error(f"MAA活动关卡导航更新失败：{str(e)}")
+            logger.error(
+                f"MAA活动关卡导航更新失败：{str(e)}",
+                extra={"archive_screenshots": False},
+            )
             save_exception(e)
 
         @update_transaction
@@ -7693,7 +7697,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             return get_weekly_plan_manager().maybe_switch_expired_activity_plan()
         except Exception:
-            logger.exception("检测活动结束并切换刷理智周计划失败，继续使用当前方案")
+            logger.exception(
+                "检测活动结束并切换刷理智周计划失败，继续使用当前方案",
+                extra={"archive_screenshots": False},
+            )
             return None
 
     def maa_stop(self, stop=True):
@@ -8172,7 +8179,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             raise
         except Exception as e:
             save_exception(e)
-            logger.exception(f"森空岛签到失败:{e}")
+            logger.exception(
+                f"森空岛签到失败:{e}", extra={"archive_screenshots": False}
+            )
             send_message(f"森空岛签到失败: {e}", level="ERROR")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
@@ -8760,7 +8769,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             update_workshop_config()
         except Exception as e:
-            logger.exception(f"自动安排专精/合成配置失败: {e}")
+            logger.exception(
+                f"自动安排专精/合成配置失败: {e}",
+                extra={"archive_screenshots": False},
+            )
 
     def _dispatch_scan_start_tasks(self, scheduled):
         """#74 第3段：扫描确认材料后，为材料足够的 idle 计划入队「开始训练」任务。

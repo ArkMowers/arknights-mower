@@ -603,7 +603,11 @@ def simulate(saved, restart_after_mood_read=False):
         except DeviceRecoveryError:
             raise
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
-            logger.exception("设备连接或页面识别失败：%s", e)
+            logger.exception(
+                "设备连接或页面识别失败：%s",
+                e,
+                extra={"archive_screenshots": True},
+            )
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
@@ -630,14 +634,22 @@ def simulate(saved, restart_after_mood_read=False):
             else:
                 raise e
         except RuntimeError as e:
-            logger.exception("运行时发生错误，正在尝试恢复设备连接：%s", e)
+            logger.exception(
+                "运行时发生错误，正在尝试恢复设备连接：%s",
+                e,
+                extra={"archive_screenshots": True},
+            )
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
                 continue
             base_scheduler.device.reconnect()
         except Exception as e:
-            logger.exception("任务执行失败，正在刷新画面后继续：%s", e)
+            logger.exception(
+                "任务执行失败，正在刷新画面后继续：%s",
+                e,
+                extra={"archive_screenshots": True},
+            )
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return

@@ -292,7 +292,10 @@ onMounted(() => {
             >
               <span class="event-time">{{ formatTime(event.time_ns) }}</span>
               <span class="event-message">{{ event.message }}</span>
-              <span class="event-foot">{{ event.screenshots.length }} 张截图</span>
+              <span class="event-foot">
+                <template v-if="event.error_count > 1">{{ event.error_count }} 次报错 · </template>
+                {{ event.screenshots.length }} 张截图
+              </span>
               <span class="event-arrow" aria-hidden="true">查看记录 →</span>
             </button>
             <n-button
@@ -319,7 +322,9 @@ onMounted(() => {
         <p class="panel-intro">
           {{
             activeEvent
-              ? formatTime(activeEvent.time_ns)
+              ? activeEvent.error_count > 1
+                ? `${formatTime(activeEvent.time_ns)} 至 ${formatTime(activeEvent.last_error_ns)}`
+                : formatTime(activeEvent.time_ns)
               : new Date(queryAt).toLocaleString('zh-CN')
           }}
           附近的运行记录
@@ -436,7 +441,12 @@ onMounted(() => {
         <div class="delete-target">
           <time>{{ formatTime(pendingDeleteEvent.time_ns) }}</time>
           <strong>{{ pendingDeleteEvent.message }}</strong>
-          <span>{{ pendingDeleteEvent.screenshots.length }} 张归档截图</span>
+          <span>
+            <template v-if="pendingDeleteEvent.error_count > 1">
+              {{ pendingDeleteEvent.error_count }} 次报错 ·
+            </template>
+            {{ pendingDeleteEvent.screenshots.length }} 张归档截图
+          </span>
         </div>
       </template>
       <p v-if="deleteError" class="delete-error" role="alert">{{ deleteError }}</p>

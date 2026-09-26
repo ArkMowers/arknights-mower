@@ -9,10 +9,70 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from arknights_mower.utils.diagnostics import error_events, export_bundle, timeline
+from arknights_mower.utils.diagnostics import (
+    archive_window,
+    error_events,
+    export_bundle,
+    timeline,
+)
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_merged_archive_export_uses_first_to_last_error_window(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            shots = root / "screenshot"
+            logs.mkdir()
+            first = datetime(2026, 9, 26, 12, 58)
+            last = first + timedelta(hours=1, minutes=9)
+            archive_id = str(int(first.timestamp() * 10**9))
+            archive = shots / "errors" / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps(
+                    {
+                        "time_ns": int(archive_id),
+                        "last_error_ns": int(last.timestamp() * 10**9),
+                        "error_count": 3,
+                        "message": "首次失败",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (logs / "runtime.log.2026-09-26_12").write_text(
+                "2026-09-26 12:58:00 task.py:1 ERROR 首次失败\n",
+                encoding="utf-8",
+            )
+            (logs / "runtime.log").write_text(
+                "2026-09-26 14:07:00 task.py:2 ERROR 再次失败\n",
+                encoding="utf-8",
+            )
+            start, end = archive_window(archive, first)
+            self.assertEqual(start, first - timedelta(minutes=5))
+            self.assertEqual(end, last + timedelta(minutes=5))
+            with export_bundle(logs, shots, first, archive_id) as data:
+                with ZipFile(data) as bundle:
+                    text = bundle.read("日志.txt").decode("utf-8")
+                    self.assertIn("首次失败", text)
+                    self.assertIn("再次失败", text)
+                    self.assertIn("14:12:00", bundle.read("说明.txt").decode("utf-8"))
+
+            import server
+
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                response = server.app.test_client().get(
+                    f"/diagnostics/errors/{archive_id}/logs",
+                    headers={"token": "diagnostics-test"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json["logs"]), 2)
+
     def test_delete_route_removes_only_requested_archive(self):
         import server
 

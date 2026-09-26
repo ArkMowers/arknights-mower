@@ -40,17 +40,42 @@ def screenshots_between(folder: Path, start: datetime, end: datetime):
     return sorted(images)
 
 
-def timeline(log_folder: Path, screenshot_folder: Path, center: datetime, limit=1000):
-    """返回指定时间前后五分钟的日志及最近截图。"""
-    start, end = center - _WINDOW, center + _WINDOW
+def archive_window(folder: Path, center: datetime):
+    """返回报错合并后的完整窗口；旧归档沿用单次报错窗口。"""
+    try:
+        event = json.loads((folder / "event.json").read_text(encoding="utf-8"))
+        first = int(event["time_ns"])
+        last = max(first, int(event.get("last_error_ns", first)))
+        return (
+            datetime.fromtimestamp(first / 10**9) - _WINDOW,
+            datetime.fromtimestamp(last / 10**9) + _WINDOW,
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError):
+        return center - _WINDOW, center + _WINDOW
+
+
+def timeline(
+    log_folder: Path,
+    screenshot_folder: Path,
+    center: datetime,
+    limit=1000,
+    *,
+    start=None,
+    end=None,
+):
+    """返回指定时间窗口的日志及最近截图。"""
+    start = start or center - _WINDOW
+    end = end or center + _WINDOW
     images = screenshots_between(screenshot_folder, start, end)
     timestamps = [item[0] for item in images]
     rows = []
     if not log_folder.exists():
         return rows
-    suffixes = {
-        (start + timedelta(hours=offset)).strftime("%Y-%m-%d_%H") for offset in range(2)
-    }
+    suffixes = set()
+    hour = start.replace(minute=0, second=0, microsecond=0)
+    while hour <= end:
+        suffixes.add(hour.strftime("%Y-%m-%d_%H"))
+        hour += timedelta(hours=1)
     files = [
         path
         for path in log_folder.iterdir()
@@ -93,7 +118,12 @@ def export_bundle(
     log_folder: Path, screenshot_folder: Path, center: datetime, archive_id=None
 ):
     """打包时间窗口内的完整日志和仍可读取的截图。调用方负责关闭返回的文件。"""
-    start, end = center - _WINDOW, center + _WINDOW
+    archive_root = screenshot_folder / "errors"
+    start, end = (
+        archive_window(archive_root / archive_id, center)
+        if archive_id is not None
+        else (center - _WINDOW, center + _WINDOW)
+    )
     start_ns = int(start.timestamp() * 10**9)
     end_ns = int(end.timestamp() * 10**9)
     images = {}
@@ -101,7 +131,6 @@ def export_bundle(
         images[timestamp] = (screenshot_folder / relative, relative)
 
     # 报错归档中的画面即使已从普通截图目录清理，也应进入下载包。
-    archive_root = screenshot_folder / "errors"
     if archive_id is not None:
         archives = [archive_root / archive_id]
     elif archive_root.exists():
@@ -130,7 +159,9 @@ def export_bundle(
     if saved is not None and saved.is_file():
         rows = json.loads(saved.read_text(encoding="utf-8"))
     else:
-        rows = timeline(log_folder, screenshot_folder, center, limit=None)
+        rows = timeline(
+            log_folder, screenshot_folder, center, limit=None, start=start, end=end
+        )
 
     output = SpooledTemporaryFile(max_size=16 * 1024**2, mode="w+b")
     try:
