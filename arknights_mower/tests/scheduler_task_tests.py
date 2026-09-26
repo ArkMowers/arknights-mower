@@ -148,7 +148,6 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(run_order.time, now + timedelta(minutes=3))
         self.assertGreater(tasks[1].time, run_order.time)
         self.assertEqual(set(tasks[1].plan), {f"dormitory_{i}" for i in range(1, 5)})
-        self.assertTrue(tasks[1].deferred_by_run_order)
 
     def test_dorm_wakeup_yields_to_run_order_in_both_modes(self):
         for experimental, work_room in [(True, False), (False, False), (True, True)]:
@@ -272,8 +271,6 @@ class TestScheduling(unittest.TestCase):
                 run_order.time + timedelta(seconds=2),
             ),
         )
-        self.assertTrue(shift_off.deferred_by_run_order)
-        self.assertTrue(shift_on.deferred_by_run_order)
 
         with patch.object(config.conf, "experimental_dorm_logic", False):
             scheduling(stable_tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))

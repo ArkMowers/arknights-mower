@@ -103,3 +103,58 @@ def test_successful_room_measurement_updates_estimate(monkeypatch):
     assert (
         operation_timing.estimate_dorm_minutes("dormitory_1") == (120 * 1.2 + 15) / 60
     )
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+def test_only_experimental_vacancy_fill_bypasses_run_order_scheduling(
+    schedule, monkeypatch, experimental
+):
+    now, dorm, order = schedule
+    monkeypatch.setattr(config.conf, "experimental_dorm_logic", experimental)
+    dorm.type = TaskTypes.FILL_DORM
+    order.time = now + timedelta(seconds=10)
+    original_order_time = order.time
+    tasks = [dorm, order]
+    scheduling(tasks, time_now=now)
+    assert (tasks[0] is dorm) == experimental
+    assert order.time == original_order_time
+    if experimental:
+        assert dorm.time == now
+        assert not defer_dorm_before_run_order(dorm, tasks, "dormitory_1", now)
+    else:
+        assert dorm.time > order.time
+
+
+def test_vacancy_fill_does_not_protect_unrelated_ordinary_dorm_work(schedule):
+    now, dorm, order = schedule
+    order.time = now + timedelta(seconds=10)
+    fill = SchedulerTask(
+        time=now,
+        task_type=TaskTypes.FILL_DORM,
+        task_plan={"dormitory_2": ["Current"] * 4 + ["红"]},
+    )
+    tasks = [dorm, fill, order]
+    scheduling(tasks, time_now=now)
+    assert tasks == [fill, order, dorm]
+    assert fill.time == now
+    assert dorm.time > order.time
+
+
+def test_real_room_dispatch_runs_vacancy_fill_before_imminent_order(schedule):
+    now, dorm, order = schedule
+    dorm.type = TaskTypes.FILL_DORM
+    order.time = now + timedelta(seconds=5)
+    instance = object.__new__(BaseSchedulerSolver)
+    instance.task, instance.tasks = dorm, [dorm, order]
+    instance.op_data = MagicMock(experimental_dorm_logic=True)
+    dorm.plan["dormitory_2"] = ["Free"]
+
+    def arrange(new_plan, room, plan, **kwargs):
+        del plan[room]
+        return new_plan
+
+    instance.agent_arrange_room = MagicMock(side_effect=arrange)
+    assert instance.agent_arrange(dorm.plan, True) is not False
+    assert instance.agent_arrange_room.call_count == 2
+    assert dorm.plan == {}
+    assert dorm.time == now

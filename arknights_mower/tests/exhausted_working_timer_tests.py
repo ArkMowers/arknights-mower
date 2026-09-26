@@ -12,7 +12,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule as base  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
-from arknights_mower.utils.operators import Operators  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
 
@@ -317,3 +317,49 @@ def test_zero_mood_without_working_exhaustion_semantics_keeps_countdown(
     assert solver.get_agent_from_room("central", [0])[0]["time"] == deadline
     solver.read_operator_time.assert_called_once()
     solver.recog.update.assert_not_called()
+
+
+@pytest.mark.parametrize("experimental", [False, True])
+@pytest.mark.parametrize("rest_in_full", [False, True])
+@pytest.mark.parametrize("lower,mood", [(0, 2), (10, 12), (12, 12), (12, 11)])
+def test_exhaust_task_uses_custom_lower_limit_with_original_preparation_margin(
+    monkeypatch, experimental, rest_in_full, lower, mood
+):
+    now = datetime(2026, 9, 26, 12)
+    clock = MagicMock()
+    clock.now.return_value = now
+    monkeypatch.setattr(base, "datetime", clock)
+    op = Operator("银灰", "room_1_1", operator_type="high")
+    op.current_room, op.current_index = "room_1_1", 0
+    op.time_stamp, op.mood = now, mood
+    op.lower_limit, op.upper_limit = lower, 20
+    op.exhaust_require, op.rest_in_full = True, rest_in_full
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.tasks, solver.task = [], None
+    solver.op_data = SimpleNamespace(
+        operators={op.name: op},
+        plan={},
+        run_order_rooms={},
+        exhaust_agent={op.name},
+        rest_in_full_group={op.name} if rest_in_full else set(),
+        experimental_dorm_logic=experimental,
+    )
+    solver._sync_run_order_tasks = MagicMock()
+    solver.check_fia = MagicMock(return_value=(None, None))
+    solver.enter_room = MagicMock()
+    solver.back = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        return_value=[{"agent": op.name, "time": now + timedelta(hours=6)}]
+    )
+    solver.run_order_solver()
+    assert len(solver.tasks) == 1
+    task = solver.tasks[0]
+    remaining = 6 * ((mood - lower) / mood if experimental else 1)
+    expected = max(
+        now,
+        now
+        + timedelta(hours=remaining)
+        - timedelta(minutes=10 if rest_in_full else 30),
+    )
+    assert task.type == TaskTypes.EXHAUST_OFF
+    assert task.time == expected

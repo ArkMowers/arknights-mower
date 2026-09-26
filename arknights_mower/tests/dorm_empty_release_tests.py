@@ -8,6 +8,7 @@ import pytest
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.tests import dorm_release_tests
 from arknights_mower.tests.choose_agent_filter_tests import selection_solver
+from arknights_mower.utils import resting_priority
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import (
@@ -24,6 +25,8 @@ op_data = dorm_release_tests.op_data
 @pytest.fixture
 def solver(op_data, monkeypatch):
     data = op_data
+    # 本组模拟账号仅有已登记的这些干员；未登记空闲者由专门用例加入。
+    monkeypatch.setattr(resting_priority, "agent_list", list(data.operators))
     residents = [slot.agent for slot in data.plan[ROOM]][:4] + ["空爆"]
     for index, name in enumerate(residents):
         data.operators[name]._current_room = ROOM

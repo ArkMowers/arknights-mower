@@ -135,14 +135,20 @@ def test_unknown_mood_without_timer_does_not_release(solver):
     assert not any(t.strict_mood_limit for t in solver.tasks)
 
 
-def test_departed_operator_waits_without_recalling_group_or_refilling(solver):
+def test_departed_operator_waits_without_recalling_group_or_refilling(
+    solver, monkeypatch
+):
     name = limited_name(solver)
     solver.op_data.operators[name].mood = 20.8
     solver.plan_metadata()
     task = release(solver)
     solver.task = task
     # 用实际选人准备逻辑验证 Free 不会被主班保床恢复成令/夕。
-    solver.get_free_list = MagicMock(return_value=[])
+    # 账号没有额外未登记空闲者，使用真实共用候选筛选验证无人接替。
+    monkeypatch.setattr(
+        "arknights_mower.utils.resting_priority.agent_list",
+        list(solver.op_data.operators),
+    )
     agents = task.plan["dormitory_1"].copy()
     solver.preserve_resting_crafters(agents, "dormitory_1")
     assert agents[3] == ("" if solver.op_data.experimental_dorm_logic else "Free")
@@ -188,7 +194,6 @@ def test_strict_release_is_not_delayed_by_merging_or_run_order(solver):
     merge_release_dorm(tasks, 10)
     scheduling(tasks, time_now=NOW)
     assert task.time == NOW
-    assert not task.deferred_by_run_order
 
 
 def test_rebuild_uses_confirmed_new_bed(solver):

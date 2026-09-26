@@ -690,7 +690,7 @@ function movePlanForward() {
     </n-form-item>
     <n-form-item>
       <template #label
-        ><span>需要回满心情的干员</span><help-text>休息到当前心情上限后回班。</help-text></template
+        ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
       >
       <slick-operator-select
         :disabled="edit_locked"
@@ -699,8 +699,12 @@ function movePlanForward() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>需要用尽心情的干员</span
-        ><help-text>用尽后下班，优先取得替班；被占用时先换替班，否则叫回占用组。</help-text>
+        <span>需要用尽心情的干员</span>
+        <help-text>
+          <template v-if="experimental_dorm_logic">用尽按当前心情下限计算，</template>
+          <template v-else>用尽后下班，</template>
+          优先取得替班；被占用时先换替班，否则叫回占用组。
+        </help-text>
       </template>
       <slick-operator-select
         :disabled="edit_locked"
@@ -713,7 +717,8 @@ function movePlanForward() {
         <help-text>
           <template v-if="experimental_dorm_logic">
             <p>
-              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 → 空闲；同级心情低者优先。
+              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
+              空闲；同级距心情上限更远者优先。
             </p>
             <p>
               只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
@@ -732,7 +737,7 @@ function movePlanForward() {
         <span>宿舍低优先级干员</span>
         <help-text>
           <template v-if="experimental_dorm_logic">
-            低于普通主班，高于高优替班；同级心情低者优先。需有床才能下班，不改变下班顺序。
+            低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
           </template>
           <template v-else>降低宿舍分床优先级，不改变下班顺序。</template>
         </help-text>
@@ -746,7 +751,7 @@ function movePlanForward() {
       <template #label>
         <span>宿舍高优先级替班</span>
         <help-text
-          >仅替班生效，低于低优主班、高于候补；同级心情低者优先，可接管候补床位。</help-text
+          >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先，可接管候补床位。</help-text
         >
       </template>
       <slick-operator-select

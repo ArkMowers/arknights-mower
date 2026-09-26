@@ -12,7 +12,11 @@ from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanConf
 from arknights_mower.utils.operators import Operator, build_global_plan
 from arknights_mower.utils.plan import Plan, PlanConfig
-from arknights_mower.utils.scheduler_task import TaskTypes, plan_mood_limit_releases
+from arknights_mower.utils.scheduler_task import (
+    TaskTypes,
+    plan_metadata,
+    plan_mood_limit_releases,
+)
 
 ROOM = dorm_release_tests.ROOM
 op_data = dorm_release_tests.op_data
@@ -216,6 +220,38 @@ def test_read_countdown_targets_custom_cap(op_data):
         ROOM, 4, {"agent": "红", "time": op.time_stamp + timedelta(hours=3)}
     )
     assert op_data.dorm[0].time == op.time_stamp + timedelta(hours=1)
+
+
+@pytest.mark.parametrize("exhaust", [False, True])
+@pytest.mark.parametrize("individual", [False, True])
+def test_rest_in_full_returns_at_configured_upper_limit(op_data, exhaust, individual):
+    data = op_data
+    if individual:
+        data.config.operator_mood_limits = {"银灰": bounds(2, 12)}
+    else:
+        data.config.mood_limits = bounds(2, 12)
+    data.init_mood_limit()
+    op = data.operators["银灰"]
+    op.rest_in_full, op.exhaust_require = True, exhaust
+    op.mood, op.time_stamp = 6, datetime.now()
+    data.operators["空爆"].current_room = ""
+    op.current_room, op.current_index = ROOM, 4
+    bed = data.dorm[0]
+    bed.name, bed.time = op.name, None
+    data.refresh_dorm_time(
+        ROOM, 4, {"agent": op.name, "time": op.time_stamp + timedelta(hours=3)}
+    )
+    assert bed.time == op.time_stamp + timedelta(hours=1)
+    tasks = plan_metadata(data, [])
+    returning = next(t for t in tasks if t.type == TaskTypes.SHIFT_ON)
+    # 保留原回满准备提前量；用尽＋回满不提前回岗。
+    assert returning.time == bed.time - timedelta(minutes=0 if exhaust else 8)
+    if individual:
+        release = next(t for t in tasks if t.strict_mood_limit)
+        assert release.time == bed.time
+    data.config.operator_mood_limits["银灰"] = bounds(2, 18)
+    data.init_mood_limit()
+    assert bed.time == op.time_stamp + timedelta(hours=2)
 
 
 def test_cap_change_without_valid_mood_requires_new_countdown(op_data):
