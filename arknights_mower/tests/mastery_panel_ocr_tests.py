@@ -277,7 +277,24 @@ def test_unique_majority_ocr_recovers_when_template_is_unavailable(monkeypatch):
     assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·γ型")
 
 
-def test_ambiguous_majority_ocr_stays_unknown():
+def test_ambiguous_majority_ocr_stays_unknown(monkeypatch):
     from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+    from arknights_mower.utils import mastery_recommendation
 
-    assert resolve_panel_skill_fuzzy("预备干员-术师", "战术咏唱·v型") is None
+    monkeypatch.setattr(
+        mastery_recommendation,
+        "get_skill_data",
+        lambda: {
+            "characters": {
+                "test": {
+                    "name": "测试干员",
+                    "skills": [
+                        {"name": "战术咏唱·β型"},
+                        {"name": "战术咏唱·γ型"},
+                    ],
+                }
+            }
+        },
+    )
+
+    assert resolve_panel_skill_fuzzy("测试干员", "战术咏唱·v型") is None

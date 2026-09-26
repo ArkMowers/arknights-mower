@@ -950,6 +950,9 @@ class Arknights数据处理器:
     def 提取专精数据(self):
         import time as _time
 
+        from arknights_mower.utils.mastery_recommendation import (
+            UNTRAINABLE_CHAR_IDS,
+        )
         from arknights_mower.utils.mastery_rules import compile_training_data
         from arknights_mower.utils.workshop_rules import compile_workshop_data
 
@@ -965,6 +968,11 @@ class Arknights数据处理器:
         for char_id, char_info in (
             self.干员表 | self.干员形态表.get("patchChars", {})
         ).items():
+            # Summons and rogue-only operators cannot enter training-room
+            # mastery even when the game resources include skill definitions.
+            if not char_id.startswith("char_") or char_id in UNTRAINABLE_CHAR_IDS:
+                skipped += 1
+                continue
             skills_raw = char_info.get("skills", [])
             if not skills_raw:
                 skipped += 1
@@ -1000,6 +1008,16 @@ class Arknights数据处理器:
                 )
 
             if not has_any_upgrade:
+                skipped += 1
+                continue
+
+            # Some temporary operators have three placeholder mastery levels
+            # with no materials and zero duration. They are not trainable.
+            if not any(
+                level["materials"] or level["time"]
+                for skill in skills
+                for level in skill["levels"]
+            ):
                 skipped += 1
                 continue
 
