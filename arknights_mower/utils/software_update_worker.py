@@ -21,6 +21,7 @@ import threading
 import time
 import traceback
 import zipfile
+from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 
 if __package__:
@@ -453,7 +454,7 @@ def apply_ota_archive(
             target = destination / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             if name in patches:
-                source = installed / relative
+                source = installed / Path(*relative.parts[1:])
                 if (
                     source.is_symlink()
                     or not source.is_file()
@@ -479,7 +480,7 @@ def apply_ota_archive(
                 target.write_bytes(rebuilt)
                 target.chmod(item["mode"])
                 continue
-            source = None if name in changed else installed / relative
+            source = None if name in changed else installed / Path(*relative.parts[1:])
             if source is not None and (
                 source.is_symlink()
                 or not source.is_file()
@@ -1099,33 +1100,46 @@ class Worker:
             extract_archive(package, payload_dir, self.check_cancelled)
 
     def prepare_ota(self, payload_dir):
-        import requests
-
         asset = self.job["ota_asset"]
         package = self.work / asset["name"]
-        self.report("downloading", "下载跨版本 OTA 差异包")
-        proxy = self.job.get("proxy")
-        with (
-            request_download(
-                requests,
-                "get",
-                asset["url"],
-                proxy=self.job.get("github_proxy", ""),
-                headers={"User-Agent": "Mower-Software-Update"},
-                proxies={"http": proxy, "https": proxy} if proxy else None,
-                stream=True,
-                timeout=(10, 10),
-            )[0] as response,
-            package.open("wb") as out,
-        ):
+        manual = self.job.get("manual") is True
+        self.report(
+            "downloading",
+            "准备上传的 OTA 差异包" if manual else "下载跨版本 OTA 差异包",
+        )
+        with ExitStack() as stack:
+            if manual:
+                if not package.is_file():
+                    raise ValueError("上传的 OTA 差异包不存在，请重新上传")
+                stream = stack.enter_context(package.open("rb"))
+                chunks = iter(lambda: stream.read(64 * 1024), b"")
+                out = None
+            else:
+                import requests
+
+                proxy = self.job.get("proxy")
+                response, _ = request_download(
+                    requests,
+                    "get",
+                    asset["url"],
+                    proxy=self.job.get("github_proxy", ""),
+                    headers={"User-Agent": "Mower-Software-Update"},
+                    proxies={"http": proxy, "https": proxy} if proxy else None,
+                    stream=True,
+                    timeout=(10, 10),
+                )
+                stack.enter_context(response)
+                out = stack.enter_context(package.open("wb"))
+                chunks = response.iter_content(64 * 1024)
             size = 0
             digest = hashlib.sha256()
-            for chunk in response.iter_content(64 * 1024):
+            for chunk in chunks:
                 self.check_cancelled()
                 size += len(chunk)
                 if size > MAX_PACKAGE_BYTES:
                     raise ValueError("OTA 包超过 2 GiB 限制")
-                out.write(chunk)
+                if out is not None:
+                    out.write(chunk)
                 digest.update(chunk)
                 self.status.update(current=size, total=asset["size"])
         if size != asset["size"] or digest.hexdigest() != asset["sha256"]:
@@ -1157,7 +1171,11 @@ class Worker:
     def prepare_package(self):
         payload_dir = self.work / "payload"
         shutil.rmtree(payload_dir, ignore_errors=True)
-        if self.job.get("ota_asset") and self.job.get("manual") is not True:
+        if self.job.get("ota_asset") and self.job.get("manual") is True:
+            # Uploaded OTA packages must remain entirely offline. A mismatch
+            # leaves the live installation intact instead of fetching a full ZIP.
+            self.prepare_ota(payload_dir)
+        elif self.job.get("ota_asset"):
             try:
                 self.prepare_ota(payload_dir)
             except UpdateCancelled:

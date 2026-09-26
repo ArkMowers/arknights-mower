@@ -1023,6 +1023,8 @@ def info():
         ],
         "releases_url": RELEASES_URL if deployment == "source" else OTA_RELEASES_URL,
         "manual_supported": deployment == "release",
+        "manual_ota_supported": deployment == "release"
+        and platform_asset() == ("windows", "x64"),
         "rollback_supported": deployment == "release",
     }
 
@@ -1382,15 +1384,18 @@ def cancel(job_id):
 
 
 def manual_plan(package, proxy=""):
-    from .software_update_package import inspect_package
+    from .software_update_package import inspect_ota_package, inspect_package
 
     if not runtime.frozen():
         raise ValueError("Release 安装包用于独立包部署；源码部署请使用 Git 更新")
-    metadata = inspect_package(package, *platform_asset())
+    system, arch = platform_asset()
+    ota = inspect_ota_package(package, __version__, system, arch)
+    metadata = ota or inspect_package(package, system, arch)
     version = metadata["version"]
-    return {
+    plan = {
         "deployment": "release",
         "manual": True,
+        "manual_kind": "ota" if ota else "full",
         "available": True,
         "downgrade": version_key(version) < version_key(__version__),
         "channel": "dev"
@@ -1403,6 +1408,14 @@ def manual_plan(package, proxy=""):
         "asset": {"name": "package." + metadata["format"]},
         "created_at": time.time(),
     }
+    if ota:
+        plan["current_version"] = __version__
+        plan["ota_asset"] = {
+            "name": plan["asset"]["name"],
+            "platform": system,
+            "arch": arch,
+        }
+    return plan
 
 
 def inspect_upload(upload, proxy=""):
@@ -1436,6 +1449,8 @@ def inspect_upload(upload, proxy=""):
         package.rename(canonical)
         plan.update(_upload=str(canonical))
         plan["asset"].update(size=size, sha256=digest.hexdigest())
+        if plan.get("ota_asset"):
+            plan["ota_asset"].update(size=size, sha256=digest.hexdigest())
         check_id = remember_check(plan)
         (directory / "ready").touch()
         return {
@@ -1444,7 +1459,18 @@ def inspect_upload(upload, proxy=""):
             "version": plan["version"],
             "downgrade": plan["downgrade"],
             "manual": True,
-            "message": "安装包版本信息检查通过，请确认安装",
+            "package_kind": plan["manual_kind"],
+            "message": "OTA 差异包起点和目标版本检查通过，请确认安装"
+            if plan["manual_kind"] == "ota"
+            else "安装包版本信息检查通过，请确认安装",
+            "confirm_message": (
+                f"将使用本地 OTA 差异包从 {__version__} 更新到 {plan['version']}。"
+                "安装前会校验当前文件并重建完整程序；校验失败时保留当前安装。"
+                + ("旧版可能无法兼容当前配置或恢复任务。" if plan["downgrade"] else "")
+                + "确认后将重启同一安装目录下的所有运行实例。"
+            )
+            if plan["manual_kind"] == "ota"
+            else None,
         }
     except Exception:
         shutil.rmtree(directory, ignore_errors=True)

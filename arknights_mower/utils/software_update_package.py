@@ -1,6 +1,7 @@
 """Read release metadata from the package's existing version file."""
 
 import ast
+import json
 import subprocess
 import tempfile
 import zipfile
@@ -190,3 +191,55 @@ def inspect_package(path: Path, system: str, arch: str) -> dict:
     if metadata["archive"] != kind:
         raise ValueError("安装包归档格式与版本文件不匹配")
     return {"version": metadata["version"], "format": kind}
+
+
+def inspect_ota_package(path: Path, current_version: str, system: str, arch: str):
+    """Recognize a local OTA ZIP and check its origin before starting a worker.
+
+    The worker validates every manifest entry and reconstructed file before
+    stopping any running instance. Return None for a regular Release archive.
+    """
+    if not zipfile.is_zipfile(path):
+        return None
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if len(archive.infolist()) > 50001:
+                raise ValueError("OTA 差异包文件数量过多")
+            entries = [
+                item for item in archive.infolist() if item.filename == "ota.json"
+            ]
+            if not entries:
+                return None
+            if len(entries) != 1 or entries[0].is_dir():
+                raise ValueError("OTA 差异包缺少唯一的清单")
+            if entries[0].file_size > 16 * 1024**2:
+                raise ValueError("OTA 差异包清单过大")
+            with archive.open(entries[0]) as stream:
+                manifest = json.load(stream)
+    except (zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("OTA 差异包清单损坏") from error
+    if system != "windows" or arch != "x64":
+        raise ValueError("手动 OTA 差异包目前仅支持 Windows x64")
+    from .software_update import VERSION_RE
+
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("kind") != "mower-ota"
+        or type(manifest.get("format")) is not int
+        or manifest["format"] not in (1, 2)
+        or manifest.get("platform") != system
+        or manifest.get("arch") != arch
+        or not isinstance(manifest.get("from"), str)
+        or not VERSION_RE.fullmatch(manifest["from"])
+        or manifest["from"].startswith("v")
+        or not isinstance(manifest.get("to"), str)
+        or not VERSION_RE.fullmatch(manifest["to"])
+        or manifest["to"].startswith("v")
+    ):
+        raise ValueError("OTA 差异包格式或平台不匹配")
+    installed = current_version.split("+", 1)[0].removeprefix("v")
+    if manifest["from"] != installed:
+        raise ValueError(
+            f"OTA 差异包需要从 {manifest['from']} 更新，当前版本为 {installed}"
+        )
+    return {"version": manifest["to"], "format": "zip"}
