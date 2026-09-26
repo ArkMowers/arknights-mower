@@ -6785,7 +6785,50 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
-    def current_room_changed(self, instance):
+    def _cancel_pending_shift_on(self, name):
+        """实际重新上岗后，撤销本人的旧回班预约，保留同批其他人的动作。"""
+        locks_changed = False
+        for task in self.tasks[:]:
+            if (
+                task is getattr(self, "task", None)
+                or task.type != TaskTypes.SHIFT_ON
+                or not any(name in names for names in task.plan.values())
+            ):
+                continue
+            task.plan = {
+                room: ["Current" if agent == name else agent for agent in names]
+                for room, names in task.plan.items()
+                if any(agent not in (name, "Current") for agent in names)
+            }
+            locked = getattr(task, "product_shift_locked", False)
+            locks_changed |= locked
+            # 只剩清床动作时也移除，不能留下无人回班的旧清床任务。
+            if not any(
+                agent not in ("Current", "Free", "")
+                for names in task.plan.values()
+                for agent in names
+            ):
+                self.tasks[:] = [queued for queued in self.tasks if queued is not task]
+            elif locked:
+                slots = {
+                    (room, index)
+                    for room, names in task.plan.items()
+                    for index, agent in enumerate(names)
+                    if agent != "Current"
+                }
+                self._reserve_deferred_product_shift(task, slots)
+            logger.info(f"{name}已重新上岗，撤销其旧上班安排")
+        if locks_changed:
+            self._refresh_deferred_product_reservations()
+
+    def current_room_changed(self, instance, *, started_working=False):
+        # 构造干员及副表演算也可能设置位置；仅实际登记对象的上岗使预约失效。
+        if (
+            started_working
+            and self.op_data.experimental_dorm_logic
+            and self.op_data.operators.get(instance.name) is instance
+        ):
+            self._cancel_pending_shift_on(instance.name)
         if not self.op_data.first_init:
             logger.info(f"{instance.name} 房间变动")
             if instance.refresh_order_room[0]:

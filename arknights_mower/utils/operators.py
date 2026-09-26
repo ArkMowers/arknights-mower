@@ -2169,16 +2169,20 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
+            was_working = self.is_working()
             self.idle_rest_check = None
             if value != getattr(self, "dorm_mood_fallback", ""):
                 self.dorm_mood_fallback = ""
                 self.dorm_mood_peers = {}
             self.clear_dorm_recovery()
             self._current_room = value
+            started_working = not was_working and self.is_working()
             if Operators.current_room_changed_callback and (
-                self.refresh_order_room[0] or self.refresh_drained
+                started_working or self.refresh_order_room[0] or self.refresh_drained
             ):
-                Operators.current_room_changed_callback(self)
+                Operators.current_room_changed_callback(
+                    self, started_working=started_working
+                )
                 logger.debug(
                     f"触发当前房间变更回调: {self.name} 现在在 {self._current_room}, 刷新交易所房间: {self.refresh_order_room}, 刷新疲劳: {self.refresh_drained}"
                 )
