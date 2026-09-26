@@ -577,6 +577,7 @@ class TestScheduling(unittest.TestCase):
         target = op_data.operators["麒麟R夜刀"]
         target.current_room, target.current_index = closing.position
         target.dorm_recovery_room = "dormitory_1"
+        target.dorm_recovery_index = target.current_index
         target.dorm_recovery_fixed = ("塑心", "冰酿")
         closing.name = target.name
         closing.time = datetime.now() + timedelta(hours=1)
@@ -587,7 +588,9 @@ class TestScheduling(unittest.TestCase):
 
         destination = next(dorm for dorm in op_data.dorm if dorm.name == target.name)
         self.assertEqual(destination.position[0], "dormitory_1")
-        self.assertEqual(target.dorm_recovery_room, "dormitory_1")
+        target = op_data.operators[target.name]
+        self.assertEqual(target.dorm_recovery_room, "")
+        self.assertEqual(target.dorm_recovery_index, -1)
         self.assertEqual(plan["dormitory_1"][2], "真言")
         self.assertEqual(plan["dormitory_1"][destination.position[1]], target.name)
 
@@ -597,6 +600,7 @@ class TestScheduling(unittest.TestCase):
         target = op_data.operators["麒麟R夜刀"]
         target.current_room, target.current_index = target_bed.position
         target.dorm_recovery_room = target_bed.position[0]
+        target.dorm_recovery_index = target.current_index
         target.dorm_recovery_fixed = ("塑心", "冰酿")
         target_bed.name = target.name
         target_bed.time = datetime.now() + timedelta(hours=1)
@@ -620,6 +624,7 @@ class TestScheduling(unittest.TestCase):
         protected = op_data.operators["麒麟R夜刀"]
         protected.current_room, protected.current_index = protected_bed.position
         protected.dorm_recovery_room = protected_bed.position[0]
+        protected.dorm_recovery_index = protected.current_index
         protected.dorm_recovery_fixed = ("塑心", "冰酿")
         protected.mood = 23
         protected.time_stamp = datetime.now()

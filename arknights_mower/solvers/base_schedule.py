@@ -7132,10 +7132,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """先确认单回目标的入驻顺序，再由原任务恢复完整阵容。
 
         中间名单只用于这次点击，不能覆盖持久化任务中的完整恢复名单。
-        目标及清空结果均识别成功后才记录；留在同一宿舍期间不重复清房。
+        目标及垫位结果均识别成功后才记录；床位未变时不重复确认。
         """
         from arknights_mower.utils.dorm_recovery import (
-            recovery_fixed_occupants,
+            recovery_managers,
             recovery_order_plan,
             recovery_target,
         )
@@ -7143,13 +7143,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if not room.startswith("dorm") or self.task.type == TaskTypes.FIAMMETTA:
             return False
         pending = getattr(self.task, "dorm_recovery_restore", [])
-        retained = recovery_order_plan(self.op_data, room, agents)
+        reserved_names = {
+            name
+            for task in self.tasks
+            for task_room, names in task.plan.items()
+            if task is not self.task or task_room != room
+            for name in names
+        }
+        retained = recovery_order_plan(self.op_data, room, agents, reserved_names)
         if retained is None:
             return room in pending
         target = recovery_target(self.op_data, room, agents)
-        vip_index = next(
-            i for i, slot in enumerate(self.op_data.plan[room]) if slot.agent == "Free"
-        )
+        vip_index = agents.index(target.name)
         # 一轮下班先替班接岗、再分床；不要为即将被下一条分床任务换走的
         # 原占位者额外清房。以队列中明确的目标覆盖为准，不猜测未来排班。
         for task in self.tasks:
@@ -7181,14 +7186,28 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             current = [item["agent"] for item in self.get_agent_from_room(room)]
             if current != expected:
                 raise Exception("宿舍单回排序确认失败，保留原任务重试")
+        if current != agents:
+            # 目标床位不再移动，不能因此沿用临时阵容下的恢复倒计时。
+            # 补回宿管和其余入住者后，由紧接着的正常读房重新采样。
+            _, bed = self.op_data.get_dorm_by_name(target.name)
+            if bed is not None and bed.name == target.name:
+                bed.time = None
+        # 垫位者的缓存可能已过期，读回不是满心情就只恢复最终阵容，
+        # 不把本次单回当作已确认。下一次按新的真实心情重新选垫位者。
+        padding = set(retained) - set(agents)
+        if any(self.op_data.operators[name].mood < 24 for name in padding):
+            target.clear_dorm_recovery()
+            logger.info(f"{room} 单回垫位者未满心情，恢复阵容后重新确认")
+            return True
         if target.mood < 24:
             target.dorm_recovery_room = room
-            target.dorm_recovery_fixed = recovery_fixed_occupants(
-                self.op_data, room, agents
-            )
+            target.dorm_recovery_index = vip_index
+            target.dorm_recovery_fixed = recovery_managers(self.op_data, room, agents)
         else:
             target.clear_dorm_recovery()
-        logger.info(f"宿舍单回排序确认：{room} 目标 {target.name}，恢复原位")
+        logger.info(
+            f"宿舍单回排序确认：{room} 目标 {target.name} 固定在第{vip_index + 1}位，补回其余干员"
+        )
         return True
 
     @timed_room

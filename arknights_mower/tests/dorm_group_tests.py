@@ -714,6 +714,7 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
     target = data.operators["年"]
     target.mood = 23
     target.dorm_recovery_room = "dormitory_1"
+    target.dorm_recovery_index = target.current_index
     target.dorm_recovery_fixed = ("塑心",)
     plan = {
         "meeting": ["伊内丝", "银灰"],
