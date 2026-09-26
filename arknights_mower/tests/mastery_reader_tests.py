@@ -3260,10 +3260,21 @@ class TestLogJudgment(unittest.TestCase):
     def setUp(self):
         self.solver = MagicMock()
 
+    def test_remaining_time_does_not_wrap_at_midnight(self):
+        self.assertEqual(
+            reader._format_remaining_time(
+                NOW + timedelta(hours=27, minutes=4, seconds=5), NOW
+            ),
+            "27:04:05",
+        )
+        self.assertEqual(
+            reader._format_remaining_time(NOW - timedelta(seconds=1), NOW), "00:00:00"
+        )
+
     @patch.object(reader.logger, "info")
     def test_log_training_consistent_with_mood(self, mock_info):
         # 正常训练中：协助位年，训练位泡泡，带心情与倒计时
-        countdown = datetime(2026, 9, 21, 4, 12, 30)
+        countdown = NOW + timedelta(hours=4, minutes=12, seconds=30)
         panel = make_panel(
             operator_name="泡泡",
             skill_name="挨打",
@@ -3281,7 +3292,11 @@ class TestLogJudgment(unittest.TestCase):
             slots_read=True,
             slots_reliable=True,
         )
-        reader._log_judgment(self.solver, room, "training", "更新专精完成的收取时间")
+        with patch.object(reader, "datetime") as clock:
+            clock.now.return_value = NOW
+            reader._log_judgment(
+                self.solver, room, "training", "更新专精完成的收取时间"
+            )
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
         self.assertIn("房间 训练室[训练中]：", msg)
@@ -3294,7 +3309,7 @@ class TestLogJudgment(unittest.TestCase):
     @patch.object(reader.logger, "info")
     def test_log_unreliable_slots(self, mock_info):
         # 进驻浮窗读取失败/不可靠
-        countdown = datetime(2026, 9, 21, 4, 12, 30)
+        countdown = NOW + timedelta(hours=4, minutes=12, seconds=30)
         panel = make_panel(
             operator_name="泡泡",
             skill_name="挨打",
@@ -3310,7 +3325,11 @@ class TestLogJudgment(unittest.TestCase):
             slots_read=True,
             slots_reliable=False,
         )
-        reader._log_judgment(self.solver, room, "training", "更新专精完成的收取时间")
+        with patch.object(reader, "datetime") as clock:
+            clock.now.return_value = NOW
+            reader._log_judgment(
+                self.solver, room, "training", "更新专精完成的收取时间"
+            )
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
         self.assertIn("房间 训练室[训练中]：", msg)
@@ -3320,7 +3339,7 @@ class TestLogJudgment(unittest.TestCase):
     @patch.object(reader.logger, "info")
     def test_log_ocr_fail_slots_unread(self, mock_info):
         # 识别异常早返回：未展开浮窗
-        countdown = datetime(2026, 9, 21, 2, 30, 15)
+        countdown = NOW + timedelta(hours=2, minutes=30, seconds=15)
         panel = make_panel(
             operator_name="",
             skill_name="[泡泡“挨打”",
@@ -3335,7 +3354,11 @@ class TestLogJudgment(unittest.TestCase):
             slots_read=False,
             slots_reliable=False,
         )
-        reader._log_judgment(self.solver, room, "ocr_fail", "保守训练中，等待排班重读")
+        with patch.object(reader, "datetime") as clock:
+            clock.now.return_value = NOW
+            reader._log_judgment(
+                self.solver, room, "ocr_fail", "保守训练中，等待排班重读"
+            )
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
         self.assertIn("房间 训练室[识别异常]：", msg)

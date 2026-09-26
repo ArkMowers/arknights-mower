@@ -1097,6 +1097,14 @@ def _queue_has_mastery_task(solver):
         return False
 
 
+def _format_remaining_time(end_time: datetime, now: datetime) -> str:
+    """把结束时刻格式化为非负的剩余时长（小时不按 24 取模）。"""
+    seconds = max(0, int((end_time - now).total_seconds()))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 def _log_judgment(solver, room, state, action, **extra):
     """逐轮结构化判定日志：房间状态、进驻详情与执行动作。
 
@@ -1141,7 +1149,7 @@ def _log_judgment(solver, room, state, action, **extra):
         tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
         c = room.panel.countdown
         countdown_str = (
-            f" 剩余 {c.strftime('%H:%M:%S')}"
+            f" 剩余 {_format_remaining_time(c, datetime.now())}"
             if c
             else (
                 f" 倒计时{room.panel.countdown_state}"
@@ -1183,7 +1191,9 @@ def _log_judgment(solver, room, state, action, **extra):
         items.append('"面板：空闲中"')
     elif state == "ocr_fail":
         c = room.panel.countdown
-        countdown_str = f" 剩余 {c.strftime('%H:%M:%S')}" if c else ""
+        countdown_str = (
+            f" 剩余 {_format_remaining_time(c, datetime.now())}" if c else ""
+        )
         panel_text = room.panel.skill_name or room.panel.operator_name or "异常"
         items.append(f"\"面板识别：'{panel_text}'{countdown_str}\"")
 
