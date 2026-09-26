@@ -49,11 +49,15 @@ class TestSklandLogPrivacy(unittest.TestCase):
             patch.object(base_schedule.logger, "error") as error,
         ):
             skland_solver.return_value.start.side_effect = RuntimeError(secret)
+            skland_solver.return_value._log_secrets = {"secret-token"}
             solver.skland_plan_solver()
         save_exception.assert_not_called()
         for output in (save_log, send_message, error):
-            self.assertNotIn(secret, str(output.call_args_list))
-            self.assertIn("RuntimeError", str(output.call_args_list))
+            logged = str(output.call_args_list)
+            self.assertNotIn("13800138000", logged)
+            self.assertNotIn("secret-token", logged)
+            self.assertIn("RuntimeError", logged)
+            self.assertIn("账号", logged)
 
 
 class TestIdleSimulatorWake(unittest.TestCase):

@@ -111,6 +111,7 @@ from arknights_mower.utils.scheduler_task import (
     try_workshop_tasks,
 )
 from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.skland_log import redact_signing_text
 from arknights_mower.utils.trading_order import TradingOrder
 from arknights_mower.utils.workshop_ui import (
     CONFIRM_OPERATOR,
@@ -8176,12 +8177,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self._idle_sleep(remaining_time)
 
     def skland_plan_solver(self):
+        solver = None
         try:
-            return SKLand().start()
+            solver = SKLand()
+            return solver.start()
         except MowerExit:
             raise
         except Exception as e:
-            message = f"森空岛签到失败（{type(e).__name__}）"
+            secrets = getattr(solver, "_log_secrets", ()) if solver else ()
+            message = (
+                f"森空岛签到失败（{type(e).__name__}）："
+                f"{redact_signing_text(e, *secrets)}"
+            )
             save_log(message, level="ERROR")
             logger.error(message, extra={"archive_screenshots": False})
             send_message(message, level="ERROR")

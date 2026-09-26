@@ -15,7 +15,10 @@ import requests
 _saved_skland = sys.modules.get("arknights_mower.utils.skland")
 sys.modules.pop("arknights_mower.utils.skland", None)
 from arknights_mower.solvers import skland as sign_module  # noqa: E402
-from arknights_mower.utils import skland  # noqa: E402
+from arknights_mower.utils import (  # noqa: E402
+    skland,
+    skland_log,
+)
 
 
 def tearDownModule():
@@ -112,16 +115,20 @@ class TestGetBindingList(unittest.TestCase):
         with patch("requests.get", return_value=fake):
             self.assertEqual(skland.get_binding_list("tok"), [])
 
-    def test_error_message_is_not_written_to_log(self):
-        secret = "13800138000 secret-token"
-        fake = self._resp({"code": 1000, "message": secret})
+    def test_error_message_is_logged_with_credentials_redacted(self):
+        fake = self._resp(
+            {"code": 1000, "message": "服务暂时不可用，账号 13800138000 secret-token"}
+        )
         with (
             patch("requests.get", return_value=fake),
             patch.object(skland.logger, "info") as info,
         ):
-            self.assertEqual(skland.get_binding_list("tok"), [])
-        self.assertNotIn(secret, str(info.call_args_list))
-        self.assertIn("1000", str(info.call_args_list))
+            self.assertEqual(skland.get_binding_list("secret-token"), [])
+        logged = str(info.call_args_list)
+        self.assertIn("1000", logged)
+        self.assertIn("服务暂时不可用", logged)
+        self.assertNotIn("13800138000", logged)
+        self.assertNotIn("secret-token", logged)
 
     def test_not_logged_in_returns_empty(self):
         fake = self._resp({"code": 1000, "message": "用户未登录"})
@@ -385,7 +392,7 @@ class TestSignHeaderFields(unittest.TestCase):
 
 
 class TestSignLogPrivacy(unittest.TestCase):
-    def test_signing_logs_omit_account_nickname_and_server_message(self):
+    def test_signing_logs_keep_server_message_and_redact_identity(self):
         account = SimpleNamespace(
             account="13800138000",
             arknights_isCheck=True,
@@ -402,7 +409,7 @@ class TestSignLogPrivacy(unittest.TestCase):
         responses = (
             {
                 "code": 1000,
-                "message": "私密昵称 13800138000 secret-token",
+                "message": "今日已签到：私密昵称 13800138000 secret-token",
             },
             {"code": 0, "data": {"awards": [{"resource": {"name": "龙门币"}}]}},
         )
@@ -439,6 +446,7 @@ class TestSignLogPrivacy(unittest.TestCase):
                     self.assertNotIn(secret, logged)
                 if response["code"]:
                     self.assertIn("1000", logged)
+                    self.assertIn("今日已签到", logged)
 
     def test_record_log_omits_reward_account_data(self):
         solver = sign_module.SKLand()
@@ -453,8 +461,31 @@ class TestSignLogPrivacy(unittest.TestCase):
             self.assertTrue(solver.record_log())
         logged = str(info.call_args_list)
         self.assertNotIn("13800138000", logged)
-        self.assertNotIn("私密奖励", logged)
-        self.assertIn("共%s条", logged)
+        self.assertIn("私密奖励", logged)
+        self.assertIn("森空岛签到数据%s", logged)
+
+    def test_redaction_preserves_text_and_hides_known_secrets(self):
+        conf = SimpleNamespace(
+            skland_info=[
+                SimpleNamespace(account="user@example.com", password="secret-password")
+            ]
+        )
+        with patch.object(skland_log.config, "conf", conf):
+            result = skland_log.redact_signing_text(
+                "签到失败 user@example.com 13800138000 secret-password 角色昵称 token-123",
+                "角色昵称",
+                "token-123",
+            )
+        self.assertIn("签到失败", result)
+        self.assertEqual(result.count("[已隐藏]"), 5)
+        for secret in (
+            "user@example.com",
+            "13800138000",
+            "secret-password",
+            "角色昵称",
+            "token-123",
+        ):
+            self.assertNotIn(secret, result)
 
 
 if __name__ == "__main__":
