@@ -23,6 +23,7 @@ from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
 _IMPORTANT_FOLDERS = {"run_order", "workshop", "furniture", "solve_captcha"}
 _ERROR_WINDOW_NS = 5 * 60 * 10**9
+_CURRENT_FRAME_MAX_AGE_NS = 30 * 10**9
 _LOG_RETENTION_NS = RUNTIME_LOG_RETENTION_HOURS * 3600 * 10**9
 _STATUS_FIELDS = (
     "pending_count",
@@ -188,8 +189,8 @@ class ScreenshotStore:
             )
             if frame.preview:
                 self._latest = frame
-            # 保存时间为 0 时，所有截图只更新内存，不再入队写盘。
-            persist = self.retention_hours() > 0
+            # 关闭普通保存时，异常窗口内的新画面仍需单独写入归档。
+            persist = self.retention_hours() > 0 or self._in_error_window(captured_ns)
             if persist and self._make_room(frame):
                 self._pending_count += 1
                 self._pending_bytes += len(data)
@@ -259,6 +260,13 @@ class ScreenshotStore:
         with self._lock:
             return self._latest
 
+    def _in_error_window(self, captured_ns: int) -> bool:
+        """调用时持有 _lock；关闭普通保存时只排队报错后的画面。"""
+        return any(
+            int(archive_id) <= captured_ns <= end
+            for _, end, archive_id in self._error_windows
+        )
+
     def mark_error(self, timestamp_ns: int, message: str) -> str:
         """同一截图窗口内的错误合并归档，并延长至末次报错后五分钟。"""
         with self._ready:
@@ -297,6 +305,18 @@ class ScreenshotStore:
             self._archive_queue.append(
                 (scan_start, timestamp_ns, archive_id, message, 1)
             )
+            # 普通保存关闭时，补存最近一帧作为报错时刻的画面。
+            latest = self._latest
+            if (
+                self.retention_hours() <= 0
+                and latest is not None
+                and 0 <= timestamp_ns - latest.captured_ns <= _CURRENT_FRAME_MAX_AGE_NS
+                and not any(frame is latest for frame in self._queue)
+                and self._make_room(latest)
+            ):
+                self._pending_count += 1
+                self._pending_bytes += len(latest.data)
+                self._queue.append(latest)
             heapq.heappush(
                 self._log_archive_queue,
                 (timestamp_ns + _ERROR_WINDOW_NS + 5 * 10**9, archive_id),
@@ -337,6 +357,7 @@ class ScreenshotStore:
                 if window[1] >= frame.captured_ns - _ERROR_WINDOW_NS
             ]
             windows = tuple(self._error_windows)
+        archived = False
         for start, end, archive_id in windows:
             if start <= frame.captured_ns <= end:
                 destination = (
@@ -347,16 +368,19 @@ class ScreenshotStore:
                         if archive_id in self._deleted_archives:
                             continue
                         if destination.exists():
+                            archived = True
                             continue
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         temporary = destination.with_suffix(".jpg.tmp")
                         try:
                             temporary.write_bytes(frame.data)
                             os.replace(temporary, destination)
+                            archived = True
                         finally:
                             temporary.unlink(missing_ok=True)
                 except OSError as exc:
                     self._report_error("归档报错截图失败", exc)
+        return archived
 
     def _copy_to_archive(self, source: Path, destination: Path):
         with self._archive_lock:
@@ -554,13 +578,18 @@ class ScreenshotStore:
             try:
                 started = time.monotonic()
                 write_enabled = False
+                history_enabled = False
                 try:
-                    write_enabled = self.retention_hours() > 0
-                    if not write_enabled:
-                        # 设置可能在入队后关闭，跳过尚未开始写入的截图。
-                        continue
-                    self._write(frame)
-                    self._archive_frame(frame)
+                    history_enabled = self.retention_hours() > 0
+                    write_enabled = history_enabled
+                    if history_enabled:
+                        self._write(frame)
+                        self._archive_frame(frame)
+                    else:
+                        # 普通截图不落盘；报错窗口中的帧直接写入归档。
+                        if not self._archive_frame(frame):
+                            continue
+                        write_enabled = True
                 except Exception as exc:
                     with self._lock:
                         self._failed += 1
@@ -568,7 +597,7 @@ class ScreenshotStore:
                 else:
                     with self._lock:
                         self._saved += 1
-                        if frame.preview:
+                        if frame.preview and history_enabled:
                             self._last_saved = frame.filename
                 finally:
                     with self._lock:

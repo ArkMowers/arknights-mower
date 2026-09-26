@@ -540,6 +540,44 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual((self.root / filename).read_bytes(), b"ordinary")
         self.assertEqual((self.root / important).read_bytes(), b"order")
 
+    def test_disabled_history_archives_current_and_following_error_frames(self):
+        self.retention = 0
+        current = self.store.submit(b"current screen")
+        error_time = time.time_ns()
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        following = self.store.submit(b"next screen")
+        self.store.start()
+        self.wait_idle()
+
+        archive = self.root / "errors" / archive_id
+        self.assertEqual((archive / Path(current).name).read_bytes(), b"current screen")
+        self.assertEqual((archive / Path(following).name).read_bytes(), b"next screen")
+        self.assertFalse((self.root / current).exists())
+        self.assertFalse((self.root / following).exists())
+        self.assertEqual(self.store.last_saved(), "")
+
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            return_value=error_time + 5 * 60 * 10**9 + 1,
+        ):
+            late = self.store.submit(b"after window")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        self.assertFalse((archive / Path(late).name).exists())
+
+    def test_queued_frame_is_archived_when_history_is_disabled_at_error(self):
+        current = self.store.submit(b"current screen")
+        self.retention = 0
+        archive_id = self.store.mark_error(time.time_ns(), "画面异常")
+        self.assertEqual(self.store.stats()["pending_count"], 1)
+        self.store.start()
+        self.wait_idle()
+
+        self.assertFalse((self.root / current).exists())
+        self.assertEqual(
+            (self.root / "errors" / archive_id / Path(current).name).read_bytes(),
+            b"current screen",
+        )
+
     def test_disabling_storage_skips_queued_frames_after_current_write(self):
         entered, release = Event(), Event()
         write = self.store._write

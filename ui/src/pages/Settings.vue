@@ -613,7 +613,8 @@ if (return_home_when_idle.value) {
               </mower-input-number>
               <template v-if="screenshot === 0" #feedback>
                 <span role="status">
-                  已关闭截图保存，实时预览仍可用。后续调试、跑单等截图不会保存，排查问题时可能缺少截图记录。设为正数可恢复保存。
+                  已关闭日常截图保存，实时预览仍可用。发生需归档的异常时，仍会保存当前画面及后续 5
+                  分钟的截图。设为正数可恢复日常保存。
                 </span>
               </template>
             </n-form-item>
