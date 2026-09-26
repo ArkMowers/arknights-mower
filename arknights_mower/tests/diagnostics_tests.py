@@ -122,6 +122,7 @@ class DiagnosticTimelineTests(unittest.TestCase):
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
                 with ZipFile(BytesIO(response.data)) as bundle:
                     self.assertIn("日志.txt", bundle.namelist())
+                    self.assertNotIn("日志.json", bundle.namelist())
                 response.close()
 
     def test_log_rows_link_to_recent_screenshot(self):

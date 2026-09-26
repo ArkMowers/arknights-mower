@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
+from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.screenshot import ScreenshotStore
 from arknights_mower.views import screenshot as views
 
@@ -164,6 +165,20 @@ class ScreenshotTests(unittest.TestCase):
             (self.root / "errors" / archive_id / Path(screenshot).name).read_bytes(),
             b"after restart",
         )
+
+    def test_restart_skips_expired_error_archive(self):
+        now = time.time_ns()
+        expired_id = str(now - (RUNTIME_LOG_RETENTION_HOURS + 1) * 3600 * 10**9)
+        archive = self.root / "errors" / expired_id
+        archive.mkdir(parents=True)
+        (archive / "event.json").write_text(
+            json.dumps({"time_ns": int(expired_id), "message": "旧错误"}),
+            encoding="utf-8",
+        )
+        self.store._recover_error_windows()
+        self.assertEqual(self.store._error_windows, [])
+        self.assertEqual(list(self.store._archive_queue), [])
+        self.assertEqual(self.store._log_archive_queue, [])
 
     def test_limits_must_be_positive(self):
         for field in ("max_pending_count", "max_pending_bytes"):
@@ -603,6 +618,31 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(fresh.exists())
         self.assertTrue(unknown.exists())
         self.assertEqual(len(list((self.root / "run_order").glob("*.jpg"))), 1)
+
+    def test_cleanup_expires_error_archives_with_runtime_logs(self):
+        now = time.time_ns()
+        hour_ns = 3600 * 10**9
+        cutoff = now - RUNTIME_LOG_RETENTION_HOURS * hour_ns
+        archive_root = self.root / "errors"
+        expired = archive_root / str(cutoff - 1)
+        recent = archive_root / str(cutoff)
+        unrelated = archive_root / "notes"
+        for archive in (expired, recent):
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps({"time_ns": int(archive.name), "message": "测试错误"}),
+                encoding="utf-8",
+            )
+            (archive / "frame.jpg").write_bytes(b"frame")
+        unrelated.mkdir()
+        (unrelated / "keep.txt").write_text("keep", encoding="utf-8")
+        ordinary = self.seed("", now - 2 * hour_ns)
+        with patch("arknights_mower.utils.screenshot.time.time_ns", return_value=now):
+            self.store.cleanup()
+        self.assertFalse(expired.exists())
+        self.assertTrue(recent.exists())
+        self.assertTrue(unrelated.exists())
+        self.assertFalse(ordinary.exists())
 
     def test_important_retention_keeps_latest_100_including_new_arrival(self):
         old = time.time_ns() - 2 * 3600 * 10**9

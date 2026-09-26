@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 
 from arknights_mower.utils import log, path
+from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 
 
 class MultiProcessLogTestBase(unittest.TestCase):
@@ -56,6 +57,20 @@ class LogFileHandlerTest(MultiProcessLogTestBase):
         self.assertEqual(
             log.fhlr.baseFilename,
             str(log.get_path("@app/log").joinpath("runtime.log")),
+        )
+        self.assertEqual(log.fhlr.backupCount, RUNTIME_LOG_RETENTION_HOURS)
+        self.assertEqual(log.fhlr.interval, 3600)
+
+    def test_existing_error_archives_start_hourly_cleanup(self):
+        errors = path.get_path("@app/screenshot") / "errors"
+        errors.mkdir(parents=True)
+        log.init_file_logging()
+        self.assertIsNotNone(log.get_screenshot_store())
+        self.assertTrue(
+            any(
+                thread.name == "screenshot-cleaner" and thread.is_alive()
+                for thread in log.get_screenshot_store()._threads
+            )
         )
 
 

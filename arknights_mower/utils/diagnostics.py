@@ -146,7 +146,6 @@ def export_bundle(
                 "日志.txt",
                 "\n".join(row["message"] for row in rows) + ("\n" if rows else ""),
             )
-            bundle.writestr("日志.json", json.dumps(rows, ensure_ascii=False, indent=2))
             for _, (image, relative) in sorted(images.items()):
                 try:
                     bundle.write(image, f"截图/{relative}")

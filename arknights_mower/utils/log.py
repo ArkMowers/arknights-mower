@@ -11,6 +11,7 @@ from threading import Lock
 import colorlog
 
 from arknights_mower.utils import config
+from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.screenshot import ScreenshotStore
 
@@ -96,12 +97,19 @@ def init_file_logging() -> None:
     folder = Path(get_path("@app/log"))
     folder.mkdir(exist_ok=True, parents=True)
     fhlr = TimedRotatingFileHandler(
-        folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
+        folder.joinpath("runtime.log"),
+        when="h",
+        interval=1,
+        encoding="utf8",
+        backupCount=RUNTIME_LOG_RETENTION_HOURS,
     )
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel("DEBUG")
     fhlr.addFilter(filter)
     logger.addHandler(fhlr)
+    # 已有报错归档时，即使本次启动尚未截图，也要继续定期清理过期记录。
+    if (Path(get_path("@app/screenshot")) / "errors").is_dir():
+        _store()
 
 
 # 多进程集中式日志：mower 主进程独占 runtime.log 文件句柄（init_file_logging），

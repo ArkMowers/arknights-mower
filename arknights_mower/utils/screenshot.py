@@ -18,9 +18,12 @@ from pathlib import Path
 from threading import Condition, Event, Lock, Thread
 from typing import Callable
 
+from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
+
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
 _IMPORTANT_FOLDERS = {"run_order", "workshop", "furniture", "solve_captcha"}
 _ERROR_WINDOW_NS = 5 * 60 * 10**9
+_LOG_RETENTION_NS = RUNTIME_LOG_RETENTION_HOURS * 3600 * 10**9
 _STATUS_FIELDS = (
     "pending_count",
     "pending_bytes",
@@ -119,6 +122,8 @@ class ScreenshotStore:
                 event = json.loads((folder / "event.json").read_text(encoding="utf-8"))
                 timestamp = int(event["time_ns"])
             except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if timestamp < now - _LOG_RETENTION_NS:
                 continue
             if timestamp + _ERROR_WINDOW_NS >= now:
                 self._error_windows.append(
@@ -564,6 +569,26 @@ class ScreenshotStore:
             self._cleanup_failed += 1
         self._report_error("清理截图失败", exc)
 
+    def _remove_expired_error_archives(self, cutoff_ns):
+        root = self.folder / "errors"
+        if not root.exists():
+            return
+        with os.scandir(root) as entries:
+            for entry in entries:
+                if self._stop.is_set():
+                    return
+                if (
+                    not entry.is_dir(follow_symlinks=False)
+                    or not entry.name.isascii()
+                    or not entry.name.isdigit()
+                    or int(entry.name) >= cutoff_ns
+                ):
+                    continue
+                try:
+                    self.delete_error_archive(entry.name)
+                except OSError as exc:
+                    self._cleanup_error(exc)
+
     def cleanup(self):
         # 防止手动清理和定时清理重叠，不占用预览/提交的锁。
         with self._cleanup_lock:
@@ -573,11 +598,13 @@ class ScreenshotStore:
                 # 保存开启时至少留五分钟，供迟到的错误日志归档前置截图。
                 if retention:
                     retention = max(retention, 5 / 60)
-                cutoff_ns = time.time_ns() - int(retention * 3600 * 10**9)
+                now_ns = time.time_ns()
+                cutoff_ns = now_ns - int(retention * 3600 * 10**9)
                 # 旧根目录仅做过期删除，不迁移也不建立路径映射。
                 self._remove_expired(self.folder, cutoff_ns)
                 if not self.folder.exists():
                     return
+                self._remove_expired_error_archives(now_ns - _LOG_RETENTION_NS)
                 with os.scandir(self.folder) as entries:
                     for entry in entries:
                         if self._stop.is_set():
