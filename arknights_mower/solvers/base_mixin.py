@@ -25,6 +25,7 @@ from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
 )
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.swipe import NOINERTIA_OFFSET
 
 
@@ -861,7 +862,16 @@ class BaseMixin:
                 elif self.detect_room() == room:
                     return
                 else:
-                    self.sleep()
+                    # 上一个房间的返回键可能没有生效。确认仍在房间页时，
+                    # 先回基建地图；只等待会在错误房间里耗尽全部进房次数。
+                    if self.scene() in (
+                        Scene.INFRA_DETAILS,
+                        Scene.CTRLCENTER_ASSISTANT,
+                    ):
+                        logger.info("仍在其他房间，返回基建地图后进入 %s", room)
+                        self.back_to_infrastructure()
+                    else:
+                        self.sleep()
             # 最后一次点击也可能成功，检查其刷新后的画面再决定是否重试。
             if (
                 not self.find("connecting")

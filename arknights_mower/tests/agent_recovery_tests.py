@@ -104,6 +104,36 @@ def test_delayed_map_frame_is_not_clicked_again(monkeypatch):
     solver.back_to_index.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "previous_room,previous_scene",
+    [("central", Scene.CTRLCENTER_ASSISTANT), ("room_1_2", Scene.INFRA_DETAILS)],
+)
+def test_enter_room_recovers_from_previous_room_without_home_relocation(
+    monkeypatch, previous_room, previous_scene
+):
+    solver = room_solver(monkeypatch)
+    state = {"room": previous_room}
+    solver.find.side_effect = lambda name: (
+        ((10, 10), (30, 30))
+        if name == "control_central" and state["room"] == "main"
+        else None
+    )
+    solver.detect_room.side_effect = lambda: state["room"]
+    solver.scene = MagicMock(
+        side_effect=lambda: (
+            previous_scene if state["room"] == previous_room else Scene.INFRA_MAIN
+        )
+    )
+    solver.back_to_infrastructure.side_effect = lambda: state.update(room="main")
+    solver.tap.side_effect = lambda *_, **__: state.update(room="room_1_1")
+
+    solver.enter_room("room_1_1")
+
+    solver.back_to_infrastructure.assert_called_once()
+    solver.tap.assert_called_once()
+    solver.back_to_index.assert_not_called()
+
+
 def test_unchanged_overview_is_reentered_before_more_room_clicks(monkeypatch):
     solver = room_solver(monkeypatch, enter_after_reset=True)
     solver.enter_room("room_1_1")
