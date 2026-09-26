@@ -243,3 +243,19 @@ def test_amiya_ocr_template_conflict_with_same_skill_index_stays_unknown():
 
     assert panel.operator_name == "阿米娅"
     assert panel.skill_name == ""
+
+
+def test_gamma_skill_ocr_survives_missing_template(monkeypatch):
+    monkeypatch.setattr(reader, "recognize_skill", lambda *_: None)
+    panel = reader._read_panel_text(solver_with_text("[极境]支援号令·y型"))
+
+    assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·y型")
+    plan = {
+        "char_id": "char_401_elysm",
+        "char_name": "极境",
+        "skill_index": 0,
+        "skill_name": "一技能·支援号令·γ型",
+    }
+    room = reader.RoomState("training", panel)
+    assert reader._plan_matches_room(plan, room)
+    assert reader._can_adopt_expiry(plan, room)
