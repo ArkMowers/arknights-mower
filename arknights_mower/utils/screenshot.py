@@ -74,6 +74,8 @@ class ScreenshotStore:
         self._stop = Event()
         self._threads: list[Thread] = []
         self._latest: Screenshot | None = None
+        self._recent_frames: deque[Screenshot] = deque()
+        self._recent_bytes = 0
         self._last_saved = ""
         self._last_timestamp = 0
         self._pending_count = 0
@@ -189,8 +191,23 @@ class ScreenshotStore:
             )
             if frame.preview:
                 self._latest = frame
+            save_history = self.retention_hours() > 0
+            if save_history:
+                self._recent_frames.clear()
+                self._recent_bytes = 0
+            else:
+                # 日志监听线程可能稍后才收到异常；短暂保留这段时间的帧供补归档。
+                self._recent_frames.append(frame)
+                self._recent_bytes += len(data)
+                while self._recent_frames and (
+                    captured_ns - self._recent_frames[0].captured_ns
+                    > _CURRENT_FRAME_MAX_AGE_NS
+                    or len(self._recent_frames) > self.max_pending_count
+                    or self._recent_bytes > self.max_pending_bytes
+                ):
+                    self._recent_bytes -= len(self._recent_frames.popleft().data)
             # 关闭普通保存时，异常窗口内的新画面仍需单独写入归档。
-            persist = self.retention_hours() > 0 or self._in_error_window(captured_ns)
+            persist = save_history or self._in_error_window(captured_ns)
             if persist and self._make_room(frame):
                 self._pending_count += 1
                 self._pending_bytes += len(data)
@@ -305,18 +322,34 @@ class ScreenshotStore:
             self._archive_queue.append(
                 (scan_start, timestamp_ns, archive_id, message, 1)
             )
-            # 普通保存关闭时，补存最近一帧作为报错时刻的画面。
-            latest = self._latest
-            if (
-                self.retention_hours() <= 0
-                and latest is not None
-                and 0 <= timestamp_ns - latest.captured_ns <= _CURRENT_FRAME_MAX_AGE_NS
-                and not any(frame is latest for frame in self._queue)
-                and self._make_room(latest)
-            ):
-                self._pending_count += 1
-                self._pending_bytes += len(latest.data)
-                self._queue.append(latest)
+            if self.retention_hours() <= 0:
+                # 最近的报错前画面，以及监听线程延迟处理期间到达的报错后画面。
+                current = next(
+                    (
+                        frame
+                        for frame in reversed(self._recent_frames)
+                        if frame.captured_ns <= timestamp_ns
+                    ),
+                    self._latest,
+                )
+                if current is not None and not (
+                    0 <= timestamp_ns - current.captured_ns <= _CURRENT_FRAME_MAX_AGE_NS
+                ):
+                    current = None
+                frames = ([current] if current is not None else []) + [
+                    frame
+                    for frame in self._recent_frames
+                    if timestamp_ns
+                    < frame.captured_ns
+                    <= timestamp_ns + _ERROR_WINDOW_NS
+                ]
+                for frame in frames:
+                    if any(waiting is frame for waiting in self._queue):
+                        continue
+                    if self._make_room(frame):
+                        self._pending_count += 1
+                        self._pending_bytes += len(frame.data)
+                        self._queue.append(frame)
             heapq.heappush(
                 self._log_archive_queue,
                 (timestamp_ns + _ERROR_WINDOW_NS + 5 * 10**9, archive_id),

@@ -578,6 +578,38 @@ class ScreenshotTests(unittest.TestCase):
             b"current screen",
         )
 
+    def test_delayed_error_record_recovers_frames_captured_after_error(self):
+        self.retention = 0
+        error_time = time.time_ns()
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            side_effect=(
+                error_time - 2 * 10**9,
+                error_time + 10**9,
+                error_time + 2 * 10**9,
+            ),
+        ):
+            current = self.store.submit(b"error screen")
+            first = self.store.submit(b"first after error")
+            second = self.store.submit(b"second after error")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        self.assertEqual(self.store.stats()["pending_count"], 3)
+        self.store.start()
+        self.wait_idle()
+
+        archive = self.root / "errors" / archive_id
+        self.assertEqual((archive / Path(current).name).read_bytes(), b"error screen")
+        self.assertEqual(
+            (archive / Path(first).name).read_bytes(), b"first after error"
+        )
+        self.assertEqual(
+            (archive / Path(second).name).read_bytes(), b"second after error"
+        )
+        self.assertFalse((self.root / current).exists())
+        self.assertFalse((self.root / first).exists())
+        self.assertFalse((self.root / second).exists())
+
     def test_disabling_storage_skips_queued_frames_after_current_write(self):
         entered, release = Event(), Event()
         write = self.store._write
