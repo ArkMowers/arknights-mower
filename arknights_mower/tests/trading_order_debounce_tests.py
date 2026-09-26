@@ -154,7 +154,7 @@ def test_trading_order_save_buff_and_price(monkeypatch):
     assert order.price == 1000
 
 
-def test_live_missed_order_emits_archivable_error_but_history_does_not():
+def test_previous_order_miss_keeps_db_record_and_warning_without_archive():
     order = TradingOrder()
     order.get_buff_scores = MagicMock(return_value={"佩佩": 1.0, "但书": 0.0})
     order.templates = {1000: np.zeros((5, 5), dtype=np.uint8)}
@@ -169,8 +169,6 @@ def test_live_missed_order_emits_archivable_error_but_history_does_not():
         order.save(img)
         order.save(img, time=datetime.now())
 
-    error.assert_called_once_with(
-        "检测到上一个订单漏单！", extra={"archive_screenshots": True}
-    )
+    error.assert_not_called()
     save_log.assert_called_once_with("检测到上一个订单漏单！", level="ERROR")
     send_message.assert_called_once_with("检测到上一个订单漏单！", level="WARNING")
