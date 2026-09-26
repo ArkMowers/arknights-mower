@@ -56,6 +56,8 @@ class TestSklandLogPrivacy(unittest.TestCase):
             logged = str(output.call_args_list)
             self.assertNotIn("13800138000", logged)
             self.assertNotIn("secret-token", logged)
+            self.assertIn("138****8000", logged)
+            self.assertIn("se********en", logged)
             self.assertIn("RuntimeError", logged)
             self.assertIn("账号", logged)
 

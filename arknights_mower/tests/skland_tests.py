@@ -127,6 +127,8 @@ class TestGetBindingList(unittest.TestCase):
         logged = str(info.call_args_list)
         self.assertIn("1000", logged)
         self.assertIn("服务暂时不可用", logged)
+        self.assertIn("138****8000", logged)
+        self.assertIn("se********en", logged)
         self.assertNotIn("13800138000", logged)
         self.assertNotIn("secret-token", logged)
 
@@ -461,6 +463,7 @@ class TestSignLogPrivacy(unittest.TestCase):
             self.assertTrue(solver.record_log())
         logged = str(info.call_args_list)
         self.assertNotIn("13800138000", logged)
+        self.assertIn("138****8000", logged)
         self.assertIn("私密奖励", logged)
         self.assertIn("森空岛签到数据%s", logged)
 
@@ -477,7 +480,12 @@ class TestSignLogPrivacy(unittest.TestCase):
                 "token-123",
             )
         self.assertIn("签到失败", result)
-        self.assertEqual(result.count("[已隐藏]"), 5)
+        self.assertIn("u**r@example.com", result)
+        self.assertIn("138****8000", result)
+        self.assertIn("se***********rd", result)
+        self.assertIn("角**称", result)
+        self.assertIn("to*****23", result)
+        self.assertNotIn("已隐藏", result)
         for secret in (
             "user@example.com",
             "13800138000",
