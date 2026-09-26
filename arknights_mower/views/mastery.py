@@ -344,8 +344,8 @@ class MasteryPlanView(MethodView):
         name_to_id = {
             info.get("name", ""): cid
             for cid, info in char_table.items()
-            # The character table also contains summons with upgradeable skills.
-            # Only playable operators can be trainees or appear in the BOX.
+            # Older resource packages may contain summons. Only playable
+            # operators can be trainees or appear in the BOX.
             if info.get("name")
             and cid.startswith("char_")
             and (training_operators is None or cid in training_operators)

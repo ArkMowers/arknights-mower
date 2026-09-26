@@ -476,8 +476,7 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
                     skill_name = fuzzy[1]
                 else:
                     logger.debug(
-                        f"训练室技能 OCR 未能由模板确认：{operator_name} "
-                        f"{skill_name!r}"
+                        f"训练室技能 OCR 未能由模板确认：{operator_name} {skill_name!r}"
                     )
                     skill_name = ""
     return RoomPanel(operator_name=operator_name, skill_name=skill_name)

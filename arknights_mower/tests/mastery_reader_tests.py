@@ -180,6 +180,7 @@ class TestResolvePanelSkillRealData(unittest.TestCase):
         self.assertEqual(resolve_panel_skill("若叶睦", "破坏与滋养"), 1)
         self.assertEqual(resolve_panel_skill("若叶睦", "多首野兽"), 0)
 
+
 class TestPanelParse(unittest.TestCase):
     def test_parse_bracketed(self):
         self.assertEqual(

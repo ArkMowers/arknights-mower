@@ -278,8 +278,8 @@ def test_unique_majority_ocr_recovers_when_template_is_unavailable(monkeypatch):
 
 
 def test_ambiguous_majority_ocr_stays_unknown(monkeypatch):
-    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
     from arknights_mower.utils import mastery_recommendation
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
 
     monkeypatch.setattr(
         mastery_recommendation,

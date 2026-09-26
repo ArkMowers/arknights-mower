@@ -81,9 +81,12 @@ def test_plan_api_resolves_operator_instead_of_same_named_summon(
     _, ids = context_game
     char_id = ids["Mon3tr"]
     source = get_skill_data()
+    # The bundled mastery data excludes summons. Inject one to exercise
+    # compatibility with older resource packages that still include them.
+    assert "token_10002_kalts_mon3tr" not in source["characters"]
     char_table = {
         char_id: source["characters"][char_id],
-        "token_10002_kalts_mon3tr": source["characters"]["token_10002_kalts_mon3tr"],
+        "token_10002_kalts_mon3tr": {"name": "Mon3tr", "skills": []},
     }
     skill_data = {"characters": char_table, "training": source["training"]}
     roster = [*support_data.owned_roster(), owned(char_id)]
