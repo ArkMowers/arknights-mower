@@ -139,6 +139,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
     def test_channels_are_separate_and_drafts_are_excluded(self):
         data = [
             release("v4.1.6-alpha.3", True),
+            release("v4.1.6-alpha.9.g12345678", True),
             release("v4.1.5"),
             release("v4.1.7", draft=True),
             release("v4.1.6-alpha.12", True),
@@ -152,6 +153,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         versions = [
             "4.1.6-alpha.3+abc",
             "v4.1.6-alpha.12",
+            "v4.1.6-alpha.12.g12345678",
             "4.1.6-beta.1",
             "4.1.6-rc.1",
             "4.1.6",
@@ -395,14 +397,38 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 update.choose_asset(data)
 
-    def test_dev_is_rejected_for_frozen_deployments_without_network(self):
+    def test_frozen_dev_reads_nightly_index_and_keeps_source_update_separate(self):
+        nightly = release("v4.1.6-alpha.9.g12345678", True, system="windows", arch="x64")
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.9"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=release_index(nightly)) as index,
+            patch.object(update, "github") as source_api,
+        ):
+            result = update.check("dev")
+            self.assertTrue(result["available"])
+            self.assertFalse(result["downgrade"])
+            self.assertEqual(result["version"], nightly["tag_name"])
+            index.assert_called_once_with("dev")
+            source_api.assert_not_called()
+
         with (
             patch.object(runtime, "frozen", return_value=True),
-            patch.object(update, "github") as network,
+            patch.object(update, "platform_asset", return_value=("linux", "x64")),
         ):
-            with self.assertRaisesRegex(ValueError, "仅支持源码"):
+            with self.assertRaisesRegex(ValueError, "Windows x64"):
                 update.check("dev")
-            network.assert_not_called()
+
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.9.g87654321"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=release_index(nightly)),
+        ):
+            result = update.check("dev")
+            self.assertTrue(result["available"])
+            self.assertFalse(result["downgrade"])
 
     def test_prerelease_check_uses_channel_index(self):
         with (

@@ -8,6 +8,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/release-build.yml"
 PREPARE_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/prepare-release.yml"
+NIGHTLY_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/nightly-build.yml"
 VERSION = "${{ needs.prepare.outputs.version }}"
 TAG_NAME = "${{ needs.prepare.outputs.tag_name }}"
 RELEASE_SHA = "${{ needs.prepare.outputs.release_sha }}"
@@ -101,7 +102,8 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
 
     def test_release_waits_for_all_builds(self):
         release = self.jobs["release"]
-        self.assertNotIn("if", release)
+        self.assertIn("needs.build-windows.result == 'success'", release["if"])
+        self.assertIn("needs.build-linux.result == 'skipped'", release["if"])
         self.assertEqual(
             set(release["needs"]),
             {"prepare", "build-windows", "build-linux", "build-macos", "build-android"},
@@ -145,19 +147,41 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             },
         )
         resolve = find_step(prepare, "Resolve version")["run"]
-        self.assertIn(r"^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$", resolve)
+        self.assertIn(
+            r"^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+(\.g[0-9a-f]{8})?)?$", resolve
+        )
         self.assertIn('git show-ref --verify --quiet "refs/tags/${tag_name}"', resolve)
         self.assertIn('"refs/tags/${tag_name}^{commit}"', resolve)
         self.assertIn('"${tag_sha}" != "${expected_sha}"', resolve)
         self.assertIn('echo "release_sha=${tag_sha}"', resolve)
         self.assertIn('if [[ "${version}" == *-alpha.* ]]', resolve)
-
         publish = find_step(self.jobs["release"], "Publish GitHub Release")
         self.assertFalse(publish["with"]["draft"])
         self.assertEqual(publish["with"]["tag_name"], TAG_NAME)
         self.assertEqual(
             publish["with"]["prerelease"],
             "${{ needs.prepare.outputs.prerelease == 'true' }}",
+        )
+
+    def test_nightly_skips_other_platforms_and_android_dispatch(self):
+        for name in ("build-linux", "build-macos", "build-android"):
+            self.assertIn(".g", self.jobs[name]["if"])
+        self.assertIn(
+            ".g", find_step(self.jobs["release"], "Request Android APK packaging")["if"]
+        )
+
+    def test_nightly_uses_alpha_commit_and_reusable_windows_build(self):
+        nightly = load_workflow(NIGHTLY_WORKFLOW_PATH)
+        self.assertIn("schedule", nightly["on"])
+        tag = find_step(
+            nightly["jobs"]["tag"], "Select alpha commit and publish nightly tag"
+        )["run"]
+        self.assertIn("refs/remotes/origin/alpha", tag)
+        self.assertIn(".g${release_sha:0:8}", tag)
+        self.assertIn("changed=false", tag)
+        self.assertEqual(
+            nightly["jobs"]["build"]["uses"],
+            "./.github/workflows/release-build.yml",
         )
 
     def test_reusable_call_prefers_explicit_inputs_over_inherited_event_context(self):

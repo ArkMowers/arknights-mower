@@ -193,6 +193,15 @@ arknights-mower_<version>_macos_arm64.dmg
 发布入口、版本格式、构建检查和系统依赖见
 [跨平台发布流水线](doc/release-platforms.md)。
 
+开发版安装包由 `Windows Nightly` 工作流从 `alpha` 分支构建，首阶段仅提供
+Windows x64。版本沿用 `alpha.x` 并附加提交短码，例如
+`v4.1.6-alpha.9.g40ac54e4`；普通 `alpha.x` 仍属于公测版。每天北京时间
+02:00 检查一次，`alpha` 提交未变化时跳过。主仓库发布完整包后，
+[MowerRelease](https://github.com/ArkMowers/MowerRelease) 镜像完整包并生成
+开发版之间的 OTA 差异包。安装版在「软件更新」选择开发版；源码版仍由 Git
+跟随所选分支。GitHub 的定时任务只在默认分支运行，因此此工作流需要同时进入
+默认分支 `main` 才会定时执行。
+
 Windows 与 macOS 产物均未签名：Windows 首次运行可能出现 SmartScreen 提示，请
 选择「更多信息 -> 仍要运行」；macOS 为 unsigned experimental build，可能需要在
 「隐私与安全性」中手动允许。建议下载后先核对 SHA256SUMS 再使用。

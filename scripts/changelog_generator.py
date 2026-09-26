@@ -58,7 +58,10 @@ IGNORE_PREFIXES = ("build", "ci", "style", "debug")
 
 STABLE_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 ALPHA_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$")
-VERSION_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-alpha\.[0-9]+)?$")
+DEV_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+\.g[0-9a-f]{8}$")
+VERSION_TAG_RE = re.compile(
+    r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-alpha\.[0-9]+(?:\.g[0-9a-f]{8})?)?$"
+)
 
 DEPENDENCY_SCOPE_RE = re.compile(r"^\w+\(deps(?:-dev)?\): *")
 DEPENDENCY_PATTERNS = (
@@ -218,8 +221,10 @@ def _reachable_commit_count(name: str) -> int | None:
 
 
 def _tag_matches_kind(name: str, kinds: tuple[str, ...]) -> bool:
-    return ("stable" in kinds and bool(STABLE_TAG_RE.match(name))) or (
-        "alpha" in kinds and bool(ALPHA_TAG_RE.match(name))
+    return (
+        ("stable" in kinds and bool(STABLE_TAG_RE.match(name)))
+        or ("alpha" in kinds and bool(ALPHA_TAG_RE.match(name)))
+        or ("dev" in kinds and bool(DEV_TAG_RE.match(name)))
     )
 
 
@@ -257,6 +262,14 @@ def find_base_tag(tag: str) -> str:
     上一个测试版 tag，没有则取上一个正式版 tag。都在 HEAD 的可达祖先里按
     提交距离取最近；没有可达 tag 时回退到仓库里最新创建的对应类型 tag。
     """
+    if DEV_TAG_RE.match(tag):
+        base = _nearest_tag(tag, ("dev",))
+        if base:
+            return base
+        base = _nearest_tag(tag, ("alpha", "stable"))
+        if base:
+            return base
+        return _latest_tag(tag, ("alpha", "stable"))
     if ALPHA_TAG_RE.match(tag):
         base = _nearest_tag(tag, ("alpha",))
         if base:

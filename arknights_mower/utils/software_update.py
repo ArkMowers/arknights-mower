@@ -45,11 +45,20 @@ CHANNELS = [
     },
     {
         "value": "dev",
-        "label": "开发版（仅源码部署）",
-        "description": "跟随所选源码分支（默认 alpha）的最新提交，比公测版更新更频繁；需要 Git、Python 和 Node.js。",
+        "label": "开发版",
+        "description": "安装版跟随 alpha 分支的 Windows x64 Nightly；源码部署仍通过 Git 跟随所选分支。开发版可能不稳定。",
     },
 ]
-VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?(?:\+.*)?$")
+VERSION_RE = re.compile(
+    r"^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+)(?:\.g([0-9a-f]{8}))?)?(?:\+.*)?$"
+)
+NIGHTLY_RE = re.compile(r"-alpha\.\d+\.g[0-9a-f]{8}(?:\+.*)?$")
+
+
+def is_nightly(value):
+    return bool(NIGHTLY_RE.search(value))
+
+
 _checks = {}
 _auto_check_lock = RLock()
 _auto_check_thread = None
@@ -94,7 +103,14 @@ def normalize_source_ref(value):
 def get_settings():
     saved = runtime.read_json(runtime.state_dir() / "settings.json", {})
     return {
-        "channel": saved.get("channel", "beta" if "-" in __version__ else "stable"),
+        "channel": saved.get(
+            "channel",
+            "dev"
+            if is_nightly(__version__)
+            else "beta"
+            if "-" in __version__
+            else "stable",
+        ),
         "background": saved.get("background", True),
         "auto_check": saved.get("auto_check", False),
         "auto_update": saved.get("auto_update", False),
@@ -116,8 +132,6 @@ def save_settings(data):
     if "channel" in data:
         if data["channel"] not in {item["value"] for item in CHANNELS}:
             raise ValueError("未知更新渠道")
-        if data["channel"] == "dev" and runtime.frozen():
-            raise ValueError("开发版仅支持源码部署")
         settings["channel"] = data["channel"]
     if settings["auto_update"]:
         settings["auto_check"] = True
@@ -237,13 +251,16 @@ def version_key(value):
     match = VERSION_RE.fullmatch(value)
     if not match:
         raise ValueError(f"无法识别版本号：{value}")
-    major, minor, patch, stage, number = match.groups()
+    major, minor, patch, stage, number, revision = match.groups()
+    if revision and stage != "alpha":
+        raise ValueError(f"无法识别版本号：{value}")
     return (
         int(major),
         int(minor),
         int(patch),
         {"alpha": 0, "beta": 1, "rc": 2, None: 3}[stage],
         int(number or 0),
+        bool(revision),
     )
 
 
@@ -606,6 +623,7 @@ def choose_release(releases, channel):
             release.get("draft")
             or bool(release.get("prerelease")) != (channel == "beta")
             or not VERSION_RE.fullmatch(release.get("tag_name", ""))
+            or is_nightly(release.get("tag_name", ""))
         ):
             continue
         try:
@@ -636,7 +654,7 @@ def list_releases(proxy):
 
 def release_index(channel):
     """Read the full and OTA assets for a channel in one MowerRelease request."""
-    if channel not in ("stable", "beta"):
+    if channel not in ("stable", "beta", "dev"):
         raise ValueError("未知 Release 更新渠道")
     url = f"{OTA_INDEX_URL}/{channel}.json"
     try:
@@ -656,7 +674,14 @@ def release_index(channel):
         or data.get("schema") != 1
         or not isinstance(data.get("version"), str)
         or not VERSION_RE.fullmatch(data["version"])
-        or ("-" in data["version"]) != (channel == "beta")
+        or (
+            "dev"
+            if is_nightly(data["version"])
+            else "beta"
+            if "-" in data["version"]
+            else "stable"
+        )
+        != channel
         or not isinstance(data.get("full_assets"), list)
         or not isinstance(data.get("ota_assets"), list)
         or not isinstance(data.get("history"), list)
@@ -667,8 +692,8 @@ def release_index(channel):
 
 def release_rollback_candidates(channel, proxy):
     """Return up to three published, compatible releases preceding this build."""
-    if channel not in ("stable", "beta"):
-        raise ValueError("版本回退仅支持正式版和公测版渠道")
+    if channel not in ("stable", "beta", "dev"):
+        raise ValueError("未知 Release 更新渠道")
     try:
         index = release_index(channel)
     except ValueError:
@@ -1005,6 +1030,8 @@ def info():
 def check(channel, proxy=None):
     if channel not in {c["value"] for c in CHANNELS}:
         raise ValueError("未知更新渠道")
+    if channel == "dev" and runtime.frozen() and platform_asset() != ("windows", "x64"):
+        raise ValueError("安装版开发版目前仅提供 Windows x64")
     network_settings.apply_http_proxy()
     proxy = (
         validate_proxy(proxy)
@@ -1018,9 +1045,7 @@ def check(channel, proxy=None):
         "proxy": proxy,
         "created_at": time.time(),
     }
-    if channel == "dev":
-        if deployment != "source":
-            raise ValueError("开发版仅支持源码部署")
+    if channel == "dev" and deployment == "source":
         branch = normalize_source_ref(get_settings()["source_branch"])
         selected = resolve_source_remote()
         commit = github(
@@ -1050,7 +1075,12 @@ def check(channel, proxy=None):
         release_version = release.get("version") or release["tag_name"]
         plan.update(
             version=release_version,
-            downgrade=version_key(release_version) < version_key(__version__),
+            downgrade=version_key(release_version) < version_key(__version__)
+            and not (
+                channel == "dev"
+                and is_nightly(__version__)
+                and version_key(release_version) == version_key(__version__)
+            ),
             notes=release.get("notes") or release.get("body") or "暂无更新说明",
             url=release.get("source_release") or release["html_url"],
         )
@@ -1095,7 +1125,9 @@ def check(channel, proxy=None):
     else:
         # A maintainer may withdraw a broken release or move Latest backwards.
         # Follow the selected channel, but never reinstall the same version.
-        available = version_key(plan["version"]) != version_key(__version__)
+        available = plan["version"].removeprefix("v") != __version__.split("+", 1)[
+            0
+        ].removeprefix("v")
         if available:
             plan["asset"] = choose_asset(release, repo=release_repo)
             if not plan.get("downgrade"):
@@ -1361,7 +1393,11 @@ def manual_plan(package, proxy=""):
         "manual": True,
         "available": True,
         "downgrade": version_key(version) < version_key(__version__),
-        "channel": "beta" if "-" in version else "stable",
+        "channel": "dev"
+        if is_nightly(version)
+        else "beta"
+        if "-" in version
+        else "stable",
         "proxy": validate_proxy(proxy),
         "version": "v" + version,
         "asset": {"name": "package." + metadata["format"]},

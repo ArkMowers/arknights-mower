@@ -43,7 +43,7 @@ const blocked = computed(() => !info.value || info.value.blockers.length > 0)
 const channelOptions = computed(() =>
   (info.value?.channels || []).map((item) => ({
     ...item,
-    disabled: item.value === 'dev' && !source.value
+    disabled: item.value === 'dev' && !source.value && info.value?.platform !== 'win32'
   }))
 )
 const selectedChannel = computed(() =>

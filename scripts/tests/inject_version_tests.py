@@ -47,6 +47,16 @@ class InjectVersionTests(unittest.TestCase):
                 'before = True\n__version__ = "4.1.6-alpha.1"\nafter = True\n',
             )
 
+    def test_injects_nightly_alpha_revision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "__init__.py"
+            path.write_text('__version__ = "4.1.6-alpha.9"\n', encoding="utf-8")
+            inject_version.inject_version(path, "4.1.6-alpha.9.g12345678")
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                '__version__ = "4.1.6-alpha.9.g12345678"\n',
+            )
+
     def test_injects_valid_stable_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "__init__.py"
