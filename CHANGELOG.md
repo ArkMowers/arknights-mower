@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 4.1.6-alpha.9 - 2026-09-26
+
+### New
+
+- 支持专精计划按职业交错排序 [(#1149)](https://github.com/ArkMowers/arknights-mower/pull/1149) @ALEXsun0
+- 新增日志调度页面与时间窗口导出 [(#1148)](https://github.com/ArkMowers/arknights-mower/pull/1148) @ALEXsun0
+- 关联运行日志与截图并归档报错画面 [(#1146)](https://github.com/ArkMowers/arknights-mower/pull/1146) @ALEXsun0
+- 支持不养闲人排除名单并整合初始化 [(#1145)](https://github.com/ArkMowers/arknights-mower/pull/1145) @ALEXsun0
+- 增加宿舍高优替班并恢复候补让床 [(#1144)](https://github.com/ArkMowers/arknights-mower/pull/1144) @ALEXsun0
+- 将高级设置移入排班并支持导入导出 [(#1143)](https://github.com/ArkMowers/arknights-mower/pull/1143) @ALEXsun0
+- 镜像完整包并压缩跨版本 OTA [(#1142)](https://github.com/ArkMowers/arknights-mower/pull/1142) @ALEXsun0
+- 跨版本 OTA 并移除 MowerHotUpdate [(#1140)](https://github.com/ArkMowers/arknights-mower/pull/1140) @ALEXsun0
+
+### Bug Fixes
+
+- 修复满员保留、心情初始化与任务冲突 [(#1151)](https://github.com/ArkMowers/arknights-mower/pull/1151) @ALEXsun0
+- 等待启动时间结束后再重启模拟器 [(#1150)](https://github.com/ArkMowers/arknights-mower/pull/1150) @ALEXsun0
+- 调整常用资源分类和导航定位 [(#1147)](https://github.com/ArkMowers/arknights-mower/pull/1147) @ALEXsun0
+- exclude summons from trainee name lookup [(#1141)](https://github.com/ArkMowers/arknights-mower/pull/1141) @ALEXsun0
+- 修复副表校验、用尽换班、单回分配与满心情清退 [(#1138)](https://github.com/ArkMowers/arknights-mower/pull/1138) @983122046 @ALEXsun0
+- 修复未开训误阻断和未建造训练室反复巡检 [(#1139)](https://github.com/ArkMowers/arknights-mower/pull/1139) @ALEXsun0
+
+### Other
+
+- prerelease v4.1.6-alpha.9 [(#1153)](https://github.com/ArkMowers/arknights-mower/pull/1153) @ALEXsun0
+
+**Full Changelog**: [v4.1.6-alpha.8...v4.1.6-alpha.9](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.8...v4.1.6-alpha.9)
+
 ## 4.1.6-alpha.8 - 2026-09-25
 
 ### New
