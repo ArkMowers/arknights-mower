@@ -23,6 +23,16 @@ with patch.dict("sys.modules", {"save_action_to_sqlite_decorator": MagicMock()})
 
 
 class TestScheduling(unittest.TestCase):
+    def setUp(self):
+        # Scheduling tests use fixed times; a live announcement request makes
+        # their result and runtime depend on the external news service.
+        maintenance = patch(
+            "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+            return_value=(None, None),
+        )
+        maintenance.start()
+        self.addCleanup(maintenance.stop)
+
     def test_adjust_two_orders(self):
         # 测试两个跑单任务被拉开
         task1 = SchedulerTask(
