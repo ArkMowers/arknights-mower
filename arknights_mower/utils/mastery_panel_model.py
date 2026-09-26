@@ -4,6 +4,7 @@ import hashlib
 import json
 import lzma
 import pickle
+from functools import lru_cache
 from pathlib import Path
 
 import cv2
@@ -11,6 +12,23 @@ import numpy as np
 
 FONT_SIZE = 37
 PIXEL_THRESHOLD = 200
+MIDDLE_DOT_FONT = (
+    Path(__file__).resolve().parents[1] / "fonts/NotoSansHans-Medium-room.otf"
+)
+
+
+@lru_cache(maxsize=1)
+def _middle_dot_font():
+    from PIL import ImageFont
+
+    return ImageFont.truetype(str(MIDDLE_DOT_FONT), FONT_SIZE)
+
+
+def _game_text_width(text, font):
+    if "·" not in text:
+        return font.getlength(text)
+    dot = _middle_dot_font()
+    return sum((dot if char == "·" else font).getlength(char) for char in text)
 
 
 def skill_roster_digest(data):
@@ -35,7 +53,18 @@ def render_template(text, font):
     from PIL import Image, ImageDraw
 
     canvas = Image.new("L", (max(200, len(text) * 45 + 20), 80))
-    ImageDraw.Draw(canvas).text((10, 2), text, font=font, fill=255)
+    draw = ImageDraw.Draw(canvas)
+    if "·" in text:
+        # Unity uses NotoSansHans-Medium for this panel. Its middle dot has a
+        # narrower advance than SourceHanSansCN, which moves the suffix left.
+        x = 10
+        dot = _middle_dot_font()
+        for char in text:
+            glyph_font = dot if char == "·" else font
+            draw.text((x, 2), char, font=glyph_font, fill=255)
+            x += glyph_font.getlength(char)
+    else:
+        draw.text((10, 2), text, font=font, fill=255)
     binary = cv2.threshold(np.asarray(canvas), PIXEL_THRESHOLD, 255, cv2.THRESH_BINARY)[
         1
     ]
@@ -97,7 +126,7 @@ def build_model(data, font_path, output_path, charset_path=None):
         name = char["name"]
         entries[cid] = {
             "name": name,
-            "prefix_width": round(font.getlength(f"[{name}]")),
+            "prefix_width": round(_game_text_width(f"[{name}]", font)),
             "name_template": pack_template(render_template(f"[{name}]", font)),
             "skills": skills,
         }
@@ -105,6 +134,9 @@ def build_model(data, font_path, output_path, charset_path=None):
         "schema": 2,
         "roster_sha256": skill_roster_digest(data),
         "font_sha256": hashlib.sha256(font_path.read_bytes()).hexdigest(),
+        "middle_dot_font_sha256": hashlib.sha256(
+            MIDDLE_DOT_FONT.read_bytes()
+        ).hexdigest(),
         "font_size": FONT_SIZE,
         "pixel_threshold": PIXEL_THRESHOLD,
         "entries": entries,

@@ -11,3 +11,6 @@
 该字体的内嵌版权信息为 Adobe Systems Incorporated (2014)，
 使用 Apache License 2.0；许可文本见 `LICENSE-APACHE-2.0.txt`。
 `auto_get_res_new.py` 的房间干员姓名模型生成函数使用此子集。
+选人和训练位干员姓名模型也使用同一子集，不再靠带 `·` 名字的截图覆盖。
+`room-charset.txt` 用于在新增干员名时检查子集是否缺字；缺字时需从新版
+游戏字体扩充子集并更新字符集文件。
