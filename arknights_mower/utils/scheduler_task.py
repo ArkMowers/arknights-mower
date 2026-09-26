@@ -8,6 +8,7 @@ from typing import Literal
 from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
+from arknights_mower.utils.dorm_candidates import dorm_candidates
 from arknights_mower.utils.furniture_task import (
     FURNITURE_EXIT_SECONDS,
     FURNITURE_RUN_SECONDS,
@@ -17,13 +18,10 @@ from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import (
-    RestingTier,
     busy_resting_names,
     has_resting_mood,
     resting_key,
     resting_mood,
-    resting_tier,
-    unregistered_idle_candidates,
 )
 
 
@@ -1662,37 +1660,12 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                 for index, name in enumerate(names)
                 if name != "Current"
             }
-            busy = busy_resting_names()
-            candidates = [
-                op
-                for op in op_data.operators.values()
-                if (not op.is_high() or op.name in standby_waiting)
-                and not op.current_room
-                and not op_data.rest_mood_complete(op.name)
-                and op.name not in reserved
-                and op.name not in busy
-                and resting_tier(op_data, op.name) != RestingTier.EXCLUDED
-            ]
-            candidates.sort(key=lambda op: resting_key(op_data, op.name, now))
-            waiting_list = [
-                op
-                for op in candidates
-                if not op_data.idle_rest_checked(op.name)
-                and resting_mood(op, now) < op.upper_limit
-            ]
-            full_list = [
-                op
-                for op in candidates
-                if op not in waiting_list
-                and not op.is_high()
-                and not op_data.has_rest_mood_limit(op.name)
-            ]
-            full_list.sort(
-                key=lambda op: (resting_mood(op, now), resting_tier(op_data, op.name))
+            candidates = dorm_candidates(
+                op_data, reserved, include_standby=True, now=now
             )
-            idle_fallback = unregistered_idle_candidates(
-                op_data, reserved | busy | {op_data.get_train_support()}
-            )
+            waiting_list = [op_data.operators[name] for name in candidates.recovering]
+            full_list = [op_data.operators[name] for name in candidates.full]
+            idle_fallback = candidates.unregistered
             if not waiting_list and not full_list and not idle_fallback:
                 return
             logger.debug(
@@ -1728,20 +1701,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                         continue
                 elif value.name:
                     continue
-                if op_data.is_full_dorm_fallback(value.name):
-                    # 最低者也满时，不再用下一位未知替班重复试床。
-                    rest = next(
-                        (
-                            op
-                            for op in waiting_list
-                            if resting_mood(op, now) < op.upper_limit
-                        ),
-                        None,
-                    )
-                    if rest is None:
-                        continue
-                    waiting_list.remove(rest)
-                elif waiting_list:
+                if waiting_list:
                     rest = waiting_list.pop(0)
                 elif full_list:
                     rest = full_list.pop(0)
