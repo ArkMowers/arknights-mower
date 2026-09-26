@@ -15,7 +15,7 @@ describe('release rollback confirmation', () => {
       expect(options.content).toContain('4.1.6-alpha.4')
       expect(options.content).toContain('v4.1.5')
       expect(options.content).toContain('3 个实例')
-      expect(options.content).toContain('重置运行缓存')
+      expect(options.content).toContain('保留已保存的心情和位置并按当前排班重新生成任务')
       if (force) expect(options.content).toContain('不备份本地修改')
       expect(options.negativeText).toBe('取消')
       expect(options.autoFocus).toBe(false)
