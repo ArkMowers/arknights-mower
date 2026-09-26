@@ -1,12 +1,34 @@
 """Roguelike gift operators cannot be selected as training-room trainees."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_recommendation as rec
+
+
+def test_bundled_mastery_data_contains_only_trainable_characters():
+    data_path = Path(__file__).parents[1] / "data/skill_data.json"
+    data = json.loads(data_path.read_text(encoding="utf-8"))
+    characters = data["characters"]
+
+    assert rec.UNTRAINABLE_CHAR_IDS.isdisjoint(characters)
+    assert all(cid.startswith("char_") for cid in characters)
+    assert all(
+        any(
+            level.get("materials") or level.get("time")
+            for skill in char["skills"]
+            for level in skill["levels"]
+        )
+        for char in characters.values()
+    )
+    assert data["_meta"]["character_count"] == len(characters)
+    assert data["_meta"]["skill_entry_count"] == sum(
+        len(char["skills"]) for char in characters.values()
+    )
 
 
 def test_recommendations_exclude_gift_operators_but_keep_regular_trainees(

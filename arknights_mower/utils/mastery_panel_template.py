@@ -80,6 +80,51 @@ def _score(region, template):
     )
 
 
+def _score_gamma_spacing(region, template):
+    """Match both sides of ·γ型 when game spacing differs from the font template.
+
+    The bundled font has the correct glyphs, but the game draws the dot and
+    gamma closer to the preceding Chinese text. Keep both parts on the same
+    baseline and in order; their weaker score is the candidate's score.
+    """
+    ink = (template != 0).any(axis=0)
+    gaps = []
+    start = None
+    for x, present in enumerate(ink):
+        if not present and start is None:
+            start = x
+        elif present and start is not None:
+            gaps.append((start, x))
+            start = None
+    if not gaps:
+        return 0.0
+    left_end, right_start = max(gaps, key=lambda gap: gap[1] - gap[0])
+    if right_start - left_end < 12:
+        return 0.0
+    left = template[:, :left_end]
+    right = template[:, right_start:]
+    if any(
+        part.shape[0] > region.shape[0] or part.shape[1] > region.shape[1]
+        for part in (left, right)
+    ):
+        return 0.0
+    left_map = cv2.matchTemplate(region, left, cv2.TM_CCORR_NORMED)
+    right_map = cv2.matchTemplate(region, right, cv2.TM_CCORR_NORMED)
+    _, left_score, _, (left_x, left_y) = cv2.minMaxLoc(left_map)
+    _, right_score, _, (right_x, right_y) = cv2.minMaxLoc(right_map)
+    gap = right_x - (left_x + left.shape[1])
+    if abs(left_y - right_y) > 1 or not 0 <= gap <= right_start - left_end:
+        return 0.0
+    return min(left_score, right_score)
+
+
+def _skill_score(region, name, template):
+    score = _score(region, template)
+    if score < SKILL_MIN_SCORE and name.endswith("·γ型"):
+        score = max(score, _score_gamma_spacing(region, template))
+    return score
+
+
 def recognize_skill(img, operator_name, data):
     """Return the confirmed skill match, or None.
 
@@ -109,7 +154,7 @@ def recognize_skill(img, operator_name, data):
             continue
         skill_region = binary[:, max(0, prefix_width - 10) :]
         scores.extend(
-            (index, name, name_score, _score(skill_region, template))
+            (index, name, name_score, _skill_score(skill_region, name, template))
             for index, name, template in entry["skills"]
         )
     if not scores:

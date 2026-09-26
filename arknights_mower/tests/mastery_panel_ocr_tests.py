@@ -168,17 +168,17 @@ def test_ocr_template_conflict_stays_unknown():
     assert panel.skill_name == ""
 
 
-def test_unconfirmed_skill_does_not_become_mismatch():
+def test_missing_character_recovers_unique_four_character_skill():
     solver = solver_with_text("[卡涅利安]沙缚锁")
 
     panel = reader._read_panel_text(solver)
 
     assert panel.operator_name == "卡涅利安"
-    assert panel.skill_name == ""
+    assert panel.skill_name == "沙缚镣锁"
     plan = {"char_name": "卡涅利安", "skill_index": 1, "skill_name": "二技能·沙缚镣锁"}
     room = reader.RoomState("training", panel)
     assert reader._plan_matches_room(plan, room)
-    assert not reader._can_adopt_expiry(plan, room)
+    assert reader._can_adopt_expiry(plan, room)
 
 
 @pytest.mark.parametrize(
@@ -243,3 +243,70 @@ def test_amiya_ocr_template_conflict_with_same_skill_index_stays_unknown():
 
     assert panel.operator_name == "阿米娅"
     assert panel.skill_name == ""
+
+
+def test_gamma_skill_ocr_is_corrected_by_real_panel_template():
+    from pathlib import Path
+
+    import cv2
+
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    fixture = Path(__file__).with_name("fixtures") / "mastery_panel_elysium_gamma.png"
+    image[930:972, 235:755] = cv2.imread(str(fixture))
+    solver = MagicMock()
+    solver.read_screen.return_value = "[极境]支援号令·v型"
+
+    panel = reader._read_panel_text(solver, image)
+
+    assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·γ型")
+    plan = {
+        "char_id": "char_401_elysm",
+        "char_name": "极境",
+        "skill_index": 0,
+        "skill_name": "一技能·支援号令·γ型",
+    }
+    room = reader.RoomState("training", panel)
+    assert reader._plan_matches_room(plan, room)
+    assert reader._can_adopt_expiry(plan, room)
+
+
+def test_unique_majority_ocr_recovers_when_template_is_unavailable(monkeypatch):
+    monkeypatch.setattr(reader, "recognize_skill", lambda *_: None)
+    panel = reader._read_panel_text(solver_with_text("[极境]支援号令·v型"))
+
+    assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·γ型")
+
+
+def test_ambiguous_majority_ocr_stays_unknown(monkeypatch):
+    from arknights_mower.utils import mastery_recommendation
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+
+    monkeypatch.setattr(
+        mastery_recommendation,
+        "get_skill_data",
+        lambda: {
+            "characters": {
+                "test": {
+                    "name": "测试干员",
+                    "skills": [
+                        {"name": "战术咏唱·β型"},
+                        {"name": "战术咏唱·γ型"},
+                    ],
+                }
+            }
+        },
+    )
+
+    assert resolve_panel_skill_fuzzy("测试干员", "战术咏唱·v型") is None
+
+
+def test_three_character_prefix_of_two_skills_stays_unknown():
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+
+    assert resolve_panel_skill_fuzzy("掠风", "此身为") is None
+
+
+def test_three_character_skill_recovers_one_missing_character():
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+
+    assert resolve_panel_skill_fuzzy("白面鸮", "脑肽") == (1, "脑啡肽")

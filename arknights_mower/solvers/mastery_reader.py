@@ -42,6 +42,7 @@ from arknights_mower.utils.skill_label import (
     normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
+    resolve_panel_skill_fuzzy,
     strip_panel_brackets,
 )
 
@@ -466,10 +467,18 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
                     )
                     skill_name = ""
             elif ocr_skill_index is None:
-                logger.debug(
-                    f"训练室技能 OCR 未能由模板确认：{operator_name} {skill_name!r}"
-                )
-                skill_name = ""
+                fuzzy = resolve_panel_skill_fuzzy(operator_name, skill_name)
+                if fuzzy is not None:
+                    logger.info(
+                        f"训练室面板近似纠正技能：{operator_name} {skill_name!r} → "
+                        f"{fuzzy[1]}"
+                    )
+                    skill_name = fuzzy[1]
+                else:
+                    logger.debug(
+                        f"训练室技能 OCR 未能由模板确认：{operator_name} {skill_name!r}"
+                    )
+                    skill_name = ""
     return RoomPanel(operator_name=operator_name, skill_name=skill_name)
 
 
