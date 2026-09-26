@@ -613,8 +613,8 @@ if (return_home_when_idle.value) {
               </mower-input-number>
               <template v-if="screenshot === 0" #feedback>
                 <span role="status">
-                  已关闭日常截图保存，实时预览仍可用。发生需归档的异常时，仍会保存当前画面及后续 5
-                  分钟的截图。设为正数可恢复日常保存。
+                  日常截图不写盘。发生需归档的异常时，保存此前 5 分钟内缓存的全部画面及后续 5
+                  分钟截图；内存缓存最多 16 张、32 MiB。
                 </span>
               </template>
             </n-form-item>

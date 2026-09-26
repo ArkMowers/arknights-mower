@@ -23,7 +23,8 @@ from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 _HOUR_FOLDER = re.compile(r"\d{8}-\d{2}\Z")
 _IMPORTANT_FOLDERS = {"run_order", "workshop", "furniture", "solve_captcha"}
 _ERROR_WINDOW_NS = 5 * 60 * 10**9
-_CURRENT_FRAME_MAX_AGE_NS = 30 * 10**9
+_RECENT_FRAME_LIMIT = 16
+_RECENT_BYTE_LIMIT = 32 * 1024**2
 _LOG_RETENTION_NS = RUNTIME_LOG_RETENTION_HOURS * 3600 * 10**9
 _STATUS_FIELDS = (
     "pending_count",
@@ -55,9 +56,16 @@ class ScreenshotStore:
         *,
         max_pending_count: int = 128,
         max_pending_bytes: int = 64 * 1024**2,
+        max_recent_count: int = _RECENT_FRAME_LIMIT,
+        max_recent_bytes: int = _RECENT_BYTE_LIMIT,
     ):
-        if max_pending_count <= 0 or max_pending_bytes <= 0:
-            raise ValueError("待写截图数量和字节数上限必须大于 0")
+        if (
+            min(
+                max_pending_count, max_pending_bytes, max_recent_count, max_recent_bytes
+            )
+            <= 0
+        ):
+            raise ValueError("截图数量和字节数上限必须大于 0")
         if cleanup_interval <= 0:
             raise ValueError("截图清理间隔必须大于 0")
         self.folder = Path(folder)
@@ -66,6 +74,8 @@ class ScreenshotStore:
         self.cleanup_interval = cleanup_interval
         self.max_pending_count = max_pending_count
         self.max_pending_bytes = max_pending_bytes
+        self.max_recent_count = max_recent_count
+        self.max_recent_bytes = max_recent_bytes
         self._queue: deque[Screenshot] = deque()
         self._lock = Lock()
         self._ready = Condition(self._lock)
@@ -94,7 +104,9 @@ class ScreenshotStore:
         self._last_error_log = float("-inf")
         self._last_reported_state = (0,) * len(_STATUS_FIELDS)
         self._error_windows: list[tuple[int, int, str]] = []
-        self._archive_queue: deque[tuple[int, int, str, str, int]] = deque()
+        self._archive_queue: deque[
+            tuple[int, int, str, str, int, deque[Screenshot]]
+        ] = deque()
         self._log_archive_queue: list[tuple[int, str]] = []
         self._deleted_archives: set[str] = set()
 
@@ -144,6 +156,7 @@ class ScreenshotStore:
                         folder.name,
                         event.get("message", "运行出错"),
                         0,
+                        deque(),
                     )
                 )
             if not (folder / "logs.json").exists():
@@ -200,10 +213,9 @@ class ScreenshotStore:
                 self._recent_frames.append(frame)
                 self._recent_bytes += len(data)
                 while self._recent_frames and (
-                    captured_ns - self._recent_frames[0].captured_ns
-                    > _CURRENT_FRAME_MAX_AGE_NS
-                    or len(self._recent_frames) > self.max_pending_count
-                    or self._recent_bytes > self.max_pending_bytes
+                    captured_ns - self._recent_frames[0].captured_ns > _ERROR_WINDOW_NS
+                    or len(self._recent_frames) > self.max_recent_count
+                    or self._recent_bytes > self.max_recent_bytes
                 ):
                     self._recent_bytes -= len(self._recent_frames.popleft().data)
             # 关闭普通保存时，异常窗口内的新画面仍需单独写入归档。
@@ -319,37 +331,24 @@ class ScreenshotStore:
                     item for item in self._log_archive_queue if item[1] != archive_id
                 ]
                 heapq.heapify(self._log_archive_queue)
-            self._archive_queue.append(
-                (scan_start, timestamp_ns, archive_id, message, 1)
-            )
+            buffered = deque()
             if self.retention_hours() <= 0:
-                # 最近的报错前画面，以及监听线程延迟处理期间到达的报错后画面。
-                current = next(
-                    (
-                        frame
-                        for frame in reversed(self._recent_frames)
-                        if frame.captured_ns <= timestamp_ns
-                    ),
-                    self._latest,
-                )
-                if current is not None and not (
-                    0 <= timestamp_ns - current.captured_ns <= _CURRENT_FRAME_MAX_AGE_NS
-                ):
-                    current = None
-                frames = ([current] if current is not None else []) + [
+                before = [
+                    frame
+                    for frame in self._recent_frames
+                    if scan_start <= frame.captured_ns <= timestamp_ns
+                ]
+                after = [
                     frame
                     for frame in self._recent_frames
                     if timestamp_ns
                     < frame.captured_ns
                     <= timestamp_ns + _ERROR_WINDOW_NS
                 ]
-                for frame in frames:
-                    if any(waiting is frame for waiting in self._queue):
-                        continue
-                    if self._make_room(frame):
-                        self._pending_count += 1
-                        self._pending_bytes += len(frame.data)
-                        self._queue.append(frame)
+                buffered = deque((*before, *after))
+            self._archive_queue.append(
+                (scan_start, timestamp_ns, archive_id, message, 1, buffered)
+            )
             heapq.heappush(
                 self._log_archive_queue,
                 (timestamp_ns + _ERROR_WINDOW_NS + 5 * 10**9, archive_id),
@@ -444,7 +443,7 @@ class ScreenshotStore:
                 else:
                     if not self._archive_queue:
                         return
-                    start, end, archive_id, message, increment = (
+                    start, end, archive_id, message, increment, buffered = (
                         self._archive_queue.popleft()
                     )
                     deadline = None
@@ -483,6 +482,8 @@ class ScreenshotStore:
                     if increment and exists:
                         # 窗口延长后先撤销旧快照，页面会从运行日志读取完整新窗口。
                         (destination / "logs.json").unlink(missing_ok=True)
+                while buffered:
+                    self._archive_frame(buffered.popleft())
                 # 先扫描已落盘图片；尚在队列里的图片随后由写盘线程归档。
                 scan_end = min(end + _ERROR_WINDOW_NS, time.time_ns())
                 if start > scan_end:

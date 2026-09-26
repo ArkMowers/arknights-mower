@@ -38,6 +38,16 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(self.store.stats()["pending_count"], 0)
         self.assertEqual(self.store.stats()["pending_bytes"], 0)
 
+    def wait_archive_images(self, archive_id, *filenames, timeout=3):
+        archive = self.root / "errors" / archive_id
+        deadline = time.monotonic() + timeout
+        while not all((archive / Path(name).name).exists() for name in filenames):
+            if time.monotonic() >= deadline:
+                break
+            Event().wait(0.005)
+        for name in filenames:
+            self.assertTrue((archive / Path(name).name).exists())
+
     def seed(self, folder, timestamp, contents=b"old"):
         path = self.root / folder / f"{timestamp}.jpg"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -548,6 +558,7 @@ class ScreenshotTests(unittest.TestCase):
         following = self.store.submit(b"next screen")
         self.store.start()
         self.wait_idle()
+        self.wait_archive_images(archive_id, current, following)
 
         archive = self.root / "errors" / archive_id
         self.assertEqual((archive / Path(current).name).read_bytes(), b"current screen")
@@ -594,9 +605,11 @@ class ScreenshotTests(unittest.TestCase):
             second = self.store.submit(b"second after error")
         self.assertEqual(self.store.stats()["pending_count"], 0)
         archive_id = self.store.mark_error(error_time, "画面异常")
-        self.assertEqual(self.store.stats()["pending_count"], 3)
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        self.assertEqual(len(self.store._archive_queue[0][5]), 3)
         self.store.start()
         self.wait_idle()
+        self.wait_archive_images(archive_id, current, first, second)
 
         archive = self.root / "errors" / archive_id
         self.assertEqual((archive / Path(current).name).read_bytes(), b"error screen")
@@ -609,6 +622,59 @@ class ScreenshotTests(unittest.TestCase):
         self.assertFalse((self.root / current).exists())
         self.assertFalse((self.root / first).exists())
         self.assertFalse((self.root / second).exists())
+
+    def test_disabled_history_keeps_five_minutes_only_in_memory_until_error(self):
+        self.retention = 0
+        error_time = time.time_ns()
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            side_effect=(
+                error_time - 6 * 60 * 10**9,
+                error_time - 4 * 60 * 10**9,
+                error_time - 2 * 60 * 10**9,
+                error_time - 10**9,
+            ),
+        ):
+            too_old = self.store.submit(b"too old")
+            first = self.store.submit(b"four minutes ago")
+            second = self.store.submit(b"two minutes ago")
+            current = self.store.submit(b"current")
+        self.assertFalse(self.root.exists())
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        self.assertEqual(len(self.store._archive_queue[0][5]), 3)
+        self.store.start()
+        self.wait_archive_images(archive_id, first, second, current)
+        archive = self.root / "errors" / archive_id
+        self.assertFalse((archive / Path(too_old).name).exists())
+
+    def test_disabled_history_archives_all_sixteen_buffered_previous_frames(self):
+        self.retention = 0
+        error_time = time.time_ns()
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            side_effect=[error_time - (17 - index) * 10**9 for index in range(17)],
+        ):
+            names = [
+                self.store.submit(f"frame {index}".encode()) for index in range(17)
+            ]
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        self.assertEqual(len(self.store._archive_queue[0][5]), 16)
+        self.store.start()
+        self.wait_archive_images(archive_id, *names[-16:])
+        archive = self.root / "errors" / archive_id
+        self.assertFalse((archive / Path(names[0]).name).exists())
+
+    def test_disabled_history_bounds_five_minute_memory_cache(self):
+        self.limit_store(max_recent_count=3, max_recent_bytes=11)
+        self.retention = 0
+        first = self.store.submit(b"first")
+        second = self.store.submit(b"second")
+        third = self.store.submit(b"third")
+        self.assertEqual(
+            [frame.filename for frame in self.store._recent_frames], [second, third]
+        )
+        self.assertFalse(self.root.exists())
+        self.assertNotIn(first, [frame.filename for frame in self.store._recent_frames])
 
     def test_disabling_storage_skips_queued_frames_after_current_write(self):
         entered, release = Event(), Event()
