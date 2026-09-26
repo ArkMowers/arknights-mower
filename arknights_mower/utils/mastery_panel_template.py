@@ -17,9 +17,9 @@ from arknights_mower.utils.resource_pkg import (
 )
 
 MODEL_PATH = "arknights_mower/models/mastery_panel.model"
-NAME_MIN_SCORE = 0.80
+NAME_MIN_SCORE = 0.70
 SKILL_MIN_SCORE = 0.70
-SKILL_MIN_MARGIN = 0.15
+SKILL_MIN_MARGIN = 0.10
 _model = None
 _model_loaded = False
 
