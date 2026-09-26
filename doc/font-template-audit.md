@@ -13,8 +13,8 @@ Unity UI `TextGenerator`/`DynFontLoader` 执行，不能把 Pillow 绘制视为
 
 | 生成函数 | 模型 | 当前字体 | 游戏资源核对 | 处理 |
 | --- | --- | --- | --- | --- |
-| `load_recruit_template` | `recruit_result.pkl` | `FZDYSK.TTF` 120px | APK 内置字体中未发现同名字体；公招揭晓界面待截图验证 | 保留现有模板 |
-| `load_recruit_tag` | `recruit.pkl` | `SourceHanSansCN-Medium.otf` 30px | 公招标签所在预制体尚未定位 | 保留现有模板 |
+| `load_recruit_template` | `recruit_result.pkl` | `FZDYSK.TTF` 120px | 公招揭晓实图中「豆苗」「杰西卡」均正确匹配，分数 0.852、0.867 | 保留现有模板 |
+| `load_recruit_tag` | `recruit.pkl` | `SourceHanSansCN-Medium.otf` 30px | 公招标签实图中五个标签均正确匹配，分数 0.940～0.980 | 保留现有模板 |
 | `训练在房间内的干员名的模型` | `operator_room.model` | 游戏 `NotoSansHans-Medium` 子集 37px | 房间面板 `text_item_name` 使用 `DynFontLoader` 的 `NotoSansHans-Medium` | 一致 |
 | `训练选中的干员名的模型` | `operator_select.model` | 游戏 `NotoSansHans-Medium` 子集，23～31px | 基建选人卡片 `text_name` 使用 `NotoSansHans-Medium`、字号 14、Best Fit；卡片 Canvas 缩放和模板预处理会改变最终像素 | 已替换字体，删除两名干员的截图覆盖 |
 | `训练训练室干员名的模型` | `operator_train.model` | 游戏 `NotoSansHans-Medium` 子集，24～30px | 基建选人卡片同上；训练位卡片字号依界面有差异 | 已替换字体，删除两名干员的截图覆盖 |
@@ -29,6 +29,29 @@ Unity UI `TextGenerator`/`DynFontLoader` 执行，不能把 Pillow 绘制视为
 普通选人页 12 个姓名与原日志完全一致，训练位选人页 10 个槽位结果也完全一致。
 字体子集新增字符集校验，之后有新名字
 缺字会让生成任务明确失败，需扩充子集再重建模型。
+
+## 公招实图回放
+
+2026-09-26 从正在运行的模拟器截取公开招募画面。第三槽尚未开始招募，
+进入该槽后保存五个标签的画面；两个已经自然完成的招募槽提供结果画面。
+回放沿用 `RecruitSolver` 的标签分块、`TM_CCORR_NORMED` 匹配，以及
+结果画面的 220 二值化。裁图作为
+`arknights_mower/tests/fixtures/recruit_*_20260926.png` 保存，并由
+`recruit_font_template_tests.py` 检查。
+
+| 画面 | 正确结果 | 分数 | 第二候选分数 |
+| --- | --- | ---: | ---: |
+| 标签第 1 格 | 近卫干员 | 0.940 | 0.887 |
+| 标签第 2 格 | 医疗干员 | 0.944 | 0.886 |
+| 标签第 3 格 | 爆发 | 0.973 | 0.873 |
+| 标签第 4 格 | 生存 | 0.980 | 0.885 |
+| 标签第 5 格 | 元素 | 0.967 | 0.885 |
+| 招募结果 | 豆苗 | 0.852 | 0.651 |
+| 招募结果 | 杰西卡 | 0.867 | 0.660 |
+
+这两类现有模板在所得样本中有足够的正确候选领先分数，因此没有变更字体或模型。
+APK 字体清单未发现 `FZDYSK.TTF` 同名字体，公招预制体也尚未定位；
+实图回放能验证这些样本的识别效果，但不能据此断言游戏内部字体文件名称。
 
 ## 训练室的实测差异
 
