@@ -3,12 +3,14 @@ import datetime
 import json
 import mimetypes
 import os
+import shutil
 import subprocess
 import time
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
 from threading import RLock, Thread, Timer
+from urllib.parse import urlparse
 from uuid import uuid4
 from zlib import error as ZlibError
 
@@ -1203,6 +1205,31 @@ def diagnostic_error_export(archive_id):
     except (OverflowError, OSError, ValueError):
         abort(404)
     return _send_diagnostic_bundle(center, archive_id)
+
+
+@app.route("/diagnostics/errors/<archive_id>", methods=["DELETE"])
+@require_token
+def diagnostic_error_delete(archive_id):
+    if request.headers.get("X-Mower-Diagnostics") != "1":
+        abort(403)
+    origin = request.headers.get("Origin")
+    if origin and urlparse(origin).netloc != request.host:
+        abort(403)
+    if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
+        abort(404)
+    screenshot_root = get_path("@app/screenshot")
+    folder = screenshot_root / "errors" / archive_id
+    from arknights_mower.utils.log import get_screenshot_store
+
+    store = get_screenshot_store()
+    if store is not None and store.folder == screenshot_root:
+        if not store.delete_error_archive(archive_id):
+            abort(404)
+    else:
+        if not (folder / "event.json").is_file():
+            abort(404)
+        shutil.rmtree(folder)
+    return "", 204
 
 
 @app.route("/screenshot/latest")

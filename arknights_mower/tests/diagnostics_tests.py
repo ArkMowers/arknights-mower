@@ -13,6 +13,83 @@ from arknights_mower.utils.diagnostics import error_events, export_bundle, timel
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_delete_route_removes_only_requested_archive(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive_root = root / "screenshot" / "errors"
+            for archive_id in ("123", "456"):
+                folder = archive_root / archive_id
+                folder.mkdir(parents=True)
+                (folder / "event.json").write_text(
+                    json.dumps({"time_ns": int(archive_id), "message": "运行失败"}),
+                    encoding="utf-8",
+                )
+                (folder / f"{archive_id}.jpg").write_bytes(b"image")
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch(
+                    "arknights_mower.utils.log.get_screenshot_store", return_value=None
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                client = server.app.test_client()
+                self.assertEqual(
+                    client.delete("/diagnostics/errors/123").status_code, 403
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/123", headers={"token": "diagnostics-test"}
+                    ).status_code,
+                    403,
+                )
+                headers = {"token": "diagnostics-test", "X-Mower-Diagnostics": "1"}
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/123",
+                        headers={**headers, "Origin": "https://elsewhere.example"},
+                    ).status_code,
+                    403,
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/invalid", headers=headers
+                    ).status_code,
+                    404,
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/999", headers=headers
+                    ).status_code,
+                    404,
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/123", headers=headers
+                    ).status_code,
+                    204,
+                )
+                self.assertFalse((archive_root / "123").exists())
+                self.assertTrue((archive_root / "456" / "456.jpg").is_file())
+                self.assertEqual(
+                    [
+                        event["id"]
+                        for event in client.get(
+                            "/diagnostics/errors", headers=headers
+                        ).json["events"]
+                    ],
+                    ["456"],
+                )
+                self.assertEqual(
+                    client.get(
+                        "/diagnostics/errors/123/export", headers=headers
+                    ).status_code,
+                    404,
+                )
+
     def test_export_route_validates_time_and_returns_zip(self):
         import server
 

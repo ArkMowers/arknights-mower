@@ -82,6 +82,27 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue((archive / previous.name).exists())
         self.assertTrue((archive / Path(future).name).exists())
 
+    def test_deleted_error_archive_is_not_recreated_by_pending_work(self):
+        event_time = time.time_ns()
+        archive_id = self.store.mark_error(event_time, "运行失败")
+        archive = self.root / "errors" / archive_id
+        archive.mkdir(parents=True)
+        (archive / "event.json").write_text(
+            json.dumps({"time_ns": event_time, "message": "运行失败"}),
+            encoding="utf-8",
+        )
+        (archive / f"{event_time}.jpg").write_bytes(b"archived")
+
+        self.assertTrue(self.store.delete_error_archive(archive_id))
+        self.assertFalse(archive.exists())
+        self.assertFalse(self.store.delete_error_archive(archive_id))
+        self.store.start()
+        filename = self.store.submit(b"new frame")
+        self.wait_idle()
+        self.store._copy_to_archive(self.root / filename, archive / Path(filename).name)
+        self.store._save_error_logs(archive_id)
+        self.assertFalse(archive.exists())
+
     def test_error_log_archive_keeps_links_to_copied_screenshots(self):
         event_time = time.time_ns()
         image_time = event_time - 2 * 10**9

@@ -90,6 +90,7 @@ class ScreenshotStore:
         self._error_windows: list[tuple[int, int, str]] = []
         self._archive_queue: deque[tuple[int, int, str, str]] = deque()
         self._log_archive_queue: list[tuple[int, str]] = []
+        self._deleted_archives: set[str] = set()
 
     def start(self):
         with self._lock:
@@ -275,6 +276,31 @@ class ScreenshotStore:
             self._ready.notify_all()
         return archive_id
 
+    def delete_error_archive(self, archive_id: str) -> bool:
+        """删除单条报错归档，并阻止进行中的后台写入重建它。"""
+        destination = self.folder / "errors" / archive_id
+        with self._archive_lock:
+            if not (destination / "event.json").is_file():
+                return False
+            self._deleted_archives.add(archive_id)
+        try:
+            with self._archive_lock:
+                shutil.rmtree(destination)
+        finally:
+            with self._ready:
+                self._error_windows = [
+                    window for window in self._error_windows if window[2] != archive_id
+                ]
+                self._archive_queue = deque(
+                    item for item in self._archive_queue if item[2] != archive_id
+                )
+                self._log_archive_queue = [
+                    item for item in self._log_archive_queue if item[1] != archive_id
+                ]
+                heapq.heapify(self._log_archive_queue)
+                self._ready.notify_all()
+        return True
+
     def _archive_frame(self, frame: Screenshot):
         with self._lock:
             self._error_windows = [
@@ -290,6 +316,8 @@ class ScreenshotStore:
                 )
                 try:
                     with self._archive_lock:
+                        if archive_id in self._deleted_archives:
+                            continue
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         temporary = destination.with_suffix(".jpg.tmp")
                         try:
@@ -302,6 +330,8 @@ class ScreenshotStore:
 
     def _copy_to_archive(self, source: Path, destination: Path):
         with self._archive_lock:
+            if destination.parent.name in self._deleted_archives:
+                return
             temporary = destination.with_suffix(".jpg.tmp")
             try:
                 shutil.copy2(source, temporary)
@@ -332,13 +362,16 @@ class ScreenshotStore:
                 continue
             destination = self.folder / "errors" / archive_id
             try:
-                destination.mkdir(parents=True, exist_ok=True)
-                (destination / "event.json").write_text(
-                    json.dumps(
-                        {"time_ns": end, "message": message}, ensure_ascii=False
-                    ),
-                    encoding="utf-8",
-                )
+                with self._archive_lock:
+                    if archive_id in self._deleted_archives:
+                        continue
+                    destination.mkdir(parents=True, exist_ok=True)
+                    (destination / "event.json").write_text(
+                        json.dumps(
+                            {"time_ns": end, "message": message}, ensure_ascii=False
+                        ),
+                        encoding="utf-8",
+                    )
                 # 先扫描已落盘图片；尚在队列里的图片随后由写盘线程归档。
                 scan_end = min(end + _ERROR_WINDOW_NS, time.time_ns())
                 hour = datetime.fromtimestamp(start / 10**9).replace(
@@ -384,9 +417,14 @@ class ScreenshotStore:
             for row in rows:
                 if row["screenshot"]:
                     row["screenshot"] = f"errors/{archive_id}/{row['screenshot']}"
-            temporary = destination / "logs.json.tmp"
-            temporary.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
-            os.replace(temporary, destination / "logs.json")
+            with self._archive_lock:
+                if archive_id in self._deleted_archives:
+                    return
+                temporary = destination / "logs.json.tmp"
+                temporary.write_text(
+                    json.dumps(rows, ensure_ascii=False), encoding="utf-8"
+                )
+                os.replace(temporary, destination / "logs.json")
         except (OSError, ValueError) as exc:
             self._report_error("归档报错日志失败", exc)
 
