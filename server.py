@@ -3,12 +3,14 @@ import datetime
 import json
 import mimetypes
 import os
+import shutil
 import subprocess
 import time
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
 from threading import RLock, Thread, Timer
+from urllib.parse import urlparse
 from uuid import uuid4
 from zlib import error as ZlibError
 
@@ -28,7 +30,12 @@ from arknights_mower.utils.config.plan_advanced import (
 from arknights_mower.utils.config_backup import backup_lock
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
-from arknights_mower.utils.diagnostics import error_events, export_bundle, timeline
+from arknights_mower.utils.diagnostics import (
+    archive_window,
+    error_events,
+    export_bundle,
+    timeline,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.log_stream import LogStream
 from arknights_mower.utils.maa_check import (
@@ -1191,7 +1198,17 @@ def diagnostic_error_logs(archive_id):
         center = datetime.datetime.fromtimestamp(int(archive_id) / 10**9)
     except (OverflowError, OSError, ValueError):
         abort(404)
-    return {"logs": timeline(get_path("@app/log"), get_path("@app/screenshot"), center)}
+    start, end = archive_window(folder, center)
+    return {
+        "logs": timeline(
+            get_path("@app/log"),
+            get_path("@app/screenshot"),
+            center,
+            limit=None,
+            start=start,
+            end=end,
+        )
+    }
 
 
 @app.route("/diagnostics/errors/<archive_id>/export")
@@ -1207,6 +1224,62 @@ def diagnostic_error_export(archive_id):
     except (OverflowError, OSError, ValueError):
         abort(404)
     return _send_diagnostic_bundle(center, archive_id)
+
+
+def _diagnostic_delete_origin_allowed(origin):
+    if not origin:
+        return True
+    try:
+        source = urlparse(origin)
+        target = urlparse(request.host_url)
+        if (
+            source.scheme not in {"http", "https"}
+            or not source.hostname
+            or source.username
+            or source.password
+            or source.path
+            or source.params
+            or source.query
+            or source.fragment
+        ):
+            return False
+        if source.scheme == target.scheme and source.netloc == target.netloc:
+            return True
+        # 本机 Vite 开发服务器与后端分别使用 5173 和 8000 等端口。
+        loopback = {"localhost", "127.0.0.1", "::1"}
+        return (
+            target.hostname in loopback
+            and source.hostname in loopback
+            and source.scheme == "http"
+            and source.port == 5173
+        )
+    except ValueError:
+        return False
+
+
+@app.route("/diagnostics/errors/<archive_id>", methods=["DELETE"])
+@require_token
+def diagnostic_error_delete(archive_id):
+    if request.headers.get("X-Mower-Diagnostics") != "1":
+        abort(403)
+    origin = request.headers.get("Origin")
+    if not _diagnostic_delete_origin_allowed(origin):
+        abort(403)
+    if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
+        abort(404)
+    screenshot_root = get_path("@app/screenshot")
+    folder = screenshot_root / "errors" / archive_id
+    from arknights_mower.utils.log import get_screenshot_store
+
+    store = get_screenshot_store()
+    if store is not None and store.folder == screenshot_root:
+        if not store.delete_error_archive(archive_id):
+            abort(404)
+    else:
+        if not (folder / "event.json").is_file():
+            abort(404)
+        shutil.rmtree(folder)
+    return "", 204
 
 
 @app.route("/screenshot/latest")

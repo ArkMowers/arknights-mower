@@ -606,18 +606,27 @@ if (return_home_when_idle.value) {
                 <template #suffix>秒</template>
               </mower-input-number>
             </n-form-item>
-            <n-form-item v-if="runtime_platform !== 'android'" :show-feedback="screenshot === 0">
+            <n-form-item
+              v-if="runtime_platform !== 'android'"
+              :show-feedback="screenshot === 0 || (screenshot > 0 && screenshot < 5 / 60)"
+            >
               <template #label>
                 <span>截图保存时间</span>
-                <help-text>默认保留 1 小时，可填小数。</help-text>
+                <help-text
+                  >默认保留 1 小时，可填小数；大于 0 且不足 5 分钟时按 5 分钟保留。</help-text
+                >
               </template>
               <mower-input-number v-model:value="screenshot" :min="0">
                 <template #suffix>小时</template>
               </mower-input-number>
               <template v-if="screenshot === 0" #feedback>
                 <span role="status">
-                  已关闭截图保存，实时预览仍可用。后续调试、跑单等截图不会保存，排查问题时可能缺少截图记录。设为正数可恢复保存。
+                  日常截图不写盘。发生需归档的异常时，保存此前 5 分钟内缓存的全部画面及后续 5
+                  分钟截图；内存缓存最多 16 张、32 MiB。
                 </span>
+              </template>
+              <template v-else-if="screenshot > 0 && screenshot < 5 / 60" #feedback>
+                <span role="status">截图会正常写盘，实际保存时间按 5 分钟处理。</span>
               </template>
             </n-form-item>
             <n-form-item label="等待时间">

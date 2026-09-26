@@ -9,10 +9,204 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from arknights_mower.utils.diagnostics import error_events, export_bundle, timeline
+from arknights_mower.utils.diagnostics import (
+    archive_window,
+    error_events,
+    export_bundle,
+    timeline,
+)
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_merged_archive_export_uses_first_to_last_error_window(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            shots = root / "screenshot"
+            logs.mkdir()
+            first = datetime(2026, 9, 26, 12, 58)
+            last = first + timedelta(hours=1, minutes=9)
+            archive_id = str(int(first.timestamp() * 10**9))
+            archive = shots / "errors" / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps(
+                    {
+                        "time_ns": int(archive_id),
+                        "last_error_ns": int(last.timestamp() * 10**9),
+                        "error_count": 3,
+                        "message": "首次失败",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (logs / "runtime.log.2026-09-26_12").write_text(
+                "2026-09-26 12:58:00 task.py:1 ERROR 首次失败\n",
+                encoding="utf-8",
+            )
+            (logs / "runtime.log").write_text(
+                "2026-09-26 14:07:00 task.py:2 ERROR 再次失败\n",
+                encoding="utf-8",
+            )
+            start, end = archive_window(archive, first)
+            self.assertEqual(start, first - timedelta(minutes=5))
+            self.assertEqual(end, last + timedelta(minutes=5))
+            with export_bundle(logs, shots, first, archive_id) as data:
+                with ZipFile(data) as bundle:
+                    text = bundle.read("日志.txt").decode("utf-8")
+                    self.assertIn("首次失败", text)
+                    self.assertIn("再次失败", text)
+                    self.assertIn("14:12:00", bundle.read("说明.txt").decode("utf-8"))
+
+            import server
+
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                response = server.app.test_client().get(
+                    f"/diagnostics/errors/{archive_id}/logs",
+                    headers={"token": "diagnostics-test"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json["logs"]), 2)
+
+    def test_active_archive_detail_includes_more_than_1000_logs(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            logs.mkdir()
+            center = datetime(2026, 9, 26, 12, 58)
+            archive_id = str(int(center.timestamp() * 10**9))
+            archive = root / "screenshot" / "errors" / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps({"time_ns": int(archive_id), "message": "首次失败"}),
+                encoding="utf-8",
+            )
+            (logs / "runtime.log").write_text(
+                "2026-09-26 12:58:00 task.py:1 ERROR 首次失败\n"
+                + "2026-09-26 12:58:01 task.py:2 INFO 后续日志\n" * 1000,
+                encoding="utf-8",
+            )
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                response = server.app.test_client().get(
+                    f"/diagnostics/errors/{archive_id}/logs",
+                    headers={"token": "diagnostics-test"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json["logs"]), 1001)
+            self.assertIn("首次失败", response.json["logs"][0]["message"])
+
+    def test_delete_route_removes_only_requested_archive(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive_root = root / "screenshot" / "errors"
+            for archive_id in ("123", "456", "789"):
+                folder = archive_root / archive_id
+                folder.mkdir(parents=True)
+                (folder / "event.json").write_text(
+                    json.dumps({"time_ns": int(archive_id), "message": "运行失败"}),
+                    encoding="utf-8",
+                )
+                (folder / f"{archive_id}.jpg").write_bytes(b"image")
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch(
+                    "arknights_mower.utils.log.get_screenshot_store", return_value=None
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                client = server.app.test_client()
+                self.assertEqual(
+                    client.delete("/diagnostics/errors/123").status_code, 403
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/123", headers={"token": "diagnostics-test"}
+                    ).status_code,
+                    403,
+                )
+                headers = {"token": "diagnostics-test", "X-Mower-Diagnostics": "1"}
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/123",
+                        headers={**headers, "Origin": "https://elsewhere.example"},
+                    ).status_code,
+                    403,
+                )
+                for origin, base_url in (
+                    ("http://localhost:5174", "http://localhost:8000"),
+                    ("https://localhost:5173", "http://localhost:8000"),
+                    ("http://localhost:5173.evil.example", "http://localhost:8000"),
+                    ("http://localhost:5173", "http://example.org:8000"),
+                ):
+                    self.assertEqual(
+                        client.delete(
+                            "/diagnostics/errors/123",
+                            headers={**headers, "Origin": origin},
+                            base_url=base_url,
+                        ).status_code,
+                        403,
+                    )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/invalid", headers=headers
+                    ).status_code,
+                    404,
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/999", headers=headers
+                    ).status_code,
+                    404,
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/123", headers=headers
+                    ).status_code,
+                    204,
+                )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/789",
+                        headers={**headers, "Origin": "http://localhost:5173"},
+                        base_url="http://localhost:8000",
+                    ).status_code,
+                    204,
+                )
+                self.assertFalse((archive_root / "123").exists())
+                self.assertFalse((archive_root / "789").exists())
+                self.assertTrue((archive_root / "456" / "456.jpg").is_file())
+                self.assertEqual(
+                    [
+                        event["id"]
+                        for event in client.get(
+                            "/diagnostics/errors", headers=headers
+                        ).json["events"]
+                    ],
+                    ["456"],
+                )
+                self.assertEqual(
+                    client.get(
+                        "/diagnostics/errors/123/export", headers=headers
+                    ).status_code,
+                    404,
+                )
+
     def test_export_route_validates_time_and_returns_zip(self):
         import server
 
@@ -45,6 +239,7 @@ class DiagnosticTimelineTests(unittest.TestCase):
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
                 with ZipFile(BytesIO(response.data)) as bundle:
                     self.assertIn("日志.txt", bundle.namelist())
+                    self.assertNotIn("日志.json", bundle.namelist())
                 response.close()
 
     def test_log_rows_link_to_recent_screenshot(self):

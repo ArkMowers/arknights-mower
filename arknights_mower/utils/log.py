@@ -11,6 +11,7 @@ from threading import Lock
 import colorlog
 
 from arknights_mower.utils import config
+from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.screenshot import ScreenshotStore
 
@@ -39,6 +40,40 @@ filter = PackagePathFilter()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# 只有画面能帮助定位的运行路径才自动归档；其他 ERROR 仍进入运行日志和实时日志。
+_VISUAL_ERROR_FILES = {
+    "utils/device/device.py",
+    "utils/graph.py",
+    "utils/matcher.py",
+    "utils/scheduler_task.py",
+    "utils/segment.py",
+    "utils/solver.py",
+}
+_VISUAL_SOLVER_FILES = {
+    "base_mixin.py",
+    "base_schedule.py",
+    "captcha_solver.py",
+    "operation.py",
+    "player_info.py",
+    "recruit.py",
+    "secret_front.py",
+}
+
+
+def should_archive_record(record: logging.LogRecord) -> bool:
+    if record.levelno < logging.WARNING:
+        return False
+    override = getattr(record, "archive_screenshots", None)
+    if override is not None:
+        return bool(override)
+    if record.levelno < logging.ERROR:
+        return False
+    source = record.pathname.replace("\\", "/").partition("arknights_mower/")[2]
+    if source.startswith("solvers/"):
+        return source.removeprefix("solvers/") in _VISUAL_SOLVER_FILES
+    return source in _VISUAL_ERROR_FILES
+
+
 # d(ebug)hlr: 终端输出
 dhlr = logging.StreamHandler(stream=sys.stdout)
 dhlr.setFormatter(color_formatter)
@@ -53,18 +88,23 @@ class Handler(logging.StreamHandler):
         if record.levelno >= logging.ERROR:
             if summary.startswith(("Error", "Exception")) or summary == str(record.msg):
                 summary = f"运行时发生错误：{summary}"
-            if not record.pathname.endswith("screenshot.py"):
-                try:
-                    store = get_screenshot_store() or (
-                        _store() if fhlr is not None else None
+        if should_archive_record(record):
+            try:
+                store = get_screenshot_store() or (
+                    _store() if fhlr is not None else None
+                )
+                if store is not None:
+                    archive_summary = (
+                        f"警告：{summary}"
+                        if record.levelno < logging.ERROR
+                        else summary
                     )
-                    if store is not None:
-                        archive_id = store.mark_error(
-                            int(record.created * 10**9), summary
-                        )
-                        summary += f"（已保存报错前后截图，记录编号 {archive_id}）"
-                except Exception:
-                    pass  # 日志输出不能因归档失败而中断。
+                    archive_id = store.mark_error(
+                        int(record.created * 10**9), archive_summary
+                    )
+                    summary += f"（已保存前后截图，记录编号 {archive_id}）"
+            except Exception:
+                pass  # 日志输出不能因归档失败而中断。
         msg = f"{record.asctime} {record.levelname} {summary}"
         if record.exc_info and record.levelno < logging.ERROR:
             msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
@@ -96,12 +136,19 @@ def init_file_logging() -> None:
     folder = Path(get_path("@app/log"))
     folder.mkdir(exist_ok=True, parents=True)
     fhlr = TimedRotatingFileHandler(
-        folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
+        folder.joinpath("runtime.log"),
+        when="h",
+        interval=1,
+        encoding="utf8",
+        backupCount=RUNTIME_LOG_RETENTION_HOURS,
     )
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel("DEBUG")
     fhlr.addFilter(filter)
     logger.addHandler(fhlr)
+    # 已有报错归档时，即使本次启动尚未截图，也要继续定期清理过期记录。
+    if (Path(get_path("@app/screenshot")) / "errors").is_dir():
+        _store()
 
 
 # 多进程集中式日志：mower 主进程独占 runtime.log 文件句柄（init_file_logging），

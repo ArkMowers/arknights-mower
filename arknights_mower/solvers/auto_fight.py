@@ -280,7 +280,10 @@ class AutoFight(BaseSolver):
 
         if not self.in_fight():
             if self.battle_fail():
-                logger.warning("行动失败，请检查干员/练度")
+                logger.warning(
+                    "行动失败，请检查干员/练度",
+                    extra={"archive_screenshots": True},
+                )
                 return True
             elif self.battle_complete():
                 logger.info("行动结束")

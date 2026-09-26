@@ -18,6 +18,9 @@ const searchText = ref('')
 const levelFilter = ref('all')
 const exporting = ref(false)
 const exportError = ref('')
+const pendingDeleteEvent = ref(null)
+const deleting = ref(false)
+const deleteError = ref('')
 let requestVersion = 0
 
 const levelOptions = [
@@ -91,7 +94,7 @@ async function loadEvents() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
     events.value = response.data.events || []
   } catch {
-    eventError.value = '报错记录读取失败'
+    eventError.value = '异常记录读取失败'
   } finally {
     eventLoading.value = false
   }
@@ -195,6 +198,41 @@ async function exportWindow() {
   }
 }
 
+function confirmDelete(event) {
+  pendingDeleteEvent.value = event
+  deleteError.value = ''
+}
+
+function handleDeleteModal(show) {
+  if (!show && !deleting.value) {
+    pendingDeleteEvent.value = null
+    deleteError.value = ''
+  }
+}
+
+async function deleteEvent() {
+  const event = pendingDeleteEvent.value
+  if (!event || deleting.value) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await axios.delete(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}`, {
+      headers: { 'X-Mower-Diagnostics': '1' }
+    })
+    events.value = events.value.filter((item) => item.id !== event.id)
+    pendingDeleteEvent.value = null
+    if (activeEventId.value === event.id) {
+      loadWindow()
+    } else if (manualImage.value.startsWith(`errors/${event.id}/`)) {
+      manualImage.value = ''
+    }
+  } catch {
+    deleteError.value = '删除失败，请重试'
+  } finally {
+    deleting.value = false
+  }
+}
+
 onMounted(() => {
   loadEvents()
   loadWindow()
@@ -231,40 +269,52 @@ onMounted(() => {
     <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
 
     <div class="workspace">
-      <aside class="panel events-panel mower-surface-panel" aria-label="报错记录">
+      <aside class="panel events-panel mower-surface-panel" aria-label="异常记录">
         <div class="panel-heading">
           <div>
             <span class="section-kicker">已归档</span>
-            <h2>报错记录</h2>
+            <h2>异常记录</h2>
           </div>
           <span class="count-pill">{{ events.length }}</span>
         </div>
         <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
         <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
-        <div v-else-if="eventLoading" class="state-message">正在读取报错记录…</div>
-        <div v-else-if="!events.length" class="state-message">暂无报错记录</div>
+        <div v-else-if="eventLoading" class="state-message">正在读取异常记录…</div>
+        <div v-else-if="!events.length" class="state-message">暂无异常记录</div>
         <div v-else class="event-list">
-          <button
-            v-for="event in events"
-            :key="event.id"
-            type="button"
-            class="event-card"
-            :class="{ selected: activeEventId === event.id }"
-            :aria-pressed="activeEventId === event.id"
-            @click="selectEvent(event)"
-          >
-            <span class="event-time">{{ formatTime(event.time_ns) }}</span>
-            <span class="event-message">{{ event.message }}</span>
-            <span class="event-foot">{{ event.screenshots.length }} 张截图</span>
-            <span class="event-arrow" aria-hidden="true">查看记录 →</span>
-          </button>
+          <div v-for="event in events" :key="event.id" class="event-row">
+            <button
+              type="button"
+              class="event-card"
+              :class="{ selected: activeEventId === event.id }"
+              :aria-pressed="activeEventId === event.id"
+              @click="selectEvent(event)"
+            >
+              <span class="event-time">{{ formatTime(event.time_ns) }}</span>
+              <span class="event-message">{{ event.message }}</span>
+              <span class="event-foot">
+                <template v-if="event.error_count > 1">{{ event.error_count }} 次异常 · </template>
+                {{ event.screenshots.length }} 张截图
+              </span>
+              <span class="event-arrow" aria-hidden="true">查看记录 →</span>
+            </button>
+            <n-button
+              class="event-delete"
+              quaternary
+              type="error"
+              :aria-label="`删除 ${formatTime(event.time_ns)} 的异常记录`"
+              @click="confirmDelete(event)"
+            >
+              删除
+            </n-button>
+          </div>
         </div>
       </aside>
 
       <section class="panel logs-panel mower-surface-panel" aria-label="日志时间线">
         <div class="panel-heading">
           <div>
-            <span class="section-kicker">{{ activeEvent ? '报错窗口' : '时间窗口' }}</span>
+            <span class="section-kicker">{{ activeEvent ? '异常窗口' : '时间窗口' }}</span>
             <h2>日志时间线</h2>
           </div>
           <span class="count-pill">{{ visibleLogs.length }}</span>
@@ -272,7 +322,9 @@ onMounted(() => {
         <p class="panel-intro">
           {{
             activeEvent
-              ? formatTime(activeEvent.time_ns)
+              ? activeEvent.error_count > 1
+                ? `${formatTime(activeEvent.time_ns)} 至 ${formatTime(activeEvent.last_error_ns)}`
+                : formatTime(activeEvent.time_ns)
               : new Date(queryAt).toLocaleString('zh-CN')
           }}
           附近的运行记录
@@ -327,12 +379,12 @@ onMounted(() => {
           </span>
         </div>
         <p class="panel-intro">
-          {{ imagePath ? imageTime(imagePath) : '选择报错记录或日志中的“查看画面”' }}
+          {{ imagePath ? imageTime(imagePath) : '选择异常记录或日志中的“查看画面”' }}
         </p>
         <div class="image-stage">
           <div v-if="!imagePath" class="image-empty">
             <strong>暂无选中截图</strong>
-            <span>从报错记录或日志中选择画面</span>
+            <span>从异常记录或日志中选择画面</span>
           </div>
           <div v-else-if="imageFailed" class="image-empty">截图文件暂时无法读取</div>
           <img
@@ -351,7 +403,7 @@ onMounted(() => {
             type="range"
             min="0"
             :max="archiveImages.length - 1"
-            aria-label="选择报错窗口中的截图"
+            aria-label="选择异常窗口中的截图"
             @input="onImageSeek"
           />
           <n-button
@@ -373,6 +425,38 @@ onMounted(() => {
         </a>
       </section>
     </div>
+
+    <n-modal
+      :show="pendingDeleteEvent !== null"
+      preset="card"
+      title="删除异常记录"
+      style="width: min(440px, calc(100vw - 32px))"
+      :closable="!deleting"
+      :mask-closable="!deleting"
+      :close-on-esc="!deleting"
+      @update:show="handleDeleteModal"
+    >
+      <template v-if="pendingDeleteEvent">
+        <p class="delete-prompt">确定删除这条异常记录及其归档日志、截图吗？删除后无法恢复。</p>
+        <div class="delete-target">
+          <time>{{ formatTime(pendingDeleteEvent.time_ns) }}</time>
+          <strong>{{ pendingDeleteEvent.message }}</strong>
+          <span>
+            <template v-if="pendingDeleteEvent.error_count > 1">
+              {{ pendingDeleteEvent.error_count }} 次异常 ·
+            </template>
+            {{ pendingDeleteEvent.screenshots.length }} 张归档截图
+          </span>
+        </div>
+      </template>
+      <p v-if="deleteError" class="delete-error" role="alert">{{ deleteError }}</p>
+      <template #footer>
+        <div class="delete-actions">
+          <n-button :disabled="deleting" @click="handleDeleteModal(false)">取消</n-button>
+          <n-button type="error" :loading="deleting" @click="deleteEvent">删除记录</n-button>
+        </div>
+      </template>
+    </n-modal>
   </main>
 </template>
 
@@ -508,14 +592,20 @@ h2 {
   display: grid;
   gap: 0;
 }
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-top: 1px solid var(--mower-divider);
+}
 .event-card {
   display: grid;
   grid-template-columns: 1fr auto;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   gap: 5px 10px;
   padding: 12px 8px;
   border: 0;
-  border-top: 1px solid var(--mower-divider);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -538,6 +628,38 @@ h2 {
 .event-card.selected {
   background: var(--mower-control-surface);
   box-shadow: inset 3px 0 var(--mower-primary);
+}
+.event-delete {
+  flex: 0 0 auto;
+  min-width: 48px;
+  min-height: 40px;
+}
+.delete-prompt {
+  margin: 0 0 14px;
+  line-height: 1.55;
+}
+.delete-target {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--mower-control-surface);
+  overflow-wrap: anywhere;
+}
+.delete-target time,
+.delete-target span {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.delete-error {
+  margin: 12px 0 0;
+  color: var(--mower-error);
+}
+.delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .event-time,
 .log-meta time {

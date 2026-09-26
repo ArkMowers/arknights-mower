@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
+from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.screenshot import ScreenshotStore
 from arknights_mower.views import screenshot as views
 
@@ -36,6 +37,16 @@ class ScreenshotTests(unittest.TestCase):
             Event().wait(0.005)
         self.assertEqual(self.store.stats()["pending_count"], 0)
         self.assertEqual(self.store.stats()["pending_bytes"], 0)
+
+    def wait_archive_images(self, archive_id, *filenames, timeout=3):
+        archive = self.root / "errors" / archive_id
+        deadline = time.monotonic() + timeout
+        while not all((archive / Path(name).name).exists() for name in filenames):
+            if time.monotonic() >= deadline:
+                break
+            Event().wait(0.005)
+        for name in filenames:
+            self.assertTrue((archive / Path(name).name).exists())
 
     def seed(self, folder, timestamp, contents=b"old"):
         path = self.root / folder / f"{timestamp}.jpg"
@@ -81,6 +92,124 @@ class ScreenshotTests(unittest.TestCase):
         self.assertFalse(previous.exists())
         self.assertTrue((archive / previous.name).exists())
         self.assertTrue((archive / Path(future).name).exists())
+
+    def test_overlapping_errors_share_archive_and_backfill_extended_window(self):
+        second = time.time_ns()
+        first = second - 9 * 60 * 10**9
+        gap_time = second - 3 * 60 * 10**9
+        gap = self.seed(
+            datetime.fromtimestamp(gap_time / 10**9).strftime("%Y%m%d-%H"),
+            gap_time,
+        )
+        first_id = self.store.mark_error(first, "首次失败")
+        second_id = self.store.mark_error(second, "再次失败")
+        self.assertEqual(second_id, first_id)
+        self.assertEqual(len(self.store._error_windows), 1)
+        self.assertEqual(self.store._error_windows[0][1], second + 5 * 60 * 10**9)
+
+        self.store.start()
+        archive = self.root / "errors" / first_id
+        deadline = time.monotonic() + 3
+        while (
+            not (archive / gap.name).exists() or not (archive / "event.json").exists()
+        ) and time.monotonic() < deadline:
+            Event().wait(0.01)
+        event = json.loads((archive / "event.json").read_text(encoding="utf-8"))
+        self.assertEqual(event["error_count"], 2)
+        self.assertEqual(event["last_error_ns"], second)
+        self.assertEqual((archive / gap.name).read_bytes(), b"old")
+        self.assertEqual(len(list((self.root / "errors").iterdir())), 1)
+
+    def test_non_overlapping_errors_create_separate_archives(self):
+        now = time.time_ns()
+        first = self.store.mark_error(now - 11 * 60 * 10**9, "先前错误")
+        second = self.store.mark_error(now, "新错误")
+        self.assertNotEqual(first, second)
+
+    def test_later_error_invalidates_saved_logs_for_merged_window(self):
+        now = time.time_ns()
+        first_id = self.store.mark_error(now - 8 * 60 * 10**9, "首次失败")
+        self.store.start()
+        archive = self.root / "errors" / first_id
+        manifest = archive / "event.json"
+        deadline = time.monotonic() + 3
+        while not manifest.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(manifest.exists())
+        saved = archive / "logs.json"
+        deadline = time.monotonic() + 3
+        while not saved.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(saved.exists())
+
+        self.assertEqual(self.store.mark_error(now, "再次失败"), first_id)
+        deadline = time.monotonic() + 3
+        while saved.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertFalse(saved.exists())
+        event = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertEqual(event["error_count"], 2)
+        self.assertEqual(event["last_error_ns"], now)
+
+    def test_existing_archived_frame_is_not_replaced_during_recovery(self):
+        archive_id = self.store.mark_error(time.time_ns(), "运行失败")
+        filename = self.store.submit(b"new frame")
+        destination = self.root / "errors" / archive_id / Path(filename).name
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(b"archived frame")
+        with patch(
+            "arknights_mower.utils.screenshot.os.replace",
+            side_effect=AssertionError("不应重复替换已归档截图"),
+        ):
+            self.store._archive_frame(self.store.latest())
+            self.store._copy_to_archive(self.root / filename, destination)
+        self.assertEqual(destination.read_bytes(), b"archived frame")
+
+    def test_restart_continues_merging_recent_errors(self):
+        now = time.time_ns()
+        archive_id = self.store.mark_error(now - 2 * 60 * 10**9, "首次失败")
+        self.assertEqual(self.store.mark_error(now, "再次失败"), archive_id)
+        self.store.start()
+        manifest = self.root / "errors" / archive_id / "event.json"
+        deadline = time.monotonic() + 3
+        event = None
+        while time.monotonic() < deadline:
+            if manifest.exists():
+                event = json.loads(manifest.read_text(encoding="utf-8"))
+                if event.get("error_count") == 2:
+                    break
+            Event().wait(0.01)
+        self.assertIsNotNone(event)
+        self.assertEqual(event["error_count"], 2)
+        self.store.close()
+
+        self.store = ScreenshotStore(self.root, lambda: self.retention, self.logger)
+        self.addCleanup(self.store.close)
+        self.store.start()
+        self.assertEqual(
+            self.store.mark_error(time.time_ns(), "第三次失败"), archive_id
+        )
+
+    def test_deleted_error_archive_is_not_recreated_by_pending_work(self):
+        event_time = time.time_ns()
+        archive_id = self.store.mark_error(event_time, "运行失败")
+        archive = self.root / "errors" / archive_id
+        archive.mkdir(parents=True)
+        (archive / "event.json").write_text(
+            json.dumps({"time_ns": event_time, "message": "运行失败"}),
+            encoding="utf-8",
+        )
+        (archive / f"{event_time}.jpg").write_bytes(b"archived")
+
+        self.assertTrue(self.store.delete_error_archive(archive_id))
+        self.assertFalse(archive.exists())
+        self.assertFalse(self.store.delete_error_archive(archive_id))
+        self.store.start()
+        filename = self.store.submit(b"new frame")
+        self.wait_idle()
+        self.store._copy_to_archive(self.root / filename, archive / Path(filename).name)
+        self.store._save_error_logs(archive_id)
+        self.assertFalse(archive.exists())
 
     def test_error_log_archive_keeps_links_to_copied_screenshots(self):
         event_time = time.time_ns()
@@ -143,6 +272,20 @@ class ScreenshotTests(unittest.TestCase):
             (self.root / "errors" / archive_id / Path(screenshot).name).read_bytes(),
             b"after restart",
         )
+
+    def test_restart_skips_expired_error_archive(self):
+        now = time.time_ns()
+        expired_id = str(now - (RUNTIME_LOG_RETENTION_HOURS + 1) * 3600 * 10**9)
+        archive = self.root / "errors" / expired_id
+        archive.mkdir(parents=True)
+        (archive / "event.json").write_text(
+            json.dumps({"time_ns": int(expired_id), "message": "旧错误"}),
+            encoding="utf-8",
+        )
+        self.store._recover_error_windows()
+        self.assertEqual(self.store._error_windows, [])
+        self.assertEqual(list(self.store._archive_queue), [])
+        self.assertEqual(self.store._log_archive_queue, [])
 
     def test_limits_must_be_positive(self):
         for field in ("max_pending_count", "max_pending_bytes"):
@@ -407,6 +550,132 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual((self.root / filename).read_bytes(), b"ordinary")
         self.assertEqual((self.root / important).read_bytes(), b"order")
 
+    def test_disabled_history_archives_current_and_following_error_frames(self):
+        self.retention = 0
+        current = self.store.submit(b"current screen")
+        error_time = time.time_ns()
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        following = self.store.submit(b"next screen")
+        self.store.start()
+        self.wait_idle()
+        self.wait_archive_images(archive_id, current, following)
+
+        archive = self.root / "errors" / archive_id
+        self.assertEqual((archive / Path(current).name).read_bytes(), b"current screen")
+        self.assertEqual((archive / Path(following).name).read_bytes(), b"next screen")
+        self.assertFalse((self.root / current).exists())
+        self.assertFalse((self.root / following).exists())
+        self.assertEqual(self.store.last_saved(), "")
+
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            return_value=error_time + 5 * 60 * 10**9 + 1,
+        ):
+            late = self.store.submit(b"after window")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        self.assertFalse((archive / Path(late).name).exists())
+
+    def test_queued_frame_is_archived_when_history_is_disabled_at_error(self):
+        current = self.store.submit(b"current screen")
+        self.retention = 0
+        archive_id = self.store.mark_error(time.time_ns(), "画面异常")
+        self.assertEqual(self.store.stats()["pending_count"], 1)
+        self.store.start()
+        self.wait_idle()
+
+        self.assertFalse((self.root / current).exists())
+        self.assertEqual(
+            (self.root / "errors" / archive_id / Path(current).name).read_bytes(),
+            b"current screen",
+        )
+
+    def test_delayed_error_record_recovers_frames_captured_after_error(self):
+        self.retention = 0
+        error_time = time.time_ns()
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            side_effect=(
+                error_time - 2 * 10**9,
+                error_time + 10**9,
+                error_time + 2 * 10**9,
+            ),
+        ):
+            current = self.store.submit(b"error screen")
+            first = self.store.submit(b"first after error")
+            second = self.store.submit(b"second after error")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        self.assertEqual(self.store.stats()["pending_count"], 0)
+        self.assertEqual(len(self.store._archive_queue[0][5]), 3)
+        self.store.start()
+        self.wait_idle()
+        self.wait_archive_images(archive_id, current, first, second)
+
+        archive = self.root / "errors" / archive_id
+        self.assertEqual((archive / Path(current).name).read_bytes(), b"error screen")
+        self.assertEqual(
+            (archive / Path(first).name).read_bytes(), b"first after error"
+        )
+        self.assertEqual(
+            (archive / Path(second).name).read_bytes(), b"second after error"
+        )
+        self.assertFalse((self.root / current).exists())
+        self.assertFalse((self.root / first).exists())
+        self.assertFalse((self.root / second).exists())
+
+    def test_disabled_history_keeps_five_minutes_only_in_memory_until_error(self):
+        self.retention = 0
+        error_time = time.time_ns()
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            side_effect=(
+                error_time - 6 * 60 * 10**9,
+                error_time - 4 * 60 * 10**9,
+                error_time - 2 * 60 * 10**9,
+                error_time - 10**9,
+            ),
+        ):
+            too_old = self.store.submit(b"too old")
+            first = self.store.submit(b"four minutes ago")
+            second = self.store.submit(b"two minutes ago")
+            current = self.store.submit(b"current")
+        self.assertFalse(self.root.exists())
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        self.assertEqual(len(self.store._archive_queue[0][5]), 3)
+        self.store.start()
+        self.wait_archive_images(archive_id, first, second, current)
+        archive = self.root / "errors" / archive_id
+        self.assertFalse((archive / Path(too_old).name).exists())
+
+    def test_disabled_history_archives_all_sixteen_buffered_previous_frames(self):
+        self.retention = 0
+        error_time = time.time_ns()
+        with patch(
+            "arknights_mower.utils.screenshot.time.time_ns",
+            side_effect=[error_time - (17 - index) * 10**9 for index in range(17)],
+        ):
+            names = [
+                self.store.submit(f"frame {index}".encode()) for index in range(17)
+            ]
+        archive_id = self.store.mark_error(error_time, "画面异常")
+        self.assertEqual(len(self.store._archive_queue[0][5]), 16)
+        self.store.start()
+        self.wait_archive_images(archive_id, *names[-16:])
+        archive = self.root / "errors" / archive_id
+        self.assertFalse((archive / Path(names[0]).name).exists())
+
+    def test_disabled_history_bounds_five_minute_memory_cache(self):
+        self.limit_store(max_recent_count=3, max_recent_bytes=11)
+        self.retention = 0
+        first = self.store.submit(b"first")
+        second = self.store.submit(b"second")
+        third = self.store.submit(b"third")
+        self.assertEqual(
+            [frame.filename for frame in self.store._recent_frames], [second, third]
+        )
+        self.assertFalse(self.root.exists())
+        self.assertNotIn(first, [frame.filename for frame in self.store._recent_frames])
+
     def test_disabling_storage_skips_queued_frames_after_current_write(self):
         entered, release = Event(), Event()
         write = self.store._write
@@ -582,6 +851,52 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(fresh.exists())
         self.assertTrue(unknown.exists())
         self.assertEqual(len(list((self.root / "run_order").glob("*.jpg"))), 1)
+
+    def test_positive_retention_under_five_minutes_keeps_five_minutes(self):
+        now = time.time_ns()
+        with patch("arknights_mower.utils.screenshot.time.time_ns", return_value=now):
+            for retention in (0.01, 5 / 60):
+                with self.subTest(retention=retention):
+                    self.retention = retention
+                    within_five = self.seed("", now - 4 * 60 * 10**9)
+                    beyond_five = self.seed("", now - 6 * 60 * 10**9)
+                    self.store.cleanup()
+                    self.assertTrue(within_five.exists())
+                    self.assertFalse(beyond_five.exists())
+
+    def test_cleanup_expires_error_archives_with_runtime_logs(self):
+        now = time.time_ns()
+        hour_ns = 3600 * 10**9
+        cutoff = now - RUNTIME_LOG_RETENTION_HOURS * hour_ns
+        archive_root = self.root / "errors"
+        expired = archive_root / str(cutoff - 1)
+        recent = archive_root / str(cutoff)
+        extended = archive_root / str(cutoff - hour_ns)
+        unrelated = archive_root / "notes"
+        for archive in (expired, recent, extended):
+            archive.mkdir(parents=True)
+            last_error = now if archive == extended else int(archive.name)
+            (archive / "event.json").write_text(
+                json.dumps(
+                    {
+                        "time_ns": int(archive.name),
+                        "last_error_ns": last_error,
+                        "message": "测试错误",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (archive / "frame.jpg").write_bytes(b"frame")
+        unrelated.mkdir()
+        (unrelated / "keep.txt").write_text("keep", encoding="utf-8")
+        ordinary = self.seed("", now - 2 * hour_ns)
+        with patch("arknights_mower.utils.screenshot.time.time_ns", return_value=now):
+            self.store.cleanup()
+        self.assertFalse(expired.exists())
+        self.assertTrue(recent.exists())
+        self.assertTrue(extended.exists())
+        self.assertTrue(unrelated.exists())
+        self.assertFalse(ordinary.exists())
 
     def test_important_retention_keeps_latest_100_including_new_arrival(self):
         old = time.time_ns() - 2 * 3600 * 10**9

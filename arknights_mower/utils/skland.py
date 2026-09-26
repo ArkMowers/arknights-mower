@@ -11,6 +11,7 @@ from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.SecuritySm import get_d_id
+from arknights_mower.utils.skland_log import redact_signing_text
 
 app_code = "4ca99fa6b56cc2ba"
 
@@ -48,6 +49,7 @@ header = {
     "Accept-Encoding": "gzip",
     "Connection": "close",
 }
+
 header_login = {
     "User-Agent": SKLAND_UA,
     "Accept-Encoding": "gzip",
@@ -288,7 +290,14 @@ def get_binding_list(sign_token):
     body = resp.json()
 
     if body["code"] != 0:
-        logger.info(f"请求角色列表出现问题：{body['message']}")
+        code = body.get("code")
+        logger.info(
+            "请求角色列表失败（状态码：%s）：%s",
+            code if isinstance(code, int) else "未知",
+            redact_signing_text(
+                body.get("message", ""), sign_token, header.get("cred")
+            ),
+        )
         if body.get("message") == "用户未登录":
             logger.warning("用户登录可能失效了，请重新运行此程序！")
         return []

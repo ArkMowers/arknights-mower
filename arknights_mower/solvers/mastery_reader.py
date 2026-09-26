@@ -791,7 +791,10 @@ def _retry_ocr(solver, scan_plan=None) -> RoomState:
         logger.warning(
             f"[mastery] 训练室倒计时与面板状态不一致（第{i + 1}次），重读截图"
         )
-    logger.warning("[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理")
+    logger.warning(
+        "[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理",
+        extra={"archive_screenshots": True},
+    )
     return RoomState("training", first or RoomPanel(), read_failed=True)
 
 

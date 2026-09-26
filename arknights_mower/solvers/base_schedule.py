@@ -111,6 +111,7 @@ from arknights_mower.utils.scheduler_task import (
     try_workshop_tasks,
 )
 from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.skland_log import redact_signing_text
 from arknights_mower.utils.trading_order import TradingOrder
 from arknights_mower.utils.workshop_ui import (
     CONFIRM_OPERATOR,
@@ -531,7 +532,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if self.scene() != Scene.UNKNOWN:
                     break
             else:
-                logger.warning("连续返回 5 次后仍无法识别场景，退出游戏重进")
+                logger.warning(
+                    "连续返回 5 次后仍无法识别场景，退出游戏重进",
+                    extra={"archive_screenshots": True},
+                )
                 self.device.exit()
                 self.check_current_focus()
         if self.error or force:
@@ -666,8 +670,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 except Exception as e:
                     last_agent = None
                     save_exception(e)
-                    logger.error(f"工厂任务失败: {e}")
-                    logger.exception(e)
+                    logger.exception("工厂任务失败: %s", e)
                     break
                 # 首个任务仍由 infra_main 收尾，后续任务按对象身份移除。
                 if self.task is not first_task:
@@ -692,8 +695,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 raise
             except Exception as e:
                 save_exception(e)
-                logger.error(f"加工后恢复干员失败: {e}")
-                logger.exception(e)
+                logger.exception("加工后恢复干员失败: %s", e)
 
     def _next_workshop_task(self, first_task):
         # 每次交接重新检查队列，兼容新增/删除任务和专精换人保护。
@@ -7646,7 +7648,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if not self.waiting_solver():
                             return
                 else:
-                    logger.info("检测到漏单")
+                    logger.error("检测到漏单", extra={"archive_screenshots": True})
                     save_exception(Exception("检测到漏单"))
                     send_message("检测到漏单！", level="WARNING")
                 self.accept_order()
@@ -7802,7 +7804,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("MAA Python模块导入成功")
         except Exception as e:
             save_exception(e)
-            logger.exception(f"MAA Python模块导入失败：{str(e)}")
+            logger.exception(
+                f"MAA Python模块导入失败：{str(e)}",
+                extra={"archive_screenshots": False},
+            )
             raise Exception("MAA Python模块导入失败")
 
         try:
@@ -7822,7 +7827,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 f.write(res)
             logger.info("MAA活动关卡导航更新成功")
         except Exception as e:
-            logger.error(f"MAA活动关卡导航更新失败：{str(e)}")
+            logger.error(
+                f"MAA活动关卡导航更新失败：{str(e)}",
+                extra={"archive_screenshots": False},
+            )
             save_exception(e)
 
         @update_transaction
@@ -7937,7 +7945,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             return get_weekly_plan_manager().maybe_switch_expired_activity_plan()
         except Exception:
-            logger.exception("检测活动结束并切换刷理智周计划失败，继续使用当前方案")
+            logger.exception(
+                "检测活动结束并切换刷理智周计划失败，继续使用当前方案",
+                extra={"archive_screenshots": False},
+            )
             return None
 
     def maa_stop(self, stop=True):
@@ -8410,14 +8421,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self._idle_sleep(remaining_time)
 
     def skland_plan_solver(self):
+        solver = None
         try:
-            return SKLand().start()
+            solver = SKLand()
+            return solver.start()
         except MowerExit:
             raise
         except Exception as e:
-            save_exception(e)
-            logger.exception(f"森空岛签到失败:{e}")
-            send_message(f"森空岛签到失败: {e}", level="ERROR")
+            secrets = getattr(solver, "_log_secrets", ()) if solver else ()
+            message = (
+                f"森空岛签到失败（{type(e).__name__}）："
+                f"{redact_signing_text(e, *secrets)}"
+            )
+            save_log(message, level="ERROR")
+            logger.error(message, extra={"archive_screenshots": False})
+            send_message(message, level="ERROR")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 
@@ -9004,7 +9022,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             update_workshop_config()
         except Exception as e:
-            logger.exception(f"自动安排专精/合成配置失败: {e}")
+            logger.exception(
+                f"自动安排专精/合成配置失败: {e}",
+                extra={"archive_screenshots": False},
+            )
 
     def _dispatch_scan_start_tasks(self, scheduled):
         """#74 第3段：扫描确认材料后，为材料足够的 idle 计划入队「开始训练」任务。

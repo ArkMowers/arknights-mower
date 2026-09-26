@@ -37,6 +37,31 @@ with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass
 
 
+class TestSklandLogPrivacy(unittest.TestCase):
+    def test_scheduled_sign_failure_does_not_log_raw_exception(self):
+        solver = object.__new__(BaseSchedulerSolver)
+        secret = "账号 13800138000，令牌 secret-token"
+        with (
+            patch.object(base_schedule, "SKLand") as skland_solver,
+            patch.object(base_schedule, "save_log") as save_log,
+            patch.object(base_schedule, "save_exception") as save_exception,
+            patch.object(base_schedule, "send_message") as send_message,
+            patch.object(base_schedule.logger, "error") as error,
+        ):
+            skland_solver.return_value.start.side_effect = RuntimeError(secret)
+            skland_solver.return_value._log_secrets = {"secret-token"}
+            solver.skland_plan_solver()
+        save_exception.assert_not_called()
+        for output in (save_log, send_message, error):
+            logged = str(output.call_args_list)
+            self.assertNotIn("13800138000", logged)
+            self.assertNotIn("secret-token", logged)
+            self.assertIn("138****8000", logged)
+            self.assertIn("se********en", logged)
+            self.assertIn("RuntimeError", logged)
+            self.assertIn("账号", logged)
+
+
 class TestIdleSimulatorWake(unittest.TestCase):
     def setUp(self):
         self.solver = object.__new__(BaseSchedulerSolver)
@@ -226,6 +251,17 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
         self.restart = self.enterContext(
             patch.object(main, "restart_simulator", return_value=True)
         )
+
+    def test_adb_connection_failures_do_not_need_screenshot_archives(self):
+        for error in (
+            ConnectionError("connection refused"),
+            RuntimeError("Can't start adb server"),
+            RuntimeError("Device connection failure"),
+        ):
+            with self.subTest(error=error):
+                self.assertTrue(self.main._is_adb_connection_failure(error))
+        self.assertFalse(self.main._is_adb_connection_failure(AttributeError("scene")))
+        self.assertFalse(self.main._is_adb_connection_failure(RuntimeError("ocr")))
 
     def test_outer_recovery_is_not_gated_by_idle_option(self):
         for close_when_idle in (False, True):
@@ -3329,6 +3365,39 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
             ["arranged_and_verified", "countdown", "accept_order", "restore"],
         )
         solver.get_order_remaining_time.assert_called_once_with()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_missed_order_emits_archivable_error(self):
+        room = "room_1_1"
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_plan={room: ["Lancet-2"]},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data=room,
+        )
+        solver = BaseSchedulerSolver()
+        solver.task = task
+        solver.tasks = [task]
+        solver.op_data = MagicMock()
+        solver.op_data.run_order_rooms = {room: ["Lancet-2"]}
+        solver.drone_room = "room_1_2"
+        solver.waiting_scene = []
+        solver.backup_plan_solver = MagicMock(return_value=False)
+        solver.agent_arrange_room = MagicMock(return_value={room: ["Lancet-2"]})
+        solver.get_order_remaining_time = MagicMock(return_value=120)
+        solver.accept_order = MagicMock()
+        solver.find = MagicMock(return_value=None)
+
+        with (
+            patch.object(base_schedule.logger, "error") as error,
+            patch.object(base_schedule, "save_exception") as save_exception,
+            patch.object(base_schedule, "send_message") as send_message,
+        ):
+            solver.agent_arrange(task.plan)
+
+        error.assert_called_once_with("检测到漏单", extra={"archive_screenshots": True})
+        save_exception.assert_called_once()
+        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
 
 
 class TestClueProductCompleteWait(unittest.TestCase):

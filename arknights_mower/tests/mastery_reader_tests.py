@@ -943,7 +943,8 @@ class TestReadRoomState(unittest.TestCase):
             ]
             + [
                 call(
-                    "[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理"
+                    "[mastery] 训练室倒计时与面板状态连续 5 次不一致，保守按训练中处理",
+                    extra={"archive_screenshots": True},
                 )
             ],
         )

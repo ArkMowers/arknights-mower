@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import requests
@@ -13,7 +14,11 @@ import requests
 # （导入已惰性化、不再联网），测试结束恢复桩，避免影响后续依赖该桩的测试。
 _saved_skland = sys.modules.get("arknights_mower.utils.skland")
 sys.modules.pop("arknights_mower.utils.skland", None)
-from arknights_mower.utils import skland  # noqa: E402
+from arknights_mower.solvers import skland as sign_module  # noqa: E402
+from arknights_mower.utils import (  # noqa: E402
+    skland,
+    skland_log,
+)
 
 
 def tearDownModule():
@@ -109,6 +114,23 @@ class TestGetBindingList(unittest.TestCase):
         fake = self._resp({"code": 1000, "message": "请勿修改设备本地时间"})
         with patch("requests.get", return_value=fake):
             self.assertEqual(skland.get_binding_list("tok"), [])
+
+    def test_error_message_is_logged_with_credentials_redacted(self):
+        fake = self._resp(
+            {"code": 1000, "message": "服务暂时不可用，账号 13800138000 secret-token"}
+        )
+        with (
+            patch("requests.get", return_value=fake),
+            patch.object(skland.logger, "info") as info,
+        ):
+            self.assertEqual(skland.get_binding_list("secret-token"), [])
+        logged = str(info.call_args_list)
+        self.assertIn("1000", logged)
+        self.assertIn("服务暂时不可用", logged)
+        self.assertIn("138****8000", logged)
+        self.assertIn("se********en", logged)
+        self.assertNotIn("13800138000", logged)
+        self.assertNotIn("secret-token", logged)
 
     def test_not_logged_in_returns_empty(self):
         fake = self._resp({"code": 1000, "message": "用户未登录"})
@@ -369,6 +391,109 @@ class TestSignHeaderFields(unittest.TestCase):
         ):
             s2, _ = skland.generate_signature("tok", "/api/path", "a=1")
         self.assertEqual(s1, s2)
+
+
+class TestSignLogPrivacy(unittest.TestCase):
+    def test_signing_logs_keep_server_message_and_redact_identity(self):
+        account = SimpleNamespace(
+            account="13800138000",
+            arknights_isCheck=True,
+            endfield_isCheck=False,
+            sign_in_bilibili=False,
+            sign_in_official=True,
+        )
+        role = {
+            "gameId": 1,
+            "uid": "role-1",
+            "channelName": "官服",
+            "nickName": "私密昵称",
+        }
+        responses = (
+            {
+                "code": 1000,
+                "message": "今日已签到：私密昵称 13800138000 secret-token",
+            },
+            {"code": 0, "data": {"awards": [{"resource": {"name": "龙门币"}}]}},
+        )
+        for response in responses:
+            with self.subTest(response_code=response["code"]):
+                solver = sign_module.SKLand()
+                with (
+                    patch.object(
+                        sign_module.config,
+                        "conf",
+                        SimpleNamespace(skland_info=[account]),
+                    ),
+                    patch.object(sign_module, "log", return_value="secret-token"),
+                    patch.object(
+                        sign_module,
+                        "get_cred_by_token",
+                        return_value={"cred": "secret-cred", "token": "sign-token"},
+                    ),
+                    patch.object(sign_module, "get_binding_list", return_value=[role]),
+                    patch.object(solver, "has_record", return_value=False),
+                    patch.object(solver, "record_log", return_value=True),
+                    patch.object(sign_module.logger, "info") as info,
+                    patch.object(sign_module.requests, "post") as post,
+                ):
+                    post.return_value.json.return_value = response
+                    self.assertTrue(solver.start())
+                logged = str(info.call_args_list)
+                for secret in (
+                    "私密昵称",
+                    "13800138000",
+                    "secret-token",
+                    "secret-cred",
+                ):
+                    self.assertNotIn(secret, logged)
+                if response["code"]:
+                    self.assertIn("1000", logged)
+                    self.assertIn("今日已签到", logged)
+
+    def test_record_log_omits_reward_account_data(self):
+        solver = sign_module.SKLand()
+        solver.reward = [
+            {"nickName": "13800138000", "game": "明日方舟官服", "reward": "私密奖励"}
+        ]
+        with (
+            patch.object(sign_module, "get_path", return_value="skland.csv"),
+            patch("arknights_mower.utils.csv_utils.append_dated_row"),
+            patch.object(sign_module.logger, "info") as info,
+        ):
+            self.assertTrue(solver.record_log())
+        logged = str(info.call_args_list)
+        self.assertNotIn("13800138000", logged)
+        self.assertIn("138****8000", logged)
+        self.assertIn("私密奖励", logged)
+        self.assertIn("森空岛签到数据%s", logged)
+
+    def test_redaction_preserves_text_and_hides_known_secrets(self):
+        conf = SimpleNamespace(
+            skland_info=[
+                SimpleNamespace(account="user@example.com", password="secret-password")
+            ]
+        )
+        with patch.object(skland_log.config, "conf", conf):
+            result = skland_log.redact_signing_text(
+                "签到失败 user@example.com 13800138000 secret-password 角色昵称 token-123",
+                "角色昵称",
+                "token-123",
+            )
+        self.assertIn("签到失败", result)
+        self.assertIn("u**r@example.com", result)
+        self.assertIn("138****8000", result)
+        self.assertIn("se***********rd", result)
+        self.assertIn("角**称", result)
+        self.assertIn("to*****23", result)
+        self.assertNotIn("已隐藏", result)
+        for secret in (
+            "user@example.com",
+            "13800138000",
+            "secret-password",
+            "角色昵称",
+            "token-123",
+        ):
+            self.assertNotIn(secret, result)
 
 
 if __name__ == "__main__":

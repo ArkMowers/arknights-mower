@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -151,3 +152,23 @@ def test_trading_order_save_buff_and_price(monkeypatch):
     order.save(img)
     assert order.buff == "佩佩"
     assert order.price == 1000
+
+
+def test_previous_order_miss_keeps_db_record_and_warning_without_archive():
+    order = TradingOrder()
+    order.get_buff_scores = MagicMock(return_value={"佩佩": 1.0, "但书": 0.0})
+    order.templates = {1000: np.zeros((5, 5), dtype=np.uint8)}
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+
+    with (
+        patch("arknights_mower.solvers.record._conn"),
+        patch("arknights_mower.utils.trading_order.save_log") as save_log,
+        patch("arknights_mower.utils.trading_order.send_message") as send_message,
+        patch.object(base.logger, "error") as error,
+    ):
+        order.save(img)
+        order.save(img, time=datetime.now())
+
+    error.assert_not_called()
+    save_log.assert_called_once_with("检测到上一个订单漏单！", level="ERROR")
+    send_message.assert_called_once_with("检测到上一个订单漏单！", level="WARNING")
