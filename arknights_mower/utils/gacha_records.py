@@ -2,6 +2,7 @@
 
 Keep one archive per Mower data directory.  Account credentials never enter this DB.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -54,7 +55,9 @@ def normalize_record(raw: dict, category: str) -> dict:
     if not (0 <= rarity <= 5 and 0 <= pos <= 1000 and ts > 0):
         raise ValueError("记录时间、顺序或稀有度超出范围")
     # Includes position: two identical characters in one ten-pull are two records.
-    source_id = json.dumps([pool_id, char_id, ts, pos], separators=(",", ":"), ensure_ascii=False)
+    source_id = json.dumps(
+        [pool_id, char_id, ts, pos], separators=(",", ":"), ensure_ascii=False
+    )
     return {
         "id": hashlib.sha256(source_id.encode("utf-8")).hexdigest(),
         "category": str(category),
@@ -135,9 +138,13 @@ class GachaArchive:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def append(self, account_id: str, rows: list[dict], *, finished: bool = False) -> int:
+    def append(
+        self, account_id: str, rows: list[dict], *, finished: bool = False
+    ) -> int:
         with self.lock, self._connect() as db:
-            existing = db.execute("SELECT 1 FROM accounts WHERE id=?", (account_id,)).fetchone()
+            existing = db.execute(
+                "SELECT 1 FROM accounts WHERE id=?", (account_id,)
+            ).fetchone()
             if not existing:
                 raise ValueError("账号尚未保存")
             before = db.total_changes
@@ -146,16 +153,28 @@ class GachaArchive:
                    (account_id,id,category,pool_id,pool_name,char_id,char_name,
                     rarity,is_new,gacha_ts,position) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                 [
-                    (account_id, row["id"], row["category"], row["pool_id"],
-                     row["pool_name"], row["char_id"], row["char_name"],
-                     row["rarity"], int(row["is_new"]), row["gacha_ts"],
-                     row["position"])
+                    (
+                        account_id,
+                        row["id"],
+                        row["category"],
+                        row["pool_id"],
+                        row["pool_name"],
+                        row["char_id"],
+                        row["char_name"],
+                        row["rarity"],
+                        int(row["is_new"]),
+                        row["gacha_ts"],
+                        row["position"],
+                    )
                     for row in rows
                 ],
             )
             added = db.total_changes - before
             if finished:
-                db.execute("UPDATE accounts SET last_sync=? WHERE id=?", (int(time.time()), account_id))
+                db.execute(
+                    "UPDATE accounts SET last_sync=? WHERE id=?",
+                    (int(time.time()), account_id),
+                )
         return added
 
     def list_records(
@@ -174,7 +193,9 @@ class GachaArchive:
     ) -> list[dict]:
         if not 1 <= limit <= 300 or offset < 0:
             raise ValueError("分页范围无效")
-        if (rarity is not None and rarity not in (3, 4, 5, 6)) or (rarity_min is not None and rarity_min not in (3, 4, 5, 6)):
+        if (rarity is not None and rarity not in (3, 4, 5, 6)) or (
+            rarity_min is not None and rarity_min not in (3, 4, 5, 6)
+        ):
             raise ValueError("星级筛选无效")
         if len(search) > 64:
             raise ValueError("搜索文字过长")
@@ -195,7 +216,12 @@ class GachaArchive:
         if new_only:
             where.append("is_new=1")
         if search.strip():
-            escaped = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            escaped = (
+                search.strip()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
             where.append("char_name LIKE ? ESCAPE '\\'")
             params.append(f"%{escaped}%")
         if start_ms is not None:
@@ -235,16 +261,16 @@ class GachaArchive:
         if account is None:
             raise ValueError("找不到已保存的角色")
         by_category: dict[str, dict] = {}
-        pools: dict[tuple[str,str], dict] = {}
-        stars = {"3":0,"4":0,"5":0,"6":0}
+        pools: dict[tuple[str, str], dict] = {}
+        stars = {"3": 0, "4": 0, "5": 0, "6": 0}
         distinct = set()
         for row in rows:
             category = row["category"]
             star = row["rarity"]
-            stars[str(star)] = stars.get(str(star),0) + 1
+            stars[str(star)] = stars.get(str(star), 0) + 1
             distinct.add(row["char_id"])
             part = by_category.setdefault(
-                category, {"count":0,"six_star":0,"five_star":0,"since_six":0}
+                category, {"count": 0, "six_star": 0, "five_star": 0, "since_six": 0}
             )
             part["count"] += 1
             part["since_six"] += 1
@@ -252,45 +278,68 @@ class GachaArchive:
             part["five_star"] += star == 5
             if star == 6:
                 part["since_six"] = 0
-            key = (category,row["pool_id"])
-            pool = pools.setdefault(key, {
-                "category":category,"pool_id":row["pool_id"],
-                "pool_name":row["pool_name"],"count":0,
-                "six_star":0,"five_star":0,"six_operators":[],
-                "latest_ms":0,"first_ms":row["gacha_ts"],
-            })
+            key = (category, row["pool_id"])
+            pool = pools.setdefault(
+                key,
+                {
+                    "category": category,
+                    "pool_id": row["pool_id"],
+                    "pool_name": row["pool_name"],
+                    "count": 0,
+                    "six_star": 0,
+                    "five_star": 0,
+                    "six_operators": [],
+                    "latest_ms": 0,
+                    "first_ms": row["gacha_ts"],
+                },
+            )
             pool["count"] += 1
-            pool["latest_ms"] = max(pool["latest_ms"],row["gacha_ts"])
+            pool["latest_ms"] = max(pool["latest_ms"], row["gacha_ts"])
             pool["six_star"] += star == 6
             pool["five_star"] += star == 5
             if star == 6:
                 previous = pool["six_operators"][-1] if pool["six_operators"] else None
                 index = pool["count"]
-                pool["six_operators"].append({
-                    "char_name":row["char_name"],"char_id":row["char_id"],
-                    "gacha_ts":row["gacha_ts"],"is_new":bool(row["is_new"]),
-                    "pool_index":index,
-                    "interval_count":index-previous["pool_index"] if previous else index,
-                    "interval_complete":previous is not None,
-                })
-        ordered_pools = sorted(pools.values(),key=lambda p:(-p["latest_ms"],p["pool_name"]))
+                pool["six_operators"].append(
+                    {
+                        "char_name": row["char_name"],
+                        "char_id": row["char_id"],
+                        "gacha_ts": row["gacha_ts"],
+                        "is_new": bool(row["is_new"]),
+                        "pool_index": index,
+                        "interval_count": index - previous["pool_index"]
+                        if previous
+                        else index,
+                        "interval_complete": previous is not None,
+                    }
+                )
+        ordered_pools = sorted(
+            pools.values(), key=lambda p: (-p["latest_ms"], p["pool_name"])
+        )
         for pool in ordered_pools:
-            for index,op in enumerate(pool["six_operators"]):
+            for index, op in enumerate(pool["six_operators"]):
                 op["until_next_six"] = (
-                    pool["six_operators"][index+1]["pool_index"]-op["pool_index"]
-                    if index+1<len(pool["six_operators"]) else None
+                    pool["six_operators"][index + 1]["pool_index"] - op["pool_index"]
+                    if index + 1 < len(pool["six_operators"])
+                    else None
                 )
                 op["after_count"] = (
-                    pool["count"]-op["pool_index"] if index==len(pool["six_operators"])-1 else None
+                    pool["count"] - op["pool_index"]
+                    if index == len(pool["six_operators"]) - 1
+                    else None
                 )
         return {
-            "account":dict(account),
-            "total":len(rows),"six_star":stars["6"],"five_star":stars["5"],
-            "distinct_operators":len(distinct),"stars":stars,
-            "categories":by_category,"pools":ordered_pools,
-            "oldest_ms":rows[0]["gacha_ts"] if rows else None,
-            "newest_ms":rows[-1]["gacha_ts"] if rows else None,
-            "history_incomplete":True,
+            "account": dict(account),
+            "total": len(rows),
+            "six_star": stars["6"],
+            "five_star": stars["5"],
+            "distinct_operators": len(distinct),
+            "stars": stars,
+            "categories": by_category,
+            "pools": ordered_pools,
+            "oldest_ms": rows[0]["gacha_ts"] if rows else None,
+            "newest_ms": rows[-1]["gacha_ts"] if rows else None,
+            "history_incomplete": True,
         }
 
     def export(self, account_id: str) -> dict:
@@ -308,6 +357,7 @@ class GachaArchive:
             "format": "mower-gacha-v1",
             "account": dict(account),
             "records": [
-                {k: v for k, v in dict(row).items() if k != "account_id"} for row in rows
+                {k: v for k, v in dict(row).items() if k != "account_id"}
+                for row in rows
             ],
         }

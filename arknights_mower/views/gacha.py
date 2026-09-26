@@ -1,4 +1,5 @@
 """Local-only read-only headhunting API. No game account password or gacha writes."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -40,7 +41,10 @@ def local_and_authorized():
             abort(403)
     except ValueError:
         abort(403)
-    if hasattr(current_app, "token") and request.headers.get("token", "") != current_app.token:
+    if (
+        hasattr(current_app, "token")
+        and request.headers.get("token", "") != current_app.token
+    ):
         abort(403)
     if request.method != "GET":
         if request.headers.get("X-Mower-Gacha") != "1":
@@ -72,7 +76,11 @@ def body() -> dict:
 
 @gacha_bp.get("/accounts")
 def accounts():
-    return {"ok": True, "accounts": archive().accounts(), "sessions": sessions.list_public()}
+    return {
+        "ok": True,
+        "accounts": archive().accounts(),
+        "sessions": sessions.list_public(),
+    }
 
 
 @gacha_bp.post("/send-code")
@@ -83,17 +91,22 @@ def send_code():
     data = body()
     phone = str(data.get("phone") or "").strip()
     from arknights_mower.utils.gacha_provider import PHONE
+
     if not PHONE.fullmatch(phone):
         raise ValueError("手机号格式不正确")
     # Restrict repeated requests in the backend, not only in the browser.
     with sms_lock:
         remaining = math.ceil(sms_cooldowns.get(phone, 0) - time.monotonic())
         if remaining > 0:
-            return {
-                "ok": False,
-                "message": f"请在 {remaining} 秒后重新发送验证码",
-                "retry_after_seconds": remaining,
-            }, 429, {"Retry-After": str(remaining)}
+            return (
+                {
+                    "ok": False,
+                    "message": f"请在 {remaining} 秒后重新发送验证码",
+                    "retry_after_seconds": remaining,
+                },
+                429,
+                {"Retry-After": str(remaining)},
+            )
         sms_cooldowns[phone] = time.monotonic() + 90
     provider = GachaProvider()
     try:
@@ -148,7 +161,9 @@ def select_role():
     data = body()
     key = str(data.get("session_id") or "")
     provider = sessions.get(key)
-    role = provider.select_role(str(data.get("uid") or ""), str(data.get("channel") or ""))
+    role = provider.select_role(
+        str(data.get("uid") or ""), str(data.get("channel") or "")
+    )
     account_id = archive().ensure_account(role.uid, role.channel, role.nickname)
     return {"ok": True, "account_id": account_id, "role": role.public()}
 
@@ -169,6 +184,7 @@ def operator_catalog():
     """Public game metadata only. No account credentials or network calls."""
     import json
     from pathlib import Path
+
     directory = Path(__file__).resolve().parents[1] / "data"
     skill_data = json.loads((directory / "skill_data.json").read_text(encoding="utf-8"))
     base = {}
@@ -188,7 +204,8 @@ def operator_catalog():
 def roster():
     # Only the existing local Skland cache: do not call login, refresh or scheduler.
     from arknights_mower.utils.gacha_roster import roster_preview
-    return {"ok":True,**roster_preview()}
+
+    return {"ok": True, **roster_preview()}
 
 
 @gacha_bp.post("/refresh-roster")
@@ -248,7 +265,7 @@ def records():
             pool_id=str(request.args.get("pool_id") or ""),
             rarity=rarity,
             rarity_min=rarity_min,
-            new_only=request.args.get("new_only")=="1",
+            new_only=request.args.get("new_only") == "1",
             search=str(request.args.get("search") or ""),
             start_ms=start_ms,
             end_ms=end_ms,
@@ -264,7 +281,9 @@ def export():
     data = archive().export(account_id)
     response = jsonify(data)
     # Safe known UID only; avoid arbitrary user-controlled attachment names.
-    response.headers["Content-Disposition"] = "attachment; filename=mower-gacha-backup.json"
+    response.headers["Content-Disposition"] = (
+        "attachment; filename=mower-gacha-backup.json"
+    )
     return response
 
 

@@ -3,6 +3,7 @@
 These are first-party web endpoints, not a published third-party API contract.
 All login credentials remain in this process; only draw history is persisted.
 """
+
 from __future__ import annotations
 
 import re
@@ -34,14 +35,20 @@ def _redacted_message(data: dict, fallback: str = "官方接口暂不可用") ->
     msg = data.get("message") or data.get("msg")
     msg = str(msg or fallback)
     # Untrusted server errors can occasionally contain keys/URLs: do not echo them.
-    return msg[:96] if "token" not in msg.lower() and "cookie" not in msg.lower() else fallback
+    return (
+        msg[:96]
+        if "token" not in msg.lower() and "cookie" not in msg.lower()
+        else fallback
+    )
 
 
 def _data(response: requests.Response, label: str, allow_empty: bool = False):
     try:
         data = response.json()
     except ValueError as error:
-        raise GachaRemoteError(f"{label}未返回有效数据；可能是官网接口调整或网络拦截") from error
+        raise GachaRemoteError(
+            f"{label}未返回有效数据；可能是官网接口调整或网络拦截"
+        ) from error
     if not isinstance(data, dict):
         raise GachaRemoteError(f"{label}的数据结构异常")
     reason = str(data.get("reason") or "")
@@ -89,14 +96,20 @@ class GachaProvider:
             response = self.http.post(url, json=body, timeout=DEFAULT_TIMEOUT)
             return _data(response, label, allow_empty=allow_empty), response
         except requests.RequestException as error:
-            raise GachaRemoteError(f"{label}网络请求失败，请检查官网连接或 Mower 网络代理") from error
+            raise GachaRemoteError(
+                f"{label}网络请求失败，请检查官网连接或 Mower 网络代理"
+            ) from error
 
     def _get(self, url: str, params: dict, label: str, headers: dict | None = None):
         try:
-            response = self.http.get(url, params=params, headers=headers, timeout=DEFAULT_TIMEOUT)
+            response = self.http.get(
+                url, params=params, headers=headers, timeout=DEFAULT_TIMEOUT
+            )
             return _data(response, label)
         except requests.RequestException as error:
-            raise GachaRemoteError(f"{label}网络请求失败，请检查官网连接或 Mower 网络代理") from error
+            raise GachaRemoteError(
+                f"{label}网络请求失败，请检查官网连接或 Mower 网络代理"
+            ) from error
 
     def send_code(self, phone: str):
         if not PHONE.fullmatch(phone or ""):
@@ -121,7 +134,11 @@ class GachaProvider:
 
     def login_password(self, phone: str, password: str) -> list[Role]:
         """Optional existing Hypergryph phone/password login. No password persistence."""
-        if not PHONE.fullmatch(phone or "") or not isinstance(password, str) or not 1 <= len(password) <= 128:
+        if (
+            not PHONE.fullmatch(phone or "")
+            or not isinstance(password, str)
+            or not 1 <= len(password) <= 128
+        ):
             raise ValueError("请输入正确的手机号和密码")
         token_data, _ = self._post(
             f"{AUTH}/user/auth/v1/token_by_phone_password",
@@ -165,9 +182,12 @@ class GachaProvider:
                 roles.append(
                     Role(
                         uid=uid,
-                        nickname=str(entry.get("nickname") or entry.get("nickName") or uid),
+                        nickname=str(
+                            entry.get("nickname") or entry.get("nickName") or uid
+                        ),
                         channel=channel,
-                        channel_label=label or {"official": "官服", "bilibili": "B服"}.get(channel, "其他"),
+                        channel_label=label
+                        or {"official": "官服", "bilibili": "B服"}.get(channel, "其他"),
                     )
                 )
         if not roles:
@@ -178,7 +198,9 @@ class GachaProvider:
         return roles
 
     def select_role(self, uid: str, channel: str) -> Role:
-        role = next((r for r in self.roles if r.uid == uid and r.channel == channel), None)
+        role = next(
+            (r for r in self.roles if r.uid == uid and r.channel == channel), None
+        )
         if role is None or not self.oauth_token:
             raise ValueError("请先登录，并从已验证的绑定角色中选择")
         token_data, _ = self._post(
@@ -224,8 +246,14 @@ class GachaProvider:
             raise GachaRemoteError("请选择角色")
         account_id = archive.ensure_account(role.uid, role.channel, role.nickname)
         raw_categories = self._gacha_get("cate", {"uid": role.uid})
-        categories = raw_categories if isinstance(raw_categories, list) else (
-            raw_categories.get("list", []) if isinstance(raw_categories, dict) else []
+        categories = (
+            raw_categories
+            if isinstance(raw_categories, list)
+            else (
+                raw_categories.get("list", [])
+                if isinstance(raw_categories, dict)
+                else []
+            )
         )
         if not categories:
             raise GachaRemoteError("官网没有返回可查询的寻访卡池分类")
@@ -242,12 +270,16 @@ class GachaProvider:
             try:
                 for _page in range(max_pages):
                     params: dict[str, Any] = {
-                        "uid": role.uid, "category": category_id, "size": page_size
+                        "uid": role.uid,
+                        "category": category_id,
+                        "size": page_size,
                     }
                     if cursor is not None:
                         params.update({"pos": cursor[0], "gachaTs": cursor[1]})
                     data = self._gacha_get("history", params)
-                    if not isinstance(data, dict) or not isinstance(data.get("list"), list):
+                    if not isinstance(data, dict) or not isinstance(
+                        data.get("list"), list
+                    ):
                         raise GachaRemoteError(f"卡池 {category_id} 的分页格式已变化")
                     page = data["list"]
                     if not page:
@@ -265,12 +297,18 @@ class GachaProvider:
                     next_cursor = (str(last.get("pos")), str(last.get("gachaTs")))
                     if not data.get("hasMore"):
                         break
-                    if next_cursor in seen or cursor == next_cursor or next_cursor[1] == "None":
+                    if (
+                        next_cursor in seen
+                        or cursor == next_cursor
+                        or next_cursor[1] == "None"
+                    ):
                         raise GachaRemoteError(f"卡池 {category_id} 分页游标没有推进")
                     seen.add(next_cursor)
                     cursor = next_cursor
                 else:
-                    warnings.append(f"{category_id} 超过本次最大分页数，已保存已获取部分")
+                    warnings.append(
+                        f"{category_id} 超过本次最大分页数，已保存已获取部分"
+                    )
             except GachaRemoteError as error:
                 warnings.append(f"{category_id}：{error}")
         if not warnings:
@@ -296,6 +334,7 @@ class GachaProvider:
 
 class GachaSessions:
     """Ephemeral per-login state; no credentials on disk or in frontend JSON."""
+
     def __init__(self):
         self._lock = threading.RLock()
         self._sessions: dict[str, tuple[float, GachaProvider]] = {}
@@ -326,11 +365,15 @@ class GachaSessions:
                     self._sessions.pop(key, None)
                     provider.close()
                     continue
-                output.append({
-                    "session_id": key,
-                    "roles": [role.public() for role in provider.roles],
-                    "selected": provider.current_role.public() if provider.current_role else None,
-                })
+                output.append(
+                    {
+                        "session_id": key,
+                        "roles": [role.public() for role in provider.roles],
+                        "selected": provider.current_role.public()
+                        if provider.current_role
+                        else None,
+                    }
+                )
         return output
 
     def remove(self, key: str):

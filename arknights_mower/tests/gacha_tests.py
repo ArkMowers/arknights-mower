@@ -1,4 +1,5 @@
 """No-network regression tests for Mower's independent headhunting module."""
+
 import json
 import tempfile
 import unittest
@@ -92,7 +93,9 @@ class GachaArchiveTests(unittest.TestCase):
 
     def test_invalid_or_incomplete_data_is_not_silently_accepted(self):
         with self.assertRaises(ValueError):
-            normalize_record({k: v for k, v in fake_record().items() if k != "pos"}, "normal")
+            normalize_record(
+                {k: v for k, v in fake_record().items() if k != "pos"}, "normal"
+            )
 
 
 class ProviderTests(unittest.TestCase):
@@ -108,21 +111,47 @@ class ProviderTests(unittest.TestCase):
                 Response({"status": 0, "data": {"token": "account-token"}}),
                 Response({"status": 0, "data": {"token": "oauth-token"}}),
                 Response({"code": 0, "data": {"token": "u8-token"}}),
-                Response({"code": 0}, cookie="private-cookie"),  # role login has no data
+                Response(
+                    {"code": 0}, cookie="private-cookie"
+                ),  # role login has no data
             ],
             [
-                Response({
-                    "code": 0,
-                    "data": {"list": [{
-                        "appCode": "arknights",
-                        "bindingList": [
-                            {"uid": "1001", "nickName": "官服博士", "channelName": "官服", "isOfficial": True},
-                            {"uid": "1002", "nickName": "B服博士", "channelName": "bilibili服", "isOfficial": False},
-                        ],
-                    }]},
-                }),
+                Response(
+                    {
+                        "code": 0,
+                        "data": {
+                            "list": [
+                                {
+                                    "appCode": "arknights",
+                                    "bindingList": [
+                                        {
+                                            "uid": "1001",
+                                            "nickName": "官服博士",
+                                            "channelName": "官服",
+                                            "isOfficial": True,
+                                        },
+                                        {
+                                            "uid": "1002",
+                                            "nickName": "B服博士",
+                                            "channelName": "bilibili服",
+                                            "isOfficial": False,
+                                        },
+                                    ],
+                                }
+                            ]
+                        },
+                    }
+                ),
                 Response({"code": 0, "data": [{"id": "normal"}]}),
-                Response({"code": 0, "data": {"list": [fake_record(0), fake_record(1)], "hasMore": False}}),
+                Response(
+                    {
+                        "code": 0,
+                        "data": {
+                            "list": [fake_record(0), fake_record(1)],
+                            "hasMore": False,
+                        },
+                    }
+                ),
             ],
         )
         provider = GachaProvider(client)
@@ -183,10 +212,13 @@ class RouteTests(unittest.TestCase):
     def test_loopback_token_and_csrf_required(self):
         self.assertEqual(self.client.get("/gacha/accounts").status_code, 403)
         headers = {"token": "test-local-token"}
-        self.assertEqual(self.client.get("/gacha/accounts", headers=headers).status_code, 200)
+        self.assertEqual(
+            self.client.get("/gacha/accounts", headers=headers).status_code, 200
+        )
         self.assertEqual(
             self.client.get(
-                "/gacha/accounts", headers=headers,
+                "/gacha/accounts",
+                headers=headers,
                 environ_overrides={"REMOTE_ADDR": "192.0.2.4"},
             ).status_code,
             403,
@@ -203,13 +235,19 @@ class RouteTests(unittest.TestCase):
 
     def test_separate_account_history_and_export(self):
         account = view.archive_instance.ensure_account("001", "official", "博士")
-        view.archive_instance.append(account, [normalize_record(fake_record(), "normal")])
+        view.archive_instance.append(
+            account, [normalize_record(fake_record(), "normal")]
+        )
         headers = {"token": "test-local-token"}
         self.assertEqual(
-            self.client.get("/gacha/summary?account_id=official:001", headers=headers).json["total"],
+            self.client.get(
+                "/gacha/summary?account_id=official:001", headers=headers
+            ).json["total"],
             1,
         )
-        exported = self.client.get("/gacha/export?account_id=official:001", headers=headers)
+        exported = self.client.get(
+            "/gacha/export?account_id=official:001", headers=headers
+        )
         self.assertEqual(exported.status_code, 200)
         self.assertEqual(json.loads(exported.data)["format"], "mower-gacha-v1")
         self.assertNotIn("token", exported.data.decode())
@@ -229,17 +267,36 @@ class GachaV2Tests(unittest.TestCase):
                 Response({"code": 0, "data": {"token": "pw-token"}}),
                 Response({"code": 0, "data": {"token": "oauth-token"}}),
             ],
-            [Response({"code": 0, "data": {"list": [
-                {"appCode": "arknights", "bindingList": [
-                    {"uid": "9001", "nickname": "测试", "channelName": "官服", "isOfficial": True},
-                ]},
-            ]}})],
+            [
+                Response(
+                    {
+                        "code": 0,
+                        "data": {
+                            "list": [
+                                {
+                                    "appCode": "arknights",
+                                    "bindingList": [
+                                        {
+                                            "uid": "9001",
+                                            "nickname": "测试",
+                                            "channelName": "官服",
+                                            "isOfficial": True,
+                                        },
+                                    ],
+                                },
+                            ]
+                        },
+                    }
+                )
+            ],
         )
         provider = GachaProvider(client)
         roles = provider.login_password("13800000000", "fake-password")
         self.assertEqual(len(roles), 1)
         self.assertEqual(roles[0].channel, "official")
-        self.assertTrue(client.calls[0][1].endswith("/user/auth/v1/token_by_phone_password"))
+        self.assertTrue(
+            client.calls[0][1].endswith("/user/auth/v1/token_by_phone_password")
+        )
         self.assertEqual(client.calls[0][2]["password"], "fake-password")
         self.assertEqual(provider.account_token, "pw-token")
         provider.close()
@@ -251,10 +308,15 @@ class GachaV2Tests(unittest.TestCase):
         five = fake_record(1, char="char_five", rarity=4)
         five["isNew"] = True
         three = fake_record(2, char="char_three", rarity=2)
-        self.archive.append(account, [
-            normalize_record(six, "classic"), normalize_record(five, "classic"),
-            normalize_record(three, "classic"),
-        ], finished=True)
+        self.archive.append(
+            account,
+            [
+                normalize_record(six, "classic"),
+                normalize_record(five, "classic"),
+                normalize_record(three, "classic"),
+            ],
+            finished=True,
+        )
         stats = self.archive.summary(account)
         self.assertEqual(stats["six_star"], 1)
         self.assertEqual(stats["five_star"], 1)
@@ -272,6 +334,7 @@ class GachaV2Tests(unittest.TestCase):
 
     def test_sms_cooldown_has_server_side_retry_time(self):
         from arknights_mower.utils.gacha_provider import GachaProvider as RealProvider
+
         app = Flask("sms-cooldown-test")
         app.testing = True
         app.token = "test-gacha-token"
@@ -282,8 +345,12 @@ class GachaV2Tests(unittest.TestCase):
         self.addCleanup(lambda: view.sms_cooldowns.pop(phone, None))
         view.sms_cooldowns.pop(phone, None)
         with patch.object(RealProvider, "send_code", return_value=None) as fake_send:
-            first = client.post("/gacha/send-code", json={"phone": phone}, headers=headers)
-            second = client.post("/gacha/send-code", json={"phone": phone}, headers=headers)
+            first = client.post(
+                "/gacha/send-code", json={"phone": phone}, headers=headers
+            )
+            second = client.post(
+                "/gacha/send-code", json={"phone": phone}, headers=headers
+            )
         self.assertEqual(first.status_code, 200)
         self.assertEqual(first.json["retry_after_seconds"], 90)
         self.assertEqual(second.status_code, 429)
@@ -293,6 +360,7 @@ class GachaV2Tests(unittest.TestCase):
     def test_password_endpoint_only_returns_masked_phone(self):
         from arknights_mower.utils.gacha_provider import GachaProvider as RealProvider
         from arknights_mower.utils.gacha_provider import Role
+
         app = Flask("password-local-test")
         app.testing = True
         app.token = "test-gacha-token"
@@ -301,11 +369,19 @@ class GachaV2Tests(unittest.TestCase):
         view.sessions = GachaSessions()
         self.addCleanup(lambda: setattr(view, "sessions", previous_sessions))
         headers = {"token": "test-gacha-token", "X-Mower-Gacha": "1"}
-        with patch.object(RealProvider, "login_password",
-                          return_value=[Role("9001", "official", "测试", "官服")]) as mocked:
-            response = app.test_client().post("/gacha/login-password", json={
-                "phone": "13800000000", "password": "fake-password",
-            }, headers=headers)
+        with patch.object(
+            RealProvider,
+            "login_password",
+            return_value=[Role("9001", "official", "测试", "官服")],
+        ) as mocked:
+            response = app.test_client().post(
+                "/gacha/login-password",
+                json={
+                    "phone": "13800000000",
+                    "password": "fake-password",
+                },
+                headers=headers,
+            )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["account"], "***0000")
         self.assertNotIn("fake-password", response.get_data(as_text=True))
@@ -320,49 +396,75 @@ class GachaV3Tests(unittest.TestCase):
 
     def test_pool_index_is_distinct_from_six_star_interval(self):
         account = self.archive.ensure_account("1001", "official", "博士")
-        draws=[]
+        draws = []
         for i in range(12):
-            row = fake_record(i, char=f"char_{i:03d}", rarity=5 if i in (2,8) else 2)
-            row["charName"] = "目标角色" if i==8 else f"干员{i}"
-            draws.append(normalize_record(row,"normal"))
-        self.archive.append(account,draws)
-        stats=self.archive.summary(account)
-        pool=stats["pools"][0]
-        first,target=pool["six_operators"]
-        self.assertEqual(pool["count"],12)
-        self.assertEqual(first["pool_index"],3)
-        self.assertEqual(first["interval_count"],3)
+            row = fake_record(i, char=f"char_{i:03d}", rarity=5 if i in (2, 8) else 2)
+            row["charName"] = "目标角色" if i == 8 else f"干员{i}"
+            draws.append(normalize_record(row, "normal"))
+        self.archive.append(account, draws)
+        stats = self.archive.summary(account)
+        pool = stats["pools"][0]
+        first, target = pool["six_operators"]
+        self.assertEqual(pool["count"], 12)
+        self.assertEqual(first["pool_index"], 3)
+        self.assertEqual(first["interval_count"], 3)
         self.assertFalse(first["interval_complete"])
-        self.assertEqual(target["pool_index"],9)
-        self.assertEqual(target["interval_count"],6)
+        self.assertEqual(target["pool_index"], 9)
+        self.assertEqual(target["interval_count"], 6)
         self.assertTrue(target["interval_complete"])
-        self.assertEqual(target["after_count"],3)
+        self.assertEqual(target["after_count"], 3)
         self.assertTrue(stats["history_incomplete"])
 
     def test_local_skland_roster_requires_account_confirmation(self):
         from pathlib import Path
 
         from arknights_mower.utils.gacha_roster import roster_preview
-        base=Path(self.temp.name)
-        (base/"tmp").mkdir()
-        p=base/"_internal/arknights_mower/data"
+
+        base = Path(self.temp.name)
+        (base / "tmp").mkdir()
+        p = base / "_internal/arknights_mower/data"
         p.mkdir(parents=True)
-        (base/"tmp/cultivate.json").write_text(json.dumps({
-            "code":0,"data":{"characters":[
-                {"id":"char_002_amiya","level":50,"evolvePhase":2,"potentialRank":3},
-                {"id":"char_new_unknown","level":1,"evolvePhase":0},
-            ]}
-        }),encoding="utf-8")
-        (p/"skill_data.json").write_text(json.dumps({
-            "characters":{"char_002_amiya":{"name":"阿米娅","rarity":5,"profession":"CASTER"}}
-        },ensure_ascii=False),encoding="utf-8")
-        result=roster_preview(base)
+        (base / "tmp/cultivate.json").write_text(
+            json.dumps(
+                {
+                    "code": 0,
+                    "data": {
+                        "characters": [
+                            {
+                                "id": "char_002_amiya",
+                                "level": 50,
+                                "evolvePhase": 2,
+                                "potentialRank": 3,
+                            },
+                            {"id": "char_new_unknown", "level": 1, "evolvePhase": 0},
+                        ]
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (p / "skill_data.json").write_text(
+            json.dumps(
+                {
+                    "characters": {
+                        "char_002_amiya": {
+                            "name": "阿米娅",
+                            "rarity": 5,
+                            "profession": "CASTER",
+                        }
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        result = roster_preview(base)
         self.assertTrue(result["available"])
         self.assertFalse(result["account_verified"])
-        self.assertEqual(result["operator_count"],1)
-        self.assertEqual(result["unknown_id_count"],1)
-        self.assertEqual(result["operators"][0]["name"],"阿米娅")
-        self.assertNotIn("uid",result)
+        self.assertEqual(result["operator_count"], 1)
+        self.assertEqual(result["unknown_id_count"], 1)
+        self.assertEqual(result["operators"][0]["name"], "阿米娅")
+        self.assertNotIn("uid", result)
 
 
 class GachaManualRefreshTests(unittest.TestCase):
@@ -372,17 +474,27 @@ class GachaManualRefreshTests(unittest.TestCase):
         app.testing = True
         app.register_blueprint(view.gacha_bp)
         client = app.test_client()
-        headers={"token":"local-only","X-Mower-Gacha":"1"}
+        headers = {"token": "local-only", "X-Mower-Gacha": "1"}
         fetched = []
+
         def fetch_existing_mower_skland():
             fetched.append("called")
             return {"success": True, "message": "数据拉取成功"}
-        app.add_url_rule("/cultivate-fetch", endpoint="cultivate_fetch",
-                         view_func=fetch_existing_mower_skland, methods=["GET"])
-        self.assertEqual(client.post("/gacha/refresh-roster",json={}).status_code,403)
+
+        app.add_url_rule(
+            "/cultivate-fetch",
+            endpoint="cultivate_fetch",
+            view_func=fetch_existing_mower_skland,
+            methods=["GET"],
+        )
+        self.assertEqual(client.post("/gacha/refresh-roster", json={}).status_code, 403)
         with patch(
             "arknights_mower.utils.gacha_roster.roster_preview",
-            return_value={"available": True, "account_verified": False, "operator_count": 2},
+            return_value={
+                "available": True,
+                "account_verified": False,
+                "operator_count": 2,
+            },
         ):
             response = client.post("/gacha/refresh-roster", json={}, headers=headers)
         self.assertEqual(response.status_code, 200)
@@ -391,44 +503,49 @@ class GachaManualRefreshTests(unittest.TestCase):
         self.assertEqual(fetched, ["called"])
 
 
-
 class GachaV5RosterTests(unittest.TestCase):
     def test_low_rarity_fallback_recovers_three_two_one_stars(self):
         from arknights_mower.utils.gacha_roster import roster_preview
+
         with tempfile.TemporaryDirectory() as directory:
-            base=Path(directory)
-            (base/"tmp").mkdir()
-            folder=base/"_internal/arknights_mower/data"
+            base = Path(directory)
+            (base / "tmp").mkdir()
+            folder = base / "_internal/arknights_mower/data"
             folder.mkdir(parents=True)
-            (folder/"skill_data.json").write_text('{"characters":{}}',encoding="utf8")
-            characters=[
-                {"id":"char_120_hibisc","evolvePhase":1,"level":55},
-                {"id":"char_501_durin","evolvePhase":0,"level":30},
-                {"id":"char_285_medic2","evolvePhase":0,"level":30},
+            (folder / "skill_data.json").write_text(
+                '{"characters":{}}', encoding="utf8"
+            )
+            characters = [
+                {"id": "char_120_hibisc", "evolvePhase": 1, "level": 55},
+                {"id": "char_501_durin", "evolvePhase": 0, "level": 30},
+                {"id": "char_285_medic2", "evolvePhase": 0, "level": 30},
             ]
-            (base/"tmp/cultivate.json").write_text(json.dumps({
-                "data":{"characters":characters}
-            }),encoding="utf8")
-            result=roster_preview(base)
+            (base / "tmp/cultivate.json").write_text(
+                json.dumps({"data": {"characters": characters}}), encoding="utf8"
+            )
+            result = roster_preview(base)
             self.assertTrue(result["available"])
-            self.assertEqual(result["operator_count"],3)
-            self.assertEqual(result["unknown_id_count"],0)
-            self.assertEqual({x["rarity"] for x in result["operators"]},{1,2,3})
+            self.assertEqual(result["operator_count"], 3)
+            self.assertEqual(result["unknown_id_count"], 0)
+            self.assertEqual({x["rarity"] for x in result["operators"]}, {1, 2, 3})
             self.assertFalse(result["account_verified"])
 
     def test_public_catalog_covers_low_rarity_ids(self):
         import json as _json
-        catalog_path=Path(__file__).resolve().parents[1]/"data"/"gacha_catalog.json"
-        catalog=_json.loads(catalog_path.read_text(encoding="utf8"))
-        self.assertEqual(catalog["char_120_hibisc"]["rarity"],3)
-        self.assertEqual(catalog["char_501_durin"]["rarity"],2)
-        self.assertEqual(catalog["char_285_medic2"]["rarity"],1)
+
+        catalog_path = (
+            Path(__file__).resolve().parents[1] / "data" / "gacha_catalog.json"
+        )
+        catalog = _json.loads(catalog_path.read_text(encoding="utf8"))
+        self.assertEqual(catalog["char_120_hibisc"]["rarity"], 3)
+        self.assertEqual(catalog["char_501_durin"]["rarity"], 2)
+        self.assertEqual(catalog["char_285_medic2"]["rarity"], 1)
         # Only uncommon records are shipped; reuse Mower's skill_data.json for
         # the existing catalog to avoid duplicating source game metadata.
-        self.assertGreaterEqual(len(catalog),60)
+        self.assertGreaterEqual(len(catalog), 60)
         complete = view.operator_catalog()["operators"]
-        self.assertGreaterEqual(len(complete),460)
-        self.assertEqual(complete["char_120_hibisc"]["rarity"],3)
+        self.assertGreaterEqual(len(complete), 460)
+        self.assertEqual(complete["char_120_hibisc"]["rarity"], 3)
 
 
 if __name__ == "__main__":
