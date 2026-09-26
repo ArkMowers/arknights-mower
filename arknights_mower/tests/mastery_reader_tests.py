@@ -180,13 +180,6 @@ class TestResolvePanelSkillRealData(unittest.TestCase):
         self.assertEqual(resolve_panel_skill("若叶睦", "破坏与滋养"), 1)
         self.assertEqual(resolve_panel_skill("若叶睦", "多首野兽"), 0)
 
-    def test_gamma_misread_as_latin_y(self):
-        self.assertEqual(resolve_panel_skill("极境", "支援号令·y型"), 0)
-        self.assertEqual(resolve_panel_skill("极境", "支援号令·Y型"), 0)
-        self.assertTrue(panel_skill_matches("支援号令·y型", "一技能·支援号令·γ型"))
-        self.assertEqual(resolve_panel_skill("极境", "聆听"), 1)
-
-
 class TestPanelParse(unittest.TestCase):
     def test_parse_bracketed(self):
         self.assertEqual(

@@ -83,6 +83,32 @@ def test_real_panels_match_only_their_own_skill():
         assert recognize_skill(image, "泡泡", data) is None
 
 
+def test_real_gamma_panel_matches_despite_game_glyph_spacing():
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    image = cv2.imread(str(ROOT / "tests/fixtures/mastery_panel_elysium_gamma.png"))
+    match = recognize_skill(image, "极境", data)
+
+    assert match is not None
+    assert match[:2] == (0, "支援号令·γ型")
+    assert match.name_score >= 0.80
+    assert match.skill_score >= 0.80
+    assert match.margin >= 0.15
+    assert recognize_skill(image, "泡泡", data) is None
+
+
+def test_gamma_spacing_fallback_does_not_match_other_skill():
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    font = ImageFont.truetype(
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+    )
+    rendered = render_template("[极境]聆听", font)
+    image = np.zeros((42, 520), dtype=np.uint8)
+    image[4 : 4 + rendered.shape[0], 5 : 5 + rendered.shape[1]] = rendered
+
+    match = recognize_skill(image, "极境", data)
+    assert match is not None and match[:2] == (1, "聆听")
+
+
 def test_amiya_forms_are_collected_and_recognized():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     expected = {

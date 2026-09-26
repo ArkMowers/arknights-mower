@@ -96,10 +96,6 @@ def normalize_skill_text(s) -> str:
     s = strip_panel_brackets(str(s))
     for sep in _SEPARATORS:
         s = s.replace(sep, "·")
-    # OCR often reads the Greek gamma in "·γ型" as a Latin y (e.g. 极境的
-    # 支援号令·γ型). Restrict this alias to the skill suffix to avoid changing
-    # unrelated Latin letters in names.
-    s = s.replace("·y型", "·γ型").replace("·Y型", "·γ型")
     return s
 
 

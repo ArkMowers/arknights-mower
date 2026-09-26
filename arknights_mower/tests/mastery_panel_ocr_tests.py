@@ -245,11 +245,20 @@ def test_amiya_ocr_template_conflict_with_same_skill_index_stays_unknown():
     assert panel.skill_name == ""
 
 
-def test_gamma_skill_ocr_survives_missing_template(monkeypatch):
-    monkeypatch.setattr(reader, "recognize_skill", lambda *_: None)
-    panel = reader._read_panel_text(solver_with_text("[极境]支援号令·y型"))
+def test_gamma_skill_ocr_is_corrected_by_real_panel_template():
+    from pathlib import Path
 
-    assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·y型")
+    import cv2
+
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    fixture = Path(__file__).with_name("fixtures") / "mastery_panel_elysium_gamma.png"
+    image[930:972, 235:755] = cv2.imread(str(fixture))
+    solver = MagicMock()
+    solver.read_screen.return_value = "[极境]支援号令·v型"
+
+    panel = reader._read_panel_text(solver, image)
+
+    assert (panel.operator_name, panel.skill_name) == ("极境", "支援号令·γ型")
     plan = {
         "char_id": "char_401_elysm",
         "char_name": "极境",
