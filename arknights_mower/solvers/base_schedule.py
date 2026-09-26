@@ -7400,7 +7400,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if not self.waiting_solver():
                             return
                 else:
-                    logger.info("检测到漏单")
+                    logger.error("检测到漏单", extra={"archive_screenshots": True})
                     save_exception(Exception("检测到漏单"))
                     send_message("检测到漏单！", level="WARNING")
                 self.accept_order()

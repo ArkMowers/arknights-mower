@@ -88,6 +88,10 @@ class TradingOrder:
                     self.price = best_match
                 if self.buff == "漏单" and not time:
                     save_log("检测到上一个订单漏单！", level="ERROR")
+                    logger.error(
+                        "检测到上一个订单漏单！",
+                        extra={"archive_screenshots": True},
+                    )
                     send_message("检测到上一个订单漏单！", level="WARNING")
                 return self
         except Exception as e:

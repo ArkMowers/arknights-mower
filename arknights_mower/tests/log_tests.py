@@ -121,6 +121,11 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
                 self.record("__main__.py", archive_screenshots=True)
             )
         )
+        self.assertTrue(
+            log.should_archive_error(
+                self.record("utils/trading_order.py", archive_screenshots=True)
+            )
+        )
         self.assertFalse(
             log.should_archive_error(
                 self.record("solvers/captcha_solver.py", archive_screenshots=False)

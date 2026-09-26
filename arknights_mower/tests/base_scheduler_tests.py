@@ -3243,6 +3243,39 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         )
         solver.get_order_remaining_time.assert_called_once_with()
 
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_missed_order_emits_archivable_error(self):
+        room = "room_1_1"
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_plan={room: ["Lancet-2"]},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data=room,
+        )
+        solver = BaseSchedulerSolver()
+        solver.task = task
+        solver.tasks = [task]
+        solver.op_data = MagicMock()
+        solver.op_data.run_order_rooms = {room: ["Lancet-2"]}
+        solver.drone_room = "room_1_2"
+        solver.waiting_scene = []
+        solver.backup_plan_solver = MagicMock(return_value=False)
+        solver.agent_arrange_room = MagicMock(return_value={room: ["Lancet-2"]})
+        solver.get_order_remaining_time = MagicMock(return_value=120)
+        solver.accept_order = MagicMock()
+        solver.find = MagicMock(return_value=None)
+
+        with (
+            patch.object(base_schedule.logger, "error") as error,
+            patch.object(base_schedule, "save_exception") as save_exception,
+            patch.object(base_schedule, "send_message") as send_message,
+        ):
+            solver.agent_arrange(task.plan)
+
+        error.assert_called_once_with("检测到漏单", extra={"archive_screenshots": True})
+        save_exception.assert_called_once()
+        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+
 
 class TestClueProductCompleteWait(unittest.TestCase):
     """测试会客室处理线索流程中等待产物收取提示消失的逻辑。"""
