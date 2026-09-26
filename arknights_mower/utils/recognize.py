@@ -204,6 +204,14 @@ class Recognizer:
             self.scene = Scene.RIIC_REPORT
         elif self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
+        # 房间页仍会命中 infra_overview；先认进驻按钮，避免误报为基建全局视角。
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on")
+            or self.find("room_detail")
+            or self.find("arrange_check_in_small")
+        ):
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
         elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
@@ -350,13 +358,6 @@ class Recognizer:
             self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
-        elif (
-            self.find("arrange_check_in")
-            or self.find("arrange_check_in_on")
-            or self.find("room_detail")
-            or self.find("arrange_check_in_small")
-        ):
-            self.scene = Scene.INFRA_DETAILS
         elif self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
         elif self.find("mission_daily_on"):
