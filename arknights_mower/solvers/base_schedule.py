@@ -1418,6 +1418,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             op.name
             for op in self.op_data.operators.values()
             if op.name in targets
+            and resting_tier(self.op_data, op.name) != RestingTier.EXCLUDED
             and op.name not in busy
             and op.name != "菲亚梅塔"
             and op.room != "train"
@@ -1465,6 +1466,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]
             for index, name in zip(positions, missing):
                 names[index] = name
+            for index in positions:
+                if resting_tier(self.op_data, names[index]) == RestingTier.EXCLUDED:
+                    names[index] = ""
             names = [name for name in names if name] + [""] * names.count("")
             arrange(room, names)
             return True
@@ -5849,6 +5853,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if not room.startswith("dorm"):
             return
         if self.op_data.experimental_dorm_logic:
+            # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
+            for index, name in enumerate(agents):
+                if (
+                    name not in ("", "Current", "Free")
+                    and self.op_data.is_dynamic_dorm_position(room, index, name)
+                    and resting_tier(self.op_data, name) == RestingTier.EXCLUDED
+                ):
+                    agents[index] = "Free"
             moving = (
                 {
                     name
@@ -5915,6 +5927,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if name != "Free":
                 continue
             current = self.op_data.get_current_operator(room, index)
+            if (
+                current is not None
+                and resting_tier(self.op_data, current.name) == RestingTier.EXCLUDED
+            ):
+                # 满员兜底也不能重新安排被排除的原住者。
+                current = None
             if (
                 mood_fallback
                 and current is not None

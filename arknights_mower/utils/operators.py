@@ -662,6 +662,7 @@ class Operators:
             and self.experimental_dorm_logic
             and getattr(self.config, "free_room", False)
             and name in getattr(self.config, "free_room_exclusions", ())
+            and resting_tier(self, name) != RestingTier.EXCLUDED
             and not self.rest_mood_complete(name)
         )
 
@@ -674,6 +675,7 @@ class Operators:
             and op is not None
             and op.current_room.startswith("dorm")
             and getattr(op, "dorm_mood_fallback", "") == op.current_room
+            and resting_tier(self, name) != RestingTier.EXCLUDED
             and resting_mood(op) >= op.upper_limit
             and not self.has_rest_mood_limit(name)
         )
