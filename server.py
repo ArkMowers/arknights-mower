@@ -742,8 +742,12 @@ def load_config():
         from arknights_mower.utils.workshop_config import read_user_config
 
         data = read_user_config()
-        data["runtime_platform"] = __system__
-        from arknights_mower.utils.performance import effective_performance_profile
+        from arknights_mower.utils.performance import (
+            effective_performance_profile,
+            is_android_runtime,
+        )
+
+        data["runtime_platform"] = "android" if is_android_runtime() else __system__
 
         performance = effective_performance_profile(
             config.conf, config.screenshot_avg, config.screenshot_count

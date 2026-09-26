@@ -30,12 +30,16 @@ export function defaultPerformanceMode(platform) {
 }
 
 export function normalizePerformanceMode(mode, legacyLowFrameRateMode, platform) {
-  if (['auto', 'high', 'medium', 'low', 'custom'].includes(mode)) return mode
-  if (legacyLowFrameRateMode !== undefined) return legacyLowFrameRateMode ? 'medium' : 'high'
+  if (['auto', 'high', 'medium', 'low', 'custom'].includes(mode)) {
+    return platform === 'android' && mode === 'high' ? 'medium' : mode
+  }
+  if (legacyLowFrameRateMode !== undefined)
+    return legacyLowFrameRateMode || platform === 'android' ? 'medium' : 'high'
   return defaultPerformanceMode(platform)
 }
 
 export function performanceProfile(mode, platform) {
+  if (platform === 'android' && mode === 'high') return performancePresets.medium
   if (performancePresets[mode]) return performancePresets[mode]
   return performancePresets[platform === 'android' ? 'medium' : 'high']
 }

@@ -53,14 +53,16 @@ def effective_performance_profile(conf, screenshot_avg=None, screenshot_count=0)
             conf.run_order_grandet_mode.buffer_time,
         )
     if mode != "auto":
-        return PERFORMANCE_PRESETS[mode]
+        return PERFORMANCE_PRESETS[
+            "medium" if is_android_runtime() and mode == "high" else mode
+        ]
 
     # Keep the previous platform default during warm-up. screenshot_avg is an
     # EWMA of actual capture/decoding cost, so a transient slow frame does not
     # immediately move the device between profiles.
     if screenshot_avg is None or screenshot_count < 8:
         selected = "medium" if is_android_runtime() else "high"
-    elif screenshot_avg <= 250:
+    elif screenshot_avg <= 250 and not is_android_runtime():
         selected = "high"
     elif screenshot_avg < 700:
         selected = "medium"
