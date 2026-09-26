@@ -72,6 +72,9 @@ class AndroidPackageTests(unittest.TestCase):
                 self.assertIn("python-runtime.zip.xz", z.namelist())
                 self.assertEqual(meta["version"], "4.2.0")
                 self.assertIn("mower/ui/dist/index.html", z.namelist())
+                self.assertIn(
+                    "mower/ui/src/pages/basement_skill/skill.json", z.namelist()
+                )
                 self.assertEqual(z.read("mower/CHANGELOG.md"), b"payload")
                 self.assertIn("mower/arknights_mower/models/model.bin", z.namelist())
                 self.assertFalse(

@@ -417,6 +417,9 @@ def simulate(saved, restart_after_mood_read=False):
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
+                base_scheduler.op_data.operators[k].dorm_position_version = getattr(
+                    v, "dorm_position_version", 0
+                )
                 base_scheduler.op_data.operators[k].dorm_recovery_room = getattr(
                     v, "dorm_recovery_room", ""
                 )

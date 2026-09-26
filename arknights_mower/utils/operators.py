@@ -618,6 +618,29 @@ class Operators:
             for room in self.plan.values()
             if room and room[0].product == BaseProduct.Electricity
         )
+        self.refresh_dorm_manager_flags(force=True)
+
+    def refresh_dorm_manager_flags(self, *, force=False):
+        """只标记宿舍前两位及其替班；资源未变时不再匹配。"""
+        from arknights_mower.utils import dorm_skills
+
+        if not force and getattr(self, "_dorm_skill_generation", -1) == (
+            dorm_skills.resource_generation
+        ):
+            return
+        planned = {
+            name
+            for room, slots in self.plan.items()
+            if room.startswith("dorm")
+            for slot in slots[:2]
+            for name in (slot.agent, *slot.replacement)
+            if name in self.operators
+        }
+        for name, op in self.operators.items():
+            op.single_recovery_manager = name in planned and (
+                dorm_skills.is_single_recovery_manager(name)
+            )
+        self._dorm_skill_generation = dorm_skills.resource_generation
 
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
         if name in self.operators and self.is_planned_operator(name):
@@ -1054,8 +1077,6 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
-        if (agent.current_room, agent.current_index) != (current_room, current_index):
-            agent.clear_dorm_recovery()
         retained_time = None
         if self.experimental_dorm_logic:
             _, previous_bed = self.get_dorm_by_name(name)
@@ -1283,6 +1304,7 @@ class Operators:
             operator.depletion_rate = exist.depletion_rate
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
+            operator.dorm_position_version = getattr(exist, "dorm_position_version", 0)
             operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
             operator.dorm_recovery_index = getattr(exist, "dorm_recovery_index", -1)
             operator.resting_from_train = getattr(exist, "resting_from_train", False)
@@ -2141,7 +2163,9 @@ class Operator:
         self.dorm_recovery_room = ""
         self.dorm_recovery_index = -1
         self.resting_from_train = False
+        # (单回宿管姓名, 床位, 移动版本)；旧缓存的全宿管姓名元组会自动失效。
         self.dorm_recovery_fixed = ()
+        self.single_recovery_manager = False
         self.dorm_mood_fallback = ""
         self.dorm_mood_peers = {}
         self.idle_rest_check = None
@@ -2166,6 +2190,7 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
+            self.dorm_position_version = getattr(self, "dorm_position_version", 0) + 1
             was_working = self.is_working()
             self.idle_rest_check = None
             if value != getattr(self, "dorm_mood_fallback", ""):
@@ -2183,6 +2208,18 @@ class Operator:
                 logger.debug(
                     f"触发当前房间变更回调: {self.name} 现在在 {self._current_room}, 刷新交易所房间: {self.refresh_order_room}, 刷新疲劳: {self.refresh_drained}"
                 )
+
+    @property
+    def current_index(self):
+        # 保留旧 pickle 的字段名，升级和回退都能读取同一份床位缓存。
+        return self.__dict__.get("current_index", -1)
+
+    @current_index.setter
+    def current_index(self, value):
+        if self.current_index != value:
+            self.dorm_position_version = getattr(self, "dorm_position_version", 0) + 1
+            self.clear_dorm_recovery()
+        self.__dict__["current_index"] = value
 
     def clear_dorm_recovery(self):
         self.dorm_recovery_room = ""

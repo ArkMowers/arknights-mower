@@ -7135,7 +7135,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         目标及垫位结果均识别成功后才记录；床位未变时不重复确认。
         """
         from arknights_mower.utils.dorm_recovery import (
-            recovery_fixed_occupants,
+            recovery_managers,
             recovery_order_plan,
             recovery_target,
         )
@@ -7202,9 +7202,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if target.mood < 24:
             target.dorm_recovery_room = room
             target.dorm_recovery_index = vip_index
-            target.dorm_recovery_fixed = recovery_fixed_occupants(
-                self.op_data, room, agents
-            )
+            target.dorm_recovery_fixed = recovery_managers(self.op_data, room, agents)
         else:
             target.clear_dorm_recovery()
         logger.info(

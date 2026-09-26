@@ -18,6 +18,7 @@ RUNTIME_API = 1
 ROOTS = (
     "arknights_mower",
     "ui/dist",
+    "ui/src/pages/basement_skill/skill.json",
     "server.py",
     "LICENSE",
     "CHANGELOG.md",
@@ -28,6 +29,7 @@ REQUIRED = (
     "arknights_mower/__init__.py",
     "arknights_mower/data/version.json",
     "ui/dist/index.html",
+    "ui/src/pages/basement_skill/skill.json",
     "server.py",
     "LICENSE",
     "requirements.txt",
