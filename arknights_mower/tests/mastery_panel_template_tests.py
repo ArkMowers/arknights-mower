@@ -83,7 +83,7 @@ def test_real_panels_match_only_their_own_skill():
         assert recognize_skill(image, "泡泡", data) is None
 
 
-def test_real_gamma_panel_matches_despite_game_glyph_spacing():
+def test_real_gamma_panel_matches_game_middle_dot_spacing():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     image = cv2.imread(str(ROOT / "tests/fixtures/mastery_panel_elysium_gamma.png"))
     match = recognize_skill(image, "极境", data)
@@ -91,12 +91,12 @@ def test_real_gamma_panel_matches_despite_game_glyph_spacing():
     assert match is not None
     assert match[:2] == (0, "支援号令·γ型")
     assert match.name_score >= 0.80
-    assert match.skill_score >= 0.80
+    assert match.skill_score >= 0.85
     assert match.margin >= 0.15
     assert recognize_skill(image, "泡泡", data) is None
 
 
-def test_gamma_spacing_fallback_does_not_match_other_skill():
+def test_other_skill_does_not_match_gamma():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     font = ImageFont.truetype(
         str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
