@@ -538,6 +538,10 @@ class RIICPart(ConfModel):
     "宿舍不养闲人模式"
     experimental_dorm_logic: bool = False
     "测试宿舍逻辑；关闭时使用稳定版宿舍分配规则"
+    group_rest_in_full_on_mood_gap: bool = True
+    "组内高优先干员预计恢复时间差过大时，等待整组回满"
+    group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
+    "组内恢复时间差过大时最多额外等待的小时数；0 表示不限时"
     fia_fool: bool = True
     "菲亚防呆"
     fia_threshold: float = 0.9

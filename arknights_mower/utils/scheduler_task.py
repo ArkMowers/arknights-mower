@@ -1171,10 +1171,15 @@ def plan_metadata(op_data, tasks):
             dorm for dorm in high_dorms if op_data.operators[dorm.name].rest_in_full
         ]
         if high_dorms and group_name:
-            # 如果与第一个差值过大，
+            # 高优先干员恢复时间差过大时，可延后整组回班。
             base_time = high_dorms[0].time
             need_early = not op_data.operators[high_dorms[0].name].exhaust_require
-            if base_time is not None and not rest_in_full_dorms:
+            mood_gap_full_rest = False
+            if (
+                config.conf.group_rest_in_full_on_mood_gap
+                and base_time is not None
+                and not rest_in_full_dorms
+            ):
                 for dorm in high_dorms[1:]:
                     # 三电站限制为1小时，2电站限制为1.5小时
                     limit = 5400 if op_data.power_plant_count == 2 else 3600
@@ -1183,6 +1188,7 @@ def plan_metadata(op_data, tasks):
                             f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过{limit / 3600}小时"
                         )
                         max_rest_in_full_time = base_time
+                        mood_gap_full_rest = True
                     if op_data.operators[high_dorms[0].name].exhaust_require:
                         need_early = False
             if rest_in_full_dorms:
@@ -1204,6 +1210,16 @@ def plan_metadata(op_data, tasks):
                     if need_early
                     else timedelta(seconds=0)
                 )
+                max_extra_wait = config.conf.group_mood_gap_max_extra_wait_hours
+                if mood_gap_full_rest and max_extra_wait > 0 and nearest_dorm:
+                    normal_return_time = min(nearest_dorm.time, min_resting_time)
+                    task_time = max(
+                        normal_return_time,
+                        min(
+                            task_time,
+                            normal_return_time + timedelta(hours=max_extra_wait),
+                        ),
+                    )
             elif nearest_dorm:
                 task_time = min(nearest_dorm.time, min_resting_time)
             else:
