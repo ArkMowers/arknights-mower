@@ -304,3 +304,9 @@ def test_three_character_prefix_of_two_skills_stays_unknown():
     from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
 
     assert resolve_panel_skill_fuzzy("掠风", "此身为") is None
+
+
+def test_three_character_skill_recovers_one_missing_character():
+    from arknights_mower.utils.skill_label import resolve_panel_skill_fuzzy
+
+    assert resolve_panel_skill_fuzzy("白面鸮", "脑肽") == (1, "脑啡肽")
