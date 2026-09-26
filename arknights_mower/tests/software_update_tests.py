@@ -1078,7 +1078,7 @@ class WorkerTests(unittest.TestCase):
                         env["MOWER_RESUME_RUN"], "1" if record.get("running") else "0"
                     )
                     if record["kind"] == "instance" and record.get("running"):
-                        self.assertEqual(env["MOWER_RESUME_MODE"], "1")
+                        self.assertEqual(env["MOWER_RESUME_MODE"], "0")
                     else:
                         self.assertNotIn("MOWER_RESUME_MODE", env)
                     self.assertEqual(
@@ -1107,7 +1107,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(instance_env["MOWER_BACKGROUND"], "1")
         self.assertEqual(instance_env["MOWER_MANAGED"], "1")
         self.assertEqual(instance_env["MOWER_RESUME_RUN"], "1")
-        self.assertEqual(instance_env["MOWER_RESUME_MODE"], "1")
+        self.assertEqual(instance_env["MOWER_RESUME_MODE"], "0")
         self.assertEqual(instance_env["MOWER_RESTART_PORT"], "58100")
 
         with patch.object(subprocess, "Popen") as process:

@@ -1426,7 +1426,7 @@ class Worker:
                 continue
             env = launch_environment(record, self.job["id"], self.job["background"])
             if record["kind"] == "instance" and record.get("running"):
-                env["MOWER_RESUME_MODE"] = "1"
+                env["MOWER_RESUME_MODE"] = "0"
             else:
                 env.pop("MOWER_RESUME_MODE", None)
             if self.job.get("tool_path"):

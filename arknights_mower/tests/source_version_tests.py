@@ -345,7 +345,7 @@ class SourceEnvironmentTests(unittest.TestCase):
                 )
             self.assertEqual(process.call_count, len(records))
             for call in process.call_args_list:
-                self.assertEqual(call.kwargs["env"]["MOWER_RESUME_MODE"], "1")
+                self.assertEqual(call.kwargs["env"]["MOWER_RESUME_MODE"], "0")
             for path in paths:
                 with closing(sqlite3.connect(path / "tmp/data.db")) as db:
                     self.assertEqual(
