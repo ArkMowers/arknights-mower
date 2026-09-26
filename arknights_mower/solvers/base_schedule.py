@@ -757,6 +757,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return task.meta_data
 
     def plan_metadata(self):
+        if self.op_data.experimental_dorm_logic and any(
+            getattr(task, "backup_shift_active", False) for task in self.tasks
+        ):
+            # 部分房间已完成时不能拿中间状态重建并覆盖尚未完成的回班任务。
+            return
         self.tasks = plan_metadata(self.op_data, self.tasks)
 
     def infra_main(self):
@@ -948,11 +953,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             "experimental_dorm_logic",
                             False,
                         ):
+                            self._prepare_shift_backup(self.task)
                             self._defer_conflicting_product_shift_slots(self.task)
                             self._switch_products_before_arrangement(self.task)
+                            self._activate_shift_backup(self.task)
+                            get_time |= getattr(self.task, "backup_shift_active", False)
                     arrangement_deferred = (
                         self.agent_arrange(self.task.plan, get_time) is False
                     )
+                    if not arrangement_deferred:
+                        self.task.backup_shift_active = False
                     if arrangement_deferred:
                         # 已处理的工作房间从原任务移除；副表覆盖的宿舍也会从
                         # 原任务移除。仅在还有未覆盖的宿舍时保留原任务续行。
@@ -2928,6 +2938,61 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("副表产物先切换%s：%s", self.translate_room(room), target)
         return not waiting
 
+    def _backup_transition_plan(
+        self, previous_plan, original, conditions, previous_dorms, previous_dorm_layout
+    ):
+        """普通切表与换班推演共用最终岗位、显式任务和宿舍迁移规则。"""
+        transition_plan = {}
+        deactivated_slots = {}
+        # 退出副表时恢复其任务写过的槽位；切入任务在最后覆盖，确保多个
+        # 同时生效的副表与合并排班表的覆盖顺序一致。
+        for index, bp in enumerate(self.op_data.backup_plans):
+            if original[index] and not conditions[index] and bp.task:
+                for room, names in bp.task.items():
+                    indexes = deactivated_slots.setdefault(room, set())
+                    indexes.update(
+                        i for i, name in enumerate(names) if name != "Current"
+                    )
+        restore_plan = {}
+        for room, indexes in deactivated_slots.items():
+            active_room = self.op_data.plan.get(room)
+            if active_room is None:
+                continue
+            names = ["Current"] * len(active_room)
+            for index in indexes:
+                if index < len(active_room):
+                    names[index] = active_room[index].agent
+            if any(name != "Current" for name in names):
+                restore_plan[room] = names
+
+        correction = self._cached_changed_slot_plan(previous_plan)
+        _merge_plan_overlay(transition_plan, correction, self.op_data)
+        _merge_plan_overlay(transition_plan, restore_plan, self.op_data)
+
+        for index, bp in enumerate(self.op_data.backup_plans):
+            if not original[index] and conditions[index] and bp.task:
+                _merge_plan_overlay(
+                    transition_plan, copy.deepcopy(bp.task), self.op_data
+                )
+
+        current_dorm_layout = dorm_rebalance_signature(self.op_data)
+        if previous_dorm_layout is None or previous_dorm_layout != current_dorm_layout:
+            dorm_migration = rebalance_plan_swap_dorms(
+                self.op_data,
+                previous_dorms,
+                reserved_names=_assigned_operator_names(transition_plan),
+            )
+            _merge_plan_overlay(transition_plan, dorm_migration, self.op_data)
+        else:
+            logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
+
+        transition_plan = {
+            room: names
+            for room, names in transition_plan.items()
+            if any(name != "Current" for name in names)
+        }
+        return transition_plan
+
     def backup_plan_solver(
         self,
         timing=None,
@@ -2952,6 +3017,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for task in getattr(self, "tasks", [])
         ):
             logger.debug("肥鸭充能或回岗任务尚未完成，跳过副表切换")
+            return False
+        if getattr(self.op_data, "experimental_dorm_logic", False) and any(
+            getattr(task, "backup_shift_active", False)
+            for task in getattr(self, "tasks", [])
+        ):
+            logger.debug("换班最终安排尚未完成，避免用中间驻员状态重新切表")
             return False
         if not getattr(
             getattr(self, "op_data", None), "experimental_dorm_logic", False
@@ -3016,58 +3087,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             self.queue_product_switches()
 
-            transition_plan = {}
-            deactivated_slots = {}
-            # 退出副表时恢复其任务写过的槽位；切入任务在最后覆盖，确保多个
-            # 同时生效的副表与合并排班表的覆盖顺序一致。
-            for index, bp in enumerate(self.op_data.backup_plans):
-                if original[index] and not current[index] and bp.task:
-                    for room, names in bp.task.items():
-                        indexes = deactivated_slots.setdefault(room, set())
-                        indexes.update(
-                            i for i, name in enumerate(names) if name != "Current"
-                        )
-            restore_plan = {}
-            for room, indexes in deactivated_slots.items():
-                active_room = self.op_data.plan.get(room)
-                if active_room is None:
-                    continue
-                names = ["Current"] * len(active_room)
-                for index in indexes:
-                    if index < len(active_room):
-                        names[index] = active_room[index].agent
-                if any(name != "Current" for name in names):
-                    restore_plan[room] = names
-
-            correction = self._cached_changed_slot_plan(previous_plan)
-            _merge_plan_overlay(transition_plan, correction, self.op_data)
-            _merge_plan_overlay(transition_plan, restore_plan, self.op_data)
-
-            for index, bp in enumerate(self.op_data.backup_plans):
-                if not original[index] and current[index] and bp.task:
-                    _merge_plan_overlay(
-                        transition_plan, copy.deepcopy(bp.task), self.op_data
-                    )
-
-            current_dorm_layout = dorm_rebalance_signature(self.op_data)
-            if (
-                previous_dorm_layout is None
-                or previous_dorm_layout != current_dorm_layout
-            ):
-                dorm_migration = rebalance_plan_swap_dorms(
-                    self.op_data,
-                    previous_dorms,
-                    reserved_names=_assigned_operator_names(transition_plan),
-                )
-                _merge_plan_overlay(transition_plan, dorm_migration, self.op_data)
-            else:
-                logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
-
-            transition_plan = {
-                room: names
-                for room, names in transition_plan.items()
-                if any(name != "Current" for name in names)
-            }
+            transition_plan = self._backup_transition_plan(
+                previous_plan, original, current, previous_dorms, previous_dorm_layout
+            )
             generated = None
             if transition_plan:
                 generated = SchedulerTask(
@@ -3540,6 +3562,132 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             projected.swap_plan(conditions)
         return projected.products, projected.plan
 
+    def _prepare_shift_backup(self, task):
+        """从原换班意图推演副表及其动作，只改待执行任务，不伪造实际驻员。"""
+        if (
+            not self.op_data.experimental_dorm_logic
+            or task.type
+            not in (TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF, TaskTypes.EXHAUST_OFF)
+            or not getattr(self.op_data, "backup_plans", [])
+            or getattr(task, "backup_shift_active", False)
+        ):
+            return
+        if any(
+            t.type == TaskTypes.FIAMMETTA and t.time <= datetime.now()
+            for t in self.tasks
+        ):
+            if hasattr(task, "backup_shift_conditions"):
+                raise ProductSwitchDeferred(
+                    "等待肥鸭任务完成后再执行最终换班", minutes=1
+                )
+            return
+        active = [
+            t
+            for t in self.tasks
+            if t is not task and getattr(t, "backup_shift_active", False)
+        ]
+        if active:
+            retry = max(t.time for t in active) + timedelta(seconds=1)
+            raise ProductSwitchDeferred(
+                "等待上一轮最终换班完成后再推演",
+                minutes=max(1, (retry - datetime.now()).total_seconds() / 60),
+            )
+        intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
+        original = list(self.op_data.plan_condition)
+        seed = self.op_data.project_arrangements([intent])
+        conditions = [
+            bool(seed.evaluate_expression(str(bp.trigger))) for bp in seed.backup_plans
+        ]
+        seen = set()
+        for _ in range(64):
+            key = tuple(conditions)
+            if key in seen:
+                raise ValueError("上下班副表推演出现循环，保留原任务，暂不执行换人")
+            seen.add(key)
+            simulation = copy.copy(self)
+            simulation.op_data = seed.project_arrangements([])
+            if error := simulation.op_data.swap_plan(conditions, refresh=True):
+                raise ValueError(f"上下班副表推演失败：{error}")
+            transition = simulation._backup_transition_plan(
+                self.op_data.plan,
+                original,
+                conditions,
+                copy.deepcopy(seed.all_dorms()),
+                dorm_rebalance_signature(seed),
+            )
+            merged = copy.deepcopy(intent)
+            # 副表把同一人调往另一房间时，同时撤销原换班意图中的旧位置。
+            destinations = {
+                name: (room, index)
+                for room, names in transition.items()
+                for index, name in enumerate(names)
+                if name not in ("Current", "Free", "")
+            }
+            for room, names in merged.items():
+                for index, name in enumerate(names):
+                    if name in destinations and destinations[name] != (room, index):
+                        names[index] = "Free" if room.startswith("dorm") else "Current"
+            _merge_plan_overlay(merged, transition, simulation.op_data)
+            # 从真实驻员重新投影，不能把上一轮的中间换人累积到下一轮。
+            projected = self.op_data.project_arrangements([])
+            if error := projected.swap_plan(conditions, refresh=True):
+                raise ValueError(f"上下班副表推演失败：{error}")
+            projected = projected.project_arrangements([merged])
+            next_conditions = [
+                bool(projected.evaluate_expression(str(bp.trigger)))
+                for bp in projected.backup_plans
+            ]
+            if next_conditions == conditions:
+                if conditions == original and merged == intent:
+                    task.plan = intent
+                    for attr in ("backup_shift_intent", "backup_shift_conditions"):
+                        if hasattr(task, attr):
+                            delattr(task, attr)
+                    if getattr(task, "product_shift_locked", False):
+                        slots = {
+                            (room, index)
+                            for room, names in task.plan.items()
+                            for index, name in enumerate(names)
+                            if name != "Current"
+                        }
+                        self._reserve_deferred_product_shift(task, slots)
+                        self._refresh_deferred_product_reservations()
+                    return
+                task.backup_shift_intent = intent
+                task.backup_shift_conditions = conditions
+                task.plan = {
+                    room: names
+                    for room, names in merged.items()
+                    if any(name != "Current" for name in names)
+                }
+                if getattr(task, "product_shift_locked", False):
+                    self._reserve_deferred_product_shift(task, set())
+                    self._refresh_deferred_product_reservations()
+                logger.info(
+                    "上下班副表预演收敛：%s -> %s，最终安排：%s",
+                    original,
+                    conditions,
+                    task.plan,
+                )
+                return
+            conditions = next_conditions
+        raise ValueError("上下班副表推演未收敛，保留原任务，暂不执行换人")
+
+    def _activate_shift_backup(self, task):
+        """前置操作成功后启用最终排班配置；实际位置仍由逐房读屏更新。"""
+        conditions = getattr(task, "backup_shift_conditions", None)
+        if conditions is None or (
+            getattr(task, "backup_shift_active", False)
+            and self.op_data.plan_condition == conditions
+        ):
+            return
+        previous = list(self.op_data.plan_condition)
+        if error := self.op_data.swap_plan(conditions, refresh=True):
+            self.op_data.swap_plan(previous, refresh=True)
+            raise ValueError(f"上下班最终排班生效失败：{error}")
+        task.backup_shift_active = True
+        self._sync_run_order_tasks()
+
     @staticmethod
     def _plan_for_slots(plan, slots):
         return {
@@ -3595,6 +3743,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         }
         if not changed:
             return
+        if hasattr(task, "backup_shift_conditions"):
+            # 收敛后的上下班是一个整体，不能拆出会让副表条件改变的中间态。
+            slots = changed
         if slots != changed:
             independent = self._plan_for_slots(task.plan, changed - slots)
             self.tasks.append(
@@ -3674,7 +3825,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if name != "Current"
         }
         retry = max(lock.time for lock in locks) + timedelta(seconds=1)
-        if changed - conflicting:
+        if changed - conflicting and not hasattr(task, "backup_shift_conditions"):
             blocked = SchedulerTask(
                 time=retry,
                 task_plan=self._plan_for_slots(task.plan, conflicting),
@@ -6792,9 +6943,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if (
                 task is getattr(self, "task", None)
                 or task.type != TaskTypes.SHIFT_ON
-                or not any(name in names for names in task.plan.values())
+                or not any(
+                    name in names
+                    for plan in (task.plan, getattr(task, "backup_shift_intent", {}))
+                    for names in plan.values()
+                )
             ):
                 continue
+            if hasattr(task, "backup_shift_intent") and not getattr(
+                task, "backup_shift_active", False
+            ):
+                task.plan = copy.deepcopy(task.backup_shift_intent)
+                del task.backup_shift_intent
+                del task.backup_shift_conditions
             task.plan = {
                 room: ["Current" if agent == name else agent for agent in names]
                 for room, names in task.plan.items()
@@ -6823,11 +6984,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def current_room_changed(self, instance, *, started_working=False):
         # 构造干员及副表演算也可能设置位置；仅实际登记对象的上岗使预约失效。
-        if (
-            started_working
-            and self.op_data.experimental_dorm_logic
-            and self.op_data.operators.get(instance.name) is instance
-        ):
+        if self.op_data.operators.get(instance.name) is not instance:
+            return
+        if started_working and self.op_data.experimental_dorm_logic:
             self._cancel_pending_shift_on(instance.name)
         if not self.op_data.first_init:
             logger.info(f"{instance.name} 房间变动")
