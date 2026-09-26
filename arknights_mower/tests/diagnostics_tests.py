@@ -73,13 +73,47 @@ class DiagnosticTimelineTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(len(response.json["logs"]), 2)
 
+    def test_active_archive_detail_includes_more_than_1000_logs(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            logs.mkdir()
+            center = datetime(2026, 9, 26, 12, 58)
+            archive_id = str(int(center.timestamp() * 10**9))
+            archive = root / "screenshot" / "errors" / archive_id
+            archive.mkdir(parents=True)
+            (archive / "event.json").write_text(
+                json.dumps({"time_ns": int(archive_id), "message": "首次失败"}),
+                encoding="utf-8",
+            )
+            (logs / "runtime.log").write_text(
+                "2026-09-26 12:58:00 task.py:1 ERROR 首次失败\n"
+                + "2026-09-26 12:58:01 task.py:2 INFO 后续日志\n" * 1000,
+                encoding="utf-8",
+            )
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                response = server.app.test_client().get(
+                    f"/diagnostics/errors/{archive_id}/logs",
+                    headers={"token": "diagnostics-test"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json["logs"]), 1001)
+            self.assertIn("首次失败", response.json["logs"][0]["message"])
+
     def test_delete_route_removes_only_requested_archive(self):
         import server
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             archive_root = root / "screenshot" / "errors"
-            for archive_id in ("123", "456"):
+            for archive_id in ("123", "456", "789"):
                 folder = archive_root / archive_id
                 folder.mkdir(parents=True)
                 (folder / "event.json").write_text(
@@ -114,6 +148,20 @@ class DiagnosticTimelineTests(unittest.TestCase):
                     ).status_code,
                     403,
                 )
+                for origin, base_url in (
+                    ("http://localhost:5174", "http://localhost:8000"),
+                    ("https://localhost:5173", "http://localhost:8000"),
+                    ("http://localhost:5173.evil.example", "http://localhost:8000"),
+                    ("http://localhost:5173", "http://example.org:8000"),
+                ):
+                    self.assertEqual(
+                        client.delete(
+                            "/diagnostics/errors/123",
+                            headers={**headers, "Origin": origin},
+                            base_url=base_url,
+                        ).status_code,
+                        403,
+                    )
                 self.assertEqual(
                     client.delete(
                         "/diagnostics/errors/invalid", headers=headers
@@ -132,7 +180,16 @@ class DiagnosticTimelineTests(unittest.TestCase):
                     ).status_code,
                     204,
                 )
+                self.assertEqual(
+                    client.delete(
+                        "/diagnostics/errors/789",
+                        headers={**headers, "Origin": "http://localhost:5173"},
+                        base_url="http://localhost:8000",
+                    ).status_code,
+                    204,
+                )
                 self.assertFalse((archive_root / "123").exists())
+                self.assertFalse((archive_root / "789").exists())
                 self.assertTrue((archive_root / "456" / "456.jpg").is_file())
                 self.assertEqual(
                     [
