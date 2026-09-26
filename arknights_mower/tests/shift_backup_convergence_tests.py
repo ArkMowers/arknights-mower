@@ -142,6 +142,70 @@ def positions(data):
     }
 
 
+@pytest.mark.parametrize("cross_room", [False, True])
+@pytest.mark.parametrize("group", ["", "红松", "深海"])
+def test_changed_dorm_posts_follow_final_group_state(solver, cross_room, group):
+    plans = copy.deepcopy(solver.op_data.global_plan)
+    main = plans["default_plan"].plan
+    main["dormitory_1"][0] = Room("杜林", group, ["梓兰"] if group else [])
+    if cross_room:
+        main["dormitory_2"] = [
+            Room("安赛尔", "", []),
+            Room("嘉维尔", "", []),
+            *[Room("Free", "", []) for _ in range(3)],
+        ]
+    target_room, target_index = ("dormitory_2", 0) if cross_room else ("dormitory_1", 1)
+    new_dorms = {
+        room: copy.deepcopy(slots)
+        for room, slots in main.items()
+        if room.startswith("dorm")
+    }
+    new_dorms["dormitory_1"][0], new_dorms[target_room][target_index] = (
+        new_dorms[target_room][target_index],
+        new_dorms["dormitory_1"][0],
+    )
+    plans["backup_plans"][0].plan.update(new_dorms)
+    solver.op_data = Operators(plans)
+    assert solver.op_data.init_and_validate() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = (
+            (op.room, op.index) if op.is_high() else ("", -1)
+        )
+        op.mood, op.time_stamp = 12, datetime.now()
+    solver.op_data.first_init = False
+    task = downshift(solver)
+    # 红松下班时，绑组宿管已在原换班意图中交给替班。
+    if group == "红松":
+        task.plan["dormitory_1"][0] = "梓兰"
+    before = positions(solver.op_data)
+    solver._prepare_shift_backup(task)
+    expected = "梓兰" if group == "红松" else "杜林"
+    assert task.plan[target_room][target_index] == expected
+    assert task.plan["dormitory_1"][0] == ("安赛尔" if cross_room else "桃金娘")
+    assert positions(solver.op_data) == before
+    solver._activate_shift_backup(task)
+    solver.op_data = solver.op_data.project_arrangements([task.plan])
+    assert not solver.agent_get_mood(read_rooms=False, return_plan=True)
+
+    # 回班同样先退出副表，宿舍成员直接回主表位置。
+    return_plan = {}
+    for name in solver.op_data.groups["红松"]:
+        op = solver.op_data.operators[name]
+        return_plan.setdefault(
+            op.room, ["Current"] * len(solver.op_data.plan[op.room])
+        )[op.index] = name
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=return_plan)
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_shift_backup(task)
+    assert task.plan["dormitory_1"][0] == "杜林"
+    assert task.plan[target_room][target_index] == (
+        "安赛尔" if cross_room else "桃金娘"
+    )
+    solver._activate_shift_backup(task)
+    solver.op_data = solver.op_data.project_arrangements([task.plan])
+    assert not solver.agent_get_mood(read_rooms=False, return_plan=True)
+
+
 @pytest.mark.parametrize("kind", [TaskTypes.SHIFT_OFF, TaskTypes.EXHAUST_OFF])
 def test_downshift_merges_backup_actions_without_first_installing_replacements(
     solver, kind
@@ -158,8 +222,12 @@ def test_downshift_merges_backup_actions_without_first_installing_replacements(
     assert solver.tasks == [task]
 
 
-def test_upshift_skips_backup_posts_and_returns_directly_to_main_posts(solver):
+@pytest.mark.parametrize(
+    "kind", [TaskTypes.SHIFT_ON, TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER]
+)
+def test_upshift_skips_backup_posts_and_returns_directly_to_main_posts(solver, kind):
     task = resting(solver)
+    task.type = kind
     before = positions(solver.op_data)
     solver._prepare_shift_backup(task)
     assert task.plan["room_1_2"] == ["野鬃", "灰毫"]
@@ -174,6 +242,29 @@ def test_upshift_skips_backup_posts_and_returns_directly_to_main_posts(solver):
         if name not in ("Current", "Free", "")
     ]
     assert len(names) == len(set(names))
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER])
+def test_correction_executes_final_main_posts_without_intermediate_backup_posts(
+    solver, kind
+):
+    task = resting(solver)
+    task.type = kind
+    solver.plan_metadata = MagicMock()
+
+    def arrange(plan, get_time):
+        assert solver.op_data.plan_condition == [False]
+        assert plan["room_1_2"] == ["野鬃", "灰毫"]
+        assert plan["room_2_2"] == ["乌尔比安", "安哲拉"]
+        solver.op_data = solver.op_data.project_arrangements([plan])
+        plan.clear()
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
+    solver.infra_main()
+    solver.agent_arrange.assert_called_once()
+    assert solver.op_data.operators["野鬃"].current_room == "room_1_2"
+    assert solver.op_data.operators["乌尔比安"].current_room == "room_2_2"
+    assert not any(t.plan for t in solver.tasks)
 
 
 def test_backup_actions_can_trigger_another_backup_before_any_real_arrangement(solver):

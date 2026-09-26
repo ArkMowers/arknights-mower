@@ -155,13 +155,17 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
             del fix_plan[room]
 
 
-def correct_group_dorms(op_data, fix_plan, is_busy):
-    """按非宿舍成员的轮休状态恢复宿舍原位，兼容重启和部分执行失败。"""
+def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
+    """按工作成员的轮休状态安排宿舍岗位；切表时可限定到发生变化的位置。"""
     for group, names in op_data.groups.items():
         residents = [
             op_data.operators[n]
             for n in names
             if op_data.operators[n].room.startswith("dorm")
+            and (
+                positions is None
+                or (op_data.operators[n].room, op_data.operators[n].index) in positions
+            )
         ]
         if not residents:
             continue

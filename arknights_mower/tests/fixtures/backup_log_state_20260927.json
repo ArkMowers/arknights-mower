@@ -1,0 +1,710 @@
+{
+  "source_time": "2026-09-27 00:42:35,359",
+  "conditions": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "operators": {
+    "令": {
+      "mood": 9.832258064516129,
+      "time_stamp": "2026-09-27T00:42:06.154449",
+      "depletion_rate": 0,
+      "_current_room": "central",
+      "current_index": 0
+    },
+    "歌蕾蒂娅": {
+      "mood": 16.335483870967742,
+      "time_stamp": "2026-09-27T00:42:06.734434",
+      "depletion_rate": 0,
+      "_current_room": "central",
+      "current_index": 1
+    },
+    "森蚺": {
+      "mood": 11.225806451612904,
+      "time_stamp": "2026-09-27T00:42:07.314708",
+      "depletion_rate": 0,
+      "_current_room": "central",
+      "current_index": 2
+    },
+    "焰尾": {
+      "mood": 14.32258064516129,
+      "time_stamp": "2026-09-27T00:42:10.106911",
+      "depletion_rate": 0,
+      "_current_room": "central",
+      "current_index": 3
+    },
+    "薇薇安娜": {
+      "mood": 14.32258064516129,
+      "time_stamp": "2026-09-27T00:42:10.685597",
+      "depletion_rate": 0,
+      "_current_room": "central",
+      "current_index": 4
+    },
+    "信仰搅拌机": {
+      "mood": 23.690322580645162,
+      "time_stamp": "2026-09-27T00:33:42.982561",
+      "depletion_rate": 0,
+      "_current_room": "meeting",
+      "current_index": 0
+    },
+    "跃跃": {
+      "mood": 21.75483870967742,
+      "time_stamp": "2026-09-27T00:37:35.026876",
+      "depletion_rate": 0,
+      "_current_room": "meeting",
+      "current_index": 1
+    },
+    "特克诺": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:30:51.417974",
+      "depletion_rate": 0,
+      "_current_room": "factory",
+      "current_index": 0
+    },
+    "絮雨": {
+      "mood": 19.81935483870968,
+      "time_stamp": "2026-09-27T00:33:08.635486",
+      "depletion_rate": 0,
+      "_current_room": "contact",
+      "current_index": 0
+    },
+    "褐果": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:39:33.318079",
+      "depletion_rate": 0,
+      "_current_room": "train",
+      "current_index": 0
+    },
+    "桃金娘": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:31:32.311001",
+      "depletion_rate": 0,
+      "_current_room": "train",
+      "current_index": 1
+    },
+    "冰酿": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:31:29.509851",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_1",
+      "current_index": 0
+    },
+    "闪灵": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:31:29.598540",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_1",
+      "current_index": 1
+    },
+    "菲亚梅塔": {
+      "mood": 8.670967741935485,
+      "time_stamp": "2026-09-27T00:42:31.603518",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_1",
+      "current_index": 2
+    },
+    "撷英调香师": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:33:44.146918",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_1",
+      "current_index": 3
+    },
+    "流明": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:31:36.330585",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_2",
+      "current_index": 0
+    },
+    "琴柳": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:31:36.417279",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_2",
+      "current_index": 1
+    },
+    "塑心": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:33:46.367606",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_3",
+      "current_index": 0
+    },
+    "蜜莓": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:32:25.648191",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_3",
+      "current_index": 1
+    },
+    "杜林": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:30:49.215758",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_4",
+      "current_index": 0
+    },
+    "车尔尼": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:30:49.306167",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_4",
+      "current_index": 1
+    },
+    "爱丽丝": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:33:46.456975",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_4",
+      "current_index": 2
+    },
+    "岳羽由加莉": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:36:38.894087",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_4",
+      "current_index": 3
+    },
+    "黑键": {
+      "mood": 19.741935483870968,
+      "time_stamp": "2026-09-27T00:33:10.691868",
+      "depletion_rate": 0,
+      "_current_room": "room_1_1",
+      "current_index": 0
+    },
+    "绮良": {
+      "mood": 10.683870967741935,
+      "time_stamp": "2026-09-27T00:31:00.492002",
+      "depletion_rate": 0,
+      "_current_room": "room_1_1",
+      "current_index": 1
+    },
+    "鸿雪": {
+      "mood": 10.529032258064516,
+      "time_stamp": "2026-09-27T00:31:00.576956",
+      "depletion_rate": 0,
+      "_current_room": "room_1_1",
+      "current_index": 2
+    },
+    "远牙": {
+      "mood": 14.4,
+      "time_stamp": "2026-09-27T00:31:48.585773",
+      "depletion_rate": 0,
+      "_current_room": "room_1_2",
+      "current_index": 0
+    },
+    "野鬃": {
+      "mood": 14.4,
+      "time_stamp": "2026-09-27T00:31:48.671983",
+      "depletion_rate": 0,
+      "_current_room": "room_1_2",
+      "current_index": 1
+    },
+    "灰毫": {
+      "mood": 14.4,
+      "time_stamp": "2026-09-27T00:31:48.757128",
+      "depletion_rate": 0,
+      "_current_room": "room_1_2",
+      "current_index": 2
+    },
+    "图耶": {
+      "mood": 12.0,
+      "time_stamp": "2026-09-27T00:31:25.937624",
+      "depletion_rate": 0,
+      "_current_room": "room_1_3",
+      "current_index": 0
+    },
+    "斯卡蒂": {
+      "mood": 20.593548387096774,
+      "time_stamp": "2026-09-27T00:32:53.049869",
+      "depletion_rate": 0,
+      "_current_room": "room_2_1",
+      "current_index": 0
+    },
+    "幽灵鲨": {
+      "mood": 20.516129032258064,
+      "time_stamp": "2026-09-27T00:32:53.135267",
+      "depletion_rate": 0,
+      "_current_room": "room_2_1",
+      "current_index": 1
+    },
+    "砾": {
+      "mood": 20.903225806451612,
+      "time_stamp": "2026-09-27T00:32:00.399764",
+      "depletion_rate": 0,
+      "_current_room": "room_2_2",
+      "current_index": 0
+    },
+    "乌尔比安": {
+      "mood": 22.141935483870967,
+      "time_stamp": "2026-09-27T00:33:04.832085",
+      "depletion_rate": 0,
+      "_current_room": "room_2_2",
+      "current_index": 1
+    },
+    "安哲拉": {
+      "mood": 20.980645161290322,
+      "time_stamp": "2026-09-27T00:33:04.915732",
+      "depletion_rate": 0,
+      "_current_room": "room_2_2",
+      "current_index": 2
+    },
+    "承曦格雷伊": {
+      "mood": 11.148387096774194,
+      "time_stamp": "2026-09-27T00:31:04.759880",
+      "depletion_rate": 0,
+      "_current_room": "room_2_3",
+      "current_index": 0
+    },
+    "清流": {
+      "mood": 11.92258064516129,
+      "time_stamp": "2026-09-27T00:32:21.912598",
+      "depletion_rate": 0,
+      "_current_room": "room_3_1",
+      "current_index": 0
+    },
+    "温蒂": {
+      "mood": 12.07741935483871,
+      "time_stamp": "2026-09-27T00:32:21.998138",
+      "depletion_rate": 0,
+      "_current_room": "room_3_1",
+      "current_index": 1
+    },
+    "阿罗玛": {
+      "mood": 14.864516129032259,
+      "time_stamp": "2026-09-27T00:42:02.429642",
+      "depletion_rate": 0,
+      "_current_room": "room_3_2",
+      "current_index": 0
+    },
+    "槐琥": {
+      "mood": 20.670967741935485,
+      "time_stamp": "2026-09-27T00:30:51.519627",
+      "depletion_rate": 0,
+      "_current_room": "room_3_2",
+      "current_index": 1
+    },
+    "迷迭香": {
+      "mood": 20.361290322580643,
+      "time_stamp": "2026-09-27T00:32:25.735630",
+      "depletion_rate": 0,
+      "_current_room": "room_3_2",
+      "current_index": 2
+    },
+    "Lancet-2": {
+      "mood": 0.0,
+      "time_stamp": "2026-09-27T00:31:07.768013",
+      "depletion_rate": 0,
+      "_current_room": "room_3_3",
+      "current_index": 0
+    },
+    "重岳": {
+      "mood": 20.283870967741937,
+      "time_stamp": "2026-09-27T00:37:34.446619",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_2",
+      "current_index": 3
+    },
+    "夕": {
+      "mood": 20.283870967741937,
+      "time_stamp": "2026-09-27T00:37:31.817519",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_2",
+      "current_index": 2
+    },
+    "诗怀雅": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "斩业星熊": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "陈": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "见行者": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "麦哲伦": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "桑葚": {
+      "mood": 22.838709677419356,
+      "time_stamp": "2026-09-27T00:31:12.190722",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "梅尔": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "赫默": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "隐德来希": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:37:38.610710",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "乌有": {
+      "mood": 22.219354838709677,
+      "time_stamp": "2026-09-27T00:38:28.555445",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_3",
+      "current_index": 2
+    },
+    "但书": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "能天使": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "龙舌兰": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "蕾缪安": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "结城理": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "酒神": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "食铁兽": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "伺夜": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "娜斯提": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:38:31.189796",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_3",
+      "current_index": 3
+    },
+    "夜烟": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "苍苔": {
+      "mood": 22.374193548387098,
+      "time_stamp": "2026-09-27T00:42:34.321476",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_1",
+      "current_index": 4
+    },
+    "引星棘刺": {
+      "mood": 22.219354838709677,
+      "time_stamp": "2026-09-27T00:41:50.248081",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_4",
+      "current_index": 4
+    },
+    "缪尔赛思": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "埃癸斯": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "黍": {
+      "mood": 0.0,
+      "time_stamp": "2026-09-27T00:32:40.504662",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "予愿安洁莉娜": {
+      "mood": 17.10967741935484,
+      "time_stamp": "2026-09-27T00:32:40.604644",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "年": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:32:09.474968",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "望": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:32:06.362592",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "余": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:32:06.451029",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "至简": {
+      "mood": 24.0,
+      "time_stamp": "2026-09-27T00:41:11.897773",
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "塞雷娅": {
+      "mood": 21.36774193548387,
+      "time_stamp": "2026-09-27T00:38:31.279455",
+      "depletion_rate": 0,
+      "_current_room": "dormitory_3",
+      "current_index": 4
+    },
+    "虎狼丸": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "伊芙利特": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "星源": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "多萝西": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "澄闪": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    },
+    "白面鸮": {
+      "mood": 24,
+      "time_stamp": null,
+      "depletion_rate": 0,
+      "_current_room": "",
+      "current_index": -1
+    }
+  },
+  "dorms": [
+    {
+      "position": [
+        "dormitory_1",
+        4
+      ],
+      "name": "苍苔",
+      "time": "2026-09-27T01:13:37.610346"
+    },
+    {
+      "position": [
+        "dormitory_2",
+        2
+      ],
+      "name": "夕",
+      "time": "2026-09-27T01:48:42.128602"
+    },
+    {
+      "position": [
+        "dormitory_2",
+        3
+      ],
+      "name": "重岳",
+      "time": "2026-09-27T02:09:52.927412"
+    },
+    {
+      "position": [
+        "dormitory_2",
+        4
+      ],
+      "name": "",
+      "time": null
+    },
+    {
+      "position": [
+        "dormitory_3",
+        2
+      ],
+      "name": "乌有",
+      "time": "2026-09-27T01:12:32.867642"
+    },
+    {
+      "position": [
+        "dormitory_3",
+        3
+      ],
+      "name": "娜斯提",
+      "time": "2026-09-27T00:38:31.199265"
+    },
+    {
+      "position": [
+        "dormitory_3",
+        4
+      ],
+      "name": "塞雷娅",
+      "time": "2026-09-27T01:45:30.671372"
+    },
+    {
+      "position": [
+        "dormitory_4",
+        4
+      ],
+      "name": "引星棘刺",
+      "time": "2026-09-27T01:18:00.649787"
+    }
+  ],
+  "shift_off": {
+    "room_3_3": [
+      "埃癸斯"
+    ],
+    "room_1_1": [
+      "Current",
+      "能天使",
+      "蕾缪安"
+    ],
+    "room_2_3": [
+      "缪尔赛思"
+    ],
+    "central": [
+      "Current",
+      "Current",
+      "夕",
+      "Current",
+      "Current"
+    ],
+    "room_3_1": [
+      "结城理",
+      "娜斯提"
+    ],
+    "room_1_3": [
+      "伺夜"
+    ],
+    "factory": [
+      "麦哲伦"
+    ],
+    "train": [
+      "梅尔",
+      "赫默"
+    ],
+    "dormitory_2": [
+      "隐德来希",
+      "Current",
+      "鸿雪",
+      "Current",
+      "温蒂"
+    ],
+    "dormitory_1": [
+      "Current",
+      "Current",
+      "Current",
+      "Current",
+      "承曦格雷伊"
+    ],
+    "dormitory_3": [
+      "Current",
+      "Current",
+      "绮良",
+      "清流",
+      "图耶"
+    ],
+    "dormitory_4": [
+      "Current",
+      "Current",
+      "Current",
+      "Current",
+      "森蚺"
+    ]
+  }
+}

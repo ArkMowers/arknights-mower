@@ -108,6 +108,104 @@ def test_fiammetta_keeps_countdown_even_when_in_central(room_reader):
     solver.recog.update.assert_not_called()
 
 
+@pytest.mark.parametrize("phase", ["move", "charge", "restore"])
+def test_fiammetta_read_refreshes_reservation_from_actual_slot(room_reader, phase):
+    room = "dormitory_1"
+    solver, fia, deadline = room_reader(room=room, name="菲亚梅塔", mood=7.5)
+    solver.op_data.experimental_dorm_logic = True
+    solver.op_data.get_dorm_by_name = lambda name: (None, None)
+    solver.op_data.plan[room][0].agent = "杜林"
+    fia.current_room, fia.current_index = "dormitory_2", 2
+    fia.need_to_refresh.return_value = False
+    fia.mood = 24
+    charge = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={room: ["伊内丝", "菲亚梅塔"]},
+        meta_data="伊内丝",
+    )
+    restore = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={room: ["菲亚梅塔"], "central": ["伊内丝"]},
+    )
+    solver.task = {"move": None, "charge": charge, "restore": restore}[phase]
+    reserved = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA, time=deadline + timedelta(hours=5)
+    )
+    original_times = (charge.time, restore.time)
+    solver.tasks = [charge, restore, reserved]
+    result = solver.get_agent_from_room(room)
+    solver.read_accurate_mood.assert_called_once()
+    solver.read_operator_time.assert_called_once()
+    assert fia.mood == result[0]["mood"] == 7.5
+    assert reserved.time == result[0]["time"] == deadline
+    assert (charge.time, restore.time) == original_times
+    assert solver.tasks == [charge, restore, reserved]
+
+
+@pytest.mark.parametrize("guard", ["retry", "initial", "legacy", "selected"])
+def test_fiammetta_refresh_preserves_retry_and_initialization_guards(
+    room_reader, guard
+):
+    solver, _, deadline = room_reader(room="dormitory_1", name="菲亚梅塔", mood=8)
+    solver.op_data.experimental_dorm_logic = guard != "legacy"
+    old_time = deadline + timedelta(hours=1)
+    task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, time=old_time)
+    solver.tasks = [task]
+    if guard == "retry":
+        task.fia_retry_after = old_time
+    if guard == "initial":
+        solver.defer_backup_plan_until_mood_read = True
+    if guard == "selected":
+        solver.task = task
+    solver._refresh_fiammetta_task(deadline)
+    assert task.time == old_time
+
+
+def test_fiammetta_removed_from_dorm_invalidates_only_idle_reservation(room_reader):
+    solver, _, deadline = room_reader(room="dormitory_1", name="菲亚梅塔", mood=8)
+    solver.op_data.experimental_dorm_logic = True
+    solver.op_data.get_dorm_by_name = lambda name: (None, None)
+    solver.find.return_value = True
+    solver.find.side_effect = None  # 实际房间已空，肥鸭离宿。
+    timer = SchedulerTask(task_type=TaskTypes.FIAMMETTA, time=deadline)
+    restore = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA, task_plan={"dormitory_1": ["菲亚梅塔"]}
+    )
+    other = SchedulerTask(task_type=TaskTypes.SHIFT_ON)
+    solver.tasks = [timer, restore, other]
+    solver.get_agent_from_room("dormitory_1")
+    assert solver.tasks == [restore, other]
+    assert solver.op_data.operators["菲亚梅塔"].current_room == ""
+
+
+@pytest.mark.parametrize("location", ["dormitory_2", "", "unexpected_occupant"])
+def test_fiammetta_reschedules_from_actual_room_after_move(room_reader, location):
+    solver, fia, deadline = room_reader(room="dormitory_2", name="菲亚梅塔", mood=24)
+    fia.current_room = "dormitory_2" if location == "unexpected_occupant" else location
+    solver.op_data.experimental_dorm_logic = True
+    solver.op_data.run_order_rooms = {}
+    solver.op_data.exhaust_agent = set()
+    solver._sync_run_order_tasks = MagicMock()
+    solver.check_fia = MagicMock(return_value=(["伊内丝"], "dormitory_1"))
+    solver.enter_room, solver.back = MagicMock(), MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        return_value=[
+            {
+                "agent": "杜林" if location == "unexpected_occupant" else "菲亚梅塔",
+                "time": deadline,
+            }
+        ]
+    )
+    solver.run_order_solver()
+    if location:
+        solver.get_agent_from_room.assert_called_once_with("dormitory_2", [0])
+    else:
+        solver.enter_room.assert_not_called()
+    assert bool(solver.tasks) == (location == "dormitory_2")
+    if solver.tasks:
+        assert solver.tasks[0].time == deadline
+
+
 def test_fiammetta_swap_reads_target_and_fiammetta_mood(room_reader):
     target_solver, target, _ = room_reader(room="dormitory_1", name="伊内丝", mood=7.5)
     target_solver.task = SchedulerTask(
@@ -215,7 +313,8 @@ def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
     )
 
 
-def test_fiammetta_arrangement_requests_both_mood_indexes():
+@pytest.mark.parametrize("already_arranged", [False, True])
+def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
     solver = object.__new__(BaseSchedulerSolver)
     solver.task = SchedulerTask(
         task_plan={"dormitory_1": ["伊内丝", "菲亚梅塔"]},
@@ -228,18 +327,20 @@ def test_fiammetta_arrangement_requests_both_mood_indexes():
 
     def current_room(room, _refresh=True):
         if room == "dormitory_1":
-            return ["杜林", "菲亚梅塔"]
+            return ["伊内丝" if already_arranged else "杜林", "菲亚梅塔"]
         return ["伊内丝"]
 
     solver.op_data = SimpleNamespace(
         operators={"伊内丝": target, "菲亚梅塔": fia},
         get_current_room=MagicMock(side_effect=current_room),
         run_order_rooms={},
+        experimental_dorm_logic=already_arranged,
     )
     solver.enter_room = MagicMock()
     solver.turn_on_room_detail = MagicMock()
     solver.refresh_current_room = MagicMock(return_value=["杜林", "菲亚梅塔"])
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    solver.prepare_dorm_selection = MagicMock(return_value=None)
     solver.find = MagicMock(return_value=True)
     solver.choose_agent = MagicMock()
     solver.tap_confirm = MagicMock()
@@ -253,9 +354,13 @@ def test_fiammetta_arrangement_requests_both_mood_indexes():
     plan = solver.task.plan
     restored = solver.agent_arrange_room({}, "dormitory_1", plan)
 
-    solver.get_agent_from_room.assert_called_once_with(
-        "dormitory_1", [0, 1], {1: "伊内丝"}
-    )
+    if already_arranged:
+        solver.get_agent_from_room.assert_called_once_with("dormitory_1", [0, 1])
+        solver.choose_agent.assert_not_called()
+    else:
+        solver.get_agent_from_room.assert_called_once_with(
+            "dormitory_1", [0, 1], {1: "伊内丝"}
+        )
     assert restored == {
         "dormitory_1": ["杜林", "菲亚梅塔"],
         "meeting": ["伊内丝"],
