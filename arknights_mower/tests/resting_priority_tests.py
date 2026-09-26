@@ -213,6 +213,7 @@ def test_dorm_reorder_keeps_active_recovery_target_in_its_room(op_data):
     other = set_tier(op_data, "陈", RestingTier.REPLACEMENT, 1)
     protected.current_room, protected.current_index = protected_bed.position
     protected.dorm_recovery_room = protected.current_room
+    protected.dorm_recovery_index = protected.current_index
     protected_bed.name = protected.name
     other.current_room, other.current_index = other_bed.position
 

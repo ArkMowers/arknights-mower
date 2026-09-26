@@ -1054,6 +1054,8 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
+        if (agent.current_room, agent.current_index) != (current_room, current_index):
+            agent.clear_dorm_recovery()
         retained_time = None
         if self.experimental_dorm_logic:
             _, previous_bed = self.get_dorm_by_name(name)
@@ -1282,6 +1284,7 @@ class Operators:
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
             operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
+            operator.dorm_recovery_index = getattr(exist, "dorm_recovery_index", -1)
             operator.resting_from_train = getattr(exist, "resting_from_train", False)
             operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
             operator.dorm_mood_fallback = getattr(exist, "dorm_mood_fallback", "")
@@ -2136,6 +2139,7 @@ class Operator:
         # 测试宿舍逻辑：候补跌破急救线后，本轮休息周期锁定为低优。
         self.standby_low_priority = False
         self.dorm_recovery_room = ""
+        self.dorm_recovery_index = -1
         self.resting_from_train = False
         self.dorm_recovery_fixed = ()
         self.dorm_mood_fallback = ""
@@ -2182,6 +2186,7 @@ class Operator:
 
     def clear_dorm_recovery(self):
         self.dorm_recovery_room = ""
+        self.dorm_recovery_index = -1
         self.dorm_recovery_fixed = ()
 
     def is_high(self):

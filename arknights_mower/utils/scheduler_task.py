@@ -496,10 +496,11 @@ def _native_return(op_data, plan, names):
 
 
 def _active_recovery_room(op_data, name):
-    """返回仍有效的单回宿舍标记；离开过该宿舍的旧标记不参与豁免。"""
-    op = op_data.operators[name]
-    room = getattr(op, "dorm_recovery_room", "")
-    return room if room and op.current_room == room else ""
+    """只有实际床位仍匹配的单回标记参与豁免。"""
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    position = active_recovery_position(op_data.operators[name])
+    return position[0] if position else ""
 
 
 def _recovery_aware_assignments(
@@ -511,7 +512,7 @@ def _recovery_aware_assignments(
     单回目标若原本会因缩容落选，会替换保留区末尾的非单回目标；若目标
     所在宿舍仍有动态床，优先保留原床或同房床。普通床也保留原位，
     不因房间排序或心情变化互换。确实换房/离床时清除旧标记，使后续
-    宿舍任务重新执行一次单回入驻。
+    宿舍任务重新执行一次单回入驻。同房换床也不能沿用旧单回标记。
     """
     capacity = len(beds)
     protected = {
@@ -585,13 +586,13 @@ def _recovery_aware_assignments(
     for bed, candidate in zip(available, remaining):
         assignments[bed.position] = candidate
 
-    assigned_rooms = {
-        candidate[2]: position[0] for position, candidate in assignments.items()
+    assigned_positions = {
+        candidate[2]: position for position, candidate in assignments.items()
     }
     if clear_invalid_recovery:
         for name in protected:
-            recovery_room = _active_recovery_room(op_data, name)
-            if assigned_rooms.get(name) != recovery_room:
+            op = op_data.operators[name]
+            if assigned_positions.get(name) != (op.current_room, op.current_index):
                 op_data.operators[name].clear_dorm_recovery()
     return assignments, dropped
 
