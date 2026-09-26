@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.tests import dorm_empty_release_tests
-from arknights_mower.utils import resting_priority
+from arknights_mower.utils import resting_priority, scheduler_task
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -162,8 +162,9 @@ def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
         allow_unregistered(monkeypatch, instance, ["伊芙利特"])
         screen_only(instance, ["伊芙利特"])
     instance.task = None
-    # 只替代设备读屏；实际运行日常入口、休息规划、任务生成和 Free 选人。
+    # 隔离设备读屏和无关的仓库读取；实际运行宿舍规划、任务生成和 Free 选人。
     instance.agent_get_mood = MagicMock(return_value={})
+    monkeypatch.setattr(scheduler_task, "get_inventory_counts", lambda: {})
     instance.plan_solver()
     assert len(instance.tasks) == 1
     assert instance.tasks[0].plan == {
