@@ -90,7 +90,12 @@ def resting_mood(op, now=None):
 
 
 def resting_key(op_data, name, now=None):
-    return resting_tier(op_data, name), resting_mood(op_data.operators.get(name), now)
+    op = op_data.operators.get(name)
+    mood = resting_mood(op, now)
+    if op_data.experimental_dorm_logic:
+        # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
+        mood -= op.upper_limit if op is not None else 24
+    return resting_tier(op_data, name), mood
 
 
 def busy_resting_names():

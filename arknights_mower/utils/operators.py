@@ -1179,16 +1179,9 @@ class Operators:
         # 记录真实用尽时间
         if room in self.true_exhaust_room and _name in self.operators.keys():
             _agent = self.operators[_name]
-            time_elapsed = (agent["time"] - datetime.now()).total_seconds()
-            _agent.exhaust_time = agent["time"]
-            if _agent.mood > 0 and _agent.lower_limit > 0:
-                _agent.exhaust_time = datetime.now() + timedelta(
-                    seconds=(_agent.mood - _agent.lower_limit)
-                    * time_elapsed
-                    / _agent.mood
-                )
-            if time_elapsed < 0 or _agent.exhaust_time < datetime.now():
-                _agent.exhaust_time = datetime.now()
+            _agent.exhaust_time = Operator.exhaust_time_at_lower_limit(
+                _agent, agent["time"]
+            )
             logger.debug(f"{_name} 真实用尽时间：{_agent.exhaust_time}")
             return
 
@@ -1870,9 +1863,9 @@ class Operators:
             bed = self.dorm[index]
             if not bed.name:
                 return (0, 0, 0)
-            tier, mood = resting_key(self, bed.name, now)
-            # 先使用空位，再接管层级最低、同级心情最高的占位者。
-            return (1, -tier, -mood)
+            tier, recovery_order = resting_key(self, bed.name, now)
+            # 先使用空位，再接管层级最低、同级距回满最近的占位者。
+            return (1, -tier, -recovery_order)
 
         return min(candidates, key=takeover_cost, default=None)
 
@@ -2248,6 +2241,15 @@ class Operator:
             return predict
         else:
             return self.mood
+
+    def exhaust_time_at_lower_limit(self, zero_time, now=None):
+        """按本次读到的心情，把游戏的归零倒计时换算到设置下限。"""
+        now = now or datetime.now()
+        if self.mood > 0 and self.lower_limit > 0:
+            zero_time = now + (zero_time - now) * (
+                (self.mood - self.lower_limit) / self.mood
+            )
+        return max(now, zero_time)
 
     def predict_exhaust(self):
         if self.workaholic or self.exhaust_require or self.room in ["factory", "train"]:

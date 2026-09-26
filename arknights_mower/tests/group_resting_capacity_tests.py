@@ -451,7 +451,12 @@ def test_full_standby_does_not_refill_vacant_bed(solver):
     bed.reset()
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
-    assert tasks == []
+    # 满心情候补仍不重新入住；空床改由游戏页选择其他空闲者补满。
+    assert len(tasks) == 1
+    room, index = bed.position
+    assert tasks[0].plan[room][index] == "Free"
+    solver.task = tasks[0]
+    assert DEEP[1] not in solver.get_free_list([], include_full=True)
 
 
 def test_grouped_candidate_fills_on_deferral_without_changing_return_time(solver):

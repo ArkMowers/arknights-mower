@@ -1,5 +1,6 @@
 """缓存候选耗尽时，Free 复用游戏选人页寻找未登记的空闲干员。"""
 
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,6 +9,7 @@ from arknights_mower.tests import dorm_empty_release_tests
 from arknights_mower.utils import resting_priority
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
+    TaskTypes,
     plan_metadata,
     try_add_release_dorm,
 )
@@ -142,3 +144,51 @@ def test_missing_owned_candidate_stops_search_without_registering_catalogue(
     with pytest.raises(Exception, match="列表已到末尾|足够的可用宿舍"):
         instance.choose_agent(plan, ROOM)
     assert "陈" not in instance.op_data.operators
+
+
+@pytest.mark.parametrize("cached_candidate", [True, False])
+def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
+    solver, monkeypatch, cached_candidate
+):
+    instance, selected = solver
+    data = instance.op_data
+    empty_bed(instance, selected)
+    data.operators["银灰"].current_room = "meeting"
+    if cached_candidate:
+        data.operators["红"].current_room = ""
+        # 心情高于下班阈值，但空床仍应由不养闲人补上。
+        data.operators["红"].mood = 21
+    else:
+        allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+        screen_only(instance, ["伊芙利特"])
+    instance.task = None
+    # 只替代设备读屏；实际运行日常入口、休息规划、任务生成和 Free 选人。
+    instance.agent_get_mood = MagicMock(return_value={})
+    instance.plan_solver()
+    assert len(instance.tasks) == 1
+    assert instance.tasks[0].plan == {
+        ROOM: ["Current"] * 4 + ["红" if cached_candidate else "Free"]
+    }
+    instance.task = instance.tasks[0]
+    plan = selected.copy() + [instance.task.plan[ROOM][-1]]
+    instance.choose_agent(plan, ROOM)
+    assert selected == plan
+    assert len(selected) == 5
+    assert selected[-1] == ("红" if cached_candidate else "伊芙利特")
+
+
+def test_daily_refill_retains_original_nearby_task_guard(solver, monkeypatch):
+    instance, selected = solver
+    empty_bed(instance, selected)
+    instance.op_data.operators["银灰"].current_room = "meeting"
+    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    order = SchedulerTask(
+        time=datetime.now() + timedelta(minutes=2),
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_1": ["但书"]},
+    )
+    instance.tasks = [order]
+    instance.task = None
+    instance.agent_get_mood = MagicMock(return_value={})
+    instance.plan_solver()
+    assert instance.tasks == [order]

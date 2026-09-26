@@ -1,4 +1,4 @@
-"""统一休息层级、绝对心情排序及严格跨级接管矩阵。"""
+"""统一休息层级、距上限差值排序及严格跨级接管矩阵。"""
 
 import pickle
 from datetime import datetime, timedelta
@@ -120,7 +120,7 @@ def test_blacklist_and_zero_mood_work_are_excluded_but_actual_zero_mood_is_not(o
     assert op_data.assign_dorm("红") is not None
 
 
-def test_same_tier_uses_absolute_mood_not_lower_limit_or_priority_list_order(op_data):
+def test_equal_upper_limit_ignores_lower_limit_and_priority_list_order(op_data):
     set_tier(op_data, "银灰", RestingTier.PRIORITY, 15)
     set_tier(op_data, "红", RestingTier.PRIORITY, 10)
     op_data.operators["银灰"].lower_limit = 12
@@ -133,6 +133,55 @@ def test_same_tier_uses_absolute_mood_not_lower_limit_or_priority_list_order(op_
         "银灰",
         "红",
     ]
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ((10, 0, 12), (12, 0, 24)),  # 剩 2 与 12 点，不能按原始心情。
+        ((5, 0, 10), (12, 0, 20)),  # 剩 5 与 8 点，不能按 50% 与 60%。
+        ((5, 0, 12), (13, 12, 24)),  # 剩 7 与 11 点，不比较距下限余量。
+    ],
+)
+def test_same_tier_prefers_larger_recovery_gap(op_data, first, second):
+    for name, (mood, lower, upper) in zip(("银灰", "红"), (first, second)):
+        op = set_tier(op_data, name, RestingTier.PRIORITY, mood)
+        op.lower_limit, op.upper_limit = lower, upper
+    assert sorted(["银灰", "红"], key=lambda n: resting_key(op_data, n)) == [
+        "红",
+        "银灰",
+    ]
+
+
+def test_group_bed_assignment_uses_recovery_gap(op_data):
+    short = set_tier(op_data, "银灰", RestingTier.MAIN, 10)
+    short.upper_limit = 12
+    set_tier(op_data, "红", RestingTier.MAIN, 12)
+    op_data.plan[ROOM][3] = Room("Free", "", [])
+    op_data.dorm = [Dormitory((ROOM, 3)), Dormitory((ROOM, 4))]
+    beds = op_data.assign_dorm_group(["银灰", "红"])
+    assert [(bed.name, bed.position) for bed in beds] == [
+        ("红", (ROOM, 3)),
+        ("银灰", (ROOM, 4)),
+    ]
+
+
+def test_unknown_mood_remains_full_and_priority_still_precedes_gap(op_data):
+    first = set_tier(op_data, "银灰", RestingTier.PRIORITY, 1)
+    first.upper_limit = 12
+    first.time_stamp = None
+    set_tier(op_data, "红", RestingTier.PRIORITY, 23)
+    assert resting_key(op_data, "红") < resting_key(op_data, "银灰")
+    op_data.config.ope_resting_priority.remove("红")
+    assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
+
+
+def test_legacy_resting_key_retains_raw_mood_order(op_data):
+    op_data.config.experimental_dorm_logic = False
+    first = set_tier(op_data, "银灰", RestingTier.PRIORITY, 10)
+    first.upper_limit = 12
+    set_tier(op_data, "红", RestingTier.PRIORITY, 12)
+    assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
 
 
 def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):

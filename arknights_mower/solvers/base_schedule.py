@@ -2407,9 +2407,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         result[op.current_index]["time"] is not None
                         and result[op.current_index]["time"] > _time
                     ):
-                        _time = result[op.current_index]["time"] - timedelta(
-                            minutes=10 + margin
-                        )
+                        zero_time = result[op.current_index]["time"]
+                        if self.op_data.experimental_dorm_logic:
+                            zero_time = Operator.exhaust_time_at_lower_limit(
+                                op, zero_time, _time
+                            )
+                        _time = zero_time - timedelta(minutes=10 + margin)
                     elif (
                         op.current_mood() > 0.25 + op.lower_limit
                         and op.depletion_rate != 0
@@ -2557,9 +2560,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_workshop_tasks(self.op_data, self.tasks)
-        if not getattr(
-            self.op_data, "experimental_dorm_logic", False
-        ) and not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
