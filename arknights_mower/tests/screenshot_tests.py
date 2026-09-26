@@ -852,6 +852,18 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(unknown.exists())
         self.assertEqual(len(list((self.root / "run_order").glob("*.jpg"))), 1)
 
+    def test_positive_retention_under_five_minutes_keeps_five_minutes(self):
+        now = time.time_ns()
+        with patch("arknights_mower.utils.screenshot.time.time_ns", return_value=now):
+            for retention in (0.01, 5 / 60):
+                with self.subTest(retention=retention):
+                    self.retention = retention
+                    within_five = self.seed("", now - 4 * 60 * 10**9)
+                    beyond_five = self.seed("", now - 6 * 60 * 10**9)
+                    self.store.cleanup()
+                    self.assertTrue(within_five.exists())
+                    self.assertFalse(beyond_five.exists())
+
     def test_cleanup_expires_error_archives_with_runtime_logs(self):
         now = time.time_ns()
         hour_ns = 3600 * 10**9
