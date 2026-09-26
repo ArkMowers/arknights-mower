@@ -32,6 +32,21 @@ def runtime_fixture(root):
 
 
 class AndroidPackageTests(unittest.TestCase):
+    def test_nightly_version_can_be_packaged_and_checked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            version = "4.1.6-alpha.9.g40ac54e4"
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("payload")
+            (root / "arknights_mower/__init__.py").write_text(
+                f'__version__ = "{version}"\n'
+            )
+            runtime_fixture(root)
+            archive = package(root, root / "out", version, "a" * 40)
+            check(archive, version, "a" * 40)
+
     def test_package_keeps_host_and_user_data_out(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
