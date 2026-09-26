@@ -495,6 +495,36 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         network.assert_called_once_with("beta")
         github.assert_not_called()
 
+    def test_stable_install_can_use_ota_to_beta_or_development(self):
+        for channel, version in (
+            ("beta", "v4.1.6-alpha.9"),
+            ("dev", "v4.1.6-alpha.9.g12345678"),
+        ):
+            target = release(version, True, system="windows", arch="x64")
+            index = release_index(target)
+            index["full_assets"][0]["size"] = 100
+            name = f"arknights-mower-ota_4.1.5_to_{version[1:]}_windows_x64_v2.zip"
+            index["ota_assets"] = [
+                {
+                    "name": name,
+                    "size": 9,
+                    "digest": "sha256:" + "b" * 64,
+                    "url": f"https://github.com/{update.OTA_REPO}/releases/download/{version}/{name}",
+                }
+            ]
+            with (
+                self.subTest(channel=channel),
+                patch.object(update, "__version__", "4.1.5"),
+                patch.object(runtime, "frozen", return_value=True),
+                patch.object(update, "platform_asset", return_value=("windows", "x64")),
+                patch.object(update, "release_index", return_value=index),
+            ):
+                result = update.check(channel)
+                self.assertTrue(result["available"])
+                self.assertEqual(
+                    update._checks[result["check_id"]]["ota_asset"]["name"], name
+                )
+
     def test_source_release_resolves_tag_not_default_branch(self):
         with (
             patch.object(runtime, "frozen", return_value=False),
