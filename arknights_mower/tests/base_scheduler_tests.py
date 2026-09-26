@@ -3160,14 +3160,12 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         self.conf_patch.start()
         self.addCleanup(self.conf_patch.stop)
 
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_arrange_room_does_not_read_countdown_before_check_in(self):
-        """换人阶段只确认并校验进驻，不应提前进入订单页。"""
+    def make_solver(self, target="但书"):
         room = "room_1_1"
-        solver = BaseSchedulerSolver()
+        solver = object.__new__(BaseSchedulerSolver)
         solver.task = SchedulerTask(
             time=datetime.now(),
-            task_plan={room: ["但书"]},
+            task_plan={room: [target]},
             task_type=TaskTypes.RUN_ORDER,
             meta_data=room,
         )
@@ -3183,26 +3181,115 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.refresh_current_room = MagicMock(return_value=["旧干员"])
         solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
         solver.find = MagicMock(return_value=(100, 100))
-        solver.choose_agent = MagicMock()
         events = []
+        solver.choose_agent = MagicMock(
+            side_effect=lambda *_args, **_kw: events.append("choose")
+        )
         solver.tap_confirm = MagicMock(side_effect=lambda *_: events.append("confirm"))
         solver.get_agent_from_room = MagicMock(
-            side_effect=lambda *_: events.append("verify") or [{"agent": "但书"}]
+            side_effect=lambda *_: events.append("verify") or [{"agent": target}]
         )
-        solver.get_order_remaining_time = MagicMock()
+        solver.get_order_remaining_time = MagicMock(
+            side_effect=lambda: events.append("countdown") or 120
+        )
         solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
         solver.back = MagicMock()
+        solver.reset_room_time = MagicMock()
+        return solver, room, events
 
-        plan = {room: ["但书"]}
-        result = solver.agent_arrange_room({}, room, plan)
+    def test_agent_arrange_room_calibrates_time_before_check_in(self):
+        """换人前重读并校准 task.time，确认入驻沿用校准后的倒计时。"""
+        solver, room, events = self.make_solver()
+        now = datetime(2026, 9, 26, 12)
+        solver.turn_on_room_detail.side_effect = lambda *_: events.append("detail")
+        solver.back.side_effect = lambda *_: events.append("back")
+        with patch.object(base_schedule, "datetime") as clock:
+            clock.now.return_value = now
+            result = solver.agent_arrange_room({}, room, solver.task.plan)
+            self.assertEqual(solver.task.time, now + timedelta(seconds=60))
+            # 使用实际确认逻辑，校准后应等到完成前 30 秒才确认。
+            solver.sleep = MagicMock()
+            solver.find.return_value = None
+            BaseSchedulerSolver.tap_confirm(solver, room, result)
 
-        self.assertEqual(events, ["confirm", "verify"])
-        solver.get_order_remaining_time.assert_not_called()
+        self.assertEqual(
+            events,
+            ["detail", "countdown", "back", "detail", "choose", "confirm", "verify"],
+        )
+        solver.get_order_remaining_time.assert_called_once_with()
+        solver.sleep.assert_called_once_with(90.0)
         self.assertEqual(result, {room: ["旧干员"]})
+
+    def test_invalid_countdown_uses_original_missed_order_path(self):
+        for remaining in (0, -1, 660, 900):
+            with self.subTest(remaining=remaining):
+                solver, room, _ = self.make_solver()
+                solver.get_order_remaining_time.side_effect = None
+                solver.get_order_remaining_time.return_value = remaining
+                with (
+                    patch.object(base_schedule, "send_message") as notify,
+                    patch.object(base_schedule, "save_exception"),
+                ):
+                    result = solver.agent_arrange_room({}, room, solver.task.plan)
+                self.assertEqual(result, {})
+                solver.choose_agent.assert_not_called()
+                solver.tap_confirm.assert_not_called()
+                solver.reset_room_time.assert_called_once_with(room)
+                notify.assert_called_once_with("检测到漏单！", level="WARNING")
+
+    def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
+        solver, room, events = self.make_solver()
+        solver.task.adjusted = True
+        original_time = solver.task.time
+        solver.get_order_remaining_time.side_effect = lambda: (
+            events.append("countdown") or 900
+        )
+        solver.agent_arrange_room({}, room, solver.task.plan)
+        self.assertEqual(solver.task.time, original_time)
+        self.assertEqual(events, ["countdown", "choose", "confirm", "verify"])
+        self.assertEqual(solver.turn_on_room_detail.call_count, 2)
+        solver.reset_room_time.assert_not_called()
+
+    def test_non_buffer_mode_does_not_read_before_check_in(self):
+        self.conf.run_order_buffer_time = 0
+        solver, room, events = self.make_solver()
+        solver.agent_arrange_room({}, room, solver.task.plan)
+        self.assertEqual(events, ["choose", "confirm", "verify"])
+        solver.get_order_remaining_time.assert_not_called()
+
+    def test_restoring_original_operators_does_not_read_before_check_in(self):
+        solver, room, _ = self.make_solver(target="旧干员")
+        solver.op_data.get_current_room.return_value = ["但书"]
+        result = solver.agent_arrange_room({}, room, solver.task.plan, skip_enter=True)
+        self.assertEqual(result, {})
+        solver.choose_agent.assert_called_once()
+        solver.get_order_remaining_time.assert_not_called()
+
+    def test_unchanged_operators_do_not_read_before_check_in(self):
+        solver, room, _ = self.make_solver()
+        solver.op_data.get_current_room.return_value = ["但书"]
+        solver.agent_arrange_room({}, room, solver.task.plan)
+        solver.choose_agent.assert_not_called()
+        solver.get_order_remaining_time.assert_not_called()
+
+    def test_selection_retry_does_not_reread_countdown(self):
+        solver, room, _ = self.make_solver()
+        solver.choose_agent.side_effect = [RuntimeError("选人失败"), None]
+        solver.scene.return_value = Scene.INFRA_MAIN
+        solver.get_agent_from_room.side_effect = [
+            [{"agent": "旧干员"}],  # 确认失败后的实际驻员
+            [{"agent": "旧干员"}],  # 重试复核
+            [{"agent": "但书"}],
+        ]
+        with patch.object(base_schedule, "save_exception"):
+            result = solver.agent_arrange_room({}, room, solver.task.plan)
+        self.assertEqual(result, {room: ["旧干员"]})
+        self.assertEqual(solver.choose_agent.call_count, 2)
+        solver.get_order_remaining_time.assert_called_once_with()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_agent_arrange_reads_countdown_after_arrangement_verification(self):
-        """倒计时只在 agent_arrange_room 完成进驻校验后读取。"""
+        """换人前校时不替代进驻校验后读取，接单仍使用新的倒计时。"""
         room = "room_1_1"
         task = SchedulerTask(
             time=datetime.now(),

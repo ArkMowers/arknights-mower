@@ -7356,6 +7356,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if item1 != item2:
                                 same = False
                 if not same:
+                    # 沿用原跑单流程：换人前校准确认时刻，选人失败重试不重复读。
+                    if (
+                        len(new_plan) == 1
+                        and config.conf.run_order_buffer_time > 0
+                        and choose_error <= 0
+                    ):
+                        remaining_time = self.get_order_remaining_time()
+                        if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
+                            self.task.time = (
+                                datetime.now()
+                                + timedelta(seconds=remaining_time)
+                                - timedelta(minutes=config.conf.run_order_delay)
+                            )
+                            logger.info(f"订单倒计时 {remaining_time}秒")
+                            self.back()
+                            self.turn_on_room_detail(room)
+                        elif self.task.adjusted:
+                            self.back()
+                            self.turn_on_room_detail(room)
+                        else:
+                            logger.info("检测到漏单")
+                            send_message("检测到漏单！", level="WARNING")
+                            self.reset_room_time(room)
+                            raise Exception("检测到漏单！")
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
