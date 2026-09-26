@@ -311,6 +311,22 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
 
         self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
 
+    def test_saved_unfinished_mood_read_still_defers_backup_plan(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        layout = {"dormitory_1": ["陈", "", "", "", ""]}
+        self.main.simulate(
+            {
+                "tasks": [],
+                "initial_mood_pending": True,
+                "initial_mood_probe_layout": layout,
+            }
+        )
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertEqual(scheduler._initial_mood_probe_layout, layout)
+        self.assertIsNot(scheduler._initial_mood_probe_layout, layout)
+
     def test_experimental_initialization_never_requests_mood_reload(self):
         scheduler = MagicMock()
         scheduler.initialize_operators.return_value = "测试完成"
@@ -1451,7 +1467,7 @@ class TestBaseScheduler(unittest.TestCase):
                     patch.object(
                         solver,
                         "backup_plan_solver",
-                        side_effect=lambda: events.append("backup"),
+                        side_effect=lambda **kwargs: events.append("backup"),
                     ),
                     patch.object(
                         solver,

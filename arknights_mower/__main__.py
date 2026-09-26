@@ -367,7 +367,12 @@ def simulate(saved, restart_after_mood_read=False):
             )
             # saved=None 表示没有可载入的运行缓存。此时干员 current_room 尚未读取，
             # 首轮任务开始前必须暂缓副表判断，避免把“未知”误判成“不在工作”。
-            base_scheduler.defer_backup_plan_until_mood_read = saved is None
+            base_scheduler.defer_backup_plan_until_mood_read = saved is None or bool(
+                saved.get("initial_mood_pending", False)
+            )
+            base_scheduler._initial_mood_probe_layout = copy.deepcopy(
+                saved.get("initial_mood_probe_layout", {}) if saved else {}
+            )
             success = True
         except MowerExit:
             return
