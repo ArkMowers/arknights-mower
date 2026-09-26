@@ -398,12 +398,16 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                 update.choose_asset(data)
 
     def test_frozen_dev_reads_nightly_index_and_keeps_source_update_separate(self):
-        nightly = release("v4.1.6-alpha.9.g12345678", True, system="windows", arch="x64")
+        nightly = release(
+            "v4.1.6-alpha.9.g12345678", True, system="windows", arch="x64"
+        )
         with (
             patch.object(update, "__version__", "4.1.6-alpha.9"),
             patch.object(runtime, "frozen", return_value=True),
             patch.object(update, "platform_asset", return_value=("windows", "x64")),
-            patch.object(update, "release_index", return_value=release_index(nightly)) as index,
+            patch.object(
+                update, "release_index", return_value=release_index(nightly)
+            ) as index,
             patch.object(update, "github") as source_api,
         ):
             result = update.check("dev")
