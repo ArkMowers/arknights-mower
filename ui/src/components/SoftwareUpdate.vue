@@ -574,12 +574,14 @@ onUnmounted(() => {
             :disabled="running"
           >
             <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="dropSoftwarePackage">
-              <div>{{
-                info.manual_label ||
-                (info.manual_ota_supported
-                  ? '点击或拖入 Release 安装包或 OTA 差异包'
-                  : '点击或拖入 Release 安装包')
-              }}</div>
+              <div>
+                {{
+                  info.manual_label ||
+                  (info.manual_ota_supported
+                    ? '点击或拖入 Release 安装包或 OTA 差异包'
+                    : '点击或拖入 Release 安装包')
+                }}
+              </div>
               <div class="hint">
                 {{
                   info.manual_hint ||
