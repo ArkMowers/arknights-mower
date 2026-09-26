@@ -29,14 +29,8 @@ export const routes = [
       {
         path: 'maasettings',
         component: () => import('@/pages/maasettings.vue'),
-        meta: { title: 'maa设置' },
+        meta: { title: 'MAA设置' },
         name: 'maasettings'
-      },
-      {
-        path: 'aio',
-        component: () => import('@/pages/Material_all_in_one.vue'),
-        meta: { title: '设置' },
-        name: 'aio'
       },
       {
         path: 'doc',
@@ -47,7 +41,7 @@ export const routes = [
       {
         path: 'mastery-recommendation',
         component: () => import('@/pages/MasteryRecommendation.vue'),
-        meta: { title: '专精推荐' },
+        meta: { title: '自动专精' },
         name: 'mastery_recommendation'
       },
       {
@@ -88,6 +82,12 @@ export const routes = [
             component: () => import('@/pages/trading_analysis.vue'),
             meta: { title: '贸易订单分析' },
             name: 'trading_analysis'
+          },
+          {
+            path: 'log-schedule',
+            component: () => import('@/pages/LogSchedule.vue'),
+            meta: { title: '日志调度' },
+            name: 'log_schedule'
           }
         ]
       }

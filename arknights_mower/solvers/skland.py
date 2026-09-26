@@ -18,6 +18,7 @@ from arknights_mower.utils.skland import (
     sign_url,
     token_password_url,
 )
+from arknights_mower.utils.skland_log import redact_signing_text
 
 
 class SKLand:
@@ -30,23 +31,29 @@ class SKLand:
         self.all_recorded = True
 
         self.test_writecsv = True
+        self._log_secrets = set()
 
     def start(self):
 
         for item in config.conf.skland_info:
             if not (item.arknights_isCheck or item.endfield_isCheck):
                 continue
+            self._log_secrets.add(item.account)
             if self.has_record(item.account):
                 continue
 
             self.all_recorded = False
-            self.save_param(get_cred_by_token(log(item)))
+            login_token = log(item)
+            self._log_secrets.add(login_token)
+            self.save_param(get_cred_by_token(login_token))
 
             # 明日方舟森空岛签到
             for i in get_binding_list(self.sign_token):
                 if i["gameId"] == 1 and item.arknights_isCheck:
                     if not i.get("uid"):
                         continue
+                    if nickname := i.get("nickName"):
+                        self._log_secrets.add(nickname)
                     if not (item.sign_in_bilibili) and i["channelName"] == "bilibili服":
                         continue
                     if not (item.sign_in_official) and i["channelName"] == "官服":
@@ -67,7 +74,15 @@ class SKLand:
                                 "reward": resp.get("message"),
                             }
                         )
-                        logger.info(f"{i.get('nickName')}：{resp.get('message')}")
+                        logger.info(
+                            "明日方舟签到失败（状态码：%s）：%s",
+                            resp["code"] if isinstance(resp["code"], int) else "未知",
+                            redact_signing_text(
+                                resp.get("message", ""),
+                                self.sign_token,
+                                *self._log_secrets,
+                            ),
+                        )
                         continue
                     awards = resp["data"]["awards"]
                     for j in awards:
@@ -82,13 +97,15 @@ class SKLand:
                             }
                         )
                         logger.info(
-                            f"{i.get('nickName')}的明日方舟{i.get('channelName')}获得了{res['name']}×{j.get('count') or 1}"
+                            f"明日方舟{i.get('channelName')}签到获得了{res['name']}×{j.get('count') or 1}"
                         )
                 # 终末地森空岛签到
                 if i["gameId"] == 3 and item.endfield_isCheck:
                     for j in i.get("roles"):
                         if not j.get("roleId"):
                             continue
+                        if nickname := j.get("nickname"):
+                            self._log_secrets.add(nickname)
                         if (
                             not (item.sign_in_endfield_bilibili)
                             and i["channelName"] == "bilibili服"
@@ -131,7 +148,17 @@ class SKLand:
                                     "reward": resp.get("message"),
                                 }
                             )
-                            logger.info(f"{j.get('nickname')}：{resp.get('message')}")
+                            logger.info(
+                                "终末地签到失败（状态码：%s）：%s",
+                                resp["code"]
+                                if isinstance(resp["code"], int)
+                                else "未知",
+                                redact_signing_text(
+                                    resp.get("message", ""),
+                                    self.sign_token,
+                                    *self._log_secrets,
+                                ),
+                            )
                             continue
                         awards = resp["data"]["awardIds"]
                         resource = resp["data"]["resourceInfoMap"]
@@ -148,19 +175,18 @@ class SKLand:
                                 }
                             )
                             logger.info(
-                                f"{j.get('nickname')}的终末地{i.get('channelName')}获得了{res['name']}×{res.get('count') or 1}"
+                                f"终末地{i.get('channelName')}签到获得了{res['name']}×{res.get('count') or 1}"
                             )
         if len(self.reward) > 0:
             return self.record_log()
         if self.all_recorded:
-            if len(self.reward) == 0:
-                return False
             return True
         return False
 
     def save_param(self, cred_resp):
         header["cred"] = cred_resp["cred"]
         self.sign_token = cred_resp["token"]
+        self._log_secrets.update((cred_resp["cred"], cred_resp["token"]))
 
     def log(self, account):
         r = requests.post(
@@ -175,7 +201,14 @@ class SKLand:
     def record_log(self):
         self.test_writecsv = True
         date_str = datetime.datetime.now().strftime("%Y/%m/%d")
-        logger.info(f"存入{date_str}的数据{self.reward}")
+        secrets = self._log_secrets | {
+            entry.get("nickname") or entry.get("nickName") for entry in self.reward
+        }
+        safe_reward = [
+            {key: redact_signing_text(value, *secrets) for key, value in entry.items()}
+            for entry in self.reward
+        ]
+        logger.info("存入%s的森空岛签到数据%s", date_str, safe_reward)
         try:
             from arknights_mower.utils.csv_utils import append_dated_row
 
@@ -189,7 +222,7 @@ class SKLand:
                 )
         except Exception as e:
             self.test_writecsv = False
-            logger.exception(e)
+            logger.error("森空岛签到记录写入失败（%s）", type(e).__name__)
         return True
 
     def has_record(self, phone: str):
@@ -242,7 +275,7 @@ class SKLand:
                         and sign_endfield_official
                         and sign_endfield_bilibili
                     ):
-                        logger.info(f"{phone}今天签到过了")
+                        logger.info("森空岛账号今天已签到")
                         return True
             return False
         except PermissionError:
@@ -255,7 +288,9 @@ class SKLand:
         res = []
         for item in config.conf.skland_info:
             try:
-                self.save_param(get_cred_by_token(log(item)))
+                login_token = log(item)
+                self._log_secrets.update((item.account, login_token))
+                self.save_param(get_cred_by_token(login_token))
                 res.append(f"账号 {item.account}：")
                 for i in get_binding_list(self.sign_token):
                     # 明日方舟角色/区服信息
@@ -277,7 +312,11 @@ class SKLand:
 
             except Exception as e:
                 msg = "{}无法连接-{}".format(item.account, e)
-                logger.exception(msg)
+                logger.error(
+                    "森空岛账号连接失败（%s）：%s",
+                    type(e).__name__,
+                    redact_signing_text(e, *self._log_secrets),
+                )
                 res.append(msg)
         return res
 
@@ -287,20 +326,29 @@ class SKLand:
 
         try:
             if bool(self.start()):
-                for info in self.reward:
-                    res.append(
-                        "{}{}签到成功".format(
-                            info.get("nickname") or info.get("nickName"),
-                            info.get("game"),
+                if self.reward:
+                    for info in self.reward:
+                        res.append(
+                            "{}{}签到成功".format(
+                                info.get("nickname") or info.get("nickName"),
+                                info.get("game"),
+                            )
                         )
-                    )
-                if not self.test_writecsv:
-                    res.append("签到数据写入失败")
-                    self.test_writecsv = True
+                    if not self.test_writecsv:
+                        res.append("签到数据写入失败")
+                        self.test_writecsv = True
+                else:
+                    res.append("勾选的账号今天均已签到~")
+                return res
+            else:
+                res.append("签到未完成，请检查账号配置或网络")
                 return res
         except Exception as e:
             msg = "测试出错-{}".format(e)
-            logger.exception(msg)
+            logger.error(
+                "森空岛测试签到失败（%s）：%s",
+                type(e).__name__,
+                redact_signing_text(e, *self._log_secrets),
+            )
             res.append(msg)
-        res.append("勾选的账号今天均已签到~")
         return res

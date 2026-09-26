@@ -4,6 +4,7 @@ import zipfile
 import requests
 
 from .. import __version__
+from .github_download import request_download
 
 
 # 编写bat脚本，删除旧程序，运行新程序
@@ -76,13 +77,12 @@ def __get_newest_version():
 def download_version(version):
     if not os.path.isdir("./tmp"):
         os.makedirs("./tmp")
-    r = requests.get(
+    r, _ = request_download(
+        requests,
+        "get",
         f"https://github.com/ArkMowers/arknights-mower/releases/download/{version}/mower.zip",
         stream=True,
     )
-    # r = requests.get(
-    #     f"https://github.com/ArkMowers/arknights-mower/releases/download/{version}/arknights-mower-3.0.4.zip",
-    #     stream=True)
     total = int(r.headers.get("content-length", 0))
     index = 0
     with open("./tmp/mower.zip", "wb") as f:

@@ -423,7 +423,9 @@ class SecretFront(BaseSolver):
             if not self.unknown_time:
                 self.unknown_time = now
             elif now - self.unknown_time > self.timeout:
-                logger.warning("连续识别到未知场景")
+                logger.warning(
+                    "连续识别到未知场景", extra={"archive_screenshots": True}
+                )
                 try:
                     self.properties = None
                     self.route_matcher = None

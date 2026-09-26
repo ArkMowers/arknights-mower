@@ -8,9 +8,8 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from skimage.feature import hog
 
-from arknights_mower.utils import depot
+from arknights_mower.utils import depot, vision_np
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
@@ -19,6 +18,7 @@ from ..utils.image import loadimg
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene
+from ..utils.resource_pkg import resource_pkg_path
 
 # 向下x变大 = 0
 # 向右y变大 = 0
@@ -40,16 +40,7 @@ def 导入_数字模板():
 
 def 提取特征点(模板):
     模板 = 模板[40:173, 40:173]
-    hog_features = hog(
-        模板,
-        orientations=18,
-        pixels_per_cell=(8, 8),
-        cells_per_block=(2, 2),
-        block_norm="L2-Hys",
-        transform_sqrt=True,
-        channel_axis=2,
-    )
-    return hog_features
+    return vision_np.hog(模板)
 
 
 def 识别空物品(物品灰):
@@ -99,9 +90,13 @@ class depotREC(SceneGraphSolver):
 
         self.仓库输出 = get_path("@app/tmp/depotresult.csv")
 
-        with lzma.open(f"{__rootdir__}/models/CONSUME.pkl", "rb") as pkl:
+        with lzma.open(
+            str(resource_pkg_path("arknights_mower/models/CONSUME.pkl")), "rb"
+        ) as pkl:
             self.knn模型_CONSUME = pickle.load(pkl)
-        with lzma.open(f"{__rootdir__}/models/NORMAL.pkl", "rb") as pkl:
+        with lzma.open(
+            str(resource_pkg_path("arknights_mower/models/NORMAL.pkl")), "rb"
+        ) as pkl:
             self.knn模型_NORMAL = pickle.load(pkl)
         self.物品数字 = 导入_数字模板()
 
@@ -142,15 +137,20 @@ class depotREC(SceneGraphSolver):
         格式化数字 = int(float("".join(matches)) * (10000 if "万" in 物品个数 else 1))
         return 格式化数字
 
-    def 匹配物品一次(self, 物品, 物品灰, 模型名称):
+    def 匹配物品一次(self, 物品, 物品灰, knn模型: vision_np.Knn1Model):
         物品特征 = 提取特征点(物品)
-        predicted_label = 模型名称.predict([物品特征])
+        predicted_label = vision_np.knn1_predict(
+            物品特征,
+            knn模型["X"],
+            knn模型["y"],
+            knn模型["classes"],
+        )
 
         数字区域 = 物品灰[160:210, 30:210]  # 多加了一次裁切，把数字区域单独裁出来
         物品数字 = self.读取物品数字(数字区域)  # 解决了合成玉只能识别3位数的问题
 
         # 物品数字 = self.读取物品数字(物品灰)  # 这里是原来的逻辑
-        return [predicted_label[0], 物品数字]
+        return [predicted_label, 物品数字]
 
     def run(self) -> None:
         logger.info("Start: 仓库扫描")
@@ -163,10 +163,16 @@ class depotREC(SceneGraphSolver):
             self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
+            # 进仓库后等界面就绪再切 tab：先确认识别到仓库场景，再等画面稳定（物品网格渲染完）。
+            # 否则持续加载期间点击 tab 会被吞掉，导致在「全部物品」视图上误识别。
+            if not self.wait_for_scene_stable(Scene.DEPOT):
+                logger.warning("仓库扫描: 未识别到仓库场景，继续等待画面稳定")
+            self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
+
             starttime = datetime.now()
             任务组 = [
-                (1200, self.knn模型_CONSUME, "消耗物品"),
-                (1400, self.knn模型_NORMAL, "基础物品"),
+                (1063, self.knn模型_CONSUME, "消耗物品"),
+                (1298, self.knn模型_NORMAL, "基础物品"),
             ]
 
             for 任务 in 任务组:
@@ -180,8 +186,9 @@ class depotREC(SceneGraphSolver):
                 else:
                     logger.info("仓库扫描: 这个分类下没有物品")
             logger.info(f"仓库扫描: {self.结果字典}")
+            扫描时刻 = int(datetime.now().timestamp())
             result = [
-                int(datetime.now().timestamp()),
+                扫描时刻,
                 json.dumps(self.结果字典, ensure_ascii=False),
                 {"森空岛输出仅占位": ""},
             ]
@@ -190,9 +197,14 @@ class depotREC(SceneGraphSolver):
             with open(self.仓库输出, "a", encoding="utf-8", newline="") as f:
                 csv.writer(f).writerow(result)
         else:
+            扫描时刻 = None
             self.back_to_index()
-        ## 读取的时候会存入数据库
-        depot.读取仓库()
+        ## 读取的时候会存入数据库；扫描成功时顺手记一条完整库存快照（材料就靠它进历史），
+        ## 用同一个时间戳，读取端才能把两条记录并成一条完整快照。
+        depot.读取仓库(记录快照时刻=扫描时刻)
+        if 扫描时刻 is not None:
+            # 保留条数由设置决定（0 = 不清理）；放在这里是因为一次扫描才写一次文件。
+            depot.清理历史()
         return True
 
     def 对比截图(self, image1, image2):
@@ -204,7 +216,7 @@ class depotREC(SceneGraphSolver):
         similarity = len(matches) / max(len(descriptors1), len(descriptors2))
         return similarity * 100
 
-    def 分类扫描(self, 模型名称):
+    def 分类扫描(self, knn模型: vision_np.Knn1Model):
         截图列表 = []
         旧的截图 = self.recog.img
         旧的截图 = 旧的截图[140:1000, :]
@@ -215,7 +227,7 @@ class depotREC(SceneGraphSolver):
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
 
         for [物品, 物品灰, id] in 切图列表:
-            [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, 模型名称)
+            [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, knn模型)
             if 物品数字 is None:
                 logger.warning(f"仓库扫描: 无法识别 {物品名称} 的数量，跳过")
                 continue

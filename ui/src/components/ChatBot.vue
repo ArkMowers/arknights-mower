@@ -227,7 +227,7 @@ window.addEventListener('resize', () => {
 }
 .chatbot-input-area {
   flex-shrink: 0;
-  padding-bottom: 8px;
+  padding: 4px 2px 8px 2px;
   background: transparent;
 }
 

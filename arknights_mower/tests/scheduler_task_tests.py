@@ -1,15 +1,20 @@
+import copy
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+from arknights_mower.utils import config
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
-    check_dorm_ordering,
+    _merge_deferred_dorm_schedules,
     find_next_task,
+    plan_metadata,
+    rebalance_plan_swap_dorms,
     scheduling,
+    try_add_release_dorm,
     try_reorder,
 )
 
@@ -18,6 +23,16 @@ with patch.dict("sys.modules", {"save_action_to_sqlite_decorator": MagicMock()})
 
 
 class TestScheduling(unittest.TestCase):
+    def setUp(self):
+        # Scheduling tests use fixed times; a live announcement request makes
+        # their result and runtime depend on the external news service.
+        maintenance = patch(
+            "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+            return_value=(None, None),
+        )
+        maintenance.start()
+        self.addCleanup(maintenance.stop)
+
     def test_adjust_two_orders(self):
         # 测试两个跑单任务被拉开
         task1 = SchedulerTask(
@@ -108,6 +123,244 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(tasks[2].plan["task"], "Task 4")
         self.assertEqual(res, None)
 
+    def test_experimental_dorm_only_tasks_merge_and_yield_to_run_order(self):
+        now = datetime(2026, 9, 23, 2, 15)
+        dorm_tasks = [
+            SchedulerTask(
+                time=now,
+                task_plan={f"dormitory_{index}": ["Free"] * 5},
+                task_type=TaskTypes.RE_ORDER,
+            )
+            for index in range(1, 5)
+        ]
+        run_order = SchedulerTask(
+            time=now + timedelta(minutes=3),
+            task_plan={"room_2_1": ["跑单组"]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        tasks = [*dorm_tasks, run_order]
+
+        with patch.object(config.conf, "experimental_dorm_logic", True):
+            scheduling(tasks, time_now=now)
+
+        self.assertEqual(len(tasks), 2)
+        self.assertEqual(tasks[0], run_order)
+        self.assertEqual(run_order.time, now + timedelta(minutes=3))
+        self.assertGreater(tasks[1].time, run_order.time)
+        self.assertEqual(set(tasks[1].plan), {f"dormitory_{i}" for i in range(1, 5)})
+
+    def test_dorm_wakeup_yields_to_run_order_in_both_modes(self):
+        for experimental, work_room in [(True, False), (False, False), (True, True)]:
+            for wake_type in (TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER):
+                with self.subTest(
+                    experimental=experimental, work_room=work_room, wake_type=wake_type
+                ):
+                    now = datetime(2026, 9, 23, 12)
+                    dorm = SchedulerTask(
+                        time=now,
+                        task_type=TaskTypes.RE_ORDER,
+                        task_plan={"dormitory_1": ["Current", "Free"]},
+                    )
+                    wake = SchedulerTask(time=now, task_type=wake_type)
+                    order = SchedulerTask(
+                        time=now + timedelta(seconds=30),
+                        task_type=TaskTypes.RUN_ORDER,
+                        task_plan={"room_1_1": ["Current"]},
+                    )
+                    tasks = [dorm, wake, order]
+                    if work_room:
+                        tasks.insert(
+                            0,
+                            SchedulerTask(
+                                time=now,
+                                task_type=TaskTypes.SHIFT_OFF,
+                                task_plan={"central": ["阿米娅"]},
+                            ),
+                        )
+                    with (
+                        patch.object(
+                            config.conf, "experimental_dorm_logic", experimental
+                        ),
+                        patch(
+                            "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+                            return_value=(None, None),
+                        ),
+                    ):
+                        scheduling(tasks, time_now=now)
+                    self.assertGreater(dorm.time, order.time)
+                    if wake in tasks:
+                        self.assertGreater(wake.time, order.time)
+
+    def test_deferred_dorm_schedules_are_merged_before_run_order(self):
+        shift_off = SchedulerTask(
+            time=datetime(2026, 9, 22, 5, 18, 15),
+            task_plan={
+                "room_1_1": ["替班"],
+                "dormitory_1": [
+                    "Current",
+                    "Current",
+                    "虎狼丸",
+                    "Current",
+                    "Current",
+                ],
+                "dormitory_3": [
+                    "Current",
+                    "信仰搅拌机",
+                    "食铁兽",
+                    "Current",
+                    "Current",
+                ],
+                "dormitory_4": ["夕", "九色鹿", "Current", "Current", "Current"],
+            },
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder_time = datetime(2026, 9, 22, 5, 18, 44)
+        reorder = SchedulerTask(
+            time=reorder_time,
+            task_plan={
+                "dormitory_1": ["Current", "Current", "焰尾", "Current", "Current"],
+                "dormitory_2": ["砾", "信仰搅拌机", "Current", "Current", "Current"],
+                "dormitory_3": ["夕", "Current", "Current", "Current", "Current"],
+                "dormitory_4": ["九色鹿", "Free", "Current", "Current", "Current"],
+            },
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder_time)
+        shift_on = SchedulerTask(
+            time=datetime(2026, 9, 22, 5, 25, 31),
+            task_plan={
+                "room_1_1": ["焰尾", "砾"],
+                "dormitory_1": ["Current", "Current", "Free", "Current", "Current"],
+                "dormitory_2": ["Free", "Current", "Current", "Current", "Current"],
+            },
+            task_type=TaskTypes.SHIFT_ON,
+        )
+        run_order = SchedulerTask(
+            time=datetime(2026, 9, 22, 5, 26, 17),
+            task_plan={"room_2_1": ["跑单组"]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        tasks = [shift_off, reorder, followup, shift_on, run_order]
+        stable_tasks = copy.deepcopy(tasks)
+
+        with patch.object(config.conf, "experimental_dorm_logic", True):
+            scheduling(tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
+
+        self.assertEqual(
+            [task.type for task in tasks],
+            [TaskTypes.RUN_ORDER, TaskTypes.SHIFT_OFF, TaskTypes.SHIFT_ON],
+        )
+        dorm_tasks = [
+            task
+            for task in tasks
+            if any(room.startswith("dormitory_") for room in task.plan)
+        ]
+        self.assertEqual(dorm_tasks, [shift_off])
+        self.assertEqual(
+            shift_off.plan["dormitory_1"],
+            ["Current", "Current", "Free", "Current", "Current"],
+        )
+        self.assertEqual(
+            shift_off.plan["dormitory_2"],
+            ["Free", "信仰搅拌机", "Current", "Current", "Current"],
+        )
+        self.assertEqual(
+            (shift_off.time, shift_on.time),
+            (
+                run_order.time + timedelta(seconds=1),
+                run_order.time + timedelta(seconds=2),
+            ),
+        )
+
+        with patch.object(config.conf, "experimental_dorm_logic", False):
+            scheduling(stable_tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
+        self.assertEqual(
+            [task.type for task in stable_tasks],
+            [
+                TaskTypes.RUN_ORDER,
+                TaskTypes.SHIFT_OFF,
+                TaskTypes.RE_ORDER,
+                TaskTypes.NOT_SPECIFIC,
+                TaskTypes.SHIFT_ON,
+            ],
+        )
+        self.assertEqual(
+            sum(
+                any(room.startswith("dormitory_") for room in task.plan)
+                for task in stable_tasks
+            ),
+            3,
+        )
+
+    def test_deferred_dorm_merge_preserves_special_tasks(self):
+        special_cases = (
+            (
+                TaskTypes.FIAMMETTA,
+                "充能目标",
+                ["菲亚梅塔", "充能目标", "Current", "Current", "Current"],
+            ),
+            (
+                TaskTypes.RELEASE_DORM,
+                "待释放干员",
+                ["Free", "Current", "Current", "Current", "Current"],
+            ),
+        )
+        for task_type, meta_data, agents in special_cases:
+            with self.subTest(task_type=task_type):
+                shift_off = SchedulerTask(
+                    task_plan={"dormitory_1": ["休息者", "Current"]},
+                    task_type=TaskTypes.SHIFT_OFF,
+                )
+                reorder = SchedulerTask(
+                    task_plan={"dormitory_1": ["Current", "候补者"]},
+                    task_type=TaskTypes.RE_ORDER,
+                )
+                special_plan = {"dormitory_2": agents}
+                special = SchedulerTask(
+                    task_plan=copy.deepcopy(special_plan),
+                    task_type=task_type,
+                    meta_data=meta_data,
+                )
+
+                result = _merge_deferred_dorm_schedules([shift_off, special, reorder])
+
+                self.assertTrue(any(task is special for task in result))
+                self.assertEqual(special.type, task_type)
+                self.assertEqual(special.meta_data, meta_data)
+                self.assertEqual(special.plan, special_plan)
+
+    def test_deferred_dorm_merge_keeps_empty_shift_off_and_its_followup(self):
+        shift_off = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "Current"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "临时休息者"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder.time)
+
+        result = _merge_deferred_dorm_schedules([reorder, followup, shift_off])
+
+        self.assertEqual(result, [shift_off])
+        self.assertEqual(shift_off.plan, {"dormitory_1": ["Current", "临时休息者"]})
+
+    def test_deferred_dorm_merge_keeps_followup_for_anchor_reorder(self):
+        shift_off = SchedulerTask(
+            task_plan={"room_1_1": ["替班"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+        reorder = SchedulerTask(
+            task_plan={"dormitory_1": ["Current", "临时休息者"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=reorder.time)
+
+        result = _merge_deferred_dorm_schedules([shift_off, reorder, followup])
+
+        self.assertEqual(result, [shift_off, reorder, followup])
+        self.assertEqual(reorder.plan, {"dormitory_1": ["Current", "临时休息者"]})
+
     def test_find_next(self):
         # 测试 方程有效
         task1 = SchedulerTask(
@@ -144,189 +397,6 @@ class TestScheduling(unittest.TestCase):
         )
         self.assertEqual(res1, None)
         self.assertNotEqual(res2, None)
-
-    def test_check_dorm_ordering_add_plan_1(self):
-        # 测试 方程有效
-        task1 = SchedulerTask(
-            time=datetime.now(),
-            task_plan={
-                "dormitory_1": ["Current", "Current", "夕", "Current", "Current"],
-                "central": ["麒麟R夜刀", "Current", "Current", "Current", "Current"],
-            },
-            task_type=TaskTypes.SHIFT_OFF,
-            meta_data="",
-        )
-        tasks = [task1]
-        op_data = self.init_opdata()
-        check_dorm_ordering(tasks, op_data)
-        # 生成额外宿舍任务
-        self.assertEqual(2, len(tasks))
-        # 验证第一个宿舍任务包含换班+宿舍任务
-        self.assertEqual(2, len(tasks[0].plan))
-        # 老plan含有见行者
-        self.assertEqual("见行者", tasks[1].plan["dormitory_1"][3])
-        # 假设换班任务执行完毕
-        del tasks[0]
-        # 重复执行不会生成新的
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(1, len(tasks))
-        # 验证第二个任务仅仅包宿舍任务
-        self.assertEqual(1, len(tasks[0].plan))
-
-    def test_check_dorm_ordering_add_plan_2(self):
-        # 测试 方程有效
-        task1 = SchedulerTask(
-            time=datetime.now(),
-            task_plan={
-                "dormitory_1": ["Current", "Current", "夕", "Current", "Current"],
-                "central": ["麒麟R夜刀", "Current", "Current", "Current", "Current"],
-            },
-            task_type=TaskTypes.SHIFT_OFF,
-            meta_data="",
-        )
-        tasks = [task1]
-        op_data = self.init_opdata()
-        # 预设干员位置
-        op_data.operators["见行者"].current_index = -1
-        op_data.operators["见行者"].current_room = "meeting"
-        op_data.operators["麒麟R夜刀"].current_index = 3
-        op_data.operators["麒麟R夜刀"].current_room = "dormitory_1"
-        check_dorm_ordering(tasks, op_data)
-        # 生成额外宿舍任务
-        self.assertEqual(2, len(tasks))
-        # 验证第一个宿舍任务包含换班+宿舍任务
-        self.assertEqual(2, len(tasks[0].plan))
-        # 老plan不变
-        self.assertEqual("Free", tasks[1].plan["dormitory_1"][3])
-        # 假设换班任务执行完毕
-        del tasks[0]
-        # 重复执行不会生成新的
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(1, len(tasks))
-        # 验证第二个任务仅仅包宿舍任务
-        self.assertEqual(1, len(tasks[0].plan))
-
-    def test_check_dorm_ordering_add_plan_3(self):
-        # 测试 宿舍4号位置已经吃到VIP的情况，安排新的高效干员去3号位置刷新VIP
-        task1 = SchedulerTask(
-            time=datetime.now(),
-            task_plan={
-                "dormitory_1": ["Current", "Current", "Current", "夕", "Current"],
-                "central": ["麒麟R夜刀", "Current", "Current", "Current", "Current"],
-            },
-            task_type=TaskTypes.SHIFT_OFF,
-            meta_data="",
-        )
-        tasks = [task1]
-        op_data = self.init_opdata()
-        # 预设干员位置
-        op_data.operators["红"].current_index = -1
-        op_data.operators["红"].current_room = "meeting"
-        op_data.operators["夕"].resting_priority = "low"
-        op_data.operators["焰尾"].current_index = 2
-        op_data.operators["焰尾"].current_room = "dormitory_1"
-        check_dorm_ordering(tasks, op_data)
-
-        # 如果非VIP位置被占用，则刷新
-        self.assertEqual(1, len(tasks))
-        # 验证第任务包含换班+宿舍任务
-        self.assertEqual(2, len(tasks[0].plan))
-        # 假设换班任务执行完毕
-        del tasks[0]
-        # 重复执行不会生成新的
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(0, len(tasks))
-
-    def test_check_dorm_ordering_add_plan_4(self):
-        # 测试 方程有效
-        task1 = SchedulerTask(
-            time=datetime.now(),
-            task_plan={
-                "dormitory_1": ["Current", "Current", "夕", "Current", "Current"],
-                "central": ["麒麟R夜刀", "Current", "Current", "Current", "Current"],
-            },
-            task_type=TaskTypes.SHIFT_OFF,
-            meta_data="",
-        )
-        tasks = [task1]
-        op_data = self.init_opdata()
-        op_data.operators["玛恩纳"].current_room = ""
-        op_data.operators["玛恩纳"].current_index = -1
-        check_dorm_ordering(tasks, op_data)
-        # 生成额外宿舍任务
-        self.assertEqual(2, len(tasks))
-        # 验证第一个宿舍任务包含换班+宿舍任务
-        self.assertEqual(2, len(tasks[0].plan))
-        # 老plan含有见行者
-        self.assertEqual("见行者", tasks[1].plan["dormitory_1"][3])
-        # 假设换班任务执行完毕
-        del tasks[0]
-        # 重复执行不会生成新的
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(1, len(tasks))
-        # 验证第二个任务仅仅包宿舍任务
-        self.assertEqual(1, len(tasks[0].plan))
-
-    def test_check_dorm_ordering_not_plan(self):
-        # 测试 如果当前已经有前置位VIP干员在吃单回，则不会新增任务
-        task1 = SchedulerTask(
-            time=datetime.now(),
-            task_plan={
-                "dormitory_1": ["Current", "Current", "Current", "夕", "令"],
-                "central": ["麒麟R夜刀", "Current", "Current", "Current", "火龙S黑角"],
-            },
-            task_type=TaskTypes.SHIFT_OFF,
-            meta_data="",
-        )
-        tasks = [task1]
-        op_data = self.init_opdata()
-        # 预设干员位置
-        op_data.operators["红"].current_index = -1
-        op_data.operators["夕"].resting_priority = "low"
-        op_data.operators["红"].current_room = "meeting"
-        op_data.operators["焰尾"].current_index = 2
-        op_data.operators["焰尾"].current_room = "dormitory_1"
-        check_dorm_ordering(tasks, op_data)
-
-        # 如果VIP位已经被占用，则不会生成新任务
-        self.assertEqual(1, len(tasks))
-        # 验证第任务包含换班+宿舍任务
-        self.assertEqual(2, len(tasks[0].plan))
-        # 重复执行不会生成新的
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(1, len(tasks))
-        # 验证第任务包宿舍+换班任务
-        self.assertEqual(2, len(tasks[0].plan))
-
-    def test_check_dorm_ordering_not_plan2(self):
-        # 测试 如果当前已经有前置位VIP干员在吃单回，则不会新增任务
-        task1 = SchedulerTask(
-            time=datetime.now(),
-            task_plan={
-                "dormitory_1": ["Current", "Current", "Current", "夕", "Current"],
-                "central": ["麒麟R夜刀", "Current", "Current", "Current", "Current"],
-            },
-            task_type=TaskTypes.SHIFT_OFF,
-            meta_data="",
-        )
-        tasks = [task1]
-        op_data = self.init_opdata()
-        # 预设干员位置
-        op_data.operators["红"].current_index = 2
-        op_data.operators["红"].current_room = "dormitory_1"
-        op_data.operators["夕"].resting_priority = "low"
-        op_data.operators["红"].current_room = "meeting"
-        check_dorm_ordering(tasks, op_data)
-
-        # 如果VIP位已经被占用，则不会生成新任务
-        self.assertEqual(1, len(tasks))
-        # 验证第任务包含换班+宿舍任务
-        self.assertEqual(2, len(tasks[0].plan))
-        # 重复执行不会生成新的
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(1, len(tasks))
-        # 验证第任务包宿舍+换班任务
-        self.assertEqual(2, len(tasks[0].plan))
 
     def test_adjust_three_orders(self):
         # 测试342跑单任务被拉开
@@ -370,7 +440,7 @@ class TestScheduling(unittest.TestCase):
         self.assertNotEqual(res, None)
 
     def test_reorder_1(self):
-        # 高优先级被拉前面
+        # 夕取得首个单回位，夜刀续到空单回位；凯尔希仍落实已选普通床位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -378,13 +448,11 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2], "夕")
-        tasks = [SchedulerTask(task_plan=plan, task_type=TaskTypes.SHIFT_OFF)]
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(len(tasks), 2)
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
+        self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
 
     def test_reorder_2(self):
-        # 非高优高效不会被移动
+        # 三个主班取得单回位，普通替班留在其余床位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -392,17 +460,14 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[3].name = "见行者"
         op_data.dorm[4].name = "森蚺"
 
-        # op_data.config.ope_resting_priority=["森蚺","夕"]
         plan = try_reorder(op_data, {})
         self.assertEqual(len(plan), 3)
-        self.assertEqual(plan["dormitory_1"][2], "夕")
-        self.assertEqual(plan["dormitory_1"][4], "凯尔希")
-        tasks = [SchedulerTask(task_plan=plan, task_type=TaskTypes.SHIFT_OFF)]
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(len(tasks), 2)
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
+        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_3"][3], "见行者")
 
     def test_reorder_3(self):
-        # 如果高优都占了，则不动
+        # 未执行前重复演算得到同一结果，不会在两种宿舍布局间振荡。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "夕"
         op_data.dorm[1].name = "焰尾"
@@ -411,17 +476,216 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["见行者"].current_room = "dormitory_2"
         op_data.operators["见行者"].current_index = 2
         op_data.dorm[4].name = "见行者"
-        try_reorder(op_data, {})
-        plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2], "夕")
-        self.assertEqual(plan["dormitory_1"][3], "见行者")
-        tasks = [SchedulerTask(task_plan=plan, task_type=TaskTypes.SHIFT_OFF)]
-        check_dorm_ordering(tasks, op_data)
-        self.assertEqual(len(tasks), 2)
+        first = try_reorder(op_data, {})
+        second = try_reorder(op_data, {})
+        self.assertEqual(first, second)
+        self.assertEqual(first["dormitory_1"][2:], ["夕", "Free", "玛恩纳"])
+        self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "见行者"])
+        self.assertEqual(first["dormitory_3"][3], "森蚺")
+        projected = op_data.project_arrangements([first])
+        self.assertCountEqual(
+            [bed.name for bed in projected.dorm if bed.name],
+            ["夕", "焰尾", "森蚺", "玛恩纳", "见行者"],
+        )
+        self.assertEqual(try_reorder(projected, {}), {})
+
+    def add_dorm_overlay_backup(self, op_data):
+        op_data.global_plan["default_plan"].config.free_room = True
+        backup = Plan(
+            {
+                "dormitory_1": [
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                    Room("真言", "", []),
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                ]
+            },
+            PlanConfig("", "", "", experimental_dorm_logic=True),
+        )
+        op_data.global_plan["backup_plans"] = [backup]
+        op_data.backup_plans = [backup]
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        return next(
+            dorm for dorm in op_data.dorm if dorm.position == ("dormitory_1", 2)
+        )
+
+    @staticmethod
+    def task_writes_slot(tasks, room, index):
+        for task in tasks:
+            room_plan = task.plan.get(room)
+            if room_plan and index < len(room_plan) and room_plan[index] != "Current":
+                return True
+        return False
+
+    def test_effective_free_slot_round_trip_and_capacity(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        before_low = op_data.available_free("low")
+
+        self.assertTrue(op_data.is_effective_free_slot(target))
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        self.assertFalse(op_data.is_effective_free_slot(target))
+        self.assertEqual(before_low - 1, op_data.available_free("low"))
+
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        self.assertTrue(op_data.is_effective_free_slot(target))
+        self.assertEqual(before_low, op_data.available_free("low"))
+
+    def test_active_high_resting_migrates_when_backup_removes_bed(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        op_data.operators["红"].current_room = ""
+        op_data.operators["红"].current_index = -1
+        high = op_data.operators["夕"]
+        high.current_room = "dormitory_1"
+        high.current_index = 2
+        target.name = "夕"
+        target.time = datetime.now() + timedelta(hours=1)
+
+        self.assertEqual(1, op_data.active_high_resting_count())
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        migration = rebalance_plan_swap_dorms(op_data)
+        self.assertTrue(migration)
+        self.assertEqual(1, op_data.active_high_resting_count())
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        rebalance_plan_swap_dorms(op_data)
+        self.assertEqual(1, op_data.active_high_resting_count())
+
+    def test_backup_removed_bed_is_restored_and_occupant_is_migrated(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        high = op_data.operators["夕"]
+        high.current_room, high.current_index = target.position
+        target.name = "夕"
+        target.time = datetime.now() + timedelta(hours=1)
+
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        self.assertFalse(
+            any(dorm.position == ("dormitory_1", 2) for dorm in op_data.dorm)
+        )
+        plan = rebalance_plan_swap_dorms(op_data)
+        self.assertEqual("真言", plan["dormitory_1"][2])
+        destination = next(dorm for dorm in op_data.dorm if dorm.name == "夕")
+        room, index = destination.position
+        self.assertEqual("夕", plan[room][index])
+        self.assertEqual(target.time, destination.time)
+
+    def test_single_recovery_target_stays_in_room_when_its_bed_closes(self):
+        op_data = self.init_opdata()
+        closing = self.add_dorm_overlay_backup(op_data)
+        target = op_data.operators["麒麟R夜刀"]
+        target.current_room, target.current_index = closing.position
+        target.dorm_recovery_room = "dormitory_1"
+        target.dorm_recovery_index = target.current_index
+        target.dorm_recovery_fixed = ("塑心", "冰酿")
+        closing.name = target.name
+        closing.time = datetime.now() + timedelta(hours=1)
+        previous = copy.deepcopy(op_data.dorm)
+
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+        plan = rebalance_plan_swap_dorms(op_data, previous)
+
+        destination = next(dorm for dorm in op_data.dorm if dorm.name == target.name)
+        self.assertEqual(destination.position[0], "dormitory_1")
+        target = op_data.operators[target.name]
+        self.assertEqual(target.dorm_recovery_room, "")
+        self.assertEqual(target.dorm_recovery_index, -1)
+        self.assertEqual(plan["dormitory_1"][2], "真言")
+        self.assertEqual(plan["dormitory_1"][destination.position[1]], target.name)
+
+    def test_single_recovery_move_to_other_room_requests_recovery_again(self):
+        op_data = self.init_opdata()
+        target_bed = op_data.dorm[0]
+        target = op_data.operators["麒麟R夜刀"]
+        target.current_room, target.current_index = target_bed.position
+        target.dorm_recovery_room = target_bed.position[0]
+        target.dorm_recovery_index = target.current_index
+        target.dorm_recovery_fixed = ("塑心", "冰酿")
+        target_bed.name = target.name
+        target_bed.time = datetime.now() + timedelta(hours=1)
+        previous = copy.deepcopy(op_data.dorm)
+        op_data.dorm = [
+            bed for bed in op_data.dorm if bed.position[0] != target.current_room
+        ]
+
+        plan = rebalance_plan_swap_dorms(op_data, previous)
+
+        destination = next(dorm for dorm in op_data.dorm if dorm.name == target.name)
+        self.assertNotEqual(destination.position[0], target.current_room)
+        self.assertEqual(target.dorm_recovery_room, "")
+        self.assertEqual(
+            plan[destination.position[0]][destination.position[1]], target.name
+        )
+
+    def test_single_recovery_target_is_exempt_from_capacity_drop(self):
+        op_data = self.init_opdata()
+        protected_bed, preferred_bed = op_data.dorm[:2]
+        protected = op_data.operators["麒麟R夜刀"]
+        protected.current_room, protected.current_index = protected_bed.position
+        protected.dorm_recovery_room = protected_bed.position[0]
+        protected.dorm_recovery_index = protected.current_index
+        protected.dorm_recovery_fixed = ("塑心", "冰酿")
+        protected.mood = 23
+        protected.time_stamp = datetime.now()
+        protected_bed.name = protected.name
+        preferred = op_data.operators["夕"]
+        preferred.current_room, preferred.current_index = preferred_bed.position
+        preferred.mood = 1
+        preferred.time_stamp = datetime.now()
+        preferred_bed.name = preferred.name
+        previous = copy.deepcopy(op_data.dorm[:2])
+        op_data.dorm = [protected_bed]
+
+        rebalance_plan_swap_dorms(op_data, previous)
+
+        self.assertEqual(op_data.dorm[0].name, protected.name)
+        self.assertEqual(protected.dorm_recovery_room, protected.current_room)
+
+    def test_backup_overlay_blocks_task_rebuild_and_free_room_writes(self):
+        op_data = self.init_opdata()
+        target = self.add_dorm_overlay_backup(op_data)
+        now = datetime.now()
+        red = op_data.operators["红"]
+        red.current_room = "dormitory_1"
+        red.current_index = 2
+        red.mood = red.upper_limit
+        red.time_stamp = now
+        target.name = "红"
+        target.time = now + timedelta(hours=1)
+
+        waiting = op_data.operators["陈"]
+        waiting.current_room = ""
+        waiting.current_index = -1
+        waiting.mood = 1
+        waiting.time_stamp = now
+
+        self.assertIsNone(op_data.swap_plan([True], refresh=True))
+
+        rebuilt = plan_metadata(op_data, [])
+        self.assertFalse(self.task_writes_slot(rebuilt, "dormitory_1", 2))
+
+        release_tasks = []
+        try_add_release_dorm(
+            {"meeting": ["红"]}, now + timedelta(hours=2), op_data, release_tasks
+        )
+        self.assertFalse(self.task_writes_slot(release_tasks, "dormitory_1", 2))
+
+        free_room_tasks = []
+        try_add_release_dorm({}, None, op_data, free_room_tasks)
+        self.assertFalse(self.task_writes_slot(free_room_tasks, "dormitory_1", 2))
+
+        self.assertIsNone(op_data.swap_plan([False], refresh=True))
+        restored_tasks = []
+        try_add_release_dorm({}, None, op_data, restored_tasks)
+        self.assertTrue(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
 
     def init_opdata(self):
         agent_base_config = PlanConfig(
-            "稀音,黑键,伊内丝,承曦格雷伊", "稀音,柏喙,伊内丝", "见行者"
+            "稀音,黑键,伊内丝,承曦格雷伊",
+            "稀音,柏喙,伊内丝",
+            "见行者",
+            experimental_dorm_logic=True,
         )
         plan_config = {
             "central": [

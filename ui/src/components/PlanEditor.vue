@@ -2,24 +2,22 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { swap } from '@/utils/common'
-import { ref, computed, nextTick, watch, inject } from 'vue'
+import { swapPlanFacilities } from '@/utils/plan_edit'
+import { plan_facility_type_options } from '@/utils/base_facilities'
+import { ref, computed, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
 const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme } = storeToRefs(config_store)
+const { theme, experimental_dorm_logic } = storeToRefs(config_store)
 
 const outer = ref(null)
 
-const facility_types = [
-  { label: '贸易站', value: '贸易站' },
-  { label: '制造站', value: '制造站' },
-  { label: '发电站', value: '发电站' }
-]
+const facility_types = plan_facility_type_options
 
 const facility = inject('facility')
+const edit_locked = inject('planEditLocked', ref(false))
 
 const button_type = {
   贸易站: 'info',
@@ -35,28 +33,24 @@ const operator_limit = computed(() => {
 })
 
 function clear() {
-  current_plan.value[facility.value].name = ''
-  nextTick(() => {
-    const plans = []
-    for (let i = 0; i < operator_limit.value; ++i) {
-      plans.push({
-        agent: '',
-        group: '',
-        replacement: []
-      })
-    }
-    current_plan.value[facility.value].plans = plans
-  })
+  if (edit_locked.value) return
+  const room = current_plan.value[facility.value]
+  room.name = ''
+  room.plans = Array.from({ length: operator_limit.value }, () => ({
+    agent: '',
+    group: '',
+    replacement: []
+  }))
 }
 
 watch(
-  () => {
-    if (facility.value.startsWith('room')) {
-      return current_plan.value[facility.value].name
-    }
-    return ''
-  },
-  (new_name, old_name) => {
+  () => [
+    facility.value,
+    facility.value.startsWith('room') ? current_plan.value[facility.value].name : ''
+  ],
+  ([room, new_name], [old_room, old_name]) => {
+    // Browsing another room must never reflow its operator slots.
+    if (edit_locked.value || room !== old_room || !room.startsWith('room')) return
     if (new_name == '发电站') {
       const plans = current_plan.value[facility.value].plans
       while (plans.length > operator_limit.value) {
@@ -143,74 +137,20 @@ const color_map = computed(() => {
 })
 
 function drag_facility(room, event) {
+  if (edit_locked.value) {
+    event.preventDefault()
+    return
+  }
   event.dataTransfer.setData('text/plain', room)
   event.dataTransfer.dropEffect = 'move'
 }
 
-function updateTrigger(trigger, source, target) {
-  for (const key in trigger) {
-    if (key === 'left' || key === 'right') {
-      if (typeof trigger[key] === 'string') {
-        trigger[key] = swapSubstrings(trigger[key], source, target)
-      } else if (typeof trigger[key] === 'object' && trigger[key] !== null) {
-        updateTrigger(trigger[key], source, target)
-      }
-    }
-  }
-}
-
-function swapSubstrings(str, source, target) {
-  const placeholder = '__PLACEHOLDER__'
-  let newStr = str.replace(new RegExp(source, 'g'), placeholder)
-  newStr = newStr.replace(new RegExp(target, 'g'), source)
-  newStr = newStr.replace(new RegExp(placeholder, 'g'), target)
-  return newStr
-}
-
-function swapTask(tasks, source, target) {
-  if (tasks) {
-    const placeholder = '__PLACEHOLDER__'
-    if (tasks.hasOwnProperty(source)) {
-      tasks[placeholder] = tasks[source]
-      delete tasks[source]
-    }
-    if (tasks.hasOwnProperty(target)) {
-      tasks[source] = tasks[target]
-      delete tasks[target]
-    }
-    if (tasks.hasOwnProperty(placeholder)) {
-      tasks[target] = tasks[placeholder]
-      delete tasks[placeholder]
-    }
-  }
-}
-
 function drop_facility(target, event) {
+  event.preventDefault()
+  if (edit_locked.value) return
   const source = event.dataTransfer.getData('text/plain')
 
-  // 1. 更新当前 current_plan 表
-  swap(source, target, current_plan.value)
-
-  // 2. 更新所有副表和主表（除当前表以外）
-  const allPlans = ['main', ...backup_plans.value]
-
-  allPlans.forEach((item, index) => {
-    if ((sub_plan.value === 'main' && item === 'main') || sub_plan.value + 1 === index) {
-      return
-    }
-    // 执行更新操作
-    if (item !== 'main') {
-      swap(source, target, item.plan)
-      // 副表才需要更新trigger 和 task
-      swapTask(item.task, source, target)
-      updateTrigger(item.trigger, source, target)
-    } else {
-      // plan 是主表
-      swap(source, target, plan.value)
-    }
-  })
-
-  event.preventDefault()
+  swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
 }
 
 const avatar_bg = computed(() => {
@@ -223,8 +163,10 @@ defineExpose({
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
+import { factory_product_options } from '@/utils/base_products'
 
 function fill_with_free() {
+  if (edit_locked.value) return
   for (let i = 0; i < operator_limit.value; ++i) {
     if (current_plan.value[facility.value].plans[i].agent == '') {
       current_plan.value[facility.value].plans[i].agent = 'Free'
@@ -237,11 +179,7 @@ const trading_products = [
   { label: '合成玉订单', value: 'orundum' }
 ]
 
-const factory_products = [
-  { label: '赤金', value: 'gold' },
-  { label: '中级作战记录', value: 'exp3' },
-  { label: '源石碎片', value: 'orirock' }
-]
+const factory_products = factory_product_options
 
 import { NAvatar } from 'naive-ui'
 
@@ -257,9 +195,10 @@ const render_product = (option) => {
     },
     [
       h(NAvatar, {
-        src: '/product/' + option.value + '.png',
+        src: '/product/' + (option.icon || option.value) + '.png',
         round: true,
-        size: 'small'
+        size: 'small',
+        style: { flexShrink: 0 }
       }),
       option.label
     ]
@@ -311,7 +250,7 @@ function set_facility(e) {
             ></div>
             <div
               v-show="current_plan[r].name"
-              draggable="true"
+              :draggable="!edit_locked"
               @dragstart="drag_facility(r, $event)"
               @dragover.prevent
               @dragenter.prevent
@@ -604,6 +543,7 @@ function set_facility(e) {
           <td>
             <n-select
               v-model:value="current_plan[facility].name"
+              :disabled="edit_locked"
               :options="facility_types"
               class="type-select"
               v-if="facility.startsWith('room')"
@@ -611,10 +551,17 @@ function set_facility(e) {
             <span v-else class="type-select">{{ right_side_facility_name }}</span>
           </td>
           <template v-if="['制造站', '贸易站'].includes(current_plan[facility].name)">
-            <td>产物<help-text>切产物功能暂未实装</help-text></td>
+            <td>
+              产物
+              <help-text v-if="current_plan[facility].name == '制造站'">
+                制造站会随排班自动核对并切换产物。
+              </help-text>
+              <help-text v-else> 贸易站会随排班自动核对并切换订单类型。 </help-text>
+            </td>
             <td>
               <n-select
                 v-model:value="current_plan[facility].product"
+                :disabled="edit_locked"
                 :options="
                   current_plan[facility].name == '制造站' ? factory_products : trading_products
                 "
@@ -628,13 +575,14 @@ function set_facility(e) {
               ghost
               type="primary"
               @click="fill_with_free"
+              :disabled="edit_locked"
               v-if="facility.startsWith('dorm')"
             >
               此宿舍内空位填充Free
             </n-button>
           </td>
           <td>
-            <n-button ghost type="error" @click="clear" :disabled="facility_empty">
+            <n-button ghost type="error" @click="clear" :disabled="edit_locked || facility_empty">
               清空此设施内干员
             </n-button>
           </td>
@@ -655,25 +603,34 @@ function set_facility(e) {
               :options="operator_options(facility)"
               class="operator-select"
               v-model:value="current_plan[facility].plans[i - 1].agent"
+              :disabled="edit_locked"
               :filter="(p, o) => pinyin_match(o.label, p)"
               :render-label="render_op_label"
             />
           </td>
           <td class="select-label">
             <span>组</span>
-            <help-text>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</help-text>
+            <help-text>
+              <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
+              <p>宿舍替班按已知心情从低到高选择，已在岗者保留。</p>
+              <p v-if="experimental_dorm_logic">
+                宿舍替换填 Free 可在下班时开放休息床位；具体替班须为非主班。
+              </p>
+              <p v-else>宿舍绑组须填具体替班，不支持临时 Free 床位。</p>
+            </help-text>
           </td>
           <td class="table-space group">
             <n-input
               v-model:value="current_plan[facility].plans[i - 1].group"
-              :disabled="!current_plan[facility].plans[i - 1].agent"
+              :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
             />
           </td>
           <td class="select-label">替换：</td>
           <td>
             <n-form-item :show-label="false" :show-feedback="false">
               <slick-operator-select
-                :disabled="!current_plan[facility].plans[i - 1].agent"
+                :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
+                :include-free="experimental_dorm_logic && facility.startsWith('dorm')"
                 v-model="current_plan[facility].plans[i - 1].replacement"
                 class="replacement-select"
               />

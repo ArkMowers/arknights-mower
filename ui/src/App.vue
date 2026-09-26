@@ -4,11 +4,70 @@
     :date-locale="dateZhCN"
     class="provider"
     :theme="theme == 'dark' ? darkTheme : undefined"
+    :theme-overrides="theme == 'dark' ? mowerDarkThemeOverrides : mowerLightThemeOverrides"
     :hljs="hljs"
-    style="user-select: none"
+    :style="{
+      userSelect: 'none',
+      ...(theme === 'dark' ? mowerDarkCssVariables : mowerLightCssVariables)
+    }"
+    :class="{
+      'provider--dark': theme === 'dark',
+      'provider--window-shell': windowShellActive
+    }"
   >
     <n-global-style />
+    <WindowTitlebar
+      :active="windowShellActive"
+      :title="windowShellTitle"
+      :version="windowTitleVersion"
+      :instance-name="windowShell.metadata.instanceName || '默认实例'"
+      :theme="theme"
+      :control-side="windowShellControlSide"
+      :maximized="windowShellState.maximized"
+      :controls="windowShellControls"
+      :busy="windowShellBusy"
+      :mower-port="mowerPort"
+      :emulator-name="emulatorName"
+      :adb-port="adbPort"
+      :on-control="handleWindowControl"
+      :on-toggle-maximize="windowShell.toggleMaximize"
+      :resizable="windowShellPlatform === 'windows' && !windowShellState.maximized"
+      :on-resize="windowShell.startResize"
+      :on-move="windowShell.startMove"
+    />
     <n-dialog-provider>
+      <n-modal
+        v-model:show="closeModal"
+        preset="card"
+        title="关闭 Mower"
+        style="max-width: 430px"
+        :mask-closable="!closeBusy"
+        :closable="!closeBusy"
+      >
+        <n-space vertical :size="16">
+          <n-text depth="3">关闭窗口不一定会停止后台调度。请选择本次操作：</n-text>
+          <n-radio-group v-model:value="closeChoice" :disabled="closeBusy">
+            <n-space vertical>
+              <n-radio v-if="closeTrayAvailable" value="tray">收起到托盘（继续运行）</n-radio>
+              <n-radio value="exit">停止任务并彻底退出</n-radio>
+            </n-space>
+          </n-radio-group>
+          <n-checkbox v-model:checked="closeRemember" :disabled="closeBusy">
+            记住我的选择（可在「界面缩放」中更改）
+          </n-checkbox>
+          <n-alert v-if="closeError" type="error">{{ closeError }}</n-alert>
+          <n-text v-if="closeStatus" depth="3">{{ closeStatus }}</n-text>
+          <n-space justify="end">
+            <n-button :disabled="closeBusy" @click="closeModal = false">取消</n-button>
+            <n-button
+              type="primary"
+              :loading="closeBusy"
+              @click="performWindowClose(closeChoice, closeRemember)"
+              >确定</n-button
+            >
+          </n-space>
+        </n-space>
+      </n-modal>
       <n-message-provider>
         <n-loading-bar-provider>
           <n-watermark
@@ -23,14 +82,19 @@
             :y-offset="60"
             :rotate="-15"
           />
-          <n-layout :has-sider="!mobile" class="outer-layout">
+          <n-layout
+            :has-sider="!isMobileNav"
+            class="outer-layout"
+            :class="{ 'outer-layout--collapsed': sidebarCollapsed }"
+          >
             <n-layout-sider
-              v-if="!mobile"
-              bordered
+              v-if="!isMobileNav"
+              :bordered="!windowShellActive"
               collapse-mode="width"
               :collapsed-width="64"
               :width="210"
-              show-trigger
+              v-model:collapsed="sidebarCollapsed"
+              :show-trigger="!windowShellActive"
             >
               <n-menu
                 :indent="24"
@@ -44,6 +108,7 @@
               <router-view v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
+              <GlobalUpdateDrop v-if="loaded" />
               <n-modal
                 v-model:show="showUpdateNoticeModal"
                 preset="card"
@@ -72,7 +137,23 @@
                 </div>
               </n-modal>
             </n-layout-content>
-            <n-layout-footer v-if="mobile">
+            <template v-if="windowShellActive && !isMobileNav">
+              <div class="sider-fade-zone" @mousedown.stop @click="toggleSidebar">
+                <div
+                  class="sider-fade-btn"
+                  :class="{ 'sider-fade-btn--collapsed': sidebarCollapsed }"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M5.64645 3.14645C5.45118 3.34171 5.45118 3.65829 5.64645 3.85355L9.79289 8L5.64645 12.1464C5.45118 12.3417 5.45118 12.6583 5.64645 12.8536C5.84171 13.0488 6.15829 13.0488 6.35355 12.8536L10.8536 8.35355C11.0488 8.15829 11.0488 7.84171 10.8536 7.64645L6.35355 3.14645C6.15829 2.95118 5.84171 2.95118 5.64645 3.14645Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </template>
+            <n-layout-footer v-if="isMobileNav">
               <n-tabs type="line" justify-content="space-evenly" size="small">
                 <n-tab name="日志" @click="$router.push('/')">
                   <div style="display: flex; flex-direction: column; align-items: center">
@@ -101,7 +182,7 @@
                       </div>
                       <div>
                         <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
-                          maa设置
+                          MAA设置
                         </n-button>
                       </div>
                     </n-card>
@@ -113,21 +194,21 @@
                     排班
                   </div>
                 </n-tab>
-                <n-tab name="专精推荐" @click="$router.push('/mastery-recommendation')">
+                <n-tab name="自动专精" @click="$router.push('/mastery-recommendation')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="SkillLevelAdvanced" />
                     专精
                   </div>
                 </n-tab>
-                <n-tab name="报表" @click="showModal = true">
+                <n-tab name="数据图表" @click="showModal = true">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
-                    报表
+                    图表
                   </div>
                   <n-modal v-model:show="showModal">
                     <n-card
                       style="width: 300px"
-                      title="基建报表"
+                      title="数据图表"
                       :bordered="false"
                       size="huge"
                       role="dialog"
@@ -158,6 +239,13 @@
                           @click=";((showModal = false), $router.push('/record/trading_analysis'))"
                         >
                           贸易订单分析
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button
+                          @click=";((showModal = false), $router.push('/record/log-schedule'))"
+                        >
+                          日志调度
                         </n-button>
                       </div>
                     </n-card>
@@ -210,15 +298,66 @@ import RoseOutline from '@vicons/ionicons5/RoseOutline'
 import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  h,
+  inject,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  ref,
+  watch
+} from 'vue'
 import Feedback from '@/components/Feedback.vue'
+import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
+import WindowTitlebar from '@/components/WindowTitlebar.vue'
+import {
+  mowerDarkCssVariables,
+  mowerDarkThemeOverrides,
+  mowerLightCssVariables,
+  mowerLightThemeOverrides
+} from '@/theme/mower'
+import '@/theme/mower.css'
+import { createWindowShellAdapter, formatWindowTitle } from '@/window-shell/adapter.js'
+import { createSaveCoordinator } from '@/utils/configPersistence'
+import { readProcessActionStatus, submitProcessAction } from '@/utils/processAction'
+import { resolveCloseIntent } from '@/utils/closePreference'
+import { installModalDragging } from '@/utils/modal-drag.js'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
+const windowShell = createWindowShellAdapter()
+const closeModal = ref(false)
+const closeBusy = ref(false)
+const closeTrayAvailable = ref(true)
+const closeChoice = ref('tray')
+const closeRemember = ref(false)
+const closeError = ref('')
+const closeStatus = ref('')
+let closePollTimer = null
+const {
+  active: windowShellActive,
+  busy: windowShellBusy,
+  controls: windowShellControls,
+  controlSide: windowShellControlSide,
+  platform: windowShellPlatform,
+  state: windowShellState
+} = windowShell
+
+let disposeModalDrag = null
 
 const showModal = ref(false)
 const showModal2 = ref(false)
 const showFeedback = ref(false)
+const sidebarCollapsed = ref(false)
+const userToggledSidebar = ref(false)
 provide('show_feedback', showFeedback)
+provide('sidebar_collapsed', sidebarCollapsed)
+function toggleSidebar() {
+  userToggledSidebar.value = true
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -249,17 +388,12 @@ const menuOptions = [
         key: 'go-to-mowersetting'
       },
       {
-        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => 'maa设置' }),
+        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => 'MAA设置' }),
         icon: renderIcon(RoseOutline),
         key: 'go-to-maasetting'
       }
     ]
   },
-  // {
-  //   label: () => h(RouterLink, { to: { path: '/aio' } }, { default: () => 'aio' }),
-  //   icon: renderIcon(Settings),
-  //   key: 'go-to-aio'
-  // },
   {
     label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
@@ -267,7 +401,7 @@ const menuOptions = [
   },
   {
     label: () =>
-      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '专精推荐' }),
+      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '自动专精' }),
     icon: renderIcon(SkillLevelAdvanced),
     key: 'go-to-mastery-recommendation'
   },
@@ -308,6 +442,12 @@ const menuOptions = [
           ),
         icon: renderIcon(Newspaper),
         key: 'go-to-trading-analysis'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
+        icon: renderIcon(ReaderOutline),
+        key: 'go-to-log-schedule'
       }
     ]
   },
@@ -372,6 +512,7 @@ import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
 import { useUpdateNoticeStore } from '@/stores/updateNotice'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 
 import { usewatermarkStore } from '@/stores/watermark'
 
@@ -382,15 +523,91 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop, load_item } = config_store
-const { check_for_updates, simulator, start_automatically, theme, webview } =
-  storeToRefs(config_store)
+const {
+  resource_update_enable,
+  resource_update_auto_update,
+  simulator,
+  start_automatically,
+  theme,
+  webview,
+  adb
+} = storeToRefs(config_store)
+let activeThemeTransition = null
+
+async function setThemeWithTransition(nextTheme) {
+  if (nextTheme === theme.value) return
+
+  const root = document.documentElement
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  root.classList.add('mower-theme-changing')
+
+  if (!reduceMotion && typeof document.startViewTransition === 'function') {
+    activeThemeTransition?.skipTransition?.()
+    const transition = document.startViewTransition(async () => {
+      theme.value = nextTheme
+      await nextTick()
+    })
+    activeThemeTransition = transition
+    try {
+      await transition.ready.catch(() => {})
+    } finally {
+      if (activeThemeTransition === transition) {
+        root.classList.remove('mower-theme-changing')
+      }
+    }
+    void transition.finished
+      .catch(() => {})
+      .finally(() => {
+        if (activeThemeTransition === transition) activeThemeTransition = null
+      })
+    return
+  }
+
+  const provider = document.querySelector('.provider')
+  if (!reduceMotion && provider?.animate) {
+    const fadeOut = provider.animate([{ opacity: 1 }, { opacity: 0.84 }], {
+      duration: 90,
+      easing: 'ease-out',
+      fill: 'forwards'
+    })
+    await fadeOut.finished.catch(() => {})
+    fadeOut.cancel()
+  }
+  theme.value = nextTheme
+  await nextTick()
+  root.classList.remove('mower-theme-changing')
+  provider?.animate?.([{ opacity: 0.84 }, { opacity: 1 }], {
+    duration: 130,
+    easing: 'ease-out'
+  })
+}
+
+provide('set_theme_with_transition', setThemeWithTransition)
+const windowShellTitle = computed(() =>
+  formatWindowTitle({
+    version: windowTitleVersion.value,
+    instanceName: windowShell.metadata.instanceName
+  })
+)
+
+// 标题栏副信息：实例@端口 与 模拟器@adb端口。实例名已写进系统窗口标题（formatWindowTitle），
+// 这里标题栏内再补两个 @端口：mower 端口 = 前端服务所在端口（webview 与后端同源），
+// adb 端口 = ADB 连接地址（形如 127.0.0.1:62001）的端口段。
+const mowerPort = computed(() => window.location.port || '')
+const emulatorName = computed(() => simulator.value?.name || '')
+const adbPort = computed(() => {
+  const addr = adb.value || ''
+  const idx = addr.lastIndexOf(':')
+  return idx === -1 ? '' : addr.slice(idx + 1)
+})
 
 const plan_store = usePlanStore()
+plan_store.set_advanced_settings_source(() => config_store.build_advanced_settings())
 const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const { ws, running, log_lines } = storeToRefs(mower_store)
+const { ws, running, log_lines, auto_start_handled } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 
 const update_notice_store = useUpdateNoticeStore()
@@ -398,28 +615,158 @@ const { notice: updateNotice } = storeToRefs(update_notice_store)
 const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
 const showUpdateNoticeModal = ref(false)
 
+const resource_version_store = useResourceVersionStore()
+const { installResource, loadResourceVersion, loadResourceVersionLocal, loadResourceJob } =
+  resource_version_store
+// 标题栏版本：软件版固定（取启动快照的前半段），资源版实时取当前生效的资源包展示版本；
+// 资源包在别处更新时后端广播 resource_updated → loadResourceVersionLocal 刷新这里。
+const windowTitleVersion = computed(() => {
+  const snapshot = windowShell.metadata.version
+  const sep = snapshot.lastIndexOf(' - ')
+  const softVer = sep === -1 ? snapshot : snapshot.slice(0, sep)
+  const liveRes = resource_version_store.info.current_display
+  return liveRes ? `${softVer} - ${liveRes}` : softVer
+})
+
 const axios = inject('axios')
 
+function finishClosePolling(pendingKey) {
+  clearTimeout(closePollTimer)
+  closePollTimer = null
+  sessionStorage.removeItem(pendingKey)
+  closeBusy.value = false
+}
+
+async function pollCloseOperation(pending, base, pendingKey) {
+  if (Date.now() - pending.startedAt > 240000) {
+    closeError.value = '等待退出超时，请检查当前实例和进程操作日志'
+    finishClosePolling(pendingKey)
+    return
+  }
+  try {
+    const data = await readProcessActionStatus({ axios, base, pending })
+    closeStatus.value = data.message || '正在停止当前实例…'
+    if (data.status === 'running') {
+      closePollTimer = setTimeout(() => pollCloseOperation(pending, base, pendingKey), 1000)
+      return
+    }
+    if (data.status === 'failed') {
+      closeError.value = data.message || '彻底退出失败，请检查进程操作日志'
+    }
+    finishClosePolling(pendingKey)
+  } catch (error) {
+    if (error.response) {
+      closeError.value = error.response.data?.message || error.message
+    } else {
+      // The old HTTP server normally disappears before the desktop window
+      // closes. Connection loss alone cannot prove that the exit succeeded.
+      closeStatus.value = '当前实例连接已断开，请确认托盘图标和进程已退出'
+    }
+    finishClosePolling(pendingKey)
+  }
+}
+
+async function performWindowClose(choice, remember) {
+  if (closeBusy.value) return false
+  if (choice === 'tray' && !closeTrayAvailable.value) {
+    closeError.value = '未启用系统托盘，无法收起窗口'
+    return false
+  }
+  closeBusy.value = true
+  closeError.value = ''
+  closeStatus.value = ''
+  let submitted = false
+  try {
+    const api = window.pywebview?.api
+    if (api?.set_close_preference) {
+      const saved = await api.set_close_preference(choice, remember)
+      if (saved !== true) throw new Error('关闭偏好保存失败')
+    }
+    if (choice === 'tray') {
+      const closed = await windowShell.close()
+      if (!closed) throw new Error('无法关闭当前窗口')
+      closeModal.value = false
+      return true
+    }
+    const base = (import.meta.env.VITE_HTTP_URL || '') + '/process-control'
+    const pendingKey = 'mower-process-control:' + base
+    if (sessionStorage.getItem(pendingKey)) {
+      throw new Error('已有进程操作正在进行，请等待完成后重试')
+    }
+    const saves = createSaveCoordinator(config_store, plan_store)
+    const { pending } = await submitProcessAction({
+      axios,
+      saves,
+      action: 'stop',
+      base,
+      pendingKey
+    })
+    submitted = true
+    closeStatus.value = '彻底退出请求已提交，正在等待任务停止和实例退出…'
+    void pollCloseOperation(pending, base, pendingKey)
+    return true
+  } catch (error) {
+    closeError.value =
+      error.response?.data?.message || error.message || '退出结果尚未确认，请检查托盘和进程操作状态'
+    return false
+  } finally {
+    if (!submitted) closeBusy.value = false
+  }
+}
+
+async function handleWindowControl(action) {
+  if (action !== 'close') return windowShell.runControl(action)
+  if (closeBusy.value) return false
+  const api = window.pywebview?.api
+  if (!api?.get_close_preference) return windowShell.close()
+  try {
+    const pref = await api.get_close_preference()
+    const intent = resolveCloseIntent(pref)
+    closeTrayAvailable.value = intent.trayAvailable
+    closeChoice.value = intent.choice
+    closeRemember.value = intent.remember
+    closeStatus.value = ''
+    closeError.value = ''
+    if (!intent.shouldPrompt) {
+      if (intent.choice === 'exit') closeModal.value = true
+      return performWindowClose(intent.choice, true)
+    }
+    closeModal.value = true
+    return true
+  } catch (error) {
+    // An unreadable preference must not silently result in an exit.
+    closeTrayAvailable.value = false
+    closeChoice.value = 'exit'
+    closeRemember.value = false
+    closeError.value = error.message || '读取关闭设置失败'
+    closeModal.value = true
+    return false
+  }
+}
 function start() {
   running.value = true
   log_lines.value = []
   axios.get(`${import.meta.env.VITE_HTTP_URL}/start/0`)
 }
 
-function actions_on_resize() {
-  document.documentElement.style.setProperty(
-    '--app-height',
-    `${window.innerHeight / webview.value.scale}px`
-  )
-  document.documentElement.style.setProperty(
-    '--app-width',
-    `${window.innerWidth / webview.value.scale}px`
-  )
-  mobile.value = window.innerWidth < 800 * webview.value.scale
+function apply_zoom(scale) {
+  const s = Number(scale) || 1.0
+  document.documentElement.style.zoom = s
+  actions_on_resize()
 }
 
-const mobile = ref(true)
+const isMobileNav = ref(false)
+const mobile = ref(false)
 provide('mobile', mobile)
+
+function actions_on_resize() {
+  const width = document.documentElement.clientWidth || window.innerWidth
+  isMobileNav.value = width < 680
+  mobile.value = width < 850
+  if (!userToggledSidebar.value) {
+    sidebarCollapsed.value = width < 850
+  }
+}
 
 const loaded = inject('loaded')
 
@@ -460,6 +807,8 @@ const operators_with_free_current = computed(() => {
 })
 
 onMounted(async () => {
+  void windowShell.initialize()
+  disposeModalDrag = installModalDragging()
   actions_on_resize()
   window.addEventListener('resize', () => {
     actions_on_resize()
@@ -484,20 +833,47 @@ onMounted(async () => {
       ? `${simulator.value.name} - arknights-mower`
       : 'arknights-mower'
 
+  axios
+    .post(
+      `${import.meta.env.VITE_HTTP_URL || ''}/software-update/auto-check`,
+      {},
+      {
+        headers: { 'X-Mower-Update': '1' }
+      }
+    )
+    .catch((error) => console.error('failed to request automatic software check', error))
+
   await load_plan()
 
-  if (check_for_updates.value) {
+  try {
+    const notice = await loadUpdateNotice()
+    showUpdateNoticeModal.value = notice.should_show
+    if (notice.should_show) {
+      renderChangelog()
+    }
+  } catch (error) {
+    console.error('failed to load update notice', error)
+    showUpdateNoticeModal.value = false
+  }
+  // Render settings while updating, but resume automatic tasks only afterwards.
+  const resourceUpdateRequest = (async () => {
     try {
-      const notice = await loadUpdateNotice()
-      showUpdateNoticeModal.value = notice.should_show
-      if (notice.should_show) {
-        renderChangelog()
+      if (await loadResourceJob()) {
+        await Promise.all([load_shop(), load_item(), load_operators()])
+      }
+      await loadResourceVersionLocal()
+      if (resource_update_enable.value) {
+        const resourceInfo = await loadResourceVersion()
+        if (resource_update_auto_update.value && resourceInfo.update_available === true) {
+          if (await installResource()) {
+            await Promise.all([load_shop(), load_item(), load_operators()])
+          }
+        }
       }
     } catch (error) {
-      console.error('failed to load update notice', error)
-      showUpdateNoticeModal.value = false
+      console.error('failed to load resource version', error)
     }
-  }
+  })()
 
   loaded.value = true
 
@@ -515,7 +891,7 @@ onMounted(async () => {
         relevance: 10
       },
       {
-        begin: /[0-9]+(-[0-9]+)+/,
+        begin: /\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b/,
         className: 'date'
       },
       {
@@ -549,18 +925,40 @@ onMounted(async () => {
     listen_ws()
   }
 
-  if (start_automatically.value) {
+  await resourceUpdateRequest
+  const importedConfig = sessionStorage.getItem('mower-config-imported') === '1'
+  sessionStorage.removeItem('mower-config-imported')
+  if (start_automatically.value && !auto_start_handled.value && !importedConfig) {
     start()
   }
 })
 
+onBeforeUnmount(() => {
+  clearTimeout(closePollTimer)
+  disposeModalDrag?.()
+  windowShell.dispose()
+  delete document.documentElement.dataset.windowShellTheme
+  delete document.documentElement.dataset.mowerTheme
+})
+
 watch(
-  () => webview.value.scale,
-  (scale) => {
-    const ele = document.querySelector('#app')
-    ele.style.transform = `scale(${webview.value.scale})`
-    actions_on_resize()
-  }
+  [theme, loaded, windowShellActive],
+  ([currentTheme, appLoaded, shellActive]) => {
+    document.documentElement.dataset.mowerTheme = currentTheme === 'dark' ? 'dark' : 'light'
+    if (appLoaded && shellActive) {
+      document.documentElement.dataset.windowShellTheme = currentTheme === 'dark' ? 'dark' : 'light'
+      window.scrollTo(0, 0)
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => webview.value?.scale,
+  (newScale) => {
+    apply_zoom(newScale)
+  },
+  { immediate: true }
 )
 </script>
 
@@ -589,10 +987,256 @@ watch(
 </style>
 
 <style lang="scss">
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 #app {
-  height: var(--app-height, 100vh);
-  width: var(--app-width, 100vw);
-  transform-origin: 0 0;
+  height: 100%;
+  width: 100%;
+}
+
+.provider--window-shell {
+  --window-shell-frame-surface: #faf9f7;
+  --window-shell-content-surface: #fff;
+  --window-shell-content-shadow-left: rgba(63, 55, 47, 0.13);
+  --window-shell-content-shadow-top: rgba(63, 55, 47, 0.07);
+  --window-shell-content-shadow-corner: rgba(63, 55, 47, 0.09);
+  --window-shell-scrollbar-thumb: rgba(46, 43, 40, 0.2);
+  --window-shell-scrollbar-thumb-hover: rgba(46, 43, 40, 0.34);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--window-shell-frame-surface);
+}
+
+html[data-window-shell-theme='dark'] .provider--window-shell {
+  --window-shell-frame-surface: #18181c;
+  --window-shell-content-surface: #101014;
+  --window-shell-content-shadow-left: rgba(0, 0, 0, 0.34);
+  --window-shell-content-shadow-top: rgba(0, 0, 0, 0.2);
+  --window-shell-content-shadow-corner: rgba(0, 0, 0, 0.26);
+  --window-shell-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --window-shell-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+  background: var(--window-shell-frame-surface);
+}
+
+.provider--window-shell .outer-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  background: var(--window-shell-frame-surface);
+}
+
+.provider--window-shell .n-layout-sider {
+  background: var(--window-shell-frame-surface);
+}
+
+.provider--window-shell .n-layout-sider__border {
+  background: transparent;
+}
+
+.layout-content-container {
+  container-type: inline-size;
+  container-name: main-content;
+}
+
+.provider--window-shell .layout-content-container {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  background: var(--window-shell-content-surface);
+  border-radius: 10px 0 0 0;
+  box-shadow:
+    -7px 0 18px -14px var(--window-shell-content-shadow-left),
+    0 -6px 16px -14px var(--window-shell-content-shadow-top),
+    -5px -5px 20px -16px var(--window-shell-content-shadow-corner);
+}
+
+/* shadcn / 现代精致输入框（n-input / n-input-number）：
+   聚焦时直接高亮边框并添加 2px 贴身高亮环，杜绝过大外扩（4px）被子窗口边框/overflow 裁剪 */
+.n-input {
+  --n-height: 36px !important;
+  --n-border-radius: 6px !important;
+  --n-border: 1px solid #e4e4e7 !important;
+  --n-border-hover: 1px solid #36ad6a !important;
+  --n-border-focus: 1px solid #18a058 !important;
+  --n-color: #ffffff !important;
+  --n-color-hover: #ffffff !important;
+  --n-color-focus: #ffffff !important;
+  --n-padding-left: 12px !important;
+  --n-padding-right: 12px !important;
+  --n-padding-vertical: 0 !important;
+  --n-text-color: #09090b !important;
+  --n-placeholder-color: #71717a !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(24, 160, 88, 0.2) !important;
+}
+html[data-mower-theme='dark'] .n-input {
+  --n-border: 1px solid #27272a !important;
+  --n-border-hover: 1px solid #7fe7c4 !important;
+  --n-border-focus: 1px solid #63e2b7 !important;
+  --n-color: #101014 !important;
+  --n-color-hover: #101014 !important;
+  --n-color-focus: #101014 !important;
+  --n-text-color: #fafafa !important;
+  --n-placeholder-color: #71717a !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
+}
+
+/* 下拉选择框（n-select）：触发器 = 同款输入框盒子 + 菜单 = 圆角浮层/option 高亮 */
+.n-base-selection {
+  --n-height: 36px !important;
+  --n-border-radius: 6px !important;
+  --n-border: 1px solid #e4e4e7 !important;
+  --n-border-hover: 1px solid #36ad6a !important;
+  --n-border-focus: 1px solid #18a058 !important;
+  --n-border-active: 1px solid #18a058 !important;
+  --n-color: #ffffff !important;
+  --n-color-active: #ffffff !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(24, 160, 88, 0.2) !important;
+  --n-box-shadow-active: 0 0 0 2px rgba(24, 160, 88, 0.2) !important;
+  --n-text-color: #09090b !important;
+  --n-placeholder-color: #71717a !important;
+  --n-padding-single: 0 12px !important;
+  --n-font-size: 14px !important;
+}
+.n-base-select-menu {
+  --n-color: #ffffff !important;
+  --n-border-radius: 6px !important;
+  --n-option-font-size: 14px !important;
+  --n-option-color-pending: rgba(24, 160, 88, 0.08) !important;
+  --n-option-color-active: rgba(24, 160, 88, 0.1) !important;
+  --n-option-color-active-pending: rgba(24, 160, 88, 0.14) !important;
+}
+html[data-mower-theme='dark'] .n-base-selection {
+  --n-border: 1px solid #27272a !important;
+  --n-border-hover: 1px solid #7fe7c4 !important;
+  --n-border-focus: 1px solid #63e2b7 !important;
+  --n-border-active: 1px solid #63e2b7 !important;
+  --n-color: #101014 !important;
+  --n-color-active: #101014 !important;
+  --n-text-color: #fafafa !important;
+  --n-placeholder-color: #71717a !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
+  --n-box-shadow-active: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
+}
+html[data-mower-theme='dark'] .n-base-select-menu {
+  --n-color: #101014 !important;
+  --n-option-color-pending: rgba(99, 226, 183, 0.12) !important;
+  --n-option-color-active: rgba(99, 226, 183, 0.16) !important;
+  --n-option-color-active-pending: rgba(99, 226, 183, 0.2) !important;
+}
+
+/* 提升处于聚焦/激活状态输入框的层叠层级，避免被相邻单元格、边框或相邻按钮遮挡 */
+.n-input:focus-within,
+.n-base-selection:focus-within {
+  position: relative;
+  z-index: 2;
+}
+
+/* 只给「含输入框/下拉」的单元格加定位：position:relative 会把单元格提到定位层，
+   无输入框的表格（如运行日志页任务表）跟着提层会盖住 .log-bg 背景图 */
+.n-table td:has(.n-input, .n-base-selection) {
+  position: relative;
+}
+
+.n-table td:has(.n-input:focus-within),
+.n-table td:has(.n-base-selection:focus-within) {
+  z-index: 3;
+}
+
+html.mower-theme-changing *,
+html.mower-theme-changing *::before,
+html.mower-theme-changing *::after {
+  transition: none !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  animation-name: mower-theme-fade-out;
+}
+
+::view-transition-new(root) {
+  animation-name: mower-theme-fade-in;
+}
+
+@keyframes mower-theme-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes mower-theme-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* naive-ui 弹窗 teleport 到 <body>，不在 .provider--window-shell 内，
+   所以上面的滚动条样式和 --window-shell-scrollbar-thumb 变量都够不到它。
+   mower.css 已让 .n-modal 的卡片/对话框内容节点滚动（.n-card-content / .n-dialog__content），
+   这里把同名滚动条样式应用到这些 body 级浮层，并把变量提到 :root 兜底。 */
+:root {
+  --window-shell-scrollbar-thumb: rgba(46, 43, 40, 0.2);
+  --window-shell-scrollbar-thumb-hover: rgba(46, 43, 40, 0.34);
+}
+html[data-window-shell-theme='dark'] {
+  --window-shell-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --window-shell-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+}
+
+.provider--window-shell *,
+.n-modal,
+.n-modal * {
+  scrollbar-color: var(--window-shell-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.provider--window-shell *::-webkit-scrollbar,
+.n-modal *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.provider--window-shell *::-webkit-scrollbar-track,
+.provider--window-shell *::-webkit-scrollbar-corner,
+.n-modal *::-webkit-scrollbar-track,
+.n-modal *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.provider--window-shell *::-webkit-scrollbar-thumb,
+.n-modal *::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  background: var(--window-shell-scrollbar-thumb);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+
+.provider--window-shell *::-webkit-scrollbar-thumb:hover,
+.n-modal *::-webkit-scrollbar-thumb:hover {
+  background: var(--window-shell-scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+.provider--window-shell *::-webkit-scrollbar-button,
+.n-modal *::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .n-tab-pane {
@@ -634,7 +1278,9 @@ td {
 }
 
 .dialog-btn {
-  margin-left: 4px;
+  /* 与旁边的路径输入框（36px）对齐：高度拉到 36px；间距 8px 给输入框聚焦 ring(外扩4px) 留空档 */
+  margin-left: 8px;
+  --n-height: 36px !important;
 }
 
 .report-card {
@@ -649,7 +1295,6 @@ td {
   height: 200px;
   padding: 20px 20px 80px 20px;
   border: 1px solid #ccc;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .n-checkbox .n-checkbox__label {
@@ -660,7 +1305,67 @@ td {
 }
 
 .outer-layout {
+  position: relative;
   height: 100%;
+}
+
+/* 无边框窗口：侧栏折叠触发器，悬挂在侧栏/内容交界线上，鼠标滑到才浮现。图标为 naive 原生
+   ChevronRight（arrow-circle 触发器同款）；展开时朝左(旋转180°)、折叠时朝右。 */
+.provider--window-shell .sider-fade-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 210px;
+  width: 22px;
+  transform: translateX(-50%);
+  cursor: pointer;
+  z-index: 2;
+}
+.outer-layout--collapsed .sider-fade-zone {
+  left: 64px;
+}
+.sider-fade-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: #fff;
+  color: #808080;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+.sider-fade-zone:hover .sider-fade-btn,
+.sider-fade-btn:focus-visible {
+  opacity: 1;
+  color: #18a058;
+}
+.sider-fade-btn svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: currentcolor;
+  transform: rotate(180deg);
+  transition: transform 0.2s ease;
+}
+.sider-fade-btn--collapsed svg {
+  transform: rotate(0deg);
+}
+html[data-mower-theme='dark'] .sider-fade-btn {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgb(44, 44, 50);
+  color: rgba(255, 255, 255, 0.68);
+}
+html[data-mower-theme='dark'] .sider-fade-zone:hover .sider-fade-btn {
+  color: #63e2b7;
 }
 
 .outer-layout > .n-layout-scroll-container {

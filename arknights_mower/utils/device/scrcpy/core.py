@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import functools
 import socket
 import struct
 import threading
 import time
-import traceback
 from typing import Optional, Tuple
 
 import numpy as np
 
 from arknights_mower import __rootdir__
+from arknights_mower.utils.csleep import csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.device.scrcpy import const
@@ -136,25 +135,15 @@ class Client:
         # self.__video_socket.setblocking(False)
 
     def start(self) -> None:
-        """
-        Start listening video stream
-        """
-        try_count = 0
-        while try_count < 3:
-            try:
-                self.__deploy_server()
-                time.sleep(0.5)
-                self.__init_server_connection()
-                break
-            except ConnectionError:
-                logger.debug(traceback.format_exc())
-                logger.warning("Failed to connect scrcpy-server.")
-                self.stop()
-                logger.warning("Try again in 10 seconds...")
-                time.sleep(10)
-                try_count += 1
-        else:
-            raise RuntimeError("Failed to connect scrcpy-server.")
+        """只建立一次连接；失败交由设备恢复入口统一重试。"""
+        try:
+            csleep(0)
+            self.__deploy_server()
+            csleep(0.5)
+            self.__init_server_connection()
+        except Exception:
+            self.stop()
+            raise
 
     def stop(self) -> None:
         """
@@ -174,30 +163,9 @@ class Client:
         """check if adb server alive"""
         return self.client.check_server_alive()
 
-    def stable(f):
-        @functools.wraps(f)
-        def inner(self: Client, *args, **kwargs):
-            try_count = 0
-            while try_count < 3:
-                try:
-                    f(self, *args, **kwargs)
-                    break
-                except (ConnectionResetError, BrokenPipeError):
-                    self.stop()
-                    time.sleep(1)
-                    self.check_adb_alive()
-                    self.start()
-                    try_count += 1
-            else:
-                raise RuntimeError("Failed to start scrcpy-server.")
-
-        return inner
-
-    @stable
     def tap(self, x: int, y: int) -> None:
         self.control.tap(x, y)
 
-    @stable
     def swipe(
         self,
         x0,

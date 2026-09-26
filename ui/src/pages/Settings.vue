@@ -2,11 +2,10 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { computed, inject } from 'vue'
-
-import { pinyin_match } from '@/utils/common'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
 import { folder_dialog } from '@/utils/dialog'
+import { performanceProfile } from '@/utils/performanceProfile'
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -15,49 +14,100 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
-  dorm_order,
+  low_frame_rate_mode,
+  performance_mode,
+  performance_effective_mode,
+  selection_poll_interval,
+  selection_transition_timeout,
   drone_room,
-  drone_count_limit,
-  drone_interval,
-  reload_room,
+  swap_contact_train,
   start_automatically,
   adb,
   package_type,
   simulator,
   theme,
-  resting_threshold,
-  fia_threshold,
-  rescue_threshold,
-  favorite,
   tap_to_launch_game,
   exit_game_when_idle,
   return_home_when_idle,
   close_simulator_when_idle,
   screenshot,
+  screenshot_archive_limit_mb,
   screenshot_interval,
   run_order_grandet_mode,
   webview,
+  runtime_platform,
   fix_mumu12_adb_disconnect,
   touch_method,
-  free_room,
-  merge_interval,
-  fia_fool,
-  refresh_backup_plan_after_mood,
-  assistant_follows_schedule,
   droidcast,
   mumu12IPC,
   maa_adb_path,
   maa_gap,
   custom_screenshot,
-  check_for_updates,
   waiting_scene,
   enable_party,
   leifeng_mode,
   item_list,
-  workshop_settings,
+  workshop_manual_settings,
+  workshop_preset_warning,
   ai_type,
   ai_key
 } = storeToRefs(config_store)
+
+const performance_mode_options = computed(() => [
+  { label: '自动', value: 'auto' },
+  ...(runtime_platform.value === 'android' ? [] : [{ label: '高性能', value: 'high' }]),
+  { label: '中性能', value: 'medium' },
+  { label: '低性能', value: 'low' },
+  { label: '自定义', value: 'custom' }
+])
+const performance_effective_label = computed(
+  () =>
+    ({ high: '高性能', medium: '中性能', low: '低性能' })[performance_effective_mode.value] ||
+    performance_effective_mode.value
+)
+const archive_limit_gib = computed({
+  get: () => screenshot_archive_limit_mb.value / 1024,
+  set: (value) => {
+    if (Number.isFinite(value))
+      screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
+  }
+})
+
+function apply_performance_mode(mode) {
+  if (runtime_platform.value === 'android' && mode === 'high') mode = 'medium'
+  performance_mode.value = mode
+  if (mode === 'custom') return
+  const profile = performanceProfile(mode, runtime_platform.value)
+  low_frame_rate_mode.value = profile.lowFrameRateMode
+  screenshot_interval.value = profile.screenshotInterval
+  selection_poll_interval.value = profile.selectionPollInterval
+  selection_transition_timeout.value = profile.selectionTransitionTimeout
+  run_order_delay.value = profile.runOrderDelay
+  run_order_grandet_mode.value.buffer_time = profile.grandetBufferTime
+}
+
+function set_custom_parameter(target, value) {
+  const parameters = {
+    selection_poll_interval,
+    selection_transition_timeout,
+    screenshot_interval,
+    run_order_delay
+  }
+  parameters[target].value = value
+  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
+
+function set_custom_buffer(value) {
+  run_order_grandet_mode.value.buffer_time = value
+  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
+
+const hide_macos_menu_bar = computed({
+  get: () => !webview.value.tray,
+  set: (hidden) => (webview.value.tray = !hidden)
+})
 
 const { operators } = storeToRefs(plan_store)
 
@@ -99,8 +149,6 @@ async function select_simulator_folder() {
   }
 }
 
-import { render_op_label } from '@/utils/op_select'
-
 const scale_marks = {}
 const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
 for (let i = 0.5; i <= 3.0; i += 0.25) {
@@ -108,6 +156,80 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
 }
 
 const new_scale = ref(webview.value.scale)
+
+const desktopPreferencesReady = ref(false)
+const desktopTrayEnabled = ref(true)
+const desktopCloseMode = ref('ask')
+const desktopLaunchMode = ref('last')
+const desktopPreferenceBusy = ref(false)
+const desktopPreferenceError = ref('')
+const closeOptions = computed(() => [
+  { label: '每次询问', value: 'ask' },
+  ...(desktopTrayEnabled.value ? [{ label: '收起到托盘', value: 'tray' }] : []),
+  { label: '彻底退出', value: 'exit' }
+])
+const launchOptions = [
+  { label: '记住上次', value: 'last' },
+  { label: '窗口', value: 'normal' },
+  { label: '最大化', value: 'maximized' }
+]
+
+async function loadDesktopPreferences() {
+  const api = window.pywebview?.api
+  if (!api?.get_close_preference || !api?.get_window_launch_mode) return
+  try {
+    const [close, launch] = await Promise.all([
+      api.get_close_preference(),
+      api.get_window_launch_mode()
+    ])
+    desktopTrayEnabled.value = close.tray_enabled !== false
+    desktopCloseMode.value = close.remember ? close.choice : 'ask'
+    desktopLaunchMode.value = launch
+    desktopPreferencesReady.value = true
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '窗口设置读取失败'
+  }
+}
+
+async function changeCloseMode(value) {
+  const api = window.pywebview?.api
+  if (!api?.set_close_preference || desktopPreferenceBusy.value) return
+  desktopPreferenceBusy.value = true
+  try {
+    const choice = value === 'ask' ? (desktopTrayEnabled.value ? 'tray' : 'exit') : value
+    const ok = await api.set_close_preference(choice, value !== 'ask')
+    if (ok !== true) throw new Error('无法保存关闭设置')
+    desktopCloseMode.value = value
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '关闭设置保存失败'
+  } finally {
+    desktopPreferenceBusy.value = false
+  }
+}
+
+async function changeLaunchMode(value) {
+  const api = window.pywebview?.api
+  if (!api?.set_window_launch_mode || desktopPreferenceBusy.value) return
+  desktopPreferenceBusy.value = true
+  try {
+    const ok = await api.set_window_launch_mode(value)
+    if (ok !== true) throw new Error('无法保存启动设置')
+    desktopLaunchMode.value = value
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '启动设置保存失败'
+  } finally {
+    desktopPreferenceBusy.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('pywebviewready', loadDesktopPreferences)
+  void loadDesktopPreferences()
+})
+onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPreferences))
 
 import { file_dialog } from '@/utils/dialog'
 
@@ -169,41 +291,15 @@ const onSelectionChange = (newValue) => {
     simulator.value.index = '0'
   }
 }
-import { ref } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
-
-const showSettingModal = ref(false)
-const editingIndex = ref(null)
-
-const tempSetting = ref({
-  operator: '',
-  items: []
-})
-const deepClone = (obj) => JSON.parse(JSON.stringify(obj))
-const openEdit = (index) => {
-  tempSetting.value = workshop_settings.value[index]
-  editingIndex.value = index
-  showSettingModal.value = true
-}
-
-const workshop_setting_close = () => {
-  if (editingIndex.value === null) {
-    workshop_settings.value.push(deepClone(tempSetting.value))
-  } else {
-    workshop_settings.value[editingIndex.value] = deepClone(tempSetting.value)
-  }
-  showSettingModal.value = false
-  editingIndex.value = null
-}
-function createNewItem() {
-  return {
-    item_names: [],
-    children_lower_limit: 20,
-    self_upper_limit: 20
-  }
-}
+import SoftwareUpdate from '../components/SoftwareUpdate.vue'
+import NetworkSettings from '../components/NetworkSettings.vue'
+import ConfigBackup from '../components/ConfigBackup.vue'
+import WorkshopManualSettings from '../components/WorkshopManualSettings.vue'
 
 const idleAction = ref('') // 'idle' | 'home' | 'exit' | 'close'
+const networkSettings = ref(null)
+const softwareUpdate = ref(null)
 
 const idleOptions = [
   { label: '无操作', value: 'idle' },
@@ -264,22 +360,24 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
+              >设备连接由 Android 应用管理。</n-alert
+            >
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>ADB路径</span>
                 <help-text>
                   <div>MuMu12：<code>模拟器路径\\shell\\adb.exe</code></div>
                   <div>
-                    蓝叠Air（macOS）：Homebrew 安装后通常位于
-                    <code>/opt/homebrew/bin/adb</code>（Intel 机器为
-                    <code>/usr/local/bin/adb</code>）
+                    macOS 和 Linux 安装包自带 ADB。默认的 @internal/platform-tools/adb
+                    随程序位置解析，也可以手动选择其他 ADB。
                   </div>
                 </help-text>
               </template>
-              <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
+              <n-input v-model:value="maa_adb_path" />
               <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
             </n-form-item>
-            <n-form-item>
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>ADB连接地址</span>
                 <help-text>
@@ -290,7 +388,7 @@ if (return_home_when_idle.value) {
               </template>
               <n-input v-model:value="adb" />
             </n-form-item>
-            <n-form-item label="触控方案">
+            <n-form-item label="触控方案" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="touch_method">
                 <n-space>
                   <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
@@ -298,14 +396,14 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="模拟器">
+            <n-form-item label="模拟器" v-if="runtime_platform !== 'android'">
               <n-select
                 v-model:value="simulator.name"
                 :options="simulator_types"
                 @update:value="onSelectionChange"
               />
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>模拟器文件夹</span>
                 <help-text>
@@ -313,14 +411,10 @@ if (return_home_when_idle.value) {
                   <div>MuMu12: 写到nx_main文件夹</div>
                 </help-text>
               </template>
-              <n-input
-                v-model:value="simulator.simulator_folder"
-                type="textarea"
-                :autosize="true"
-              />
+              <n-input v-model:value="simulator.simulator_folder" />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>多开编号</span>
                 <help-text>
@@ -329,12 +423,15 @@ if (return_home_when_idle.value) {
               </template>
               <n-input v-model:value="simulator.index" />
             </n-form-item>
-            <n-form-item label="模拟器启动时间" v-if="simulator.name">
-              <n-input-number v-model:value="simulator.wait_time">
+            <n-form-item
+              label="模拟器启动时间"
+              v-if="runtime_platform !== 'android' && simulator.name"
+            >
+              <mower-input-number v-model:value="simulator.wait_time">
                 <template #suffix>秒</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
-            <n-form-item v-if="simulator.name">
+            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
               <template #label>
                 <span>模拟器老板键</span>
                 <help-text>
@@ -360,16 +457,21 @@ if (return_home_when_idle.value) {
                 placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
               />
             </n-form-item>
-            <n-form-item label="启动游戏">
+            <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && tap_to_launch_game.mode == 'tap'"
+              label="点击坐标"
+            >
               <span class="coord-label">X:</span>
-              <n-input-number v-model:value="tap_to_launch_game.x" />
+              <mower-input-number v-model:value="tap_to_launch_game.x" />
               <span class="coord-label">Y:</span>
-              <n-input-number v-model:value="tap_to_launch_game.y" />
+              <mower-input-number v-model:value="tap_to_launch_game.y" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && tap_to_launch_game.mode == 'custom'"
+            >
               <template #label>
                 <span>启动命令</span>
                 <help-text>
@@ -385,7 +487,7 @@ if (return_home_when_idle.value) {
               />
               <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
             </n-form-item>
-            <n-form-item>
+            <n-form-item v-if="runtime_platform !== 'android'">
               <template #label>
                 <span>任务结束后</span>
                 <help-text>
@@ -399,7 +501,11 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item
               :show-label="false"
-              v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
+              v-if="
+                runtime_platform !== 'android' &&
+                simulator.name == 'MuMu12' &&
+                close_simulator_when_idle
+              "
             >
               <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
                 关闭MuMu模拟器12时结束adb进程
@@ -412,10 +518,7 @@ if (return_home_when_idle.value) {
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="check_for_updates">检查版本更新</n-checkbox>
-            </n-form-item>
-            <n-form-item label="截图方案">
+            <n-form-item label="截图方案" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="screenshot_method">
                 <n-flex>
                   <n-radio value="adb_gzip">
@@ -433,7 +536,7 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="旋转截图" v-if="droidcast.enable">
+            <n-form-item label="旋转截图" v-if="runtime_platform !== 'android' && droidcast.enable">
               <n-radio-group v-model:value="droidcast.rotate">
                 <n-flex>
                   <n-radio :value="false">不旋转</n-radio>
@@ -441,31 +544,110 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="截图命令" v-if="custom_screenshot.enable">
+            <n-form-item
+              label="截图命令"
+              v-if="runtime_platform !== 'android' && custom_screenshot.enable"
+            >
               <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
               <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
                 测试
               </n-button>
             </n-form-item>
-            <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
+            <n-form-item
+              v-if="runtime_platform !== 'android' && custom_screenshot.enable && tested"
+              :show-label="false"
+            >
               <n-flex vertical>
                 <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
                 <div>（截图用时{{ elapsed }}ms）</div>
               </n-flex>
             </n-form-item>
-            <n-form-item label="截图最短间隔">
-              <n-input-number v-model:value="screenshot_interval" :precision="0">
-                <template #suffix>毫秒</template>
-              </n-input-number>
+            <n-form-item label="设备性能适配">
+              <n-radio-group :value="performance_mode" @update:value="apply_performance_mode">
+                <n-flex>
+                  <n-radio
+                    v-for="option in performance_mode_options"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </n-radio>
+                </n-flex>
+              </n-radio-group>
+              <help-text>
+                自动档根据截图耗时选择{{
+                  runtime_platform === 'android' ? '中、低' : '高、中、低'
+                }}档；Android 默认自动，其他平台默认高性能。
+                切换档位会同步修改截图最短间隔、跑单前置延时和葛朗台缓冲时间。当前自动判定：{{
+                  performance_effective_label
+                }}。修改任一性能参数会切换为自定义。
+              </help-text>
             </n-form-item>
-            <n-form-item>
+            <n-form-item label="截图最短间隔">
+              <mower-input-number
+                :value="screenshot_interval"
+                :precision="0"
+                @update:value="(value) => set_custom_parameter('screenshot_interval', value)"
+              >
+                <template #suffix>毫秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item label="选人采样间隔">
+              <mower-input-number
+                :value="selection_poll_interval"
+                :min="0.1"
+                :max="2"
+                @update:value="(value) => set_custom_parameter('selection_poll_interval', value)"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item label="操作反馈超时">
+              <mower-input-number
+                :value="selection_transition_timeout"
+                :min="1"
+                :max="20"
+                @update:value="
+                  (value) => set_custom_parameter('selection_transition_timeout', value)
+                "
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item
+              v-if="runtime_platform !== 'android'"
+              :show-feedback="screenshot === 0 || (screenshot > 0 && screenshot < 5 / 60)"
+            >
               <template #label>
                 <span>截图保存时间</span>
-                <help-text>可填小数</help-text>
+                <help-text
+                  >默认保留 1 小时，可填小数；大于 0 且不足 5 分钟时按 5 分钟保留。</help-text
+                >
               </template>
-              <n-input-number v-model:value="screenshot">
+              <mower-input-number v-model:value="screenshot" :min="0">
                 <template #suffix>小时</template>
-              </n-input-number>
+              </mower-input-number>
+              <template v-if="screenshot === 0" #feedback>
+                <span role="status">
+                  日常截图不写盘。发生需归档的异常时，保存此前 5 分钟内缓存的全部画面及后续 5
+                  分钟截图；内存缓存最多 16 张、32 MiB。
+                </span>
+              </template>
+              <template v-else-if="screenshot > 0 && screenshot < 5 / 60" #feedback>
+                <span role="status">截图会正常写盘，实际保存时间按 5 分钟处理。</span>
+              </template>
+            </n-form-item>
+            <n-form-item label="报错归档空间上限">
+              <template #label>
+                <span>报错归档空间上限</span>
+                <help-text>
+                  默认 5 GiB。达到上限时优先清理较早的报错归档；设置为 0
+                  表示不限容量。普通截图仍按保存时间清理。
+                </help-text>
+              </template>
+              <mower-input-number v-model:value="archive_limit_gib" :min="0" :precision="2">
+                <template #suffix>GiB</template>
+              </mower-input-number>
             </n-form-item>
             <n-form-item label="等待时间">
               <n-table size="small" class="waiting-table">
@@ -480,14 +662,22 @@ if (return_home_when_idle.value) {
                   <tr v-for="(value, key) in waiting_scene">
                     <td>{{ scene_name[key] }}</td>
                     <td>
-                      <n-input-number v-model:value="value[0]" :show-button="false" :precision="0">
+                      <mower-input-number
+                        v-model:value="value[0]"
+                        :show-button="false"
+                        :precision="0"
+                      >
                         <template #suffix>秒</template>
-                      </n-input-number>
+                      </mower-input-number>
                     </td>
                     <td>
-                      <n-input-number v-model:value="value[1]" :show-button="false" :precision="0">
+                      <mower-input-number
+                        v-model:value="value[1]"
+                        :show-button="false"
+                        :precision="0"
+                      >
                         <template #suffix>次</template>
-                      </n-input-number>
+                      </mower-input-number>
                     </td>
                   </tr>
                 </tbody>
@@ -495,29 +685,67 @@ if (return_home_when_idle.value) {
               <!-- {{ waiting_scene }} -->
             </n-form-item>
             <n-form-item label="界面缩放">
-              <n-slider
-                v-model:value="new_scale"
-                :step="0.25"
-                :min="0.5"
-                :max="3.0"
-                :marks="scale_marks"
-                :format-tooltip="(x) => `${x * 100}%`"
-              />
-              <n-button
-                class="scale-apply"
-                :disabled="new_scale == webview.scale"
-                @click="webview.scale = new_scale"
-              >
-                应用
-              </n-button>
+              <div class="desktop-scale-settings">
+                <div class="desktop-scale-controls">
+                  <n-slider
+                    v-model:value="new_scale"
+                    :step="0.25"
+                    :min="0.5"
+                    :max="3.0"
+                    :marks="scale_marks"
+                    :format-tooltip="(x) => `${x * 100}%`"
+                  />
+                  <n-button
+                    class="scale-apply"
+                    :disabled="new_scale == webview.scale"
+                    @click="webview.scale = new_scale"
+                  >
+                    应用
+                  </n-button>
+                </div>
+                <div v-if="desktopPreferencesReady" class="desktop-pref-inline">
+                  <div class="desktop-pref-item">
+                    <span>关闭窗口</span>
+                    <n-select
+                      :value="desktopCloseMode"
+                      :options="closeOptions"
+                      :disabled="desktopPreferenceBusy"
+                      size="small"
+                      @update:value="changeCloseMode"
+                    />
+                  </div>
+                  <div class="desktop-pref-item">
+                    <span>打开方式</span>
+                    <n-select
+                      :value="desktopLaunchMode"
+                      :options="launchOptions"
+                      :disabled="desktopPreferenceBusy"
+                      size="small"
+                      @update:value="changeLaunchMode"
+                    />
+                  </div>
+                </div>
+                <n-text v-if="desktopPreferenceError" type="error" depth="3">
+                  {{ desktopPreferenceError }}
+                </n-text>
+              </div>
             </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="webview.tray">
+            <n-form-item v-if="runtime_platform !== 'android'" :show-label="false">
+              <n-checkbox
+                v-if="runtime_platform === 'darwin'"
+                v-model:checked="hide_macos_menu_bar"
+              >
+                隐藏菜单栏图标
+                <help-text>
+                  重启生效。独立启动时不创建托盘进程，关闭窗口后仍在后台运行。多开管理器统一提供托盘，静默重启后也保留托盘入口。
+                </help-text>
+              </n-checkbox>
+              <n-checkbox v-else v-model:checked="webview.tray">
                 使用托盘图标
-                <help-text>重启生效</help-text>
+                <help-text>重启生效。多开管理器启动的实例统一使用管理器托盘。</help-text>
               </n-checkbox>
             </n-form-item>
-            <n-form-item label="显示主题">
+            <n-form-item label="显示主题" v-if="runtime_platform !== 'android'">
               <n-radio-group v-model:value="theme">
                 <n-space>
                   <n-radio value="light">亮色</n-radio>
@@ -533,9 +761,9 @@ if (return_home_when_idle.value) {
                   <div>清理智、日常/周常任务领取、借助战打OF-1</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="maa_gap">
+              <mower-input-number v-model:value="maa_gap">
                 <template #suffix>小时</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
           </n-form>
         </n-card>
@@ -560,6 +788,9 @@ if (return_home_when_idle.value) {
             label-width="140"
             label-align="left"
           >
+            <n-form-item label="右侧房间位置">
+              <n-checkbox v-model:checked="swap_contact_train"> 训练室在办公室上方 </n-checkbox>
+            </n-form-item>
             <n-form-item>
               <n-flex>
                 <n-checkbox v-model:checked="enable_party">
@@ -574,6 +805,10 @@ if (return_home_when_idle.value) {
                 </n-checkbox>
               </n-flex>
             </n-form-item>
+            <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
+              Android
+              默认使用自动性能适配。性能档位会同时设置选人等待、跑单前置延时和葛朗台缓冲时间；手动修改会切换为自定义。
+            </n-alert>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>
@@ -582,21 +817,28 @@ if (return_home_when_idle.value) {
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="run_order_delay">
+              <mower-input-number
+                :value="run_order_delay"
+                @update:value="(value) => set_custom_parameter('run_order_delay', value)"
+              >
                 <template #suffix>分钟</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
             </n-form-item>
-            <n-form-item v-if="run_order_grandet_mode.enable">
+            <n-form-item>
               <template #label>
                 <span>葛朗台缓冲时间</span>
                 <help-text>推荐范围：15-30</help-text>
               </template>
-              <n-input-number v-model:value="run_order_grandet_mode.buffer_time">
+              <mower-input-number
+                :value="run_order_grandet_mode.buffer_time"
+                :disabled="!run_order_grandet_mode.enable"
+                @update:value="set_custom_buffer"
+              >
                 <template #suffix>秒</template>
-              </n-input-number>
+              </mower-input-number>
             </n-form-item>
             <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
@@ -615,261 +857,12 @@ if (return_home_when_idle.value) {
               </template>
               <n-select :options="facility_with_empty" v-model:value="drone_room" />
             </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机使用阈值</span>
-                <help-text>
-                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
-                  <div>如加速制造，推荐大于 贸易站数*10</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="drone_count_limit" />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机加速间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="drone_interval">
-                <template #suffix>小时</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item label="搓玉补货房间">
-              <n-select
-                multiple
-                filterable
-                tag
-                :options="left_side_facility"
-                v-model:value="reload_room"
-              />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>心情阈值</span>
-                <help-text>
-                  <div>2电站推荐不低于65%</div>
-                  <div>3电站推荐不低于50%</div>
-                  <div>即将大更新推荐设置成80%</div>
-                </help-text>
-              </template>
-              <div class="threshold">
-                <n-slider
-                  v-model:value="resting_threshold"
-                  :step="5"
-                  :min="50"
-                  :max="80"
-                  :format-tooltip="(v) => `${v}%`"
-                />
-                <n-input-number v-model:value="resting_threshold" :step="5" :min="50" :max="80">
-                  <template #suffix>%</template>
-                </n-input-number>
-              </div>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="free_room">
-                宿舍不养闲人
-                <help-text>干员心情回满后，立即释放宿舍空位</help-text>
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item v-if="free_room">
-              <template #label>
-                <span>任务合并间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                  <div>将不养闲人任务合并至下一个指定间隔内的任务</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="merge_interval">
-                <template #suffix>分钟</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="fia_fool">
-                菲亚防呆
-                <help-text
-                  >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
-                >
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
-                读取心情后先刷新副表
-                <help-text
-                  >开启后，仅在缓存清零重启时，Mower
-                  会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
-                >
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="assistant_follows_schedule">
-                训练室协助位总是跟随排班
-                <help-text
-                  >勾选后专精时的协助位不会使用设置的专精工具人，在基建排班时会根据排班表来替换训练室的协助位。</help-text
-                >
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>宿舍优先级排序</span>
-                <help-text>
-                  <div>正常情况千万不需要，除非你有特殊情况</div>
-                </help-text>
-              </template>
-              <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>菲亚阈值</span>
-                <help-text>
-                  <div>开启防呆设计时，菲亚只充心情在90%以下的干员，且此处设置无效</div>
-                  <div>
-                    不开启防呆设计时，菲亚优先充心情在该阈值以下的干员，若心情均高于该阈值则充心情最低者
-                  </div>
-                </help-text>
-              </template>
-              <div class="threshold">
-                <n-slider
-                  v-model:value="fia_threshold"
-                  :step="5"
-                  :min="50"
-                  :max="90"
-                  :format-tooltip="(v) => `${v}%`"
-                />
-                <n-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
-                  <template #suffix>%</template>
-                </n-input-number>
-              </div>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>急救阈值</span>
-                <help-text>
-                  <div>整体心情低于换班阈值乘急救阈值后，将忽视高优人数安排休息任务。</div>
-                </help-text>
-              </template>
-              <div class="threshold">
-                <n-slider
-                  v-model:value="rescue_threshold"
-                  :step="5"
-                  :min="0"
-                  :max="90"
-                  :format-tooltip="(v) => `${v}%`"
-                />
-                <n-input-number v-model:value="rescue_threshold" :step="5" :min="0" :max="90">
-                  <template #suffix>%</template>
-                </n-input-number>
-              </div>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>替换组心情监视</span>
-                <help-text>填入需要查看心情曲线的替换组干员</help-text>
-              </template>
-              <slick-operator-select v-model="favorite"></slick-operator-select>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无缝合成材料设置</span>
-                <help-text>想看攻略嘛？去Q群精华消息</help-text>
-              </template>
-              <n-button
-                type="primary"
-                @click="
-                  () => {
-                    tempSetting = { operator: '', items: [], enabled: true }
-                    editingIndex = null
-                    showSettingModal = true
-                  }
-                "
-                >新增设置</n-button
-              >
-              <n-list bordered>
-                <n-list-item v-for="(setting, idx) in workshop_settings" :key="idx">
-                  <div class="flex justify-between w-full">
-                    <div>
-                      <strong>干员:</strong> {{ setting.operator }}, 启用: {{ setting.enabled
-                      }}<br />
-                      <ul>
-                        <li v-for="(item, i) in setting.items" :key="i">
-                          {{ item.item_names }} - 子项下限: {{ item.children_lower_limit }},
-                          自身上限: {{ item.self_upper_limit }}
-                        </li>
-                      </ul>
-                    </div>
-                    <n-button @click="openEdit(idx)" style="margin-right: 20px">编辑</n-button>
-                    <n-button type="error" @click="workshop_settings.splice(idx, 1)">删除</n-button>
-                  </div>
-                </n-list-item>
-              </n-list>
-            </n-form-item>
-            <n-modal
-              style="width: 500px"
-              v-model:show="showSettingModal"
-              preset="dialog"
-              title="新增干员设置"
-              :mask-closable="false"
-              @update:show="workshop_setting_close"
-            >
-              <div style="display: flex; align-items: center; gap: 12px">
-                <span style="font-size: 12px; white-space: nowrap">干员：</span>
-                <n-select
-                  filterable
-                  :options="operators"
-                  class="operator-select"
-                  v-model:value="tempSetting.operator"
-                  :filter="(p, o) => pinyin_match(o.label, p)"
-                  :render-label="render_op_label"
-                />
-                <span style="font-size: 12px; white-space: nowrap">启用：</span>
-                <n-switch v-model:value="tempSetting.enabled" />
-              </div>
-              <n-form :model="tempSetting">
-                <n-dynamic-input v-model:value="tempSetting.items" :on-create="createNewItem">
-                  <template #default="{ value }">
-                    <div>
-                      <div style="display: flex; flex-direction: row; align-self: center">
-                        <span style="white-space: nowrap; margin-top: 5px">合成材料： </span>
-                        <n-select
-                          multiple
-                          tag
-                          :options="item_list"
-                          v-model:value="value.item_names"
-                          :filter="(p, o) => pinyin_match(o.label, p)"
-                          filterable
-                        />
-                        <help-text>
-                          <div>加工站干员合成材料的白名单</div>
-                        </help-text>
-                      </div>
-                      <div style="display: flex; flex-direction: row; align-self: center">
-                        <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
-                        <n-input-number
-                          v-model:value="value.self_upper_limit"
-                          :min="0"
-                          placeholder="自身上限"
-                        />
-                        <help-text>
-                          <div>设置占位，可能没用</div>
-                        </help-text>
-                      </div>
-                      <div style="display: flex; flex-direction: row; align-self: center">
-                        <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
-                        <n-input-number
-                          v-model:value="value.children_lower_limit"
-                          :min="0"
-                          placeholder="子项下限"
-                        />
-                        <help-text>
-                          <div>设置占位，可能没用</div>
-                        </help-text>
-                      </div>
-                    </div>
-                  </template>
-                </n-dynamic-input>
-              </n-form>
-            </n-modal>
+            <WorkshopManualSettings
+              v-model="workshop_manual_settings"
+              :migration-warning="workshop_preset_warning"
+              :operators="operators"
+              :item_list="item_list"
+            />
           </n-form>
         </n-card>
       </div>
@@ -883,15 +876,88 @@ if (return_home_when_idle.value) {
         <ChatBotSetting />
       </div>
     </div>
+    <div class="settings-network">
+      <NetworkSettings ref="networkSettings" />
+    </div>
+    <div class="settings-updates">
+      <div><SoftwareUpdate ref="softwareUpdate" /></div>
+      <div><ResourceUpdate /></div>
+    </div>
+    <div class="settings-network">
+      <ConfigBackup />
+    </div>
+    <div class="settings-network">
+      <ProcessControl v-if="runtime_platform !== 'android'" />
+    </div>
   </div>
 </template>
 
 <style scoped lang="scss">
-.threshold {
+.desktop-scale-settings {
+  width: 100%;
+  min-width: 0;
+}
+
+.desktop-scale-controls {
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: 100%;
+  gap: 10px;
+
+  .n-slider {
+    flex: 1 1 200px;
+    min-width: 110px;
+  }
+}
+
+.desktop-pref-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(112, 153, 127, 0.25);
+  border-radius: 6px;
+}
+
+.desktop-pref-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+
+  .n-select {
+    width: 128px;
+  }
+}
+
+.settings-network {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.settings-updates {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+
+  > div {
+    min-width: 0;
+    max-width: 600px;
+  }
+
+  @container (min-width: 1180px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  @supports not (container-type: inline-size) {
+    @media (min-width: 1400px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+    }
+  }
 }
 
 .mower-basic {
@@ -969,11 +1035,14 @@ h4 {
 }
 
 .waiting-table {
+  width: 100%;
+  max-width: 100%;
+
   th,
   td {
     padding: 4px;
-    min-width: 70px;
-    width: 100px;
+    min-width: 50px;
+    width: 80px;
 
     &:first-child {
       width: auto;
@@ -984,35 +1053,35 @@ h4 {
 </style>
 
 <style>
-/*小于1400的内容！*/
-@media (max-width: 1399px) {
-  .grid-two {
-    margin: 0 0 -10px 0;
-    width: 100%;
-    max-width: 600px;
-  }
-
-  .grid-left {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-  }
-
-  .grid-right {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-    margin-top: 10px;
-  }
+/* 默认单栏布局（窄屏或可用宽度不足） */
+.grid-two {
+  margin: 0 0 -10px 0;
+  width: 100%;
+  max-width: 600px;
 }
 
-/*双栏 大于1400的内容 */
-@media (min-width: 1400px) {
+.grid-left {
+  display: grid;
+  row-gap: 10px;
+  grid-template-columns: 100%;
+}
+
+.grid-right {
+  display: grid;
+  row-gap: 10px;
+  grid-template-columns: 100%;
+  margin-top: 10px;
+}
+
+/* 容器查询：内容区可用宽度足够容纳双栏时（>= 1180px）智能双栏 */
+@container (min-width: 1180px) {
   .grid-two {
     display: grid;
     grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
     align-items: flex-start;
     gap: 5px;
+    max-width: 1210px;
+    margin: 0;
   }
 
   .grid-left {
@@ -1027,6 +1096,36 @@ h4 {
     gap: 5px;
     grid-template-columns: 100%;
     max-width: 600px;
+    margin-top: 0;
+  }
+}
+
+/* 不支持容器查询时的兜底 */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1400px) {
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
+      align-items: flex-start;
+      gap: 5px;
+      max-width: 1210px;
+      margin: 0;
+    }
+
+    .grid-left {
+      display: grid;
+      gap: 5px;
+      grid-template-columns: 100%;
+      max-width: 600px;
+    }
+
+    .grid-right {
+      display: grid;
+      gap: 5px;
+      grid-template-columns: 100%;
+      max-width: 600px;
+      margin-top: 0;
+    }
   }
 }
 

@@ -1,6 +1,8 @@
 import axios from 'axios'
+import { normalizePerformanceMode, performanceProfile } from '@/utils/performanceProfile'
 import { defineStore } from 'pinia'
 import { inject, ref, watch, watchEffect } from 'vue'
+import { createWorkshopState } from '@/utils/workshopConfig'
 
 export const useConfigStore = defineStore('config', () => {
   const defaultLaunchCommand =
@@ -9,19 +11,37 @@ export const useConfigStore = defineStore('config', () => {
   const adb = ref('')
   const drone_count_limit = ref(0)
   const drone_room = ref('')
+  const swap_contact_train = ref(false)
   const drone_interval = ref(4)
   const enable_party = ref(true)
   const leifeng_mode = ref(true)
   const free_blacklist = ref([])
   const maa_adb_path = ref('')
   const maa_enable = ref(false)
+  const stage_plan_enable = ref(true)
+  const stage_plan_runner = ref('maa')
+  const maa_mall_enable = ref(true)
+  const maa_mall_mode = ref('maa')
   const maa_path = ref('')
-  const maa_startup_check = ref(false)
-  const maa_expiring_medicine = ref(true)
+  const maa_mirrorchyan_token = ref('')
+  const maa_update_channel = ref('stable')
+  const maa_auto_check_update = ref(false)
+  const maa_restore_theme_enable = ref(false)
+  const maa_restore_theme = ref('')
+  const medicine_expire_days = ref(0)
+  const maa_report_to_yituliu = ref(false)
+  const maa_yituliu_id = ref('')
+  const maa_penguin_id = ref('')
   const ap_fallback = ref(0)
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
+  const maa_weekly_plan_activity_fallbacks = ref({})
+  const maa_weekly_plan_activity_switch_times = ref({})
+  const maa_weekly_plan_activity_end_times = ref({})
+  const maa_stage_inventory_enable = ref(false)
+  const maa_stage_limit_rules = ref([])
+  const maa_stage_ratio_rules = ref([])
   const maa_rg_enable = ref(0)
   const maa_long_task_type = ref('rogue')
   const mail_enable = ref(false)
@@ -33,7 +53,11 @@ export const useConfigStore = defineStore('config', () => {
   const package_type = ref('official')
   const reload_room = ref('')
   const run_order_delay = ref(10)
-  const dorm_order = ref([])
+  const low_frame_rate_mode = ref(false)
+  const performance_mode = ref('high')
+  const performance_effective_mode = ref('high')
+  const selection_poll_interval = ref(0.1)
+  const selection_transition_timeout = ref(2.5)
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
   const maa_mall_blacklist = ref('')
@@ -42,10 +66,31 @@ export const useConfigStore = defineStore('config', () => {
   const maa_gap = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
+  const version_update_resting_threshold = ref(80)
+  const version_update_threshold_advance_hours = ref(12)
   const fia_threshold = ref(90)
   const rescue_threshold = ref(75)
   const favorite = ref([])
-  const workshop_settings = ref([])
+  const {
+    workshop_settings,
+    workshop_settings_generation,
+    workshop_manual_settings,
+    workshop_manual_settings_revision,
+    workshop_preset_warning,
+    load_workshop_config,
+    apply_workshop_response
+  } = createWorkshopState()
+  const defaultDeerFodder = () => [
+    {
+      item_names: ['碳素', '碳素组', '家具零件_碳素组'],
+      children_lower_limit: 0,
+      self_upper_limit: 9999
+    }
+  ]
+  const workshop_deer_fodder = ref(defaultDeerFodder())
+  const workshop_min_bonus = ref(80)
+  const workshop_protect_t2_device_rock = ref(false)
+  const workshop_low_priority_rest = ref(true)
   const fodder_operators = ref(['九色鹿'])
   const t5_operators = ref(['年'])
   const book_operators = ref(['司霆惊蛰'])
@@ -63,16 +108,21 @@ export const useConfigStore = defineStore('config', () => {
   const maa_conn_preset = ref('General')
   const maa_touch_option = ref('maatouch')
   const maa_mall_ignore_blacklist_when_full = ref(false)
+  const maa_mall_only_buy_discount = ref(false)
+  const maa_mall_reserve_max_credit = ref(false)
   const maa_rg_sleep_min = ref('00:00')
   const maa_rg_sleep_max = ref('00:00')
   const maa_credit_fight = ref(true)
   const maa_depot_enable = ref(false)
+  const depot_history_limit = ref(3000)
+  const depot_history_keep = ref(0)
   const maa_rg_theme = ref('Mizuki')
   const maa_rcl_theme = ref('Tales')
   const rcl = ref({})
   const rogue = ref({})
   const sss = ref({})
-  const screenshot = ref(0)
+  const screenshot = ref(1)
+  const screenshot_archive_limit_mb = ref(5120)
   const screenshot_interval = ref(500)
   const mail_subject = ref('')
   const ai_type = ref('')
@@ -84,11 +134,13 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_robot = ref(true)
   const recruit_auto_only5 = ref(true)
   const run_order_grandet_mode = ref({})
+  const product_switching = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
+  const runtime_platform = ref('')
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
@@ -96,20 +148,27 @@ export const useConfigStore = defineStore('config', () => {
   const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
+  const experimental_dorm_logic = ref(false)
+  const dorm_order = ref([])
   const merge_interval = ref(10)
+  const group_rest_in_full_on_mood_gap = ref(true)
+  const group_mood_gap_max_extra_wait_hours = ref(0)
   const fia_fool = ref(true)
-  const refresh_backup_plan_after_mood = ref(false)
+  const refresh_backup_plan_after_mood = ref(true)
   const assistant_follows_schedule = ref(false)
+  const enable_mastery = ref(true)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const mumu12IPC = ref(false)
-  const visit_friend = ref(true)
+  const visit_friend_enable = ref(true)
+  const visit_friend_mode = ref('maa')
   const credit_fight = ref({})
   const custom_screenshot = ref({})
-  const check_for_updates = ref(true)
+  const resource_update_enable = ref(false)
+  const resource_update_auto_update = ref(false)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
-  const exipring_medicine_on_weekend = ref(false)
+  const expiring_medicine_on_weekend = ref(false)
   const maa_mail = ref(false)
   const maa_recruit = ref(false)
   const maa_orundum = ref(false)
@@ -118,6 +177,9 @@ export const useConfigStore = defineStore('config', () => {
   const syncingWeeklyPlan = ref(false)
   const skipNextWeeklyPlanSync = ref(false)
   let weeklyPlanSyncTimer = null
+  let configSaveRequest = Promise.resolve()
+  let weeklyPlanSaveRequest = Promise.resolve()
+  const autosave_paused = ref(false)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -166,11 +228,87 @@ export const useConfigStore = defineStore('config', () => {
     })
   }
 
+  function normalizeStageLimitRules(rawRules) {
+    if (!Array.isArray(rawRules)) {
+      return []
+    }
+    return rawRules
+      .filter((rule) => rule && typeof rule.stage === 'string' && rule.stage.trim())
+      .map((rule) => ({
+        stage: rule.stage.trim(),
+        operator: rule.operator === 'or' ? 'or' : 'and',
+        enabled: rule.enabled !== false,
+        items: (Array.isArray(rule.items) ? rule.items : [])
+          .filter((item) => item && (item.item_id || item.item_name))
+          .map((item) => ({
+            item_id: String(item.item_id || item.item_name || '').trim(),
+            item_name: String(item.item_name || item.item_id || '').trim(),
+            limit: Math.max(0, Number.isFinite(Number(item.limit)) ? Number(item.limit) : 0)
+          }))
+      }))
+  }
+
+  function normalizeStageRatioRules(rawRules) {
+    if (!Array.isArray(rawRules)) {
+      return []
+    }
+    return rawRules.map((rule, index) => ({
+      name: String(rule?.name || `比例规则 ${index + 1}`).trim(),
+      enabled: rule?.enabled !== false,
+      members: (Array.isArray(rule?.members) ? rule.members : [])
+        .filter((member) => member && member.stage && (member.item_id || member.item_name))
+        .map((member) => ({
+          stage: String(member.stage).trim(),
+          item_id: String(member.item_id || member.item_name || '').trim(),
+          item_name: String(member.item_name || member.item_id || '').trim(),
+          ratio: Math.max(0, Number.isFinite(Number(member.ratio)) ? Number(member.ratio) : 0)
+        }))
+    }))
+  }
+
+  function normalizeTimestampMap(rawValue) {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+      return {}
+    }
+    return Object.fromEntries(
+      Object.entries(rawValue)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0)
+    )
+  }
+
+  function buildWeeklyPlanInventoryConfig() {
+    return {
+      enabled: maa_stage_inventory_enable.value,
+      limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
+      ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value)
+    }
+  }
+
+  function applyWeeklyPlanInventoryConfig(rawConfig = {}) {
+    maa_stage_inventory_enable.value = rawConfig.enabled === true
+    maa_stage_limit_rules.value = normalizeStageLimitRules(rawConfig.limit_rules)
+    maa_stage_ratio_rules.value = normalizeStageRatioRules(rawConfig.ratio_rules)
+  }
+
+  function applyWeeklyPlanMetadata(data = {}) {
+    maa_weekly_plan_activity_fallbacks.value =
+      data.activity_fallbacks && typeof data.activity_fallbacks === 'object'
+        ? data.activity_fallbacks
+        : {}
+    maa_weekly_plan_activity_switch_times.value = normalizeTimestampMap(
+      data.activity_fallback_switch_times
+    )
+    maa_weekly_plan_activity_end_times.value = normalizeTimestampMap(data.activity_plan_end_times)
+  }
+
   async function load_weekly_plan_state() {
     const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
     maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
       ? listResponse.data.plans
       : []
+    applyWeeklyPlanMetadata(listResponse.data)
+    applyWeeklyPlanInventoryConfig(listResponse.data.inventory_config)
 
     if (!maa_weekly_plan_active.value) {
       await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
@@ -187,11 +325,19 @@ export const useConfigStore = defineStore('config', () => {
       throw new Error('周计划方案不能为空')
     }
 
+    // Finish any autosave for the source plan before changing the active key,
+    // so an older /conf request cannot write its inventory rules into the target.
+    await configSaveRequest.catch(() => {})
     syncingWeeklyPlan.value = true
     try {
-      const payload = { active: activeKey }
+      const currentInventoryConfig = buildWeeklyPlanInventoryConfig()
+      const payload = {
+        active: activeKey,
+        source_inventory_config: currentInventoryConfig
+      }
       if (plan !== undefined) {
         payload.plan = normalizeWeeklyPlan(plan)
+        payload.inventory_config = currentInventoryConfig
       }
       const response = await axios.post(
         `${import.meta.env.VITE_HTTP_URL}/weekly-plans/active`,
@@ -203,17 +349,23 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_options.value = Array.from(
         new Set([...maa_weekly_plan_options.value, response.data.active])
       )
+      applyWeeklyPlanInventoryConfig(response.data.inventory_config)
+      applyWeeklyPlanMetadata(response.data)
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
     }
   }
 
-  async function sync_active_weekly_plan() {
+  function sync_active_weekly_plan() {
     if (!maa_weekly_plan_active.value) {
       return
     }
-    return update_weekly_plan_active(maa_weekly_plan_active.value, maa_weekly_plan.value)
+    weeklyPlanSaveRequest = update_weekly_plan_active(
+      maa_weekly_plan_active.value,
+      maa_weekly_plan.value
+    )
+    return weeklyPlanSaveRequest
   }
 
   async function delete_weekly_plan(key) {
@@ -222,6 +374,7 @@ export const useConfigStore = defineStore('config', () => {
       throw new Error('周计划方案不能为空')
     }
 
+    await configSaveRequest.catch(() => {})
     syncingWeeklyPlan.value = true
     try {
       const response = await axios.delete(
@@ -230,14 +383,36 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan_active.value = response.data.active
       skipNextWeeklyPlanSync.value = true
       maa_weekly_plan.value = normalizeWeeklyPlan(response.data.plan)
+      applyWeeklyPlanInventoryConfig(response.data.inventory_config)
       const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
       maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
         ? listResponse.data.plans
         : []
+      applyWeeklyPlanMetadata(listResponse.data)
       return response.data
     } finally {
       syncingWeeklyPlan.value = false
     }
+  }
+
+  async function update_weekly_plan_activity_fallback(target, switchTime = undefined) {
+    const source = maa_weekly_plan_active.value
+    if (!source) {
+      throw new Error('请先选择周计划方案')
+    }
+    const payload = {
+      source,
+      target: typeof target === 'string' ? target.trim() : ''
+    }
+    if (switchTime !== undefined) {
+      payload.switch_time = switchTime
+    }
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/weekly-plans/activity-fallback`,
+      payload
+    )
+    applyWeeklyPlanMetadata(response.data)
+    return response.data
   }
 
   function normalizeLaunchConfig(config = {}) {
@@ -254,6 +429,26 @@ export const useConfigStore = defineStore('config', () => {
 
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
+    runtime_platform.value = response.data.runtime_platform || ''
+    performance_mode.value = normalizePerformanceMode(
+      response.data.performance_mode,
+      response.data.low_frame_rate_mode,
+      runtime_platform.value
+    )
+    performance_effective_mode.value =
+      response.data.performance_effective_mode ||
+      (performance_mode.value === 'auto'
+        ? runtime_platform.value === 'android'
+          ? 'medium'
+          : 'high'
+        : performance_mode.value)
+    const fallbackProfile = performanceProfile(performance_mode.value, runtime_platform.value)
+    low_frame_rate_mode.value =
+      response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
+    selection_poll_interval.value =
+      response.data.selection_poll_interval ?? fallbackProfile.selectionPollInterval
+    selection_transition_timeout.value =
+      response.data.selection_transition_timeout ?? fallbackProfile.selectionTransitionTimeout
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
@@ -264,14 +459,36 @@ export const useConfigStore = defineStore('config', () => {
       response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
     maa_adb_path.value = response.data.maa_adb_path
     maa_enable.value = response.data.maa_enable != 0
+    stage_plan_enable.value =
+      response.data.stage_plan_enable !== undefined
+        ? Boolean(response.data.stage_plan_enable)
+        : response.data.maa_enable != 0
+    stage_plan_runner.value = response.data.stage_plan_runner === 'mower' ? 'mower' : 'maa'
+    maa_mall_enable.value =
+      response.data.maa_mall_enable !== undefined
+        ? Boolean(response.data.maa_mall_enable)
+        : response.data.maa_enable != 0
+    maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
     maa_path.value = response.data.maa_path
-    maa_startup_check.value = response.data.maa_startup_check
+    maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
+    maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
+    maa_auto_check_update.value = response.data.maa_auto_check_update ?? false
+    maa_restore_theme_enable.value = response.data.maa_restore_theme_enable ?? false
+    maa_restore_theme.value = response.data.maa_restore_theme ?? ''
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
-    maa_expiring_medicine.value = response.data.maa_expiring_medicine
+    medicine_expire_days.value = response.data.medicine_expire_days
+    maa_report_to_yituliu.value = response.data.maa_report_to_yituliu ?? false
+    maa_yituliu_id.value = response.data.maa_yituliu_id ?? ''
+    maa_penguin_id.value = response.data.maa_penguin_id ?? ''
     ap_fallback.value = Number(response.data.ap_fallback) || 0
     maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
     maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
+    applyWeeklyPlanInventoryConfig({
+      enabled: response.data.maa_stage_inventory_enable,
+      limit_rules: response.data.maa_stage_limit_rules,
+      ratio_rules: response.data.maa_stage_ratio_rules
+    })
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
@@ -280,9 +497,8 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
-    run_order_delay.value = response.data.run_order_delay
+    run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
 
-    dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
     start_automatically.value = response.data.start_automatically
     maa_mall_buy.value =
       response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
@@ -291,6 +507,10 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap.value = response.data.maa_gap
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold * 100
+    version_update_resting_threshold.value =
+      (response.data.version_update_resting_threshold ?? 0.8) * 100
+    version_update_threshold_advance_hours.value =
+      response.data.version_update_threshold_advance_hours ?? 12
     fia_threshold.value = response.data.fia_threshold * 100
     rescue_threshold.value = response.data.rescue_threshold * 100
     favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
@@ -302,17 +522,23 @@ export const useConfigStore = defineStore('config', () => {
     maa_conn_preset.value = response.data.maa_conn_preset
     maa_touch_option.value = response.data.maa_touch_option
     maa_mall_ignore_blacklist_when_full.value = response.data.maa_mall_ignore_blacklist_when_full
+    maa_mall_only_buy_discount.value = response.data.maa_mall_only_buy_discount ?? false
+    maa_mall_reserve_max_credit.value = response.data.maa_mall_reserve_max_credit ?? false
     maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
     maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
     maa_credit_fight.value = response.data.maa_credit_fight
     maa_depot_enable.value = response.data.maa_depot_enable
+    depot_history_limit.value = response.data.depot_history_limit ?? 3000
+    depot_history_keep.value = response.data.depot_history_keep ?? 0
     maa_rg_theme.value = response.data.maa_rg_theme
     maa_rcl_theme.value = response.data.maa_rcl_theme
     rcl.value = response.data.rcl
     rogue.value = response.data.rogue
     sss.value = response.data.sss
     screenshot.value = response.data.screenshot
-    screenshot_interval.value = response.data.screenshot_interval
+    screenshot_archive_limit_mb.value = response.data.screenshot_archive_limit_mb ?? 5120
+    screenshot_interval.value =
+      response.data.screenshot_interval ?? fallbackProfile.screenshotInterval
     mail_subject.value = response.data.mail_subject
     skland_enable.value = response.data.skland_enable != 0
     ai_key.value = response.data.ai_key
@@ -322,7 +548,21 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
     recruit_auto_only5.value = response.data.recruit_auto_only5
-    run_order_grandet_mode.value = response.data.run_order_grandet_mode
+    run_order_grandet_mode.value = {
+      enable: false,
+      buffer_time: fallbackProfile.grandetBufferTime,
+      back_to_index: false,
+      ...(response.data.run_order_grandet_mode || {})
+    }
+    product_switching.value = {
+      max_drones_per_switch: 0,
+      grandet_mode: true,
+      use_drones_when_leaving_orirock: true,
+      direct_when_drones_insufficient: false,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2,
+      ...(response.data.product_switching || {})
+    }
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
@@ -335,24 +575,37 @@ export const useConfigStore = defineStore('config', () => {
     sf_target.value = response.data.secret_front.target
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
+    experimental_dorm_logic.value = response.data.experimental_dorm_logic ?? false
+    dorm_order.value = response.data.dorm_order ? response.data.dorm_order.split(',') : []
     merge_interval.value = response.data.merge_interval
+    group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
+    group_mood_gap_max_extra_wait_hours.value =
+      response.data.group_mood_gap_max_extra_wait_hours ?? 0
     fia_fool.value = response.data.fia_fool
-    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? false
+    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
+    enable_mastery.value = response.data.enable_mastery ?? true
+    swap_contact_train.value = response.data.swap_contact_train ?? false
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     mumu12IPC.value = response.data.mumu12IPC
-    visit_friend.value = response.data.visit_friend
+    visit_friend_enable.value = response.data.visit_friend_enable ?? true
+    visit_friend_mode.value = response.data.visit_friend_mode ?? 'maa'
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
-    workshop_settings.value = response.data.workshop_settings
+    load_workshop_config(response.data)
+    workshop_deer_fodder.value = response.data.workshop_deer_fodder ?? defaultDeerFodder()
+    workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
+    workshop_protect_t2_device_rock.value = response.data.workshop_protect_t2_device_rock ?? false
+    workshop_low_priority_rest.value = response.data.workshop_low_priority_rest ?? true
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
-    check_for_updates.value = response.data.check_for_updates
+    resource_update_enable.value = response.data.resource_update?.enable ?? false
+    resource_update_auto_update.value = response.data.resource_update?.auto_update ?? false
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
-    exipring_medicine_on_weekend.value = response.data.exipring_medicine_on_weekend
+    expiring_medicine_on_weekend.value = response.data.expiring_medicine_on_weekend
     maa_mail.value = response.data.maa_mail
     maa_recruit.value = response.data.maa_recruit
     maa_orundum.value = response.data.maa_orundum
@@ -367,18 +620,38 @@ export const useConfigStore = defineStore('config', () => {
       adb: adb.value,
       drone_count_limit: drone_count_limit.value,
       drone_room: drone_room.value,
+      swap_contact_train: swap_contact_train.value,
       drone_interval: drone_interval.value,
       enable_party: enable_party.value ? 1 : 0,
       leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
       maa_adb_path: maa_adb_path.value,
-      maa_enable: maa_enable.value ? 1 : 0,
+      maa_enable:
+        (stage_plan_enable.value && stage_plan_runner.value === 'maa') ||
+        (maa_mall_enable.value && maa_mall_mode.value === 'maa')
+          ? 1
+          : 0,
+      stage_plan_enable: stage_plan_enable.value,
+      stage_plan_runner: stage_plan_runner.value,
+      maa_mall_enable: maa_mall_enable.value,
+      maa_mall_mode: maa_mall_mode.value,
       maa_path: maa_path.value,
-      maa_startup_check: maa_startup_check.value,
+      maa_mirrorchyan_token: maa_mirrorchyan_token.value,
+      maa_update_channel: maa_update_channel.value,
+      maa_auto_check_update: maa_auto_check_update.value,
+      maa_restore_theme_enable: maa_restore_theme_enable.value,
+      maa_restore_theme: maa_restore_theme.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
-      maa_expiring_medicine: maa_expiring_medicine.value,
+      medicine_expire_days: medicine_expire_days.value,
+      maa_report_to_yituliu: maa_report_to_yituliu.value,
+      maa_yituliu_id: maa_yituliu_id.value,
+      maa_penguin_id: maa_penguin_id.value,
       ap_fallback: ap_fallback.value,
+      maa_weekly_plan_active: maa_weekly_plan_active.value,
+      maa_stage_inventory_enable: maa_stage_inventory_enable.value,
+      maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
+      maa_stage_ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value),
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
@@ -387,14 +660,22 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
-      dorm_order: dorm_order.value.join(','),
+      low_frame_rate_mode:
+        performance_mode.value === 'auto'
+          ? performanceProfile('auto', runtime_platform.value).lowFrameRateMode
+          : low_frame_rate_mode.value,
+      performance_mode: performance_mode.value,
+      selection_poll_interval: selection_poll_interval.value,
+      selection_transition_timeout: selection_transition_timeout.value,
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
       maa_gap: maa_gap.value,
       simulator: simulator.value,
-      theme: theme.value,
+      ...(runtime_platform.value === 'android' ? {} : { theme: theme.value }),
       resting_threshold: resting_threshold.value / 100,
+      version_update_resting_threshold: version_update_resting_threshold.value / 100,
+      version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,
       favorite: favorite.value.join(','),
@@ -405,22 +686,33 @@ export const useConfigStore = defineStore('config', () => {
         y: tap_to_launch_game.value.y,
         command: tap_to_launch_game.value.command || defaultLaunchCommand
       },
-      exit_game_when_idle: exit_game_when_idle.value,
-      return_home_when_idle: return_home_when_idle.value,
-      close_simulator_when_idle: close_simulator_when_idle.value,
+      // Android edits these original Mower options in its native settings.
+      // Hidden WebUI drafts must not overwrite a newer native selection.
+      ...(runtime_platform.value === 'android'
+        ? {}
+        : {
+            exit_game_when_idle: exit_game_when_idle.value,
+            return_home_when_idle: return_home_when_idle.value,
+            close_simulator_when_idle: close_simulator_when_idle.value
+          }),
       maa_conn_preset: maa_conn_preset.value,
       maa_touch_option: maa_touch_option.value,
       maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
+      maa_mall_only_buy_discount: maa_mall_only_buy_discount.value,
+      maa_mall_reserve_max_credit: maa_mall_reserve_max_credit.value,
       maa_rg_sleep_max: maa_rg_sleep_max.value,
       maa_rg_sleep_min: maa_rg_sleep_min.value,
       maa_credit_fight: maa_credit_fight.value,
       maa_depot_enable: maa_depot_enable.value,
+      depot_history_limit: depot_history_limit.value,
+      depot_history_keep: depot_history_keep.value,
       maa_rg_theme: maa_rg_theme.value,
       maa_rcl_theme: maa_rcl_theme.value,
       rcl: rcl.value,
       rogue: rogue.value,
       sss: sss.value,
-      screenshot: screenshot.value,
+      ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
+      screenshot_archive_limit_mb: screenshot_archive_limit_mb.value,
       screenshot_interval: screenshot_interval.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,
@@ -432,6 +724,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_robot: recruit_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
+      product_switching: product_switching.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
@@ -448,29 +741,69 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
+      experimental_dorm_logic: experimental_dorm_logic.value,
+      dorm_order: dorm_order.value.join(','),
       merge_interval: merge_interval.value,
+      group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
+      group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
       refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
+      enable_mastery: enable_mastery.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
-      visit_friend: visit_friend.value,
+      visit_friend_enable: visit_friend_enable.value,
+      visit_friend_mode: visit_friend_mode.value,
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
-      workshop_settings: workshop_settings.value,
+      workshop_manual_settings: workshop_manual_settings.value,
+      workshop_manual_settings_revision: workshop_manual_settings_revision.value,
+      workshop_deer_fodder: workshop_deer_fodder.value,
+      workshop_min_bonus: workshop_min_bonus.value,
+      workshop_protect_t2_device_rock: workshop_protect_t2_device_rock.value,
+      workshop_low_priority_rest: workshop_low_priority_rest.value,
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
-      check_for_updates: check_for_updates.value,
+      resource_update: {
+        enable: resource_update_enable.value,
+        auto_update: resource_update_auto_update.value
+      },
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
-      exipring_medicine_on_weekend: exipring_medicine_on_weekend.value,
+      expiring_medicine_on_weekend: expiring_medicine_on_weekend.value,
       maa_mail: maa_mail.value,
       maa_recruit: maa_recruit.value,
       maa_orundum: maa_orundum.value,
       maa_mining: maa_mining.value,
       maa_specialaccess: maa_specialaccess.value
+    }
+  }
+
+  function build_advanced_settings() {
+    return {
+      product_switching: product_switching.value,
+      drone_count_limit: drone_count_limit.value,
+      drone_interval: drone_interval.value,
+      reload_room: Array.isArray(reload_room.value)
+        ? reload_room.value.join(',')
+        : reload_room.value,
+      resting_threshold: resting_threshold.value / 100,
+      version_update_resting_threshold: version_update_resting_threshold.value / 100,
+      version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
+      free_room: free_room.value,
+      experimental_dorm_logic: experimental_dorm_logic.value,
+      dorm_order: Array.isArray(dorm_order.value) ? dorm_order.value.join(',') : dorm_order.value,
+      merge_interval: merge_interval.value,
+      group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
+      group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
+      fia_fool: fia_fool.value,
+      refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
+      assistant_follows_schedule: assistant_follows_schedule.value,
+      fia_threshold: fia_threshold.value / 100,
+      rescue_threshold: rescue_threshold.value / 100,
+      favorite: Array.isArray(favorite.value) ? favorite.value.join(',') : favorite.value
     }
   }
 
@@ -482,7 +815,12 @@ export const useConfigStore = defineStore('config', () => {
         skipNextWeeklyPlanSync.value = false
         return
       }
-      if (!loaded.value || syncingWeeklyPlan.value || !maa_weekly_plan_active.value) {
+      if (
+        !loaded.value ||
+        autosave_paused.value ||
+        syncingWeeklyPlan.value ||
+        !maa_weekly_plan_active.value
+      ) {
         return
       }
       if (weeklyPlanSyncTimer) {
@@ -495,32 +833,78 @@ export const useConfigStore = defineStore('config', () => {
     },
     { deep: true }
   )
+  function save_config() {
+    // Track nested edits synchronously for watchEffect; serialize the latest
+    // draft and revision when this queued request actually starts.
+    JSON.stringify(build_config())
+    configSaveRequest = configSaveRequest
+      .catch(() => {})
+      .then(async () => {
+        const payload = JSON.parse(JSON.stringify(build_config()))
+        const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, payload)
+        apply_workshop_response(response.data, payload.workshop_manual_settings)
+        return response
+      })
+    return configSaveRequest
+  }
+
+  async function flush_config_saves() {
+    if (weeklyPlanSyncTimer) {
+      clearTimeout(weeklyPlanSyncTimer)
+      weeklyPlanSyncTimer = null
+      await sync_active_weekly_plan()
+    }
+    await weeklyPlanSaveRequest
+    await configSaveRequest
+  }
+
   watchEffect(() => {
-    if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+    if (loaded.value && !autosave_paused.value) {
+      save_config().catch((error) => console.error('配置保存失败', error))
     }
   })
 
   return {
+    autosave_paused,
+    flush_config_saves,
     adb,
     load_config,
+    save_config,
     drone_count_limit,
     drone_room,
+    swap_contact_train,
     drone_interval,
     enable_party,
     leifeng_mode,
     free_blacklist,
     maa_adb_path,
     maa_enable,
+    stage_plan_enable,
+    stage_plan_runner,
+    maa_mall_enable,
+    maa_mall_mode,
     maa_path,
-    maa_startup_check,
+    maa_mirrorchyan_token,
+    maa_update_channel,
+    maa_auto_check_update,
+    maa_restore_theme_enable,
+    maa_restore_theme,
     maa_rg_enable,
     maa_long_task_type,
-    maa_expiring_medicine,
+    medicine_expire_days,
+    maa_report_to_yituliu,
+    maa_yituliu_id,
+    maa_penguin_id,
     ap_fallback,
     maa_weekly_plan,
     maa_weekly_plan_options,
     maa_weekly_plan_active,
+    maa_weekly_plan_activity_fallbacks,
+    maa_weekly_plan_activity_switch_times,
+    maa_weekly_plan_activity_end_times,
+    maa_stage_inventory_enable,
+    maa_stage_limit_rules,
+    maa_stage_ratio_rules,
     mail_enable,
     account,
     pass_code,
@@ -530,7 +914,11 @@ export const useConfigStore = defineStore('config', () => {
     package_type,
     reload_room,
     run_order_delay,
-    dorm_order,
+    low_frame_rate_mode,
+    performance_mode,
+    performance_effective_mode,
+    selection_poll_interval,
+    selection_transition_timeout,
     start_automatically,
     maa_mall_buy,
     maa_mall_blacklist,
@@ -540,13 +928,25 @@ export const useConfigStore = defineStore('config', () => {
     item_list,
     maa_gap,
     build_config,
+    build_advanced_settings,
     defaultLaunchCommand,
     simulator,
     resting_threshold,
+    version_update_resting_threshold,
+    version_update_threshold_advance_hours,
     fia_threshold,
     rescue_threshold,
     favorite,
     workshop_settings,
+    workshop_settings_generation,
+    workshop_manual_settings,
+    workshop_manual_settings_revision,
+    workshop_preset_warning,
+    apply_workshop_response,
+    workshop_deer_fodder,
+    workshop_min_bonus,
+    workshop_protect_t2_device_rock,
+    workshop_low_priority_rest,
     fodder_operators,
     t5_operators,
     book_operators,
@@ -558,16 +958,21 @@ export const useConfigStore = defineStore('config', () => {
     maa_conn_preset,
     maa_touch_option,
     maa_mall_ignore_blacklist_when_full,
+    maa_mall_only_buy_discount,
+    maa_mall_reserve_max_credit,
     maa_rg_sleep_min,
     maa_rg_sleep_max,
     maa_credit_fight,
     maa_depot_enable,
+    depot_history_limit,
+    depot_history_keep,
     maa_rg_theme,
     maa_rcl_theme,
     rcl,
     rogue,
     sss,
     screenshot,
+    screenshot_archive_limit_mb,
     screenshot_interval,
     mail_subject,
     recruit_enable,
@@ -579,11 +984,13 @@ export const useConfigStore = defineStore('config', () => {
     ai_key,
     skland_info,
     run_order_grandet_mode,
+    product_switching,
     check_mail_enable,
     report_enable,
     recruit_gap,
     recruit_auto_5,
     webview,
+    runtime_platform,
     shop_collect_enable,
     meeting_level,
     fix_mumu12_adb_disconnect,
@@ -591,20 +998,27 @@ export const useConfigStore = defineStore('config', () => {
     sf_target,
     touch_method,
     free_room,
+    experimental_dorm_logic,
+    dorm_order,
     merge_interval,
+    group_rest_in_full_on_mood_gap,
+    group_mood_gap_max_extra_wait_hours,
     fia_fool,
     refresh_backup_plan_after_mood,
     assistant_follows_schedule,
+    enable_mastery,
     sign_in,
     droidcast,
     mumu12IPC,
-    visit_friend,
+    visit_friend_enable,
+    visit_friend_mode,
     credit_fight,
     custom_screenshot,
-    check_for_updates,
+    resource_update_enable,
+    resource_update_auto_update,
     notification_level,
     waiting_scene,
-    exipring_medicine_on_weekend,
+    expiring_medicine_on_weekend,
     maa_mail,
     maa_recruit,
     maa_orundum,
@@ -613,6 +1027,7 @@ export const useConfigStore = defineStore('config', () => {
     load_weekly_plan_state,
     update_weekly_plan_active,
     sync_active_weekly_plan,
-    delete_weekly_plan
+    delete_weekly_plan,
+    update_weekly_plan_activity_fallback
   }
 })
