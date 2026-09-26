@@ -141,6 +141,20 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(event["error_count"], 2)
         self.assertEqual(event["last_error_ns"], now)
 
+    def test_existing_archived_frame_is_not_replaced_during_recovery(self):
+        archive_id = self.store.mark_error(time.time_ns(), "运行失败")
+        filename = self.store.submit(b"new frame")
+        destination = self.root / "errors" / archive_id / Path(filename).name
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(b"archived frame")
+        with patch(
+            "arknights_mower.utils.screenshot.os.replace",
+            side_effect=AssertionError("不应重复替换已归档截图"),
+        ):
+            self.store._archive_frame(self.store.latest())
+            self.store._copy_to_archive(self.root / filename, destination)
+        self.assertEqual(destination.read_bytes(), b"archived frame")
+
     def test_restart_continues_merging_recent_errors(self):
         now = time.time_ns()
         archive_id = self.store.mark_error(now - 2 * 60 * 10**9, "首次失败")

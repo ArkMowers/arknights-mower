@@ -346,6 +346,8 @@ class ScreenshotStore:
                     with self._archive_lock:
                         if archive_id in self._deleted_archives:
                             continue
+                        if destination.exists():
+                            continue
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         temporary = destination.with_suffix(".jpg.tmp")
                         try:
@@ -359,6 +361,8 @@ class ScreenshotStore:
     def _copy_to_archive(self, source: Path, destination: Path):
         with self._archive_lock:
             if destination.parent.name in self._deleted_archives:
+                return
+            if destination.exists():
                 return
             temporary = destination.with_suffix(".jpg.tmp")
             try:
