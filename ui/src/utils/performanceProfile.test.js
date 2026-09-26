@@ -16,8 +16,14 @@ describe('performance profiles', () => {
   })
 
   it('migrates the former low-frame-rate boolean', () => {
-    expect(normalizePerformanceMode(undefined, false, 'android')).toBe('high')
+    expect(normalizePerformanceMode(undefined, false, 'android')).toBe('medium')
     expect(normalizePerformanceMode(undefined, true, 'linux')).toBe('medium')
+  })
+
+  it('keeps Android out of high performance for explicit and automatic modes', () => {
+    expect(normalizePerformanceMode('high', false, 'android')).toBe('medium')
+    expect(performanceProfile('high', 'android')).toBe(performanceProfile('medium', 'android'))
+    expect(normalizePerformanceMode('high', false, 'darwin')).toBe('high')
   })
 
   it('uses the Android medium profile as the visible auto baseline', () => {

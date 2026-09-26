@@ -47,12 +47,30 @@ def test_existing_screenshot_interval_migrates_to_custom():
 
 @pytest.mark.parametrize(
     ("average", "expected"),
-    [(100, "high"), (250, "high"), (251, "medium"), (699, "medium"), (700, "low")],
+    [(100, "medium"), (250, "medium"), (251, "medium"), (699, "medium"), (700, "low")],
 )
 def test_auto_selects_profile_from_capture_cost(monkeypatch, average, expected):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     conf = RIICPart(performance_mode="auto")
     assert performance.effective_performance_profile(conf, average, 8).mode == expected
+
+
+def test_android_high_and_legacy_fast_mode_use_medium(monkeypatch):
+    monkeypatch.setenv("MOWER_ANDROID", "1")
+    for settings in ({"performance_mode": "high"}, {"low_frame_rate_mode": False}):
+        conf = RIICPart(**settings)
+        assert conf.performance_mode == "medium"
+        assert conf.low_frame_rate_mode
+        assert performance.effective_performance_profile(conf).mode == "medium"
+    direct = SimpleNamespace(performance_mode="high")
+    assert performance.effective_performance_profile(direct).mode == "medium"
+
+
+def test_desktop_auto_can_still_select_high(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    conf = RIICPart(performance_mode="auto")
+    assert performance.effective_performance_profile(conf, 100, 8).mode == "high"
 
 
 def test_android_auto_uses_medium_during_warmup(monkeypatch):

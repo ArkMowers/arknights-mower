@@ -19,6 +19,7 @@ from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     default_performance_profile,
     effective_performance_profile,
+    is_android_runtime,
 )
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -158,11 +159,14 @@ class BaseMixin:
         # Compatibility for integrations that still change only the former
         # boolean. In AUTO, only a deviation from the platform baseline is an
         # explicit legacy override; the baseline itself remains adaptive.
-        if config.conf.performance_mode == "auto":
+        if not is_android_runtime() and config.conf.performance_mode == "auto":
             legacy_enabled = config.conf.low_frame_rate_mode
             if legacy_enabled != default_performance_profile().low_frame_rate:
                 return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
-        elif config.conf.performance_mode in PERFORMANCE_PRESETS:
+        elif (
+            not is_android_runtime()
+            and config.conf.performance_mode in PERFORMANCE_PRESETS
+        ):
             legacy_enabled = config.conf.low_frame_rate_mode
             if legacy_enabled != profile.low_frame_rate:
                 return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]

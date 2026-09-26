@@ -12,6 +12,7 @@ from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     default_performance_mode,
     default_performance_profile,
+    is_android_runtime,
 )
 
 DEFAULT_LAUNCH_COMMAND = (
@@ -512,6 +513,8 @@ class RIICPart(ConfModel):
                     "medium" if data["low_frame_rate_mode"] else "high"
                 )
         mode = data.get("performance_mode")
+        if mode == "high" and is_android_runtime():
+            mode = data["performance_mode"] = "medium"
         if mode in PERFORMANCE_PRESETS:
             profile = PERFORMANCE_PRESETS[mode]
             data["low_frame_rate_mode"] = profile.low_frame_rate

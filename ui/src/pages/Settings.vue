@@ -52,13 +52,13 @@ const {
   ai_key
 } = storeToRefs(config_store)
 
-const performance_mode_options = [
+const performance_mode_options = computed(() => [
   { label: '自动', value: 'auto' },
-  { label: '高性能', value: 'high' },
+  ...(runtime_platform.value === 'android' ? [] : [{ label: '高性能', value: 'high' }]),
   { label: '中性能', value: 'medium' },
   { label: '低性能', value: 'low' },
   { label: '自定义', value: 'custom' }
-]
+])
 const performance_effective_label = computed(
   () =>
     ({ high: '高性能', medium: '中性能', low: '低性能' })[performance_effective_mode.value] ||
@@ -66,6 +66,7 @@ const performance_effective_label = computed(
 )
 
 function apply_performance_mode(mode) {
+  if (runtime_platform.value === 'android' && mode === 'high') mode = 'medium'
   performance_mode.value = mode
   if (mode === 'custom') return
   const profile = performanceProfile(mode, runtime_platform.value)
@@ -566,7 +567,9 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
               <help-text>
-                自动档根据截图耗时选择高、中、低档；Android 默认自动，其他平台默认高性能。
+                自动档根据截图耗时选择{{
+                  runtime_platform === 'android' ? '中、低' : '高、中、低'
+                }}档；Android 默认自动，其他平台默认高性能。
                 切换档位会同步修改截图最短间隔、跑单前置延时和葛朗台缓冲时间。当前自动判定：{{
                   performance_effective_label
                 }}。修改任一性能参数会切换为自定义。

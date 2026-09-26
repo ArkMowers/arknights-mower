@@ -10,7 +10,7 @@ from arknights_mower.solvers.base_mixin import AgentSelectionNotReady, BaseMixin
 from arknights_mower.tests.agent_page_observation_tests import page, solver_for
 from arknights_mower.tests.agent_selection_settle_tests import sort_reader
 from arknights_mower.tests.selection_filter_reset_tests import configure_real_filter
-from arknights_mower.utils import config
+from arknights_mower.utils import config, performance
 from arknights_mower.utils.config.conf import Conf, RIICPart
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.solver import BaseSolver
@@ -28,13 +28,14 @@ def instant_mock_capture(monkeypatch):
 def test_platform_default_only_applies_to_missing_setting(monkeypatch, platform):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(conf_module, "__system__", platform)
+    monkeypatch.setattr(performance, "__system__", platform)
     conf = Conf()
     assert conf.low_frame_rate_mode is (platform == "android")
     assert "low_frame_rate_mode" not in conf.model_dump(exclude_unset=True)
     for enabled in (False, True):
         explicit = Conf(low_frame_rate_mode=enabled)
         restored = Conf(**explicit.model_dump(exclude_unset=True))
-        assert restored.low_frame_rate_mode is enabled
+        assert restored.low_frame_rate_mode is (enabled or platform == "android")
 
 
 def test_android_embedded_runtime_defaults_on_even_when_python_reports_linux(
@@ -43,7 +44,18 @@ def test_android_embedded_runtime_defaults_on_even_when_python_reports_linux(
     monkeypatch.setattr(conf_module, "__system__", "linux")
     monkeypatch.setenv("MOWER_ANDROID", "1")
     assert RIICPart().low_frame_rate_mode
-    assert not RIICPart(low_frame_rate_mode=False).low_frame_rate_mode
+    assert RIICPart(low_frame_rate_mode=False).low_frame_rate_mode
+
+
+def test_android_selection_ignores_legacy_fast_override(monkeypatch):
+    monkeypatch.setattr(config, "conf", Conf())
+    monkeypatch.setenv("MOWER_ANDROID", "1")
+    monkeypatch.setattr(config, "screenshot_avg", 100)
+    monkeypatch.setattr(config, "screenshot_count", 8)
+    config.conf.low_frame_rate_mode = False
+    solver = BaseMixin()
+    assert solver.performance_profile.mode == "medium"
+    assert solver.low_frame_rate_mode
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -273,16 +285,16 @@ def test_delayed_filter_inputs_are_acknowledged_without_repeated_toggles(monkeyp
     assert len(panel_taps) == 2  # 一次打开、一次关闭；迟到帧不能触发重复开关。
 
 
-def test_android_user_can_save_disabled_mode_and_reload_after_restart(
-    monkeypatch, tmp_path
-):
+def test_android_saved_fast_mode_is_normalized_after_restart(monkeypatch, tmp_path):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(conf_module, "__system__", "android")
+    monkeypatch.setattr(performance, "__system__", "android")
     monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
     monkeypatch.setattr(config, "conf", Conf(low_frame_rate_mode=False))
     config.save_conf()
-    assert "low_frame_rate_mode: false" in config.conf_path.read_text()
+    assert "low_frame_rate_mode: true" in config.conf_path.read_text()
     config.conf = Conf()  # 模拟重启前重新构造默认配置。
     assert config.conf.low_frame_rate_mode
     config.load_conf()
-    assert not config.conf.low_frame_rate_mode
+    assert config.conf.low_frame_rate_mode
+    assert config.conf.performance_mode == "medium"
