@@ -1,0 +1,327 @@
+{
+  "char_009_12fce": {
+    "name": "12F",
+    "profession": "CASTER",
+    "rarity": 2
+  },
+  "char_120_hibisc": {
+    "name": "芙蓉",
+    "profession": "MEDIC",
+    "rarity": 3
+  },
+  "char_121_lava": {
+    "name": "炎熔",
+    "profession": "CASTER",
+    "rarity": 3
+  },
+  "char_122_beagle": {
+    "name": "米格鲁",
+    "profession": "TANK",
+    "rarity": 3
+  },
+  "char_123_fang": {
+    "name": "芬",
+    "profession": "PIONEER",
+    "rarity": 3
+  },
+  "char_124_kroos": {
+    "name": "克洛丝",
+    "profession": "SNIPER",
+    "rarity": 3
+  },
+  "char_192_falco": {
+    "name": "翎羽",
+    "profession": "PIONEER",
+    "rarity": 3
+  },
+  "char_208_melan": {
+    "name": "玫兰莎",
+    "profession": "WARRIOR",
+    "rarity": 3
+  },
+  "char_209_ardign": {
+    "name": "卡缇",
+    "profession": "TANK",
+    "rarity": 3
+  },
+  "char_210_stward": {
+    "name": "史都华德",
+    "profession": "CASTER",
+    "rarity": 3
+  },
+  "char_211_adnach": {
+    "name": "安德切尔",
+    "profession": "SNIPER",
+    "rarity": 3
+  },
+  "char_212_ansel": {
+    "name": "安赛尔",
+    "profession": "MEDIC",
+    "rarity": 3
+  },
+  "char_240_wyvern": {
+    "name": "香草",
+    "profession": "PIONEER",
+    "rarity": 3
+  },
+  "char_278_orchid": {
+    "name": "梓兰",
+    "profession": "SUPPORT",
+    "rarity": 3
+  },
+  "char_281_popka": {
+    "name": "泡普卡",
+    "profession": "WARRIOR",
+    "rarity": 3
+  },
+  "char_282_catap": {
+    "name": "空爆",
+    "profession": "SNIPER",
+    "rarity": 3
+  },
+  "char_283_midn": {
+    "name": "月见夜",
+    "profession": "WARRIOR",
+    "rarity": 3
+  },
+  "char_284_spot": {
+    "name": "斑点",
+    "profession": "TANK",
+    "rarity": 3
+  },
+  "char_285_medic2": {
+    "name": "Lancet-2",
+    "profession": "MEDIC",
+    "rarity": 1
+  },
+  "char_286_cast3": {
+    "name": "Castle-3",
+    "profession": "WARRIOR",
+    "rarity": 1
+  },
+  "char_376_therex": {
+    "name": "THRM-EX",
+    "profession": "SPECIAL",
+    "rarity": 1
+  },
+  "char_4000_jnight": {
+    "name": "正义骑士号",
+    "profession": "SNIPER",
+    "rarity": 1
+  },
+  "char_4077_palico": {
+    "name": "泰拉大陆调查团",
+    "profession": "SNIPER",
+    "rarity": 1
+  },
+  "char_4091_ulika": {
+    "name": "U-Official",
+    "profession": "SUPPORT",
+    "rarity": 1
+  },
+  "char_4093_frston": {
+    "name": "Friston-3",
+    "profession": "TANK",
+    "rarity": 1
+  },
+  "char_4136_phonor": {
+    "name": "PhonoR-0",
+    "profession": "SUPPORT",
+    "rarity": 1
+  },
+  "char_4188_confes": {
+    "name": "CONFESS-47",
+    "profession": "PIONEER",
+    "rarity": 1
+  },
+  "char_4195_radian": {
+    "name": "电弧",
+    "profession": "SUPPORT",
+    "rarity": 6
+  },
+  "char_4215_buddy": {
+    "name": "罗德岛隐秘队",
+    "profession": "PIONEER",
+    "rarity": 1
+  },
+  "char_4220_kormr": {
+    "name": "虎狼丸",
+    "profession": "WARRIOR",
+    "rarity": 1
+  },
+  "char_4227_gallus": {
+    "name": "GALLUS²",
+    "profession": "CASTER",
+    "rarity": 1
+  },
+  "char_4230_mcnist": {
+    "name": "机械师",
+    "profession": "TANK",
+    "rarity": 6
+  },
+  "char_500_noirc": {
+    "name": "黑角",
+    "profession": "TANK",
+    "rarity": 2
+  },
+  "char_501_durin": {
+    "name": "杜林",
+    "profession": "CASTER",
+    "rarity": 2
+  },
+  "char_502_nblade": {
+    "name": "夜刀",
+    "profession": "PIONEER",
+    "rarity": 2
+  },
+  "char_503_rang": {
+    "name": "巡林者",
+    "profession": "SNIPER",
+    "rarity": 2
+  },
+  "char_504_rguard": {
+    "name": "预备干员-近战",
+    "profession": "PIONEER",
+    "rarity": 3
+  },
+  "char_505_rcast": {
+    "name": "预备干员-术师",
+    "profession": "CASTER",
+    "rarity": 3
+  },
+  "char_506_rmedic": {
+    "name": "预备干员-后勤",
+    "profession": "MEDIC",
+    "rarity": 3
+  },
+  "char_507_rsnipe": {
+    "name": "预备干员-狙击",
+    "profession": "SNIPER",
+    "rarity": 3
+  },
+  "char_508_aguard": {
+    "name": "Sharp",
+    "profession": "WARRIOR",
+    "rarity": 5
+  },
+  "char_509_acast": {
+    "name": "Pith",
+    "profession": "CASTER",
+    "rarity": 5
+  },
+  "char_510_amedic": {
+    "name": "Touch",
+    "profession": "MEDIC",
+    "rarity": 5
+  },
+  "char_511_asnipe": {
+    "name": "Stormeye",
+    "profession": "SNIPER",
+    "rarity": 5
+  },
+  "char_512_aprot": {
+    "name": "暮落",
+    "profession": "TANK",
+    "rarity": 5
+  },
+  "char_513_apionr": {
+    "name": "郁金香",
+    "profession": "PIONEER",
+    "rarity": 5
+  },
+  "char_514_rdfend": {
+    "name": "预备干员-重装",
+    "profession": "TANK",
+    "rarity": 3
+  },
+  "char_600_cpione": {
+    "name": "预备干员-先锋",
+    "profession": "PIONEER",
+    "rarity": 4
+  },
+  "char_601_cguard": {
+    "name": "预备干员-近卫",
+    "profession": "WARRIOR",
+    "rarity": 4
+  },
+  "char_602_cdfend": {
+    "name": "预备干员-重装",
+    "profession": "TANK",
+    "rarity": 4
+  },
+  "char_603_csnipe": {
+    "name": "预备干员-狙击",
+    "profession": "SNIPER",
+    "rarity": 4
+  },
+  "char_604_ccast": {
+    "name": "预备干员-术师",
+    "profession": "CASTER",
+    "rarity": 4
+  },
+  "char_605_cmedic": {
+    "name": "预备干员-医疗",
+    "profession": "MEDIC",
+    "rarity": 4
+  },
+  "char_606_csuppo": {
+    "name": "预备干员-辅助",
+    "profession": "SUPPORT",
+    "rarity": 4
+  },
+  "char_607_cspec": {
+    "name": "预备干员-特种",
+    "profession": "SPECIAL",
+    "rarity": 4
+  },
+  "char_608_acpion": {
+    "name": "郁金香",
+    "profession": "PIONEER",
+    "rarity": 6
+  },
+  "char_609_acguad": {
+    "name": "Sharp",
+    "profession": "WARRIOR",
+    "rarity": 6
+  },
+  "char_610_acfend": {
+    "name": "Mechanist",
+    "profession": "TANK",
+    "rarity": 6
+  },
+  "char_611_acnipe": {
+    "name": "Stormeye",
+    "profession": "SNIPER",
+    "rarity": 6
+  },
+  "char_612_accast": {
+    "name": "Pith",
+    "profession": "CASTER",
+    "rarity": 6
+  },
+  "char_613_acmedc": {
+    "name": "Touch",
+    "profession": "MEDIC",
+    "rarity": 6
+  },
+  "char_614_acsupo": {
+    "name": "Raidian",
+    "profession": "SUPPORT",
+    "rarity": 6
+  },
+  "char_615_acspec": {
+    "name": "Misery",
+    "profession": "SPECIAL",
+    "rarity": 6
+  },
+  "char_616_pithst": {
+    "name": "盟约·辅助干员",
+    "profession": "SUPPORT",
+    "rarity": 4
+  },
+  "char_617_sharp2": {
+    "name": "领主·Sharp",
+    "profession": "WARRIOR",
+    "rarity": 6
+  }
+}

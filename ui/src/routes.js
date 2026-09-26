@@ -66,6 +66,12 @@ export const routes = [
             name: 'depot'
           },
           {
+            path: 'gacha',
+            component: () => import('@/pages/Gacha.vue'),
+            meta: { title: '寻访统计' },
+            name: 'gacha'
+          },
+          {
             path: 'pie',
             component: () => import('@/pages/RecordPie.vue'),
             meta: { title: '心情饼图' },

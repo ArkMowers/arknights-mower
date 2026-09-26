@@ -429,6 +429,12 @@ const menuOptions = [
       },
       {
         label: () =>
+          h(RouterLink, { to: { path: '/record/gacha' } }, { default: () => '寻访统计' }),
+        icon: renderIcon(StatsChart),
+        key: 'go-to-record-gacha'
+      },
+      {
+        label: () =>
           h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
         icon: renderIcon(ReaderOutline),
         key: 'go-to-record-report'

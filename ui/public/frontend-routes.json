@@ -10,6 +10,7 @@
   "/record",
   "/record/line",
   "/record/depot",
+  "/record/gacha",
   "/record/pie",
   "/record/report",
   "/record/trading_analysis",

@@ -51,6 +51,7 @@ from arknights_mower.utils.resource_update_job import ResourceUpdateJob
 from arknights_mower.utils.update_runtime import active_job
 from arknights_mower.views.config_backup import config_backup_bp
 from arknights_mower.views.db_admin import db_admin_bp
+from arknights_mower.views.gacha import gacha_bp
 from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
 from arknights_mower.views.process_control import process_control_bp
@@ -2843,6 +2844,7 @@ def ws_chat(ws):
 app.register_blueprint(mastery_bp)
 app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
+app.register_blueprint(gacha_bp)
 app.register_blueprint(software_update_bp)
 app.register_blueprint(network_bp)
 app.register_blueprint(config_backup_bp)
