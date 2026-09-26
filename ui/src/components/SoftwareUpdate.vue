@@ -43,7 +43,11 @@ const blocked = computed(() => !info.value || info.value.blockers.length > 0)
 const channelOptions = computed(() =>
   (info.value?.channels || []).map((item) => ({
     ...item,
-    disabled: item.value === 'dev' && !source.value
+    disabled:
+      item.value === 'dev' &&
+      !source.value &&
+      info.value?.platform !== 'win32' &&
+      info.value?.capabilities?.dev_update !== true
   }))
 )
 const selectedChannel = computed(() =>
@@ -574,9 +578,21 @@ onUnmounted(() => {
             :disabled="running"
           >
             <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="dropSoftwarePackage">
-              <div>{{ info.manual_label || '点击或拖入 Release 安装包' }}</div>
+              <div>
+                {{
+                  info.manual_label ||
+                  (info.manual_ota_supported
+                    ? '点击或拖入 Release 安装包或 OTA 差异包'
+                    : '点击或拖入 Release 安装包')
+                }}
+              </div>
               <div class="hint">
-                {{ info.manual_hint || '读取包内版本信息，文件名可任意修改' }}
+                {{
+                  info.manual_hint ||
+                  (info.manual_ota_supported
+                    ? 'OTA 包须从当前版本出发；读取包内版本信息，文件名可任意修改'
+                    : '读取包内版本信息，文件名可任意修改')
+                }}
               </div>
             </n-upload-dragger>
           </n-upload>

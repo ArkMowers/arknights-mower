@@ -53,6 +53,7 @@ describe('content-based update routing', () => {
     [['mower-android.json', 'mower/arknights_mower/data/version.json'], 'android.zip', 'software'],
     [['maa-python.json', 'maa.py'], 'adapter.zip', 'software'],
     [['mower/_internal/arknights_mower/__init__.py'], 'resources.zip', 'software'],
+    [['ota.json', 'payload/mower/mower.exe'], 'renamed-ota.bin', 'software'],
     [['Mower.app/Contents/Resources/arknights_mower/__init__.py'], 'renamed.zip (1)', 'software'],
     [['arknights_mower/data/version.json'], 'arknights-mower_4.9.9.zip', 'resource'],
     [['nav_steps.json', 'version.json'], 'offline.bin', null],

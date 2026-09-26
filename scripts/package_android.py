@@ -38,7 +38,7 @@ REQUIRED = (
 def package(
     root: Path, output: Path, version: str, revision: str, runtime: Path | None = None
 ) -> Path:
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-alpha\.\d+)?", version):
+    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-alpha\.\d+(?:\.g[0-9a-f]{8})?)?", version):
         raise ValueError("invalid release version")
     if not re.fullmatch(r"[a-f0-9]{40}", revision):
         raise ValueError("invalid commit revision")

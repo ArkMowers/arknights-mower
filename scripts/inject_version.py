@@ -5,7 +5,9 @@ import argparse
 import re
 from pathlib import Path
 
-VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$")
+VERSION_PATTERN = re.compile(
+    r"^[0-9]+\.[0-9]+\.[0-9]+(?:-alpha\.[0-9]+(?:\.g[0-9a-f]{8})?)?$"
+)
 DEFAULT_VERSION_FILE = Path("arknights_mower/__init__.py")
 ARCHIVE_FORMATS = {"windows": "zip", "linux": "tar.gz", "macos": "dmg"}
 

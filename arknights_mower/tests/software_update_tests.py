@@ -139,6 +139,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
     def test_channels_are_separate_and_drafts_are_excluded(self):
         data = [
             release("v4.1.6-alpha.3", True),
+            release("v4.1.6-alpha.9.g12345678", True),
             release("v4.1.5"),
             release("v4.1.7", draft=True),
             release("v4.1.6-alpha.12", True),
@@ -152,6 +153,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         versions = [
             "4.1.6-alpha.3+abc",
             "v4.1.6-alpha.12",
+            "v4.1.6-alpha.12.g12345678",
             "4.1.6-beta.1",
             "4.1.6-rc.1",
             "4.1.6",
@@ -395,14 +397,57 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 update.choose_asset(data)
 
-    def test_dev_is_rejected_for_frozen_deployments_without_network(self):
+    def test_frozen_dev_reads_nightly_index_and_keeps_source_update_separate(self):
+        nightly = release(
+            "v4.1.6-alpha.9.g12345678", True, system="windows", arch="x64"
+        )
+        index = release_index(nightly)
+        index["full_assets"][0]["size"] = 100
+        ota_name = (
+            "arknights-mower-ota_4.1.6-alpha.9_to_"
+            "4.1.6-alpha.9.g12345678_windows_x64_v2.zip"
+        )
+        index["ota_assets"] = [
+            {
+                "name": ota_name,
+                "size": 9,
+                "digest": "sha256:" + "b" * 64,
+                "url": f"https://github.com/{update.OTA_REPO}/releases/download/{nightly['tag_name']}/{ota_name}",
+            }
+        ]
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.9"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=index) as index,
+            patch.object(update, "github") as source_api,
+        ):
+            result = update.check("dev")
+            self.assertTrue(result["available"])
+            self.assertFalse(result["downgrade"])
+            self.assertEqual(result["version"], nightly["tag_name"])
+            self.assertEqual(
+                update._checks[result["check_id"]]["ota_asset"]["name"], ota_name
+            )
+            index.assert_called_once_with("dev")
+            source_api.assert_not_called()
+
         with (
             patch.object(runtime, "frozen", return_value=True),
-            patch.object(update, "github") as network,
+            patch.object(update, "platform_asset", return_value=("linux", "x64")),
         ):
-            with self.assertRaisesRegex(ValueError, "仅支持源码"):
+            with self.assertRaisesRegex(ValueError, "Windows x64"):
                 update.check("dev")
-            network.assert_not_called()
+
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.9.g87654321"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=release_index(nightly)),
+        ):
+            result = update.check("dev")
+            self.assertTrue(result["available"])
+            self.assertFalse(result["downgrade"])
 
     def test_prerelease_check_uses_channel_index(self):
         with (
@@ -449,6 +494,36 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         self.assertEqual(plan["ota_asset"]["name"], base + "_v2.zip")
         network.assert_called_once_with("beta")
         github.assert_not_called()
+
+    def test_stable_install_can_use_ota_to_beta_or_development(self):
+        for channel, version in (
+            ("beta", "v4.1.6-alpha.9"),
+            ("dev", "v4.1.6-alpha.9.g12345678"),
+        ):
+            target = release(version, True, system="windows", arch="x64")
+            index = release_index(target)
+            index["full_assets"][0]["size"] = 100
+            name = f"arknights-mower-ota_4.1.5_to_{version[1:]}_windows_x64_v2.zip"
+            index["ota_assets"] = [
+                {
+                    "name": name,
+                    "size": 9,
+                    "digest": "sha256:" + "b" * 64,
+                    "url": f"https://github.com/{update.OTA_REPO}/releases/download/{version}/{name}",
+                }
+            ]
+            with (
+                self.subTest(channel=channel),
+                patch.object(update, "__version__", "4.1.5"),
+                patch.object(runtime, "frozen", return_value=True),
+                patch.object(update, "platform_asset", return_value=("windows", "x64")),
+                patch.object(update, "release_index", return_value=index),
+            ):
+                result = update.check(channel)
+                self.assertTrue(result["available"])
+                self.assertEqual(
+                    update._checks[result["check_id"]]["ota_asset"]["name"], name
+                )
 
     def test_source_release_resolves_tag_not_default_branch(self):
         with (
