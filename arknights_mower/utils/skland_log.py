@@ -17,6 +17,8 @@ def redact_signing_text(value, *extra_secrets) -> str:
             secrets.extend(
                 (getattr(account, "account", ""), getattr(account, "password", ""))
             )
-    for secret in sorted({str(item) for item in secrets if item}, key=len, reverse=True):
+    for secret in sorted(
+        {str(item) for item in secrets if item}, key=len, reverse=True
+    ):
         message = message.replace(secret, "[已隐藏]")
     return _PHONE_PATTERN.sub("[已隐藏]", message)

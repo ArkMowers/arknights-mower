@@ -294,7 +294,9 @@ def get_binding_list(sign_token):
         logger.info(
             "请求角色列表失败（状态码：%s）：%s",
             code if isinstance(code, int) else "未知",
-            redact_signing_text(body.get("message", ""), sign_token, header.get("cred")),
+            redact_signing_text(
+                body.get("message", ""), sign_token, header.get("cred")
+            ),
         )
         if body.get("message") == "用户未登录":
             logger.warning("用户登录可能失效了，请重新运行此程序！")
