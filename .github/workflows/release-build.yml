@@ -63,8 +63,6 @@ env:
 jobs:
   prepare:
     name: Prepare release metadata
-    # A nightly tag is built by nightly-build's explicit workflow_call only.
-    if: ${{ inputs.tag_name != '' || !contains(github.ref_name, '.g') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -97,7 +95,7 @@ jobs:
             expected_sha="${GITHUB_SHA}"
           fi
 
-          if ! [[ "${tag_name}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+(\.g[0-9a-f]{8})?)?$ ]]; then
+          if ! [[ "${tag_name}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]]; then
             echo "::error::invalid release tag: ${tag_name}" >&2
             exit 1
           fi
@@ -289,7 +287,6 @@ jobs:
   build-linux:
     name: Build Linux ${{ matrix.arch }}
     needs: [prepare, validate-release]
-    if: ${{ !contains(needs.prepare.outputs.version, '.g') }}
     strategy:
       fail-fast: false
       matrix:
@@ -453,7 +450,6 @@ jobs:
   build-macos:
     name: Build macOS ${{ matrix.arch }}
     needs: [prepare, validate-release]
-    if: ${{ !contains(needs.prepare.outputs.version, '.g') }}
     strategy:
       fail-fast: false
       matrix:
@@ -606,7 +602,6 @@ jobs:
   build-android:
     name: Package Android Mower update
     needs: [prepare, validate-release]
-    if: ${{ !contains(needs.prepare.outputs.version, '.g') }}
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
@@ -649,7 +644,6 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [prepare, build-windows, build-linux, build-macos, build-android]
-    if: ${{ always() && needs.prepare.result == 'success' && needs.build-windows.result == 'success' && (needs.build-linux.result == 'success' || (contains(needs.prepare.outputs.version, '.g') && needs.build-linux.result == 'skipped')) && (needs.build-macos.result == 'success' || (contains(needs.prepare.outputs.version, '.g') && needs.build-macos.result == 'skipped')) && (needs.build-android.result == 'success' || (contains(needs.prepare.outputs.version, '.g') && needs.build-android.result == 'skipped')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -687,7 +681,6 @@ jobs:
           merge-multiple: true
 
       - name: Link Android APK downloads
-        if: ${{ !contains(needs.prepare.outputs.version, '.g') }}
         run: python scripts/sync_android_release.py --body release-metadata/body.md
 
       - name: Generate SHA-256 manifest
@@ -723,7 +716,6 @@ jobs:
             -f "client_payload[tag]=$RELEASE_TAG"
 
       - name: Request Android APK packaging
-        if: ${{ !contains(needs.prepare.outputs.version, '.g') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.ANDROID_RELEASE_TOKEN }}
