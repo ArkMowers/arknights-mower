@@ -327,7 +327,7 @@ def test_infra_main_switches_before_shift_off_arrangement(experimental):
     sequence.attach_mock(solver._switch_products_before_arrangement, "switch")
     sequence.attach_mock(solver.agent_arrange, "arrange")
 
-    with patch.object(base, "protect_support_swaps"):
+    with patch.object(base, "protect_priority_tasks"):
         solver.infra_main()
 
     assert [call[0] for call in sequence.mock_calls] == (
@@ -353,7 +353,7 @@ def test_infra_main_keeps_shift_off_pending_when_product_switch_waits():
     solver.agent_arrange = MagicMock()
     solver.skip = MagicMock()
 
-    with patch.object(base, "protect_support_swaps"):
+    with patch.object(base, "protect_priority_tasks"):
         solver.infra_main()
 
     assert task in solver.tasks
