@@ -17,13 +17,20 @@ from arknights_mower.solvers.base_mixin import (
 from arknights_mower.utils import config
 
 SCOPE = ((584, 479), (759, 506))
-NORMAL_SCOPE = ((571, 488), (759, 520))
+NORMAL_SCOPE = ((631, 488), (820, 520))
 
 
 def card_frame(selected):
     img = np.full((1080, 1920, 3), 50, dtype=np.uint8)
     if selected:
         cv2.rectangle(img, (565, 113), (766, 522), (0, 180, 230), 7)
+    return img
+
+
+def normal_card_frame(selected):
+    img = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+    if selected:
+        cv2.rectangle(img, (609, 113), (830, 532), (0, 180, 230), 7)
     return img
 
 
@@ -107,7 +114,7 @@ def test_normal_scan_checks_blue_frame_without_another_capture(
     monkeypatch, low_frame_rate, already_selected
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
-    frame = card_frame(already_selected)
+    frame = normal_card_frame(already_selected)
     page = (("褐果", NORMAL_SCOPE),)
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=frame, update=MagicMock())
@@ -134,11 +141,11 @@ def test_normal_pre_reorder_verification_uses_all_blue_frames(
     monkeypatch, expected, verified
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
-    frame = card_frame(True)
-    cv2.rectangle(frame, (565, 534), (766, 943), (0, 180, 230), 7)
+    frame = normal_card_frame(True)
+    cv2.rectangle(frame, (609, 534), (830, 953), (0, 180, 230), 7)
     page = (
         ("褐果", NORMAL_SCOPE),
-        ("凯尔希", ((571, 909), (759, 941))),
+        ("凯尔希", ((631, 909), (820, 941))),
     )
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=frame, update=MagicMock())

@@ -85,7 +85,7 @@ def test_blue_confirmed_correct_order_skips_clear_and_second_sort(monkeypatch):
         right = 818 + (i // 2) * 215
         top = 113 + (i % 2) * 421
         cv2.rectangle(
-            frame, (right - 194, top), (right + 7, top + 409), (0, 180, 230), 7
+            frame, (right - 210, top), (right + 10, top + 419), (0, 180, 230), 7
         )
     solver.recog.img = frame
 

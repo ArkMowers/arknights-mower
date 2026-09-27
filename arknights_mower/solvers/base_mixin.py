@@ -55,8 +55,8 @@ class AgentSelectionNotReady(RuntimeError):
 def agent_card_selected(img, scope, *, train=False):
     """读取选人卡片四周的青蓝色选中边框。
 
-    scope 是 operator_list/operator_list_train 返回的姓名框。两种列表的姓名
-    高度略有不同，但卡片边框尺寸相同；只取边缘，避开立绘和技能图标。
+    scope 是 operator_list/operator_list_train 返回的姓名框。普通列表卡片
+    比训练室卡片更宽且略高；只取边缘，避开立绘和技能图标。
     边框不完整时返回 None，让调用方停下重读而非盲点。
     """
     if not isinstance(img, np.ndarray) or img.ndim != 3 or scope is None:
@@ -66,9 +66,10 @@ def agent_card_selected(img, scope, *, train=False):
         left, right = name_left - 19, name_right + 10
         top, bottom = name_top - 366, name_bottom + 20
     else:
-        # 普通列表姓名框比训练室低 9px、宽约 13px；用右缘定位同一张卡。
-        left, right = name_right - 194, name_right + 10
-        top, bottom = name_top - 375, name_bottom + 6
+        # alexsun 归档普通选人页实测：姓名框 (631,488)-(820,520)，
+        # 蓝框约 (609,113)-(834,536)。
+        left, right = name_left - 22, name_right + 14
+        top, bottom = name_top - 375, name_bottom + 16
     if left < 0 or top < 0 or right > img.shape[1] or bottom > img.shape[0]:
         return None
     frame = cv2.cvtColor(img[top:bottom, left:right], cv2.COLOR_RGB2HSV)
