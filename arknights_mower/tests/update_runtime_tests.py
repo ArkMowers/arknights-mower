@@ -10,6 +10,7 @@ import threading
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.request import getproxies_environment
 
@@ -165,14 +166,13 @@ class InstanceScanTests(unittest.TestCase):
         other = self.path.with_name("second.json")
         runtime.write_json(other, self.record)
         clock = [0.0]
+        fake_time = SimpleNamespace(
+            monotonic=lambda: clock[0],
+            sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
         with (
             patch.object(Path, "read_text", side_effect=PermissionError("locked")),
-            patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]),
-            patch.object(
-                runtime.time,
-                "sleep",
-                side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
-            ),
+            patch.object(runtime, "time", fake_time),
         ):
             with self.assertRaisesRegex(
                 runtime.InstanceScanError, "无法完整读取实例登记"
