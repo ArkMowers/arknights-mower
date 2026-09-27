@@ -32,21 +32,21 @@ def test_legacy_boolean_migrates_when_no_timing_is_configured(legacy, expected):
     assert conf.performance_mode == expected
 
 
-def test_existing_timing_migrates_to_custom_without_overwriting_values():
+def test_existing_timing_keeps_values_without_custom_mode():
     conf = Conf(
         low_frame_rate_mode=False,
         run_order_delay=7.5,
         run_order_grandet_mode={"buffer_time": 22},
     )
-    assert conf.performance_mode == "custom"
+    assert conf.performance_mode == "high"
     assert conf.run_order_delay == 7.5
     assert conf.run_order_grandet_mode.buffer_time == 22
     assert not performance.effective_performance_profile(conf).low_frame_rate
 
 
-def test_existing_screenshot_interval_migrates_to_custom():
+def test_existing_screenshot_interval_remains_independent():
     conf = Conf(screenshot_interval=650)
-    assert conf.performance_mode == "custom"
+    assert conf.performance_mode == "high"
     assert conf.screenshot_interval == 650
 
 
@@ -62,7 +62,11 @@ def test_auto_selects_profile_from_capture_cost(monkeypatch, average, expected):
 
 def test_android_high_and_legacy_fast_mode_use_medium(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
-    for settings in ({"performance_mode": "high"}, {"low_frame_rate_mode": False}):
+    for settings in (
+        {"performance_mode": "high"},
+        {"performance_mode": "ultra"},
+        {"low_frame_rate_mode": False},
+    ):
         conf = RIICPart(**settings)
         assert conf.performance_mode == "medium"
         assert conf.low_frame_rate_mode
@@ -76,6 +80,18 @@ def test_desktop_auto_can_still_select_high(monkeypatch):
     monkeypatch.setattr(performance, "__system__", "darwin")
     conf = RIICPart(performance_mode="auto")
     assert performance.effective_performance_profile(conf, 100, 8).mode == "high"
+
+
+def test_ultra_is_explicit_only_and_keeps_user_timing(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    conf = Conf(performance_mode="ultra", selection_poll_interval=0.8)
+    profile = performance.effective_performance_profile(conf, 900, 8)
+    assert profile.mode == "ultra"
+    assert not profile.low_frame_rate
+    assert profile.poll_interval == 0.8
+    conf.performance_mode = "auto"
+    assert performance.effective_performance_profile(conf, 900, 8).mode == "low"
 
 
 def test_explicit_auto_ignores_legacy_boolean_override(monkeypatch):
@@ -123,7 +139,7 @@ def test_android_auto_uses_medium_during_warmup(monkeypatch):
     assert profile.run_order_delay == 5
 
 
-def test_low_preset_sets_all_linked_parameters():
+def test_low_mode_preserves_all_timing_parameters():
     conf = Conf(
         performance_mode="low",
         low_frame_rate_mode=False,
@@ -133,32 +149,37 @@ def test_low_preset_sets_all_linked_parameters():
         run_order_grandet_mode={"buffer_time": 15},
     )
     assert conf.low_frame_rate_mode
-    assert conf.screenshot_interval == 750
-    assert conf.selection_poll_interval == 0.75
-    assert conf.selection_transition_timeout == 6
-    assert conf.run_order_delay == 10
-    assert conf.run_order_grandet_mode.buffer_time == 30
+    assert conf.screenshot_interval == 500
+    assert conf.selection_poll_interval == 0.1
+    assert conf.selection_transition_timeout == 2.5
+    assert conf.run_order_delay == 3
+    assert conf.run_order_grandet_mode.buffer_time == 15
+    profile = performance.effective_performance_profile(conf)
+    assert profile.mode == "low"
+    assert profile.stable_page_matches == 2
+    assert (profile.poll_interval, profile.run_order_delay) == (0.1, 3)
 
 
-def test_custom_profile_uses_configured_values():
-    conf = SimpleNamespace(
+def test_legacy_custom_profile_migrates_and_keeps_configured_values():
+    conf = Conf(
         performance_mode="custom",
         low_frame_rate_mode=True,
         screenshot_interval=650,
         selection_poll_interval=1.25,
         selection_transition_timeout=9,
         run_order_delay=12,
-        run_order_grandet_mode=SimpleNamespace(buffer_time=40),
+        run_order_grandet_mode={"buffer_time": 40},
     )
     profile = performance.effective_performance_profile(conf)
+    assert conf.performance_mode == "medium"
     assert profile.screenshot_interval == 650
     assert (profile.poll_interval, profile.transition_timeout) == (1.25, 9)
     assert (profile.run_order_delay, profile.grandet_buffer_time) == (12, 40)
 
 
-def test_custom_fast_selection_uses_fast_observation_budget(monkeypatch):
+def test_explicit_mode_controls_selection_despite_legacy_boolean(monkeypatch):
     conf = Conf(
-        performance_mode="custom",
+        performance_mode="high",
         low_frame_rate_mode=False,
         selection_poll_interval=0.1,
         selection_transition_timeout=9,
@@ -166,4 +187,23 @@ def test_custom_fast_selection_uses_fast_observation_budget(monkeypatch):
     monkeypatch.setattr(config, "conf", conf)
     assert BaseMixin().selection_observation_timing() == (0.1, 6)
     conf.low_frame_rate_mode = True
+    assert BaseMixin().selection_observation_timing() == (0.1, 6)
+    conf.performance_mode = "medium"
     assert BaseMixin().selection_observation_timing() == (0.1, 91)
+
+
+def test_switching_mode_does_not_change_numeric_values():
+    conf = Conf(
+        performance_mode="high",
+        screenshot_interval=650,
+        selection_poll_interval=1.25,
+        selection_transition_timeout=9,
+        run_order_delay=12,
+        run_order_grandet_mode={"buffer_time": 40},
+    )
+    for mode in ("medium", "low", "auto", "high"):
+        conf.performance_mode = mode
+        profile = performance.effective_performance_profile(conf, 800, 8)
+        assert (profile.screenshot_interval, profile.poll_interval) == (650, 1.25)
+        assert (profile.transition_timeout, profile.run_order_delay) == (9, 12)
+        assert profile.grandet_buffer_time == 40

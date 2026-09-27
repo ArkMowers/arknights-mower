@@ -1,28 +1,8 @@
 export const performancePresets = Object.freeze({
-  high: Object.freeze({
-    lowFrameRateMode: false,
-    screenshotInterval: 500,
-    selectionPollInterval: 0.1,
-    selectionTransitionTimeout: 2.5,
-    runOrderDelay: 3,
-    grandetBufferTime: 15
-  }),
-  medium: Object.freeze({
-    lowFrameRateMode: true,
-    screenshotInterval: 500,
-    selectionPollInterval: 0.5,
-    selectionTransitionTimeout: 2.5,
-    runOrderDelay: 5,
-    grandetBufferTime: 15
-  }),
-  low: Object.freeze({
-    lowFrameRateMode: true,
-    screenshotInterval: 750,
-    selectionPollInterval: 0.75,
-    selectionTransitionTimeout: 6,
-    runOrderDelay: 10,
-    grandetBufferTime: 30
-  })
+  ultra: Object.freeze({ lowFrameRateMode: false }),
+  high: Object.freeze({ lowFrameRateMode: false }),
+  medium: Object.freeze({ lowFrameRateMode: true }),
+  low: Object.freeze({ lowFrameRateMode: true })
 })
 
 export function defaultPerformanceMode(platform) {
@@ -30,16 +10,25 @@ export function defaultPerformanceMode(platform) {
 }
 
 export function normalizePerformanceMode(mode, legacyLowFrameRateMode, platform) {
-  if (['auto', 'high', 'medium', 'low', 'custom'].includes(mode)) {
-    return platform === 'android' && mode === 'high' ? 'medium' : mode
+  if (['auto', 'ultra', 'high', 'medium', 'low'].includes(mode)) {
+    return platform === 'android' && ['ultra', 'high'].includes(mode) ? 'medium' : mode
   }
+  // Old custom profiles stored their click strategy separately. Keep all
+  // numeric settings, but map that strategy to one of the remaining modes.
   if (legacyLowFrameRateMode !== undefined)
     return legacyLowFrameRateMode || platform === 'android' ? 'medium' : 'high'
   return defaultPerformanceMode(platform)
 }
 
 export function performanceProfile(mode, platform) {
-  if (platform === 'android' && mode === 'high') return performancePresets.medium
-  if (performancePresets[mode]) return performancePresets[mode]
-  return performancePresets[platform === 'android' ? 'medium' : 'high']
+  const selected = platform === 'android' && ['ultra', 'high'].includes(mode) ? 'medium' : mode
+  return {
+    screenshotInterval: 500,
+    selectionPollInterval: platform === 'android' ? 0.5 : 0.1,
+    selectionTransitionTimeout: 2.5,
+    runOrderDelay: platform === 'android' ? 5 : 3,
+    grandetBufferTime: 15,
+    ...(performancePresets[selected] ||
+      performancePresets[platform === 'android' ? 'medium' : 'high'])
+  }
 }

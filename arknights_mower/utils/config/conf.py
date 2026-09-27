@@ -448,10 +448,10 @@ class RIICPart(ConfModel):
         source: Literal["manual", "mastery", "stockpile"] = "manual"
         "配置来源；旧配置按手动配置保留"
 
-    performance_mode: Literal["auto", "high", "medium", "low", "custom"] = Field(
+    performance_mode: Literal["auto", "ultra", "high", "medium", "low"] = Field(
         default_factory=default_performance_mode
     )
-    "设备性能：自动 / 高 / 中 / 低 / 自定义"
+    "选人策略：自动 / 极高 / 高 / 中 / 低；时间参数独立设置"
     selection_poll_interval: float = Field(
         default_factory=lambda: default_performance_profile().poll_interval,
         ge=0.1,
@@ -465,7 +465,7 @@ class RIICPart(ConfModel):
             os.environ.get("MOWER_ANDROID") == "1" or __system__ == "android"
         )
     )
-    "旧版低帧率适配兼容字段；false 对应高，true 对应中"
+    "旧版低帧率适配兼容字段；档位决定实际选人策略"
     drone_count_limit: int = 100
     "无人机使用阈值"
     drone_room: str = ""
@@ -497,36 +497,20 @@ class RIICPart(ConfModel):
         if not isinstance(data, dict):
             return data
         data = dict(data)
-        if "performance_mode" not in data:
-            grandet = data.get("run_order_grandet_mode")
-            has_custom_timing = any(
-                field in data
-                for field in (
-                    "screenshot_interval",
-                    "selection_poll_interval",
-                    "selection_transition_timeout",
-                    "run_order_delay",
-                )
-            ) or (isinstance(grandet, dict) and "buffer_time" in grandet)
-            if has_custom_timing:
-                data["performance_mode"] = "custom"
-            elif "low_frame_rate_mode" in data:
+        if data.get("performance_mode") == "custom" or (
+            "performance_mode" not in data and "low_frame_rate_mode" in data
+        ):
+            if "low_frame_rate_mode" in data:
                 data["performance_mode"] = (
                     "medium" if data["low_frame_rate_mode"] else "high"
                 )
+            else:
+                data["performance_mode"] = default_performance_mode()
         mode = data.get("performance_mode")
-        if mode == "high" and is_android_runtime():
+        if mode in ("ultra", "high") and is_android_runtime():
             mode = data["performance_mode"] = "medium"
         if mode in PERFORMANCE_PRESETS:
-            profile = PERFORMANCE_PRESETS[mode]
-            data["low_frame_rate_mode"] = profile.low_frame_rate
-            data["screenshot_interval"] = profile.screenshot_interval
-            data["selection_poll_interval"] = profile.poll_interval
-            data["selection_transition_timeout"] = profile.transition_timeout
-            data["run_order_delay"] = profile.run_order_delay
-            grandet = dict(data.get("run_order_grandet_mode") or {})
-            grandet["buffer_time"] = profile.grandet_buffer_time
-            data["run_order_grandet_mode"] = grandet
+            data["low_frame_rate_mode"] = PERFORMANCE_PRESETS[mode].low_frame_rate
         return data
 
     product_switching: ProductSwitchingConf = Field(

@@ -78,21 +78,10 @@ def test_matching_card_names_still_clear_and_reselect(monkeypatch):
     solver.swipe_left.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("mode", "low_frame_rate", "poll_interval"),
-    [
-        ("high", False, 0.1),
-        ("custom", False, 0.75),
-    ],
-)
 def test_fast_click_strategy_keeps_zero_interval_reorder(
-    monkeypatch, mode, low_frame_rate, poll_interval
+    monkeypatch,
 ):
-    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
-    monkeypatch.setattr(base_mixin.config.conf, "low_frame_rate_mode", low_frame_rate)
-    monkeypatch.setattr(
-        base_mixin.config.conf, "selection_poll_interval", poll_interval
-    )
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "ultra")
     solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
     solver.recog.img = selected_card_frame()
 
@@ -105,15 +94,52 @@ def test_fast_click_strategy_keeps_zero_interval_reorder(
     assert solver.switch_arrange_order.call_count == 2
 
 
+def test_high_mode_confirms_each_reorder_click(monkeypatch):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, selected = selection_solver(
+        monkeypatch, residents=list(reversed(RESIDENTS))
+    )
+    solver.recog.img = selected_card_frame()
+    confirmations = []
+
+    def confirm(prefix, **kwargs):
+        confirmations.append(prefix.copy())
+        return list(reversed(RESIDENTS)) if len(confirmations) == 1 else prefix
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=confirm)
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    assert confirmations[1 : 1 + len(RESIDENTS)] == [
+        RESIDENTS[:i] for i in range(1, len(RESIDENTS) + 1)
+    ]
+    assert all(call.kwargs["interval"] == 0.2 for call in solver.tap.call_args_list[1:])
+
+
+def test_high_mode_stops_when_reorder_click_has_no_feedback(monkeypatch):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, _ = selection_solver(monkeypatch, residents=list(reversed(RESIDENTS)))
+    solver.recog.img = selected_card_frame()
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=[list(reversed(RESIDENTS)), None]
+    )
+
+    with pytest.raises(base_mixin.AgentSelectionNotReady):
+        solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    # One clear and one card tap; an unconfirmed click cannot start the next card.
+    assert solver.tap.call_count == 2
+
+
 @pytest.mark.parametrize(
     ("mode", "low_frame_rate", "poll_interval"),
     [
+        ("high", False, 0.1),
         ("medium", True, 0.5),
         ("low", True, 0.75),
-        ("custom", True, 0.1),
     ],
 )
-def test_stable_frame_strategy_skips_reorder_when_blue_frames_match(
+def test_non_ultra_strategy_skips_reorder_when_blue_frames_match(
     monkeypatch, mode, low_frame_rate, poll_interval
 ):
     monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)

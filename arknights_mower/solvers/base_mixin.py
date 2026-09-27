@@ -195,15 +195,22 @@ class BaseMixin:
             config.screenshot_avg,
             config.screenshot_count,
         )
-        # 旧接口只在固定档位保留布尔值覆盖；明确选择 AUTO 时始终使用截图统计，
-        # 避免配置中残留的旧值把自动调节永久锁在中性能档。
+        # 未设置档位的旧调用方仍可通过布尔值控制策略；明确选择档位后
+        # 布尔兼容字段不再覆盖所选策略，也不改变用户的时间参数。
         if (
             not is_android_runtime()
             and config.conf.performance_mode in PERFORMANCE_PRESETS
+            and "performance_mode" not in config.conf.model_fields_set
         ):
             legacy_enabled = config.conf.low_frame_rate_mode
             if legacy_enabled != profile.low_frame_rate:
-                return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
+                from dataclasses import replace
+
+                return replace(
+                    profile,
+                    mode="medium" if legacy_enabled else "high",
+                    low_frame_rate=legacy_enabled,
+                )
         return profile
 
     @property
@@ -216,7 +223,11 @@ class BaseMixin:
 
     def selection_observation_timing(self):
         profile = self.performance_profile
-        attempts = 6 if not profile.low_frame_rate else profile.transition_attempts
+        attempts = (
+            6
+            if not profile.low_frame_rate
+            else max(profile.stable_page_matches + 1, profile.transition_attempts)
+        )
         return profile.poll_interval, attempts
 
     profession_labels = [
@@ -400,6 +411,7 @@ class BaseMixin:
             seed_page=previous,
         )
         stable = False
+        stable_matches = 0
         ret = []
         capture_time = 0
         poll_interval, max_attempts = self.selection_observation_timing()
@@ -417,6 +429,7 @@ class BaseMixin:
             if connecting:
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
             try:
                 ret = read(self.recog.img)
@@ -426,10 +439,15 @@ class BaseMixin:
                 logger.debug(f"翻页名单读取失败，原地复核：{e}")
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
             # 搜索时允许无关卡片识别为空；仍须整页位置稳定，且只点击识别出的目标。
             # 最终名单校验继续拒绝空名字。
-            stable = self.same_agent_page(ret, previous, allow_unknown=True)
+            if self.same_agent_page(ret, previous, allow_unknown=True):
+                stable_matches += 1
+            else:
+                stable_matches = 0
+            stable = stable_matches >= self.performance_profile.stable_page_matches
             if stable and (
                 before is None
                 or not self.same_agent_page(ret, before, allow_unknown=True)
@@ -603,6 +621,7 @@ class BaseMixin:
         )
         previous = page[: len(agent)] if page else None
         stable = False
+        stable_matches = 0
         actual = []
         capture_time = 0
         poll_interval, max_attempts = self.selection_observation_timing()
@@ -617,6 +636,7 @@ class BaseMixin:
             if connecting:
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
             try:
                 ret = read(self.recog.img)
@@ -626,6 +646,7 @@ class BaseMixin:
                 logger.debug(f"选人名单读取失败，等待下一帧：{e}")
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
             if not train and ret and ret[0][1] is not None and ret[0][1][0][0] > 650:
                 logger.debug(
@@ -633,6 +654,7 @@ class BaseMixin:
                 )
                 previous = None
                 stable = False
+                stable_matches = 0
                 actual = []
                 continue
             if train or isinstance(self.recog.img, np.ndarray):
@@ -648,15 +670,20 @@ class BaseMixin:
                 if any(state is None for _, _, state in states):
                     previous = None
                     stable = False
+                    stable_matches = 0
                     continue
                 selected = [(name, scope) for name, scope, state in states if state]
             else:
                 selected = ret[: len(agent)]
             actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
-            stable = len(actual) == len(agent) and self.same_agent_page(
+            if len(actual) == len(agent) and self.same_agent_page(
                 selected, previous if self.low_frame_rate_mode else selected
-            )
+            ):
+                stable_matches += 1
+            else:
+                stable_matches = 0
+            stable = stable_matches >= self.performance_profile.stable_page_matches
             matches = actual == agent if ordered else sorted(actual) == sorted(agent)
             if matches and stable:
                 return actual

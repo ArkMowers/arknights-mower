@@ -5,7 +5,6 @@ import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
 import { folder_dialog } from '@/utils/dialog'
-import { performanceProfile } from '@/utils/performanceProfile'
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -14,7 +13,6 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
-  low_frame_rate_mode,
   performance_mode,
   performance_effective_mode,
   selection_poll_interval,
@@ -55,15 +53,16 @@ const {
 
 const performance_mode_options = computed(() => [
   { label: '自动', value: 'auto' },
+  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高性能', value: 'ultra' }]),
   ...(runtime_platform.value === 'android' ? [] : [{ label: '高性能', value: 'high' }]),
   { label: '中性能', value: 'medium' },
-  { label: '低性能', value: 'low' },
-  { label: '自定义', value: 'custom' }
+  { label: '低性能', value: 'low' }
 ])
 const performance_effective_label = computed(
   () =>
-    ({ high: '高性能', medium: '中性能', low: '低性能' })[performance_effective_mode.value] ||
-    performance_effective_mode.value
+    ({ ultra: '极高性能', high: '高性能', medium: '中性能', low: '低性能' })[
+      performance_effective_mode.value
+    ] || performance_effective_mode.value
 )
 const archive_limit_gib = computed({
   get: () => screenshot_archive_limit_mb.value / 1024,
@@ -74,37 +73,8 @@ const archive_limit_gib = computed({
 })
 
 function apply_performance_mode(mode) {
-  if (runtime_platform.value === 'android' && mode === 'high') mode = 'medium'
+  if (runtime_platform.value === 'android' && ['ultra', 'high'].includes(mode)) mode = 'medium'
   performance_mode.value = mode
-  if (mode === 'custom') return
-  const profile = performanceProfile(mode, runtime_platform.value)
-  low_frame_rate_mode.value = profile.lowFrameRateMode
-  screenshot_interval.value = profile.screenshotInterval
-  selection_poll_interval.value = profile.selectionPollInterval
-  selection_transition_timeout.value = profile.selectionTransitionTimeout
-  run_order_delay.value = profile.runOrderDelay
-  run_order_grandet_mode.value.buffer_time = profile.grandetBufferTime
-}
-
-function set_custom_parameter(target, value) {
-  const parameters = {
-    selection_poll_interval,
-    selection_transition_timeout,
-    screenshot_interval,
-    run_order_delay
-  }
-  parameters[target].value = value
-  performance_mode.value = 'custom'
-}
-
-function set_custom_buffer(value) {
-  run_order_grandet_mode.value.buffer_time = value
-  performance_mode.value = 'custom'
-}
-
-function set_custom_selection_strategy(value) {
-  low_frame_rate_mode.value = value === 'stable'
-  performance_mode.value = 'custom'
 }
 
 const hide_macos_menu_bar = computed({
@@ -581,53 +551,23 @@ if (return_home_when_idle.value) {
                 自动档根据截图耗时选择{{
                   runtime_platform === 'android' ? '中、低' : '高、中、低'
                 }}档；Android 默认自动，其他平台默认高性能。
-                切换档位会同步修改截图最短间隔、跑单前置延时和葛朗台缓冲时间。当前自动判定：{{
+                极高性能连续点击重排；高性能逐次确认重排点击；中性能等待稳定画面；低性能多确认一帧。时间参数独立设置，切换档位不会修改。当前自动判定：{{
                   performance_effective_label
-                }}。修改任一性能参数会切换为自定义。
-              </help-text>
-            </n-form-item>
-            <n-form-item v-if="performance_mode === 'custom'" label="选人点击策略">
-              <n-radio-group
-                :value="low_frame_rate_mode ? 'stable' : 'fast'"
-                @update:value="set_custom_selection_strategy"
-              >
-                <n-flex>
-                  <n-radio value="fast">快速连续点击</n-radio>
-                  <n-radio value="stable">稳定帧确认</n-radio>
-                </n-flex>
-              </n-radio-group>
-              <help-text>
-                快速连续点击会在重排时清空后零间隔逐张点击；稳定帧确认会在蓝框和顺序均正确时跳过重排。
+                }}。
               </help-text>
             </n-form-item>
             <n-form-item label="截图最短间隔">
-              <mower-input-number
-                :value="screenshot_interval"
-                :precision="0"
-                @update:value="(value) => set_custom_parameter('screenshot_interval', value)"
-              >
+              <mower-input-number v-model:value="screenshot_interval" :precision="0">
                 <template #suffix>毫秒</template>
               </mower-input-number>
             </n-form-item>
             <n-form-item label="选人采样间隔">
-              <mower-input-number
-                :value="selection_poll_interval"
-                :min="0.1"
-                :max="2"
-                @update:value="(value) => set_custom_parameter('selection_poll_interval', value)"
-              >
+              <mower-input-number v-model:value="selection_poll_interval" :min="0.1" :max="2">
                 <template #suffix>秒</template>
               </mower-input-number>
             </n-form-item>
             <n-form-item label="操作反馈超时">
-              <mower-input-number
-                :value="selection_transition_timeout"
-                :min="1"
-                :max="20"
-                @update:value="
-                  (value) => set_custom_parameter('selection_transition_timeout', value)
-                "
-              >
+              <mower-input-number v-model:value="selection_transition_timeout" :min="1" :max="20">
                 <template #suffix>秒</template>
               </mower-input-number>
             </n-form-item>
@@ -834,10 +774,7 @@ if (return_home_when_idle.value) {
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <mower-input-number
-                :value="run_order_delay"
-                @update:value="(value) => set_custom_parameter('run_order_delay', value)"
-              >
+              <mower-input-number v-model:value="run_order_delay">
                 <template #suffix>分钟</template>
               </mower-input-number>
             </n-form-item>
@@ -850,9 +787,8 @@ if (return_home_when_idle.value) {
                 <help-text>推荐范围：15-30</help-text>
               </template>
               <mower-input-number
-                :value="run_order_grandet_mode.buffer_time"
+                v-model:value="run_order_grandet_mode.buffer_time"
                 :disabled="!run_order_grandet_mode.enable"
-                @update:value="set_custom_buffer"
               >
                 <template #suffix>秒</template>
               </mower-input-number>

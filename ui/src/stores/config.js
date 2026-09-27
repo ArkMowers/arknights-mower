@@ -442,7 +442,7 @@ export const useConfigStore = defineStore('config', () => {
           ? 'medium'
           : 'high'
         : performance_mode.value)
-    const fallbackProfile = performanceProfile(performance_mode.value, runtime_platform.value)
+    const fallbackProfile = performanceProfile('auto', runtime_platform.value)
     low_frame_rate_mode.value =
       response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
     selection_poll_interval.value =
@@ -660,10 +660,8 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
-      low_frame_rate_mode:
-        performance_mode.value === 'auto'
-          ? performanceProfile('auto', runtime_platform.value).lowFrameRateMode
-          : low_frame_rate_mode.value,
+      low_frame_rate_mode: performanceProfile(performance_mode.value, runtime_platform.value)
+        .lowFrameRateMode,
       performance_mode: performance_mode.value,
       selection_poll_interval: selection_poll_interval.value,
       selection_transition_timeout: selection_transition_timeout.value,

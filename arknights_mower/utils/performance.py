@@ -16,11 +16,17 @@ class PerformanceProfile:
     grandet_buffer_time: int
 
     @property
+    def stable_page_matches(self) -> int:
+        """Low performance waits for one extra matching selection frame."""
+        return 2 if self.mode == "low" else 1
+
+    @property
     def transition_attempts(self) -> int:
         return ceil(self.transition_timeout / self.poll_interval) + 1
 
 
 PERFORMANCE_PRESETS = {
+    "ultra": PerformanceProfile("ultra", False, 500, 0.1, 2.5, 3, 15),
     "high": PerformanceProfile("high", False, 500, 0.1, 2.5, 3, 15),
     "medium": PerformanceProfile("medium", True, 500, 0.5, 2.5, 5, 15),
     "low": PerformanceProfile("low", True, 750, 0.75, 6.0, 10, 30),
@@ -40,41 +46,31 @@ def default_performance_profile() -> PerformanceProfile:
 
 
 def effective_performance_profile(conf, screenshot_avg=None, screenshot_count=0):
-    """Resolve a fixed/custom profile or adapt AUTO from the capture pipeline EWMA."""
+    """Choose the selection strategy while keeping user timing values intact."""
     mode = conf.performance_mode
-    if mode == "custom":
-        return PerformanceProfile(
-            "custom",
-            conf.low_frame_rate_mode,
-            conf.screenshot_interval,
-            conf.selection_poll_interval,
-            conf.selection_transition_timeout,
-            conf.run_order_delay,
-            conf.run_order_grandet_mode.buffer_time,
-        )
     if mode != "auto":
-        return PERFORMANCE_PRESETS[
-            "medium" if is_android_runtime() and mode == "high" else mode
-        ]
-
-    # Keep the previous platform default during warm-up. screenshot_avg is an
-    # EWMA of actual capture/decoding cost, so a transient slow frame does not
-    # immediately move the device between profiles.
-    if screenshot_avg is None or screenshot_count < 8:
-        selected = "medium" if is_android_runtime() else "high"
-    elif screenshot_avg <= 250 and not is_android_runtime():
-        selected = "high"
-    elif screenshot_avg < 700:
-        selected = "medium"
+        selected = (
+            "medium" if is_android_runtime() and mode in ("ultra", "high") else mode
+        )
     else:
-        selected = "low"
+        # The capture/decoding EWMA avoids switching on a single slow frame.
+        if screenshot_avg is None or screenshot_count < 8:
+            selected = "medium" if is_android_runtime() else "high"
+        elif screenshot_avg <= 250 and not is_android_runtime():
+            selected = "high"
+        elif screenshot_avg < 700:
+            selected = "medium"
+        else:
+            selected = "low"
     profile = PERFORMANCE_PRESETS[selected]
+    defaults = default_performance_profile()
+    grandet = getattr(conf, "run_order_grandet_mode", None)
     return PerformanceProfile(
         selected,
         profile.low_frame_rate,
-        profile.screenshot_interval,
-        profile.poll_interval,
-        profile.transition_timeout,
-        profile.run_order_delay,
-        profile.grandet_buffer_time,
+        getattr(conf, "screenshot_interval", defaults.screenshot_interval),
+        getattr(conf, "selection_poll_interval", defaults.poll_interval),
+        getattr(conf, "selection_transition_timeout", defaults.transition_timeout),
+        getattr(conf, "run_order_delay", defaults.run_order_delay),
+        getattr(grandet, "buffer_time", defaults.grandet_buffer_time),
     )

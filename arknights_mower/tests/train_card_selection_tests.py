@@ -16,6 +16,8 @@ from arknights_mower.solvers.base_mixin import (
 )
 from arknights_mower.utils import config
 
+pytestmark = pytest.mark.usefixtures("legacy_selection_conf")
+
 SCOPE = ((584, 479), (759, 506))
 NORMAL_SCOPE = ((631, 488), (820, 520))
 

@@ -14,6 +14,8 @@ from arknights_mower.tests.selection_filter_reset_tests import configure_real_fi
 from arknights_mower.utils import character_recognize as recognition
 from arknights_mower.utils import config
 
+pytestmark = pytest.mark.usefixtures("legacy_selection_conf")
+
 
 @pytest.mark.parametrize("enabled,delay", [(False, 0.2), (False, 0.8), (True, 0.8)])
 @pytest.mark.parametrize("opened", [False, True])

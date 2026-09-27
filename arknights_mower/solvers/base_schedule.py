@@ -6771,11 +6771,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
             if (
-                self.low_frame_rate_mode
+                self.performance_profile.mode != "ultra"
                 and exists == agents
                 and isinstance(self.recog.img, np.ndarray)
             ):
-                # 采用稳定帧选人策略时，真实截图已确认蓝框和顺序，无需清空重选。
+                # 真实截图已确认蓝框和顺序时，非极高档无需清空重选。
                 verified = True
             else:
                 click_order = []
@@ -6785,16 +6785,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         raise Exception("检测到干员选择错误，重新选择")
                 if click_order:
-                    # 快速选人策略继续清空后零间隔逐个点击；自定义档由
-                    # low_frame_rate_mode 决定点击节奏，不依赖档位名称。
+                    # 极高档连续点击；高档逐次确认蓝框反馈后继续。
+                    reorder_mode = self.performance_profile.mode
                     self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                    for p_idx in click_order:
+                    for idx, p_idx in enumerate(click_order):
                         x = self.recog.w * position[p_idx][0]
                         y = self.recog.h * position[p_idx][1]
                         self.tap(
                             (x, y),
-                            interval=0.2 if self.low_frame_rate_mode else 0,
+                            interval=0 if reorder_mode == "ultra" else 0.2,
                         )
+                        if (
+                            reorder_mode == "high"
+                            and isinstance(self.recog.img, np.ndarray)
+                            and (
+                                self.wait_for_arranged_agents(agents[: idx + 1]) is None
+                            )
+                        ):
+                            raise AgentSelectionNotReady(
+                                "重排点击未得到选中反馈，返回房间重试"
+                            )
                 else:
                     # 空目标没有需要重排和校验的卡片。
                     verified = True
