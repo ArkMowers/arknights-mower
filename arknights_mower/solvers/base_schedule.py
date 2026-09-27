@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Literal, Optional
 
 import cv2
+import numpy as np
 import requests
 from packaging.version import InvalidVersion, Version
 
@@ -6769,23 +6770,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
-            click_order = []
-            for a in agents:
-                if a in exists:
-                    click_order.append(exists.index(a))
-                else:
-                    raise Exception("检测到干员选择错误，重新选择")
-            if click_order:
-                # 名字前缀相同不能证明卡片已选中：漏点的目标可能恰好排在
-                # 已选干员之后。保留多人清空重选，再刷新排序并校验。
-                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                for p_idx in click_order:
-                    x = self.recog.w * position[p_idx][0]
-                    y = self.recog.h * position[p_idx][1]
-                    self.tap((x, y), interval=0.2 if self.low_frame_rate_mode else 0)
-            else:
-                # 空目标没有需要重排和校验的卡片。
+            if exists == agents and isinstance(self.recog.img, np.ndarray):
+                # wait_for_arranged_agents 已在真实截图上逐卡确认蓝框和顺序；
+                # 此时清空再重选只会增加点击及一次排序刷新。
                 verified = True
+            else:
+                click_order = []
+                for a in agents:
+                    if a in exists:
+                        click_order.append(exists.index(a))
+                    else:
+                        raise Exception("检测到干员选择错误，重新选择")
+                if click_order:
+                    # 顺序确实不同，或没有真实画面的蓝框证据时才清空重选。
+                    self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                    for p_idx in click_order:
+                        x = self.recog.w * position[p_idx][0]
+                        y = self.recog.h * position[p_idx][1]
+                        self.tap(
+                            (x, y),
+                            interval=0.2 if self.low_frame_rate_mode else 0,
+                        )
+                else:
+                    # 空目标没有需要重排和校验的卡片。
+                    verified = True
         if not verified:
             logger.debug("验证干员选择..")
             self.switch_arrange_order("技能", room)

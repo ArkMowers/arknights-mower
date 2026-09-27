@@ -4,6 +4,8 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import cv2
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -74,6 +76,24 @@ def test_matching_card_names_still_clear_and_reselect(monkeypatch):
     solver.scan_agent.assert_not_called()
     assert solver.switch_arrange_order.call_count == 2
     solver.swipe_left.assert_not_called()
+
+
+def test_blue_confirmed_correct_order_skips_clear_and_second_sort(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+    for i in range(len(RESIDENTS)):
+        right = 818 + (i // 2) * 215
+        top = 113 + (i % 2) * 421
+        cv2.rectangle(
+            frame, (right - 194, top), (right + 7, top + 409), (0, 180, 230), 7
+        )
+    solver.recog.img = frame
+
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    solver.tap.assert_not_called()
+    solver.switch_arrange_order.assert_called_once_with("技能", "dormitory_1")
 
 
 def test_reorder_does_not_trust_cached_selection_order(monkeypatch):

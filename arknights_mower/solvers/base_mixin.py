@@ -52,17 +52,23 @@ class AgentSelectionNotReady(RuntimeError):
     """当前页面不足以继续选人；交由排班原有重试恢复，不结束任务线程。"""
 
 
-def train_card_selected(img, scope):
-    """读取训练室选人卡片四周的青蓝色选中边框。
+def agent_card_selected(img, scope, *, train=False):
+    """读取选人卡片四周的青蓝色选中边框。
 
-    scope 是 operator_list_train 返回的姓名框；不取卡面/姓名本身，避免干员立绘
-    或技能图标的蓝色干扰。边框不完整时返回 None，让调用方停下重读而非盲点。
+    scope 是 operator_list/operator_list_train 返回的姓名框。两种列表的姓名
+    高度略有不同，但卡片边框尺寸相同；只取边缘，避开立绘和技能图标。
+    边框不完整时返回 None，让调用方停下重读而非盲点。
     """
     if not isinstance(img, np.ndarray) or img.ndim != 3 or scope is None:
         return None
     (name_left, name_top), (name_right, name_bottom) = scope
-    left, right = name_left - 19, name_right + 10
-    top, bottom = name_top - 366, name_bottom + 20
+    if train:
+        left, right = name_left - 19, name_right + 10
+        top, bottom = name_top - 366, name_bottom + 20
+    else:
+        # 普通列表姓名框比训练室低 9px、宽约 13px；用右缘定位同一张卡。
+        left, right = name_right - 194, name_right + 10
+        top, bottom = name_top - 375, name_bottom + 6
     if left < 0 or top < 0 or right > img.shape[1] or bottom > img.shape[0]:
         return None
     frame = cv2.cvtColor(img[top:bottom, left:right], cv2.COLOR_RGB2HSV)
@@ -77,6 +83,11 @@ def train_card_selected(img, scope):
     if upper < 0.20 and lower < 0.20:
         return False
     return None
+
+
+def train_card_selected(img, scope):
+    """保留训练室调用接口，复用所有选人页的蓝框检测。"""
+    return agent_card_selected(img, scope, train=True)
 
 
 @dataclass
@@ -493,16 +504,17 @@ class BaseMixin:
                 return select_name, ret
             name, scope = target
             selected = (
-                train_card_selected(self.recog.img, scope)
-                if respect_train_selection and train
+                agent_card_selected(self.recog.img, scope, train=train)
+                if isinstance(self.recog.img, np.ndarray)
+                or (respect_train_selection and train)
                 else False
             )
             if selected is None:
-                raise AgentSelectionNotReady("训练干员选中边框不清晰，返回房间重试")
+                raise AgentSelectionNotReady("干员选中边框不清晰，返回房间重试")
             if not selected:
                 self.tap(scope, interval=0.2)
             else:
-                logger.debug(f"训练干员 {name} 已有蓝框，跳过再次点击")
+                logger.debug(f"干员 {name} 已有蓝框，跳过再次点击")
             select_name.append(name)
             agent.remove(name)
             if not agent or (
@@ -548,16 +560,17 @@ class BaseMixin:
         for name, scope in ret:
             if name and name in agent:
                 is_selected = (
-                    train_card_selected(self.recog.img, scope)
-                    if respect_train_selection and train
+                    agent_card_selected(self.recog.img, scope, train=train)
+                    if isinstance(self.recog.img, np.ndarray)
+                    or (respect_train_selection and train)
                     else False
                 )
                 if is_selected is None:
-                    raise AgentSelectionNotReady("训练干员选中边框不清晰，返回房间重试")
+                    raise AgentSelectionNotReady("干员选中边框不清晰，返回房间重试")
                 if not is_selected:
                     self.tap(scope, interval=0)
                 else:
-                    logger.debug(f"训练干员 {name} 已有蓝框，跳过再次点击")
+                    logger.debug(f"干员 {name} 已有蓝框，跳过再次点击")
                 selected.append(name)
                 agent.remove(name)
                 if max_agent_count != -1 and len(selected) >= max_agent_count:
@@ -611,10 +624,14 @@ class BaseMixin:
                 stable = False
                 actual = []
                 continue
-            if train:
-                # 训练室名单排序会随筛选变化，首张卡不等于已选卡。
+            if train or isinstance(self.recog.img, np.ndarray):
+                # 排序或筛选变化后，前几张卡并不一定都已选；重排前先读蓝框。
                 states = [
-                    (name, scope, train_card_selected(self.recog.img, scope))
+                    (
+                        name,
+                        scope,
+                        agent_card_selected(self.recog.img, scope, train=train),
+                    )
                     for name, scope in ret
                 ]
                 if any(state is None for _, _, state in states):
@@ -816,7 +833,7 @@ class BaseMixin:
         img = cropimg(self.recog.img, ((568, 18), (957, 95)))
         # 只读取标题栏左侧的设施图标。整条标题栏会透出房间背景，
         # 加工站的暖色装饰曾被当成制造站的黄色。
-        hsv = cv2.cvtColor(img[2:72, 2:68], cv2.COLOR_RGB2HSV)
+        hsv = cv2.cvtColor(img[2:74, 2:74], cv2.COLOR_RGB2HSV)
         colored_room = None
         color_scores = {
             room: cv2.countNonZero(

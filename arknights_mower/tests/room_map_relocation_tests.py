@@ -31,6 +31,15 @@ def test_room_name_uses_header_icon_instead_of_warm_room_background():
     assert solver.detect_room() == "factory"
 
 
+def test_room_icon_right_edge_is_inside_color_sample():
+    hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    # 图标彩色右缘超过旧的 x=636；旧取色范围只含一列，达不到门槛。
+    hsv[25:85, 635:641] = (32, 230, 220)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB))
+    assert solver.detect_room() == "factory"
+
+
 def test_white_room_template_needs_positive_match():
     img = np.zeros((1080, 1920, 3), dtype=np.uint8)
     solver = BaseMixin()
