@@ -164,13 +164,14 @@ def test_adapted_filter_reset_uses_explicit_short_tap_intervals(
 
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("profession", ["ALL", "MEDIC"])
+@pytest.mark.parametrize("count", [1, 3, 4])
 def test_filter_reset_still_switches_away_and_back_with_two_label_taps(
-    monkeypatch, enabled, profession
+    monkeypatch, enabled, profession, count
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     solver = solver_for(monkeypatch, [page()] * 10)
     state = configure_real_filter(solver, monkeypatch, initial=profession)
-    solver.swipe_left(4, profession)
+    solver.swipe_left(count, profession)
     assert state["changes"] == (
         ["PIONEER", "ALL"] if profession == "ALL" else ["ALL", "MEDIC"]
     )
@@ -179,6 +180,7 @@ def test_filter_reset_still_switches_away_and_back_with_two_label_taps(
     assert sum(c.args[0] for c in solver.sleep.call_args_list) == pytest.approx(
         0.3 if enabled else 0.2
     )
+    solver.swipe_noinertia.assert_not_called()
 
 
 def test_fast_scan_retains_narrow_region_retry(monkeypatch):

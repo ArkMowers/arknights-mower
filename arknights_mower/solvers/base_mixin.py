@@ -81,8 +81,9 @@ def agent_card_selected(img, scope, *, train=False):
     side = max(blue[8:-8, :8].mean(), blue[8:-8, -8:].mean())
     if upper > 0.45 and lower > 0.45 and side > 0.45:
         return True
-    # 上下两张卡只隔约 3px，邻卡描边可能擦到一条边的少量像素。
-    if upper < 0.20 and lower < 0.20:
+    # 相邻卡片只隔几像素，前一张的边框可能擦到本卡一条边；
+    # 另一条边仍明显缺失时判为未选中，避免整页校验一直等待。
+    if min(upper, lower) < 0.20 and max(upper, lower) < 0.45:
         return False
     return None
 
@@ -827,11 +828,17 @@ class BaseMixin:
         full_scan=True,
         train=False,
         observation=None,
+        ordered=True,
     ):
         try:
+            options = {} if ordered else {"ordered": False}
             return (
                 self.wait_for_arranged_agents(
-                    agent, full_scan=full_scan, train=train, observation=observation
+                    agent,
+                    full_scan=full_scan,
+                    train=train,
+                    observation=observation,
+                    **options,
                 )
                 is not None
             )
@@ -849,6 +856,7 @@ class BaseMixin:
                     max_agent_count,
                     full_scan=False,
                     train=train,
+                    ordered=ordered,
                 )
             else:
                 logger.exception(e)
@@ -858,10 +866,8 @@ class BaseMixin:
     def swipe_left(
         self, right_swipe, special_filter, *, train=False, return_page=False
     ):
-        if not self.low_frame_rate_mode and right_swipe <= 3:
-            # 未翻页时不触发筛选/截图；普通设备保留短距离返回路径。
-            for _ in range(2 if right_swipe == 3 else right_swipe):
-                self.swipe_noinertia((650, 540), (2500, 0))
+        if not self.low_frame_rate_mode and right_swipe == 0:
+            # 没有翻页时无需复位；翻页后用职业筛选确保回到首列。
             return (0, None) if return_page else 0
         # 保留旧接口供选人调用；实际通过切换职业筛选复位，不再反向拖动。
         # 即使计数为零也要真正切换，重复点击当前筛选不能证明列表已归零。
