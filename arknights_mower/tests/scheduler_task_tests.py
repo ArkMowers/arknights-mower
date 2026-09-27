@@ -361,6 +361,64 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(result, [shift_off, reorder, followup])
         self.assertEqual(reorder.plan, {"dormitory_1": ["Current", "临时休息者"]})
 
+    def test_deferred_dorm_merge_keeps_final_reorder_wakeup(self):
+        now = datetime(2026, 9, 27, 5)
+        first = SchedulerTask(
+            time=now,
+            task_plan={"dormitory_1": ["Current", "休息者甲"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        first_followup = SchedulerTask(time=now)
+        final = SchedulerTask(
+            time=now,
+            task_plan={"dormitory_2": ["Current", "休息者乙"]},
+            task_type=TaskTypes.RE_ORDER,
+        )
+        final_followup = SchedulerTask(time=now)
+        independent_wakeup = SchedulerTask(time=now + timedelta(minutes=1))
+
+        result = _merge_deferred_dorm_schedules(
+            [first, first_followup, final, final_followup, independent_wakeup]
+        )
+
+        self.assertEqual(result, [final, final_followup, independent_wakeup])
+        self.assertEqual(
+            final.plan,
+            {
+                "dormitory_1": ["Current", "休息者甲"],
+                "dormitory_2": ["Current", "休息者乙"],
+            },
+        )
+
+    def test_deferred_dorm_merge_keeps_wakeup_for_remaining_work(self):
+        now = datetime(2026, 9, 27, 5)
+        reorder = SchedulerTask(
+            time=now,
+            task_plan={
+                "room_1_1": ["上班者"],
+                "dormitory_1": ["Current", "休息者"],
+            },
+            task_type=TaskTypes.RE_ORDER,
+        )
+        followup = SchedulerTask(time=now)
+        shift_off = SchedulerTask(
+            time=now,
+            task_plan={"dormitory_2": ["Current", "下班者"]},
+            task_type=TaskTypes.SHIFT_OFF,
+        )
+
+        result = _merge_deferred_dorm_schedules([reorder, followup, shift_off])
+
+        self.assertEqual(result, [reorder, followup, shift_off])
+        self.assertEqual(reorder.plan, {"room_1_1": ["上班者"]})
+        self.assertEqual(
+            shift_off.plan,
+            {
+                "dormitory_1": ["Current", "休息者"],
+                "dormitory_2": ["Current", "下班者"],
+            },
+        )
+
     def test_find_next(self):
         # 测试 方程有效
         task1 = SchedulerTask(

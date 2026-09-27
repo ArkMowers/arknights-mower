@@ -2963,11 +2963,11 @@ class TestDormShiftOffMerge(unittest.TestCase):
         )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_disabled_idle_fill_does_not_add_vacancy_tasks(self):
+    def test_legacy_dorm_does_not_add_priority_vacancy_tasks(self):
         solver = BaseSchedulerSolver()
         solver.op_data = SimpleNamespace(
-            experimental_dorm_logic=True,
-            config=SimpleNamespace(free_room=False),
+            experimental_dorm_logic=False,
+            config=SimpleNamespace(free_room=True),
         )
         solver.tasks = [SchedulerTask()]
         with patch.object(base_schedule, "try_add_release_dorm") as fill:

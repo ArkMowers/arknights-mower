@@ -13,6 +13,7 @@ from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.resting_priority import RestingTier  # noqa: E402
+from arknights_mower.utils.scheduler_task import TaskTypes  # noqa: E402
 
 
 @pytest.fixture
@@ -94,26 +95,38 @@ def test_crafters_do_not_evict_each_other(dorm_solver):
     assert dorm_solver.op_data.assign_dorm("年") is None
 
 
-def test_resting_allocates_last_free_slot_to_regular_replacement_first(dorm_solver):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_vacancy_fill_allocates_last_free_slot_to_regular_replacement_first(
+    dorm_solver, free_room
+):
+    dorm_solver.op_data.config.free_room = free_room
     crafter = dorm_solver.op_data.operators["空爆"]
     replacement = dorm_solver.op_data.operators["红"]
     crafter.mood = 0
     replacement.mood = 5
     dorm_solver.total_agent = [crafter, replacement]
     dorm_solver.resting()
-    assert next(d for d in dorm_solver.op_data.dorm if d.position[1] == 3).name == "红"
+    assert next(d for d in dorm_solver.op_data.dorm if d.position[1] == 3).name == ""
+    assert dorm_solver._fill_empty_dorms()
+    assert len(dorm_solver.tasks) == 1
+    assert dorm_solver.tasks[0].type == TaskTypes.FILL_DORM
+    assert dorm_solver.tasks[0].plan["dormitory_1"][3] == "红"
 
 
-def test_crafter_uses_spare_slot_when_replacement_does_not_need_rest(dorm_solver):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_crafter_uses_spare_slot_when_replacements_are_full(dorm_solver, free_room):
+    dorm_solver.op_data.config.free_room = free_room
     crafter = dorm_solver.op_data.operators["空爆"]
     replacement = dorm_solver.op_data.operators["红"]
     crafter.mood = 0
-    replacement.mood = 23
+    replacement.mood = 24
+    dorm_solver.op_data.operators["陈"].mood = 24
     dorm_solver.total_agent = [crafter, replacement]
     dorm_solver.resting()
-    assert (
-        next(d for d in dorm_solver.op_data.dorm if d.position[1] == 3).name == "空爆"
-    )
+    assert dorm_solver._fill_empty_dorms()
+    assert len(dorm_solver.tasks) == 1
+    assert dorm_solver.tasks[0].type == TaskTypes.FILL_DORM
+    assert dorm_solver.tasks[0].plan["dormitory_1"][3] == "空爆"
 
 
 def test_workshop_lists_do_not_lower_scheduled_main(dorm_solver):

@@ -308,10 +308,21 @@ def _merge_deferred_dorm_schedules(tasks):
         dorm_tasks[-1],
     )
     dorm_ids = {id(task) for task in dorm_tasks}
+    for task in dorm_tasks:
+        for room in list(task.plan):
+            if room.startswith("dormitory_"):
+                del task.plan[room]
+    anchor.plan.update(merged)
+
+    removed_task_ids = {
+        id(task)
+        for task in dorm_tasks
+        if task is not anchor and task.type != TaskTypes.SHIFT_OFF and not task.plan
+    }
     redundant_followup_ids = set()
     for index, task in enumerate(tasks[:-1]):
         if (
-            id(task) in dorm_ids
+            id(task) in removed_task_ids
             and task.type == TaskTypes.RE_ORDER
             and id(tasks[index + 1]) not in dorm_ids
             and tasks[index + 1].type == TaskTypes.NOT_SPECIFIC
@@ -319,23 +330,12 @@ def _merge_deferred_dorm_schedules(tasks):
             and tasks[index + 1].time == task.time
         ):
             redundant_followup_ids.add(id(tasks[index + 1]))
-    redundant_followup_ids.difference_update(dorm_ids)
-    for task in dorm_tasks:
-        for room in list(task.plan):
-            if room.startswith("dormitory_"):
-                del task.plan[room]
-    anchor.plan.update(merged)
 
     result = []
     for task in tasks:
-        if (
-            task is not anchor
-            and id(task) in dorm_ids
-            and task.type != TaskTypes.SHIFT_OFF
-            and not task.plan
-        ):
+        if id(task) in removed_task_ids:
             continue
-        # RE_ORDER 后的空任务只是为了唤醒下一轮；RE_ORDER 已合并时不再需要。
+        # 只删除已移除重排的后续唤醒；保留最终重排及仍有工作安排的重排的唤醒。
         if id(task) in redundant_followup_ids:
             continue
         result.append(task)
@@ -1638,9 +1638,13 @@ def try_workshop_tasks(op_data, tasks):
 
 
 def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
+    experimental = getattr(op_data, "experimental_dorm_logic", False)
     if not op_data.config.free_room:
-        return
-    if not getattr(op_data, "experimental_dorm_logic", False):
+        if not experimental or plan:
+            return
+        # 空床补位独立于不养闲人；关闭清退时只填空床，不替换已入住者。
+        empty_only = True
+    if not experimental:
         if not empty_only:
             return _try_add_release_dorm_legacy(plan, time, op_data, tasks)
         return
@@ -1660,7 +1664,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
     if not plan:
         try:
             # 查看是否有未满心情的人
-            logger.info("启动不养闲人安排空余宿舍位")
+            logger.info("检查宿舍空床" if empty_only else "启动不养闲人安排空余宿舍位")
             now = datetime.now()
             standby_waiting = {
                 op.name
@@ -1747,8 +1751,9 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 )
             if plan:
                 plan = prioritize_new_dorm_recovery(op_data, plan, reserved_slots)
-                logger.debug(f"不养闲人任务：{plan}")
-                logger.info("添加不养闲人任务完成")
+                label = "宿舍补位" if filling_vacancies else "不养闲人"
+                logger.debug(f"{label}任务：{plan}")
+                logger.info(f"添加{label}任务完成")
                 # 发现空床即补；即使跑单已到期，也不改订单时刻，仅让补位排在前面。
                 fill_time = min(
                     [
