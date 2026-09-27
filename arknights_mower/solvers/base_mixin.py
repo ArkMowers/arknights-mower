@@ -20,6 +20,7 @@ from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     effective_performance_profile,
     is_android_runtime,
+    lower_performance_mode,
 )
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -216,6 +217,7 @@ class BaseMixin:
             config.operation_feedback_avg,
             config.operation_feedback_count,
             config.operation_feedback_mode,
+            config.operation_feedback_cap,
         )
         if config.conf.performance_mode == "auto":
             config.operation_feedback_mode = profile.mode
@@ -246,6 +248,43 @@ class BaseMixin:
             sample if previous is None else previous * 0.75 + sample * 0.25
         )
         config.operation_feedback_count += 1
+
+    @staticmethod
+    def record_selection_failure():
+        """Downgrade AUTO after repeated selection failures, not unrelated errors."""
+        if getattr(config.conf, "performance_mode", None) != "auto":
+            return
+        config.operation_failure_streak += 1
+        config.operation_recovery_successes = 0
+        if config.operation_failure_streak < 2:
+            return
+        current = (
+            config.operation_feedback_mode
+            or effective_performance_profile(
+                config.conf,
+                config.operation_feedback_avg,
+                config.operation_feedback_count,
+                mode_cap=config.operation_feedback_cap,
+            ).mode
+        )
+        lowered = lower_performance_mode(current)
+        config.operation_feedback_cap = lowered
+        config.operation_feedback_mode = lowered
+        config.operation_failure_streak = 0
+        logger.warning(f"选人连续失败，自动性能档位降至 {lowered}")
+
+    @staticmethod
+    def record_selection_success():
+        """Lift a failure downgrade after three completed selection workflows."""
+        if getattr(config.conf, "performance_mode", None) != "auto":
+            return
+        config.operation_failure_streak = 0
+        if config.operation_feedback_cap is None:
+            return
+        config.operation_recovery_successes += 1
+        if config.operation_recovery_successes >= 3:
+            config.operation_feedback_cap = None
+            config.operation_recovery_successes = 0
 
     @property
     def low_frame_rate_mode(self):

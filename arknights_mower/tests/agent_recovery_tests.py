@@ -45,6 +45,7 @@ def test_room_recovery_is_bounded_and_user_stop_is_not_retried(monkeypatch, stop
     with pytest.raises(error):
         BaseSchedulerSolver.agent_arrange_room(solver, {}, "room_1_1", plan)
     assert solver.enter_room.call_count == (2 if stopped else 4)
+    solver.record_selection_failure.assert_not_called()
     assert plan == {"room_1_1": ["梅尔"]}
     solver.tap_confirm.assert_not_called()
     solver.device.exit.assert_not_called()

@@ -131,16 +131,24 @@ _legacy_dorm_order = ""
 operation_feedback_avg: Optional[float] = None
 operation_feedback_count: int = 0
 operation_feedback_mode: Optional[str] = None
+operation_feedback_cap: Optional[str] = None
+operation_failure_streak: int = 0
+operation_recovery_successes: int = 0
 
 
 def load_conf():
     """读取全局配置，并保留测试逻辑可迁入排班文件的宿舍顺序。"""
     global conf, _legacy_dorm_order
     global operation_feedback_avg, operation_feedback_count, operation_feedback_mode
+    global operation_feedback_cap, operation_failure_streak
+    global operation_recovery_successes
     _legacy_dorm_order = ""
     operation_feedback_avg = None
     operation_feedback_count = 0
     operation_feedback_mode = None
+    operation_feedback_cap = None
+    operation_failure_streak = 0
+    operation_recovery_successes = 0
     if not conf_path.is_file():
         conf_path.parent.mkdir(exist_ok=True)
         conf = Conf()

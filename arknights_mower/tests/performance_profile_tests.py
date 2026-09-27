@@ -154,6 +154,64 @@ def test_feedback_ewma_counts_operations_not_screenshots(monkeypatch):
     assert config.operation_feedback_count == 2
 
 
+def test_repeated_selection_failures_downgrade_until_three_successes(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    monkeypatch.setattr(config, "conf", Conf(performance_mode="auto"))
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
+    monkeypatch.setattr(config, "operation_feedback_mode", None)
+    monkeypatch.setattr(config, "operation_feedback_cap", None)
+    monkeypatch.setattr(config, "operation_failure_streak", 0)
+    monkeypatch.setattr(config, "operation_recovery_successes", 0)
+    solver = BaseMixin()
+    assert solver.performance_profile.mode == "high"
+    solver.record_selection_failure()
+    assert solver.performance_profile.mode == "high"
+    solver.record_selection_failure()
+    assert solver.performance_profile.mode == "medium"
+    assert config.operation_feedback_cap == "medium"
+    for _ in range(2):
+        solver.record_selection_success()
+        assert solver.performance_profile.mode == "medium"
+    solver.record_selection_success()
+    assert solver.performance_profile.mode == "high"
+
+
+def test_manual_mode_ignores_selection_failures(monkeypatch):
+    monkeypatch.setattr(config, "conf", Conf(performance_mode="high"))
+    monkeypatch.setattr(config, "operation_failure_streak", 0)
+    monkeypatch.setattr(config, "operation_feedback_cap", None)
+    solver = BaseMixin()
+    solver.record_selection_failure()
+    solver.record_selection_failure()
+    assert config.operation_failure_streak == 0
+    assert config.operation_feedback_cap is None
+
+
+def test_success_resets_failure_streak_and_second_downgrade_reaches_low(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    monkeypatch.setattr(config, "conf", Conf(performance_mode="auto"))
+    monkeypatch.setattr(config, "operation_feedback_avg", 0)
+    monkeypatch.setattr(config, "operation_feedback_count", 4)
+    monkeypatch.setattr(config, "operation_feedback_mode", None)
+    monkeypatch.setattr(config, "operation_feedback_cap", None)
+    monkeypatch.setattr(config, "operation_failure_streak", 0)
+    monkeypatch.setattr(config, "operation_recovery_successes", 0)
+    solver = BaseMixin()
+    assert solver.performance_profile.mode == "high"
+    solver.record_selection_failure()
+    solver.record_selection_success()
+    solver.record_selection_failure()
+    assert solver.performance_profile.mode == "high"
+    solver.record_selection_failure()
+    assert solver.performance_profile.mode == "medium"
+    solver.record_selection_failure()
+    solver.record_selection_failure()
+    assert solver.performance_profile.mode == "low"
+
+
 def test_capture_metrics_do_not_change_auto_mode(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")

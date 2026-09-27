@@ -761,6 +761,7 @@ def load_config():
             config.operation_feedback_avg,
             config.operation_feedback_count,
             config.operation_feedback_mode,
+            config.operation_feedback_cap,
         )
         data["performance_effective_mode"] = performance.mode
         if manager is not None:

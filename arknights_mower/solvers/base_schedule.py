@@ -7434,6 +7434,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         reconcile_after_confirmation = False
         while not finished:
             confirmation_pending = False
+            selection_attempted = False
             try:
                 error_count = 0
                 if not skip_enter:
@@ -7665,6 +7666,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
+                        selection_attempted = True
                         self.choose_train(
                             plan[room],
                             fast_mode=choose_error <= 0,
@@ -7676,6 +7678,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 raise Exception("未成功进入干员选择界面")
                             self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
+                        selection_attempted = True
                         if mood_probe:
                             self.choose_agent(
                                 plan[room],
@@ -7727,6 +7730,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 失败重试或回岗名单恰好一致，也必须刷新充能后的计时。
                         self.get_agent_from_room(room, read_time_index)
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
+                if selection_attempted or choose_error > 0:
+                    self.record_selection_success()
                 finished = True
                 skip_enter = False
                 if room in getattr(self.task, "dorm_recovery_restore", []):
@@ -7743,6 +7748,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 save_exception(e)
                 logger.exception(e)
                 record_selection_retry()
+                if selection_attempted and (
+                    isinstance(e, AgentSelectionNotReady)
+                    or "检测到干员选择错误" in str(e)
+                    or "检测到安排干员未成功" in str(e)
+                    or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
+                ):
+                    self.record_selection_failure()
                 choose_error += 1
                 self.recog.update()
                 if "检测到漏单！" in str(e):
