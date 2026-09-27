@@ -8,7 +8,11 @@ import numpy as np
 import pytest
 
 from arknights_mower.solvers import base_mixin
-from arknights_mower.solvers.base_mixin import BaseMixin, train_card_selected
+from arknights_mower.solvers.base_mixin import (
+    AgentSelectionNotReady,
+    BaseMixin,
+    train_card_selected,
+)
 from arknights_mower.utils import config
 
 SCOPE = ((584, 479), (759, 506))
@@ -63,3 +67,33 @@ def test_train_verification_reads_blue_frame_instead_of_first_card(monkeypatch):
     assert solver.wait_for_arranged_agents(["予愿安洁莉娜"], train=True) == [
         "予愿安洁莉娜"
     ]
+
+
+@pytest.mark.parametrize(
+    "expected,verified",
+    [
+        (["褐果", "凯尔希"], ["褐果", "凯尔希"]),
+        (["褐果"], None),
+    ],
+)
+def test_train_verification_accounts_for_multiple_blue_frames(
+    monkeypatch, expected, verified
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
+    frame = card_frame(True)
+    cv2.rectangle(frame, (565, 529), (766, 938), (0, 180, 230), 7)
+    page = (
+        ("褐果", SCOPE),
+        ("凯尔希", ((584, 895), (759, 922))),
+    )
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    monkeypatch.setattr(base_mixin, "operator_list_train", lambda img: page)
+
+    if verified is None:
+        with pytest.raises(AgentSelectionNotReady):
+            solver.wait_for_arranged_agents(expected, train=True)
+    else:
+        assert solver.wait_for_arranged_agents(expected, train=True) == verified
