@@ -1,5 +1,6 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { copyMowerTestText } from '../utils/copyMowerTestText'
 
 const axios = inject('axios')
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/network`
@@ -14,6 +15,7 @@ const testing = ref(false)
 const error = ref('')
 const saved = ref(false)
 const results = ref([])
+const copyStatus = ref('')
 const dirty = computed(
   () =>
     httpProxy.value !== savedSettings.value.http_proxy ||
@@ -121,6 +123,16 @@ async function testConnection() {
   }
 }
 
+async function copyResult() {
+  const lines = [
+    error.value,
+    ...results.value.map((item) => `${item.label}：${item.message}（${item.elapsed_ms} ms）`)
+  ].filter(Boolean)
+  copyStatus.value = (await copyMowerTestText(lines.join('\n')))
+    ? '已复制'
+    : '复制失败，请手动选择文字'
+}
+
 onMounted(load)
 defineExpose({ save })
 onBeforeUnmount(() => {
@@ -169,6 +181,8 @@ onBeforeUnmount(() => {
         >
           测试连接
         </n-button>
+        <n-button :disabled="!error && !results.length" @click="copyResult">复制结果</n-button>
+        <n-text v-if="copyStatus" aria-live="polite">{{ copyStatus }}</n-text>
         <n-button v-if="!ready && !loading" @click="load">重新加载</n-button>
         <n-text v-if="saving" depth="3" aria-live="polite">正在应用…</n-text>
         <n-text v-else-if="saved && !dirty && !error" type="success" aria-live="polite">
