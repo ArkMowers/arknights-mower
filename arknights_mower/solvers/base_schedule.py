@@ -6770,9 +6770,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
-            if exists == agents and isinstance(self.recog.img, np.ndarray):
-                # wait_for_arranged_agents 已在真实截图上逐卡确认蓝框和顺序；
-                # 此时清空再重选只会增加点击及一次排序刷新。
+            if (
+                self.low_frame_rate_mode
+                and exists == agents
+                and isinstance(self.recog.img, np.ndarray)
+            ):
+                # 采用稳定帧选人策略时，真实截图已确认蓝框和顺序，无需清空重选。
                 verified = True
             else:
                 click_order = []
@@ -6782,7 +6785,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         raise Exception("检测到干员选择错误，重新选择")
                 if click_order:
-                    # 顺序确实不同，或没有真实画面的蓝框证据时才清空重选。
+                    # 快速选人策略继续清空后零间隔逐个点击；自定义档由
+                    # low_frame_rate_mode 决定点击节奏，不依赖档位名称。
                     self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                     for p_idx in click_order:
                         x = self.recog.w * position[p_idx][0]

@@ -78,8 +78,60 @@ def test_matching_card_names_still_clear_and_reselect(monkeypatch):
     solver.swipe_left.assert_not_called()
 
 
-def test_blue_confirmed_correct_order_skips_clear_and_second_sort(monkeypatch):
+@pytest.mark.parametrize(
+    ("mode", "low_frame_rate", "poll_interval"),
+    [
+        ("high", False, 0.1),
+        ("custom", False, 0.75),
+    ],
+)
+def test_fast_click_strategy_keeps_zero_interval_reorder(
+    monkeypatch, mode, low_frame_rate, poll_interval
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    monkeypatch.setattr(base_mixin.config.conf, "low_frame_rate_mode", low_frame_rate)
+    monkeypatch.setattr(
+        base_mixin.config.conf, "selection_poll_interval", poll_interval
+    )
     solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.recog.img = selected_card_frame()
+
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    assert solver.tap.call_count == len(RESIDENTS) + 1
+    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.5
+    assert all(call.kwargs["interval"] == 0 for call in solver.tap.call_args_list[1:])
+    assert solver.switch_arrange_order.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("mode", "low_frame_rate", "poll_interval"),
+    [
+        ("medium", True, 0.5),
+        ("low", True, 0.75),
+        ("custom", True, 0.1),
+    ],
+)
+def test_stable_frame_strategy_skips_reorder_when_blue_frames_match(
+    monkeypatch, mode, low_frame_rate, poll_interval
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    monkeypatch.setattr(base_mixin.config.conf, "low_frame_rate_mode", low_frame_rate)
+    monkeypatch.setattr(
+        base_mixin.config.conf, "selection_poll_interval", poll_interval
+    )
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.recog.img = selected_card_frame()
+
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    solver.tap.assert_not_called()
+    solver.switch_arrange_order.assert_called_once_with("技能", "dormitory_1")
+
+
+def selected_card_frame():
     frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
     for i in range(len(RESIDENTS)):
         right = 818 + (i // 2) * 215
@@ -87,13 +139,7 @@ def test_blue_confirmed_correct_order_skips_clear_and_second_sort(monkeypatch):
         cv2.rectangle(
             frame, (right - 210, top), (right + 10, top + 419), (0, 180, 230), 7
         )
-    solver.recog.img = frame
-
-    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
-
-    assert selected == RESIDENTS
-    solver.tap.assert_not_called()
-    solver.switch_arrange_order.assert_called_once_with("技能", "dormitory_1")
+    return frame
 
 
 def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
