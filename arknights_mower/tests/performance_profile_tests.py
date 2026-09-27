@@ -15,9 +15,9 @@ from arknights_mower.utils.device.device import Device
     ("platform", "expected"),
     [
         ("android", "auto"),
-        ("windows", "high"),
-        ("darwin", "high"),
-        ("linux", "high"),
+        ("windows", "auto"),
+        ("darwin", "auto"),
+        ("linux", "auto"),
     ],
 )
 def test_platform_performance_default(monkeypatch, platform, expected):
@@ -26,10 +26,10 @@ def test_platform_performance_default(monkeypatch, platform, expected):
     assert RIICPart().performance_mode == expected
 
 
-@pytest.mark.parametrize(("legacy", "expected"), [(False, "high"), (True, "medium")])
-def test_legacy_boolean_migrates_when_no_timing_is_configured(legacy, expected):
+@pytest.mark.parametrize("legacy", [False, True])
+def test_legacy_boolean_without_explicit_mode_defaults_to_auto(legacy):
     conf = RIICPart(low_frame_rate_mode=legacy)
-    assert conf.performance_mode == expected
+    assert conf.performance_mode == "auto"
 
 
 def test_existing_timing_keeps_values_without_custom_mode():
@@ -38,7 +38,7 @@ def test_existing_timing_keeps_values_without_custom_mode():
         run_order_delay=7.5,
         run_order_grandet_mode={"buffer_time": 22},
     )
-    assert conf.performance_mode == "high"
+    assert conf.performance_mode == "auto"
     assert conf.run_order_delay == 7.5
     assert conf.run_order_grandet_mode.buffer_time == 22
     assert not performance.effective_performance_profile(conf).low_frame_rate
@@ -46,7 +46,7 @@ def test_existing_timing_keeps_values_without_custom_mode():
 
 def test_existing_screenshot_interval_remains_independent():
     conf = Conf(screenshot_interval=650)
-    assert conf.performance_mode == "high"
+    assert conf.performance_mode == "auto"
     assert conf.screenshot_interval == 650
 
 
@@ -60,13 +60,12 @@ def test_auto_selects_profile_from_operation_feedback(monkeypatch, average, expe
     assert performance.effective_performance_profile(conf, average, 8).mode == expected
 
 
-def test_android_high_and_legacy_fast_mode_use_medium(monkeypatch):
+def test_android_explicit_fast_modes_use_medium(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     for settings in (
         {"performance_mode": "high"},
         {"performance_mode": "xhigh"},
         {"performance_mode": "ultra"},
-        {"low_frame_rate_mode": False},
     ):
         conf = RIICPart(**settings)
         assert conf.performance_mode == "medium"
@@ -74,6 +73,10 @@ def test_android_high_and_legacy_fast_mode_use_medium(monkeypatch):
         assert performance.effective_performance_profile(conf).mode == "medium"
     direct = SimpleNamespace(performance_mode="high")
     assert performance.effective_performance_profile(direct).mode == "medium"
+    legacy = RIICPart(low_frame_rate_mode=False)
+    assert legacy.performance_mode == "auto"
+    assert legacy.low_frame_rate_mode
+    assert performance.effective_performance_profile(legacy).mode == "medium"
 
 
 def test_desktop_auto_can_still_select_high(monkeypatch):

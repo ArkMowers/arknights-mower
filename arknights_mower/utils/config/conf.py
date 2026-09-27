@@ -499,9 +499,7 @@ class RIICPart(ConfModel):
         data = dict(data)
         if data.get("performance_mode") == "ultra":
             data["performance_mode"] = "xhigh"
-        if data.get("performance_mode") == "custom" or (
-            "performance_mode" not in data and "low_frame_rate_mode" in data
-        ):
+        if data.get("performance_mode") == "custom":
             if "low_frame_rate_mode" in data:
                 data["performance_mode"] = (
                     "medium" if data["low_frame_rate_mode"] else "high"
@@ -513,6 +511,9 @@ class RIICPart(ConfModel):
             mode = data["performance_mode"] = "medium"
         if mode in PERFORMANCE_PRESETS:
             data["low_frame_rate_mode"] = PERFORMANCE_PRESETS[mode].low_frame_rate
+        elif is_android_runtime() and "low_frame_rate_mode" in data:
+            # 自动档在 Android 从中档开始；旧布尔值不能覆盖这一平台基线。
+            data["low_frame_rate_mode"] = True
         return data
 
     product_switching: ProductSwitchingConf = Field(

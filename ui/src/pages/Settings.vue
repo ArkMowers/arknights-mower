@@ -550,7 +550,7 @@ if (return_home_when_idle.value) {
               <help-text>
                 自动档根据选人操作后的画面反馈和连续失败情况选择{{
                   runtime_platform === 'android' ? '中、低' : '高、中、低'
-                }}档；Android 默认自动，其他平台默认高性能。
+                }}档；所有平台默认自动。
                 极高性能连续点击重排；高性能逐次确认重排点击；中性能等待稳定画面；低性能多确认一帧。时间参数独立设置，切换档位不会修改。当前自动判定：{{
                   performance_effective_label
                 }}。

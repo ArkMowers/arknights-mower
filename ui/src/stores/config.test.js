@@ -282,6 +282,7 @@ describe('low frame rate adaptation', () => {
     await store.load_config()
     expect(store.low_frame_rate_mode).toBe(expected)
     const initialMode = store.performance_mode
+    expect(initialMode).toBe('auto')
     expect(store.build_config().low_frame_rate_mode).toBe(
       performanceProfile(initialMode, platform).lowFrameRateMode
     )

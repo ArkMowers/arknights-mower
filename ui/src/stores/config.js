@@ -54,7 +54,7 @@ export const useConfigStore = defineStore('config', () => {
   const reload_room = ref('')
   const run_order_delay = ref(10)
   const low_frame_rate_mode = ref(false)
-  const performance_mode = ref('high')
+  const performance_mode = ref('auto')
   const performance_effective_mode = ref('high')
   const selection_poll_interval = ref(0.1)
   const selection_transition_timeout = ref(2.5)

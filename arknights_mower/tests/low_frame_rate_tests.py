@@ -303,4 +303,4 @@ def test_android_saved_fast_mode_is_normalized_after_restart(monkeypatch, tmp_pa
     assert config.conf.low_frame_rate_mode
     config.load_conf()
     assert config.conf.low_frame_rate_mode
-    assert config.conf.performance_mode == "medium"
+    assert config.conf.performance_mode == "auto"

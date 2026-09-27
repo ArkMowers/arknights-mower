@@ -7,6 +7,7 @@ def legacy_selection_conf(monkeypatch):
     from arknights_mower.utils import config
 
     legacy_conf = config.conf.model_copy(deep=True)
+    legacy_conf.performance_mode = "high"
     legacy_conf.__pydantic_fields_set__.discard("performance_mode")
     monkeypatch.setattr(config, "conf", legacy_conf)
 
