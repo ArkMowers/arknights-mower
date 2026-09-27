@@ -181,11 +181,13 @@ def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
 
 
 @pytest.mark.parametrize("order_delay", [-10, 30, 120])
-@pytest.mark.parametrize("cached_mood", [None, 10, 21])
+@pytest.mark.parametrize("cached_mood", [None, 10, 21, 24])
+@pytest.mark.parametrize("free_room", [False, True])
 def test_daily_vacancy_fills_before_nearby_or_due_run_order(
-    solver, monkeypatch, order_delay, cached_mood
+    solver, monkeypatch, order_delay, cached_mood, free_room
 ):
     instance, selected = solver
+    instance.op_data.config.free_room = free_room
     empty_bed(instance, selected)
     instance.op_data.operators["银灰"].current_room = "meeting"
     target = "伊芙利特" if cached_mood is None else "红"
@@ -222,10 +224,12 @@ def test_daily_vacancy_fills_before_nearby_or_due_run_order(
     assert selected[-1] == target
 
 
+@pytest.mark.parametrize("free_room", [False, True])
 def test_unknown_vacancy_fill_is_reserved_once_without_deferral_event(
-    solver, monkeypatch
+    solver, monkeypatch, free_room
 ):
     instance, selected = solver
+    instance.op_data.config.free_room = free_room
     empty_bed(instance, selected)
     allow_unregistered(monkeypatch, instance, ["伊芙利特"])
     order = SchedulerTask(
@@ -258,12 +262,16 @@ def test_full_dorm_keeps_nearby_order_guard(solver):
     assert instance.tasks[0] is order
 
 
-def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(solver):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(
+    solver, free_room
+):
     from arknights_mower.utils.operators import Dormitory, Operator
     from arknights_mower.utils.plan import Room
 
     instance, selected = solver
     data = instance.op_data
+    data.config.free_room = free_room
     empty_bed(instance, selected)
     data.plan[ROOM][3] = Room("Free", "", [])
     data.dorm.insert(
@@ -280,19 +288,21 @@ def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(s
 
 
 @pytest.mark.parametrize(
-    "blocked", ["disabled", "personal_cap", "reserved", "stale_empty", "initializing"]
+    "blocked", ["legacy", "personal_cap", "reserved", "stale_empty", "initializing"]
 )
-def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked, free_room):
     instance, selected = solver
     data = instance.op_data
+    data.config.free_room = free_room
     empty_bed(instance, selected)
     data.operators["红"].current_room = ""
     data.operators["红"].mood = 24
     instance.tasks, instance.task = [], None
     if blocked == "initializing":
         instance.defer_backup_plan_until_mood_read = True
-    elif blocked == "disabled":
-        data.config.free_room = False
+    elif blocked == "legacy":
+        data.config.experimental_dorm_logic = False
     elif blocked == "personal_cap":
         data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 12}
         data.operators["红"].upper_limit = 12

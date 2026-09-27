@@ -421,7 +421,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             op_data is None
             or getattr(self, "defer_backup_plan_until_mood_read", False)
             or not getattr(op_data, "experimental_dorm_logic", False)
-            or not getattr(getattr(op_data, "config", None), "free_room", False)
             or not vacant_dorm_slots(op_data)
         ):
             return False
@@ -2769,15 +2768,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 候补均属于宿舍分床规则，不能让仍有心情的组抢走红脸组的替班。
         self.total_agent.sort(key=lambda op: op.current_mood() - op.lower_limit)
         shift_candidates = [op for op in self.total_agent if op.is_high()]
-        # 开启测试不养闲人后，普通空闲者统一交给补床入口；否则这里先预约
+        # 测试宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
         # 床位并生成普通重排任务，会使真空床又被跑单避让推迟。
         fill_candidates = (
-            []
-            if experimental and self.op_data.config.free_room
-            else [op for op in self.total_agent if not op.is_high()]
+            [] if experimental else [op for op in self.total_agent if not op.is_high()]
         )
-        if experimental:
-            fill_candidates.sort(key=lambda op: resting_key(self.op_data, op.name, now))
         self.plan_metadata()
         # 理想休息人数只描述主力轮休；低优占床另由 available_free("low")
         # 管理，不能抬高这里的当前人数或挡住可接管床位上的大组。

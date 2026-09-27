@@ -98,6 +98,27 @@ def test_non_free_room_skips_free_and_current_slots_without_keyerror(op_data):
     ) == [4]
 
 
+def test_disabled_free_room_keeps_full_resident_with_waiting_replacement(op_data):
+    op_data.config.free_room = False
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks == []
+    assert op_data.dorm[0].name == "空爆"
+
+
+def test_disabled_free_room_does_not_schedule_release_before_upcoming_work(op_data):
+    op_data.config.free_room = False
+    op_data.dorm[0].time = datetime.now() + timedelta(minutes=5)
+    tasks = []
+    try_add_release_dorm(
+        {"meeting": ["空爆"]},
+        datetime.now() + timedelta(minutes=10),
+        op_data,
+        tasks,
+    )
+    assert tasks == []
+
+
 def test_repeated_planning_does_not_duplicate_bed_or_candidate(op_data):
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)

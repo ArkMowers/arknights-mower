@@ -45,7 +45,11 @@ def scheduler(monkeypatch):
     )
     solver.tasks = [shift, recheck]
     solver.op_data = SimpleNamespace(
-        plan={}, operators={}, correct_dorm=MagicMock(), experimental_dorm_logic=False
+        plan={},
+        operators={},
+        dorm=[],
+        correct_dorm=MagicMock(),
+        experimental_dorm_logic=False,
     )
     solver.recog = MagicMock()
     solver._simulator_closed_for_idle = False
