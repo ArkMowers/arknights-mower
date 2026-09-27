@@ -1,9 +1,14 @@
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-from arknights_mower.utils import performance
+from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.utils import config, performance
 from arknights_mower.utils.config.conf import Conf, RIICPart
+from arknights_mower.utils.device import device as device_module
+from arknights_mower.utils.device.device import Device
 
 
 @pytest.mark.parametrize(
@@ -73,6 +78,43 @@ def test_desktop_auto_can_still_select_high(monkeypatch):
     assert performance.effective_performance_profile(conf, 100, 8).mode == "high"
 
 
+def test_explicit_auto_ignores_legacy_boolean_override(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    monkeypatch.setattr(
+        config, "conf", RIICPart(performance_mode="auto", low_frame_rate_mode=True)
+    )
+    monkeypatch.setattr(config, "screenshot_avg", 100)
+    monkeypatch.setattr(config, "screenshot_count", 8)
+    assert BaseMixin().performance_profile.mode == "high"
+    monkeypatch.setattr(config, "screenshot_avg", 800)
+    assert BaseMixin().performance_profile.mode == "low"
+
+
+def test_auto_does_not_reenter_warmup_after_100_screenshots(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    monkeypatch.setattr(config, "conf", Conf(performance_mode="auto"))
+    monkeypatch.setattr(config, "screenshot_avg", 1000)
+    monkeypatch.setattr(config, "screenshot_count", 99)
+    monkeypatch.setattr(
+        config, "screenshot_time", datetime.now() - timedelta(seconds=10)
+    )
+    monkeypatch.setattr(device_module, "save_screenshot", lambda *_: None)
+    device = object.__new__(Device)
+    device.control = SimpleNamespace(
+        mumu12IPC=SimpleNamespace(
+            capture_display=lambda: np.zeros((2, 2, 3), dtype=np.uint8)
+        )
+    )
+
+    device.screencap()
+    assert config.screenshot_count == 100
+    device.screencap()
+    assert config.screenshot_count == 101
+    assert BaseMixin().performance_profile.mode == "low"
+
+
 def test_android_auto_uses_medium_during_warmup(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     conf = RIICPart(performance_mode="auto")
@@ -112,3 +154,16 @@ def test_custom_profile_uses_configured_values():
     assert profile.screenshot_interval == 650
     assert (profile.poll_interval, profile.transition_timeout) == (1.25, 9)
     assert (profile.run_order_delay, profile.grandet_buffer_time) == (12, 40)
+
+
+def test_custom_fast_selection_uses_fast_observation_budget(monkeypatch):
+    conf = Conf(
+        performance_mode="custom",
+        low_frame_rate_mode=False,
+        selection_poll_interval=0.1,
+        selection_transition_timeout=9,
+    )
+    monkeypatch.setattr(config, "conf", conf)
+    assert BaseMixin().selection_observation_timing() == (0.1, 6)
+    conf.low_frame_rate_mode = True
+    assert BaseMixin().selection_observation_timing() == (0.1, 91)

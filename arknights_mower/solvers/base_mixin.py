@@ -17,7 +17,6 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
-    default_performance_profile,
     effective_performance_profile,
     is_android_runtime,
 )
@@ -196,14 +195,9 @@ class BaseMixin:
             config.screenshot_avg,
             config.screenshot_count,
         )
-        # Compatibility for integrations that still change only the former
-        # boolean. In AUTO, only a deviation from the platform baseline is an
-        # explicit legacy override; the baseline itself remains adaptive.
-        if not is_android_runtime() and config.conf.performance_mode == "auto":
-            legacy_enabled = config.conf.low_frame_rate_mode
-            if legacy_enabled != default_performance_profile().low_frame_rate:
-                return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
-        elif (
+        # 旧接口只在固定档位保留布尔值覆盖；明确选择 AUTO 时始终使用截图统计，
+        # 避免配置中残留的旧值把自动调节永久锁在中性能档。
+        if (
             not is_android_runtime()
             and config.conf.performance_mode in PERFORMANCE_PRESETS
         ):
@@ -222,9 +216,7 @@ class BaseMixin:
 
     def selection_observation_timing(self):
         profile = self.performance_profile
-        attempts = (
-            6 if profile.mode in {"high", "medium"} else profile.transition_attempts
-        )
+        attempts = 6 if not profile.low_frame_rate else profile.transition_attempts
         return profile.poll_interval, attempts
 
     profession_labels = [
@@ -343,22 +335,28 @@ class BaseMixin:
         return True
 
     @staticmethod
-    def agent_page_reader(*, full_scan=True, train=False):
-        """同一次等待内，名字区域像素完全相同则复用模板匹配结果。"""
-        previous_key = None
-        previous_ret = None
+    def agent_page_reader(
+        *, full_scan=True, train=False, seed_image=None, seed_page=None
+    ):
+        """名字区域未变化时复用已确认页面的姓名匹配结果。"""
 
-        def read(img):
-            nonlocal previous_key, previous_ret
-            key = None
+        def name_key(img):
             if isinstance(img, np.ndarray):
                 left, right = (
                     (545, 1920) if train else (600, 1920 if full_scan else 1860)
                 )
                 rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))
-                key = tuple(img[y1:y2, left:right].tobytes() for y1, y2 in rows)
+                return tuple(img[y1:y2, left:right].tobytes() for y1, y2 in rows)
+            return None
+
+        previous_key = name_key(seed_image) if seed_page is not None else None
+        previous_ret = seed_page
+
+        def read(img):
+            nonlocal previous_key, previous_ret
+            key = name_key(img)
             if key is not None and key == previous_key:
-                logger.debug("选人名字区域未变化，复用本次等待中的识别结果")
+                logger.debug("选人名字区域未变化，复用已确认的识别结果")
                 return previous_ret
             started = perf_counter()
             ret = (
@@ -389,11 +387,17 @@ class BaseMixin:
         self, *, full_scan=True, train=False, before=None, observation=None
     ):
         """先复核当前页；滑动后不把连续两张相同的旧画面当成新页。"""
-        read = self.agent_page_reader(full_scan=full_scan, train=train)
+        seed_image = observation.image if observation is not None else None
         previous = (
             observation.consume(self.recog, full_scan=full_scan, train=train)
             if observation is not None
             else None
+        )
+        read = self.agent_page_reader(
+            full_scan=full_scan,
+            train=train,
+            seed_image=seed_image,
+            seed_page=previous,
         )
         stable = False
         ret = []
@@ -583,6 +587,7 @@ class BaseMixin:
         self, agent, *, ordered=True, full_scan=True, train=False, observation=None
     ):
         """校验当前名单；低帧率适配还要求连续两帧的位置和名字一致。"""
+        seed_image = observation.image if observation is not None else None
         page = (
             observation.consume(self.recog, full_scan=full_scan, train=train)
             if observation is not None
@@ -590,7 +595,12 @@ class BaseMixin:
         )
         if not agent:
             return []
-        read = self.agent_page_reader(full_scan=full_scan, train=train)
+        read = self.agent_page_reader(
+            full_scan=full_scan,
+            train=train,
+            seed_image=seed_image,
+            seed_page=page,
+        )
         previous = page[: len(agent)] if page else None
         stable = False
         actual = []
