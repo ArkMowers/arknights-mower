@@ -180,6 +180,139 @@ def test_group_mood_gap_full_rest_can_be_disabled(solver):
     assert group_return_time() == full_rest_time
 
 
+@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+def test_idle_release_of_main_keeps_later_group_return(solver, priority):
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    config.conf.group_rest_in_full_on_mood_gap = False
+    now = datetime.now()
+    # 对应日志中的挂件先回满、核心成员还需恢复数小时。
+    for bed in data.dorm:
+        bed.time = now + timedelta(hours=5)
+        data.operators[bed.name].mood = 5
+    member = data.operators["银灰"]
+    member.resting_priority = priority
+    # 高优成员提前回满时，整组仍须等另一个设置了回满的成员。
+    data.operators["伊内丝"].rest_in_full = True
+    _, bed = data.get_dorm_by_name(member.name)
+    bed.time = now - timedelta(minutes=1)
+    member.mood = member.upper_limit
+    before = deepcopy([vars(item) for item in data.dorm])
+
+    tasks = plan_metadata(data, [])
+
+    release = next(task for task in tasks if task.type == TaskTypes.RELEASE_DORM)
+    assert release.meta_data == member.name
+    expected = ["Current"] * 5
+    expected[member.current_index] = "Free"
+    assert release.plan == {member.current_room: expected}
+    assert release.time < now + timedelta(minutes=1)
+    returns = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
+    assert len(returns) == 1
+    assert returns[0].time > now + timedelta(hours=4)
+    assert returns[0].plan["meeting"] == ["伊内丝", "银灰"]
+    assert returns[0].plan["contact"] == ["讯使"]
+    assert [vars(item) for item in data.dorm] == before
+
+    # 执行清退不会删除工作目标；离宿后的再次规划仍会带上待命成员。
+    solver.tasks = tasks
+    assert solver.prepare_release_dorm(release)
+    assert returns[0] in solver.tasks
+    member.current_room, member.current_index = "", -1
+    bed.reset()
+    regenerated = plan_metadata(data, tasks)
+    assert not any(task.type == TaskTypes.RELEASE_DORM for task in regenerated)
+    assert next(task for task in regenerated if task.type == TaskTypes.SHIFT_ON).plan[
+        "meeting"
+    ] == ["伊内丝", "银灰"]
+
+
+@pytest.mark.parametrize("protection", ["excluded", "disabled", "legacy"])
+def test_main_idle_release_respects_switch_and_exclusions(solver, protection):
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = protection != "disabled"
+    data.config.experimental_dorm_logic = protection != "legacy"
+    if protection == "excluded":
+        data.config.free_room_exclusions = ["银灰"]
+    member = data.operators["银灰"]
+    member.resting_priority = "low"
+    member.mood = member.upper_limit
+    _, bed = data.get_dorm_by_name(member.name)
+    bed.time = datetime.now() - timedelta(minutes=1)
+
+    tasks = plan_metadata(data, [])
+
+    assert not any(task.type == TaskTypes.RELEASE_DORM for task in tasks)
+    assert next(task for task in tasks if task.type == TaskTypes.SHIFT_ON).plan[
+        "meeting"
+    ] == ["伊内丝", "银灰"]
+
+
+def test_main_idle_releases_keep_ten_minute_merge(solver):
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    config.conf.merge_interval = 10
+    now = datetime.now()
+    for name, minutes in [("伊内丝", 300), ("银灰", 10), ("讯使", 15)]:
+        data.operators[name].resting_priority = "high" if minutes == 300 else "low"
+        _, bed = data.get_dorm_by_name(name)
+        bed.time = now + timedelta(minutes=minutes)
+
+    tasks = plan_metadata(data, [])
+
+    releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
+    assert {task.meta_data for task in releases} == {"银灰", "讯使"}
+    assert releases[0].time >= now + timedelta(minutes=15)
+    assert releases[1].time - releases[0].time == timedelta(seconds=1)
+    assert next(task for task in tasks if task.type == TaskTypes.SHIFT_ON).plan[
+        "meeting"
+    ] == ["伊内丝", "银灰"]
+
+
+def test_main_idle_release_waits_for_full_mood_despite_other_exhausted_worker(solver):
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    now = datetime.now()
+    for name, hours in [("伊内丝", 5), ("银灰", 1), ("讯使", 5)]:
+        data.operators[name].resting_priority = "high" if hours == 5 else "low"
+        data.operators[name].rest_in_full = hours == 5
+        _, bed = data.get_dorm_by_name(name)
+        bed.time = now + timedelta(hours=hours)
+    # 另一工作组已经耗尽，预测最低休息时间会缩短到半小时。
+    worker = data.operators["泥岩"]
+    worker.operator_type = "high"
+    worker.current_room = worker.room = "factory"
+    worker.mood = 0
+
+    tasks = plan_metadata(data, [])
+
+    release = next(task for task in tasks if task.type == TaskTypes.RELEASE_DORM)
+    assert release.meta_data == "银灰"
+    assert release.time == now + timedelta(hours=1)
+
+
+def test_released_main_can_still_trigger_its_own_return_batch(solver):
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = True
+    now = datetime.now()
+    _, bed = data.get_dorm_by_name("银灰")
+
+    tasks = generate_plan_by_drom(
+        {now + timedelta(hours=1): ([bed], True)},
+        data,
+        release_tasks={now: ([bed], None)},
+    )
+
+    assert [task.type for task in tasks] == [TaskTypes.RELEASE_DORM, TaskTypes.SHIFT_ON]
+    assert tasks[0].meta_data == "银灰"
+    assert tasks[1].plan["meeting"] == ["伊内丝", "银灰"]
+
+
 def test_zero_mood_worker_only_follows_group_shift(solver):
     worker = solver.op_data.operators["讯使"]
     worker.workaholic = True

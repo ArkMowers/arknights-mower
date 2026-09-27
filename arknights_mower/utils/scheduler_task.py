@@ -972,7 +972,8 @@ def generate_plan_by_drom(
             op = op_data.operators[room.name]
             if op.exhaust_require:
                 exhaust_exist = True
-            if not op.is_high():
+            # 不养闲人只释放个人床位；主班身份不能把清退变成整组回班。
+            if not op.is_high() or (experimental and rest_in_full is None):
                 if rest_in_full is None and op_data.skip_idle_dorm_release(op.name):
                     continue
                 # 释放宿舍类别
@@ -1017,7 +1018,9 @@ def generate_plan_by_drom(
                                     meta_data=op.name,
                                 )
                             )
-                            planned.add(op.name)
+                            # 主班离宿后仍须参加后续回班，不能标记为已完成排班。
+                            if not op.is_high():
+                                planned.add(op.name)
                         continue
                 plan.setdefault(
                     target_room, ["Current"] * len(op_data.plan[target_room])
@@ -1214,7 +1217,7 @@ def plan_metadata(op_data, tasks):
                 continue
             grouped_dorms[operator.group].append(dorm)
             if (
-                not operator.is_high()
+                (op_data.experimental_dorm_logic or not operator.is_high())
                 and not op_data.has_rest_mood_limit(dorm.name)
                 and not op_data.skip_idle_dorm_release(dorm.name)
             ):
@@ -1340,9 +1343,12 @@ def plan_metadata(op_data, tasks):
                 and operator.mood >= operator.upper_limit
             )
             if (room.time or observed_full) and room.name:
+                # 主班只在自身回满后离宿待命，不能被其他工作组的急救时间提前清退。
                 task_time = (
                     datetime.now()
                     if observed_full
+                    else room.time
+                    if operator.is_high()
                     else min(room.time, min_resting_time)
                 )
                 if task_time < datetime.now() and not op_data.experimental_dorm_logic:
