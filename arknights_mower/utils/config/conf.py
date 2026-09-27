@@ -705,10 +705,19 @@ class AIAgentPart(ConfModel):
     ai_type: str = ""
     "名称"
     ai_key: str = ""
-    "密钥"
+    "DeepSeek 密钥"
+    ai_custom_key: str = ""
+    "自定义接口密钥"
+    ai_base_url: str = ""
+    "自定义 OpenAI 兼容接口地址"
+    ai_model: str = ""
+    "自定义模型名称"
 
     @property
     def resolved_ai_key(self) -> str:
+        # A legacy Deepseek fallback key must never be sent to a custom endpoint.
+        if self.ai_type in {"custom-local", "custom-online"}:
+            return self.ai_custom_key.strip()
         if self.ai_key:
             return self.ai_key
         token_path = Path(__rootdir__).parent / "token.txt"

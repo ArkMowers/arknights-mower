@@ -21,6 +21,9 @@ const exportError = ref('')
 const pendingDeleteEvent = ref(null)
 const deleting = ref(false)
 const deleteError = ref('')
+const analysisLoading = ref(false)
+const analysisText = ref('')
+const analysisError = ref('')
 let requestVersion = 0
 
 const levelOptions = [
@@ -106,6 +109,8 @@ async function loadWindow() {
   logLoading.value = true
   logError.value = ''
   activeEventId.value = ''
+  analysisText.value = ''
+  analysisError.value = ''
   archiveImages.value = []
   manualImage.value = ''
   try {
@@ -123,6 +128,8 @@ async function loadWindow() {
 async function selectEvent(event) {
   const version = ++requestVersion
   activeEventId.value = event.id
+  analysisText.value = ''
+  analysisError.value = ''
   queryAt.value = Math.floor(event.time_ns / 1000000)
   archiveImages.value = event.screenshots || []
   imageIndex.value = imageAtEvent(event)
@@ -195,6 +202,28 @@ async function exportWindow() {
     exportError.value = '导出失败，请稍后重试'
   } finally {
     exporting.value = false
+  }
+}
+
+async function analyzeEvent() {
+  const event = activeEvent.value
+  if (!event || analysisLoading.value) return
+  analysisLoading.value = true
+  analysisError.value = ''
+  analysisText.value = ''
+  try {
+    const response = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/analyze`,
+      {},
+      { headers: { 'X-Mower-Diagnostics': '1' } }
+    )
+    if (activeEventId.value === event.id) analysisText.value = response.data.analysis || ''
+  } catch (error) {
+    if (activeEventId.value === event.id) {
+      analysisError.value = error.response?.data?.error || 'AI 分析失败，请检查模型设置后重试'
+    }
+  } finally {
+    analysisLoading.value = false
   }
 }
 
@@ -329,6 +358,17 @@ onMounted(() => {
           }}
           附近的运行记录
         </p>
+        <div v-if="activeEvent" class="ai-analysis">
+          <n-button type="primary" secondary :loading="analysisLoading" @click="analyzeEvent">
+            AI 分析原因与排班建议
+          </n-button>
+          <p>
+            点击后会向已配置的模型服务发送这条异常摘要和最多 30
+            条精简日志；程序会尝试隐藏常见密钥字段，不发送截图。在线服务会接收这些文字，请先确认日志没有其他敏感内容。
+          </p>
+          <p v-if="analysisError" class="state-message error" role="alert">{{ analysisError }}</p>
+          <pre v-if="analysisText" class="ai-analysis-result">{{ analysisText }}</pre>
+        </div>
         <div class="log-filters">
           <n-input
             v-model:value="searchText"
@@ -461,6 +501,23 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.ai-analysis {
+  margin: 12px 0;
+}
+
+.ai-analysis p {
+  margin: 8px 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.ai-analysis-result {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.6;
+}
+
 .schedule-page {
   box-sizing: border-box;
   width: 100%;

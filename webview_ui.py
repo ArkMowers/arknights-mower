@@ -2,6 +2,7 @@
 import multiprocessing as mp
 import os
 import platform
+import secrets
 import sys
 from urllib.parse import quote
 
@@ -586,6 +587,7 @@ def run_desktop():
 
         log_listener = mower_log.mp_listener
     token = conf.webview.token
+    runtime_token = token or secrets.token_urlsafe(32)
     host = "0.0.0.0" if token else "127.0.0.1"
     restart_port = os.environ.get("MOWER_RESTART_PORT", "")
     port = (
@@ -602,19 +604,22 @@ def run_desktop():
     registration.record.update(
         port=port,
         listen_host=host,
-        token_hash=sha256((token or "").encode()).hexdigest(),
+        token_hash=sha256(runtime_token.encode()).hexdigest(),
     )
     registration.publish()
     if splash_queue is not None:
         splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
     import server
 
+    # Local-only sessions still need a credential for HTTP and WebSocket APIs.
+    # Keep it in memory; remote binding remains an explicit setting.
+    server.app.token = runtime_token
+
     registration.running = lambda: bool(
         server.mower_thread and server.mower_thread.is_alive()
     )
     url = f"http://127.0.0.1:{port}"
-    if token:
-        url += f"?token={token}"
+    url += f"?token={runtime_token}"
     url = append_query_param(url, "instance_name", instance_name)
     Thread(
         target=server.app.run, kwargs={"host": host, "port": port}, daemon=True
@@ -687,7 +692,7 @@ def run_desktop():
             sleep(0.5)
         if registration.shutdown_requested():
             return
-        with server.app.test_request_context(headers={"token": token or ""}):
+        with server.app.test_request_context(headers={"token": runtime_token}):
             if resume_mode in ("0", "1"):
                 server.start(resume_mode)
             else:
@@ -711,7 +716,7 @@ def run_desktop():
                 ):
                     sleep(0.5)
                     continue
-                with server.app.test_request_context(headers={"token": token or ""}):
+                with server.app.test_request_context(headers={"token": runtime_token}):
                     stopped = server.stop() == "true"
                 if stopped and registration.shutdown_requested():
                     break

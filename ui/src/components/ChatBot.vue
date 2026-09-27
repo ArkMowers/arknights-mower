@@ -1,12 +1,10 @@
 <script setup>
 import { inject, ref, watch } from 'vue'
-import { useConfigStore } from '@/stores/config'
-import { storeToRefs } from 'pinia'
 import markdownit from 'markdown-it'
 
-const store = useConfigStore()
-const md = markdownit({ html: true, breaks: true })
-const { ai_key, ai_type } = storeToRefs(store)
+const md = markdownit({ html: false, breaks: true })
+const renderMessage = (content) =>
+  md.render(content.replace(/<!--MOWER_MISS_STATE:[\s\S]*?-->/g, ''))
 const showFeedback = inject('show_feedback', null)
 const WELCOME_MESSAGE =
   '我是 Mower AI 助手，可以帮你查日志、分析漏单、定位报错、查询数据库记录，或协助整理问题描述。'
@@ -28,6 +26,16 @@ watch(
 )
 watch(show, (val) => emit('update:show', val))
 function connectWS(callback) {
+  const token = new URLSearchParams(window.location.search).get('token')
+  if (!token) {
+    chatHistory.value.push({
+      role: 'bot',
+      content: 'AI 助手需要 Web UI 访问密钥。',
+      followUpState: null
+    })
+    loading.value = false
+    return
+  }
   if (ws) ws.close()
   let backend_url
   if (import.meta.env.DEV) {
@@ -38,7 +46,7 @@ function connectWS(callback) {
   const ws_url = backend_url.replace(/^http/, 'ws') + '/ws/chat'
   ws = new WebSocket(ws_url)
   ws.onopen = () => {
-    ws.send(JSON.stringify({ ai_type: ai_type.value, api_key: ai_key.value }))
+    ws.send(JSON.stringify({ token }))
     if (pendingMsg) {
       ws.send(JSON.stringify({ message: pendingMsg }))
       pendingMsg = null
@@ -66,6 +74,16 @@ function connectWS(callback) {
       })
     }
     loading.value = false
+  }
+  ws.onclose = () => {
+    if (loading.value) {
+      chatHistory.value.push({
+        role: 'bot',
+        content: 'AI 连接已关闭，请检查访问密钥后重试。',
+        followUpState: null
+      })
+      loading.value = false
+    }
   }
 }
 
@@ -128,7 +146,7 @@ window.addEventListener('resize', () => {
             class="chat-row"
           >
             <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>
-            <span v-html="md.render(msg.content)"></span>
+            <span v-html="renderMessage(msg.content)"></span>
             <div v-if="msg.role === 'bot' && msg.showFollowUp !== false" class="follow-up-block">
               <div class="follow-up-title">是否解决了你的问题？</div>
               <div v-if="msg.followUpState === null" class="follow-up-actions">
