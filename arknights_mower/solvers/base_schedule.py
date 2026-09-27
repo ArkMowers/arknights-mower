@@ -7386,13 +7386,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 首次点按可能被线索弹窗或过渡帧吞掉；ctap 的 10 秒去重
                 # 会使后续循环完全没有重试操作。
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
-            self.choose_agent(
-                retained.copy(), room, fast_mode, preserve_dorm_occupants=True
-            )
-            self.tap_confirm(room, {})
-            current = [item["agent"] for item in self.get_agent_from_room(room)]
-            if current != expected:
-                raise Exception("宿舍单回排序确认失败，保留原任务重试")
+            try:
+                self.choose_agent(
+                    retained.copy(), room, fast_mode, preserve_dorm_occupants=True
+                )
+                self.tap_confirm(room, {})
+                current = [item["agent"] for item in self.get_agent_from_room(room)]
+                if current != expected:
+                    raise Exception("宿舍单回排序确认失败，保留原任务重试")
+            except MowerExit:
+                raise
+            except Exception as e:
+                if (
+                    isinstance(e, AgentSelectionNotReady)
+                    or "检测到干员选择错误" in str(e)
+                    or "宿舍单回排序确认失败" in str(e)
+                    or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
+                ):
+                    self.record_selection_failure()
+                raise
         if current != agents:
             # 目标床位不再移动，不能因此沿用临时阵容下的恢复倒计时。
             # 补回宿管和其余入住者后，由紧接着的正常读房重新采样。
@@ -7432,6 +7444,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         choose_error = 0
         checked = False
         reconcile_after_confirmation = False
+        reconcile_after_selection = False
         while not finished:
             confirmation_pending = False
             selection_attempted = False
@@ -7516,11 +7529,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if reconcile_after_confirmation:
                     actual = [item["agent"] for item in self.get_agent_from_room(room)]
                     reconcile_after_confirmation = False
+                    selection_was_attempted = reconcile_after_selection
+                    reconcile_after_selection = False
                     if len(actual) == len(plan[room]) and all(
                         current == target or target == "Free"
                         for current, target in zip(actual, plan[room])
                     ):
                         logger.info(f"{room} 确认后实际驻员已符合目标，结束排班")
+                        if selection_was_attempted:
+                            self.record_selection_success()
                         finished = True
                         if room in getattr(self.task, "dorm_recovery_restore", []):
                             self.task.dorm_recovery_restore.remove(room)
@@ -7761,6 +7778,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     return {}
                 if confirmation_pending:
                     reconcile_after_confirmation = True
+                    reconcile_after_selection = selection_attempted
                 if choose_error > 3:
                     raise e
                 # 确认后的失败统一返回再读实际驻员，由下一轮决定是否重选。

@@ -11,6 +11,7 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule  # noqa: E402
+from arknights_mower.solvers.base_mixin import AgentSelectionNotReady  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.dorm_recovery import recovery_order_plan  # noqa: E402
@@ -546,6 +547,25 @@ def test_readback_with_remaining_competitor_never_marks_success(solver):
         arrange(solver)
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
     assert solver.task.plan == {ROOM: FINAL}
+
+
+def test_preselection_feedback_failures_downgrade_auto_mode(solver, monkeypatch):
+    config.conf.performance_mode = "auto"
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
+    monkeypatch.setattr(config, "operation_feedback_mode", None)
+    monkeypatch.setattr(config, "operation_feedback_cap", None)
+    monkeypatch.setattr(config, "operation_failure_streak", 0)
+    monkeypatch.setattr(config, "operation_recovery_successes", 0)
+    solver.choose_agent.side_effect = AgentSelectionNotReady("排序反馈未到")
+
+    for _ in range(2):
+        with pytest.raises(AgentSelectionNotReady, match="排序反馈未到"):
+            solver.ensure_dorm_recovery_order(ROOM, FINAL)
+
+    assert solver.choose_agent.call_count == 2
+    assert config.operation_feedback_cap in {"medium", "low"}
+    assert config.operation_failure_streak == 0
 
 
 def test_target_reaches_full_during_confirmation_does_not_keep_cycle_marker(solver):
