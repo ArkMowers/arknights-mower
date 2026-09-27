@@ -53,10 +53,10 @@ const {
 
 const performance_mode_options = computed(() => [
   { label: '自动', value: 'auto' },
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高性能', value: 'ultra' }]),
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '高性能', value: 'high' }]),
-  { label: '中性能', value: 'medium' },
-  { label: '低性能', value: 'low' }
+  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高', value: 'ultra' }]),
+  ...(runtime_platform.value === 'android' ? [] : [{ label: '高', value: 'high' }]),
+  { label: '中', value: 'medium' },
+  { label: '低', value: 'low' }
 ])
 const performance_effective_label = computed(
   () =>
