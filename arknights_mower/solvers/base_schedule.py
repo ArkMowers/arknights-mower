@@ -149,6 +149,21 @@ def _merge_dorm_arrangement(plan: dict, dorm_plan: dict) -> None:
                 target[index] = name
 
 
+def _merge_shift_transition(plan: dict, overlay: dict, op_data: Operators) -> None:
+    """新换班位置覆盖旧位置；未执行的旧入住取消，不为它额外清床。"""
+    destinations = {
+        name: (room, index)
+        for room, names in overlay.items()
+        for index, name in enumerate(names)
+        if name not in ("Current", "Free", "")
+    }
+    for room, names in plan.items():
+        for index, name in enumerate(names):
+            if name in destinations and destinations[name] != (room, index):
+                names[index] = "Current"
+    _merge_plan_overlay(plan, overlay, op_data)
+
+
 def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
     """把内存演算的一层结果覆盖到最终任务，不产生中间任务。"""
     for room, names in overlay.items():
@@ -253,6 +268,14 @@ _COLLECTIBLE_START_KEYS = (
     "ideas",
     "ticket",
 )
+
+
+class RoomArrangementDeferred(RuntimeError):
+    """房间重试暂未成功，保留剩余任务并把调度权交回队列。"""
+
+    def __init__(self, room, error):
+        super().__init__(str(error))
+        self.room = room
 
 
 class ProductSwitchDeferred(Exception):
@@ -549,19 +572,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append(SchedulerTask())
-            # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
-            if self.find_next_task(datetime.now() - timedelta(seconds=900)):
-                logger.info("检测到执行超过15分钟的任务，清空非专精任务")
+            # 普通任务超过 15 分钟时重建排班；关键预约不因别的房间失败丢失。
+            preserved = {
+                TaskTypes.SKILL_UPGRADE,
+                TaskTypes.SWAP_SUPPORT,
+                TaskTypes.REFRESH_TIME,
+                TaskTypes.SWITCH_PRODUCT,
+                TaskTypes.FIAMMETTA,
+            }
+            if any(
+                t.time < datetime.now() - timedelta(minutes=15)
+                and t.type not in preserved
+                for t in self.tasks
+            ):
+                logger.info("检测到执行超过15分钟的任务，重建普通排班并保留关键预约")
                 self.tasks = [
                     t
                     for t in self.tasks
-                    if t.type
-                    in (
-                        TaskTypes.SKILL_UPGRADE,
-                        TaskTypes.SWAP_SUPPORT,
-                        TaskTypes.REFRESH_TIME,
-                        TaskTypes.SWITCH_PRODUCT,
-                    )
+                    if t.type in preserved
+                    or (t.type == TaskTypes.RUN_ORDER and t.time > datetime.now())
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -1139,6 +1168,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.backup_plan_solver()
                     else:
                         self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
+            except RoomArrangementDeferred as e:
+                task = self.task
+                attempts = (
+                    getattr(task, "arrangement_retry_count", 0)
+                    if getattr(task, "arrangement_retry_room", None) == e.room
+                    else 0
+                ) + 1
+                if not hasattr(task, "arrangement_retry_due_at"):
+                    task.arrangement_retry_due_at = task.time
+                task.arrangement_retry_room = e.room
+                task.arrangement_retry_count = attempts
+                task.time = datetime.now() + timedelta(minutes=min(attempts, 5))
+                self.tasks.sort(key=lambda queued: queued.time)
+                self.skip()
+                logger.warning(
+                    "%s 连续识别或换人失败，保留剩余安排，延至 %s 重试",
+                    e.room,
+                    task.time.strftime("%H:%M:%S"),
+                )
+                self.back_to_infrastructure()
             except ProductSwitchDeferred as e:
                 retry_time = datetime.now() + timedelta(minutes=e.minutes)
                 pending_ids = {id(task) for task in self.tasks}
@@ -2708,6 +2757,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return adjust_0_room
 
     def plan_solver(self):
+        if getattr(self.op_data, "experimental_dorm_logic", False) and any(
+            task.type == TaskTypes.FIAMMETTA and task.time <= datetime.now()
+            for task in self.tasks
+        ):
+            logger.info("肥鸭任务已到期，充能回岗后再规划下班")
+            return
         # 准备数据
         logger.debug(self.op_data.print())
         # 根据剩余心情排序
@@ -3213,6 +3268,70 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         }
         return transition_plan
 
+    def _coalesce_backup_transition(self, transition):
+        """切表的新意图替换同轮旧安排，保留同批其他成员；返回被合并的任务。"""
+        now = datetime.now()
+        ordinary = {
+            TaskTypes.SHIFT_ON,
+            TaskTypes.SHIFT_OFF,
+            TaskTypes.SELF_CORRECTION,
+            TaskTypes.RE_ORDER,
+            TaskTypes.NOT_SPECIFIC,
+            TaskTypes.FILL_DORM,
+        }
+
+        def footprint(plan):
+            names, slots = set(), set()
+            for room, agents in plan.items():
+                for index, name in enumerate(agents):
+                    if name not in ("Current", ""):
+                        slots.add((room, index))
+                    if name not in ("Current", "Free", ""):
+                        names.add(name)
+            return names, slots
+
+        names, slots = footprint(transition)
+        merged_tasks = []
+        remaining = [
+            task
+            for task in self.tasks
+            if task.type in ordinary
+            and task.plan
+            and min(task.time, getattr(task, "arrangement_retry_due_at", task.time))
+            <= now + timedelta(minutes=1)
+            and not getattr(task, "strict_mood_limit", False)
+            and not getattr(task, "dorm_recovery_restore", [])
+        ]
+        # 同一批任务可能经由第三条安排互相重叠，按关联范围一次收齐。
+        while remaining:
+            matched = []
+            for task in remaining:
+                task_names, task_slots = footprint(task.plan)
+                if names & task_names or slots & task_slots:
+                    matched.append(task)
+                    names.update(task_names)
+                    slots.update(task_slots)
+            if not matched:
+                break
+            merged_tasks.extend(matched)
+            ids = {id(task) for task in matched}
+            remaining = [task for task in remaining if id(task) not in ids]
+        if not merged_tasks:
+            return transition, []
+        merged = {}
+        for task in sorted(merged_tasks, key=lambda task: task.time):
+            _merge_shift_transition(merged, copy.deepcopy(task.plan), self.op_data)
+        _merge_shift_transition(merged, transition, self.op_data)
+        merged = {
+            room: agents
+            for room, agents in merged.items()
+            if any(name != "Current" for name in agents)
+        }
+        logger.info(
+            "副表收敛合并 %s 条旧安排，直接执行最终换班：%s", len(merged_tasks), merged
+        )
+        return merged, merged_tasks
+
     def _initial_mood_read_pending(self):
         return getattr(self, "_initial_mood_probe_active", False) or (
             getattr(self, "defer_backup_plan_until_mood_read", False)
@@ -3320,6 +3439,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             generated = None
             if transition_plan:
+                transition_plan, superseded = self._coalesce_backup_transition(
+                    transition_plan
+                )
                 generated = SchedulerTask(
                     time=custom_task_time,
                     task_plan=transition_plan,
@@ -3328,7 +3450,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else TaskTypes.SELF_CORRECTION,
                     meta_data="副表内存收敛",
                 )
+                # 完整最终任务先入队，再撤销旧任务，避免丢失同批有效动作。
                 self.tasks.append(generated)
+                superseded_ids = {id(task) for task in superseded}
+                self.tasks[:] = [
+                    task for task in self.tasks if id(task) not in superseded_ids
+                ]
+                self._refresh_deferred_product_reservations()
                 if generated_tasks is not None:
                     generated_tasks.append(generated)
                 logger.info("副表最终差异任务：%s", transition_plan)
@@ -3853,18 +3981,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 dorm_rebalance_signature(seed),
             )
             merged = copy.deepcopy(intent)
-            # 副表把同一人调往另一房间时，同时撤销原换班意图中的旧位置。
-            destinations = {
-                name: (room, index)
-                for room, names in transition.items()
-                for index, name in enumerate(names)
-                if name not in ("Current", "Free", "")
-            }
-            for room, names in merged.items():
-                for index, name in enumerate(names):
-                    if name in destinations and destinations[name] != (room, index):
-                        names[index] = "Free" if room.startswith("dorm") else "Current"
-            _merge_plan_overlay(merged, transition, simulation.op_data)
+            _merge_shift_transition(merged, transition, simulation.op_data)
             # 从真实驻员重新投影，不能把上一轮的中间换人累积到下一轮。
             projected = self.op_data.project_arrangements([])
             if error := projected.swap_plan(conditions, refresh=True):
@@ -7463,7 +7580,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         mood_probe=False,
     ):
         finished = False
-        choose_error = 0
+        # 延期重试也先读实际驻员，避免确认已成功却重复选人／充能。
+        choose_error = int(getattr(self.task, "arrangement_retry_room", None) == room)
         checked = False
         reconcile_after_confirmation = False
         reconcile_after_selection = False
@@ -7775,6 +7893,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 skip_enter = False
                 if room in getattr(self.task, "dorm_recovery_restore", []):
                     self.task.dorm_recovery_restore.remove(room)
+                if getattr(self.task, "arrangement_retry_room", None) == room:
+                    del self.task.arrangement_retry_room
+                    del self.task.arrangement_retry_count
                 # 如果完成则移除该任务
                 del plan[room]
                 # back to 基地主界面
@@ -7801,6 +7922,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if confirmation_pending:
                     reconcile_after_confirmation = True
                     reconcile_after_selection = selection_attempted
+                # 跑单和肥鸭有临时换入／恢复的连续步骤，保留原有原地重试。
+                queued = (
+                    self.task is not None
+                    and self.task.type
+                    not in (
+                        TaskTypes.RUN_ORDER,
+                        TaskTypes.FIAMMETTA,
+                        TaskTypes.SKILL_UPGRADE,
+                        TaskTypes.SWAP_SUPPORT,
+                    )
+                    and any(task is self.task for task in getattr(self, "tasks", []))
+                )
+                urgent = (
+                    queued
+                    and not getattr(self.task, "dorm_recovery_restore", [])
+                    and any(
+                        task is not self.task
+                        and task.type
+                        in (
+                            TaskTypes.FIAMMETTA,
+                            TaskTypes.RUN_ORDER,
+                            TaskTypes.SWAP_SUPPORT,
+                            TaskTypes.SKILL_UPGRADE,
+                        )
+                        and task.time <= datetime.now() + timedelta(minutes=1)
+                        for task in self.tasks
+                    )
+                )
+                if queued and not mood_probe and (choose_error > 3 or urgent):
+                    raise RoomArrangementDeferred(room, e) from e
                 if choose_error > 3:
                     raise e
                 # 确认后的失败统一返回再读实际驻员，由下一轮决定是否重选。
@@ -7809,6 +7960,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back(interval=0.5)
                     back_count += 1
                     if back_count > 3:
+                        if queued and not mood_probe:
+                            raise RoomArrangementDeferred(room, e) from e
                         raise e
                 continue
         if len(new_plan) != 1:
