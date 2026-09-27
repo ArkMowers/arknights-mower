@@ -309,10 +309,11 @@ def initialize(
     base_scheduler = BaseSchedulerSolver(connection_retries=connection_retries)
     from arknights_mower.utils.operators import build_global_plan
 
-    plan = build_global_plan()
+    plan, source_plan = build_global_plan(include_source=True)
 
     logger.debug(plan)
     base_scheduler.global_plan = plan
+    base_scheduler.source_plan = source_plan
     base_scheduler.tasks = tasks
     base_scheduler.enable_party = config.conf.enable_party == 1  # 是否使用线索
     base_scheduler.leifeng_mode = config.conf.leifeng_mode == 1  # 是否有额外线索就送出

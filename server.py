@@ -571,6 +571,7 @@ def serialize_configuration_requests():
         in {
             "/conf",
             "/plan",
+            "/plan/restore-running",
             "/import",
             "/sss-copilot",
             "/network/settings",
@@ -836,6 +837,32 @@ def load_plan_from_json():
                 config.plan = previous_plan
                 raise
         return {"message": "New plan saved。"}
+
+
+@app.route("/plan/restore-running", methods=["POST"])
+@require_token
+def restore_running_plan():
+    from arknights_mower.__main__ import base_scheduler
+    from arknights_mower.utils.workshop_config import workshop_lock
+
+    if not mower_thread or not mower_thread.is_alive() or base_scheduler is None:
+        return {"error": "Mower 未运行，无法还原运行排班"}, 409
+    source_plan = getattr(base_scheduler, "source_plan", None)
+    if source_plan is None:
+        return {"error": "运行排班尚未就绪"}, 409
+
+    with workshop_lock:
+        previous_plan = config.plan
+        restored = config.PlanModel(**source_plan)
+        # Advanced settings belong to the live configuration, not the schedule snapshot.
+        restored.advanced_settings = previous_plan.advanced_settings
+        config.plan = restored
+        try:
+            config.save_plan()
+        except Exception:
+            config.plan = previous_plan
+            raise
+    return {"message": "已还原为当前运行排班"}
 
 
 @app.route("/operator")
