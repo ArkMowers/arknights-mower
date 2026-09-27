@@ -3,6 +3,8 @@
 import sys
 from unittest.mock import MagicMock
 
+import cv2
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -47,6 +49,23 @@ class LazyRecognizer:
         return self._img
 
 
+class ArrayRecognizer:
+    def __init__(self, frames):
+        self.frames = iter(frames)
+        self._img = None
+        self.captures = 0
+
+    def update(self):
+        self._img = None
+
+    @property
+    def img(self):
+        if self._img is None:
+            self._img = next(self.frames)
+            self.captures += 1
+        return self._img
+
+
 def solver_for(monkeypatch, frames):
     solver = BaseMixin()
     solver.recog = LazyRecognizer(frames)
@@ -79,6 +98,58 @@ def test_swipe_result_needs_one_fresh_frame_before_selecting(
     assert solver.recog.captures == 3
     solver.tap.assert_called_once_with(after[0][1], interval=0.2)
     assert observed.image is None and not observed.page
+
+
+@pytest.mark.parametrize("changed_name_pixels", [False, True])
+def test_fresh_frame_reuses_confirmed_names_only_when_name_pixels_match(
+    monkeypatch, changed_name_pixels
+):
+    first = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    fresh = first.copy()
+    fresh[200, 800] = 255
+    if changed_name_pixels:
+        fresh[490, 800] = 255
+    solver = solver_for(monkeypatch, [])
+    solver.recog = ArrayRecognizer([first, first.copy(), fresh])
+
+    def find(*_):
+        solver.recog.img
+        return False
+
+    solver.find.side_effect = find
+    names = MagicMock(return_value=page(("砾",)))
+    monkeypatch.setattr(base_mixin, "operator_list", names)
+
+    observed = observe(solver)
+    assert solver.scan_agent(["砾"], observation=observed)[0] == ["砾"]
+
+    assert solver.recog.captures == 3
+    assert names.call_count == (2 if changed_name_pixels else 1)
+    solver.tap.assert_called_once()
+
+
+def test_reused_names_still_check_blue_border_on_fresh_frame(monkeypatch):
+    before = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    cv2.line(before, (608, 113), (608, 536), (0, 180, 230), 7)
+    cv2.line(before, (832, 113), (832, 536), (0, 180, 230), 7)
+    after = before.copy()
+    cv2.line(after, (608, 113), (832, 113), (0, 180, 230), 7)
+    cv2.line(after, (608, 536), (832, 536), (0, 180, 230), 7)
+    solver = solver_for(monkeypatch, [])
+    solver.recog = ArrayRecognizer([before, before.copy(), after])
+
+    def find(*_):
+        solver.recog.img
+        return False
+
+    solver.find.side_effect = find
+    names = MagicMock(return_value=page(("砾",)))
+    monkeypatch.setattr(base_mixin, "operator_list", names)
+
+    observed = observe(solver)
+    assert solver.wait_for_arranged_agents(["砾"], observation=observed) == ["砾"]
+    assert solver.recog.captures == 3
+    assert names.call_count == 1
 
 
 def observe(solver, **kwargs):

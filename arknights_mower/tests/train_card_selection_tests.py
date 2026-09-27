@@ -16,6 +16,8 @@ from arknights_mower.solvers.base_mixin import (
 )
 from arknights_mower.utils import config
 
+pytestmark = pytest.mark.usefixtures("legacy_selection_conf")
+
 SCOPE = ((584, 479), (759, 506))
 NORMAL_SCOPE = ((631, 488), (820, 520))
 
@@ -158,3 +160,10 @@ def test_normal_pre_reorder_verification_uses_all_blue_frames(
     else:
         with pytest.raises(AgentSelectionNotReady):
             solver.wait_for_arranged_agents(expected)
+
+
+def test_unselected_card_below_blue_frame_is_not_ambiguous():
+    frame = normal_card_frame(True)
+    lower_scope = ((631, 909), (820, 941))
+    assert agent_card_selected(frame, NORMAL_SCOPE) is True
+    assert agent_card_selected(frame, lower_scope) is False

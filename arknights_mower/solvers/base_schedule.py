@@ -22,7 +22,11 @@ from arknights_mower.data import (
     stage_data_full,
     workshop_formula,
 )
-from arknights_mower.solvers.base_mixin import AgentSelectionNotReady, BaseMixin
+from arknights_mower.solvers.base_mixin import (
+    AgentSelectionNotReady,
+    BaseMixin,
+    fixed_selection_profile,
+)
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -6038,6 +6042,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 self.back_to_infrastructure()
 
+    @fixed_selection_profile
     def choose_train_ope(self, ope: str, choose_error=0):
         found = False
         profession = "ALL"
@@ -6414,6 +6419,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return []
 
     @timed_step("selection")
+    @fixed_selection_profile
     def choose_agent(
         self,
         agents: list[str],
@@ -6548,9 +6554,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 如果重新排序则复位到列表起点
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
                     self.switch_arrange_order(arrange_type[0], room, arrange_type[1])
-                    # 适配模式已确认排序变化及连续稳定画面，无需再等固定动画时间。
-                    if not self.low_frame_rate_mode:
-                        self.sleep(interval=0.5)
                     if not siege:
                         if single_visible_target and len(agent) == 1:
                             # 单个生产房目标已经可见时先选择，最终刷新排序并校验完整名单。
@@ -6751,6 +6754,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             right_swipe = 0
         # 排序
         verified = False
+        reordered = False
         if len(agents) != 1:
             self.switch_arrange_order("技能", room)
             # 未翻页时先定位目标卡片，名字匹配后无需再切筛选复位。
@@ -6770,43 +6774,58 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
-            if exists == agents and isinstance(self.recog.img, np.ndarray):
-                # wait_for_arranged_agents 已在真实截图上逐卡确认蓝框和顺序；
-                # 此时清空再重选只会增加点击及一次排序刷新。
-                verified = True
-            else:
-                click_order = []
-                for a in agents:
-                    if a in exists:
-                        click_order.append(exists.index(a))
-                    else:
-                        raise Exception("检测到干员选择错误，重新选择")
-                if click_order:
-                    # 顺序确实不同，或没有真实画面的蓝框证据时才清空重选。
-                    self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                    for p_idx in click_order:
-                        x = self.recog.w * position[p_idx][0]
-                        y = self.recog.h * position[p_idx][1]
-                        self.tap(
-                            (x, y),
-                            interval=0.2 if self.low_frame_rate_mode else 0,
-                        )
+            # 蓝框只说明卡片被选中；返回名单按页面位置排序，不能由此推断
+            # 卡片上的选择编号。即使页面顺序恰好等于目标也须重新按目标点击。
+            click_order = []
+            for a in agents:
+                if a in exists:
+                    click_order.append(exists.index(a))
                 else:
-                    # 空目标没有需要重排和校验的卡片。
-                    verified = True
+                    raise Exception("检测到干员选择错误，重新选择")
+            if click_order:
+                # 极高档连续点击；高档逐次确认已选集合增加。
+                reorder_mode = self.performance_profile.mode
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                for idx, p_idx in enumerate(click_order):
+                    x = self.recog.w * position[p_idx][0]
+                    y = self.recog.h * position[p_idx][1]
+                    self.tap(
+                        (x, y),
+                        interval=0 if reorder_mode == "xhigh" else 0.2,
+                    )
+                    if (
+                        reorder_mode == "high"
+                        and isinstance(self.recog.img, np.ndarray)
+                        and (
+                            self.wait_for_arranged_agents(
+                                agents[: idx + 1], ordered=False
+                            )
+                            is None
+                        )
+                    ):
+                        raise AgentSelectionNotReady(
+                            "重排点击未得到选中反馈，返回房间重试"
+                        )
+                reordered = True
+            else:
+                # 空目标没有需要重排和校验的卡片。
+                verified = True
         if not verified:
             logger.debug("验证干员选择..")
             self.switch_arrange_order("技能", room)
+            verify_options = {"ordered": False} if reordered else {}
             if right_swipe == 0:
                 try:
-                    verified = self.verify_agent(agents, room)
+                    verified = self.verify_agent(agents, room, **verify_options)
                 except AgentSelectionNotReady:
                     logger.debug("当前已选顺序尚不能确认，筛选复位后再校验")
             if not verified:
                 _, observation = self.swipe_left(
                     right_swipe, last_special_filter, return_page=True
                 )
-                verified = self.verify_agent(agents, room, observation=observation)
+                verified = self.verify_agent(
+                    agents, room, observation=observation, **verify_options
+                )
         finish_time = datetime.now()
         if finish_time - start_time > timedelta(seconds=15) * len(agents):
             # 如果超过5分钟，则所有里面的干员自动用职介筛选
@@ -7369,13 +7388,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 首次点按可能被线索弹窗或过渡帧吞掉；ctap 的 10 秒去重
                 # 会使后续循环完全没有重试操作。
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
-            self.choose_agent(
-                retained.copy(), room, fast_mode, preserve_dorm_occupants=True
-            )
-            self.tap_confirm(room, {})
-            current = [item["agent"] for item in self.get_agent_from_room(room)]
-            if current != expected:
-                raise Exception("宿舍单回排序确认失败，保留原任务重试")
+            try:
+                self.choose_agent(
+                    retained.copy(), room, fast_mode, preserve_dorm_occupants=True
+                )
+                self.tap_confirm(room, {})
+                current = [item["agent"] for item in self.get_agent_from_room(room)]
+                if current != expected:
+                    raise Exception("宿舍单回排序确认失败，保留原任务重试")
+            except MowerExit:
+                raise
+            except Exception as e:
+                if (
+                    isinstance(e, AgentSelectionNotReady)
+                    or "检测到干员选择错误" in str(e)
+                    or "宿舍单回排序确认失败" in str(e)
+                    or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
+                ):
+                    self.record_selection_failure()
+                raise
         if current != agents:
             # 目标床位不再移动，不能因此沿用临时阵容下的恢复倒计时。
             # 补回宿管和其余入住者后，由紧接着的正常读房重新采样。
@@ -7415,8 +7446,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         choose_error = 0
         checked = False
         reconcile_after_confirmation = False
+        reconcile_after_selection = False
         while not finished:
             confirmation_pending = False
+            selection_attempted = False
             try:
                 error_count = 0
                 if not skip_enter:
@@ -7498,11 +7531,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if reconcile_after_confirmation:
                     actual = [item["agent"] for item in self.get_agent_from_room(room)]
                     reconcile_after_confirmation = False
+                    selection_was_attempted = reconcile_after_selection
+                    reconcile_after_selection = False
                     if len(actual) == len(plan[room]) and all(
                         current == target or target == "Free"
                         for current, target in zip(actual, plan[room])
                     ):
                         logger.info(f"{room} 确认后实际驻员已符合目标，结束排班")
+                        if selection_was_attempted:
+                            self.record_selection_success()
                         finished = True
                         if room in getattr(self.task, "dorm_recovery_restore", []):
                             self.task.dorm_recovery_restore.remove(room)
@@ -7648,6 +7685,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
+                        selection_attempted = True
                         self.choose_train(
                             plan[room],
                             fast_mode=choose_error <= 0,
@@ -7659,6 +7697,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 raise Exception("未成功进入干员选择界面")
                             self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
+                        selection_attempted = True
                         if mood_probe:
                             self.choose_agent(
                                 plan[room],
@@ -7710,6 +7749,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         # 失败重试或回岗名单恰好一致，也必须刷新充能后的计时。
                         self.get_agent_from_room(room, read_time_index)
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
+                if selection_attempted or choose_error > 0:
+                    self.record_selection_success()
                 finished = True
                 skip_enter = False
                 if room in getattr(self.task, "dorm_recovery_restore", []):
@@ -7726,12 +7767,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 save_exception(e)
                 logger.exception(e)
                 record_selection_retry()
+                if selection_attempted and (
+                    isinstance(e, AgentSelectionNotReady)
+                    or "检测到干员选择错误" in str(e)
+                    or "检测到安排干员未成功" in str(e)
+                    or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
+                ):
+                    self.record_selection_failure()
                 choose_error += 1
                 self.recog.update()
                 if "检测到漏单！" in str(e):
                     return {}
                 if confirmation_pending:
                     reconcile_after_confirmation = True
+                    reconcile_after_selection = selection_attempted
                 if choose_error > 3:
                     raise e
                 # 确认后的失败统一返回再读实际驻员，由下一轮决定是否重选。

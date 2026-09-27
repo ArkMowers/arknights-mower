@@ -17,6 +17,8 @@ from arknights_mower.utils.solver import BaseSolver
 
 conf_module = import_module("arknights_mower.utils.config.conf")
 
+pytestmark = pytest.mark.usefixtures("legacy_selection_conf")
+
 
 @pytest.fixture(autouse=True)
 def instant_mock_capture(monkeypatch):
@@ -72,7 +74,7 @@ def test_unknown_selected_name_still_cannot_pass_final_verification(
     monkeypatch, enabled
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
-    solver = solver_for(monkeypatch, [page(("砾", ""))] * 6)
+    solver = solver_for(monkeypatch, [page(("砾", ""))] * 30)
     with pytest.raises(AgentSelectionNotReady):
         solver.verify_agent(["砾", "芬"], "room_1_1")
     solver.tap.assert_not_called()
@@ -90,17 +92,19 @@ def test_same_page_batch_has_no_added_waits_when_disabled(monkeypatch, enabled):
     assert solver.recog.captures == (6 if enabled else 1)
     assert solver.device.tap.call_count == 3
     waits = sum(call.args[0] for call in solver.sleep.call_args_list)
-    assert waits == pytest.approx(2.1 if enabled else 0)
+    assert waits == pytest.approx(0.9 if enabled else 0)
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_sort_does_not_wait_for_second_frame_when_disabled(monkeypatch, enabled):
+def test_sort_waits_only_for_required_feedback(monkeypatch, enabled):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     desired = ("技能", False)
-    frames = [("心情", True), desired, desired] if enabled else [desired]
+    frames = (
+        [("心情", True), desired, desired] if enabled else [("心情", True), desired]
+    )
     solver = sort_reader(frames)
     solver.switch_arrange_order("技能", "room_1_1")
-    solver.tap.assert_called_once_with((1210, 60), interval=0.5)
+    solver.tap.assert_called_once_with((1210, 60), interval=0.5 if enabled else 0.1)
     assert solver.sleep.call_count == (1 if enabled else 0)
 
 
@@ -147,7 +151,7 @@ def test_noop_all_filter_still_obeys_stop(monkeypatch, enabled):
     solver.device.tap.assert_not_called()
 
 
-@pytest.mark.parametrize("opened,waits", [(False, 0.9), (True, 0.7)])
+@pytest.mark.parametrize("opened,waits", [(False, 0.5), (True, 0.3)])
 def test_adapted_filter_reset_uses_explicit_short_tap_intervals(
     monkeypatch, opened, waits
 ):
@@ -160,21 +164,23 @@ def test_adapted_filter_reset_uses_explicit_short_tap_intervals(
 
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("profession", ["ALL", "MEDIC"])
+@pytest.mark.parametrize("count", [1, 3, 4])
 def test_filter_reset_still_switches_away_and_back_with_two_label_taps(
-    monkeypatch, enabled, profession
+    monkeypatch, enabled, profession, count
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     solver = solver_for(monkeypatch, [page()] * 10)
     state = configure_real_filter(solver, monkeypatch, initial=profession)
-    solver.swipe_left(4, profession)
+    solver.swipe_left(count, profession)
     assert state["changes"] == (
         ["PIONEER", "ALL"] if profession == "ALL" else ["ALL", "MEDIC"]
     )
     assert state["label"] == profession and state["offset"] == 0
     assert solver.device.tap.call_count == 2
     assert sum(c.args[0] for c in solver.sleep.call_args_list) == pytest.approx(
-        0.7 if enabled else 0.2
+        0.3 if enabled else 0.2
     )
+    solver.swipe_noinertia.assert_not_called()
 
 
 def test_fast_scan_retains_narrow_region_retry(monkeypatch):
@@ -217,7 +223,7 @@ def test_verified_roster_does_not_reset_filter_in_either_mode(
     assert solver.tap.call_count == len(RESIDENTS) + 1
     assert solver.switch_arrange_order.call_count == 2
     assert [c.kwargs["interval"] for c in solver.tap.call_args_list] == [0.5] + [
-        0.2 if enabled else 0
+        0.2
     ] * len(RESIDENTS)
 
 

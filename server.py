@@ -757,19 +757,13 @@ def load_config():
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
 
         performance = effective_performance_profile(
-            config.conf, config.screenshot_avg, config.screenshot_count
+            config.conf,
+            config.operation_feedback_avg,
+            config.operation_feedback_count,
+            config.operation_feedback_mode,
+            config.operation_feedback_cap,
         )
         data["performance_effective_mode"] = performance.mode
-        if config.conf.performance_mode == "auto":
-            data["low_frame_rate_mode"] = performance.low_frame_rate
-            data["screenshot_interval"] = performance.screenshot_interval
-            data["selection_poll_interval"] = performance.poll_interval
-            data["selection_transition_timeout"] = performance.transition_timeout
-            data["run_order_delay"] = performance.run_order_delay
-            data["run_order_grandet_mode"] = {
-                **data["run_order_grandet_mode"],
-                "buffer_time": performance.grandet_buffer_time,
-            }
         if manager is not None:
             data["maa_weekly_plan_active"] = manager.get_active_plan_key()
         return data

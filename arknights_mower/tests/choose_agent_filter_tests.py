@@ -78,8 +78,118 @@ def test_matching_card_names_still_clear_and_reselect(monkeypatch):
     solver.swipe_left.assert_not_called()
 
 
-def test_blue_confirmed_correct_order_skips_clear_and_second_sort(monkeypatch):
+def test_fast_click_strategy_keeps_zero_interval_reorder(
+    monkeypatch,
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "xhigh")
     solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.recog.img = selected_card_frame()
+
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    assert solver.tap.call_count == len(RESIDENTS) + 1
+    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.5
+    assert all(call.kwargs["interval"] == 0 for call in solver.tap.call_args_list[1:])
+    assert solver.switch_arrange_order.call_count == 2
+
+
+def test_high_mode_confirms_each_reorder_click(monkeypatch):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, selected = selection_solver(
+        monkeypatch, residents=list(reversed(RESIDENTS))
+    )
+    solver.recog.img = selected_card_frame()
+    confirmations = []
+
+    def confirm(prefix, **kwargs):
+        confirmations.append(prefix.copy())
+        return list(reversed(RESIDENTS)) if len(confirmations) == 1 else prefix
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=confirm)
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    assert confirmations[1 : 1 + len(RESIDENTS)] == [
+        RESIDENTS[:i] for i in range(1, len(RESIDENTS) + 1)
+    ]
+    assert all(
+        call.kwargs.get("ordered") is False
+        for call in solver.wait_for_arranged_agents.call_args_list
+    )
+    assert all(call.kwargs["interval"] == 0.2 for call in solver.tap.call_args_list[1:])
+
+
+def test_high_mode_stops_when_reorder_click_has_no_feedback(monkeypatch):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, _ = selection_solver(monkeypatch, residents=list(reversed(RESIDENTS)))
+    solver.recog.img = selected_card_frame()
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=[list(reversed(RESIDENTS)), None]
+    )
+
+    with pytest.raises(base_mixin.AgentSelectionNotReady):
+        solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    # One clear and one card tap; an unconfirmed click cannot start the next card.
+    assert solver.tap.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("mode", "low_frame_rate", "poll_interval"),
+    [
+        ("high", False, 0.1),
+        ("medium", True, 0.5),
+        ("low", True, 0.75),
+    ],
+)
+def test_non_ultra_rebuilds_order_without_selection_number_proof(
+    monkeypatch, mode, low_frame_rate, poll_interval
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    monkeypatch.setattr(base_mixin.config.conf, "low_frame_rate_mode", low_frame_rate)
+    monkeypatch.setattr(
+        base_mixin.config.conf, "selection_poll_interval", poll_interval
+    )
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.recog.img = selected_card_frame()
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=lambda expected, **kwargs: [
+            name for name in RESIDENTS if name in selected
+        ]
+    )
+
+    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+
+    assert selected == RESIDENTS
+    assert solver.tap.call_count == len(RESIDENTS) + 1
+    assert solver.switch_arrange_order.call_count == 2
+
+
+def test_reorder_accepts_page_order_different_from_click_order(monkeypatch):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    target = ["菲亚梅塔", "波登可", "砾", "苏苏洛", "绮良"]
+    page_order = ["菲亚梅塔", "波登可", "砾", "绮良", "苏苏洛"]
+    solver, selected = selection_solver(monkeypatch, residents=page_order)
+    solver.recog.img = selected_card_frame()
+
+    def observe(expected, *, ordered=True, **kwargs):
+        actual = [name for name in page_order if name in selected]
+        matches = actual == expected if ordered else sorted(actual) == sorted(expected)
+        return actual if matches else None
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=observe)
+    solver.choose_agent(target.copy(), "dormitory_1")
+
+    assert selected == target
+    assert solver.tap.call_count == len(target) + 1
+    assert all(
+        call.kwargs.get("ordered") is False
+        for call in solver.wait_for_arranged_agents.call_args_list
+    )
+
+
+def selected_card_frame():
     frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
     for i in range(len(RESIDENTS)):
         right = 818 + (i // 2) * 215
@@ -87,13 +197,7 @@ def test_blue_confirmed_correct_order_skips_clear_and_second_sort(monkeypatch):
         cv2.rectangle(
             frame, (right - 210, top), (right + 10, top + 419), (0, 180, 230), 7
         )
-    solver.recog.img = frame
-
-    solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
-
-    assert selected == RESIDENTS
-    solver.tap.assert_not_called()
-    solver.switch_arrange_order.assert_called_once_with("技能", "dormitory_1")
+    return frame
 
 
 def test_reorder_does_not_trust_cached_selection_order(monkeypatch):

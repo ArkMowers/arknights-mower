@@ -3,6 +3,7 @@ import { createApp, nextTick, ref } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import axios from 'axios'
 import { useConfigStore } from './config'
+import { performanceProfile } from '@/utils/performanceProfile'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 let pinia
@@ -208,6 +209,45 @@ describe('native Android setting ownership', () => {
 })
 
 describe('low frame rate adaptation', () => {
+  it('keeps saved timing values when switching performance modes', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    axios.get.mockResolvedValue({
+      data: {
+        runtime_platform: 'darwin',
+        performance_mode: 'high',
+        screenshot_interval: 640,
+        selection_poll_interval: 0.7,
+        selection_transition_timeout: 8,
+        run_order_delay: 12,
+        run_order_grandet_mode: { buffer_time: 41 },
+        free_blacklist: '',
+        reload_room: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+    })
+    await store.load_config()
+    for (const mode of ['xhigh', 'medium', 'low', 'auto']) {
+      store.performance_mode = mode
+      const payload = store.build_config()
+      expect(payload.performance_mode).toBe(mode)
+      expect(payload.screenshot_interval).toBe(640)
+      expect(payload.selection_poll_interval).toBe(0.7)
+      expect(payload.selection_transition_timeout).toBe(8)
+      expect(payload.run_order_delay).toBe(12)
+      expect(payload.run_order_grandet_mode.buffer_time).toBe(41)
+    }
+  })
+
   it.each([
     ['android', undefined, true],
     ['android', false, false],
@@ -241,15 +281,19 @@ describe('low frame rate adaptation', () => {
     axios.post.mockResolvedValue({ data: {} })
     await store.load_config()
     expect(store.low_frame_rate_mode).toBe(expected)
-    expect(store.build_config().low_frame_rate_mode).toBe(expected)
+    const initialMode = store.performance_mode
+    expect(store.build_config().low_frame_rate_mode).toBe(
+      performanceProfile(initialMode, platform).lowFrameRateMode
+    )
     loaded.value = true
     await nextTick()
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalled())
-    store.low_frame_rate_mode = !expected
+    store.performance_mode = platform === 'android' ? 'low' : 'medium'
     await nextTick()
-    const savedValue = store.performance_mode === 'auto' ? expected : !expected
+    const savedValue = performanceProfile(store.performance_mode, platform).lowFrameRateMode
     await vi.waitFor(() => expect(axios.post.mock.lastCall[1].low_frame_rate_mode).toBe(savedValue))
     loaded.value = false
+    response.performance_mode = store.performance_mode
     response.low_frame_rate_mode = axios.post.mock.lastCall[1].low_frame_rate_mode
     await store.load_config()
     expect(store.low_frame_rate_mode).toBe(savedValue)

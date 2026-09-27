@@ -2,6 +2,7 @@ import lzma
 import pickle
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import wraps
 from time import perf_counter
 
 import cv2
@@ -17,9 +18,9 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
-    default_performance_profile,
     effective_performance_profile,
     is_android_runtime,
+    lower_performance_mode,
 )
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -80,8 +81,9 @@ def agent_card_selected(img, scope, *, train=False):
     side = max(blue[8:-8, :8].mean(), blue[8:-8, -8:].mean())
     if upper > 0.45 and lower > 0.45 and side > 0.45:
         return True
-    # 上下两张卡只隔约 3px，邻卡描边可能擦到一条边的少量像素。
-    if upper < 0.20 and lower < 0.20:
+    # 相邻卡片只隔几像素，前一张的边框可能擦到本卡一条边；
+    # 另一条边仍明显缺失时判为未选中，避免整页校验一直等待。
+    if min(upper, lower) < 0.20 and max(upper, lower) < 0.45:
         return False
     return None
 
@@ -114,6 +116,23 @@ class AgentPageObservation:
         self.page = ()
         self.recognizer = self.image = None
         return page
+
+
+def fixed_selection_profile(function):
+    """Keep AUTO's strategy unchanged during one selection operation."""
+
+    @wraps(function)
+    def wrapped(self, *args, **kwargs):
+        previous = getattr(self, "_selection_profile_snapshot", None)
+        if previous is None:
+            self._selection_profile_snapshot = self.performance_profile
+        try:
+            return function(self, *args, **kwargs)
+        finally:
+            if previous is None:
+                del self._selection_profile_snapshot
+
+    return wrapped
 
 
 # #85：排序列→x 坐标单一来源（detect_arrange_order / switch_arrange_order 共用；
@@ -191,26 +210,82 @@ def _resolve_operator_room_prefix(
 class BaseMixin:
     @property
     def performance_profile(self):
+        snapshot = getattr(self, "_selection_profile_snapshot", None)
+        if snapshot is not None:
+            return snapshot
         profile = effective_performance_profile(
             config.conf,
-            config.screenshot_avg,
-            config.screenshot_count,
+            config.operation_feedback_avg,
+            config.operation_feedback_count,
+            config.operation_feedback_mode,
+            config.operation_feedback_cap,
         )
-        # Compatibility for integrations that still change only the former
-        # boolean. In AUTO, only a deviation from the platform baseline is an
-        # explicit legacy override; the baseline itself remains adaptive.
-        if not is_android_runtime() and config.conf.performance_mode == "auto":
-            legacy_enabled = config.conf.low_frame_rate_mode
-            if legacy_enabled != default_performance_profile().low_frame_rate:
-                return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
-        elif (
+        if config.conf.performance_mode == "auto":
+            config.operation_feedback_mode = profile.mode
+        # 未设置档位的旧调用方仍可通过布尔值控制策略；明确选择档位后
+        # 布尔兼容字段不再覆盖所选策略，也不改变用户的时间参数。
+        if (
             not is_android_runtime()
             and config.conf.performance_mode in PERFORMANCE_PRESETS
+            and "performance_mode" not in config.conf.model_fields_set
         ):
             legacy_enabled = config.conf.low_frame_rate_mode
             if legacy_enabled != profile.low_frame_rate:
-                return PERFORMANCE_PRESETS["medium" if legacy_enabled else "high"]
+                from dataclasses import replace
+
+                return replace(
+                    profile,
+                    mode="medium" if legacy_enabled else "high",
+                    low_frame_rate=legacy_enabled,
+                )
         return profile
+
+    @staticmethod
+    def record_operation_feedback(extra_observations):
+        """Track how many additional frames an input needed before feedback."""
+        sample = min(max(extra_observations, 0), 3)
+        previous = config.operation_feedback_avg
+        config.operation_feedback_avg = (
+            sample if previous is None else previous * 0.75 + sample * 0.25
+        )
+        config.operation_feedback_count += 1
+
+    @staticmethod
+    def record_selection_failure():
+        """Downgrade AUTO after repeated selection failures, not unrelated errors."""
+        if getattr(config.conf, "performance_mode", None) != "auto":
+            return
+        config.operation_failure_streak += 1
+        config.operation_recovery_successes = 0
+        if config.operation_failure_streak < 2:
+            return
+        current = (
+            config.operation_feedback_mode
+            or effective_performance_profile(
+                config.conf,
+                config.operation_feedback_avg,
+                config.operation_feedback_count,
+                mode_cap=config.operation_feedback_cap,
+            ).mode
+        )
+        lowered = lower_performance_mode(current)
+        config.operation_feedback_cap = lowered
+        config.operation_feedback_mode = lowered
+        config.operation_failure_streak = 0
+        logger.warning(f"选人连续失败，自动性能档位降至 {lowered}")
+
+    @staticmethod
+    def record_selection_success():
+        """Lift a failure downgrade after three completed selection workflows."""
+        if getattr(config.conf, "performance_mode", None) != "auto":
+            return
+        config.operation_failure_streak = 0
+        if config.operation_feedback_cap is None:
+            return
+        config.operation_recovery_successes += 1
+        if config.operation_recovery_successes >= 3:
+            config.operation_feedback_cap = None
+            config.operation_recovery_successes = 0
 
     @property
     def low_frame_rate_mode(self):
@@ -223,7 +298,9 @@ class BaseMixin:
     def selection_observation_timing(self):
         profile = self.performance_profile
         attempts = (
-            6 if profile.mode in {"high", "medium"} else profile.transition_attempts
+            6
+            if not profile.low_frame_rate
+            else max(profile.stable_page_matches + 1, profile.transition_attempts)
         )
         return profile.poll_interval, attempts
 
@@ -268,11 +345,38 @@ class BaseMixin:
         name_y = 60
         x = self._arrange_order_x(current_room)[name]
         if not self.low_frame_rate_mode:
-            # 普通设备保留点击后单帧检查，不增加第二帧的固定等待。
-            for _ in range(6):
-                self.tap((x, name_y), interval=0.5)
-                if self.detect_arrange_order(current_room) == (name, ascending):
-                    return
+            # 快速档在反馈未到时继续读帧，不盲目重复点击同一个排序按钮。
+            poll_interval, max_attempts = self.selection_transition_timing()
+            before = self.detect_arrange_order(current_room)
+            capture_time = 0
+            for attempt in range(max_attempts):
+                if before is not None:
+                    break
+                self.wait_for_next_observation(capture_time, poll_interval)
+                started = perf_counter()
+                before = self.detect_arrange_order(current_room)
+                capture_time = perf_counter() - started
+            if before is None:
+                raise AgentSelectionNotReady("无法读取干员排序状态，返回房间重试")
+            for _ in range(2):
+                self.tap((x, name_y), interval=0.1)
+                capture_time = 0
+                for attempt in range(max_attempts):
+                    if attempt:
+                        self.wait_for_next_observation(capture_time, poll_interval)
+                    started = perf_counter()
+                    actual = self.detect_arrange_order(current_room)
+                    capture_time = perf_counter() - started
+                    if actual is not None and actual != before:
+                        self.record_operation_feedback(attempt)
+                        if actual == (name, ascending):
+                            return
+                        before = actual
+                        break
+                else:
+                    raise AgentSelectionNotReady(
+                        "干员排序点击后尚未确认画面变化，返回房间重试"
+                    )
             raise AgentSelectionNotReady("干员排序未到达目标状态，返回房间重试")
         before = None
         capture_time = 0
@@ -295,6 +399,7 @@ class BaseMixin:
             self.tap((x, name_y), interval=0.5)
             previous = None
             capture_time = 0
+            first_change_attempt = None
             for attempt in range(max_attempts):
                 if attempt:
                     self.wait_for_next_observation(capture_time, poll_interval)
@@ -305,7 +410,11 @@ class BaseMixin:
                 logger.debug(
                     f"排序复核：点击前{before}，当前{actual}，目标{(name, ascending)}"
                 )
+                if actual is not None and actual != before:
+                    if first_change_attempt is None:
+                        first_change_attempt = attempt
                 if actual is not None and actual != before and actual == previous:
+                    self.record_operation_feedback(first_change_attempt)
                     break
                 previous = actual
             else:
@@ -343,22 +452,28 @@ class BaseMixin:
         return True
 
     @staticmethod
-    def agent_page_reader(*, full_scan=True, train=False):
-        """同一次等待内，名字区域像素完全相同则复用模板匹配结果。"""
-        previous_key = None
-        previous_ret = None
+    def agent_page_reader(
+        *, full_scan=True, train=False, seed_image=None, seed_page=None
+    ):
+        """名字区域未变化时复用已确认页面的姓名匹配结果。"""
 
-        def read(img):
-            nonlocal previous_key, previous_ret
-            key = None
+        def name_key(img):
             if isinstance(img, np.ndarray):
                 left, right = (
                     (545, 1920) if train else (600, 1920 if full_scan else 1860)
                 )
                 rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))
-                key = tuple(img[y1:y2, left:right].tobytes() for y1, y2 in rows)
+                return tuple(img[y1:y2, left:right].tobytes() for y1, y2 in rows)
+            return None
+
+        previous_key = name_key(seed_image) if seed_page is not None else None
+        previous_ret = seed_page
+
+        def read(img):
+            nonlocal previous_key, previous_ret
+            key = name_key(img)
             if key is not None and key == previous_key:
-                logger.debug("选人名字区域未变化，复用本次等待中的识别结果")
+                logger.debug("选人名字区域未变化，复用已确认的识别结果")
                 return previous_ret
             started = perf_counter()
             ret = (
@@ -389,13 +504,21 @@ class BaseMixin:
         self, *, full_scan=True, train=False, before=None, observation=None
     ):
         """先复核当前页；滑动后不把连续两张相同的旧画面当成新页。"""
-        read = self.agent_page_reader(full_scan=full_scan, train=train)
+        seed_image = observation.image if observation is not None else None
         previous = (
             observation.consume(self.recog, full_scan=full_scan, train=train)
             if observation is not None
             else None
         )
+        read = self.agent_page_reader(
+            full_scan=full_scan,
+            train=train,
+            seed_image=seed_image,
+            seed_page=previous,
+        )
         stable = False
+        stable_matches = 0
+        first_changed_attempt = None
         ret = []
         capture_time = 0
         poll_interval, max_attempts = self.selection_observation_timing()
@@ -413,6 +536,8 @@ class BaseMixin:
             if connecting:
                 previous = None
                 stable = False
+                stable_matches = 0
+                first_changed_attempt = None
                 continue
             try:
                 ret = read(self.recog.img)
@@ -422,14 +547,32 @@ class BaseMixin:
                 logger.debug(f"翻页名单读取失败，原地复核：{e}")
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
+            if (
+                before is not None
+                and ret
+                and first_changed_attempt is None
+                and not self.same_agent_page(ret, before, allow_unknown=True)
+            ):
+                first_changed_attempt = attempt
             # 搜索时允许无关卡片识别为空；仍须整页位置稳定，且只点击识别出的目标。
             # 最终名单校验继续拒绝空名字。
-            stable = self.same_agent_page(ret, previous, allow_unknown=True)
+            if self.same_agent_page(ret, previous, allow_unknown=True):
+                stable_matches += 1
+            else:
+                stable_matches = 0
+            stable = stable_matches >= self.performance_profile.stable_page_matches
             if stable and (
                 before is None
                 or not self.same_agent_page(ret, before, allow_unknown=True)
             ):
+                if before is not None:
+                    self.record_operation_feedback(
+                        first_changed_attempt
+                        if first_changed_attempt is not None
+                        else attempt
+                    )
                 logger.debug(f"确认当前干员页：{ret}")
                 return ret
             previous = ret
@@ -583,6 +726,7 @@ class BaseMixin:
         self, agent, *, ordered=True, full_scan=True, train=False, observation=None
     ):
         """校验当前名单；低帧率适配还要求连续两帧的位置和名字一致。"""
+        seed_image = observation.image if observation is not None else None
         page = (
             observation.consume(self.recog, full_scan=full_scan, train=train)
             if observation is not None
@@ -590,9 +734,15 @@ class BaseMixin:
         )
         if not agent:
             return []
-        read = self.agent_page_reader(full_scan=full_scan, train=train)
+        read = self.agent_page_reader(
+            full_scan=full_scan,
+            train=train,
+            seed_image=seed_image,
+            seed_page=page,
+        )
         previous = page[: len(agent)] if page else None
         stable = False
+        stable_matches = 0
         actual = []
         capture_time = 0
         poll_interval, max_attempts = self.selection_observation_timing()
@@ -607,6 +757,7 @@ class BaseMixin:
             if connecting:
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
             try:
                 ret = read(self.recog.img)
@@ -616,6 +767,7 @@ class BaseMixin:
                 logger.debug(f"选人名单读取失败，等待下一帧：{e}")
                 previous = None
                 stable = False
+                stable_matches = 0
                 continue
             if not train and ret and ret[0][1] is not None and ret[0][1][0][0] > 650:
                 logger.debug(
@@ -623,6 +775,7 @@ class BaseMixin:
                 )
                 previous = None
                 stable = False
+                stable_matches = 0
                 actual = []
                 continue
             if train or isinstance(self.recog.img, np.ndarray):
@@ -638,15 +791,20 @@ class BaseMixin:
                 if any(state is None for _, _, state in states):
                     previous = None
                     stable = False
+                    stable_matches = 0
                     continue
                 selected = [(name, scope) for name, scope, state in states if state]
             else:
                 selected = ret[: len(agent)]
             actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
-            stable = len(actual) == len(agent) and self.same_agent_page(
+            if len(actual) == len(agent) and self.same_agent_page(
                 selected, previous if self.low_frame_rate_mode else selected
-            )
+            ):
+                stable_matches += 1
+            else:
+                stable_matches = 0
+            stable = stable_matches >= self.performance_profile.stable_page_matches
             matches = actual == agent if ordered else sorted(actual) == sorted(agent)
             if matches and stable:
                 return actual
@@ -670,11 +828,17 @@ class BaseMixin:
         full_scan=True,
         train=False,
         observation=None,
+        ordered=True,
     ):
         try:
+            options = {} if ordered else {"ordered": False}
             return (
                 self.wait_for_arranged_agents(
-                    agent, full_scan=full_scan, train=train, observation=observation
+                    agent,
+                    full_scan=full_scan,
+                    train=train,
+                    observation=observation,
+                    **options,
                 )
                 is not None
             )
@@ -692,6 +856,7 @@ class BaseMixin:
                     max_agent_count,
                     full_scan=False,
                     train=train,
+                    ordered=ordered,
                 )
             else:
                 logger.exception(e)
@@ -701,10 +866,8 @@ class BaseMixin:
     def swipe_left(
         self, right_swipe, special_filter, *, train=False, return_page=False
     ):
-        if not self.low_frame_rate_mode and right_swipe <= 3:
-            # 未翻页时不触发筛选/截图；普通设备保留短距离返回路径。
-            for _ in range(2 if right_swipe == 3 else right_swipe):
-                self.swipe_noinertia((650, 540), (2500, 0))
+        if not self.low_frame_rate_mode and right_swipe == 0:
+            # 没有翻页时无需复位；翻页后用职业筛选确保回到首列。
             return (0, None) if return_page else 0
         # 保留旧接口供选人调用；实际通过切换职业筛选复位，不再反向拖动。
         # 即使计数为零也要真正切换，重复点击当前筛选不能证明列表已归零。
@@ -791,6 +954,7 @@ class BaseMixin:
             if attempt:
                 self.sleep(poll_interval)
             if self.get_color(position)[2] >= 240:
+                self.record_operation_feedback(attempt)
                 return
         raise AgentSelectionNotReady("职业筛选尚未生效，返回房间重试")
 
