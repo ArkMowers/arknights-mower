@@ -53,14 +53,14 @@ const {
 
 const performance_mode_options = computed(() => [
   { label: '自动', value: 'auto' },
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高', value: 'ultra' }]),
+  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高', value: 'xhigh' }]),
   ...(runtime_platform.value === 'android' ? [] : [{ label: '高', value: 'high' }]),
   { label: '中', value: 'medium' },
   { label: '低', value: 'low' }
 ])
 const performance_effective_label = computed(
   () =>
-    ({ ultra: '极高性能', high: '高性能', medium: '中性能', low: '低性能' })[
+    ({ xhigh: '极高性能', high: '高性能', medium: '中性能', low: '低性能' })[
       performance_effective_mode.value
     ] || performance_effective_mode.value
 )
@@ -73,7 +73,7 @@ const archive_limit_gib = computed({
 })
 
 function apply_performance_mode(mode) {
-  if (runtime_platform.value === 'android' && ['ultra', 'high'].includes(mode)) mode = 'medium'
+  if (runtime_platform.value === 'android' && ['xhigh', 'high'].includes(mode)) mode = 'medium'
   performance_mode.value = mode
 }
 

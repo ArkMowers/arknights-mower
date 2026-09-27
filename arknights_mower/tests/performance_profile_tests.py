@@ -64,6 +64,7 @@ def test_android_high_and_legacy_fast_mode_use_medium(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     for settings in (
         {"performance_mode": "high"},
+        {"performance_mode": "xhigh"},
         {"performance_mode": "ultra"},
         {"low_frame_rate_mode": False},
     ):
@@ -82,16 +83,24 @@ def test_desktop_auto_can_still_select_high(monkeypatch):
     assert performance.effective_performance_profile(conf, 0, 8).mode == "high"
 
 
-def test_ultra_is_explicit_only_and_keeps_user_timing(monkeypatch):
+def test_xhigh_is_explicit_only_and_keeps_user_timing(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
-    conf = Conf(performance_mode="ultra", selection_poll_interval=0.8)
+    conf = Conf(performance_mode="xhigh", selection_poll_interval=0.8)
     profile = performance.effective_performance_profile(conf, 2, 8)
-    assert profile.mode == "ultra"
+    assert profile.mode == "xhigh"
     assert not profile.low_frame_rate
     assert profile.poll_interval == 0.8
     conf.performance_mode = "auto"
     assert performance.effective_performance_profile(conf, 2, 8).mode == "low"
+
+
+def test_legacy_ultra_mode_migrates_to_xhigh(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    conf = Conf(performance_mode="ultra")
+    assert conf.performance_mode == "xhigh"
+    assert performance.effective_performance_profile(conf).mode == "xhigh"
 
 
 def test_explicit_auto_ignores_legacy_boolean_override(monkeypatch):

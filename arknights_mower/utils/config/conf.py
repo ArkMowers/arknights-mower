@@ -448,7 +448,7 @@ class RIICPart(ConfModel):
         source: Literal["manual", "mastery", "stockpile"] = "manual"
         "配置来源；旧配置按手动配置保留"
 
-    performance_mode: Literal["auto", "ultra", "high", "medium", "low"] = Field(
+    performance_mode: Literal["auto", "xhigh", "high", "medium", "low"] = Field(
         default_factory=default_performance_mode
     )
     "选人策略：自动 / 极高 / 高 / 中 / 低；时间参数独立设置"
@@ -497,6 +497,8 @@ class RIICPart(ConfModel):
         if not isinstance(data, dict):
             return data
         data = dict(data)
+        if data.get("performance_mode") == "ultra":
+            data["performance_mode"] = "xhigh"
         if data.get("performance_mode") == "custom" or (
             "performance_mode" not in data and "low_frame_rate_mode" in data
         ):
@@ -507,7 +509,7 @@ class RIICPart(ConfModel):
             else:
                 data["performance_mode"] = default_performance_mode()
         mode = data.get("performance_mode")
-        if mode in ("ultra", "high") and is_android_runtime():
+        if mode in ("xhigh", "high") and is_android_runtime():
             mode = data["performance_mode"] = "medium"
         if mode in PERFORMANCE_PRESETS:
             data["low_frame_rate_mode"] = PERFORMANCE_PRESETS[mode].low_frame_rate

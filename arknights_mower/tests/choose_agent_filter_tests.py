@@ -81,7 +81,7 @@ def test_matching_card_names_still_clear_and_reselect(monkeypatch):
 def test_fast_click_strategy_keeps_zero_interval_reorder(
     monkeypatch,
 ):
-    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "ultra")
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "xhigh")
     solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
     solver.recog.img = selected_card_frame()
 

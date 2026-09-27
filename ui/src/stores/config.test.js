@@ -236,7 +236,7 @@ describe('low frame rate adaptation', () => {
       }
     })
     await store.load_config()
-    for (const mode of ['ultra', 'medium', 'low', 'auto']) {
+    for (const mode of ['xhigh', 'medium', 'low', 'auto']) {
       store.performance_mode = mode
       const payload = store.build_config()
       expect(payload.performance_mode).toBe(mode)

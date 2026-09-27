@@ -26,7 +26,7 @@ class PerformanceProfile:
 
 
 PERFORMANCE_PRESETS = {
-    "ultra": PerformanceProfile("ultra", False, 500, 0.1, 2.5, 3, 15),
+    "xhigh": PerformanceProfile("xhigh", False, 500, 0.1, 2.5, 3, 15),
     "high": PerformanceProfile("high", False, 500, 0.1, 2.5, 3, 15),
     "medium": PerformanceProfile("medium", True, 500, 0.5, 2.5, 5, 15),
     "low": PerformanceProfile("low", True, 750, 0.75, 6.0, 10, 30),
@@ -81,7 +81,7 @@ def auto_performance_mode(
 
 
 def lower_performance_mode(mode):
-    """Move one step down without letting AUTO select ultra."""
+    """Move one step down without letting AUTO select xhigh."""
     return {"high": "medium", "medium": "low", "low": "low"}[mode]
 
 
@@ -92,7 +92,7 @@ def effective_performance_profile(
     mode = conf.performance_mode
     if mode != "auto":
         selected = (
-            "medium" if is_android_runtime() and mode in ("ultra", "high") else mode
+            "medium" if is_android_runtime() and mode in ("xhigh", "high") else mode
         )
     else:
         selected = auto_performance_mode(

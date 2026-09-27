@@ -6791,7 +6791,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     y = self.recog.h * position[p_idx][1]
                     self.tap(
                         (x, y),
-                        interval=0 if reorder_mode == "ultra" else 0.2,
+                        interval=0 if reorder_mode == "xhigh" else 0.2,
                     )
                     if (
                         reorder_mode == "high"
