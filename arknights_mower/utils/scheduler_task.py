@@ -107,7 +107,7 @@ def find_next_task(
 
 def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     time_now = time_now or datetime.now()
-    # 强制上限、空床补位及专精交接不被跑单调度推迟；专精自身的交接保护仍生效。
+    # 空床补位与专精交接交给统一保护；强制上限沿用立即处理规则。
     enabled = config.conf.enable_mastery
     fixed = {
         id(t)
@@ -123,12 +123,12 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     if fixed and config.conf.experimental_dorm_logic:
         ordinary_ids = {id(task) for task in ordinary}
         tasks[:] = [task for task in tasks if id(task) in fixed | ordinary_ids]
+    swap_conflict = protect_priority_tasks(
+        tasks, run_order_delay, execution_time, time_now
+    )
+    if swap_conflict:
+        return swap_conflict
     if enabled:
-        swap_conflict = protect_support_swaps(
-            tasks, run_order_delay, execution_time, time_now
-        )
-        if swap_conflict:
-            return swap_conflict
         # Near a handoff, stop optional drone adjustment loops as well as dispatch.
         if any(
             t.type == TaskTypes.SWAP_SUPPORT
@@ -148,13 +148,21 @@ def _support_swap_gap(run_order_delay):
     )
 
 
-def protect_support_swaps(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
-    """Fixed handoff deadlines yield only trade rooms as drone-acceleration targets."""
-    if not config.conf.enable_mastery:
-        return None
+def protect_priority_tasks(
+    tasks, run_order_delay=5, execution_time=0.75, time_now=None
+):
+    """保留专精与跑单的冲突处理，并统一保护二者不被宿舍操作挤占。"""
     now = time_now or datetime.now()
+    if config.conf.experimental_dorm_logic:
+        for task in tasks:
+            simplify_dorm_fill(task, tasks, now)
     swaps = sorted(
-        (t for t in tasks if t.type == TaskTypes.SWAP_SUPPORT), key=lambda t: t.time
+        (
+            t
+            for t in tasks
+            if config.conf.enable_mastery and t.type == TaskTypes.SWAP_SUPPORT
+        ),
+        key=lambda t: t.time,
     )
     gap = _support_swap_gap(run_order_delay)
     conflict = None
@@ -162,6 +170,23 @@ def protect_support_swaps(tasks, run_order_delay=5, execution_time=0.75, time_no
         order_conflict = _avoid_swap_with_orders(tasks, swap, (now, gap))
         conflict = conflict or order_conflict
         _defer_work_before_swap(tasks, swap, (now, execution_time))
+    if config.conf.experimental_dorm_logic:
+        cursor = now
+        for task in sorted(tasks, key=lambda t: t.time):
+            if task.type in (TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT):
+                continue
+            start = max(cursor, task.time)
+            minutes = (
+                sum(estimate_dorm_minutes(room) for room in task.plan)
+                if _is_dorm_only_task(task)
+                else _ordinary_task_minutes(task, execution_time)
+            )
+            deadline = _dorm_deadline(task, tasks, start, minutes, now)
+            if deadline is not None:
+                task.time = max(now, deadline.time) + timedelta(seconds=1)
+                logger.debug(f"宿舍任务时间不足，移至{deadline.type.display_value}之后")
+            else:
+                cursor = start + timedelta(minutes=minutes)
     tasks.sort(key=lambda t: t.time)
     return conflict
 
@@ -208,31 +233,76 @@ def _is_dorm_only_task(task):
     )
 
 
-def defer_dorm_before_run_order(task, tasks, room, time_now=None):
-    """每间宿舍开工前重查时间，保留剩余计划供跑单结束后续行。"""
+def _priority_tasks(tasks):
+    return sorted(
+        (
+            task
+            for task in tasks
+            if task.type == TaskTypes.RUN_ORDER
+            or config.conf.enable_mastery
+            and task.type == TaskTypes.SWAP_SUPPORT
+        ),
+        key=lambda task: task.time,
+    )
+
+
+def simplify_dorm_fill(task, tasks, time_now=None):
+    """临近关键任务时退回原始补空名单，避免新入住者竞争单回而扩大操作。"""
     if (
-        not room.startswith("dormitory_")
-        or not _is_dorm_only_task(task)
+        not config.conf.experimental_dorm_logic
+        or task.type != TaskTypes.FILL_DORM
+        or getattr(task, "simple_dorm_fill", False)
+        or getattr(task, "dorm_recovery_restore", [])
+    ):
+        return
+    now = time_now or datetime.now()
+    window_end = now + _support_swap_gap(5)
+    if not any(
+        t.time <= window_end and (task.time <= now or task.time <= t.time)
+        for t in _priority_tasks(tasks)
+    ):
+        return
+    original = getattr(task, "dorm_fill_plan", task.plan)
+    task.plan = {
+        room: names.copy() for room, names in original.items() if room in task.plan
+    }
+    task.simple_dorm_fill = True
+
+
+def _dorm_deadline(task, tasks, start, minutes, now):
+    if (
+        not _is_dorm_only_task(task)
         or not config.conf.experimental_dorm_logic
         or getattr(task, "strict_mood_limit", False)
-        or task.type == TaskTypes.FILL_DORM
-        or task.adjusted
+        or getattr(task, "dorm_recovery_restore", [])
     ):
+        return None
+    # 跑单时刻已扣除进站提前量，专精时刻已含换人缓冲；统一另留一分钟。
+    finish = start + timedelta(minutes=minutes + 1)
+    return next(
+        (
+            deadline
+            for deadline in _priority_tasks(tasks)
+            if (task.time <= now or task.time <= deadline.time)
+            and finish >= deadline.time
+        ),
+        None,
+    )
+
+
+def defer_dorm_before_priority_task(task, tasks, room, time_now=None):
+    """逐房复核剩余时间；不足时保留未完成计划，关键任务结束后续行。"""
+    if not room.startswith("dormitory_"):
         return False
     now = time_now or datetime.now()
-    order = min(
-        (t for t in tasks if t.type == TaskTypes.RUN_ORDER),
-        key=lambda t: t.time,
-        default=None,
-    )
-    if (
-        order is None
-        or now + timedelta(minutes=estimate_dorm_minutes(room)) <= order.time
-    ):
+    deadline = _dorm_deadline(task, tasks, now, estimate_dorm_minutes(room), now)
+    if deadline is None:
         return False
-    task.time = max(now, order.time) + timedelta(seconds=1)
+    task.time = max(now, deadline.time) + timedelta(seconds=1)
     tasks.sort(key=lambda t: t.time)
-    logger.info(f"{room} 操作可能挤占跑单准备时间，剩余宿舍安排移至跑单后")
+    logger.info(
+        f"{room} 操作可能挤占{deadline.type.display_value}时间，剩余宿舍安排延后"
+    )
     return True
 
 
@@ -245,6 +315,14 @@ def _defer_work_before_swap(tasks, swap, timing):
             or getattr(task, "strict_mood_limit", False)
             or task.time > swap.time
         ):
+            continue
+        if config.conf.experimental_dorm_logic and _is_dorm_only_task(task):
+            start = max(cursor, task.time)
+            minutes = sum(estimate_dorm_minutes(room) for room in task.plan)
+            if _dorm_deadline(task, [swap], start, minutes, now) is not None:
+                task.time = max(now, swap.time) + timedelta(seconds=1)
+            else:
+                cursor = start + timedelta(minutes=minutes)
             continue
         finish = max(cursor, task.time) + timedelta(
             minutes=_ordinary_task_minutes(task, execution_time)
@@ -1750,28 +1828,23 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                     rest.name
                 )
             if plan:
-                plan = prioritize_new_dorm_recovery(op_data, plan, reserved_slots)
-                label = "宿舍补位" if filling_vacancies else "不养闲人"
-                logger.debug(f"{label}任务：{plan}")
-                logger.info(f"添加{label}任务完成")
-                # 发现空床即补；即使跑单已到期，也不改订单时刻，仅让补位排在前面。
-                fill_time = min(
-                    [
-                        now,
-                        *(
-                            task.time
-                            for task in tasks
-                            if task.type == TaskTypes.RUN_ORDER
-                        ),
-                    ]
-                ) - timedelta(microseconds=1)
                 task = SchedulerTask(
-                    time=fill_time if filling_vacancies else now,
+                    time=now,
                     task_plan=plan,
                     task_type=TaskTypes.FILL_DORM
                     if filling_vacancies
                     else TaskTypes.NOT_SPECIFIC,
                 )
+                if filling_vacancies:
+                    task.dorm_fill_plan = copy.deepcopy(plan)
+                    simplify_dorm_fill(task, tasks, now)
+                if not getattr(task, "simple_dorm_fill", False):
+                    task.plan = prioritize_new_dorm_recovery(
+                        op_data, task.plan, reserved_slots
+                    )
+                label = "宿舍补位" if filling_vacancies else "不养闲人"
+                logger.debug(f"{label}任务：{task.plan}")
+                logger.info(f"添加{label}任务完成")
                 tasks.append(task)
         except Exception as ex:
             logger.exception(ex)

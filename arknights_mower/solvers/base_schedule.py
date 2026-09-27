@@ -105,13 +105,14 @@ from arknights_mower.utils.resting_priority import (
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
-    defer_dorm_before_run_order,
+    defer_dorm_before_priority_task,
     dorm_rebalance_signature,
     find_next_task,
     plan_metadata,
-    protect_support_swaps,
+    protect_priority_tasks,
     rebalance_plan_swap_dorms,
     scheduling,
+    simplify_dorm_fill,
     try_add_release_dorm,
     try_reorder,
     try_workshop_tasks,
@@ -382,7 +383,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self._sync_run_order_tasks()
             self._fill_empty_dorms()
             scheduling(self.tasks)
-            protect_support_swaps(self.tasks)
             self.task = self.tasks[0] if self.tasks else None
             if self.task is None:
                 break
@@ -724,7 +724,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def _next_workshop_task(self, first_task):
         # 每次交接重新检查队列，兼容新增/删除任务和专精换人保护。
         tasks = getattr(self, "tasks", [])
-        protect_support_swaps(tasks)
+        protect_priority_tasks(tasks)
         pending = sorted(
             (task for task in tasks if task is not first_task),
             key=lambda task: task.time,
@@ -940,7 +940,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.task is not None:
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
-            protect_support_swaps(self.tasks)
+            protect_priority_tasks(self.tasks)
             if self.task.time > datetime.now() or not any(
                 task is self.task for task in self.tasks
             ):
@@ -6197,6 +6197,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.op_data.experimental_dorm_logic:
             # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
             for index, name in enumerate(agents):
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    getattr(self.task, "simple_dorm_fill", False)
+                    and current is not None
+                    and current.name == name
+                ):
+                    continue
                 if (
                     name not in ("", "Current", "Free")
                     and self.op_data.is_dynamic_dorm_position(room, index, name)
@@ -6383,6 +6390,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         current_list = set()
         for idx, n in enumerate(agents):
+            if experimental_dorm_logic and getattr(
+                getattr(self, "task", None), "simple_dorm_fill", False
+            ):
+                current = self.op_data.get_current_operator(room, idx)
+                if current is not None and current.name == n:
+                    current_list.add(n)
+                    continue
             if n not in current_list:
                 current_list.add(n)
             elif n not in ("", "Free", "Current"):
@@ -7350,6 +7364,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if not room.startswith("dorm") or self.task.type == TaskTypes.FIAMMETTA:
             return False
         pending = getattr(self.task, "dorm_recovery_restore", [])
+        if (
+            self.op_data.experimental_dorm_logic
+            and getattr(self.task, "simple_dorm_fill", False)
+            and room not in pending
+        ):
+            return False
         reserved_names = {
             name
             for task in self.tasks
@@ -7833,6 +7853,31 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         logger.info("基建：排班")
+        if self.task.type == TaskTypes.FILL_DORM and getattr(
+            self.op_data, "experimental_dorm_logic", False
+        ):
+            simplify_dorm_fill(self.task, self.tasks)
+            if getattr(self.task, "simple_dorm_fill", False):
+                if self.task.plan and defer_dorm_before_priority_task(
+                    self.task, self.tasks, next(iter(self.task.plan))
+                ):
+                    return False
+                # 任务等待期间床位可能已变化；简化补位只碰现在仍为空的床。
+                vacancies = vacant_dorm_slots(self.op_data)
+                remaining = {}
+                for room, names in self.task.plan.items():
+                    for index, name in enumerate(names):
+                        if name == "Current" or (room, index) not in vacancies:
+                            continue
+                        op = self.op_data.operators.get(name)
+                        if op is not None and op.current_room:
+                            name = "Free"
+                        remaining.setdefault(room, ["Current"] * len(names))[index] = (
+                            name
+                        )
+                self.task.plan.clear()
+                self.task.plan.update(remaining)
+            plan = self.task.plan
         rooms = list(plan.keys())
         # 保存原班：#907 无人机加速失败时恢复，避免任务以空 plan 在下一轮被误消费
         original_plan = (
@@ -7855,7 +7900,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if (
                 experimental_dorm_logic
                 and not new_plan
-                and defer_dorm_before_run_order(self.task, self.tasks, room)
+                and defer_dorm_before_priority_task(self.task, self.tasks, room)
             ):
                 return False
             if not experimental_dorm_logic:

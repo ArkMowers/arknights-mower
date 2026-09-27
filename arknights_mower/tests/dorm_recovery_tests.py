@@ -105,6 +105,16 @@ def arrange(solver, agents=None):
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
 
 
+def test_simple_fill_skips_temporary_recovery_arrangement(solver):
+    solver.op_data.config.experimental_dorm_logic = True
+    solver.task.type = TaskTypes.FILL_DORM
+    solver.task.simple_dorm_fill = True
+    arrange(solver)
+    assert solver.confirms == [FINAL]
+    assert solver.physical == FINAL
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
+
+
 @pytest.mark.parametrize(
     "task_type",
     [TaskTypes.SHIFT_OFF, TaskTypes.SELF_CORRECTION, TaskTypes.NOT_SPECIFIC],

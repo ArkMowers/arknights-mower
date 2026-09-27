@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.tests import dorm_empty_release_tests
-from arknights_mower.utils import resting_priority, scheduler_task
+from arknights_mower.utils import config, resting_priority, scheduler_task
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -180,10 +180,10 @@ def test_daily_planner_refills_vacancy_even_without_low_mood_shift(
     assert selected[-1] == ("红" if cached_candidate else "伊芙利特")
 
 
-@pytest.mark.parametrize("order_delay", [-10, 30, 120])
+@pytest.mark.parametrize("order_delay", [-10, 30, 120, 300])
 @pytest.mark.parametrize("cached_mood", [None, 10, 21, 24])
 @pytest.mark.parametrize("free_room", [False, True])
-def test_daily_vacancy_fills_before_nearby_or_due_run_order(
+def test_daily_vacancy_yields_when_order_is_too_close(
     solver, monkeypatch, order_delay, cached_mood, free_room
 ):
     instance, selected = solver
@@ -211,9 +211,15 @@ def test_daily_vacancy_fills_before_nearby_or_due_run_order(
     }
     original_order_time = order.time
     scheduler_task.scheduling(instance.tasks)
-    assert instance.tasks[0] is fill
+    assert instance.tasks[0] is (fill if order_delay == 300 else order)
     assert order.time == original_order_time
-    assert not scheduler_task.defer_dorm_before_run_order(fill, instance.tasks, ROOM)
+    if order_delay != 300:
+        assert fill.time > order.time
+        # 关键任务结束后继续原补位，不需要重新生成名单。
+        instance.tasks.remove(order)
+    assert not scheduler_task.defer_dorm_before_priority_task(
+        fill, instance.tasks, ROOM
+    )
     instance.task = fill
     plan = selected.copy() + [fill.plan[ROOM][-1]]
     if cached_mood is None:
@@ -313,3 +319,62 @@ def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked, free_
         data.operators["空爆"]._current_room = ROOM
         data.operators["空爆"].current_index = 4
     assert not instance._fill_empty_dorms()
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT])
+@pytest.mark.parametrize("minutes,simple", [(5, True), (60, False)])
+def test_nearby_priority_task_skips_single_recovery_competition(
+    solver, monkeypatch, kind, minutes, simple
+):
+    instance, selected = solver
+    empty_bed(instance, selected)
+    data = instance.op_data
+    data.operators["红"].current_room = ""
+    data.operators["红"].mood = 10
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    priority = SchedulerTask(
+        time=datetime.now() + timedelta(minutes=minutes), task_type=kind
+    )
+    instance.tasks = [priority]
+    compete = MagicMock(wraps=scheduler_task.prioritize_new_dorm_recovery)
+    monkeypatch.setattr(scheduler_task, "prioritize_new_dorm_recovery", compete)
+    assert instance._fill_empty_dorms()
+    fill = next(t for t in instance.tasks if t.type == TaskTypes.FILL_DORM)
+    assert getattr(fill, "simple_dorm_fill", False) == simple
+    assert compete.call_count == (0 if simple else 1)
+    assert fill.dorm_fill_plan == {ROOM: ["Current"] * 4 + ["红"]}
+
+
+def test_simple_fill_keeps_full_resident_and_only_fills_empty_slot(solver):
+    from arknights_mower.utils.operators import Dormitory
+    from arknights_mower.utils.plan import Room
+
+    instance, selected = solver
+    data = instance.op_data
+    data.plan[ROOM][3] = Room("Free", "", [])
+    data.dorm.insert(0, Dormitory((ROOM, 3), "桃金娘"))
+    data.update_detail("空爆", 24, "meeting", 0, True)
+    selected.pop()
+    data.operators["红"].mood = 10
+    instance.task = SchedulerTask(
+        task_plan={ROOM: ["Current"] * 4 + ["红"]}, task_type=TaskTypes.FILL_DORM
+    )
+    instance.task.simple_dorm_fill = True
+    plan = selected.copy() + ["红"]
+    instance.choose_agent(plan, ROOM)
+    assert selected == plan
+    assert plan == ["杜林", "闪灵", "爱丽丝", "桃金娘", "红"]
+
+
+def test_simple_fill_drops_bed_that_became_occupied_while_waiting(solver):
+    instance, _ = solver
+    instance.task = SchedulerTask(
+        task_plan={ROOM: ["Current"] * 4 + ["红"]}, task_type=TaskTypes.FILL_DORM
+    )
+    instance.task.simple_dorm_fill = True
+    instance.tasks = [instance.task]
+    instance.agent_arrange_room = MagicMock()
+    instance.back = MagicMock()
+    instance.agent_arrange(instance.task.plan)
+    instance.agent_arrange_room.assert_not_called()
+    assert instance.task.plan == {}
