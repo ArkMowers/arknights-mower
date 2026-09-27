@@ -13,6 +13,8 @@ from arknights_mower.solvers.base_mixin import (  # noqa: E402
     AgentSelectionNotReady,
     BaseMixin,
 )
+from arknights_mower.utils import config  # noqa: E402
+from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("low_frame_rate")
@@ -120,6 +122,16 @@ def test_connection_overlay_breaks_consecutive_match(monkeypatch):
     assert solver.recog.update.call_count == 4
 
 
+def test_page_feedback_uses_first_changed_frame_not_stability_frame(monkeypatch):
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
+    solver = reader(monkeypatch, [OLD, OLD, TARGET, TARGET])
+    before = base_mixin.operator_list(OLD)
+    assert solver.wait_for_agent_page(before=before) == base_mixin.operator_list(TARGET)
+    assert config.operation_feedback_count == 1
+    assert config.operation_feedback_avg == 2
+
+
 def sort_reader(frames):
     solver = BaseMixin()
     solver.recog = SimpleNamespace(update=MagicMock())
@@ -173,3 +185,17 @@ def test_stop_during_sort_does_not_repeat_click():
     with pytest.raises(MowerExit):
         solver.switch_arrange_order("技能", "central")
     solver.tap.assert_called_once()
+
+
+def test_fast_sort_waits_for_changed_arrow_before_second_click(monkeypatch):
+    monkeypatch.setattr(config, "conf", Conf(performance_mode="high"))
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
+    down, up = ("技能", False), ("技能", True)
+    solver = sort_reader([down, down, down, up, up, down])
+    solver.switch_arrange_order("技能", "room_1_1")
+    assert solver.tap.call_count == 2
+    assert all(call.kwargs["interval"] == 0.1 for call in solver.tap.call_args_list)
+    assert solver.detect_arrange_order.call_count == 6
+    assert config.operation_feedback_count == 2
+    assert config.operation_feedback_avg == 1.75

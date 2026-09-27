@@ -548,7 +548,7 @@ if (return_home_when_idle.value) {
                 </n-flex>
               </n-radio-group>
               <help-text>
-                自动档根据截图耗时选择{{
+                自动档根据选人操作后的画面反馈选择{{
                   runtime_platform === 'android' ? '中、低' : '高、中、低'
                 }}档；Android 默认自动，其他平台默认高性能。
                 极高性能连续点击重排；高性能逐次确认重排点击；中性能等待稳定画面；低性能多确认一帧。时间参数独立设置，切换档位不会修改。当前自动判定：{{
@@ -764,7 +764,7 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
               Android
-              默认使用自动性能适配。性能档位会同时设置选人等待、跑单前置延时和葛朗台缓冲时间；手动修改会切换为自定义。
+              默认使用自动性能适配。自动档依据选人操作的画面反馈调节；各项时间参数可独立设置。
             </n-alert>
             <n-form-item>
               <template #label>

@@ -757,7 +757,10 @@ def load_config():
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
 
         performance = effective_performance_profile(
-            config.conf, config.screenshot_avg, config.screenshot_count
+            config.conf,
+            config.operation_feedback_avg,
+            config.operation_feedback_count,
+            config.operation_feedback_mode,
         )
         data["performance_effective_mode"] = performance.mode
         if manager is not None:

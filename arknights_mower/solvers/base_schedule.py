@@ -22,7 +22,11 @@ from arknights_mower.data import (
     stage_data_full,
     workshop_formula,
 )
-from arknights_mower.solvers.base_mixin import AgentSelectionNotReady, BaseMixin
+from arknights_mower.solvers.base_mixin import (
+    AgentSelectionNotReady,
+    BaseMixin,
+    fixed_selection_profile,
+)
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -6038,6 +6042,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 self.back_to_infrastructure()
 
+    @fixed_selection_profile
     def choose_train_ope(self, ope: str, choose_error=0):
         found = False
         profession = "ALL"
@@ -6414,6 +6419,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return []
 
     @timed_step("selection")
+    @fixed_selection_profile
     def choose_agent(
         self,
         agents: list[str],
@@ -6548,9 +6554,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 如果重新排序则复位到列表起点
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
                     self.switch_arrange_order(arrange_type[0], room, arrange_type[1])
-                    # 适配模式已确认排序变化及连续稳定画面，无需再等固定动画时间。
-                    if not self.low_frame_rate_mode:
-                        self.sleep(interval=0.5)
                     if not siege:
                         if single_visible_target and len(agent) == 1:
                             # 单个生产房目标已经可见时先选择，最终刷新排序并校验完整名单。

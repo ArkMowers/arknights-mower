@@ -52,9 +52,9 @@ def test_existing_screenshot_interval_remains_independent():
 
 @pytest.mark.parametrize(
     ("average", "expected"),
-    [(100, "medium"), (250, "medium"), (251, "medium"), (699, "medium"), (700, "low")],
+    [(0, "medium"), (0.34, "medium"), (0.35, "medium"), (1.19, "medium"), (1.2, "low")],
 )
-def test_auto_selects_profile_from_capture_cost(monkeypatch, average, expected):
+def test_auto_selects_profile_from_operation_feedback(monkeypatch, average, expected):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     conf = RIICPart(performance_mode="auto")
     assert performance.effective_performance_profile(conf, average, 8).mode == expected
@@ -79,19 +79,19 @@ def test_desktop_auto_can_still_select_high(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
     conf = RIICPart(performance_mode="auto")
-    assert performance.effective_performance_profile(conf, 100, 8).mode == "high"
+    assert performance.effective_performance_profile(conf, 0, 8).mode == "high"
 
 
 def test_ultra_is_explicit_only_and_keeps_user_timing(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
     conf = Conf(performance_mode="ultra", selection_poll_interval=0.8)
-    profile = performance.effective_performance_profile(conf, 900, 8)
+    profile = performance.effective_performance_profile(conf, 2, 8)
     assert profile.mode == "ultra"
     assert not profile.low_frame_rate
     assert profile.poll_interval == 0.8
     conf.performance_mode = "auto"
-    assert performance.effective_performance_profile(conf, 900, 8).mode == "low"
+    assert performance.effective_performance_profile(conf, 2, 8).mode == "low"
 
 
 def test_explicit_auto_ignores_legacy_boolean_override(monkeypatch):
@@ -100,19 +100,69 @@ def test_explicit_auto_ignores_legacy_boolean_override(monkeypatch):
     monkeypatch.setattr(
         config, "conf", RIICPart(performance_mode="auto", low_frame_rate_mode=True)
     )
-    monkeypatch.setattr(config, "screenshot_avg", 100)
-    monkeypatch.setattr(config, "screenshot_count", 8)
+    monkeypatch.setattr(config, "operation_feedback_avg", 0)
+    monkeypatch.setattr(config, "operation_feedback_count", 8)
+    monkeypatch.setattr(config, "operation_feedback_mode", None)
     assert BaseMixin().performance_profile.mode == "high"
-    monkeypatch.setattr(config, "screenshot_avg", 800)
+    monkeypatch.setattr(config, "operation_feedback_avg", 2)
+    assert BaseMixin().performance_profile.mode == "medium"
     assert BaseMixin().performance_profile.mode == "low"
 
 
-def test_auto_does_not_reenter_warmup_after_100_screenshots(monkeypatch):
+def test_auto_hysteresis_and_warmup(monkeypatch):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    choose = performance.auto_performance_mode
+    assert choose(2, 3, "high") == "high"
+    assert choose(0.49, 4, "high") == "high"
+    assert choose(0.5, 4, "high") == "medium"
+    assert choose(1.39, 4, "medium") == "medium"
+    assert choose(1.4, 4, "medium") == "low"
+    assert choose(0.9, 4, "low") == "low"
+    assert choose(0.89, 4, "low") == "medium"
+
+
+def test_selection_profile_snapshot_does_not_switch_mid_operation(monkeypatch):
+    from arknights_mower.solvers.base_mixin import fixed_selection_profile
+
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    monkeypatch.setattr(config, "conf", Conf(performance_mode="auto"))
+    monkeypatch.setattr(config, "operation_feedback_avg", 0)
+    monkeypatch.setattr(config, "operation_feedback_count", 4)
+    monkeypatch.setattr(config, "operation_feedback_mode", None)
+    solver = BaseMixin()
+
+    @fixed_selection_profile
+    def selection(self):
+        assert self.performance_profile.mode == "high"
+        self.record_operation_feedback(3)
+        assert self.performance_profile.mode == "high"
+
+    selection(solver)
+    assert not hasattr(solver, "_selection_profile_snapshot")
+    assert solver.performance_profile.mode == "medium"
+
+
+def test_feedback_ewma_counts_operations_not_screenshots(monkeypatch):
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
+    solver = BaseMixin()
+    solver.record_operation_feedback(0)
+    solver.record_operation_feedback(4)
+    assert config.operation_feedback_avg == 0.75
+    assert config.operation_feedback_count == 2
+
+
+def test_capture_metrics_do_not_change_auto_mode(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
     monkeypatch.setattr(config, "conf", Conf(performance_mode="auto"))
     monkeypatch.setattr(config, "screenshot_avg", 1000)
     monkeypatch.setattr(config, "screenshot_count", 99)
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
+    monkeypatch.setattr(config, "operation_feedback_mode", None)
     monkeypatch.setattr(
         config, "screenshot_time", datetime.now() - timedelta(seconds=10)
     )
@@ -128,13 +178,13 @@ def test_auto_does_not_reenter_warmup_after_100_screenshots(monkeypatch):
     assert config.screenshot_count == 100
     device.screencap()
     assert config.screenshot_count == 101
-    assert BaseMixin().performance_profile.mode == "low"
+    assert BaseMixin().performance_profile.mode == "high"
 
 
 def test_android_auto_uses_medium_during_warmup(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     conf = RIICPart(performance_mode="auto")
-    profile = performance.effective_performance_profile(conf, 100, 7)
+    profile = performance.effective_performance_profile(conf, 0, 3)
     assert profile.mode == "medium"
     assert profile.run_order_delay == 5
 
@@ -203,7 +253,7 @@ def test_switching_mode_does_not_change_numeric_values():
     )
     for mode in ("medium", "low", "auto", "high"):
         conf.performance_mode = mode
-        profile = performance.effective_performance_profile(conf, 800, 8)
+        profile = performance.effective_performance_profile(conf, 2, 8)
         assert (profile.screenshot_interval, profile.poll_interval) == (650, 1.25)
         assert (profile.transition_timeout, profile.run_order_delay) == (9, 12)
         assert profile.grandet_buffer_time == 40

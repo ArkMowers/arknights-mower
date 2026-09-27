@@ -96,13 +96,15 @@ def test_same_page_batch_has_no_added_waits_when_disabled(monkeypatch, enabled):
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_sort_does_not_wait_for_second_frame_when_disabled(monkeypatch, enabled):
+def test_sort_waits_only_for_required_feedback(monkeypatch, enabled):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     desired = ("技能", False)
-    frames = [("心情", True), desired, desired] if enabled else [desired]
+    frames = (
+        [("心情", True), desired, desired] if enabled else [("心情", True), desired]
+    )
     solver = sort_reader(frames)
     solver.switch_arrange_order("技能", "room_1_1")
-    solver.tap.assert_called_once_with((1210, 60), interval=0.5)
+    solver.tap.assert_called_once_with((1210, 60), interval=0.5 if enabled else 0.1)
     assert solver.sleep.call_count == (1 if enabled else 0)
 
 

@@ -45,7 +45,36 @@ def default_performance_profile() -> PerformanceProfile:
     return PERFORMANCE_PRESETS["medium" if is_android_runtime() else "high"]
 
 
-def effective_performance_profile(conf, screenshot_avg=None, screenshot_count=0):
+def auto_performance_mode(feedback_avg=None, feedback_count=0, previous_mode=None):
+    """Choose from acknowledged input lag, measured in extra observation frames.
+
+    A frame can be delayed by the user's screenshot interval, so raw capture
+    duration must not decide the selection strategy. Hysteresis prevents a
+    single borderline acknowledgement from switching modes repeatedly.
+    """
+    android = is_android_runtime()
+    if feedback_avg is None or feedback_count < 4:
+        return "medium" if android else "high"
+    if previous_mode == "high" and not android:
+        return "high" if feedback_avg < 0.5 else "medium"
+    if previous_mode == "low":
+        return "low" if feedback_avg >= 0.9 else "medium"
+    if previous_mode == "medium":
+        if feedback_avg >= 1.4:
+            return "low"
+        if feedback_avg <= 0.2 and not android:
+            return "high"
+        return "medium"
+    if feedback_avg >= 1.2:
+        return "low"
+    if feedback_avg >= 0.35 or android:
+        return "medium"
+    return "high"
+
+
+def effective_performance_profile(
+    conf, feedback_avg=None, feedback_count=0, previous_mode=None
+):
     """Choose the selection strategy while keeping user timing values intact."""
     mode = conf.performance_mode
     if mode != "auto":
@@ -53,15 +82,7 @@ def effective_performance_profile(conf, screenshot_avg=None, screenshot_count=0)
             "medium" if is_android_runtime() and mode in ("ultra", "high") else mode
         )
     else:
-        # The capture/decoding EWMA avoids switching on a single slow frame.
-        if screenshot_avg is None or screenshot_count < 8:
-            selected = "medium" if is_android_runtime() else "high"
-        elif screenshot_avg <= 250 and not is_android_runtime():
-            selected = "high"
-        elif screenshot_avg < 700:
-            selected = "medium"
-        else:
-            selected = "low"
+        selected = auto_performance_mode(feedback_avg, feedback_count, previous_mode)
     profile = PERFORMANCE_PRESETS[selected]
     defaults = default_performance_profile()
     grandet = getattr(conf, "run_order_grandet_mode", None)
