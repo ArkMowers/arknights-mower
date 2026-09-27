@@ -1929,6 +1929,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         if self.op_data.has_dorm_groups():
             correct_group_dorms(self.op_data, fix_plan, _is_mastery_busy)
+        if read_rooms and self.op_data.experimental_dorm_logic:
+            from arknights_mower.utils.resting_correction import (
+                reconsider_low_mood_replacements,
+            )
+
+            reconsider_low_mood_replacements(self.op_data, fix_plan, _is_mastery_busy)
         if return_plan:
             return fix_plan
         if len(fix_plan.keys()) > 0:
