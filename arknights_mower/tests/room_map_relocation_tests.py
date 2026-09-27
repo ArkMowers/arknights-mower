@@ -5,6 +5,7 @@ from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import cv2
 import numpy as np
 import pytest
 
@@ -14,9 +15,45 @@ from arknights_mower.solvers import base_mixin  # noqa: E402
 from arknights_mower.solvers.base_mixin import BaseMixin  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
+from arknights_mower.utils.image import loadres  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
 ROOM = "room_1_1"
+
+
+def test_room_name_uses_header_icon_instead_of_warm_room_background():
+    hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    # 加工站暖色背景与制造站图标色相相近；只有图标是加工站黄色。
+    hsv[18:95, 640:957] = (25, 230, 220)
+    hsv[25:84, 580:626] = (32, 230, 220)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB))
+    assert solver.detect_room() == "factory"
+
+
+def test_room_icon_right_edge_is_inside_color_sample():
+    hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    # 图标彩色右缘超过旧的 x=636；旧取色范围只含一列，达不到门槛。
+    hsv[25:85, 635:641] = (32, 230, 220)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB))
+    assert solver.detect_room() == "factory"
+
+
+def test_white_room_template_needs_positive_match():
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=img)
+    assert solver.detect_room() == ""
+    img[18:95, 568:742] = loadres("room/dormitory")
+    img[42:72, 742:763] = loadres("room/4")
+    assert solver.detect_room() == "dormitory_4"
+
+
+def test_captcha_solver_waits_when_false_positive_scene_has_no_white_panel():
+    solver = BaseSolver.__new__(BaseSolver)
+    solver.recog = SimpleNamespace(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    assert solver.solve_captcha() is None
 
 
 def rectangle(x1, y1, x2, y2):

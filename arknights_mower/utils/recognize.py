@@ -384,7 +384,9 @@ class Recognizer:
             self.scene = Scene.LOGIN_BILIBILI
         elif self.find("login_bilibili_privacy"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        elif self.find("login_captcha"):
+        # 启动画面的 Logo 偶尔误命中验证码特征；滑动求解器依赖
+        # 纯白验证码面板定位，缺少该面板时不应进入验证码场景。
+        elif np.any(self.gray == 255) and self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
@@ -950,8 +952,10 @@ class Recognizer:
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
             "upgrade": (997, 501),
-            "op_select_1": (95, 474),
-            "op_select_2": (95, 474),
+            # 未选中干员时详情栏收起，技能页签比选中态上移约 4px。
+            # 留小范围容差，避免实际仍在选人页却被判未知并反复退出。
+            "op_select_1": ((90, 464), (470, 555)),
+            "op_select_2": ((90, 464), (470, 555)),
         }
 
         if not force_feature_match and res in template_matching:

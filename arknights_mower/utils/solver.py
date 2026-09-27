@@ -416,6 +416,10 @@ class BaseSolver:
     def solve_captcha(self, refresh=False):
         th = thres2(self.recog.gray, 254)
         pos = np.nonzero(th)
+        if pos[0].size == 0:
+            # 启动页的图案偶尔误命中验证码特征；此时没有白色验证码面板。
+            logger.info("验证码画面已消失，等待场景重新识别")
+            return
         offset_x = pos[1].min()
         offset_y = pos[0].min()
         img_scope = ((offset_x, offset_y), (pos[1].max(), pos[0].max()))

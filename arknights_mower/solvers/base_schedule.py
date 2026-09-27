@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Literal, Optional
 
 import cv2
+import numpy as np
 import requests
 from packaging.version import InvalidVersion, Version
 
@@ -6055,6 +6056,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 max_agent_count=1,
                 train=True,
                 observation=observation,
+                respect_train_selection=ope != "Free",
             )
             observation = None
             if sel and (sel == [ope] or ope == "Free"):
@@ -6768,23 +6770,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
-            click_order = []
-            for a in agents:
-                if a in exists:
-                    click_order.append(exists.index(a))
-                else:
-                    raise Exception("检测到干员选择错误，重新选择")
-            if click_order:
-                # 名字前缀相同不能证明卡片已选中：漏点的目标可能恰好排在
-                # 已选干员之后。保留多人清空重选，再刷新排序并校验。
-                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                for p_idx in click_order:
-                    x = self.recog.w * position[p_idx][0]
-                    y = self.recog.h * position[p_idx][1]
-                    self.tap((x, y), interval=0.2 if self.low_frame_rate_mode else 0)
-            else:
-                # 空目标没有需要重排和校验的卡片。
+            if exists == agents and isinstance(self.recog.img, np.ndarray):
+                # wait_for_arranged_agents 已在真实截图上逐卡确认蓝框和顺序；
+                # 此时清空再重选只会增加点击及一次排序刷新。
                 verified = True
+            else:
+                click_order = []
+                for a in agents:
+                    if a in exists:
+                        click_order.append(exists.index(a))
+                    else:
+                        raise Exception("检测到干员选择错误，重新选择")
+                if click_order:
+                    # 顺序确实不同，或没有真实画面的蓝框证据时才清空重选。
+                    self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                    for p_idx in click_order:
+                        x = self.recog.w * position[p_idx][0]
+                        y = self.recog.h * position[p_idx][1]
+                        self.tap(
+                            (x, y),
+                            interval=0.2 if self.low_frame_rate_mode else 0,
+                        )
+                else:
+                    # 空目标没有需要重排和校验的卡片。
+                    verified = True
         if not verified:
             logger.debug("验证干员选择..")
             self.switch_arrange_order("技能", room)
@@ -7357,7 +7366,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     break
                 if attempt == 4:
                     raise Exception("未成功进入干员选择界面")
-                self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
+                # 首次点按可能被线索弹窗或过渡帧吞掉；ctap 的 10 秒去重
+                # 会使后续循环完全没有重试操作。
+                self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             self.choose_agent(
                 retained.copy(), room, fast_mode, preserve_dorm_occupants=True
             )
@@ -7646,7 +7657,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         while self.find("confirm_blue") is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
-                            self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
+                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
                         if mood_probe:
                             self.choose_agent(
