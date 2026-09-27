@@ -1040,7 +1040,7 @@ function movePlanForward() {
   box-sizing: border-box;
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 10;
   width: calc(100% - 16px);
   max-width: 1180px;
   min-height: 52px;
