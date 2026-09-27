@@ -671,6 +671,8 @@ function set_facility(e) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  // Keep avatar and facility label z-index values inside the editor while scrolling.
+  isolation: isolate;
 }
 
 .group {
