@@ -1,6 +1,9 @@
 <script setup>
+defineOptions({ name: 'MowerPlanPage' })
+
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { useMowerStore } from '@/stores/mower'
 import PlanAdvancedSettings from '@/components/PlanAdvancedSettings.vue'
 import { storeToRefs } from 'pinia'
 import { swap } from '@/utils/common'
@@ -11,6 +14,8 @@ const config_store = useConfigStore()
 const { free_blacklist, theme, experimental_dorm_logic } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
+const mower_store = useMowerStore()
+const { running } = storeToRefs(mower_store)
 const import_saves = createSaveCoordinator(config_store, plan_store)
 const {
   ling_xi,
@@ -35,22 +40,12 @@ const {
 const { load_plan, fill_empty } = plan_store
 
 import { computed, inject, onMounted, onUnmounted, provide, ref, watch, watchEffect } from 'vue'
-import { usePlanEditLock } from '@/utils/plan_edit_lock'
 const axios = inject('axios')
 
 const facility = ref('')
 provide('facility', facility)
-const edit_lock = usePlanEditLock()
-const edit_locked = edit_lock.locked
+const edit_locked = import_saves.paused
 provide('planEditLocked', edit_locked)
-
-const current_plan = computed(() => {
-  if (sub_plan.value == 'main') {
-    return plan.value
-  } else {
-    return backup_plans.value[sub_plan.value].plan
-  }
-})
 
 import { useDialog, useMessage, NAlert } from 'naive-ui'
 
@@ -67,12 +62,30 @@ const message = useMessage()
 const dialog = useDialog()
 
 function requireEditing() {
-  if (!edit_lock.isEditable()) {
-    message.warning('排班已锁定，请先解锁编辑')
+  if (edit_locked.value) {
+    message.warning('排班操作正在进行，请稍后再编辑')
     return false
   }
-  edit_lock.noteActivity()
   return true
+}
+
+const restoring_running_plan = ref(false)
+
+async function restoreRunningPlan() {
+  if (!running.value || restoring_running_plan.value || edit_locked.value) return
+  restoring_running_plan.value = true
+  try {
+    await import_saves.pauseAndDrain()
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/plan/restore-running`)
+    sub_plan.value = 'main'
+    await load_plan()
+    message.success('已还原为当前运行排班表')
+  } catch (error) {
+    message.error(error.response?.data?.error || error.message || '还原运行排班失败')
+  } finally {
+    import_saves.resume()
+    restoring_running_plan.value = false
+  }
 }
 
 async function beforeImport() {
@@ -88,6 +101,15 @@ async function beforeImport() {
 
 // Select menus teleport to body; consider the toolbar controls and the popup "inside".
 const sub_plan_dropdown_open = ref(false)
+let running_status_timer
+
+async function refreshRunningStatus() {
+  try {
+    await mower_store.get_running()
+  } catch {
+    running.value = false
+  }
+}
 
 function onSubPlanShowUpdate(show) {
   // Naive UI closes single-select before emitting its value. Ignore that close.
@@ -114,14 +136,15 @@ function onSubPlanKeydown(event) {
 }
 
 onMounted(() => {
-  edit_lock.start()
+  void refreshRunningStatus()
+  running_status_timer = setInterval(refreshRunningStatus, 5000)
   document.addEventListener('pointerdown', onSubPlanOutsidePointer, true)
   document.addEventListener('keydown', onSubPlanKeydown, true)
 })
 onUnmounted(() => {
+  clearInterval(running_status_timer)
   document.removeEventListener('pointerdown', onSubPlanOutsidePointer, true)
   document.removeEventListener('keydown', onSubPlanKeydown, true)
-  edit_lock.dispose()
 })
 
 import { sleep } from '@/utils/sleep'
@@ -231,7 +254,7 @@ function delete_sub_plan() {
 }
 
 function update_dorm_order_override(value) {
-  if (!edit_lock.isEditable()) return
+  if (edit_locked.value) return
   if (sub_plan.value !== 'main') {
     current_conf.value.dorm_order_override = value.length > 0
   }
@@ -428,8 +451,7 @@ import AddTaskRound from '@vicons/material/AddTaskRound'
 import RefreshRound from '@vicons/material/RefreshRound'
 import PlusRound from '@vicons/material/PlusRound'
 import Pencil from '@vicons/tabler/Pencil'
-import LockClosedOutline from '@vicons/ionicons5/LockClosedOutline'
-import LockOpenOutline from '@vicons/ionicons5/LockOpenOutline'
+import UndoRound from '@vicons/material/UndoRound'
 
 async function import_plan({ event }) {
   try {
@@ -506,28 +528,22 @@ function movePlanForward() {
   <rename-dialog />
   <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
     <div class="plan-bar">
-      <n-button-group class="plan-lock-group">
+      <n-button-group class="plan-restore-group">
         <n-tooltip trigger="hover" placement="top">
           <template #trigger>
             <n-button
-              class="plan-lock-toggle"
-              :type="edit_locked ? 'warning' : 'default'"
-              :secondary="edit_locked"
-              :aria-label="
-                edit_locked ? '排班已锁定，点击解锁编辑' : '排班可编辑，点击锁定防止误触'
-              "
-              :aria-pressed="edit_locked"
-              @click="edit_locked ? edit_lock.unlock() : edit_lock.lock()"
+              class="plan-restore-button"
+              aria-label="还原为当前运行排班表"
+              :disabled="!running || edit_locked"
+              :loading="restoring_running_plan"
+              @click="restoreRunningPlan"
             >
               <template #icon>
-                <n-icon>
-                  <lock-closed-outline v-if="edit_locked" />
-                  <lock-open-outline v-else />
-                </n-icon>
+                <n-icon><undo-round /></n-icon>
               </template>
             </n-button>
           </template>
-          {{ edit_locked ? '已锁定排班 · 点击解锁编辑' : '当前可编辑 · 点击锁定以防误触' }}
+          {{ running ? '还原为当前运行排班表' : 'Mower 运行时可还原排班表' }}
         </n-tooltip>
       </n-button-group>
       <n-button-group class="mower-sub-plan-controls plan-sort-controls">
@@ -1011,12 +1027,12 @@ function movePlanForward() {
   min-width: 980px;
 }
 
-.plan-lock-toggle {
+.plan-restore-button {
   min-width: 34px;
   padding: 0 6px;
 }
 
-.plan-lock-group {
+.plan-restore-group {
   flex-shrink: 0;
 }
 

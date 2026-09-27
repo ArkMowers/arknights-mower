@@ -165,7 +165,7 @@ def _validate_expression_resources(expression: str) -> None:
                 raise ValueError("幂运算结果过大")
 
 
-def build_global_plan():
+def build_global_plan(*, include_source=False):
     """构建完整的 global_plan，包括 Plan 对象，用于运行时"""
     from ..utils import config
     from ..utils.logic_expression import get_logic_exp
@@ -173,26 +173,28 @@ def build_global_plan():
 
     plan1 = {}
     default_products = {}
-    plan = config.plan.model_dump(exclude_none=True)
+    source_model = config.plan.model_copy(deep=True)
+    plan = source_model.model_dump(exclude_none=True)
+    source_plan = copy.deepcopy(plan) if include_source else None
     conf = config.conf
     plan_config = PlanConfig(
-        rest_in_full=config.plan.conf.rest_in_full,
-        exhaust_require=config.plan.conf.exhaust_require,
-        resting_priority=config.plan.conf.resting_priority,
-        resting_priority_replacement=config.plan.conf.resting_priority_replacement,
-        free_room_exclusions=config.plan.conf.free_room_exclusions,
-        resting_standby=config.plan.conf.resting_standby,
-        ling_xi=config.plan.conf.ling_xi,
+        rest_in_full=source_model.conf.rest_in_full,
+        exhaust_require=source_model.conf.exhaust_require,
+        resting_priority=source_model.conf.resting_priority,
+        resting_priority_replacement=source_model.conf.resting_priority_replacement,
+        free_room_exclusions=source_model.conf.free_room_exclusions,
+        resting_standby=source_model.conf.resting_standby,
+        ling_xi=source_model.conf.ling_xi,
         mood_limits=plan["conf"].get("mood_limits"),
         operator_mood_limits=plan["conf"].get("operator_mood_limits", {}),
-        workaholic=config.plan.conf.workaholic,
+        workaholic=source_model.conf.workaholic,
         free_blacklist=conf.free_blacklist,
-        ope_resting_priority=config.plan.conf.ope_resting_priority,
-        dorm_order=config.plan.conf.dorm_order,
+        ope_resting_priority=source_model.conf.ope_resting_priority,
+        dorm_order=source_model.conf.dorm_order,
         experimental_dorm_logic=conf.experimental_dorm_logic,
         resting_threshold=conf.resting_threshold,
-        refresh_trading_config=config.plan.conf.refresh_trading,
-        refresh_drained=config.plan.conf.refresh_drained,
+        refresh_trading_config=source_model.conf.refresh_trading,
+        refresh_drained=source_model.conf.refresh_drained,
         free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():
@@ -270,7 +272,7 @@ def build_global_plan():
         )
     plan["backup_plans"] = backup_plans
 
-    return plan
+    return (plan, source_plan) if include_source else plan
 
 
 class Operators:
