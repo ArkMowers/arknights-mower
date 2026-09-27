@@ -94,13 +94,16 @@ function set_custom_parameter(target, value) {
     run_order_delay
   }
   parameters[target].value = value
-  low_frame_rate_mode.value = true
   performance_mode.value = 'custom'
 }
 
 function set_custom_buffer(value) {
   run_order_grandet_mode.value.buffer_time = value
-  low_frame_rate_mode.value = true
+  performance_mode.value = 'custom'
+}
+
+function set_custom_selection_strategy(value) {
+  low_frame_rate_mode.value = value === 'stable'
   performance_mode.value = 'custom'
 }
 
@@ -581,6 +584,20 @@ if (return_home_when_idle.value) {
                 切换档位会同步修改截图最短间隔、跑单前置延时和葛朗台缓冲时间。当前自动判定：{{
                   performance_effective_label
                 }}。修改任一性能参数会切换为自定义。
+              </help-text>
+            </n-form-item>
+            <n-form-item v-if="performance_mode === 'custom'" label="选人点击策略">
+              <n-radio-group
+                :value="low_frame_rate_mode ? 'stable' : 'fast'"
+                @update:value="set_custom_selection_strategy"
+              >
+                <n-flex>
+                  <n-radio value="fast">快速连续点击</n-radio>
+                  <n-radio value="stable">稳定帧确认</n-radio>
+                </n-flex>
+              </n-radio-group>
+              <help-text>
+                快速连续点击会在重排时清空后零间隔逐张点击；稳定帧确认会在蓝框和顺序均正确时跳过重排。
               </help-text>
             </n-form-item>
             <n-form-item label="截图最短间隔">
