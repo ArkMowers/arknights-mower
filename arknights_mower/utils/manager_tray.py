@@ -12,13 +12,19 @@ def manager_menu(commands):
     def action(*message):
         return lambda: commands.put(message)
 
+    def port_order(record):
+        try:
+            return int(record["port"])
+        except (KeyError, TypeError, ValueError):
+            return float("inf")
+
     def items():
         yield MenuItem("打开多开管理器", action("show"), default=True)
         yield Menu.SEPARATOR
         records = runtime.managed_instances()
         if not records:
             yield MenuItem("暂无运行中的实例", None, enabled=False)
-        for record in records:
+        for record in sorted(records, key=port_order):
             name = record.get("name") or "未命名实例"
             port = record.get("port") or "启动中"
             yield MenuItem(

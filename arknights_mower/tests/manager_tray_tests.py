@@ -80,6 +80,28 @@ class MenuItem:
 
 
 class ManagerTrayMenuTests(unittest.TestCase):
+    def test_instances_are_listed_by_numeric_port_with_starting_instances_last(self):
+        records = [
+            {"id": "high", "name": "高端口", "port": 58120},
+            {"id": "starting", "name": "启动中", "port": None},
+            {"id": "low", "name": "低端口", "port": 9000},
+            {"id": "middle", "name": "中端口", "port": 10000},
+        ]
+        with (
+            mock.patch.dict(
+                "sys.modules",
+                {"pystray": SimpleNamespace(Menu=Menu, MenuItem=MenuItem)},
+            ),
+            mock.patch.object(runtime, "managed_instances", return_value=records),
+        ):
+            menu = manager_menu(Queue())
+            labels = [item.text for item in menu if isinstance(item, MenuItem)]
+
+        self.assertEqual(
+            labels[1:5],
+            ["低端口 @9000", "中端口 @10000", "高端口 @58120", "启动中 @启动中"],
+        )
+
     def test_menu_refreshes_instances_and_dispatches_browser_and_separate_closing(self):
         commands = Queue()
         records = [{"id": "one", "name": "测试实例", "port": 58100}]
