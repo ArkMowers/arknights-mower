@@ -52,6 +52,33 @@ class AgentSelectionNotReady(RuntimeError):
     """当前页面不足以继续选人；交由排班原有重试恢复，不结束任务线程。"""
 
 
+def train_card_selected(img, scope):
+    """读取训练室选人卡片四周的青蓝色选中边框。
+
+    scope 是 operator_list_train 返回的姓名框；不取卡面/姓名本身，避免干员立绘
+    或技能图标的蓝色干扰。边框不完整时返回 None，让调用方停下重读而非盲点。
+    """
+    if not isinstance(img, np.ndarray) or img.ndim != 3 or scope is None:
+        return None
+    (name_left, name_top), (name_right, name_bottom) = scope
+    left, right = name_left - 19, name_right + 10
+    top, bottom = name_top - 366, name_bottom + 20
+    if left < 0 or top < 0 or right > img.shape[1] or bottom > img.shape[0]:
+        return None
+    frame = cv2.cvtColor(img[top:bottom, left:right], cv2.COLOR_RGB2HSV)
+    blue = cv2.inRange(frame, (96, 140, 160), (105, 255, 255)) > 0
+    # 略过角落；青蓝描边应同时沿上下两条长边出现。
+    upper = blue[:8, 8:-8].mean()
+    lower = blue[-8:, 8:-8].mean()
+    side = max(blue[8:-8, :8].mean(), blue[8:-8, -8:].mean())
+    if upper > 0.45 and lower > 0.45 and side > 0.45:
+        return True
+    # 上下两张卡只隔约 3px，邻卡描边可能擦到一条边的少量像素。
+    if upper < 0.20 and lower < 0.20:
+        return False
+    return None
+
+
 @dataclass
 class AgentPageObservation:
     """相邻操作间的一次性稳定观测，消费后仍须读取新画面复核。"""
@@ -444,10 +471,16 @@ class BaseMixin:
         full_scan=True,
         train=False,
         observation=None,
+        respect_train_selection=False,
     ):
         if not self.low_frame_rate_mode:
             return self._scan_agent_fast(
-                agent, error_count, max_agent_count, full_scan, train
+                agent,
+                error_count,
+                max_agent_count,
+                full_scan,
+                train,
+                respect_train_selection,
             )
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
         ret = self.wait_for_agent_page(
@@ -459,7 +492,17 @@ class BaseMixin:
             if target is None:
                 return select_name, ret
             name, scope = target
-            self.tap(scope, interval=0.2)
+            selected = (
+                train_card_selected(self.recog.img, scope)
+                if respect_train_selection and train
+                else False
+            )
+            if selected is None:
+                raise AgentSelectionNotReady("训练干员选中边框不清晰，返回房间重试")
+            if not selected:
+                self.tap(scope, interval=0.2)
+            else:
+                logger.debug(f"训练干员 {name} 已有蓝框，跳过再次点击")
             select_name.append(name)
             agent.remove(name)
             if not agent or (
@@ -469,7 +512,15 @@ class BaseMixin:
             # 点击可能改变卡片位置；下一名必须从新页面重新定位。
             ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
 
-    def _scan_agent_fast(self, agent, error_count, max_agent_count, full_scan, train):
+    def _scan_agent_fast(
+        self,
+        agent,
+        error_count,
+        max_agent_count,
+        full_scan,
+        train,
+        respect_train_selection=False,
+    ):
         """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
         try:
             self.recog.update()
@@ -486,12 +537,27 @@ class BaseMixin:
             if error_count >= 2:
                 raise
             return self._scan_agent_fast(
-                agent, error_count + 1, max_agent_count, False, train
+                agent,
+                error_count + 1,
+                max_agent_count,
+                False,
+                train,
+                respect_train_selection,
             )
         selected = []
         for name, scope in ret:
             if name and name in agent:
-                self.tap(scope, interval=0)
+                is_selected = (
+                    train_card_selected(self.recog.img, scope)
+                    if respect_train_selection and train
+                    else False
+                )
+                if is_selected is None:
+                    raise AgentSelectionNotReady("训练干员选中边框不清晰，返回房间重试")
+                if not is_selected:
+                    self.tap(scope, interval=0)
+                else:
+                    logger.debug(f"训练干员 {name} 已有蓝框，跳过再次点击")
                 selected.append(name)
                 agent.remove(name)
                 if max_agent_count != -1 and len(selected) >= max_agent_count:
@@ -545,7 +611,19 @@ class BaseMixin:
                 stable = False
                 actual = []
                 continue
-            selected = ret[: len(agent)]
+            if train:
+                # 训练室名单排序会随筛选变化，首张卡不等于已选卡。
+                states = [
+                    (name, scope, train_card_selected(self.recog.img, scope))
+                    for name, scope in ret
+                ]
+                if any(state is None for _, _, state in states):
+                    previous = None
+                    stable = False
+                    continue
+                selected = [(name, scope) for name, scope, state in states if state]
+            else:
+                selected = ret[: len(agent)]
             actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
             stable = len(actual) == len(agent) and self.same_agent_page(
@@ -736,13 +814,19 @@ class BaseMixin:
             "加工站": 32,
         }
         img = cropimg(self.recog.img, ((568, 18), (957, 95)))
-        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        # 只读取标题栏左侧的设施图标。整条标题栏会透出房间背景，
+        # 加工站的暖色装饰曾被当成制造站的黄色。
+        hsv = cv2.cvtColor(img[2:72, 2:68], cv2.COLOR_RGB2HSV)
         colored_room = None
-        for room, color in color_map.items():
-            mask = cv2.inRange(hsv, (color - 1, 0, 0), (color + 2, 255, 255))
-            if cv2.countNonZero(mask) > 1000:
-                colored_room = room
-                break
+        color_scores = {
+            room: cv2.countNonZero(
+                cv2.inRange(hsv, (color - 1, 80, 90), (color + 2, 255, 255))
+            )
+            for room, color in color_map.items()
+        }
+        best_room = max(color_scores, key=color_scores.get)
+        if color_scores[best_room] > 150:
+            colored_room = best_room
         if colored_room in ["制造站", "贸易站", "发电站"]:
             digit_1 = cropimg(img, ((211, 24), (232, 54)))
             digit_2 = cropimg(img, ((253, 24), (274, 54)))
@@ -765,6 +849,8 @@ class BaseMixin:
             result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             score.append(max_val)
+        if max(score) < 0.78:
+            return ""
         room = white_room[score.index(max(score))]
         if room == "central":
             logger.debug("控制中枢")

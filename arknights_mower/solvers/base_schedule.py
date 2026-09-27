@@ -6055,6 +6055,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 max_agent_count=1,
                 train=True,
                 observation=observation,
+                respect_train_selection=ope != "Free",
             )
             observation = None
             if sel and (sel == [ope] or ope == "Free"):
@@ -7357,7 +7358,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     break
                 if attempt == 4:
                     raise Exception("未成功进入干员选择界面")
-                self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
+                # 首次点按可能被线索弹窗或过渡帧吞掉；ctap 的 10 秒去重
+                # 会使后续循环完全没有重试操作。
+                self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             self.choose_agent(
                 retained.copy(), room, fast_mode, preserve_dorm_occupants=True
             )
@@ -7646,7 +7649,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         while self.find("confirm_blue") is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
-                            self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
+                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
                         if mood_probe:
                             self.choose_agent(
