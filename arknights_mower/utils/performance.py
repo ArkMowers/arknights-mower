@@ -38,7 +38,7 @@ def is_android_runtime() -> bool:
 
 
 def default_performance_mode() -> str:
-    return "auto" if is_android_runtime() else "high"
+    return "auto"
 
 
 def default_performance_profile() -> PerformanceProfile:

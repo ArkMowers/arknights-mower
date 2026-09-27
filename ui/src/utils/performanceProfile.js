@@ -5,8 +5,8 @@ export const performancePresets = Object.freeze({
   low: Object.freeze({ lowFrameRateMode: true })
 })
 
-export function defaultPerformanceMode(platform) {
-  return platform === 'android' ? 'auto' : 'high'
+export function defaultPerformanceMode() {
+  return 'auto'
 }
 
 export function normalizePerformanceMode(mode, legacyLowFrameRateMode, platform) {
@@ -16,7 +16,7 @@ export function normalizePerformanceMode(mode, legacyLowFrameRateMode, platform)
   }
   // Old custom profiles stored their click strategy separately. Keep all
   // numeric settings, but map that strategy to one of the remaining modes.
-  if (legacyLowFrameRateMode !== undefined)
+  if (mode === 'custom' && legacyLowFrameRateMode !== undefined)
     return legacyLowFrameRateMode || platform === 'android' ? 'medium' : 'high'
   return defaultPerformanceMode(platform)
 }
