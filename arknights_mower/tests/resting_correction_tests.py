@@ -2,6 +2,7 @@
 
 import sys
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -404,3 +405,13 @@ def test_redface_recheck_respects_existing_correction_and_healthy_cover(solver):
     plan = {}
     reconsider_low_mood_replacements(data, plan, MagicMock(return_value=False))
     assert plan == {}
+
+
+def test_low_mood_recheck_ignores_partial_plan_room_without_replacement(solver):
+    """Temporary room snapshots in other correction paths may omit replacements."""
+    data, _, _ = _redface_cover_scenario(solver)
+    data.plan["central"][0] = SimpleNamespace(agent="歌蕾蒂娅")
+    plan = {}
+    reconsider_low_mood_replacements(data, plan, MagicMock(return_value=False))
+    assert plan == {}
+    solver.enter_room.assert_not_called()
