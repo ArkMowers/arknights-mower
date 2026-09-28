@@ -663,7 +663,7 @@ watch(activePane, (pane) => {
 watch([rosterQuery, rosterRarity, eliteFilter], () => {
   rosterLimit.value = 48
 })
-watch(activeId, readCustomGroups)
+watch(activeId, readCustomGroups, { immediate: true })
 
 const activeAccount = computed(() => accounts.value.find((a) => a.id === activeId.value))
 const accountOptions = computed(() =>

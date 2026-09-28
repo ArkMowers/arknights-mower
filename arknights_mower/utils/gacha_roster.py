@@ -7,26 +7,25 @@ label it *device cache, account unverified* until users confirm the source.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
+
+from arknights_mower.utils.path import get_path
+from arknights_mower.utils.resource_pkg import resource_pkg_path
 
 
 def roster_preview(base: Path | None = None) -> dict:
-    base = (
-        Path(base) if base is not None else Path(os.environ.get("MOWER_DATA_DIR", "."))
+    cache = (
+        Path(base) / "tmp" / "cultivate.json"
+        if base is not None
+        else get_path("@app/tmp/cultivate.json")
     )
-    cache = base / "tmp" / "cultivate.json"
-    candidates = [
-        base / "_internal" / "arknights_mower" / "data" / "skill_data.json",
-        base / "arknights_mower" / "data" / "skill_data.json",
-    ]
-    meta_file = next((p for p in candidates if p.is_file()), None)
+    meta_file = resource_pkg_path("arknights_mower/data/skill_data.json")
     if not cache.is_file():
         return {
             "available": False,
             "message": "尚无森空岛干员缓存；请在 Mower 中手动同步森空岛干员数据。",
         }
-    if not meta_file:
+    if not meta_file.is_file():
         return {"available": False, "message": "当前安装缺少干员资源表。"}
     if cache.stat().st_size > 8_000_000 or meta_file.stat().st_size > 8_000_000:
         raise ValueError("本机干员缓存文件异常过大")
@@ -39,7 +38,7 @@ def roster_preview(base: Path | None = None) -> dict:
         }
     data = json.loads(meta_file.read_text(encoding="utf-8"))
     metadata = data.get("characters", {})
-    catalog_path = Path(__file__).resolve().parents[1] / "data" / "gacha_catalog.json"
+    catalog_path = resource_pkg_path("arknights_mower/data/gacha_catalog.json")
     catalog = (
         json.loads(catalog_path.read_text(encoding="utf-8"))
         if catalog_path.is_file()

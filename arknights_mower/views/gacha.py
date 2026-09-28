@@ -14,6 +14,7 @@ from arknights_mower.utils.gacha_provider import (
     GachaSessions,
 )
 from arknights_mower.utils.gacha_records import GachaArchive, identity
+from arknights_mower.utils.resource_pkg import resource_pkg_path
 
 gacha_bp = Blueprint("gacha", __name__, url_prefix="/gacha")
 sessions = GachaSessions()
@@ -183,10 +184,12 @@ def sync():
 def operator_catalog():
     """Public game metadata only. No account credentials or network calls."""
     import json
-    from pathlib import Path
 
-    directory = Path(__file__).resolve().parents[1] / "data"
-    skill_data = json.loads((directory / "skill_data.json").read_text(encoding="utf-8"))
+    skill_data = json.loads(
+        resource_pkg_path("arknights_mower/data/skill_data.json").read_text(
+            encoding="utf-8"
+        )
+    )
     base = {}
     for char_id, info in skill_data.get("characters", {}).items():
         if char_id.startswith("char_") and isinstance(info, dict) and info.get("name"):
@@ -195,7 +198,11 @@ def operator_catalog():
                 "rarity": info.get("rarity", 0),
                 "profession": info.get("profession") or "",
             }
-    extra = json.loads((directory / "gacha_catalog.json").read_text(encoding="utf-8"))
+    extra = json.loads(
+        resource_pkg_path("arknights_mower/data/gacha_catalog.json").read_text(
+            encoding="utf-8"
+        )
+    )
     base.update(extra)
     return {"ok": True, "operators": base}
 
