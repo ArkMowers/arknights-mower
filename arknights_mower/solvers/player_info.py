@@ -15,6 +15,7 @@ from arknights_mower.utils.skland import (
     refresh_session,
     restore_cached_session,
 )
+from arknights_mower.utils.skland_log import redact_signing_text
 
 MAX_AP = 210
 
@@ -270,17 +271,21 @@ class PlayerInfoClient:
     def probe_accounts(self) -> list[str]:
         results: list[str] = []
         for item in config.conf.skland_info:
+            safe_account = redact_signing_text(item.account)
             try:
-                results.append(f"账号 {item.account}：")
+                results.append(f"账号 {safe_account}：")
                 found = False
                 for binding in self._get_binding_list_with_retry(item):
                     if not self._binding_enabled(item, binding):
                         continue
                     snapshot = self.fetch_snapshot(item, binding)
                     found = True
+                    role_name = snapshot.nickname or snapshot.uid
                     results.append(
                         " - {} 连接成功 | AP={} | 恢复完成={}".format(
-                            snapshot.nickname or snapshot.uid,
+                            redact_signing_text(
+                                role_name, snapshot.nickname, snapshot.uid
+                            ),
                             snapshot.current_ap,
                             snapshot.full_recovery_time.astimezone().strftime(
                                 "%Y-%m-%d %H:%M:%S %z"
@@ -290,7 +295,11 @@ class PlayerInfoClient:
                 if not found:
                     results.append(" - 未找到可用的明日方舟角色绑定")
             except Exception as exc:
-                msg = f"{item.account} 无法连接 - {exc}"
-                logger.exception(msg)
-                results.append(msg)
+                # The response is displayed and can be copied for sharing.
+                # Exception text can contain credentials or signed URLs.
+                error_type = type(exc).__name__
+                logger.error(
+                    "森空岛连接测试失败：账号=%s，类型=%s", safe_account, error_type
+                )
+                results.append(f"账号 {safe_account} 无法连接（{error_type}）")
         return results
