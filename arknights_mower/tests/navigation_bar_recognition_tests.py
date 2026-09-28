@@ -54,6 +54,68 @@ class TestNavigationBarRecognition(unittest.TestCase):
             "login_captcha", [call.args[0] for call in recognizer.find.call_args_list]
         )
 
+    def test_login_page_takes_priority_over_agency_dialog_features(self):
+        recognizer = Recognizer.__new__(Recognizer)
+        recognizer.scene = Scene.UNDEFINED
+        recognizer.find = MagicMock(
+            side_effect=lambda resource, **_: (
+                resource
+                in {
+                    "ope_elimi_agency_confirm",
+                    "ope_elimi_agency_panel",
+                    "login_logo",
+                    "hypergryph",
+                    "login_awake",
+                }
+            )
+        )
+        recognizer.check_freeze = MagicMock()
+
+        self.assertEqual(recognizer.get_scene(), Scene.LOGIN_QUICKLY)
+        self.assertNotIn(
+            "ope_elimi_agency_panel",
+            [call.args[0] for call in recognizer.find.call_args_list],
+        )
+
+    def test_login_connecting_takes_priority_over_infra_todo(self):
+        recognizer = Recognizer.__new__(Recognizer)
+        recognizer.scene = Scene.UNDEFINED
+        recognizer.find = MagicMock(
+            side_effect=lambda resource, **_: (
+                resource in {"login_connecting", "infra_todo"}
+            )
+        )
+        recognizer.check_freeze = MagicMock()
+
+        self.assertEqual(recognizer.get_scene(), Scene.LOGIN_LOADING)
+        self.assertNotIn(
+            "infra_todo", [call.args[0] for call in recognizer.find.call_args_list]
+        )
+
+    def test_agency_title_without_button_does_not_match_dialog(self):
+        recognizer = Recognizer.__new__(Recognizer)
+        recognizer.scene = Scene.UNDEFINED
+        recognizer.find = MagicMock(
+            side_effect=lambda resource, **_: (
+                resource in {"ope_elimi_agency_panel", "terminal_main"}
+            )
+        )
+        recognizer.check_freeze = MagicMock()
+
+        self.assertEqual(recognizer.get_scene(), Scene.TERMINAL_MAIN)
+
+    def test_agency_dialog_requires_button_and_title(self):
+        recognizer = Recognizer.__new__(Recognizer)
+        recognizer.scene = Scene.UNDEFINED
+        recognizer.find = MagicMock(
+            side_effect=lambda resource, **_: (
+                resource in {"ope_elimi_agency_confirm", "ope_elimi_agency_panel"}
+            )
+        )
+        recognizer.check_freeze = MagicMock()
+
+        self.assertEqual(recognizer.get_scene(), Scene.OPERATOR_ELIMINATE_AGENCY)
+
 
 if __name__ == "__main__":
     unittest.main()

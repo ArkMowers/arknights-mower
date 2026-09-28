@@ -173,6 +173,22 @@ class Recognizer:
         elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
 
+        # 登录画面底部的厂商标识会误命中基建待办等通用特征。
+        # 先识别位置固定的登录元素，再判断游戏内场景。
+        elif self.find("login_logo") and self.find("hypergryph"):
+            if self.find("login_awake"):
+                self.scene = Scene.LOGIN_QUICKLY
+            elif self.find("login_account"):
+                self.scene = Scene.LOGIN_MAIN
+            else:
+                self.scene = Scene.LOGIN_MAIN_NOENTRY
+        elif self.find("login_loading"):
+            self.scene = Scene.LOGIN_LOADING
+        elif self.find("12cadpa"):
+            self.scene = Scene.LOGIN_START
+        elif self.find("login_connecting"):
+            self.scene = Scene.LOGIN_LOADING
+
         # 平均色匹配
         elif self.find("trade_strategy_select"):
             self.scene = Scene.TRADE_STRATEGY_SELECT
@@ -198,7 +214,10 @@ class Recognizer:
             self.scene = Scene.OPERATOR_SELECT
         elif self.find("ope_eliminate"):
             self.scene = Scene.OPERATOR_ELIMINATE
-        elif self.find("ope_elimi_agency_panel"):
+        # 其他画面的文字可能误命中弹窗标题；确认按钮也必须出现在固定位置。
+        elif self.find("ope_elimi_agency_confirm") and self.find(
+            "ope_elimi_agency_panel"
+        ):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
         elif self.find("riic/report_title"):
             self.scene = Scene.RIIC_REPORT
@@ -240,21 +259,8 @@ class Recognizer:
             self.scene = Scene.SHOP_OTHERS
         elif self.find("shop_cart"):
             self.scene = Scene.SHOP_CREDIT_CONFIRM
-        elif self.find("login_logo") and self.find("hypergryph"):
-            if self.find("login_awake"):
-                self.scene = Scene.LOGIN_QUICKLY
-            elif self.find("login_account"):
-                self.scene = Scene.LOGIN_MAIN
-            else:
-                self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find("login_loading"):
-            self.scene = Scene.LOGIN_LOADING
-        elif self.find("12cadpa"):
-            self.scene = Scene.LOGIN_START
         elif self.find("skip"):
             self.scene = Scene.SKIP
-        elif self.find("login_connecting"):
-            self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
         elif (
