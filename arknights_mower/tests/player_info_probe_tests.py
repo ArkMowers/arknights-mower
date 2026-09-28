@@ -70,6 +70,49 @@ class PlayerInfoProbeTests(unittest.TestCase):
             self.assertNotIn(sensitive, result)
             self.assertNotIn(sensitive, str(logged.call_args))
 
+    def test_retry_log_omits_account_uid_and_exception_text(self):
+        self.client.sign_token = "sensitive-sign-token"
+        url = "https://example.test/player/info?uid=123456789"
+        error = RuntimeError("secret-password sensitive-sign-token")
+        with (
+            patch.object(
+                self.client, "_ensure_session", side_effect=[None, RuntimeError("stop")]
+            ),
+            patch.object(player_info, "get_sign_header", return_value={}),
+            patch.object(player_info.requests, "request", side_effect=error),
+            patch.object(player_info.logger, "info") as logged,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "stop"):
+                self.client._request_signed_json(self.account, "get", url)
+        entry = str(logged.call_args)
+        self.assertIn("/player/info", entry)
+        for sensitive in (
+            self.account.account,
+            self.account.password,
+            self.client.sign_token,
+            "123456789",
+        ):
+            self.assertNotIn(sensitive, entry)
+
+    def test_snapshot_log_masks_identifiers(self):
+        snapshot = SimpleNamespace(
+            account=self.account.account,
+            uid="123456789",
+            nickname="测试博士",
+            channel="官服",
+            current_ap=92,
+            full_recovery_time=datetime.datetime(
+                2026, 9, 28, tzinfo=datetime.timezone.utc
+            ),
+            raw_ap={"current": 92},
+        )
+        with patch.object(player_info.logger, "info") as logged:
+            self.client.log_snapshot(snapshot)
+        entry = str(logged.call_args)
+        self.assertIn("92", entry)
+        for sensitive in (snapshot.account, snapshot.uid, snapshot.nickname):
+            self.assertNotIn(sensitive, entry)
+
 
 if __name__ == "__main__":
     unittest.main()
