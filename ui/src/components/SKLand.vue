@@ -1,6 +1,5 @@
 <script setup>
 import { inject, ref, computed } from 'vue'
-import { copyMowerTestText } from '../utils/copyMowerTestText'
 const axios = inject('axios')
 
 import { useConfigStore } from '@/stores/config'
@@ -24,38 +23,11 @@ function add_account() {
 }
 
 const maa_msg = ref('')
-const copying = ref(false)
-const copy_status = ref('')
-const testing = ref(false)
 
 async function test_maa() {
-  testing.value = true
-  copy_status.value = ''
   maa_msg.value = '正在测试……'
-  try {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland`)
-    maa_msg.value = Array.isArray(response.data)
-      ? response.data.join('\n')
-      : String(response.data ?? '')
-  } catch (error) {
-    maa_msg.value = `测试失败：${error.response?.data?.message || error.message || String(error)}`
-  } finally {
-    testing.value = false
-  }
-}
-
-async function copy_result() {
-  if (!maa_msg.value) return
-  copying.value = true
-  try {
-    copy_status.value = (await copyMowerTestText(maa_msg.value))
-      ? '已复制'
-      : '复制失败，请手动选择文字'
-  } catch {
-    copy_status.value = '复制失败，请手动选择文字'
-  } finally {
-    copying.value = false
-  }
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland`)
+  maa_msg.value = response.data.join('\n')
 }
 
 const enable_test = computed(() => {
@@ -98,21 +70,12 @@ const enable_test = computed(() => {
       </template>
     </n-dynamic-input>
     <div class="misc-container">
-      <n-button :disabled="!enable_test || testing" :loading="testing" @click="test_maa"
-        >测试设置</n-button
-      >
-      <n-button :disabled="!maa_msg || testing || copying" @click="copy_result">复制结果</n-button>
-      <span aria-live="polite">{{ copy_status }}</span>
+      <n-button :disabled="!enable_test" @click="test_maa">测试设置</n-button>
       <n-card
         content-scrollable
-        style="max-height: 230px; min-width: 320px; max-width: 100%; flex: 1"
+        style="max-height: 80px"
         segmented
-        :content-style="{
-          whiteSpace: 'pre-wrap',
-          overflow: 'auto',
-          overflowWrap: 'anywhere',
-          userSelect: 'text'
-        }"
+        :content-style="{ whiteSpace: 'pre-line', overflow: 'auto' }"
       >
         <div>{{ maa_msg }}</div>
       </n-card>
@@ -125,7 +88,6 @@ const enable_test = computed(() => {
   margin-top: 12px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 12px;
 }
 </style>
