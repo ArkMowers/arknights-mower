@@ -8,6 +8,71 @@ from arknights_mower.utils.software_update_worker import Worker, retry_backup_cl
 
 
 class UpdateBackupTests(unittest.TestCase):
+    def test_verified_release_removes_downloads_and_runner_but_keeps_logs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            root = state / "app"
+            work = state / "jobs/one"
+            work.mkdir(parents=True)
+            runner = work / "runner"
+            runner.mkdir()
+            (runner / "mower.exe").write_text("old updater")
+            for name in ("full.zip", "delta.zip"):
+                (work / name).write_text("download")
+            (work / "update.log").write_text("update succeeded")
+            worker = Worker.__new__(Worker)
+            worker.root, worker.work, worker.state, worker.job = (
+                root,
+                work,
+                state,
+                {
+                    "id": "one",
+                    "deployment": "release",
+                    "asset": {"name": "full.zip"},
+                    "ota_asset": {"name": "delta.zip"},
+                },
+            )
+            worker.backups = []
+            worker.bundle_backup = root.with_name("app.backup-one")
+            worker.verified_restart = False
+            worker.cleanup_verified_backups()
+            self.assertTrue(runner.exists())
+            self.assertTrue((work / "full.zip").exists())
+
+            worker.verified_restart = True
+            worker.cleanup_verified_backups()
+            self.assertFalse(runner.exists())
+            self.assertFalse((work / "full.zip").exists())
+            self.assertFalse((work / "delta.zip").exists())
+            self.assertEqual((work / "update.log").read_text(), "update succeeded")
+
+    def test_locked_runner_is_retried_on_next_start(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            root = state / "app"
+            work = state / "jobs/one"
+            runner = work / "runner"
+            runner.mkdir(parents=True)
+            worker = Worker.__new__(Worker)
+            worker.root, worker.work, worker.state, worker.job = (
+                root,
+                work,
+                state,
+                {"id": "one", "deployment": "release", "asset": {"name": "full.zip"}},
+            )
+            worker.backups = []
+            worker.bundle_backup = root.with_name("app.backup-one")
+            worker.verified_restart = True
+            with patch(
+                "arknights_mower.utils.software_update_worker.shutil.rmtree",
+                side_effect=PermissionError("locked"),
+            ):
+                worker.cleanup_verified_backups()
+            self.assertTrue((work / "cleanup.json").exists())
+            retry_backup_cleanup(state, root)
+            self.assertFalse(runner.exists())
+            self.assertFalse((work / "cleanup.json").exists())
+
     def test_only_verified_restart_retires_recorded_source_and_bundle_backups(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

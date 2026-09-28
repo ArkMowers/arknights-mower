@@ -1543,6 +1543,13 @@ class Worker:
             return
         paths = {backup for _, backup in self.backups}
         paths.add(self.bundle_backup)
+        packages = []
+        if self.job.get("deployment") == "release":
+            paths.add(self.work / "runner")
+            for asset in (self.job.get("asset"), self.job.get("ota_asset")):
+                if asset and Path(asset["name"]).name == asset["name"]:
+                    packages.append(asset["name"])
+                    paths.add(self.work / asset["name"])
         entries = []
         for path in paths:
             try:
@@ -1563,6 +1570,8 @@ class Worker:
                 "verified": True,
                 "root": str(self.root.absolute()),
                 "id": self.job["id"],
+                "deployment": self.job.get("deployment"),
+                "packages": packages,
                 "paths": entries,
             },
         )
@@ -1677,7 +1686,15 @@ def retry_backup_cleanup(directory, root, manifests=None):
                     bundle_backup = path == root.with_name(
                         f"{root.name}.backup-{record['id']}"
                     )
-                    if not source_backup and not bundle_backup:
+                    release = record.get("deployment") == "release"
+                    runner = release and path == manifest.parent / "runner"
+                    package = (
+                        release
+                        and path.parent == manifest.parent
+                        and path.name in record.get("packages", [])
+                        and path.name not in {".", ".."}
+                    )
+                    if not (source_backup or bundle_backup or runner or package):
                         continue
                     try:
                         value = path.lstat()
@@ -1692,7 +1709,7 @@ def retry_backup_cleanup(directory, root, manifests=None):
                     except OSError as exc:
                         remaining.append(entry)
                         print(
-                            f"新版本已验证，回退备份暂无法清理，下次启动重试：{exc}",
+                            f"新版本已验证，更新备份或临时文件暂无法清理，下次启动重试：{exc}",
                             flush=True,
                         )
                 if remaining:
