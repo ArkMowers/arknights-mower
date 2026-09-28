@@ -122,14 +122,80 @@ def test_unregistered_fallback_respects_exclusions_and_pending_tasks(
     assert "伊芙利特" not in instance.get_free_list([])
 
 
-def test_fallback_does_not_clear_full_resident_to_try_unregistered_operators(
+@pytest.mark.parametrize("mood", [8, 24])
+def test_release_uses_unregistered_idle_then_retains_only_if_actually_full(
+    solver, monkeypatch, mood
+):
+    instance, selected = solver
+    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    screen_only(instance, ["伊芙利特"])
+    plan = instance.task.plan[ROOM]
+    instance.choose_agent(plan, ROOM)
+    assert plan[-1] == "伊芙利特"
+    assert selected == plan
+    assert len(selected) == 5
+    data = instance.op_data
+    data.update_detail("空爆", 24, "", -1, True)
+    data.update_detail("伊芙利特", mood, ROOM, 4, True)
+    assert data.is_full_dorm_fallback("伊芙利特") == (mood == 24)
+    if mood == 24:
+        for _ in range(3):
+            assert not any(t.meta_data == "伊芙利特" for t in plan_metadata(data, []))
+
+
+def test_known_tired_replacement_precedes_unregistered_idle(solver, monkeypatch):
+    instance, selected = solver
+    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    instance.op_data.operators["红"].mood = 10
+    plan = instance.task.plan[ROOM]
+    instance.choose_agent(plan, ROOM)
+    assert plan[-1] == "红"
+    assert selected == plan
+    assert len(selected) == 5
+
+
+@pytest.mark.parametrize("replacement_mood", [10, 24])
+def test_exhausted_search_does_not_retry_unknown_but_still_admits_tired_replacement(
+    solver, monkeypatch, replacement_mood
+):
+    instance, selected = solver
+    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    instance.op_data.idle_dorm_search_exhausted = True
+    instance.op_data.operators["红"].mood = replacement_mood
+    plan = instance.task.plan[ROOM]
+
+    instance.choose_agent(plan, ROOM)
+
+    assert plan[-1] == ("红" if replacement_mood == 10 else "空爆")
+    assert selected == plan
+    assert instance.op_data.idle_dorm_search_exhausted
+
+
+def test_unknown_release_search_keeps_exclusions_and_reservations(solver, monkeypatch):
+    instance, _ = solver
+    data = instance.op_data
+    allow_unregistered(monkeypatch, instance, ["伊芙利特", "妮芙", "特米米", "深靛"])
+    data.config.free_blacklist = ["妮芙"]
+    data.config.workaholic = ["特米米"]
+    instance.tasks = [SchedulerTask(task_plan={"meeting": ["深靛"]})]
+    candidates = instance.dorm_mood_fallback_candidates(instance.task.plan[ROOM], ROOM)
+    assert "伊芙利特" in candidates
+    assert not {"妮芙", "特米米", "深靛"} & set(candidates)
+
+
+def test_unowned_unknowns_allow_original_resident_as_full_bed_fallback(
     solver, monkeypatch
 ):
-    instance, _ = solver
+    instance, selected = solver
     allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    screen_only(instance, ["空爆"])
     plan = instance.task.plan[ROOM]
-    instance.preserve_resting_crafters(plan, ROOM)
+    instance.choose_agent(plan, ROOM)
+    assert selected == plan
     assert plan[-1] == "空爆"
+    data = instance.op_data
+    data.update_detail("空爆", 24, ROOM, 4, True)
+    assert data.is_full_dorm_fallback("空爆")
 
 
 def test_missing_owned_candidate_stops_search_without_registering_catalogue(

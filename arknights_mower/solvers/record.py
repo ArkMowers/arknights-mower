@@ -196,6 +196,12 @@ def current_state():
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
+        "idle_dorm_search_exhausted": getattr(
+            data, "idle_dorm_search_exhausted", False
+        ),
+        "idle_dorm_search_stopped_at": getattr(
+            data, "idle_dorm_search_stopped_at", None
+        ),
         "initial_mood_pending": bool(
             getattr(base_scheduler, "defer_backup_plan_until_mood_read", False)
             or getattr(base_scheduler, "_initial_mood_probe_active", False)

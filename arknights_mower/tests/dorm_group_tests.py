@@ -1091,6 +1091,7 @@ def test_resting_priority_ignores_resident_mood_and_priority(solver, monkeypatch
 
 
 def test_fia_working_target_does_not_compare_resident_mood(solver, monkeypatch):
+    solver.op_data.operators["伊内丝"].depletion_rate = 1
     resident = solver.op_data.operators["塑心"]
     monkeypatch.setattr(
         resident,
@@ -1112,6 +1113,8 @@ def test_fia_keeps_group_comparison_relative_to_lower_limit(
     for name, mood in [("伊内丝", 10), ("银灰", 8), ("讯使", 24)]:
         solver.op_data.operators[name].mood = mood
     solver.op_data.operators["伊内丝"].lower_limit = lower_limit
+    # 此用例只验证阈值比较，读房更新由专门的充能回归覆盖。
+    solver._refresh_fia_candidate_moods = MagicMock()
     monkeypatch.setattr(config.conf, "fia_fool", True)
     monkeypatch.setattr(solver, "check_fia", lambda: (["伊内丝"], "dormitory_1"))
     solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
@@ -1152,6 +1155,7 @@ def test_fia_keeps_original_priority_instead_of_dorm_candidate_mood_sort(
         operator = solver.op_data.operators[name]
         operator.group = ""
         operator.mood = mood
+        operator.depletion_rate = 1
     monkeypatch.setattr(solver, "check_fia", lambda: (candidates, "dormitory_1"))
     monkeypatch.setattr(
         solver.op_data,

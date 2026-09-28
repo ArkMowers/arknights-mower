@@ -605,6 +605,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         fia_plan, fia_room = self.check_fia()
         if fia_room is None or fia_plan is None:
             return
+        if self.op_data.experimental_dorm_logic:
+            self._refresh_fia_candidate_moods(fia_plan)
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         target = None
         if not config.conf.fia_fool:
@@ -686,6 +688,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             retry.fia_retry_after = retry.time
             self.tasks.append(retry)
             self.tasks.sort(key=lambda task: task.time)
+
+    def _refresh_fia_candidate_moods(self, names):
+        """挑选充能对象前补读失效缓存，同房候选只进房一次，不触发纠错或切表。"""
+        rooms = {}
+        for name in names:
+            op = self.op_data.operators[name]
+            room = op.current_room
+            if (
+                room
+                and op.current_index >= 0
+                and (
+                    op.need_to_refresh(r=room)
+                    or (op.is_working() and op.depletion_rate == 0)
+                )
+            ):
+                rooms.setdefault(room, set()).add(op.current_index)
+        for room, indexes in rooms.items():
+            self.enter_room(room)
+            self.get_agent_from_room(room, sorted(indexes))
+            self.back()
 
     def _refresh_fiammetta_task(self, ready_at):
         """读到新的回满时间后更新充能预约，保留正在执行的充能／回岗任务。"""
@@ -6278,14 +6300,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
 
     def dorm_mood_fallback_candidates(self, agents, room, candidates=None):
-        """全局上限释放时，原住者也参加游戏心情升序比较。"""
+        """缓存无人需休息时仍搜索未知空闲者；原住者可参加最低心情比较。"""
         task = getattr(self, "task", None)
         if (
             not self.op_data.experimental_dorm_logic
             or not room.startswith("dorm")
             or task is None
             or task.type != TaskTypes.RELEASE_DORM
-            or self.op_data.config.mood_limits is None
+            or getattr(self.op_data, "idle_dorm_search_exhausted", False)
         ):
             return []
         residents = [
@@ -6293,7 +6315,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for name in task.meta_data.split(",")
             if (op := self.op_data.operators.get(name)) is not None
             and op.current_room == room
-            and not op.is_high()
             and resting_mood(op) >= op.upper_limit
             and not self.op_data.skip_idle_dorm_release(name)
             and not self.op_data.has_rest_mood_limit(name)
@@ -6304,9 +6325,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             candidates = self.get_dorm_candidates(
                 agents, current_resident=task.meta_data
             )
-        names = [name for name in candidates.filling if name in self.op_data.operators]
+        names = candidates.filling
         if not any(
-            resting_mood(self.op_data.operators[name]) < resting_mood(current)
+            not self.op_data.operators[name].current_room
+            for name in candidates.recovering
+        ) and any(
+            not has_resting_mood(self.op_data.operators.get(name))
+            for name in names
+            if name not in task.meta_data.split(",")
+        ):
+            # 未登记/无有效缓存的加工、专精协助等干员也可能需要恢复。
+            # 交给游戏心情升序列表确认，不能把默认24当成已核验全满。
+            return names
+        if self.op_data.config.mood_limits is None or not any(
+            resting_mood(self.op_data.operators.get(name)) < resting_mood(current)
             for current in residents
             for name in names
         ):
@@ -6315,7 +6347,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def preserve_resting_crafters(self, agents, room):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
-        if not room.startswith("dorm"):
+        if not room.startswith("dorm") or (
+            getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA
+        ):
             return
         if self.op_data.experimental_dorm_logic:
             # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
@@ -6475,6 +6509,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 agents[index] = current.name
                 if full:
                     current.dorm_mood_fallback = room
+                    logger.info(
+                        f"{room} 保留满心情干员 {current.name}："
+                        "没有缓存有效且需要恢复的空闲候选，优先保持宿舍满员"
+                    )
             else:
                 full_candidates = [
                     name
@@ -6508,6 +6546,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self, agents, room, *, preserve_dorm_occupants=False, mood_probe=False
     ):
         """执行边界统一解析名单；解析结果同时交给单回排序和实际选人。"""
+        # 充能和归位均使用肥鸭任务的明确名单；不养闲人、上限清退及
+        # 普通补床不能把充能对象改成 Free，也不能用原入住者覆盖它。
+        if getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA:
+            return []
         experimental_dorm_logic = bool(
             getattr(self.op_data, "experimental_dorm_logic", False)
         )
@@ -6608,6 +6650,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         exists = []
         if fast_mode:
             current_room = self.op_data.get_current_room(room, True)
+            if room.startswith("dorm"):
+                self.profession_filter()
+                # 缓存只提供名单，差量取消必须使用页面实际卡片顺序。
+                # 意外入住或缺人时完整重选，不能把错人当作原宿管保留。
+                current_room = self.wait_for_arranged_agents(
+                    [n for n in current_room if n], ordered=False
+                )
+                if current_room is None:
+                    logger.info(f"{room} 实际已选名单与缓存不一致，改为完整选人")
+                    fast_mode = False
+                    current_room = []
             # 如果空位置进房间会被向前挤
             # 训练室的协助位和训练位固定，空协助位不能让训练位前移。
             if room != "train":
@@ -6975,6 +7028,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug(room)
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
+        if fallback_selected and self.task is not None:
+            # 查找机会由所有宿舍共享，必须等实际读回心情才判定耗尽。
+            pending = getattr(self.task, "idle_dorm_search_names", {})
+            pending.setdefault(room, set()).update(fallback_selected)
+            self.task.idle_dorm_search_names = pending
         for name in fallback_selected:
             if name not in self.op_data.operators:
                 self.op_data.add(Operator(name, ""))
@@ -7053,6 +7111,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
     def get_agent_from_room(self, room, read_time_index=None, related_operators=None):
+        # 只观察真实读房；初始化试住和肥鸭临时换位不产生新的休息周期。
+        released_support = None
+        if self._can_refresh_idle_dorm_search():
+            released_support = self.op_data.get_current_operator("train", 0)
         retain_dorm_time = room.startswith("dorm") and getattr(
             self.op_data, "experimental_dorm_logic", False
         )
@@ -7166,6 +7228,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     room.startswith("dorm")
                     and self.task is not None
                     and self.task.type == TaskTypes.FIAMMETTA
+                    and self.task.meta_data
                 ):
                     fia_read_names = {"菲亚梅塔"}
                     if self.task.meta_data:
@@ -7214,6 +7277,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         }
                         swap_moods["after"] = _mood
                 high_no_time = self.op_data.update_detail(*update_args, **record_kwargs)
+                pending = getattr(self.task, "idle_dorm_search_names", {}).get(
+                    room, set()
+                )
+                if update_time and _name in pending:
+                    pending.discard(_name)
+                    if _mood >= agent.upper_limit:
+                        self.op_data.stop_idle_dorm_search()
                 data["depletion_rate"] = agent.depletion_rate
                 if high_no_time is not None and high_no_time not in read_time_index:
                     logger.debug(
@@ -7315,6 +7385,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if release_task and self.task != release_task:
                         self.tasks.remove(release_task)
                 logger.info(f"重设 {_operator} 至空闲")
+        if released_support is not None and (
+            not released_support.current_room or released_support.is_resting()
+        ):
+            self.op_data.refresh_idle_dorm_search(reason="专精协助位干员已释放")
         return result
 
     def refresh_current_room(self, room, current_index=None):
@@ -8010,8 +8084,69 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 not_take = False
             self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
 
+    def _can_refresh_idle_dorm_search(self):
+        return (
+            getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False)
+            and not getattr(self, "defer_backup_plan_until_mood_read", False)
+            and not getattr(self, "_initial_mood_probe_active", False)
+            and getattr(self.task, "type", None) != TaskTypes.FIAMMETTA
+        )
+
+    def _track_idle_dorm_shift(self, plan):
+        """任务首次执行时记录成组下班者，延期重试沿用同一份名单。"""
+        if (
+            not self._can_refresh_idle_dorm_search()
+            or self.task.type
+            not in (
+                TaskTypes.SHIFT_OFF,
+                TaskTypes.EXHAUST_OFF,
+                TaskTypes.SELF_CORRECTION,
+                TaskTypes.RE_ORDER,
+            )
+            or hasattr(self.task, "idle_dorm_shift_groups")
+        ):
+            return
+        groups = {}
+        for room, names in plan.items():
+            if not room.startswith("dorm"):
+                continue
+            for name in names:
+                op = self.op_data.operators.get(name)
+                if (
+                    op is not None
+                    and op.group
+                    and op.is_high()
+                    and not op.room.startswith("dorm")
+                    and not op.workaholic
+                    and not op.is_resting()
+                ):
+                    groups.setdefault(op.group, set()).add(name)
+        self.task.idle_dorm_shift_groups = {
+            group: names for group, names in groups.items() if len(names) >= 2
+        }
+
+    def _finish_idle_dorm_shift(self):
+        if not self._can_refresh_idle_dorm_search():
+            return
+        groups = getattr(self.task, "idle_dorm_shift_groups", {})
+        completed = [
+            group
+            for group, names in groups.items()
+            if all(
+                (op := self.op_data.operators.get(name)) is not None and op.is_resting()
+                for name in names
+            )
+        ]
+        if completed:
+            self.op_data.refresh_idle_dorm_search(
+                reason=f"成组下班已完成：{', '.join(completed)}"
+            )
+            for group in completed:
+                del groups[group]
+
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         logger.info("基建：排班")
+        self._track_idle_dorm_shift(plan)
         if self.task.type == TaskTypes.FILL_DORM and getattr(
             self.op_data, "experimental_dorm_logic", False
         ):
@@ -8145,6 +8280,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                         return False
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
+        self._finish_idle_dorm_shift()
         if len(new_plan) == 1 and room != "train":
             if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
                 if self.task.adjusted:

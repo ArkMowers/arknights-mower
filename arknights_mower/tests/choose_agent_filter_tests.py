@@ -45,6 +45,33 @@ def test_single_operator_still_selects_correctly(monkeypatch):
     assert selected == ["伊芙利特"]
 
 
+def test_unexpected_dorm_residents_rebuild_selection_before_canceling_cards(
+    monkeypatch,
+):
+    actual = ["Lancet-2", "澄闪", "玛露西尔", "菲亚梅塔", "槐琥"]
+    cached = ["冰酿", "闪灵", "桃金娘", "菲亚梅塔", "槐琥"]
+    expected = cached[:4] + ["歌蕾蒂娅"]
+    solver, selected = selection_solver(monkeypatch, residents=actual)
+    solver.op_data.get_current_room = lambda *args: cached.copy()
+
+    solver.choose_agent(expected.copy(), "dormitory_1")
+
+    assert selected == expected
+    # 不能按旧缓存先点第五张，更不能保留 Lancet-2；首次点击须清空选择。
+    assert solver.tap.call_args_list[0].args[0] == (729.6, 1026.0)
+
+
+def test_dorm_fast_selection_cancels_using_observed_card_order(monkeypatch):
+    actual = ["杜林"] + RESIDENTS
+    solver, selected = selection_solver(monkeypatch, residents=actual)
+    solver.op_data.get_current_room = lambda *args: RESIDENTS + ["杜林"]
+
+    solver.choose_agent(RESIDENTS + ["伊芙利特"], "dormitory_1")
+
+    assert selected == RESIDENTS + ["伊芙利特"]
+    assert solver.tap.call_args_list[0].args[0] == (672.0, 378.0)
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_free_search_switches_directly_to_all_and_keeps_final_roster(
     monkeypatch, enabled
@@ -104,13 +131,13 @@ def test_high_mode_confirms_each_reorder_click(monkeypatch):
 
     def confirm(prefix, **kwargs):
         confirmations.append(prefix.copy())
-        return list(reversed(RESIDENTS)) if len(confirmations) == 1 else prefix
+        return list(reversed(RESIDENTS)) if len(confirmations) <= 2 else prefix
 
     solver.wait_for_arranged_agents = MagicMock(side_effect=confirm)
     solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
 
     assert selected == RESIDENTS
-    assert confirmations[1 : 1 + len(RESIDENTS)] == [
+    assert confirmations[2 : 2 + len(RESIDENTS)] == [
         RESIDENTS[:i] for i in range(1, len(RESIDENTS) + 1)
     ]
     assert all(
@@ -125,7 +152,7 @@ def test_high_mode_stops_when_reorder_click_has_no_feedback(monkeypatch):
     solver, _ = selection_solver(monkeypatch, residents=list(reversed(RESIDENTS)))
     solver.recog.img = selected_card_frame()
     solver.wait_for_arranged_agents = MagicMock(
-        side_effect=[list(reversed(RESIDENTS)), None]
+        side_effect=[list(reversed(RESIDENTS)), list(reversed(RESIDENTS)), None]
     )
 
     with pytest.raises(base_mixin.AgentSelectionNotReady):

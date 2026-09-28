@@ -48,13 +48,14 @@ def solver(op_data, monkeypatch):
     return instance, selected
 
 
-def test_all_full_release_keeps_resident_without_another_release(solver):
+def test_all_full_release_keeps_resident_without_another_release(solver, caplog):
     instance, selected = solver
     plan = instance.task.plan
     assert instance.get_free_list([]) == []
     instance.choose_agent(plan[ROOM], ROOM)
     assert selected == plan[ROOM]
     assert plan[ROOM][4] == "空爆"
+    assert "没有缓存有效且需要恢复的空闲候选，优先保持宿舍满员" in caplog.text
     instance.op_data = instance.op_data.project_arrangements([plan])
     tasks = plan_metadata(instance.op_data, [])
     try_add_release_dorm({}, None, instance.op_data, tasks)
@@ -71,7 +72,7 @@ def test_release_uses_cached_unfinished_replacement(solver):
     assert plan[4] == "红"
 
 
-def test_unknown_mood_only_fills_empty_beds(solver):
+def test_unknown_mood_can_use_released_beds_without_changing_default_mood(solver):
     instance, _ = solver
     instance.op_data.operators["红"].time_stamp = None
     instance.op_data.add(Operator("陈", ""))
@@ -80,11 +81,11 @@ def test_unknown_mood_only_fills_empty_beds(solver):
     assert "陈" not in free
     assert "空爆" not in free
     assert {"红", "陈"} <= set(instance.get_free_list([], include_full=True))
-    # 未知心情不触发二次试住，也不清退已满的原住者。
+    # 仍按默认24参与规划，但回满释放时必须交给游戏排序确认未知者。
     plan = instance.task.plan[ROOM]
-    assert instance.dorm_mood_fallback_candidates(plan, ROOM) == []
+    assert {"红", "陈"} <= set(instance.dorm_mood_fallback_candidates(plan, ROOM))
     instance.preserve_resting_crafters(plan, ROOM)
-    assert plan[-1] == "空爆"
+    assert plan[-1] == "Free"
 
 
 def test_clearing_inner_bed_tracks_compacted_positions(solver):

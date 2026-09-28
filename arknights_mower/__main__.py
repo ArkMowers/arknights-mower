@@ -435,12 +435,28 @@ def simulate(saved, restart_after_mood_read=False):
                 base_scheduler.op_data.operators[k].resting_from_train = getattr(
                     v, "resting_from_train", False
                 )
+                for attr, default in (
+                    ("dorm_mood_fallback", ""),
+                    ("dorm_mood_peers", {}),
+                    ("idle_rest_check", None),
+                ):
+                    setattr(
+                        base_scheduler.op_data.operators[k],
+                        attr,
+                        copy.deepcopy(getattr(v, attr, default)),
+                    )
                 base_scheduler.op_data.operators[k].dorm_recovery_fixed = getattr(
                     v, "dorm_recovery_fixed", ()
                 )
             base_scheduler.op_data.restore_dorm_state(saved["dorm"])
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})
+            )
+            base_scheduler.op_data.idle_dorm_search_exhausted = saved.get(
+                "idle_dorm_search_exhausted", False
+            )
+            base_scheduler.op_data.idle_dorm_search_stopped_at = saved.get(
+                "idle_dorm_search_stopped_at"
             )
             base_scheduler.party_time = saved["party_time"]
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]

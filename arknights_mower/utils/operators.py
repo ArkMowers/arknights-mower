@@ -297,6 +297,8 @@ class Operators:
         self.dorm = []
         self.displaced_dorms = []
         self.group_dorm = []
+        self.idle_dorm_search_exhausted = False
+        self.idle_dorm_search_stopped_at = None
         self.workaholic_agent = set()
         self.free_blacklist = []
         self.global_plan = plan
@@ -690,6 +692,36 @@ class Operators:
             and resting_tier(self, name) != RestingTier.EXCLUDED
             and not self.rest_mood_complete(name)
         )
+
+    def stop_idle_dorm_search(self, now=None):
+        """最低候选实读也已满时关闭共享搜索；重复读数不延长等待。"""
+        if not self.idle_dorm_search_exhausted:
+            self.idle_dorm_search_exhausted = True
+            self.idle_dorm_search_stopped_at = now or datetime.now()
+            logger.info("游戏最低心情候选也已回满，停止本轮主动查找休息者")
+
+    def refresh_idle_dorm_search(self, reason=None, now=None):
+        """实际轮休／协助位释放，或停止满 1 小时后开放新一轮搜索。"""
+        if not self.experimental_dorm_logic:
+            return False
+        now = now or datetime.now()
+        if reason is None:
+            if (
+                not self.idle_dorm_search_exhausted
+                or self.idle_dorm_search_stopped_at is None
+                or now - self.idle_dorm_search_stopped_at < timedelta(hours=1)
+            ):
+                return False
+            reason = "停止搜索已满 1 小时"
+        self.idle_dorm_search_exhausted = False
+        self.idle_dorm_search_stopped_at = None
+        # 不动床位及预计回满时间，只撤销上一轮搜索产生的临时保护。
+        for op in self.operators.values():
+            op.dorm_mood_fallback = ""
+            op.dorm_mood_peers = {}
+            op.idle_rest_check = None
+        logger.info(f"重新开放宿舍空闲干员搜索：{reason}")
+        return True
 
     def is_full_dorm_fallback(self, name):
         """游戏心情升序选出的替班也已满时，停止本轮无效清退。"""
