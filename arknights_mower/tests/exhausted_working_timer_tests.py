@@ -206,6 +206,19 @@ def test_fiammetta_reschedules_from_actual_room_after_move(room_reader, location
         assert solver.tasks[0].time == deadline
 
 
+def test_fiammetta_preparation_reads_resting_candidate_before_choosing(room_reader):
+    solver, target, _ = room_reader(room="dormitory_1", name="伊内丝", mood=7.5)
+    solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    target.mood = 24
+    target.current_mood.return_value = 24
+    target.need_to_refresh.return_value = False
+
+    result = solver.get_agent_from_room("dormitory_1", [0])
+
+    solver.read_accurate_mood.assert_called_once()
+    assert result[0]["mood"] == target.mood == 7.5
+
+
 def test_fiammetta_swap_reads_target_and_fiammetta_mood(room_reader):
     target_solver, target, _ = room_reader(room="dormitory_1", name="伊内丝", mood=7.5)
     target_solver.task = SchedulerTask(
