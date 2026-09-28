@@ -253,6 +253,7 @@ class SoftwareOtaTests(unittest.TestCase):
         }
         worker.root = self.installed
         worker.work = work
+        worker.state = self.root / "state"
         worker.status = {}
         worker.report = Mock()
         worker.check_cancelled = Mock()
@@ -323,6 +324,7 @@ class SoftwareOtaTests(unittest.TestCase):
         }
         worker.work = self.root / "work"
         worker.work.mkdir()
+        worker.state = self.root / "state"
         worker.root = self.root / "install"
         worker.root.mkdir()
         worker.report = Mock()
