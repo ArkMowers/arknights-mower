@@ -591,8 +591,11 @@ class RecruitSolver(SceneGraphSolver):
                     continue
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, _, _, _ = cv2.minMaxLoc(result)
-                score.append(min_val)
-            value = value * 10 + score.index(min(score))
+                score.append((min_val, i))
+            # 阈值化可能把一个数字分成两块；无法匹配模板的碎片不是一位数字。
+            if not score:
+                continue
+            value = value * 10 + min(score)[1]
         return value
 
     def add_recruit_param(self):
