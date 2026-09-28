@@ -20,9 +20,7 @@ def test_split_digit_fragment_does_not_break_ticket_count():
     solver = SimpleNamespace(
         recog=SimpleNamespace(gray=frame),
         find=lambda name: (
-            ((0, 0), (80, 59))
-            if name == "recruit/ticket"
-            else ((179, 0), (259, 60))
+            ((0, 0), (80, 59)) if name == "recruit/ticket" else ((179, 0), (259, 60))
         ),
     )
 
