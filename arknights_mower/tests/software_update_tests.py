@@ -1204,7 +1204,9 @@ class WorkerTests(unittest.TestCase):
         def prepare(payload_dir):
             payload = payload_dir / "mower"
             (payload / "_internal/arknights_mower/utils").mkdir(parents=True)
-            (payload / "mower").write_bytes(b"launcher")
+            (
+                payload / ("mower.exe" if sys.platform == "win32" else "mower")
+            ).write_bytes(b"launcher")
             (payload / "_internal/arknights_mower/utils/update_runtime.py").write_bytes(
                 b"runtime"
             )
