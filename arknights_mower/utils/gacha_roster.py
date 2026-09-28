@@ -38,9 +38,7 @@ def roster_preview(base: Path | None = None) -> dict:
         }
     data = json.loads(meta_file.read_text(encoding="utf-8"))
     metadata = data.get("characters", {})
-    # Bundled display metadata for IDs absent from skill_data; the owned roster
-    # itself always comes from the Skland cultivate cache above.
-    catalog_path = Path(__file__).resolve().parents[1] / "data" / "gacha_catalog.json"
+    catalog_path = resource_pkg_path("arknights_mower/data/gacha_catalog.json")
     catalog = (
         json.loads(catalog_path.read_text(encoding="utf-8"))
         if catalog_path.is_file()

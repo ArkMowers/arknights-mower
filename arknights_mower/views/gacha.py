@@ -184,7 +184,6 @@ def sync():
 def operator_catalog():
     """Public game metadata only. No account credentials or network calls."""
     import json
-    from pathlib import Path
 
     skill_data = json.loads(
         resource_pkg_path("arknights_mower/data/skill_data.json").read_text(
@@ -199,9 +198,11 @@ def operator_catalog():
                 "rarity": info.get("rarity", 0),
                 "profession": info.get("profession") or "",
             }
-    # This small fallback catalog ships with Mower; it is not Skland account data.
-    extra_path = Path(__file__).resolve().parents[1] / "data" / "gacha_catalog.json"
-    extra = json.loads(extra_path.read_text(encoding="utf-8"))
+    extra = json.loads(
+        resource_pkg_path("arknights_mower/data/gacha_catalog.json").read_text(
+            encoding="utf-8"
+        )
+    )
     base.update(extra)
     return {"ok": True, "operators": base}
 

@@ -465,12 +465,16 @@ class GachaV3Tests(unittest.TestCase):
             ) as cache_path,
             patch(
                 "arknights_mower.utils.gacha_roster.resource_pkg_path",
-                return_value=p / "skill_data.json",
+                side_effect=lambda rel: (
+                    p / "skill_data.json"
+                    if rel.endswith("skill_data.json")
+                    else Path(__file__).resolve().parents[1] / "data/gacha_catalog.json"
+                ),
             ) as resource_path,
         ):
             result = roster_preview()
         cache_path.assert_called_once_with("@app/tmp/cultivate.json")
-        resource_path.assert_called_once_with("arknights_mower/data/skill_data.json")
+        self.assertEqual(resource_path.call_count, 2)
         self.assertTrue(result["available"])
         self.assertFalse(result["account_verified"])
         self.assertEqual(result["operator_count"], 1)
@@ -537,7 +541,11 @@ class GachaV5RosterTests(unittest.TestCase):
             )
             with patch(
                 "arknights_mower.utils.gacha_roster.resource_pkg_path",
-                return_value=folder / "skill_data.json",
+                side_effect=lambda rel: (
+                    folder / "skill_data.json"
+                    if rel.endswith("skill_data.json")
+                    else Path(__file__).resolve().parents[1] / "data/gacha_catalog.json"
+                ),
             ):
                 result = roster_preview(base)
             self.assertTrue(result["available"])
