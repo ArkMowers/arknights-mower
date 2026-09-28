@@ -443,11 +443,99 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             patch.object(update, "__version__", "4.1.6-alpha.9.g87654321"),
             patch.object(runtime, "frozen", return_value=True),
             patch.object(update, "platform_asset", return_value=("windows", "x64")),
-            patch.object(update, "release_index", return_value=release_index(nightly)),
+            patch.object(
+                update,
+                "release_index",
+                return_value=release_index(
+                    nightly,
+                    [
+                        release(
+                            "v4.1.6-alpha.9.g87654321",
+                            True,
+                            system="windows",
+                            arch="x64",
+                            published_at="2026-08-31T00:00:00Z",
+                        )
+                    ],
+                ),
+            ),
         ):
             result = update.check("dev")
             self.assertTrue(result["available"])
             self.assertFalse(result["downgrade"])
+
+    def test_same_alpha_nightly_uses_exact_direct_ota_and_publication_order(self):
+        old = release(
+            "v4.1.6-alpha.10.gacfa1727",
+            True,
+            system="windows",
+            arch="x64",
+            published_at="2026-09-27T14:50:18Z",
+        )
+        target = release(
+            "v4.1.6-alpha.10.g75339a4b",
+            True,
+            system="windows",
+            arch="x64",
+            published_at="2026-09-28T00:32:24Z",
+        )
+        index = release_index(target, [old])
+        index["full_assets"][0]["size"] = 100
+        ota_name = (
+            "arknights-mower-ota_4.1.6-alpha.10.gacfa1727_to_"
+            "4.1.6-alpha.10.g75339a4b_windows_x64_v2.zip"
+        )
+        index["ota_assets"] = [
+            {
+                "name": ota_name,
+                "size": 9,
+                "digest": "sha256:" + "b" * 64,
+                "url": f"https://github.com/{update.OTA_REPO}/releases/download/{target['tag_name']}/{ota_name}",
+            }
+        ]
+        with (
+            patch.object(update, "__version__", old["tag_name"].removeprefix("v")),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=index),
+        ):
+            checked = update.check("dev")
+        self.assertTrue(checked["available"])
+        self.assertFalse(checked["downgrade"])
+        self.assertEqual(
+            update._checks[checked["check_id"]]["ota_asset"]["name"], ota_name
+        )
+        self.assertTrue(
+            update.release_is_downgrade(
+                "dev", release_index(old, [target]), target["tag_name"]
+            )
+        )
+
+    def test_unlisted_nightly_requires_manual_confirmation(self):
+        target = release(
+            "v4.1.6-alpha.10.g75339a4b", True, system="windows", arch="x64"
+        )
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.10.gacfa1727"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=release_index(target)),
+        ):
+            checked = update.check("dev")
+        self.assertTrue(checked["available"])
+        self.assertTrue(checked["downgrade"])
+
+    def test_offline_nightly_requires_confirmation_when_sha_order_is_unknown(self):
+        package = runtime.state_dir() / "nightly.zip"
+        package.write_bytes(make_release_package("4.1.6-alpha.10.gacfa1727"))
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.10.g75339a4b"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+        ):
+            plan = update.manual_plan(package)
+        self.assertEqual(plan["channel"], "dev")
+        self.assertTrue(plan["downgrade"])
 
     def test_prerelease_check_uses_channel_index(self):
         with (
@@ -1044,6 +1132,7 @@ class WorkerTests(unittest.TestCase):
         worker.rollback = Mock()
         worker.execute()
         worker.rollback.assert_called_once()
+        worker.restart.assert_any_call(worker.stopped, recovery=True)
         worker.cleanup_verified_backups.assert_not_called()
         self.assertEqual(
             runtime.read_json(self.state / "status.json")["status"], "failed"
@@ -1085,6 +1174,50 @@ class WorkerTests(unittest.TestCase):
                         env["MOWER_RESTART_PORT"], str(record.get("port") or "")
                     )
                     self.assertEqual(env["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+
+    def test_restart_waits_for_registration_after_launcher_exits(self):
+        record = {
+            "kind": "instance",
+            "space": "space",
+            "name": "实例",
+            "port": 58100,
+            "running": True,
+        }
+        ready = {**record, "ready": True, "restart_job": self.job["id"]}
+        worker = self.worker()
+        with (
+            patch.object(subprocess, "Popen") as launch,
+            patch(
+                "arknights_mower.utils.software_update_worker.instances",
+                side_effect=[[], [ready]],
+            ),
+            patch("arknights_mower.utils.software_update_worker.time.sleep"),
+        ):
+            launch.return_value.poll.return_value = 0
+            worker.restart([record])
+        self.assertTrue(worker.verified_restart)
+
+    def test_missing_manager_in_package_is_rejected_before_shutdown(self):
+        self.job.update(deployment="release")
+        worker = self.worker()
+
+        def prepare(payload_dir):
+            payload = payload_dir / "mower"
+            (payload / "_internal/arknights_mower/utils").mkdir(parents=True)
+            (payload / "mower").write_bytes(b"launcher")
+            (payload / "_internal/arknights_mower/utils/update_runtime.py").write_bytes(
+                b"runtime"
+            )
+
+        with (
+            patch.object(worker, "prepare_full_package", side_effect=prepare),
+            patch(
+                "arknights_mower.utils.software_update_worker.instances",
+                return_value=[{"kind": "manager"}],
+            ),
+            self.assertRaisesRegex(ValueError, "缺少正在运行的多开管理器"),
+        ):
+            worker.prepare_package()
 
     def test_silent_restart_restores_unified_tray_and_managed_instances(self):
         records = [
