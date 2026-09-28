@@ -1,7 +1,7 @@
 import datetime
 import math
 from dataclasses import asdict, dataclass
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 
@@ -15,10 +15,15 @@ from arknights_mower.utils.skland import (
     refresh_session,
     restore_cached_session,
 )
+from arknights_mower.utils.skland_log import redact_signing_text
 
 MAX_AP = 210
 
 player_info_cache: dict[str, dict] = {}
+
+
+def _masked_identity(value) -> str:
+    return redact_signing_text(value, value)
 
 
 @dataclass
@@ -77,11 +82,11 @@ class PlayerInfoClient:
         except Exception as exc:
             if retry_on_failure:
                 logger.info(
-                    "player info request retry after refresh | account=%s | method=%s | url=%s | error=%s",
-                    item.account,
+                    "player info request retry after refresh | account=%s | method=%s | endpoint=%s | error_type=%s",
+                    _masked_identity(item.account),
                     method.upper(),
-                    url,
-                    exc,
+                    urlsplit(url).path,
+                    type(exc).__name__,
                 )
                 self._ensure_session(item, force_refresh=True)
                 return self._request_signed_json(
@@ -94,10 +99,9 @@ class PlayerInfoClient:
             raise
         if response.get("code") != 0 and retry_on_failure:
             logger.info(
-                "player info response retry after refresh | account=%s | code=%s | message=%s",
-                item.account,
+                "player info response retry after refresh | account=%s | code=%s",
+                _masked_identity(item.account),
                 response.get("code"),
-                response.get("message"),
             )
             self._ensure_session(item, force_refresh=True)
             return self._request_signed_json(
@@ -117,9 +121,9 @@ class PlayerInfoClient:
                 return bindings
         except Exception as exc:
             logger.info(
-                "player info binding retry | account=%s | error=%s",
-                item.account,
-                exc,
+                "player info binding retry | account=%s | error_type=%s",
+                _masked_identity(item.account),
+                type(exc).__name__,
             )
         self._ensure_session(item, force_refresh=True)
         return get_binding_list(self.sign_token)
@@ -189,8 +193,8 @@ class PlayerInfoClient:
             else:
                 logger.warning(
                     "player info ap mismatch, fallback to computed ap | account=%s | uid=%s | raw_current=%s | computed_ap=%s | completeRecoveryTime=%s",
-                    item.account,
-                    uid,
+                    _masked_identity(item.account),
+                    _masked_identity(uid),
                     normalized_raw_current,
                     computed_ap,
                     ap.get("completeRecoveryTime"),
@@ -208,10 +212,12 @@ class PlayerInfoClient:
             raw_ap=ap,
             building_training=building_training,
         )
-        logger.info(f"player_info building_training: {building_training}")
+        logger.info(
+            "player_info building_training_present: %s", building_training is not None
+        )
         if building_training is None:
             building_full = resp.get("data", {}).get("building", {})
-            logger.info(f"player_info building full node: {building_full}")
+            logger.info("player_info building_node_present: %s", bool(building_full))
             if not building_full:
                 logger.info(
                     f"player_info building keys: {list(resp.get('data', {}).keys())}"
@@ -224,9 +230,9 @@ class PlayerInfoClient:
     def log_snapshot(self, snapshot: PlayerInfoSnapshot):
         logger.info(
             "森空岛理智状态 | 账号=%s | uid=%s | 角色=%s | 渠道=%s | current=%s | full_recovery_local=%s | raw_ap=%s",
-            snapshot.account,
-            snapshot.uid,
-            snapshot.nickname,
+            _masked_identity(snapshot.account),
+            _masked_identity(snapshot.uid),
+            _masked_identity(snapshot.nickname),
             snapshot.channel,
             snapshot.current_ap,
             snapshot.full_recovery_time.astimezone().strftime("%Y-%m-%d %H:%M:%S %z"),
@@ -243,11 +249,11 @@ class PlayerInfoClient:
                 try:
                     yield self.fetch_snapshot(item, binding)
                 except Exception as exc:
-                    logger.exception(
-                        "fetch player info failed | account=%s | uid=%s | error=%s",
-                        item.account,
-                        binding.get("uid"),
-                        exc,
+                    logger.error(
+                        "fetch player info failed | account=%s | uid=%s | error_type=%s",
+                        _masked_identity(item.account),
+                        _masked_identity(binding.get("uid")),
+                        type(exc).__name__,
                     )
 
     def get_first_available_snapshot(self) -> PlayerInfoSnapshot | None:
@@ -255,8 +261,8 @@ class PlayerInfoClient:
         for snapshot in self.iter_account_snapshots():
             logger.info(
                 "selected skland player snapshot | account=%s | uid=%s | current_ap=%s",
-                snapshot.account,
-                snapshot.uid,
+                _masked_identity(snapshot.account),
+                _masked_identity(snapshot.uid),
                 snapshot.current_ap,
             )
             return snapshot
@@ -270,17 +276,21 @@ class PlayerInfoClient:
     def probe_accounts(self) -> list[str]:
         results: list[str] = []
         for item in config.conf.skland_info:
+            safe_account = redact_signing_text(item.account)
             try:
-                results.append(f"账号 {item.account}：")
+                results.append(f"账号 {safe_account}：")
                 found = False
                 for binding in self._get_binding_list_with_retry(item):
                     if not self._binding_enabled(item, binding):
                         continue
                     snapshot = self.fetch_snapshot(item, binding)
                     found = True
+                    role_name = snapshot.nickname or snapshot.uid
                     results.append(
                         " - {} 连接成功 | AP={} | 恢复完成={}".format(
-                            snapshot.nickname or snapshot.uid,
+                            redact_signing_text(
+                                role_name, snapshot.nickname, snapshot.uid
+                            ),
                             snapshot.current_ap,
                             snapshot.full_recovery_time.astimezone().strftime(
                                 "%Y-%m-%d %H:%M:%S %z"
@@ -290,7 +300,11 @@ class PlayerInfoClient:
                 if not found:
                     results.append(" - 未找到可用的明日方舟角色绑定")
             except Exception as exc:
-                msg = f"{item.account} 无法连接 - {exc}"
-                logger.exception(msg)
-                results.append(msg)
+                # The response is displayed and can be copied for sharing.
+                # Exception text can contain credentials or signed URLs.
+                error_type = type(exc).__name__
+                logger.error(
+                    "森空岛连接测试失败：账号=%s，类型=%s", safe_account, error_type
+                )
+                results.append(f"账号 {safe_account} 无法连接（{error_type}）")
         return results
