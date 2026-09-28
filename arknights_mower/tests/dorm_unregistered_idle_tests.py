@@ -154,6 +154,23 @@ def test_known_tired_replacement_precedes_unregistered_idle(solver, monkeypatch)
     assert len(selected) == 5
 
 
+@pytest.mark.parametrize("replacement_mood", [10, 24])
+def test_exhausted_search_does_not_retry_unknown_but_still_admits_tired_replacement(
+    solver, monkeypatch, replacement_mood
+):
+    instance, selected = solver
+    allow_unregistered(monkeypatch, instance, ["伊芙利特"])
+    instance.op_data.idle_dorm_search_exhausted = True
+    instance.op_data.operators["红"].mood = replacement_mood
+    plan = instance.task.plan[ROOM]
+
+    instance.choose_agent(plan, ROOM)
+
+    assert plan[-1] == ("红" if replacement_mood == 10 else "空爆")
+    assert selected == plan
+    assert instance.op_data.idle_dorm_search_exhausted
+
+
 def test_unknown_release_search_keeps_exclusions_and_reservations(solver, monkeypatch):
     instance, _ = solver
     data = instance.op_data

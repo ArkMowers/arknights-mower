@@ -1127,6 +1127,7 @@ def generate_plan_by_drom(
 
 
 def plan_metadata(op_data, tasks):
+    op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task
         for task in tasks

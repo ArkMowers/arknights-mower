@@ -47,6 +47,9 @@ def room_reader():
                 target.time_stamp = datetime.now()
 
         op_data.update_detail = update_detail
+        op_data.get_current_operator = MethodType(
+            Operators.get_current_operator, op_data
+        )
         op_data.refresh_dorm_time = MethodType(Operators.refresh_dorm_time, op_data)
         solver = object.__new__(BaseSchedulerSolver)
         solver.op_data = op_data
@@ -217,6 +220,25 @@ def test_fiammetta_preparation_reads_resting_candidate_before_choosing(room_read
 
     solver.read_accurate_mood.assert_called_once()
     assert result[0]["mood"] == target.mood == 7.5
+
+
+@pytest.mark.parametrize("mood", [8, 24])
+def test_idle_search_stops_globally_only_after_full_actual_observation(
+    room_reader, mood
+):
+    solver, target, _ = room_reader(room="dormitory_1", name="伊内丝", mood=mood)
+    target.upper_limit = 24
+    solver.op_data.idle_dorm_search_exhausted = False
+    solver.op_data.stop_idle_dorm_search = MethodType(
+        Operators.stop_idle_dorm_search, solver.op_data
+    )
+    solver.task = SchedulerTask(task_type=TaskTypes.RELEASE_DORM)
+    solver.task.idle_dorm_search_names = {"dormitory_1": {"伊内丝"}}
+
+    solver.get_agent_from_room("dormitory_1", [0])
+
+    assert solver.op_data.idle_dorm_search_exhausted == (mood == 24)
+    assert solver.task.idle_dorm_search_names["dormitory_1"] == set()
 
 
 def test_fiammetta_swap_reads_target_and_fiammetta_mood(room_reader):
