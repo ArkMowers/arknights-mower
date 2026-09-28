@@ -281,7 +281,9 @@ class PlayerInfoClient:
                 results.append(f"账号 {safe_account}：")
                 found = False
                 for binding in self._get_binding_list_with_retry(item):
-                    if not self._binding_enabled(item, binding):
+                    # The connection test checks actual bindings, regardless of
+                    # sign-in and sanity-status preferences.
+                    if binding.get("gameId") != 1 or not binding.get("uid"):
                         continue
                     snapshot = self.fetch_snapshot(item, binding)
                     found = True

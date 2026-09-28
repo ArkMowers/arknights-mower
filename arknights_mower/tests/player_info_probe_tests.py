@@ -4,6 +4,7 @@ import datetime
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from arknights_mower.solvers import player_info
 
@@ -11,7 +12,12 @@ from arknights_mower.solvers import player_info
 class PlayerInfoProbeTests(unittest.TestCase):
     def setUp(self):
         self.account = SimpleNamespace(
-            account="13800138000", password="secret-password"
+            account="13800138000",
+            password="secret-password",
+            arknights_isCheck=False,
+            sign_in_official=False,
+            sign_in_bilibili=False,
+            cultivate_select=True,
         )
         self.client = player_info.PlayerInfoClient()
         self.config_patch = patch.object(
@@ -33,20 +39,63 @@ class PlayerInfoProbeTests(unittest.TestCase):
         )
         with (
             patch.object(
-                self.client, "_get_binding_list_with_retry", return_value=[{}]
+                self.client,
+                "_get_binding_list_with_retry",
+                return_value=[
+                    {"gameId": 1, "uid": snapshot.uid, "channelName": "bilibili服"}
+                ],
             ),
-            patch.object(self.client, "_binding_enabled", return_value=True),
-            patch.object(self.client, "fetch_snapshot", return_value=snapshot),
+            patch.object(self.client, "fetch_snapshot", return_value=snapshot) as fetch,
         ):
             result = "\n".join(self.client.probe_accounts())
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(fetch.call_args.args[1]["uid"], snapshot.uid)
         self.assertIn("连接成功 | AP=92", result)
         self.assertIn("138****8000", result)
         for sensitive in (
             self.account.account,
             self.account.password,
             snapshot.nickname,
+            snapshot.uid,
         ):
             self.assertNotIn(sensitive, result)
+
+    def test_snapshot_request_uses_original_uid(self):
+        uid = "123456789"
+        with patch.object(
+            self.client,
+            "_request_signed_json",
+            return_value={"code": 0, "data": {"status": {"ap": {"current": 210}}}},
+        ) as request:
+            snapshot = self.client.fetch_snapshot(
+                self.account, {"uid": uid, "channelName": "bilibili服"}
+            )
+        self.assertIs(request.call_args.args[0], self.account)
+        self.assertEqual(
+            parse_qs(urlsplit(request.call_args.args[2]).query), {"uid": [uid]}
+        )
+        self.assertEqual(snapshot.uid, uid)
+
+    def test_binding_request_uses_original_account_and_token(self):
+        token = "original-sign-token"
+        with (
+            patch.object(
+                player_info, "restore_cached_session", return_value=None
+            ) as cached,
+            patch.object(
+                player_info,
+                "refresh_session",
+                return_value={"cred": "original-cred", "sign_token": token},
+            ) as refresh,
+            patch.object(
+                player_info, "get_binding_list", return_value=[{"uid": "1"}]
+            ) as bindings,
+            patch.dict(player_info.header),
+        ):
+            self.client._get_binding_list_with_retry(self.account)
+        cached.assert_called_once_with(self.account.account)
+        refresh.assert_called_once_with(self.account)
+        bindings.assert_called_once_with(token)
 
     def test_failure_does_not_echo_exception_secrets(self):
         self.client.sign_token = "sensitive-sign-token"
