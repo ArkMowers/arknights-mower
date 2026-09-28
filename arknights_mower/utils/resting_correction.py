@@ -125,6 +125,8 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
             owner = op_data.operators.get(slot.agent)
             if owner is None:
                 continue
+            # 复用工作替班排序：非急救候选优先；都在急救线下时心情高者优先。
+            # 先排序再逐一校验可用性，不能按原名单遇到稍高心情者就直接换班。
             for name in op_data.replacement_candidates(owner):
                 candidate = op_data.operators.get(name)
                 if (
