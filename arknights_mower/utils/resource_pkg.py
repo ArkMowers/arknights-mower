@@ -25,7 +25,6 @@ from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import (
-    RES_PACKAGE_BACKCOMPAT_DATA,
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
@@ -275,9 +274,7 @@ def resource_pkg_path(rel):
         or any(rel.startswith(d + "/") for d in RES_PACKAGE_DIRS)
     )
     if selected.root is not None and managed:
-        selected_path = selected.root / rel
-        if rel not in RES_PACKAGE_BACKCOMPAT_DATA or selected_path.is_file():
-            return selected_path
+        return selected.root / rel
     builtin_rel = rel[len(_PKG_PREFIX) :] if rel.startswith(_PKG_PREFIX) else rel
     return Path(__rootdir__) / builtin_rel
 

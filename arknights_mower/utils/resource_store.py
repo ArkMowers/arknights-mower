@@ -9,7 +9,6 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from arknights_mower.utils.res_version import (
-    RES_PACKAGE_BACKCOMPAT_DATA,
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
@@ -86,7 +85,7 @@ def validate_package(root: Path, mower_version: str) -> dict:
     missing = [
         rel
         for rel in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS)
-        if rel not in RES_PACKAGE_BACKCOMPAT_DATA and not (root / rel).is_file()
+        if not (root / rel).is_file()
     ]
     missing += [rel for rel in RES_PACKAGE_DIRS if not any((root / rel).glob("*.webp"))]
     if missing:

@@ -16,7 +16,6 @@ from arknights_mower import __rootdir__
 from arknights_mower.utils import path as mower_path
 from arknights_mower.utils import resource_pkg as rp
 from arknights_mower.utils.res_version import (
-    RES_PACKAGE_BACKCOMPAT_DATA,
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
@@ -105,18 +104,6 @@ class TestSharedResourceScope(unittest.TestCase):
 
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
-    def test_old_package_uses_bundled_gacha_catalog(self):
-        catalog = RES_PACKAGE_BACKCOMPAT_DATA[0]
-        builtin = self.builtin / "data/gacha_catalog.json"
-        builtin.write_text('{"char_test":{"name":"测试"}}', encoding="utf-8")
-        self.assertTrue(rp.install_resource_pkg(resource_zip(remove=catalog)))
-        self.assertEqual(rp.resource_pkg_path(catalog), builtin)
-
-    def test_new_package_supplies_gacha_catalog(self):
-        catalog = RES_PACKAGE_BACKCOMPAT_DATA[0]
-        self.assertTrue(rp.install_resource_pkg(resource_zip()))
-        self.assertTrue(rp.resource_pkg_path(catalog).is_relative_to(self.overlay))
-
     def test_optional_mastery_model_can_be_installed_or_absent(self):
         model = RES_PACKAGE_OPTIONAL_MODELS[0]
         self.assertTrue(rp.install_resource_pkg(resource_zip()))
