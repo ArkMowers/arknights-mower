@@ -138,6 +138,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_auto_only5 = ref(true)
   const run_order_grandet_mode = ref({})
   const product_switching = ref({})
+  const trade_efficiency_rules = ref([])
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
@@ -569,6 +570,12 @@ export const useConfigStore = defineStore('config', () => {
       waiting_seconds: 2,
       ...(response.data.product_switching || {})
     }
+    trade_efficiency_rules.value = Array.isArray(response.data.trade_efficiency_rules)
+      ? response.data.trade_efficiency_rules.map((rule) => ({
+          ...rule,
+          retry_limit: Number(rule.retry_limit ?? 2)
+        }))
+      : []
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
@@ -732,6 +739,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_auto_only5: recruit_auto_only5.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
       product_switching: product_switching.value,
+      trade_efficiency_rules: trade_efficiency_rules.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
@@ -791,6 +799,7 @@ export const useConfigStore = defineStore('config', () => {
   function build_advanced_settings() {
     return {
       product_switching: product_switching.value,
+      trade_efficiency_rules: trade_efficiency_rules.value,
       drone_count_limit: drone_count_limit.value,
       drone_interval: drone_interval.value,
       reload_room: Array.isArray(reload_room.value)
@@ -995,6 +1004,7 @@ export const useConfigStore = defineStore('config', () => {
     skland_info,
     run_order_grandet_mode,
     product_switching,
+    trade_efficiency_rules,
     check_mail_enable,
     report_enable,
     recruit_gap,

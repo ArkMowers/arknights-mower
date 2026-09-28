@@ -2,7 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 
 const { disabled } = defineProps({ disabled: Boolean })
 const freeRoomExclusions = defineModel('freeRoomExclusions', { type: Array })
@@ -11,6 +11,7 @@ const configStore = useConfigStore()
 const planStore = usePlanStore()
 const {
   product_switching,
+  trade_efficiency_rules,
   drone_count_limit,
   drone_interval,
   reload_room,
@@ -31,6 +32,31 @@ const {
   favorite
 } = storeToRefs(configStore)
 const { left_side_facility } = planStore
+const editingTradeRule = ref(-1)
+const tradeRoomOptions = computed(() =>
+  left_side_facility.filter((item) => planStore.plan?.[item.value]?.name === '贸易站')
+)
+const retryOptions = [1, 2, 3, 4, 5].map((value) => ({ label: String(value) + ' 次', value }))
+
+function removeTradeEfficiencyRule(index) {
+  trade_efficiency_rules.value.splice(index, 1)
+  editingTradeRule.value = -1
+}
+
+function addTradeEfficiencyRule() {
+  const firstFree = tradeRoomOptions.value.find(
+    (option) => !trade_efficiency_rules.value.some((rule) => rule.room === option.value)
+  )
+  if (!firstFree) return
+  trade_efficiency_rules.value.push({
+    enabled: false,
+    room: firstFree.value,
+    baseline_mode: 'auto',
+    manual_percent: null,
+    retry_limit: 2,
+    related_rooms: []
+  })
+}
 </script>
 
 <template>
@@ -373,6 +399,103 @@ const { left_side_facility } = planStore
         </template>
         <slick-operator-select v-model="favorite"></slick-operator-select>
       </n-form-item>
+      <n-form-item :show-label="false" class="trade-efficiency-option">
+        <div class="trade-efficiency-rows">
+          <div v-for="(rule, index) in trade_efficiency_rules" :key="index">
+            <n-space align="center" :wrap="true" :size="12">
+              <n-checkbox v-model:checked="rule.enabled" :disabled="disabled || !rule.room">
+                鸿雪组效率纠偏
+                <help-text>
+                  绮良、鸿雪每次完成换班后复核贸易站蓝色效率。确认缺失 20
+                  个百分点时，互换入驻顺序并恢复原位；正常 5% 差异不触发。
+                </help-text>
+              </n-checkbox>
+              <n-select
+                v-model:value="rule.room"
+                :options="
+                  tradeRoomOptions.map((option) => ({
+                    ...option,
+                    disabled: trade_efficiency_rules.some(
+                      (other, otherIndex) => otherIndex !== index && other.room === option.value
+                    )
+                  }))
+                "
+                :disabled="disabled"
+                size="small"
+                placeholder="选择贸易站"
+                style="width: 130px"
+              />
+              <n-button
+                size="small"
+                tertiary
+                :disabled="disabled"
+                @click="editingTradeRule = editingTradeRule === index ? -1 : index"
+                >设置</n-button
+              >
+              <n-button
+                size="small"
+                quaternary
+                type="error"
+                :disabled="disabled"
+                @click="removeTradeEfficiencyRule(index)"
+                >移除</n-button
+              >
+            </n-space>
+            <div v-if="editingTradeRule === index" class="trade-rule-detail">
+              <n-form-item label="关联贸易站">
+                <n-select
+                  v-model:value="rule.related_rooms"
+                  multiple
+                  clearable
+                  :options="tradeRoomOptions.filter((item) => item.value !== rule.room)"
+                  :disabled="disabled"
+                  placeholder="相关房间换班后也复核（可选）"
+                />
+              </n-form-item>
+              <n-form-item label="效率基准">
+                <n-radio-group v-model:value="rule.baseline_mode" :disabled="disabled">
+                  <n-space>
+                    <n-radio value="auto">自动学习</n-radio>
+                    <n-radio value="manual">手动填写</n-radio>
+                  </n-space>
+                </n-radio-group>
+              </n-form-item>
+              <n-form-item label="纠偏次数">
+                <n-select
+                  v-model:value="rule.retry_limit"
+                  :options="retryOptions"
+                  :disabled="disabled"
+                  style="width: 120px"
+                />
+                <help-text>单轮最多尝试 1–5 次，默认 2 次；仍未恢复则等待下一次触发。</help-text>
+              </n-form-item>
+              <n-form-item v-if="rule.baseline_mode === 'manual'" label="蓝色加成基准">
+                <mower-input-number
+                  v-model:value="rule.manual_percent"
+                  :disabled="disabled"
+                  :min="0"
+                  :max="500"
+                  :step="1"
+                  ><template #suffix>%</template></mower-input-number
+                >
+                <help-text>只填写蓝色加成数字。</help-text>
+              </n-form-item>
+            </div>
+          </div>
+          <n-button
+            v-if="
+              tradeRoomOptions.some(
+                (option) => !trade_efficiency_rules.some((rule) => rule.room === option.value)
+              )
+            "
+            size="small"
+            text
+            :disabled="disabled"
+            @click="addTradeEfficiencyRule"
+            >+ 添加贸易站</n-button
+          >
+        </div>
+      </n-form-item>
     </n-form>
   </div>
 </template>
@@ -383,6 +506,14 @@ const { left_side_facility } = planStore
 }
 .advanced-settings[inert] {
   opacity: 0.6;
+}
+.trade-efficiency-rows {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+.trade-rule-detail {
+  margin: 12px 0 4px 24px;
 }
 .threshold {
   display: flex;

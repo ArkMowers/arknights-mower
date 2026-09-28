@@ -22,6 +22,7 @@ ADVANCED_SETTING_KEYS = (
     "fia_threshold",
     "rescue_threshold",
     "favorite",
+    "trade_efficiency_rules",
 )
 
 

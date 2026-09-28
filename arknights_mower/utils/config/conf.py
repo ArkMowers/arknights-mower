@@ -337,6 +337,41 @@ class MaaStageRatioRule(ConfModel):
     members: list[MaaStageRatioMember] = []
 
 
+class TradeEfficiencyRule(ConfModel):
+    """一个贸易站的鸿雪组入驻顺序纠偏，默认不启用。"""
+
+    enabled: bool = False
+    room: str = ""
+    baseline_mode: Literal["auto", "manual"] = "auto"
+    manual_percent: float | None = Field(default=None, ge=0, le=500)
+    retry_limit: int = Field(default=2, ge=1, le=5)
+    related_rooms: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_room(self):
+        import re
+
+        allowed = re.compile(r"^room_[1-3]_[1-3]$")
+        if self.room and not allowed.fullmatch(self.room):
+            raise ValueError("效率纠偏仅支持贸易站房间编号")
+        if self.enabled and not self.room:
+            raise ValueError("请先选择效率纠偏贸易站")
+        if (
+            self.baseline_mode == "manual"
+            and self.enabled
+            and self.manual_percent is None
+        ):
+            raise ValueError("手动效率模式需要填写正常效率")
+        if len(set(self.related_rooms)) != len(self.related_rooms):
+            raise ValueError("关联房间不能重复")
+        if any(
+            not allowed.fullmatch(room) or room == self.room
+            for room in self.related_rooms
+        ):
+            raise ValueError("关联房间只能选择其他有效基建房间")
+        return self
+
+
 class RegularTaskPart(ConfModel):
     class MaaDailyPlan(BaseModel):
         medicine: int = 0
@@ -588,6 +623,8 @@ class RIICPart(ConfModel):
     "稳定版全局宿舍优先级"
     refresh_backup_plan_after_mood: bool = True
     "仅旧宿舍逻辑：缓存清零后读取心情并重载调度器，默认开启"
+    trade_efficiency_rules: list[TradeEfficiencyRule] = Field(default_factory=list)
+    "贸易站鸿雪组效率监测（默认关闭）"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True

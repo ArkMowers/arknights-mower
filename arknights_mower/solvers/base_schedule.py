@@ -1325,6 +1325,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.tap(notification)
             self.collect_notification = True
         else:
+            from arknights_mower.utils.trade_efficiency_runtime import audit_when_idle
+
+            try:
+                audit_when_idle(self)
+            except MowerExit:
+                raise
+            except Exception as exc:
+                logger.warning("贸易站效率自检未完成：%s", exc, exc_info=True)
             return self.handle_error()
 
     def translate_room(self, room):
@@ -7679,6 +7687,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if selection_was_attempted:
                             self.record_selection_success()
                         finished = True
+                        from arknights_mower.utils.trade_efficiency_runtime import (
+                            on_arrangement_completed,
+                        )
+
+                        on_arrangement_completed(self, room)
                         if room in getattr(self.task, "dorm_recovery_restore", []):
                             self.task.dorm_recovery_restore.remove(room)
                         del plan[room]
@@ -7891,6 +7904,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.record_selection_success()
                 finished = True
                 skip_enter = False
+                from arknights_mower.utils.trade_efficiency_runtime import (
+                    on_arrangement_completed,
+                )
+
+                on_arrangement_completed(self, room)
                 if room in getattr(self.task, "dorm_recovery_restore", []):
                     self.task.dorm_recovery_restore.remove(room)
                 if getattr(self.task, "arrangement_retry_room", None) == room:
