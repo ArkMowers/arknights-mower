@@ -105,14 +105,14 @@ class TestSharedResourceScope(unittest.TestCase):
 
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
-    def test_old_package_uses_bundled_gacha_catalog(self):
+    def test_old_package_uses_bundled_operator_catalog(self):
         catalog = RES_PACKAGE_BACKCOMPAT_DATA[0]
-        builtin = self.builtin / "data/gacha_catalog.json"
+        builtin = self.builtin / "data/operator_catalog.json"
         builtin.write_text('{"char_test":{"name":"测试"}}', encoding="utf-8")
         self.assertTrue(rp.install_resource_pkg(resource_zip(remove=catalog)))
         self.assertEqual(rp.resource_pkg_path(catalog), builtin)
 
-    def test_new_package_supplies_gacha_catalog(self):
+    def test_new_package_supplies_operator_catalog(self):
         catalog = RES_PACKAGE_BACKCOMPAT_DATA[0]
         self.assertTrue(rp.install_resource_pkg(resource_zip()))
         self.assertTrue(rp.resource_pkg_path(catalog).is_relative_to(self.overlay))

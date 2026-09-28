@@ -796,14 +796,27 @@ function queryParams(extra = {}) {
   return params
 }
 let viewRequest = 0
+function recordQueryKey() {
+  return JSON.stringify([
+    activeId.value,
+    category.value,
+    poolId.value,
+    rarity.value,
+    timeRange.value,
+    customDates.value,
+    newOnly.value,
+    search.value
+  ])
+}
 async function loadData() {
+  const requestNo = ++viewRequest
   if (!activeId.value) {
     summary.value = null
     records.value = []
     more.value = false
+    loading.value = false
     return
   }
-  const requestNo = ++viewRequest
   loading.value = true
   try {
     const [stats, page] = await Promise.all([
@@ -823,17 +836,22 @@ async function loadData() {
 }
 async function loadMore() {
   if (!activeId.value || !more.value || loading.value) return
+  const requestNo = viewRequest
+  const queryKey = recordQueryKey()
   loading.value = true
   try {
     const page = await axios.get(api('/records'), { params: queryParams({ offset: offset.value }) })
+    if (requestNo !== viewRequest || queryKey !== recordQueryKey()) return
     const batch = page.data.records || []
     records.value.push(...batch)
     offset.value += batch.length
     more.value = batch.length === 50
   } catch (error) {
-    message(errorText(error), 'error')
+    if (requestNo === viewRequest && queryKey === recordQueryKey()) {
+      message(errorText(error), 'error')
+    }
   } finally {
-    loading.value = false
+    if (requestNo === viewRequest && queryKey === recordQueryKey()) loading.value = false
   }
 }
 async function sendSms() {

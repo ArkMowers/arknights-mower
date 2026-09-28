@@ -177,7 +177,10 @@ def sync():
     role = provider.current_role
     if role is None or identity(role.uid, role.channel) != account_id:
         raise ValueError("当前登录会话没有授权该角色，请重新选择角色")
-    return {"ok": True, **provider.fetch_all(archive())}
+    return {
+        "ok": True,
+        **provider.fetch_all(archive(), expected_account_id=account_id),
+    }
 
 
 @gacha_bp.get("/catalog")
@@ -185,26 +188,12 @@ def operator_catalog():
     """Public game metadata only. No account credentials or network calls."""
     import json
 
-    skill_data = json.loads(
-        resource_pkg_path("arknights_mower/data/skill_data.json").read_text(
+    operators = json.loads(
+        resource_pkg_path("arknights_mower/data/operator_catalog.json").read_text(
             encoding="utf-8"
         )
     )
-    base = {}
-    for char_id, info in skill_data.get("characters", {}).items():
-        if char_id.startswith("char_") and isinstance(info, dict) and info.get("name"):
-            base[char_id] = {
-                "name": info["name"],
-                "rarity": info.get("rarity", 0),
-                "profession": info.get("profession") or "",
-            }
-    extra = json.loads(
-        resource_pkg_path("arknights_mower/data/gacha_catalog.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    base.update(extra)
-    return {"ok": True, "operators": base}
+    return {"ok": True, "operators": operators}
 
 
 @gacha_bp.get("/roster")

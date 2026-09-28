@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from arknights_mower.utils.gacha_provider import (
     GachaProvider,
     GachaRemoteError,
     GachaSessions,
+    Role,
     _data,
 )
 from arknights_mower.utils.gacha_records import GachaArchive, normalize_record
@@ -176,6 +178,88 @@ class ProviderTests(unittest.TestCase):
     def test_auth_error_without_code_must_fail(self):
         with self.assertRaises(GachaRemoteError):
             _data(Response({"reason": "MissingCookie", "message": "未登录"}), "记录")
+
+    def test_skipped_records_leave_sync_incomplete(self):
+        client = FakeHttp(
+            [],
+            [
+                Response({"code": 0, "data": [{"id": "normal"}]}),
+                Response(
+                    {
+                        "code": 0,
+                        "data": {
+                            "list": [fake_record(), {"poolId": "broken"}],
+                            "hasMore": False,
+                        },
+                    }
+                ),
+            ],
+        )
+        provider = GachaProvider(client)
+        provider.current_role = Role("1001", "official", "博士", "官服")
+        provider.role_token = "role-token"
+        provider.role_cookie = "role-cookie"
+        result = provider.fetch_all(self.archive, expected_account_id="official:1001")
+        self.assertEqual(result["added"], 1)
+        self.assertEqual(result["skipped"], 1)
+        self.assertTrue(result["warnings"])
+        self.assertTrue(self.archive.summary("official:1001")["history_incomplete"])
+
+    def test_sync_rejects_role_changed_after_route_check(self):
+        provider = GachaProvider(FakeHttp([], []))
+        provider.current_role = Role("1002", "bilibili", "博士", "B服")
+        with self.assertRaisesRegex(ValueError, "没有授权该角色"):
+            provider.fetch_all(self.archive, expected_account_id="official:1001")
+
+    def test_role_selection_waits_for_active_sync(self):
+        provider = GachaProvider(FakeHttp([], []))
+        provider.current_role = Role("1001", "official", "甲", "官服")
+        provider.role_token = "role-token"
+        provider.role_cookie = "role-cookie"
+        fetching = threading.Event()
+        release = threading.Event()
+        switch_started = threading.Event()
+        selected = threading.Event()
+
+        def gacha_get(endpoint, params):
+            if endpoint == "cate":
+                return [{"id": "normal"}]
+            fetching.set()
+            if not release.wait(2):
+                raise RuntimeError("timed out waiting for test sync")
+            return {"list": [fake_record()], "hasMore": False}
+
+        def change_role(uid, channel):
+            provider.current_role = Role(uid, channel, "乙", "B服")
+            selected.set()
+            return provider.current_role
+
+        def switch_role():
+            switch_started.set()
+            provider.select_role("1002", "bilibili")
+
+        with (
+            patch.object(provider, "_gacha_get", side_effect=gacha_get),
+            patch.object(provider, "_select_role", side_effect=change_role),
+        ):
+            sync_thread = threading.Thread(
+                target=lambda: provider.fetch_all(
+                    self.archive, expected_account_id="official:1001"
+                )
+            )
+            switch_thread = threading.Thread(target=switch_role)
+            sync_thread.start()
+            self.assertTrue(fetching.wait(2))
+            switch_thread.start()
+            self.assertTrue(switch_started.wait(2))
+            self.assertFalse(selected.wait(0.05))
+            release.set()
+            sync_thread.join(2)
+            switch_thread.join(2)
+        self.assertFalse(sync_thread.is_alive())
+        self.assertFalse(switch_thread.is_alive())
+        self.assertEqual(self.archive.summary("official:1001")["total"], 1)
+        self.assertTrue(selected.is_set())
 
     def test_session_switch_and_logout(self):
         sessions = GachaSessions()
@@ -443,15 +527,13 @@ class GachaV3Tests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (p / "skill_data.json").write_text(
+        (p / "operator_catalog.json").write_text(
             json.dumps(
                 {
-                    "characters": {
-                        "char_002_amiya": {
-                            "name": "阿米娅",
-                            "rarity": 5,
-                            "profession": "CASTER",
-                        }
+                    "char_002_amiya": {
+                        "name": "阿米娅",
+                        "rarity": 5,
+                        "profession": "CASTER",
                     }
                 },
                 ensure_ascii=False,
@@ -465,16 +547,14 @@ class GachaV3Tests(unittest.TestCase):
             ) as cache_path,
             patch(
                 "arknights_mower.utils.gacha_roster.resource_pkg_path",
-                side_effect=lambda rel: (
-                    p / "skill_data.json"
-                    if rel.endswith("skill_data.json")
-                    else Path(__file__).resolve().parents[1] / "data/gacha_catalog.json"
-                ),
+                return_value=p / "operator_catalog.json",
             ) as resource_path,
         ):
             result = roster_preview()
         cache_path.assert_called_once_with("@app/tmp/cultivate.json")
-        self.assertEqual(resource_path.call_count, 2)
+        resource_path.assert_called_once_with(
+            "arknights_mower/data/operator_catalog.json"
+        )
         self.assertTrue(result["available"])
         self.assertFalse(result["account_verified"])
         self.assertEqual(result["operator_count"], 1)
@@ -526,11 +606,6 @@ class GachaV5RosterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             (base / "tmp").mkdir()
-            folder = base / "_internal/arknights_mower/data"
-            folder.mkdir(parents=True)
-            (folder / "skill_data.json").write_text(
-                '{"characters":{}}', encoding="utf8"
-            )
             characters = [
                 {"id": "char_120_hibisc", "evolvePhase": 1, "level": 55},
                 {"id": "char_501_durin", "evolvePhase": 0, "level": 30},
@@ -541,11 +616,8 @@ class GachaV5RosterTests(unittest.TestCase):
             )
             with patch(
                 "arknights_mower.utils.gacha_roster.resource_pkg_path",
-                side_effect=lambda rel: (
-                    folder / "skill_data.json"
-                    if rel.endswith("skill_data.json")
-                    else Path(__file__).resolve().parents[1] / "data/gacha_catalog.json"
-                ),
+                return_value=Path(__file__).resolve().parents[1]
+                / "data/operator_catalog.json",
             ):
                 result = roster_preview(base)
             self.assertTrue(result["available"])
@@ -558,15 +630,14 @@ class GachaV5RosterTests(unittest.TestCase):
         import json as _json
 
         catalog_path = (
-            Path(__file__).resolve().parents[1] / "data" / "gacha_catalog.json"
+            Path(__file__).resolve().parents[1] / "data" / "operator_catalog.json"
         )
         catalog = _json.loads(catalog_path.read_text(encoding="utf8"))
         self.assertEqual(catalog["char_120_hibisc"]["rarity"], 3)
         self.assertEqual(catalog["char_501_durin"]["rarity"], 2)
         self.assertEqual(catalog["char_285_medic2"]["rarity"], 1)
-        # Only uncommon records are shipped; reuse Mower's skill_data.json for
-        # the existing catalog to avoid duplicating source game metadata.
-        self.assertGreaterEqual(len(catalog), 60)
+        self.assertGreaterEqual(len(catalog), 460)
+        self.assertIn("char_002_amiya", catalog)
         complete = view.operator_catalog()["operators"]
         self.assertGreaterEqual(len(complete), 460)
         self.assertEqual(complete["char_120_hibisc"]["rarity"], 3)

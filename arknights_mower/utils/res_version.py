@@ -29,9 +29,9 @@ RES_PACKAGE_MODELS = (
 )
 # Older resource packages do not contain this model; runtime OCR remains available.
 RES_PACKAGE_OPTIONAL_MODELS = ("arknights_mower/models/mastery_panel.model",)
-# Older published packages predate the gacha catalog. Keep them usable until a
+# Older published packages predate the operator catalog. Keep them usable until a
 # package containing this file is published.
-RES_PACKAGE_BACKCOMPAT_DATA = ("arknights_mower/data/gacha_catalog.json",)
+RES_PACKAGE_BACKCOMPAT_DATA = ("arknights_mower/data/operator_catalog.json",)
 RES_PACKAGE_DATA = (
     "arknights_mower/data/agent.json",
     "arknights_mower/data/agent_profession.json",

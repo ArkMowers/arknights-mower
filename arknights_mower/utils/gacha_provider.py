@@ -15,7 +15,7 @@ from typing import Any
 
 import requests
 
-from arknights_mower.utils.gacha_records import channel_name, normalize_record
+from arknights_mower.utils.gacha_records import channel_name, identity, normalize_record
 
 PHONE = re.compile(r"^1[3-9][0-9]{9}$")
 CODE = re.compile(r"^[0-9]{4,8}$")
@@ -83,6 +83,7 @@ class Role:
 class GachaProvider:
     def __init__(self, session: requests.Session | None = None):
         self.http = session or requests.Session()
+        self._role_lock = threading.RLock()
         self.http.headers.update({"User-Agent": "Mower/4.1.6 GachaReadOnly"})
         self.account_token = ""
         self.oauth_token = ""
@@ -198,6 +199,10 @@ class GachaProvider:
         return roles
 
     def select_role(self, uid: str, channel: str) -> Role:
+        with self._role_lock:
+            return self._select_role(uid, channel)
+
+    def _select_role(self, uid: str, channel: str) -> Role:
         role = next(
             (r for r in self.roles if r.uid == uid and r.channel == channel), None
         )
@@ -240,10 +245,23 @@ class GachaProvider:
             },
         )
 
-    def fetch_all(self, archive, page_size: int = 50, max_pages: int = 200) -> dict:
+    def fetch_all(
+        self,
+        archive,
+        page_size: int = 50,
+        max_pages: int = 200,
+        expected_account_id: str | None = None,
+    ) -> dict:
+        with self._role_lock:
+            return self._fetch_all(archive, page_size, max_pages, expected_account_id)
+
+    def _fetch_all(self, archive, page_size, max_pages, expected_account_id) -> dict:
         role = self.current_role
         if role is None:
             raise GachaRemoteError("请选择角色")
+        account_id = identity(role.uid, role.channel)
+        if expected_account_id is not None and account_id != expected_account_id:
+            raise ValueError("当前登录会话没有授权该角色，请重新选择角色")
         account_id = archive.ensure_account(role.uid, role.channel, role.nickname)
         raw_categories = self._gacha_get("cate", {"uid": role.uid})
         categories = (
@@ -311,6 +329,10 @@ class GachaProvider:
                     )
             except GachaRemoteError as error:
                 warnings.append(f"{category_id}：{error}")
+        if skipped:
+            warnings.append(
+                f"{skipped} 条寻访记录格式无效，已跳过；本次同步不标记为完整"
+            )
         if not warnings:
             archive.append(account_id, [], finished=True)
         return {
@@ -323,13 +345,14 @@ class GachaProvider:
         }
 
     def close(self):
-        self.account_token = ""
-        self.oauth_token = ""
-        self.role_token = ""
-        self.role_cookie = ""
-        self.roles = []
-        self.current_role = None
-        self.http.close()
+        with self._role_lock:
+            self.account_token = ""
+            self.oauth_token = ""
+            self.role_token = ""
+            self.role_cookie = ""
+            self.roles = []
+            self.current_role = None
+            self.http.close()
 
 
 class GachaSessions:
