@@ -95,6 +95,11 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 3. Subsystem Invariants
 
+- **[INV-DEV-12] Android Configuration Ownership**: Android-managed settings remain authoritative through configuration load, import, partial update and save/reload. `Conf` removes the incoming desktop Device Profile before validation and derives its own profile from the installed Android adapter's validated native fields; Android partial updates use that same boundary instead of desktop binding validation.
+- The Android adapter owns connection and MAA paths, capture and touch selections, simulator lifecycle settings, native appearance, screenshot history and service endpoint settings. Desktop profiles cannot restore instance identities, manager paths, vendor capture backends, recovery settings or hotkeys. `package_type` remains editable; profile-only imports preserve a supported `game_package` when `package_type` is absent. General task settings remain unchanged.
+- Android backup import serializes the validated native settings and canonical Device Profile, preserving unknown backup fields without retaining desktop values in protected settings. Main and backup Base Plans, weekly plans and general task settings remain editable and support export/import round trips. Subsequent exports retain that same boundary; desktop backup serialization remains unchanged.
+- Boundary rationale and verification are recorded in [Android Configuration Isolation](../../.agents/notes/implemented/bug-fix/2026-09-30-android-config-isolation.md).
+
 - **[INV-DEV-11] MuMu Pro Verified Selection**: MuMu Pro discovery reads bounded `mumutool info all` output and exposes each distinct instance for explicit selection. The selected Device Profile saves the instance index and a Topology Fingerprint of its VM path. Connection and recovery query that index again; a changed path, malformed output, or duplicate ADB port fails before any fallback. The current port is used only for the confirmed instance. Manager start and stop commands remain unavailable, so a stopped instance requires manual launch.
 - The [MuMu Pro instance selection decision](../../.agents/notes/implemented/feature/2026-09-30-mumu-pro-instance-selection.md) records output validation and multi-instance coverage.
 

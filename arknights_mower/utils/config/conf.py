@@ -833,6 +833,8 @@ class Conf(
     def updated(self, updates: dict) -> "Conf":
         """Validate a partial or legacy full form against the current Conf."""
         data = _merge_model_fields(self, updates)
+        if os.environ.get("MOWER_ANDROID") == "1":
+            return type(self)(**data)
         explicit_profile = updates.get("device", {})
         if not isinstance(explicit_profile, dict):
             return type(self)(**data)  # Produce the ordinary model validation error.
@@ -910,7 +912,21 @@ class Conf(
         if isinstance(data, dict) and os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.managed import normalize
 
+            profile = data.get("device")
+            if "package_type" not in data and isinstance(profile, dict):
+                game_package = profile.get("game_package")
+                if game_package in {
+                    "com.hypergryph.arknights",
+                    "com.hypergryph.arknights.bilibili",
+                }:
+                    data = {
+                        **data,
+                        "package_type": (
+                            1 if game_package == "com.hypergryph.arknights" else 2
+                        ),
+                    }
             data = normalize(data)
+            data.pop("device", None)
         if not isinstance(data, dict):
             return data
         # visit_friend(bool) 已退役：迁移为 visit_friend_enable(bool)。原 true 语义是 mower

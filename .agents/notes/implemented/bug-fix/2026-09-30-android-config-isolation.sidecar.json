@@ -1,0 +1,21 @@
+{
+  "title": "Android configuration isolation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-12]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.conf.Conf.migrate_legacy_keys",
+    "arknights_mower.utils.config.conf.Conf.migrate_device_profile",
+    "arknights_mower.utils.config.conf.Conf.updated",
+    "arknights_mower.utils.config_backup._validate_configuration"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/android_config_isolation_tests.py"
+  ]
+}

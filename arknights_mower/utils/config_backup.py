@@ -1,6 +1,7 @@
 """Back up and restore the current instance's config directory as a ZIP."""
 
 import json
+import os
 import sqlite3
 import stat
 import sys
@@ -190,6 +191,9 @@ def _validate_configuration(files):
         "tray": config.conf.webview.tray,
     }
     conf = config.Conf(**data)
+    if os.environ.get("MOWER_ANDROID") == "1":
+        conf.sync_legacy_device_fields()
+        data.update(conf.model_dump(exclude_unset=True))
     plan_data = _object_file(files, "plan.json")
     # Some older exports were normalized through the newer schema and therefore carry
     # an empty main-plan field even though the global value was still authoritative.

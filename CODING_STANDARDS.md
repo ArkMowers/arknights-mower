@@ -37,6 +37,7 @@
 - **[INV-DIAG-05] Shared Frame Encoding**: Each admitted RGB snapshot has at most one encoding attempt; preview, history and error context share its encoded bytes, release the source snapshot after completion, and preserve bounded admission and independent progress of newer previews.
 
 ### 2.4 Device Control & Transport
+- **[INV-DEV-12] Android Configuration Ownership**: Android-managed connection, capture, input, native appearance, screenshot history and service endpoint settings remain authoritative through configuration load, import, partial update and save/reload; desktop Device Profile values never overwrite them, while game server selection, Base Plans, weekly plans and general task settings remain editable and support export/import round trips.
 - **[INV-DEV-11] MuMu Pro Verified Selection**: A selected MuMu Pro instance is verified by its saved index and topology fingerprint before its current ADB port is used; changed or ambiguous manager output fails without adopting another instance, and manager lifecycle commands remain unavailable.
 - **[INV-DEV-10] MuMu Pro Manual Binding**: The MuMu Pro preset checks only its saved ADB serial through the standard preflight gate; absent or mismatched targets fail without adopting another device, and unverified manager commands never start or stop an instance.
 - **[INV-DEV-09] Classified Failure Isolation**: Classified device failures, including Temporary Preparation errors, request owned resource cleanup and expose their structured verdict without requesting application shutdown.
