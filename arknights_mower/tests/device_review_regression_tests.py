@@ -32,7 +32,7 @@ def test_native_multisegment_swipe_keeps_one_touch_sequence():
     ipc.touch_up.assert_called_once_with()
 
 
-@pytest.mark.parametrize("product", ["ReDroid", "MuMuPro", "Genymotion"])
+@pytest.mark.parametrize("product", ["ReDroid", "Genymotion"])
 def test_simulator_identifiers_are_literal_arguments(product):
     identifier = "instance; echo unexpected"
     commands = build_command_set(product, identifier)
@@ -48,6 +48,11 @@ def test_simulator_identifiers_are_literal_arguments(product):
 def test_simulator_option_cannot_be_an_instance_identifier():
     with pytest.raises(ValueError):
         build_command_set("ReDroid", "--all")
+
+
+def test_unverified_mumu_pro_lifecycle_commands_are_unavailable():
+    with pytest.raises(ValueError):
+        build_command_set("MuMuPro", "0")
 
 
 def test_manager_executable_with_spaces_is_resolved_without_a_shell(tmp_path):

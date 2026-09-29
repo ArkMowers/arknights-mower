@@ -443,7 +443,13 @@ onUnmounted(() => {
           <help-text>{{ state.connectionHelp }}</help-text>
         </div>
         <div class="device-sub-row">
-          <span v-if="draft.instance_name || draft.instance_id" class="sub-item">
+          <span
+            v-if="
+              (draft.instance_name || draft.instance_id) &&
+              (draft.preset_id !== 'macos.mumu_pro' || draft.topology_fingerprint)
+            "
+            class="sub-item"
+          >
             实例：{{ draft.instance_name || draft.instance_id }}
           </span>
           <span v-if="draft.last_serial" class="sub-item"> ADB 地址：{{ draft.last_serial }} </span>

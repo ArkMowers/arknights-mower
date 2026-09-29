@@ -54,12 +54,11 @@ class PreflightError:
 
 
 def mumu_pro_manual_error() -> PreflightError:
-    """Never turn an unverified MuMu Pro binding into an arbitrary ADB target."""
+    """Describe a missing MuMu Pro discovery adapter and manual serial entry."""
     return PreflightError(
         "mumu_pro_manual_required",
-        "MuMu Pro 暂未确认官方 mumutool 的实例、运行状态与当前 ADB 输出格式。"
-        "请进入高级手动配置，在目标设备的“开发者 → 打开 ADB”菜单确认端口后"
-        "填写明确的设备 serial，检测时只读取连接状态。自动发现与生命周期管理尚不可用。",
+        "当前运行环境未提供 MuMu Pro 实例检测。请在目标实例的“开发者 → 打开 ADB”"
+        "菜单确认端口，在高级设备设置中填写该实例的 ADB serial 后测试连接。",
         "manual",
     )
 
@@ -168,11 +167,6 @@ class PreflightService:
                 "screenshot_backend_incompatible", reason, fields=["screenshot_backend"]
             )
             return result
-        if profile.preset_id == "macos.mumu_pro":
-            result.serial = ""
-            result.adb_path = ""
-            result.error = mumu_pro_manual_error()
-            return result
         try:
             return self._check(
                 profile,
@@ -195,7 +189,14 @@ class PreflightService:
         require_unique_target: bool,
         prepare_capture: Callable[[str, str, DeviceProfile], None] | None,
     ) -> PreflightResult:
-        for name in ("installation_path", "manager_path"):
+        # Manual MuMu Pro binding needs only an explicit ADB serial. Verified
+        # instance selection checks its manager path before this preflight.
+        path_fields = (
+            ()
+            if profile.preset_id == "macos.mumu_pro"
+            else ("installation_path", "manager_path")
+        )
+        for name in path_fields:
             path = getattr(profile, name).strip()
             exists = not path or self._observe(
                 lambda: self._io.installation_exists(path),

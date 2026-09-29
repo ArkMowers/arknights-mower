@@ -19,6 +19,10 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-11] MuMu Pro Verified Selection**: Does discovery expose distinct instances from bounded manager output, and does each connection recheck index and topology fingerprint before accepting that instance's current ADB endpoint, without manager lifecycle commands?
+
+- [ ] **[INV-DEV-10] MuMu Pro Manual Binding**: Does the MuMu Pro preset use only the selected serial after standard preflight, reject missing or mismatched targets, and avoid unverified manager start and stop commands?
+
 - [ ] **[INV-DEV-09] Classified Failure Isolation**: Do Temporary Preparation errors retain their structured verdict and trigger owned resource cleanup without requesting application shutdown, while unclassified internal faults retain coordinated shutdown?
 
 - [ ] **[INV-DEV-08] Uncertain Input Delivery**: Does an ADB input transmission or acknowledgement timeout reach the structured input failure boundary without replaying the command, while known read-only queries retain bounded retries?

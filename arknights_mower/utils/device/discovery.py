@@ -19,6 +19,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
 )
 from arknights_mower.utils.device.genymotion import GENYMOTION_PRESET, genymotion_repair
+from arknights_mower.utils.device.mumu_pro import MUMU_PRO_PRESET
 from arknights_mower.utils.device.preflight import (
     PreflightError,
     PreflightResult,
@@ -113,19 +114,41 @@ class DiscoveryService:
                 resolved_adb=resolved_adb,
                 **capture_options,
             )
+        if profile.preset_id == MUMU_PRO_PRESET and not profile.topology_fingerprint:
+            if preflight.host_platform() != "macos":
+                return PreflightResult(
+                    False,
+                    preflight.host_platform(),
+                    "failed",
+                    profile.last_serial,
+                    error=PreflightError(
+                        "unsupported_host",
+                        "MuMu Pro 只能在 macOS 上检测。",
+                        fields=["preset_id"],
+                    ),
+                )
+            return preflight.check(
+                profile,
+                confirmed_package=confirmed_package,
+                resolved_adb=resolved_adb,
+                **capture_options,
+            )
         result = PreflightResult(False, preflight.host_platform(), "failed", "")
         avd = profile.preset_id in AVD_PRESETS
         waydroid = profile.preset_id == WAYDROID_PRESET
         redroid = profile.preset_id == REDROID_PRESET
         genymotion = profile.preset_id == GENYMOTION_PRESET
+        mumu_pro = profile.preset_id == MUMU_PRO_PRESET
         if (
             (avd and profile.preset_id != f"{result.host_platform}.avd")
             or ((waydroid or redroid or genymotion) and result.host_platform != "linux")
+            or (mumu_pro and result.host_platform != "macos")
             or (
                 not avd
                 and not waydroid
                 and not redroid
                 and not genymotion
+                and not mumu_pro
                 and result.host_platform != "windows"
             )
         ):
@@ -193,7 +216,9 @@ class DiscoveryService:
                 "start_confirmation_required"
                 if avd or redroid or genymotion
                 else "instance_stopped",
-                "已绑定的实例尚未启动，请确认启动后重新检测。"
+                "MuMu Pro 实例尚未启动，请在模拟器中手动启动后重试。"
+                if mumu_pro
+                else "已绑定的实例尚未启动，请确认启动后重新检测。"
                 if avd or redroid or genymotion
                 else "已绑定的实例尚未启动。可以点“启动并测试连接”让 mower 启动它，也可以手动启动后重新检测；开始任务时 mower 同样会启动这个实例。",
                 "confirm"
@@ -230,10 +255,18 @@ class DiscoveryService:
     def discover(
         self, profile: DeviceProfile, host: str, preflight=None
     ) -> DiscoveryResult | PreflightResult:
-        if profile.preset_id == "macos.mumu_pro":
-            # Until mumutool's output contract is verified, preserve the user's
-            # product choice and offer manual setup instead of detecting Air.
-            return DiscoveryResult(host, error=mumu_pro_manual_error())
+        if profile.preset_id == MUMU_PRO_PRESET:
+            if host != "macos":
+                return DiscoveryResult(
+                    host,
+                    error=PreflightError(
+                        "unsupported_host",
+                        "MuMu Pro 只能在 macOS 上检测。",
+                        fields=["preset_id"],
+                    ),
+                )
+            if not hasattr(self._simulator, "discover_mumu_pro"):
+                return DiscoveryResult(host, error=mumu_pro_manual_error())
         if (
             host == "linux"
             and profile.preset_id == "manual.other"
@@ -270,7 +303,12 @@ class DiscoveryService:
             and profile.preset_id == "manual.other"
             and not profile.last_serial
         )
-        if host == "macos" and preflight is not None and not is_avd:
+        if (
+            host == "macos"
+            and preflight is not None
+            and not is_avd
+            and profile.preset_id != MUMU_PRO_PRESET
+        ):
             if profile.preset_id != AIR_PRESET:
                 profile = profile.model_copy(
                     update={
@@ -283,7 +321,26 @@ class DiscoveryService:
                 )
             return self._air.check(profile, preflight)
         result = DiscoveryResult(host)
-        if profile.preset_id == WAYDROID_PRESET and self._waydroid is not None:
+        if profile.preset_id == MUMU_PRO_PRESET:
+            try:
+                observations = self._simulator.discover_mumu_pro(profile)
+            except MowerExit:
+                raise
+            except InstanceBindingError as exc:
+                return DiscoveryResult(
+                    host, error=PreflightError(exc.code, str(exc), "manual", exc.fields)
+                )
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                return DiscoveryResult(
+                    host,
+                    error=PreflightError(
+                        "mumu_pro_discovery_failed",
+                        f"无法读取 MuMu Pro 实例：{exc}",
+                        "manual",
+                        ["manager_path"],
+                    ),
+                )
+        elif profile.preset_id == WAYDROID_PRESET and self._waydroid is not None:
             observations = self._waydroid.discover(profile, host)
         elif profile.preset_id == REDROID_PRESET and self._redroid is not None:
             observations = self._redroid.discover(profile, host)
@@ -312,10 +369,11 @@ class DiscoveryService:
                     "last_serial": "",
                     "game_package_confirmed": False,
                 }
+                if binding["preset_id"] in {"windows.nox", MUMU_PRO_PRESET}:
+                    binding["topology_fingerprint"] = instance["topology_fingerprint"]
                 if binding["preset_id"] == "windows.nox":
                     binding.update(
                         instance_uuid=instance["instance_uuid"],
-                        topology_fingerprint=instance["topology_fingerprint"],
                     )
                 if binding["preset_id"] in {
                     "windows.bluestacks5",
@@ -327,6 +385,8 @@ class DiscoveryService:
                 if host == "windows":
                     manager_identity = manager_identity.casefold()
                 identity = manager_identity + "\0" + instance["instance_id"]
+                if binding["preset_id"] == MUMU_PRO_PRESET:
+                    identity += "\0" + instance["topology_fingerprint"]
                 if installation.get("config_path"):
                     identity += "\0" + (
                         installation["config_path"].replace("\\", "/").casefold()

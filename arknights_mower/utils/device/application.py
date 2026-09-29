@@ -409,6 +409,23 @@ class DeviceControl(Generic[D]):
             if self._preflight is None:
                 raise RuntimeError("未配置设备检测适配器")
             configuration = configuration or self._read_configuration()
+            if (
+                configuration.device.preset_id == "macos.mumu_pro"
+                and configuration.device.topology_fingerprint
+                and self._discovery is None
+            ):
+                self._last_preflight = PreflightResult(
+                    False,
+                    self._preflight.host_platform(),
+                    "failed",
+                    "",
+                    error=PreflightError(
+                        "binding_failed",
+                        "缺少 MuMu Pro 实例核验器，请重新检测实例。",
+                        fields=["instance_id"],
+                    ),
+                )
+                return self._last_preflight
             if self._discovery is not None and configuration.device.preset_id in {
                 "windows.mumu12",
                 "windows.ldplayer9",
@@ -416,6 +433,7 @@ class DeviceControl(Generic[D]):
                 "windows.nox",
                 "windows.bluestacks5",
                 "macos.bluestacks_air",
+                "macos.mumu_pro",
                 "linux.waydroid",
                 "linux.redroid",
                 "linux.genymotion",
@@ -915,7 +933,10 @@ class DeviceControl(Generic[D]):
         # The bound session already resolved and validated its ADB executable.
         # Reuse it for every preset so capture and preflight cannot disagree.
         bound_adb = getattr(self._session, "adb_path", "") or ""
-        if profile.preset_id == "macos.bluestacks_air" and self._discovery is not None:
+        if (
+            profile.preset_id == "macos.bluestacks_air"
+            or (profile.preset_id == "macos.mumu_pro" and profile.topology_fingerprint)
+        ) and self._discovery is not None:
             return self._discovery.check_binding(
                 profile,
                 self._preflight,

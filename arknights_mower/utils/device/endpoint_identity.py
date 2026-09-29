@@ -17,6 +17,7 @@ VERIFIED_ENDPOINT_PRESETS = (
             "windows.ldplayer14",
             "windows.nox",
             "windows.bluestacks5",
+            "macos.mumu_pro",
             "linux.waydroid",
         }
     )

@@ -75,6 +75,12 @@ class TestSimulatorSessionDelegation(unittest.TestCase):
         self.command.return_value = False
         self.assertFalse(simulator.restart_simulator(start=False))
 
+    def test_mumu_pro_idle_stop_never_uses_unverified_manager_command(self):
+        self.conf.device.preset_id = "macos.mumu_pro"
+        self.conf.simulator.name = "MuMuPro"
+        self.assertFalse(simulator.restart_simulator(start=False))
+        self.command.assert_not_called()
+
 
 class TestMuMuTransportCleanup(unittest.TestCase):
     def setUp(self):

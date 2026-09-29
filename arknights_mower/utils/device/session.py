@@ -276,9 +276,13 @@ class DeviceSession:
             profile.touch_backend, profile.touch_backend
         )
         instance_desc = f"（{profile.instance_name}）" if profile.instance_name else ""
+        target_desc = (
+            f"ADB serial {profile.last_serial.strip() or '未填写'}"
+            if profile.preset_id == "macos.mumu_pro"
+            else f"多开实例 {profile.instance_id}{instance_desc}"
+        )
         logger.info(
-            f"使用设备：{preset_name} 多开实例 {profile.instance_id}"
-            f"{instance_desc}，截图后端 "
+            f"使用设备：{preset_name} {target_desc}，截图后端 "
             f"{screenshot_name}，触控后端 {touch_name}"
         )
         logger.debug(
@@ -597,6 +601,14 @@ class DeviceSession:
         self._check_observation(observation)
         if observation.state == "ready":
             return observation
+        if (
+            self.profile.preset_id == "macos.mumu_pro"
+            and observation.instance_state == "stopped"
+        ):
+            raise SessionFailure(
+                observation,
+                "MuMu Pro 实例尚未启动，请在模拟器中手动启动后重试。",
+            )
         if observation.code == "frame_failed" and observation.serial:
             # The instance and its transport are healthy; only the decoded
             # canvas is missing (a game that is not running cannot render one).
@@ -636,7 +648,9 @@ class DeviceSession:
         # is not there yet never justifies one.
         frame_only = observation.code == "frame_failed" and bool(observation.serial)
         restartable = (
-            observation.instance_state in {"running", "starting"} and not frame_only
+            observation.instance_state in {"running", "starting"}
+            and self.profile.preset_id != "macos.mumu_pro"
+            and not frame_only
         )
         local_actions = (
             max(1, self.policy.attempts - 2)
@@ -680,6 +694,11 @@ class DeviceSession:
                         )
                     return observation
         if observation.instance_state == "stopped":
+            if self.profile.preset_id == "macos.mumu_pro":
+                raise SessionFailure(
+                    observation,
+                    "MuMu Pro 实例尚未启动，请在模拟器中手动启动后重试。",
+                )
             logger.info(
                 f"{self._format_human_observation(observation)}，正在启动模拟器..."
             )

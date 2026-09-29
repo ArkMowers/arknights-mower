@@ -85,7 +85,7 @@ The subsystem integrates platform-specific emulators through deterministic disco
 | **Windows LDPlayer 9 / 14** | Registry query + `ldconsole.exe list2` | Process PID cross-referenced with TCP listening port |
 | **Windows Nox** | `NoxConsole.exe list` + `.vbox` VM configuration | VM machine UUID, `topology_fingerprint` |
 | **Windows BlueStacks 5** | Registry query + `bluestacks.conf` | `bst.instance.<key>.status.adb_port` |
-| **macOS MuMu Pro** | Guided manual configuration (`manual.other`) | User-specified port, preflight gate |
+| **macOS MuMu Pro** | Bundled `mumutool info all` lists instances; manual ADB serial remains available | Selected index and VM path fingerprint, current ADB port, standard preflight gate |
 | **macOS / Linux AVD** | `ANDROID_SDK_ROOT` + `emulator -list-avds` | AVD name, owned process lifecycle tracking |
 | **Linux Genymotion** | `gmtool version` + `gmtool --format json admin list` | Instance UUID, ADB serial binding |
 | **Linux ReDroid** | Local Docker socket (`/var/run/docker.sock`) | Immutable container ID, host port mapping |
@@ -94,6 +94,12 @@ The subsystem integrates platform-specific emulators through deterministic disco
 ---
 
 ## 3. Subsystem Invariants
+
+- **[INV-DEV-11] MuMu Pro Verified Selection**: MuMu Pro discovery reads bounded `mumutool info all` output and exposes each distinct instance for explicit selection. The selected Device Profile saves the instance index and a Topology Fingerprint of its VM path. Connection and recovery query that index again; a changed path, malformed output, or duplicate ADB port fails before any fallback. The current port is used only for the confirmed instance. Manager start and stop commands remain unavailable, so a stopped instance requires manual launch.
+- The [MuMu Pro instance selection decision](../../.agents/notes/implemented/feature/2026-09-30-mumu-pro-instance-selection.md) records output validation and multi-instance coverage.
+
+- **[INV-DEV-10] MuMu Pro Manual Binding**: Without a selected instance fingerprint, `macos.mumu_pro` checks only the user's saved ADB serial with the standard preflight gate. Missing, offline, or mismatched targets never select another online device. A different instance that later reuses that serial cannot be distinguished in manual mode. Saved installation and manager paths do not gate manual ADB validation.
+- The [MuMu Pro connection repair](../../.agents/notes/implemented/bug-fix/2026-09-30-mumu-pro-manual-binding.md) records the regression and focused coverage.
 
 - **[INV-DEV-09] Classified Failure Isolation**: Classified device failures, including Temporary Preparation errors, request owned resource cleanup and expose their structured verdict without requesting application shutdown.
 - Input surface mismatch or unreadable display state keeps the settings interface available. Failed compensation retains its recovery record. Unclassified internal faults still request coordinated application shutdown.

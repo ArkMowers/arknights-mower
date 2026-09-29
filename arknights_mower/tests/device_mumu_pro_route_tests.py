@@ -1,5 +1,7 @@
-"""Unverified MuMu Pro requests remain explicit manual repairs through HTTP."""
+"""MuMu Pro discovery and selected-instance preflight through HTTP."""
 
+import json
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -12,6 +14,7 @@ from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.bluestacks_air import BlueStacksAirDiscovery
 from arknights_mower.utils.device.discovery import DiscoveryService
 from arknights_mower.utils.device.preflight import PreflightService
+from arknights_mower.utils.device.session_io import ProductionSimulator
 
 MUMU_PRESET = "macos.mumu_pro"
 OLD_SERIAL = "127.0.0.1:16384"
@@ -78,18 +81,85 @@ class MuMuProRouteTests(unittest.TestCase):
         self.assertEqual(loaded["device"]["last_serial"], OLD_SERIAL)
         self.assertEqual(self.path.read_bytes(), before)
 
-    def test_preflight_never_probes_a_saved_or_new_unverified_mumu_endpoint(self):
+    def test_discovered_multi_instance_selection_rechecks_same_instance(self):
+        manager = self.path.parent / "MuMuPlayer.app/Contents/MacOS/mumutool"
+        manager.parent.mkdir(parents=True)
+        manager.write_bytes(b"stub")
+        manager.chmod(0o755)
+        rows = [
+            {
+                "index": index,
+                "name": f"VM {index}",
+                "bundle_path": str(self.path.parent / f"vms/{index}"),
+                "state": "running",
+                "adb_port": port,
+            }
+            for index, port in ((0, 16384), (1, 16416))
+        ]
+
+        def run(argv, **_kwargs):
+            selected = argv[-1] != "all"
+            chosen = next((row for row in rows if str(row["index"]) == argv[-1]), None)
+            payload = chosen if selected else {"count": len(rows), "results": rows}
+            response = {"errcode": 0, "message": "", "return": payload}
+            return subprocess.CompletedProcess(
+                argv, 0, json.dumps(response).encode(), b""
+            )
+
+        simulator = ProductionSimulator(run=run)
+        self.control = DeviceControl(
+            lambda: config.conf,
+            ManualAdapter(),
+            preflight=PreflightService(self.io),
+            discovery=DiscoveryService(self.sources, simulator),
+        )
+        self.main.device_control = self.control
+        self.addCleanup(self.control.close)
+        self.io.targets = [(OLD_SERIAL, "device"), (MANUAL_SERIAL, "device")]
         before = self.path.read_bytes()
-        with patch.object(
-            self.io, "devices", side_effect=AssertionError("unverified ADB probe")
-        ):
-            for draft in (None, {"last_serial": MANUAL_SERIAL}):
-                with self.subTest(draft=draft):
-                    result = self.post_device("/device/preflight", draft)
-                    self.assert_manual_required(result)
-                    self.assertEqual(result["serial"], "")
-                    self.assertEqual(result["adb_path"], "")
-                    self.assertEqual(result["observations"], {})
+        discovered = self.post_device(
+            "/device/discover", {"manager_path": str(manager)}
+        )
+        self.assertTrue(discovered["ok"], discovered["error"])
+        self.assertEqual(discovered["status"], "selection_required")
+        self.assertEqual(len(discovered["candidates"]), 2)
+        self.assertIsNone(discovered["selected_key"])
+        selected = next(
+            candidate
+            for candidate in discovered["candidates"]
+            if candidate["instance_id"] == "1"
+        )
+        checked = self.post_device("/device/preflight", selected["binding"])
+        self.assertTrue(checked["ok"], checked["error"])
+        self.assertEqual(checked["serial"], MANUAL_SERIAL)
+        self.assertEqual(self.path.read_bytes(), before)
+
+        rows[1]["bundle_path"] = str(self.path.parent / "recreated/1")
+        original_devices = self.io.devices
+        with patch.object(self.io, "devices", side_effect=original_devices) as devices:
+            rejected = self.post_device("/device/preflight", selected["binding"])
+            self.assertFalse(rejected["ok"])
+            self.assertEqual(rejected["error"]["code"], "mumu_pro_binding_changed")
+            devices.assert_not_called()
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_preflight_checks_saved_and_draft_serial_without_persisting(self):
+        before = self.path.read_bytes()
+        original_devices = self.io.devices
+        with patch.object(self.io, "devices", side_effect=original_devices) as devices:
+            checked = self.post_device("/device/preflight")
+            self.assertTrue(checked["ok"], checked["error"])
+            self.assertEqual(checked["serial"], OLD_SERIAL)
+            devices.assert_called_once_with("product-adb", OLD_SERIAL)
+            self.io.targets = [(MANUAL_SERIAL, "device"), ("USB-123", "device")]
+            drafted = self.post_device(
+                "/device/preflight", {"last_serial": MANUAL_SERIAL}
+            )
+            self.assertTrue(drafted["ok"], drafted["error"])
+            self.assertEqual(drafted["serial"], MANUAL_SERIAL)
+            self.assertEqual(
+                devices.call_args_list[-1].args, ("product-adb", MANUAL_SERIAL)
+            )
         self.assertEqual(config.conf.device.last_serial, OLD_SERIAL)
         self.assertEqual(self.path.read_bytes(), before)
 
@@ -107,6 +177,28 @@ class MuMuProRouteTests(unittest.TestCase):
                 self.assertEqual(self.client.post(route, json={}).status_code, 403)
         self.assertEqual(self.sources.calls, 0)
         self.assertEqual(self.path.read_bytes(), before)
+
+    def test_verified_serial_saves_without_changing_mumu_pro_preset(self):
+        self.io.targets = [(MANUAL_SERIAL, "device"), ("USB-123", "device")]
+        checked = self.post_device("/device/preflight", {"last_serial": MANUAL_SERIAL})
+        self.assertTrue(checked["ok"], checked["error"])
+        saved = self.client.patch(
+            "/conf",
+            headers=self.headers,
+            json={
+                "device": {
+                    "last_serial": checked["serial"],
+                    "adb_path": checked["adb_path"],
+                    "game_package": checked["game_package"],
+                    "game_package_confirmed": True,
+                }
+            },
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json["device"]["preset_id"], MUMU_PRESET)
+        self.assertEqual(saved.json["device"]["last_serial"], MANUAL_SERIAL)
+        config.load_conf()
+        self.assertTrue(self.post_device("/device/preflight")["ok"])
 
     def test_explicit_manual_fallback_clears_binding_and_saves_verified_target(self):
         fallback = self.client.patch(

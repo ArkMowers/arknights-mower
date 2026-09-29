@@ -932,7 +932,12 @@ def device_preflight():
         configuration = config.conf.updated({"device": device})
         if (
             configuration.device.preset_id
-            in {"macos.bluestacks_air", "manual.other", "manual.physical"}
+            in {
+                "macos.bluestacks_air",
+                "macos.mumu_pro",
+                "manual.other",
+                "manual.physical",
+            }
             and "last_serial" in device
         ):
             # An explicit manual/Air target in a read-only draft is a new choice,

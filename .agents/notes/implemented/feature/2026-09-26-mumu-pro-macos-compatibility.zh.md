@@ -10,15 +10,17 @@ date: 2026-09-26
 [English](2026-09-26-mumu-pro-macos-compatibility.md) | [中文](2026-09-26-mumu-pro-macos-compatibility.zh.md)
 
 ## 1. 背景与动机
-MuMu Pro 是 NetEase 面向 macOS 平台的 Android 模拟器。由于官方管理工具 `mumutool info` 输出字段与状态码缺乏公开的稳定规范，mower 将 `macos.mumu_pro` 列为兼容性记录环境，提供引导式手动配置入口，在获得确凿官方契约证据前不贸然实现未经核验的自动发现。
+MuMu Pro 是 NetEase 面向 macOS 平台的 Android 模拟器。已测试安装中的 `mumutool info` 提供有界实例列表及单实例查询。兼容性预设保留手动 ADB serial 配置，用于管理工具输出无法核验的环境。
 
 ---
 
 ## 2. 不变式与保证
 
-- **[INV-01] 拒绝不可信端点**：在官方 `mumutool info` 契约未确认前，禁止从旧端点、猜测端口或外部在线 ADB 设备伪造已验证状态。
-- **[INV-02] 引导高级手动配置**：自动发现流程返回明确指引并提供“进入高级手动配置”入口，将用户引导至 `manual.other` 进行显式 Serial / Host:Port 配置。
-- **[INV-03] 统一预检约束**：手动配置连接后仍须通过统一只读预检（Android 启动完成、1920×1080 实际帧、游戏包检查）。
+- **[INV-01] 拒绝不可信端点**：在官方 `mumutool info` 契约未确认前，禁止猜测端口或采用其他在线 ADB 设备伪造已验证状态。
+- **[INV-02] 引导高级手动配置**：发现失败时返回明确指引；MuMu Pro 预设接受用户填写的 ADB serial。
+- **[INV-03] 统一预检约束**：选定端点仍须通过统一只读预检（Android 启动完成、1920×1080 实际帧、游戏包检查）。
+- [手动绑定修复](../bug-fix/2026-09-30-mumu-pro-manual-binding.zh.md)恢复本预设的连接，同时保留管理命令不可用的限制。
+- [实例选择决策](2026-09-30-mumu-pro-instance-selection.zh.md)增加只读发现与单实例身份核验。
 
 ---
 

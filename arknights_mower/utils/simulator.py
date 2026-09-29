@@ -74,6 +74,9 @@ def restart_simulator(stop: bool = True, start: bool = True) -> bool:
         return result.ok
     if not stop:
         return True
+    if config.conf.device.preset_id == "macos.mumu_pro":
+        logger.warning("MuMu Pro 未提供已确认的实例关停命令，请手动关闭")
+        return False
     if config.conf.device.preset_id in {"macos.avd", "linux.avd"}:
         from arknights_mower.__main__ import device_control
 
@@ -140,12 +143,6 @@ def build_command_set(simulator_type: str, index) -> SimulatorCommandSet:
         return SimulatorCommandSet(
             stop=["docker", "stop", "-t", "0", identifier],
             start=["docker", "start", identifier],
-        )
-
-    if simulator_type == Simulator_Type.MuMuPro.value:
-        return SimulatorCommandSet(
-            stop=["Contents/MacOS/mumutool", "close", identifier],
-            start=["Contents/MacOS/mumutool", "open", identifier],
         )
 
     if simulator_type != Simulator_Type.Genymotion.value:
