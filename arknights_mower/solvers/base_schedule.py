@@ -2054,61 +2054,46 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return self.op_data.get_train_support() in ("逻各斯", "艾丽妮")
 
     def _suppress_train_correction(self, fix_plan: dict) -> None:
-        """训练室纠错是否应抑制：专精活跃或受保护时弹出 train 项（受保护时提醒）。
-
-        缓存（`train_room_state`）里的状态与保护都按 `enable_mastery` 门控后再消费：
-        缓存在开关打开的那一轮写下来，开关关掉后它就是陈年结论，按 §7.3「关闭时
-        保护完全停用」不得再据此弹纠错（兄弟判定 `_train_protected` 同样先门控）。
-        """
+        """专精管理时保护训练位；协助位是否纠错由跟随排班开关决定。"""
         if "train" not in fix_plan:
             return
         if _training_room_scan_disabled:
             fix_plan.pop("train")
             logger.debug("本次进程已停用训练室巡检，跳过训练室纠错")
             return
-        if self._train_mastery_active():
-            fix_plan.pop("train")
-            logger.debug("训练室受专精管理，跳过训练室纠错")
-            return
-        if self._train_protected():
-            fix_plan.pop("train")
-            logger.debug("训练室受保护，跳过训练室纠错")
-            self._notify_train_correction_skipped()
-            return
-        if (
-            not config.conf.enable_mastery
-            and getattr(self, "train_room_state", None) is not None
-        ):
+        if not config.conf.enable_mastery:
+            # 关闭自动专精后不消费旧计划／旧房态保护；执行前仍会实读训练室，
+            # 保留训练位被占用时不强行换人的原有保护。
             self.train_room_state = None
-        train_room_state = (
-            getattr(self, "train_room_state", None)
-            if config.conf.enable_mastery
-            else None
-        )
-        train_locked = config.conf.enable_mastery and (
+            return
+        train_room_state = getattr(self, "train_room_state", None)
+        mastery_active = self._train_mastery_active()
+        train_locked = (
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
             or getattr(train_room_state, "locked", None) is True
         )
         train_protected = (
-            config.conf.enable_mastery
-            and getattr(train_room_state, "protected", None) is True
+            self._train_protected()
+            or getattr(train_room_state, "protected", None) is True
         )
-        if train_protected:
-            fix_plan.pop("train")
-            logger.debug("训练室受保护，跳过训练室纠错")
-            self._notify_train_correction_skipped()
+        if not (mastery_active or train_locked or train_protected):
             return
-        if train_locked:
-            if not config.conf.assistant_follows_schedule:
-                fix_plan.pop("train")
-                logger.debug("训练室处于锁定状态且未开启协助位跟随，跳过训练室纠错")
-                return
+        if config.conf.assistant_follows_schedule:
+            # 与实际换人闸门一致：跟随开启时允许协助位纠错，训练位不动。
+            # 必须先于整房抑制，否则活跃专精计划会吞掉协助位纠错。
             if len(fix_plan["train"]) > 1:
                 fix_plan["train"][1] = "Current"
             if all(slot == "Current" for slot in fix_plan["train"]):
                 fix_plan.pop("train")
-                logger.debug("训练室处于锁定状态且无协助位变更，跳过训练室纠错")
-                return
+            return
+        fix_plan.pop("train")
+        if mastery_active:
+            logger.debug("训练室受专精管理，跳过训练室纠错")
+        elif train_protected:
+            logger.debug("训练室受保护，跳过训练室纠错")
+            self._notify_train_correction_skipped()
+        else:
+            logger.debug("训练室处于锁定状态且未开启协助位跟随，跳过训练室纠错")
 
     def _notify_train_correction_skipped(self) -> None:
         """训练室受保护导致纠错跳过 → 发节流提醒邮件（⑤ protected，key=协助位:训练位）。
