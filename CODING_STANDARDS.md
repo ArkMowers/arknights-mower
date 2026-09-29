@@ -1,0 +1,48 @@
+# Coding Standards & Review Contracts
+
+## 1. Core Invariants
+
+- **[INV-01] Transient vs Persisted Isolation**: Configuration models (`DeviceProfile`, `Conf`) persist only explicit user selections. Discovery candidate lists and active connection states remain transient in memory.
+- **[INV-02] Target Rebinding Clears Endpoints**: Changing preset, installation directory, manager path, configuration path, or instance identifier must immediately clear `last_serial` to prevent stale endpoint reuse.
+- **[INV-03] Failure Preserves Target Identity**: Discovery, preflight, or recovery failure must never silently alter persistent configuration or automatically fallback to another online device on the host.
+- **[INV-04] IPC Pair Cohesion**: MuMu IPC screenshot backend and touch backend must be selected together; neither may be used without the other.
+- **[INV-05] Shared ADB Guard**: Socket-level protocol negotiation must verify shared ADB server state before running CLI operations; implicit `kill-server` invocations are strictly prohibited.
+- **[INV-06] Domain Glossary Synchronization**: Any change altering base scheduling mechanics, device driver lifecycles, or configuration schemas must immediately update and preserve authoritative definitions in `CONTEXT.md`.
+
+
+## 2. Subsystem Invariants
+
+### 2.1 Base Infrastructure & Scheduling
+- **[INV-SCHED-01] Empirical Depletion Rate**: Mood forecasting must dynamically measure consecutive inspection deltas; uncalibrated static assumptions are prohibited.
+- **[INV-SCHED-02] Dormitory Entry Sequence**: Dorm bed assignment must dispatch operators in priority tier sequence to guarantee single-target dorm buffs hit designated priority operators.
+- **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Dormitory beds are strictly single-occupancy; operators reaching maximum mood must immediately release beds to unblock rotation queues.
+- **[INV-SCHED-04] Shift Transition Compensation**: Condition-triggered shifts (order runs, backup plans) must preserve state rollback on failure, avoiding orphaned room assignments.
+
+### 2.2 Presentation Layer (UI)
+- **[INV-UI-01] Unpersisted Candidate State**: Discovery candidate tables must remain in ephemeral Pinia/component state without mutating persisted profile until user explicit save.
+- **[INV-UI-02] Recovery Policy Binding**: Advanced recovery parameters must bidirectionally bind to backend defaults without local shadow overrides.
+
+### 2.3 Vision & Recognition
+- **[INV-REC-01] Standard Canvas Frame Contract**: Recognition models operate exclusively on standard 1920×1080 pure RGB matrices; recognition failures must return structured verdicts without blocking the scheduler dispatch loop.
+
+### 2.4 Device Control & Transport
+- **[INV-DEV-01] Native Back Dispatch**: When the selected touch backend is MuMu IPC, Android BACK uses the owned MuMu IPC worker; an uncertain result stops the session without input replay or ADB fallback.
+
+
+## 3. Concurrency & Resource Lifecycle
+
+- **Monotonic Deadline Budgets**: All external process invocations, socket I/O, and manager commands must operate within a bounded deadline (e.g., `COMMAND_TIMEOUT`, `DISCOVERY_TIMEOUT`, `RecoveryPolicy.timeout`).
+- **Guaranteed Compensation**: Resources acquired during execution (temporary screen overrides, child processes, socket ports, lock files) must register compensation actions to ensure cleanup on normal completion, errors, or application shutdown.
+- **Controlled Verdicts**: Subsystem failures must be classified into structured domain results (`ReadinessResult`, `PreflightError`, `SessionFailure`) with actionable remedy codes rather than raising unhandled process exits.
+
+## 4. Code Cleanliness & Smells
+
+- **Single Source of Truth**: Every domain concept must have a single authoritative definition and storage location.
+- **No Issue References**: Commit messages, code comments, and technical documentation must not contain issue tracker numbers (`#xxx`).
+- **Bounded Collections**: In-memory logs, frame queues, and discovery results must have explicit capacity limits and eviction policies.
+- **Explicit Imports**: Avoid wildcard imports (`from module import *`). Use explicit symbol imports.
+
+## 5. Verification Discipline
+
+- **Targeted Unit Testing**: Run only focused unit test suites during development (e.g., `device_session_tests.py`, `deviceSettings.test.js`). Full integration runs against live devices are reserved for isolated environments.
+- **Hermetic Unit Tests**: Unit tests must stub external processes, network sockets, and filesystem resources to ensure deterministic offline execution.
