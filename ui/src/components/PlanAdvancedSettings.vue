@@ -1,6 +1,5 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
-import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { inject } from 'vue'
 
@@ -8,12 +7,10 @@ const { disabled } = defineProps({ disabled: Boolean })
 const freeRoomExclusions = defineModel('freeRoomExclusions', { type: Array })
 const mobile = inject('mobile')
 const configStore = useConfigStore()
-const planStore = usePlanStore()
 const {
   product_switching,
   drone_count_limit,
   drone_interval,
-  reload_room,
   resting_threshold,
   version_update_resting_threshold,
   version_update_threshold_advance_hours,
@@ -30,7 +27,6 @@ const {
   rescue_threshold,
   favorite
 } = storeToRefs(configStore)
-const { left_side_facility } = planStore
 </script>
 
 <template>
@@ -142,15 +138,6 @@ const { left_side_facility } = planStore
         <mower-input-number v-model:value="drone_interval">
           <template #suffix>小时</template>
         </mower-input-number>
-      </n-form-item>
-      <n-form-item label="搓玉补货房间">
-        <n-select
-          multiple
-          filterable
-          tag
-          :options="left_side_facility"
-          v-model:value="reload_room"
-        />
       </n-form-item>
       <n-form-item>
         <template #label>

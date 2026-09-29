@@ -960,6 +960,70 @@ def test_read_manufacture_product_distinguishes_orundum_material(
     assert solver._product_ocr_text.call_count == 2
 
 
+def reload_test_solver(op_data):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = op_data
+    solver.enter_room = MagicMock()
+    solver._wait_drone_interface = MagicMock()
+    solver.read_manufacture_product = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+    solver.tap = MagicMock()
+    solver.scene = MagicMock(return_value=base.Scene.INFRA_MAIN)
+    solver.waiting_scene = []
+    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver.reload_time = None
+    return solver
+
+
+def test_reload_uses_both_shard_labels_and_skips_other_products():
+    solver = reload_test_solver(
+        SimpleNamespace(
+            products={
+                "room_1_1": "gold",
+                "room_1_2": "orirock",
+                "room_1_3": "orirock_device",
+                "room_2_1": "orundum",
+            }
+        )
+    )
+
+    solver.reload()
+
+    assert [call.args[0] for call in solver.enter_room.call_args_list] == [
+        "room_1_2",
+        "room_1_3",
+    ]
+    solver.read_manufacture_product.assert_not_called()
+    assert solver.tap.call_count == 4
+    assert solver.scene_graph_navigation.call_count == 2
+    assert solver.reload_time is not None
+
+
+@pytest.mark.parametrize(
+    ("default", "backup", "before", "after"),
+    [
+        ("gold", "orirock", 0, 1),
+        ("gold", "orirock_device", 0, 1),
+        ("orirock", "gold", 1, 1),
+    ],
+)
+def test_reload_follows_active_backup_plan_product(default, backup, before, after):
+    room, plan = product_plan(default=default, backup=backup)
+    solver = reload_test_solver(Operators(plan))
+
+    solver.reload()
+    assert solver.enter_room.call_count == before
+
+    solver.op_data.swap_plan([True])
+    solver.reload()
+    assert solver.enter_room.call_count == after
+
+    solver.op_data.swap_plan([False])
+    solver.reload()
+    assert solver.enter_room.call_count == after + before
+    assert all(call.args[0] == room for call in solver.enter_room.call_args_list)
+
+
 def test_manufacture_idle_state_is_read_from_status_text():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(w=1920, h=1080)

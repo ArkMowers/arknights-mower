@@ -301,7 +301,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.party_time = None
         self.drone_time = None
         self.reload_time = None
-        self.reload_room = None
         self.clue_count_limit = 9
         self.enable_party = True
         self.leifeng_mode = False
@@ -1351,14 +1350,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.drone(self.drone_room)
                 logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                 self.drone_time = datetime.now()
-            if (
-                self.reload_room is not None
-                and self.no_pending_task(2)
-                and (
-                    self.reload_time is None
-                    or self.reload_time
-                    < datetime.now() - timedelta(hours=config.conf.maa_gap)
-                )
+            if self.no_pending_task(2) and (
+                self.reload_time is None
+                or self.reload_time
+                < datetime.now() - timedelta(hours=config.conf.maa_gap)
             ):
                 self.reload()
                 logger.info(f"记录本次补货时间为:{datetime.now()}")
@@ -8395,13 +8390,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def reload(self):
         error = False
-        for room in self.reload_room:
+        for room, product in self.op_data.products.items():
+            if not room.startswith("room_") or product not in (
+                "orirock",
+                "orirock_device",
+            ):
+                continue
             try:
-                logger.info(f"开始搓玉补货:{room}")
                 self.enter_room(room)
-                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.25)
-                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.25)
-                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.25)
+                self._wait_drone_interface(
+                    interval=0.25, accelerate_template="manufacture_accelerate"
+                )
+                logger.info(
+                    f"开始搓玉补货:{room}（{MANUFACTURE_PRODUCTS[product].name}）"
+                )
                 # 补货
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)

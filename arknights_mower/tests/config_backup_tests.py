@@ -452,6 +452,20 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert exported["advanced_settings"]["group_rest_in_full_on_mood_gap"] is False
     assert exported["advanced_settings"]["group_mood_gap_max_extra_wait_hours"] == 1.5
     assert "drone_room" not in exported["advanced_settings"]
+    assert "reload_room" not in exported["advanced_settings"]
+
+
+def test_plan_import_ignores_legacy_reload_room(plan_client, populated_plan):
+    value = populated_plan.model_dump(exclude_none=True)
+    value["advanced_settings"] = {
+        "reload_room": "room_1_1",
+        "drone_count_limit": 140,
+    }
+    result = post_plan_file(plan_client, value)
+
+    assert result.get_data(as_text=True) == "排班已加载"
+    assert config.conf.drone_count_limit == 140
+    assert "reload_room" not in config.conf.model_dump()
 
 
 def test_plan_entry_rejects_invalid_advanced_settings(plan_client, populated_plan):

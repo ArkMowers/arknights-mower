@@ -474,8 +474,6 @@ class RIICPart(ConfModel):
     "无人机加速间隔"
     free_blacklist: str = ""
     "宿舍黑名单"
-    reload_room: str = ""
-    "搓玉补货房间"
     run_order_delay: float = Field(
         default_factory=lambda: default_performance_profile().run_order_delay
     )

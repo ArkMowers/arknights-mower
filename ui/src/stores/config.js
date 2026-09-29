@@ -51,7 +51,6 @@ export const useConfigStore = defineStore('config', () => {
   const timezone_offset = ref(0)
   const custom_smtp_server = ref({})
   const package_type = ref('official')
-  const reload_room = ref('')
   const run_order_delay = ref(10)
   const low_frame_rate_mode = ref(false)
   const performance_mode = ref('auto')
@@ -499,7 +498,6 @@ export const useConfigStore = defineStore('config', () => {
     timezone_offset.value = response.data.timezone_offset
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
-    reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
     run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
 
     start_automatically.value = response.data.start_automatically
@@ -664,7 +662,6 @@ export const useConfigStore = defineStore('config', () => {
       recipient: recipient.value,
       timezone_offset: timezone_offset.value,
       custom_smtp_server: custom_smtp_server.value,
-      reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
       low_frame_rate_mode: performanceProfile(performance_mode.value, runtime_platform.value)
         .lowFrameRateMode,
@@ -793,9 +790,6 @@ export const useConfigStore = defineStore('config', () => {
       product_switching: product_switching.value,
       drone_count_limit: drone_count_limit.value,
       drone_interval: drone_interval.value,
-      reload_room: Array.isArray(reload_room.value)
-        ? reload_room.value.join(',')
-        : reload_room.value,
       resting_threshold: resting_threshold.value / 100,
       version_update_resting_threshold: version_update_resting_threshold.value / 100,
       version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
@@ -919,7 +913,6 @@ export const useConfigStore = defineStore('config', () => {
     timezone_offset,
     custom_smtp_server,
     package_type,
-    reload_room,
     run_order_delay,
     low_frame_rate_mode,
     performance_mode,
