@@ -262,9 +262,9 @@ def test_main_idle_releases_keep_ten_minute_merge(solver):
     tasks = plan_metadata(data, [])
 
     releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
-    assert {task.meta_data for task in releases} == {"银灰", "讯使"}
-    assert releases[0].time >= now + timedelta(minutes=15)
-    assert releases[1].time - releases[0].time == timedelta(seconds=1)
+    assert len(releases) == 1
+    assert set(releases[0].release_dorm_targets()) == {"银灰", "讯使"}
+    assert releases[0].time == now + timedelta(minutes=15)
     assert next(task for task in tasks if task.type == TaskTypes.SHIFT_ON).plan[
         "meeting"
     ] == ["伊内丝", "银灰"]
@@ -1230,12 +1230,9 @@ def test_multiple_idle_beds_finishing_together_generate_release(solver):
         data.operators[bed.name].mood = 10
 
     solver.plan_metadata()
-    assert len(solver.tasks) == 3
-    assert {task.meta_data for task in solver.tasks} == {bed.name for bed in data.dorm}
-    for task in solver.tasks:
-        assert task.type == TaskTypes.RELEASE_DORM
-        assert completed_at <= task.time <= completed_at + timedelta(seconds=1)
-        op = data.operators[task.meta_data]
-        expected = ["Current"] * 5
-        expected[op.current_index] = "Free"
-        assert task.plan == {op.current_room: expected}
+    assert len(solver.tasks) == 1
+    task = solver.tasks[0]
+    assert task.type == TaskTypes.RELEASE_DORM
+    assert task.time == completed_at
+    assert task.release_dorm_targets() == {bed.name: bed.position for bed in data.dorm}
+    assert task.plan == {"dormitory_1": ["Current", "Current", "Free", "Free", "Free"]}

@@ -106,6 +106,7 @@ def find_next_task(
 
 def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     time_now = time_now or datetime.now()
+    merge_release_dorm(tasks, config.conf.merge_interval)
     # 强制上限不参加延期；统一保护会为它预留离宿时间并避开阻塞任务。
     enabled = config.conf.enable_mastery
     fixed = {
@@ -1176,11 +1177,7 @@ def generate_plan_by_drom(
                         else TaskTypes.SHIFT_ON,
                     )
                 )
-    interval = config.conf.merge_interval
-    if pending_arrangements:
-        # 依赖安排可能使原本较早的释放批次延后；合并器按执行时间遍历。
-        result.sort(key=lambda task: task.time)
-    merge_release_dorm(result, interval)
+    result.sort(key=lambda task: task.time)
     logger.debug("生成任务: " + ("||".join([str(t) for t in result])))
     return result
 
@@ -1472,6 +1469,7 @@ def plan_metadata(op_data, tasks):
         )
         returning.update(members | recalled)
     tasks.extend(limited_releases)
+    merge_release_dorm(tasks, config.conf.merge_interval)
     return tasks
 
 
@@ -1902,29 +1900,68 @@ def set_type_enum(value):
 
 
 def merge_release_dorm(tasks, merge_interval):
-    for idx in range(1, len(tasks) + 1):
-        if idx == 1:
-            continue
-        task = tasks[-idx]
-        last_not_release = None
-        if task.type != TaskTypes.RELEASE_DORM or getattr(
-            task, "strict_mood_limit", False
-        ):
-            continue
-        for index_last_not_release in range(idx + 1, len(tasks) + 1):
-            if tasks[-index_last_not_release].type != TaskTypes.RELEASE_DORM and tasks[
-                -index_last_not_release
-            ].time > task.time - timedelta(minutes=1):
-                last_not_release = tasks[-index_last_not_release]
-        if last_not_release is not None:
-            continue
-        elif task.time + timedelta(minutes=merge_interval) > tasks[-idx + 1].time:
-            tasks[-idx].time = tasks[-idx + 1].time + timedelta(seconds=1)
-            tasks[-idx], tasks[-idx + 1] = (
-                tasks[-idx + 1],
-                tasks[-idx],
+    """同一时间窗口按宿舍合并清退，逐人保留原床位身份。"""
+    workshop = {item.operator for item in config.conf.workshop_settings}
+    tasks.sort(key=lambda task: task.time)
+    chunks, rooms = [], {}
+    latest = None
+
+    def flush():
+        if rooms:
+            chunk = [rooms[room] for room in sorted(rooms)]
+            for task in chunk:
+                task.release_start = getattr(task, "release_start", task.time)
+                task.time = latest
+            chunks.append(chunk)
+            rooms.clear()
+
+    for task in reversed(tasks):
+        targets = task.release_dorm_targets()
+        ordinary = (
+            task.type == TaskTypes.RELEASE_DORM
+            and not getattr(task, "strict_mood_limit", False)
+            and not getattr(task, "product_shift_locked", False)
+            and len(task.plan) == 1
+            and targets
+            and not (targets.keys() & workshop)
+            and all(
+                name in ("Current", "Free")
+                for row in task.plan.values()
+                for name in row
             )
-            logger.info(f"自动合并{merge_interval}分钟以内任务")
+            and len(targets) == sum(row.count("Free") for row in task.plan.values())
+        )
+        if not ordinary:
+            flush()
+            chunks.append([task])
+            latest = None
+            continue
+        start = getattr(task, "release_start", task.time)
+        room = next(iter(task.plan))
+        batch = rooms.get(room)
+        existing = batch.release_dorm_targets() if batch is not None else {}
+        if rooms and (
+            (latest != start and latest - start >= timedelta(minutes=merge_interval))
+            or existing.keys() & targets.keys()
+            or set(existing.values()) & set(targets.values())
+        ):
+            flush()
+            latest = None
+            batch = None
+        if not rooms:
+            latest = task.time
+        if batch is None:
+            rooms[room] = task
+            continue
+        for index, name in enumerate(task.plan[room]):
+            if name == "Free":
+                batch.plan[room][index] = name
+        batch.release_targets = targets | existing
+        batch.meta_data = ",".join(batch.release_targets)
+        batch.release_start = min(start, getattr(batch, "release_start", batch.time))
+        logger.info(f"合并{room}清退任务：{batch.meta_data}，执行时间 {latest}")
+    flush()
+    tasks[:] = [task for chunk in reversed(chunks) for task in chunk]
 
 
 class SchedulerTask:
@@ -1953,6 +1990,41 @@ class SchedulerTask:
         self.adjusted = adjusted
         self.strict_mood_limit = strict_mood_limit
         self.mood_limit = mood_limit
+
+    def release_dorm_targets(self):
+        """返回仍在任务中的姓名与原床位；兼容旧的单人清退任务。"""
+        if self.type != TaskTypes.RELEASE_DORM:
+            return {}
+        targets = getattr(self, "release_targets", None)
+        if targets is None:
+            slots = [
+                (room, index)
+                for room, row in self.plan.items()
+                for index, name in enumerate(row)
+                if name == "Free"
+            ]
+            if len(slots) != 1 or not self.meta_data or "," in self.meta_data:
+                return {}
+            targets = {self.meta_data: slots[0]}
+        return {
+            name: (room, index)
+            for name, (room, index) in targets.items()
+            if room in self.plan
+            and 0 <= index < len(self.plan[room])
+            and self.plan[room][index] == "Free"
+        }
+
+    def remove_release_dorm_operator(self, name):
+        """离宿只撤销本人的清退位置，保留同批其他干员。"""
+        targets = self.release_dorm_targets()
+        position = targets.pop(name, None)
+        if position is not None:
+            room, index = position
+            self.plan[room][index] = "Current"
+            if all(value == "Current" for value in self.plan[room]):
+                del self.plan[room]
+        self.release_targets = targets
+        self.meta_data = ",".join(targets)
 
     def format(self, time_offset=0):
         res = copy.deepcopy(self)
