@@ -33,6 +33,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Are beds strictly single-occupancy? Do operators reaching maximum mood release beds immediately to unblock rotation queues?
 - [ ] **[INV-SCHED-04] Shift Transition Compensation**: Do event-driven shifts (order runs, backup plans) handle dispatch failures gracefully without leaving facilities unassigned?
 - [ ] **[INV-SCHED-05] Complete Shift Projection**: Do backup conditions, subsequent rotations, cached corrections, and final bed filling converge on a copy before one arrangement is submitted, with failure preserving actual state?
+- [ ] **[INV-SCHED-06] Manufacturing Switch Boundary**: Does a switch after Drone Acceleration track the accelerated current unit and avoid treating the next unit's countdown as unfinished work?
 
 ### 2.3 Presentation Layer (UI)
 

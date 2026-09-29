@@ -5575,6 +5575,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self._confirm_drone_count(drone_count)
         else:
             self._tap_product_point((480, 864))
+        if getattr(getattr(self, "op_data", None), "experimental_dorm_logic", False):
+            observation["remaining_after_acceleration"] = max(
+                0, remaining - drone_count * DRONE_SECONDS
+            )
+            observation["accelerated_at"] = datetime.now()
         logger.info(
             f"{self.translate_room(observation['room'])}执行计划："
             f"使用{drone_count}架无人机，余下至多等待{wait_seconds}秒"
@@ -5600,11 +5605,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except Exception as e:
                 logger.warning("切换前重读生产力失败：%s，使用巡检值", e)
                 rate = observation.get("production_rate", 1.0)
-            self._tap_drone_accelerate("manufacture_accelerate", "all_in")
-            current_total = self._read_manufacture_total_seconds()
-            self._tap_product_point((480, 864))
-            boundary = observation["total_seconds"] - observation["current_remaining"]
-            remaining_base = max(0, current_total - boundary)
+            if "accelerated_at" in observation:
+                elapsed = max(
+                    0, (datetime.now() - observation["accelerated_at"]).total_seconds()
+                )
+                conservative_rate = min(rate, observation.get("production_rate", rate))
+                remaining_base = max(
+                    0,
+                    observation["remaining_after_acceleration"]
+                    - elapsed * conservative_rate,
+                )
+            else:
+                self._tap_drone_accelerate("manufacture_accelerate", "all_in")
+                current_total = self._read_manufacture_total_seconds()
+                self._tap_product_point((480, 864))
+                boundary = (
+                    observation["total_seconds"] - observation["current_remaining"]
+                )
+                remaining_base = max(0, current_total - boundary)
             setting = config.conf.product_switching
             buffer_seconds = (
                 getattr(setting, "waiting_seconds", 2)
