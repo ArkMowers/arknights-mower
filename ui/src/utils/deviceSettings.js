@@ -510,8 +510,8 @@ export function deviceSettingsState({
     /^waydroid:\d+$/.test(profile.instance_id || '') &&
     Boolean(
       profile.manager_path?.trim() &&
-        profile.installation_path?.trim() &&
-        profile.config_path?.trim()
+      profile.installation_path?.trim() &&
+      profile.config_path?.trim()
     )
   const mumuPro = profile.preset_id === 'macos.mumu_pro'
   const boundMumuPro =

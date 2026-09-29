@@ -883,7 +883,11 @@ describe('device settings state', () => {
       ]
     }
     const unbound = { ...profile, preset_id: 'macos.mumu_pro', last_serial: '' }
-    const state = deviceSettingsState({ profile: unbound, metadata: { host_platform: 'macos' }, result })
+    const state = deviceSettingsState({
+      profile: unbound,
+      metadata: { host_platform: 'macos' },
+      result
+    })
     expect(state.instances.options).toHaveLength(2)
     expect(state.instances.options[1].label).toContain('VM 1 · 实例 1 · 运行中 · 127.0.0.1:16416')
     const bound = {
@@ -892,7 +896,11 @@ describe('device settings state', () => {
       topology_fingerprint: 'a'.repeat(64),
       last_serial: '127.0.0.1:16416'
     }
-    const boundState = deviceSettingsState({ profile: bound, metadata: { host_platform: 'macos' }, advanced: true })
+    const boundState = deviceSettingsState({
+      profile: bound,
+      metadata: { host_platform: 'macos' },
+      advanced: true
+    })
     expect(boundState.actions.detect.endpoint).toBe('preflight')
     expect(boundState.compatibilityNote).toContain('实例文件路径核验')
     expect(boundState.fields.map((field) => field.key)).toContain('instance_id')
