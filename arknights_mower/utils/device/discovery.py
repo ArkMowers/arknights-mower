@@ -216,7 +216,7 @@ class DiscoveryService:
                 "start_confirmation_required"
                 if avd or redroid or genymotion
                 else "instance_stopped",
-                "MuMu Pro 实例尚未启动，请在模拟器中手动启动后重试。"
+                "MuMu Pro 实例尚未启动。可检测并启动所选实例，也可在模拟器中手动启动后测试连接。"
                 if mumu_pro
                 else "已绑定的实例尚未启动，请确认启动后重新检测。"
                 if avd or redroid or genymotion
@@ -228,10 +228,12 @@ class DiscoveryService:
                 else "retry",
             )
             return result
-        if (waydroid or redroid) and instance.state == "starting":
+        if (
+            waydroid or redroid or (mumu_pro and not instance.serial)
+        ) and instance.state == "starting":
             result.status = "booting"
             result.error = PreflightError(
-                "boot_incomplete", "容器尚在启动，请等待启动完成后重试。"
+                "boot_incomplete", "所选实例尚在启动，请等待启动完成后重试。"
             )
             return result
         if not instance.serial or (

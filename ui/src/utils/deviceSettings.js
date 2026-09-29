@@ -32,7 +32,9 @@ const managedStartPresets = [
   'windows.mumu12',
   'windows.ldplayer9',
   'windows.ldplayer14',
-  'windows.nox'
+  'windows.nox',
+  'macos.mumu_pro',
+  'linux.waydroid'
 ]
 
 // Settings that never change which device mower targets, so they are written
@@ -206,6 +208,24 @@ export function deviceGenymotionStartRequest(
     ...devicePreflightRequest(profile, draft, confirmedPackage),
     confirmed_instance: confirmedInstance
   }
+}
+
+export function deviceStartupRequest(profile, draft, metadata = {}, confirmedPackage = null) {
+  if (!deviceSettingsState({ profile: draft, metadata }).actions.startBound.visible) {
+    throw new Error('当前目标不支持启动，请先检测并选择支持启动的实例。')
+  }
+  const product = {
+    'macos.avd': ['avd', deviceAvdStartRequest],
+    'linux.avd': ['avd', deviceAvdStartRequest],
+    'linux.redroid': ['redroid', deviceRedroidStartRequest],
+    'linux.genymotion': ['genymotion', deviceGenymotionStartRequest]
+  }[draft.preset_id]
+  return product
+    ? {
+        endpoint: `${product[0]}/start`,
+        payload: product[1](profile, draft, draft.instance_id, confirmedPackage)
+      }
+    : { endpoint: 'start', payload: devicePreflightRequest(profile, draft, confirmedPackage) }
 }
 
 export const buildGenymotionStartRequest = deviceGenymotionStartRequest
@@ -460,17 +480,17 @@ const presetPlaceholders = {
 
 const fieldHelpTexts = {
   installation_path:
-    '模拟器的安装根目录。Mower 会在此目录下定位模拟器核心程序、多开管理工具及内置 ADB。必填。',
+    '模拟器的安装根目录。Mower 会在此目录下定位模拟器核心程序、多开管理工具及内置 ADB。检测到的路径会自动填写；也可指定管理程序路径。',
   manager_path:
     '模拟器的多开管理控制程序（如 MuMuManager.exe、dnconsole.exe）。用于查询多开列表、控制启动与关停。',
   config_path:
     '模拟器的全局配置文件路径（如 BlueStacks 的 bluestacks.conf），用于自动解析多开实例与端口分配。',
   adb_path: '用于与模拟器通信的 ADB 调试工具路径。留空时会自动优先探测模拟器自带的 ADB。选填。',
   instance_id:
-    '模拟器多开器中该多开实例的编号或标识。主模拟器通常为 0（夜神为 -1 或 0，部分模拟器为英文代号）。必填。',
+    '所选实例的编号或标识，格式由模拟器决定。建议通过“检测实例”选择；MuMu Pro 和夜神的身份核验信息也由检测提供，不能仅填写序号启停。',
   instance_name: '多开实例的自定义名称（仅用于界面展示与日志标识）。选填。',
   last_serial:
-    '模拟器的 ADB 调试连接地址与端口号（如 127.0.0.1:16384 或 127.0.0.1:5555）。通常可在模拟器多开器或设置中查看。必填。',
+    '模拟器的 ADB 调试连接地址与端口号（如 127.0.0.1:16384 或 127.0.0.1:5555）。通常可在模拟器多开器或设置中查看。已绑定实例会核验并读取当前端口；手动连接模式需填写。',
   screenshot_backend:
     '用于捕获游戏画面的方式。MuMu 截图增强适用于 Windows MuMu 12，LD 截图增强适用于 Windows 雷电 9 和 14。LD 可搭配 scrcpy 或 MaaTouch 触控。',
   touch_backend: '用于向模拟器发送点击与滑动指令的方式。可选 scrcpy、MaaTouch 或 MuMu 自带触控。',
@@ -550,7 +570,9 @@ export function deviceSettingsState({
               : candidate.preset_id === 'macos.mumu_pro'
                 ? `实例 ${candidate.instance_id}`
                 : '',
-            { running: '运行中', starting: '启动中', stopped: '已停止' }[candidate.state],
+            { running: '运行中', starting: '启动中', stopped: '已停止', error: '操作失败' }[
+              candidate.state
+            ],
             candidate.preset_id === 'macos.mumu_pro'
               ? candidate.serial
               : candidate.installation_path
@@ -578,11 +600,20 @@ export function deviceSettingsState({
         /^[A-Za-z][A-Za-z0-9_]*$/.test(profile.instance_id) &&
         Boolean(profile.config_path?.trim()))) &&
     Boolean(profile.installation_path?.trim() || profile.manager_path?.trim())
-  const managedPresets = metadata.managed_instance_presets?.length
+  const managedPresets = Array.isArray(metadata.managed_instance_presets)
     ? metadata.managed_instance_presets
     : managedStartPresets
+  const verifiedMumuPro =
+    mumuPro &&
+    Boolean(profile.topology_fingerprint?.trim()) &&
+    /^(0|[1-9][0-9]*)$/.test(profile.instance_id || '')
   const managedStart =
-    managedPresets.includes(profile.preset_id) && presetPrefix === 'windows' && boundInstance
+    (managedPresets.includes(profile.preset_id) &&
+      ((presetPrefix === 'windows' && boundInstance) ||
+        (presetPrefix === 'macos' && verifiedMumuPro) ||
+        (presetPrefix === 'linux' && boundWaydroid))) ||
+    (avd && boundAvd && profile.preset_id === `${presetPrefix}.avd`) ||
+    (presetPrefix === 'linux' && ((redroid && boundRedroid) || (genymotion && boundGenymotion)))
   const manualTarget = profile.preset_id?.startsWith('manual.') && Boolean(profile.last_serial)
   const discover =
     !manual &&
@@ -693,8 +724,8 @@ export function deviceSettingsState({
     const help = mumuPro
       ? {
           installation_path:
-            'MuMu Pro 应用路径；留空时使用 /Applications/MuMuPlayer.app。仅用于读取实例列表。',
-          manager_path: 'mumutool 路径；留空时从应用路径查找。仅查询实例，不会启动或关闭模拟器。',
+            'MuMu Pro 应用路径；留空时使用 /Applications/MuMuPlayer.app。用于发现和核验所选实例。',
+          manager_path: 'mumutool 路径；留空时从应用路径查找。核验所选实例后可启动或关闭该实例。',
           instance_id: '从检测结果中选择的实例序号；手动填写 ADB 地址时无需填写。',
           last_serial: profile.topology_fingerprint
             ? '检测连接时从已选实例读取当前 ADB 地址；无需手动维护。'
@@ -785,7 +816,7 @@ export function deviceSettingsState({
     guidance: messages.includes(result?.guidance) ? '' : result?.guidance || '',
     compatibilityLabel: mumuPro || genymotion ? '兼容性记录' : waydroid ? '主要对象' : '',
     discoveryLabel: mumuPro
-      ? '官方 mumutool（只读）'
+      ? '官方 mumutool'
       : genymotion
         ? '官方 gmtool'
         : waydroid
@@ -793,26 +824,26 @@ export function deviceSettingsState({
           : '',
     compatibilityNote: mumuPro
       ? profile.topology_fingerprint
-        ? '所选实例由 mumutool 的实例文件路径核验，再读取当前 ADB 端口测试连接。启动或关闭实例请在 MuMu Pro 中操作。'
-        : '可检测并选择运行中的 MuMu Pro 实例；也可在高级设置填写 ADB serial。仅手动 serial 模式无法识别端口被其他实例复用。'
+        ? '所选实例由 mumutool 的实例文件路径核验，再读取当前 ADB 端口测试连接。检测可先打开 MuMu Pro 应用，再尝试启动已停止的所选实例；自动启停同样先核验实例文件路径。'
+        : '检测可尝试打开 MuMu Pro 应用并列出实例，选定后尝试启动已停止的目标。也可在高级设置填写 ADB serial；此模式需手动启停，无法识别端口被其他实例复用。'
       : genymotion
         ? 'Genymotion 属于 Linux 兼容性记录，不代表永久支持承诺。发现能力取决于官方 gmtool 可确认的输出；管理工具缺失、版本不兼容或输出不完整时，请使用高级手动配置。'
         : '',
     bindingHelp: air
       ? 'BlueStacks Air 仅检测应用与 ADB 连接，请在应用中手动开启 ADB、启动或关闭模拟器。'
       : avd
-        ? '检测只读取 AVD 状态，启动前每次确认。普通退出不会关闭 AVD；在“任务结束后”选择“关闭模拟器”时，仅关闭 mower 启动的目标，再次启动仍需确认。'
+        ? '检测实例或选择目标时，会尝试启动已停止的 AVD。此次选择仅授权本次启动，定时任务不复用此授权。普通退出不会关闭 AVD；在“任务结束后”选择“关闭模拟器”时，仅关闭 mower 启动的目标，再次启动仍需确认。'
         : redroid
-          ? '仅发现本机 Docker 的 redroid 容器。启动前每次确认，新会话只读取同一容器的当前端口；退出保留容器。远程 Docker、Podman、Kubernetes、自定义镜像和非标准网络请使用高级手动配置。'
+          ? '仅发现本机 Docker 的 redroid 容器。检测或选择目标时尝试启动已停止的容器；定时任务不复用此次启动授权，新会话只读取同一容器的当前端口；退出保留容器。远程 Docker、Podman、Kubernetes、自定义镜像和非标准网络请使用高级手动配置。'
           : genymotion
-            ? '仅使用官方 gmtool 发现和启动实例，启动前每次确认。新会话只复核所选 VM，目标失效时不切换到其他 VM；连接经 ADB 只读检测通过后保存。退出 mower 保留 VM。'
+            ? '仅使用官方 gmtool 发现和启动实例，检测或选择目标时尝试启动已停止的 VM；定时任务不复用此次启动授权。新会话只复核所选 VM，目标失效时不切换到其他 VM；连接经 ADB 只读检测通过后保存。退出 mower 保留 VM。'
             : waydroid
-              ? '检测使用 waydroid status 与官方会话信息，通过 IP:5555 验证连接。新会话复核同一用户与数据目录；地址缺失或不唯一时，请核对官方状态并补充 serial，非标准环境可使用“其他模拟器”。'
+              ? '检测使用 waydroid status 与官方会话信息，已停止的所选会话可自动启动，通过 IP:5555 验证连接。新会话复核同一用户与数据目录；地址缺失或不唯一时，请核对官方状态并补充 serial，非标准环境可使用“其他模拟器”。'
               : '',
     // The status tag explains how a connection is verified and when the form is
     // written: the sentence that used to sit in the notice above the buttons.
     connectionHelp: managedStart
-      ? '“测试连接”只读取当前连接，不会启动或重启模拟器；模拟器没开时，可从按钮旁的下拉选“启动并测试连接”。连接验证通过后，这份设备设置才会保存。'
+      ? '“检测并启动”先测试所选实例，仅在确认为已停止时尝试启动；其他错误显示修复提示。多个实例需先选定目标，下拉“测试连接”只读取状态，不会启动或重启模拟器及其管理器。“启动并测试连接”按恢复策略处理所选实例。连接验证通过后，这份设备设置才会保存。'
       : '“测试连接”只读取当前连接，不会启动或重启设备；请先确保目标设备已经启动。连接验证通过后，这份设备设置才会保存。',
     preparationMessage: messages.includes(preparationMessage) ? '' : preparationMessage,
     fields,
@@ -829,27 +860,9 @@ export function deviceSettingsState({
         preset: mumuPro ? 'macos.mumu_pro' : 'manual.other',
         label: mumuPro ? '手动填写连接地址' : '进入高级手动配置'
       },
-      startAvd: {
-        visible: avd,
-        disabled: locked || !boundAvd || profile.preset_id !== `${presetPrefix}.avd`,
-        instance: profile.instance_id || '',
-        label: '启动并测试连接'
-      },
-      startRedroid: {
-        visible: redroid,
-        disabled: locked || !boundRedroid || presetPrefix !== 'linux',
-        instance: profile.instance_id || '',
-        label: '启动并测试连接'
-      },
-      startGenymotion: {
-        visible: genymotion,
-        disabled: locked || !boundGenymotion || presetPrefix !== 'linux',
-        instance: profile.instance_id || '',
-        label: '启动并测试连接'
-      },
       startBound: {
         visible: managedStart,
-        disabled: locked,
+        disabled: locked || !managedStart,
         label: '启动并测试连接'
       },
       prepare: {
@@ -859,28 +872,42 @@ export function deviceSettingsState({
         label: '仅本次临时整备并启动'
       },
       detect: {
-        label: reconfirmInstance ? '检测实例' : errors.length ? '重试连接' : '测试连接',
+        label:
+          reconfirmInstance || discover || discovery
+            ? '检测实例'
+            : managedStart
+              ? '检测并启动'
+              : errors.length
+                ? '重试连接'
+                : '测试连接',
         disabled: locked,
         endpoint: discovery || discover || reconfirmInstance ? 'discover' : 'preflight',
-        options: [
-          {
-            label: reconfirmInstance ? '检测实例' : errors.length ? '重试连接' : '测试连接',
-            key: 'detect',
-            props: { title: '只读取当前连接状态，不启动或重启模拟器。' }
-          },
-          ...(managedStart
-            ? [
-                {
-                  label: '启动并测试连接',
-                  key: 'start',
-                  disabled: locked,
-                  props: {
-                    title: '用模拟器自己的多开管理器启动已绑定的实例，等它进入桌面后再验证连接。'
-                  }
-                }
-              ]
-            : [])
-        ]
+        options: managedStart
+          ? [
+              {
+                label: '检测并启动',
+                key: 'detect',
+                props: { title: '先测试所选实例；仅在确认为已停止时启动。' }
+              },
+              {
+                label: '测试连接（只读）',
+                key: 'preflight',
+                props: { title: '只读取当前连接状态，不启动或重启模拟器及其管理器。' }
+              },
+              {
+                label: '启动并测试连接',
+                key: 'start',
+                disabled: locked,
+                props: { title: '按恢复策略启动或恢复所选实例，然后验证连接。' }
+              }
+            ]
+          : [
+              {
+                label: errors.length ? '重试连接' : '测试连接',
+                key: 'detect',
+                props: { title: '只读取当前连接状态，不启动或重启模拟器及其管理器。' }
+              }
+            ]
       },
       discover: {
         label: '检测实例',

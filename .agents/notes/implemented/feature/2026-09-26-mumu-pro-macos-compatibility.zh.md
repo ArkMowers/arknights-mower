@@ -19,7 +19,7 @@ MuMu Pro 是 NetEase 面向 macOS 平台的 Android 模拟器。已测试安装�
 - **[INV-01] 拒绝不可信端点**：在官方 `mumutool info` 契约未确认前，禁止猜测端口或采用其他在线 ADB 设备伪造已验证状态。
 - **[INV-02] 引导高级手动配置**：发现失败时返回明确指引；MuMu Pro 预设接受用户填写的 ADB serial。
 - **[INV-03] 统一预检约束**：选定端点仍须通过统一只读预检（Android 启动完成、1920×1080 实际帧、游戏包检查）。
-- [手动绑定修复](../bug-fix/2026-09-30-mumu-pro-manual-binding.zh.md)恢复本预设的连接，同时保留管理命令不可用的限制。
+- [手动绑定修复](../bug-fix/2026-09-30-mumu-pro-manual-binding.zh.md)恢复本预设的连接，同时保留手动 serial 模式生命周期操作不可用的限制。
 - [实例选择决策](2026-09-30-mumu-pro-instance-selection.zh.md)增加只读发现与单实例身份核验。
 
 ---

@@ -1,7 +1,9 @@
-"""Read-only MuMu Pro instance observations from the bundled mumutool."""
+"""Verified MuMu Pro instance control through the bundled mumutool."""
 
 import json
 import os
+import re
+import socket
 import subprocess
 import time
 from hashlib import sha256
@@ -11,6 +13,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
     run_endpoint_command,
 )
+from arknights_mower.utils.device.manager_io import MAX_OUTPUT
 from arknights_mower.utils.path import resolve_config_path
 
 MUMU_PRO_PRESET = "macos.mumu_pro"
@@ -35,9 +38,11 @@ def _instance(raw):
         or not Path(bundle).is_absolute()
     ):
         raise ValueError("MuMu Pro 实例文件路径无效")
-    if "\x00" in bundle or state not in {"running", "starting", "stopped"}:
+    if "\x00" in bundle or state not in {"running", "starting", "stopped", "error"}:
         raise ValueError("MuMu Pro 实例状态无效")
-    if state in {"running", "starting"}:
+    if state == "starting" and (port is None or type(port) is int and port == 0):
+        serial = ""
+    elif state in {"running", "starting"}:
         if type(port) is not int or not 1 <= port <= 65535:
             raise ValueError("MuMu Pro ADB 端口无效")
         serial = f"127.0.0.1:{port}"
@@ -75,7 +80,9 @@ def parse_mumu_pro_info(output: bytes, *, selected_id: str | None = None) -> lis
             ):
                 raise ValueError("MuMu Pro 实例列表不完整")
         else:
-            if not selected_id.isdecimal() or not isinstance(payload, dict):
+            if not re.fullmatch(r"0|[1-9][0-9]*", selected_id) or not isinstance(
+                payload, dict
+            ):
                 raise ValueError("MuMu Pro 实例查询无效")
             rows = [payload]
         instances = [_instance(row) for row in rows]
@@ -96,9 +103,18 @@ def parse_mumu_pro_info(output: bytes, *, selected_id: str | None = None) -> lis
 
 
 class MuMuProController:
-    def __init__(self, *, run=subprocess.run, monotonic=time.monotonic):
+    def __init__(
+        self,
+        *,
+        run=subprocess.run,
+        monotonic=time.monotonic,
+        sleep=time.sleep,
+        connect=socket.create_connection,
+    ):
         self._run = run
         self._monotonic = monotonic
+        self._sleep = sleep
+        self._connect = connect
 
     def _manager(self, profile):
         manager = profile.manager_path.strip()
@@ -121,6 +137,70 @@ class MuMuProController:
             )
         return path.resolve()
 
+    def prepare_manager(self, profile, timeout=6):
+        """Open the manager application once when its official port is absent."""
+        deadline = self._monotonic() + timeout
+        path = self._manager(profile)
+
+        def port_available():
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                raise TimeoutError("MuMu Pro 管理服务启动时间预算已耗尽")
+            try:
+                output = run_endpoint_command(
+                    [str(path), "port"],
+                    timeout=remaining,
+                    run=self._run,
+                    probe=None,
+                    monotonic=self._monotonic,
+                )
+            except subprocess.CalledProcessError as exc:
+                if (exc.stderr or b"").strip() == b"Error: invalidPort":
+                    return False
+                raise
+            document = json.loads(output)
+            port = document.get("server-port") if isinstance(document, dict) else None
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError("MuMu Pro 管理服务端口无效")
+            return True
+
+        try:
+            opened = not port_available()
+            if opened:
+                app = path.parent.parent.parent
+                if app.suffix != ".app" or not (app / "Contents/Info.plist").is_file():
+                    raise ValueError("请指定 MuMu Pro 应用内的 mumutool 路径")
+                run_endpoint_command(
+                    ["/usr/bin/open", "-a", str(app)],
+                    timeout=deadline - self._monotonic(),
+                    run=self._run,
+                    probe=None,
+                    monotonic=self._monotonic,
+                )
+            empty_inventory = False
+            while True:
+                remaining = deadline - self._monotonic()
+                if remaining <= 0:
+                    if empty_inventory:
+                        return True
+                    raise TimeoutError("MuMu Pro 管理服务尚未就绪")
+                try:
+                    instances = self._query(path, "all", remaining)
+                    if instances or not opened:
+                        return True
+                    empty_inventory = True
+                except InstanceBindingError as exc:
+                    empty_inventory = False
+                    if not isinstance(exc.__cause__, subprocess.CalledProcessError):
+                        raise
+                self._sleep(min(0.2, max(0, deadline - self._monotonic())))
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            raise InstanceBindingError(
+                "mumu_pro_manager_start_failed",
+                "无法启动 MuMu Pro 管理服务，请检查应用路径或手动打开 MuMu Pro 后重试。",
+                ["installation_path", "manager_path"],
+            ) from exc
+
     def _query(self, path, target, timeout):
         try:
             output = run_endpoint_command(
@@ -135,6 +215,18 @@ class MuMuProController:
             )
         except InstanceBindingError:
             raise
+        except subprocess.CalledProcessError as exc:
+            if (exc.stderr or b"").strip() == b"Error: invalidPort":
+                raise InstanceBindingError(
+                    "mumu_pro_manager_stopped",
+                    "MuMu Pro 应用未打开。检测实例可尝试打开应用并启动所选实例；只读测试需先手动打开应用。",
+                    ["manager_path"],
+                ) from exc
+            raise InstanceBindingError(
+                "mumu_pro_output_invalid",
+                "MuMu Pro 管理工具查询失败，请检查应用状态。",
+                ["manager_path"],
+            ) from exc
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             raise InstanceBindingError(
                 "mumu_pro_output_invalid",
@@ -157,18 +249,104 @@ class MuMuProController:
             "errors": [],
         }
 
-    def inspect(self, profile, timeout):
-        from arknights_mower.utils.device.session import InstanceObservation
-
-        if not profile.topology_fingerprint:
-            return InstanceObservation("unknown")
-        path = self._manager(profile)
-        instances = self._query(path, profile.instance_id, timeout)
-        instance = instances[0]
+    def _verified_instance(self, profile, path, timeout):
+        if (
+            not re.fullmatch(r"0|[1-9][0-9]*", profile.instance_id or "")
+            or not profile.topology_fingerprint
+        ):
+            raise InstanceBindingError(
+                "mumu_pro_selection_required",
+                "请先检测并选择 MuMu Pro 实例，再启动或关闭该实例。",
+                ["instance_id", "topology_fingerprint"],
+            )
+        instance = self._query(path, profile.instance_id, timeout)[0]
         if instance["topology_fingerprint"] != profile.topology_fingerprint:
             raise InstanceBindingError(
                 "mumu_pro_binding_changed",
                 "MuMu Pro 实例文件已变化，请重新检测并选择目标实例。",
                 ["instance_id", "topology_fingerprint"],
             )
+        return instance
+
+    @staticmethod
+    def _check_instance_error(instance):
+        if instance["state"] == "error":
+            raise InstanceBindingError(
+                "mumu_pro_instance_error",
+                "MuMu Pro 管理器报告所选实例操作失败，请在管理器中处理该实例的错误提示后重试。",
+                ["instance_id"],
+            )
+
+    def start(self, profile, timeout):
+        return self._act(profile, timeout, starting=True)
+
+    def stop(self, profile, timeout):
+        return self._act(profile, timeout, starting=False)
+
+    def _act(self, profile, timeout, *, starting):
+        deadline = self._monotonic() + timeout
+        path = self._manager(profile)
+        instance = self._verified_instance(profile, path, deadline - self._monotonic())
+        self._check_instance_error(instance)
+        if starting and instance["state"] in {"running", "starting"}:
+            return True
+        if not starting and instance["state"] == "stopped":
+            return True
+        remaining = deadline - self._monotonic()
+        if remaining <= 0:
+            raise InstanceBindingError(
+                "mumu_pro_action_timeout", "MuMu Pro 实例操作时间预算已耗尽。"
+            )
+        try:
+            result = self._run(
+                [str(path), "open" if starting else "close", profile.instance_id],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=remaining,
+            )
+            result.check_returncode()
+            output, error = result.stdout, result.stderr or b""
+            if len(output) + len(error) > MAX_OUTPUT or error.strip():
+                raise ValueError("MuMu Pro 操作输出异常")
+            document = json.loads(output)
+            if (
+                not isinstance(document, dict)
+                or type(document.get("errcode")) is not int
+                or document["errcode"] != 0
+            ):
+                raise ValueError("MuMu Pro 管理工具未确认操作成功")
+            return True
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            raise InstanceBindingError(
+                "mumu_pro_action_failed",
+                "MuMu Pro 未确认实例操作成功，请检查所选实例状态后重试。",
+                ["manager_path", "instance_id"],
+            ) from exc
+
+    def inspect(self, profile, timeout):
+        from arknights_mower.utils.device.session import InstanceObservation
+
+        if not profile.topology_fingerprint:
+            return InstanceObservation("unknown")
+        deadline = self._monotonic() + timeout
+        path = self._manager(profile)
+        instance = self._verified_instance(profile, path, timeout)
+        self._check_instance_error(instance)
+        if instance["serial"]:
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                raise InstanceBindingError(
+                    "mumu_pro_action_timeout", "MuMu Pro 实例查询时间预算已耗尽。"
+                )
+            # The manager reports running before the guest starts listening.
+            # Wait without spending recovery attempts or exposing a stale serial.
+            try:
+                with self._connect(
+                    ("127.0.0.1", int(instance["serial"].rsplit(":", 1)[1])),
+                    timeout=min(1, remaining),
+                ):
+                    pass
+            except OSError:
+                return InstanceObservation("starting")
         return InstanceObservation(instance["state"], instance["serial"] or None)

@@ -6,9 +6,7 @@ import {
   deviceSettingsState,
   sameDeviceProfile,
   devicePreflightRequest,
-  deviceAvdStartRequest,
-  deviceRedroidStartRequest,
-  deviceGenymotionStartRequest,
+  deviceStartupRequest,
   deviceDetectionDraft,
   savePreflightDevice,
   deviceStatusResult,
@@ -205,15 +203,36 @@ async function acceptPreflight(data) {
   confirmedPackage.value = null
 }
 
-async function preflight() {
-  const response = await axios.post(
-    `${base}/preflight`,
-    devicePreflightRequest(config.device_profile || {}, draft.value, confirmedPackage.value)
-  )
-  await acceptPreflight(response.data)
+async function acceptOrStart(data, autoStart) {
+  if (
+    autoStart &&
+    state.value.actions.startBound.visible &&
+    ['instance_stopped', 'start_confirmation_required'].includes(data?.error?.code)
+  ) {
+    const { endpoint, payload } = deviceStartupRequest(
+      config.device_profile || {},
+      draft.value,
+      metadata.value,
+      confirmedPackage.value
+    )
+    const response = await axios.post(`${base}/${endpoint}`, payload)
+    await acceptPreflight(response.data)
+  } else await acceptPreflight(data)
 }
 
-async function bindInstance(key) {
+async function preflight(autoStart = false) {
+  const response = await axios.post(`${base}/preflight`, {
+    ...devicePreflightRequest(config.device_profile || {}, draft.value, confirmedPackage.value),
+    ...(autoStart &&
+    state.value.actions.startBound.visible &&
+    draft.value.preset_id === 'macos.mumu_pro'
+      ? { start_manager: true }
+      : {})
+  })
+  await acceptOrStart(response.data, autoStart)
+}
+
+async function bindInstance(key, autoStart = true) {
   const candidate =
     result.value?.kind === 'discovery' && result.value.candidates?.find((item) => item.key === key)
   if (!candidate?.binding) return
@@ -235,30 +254,34 @@ async function bindInstance(key) {
   manual.value = false
   confirmedPackage.value = null
   result.value = null
-  await preflight()
+  await preflight(autoStart)
 }
 
-async function detect(endpoint = state.value.actions.detect.endpoint, key = null) {
+async function detect(
+  endpoint = state.value.actions.detect.endpoint,
+  key = null,
+  autoStart = true
+) {
   if (state.value.locked) return
   detectionRevision += 1
   busy.value = true
   requestError.value = ''
   try {
     await config.flush_config_saves()
-    if (key) await bindInstance(key)
+    if (key) await bindInstance(key, autoStart)
     else if (endpoint === 'discover') {
-      const response = await axios.post(
-        `${base}/discover`,
-        devicePreflightRequest(config.device_profile || {}, draft.value)
-      )
+      const response = await axios.post(`${base}/discover`, {
+        ...devicePreflightRequest(config.device_profile || {}, draft.value),
+        ...(autoStart && draft.value.preset_id === 'macos.mumu_pro' ? { start_manager: true } : {})
+      })
       result.value = response.data
       selectedKey.value = null
       manual.value = false
       confirmedPackage.value = null
       if (response.data.host_platform) metadata.value.host_platform = response.data.host_platform
-      if (response.data.kind === 'preflight') await acceptPreflight(response.data)
-      else if (response.data.selected_key) await bindInstance(response.data.selected_key)
-    } else await preflight()
+      if (response.data.kind === 'preflight') await acceptOrStart(response.data, autoStart)
+      else if (response.data.selected_key) await bindInstance(response.data.selected_key, autoStart)
+    } else await preflight(autoStart)
   } catch (error) {
     const detail = error.response?.data
     if (detail?.error?.code) result.value = detail
@@ -271,11 +294,10 @@ async function detect(endpoint = state.value.actions.detect.endpoint, key = null
 
 function selectDetect(key) {
   if (key === 'start') return startBound()
+  if (key === 'preflight') return detect('preflight', null, false)
   return detect()
 }
 
-// The dropdown twin of the plain test: it lets the preset's own multi-instance
-// manager launch the bound instance, then verifies the connection the same way.
 async function startBound() {
   if (state.value.locked || !state.value.actions.startBound.visible) return
   detectionRevision += 1
@@ -283,10 +305,13 @@ async function startBound() {
   requestError.value = ''
   try {
     await config.flush_config_saves()
-    const response = await axios.post(
-      `${base}/start`,
-      devicePreflightRequest(config.device_profile || {}, draft.value, confirmedPackage.value)
+    const { endpoint, payload } = deviceStartupRequest(
+      config.device_profile || {},
+      draft.value,
+      metadata.value,
+      confirmedPackage.value
     )
+    const response = await axios.post(`${base}/${endpoint}`, payload)
     await acceptPreflight(response.data)
   } catch (error) {
     const detail = error.response?.data
@@ -298,72 +323,6 @@ async function startBound() {
     busy.value = false
     void readStatus()
   }
-}
-
-const instanceStartOptions = {
-  avd: {
-    actionKey: 'startAvd',
-    label: 'AVD',
-    startRequest: deviceAvdStartRequest,
-    describe: (profile, instance) =>
-      `启动 ${instance}（${profile.installation_path || profile.manager_path}）并验证该 AVD 的连接、启动状态、横屏 1920×1080 与游戏安装情况。普通退出 mower 会保留 AVD；只有在“任务结束后”明确选择“关闭模拟器”时，才会关闭 mower 启动的目标。`
-  },
-  genymotion: {
-    actionKey: 'startGenymotion',
-    label: 'Genymotion VM',
-    startRequest: deviceGenymotionStartRequest,
-    describe: (profile, instance) =>
-      `通过官方 gmtool 启动 ${profile.instance_name || instance}（${instance}），只读取该 VM 的连接信息，并验证 ADB 连接、启动状态、横屏 1920×1080 与游戏安装情况。目标失效时不切换到其他 VM。退出 mower 会保留 VM；再次启动需重新确认。`
-  },
-  redroid: {
-    actionKey: 'startRedroid',
-    label: 'redroid 容器',
-    startRequest: deviceRedroidStartRequest,
-    describe: (profile, instance) =>
-      `启动本机 Docker 容器 ${profile.instance_name || instance}（${instance}），读取该容器当前端口并验证连接、启动状态、横屏 1920×1080 与游戏安装情况。退出 mower 会保留容器；再次启动需重新确认。`
-  }
-}
-
-function startInstance(product) {
-  const { actionKey, label, startRequest, describe } = instanceStartOptions[product]
-  const action = state.value.actions[actionKey]
-  if (!action.visible || action.disabled) return
-  const profile = { ...draft.value }
-  const packageChoice = confirmedPackage.value
-  dialog.warning({
-    title: `确认启动 ${label}`,
-    content: describe(profile, action.instance),
-    positiveText: '启动并测试连接',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      if (
-        state.value.actions[actionKey].disabled ||
-        !sameDeviceProfile(draft.value, profile) ||
-        confirmedPackage.value !== packageChoice
-      ) {
-        requestError.value = `设备设置已变化，请重新确认要启动的 ${label}。`
-        return
-      }
-      detectionRevision += 1
-      busy.value = true
-      requestError.value = ''
-      try {
-        await config.flush_config_saves()
-        const response = await axios.post(
-          `${base}/${product}/start`,
-          startRequest(config.device_profile || {}, profile, action.instance, packageChoice)
-        )
-        await acceptPreflight(response.data)
-      } catch (error) {
-        const detail = error.response?.data
-        if (detail?.error?.code) result.value = detail
-        else requestError.value = detail?.message || error.message || `${label} 启动失败，请重试`
-      } finally {
-        busy.value = false
-        void readStatus()
-      }
-    }
-  })
 }
 
 function prepare() {
@@ -492,27 +451,6 @@ onUnmounted(() => {
         @click="detect()"
       >
         {{ state.actions.detect.label }}
-      </n-button>
-      <n-button
-        v-if="state.actions.startAvd.visible"
-        :disabled="state.actions.startAvd.disabled"
-        @click="startInstance('avd')"
-      >
-        {{ state.actions.startAvd.label }}
-      </n-button>
-      <n-button
-        v-if="state.actions.startRedroid.visible"
-        :disabled="state.actions.startRedroid.disabled"
-        @click="startInstance('redroid')"
-      >
-        {{ state.actions.startRedroid.label }}
-      </n-button>
-      <n-button
-        v-if="state.actions.startGenymotion.visible"
-        :disabled="state.actions.startGenymotion.disabled"
-        @click="startInstance('genymotion')"
-      >
-        {{ state.actions.startGenymotion.label }}
       </n-button>
       <n-button
         v-if="state.actions.discover.visible && state.actions.detect.endpoint !== 'discover'"

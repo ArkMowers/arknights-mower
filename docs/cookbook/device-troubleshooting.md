@@ -109,3 +109,16 @@ If device reboots exceed standard deadlines on slower host machines, adjust the 
    ```bash
    pytest arknights_mower/tests/device_session_tests.py -k test_recovery_budget
    ```
+
+## Detect and Start a Selected Emulator
+
+1. Select the emulator preset and click `检测实例`. MuMu Pro detection opens its manager application if needed. Multiple candidates remain a selection list.
+2. Select the intended instance. Detection checks it, starts it only if stopped, and saves its identity after connection verification succeeds.
+3. Use the dropdown `测试连接（只读）` to inspect a stopped instance without opening or starting it. BlueStacks 5, BlueStacks Air and manual serial profiles require manual startup.
+4. Verify that a rejected target keeps its selected identity. Inspect MuMu Pro directly with its official read-only command:
+
+```sh
+/Applications/MuMuPlayer.app/Contents/MacOS/mumutool info 1
+```
+
+The [device contract](../subsystems/device-control.md) defines launch scope and immediate authorization.

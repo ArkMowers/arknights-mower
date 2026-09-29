@@ -166,3 +166,204 @@ it('does not overlap slow status requests', async () => {
   await vi.advanceTimersByTimeAsync(3000)
   expect(state.client.get).toHaveBeenCalledTimes(2)
 })
+
+const startupCases = [
+  ['macos.mumu_pro', 'macos', 'start', { instance_id: '1', topology_fingerprint: 'a'.repeat(64) }],
+  ['windows.mumu12', 'windows', 'start', { instance_id: '2', manager_path: 'C:/MuMuManager.exe' }],
+  ['windows.ldplayer9', 'windows', 'start', { instance_id: '2', manager_path: 'C:/dnconsole.exe' }],
+  [
+    'windows.ldplayer14',
+    'windows',
+    'start',
+    { instance_id: '3', manager_path: 'C:/dnconsole.exe' }
+  ],
+  [
+    'windows.nox',
+    'windows',
+    'start',
+    {
+      instance_id: 'Nox_1',
+      instance_uuid: 'uuid',
+      topology_fingerprint: 'fingerprint',
+      manager_path: 'C:/NoxConsole.exe'
+    }
+  ],
+  [
+    'macos.avd',
+    'macos',
+    'avd/start',
+    { instance_id: 'Mower_API_35', manager_path: '/sdk/emulator' }
+  ],
+  [
+    'linux.avd',
+    'linux',
+    'avd/start',
+    { instance_id: 'Mower_API_35', manager_path: '/sdk/emulator' }
+  ],
+  [
+    'linux.genymotion',
+    'linux',
+    'genymotion/start',
+    { instance_id: '12345678-1234-1234-1234-123456789abc', manager_path: '/bin/gmtool' }
+  ],
+  [
+    'linux.redroid',
+    'linux',
+    'redroid/start',
+    {
+      instance_id: 'a'.repeat(64),
+      manager_path: '/bin/docker',
+      installation_path: '/bin',
+      config_path: 'unix:///var/run/docker.sock'
+    }
+  ],
+  [
+    'linux.waydroid',
+    'linux',
+    'start',
+    {
+      instance_id: 'waydroid:501',
+      manager_path: '/bin/waydroid',
+      installation_path: '/var/lib/waydroid',
+      config_path: '/var/lib/waydroid/waydroid.cfg'
+    }
+  ]
+]
+
+it.each(startupCases)(
+  'detects and starts only the selected %s target',
+  async (preset_id, host, endpoint, binding) => {
+    const target = { ...state.config.device_profile, preset_id, ...binding, last_serial: '' }
+    component.draft.value = target
+    component.metadata.value = { host_platform: host }
+    state.config.flush_config_saves = vi.fn(async () => {})
+    state.client.post = vi.fn(async (url) => ({
+      data: url.endsWith('/preflight')
+        ? { ok: false, error: { code: 'instance_stopped' } }
+        : { ok: true, serial: '127.0.0.1:16416', game_package: 'com.hypergryph.arknights' }
+    }))
+    await component.detect('preflight')
+    expect(state.client.post.mock.calls.map(([url]) => url.split('/device/')[1])).toEqual([
+      'preflight',
+      endpoint
+    ])
+    const payload = state.client.post.mock.calls[1][1]
+    expect(payload.device.instance_id).toBe(binding.instance_id)
+    if (endpoint !== 'start') expect(payload.confirmed_instance).toBe(binding.instance_id)
+    expect(state.config.device_profile.instance_id).toBe(binding.instance_id)
+    expect(component.requestError.value).toBe('')
+  }
+)
+
+it.each(['package_missing', 'binding_changed', 'endpoint_unresolved', 'boot_incomplete'])(
+  'does not launch after %s',
+  async (code) => {
+    component.draft.value = {
+      preset_id: 'macos.mumu_pro',
+      instance_id: '1',
+      topology_fingerprint: 'a'.repeat(64)
+    }
+    component.metadata.value = { host_platform: 'macos' }
+    state.config.flush_config_saves = vi.fn(async () => {})
+    state.client.post = vi.fn(async () => ({ data: { ok: false, error: { code } } }))
+    await component.detect('preflight')
+    expect(state.client.post).toHaveBeenCalledOnce()
+    expect(component.result.value.error.code).toBe(code)
+  }
+)
+
+it('keeps the read-only connection test free of startup even when the target is stopped', async () => {
+  component.draft.value = {
+    preset_id: 'macos.mumu_pro',
+    instance_id: '1',
+    topology_fingerprint: 'a'.repeat(64)
+  }
+  component.metadata.value = { host_platform: 'macos' }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async () => ({
+    data: { ok: false, error: { code: 'instance_stopped' } }
+  }))
+  await component.selectDetect('preflight')
+  expect(state.client.post).toHaveBeenCalledOnce()
+})
+
+it('keeps multiple stopped candidates pending until a user selects one', async () => {
+  state.client.get.mockResolvedValue({ data: { host_platform: 'macos' } })
+  const candidates = ['0', '1'].map((instance_id) => ({
+    key: instance_id,
+    binding: {
+      preset_id: 'macos.mumu_pro',
+      instance_id,
+      topology_fingerprint: instance_id.repeat(64)
+    }
+  }))
+  component.draft.value = { preset_id: 'macos.mumu_pro', last_serial: '' }
+  component.metadata.value = { host_platform: 'macos' }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async (url) => ({
+    data: url.endsWith('/discover')
+      ? { kind: 'discovery', candidates }
+      : {
+          ok: false,
+          error: { code: url.endsWith('/preflight') ? 'instance_stopped' : 'package_missing' }
+        }
+  }))
+  await component.detect('discover')
+  expect(state.client.post).toHaveBeenCalledOnce()
+  await component.detect('discover', '1')
+  expect(state.client.post.mock.calls.map(([url]) => url.split('/device/')[1])).toEqual([
+    'discover',
+    'preflight',
+    'start'
+  ])
+  expect(state.client.post.mock.calls[2][1].device.instance_id).toBe('1')
+  expect(state.config.save_config).not.toHaveBeenCalled()
+})
+
+it('starts the unique discovered target after its stopped preflight', async () => {
+  component.draft.value = { preset_id: 'macos.mumu_pro', last_serial: '' }
+  component.metadata.value = { host_platform: 'macos' }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async (url) => ({
+    data: url.endsWith('/discover')
+      ? {
+          kind: 'discovery',
+          selected_key: 'vm',
+          candidates: [
+            {
+              key: 'vm',
+              binding: {
+                preset_id: 'macos.mumu_pro',
+                instance_id: '1',
+                topology_fingerprint: 'a'.repeat(64)
+              }
+            }
+          ]
+        }
+      : {
+          ok: false,
+          error: { code: url.endsWith('/preflight') ? 'instance_stopped' : 'package_missing' }
+        }
+  }))
+  await component.detect('discover')
+  expect(state.client.post.mock.calls.map(([url]) => url.split('/device/')[1])).toEqual([
+    'discover',
+    'preflight',
+    'start'
+  ])
+})
+
+it('keeps manual MuMu serial checks read-only and sends manager preparation only with detection', async () => {
+  component.draft.value = {
+    preset_id: 'macos.mumu_pro',
+    instance_id: '1',
+    last_serial: '127.0.0.1:16416'
+  }
+  component.metadata.value = { host_platform: 'macos' }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async () => ({ data: { ok: false, error: { code: 'target_absent' } } }))
+  await component.detect('preflight')
+  expect(state.client.post.mock.calls[0][1]).not.toHaveProperty('start_manager')
+  await component.detect('discover')
+  expect(state.client.post.mock.calls[1][1].start_manager).toBe(true)
+})

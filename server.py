@@ -892,12 +892,19 @@ def device_preflight():
     start_genymotion = request.path == "/device/genymotion/start"
     start_confirmed = start_avd or start_redroid or start_genymotion
     allowed = {"device"} if discovery else {"device", "confirmed_package"}
+    if discovery or request.path == "/device/preflight":
+        allowed.add("start_manager")
     if start_confirmed:
         allowed.add("confirmed_instance")
     if not isinstance(payload, dict) or set(payload) - allowed:
         return {
             "error": "invalid_configuration",
             "message": "检测参数必须是设备配置对象",
+        }, 400
+    if "start_manager" in payload and type(payload["start_manager"]) is not bool:
+        return {
+            "error": "invalid_configuration",
+            "message": "管理服务启动参数必须是布尔值",
         }, 400
     device = payload.get("device", {})
     if start_confirmed and (
@@ -946,6 +953,10 @@ def device_preflight():
             configuration.device.last_serial = device["last_serial"]
     except (ValidationError, ValueError) as exc:
         return {"error": "invalid_configuration", "message": str(exc)}, 400
+    if payload.get("start_manager"):
+        prepared = device_control.prepare_mumu_pro_manager(configuration)
+        if not prepared.ok:
+            return prepared.to_dict()
     if discovery:
         return device_control.discover(configuration).to_dict()
     if start_bound:

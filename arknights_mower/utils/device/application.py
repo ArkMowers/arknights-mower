@@ -450,6 +450,44 @@ class DeviceControl(Generic[D]):
                 )
             return self._last_preflight
 
+    def prepare_mumu_pro_manager(self, configuration: "Conf") -> "PreflightResult":
+        """Explicit detection action; the read-only routes never call it implicitly."""
+        from arknights_mower.utils.device.preflight import (
+            PreflightError,
+            PreflightResult,
+        )
+        from arknights_mower.utils.device.session_io import ProductionSimulator
+
+        with self._configuration():
+            host = self.settings_status()["host_platform"]
+            result = PreflightResult(False, host, "failed", "")
+            if self._shutdown.is_set() or self._pending_close.is_set():
+                result.error = PreflightError("session_closing", "设备会话正在关闭")
+            elif self.active or self._run_active:
+                result.error = PreflightError(
+                    "device_session_active", "请停止当前任务后检测实例。", "stop"
+                )
+            elif host != "macos" or configuration.device.preset_id != "macos.mumu_pro":
+                result.error = PreflightError(
+                    "start_unsupported",
+                    "此管理服务启动操作仅支持 macOS MuMu Pro。",
+                    fields=["preset_id"],
+                )
+            else:
+                try:
+                    simulator = (
+                        self._session.simulator
+                        if self._session
+                        else ProductionSimulator()
+                    )
+                    simulator.prepare_mumu_pro(configuration.device, 6)
+                    result.ok = True
+                except MowerExit:
+                    raise
+                except Exception as exc:
+                    result.error = self._launch_error("mumu_pro", exc)
+            return result
+
     def discover(
         self, configuration: "Conf | None" = None
     ) -> "DiscoveryResult | PreflightResult":
@@ -568,6 +606,15 @@ class DeviceControl(Generic[D]):
                     "start_unsupported",
                     "该预设没有可供 mower 使用的多开管理器，请在模拟器中手动启动后重新测试连接。",
                     fields=["preset_id"],
+                )
+            elif (
+                profile.preset_id == "macos.mumu_pro"
+                and not profile.topology_fingerprint
+            ):
+                result.error = PreflightError(
+                    "mumu_pro_selection_required",
+                    "请先检测并选择 MuMu Pro 实例，再启动该实例。",
+                    fields=["instance_id", "topology_fingerprint"],
                 )
             elif self._session is None or self._preflight is None:
                 result.error = PreflightError(
@@ -742,6 +789,23 @@ class DeviceControl(Generic[D]):
                     result.error = self._launch_error(product, exc)
             self._last_preflight = result
             return result
+
+    def stop_bound_mumu_pro(self) -> bool:
+        """Apply explicit idle shutdown to the verified selected MuMu Pro instance."""
+        if self._shutdown.is_set() or self._pending_close.is_set():
+            return False
+        with self._configuration():
+            conf = self._read_configuration()
+            if (
+                not conf.close_simulator_when_idle
+                or conf.device.preset_id != "macos.mumu_pro"
+                or not conf.device.topology_fingerprint
+                or self._session is None
+                or self._shutdown.is_set()
+                or self._pending_close.is_set()
+            ):
+                return False
+            return self._session.simulator.stop(conf.device, 10)
 
     def stop_owned_avd(self) -> bool:
         """Explicit task-end policy, separate from ordinary application close."""
@@ -1406,6 +1470,15 @@ class DeviceControl(Generic[D]):
                 "no_genymotion",
                 "unsupported_host",
                 "mumu_pro_manual_required",
+                "mumu_pro_manager_missing",
+                "mumu_pro_manager_stopped",
+                "mumu_pro_manager_start_failed",
+                "mumu_pro_output_invalid",
+                "mumu_pro_selection_required",
+                "mumu_pro_binding_changed",
+                "mumu_pro_instance_error",
+                "mumu_pro_action_timeout",
+                "mumu_pro_action_failed",
                 "waydroid_binding_changed",
                 "waydroid_uninitialized",
                 "waydroid_status_failed",
