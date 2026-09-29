@@ -21,7 +21,7 @@ class FakeSocket:
         self.received = True
         return None
 
-    def close(self):
+    def close(self, reason=None, message=None):
         self.closed = True
 
 

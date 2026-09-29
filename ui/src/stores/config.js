@@ -1,14 +1,21 @@
 import axios from 'axios'
 import { normalizePerformanceMode, performanceProfile } from '@/utils/performanceProfile'
 import { defineStore } from 'pinia'
+import { editDeviceDraft } from '@/utils/deviceSettings'
 import { inject, ref, watch, watchEffect } from 'vue'
 import { createWorkshopState } from '@/utils/workshopConfig'
+import { configPatch, configSnapshot, reconcileConfig } from '@/utils/configPatch'
 
 export const useConfigStore = defineStore('config', () => {
   const defaultLaunchCommand =
     'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}'
   const weeklyPlanWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   const adb = ref('')
+  const device_profile = ref(null)
+  const config_save_error = ref('')
+  const config_saving = ref(false)
+  const configLoading = ref(false)
+  let savedConfig = null
   const drone_count_limit = ref(0)
   const drone_room = ref('')
   const swap_contact_train = ref(false)
@@ -62,7 +69,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mall_blacklist = ref('')
   const shop_list = ref([])
   const item_list = ref([])
-  const maa_gap = ref(false)
+  const maa_gap = ref(3)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
   const version_update_resting_threshold = ref(80)
@@ -426,194 +433,203 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   async function load_config() {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
-    runtime_platform.value = response.data.runtime_platform || ''
-    performance_mode.value = normalizePerformanceMode(
-      response.data.performance_mode,
-      response.data.low_frame_rate_mode,
-      runtime_platform.value
-    )
-    performance_effective_mode.value =
-      response.data.performance_effective_mode ||
-      (performance_mode.value === 'auto'
-        ? runtime_platform.value === 'android'
-          ? 'medium'
-          : 'high'
-        : performance_mode.value)
-    const fallbackProfile = performanceProfile('auto', runtime_platform.value)
-    low_frame_rate_mode.value =
-      response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
-    selection_poll_interval.value =
-      response.data.selection_poll_interval ?? fallbackProfile.selectionPollInterval
-    selection_transition_timeout.value =
-      response.data.selection_transition_timeout ?? fallbackProfile.selectionTransitionTimeout
-    adb.value = response.data.adb
-    drone_count_limit.value = response.data.drone_count_limit
-    drone_room.value = response.data.drone_room
-    drone_interval.value = response.data.drone_interval
-    enable_party.value = response.data.enable_party != 0
-    leifeng_mode.value = response.data.leifeng_mode != 0
-    free_blacklist.value =
-      response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
-    maa_adb_path.value = response.data.maa_adb_path
-    maa_enable.value = response.data.maa_enable != 0
-    stage_plan_enable.value =
-      response.data.stage_plan_enable !== undefined
-        ? Boolean(response.data.stage_plan_enable)
-        : response.data.maa_enable != 0
-    stage_plan_runner.value = response.data.stage_plan_runner === 'mower' ? 'mower' : 'maa'
-    maa_mall_enable.value =
-      response.data.maa_mall_enable !== undefined
-        ? Boolean(response.data.maa_mall_enable)
-        : response.data.maa_enable != 0
-    maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
-    maa_path.value = response.data.maa_path
-    maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
-    maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
-    maa_auto_check_update.value = response.data.maa_auto_check_update ?? false
-    maa_restore_theme_enable.value = response.data.maa_restore_theme_enable ?? false
-    maa_restore_theme.value = response.data.maa_restore_theme ?? ''
-    maa_rg_enable.value = response.data.maa_rg_enable == 1
-    maa_long_task_type.value = response.data.maa_long_task_type
-    medicine_expire_days.value = response.data.medicine_expire_days
-    maa_report_to_yituliu.value = response.data.maa_report_to_yituliu ?? false
-    maa_yituliu_id.value = response.data.maa_yituliu_id ?? ''
-    maa_penguin_id.value = response.data.maa_penguin_id ?? ''
-    ap_fallback.value = Number(response.data.ap_fallback) || 0
-    maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
-    maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
-    applyWeeklyPlanInventoryConfig({
-      enabled: response.data.maa_stage_inventory_enable,
-      limit_rules: response.data.maa_stage_limit_rules,
-      ratio_rules: response.data.maa_stage_ratio_rules
-    })
-    mail_enable.value = response.data.mail_enable != 0
-    account.value = response.data.account
-    pass_code.value = response.data.pass_code
-    recipient.value = response.data.recipient
-    timezone_offset.value = response.data.timezone_offset
-    custom_smtp_server.value = response.data.custom_smtp_server
-    package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
-    run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
+    configLoading.value = true
+    try {
+      const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
+      device_profile.value = response.data.device ?? null
+      runtime_platform.value = response.data.runtime_platform || ''
+      performance_mode.value = normalizePerformanceMode(
+        response.data.performance_mode,
+        response.data.low_frame_rate_mode,
+        runtime_platform.value
+      )
+      performance_effective_mode.value =
+        response.data.performance_effective_mode ||
+        (performance_mode.value === 'auto'
+          ? runtime_platform.value === 'android'
+            ? 'medium'
+            : 'high'
+          : performance_mode.value)
+      const fallbackProfile = performanceProfile('auto', runtime_platform.value)
+      low_frame_rate_mode.value =
+        response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
+      selection_poll_interval.value =
+        response.data.selection_poll_interval ?? fallbackProfile.selectionPollInterval
+      selection_transition_timeout.value =
+        response.data.selection_transition_timeout ?? fallbackProfile.selectionTransitionTimeout
+      adb.value = response.data.adb
+      drone_count_limit.value = response.data.drone_count_limit
+      drone_room.value = response.data.drone_room
+      drone_interval.value = response.data.drone_interval
+      enable_party.value = response.data.enable_party != 0
+      leifeng_mode.value = response.data.leifeng_mode != 0
+      free_blacklist.value =
+        response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
+      maa_adb_path.value = response.data.maa_adb_path
+      maa_enable.value = response.data.maa_enable != 0
+      stage_plan_enable.value =
+        response.data.stage_plan_enable !== undefined
+          ? Boolean(response.data.stage_plan_enable)
+          : response.data.maa_enable != 0
+      stage_plan_runner.value = response.data.stage_plan_runner === 'mower' ? 'mower' : 'maa'
+      maa_mall_enable.value =
+        response.data.maa_mall_enable !== undefined
+          ? Boolean(response.data.maa_mall_enable)
+          : response.data.maa_enable != 0
+      maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
+      maa_path.value = response.data.maa_path
+      maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
+      maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
+      maa_auto_check_update.value = response.data.maa_auto_check_update ?? false
+      maa_restore_theme_enable.value = response.data.maa_restore_theme_enable ?? false
+      maa_restore_theme.value = response.data.maa_restore_theme ?? ''
+      maa_rg_enable.value = response.data.maa_rg_enable == 1
+      maa_long_task_type.value = response.data.maa_long_task_type
+      medicine_expire_days.value = response.data.medicine_expire_days
+      maa_report_to_yituliu.value = response.data.maa_report_to_yituliu ?? false
+      maa_yituliu_id.value = response.data.maa_yituliu_id ?? ''
+      maa_penguin_id.value = response.data.maa_penguin_id ?? ''
+      ap_fallback.value = Number(response.data.ap_fallback) || 0
+      maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
+      maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
+      applyWeeklyPlanInventoryConfig({
+        enabled: response.data.maa_stage_inventory_enable,
+        limit_rules: response.data.maa_stage_limit_rules,
+        ratio_rules: response.data.maa_stage_ratio_rules
+      })
+      mail_enable.value = response.data.mail_enable != 0
+      account.value = response.data.account
+      pass_code.value = response.data.pass_code
+      recipient.value = response.data.recipient
+      timezone_offset.value = response.data.timezone_offset
+      custom_smtp_server.value = response.data.custom_smtp_server
+      package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
+      run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
 
-    start_automatically.value = response.data.start_automatically
-    maa_mall_buy.value =
-      response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
-    maa_mall_blacklist.value =
-      response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
-    maa_gap.value = response.data.maa_gap
-    simulator.value = response.data.simulator
-    resting_threshold.value = response.data.resting_threshold * 100
-    version_update_resting_threshold.value =
-      (response.data.version_update_resting_threshold ?? 0.8) * 100
-    version_update_threshold_advance_hours.value =
-      response.data.version_update_threshold_advance_hours ?? 12
-    fia_threshold.value = response.data.fia_threshold * 100
-    rescue_threshold.value = response.data.rescue_threshold * 100
-    favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
-    theme.value = response.data.theme
-    tap_to_launch_game.value = normalizeLaunchConfig(response.data.tap_to_launch_game)
-    exit_game_when_idle.value = response.data.exit_game_when_idle
-    return_home_when_idle.value = response.data.return_home_when_idle
-    close_simulator_when_idle.value = response.data.close_simulator_when_idle
-    maa_conn_preset.value = response.data.maa_conn_preset
-    maa_touch_option.value = response.data.maa_touch_option
-    maa_mall_ignore_blacklist_when_full.value = response.data.maa_mall_ignore_blacklist_when_full
-    maa_mall_only_buy_discount.value = response.data.maa_mall_only_buy_discount ?? false
-    maa_mall_reserve_max_credit.value = response.data.maa_mall_reserve_max_credit ?? false
-    maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
-    maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
-    maa_credit_fight.value = response.data.maa_credit_fight
-    maa_depot_enable.value = response.data.maa_depot_enable
-    depot_history_limit.value = response.data.depot_history_limit ?? 3000
-    depot_history_keep.value = response.data.depot_history_keep ?? 0
-    maa_rg_theme.value = response.data.maa_rg_theme
-    maa_rcl_theme.value = response.data.maa_rcl_theme
-    rcl.value = response.data.rcl
-    rogue.value = response.data.rogue
-    sss.value = response.data.sss
-    screenshot.value = response.data.screenshot
-    screenshot_archive_limit_mb.value = response.data.screenshot_archive_limit_mb ?? 5120
-    screenshot_interval.value =
-      response.data.screenshot_interval ?? fallbackProfile.screenshotInterval
-    mail_subject.value = response.data.mail_subject
-    skland_enable.value = response.data.skland_enable != 0
-    ai_key.value = response.data.ai_key
-    ai_custom_key.value = response.data.ai_custom_key || ''
-    ai_type.value = response.data.ai_type
-    ai_base_url.value = response.data.ai_base_url || ''
-    ai_model.value = response.data.ai_model || ''
-    skland_info.value = response.data.skland_info
-    recruit_enable.value = response.data.recruit_enable
-    recruitment_permit.value = response.data.recruitment_permit
-    recruit_robot.value = response.data.recruit_robot
-    recruit_auto_only5.value = response.data.recruit_auto_only5
-    run_order_grandet_mode.value = {
-      enable: false,
-      buffer_time: fallbackProfile.grandetBufferTime,
-      back_to_index: false,
-      ...(response.data.run_order_grandet_mode || {})
+      start_automatically.value = response.data.start_automatically
+      maa_mall_buy.value =
+        response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
+      maa_mall_blacklist.value =
+        response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
+      maa_gap.value = response.data.maa_gap
+      simulator.value = response.data.simulator
+      resting_threshold.value = response.data.resting_threshold * 100
+      version_update_resting_threshold.value =
+        (response.data.version_update_resting_threshold ?? 0.8) * 100
+      version_update_threshold_advance_hours.value =
+        response.data.version_update_threshold_advance_hours ?? 12
+      fia_threshold.value = response.data.fia_threshold * 100
+      rescue_threshold.value = response.data.rescue_threshold * 100
+      favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
+      theme.value = response.data.theme
+      tap_to_launch_game.value = normalizeLaunchConfig(response.data.tap_to_launch_game)
+      exit_game_when_idle.value = response.data.exit_game_when_idle
+      return_home_when_idle.value = response.data.return_home_when_idle
+      close_simulator_when_idle.value = response.data.close_simulator_when_idle
+      maa_conn_preset.value = response.data.maa_conn_preset
+      maa_touch_option.value = response.data.maa_touch_option
+      maa_mall_ignore_blacklist_when_full.value = response.data.maa_mall_ignore_blacklist_when_full
+      maa_mall_only_buy_discount.value = response.data.maa_mall_only_buy_discount ?? false
+      maa_mall_reserve_max_credit.value = response.data.maa_mall_reserve_max_credit ?? false
+      maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
+      maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
+      maa_credit_fight.value = response.data.maa_credit_fight
+      maa_depot_enable.value = response.data.maa_depot_enable
+      depot_history_limit.value = response.data.depot_history_limit ?? 3000
+      depot_history_keep.value = response.data.depot_history_keep ?? 0
+      maa_rg_theme.value = response.data.maa_rg_theme
+      maa_rcl_theme.value = response.data.maa_rcl_theme
+      rcl.value = response.data.rcl
+      rogue.value = response.data.rogue
+      sss.value = response.data.sss
+      screenshot.value = response.data.screenshot
+      screenshot_archive_limit_mb.value = response.data.screenshot_archive_limit_mb ?? 5120
+      screenshot_interval.value =
+        response.data.screenshot_interval ?? fallbackProfile.screenshotInterval
+      mail_subject.value = response.data.mail_subject
+      skland_enable.value = response.data.skland_enable != 0
+      ai_key.value = response.data.ai_key
+      ai_custom_key.value = response.data.ai_custom_key || ''
+      ai_type.value = response.data.ai_type
+      ai_base_url.value = response.data.ai_base_url || ''
+      ai_model.value = response.data.ai_model || ''
+      skland_info.value = response.data.skland_info
+      recruit_enable.value = response.data.recruit_enable
+      recruitment_permit.value = response.data.recruitment_permit
+      recruit_robot.value = response.data.recruit_robot
+      recruit_auto_only5.value = response.data.recruit_auto_only5
+      run_order_grandet_mode.value = {
+        enable: false,
+        buffer_time: fallbackProfile.grandetBufferTime,
+        back_to_index: false,
+        ...(response.data.run_order_grandet_mode || {})
+      }
+      product_switching.value = {
+        max_drones_per_switch: 0,
+        grandet_mode: true,
+        use_drones_when_leaving_orirock: true,
+        direct_when_drones_insufficient: false,
+        drone_loss_seconds: 30,
+        waiting_seconds: 2,
+        ...(response.data.product_switching || {})
+      }
+      check_mail_enable.value = response.data.check_mail_enable
+      report_enable.value = response.data.report_enable
+      recruit_gap.value = response.data.recruit_gap
+      recruit_auto_5.value = response.data.recruit_auto_5
+      webview.value = response.data.webview
+      shop_collect_enable.value = response.data.shop_collect_enable
+      meeting_level.value = response.data.meeting_level
+      fix_mumu12_adb_disconnect.value = response.data.fix_mumu12_adb_disconnect
+      ra_timeout.value = response.data.reclamation_algorithm.timeout
+      sf_target.value = response.data.secret_front.target
+      touch_method.value = response.data.touch_method
+      free_room.value = response.data.free_room
+      merge_interval.value = response.data.merge_interval
+      group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
+      group_mood_gap_max_extra_wait_hours.value =
+        response.data.group_mood_gap_max_extra_wait_hours ?? 0
+      fia_fool.value = response.data.fia_fool
+      assistant_follows_schedule.value = response.data.assistant_follows_schedule
+      enable_mastery.value = response.data.enable_mastery ?? true
+      swap_contact_train.value = response.data.swap_contact_train ?? false
+      sign_in.value = response.data.sign_in
+      droidcast.value = response.data.droidcast
+      mumu12IPC.value = response.data.mumu12IPC
+      visit_friend_enable.value = response.data.visit_friend_enable ?? true
+      visit_friend_mode.value = response.data.visit_friend_mode ?? 'maa'
+      credit_fight.value = response.data.credit_fight
+      custom_screenshot.value = response.data.custom_screenshot
+      load_workshop_config(response.data)
+      workshop_deer_fodder.value = response.data.workshop_deer_fodder ?? defaultDeerFodder()
+      workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
+      workshop_protect_t2_device_rock.value = response.data.workshop_protect_t2_device_rock ?? false
+      fodder_operators.value = response.data.fodder_operators || ['九色鹿']
+      t5_operators.value = response.data.t5_operators || ['年']
+      book_operators.value = response.data.book_operators || ['司霆惊蛰']
+      resource_update_enable.value = response.data.resource_update?.enable ?? false
+      resource_update_auto_update.value = response.data.resource_update?.auto_update ?? false
+      notification_level.value = response.data.notification_level
+      waiting_scene.value = response.data.waiting_scene
+      expiring_medicine_on_weekend.value = response.data.expiring_medicine_on_weekend
+      maa_mail.value = response.data.maa_mail
+      maa_recruit.value = response.data.maa_recruit
+      maa_orundum.value = response.data.maa_orundum
+      maa_mining.value = response.data.maa_mining
+      maa_specialaccess.value = response.data.maa_specialaccess
+      await load_weekly_plan_state()
+      savedConfig = configSnapshot(build_config())
+      config_save_error.value = ''
+    } finally {
+      configLoading.value = false
     }
-    product_switching.value = {
-      max_drones_per_switch: 0,
-      grandet_mode: true,
-      use_drones_when_leaving_orirock: true,
-      direct_when_drones_insufficient: false,
-      drone_loss_seconds: 30,
-      waiting_seconds: 2,
-      ...(response.data.product_switching || {})
-    }
-    check_mail_enable.value = response.data.check_mail_enable
-    report_enable.value = response.data.report_enable
-    recruit_gap.value = response.data.recruit_gap
-    recruit_auto_5.value = response.data.recruit_auto_5
-    webview.value = response.data.webview
-    shop_collect_enable.value = response.data.shop_collect_enable
-    meeting_level.value = response.data.meeting_level
-    fix_mumu12_adb_disconnect.value = response.data.fix_mumu12_adb_disconnect
-    ra_timeout.value = response.data.reclamation_algorithm.timeout
-    sf_target.value = response.data.secret_front.target
-    touch_method.value = response.data.touch_method
-    free_room.value = response.data.free_room
-    merge_interval.value = response.data.merge_interval
-    group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
-    group_mood_gap_max_extra_wait_hours.value =
-      response.data.group_mood_gap_max_extra_wait_hours ?? 0
-    fia_fool.value = response.data.fia_fool
-    assistant_follows_schedule.value = response.data.assistant_follows_schedule
-    enable_mastery.value = response.data.enable_mastery ?? true
-    swap_contact_train.value = response.data.swap_contact_train ?? false
-    sign_in.value = response.data.sign_in
-    droidcast.value = response.data.droidcast
-    mumu12IPC.value = response.data.mumu12IPC
-    visit_friend_enable.value = response.data.visit_friend_enable ?? true
-    visit_friend_mode.value = response.data.visit_friend_mode ?? 'maa'
-    credit_fight.value = response.data.credit_fight
-    custom_screenshot.value = response.data.custom_screenshot
-    load_workshop_config(response.data)
-    workshop_deer_fodder.value = response.data.workshop_deer_fodder ?? defaultDeerFodder()
-    workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
-    workshop_protect_t2_device_rock.value = response.data.workshop_protect_t2_device_rock ?? false
-    fodder_operators.value = response.data.fodder_operators || ['九色鹿']
-    t5_operators.value = response.data.t5_operators || ['年']
-    book_operators.value = response.data.book_operators || ['司霆惊蛰']
-    resource_update_enable.value = response.data.resource_update?.enable ?? false
-    resource_update_auto_update.value = response.data.resource_update?.auto_update ?? false
-    notification_level.value = response.data.notification_level
-    waiting_scene.value = response.data.waiting_scene
-    expiring_medicine_on_weekend.value = response.data.expiring_medicine_on_weekend
-    maa_mail.value = response.data.maa_mail
-    maa_recruit.value = response.data.maa_recruit
-    maa_orundum.value = response.data.maa_orundum
-    maa_mining.value = response.data.maa_mining
-    maa_specialaccess.value = response.data.maa_specialaccess
-    await load_weekly_plan_state()
   }
 
   function build_config() {
     return {
       account: account.value,
       adb: adb.value,
+      ...(device_profile.value ? { device: device_profile.value } : {}),
       drone_count_limit: drone_count_limit.value,
       drone_room: drone_room.value,
       swap_contact_train: swap_contact_train.value,
@@ -649,7 +665,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
       maa_stage_ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value),
       mail_enable: mail_enable.value ? 1 : 0,
-      package_type: package_type.value == 'official' ? 1 : 0,
+      package_type: package_type.value == 'official' ? 1 : 2,
       pass_code: pass_code.value,
       recipient: recipient.value,
       timezone_offset: timezone_offset.value,
@@ -803,6 +819,7 @@ export const useConfigStore = defineStore('config', () => {
       }
       if (
         !loaded.value ||
+        configLoading.value ||
         autosave_paused.value ||
         syncingWeeklyPlan.value ||
         !maa_weekly_plan_active.value
@@ -819,17 +836,97 @@ export const useConfigStore = defineStore('config', () => {
     },
     { deep: true }
   )
-  function save_config() {
-    // Track nested edits synchronously for watchEffect; serialize the latest
-    // draft and revision when this queued request actually starts.
+  function select_screenshot_backend(backend) {
+    if (!device_profile.value) return
+    device_profile.value = editDeviceDraft(device_profile.value, 'screenshot_backend', backend)
+  }
+
+  function select_touch_backend(backend) {
+    if (!device_profile.value) return
+    device_profile.value = editDeviceDraft(device_profile.value, 'touch_backend', backend)
+  }
+
+  function applyDeviceResponse(data, submitted) {
+    const fields = {
+      device: device_profile,
+      simulator,
+      adb,
+      maa_adb_path,
+      touch_method,
+      droidcast,
+      mumu12IPC,
+      custom_screenshot
+    }
+    for (const [key, target] of Object.entries(fields)) {
+      if (data[key] === undefined) continue
+      target.value = reconcileConfig(target.value, submitted[key], data[key])
+      savedConfig[key] = configSnapshot(data[key])
+    }
+    if (data.package_type !== undefined) {
+      const current = package_type.value === 'official' ? 1 : 2
+      const accepted = reconcileConfig(current, submitted.package_type, data.package_type)
+      package_type.value = accepted === 1 ? 'official' : 'bilibili'
+      savedConfig.package_type = data.package_type
+    }
+  }
+
+  function save_config(deviceConfirmation = null) {
+    // JSON traversal collects nested watchEffect dependencies before the promise.
+    // Serialize the latest draft and revision
+    // when this queued request starts so older replies cannot erase new typing.
     JSON.stringify(build_config())
     configSaveRequest = configSaveRequest
       .catch(() => {})
       .then(async () => {
-        const payload = JSON.parse(JSON.stringify(build_config()))
-        const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, payload)
-        apply_workshop_response(response.data, payload.workshop_manual_settings)
-        return response
+        const submitted = configSnapshot(build_config())
+        const payload = configPatch(savedConfig ?? {}, submitted)
+        if (
+          deviceConfirmation &&
+          submitted.device?.last_serial === deviceConfirmation.serial &&
+          submitted.device?.game_package === deviceConfirmation.game_package
+        ) {
+          // Explicit preflight confirmation must survive an earlier autosave
+          // consuming the serial delta or an unchanged default package value.
+          payload.device = {
+            ...payload.device,
+            game_package: deviceConfirmation.game_package,
+            game_package_confirmed: true
+          }
+        }
+        if (!Object.keys(payload).length) return
+        if ('workshop_manual_settings' in payload) {
+          payload.workshop_manual_settings_revision = workshop_manual_settings_revision.value
+        }
+        if (
+          ['maa_stage_inventory_enable', 'maa_stage_limit_rules', 'maa_stage_ratio_rules'].some(
+            (key) => key in payload
+          )
+        ) {
+          // Inventory edits belong to the plan shown when this draft is saved.
+          payload.maa_weekly_plan_active = submitted.maa_weekly_plan_active
+        }
+        config_saving.value = true
+        try {
+          const response = await axios.patch(`${import.meta.env.VITE_HTTP_URL}/conf`, payload)
+          savedConfig = submitted
+          applyDeviceResponse(response.data, submitted)
+          apply_workshop_response(response.data, payload.workshop_manual_settings)
+          savedConfig.workshop_manual_settings_revision = workshop_manual_settings_revision.value
+          if (payload.workshop_manual_settings && response.data.workshop_manual_settings) {
+            savedConfig.workshop_manual_settings = configSnapshot(
+              response.data.workshop_manual_settings
+            )
+          }
+          config_save_error.value = ''
+          return response
+        } catch (error) {
+          const detail = error.response?.data?.message || error.response?.data?.error
+          config_save_error.value =
+            typeof detail === 'string' ? detail : error.message || '配置保存失败'
+          throw error
+        } finally {
+          config_saving.value = false
+        }
       })
     return configSaveRequest
   }
@@ -841,16 +938,26 @@ export const useConfigStore = defineStore('config', () => {
       await sync_active_weekly_plan()
     }
     await weeklyPlanSaveRequest
-    await configSaveRequest
+    let pending
+    do {
+      pending = configSaveRequest
+      await pending
+    } while (pending !== configSaveRequest)
   }
 
   watchEffect(() => {
-    if (loaded.value && !autosave_paused.value) {
-      save_config().catch((error) => console.error('配置保存失败', error))
+    if (loaded.value && !autosave_paused.value && !configLoading.value) {
+      if (savedConfig === null) savedConfig = configSnapshot(build_config())
+      save_config().catch(() => {})
     }
   })
 
   return {
+    device_profile,
+    select_screenshot_backend,
+    select_touch_backend,
+    config_save_error,
+    config_saving,
     autosave_paused,
     flush_config_saves,
     adb,

@@ -1,31 +1,45 @@
-import json
 import os
+import re
 import socket
 import subprocess
+from threading import Lock
 from typing import Optional, Union
+from weakref import WeakSet
 
 from arknights_mower import __system__
 from arknights_mower.utils import config
-from arknights_mower.utils.csleep import csleep
+from arknights_mower.utils.config.device_profile import LEGACY_NAMES
+from arknights_mower.utils.device.adb_client.server import guard_adb, run_adb
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.device.adb_client.utils import run_cmd
+from arknights_mower.utils.device.io_budget import budget_sleep as csleep
+from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.mumu_info import mumu_endpoint, select_mumu_instance
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import resolve_config_path
+
+
+def is_tcp_serial(serial: str) -> bool:
+    """ADB TCP endpoints have a host and numeric port; USB serials do not."""
+    return bool(re.fullmatch(r"(?:\[[0-9a-fA-F:]+\]|[^:\s]+):\d+", serial))
 
 
 def query_mumu_adb_port(simulator) -> Optional[str]:
     """查询 MuMu 管理器返回的目标实例当前 adb 地址。
 
+    仅执行管理器 info 命令并读取 JSON，不连接或控制共享 ADB server。
     实例正在运行（Android 已启动）时返回「adb_host_ip:adb_port」；实例停止、管理器
     不可用或非 MuMu 模拟器时返回 None（表明目标未就绪，应由上层启动模拟器再重探）。
     adb_port 以管理器上报为准，避免按 16384+32*index 外推的端口与实际漂移不一致。
     """
-    if simulator.name != "MuMu12":
+    if simulator.name not in LEGACY_NAMES["windows.mumu12"]:
         return None
     manager = os.path.join(simulator.simulator_folder, "MuMuManager.exe")
     if not os.path.isfile(manager):
         # 部分安装版本管理器位于安装根目录的 shell 子目录
+        manager = os.path.join(simulator.simulator_folder, "shell", "MuMuManager.exe")
+    if not os.path.isfile(manager):
         manager = os.path.join(
             os.path.dirname(simulator.simulator_folder), "shell", "MuMuManager.exe"
         )
@@ -42,26 +56,12 @@ def query_mumu_adb_port(simulator) -> Optional[str]:
             encoding="utf-8",
             errors="replace",
             check=True,
-            timeout=5,
+            timeout=io_timeout(5),
         ).stdout.strip()
-        instances = json.loads(out)
-    except (OSError, subprocess.CalledProcessError, ValueError):
+        _, entry = select_mumu_instance(out, simulator.index)
+        return mumu_endpoint(entry)
+    except (OSError, subprocess.SubprocessError, ValueError):
         return None
-    target = str(simulator.index)
-    if isinstance(instances, dict):
-        entry = instances.get(target)
-        if entry is None:
-            return None
-    else:
-        entry = next((x for x in instances if str(x.get("index")) == target), None)
-        if entry is None:
-            return None
-    port = entry.get("adb_port")
-    if not port:
-        # 实例存在但未启动/无 adb 字段：当前没有可连接的端点
-        return None
-    host = entry.get("adb_host_ip") or "127.0.0.1"
-    return f"{host}:{port}"
 
 
 class Client:
@@ -74,11 +74,21 @@ class Client:
         adb_bin: str = None,
         *,
         wait_for_device: bool = True,
+        strict_target: bool = False,
     ) -> None:
+        if strict_target and (not device_id or not device_id.strip()):
+            raise ValueError("设备 serial 不能为空")
         self.device_id = device_id
         self.connect = connect
         self.adb_bin = adb_bin
+        self.strict_target = strict_target
         self.error_limit = 3
+        self.owner_pid = os.getpid()
+        self._resource_lock = Lock()
+        self._closed = False
+        self._interrupted = False
+        self._sessions = WeakSet()
+        self._streams = WeakSet()
         self.__init_adb()
         self.__init_device(wait_for_device=wait_for_device)
 
@@ -93,6 +103,14 @@ class Client:
         raise RuntimeError("Can't start adb server")
 
     def __init_device(self, *, wait_for_device: bool = True) -> None:
+        if getattr(self, "strict_target", False):
+            # The application has already verified this exact target and binary.
+            # A changed list cannot authorize discovery or another transport.
+            rows = Session().devices_list()
+            matches = [state for serial, state in rows if serial == self.device_id]
+            if matches != ["device"]:
+                raise RuntimeError("Device connection failure: pinned target not ready")
+            return
         # wait for the newly started ADB server to probe emulators
         csleep(1)
         # 启动时先确认 adb server 已启动：走 adb.exe 命令路径可让未运行的 server 自动拉起，
@@ -120,7 +138,7 @@ class Client:
             # 端口可能因模拟器重启/更新而漂移：重跑完整选择逻辑（重发现 + 认领存活设备）后重连。
             self.device_id = self.__choose_devices(devices)
             target = self.device_id or config.conf.adb
-            if target:
+            if target and is_tcp_serial(target):
                 Session().connect(target)
             csleep(2)
         devices = self.__available_devices()
@@ -136,12 +154,11 @@ class Client:
         if self.device_id is None or self.device_id != config.conf.adb:
             self.device_id = self.__choose_devices()
         if self.device_id is None:
-            if self.connect is None:
-                Session().connect(config.conf.adb)
-            else:
-                Session().connect(self.connect)
+            target = self.connect or config.conf.adb
+            if target and is_tcp_serial(target):
+                Session().connect(target)
             self.device_id = self.__choose_devices()
-        elif self.connect is None:
+        elif self.connect is None and is_tcp_serial(self.device_id):
             Session().connect(self.device_id)
 
     def __choose_devices(self, devices: list[str] | None = None) -> Optional[str]:
@@ -154,9 +171,6 @@ class Client:
         target = self.refresh_target()
         if target in devices:
             return target
-        if len(devices) > 0 and config.conf.adb == "":
-            logger.debug(devices[0])
-            return devices[0]
 
     def __available_devices(self) -> list[str]:
         """return available devices"""
@@ -169,9 +183,11 @@ class Client:
         而不是一直连 config.conf.adb 里写死的端口；查询失败或实例未启动（无 adb
         字段）时保留现有 device_id，由上层重试/重启兜底。只在内存更新，不写回配置。
         """
+        if getattr(self, "strict_target", False):
+            return self.device_id
         discovered = query_mumu_adb_port(config.conf.simulator)
         if discovered is not None:
-            config.conf.adb = discovered
+            config.conf.set_device_endpoint(discovered)
             self.device_id = discovered
         return self.device_id or config.conf.adb
 
@@ -180,28 +196,46 @@ class Client:
         logger.debug(f"client.__exec: {cmd}")
         if adb_bin is None:
             adb_bin = self.adb_bin
-        subprocess.run(
-            [adb_bin, cmd],
+        # A guarded devices query starts an absent server without issuing an
+        # unconditional global lifecycle command against an existing server.
+        run_adb(
+            [adb_bin, "devices" if cmd == "start-server" else cmd],
+            run=subprocess.run,
             check=True,
             creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+            timeout=io_timeout(10),
         )
+        # Re-check the session deadline after the external command returns.
+        io_timeout(10)
 
     def reconnect(self, *, wait_for_device: bool = True) -> None:
         """单次重连并确认目标上线；保留启动等待和 MuMu 端口重新发现。"""
+        self._check_open()
         self.__init_device(wait_for_device=wait_for_device)
+
+    def _check_open(self):
+        if (
+            getattr(self, "_closed", False)
+            or getattr(self, "_interrupted", False)
+            or getattr(self, "owner_pid", os.getpid()) != os.getpid()
+        ):
+            raise ConnectionError("ADB 会话已关闭或所有权不匹配")
 
     def check_server_alive(self) -> bool:
         """单次检查 ADB server；连接恢复统一由 Device 管理。"""
+        session = Session()
         try:
-            return Session().run("host:version") is not None
+            return session.run("host:version") is not None
         except (socket.timeout, ConnectionError, RuntimeError):
             return False
+        finally:
+            session.close()
 
     def __check_adb(self, adb_bin: str) -> bool:
         """check adb_bin if it works
 
-        只用 start-server（幂等，不会打断已运行的 adb server）。不做 kill-server：
-        重启全局 5037 server 会把共用它的另一台模拟器也踢下线（双模拟器场景互相干扰）。
+        通过受版本守卫保护的探测启动尚未运行的 server。
+        已运行的 server 不兼容时明确失败，不允许 ADB CLI 自动重启它。
         """
         if not adb_bin or not str(adb_bin).strip():
             return False
@@ -213,20 +247,78 @@ class Client:
 
     def session(self) -> Session:
         """get a session between adb client and adb server"""
+        self._check_open()
         if not self.check_server_alive():
             raise RuntimeError("ADB server is not working")
-        return Session().device(self.device_id)
+        session = Session()
+        with self._resource_lock:
+            if self._closed or self._interrupted:
+                session.close()
+                raise ConnectionError("ADB 会话已关闭")
+            self._sessions.add(session)
+        try:
+            return session.device(self.device_id)
+        except BaseException:
+            session.close()
+            raise
+
+    def close(self):
+        """Interrupt this client's sockets without touching ADB transports."""
+        if self.owner_pid != os.getpid():
+            return
+        with self._resource_lock:
+            if self._closed:
+                return
+            self._closed = True
+            resources = (*self._sessions, *self._streams)
+            self._sessions.clear()
+            self._streams.clear()
+        errors = []
+        for resource in resources:
+            try:
+                resource.close()
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(str(error))
+            raise errors[0]
+
+    def interrupt_io(self):
+        """Cancel socket operations; final close still owns every handle."""
+        if self.owner_pid != os.getpid():
+            return
+        with self._resource_lock:
+            if self._closed or self._interrupted:
+                return
+            self._interrupted = True
+            resources = (*self._sessions, *self._streams)
+        errors = []
+        for resource in resources:
+            try:
+                resource.interrupt()
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(str(error))
+            raise errors[0]
 
     def run(self, cmd: str) -> Optional[bytes]:
         """run adb exec command"""
         logger.debug(f"command: {cmd}")
-        resp = self.session().exec(cmd)
+        session = self.session()
+        try:
+            resp = session.exec(cmd)
+        finally:
+            session.close()
         if len(resp) <= 256:
             logger.debug(f"response: {repr(resp)}")
         return resp
 
     def cmd(self, cmd: str | list[str], decode: bool = False) -> Union[bytes, str]:
         """run adb command with adb_bin"""
+        self._check_open()
         if isinstance(cmd, str):
             cmd = cmd.split(" ")
         cmd = [self.adb_bin, "-s", self.device_id] + cmd
@@ -234,19 +326,23 @@ class Client:
 
     def cmd_shell(self, cmd: str, decode: bool = False) -> Union[bytes, str]:
         """run adb shell command with adb_bin"""
+        self._check_open()
         cmd = [self.adb_bin, "-s", self.device_id, "shell"] + cmd.split(" ")
         return run_cmd(cmd, decode)
 
     def cmd_push(self, filepath: str, target: str) -> None:
         """push file into device with adb_bin"""
+        self._check_open()
         cmd = [self.adb_bin, "-s", self.device_id, "push", filepath, target]
         run_cmd(cmd)
 
     def process(
         self, path: str, args: list[str] = [], stderr: int = subprocess.DEVNULL
     ) -> subprocess.Popen:
+        self._check_open()
         logger.debug(f"run process: {path}, args: {args}")
         cmd = [self.adb_bin, "-s", self.device_id, "shell", path] + args
+        guard_adb(self.adb_bin, timeout=io_timeout(10), run=subprocess.run)
         return subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -256,11 +352,25 @@ class Client:
 
     def push(self, target_path: str, target: bytes) -> None:
         """push file into device"""
-        self.session().push(target_path, target)
+        session = self.session()
+        try:
+            session.push(target_path, target)
+        finally:
+            session.close()
 
     def stream(self, cmd: str) -> Socket:
         """run adb command, return socket"""
-        return self.session().request(cmd, True).sock
+        session = self.session()
+        try:
+            session.request(cmd)
+            with self._resource_lock:
+                if self._closed or self._interrupted:
+                    raise ConnectionError("ADB 会话已关闭")
+                stream = session.detach()
+                self._streams.add(stream)
+                return stream
+        finally:
+            session.close()
 
     def stream_shell(self, cmd: str) -> Socket:
         """run adb shell command, return socket"""

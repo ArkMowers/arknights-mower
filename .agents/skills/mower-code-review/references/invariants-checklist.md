@@ -19,6 +19,21 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-09] Classified Failure Isolation**: Do Temporary Preparation errors retain their structured verdict and trigger owned resource cleanup without requesting application shutdown, while unclassified internal faults retain coordinated shutdown?
+
+- [ ] **[INV-DEV-08] Uncertain Input Delivery**: Does an ADB input transmission or acknowledgement timeout reach the structured input failure boundary without replaying the command, while known read-only queries retain bounded retries?
+
+- [ ] **[INV-DEV-07] Capture Recovery Separation**: Do normal frames use a fresh operation deadline, and does degraded ADB validate the bound target without starting the replaced helper?
+
+- [ ] **[INV-DEV-05] Capture Preset Compatibility**: Do saves reject incompatible capture presets, do capture entry points check the host, and do UI preset changes clear incompatible draft backends without prematurely persisting a new identity?
+- [ ] **[INV-DEV-06] LD Capture Binding**: Does LD screenshot enhancement verify the selected endpoint and reject changed process identity or dimensions before accepting a frame?
+
+- [ ] **[INV-DEV-04] Launch Protection**: Does automatic restart respect the bound instance's configured startup interval, including across recovery transactions, without exceeding the Recovery Budget or ignoring cancellation?
+
+- [ ] **[INV-DEV-03] Startup Budget Isolation**: Does each new startup establish a fresh Recovery Budget before preparation and preserve that deadline through readiness, validation and helper initialization?
+
+- [ ] **[INV-DEV-02] Lifecycle Command Isolation**: Are lifecycle arguments passed without a shell and restricted to an explicitly identified instance, with unavailable control failing before any host-wide action?
+
 - [ ] **[INV-01] Transient vs Persisted Isolation**: Does `DeviceProfile` or `Conf` only persist explicit user selections? Are discovery candidates, socket handles, and active connection state transient?
 - [ ] **[INV-02] Target Rebinding Clears Endpoints**: Does any modification to emulator preset, path, or instance identity reset `last_serial` to null?
 - [ ] **[INV-03] Failure Preserves Target Identity**: In case of device failure, timeout, or discovery error, does the session halt cleanly without drifting to other online devices on the host?
@@ -43,6 +58,15 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-UI-02] Recovery Policy Binding**: Are advanced recovery parameters bidirectionally bound to backend defaults without local shadow overrides?
 
 ### 2.4 Vision & Recognition Domain
+
+- [ ] **[INV-REC-03] Scene Recovery Limit**: Do repeated scene transition exceptions stop after one game restart per navigation call, while cancellation and device failures propagate without replay?
+
+- [ ] **[INV-DIAG-01] Archive Deletion Cohesion**: Do expiry and capacity deletion use the store's archive lock and cancel queued writes and active windows so late frames cannot recreate retired archives?
+- [ ] **[INV-DIAG-02] Archive Error Isolation**: Does malformed archive metadata leave the worker able to process subsequent archives?
+
+- [ ] **[INV-DIAG-03] Accepted Archive Drain**: Does shutdown preserve accepted screenshot and archive work through one flush deadline, then count discarded work and stop new file writes?
+- [ ] **[INV-DIAG-04] Encoded Recent Cache**: With ordinary history disabled, does the recent cache retain encoded frames within count and byte bounds, while raw submission remains non-blocking and bounded?
+- [ ] **[INV-DIAG-05] Shared Frame Encoding**: Does each RGB snapshot encode at most once, release its source after completion, share encoded bytes across consumers and preserve capacity, newer preview progress and the shutdown deadline?
 
 - [ ] **[INV-REC-01] Standard Canvas Frame Contract**: Do recognition models operate exclusively on standard 1920×1080 pure RGB matrices? Do recognition failures return structured verdicts without blocking the scheduler dispatch loop?
 - [ ] **[INV-REC-02] Occluded Operator Selection**: Does an obscured upper border require both vertical borders and the leading portion of the lower border, while adjacent card borders remain insufficient?

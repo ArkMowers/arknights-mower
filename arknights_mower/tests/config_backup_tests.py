@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
@@ -36,7 +37,7 @@ def storage(tmp_path, monkeypatch):
     config.save_plan()
     database = get_path("@app/tmp/data.db")
     database.parent.mkdir(parents=True)
-    with sqlite3.connect(database) as conn:
+    with closing(sqlite3.connect(database)) as conn, conn:
         conn.execute("CREATE TABLE saved_state(state TEXT)")
         conn.execute("INSERT INTO saved_state VALUES ('stale')")
         conn.execute("CREATE TABLE reports(value TEXT)")
@@ -145,15 +146,15 @@ def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
             "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
         )
         assert config.plan.model_dump(exclude_none=True) == migrated_plan
-    assert json.loads(config.plan_path.read_text()) == migrated_plan
-    assert "dorm_order:" not in config.conf_path.read_text()
-    assert "experimental_dorm_logic" not in config.conf_path.read_text()
+    assert json.loads(config.plan_path.read_text(encoding="utf-8")) == migrated_plan
+    assert "dorm_order:" not in config.conf_path.read_text(encoding="utf-8")
+    assert "experimental_dorm_logic" not in config.conf_path.read_text(encoding="utf-8")
     assert (
         config.conf_path.parent / "nested/custom.yml"
     ).read_bytes() == b"# retained raw\nkey: value\n"
     assert not (config.conf_path.parent / "obsolete.yml").exists()
     assert outside.read_text() == "keep"
-    with sqlite3.connect(storage("@app/tmp/data.db")) as conn:
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
         assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone()[0] == 0
         assert conn.execute("SELECT value FROM reports").fetchone()[0] == "keep"
 
@@ -261,7 +262,7 @@ def test_write_failure_rolls_back_files_runtime_and_database(storage, monkeypatc
         backup.import_configuration(raw)
     assert config.conf is previous_conf and config.plan is previous_plan
     assert backup.read_archive(backup.export_archive()) == before
-    with sqlite3.connect(storage("@app/tmp/data.db")) as conn:
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
         assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone()[0] == 1
 
 

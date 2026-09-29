@@ -13,6 +13,7 @@ import threading
 import time
 import unittest
 import zipfile
+from contextlib import ExitStack
 from itertools import product
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -1550,6 +1551,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
         import webview_ui
         from arknights_mower import utils
         from arknights_mower.utils import network, path
+        from arknights_mower.utils.lifecycle import Shutdown
 
         for system, background, tray_enabled, restart, managed in product(
             ("darwin", "linux", "win32"), *[(True, False)] * 4
@@ -1564,6 +1566,21 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
+            shutdown = Shutdown()
+
+            def make_thread(*args, **kwargs):
+                thread = Mock()
+                target = kwargs.get("target")
+                if target is not None and target.__name__ == "resume_after_update":
+
+                    def resume():
+                        registration.shutdown_requested.return_value = False
+                        target()
+                        registration.shutdown_requested.return_value = True
+
+                    thread.start.side_effect = resume
+                return thread
+
             with (
                 self.subTest(
                     system=system,
@@ -1571,49 +1588,83 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     tray=tray_enabled,
                     restart=restart,
                 ),
-                patch.object(sys, "platform", system),
-                patch.dict(
-                    os.environ,
-                    {
-                        "MOWER_BACKGROUND": "1" if background else "0",
-                        "MOWER_RESTART_JOB": "fixture" if restart else "",
-                        "MOWER_RESUME_RUN": "1",
-                        "MOWER_RESTART_PORT": "58100",
-                        "MOWER_MANAGED": "1" if managed else "0",
-                    },
-                ),
-                patch.dict(sys.modules, {"server": server}),
-                patch.object(sys, "argv", ["mower"]),
-                patch.object(utils, "config", config, create=True),
-                patch.object(path, "global_space", ""),
-                patch.object(runtime, "read_json", return_value={}),
-                patch.object(runtime, "active_job", return_value=False),
-                patch.object(runtime, "frozen", return_value=True),
-                patch.object(runtime, "RuntimeRegistration", return_value=registration),
-                patch.object(runtime, "hide_macos_dock_icon") as hide_dock,
-                patch.object(network, "is_port_in_use", side_effect=[False, True]),
-                patch.multiple(
-                    webview_ui,
-                    exit_if_webview_backend_missing=Mock(),
-                    close_child=Mock(),
-                ),
-                patch.object(update, "request_auto_check") as auto_check,
-                patch.object(webview_ui.mp, "Queue") as queue,
-                patch.object(
-                    webview_ui, "start_desktop_child", return_value=(Mock(), Mock())
-                ) as process,
-                patch(
-                    "arknights_mower.utils.desktop_process.log_channel",
-                    return_value=Mock(),
-                ),
-                patch.multiple(
-                    "arknights_mower.utils.log",
-                    init_file_logging=Mock(),
-                    start_mp_listener=Mock(),
-                    mp_listener=Mock(),
-                ),
-                patch("threading.Thread") as threads,
+                ExitStack() as stack,
             ):
+                stack.enter_context(patch.object(sys, "platform", system))
+                stack.enter_context(
+                    patch.dict(
+                        os.environ,
+                        {
+                            "MOWER_BACKGROUND": "1" if background else "0",
+                            "MOWER_RESTART_JOB": "fixture" if restart else "",
+                            "MOWER_RESUME_RUN": "1",
+                            "MOWER_RESTART_PORT": "58100",
+                            "MOWER_MANAGED": "1" if managed else "0",
+                            "MOWER_RESUME_MODE": "",
+                        },
+                    )
+                )
+                stack.enter_context(patch.dict(sys.modules, {"server": server}))
+                stack.enter_context(patch.object(sys, "argv", ["mower"]))
+                stack.enter_context(patch.object(utils, "config", config, create=True))
+                stack.enter_context(patch.object(path, "global_space", ""))
+                stack.enter_context(patch.object(runtime, "read_json", return_value={}))
+                stack.enter_context(
+                    patch.object(runtime, "active_job", return_value=False)
+                )
+                stack.enter_context(patch.object(runtime, "frozen", return_value=True))
+                stack.enter_context(
+                    patch.object(
+                        runtime, "RuntimeRegistration", return_value=registration
+                    )
+                )
+                hide_dock = stack.enter_context(
+                    patch.object(runtime, "hide_macos_dock_icon")
+                )
+                stack.enter_context(
+                    patch.object(network, "is_port_in_use", side_effect=[False, True])
+                )
+                stack.enter_context(
+                    patch.multiple(
+                        webview_ui,
+                        exit_if_webview_backend_missing=Mock(),
+                        close_child=Mock(),
+                        start_http_server=Mock(),
+                    )
+                )
+                stack.enter_context(
+                    patch("arknights_mower.utils.lifecycle.shutdown", shutdown)
+                )
+                auto_check = stack.enter_context(
+                    patch.object(update, "request_auto_check")
+                )
+                queue = stack.enter_context(patch.object(webview_ui.mp, "Queue"))
+                process = stack.enter_context(
+                    patch.object(
+                        webview_ui, "start_desktop_child", return_value=(Mock(), Mock())
+                    )
+                )
+                stack.enter_context(
+                    patch(
+                        "arknights_mower.utils.desktop_process.log_channel",
+                        return_value=Mock(),
+                    )
+                )
+                stack.enter_context(
+                    patch.multiple(
+                        "arknights_mower.utils.log",
+                        init_file_logging=Mock(),
+                        start_mp_listener=Mock(),
+                        mp_listener=Mock(),
+                        close_logging=Mock(),
+                        close_mp_logging=Mock(),
+                        close_screenshot_store=Mock(),
+                    )
+                )
+                threads = stack.enter_context(
+                    patch("threading.Thread", side_effect=make_thread)
+                )
+                stack.enter_context(patch("time.sleep"))
                 webview_ui.run_desktop()
                 auto_check.assert_called_once()
                 self.assertEqual(server.resource_update.running.call_count, 2)
@@ -1635,8 +1686,10 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 ]
                 self.assertEqual(len(resumes), int(restart))
                 if resumes:
+                    server.start.assert_called_once_with("2")
                     registration.shutdown_requested.return_value = False
                     resumes[0]()
+                    # A late worker cannot restart automation after shutdown.
                     server.start.assert_called_once_with("2")
 
     def test_tray_always_hides_its_dock_icon(self):
@@ -1674,15 +1727,16 @@ class ArchiveAndLauncherTests(unittest.TestCase):
         )
 
     def test_closed_child_is_joined_without_forced_termination(self):
-        from webview_ui import close_child
+        from webview_ui import close_child, own_child
 
         process = Mock()
-        process.is_alive.side_effect = [True, False, False]
+        process.is_alive.side_effect = [True, False, False, False]
         connection = Mock()
+        own_child(process, connection)
         close_child(process, connection)
         connection.send.assert_called_once_with("exit")
         process.terminate.assert_not_called()
-        self.assertEqual(process.join.call_count, 2)
+        self.assertEqual(process.join.call_count, 1)
 
 
 class ThreeInstanceIntegrationTests(unittest.TestCase):

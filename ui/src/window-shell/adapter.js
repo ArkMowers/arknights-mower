@@ -102,6 +102,15 @@ export function formatWindowTitle({ version = '', instanceName = '' } = {}) {
   return parts.join(' · ')
 }
 
+// The title bar names the emulator it is bound to. Several multi-instances of one
+// emulator share a product name, so the configured instance name follows it; an
+// unset name adds nothing.
+export function formatEmulatorLabel({ name = '', instanceName = '' } = {}) {
+  if (!name) return ''
+  const instance = String(instanceName ?? '').trim()
+  return instance ? `${name}（${instance}）` : name
+}
+
 export function createWindowShellAdapter({
   windowObject = window,
   readyTimeoutMs = 1200,

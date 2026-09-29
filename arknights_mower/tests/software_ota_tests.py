@@ -330,17 +330,19 @@ class SoftwareOtaTests(unittest.TestCase):
         worker.report = Mock()
         worker.prepare_ota = Mock(side_effect=ValueError("base mismatch"))
 
+        executable_name = "mower.exe" if sys.platform == "win32" else "mower"
+
         def prepare_full(payload):
             runtime = payload / "mower/_internal/arknights_mower/utils"
             runtime.mkdir(parents=True)
             (runtime / "update_runtime.py").write_text("ready")
-            (payload / "mower/mower").write_text("binary")
+            (payload / "mower" / executable_name).write_text("binary")
 
         worker.prepare_full_package = Mock(side_effect=prepare_full)
         worker.copy_package_file = shutil.copy2
         worker.prepare_package()
         worker.prepare_full_package.assert_called_once()
-        self.assertTrue((worker.prepared / "mower").is_file())
+        self.assertTrue((worker.prepared / executable_name).is_file())
 
 
 if __name__ == "__main__":

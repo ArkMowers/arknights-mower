@@ -9,6 +9,12 @@ def _get_store():
     return get_screenshot_store()
 
 
+def screenshot_stats_response():
+    """Expose pipeline pressure without starting workers or touching history."""
+    store = _get_store()
+    return store.stats() if store is not None else {}
+
+
 def latest_screenshot_response():
     store = _get_store()
     frame = store.latest() if store is not None else None

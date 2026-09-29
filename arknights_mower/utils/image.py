@@ -6,7 +6,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.log import save_screenshot
+from arknights_mower.utils.log import save_screenshot_frame
 from arknights_mower.utils.path import get_path
 
 
@@ -96,7 +96,7 @@ def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
 
 def saveimg(img: tp.Image, folder):
     del folder  # 兼容2024.05旧版接口
-    save_screenshot(img2bytes(img))
+    save_screenshot_frame(img)
 
 
 def cmatch(

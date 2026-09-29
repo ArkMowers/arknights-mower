@@ -39,7 +39,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **_Avoid_**: `Permanent configuration`, `Unmanaged resolution change`
 
 ### 标准画面帧 (`Capture Frame`)
-- **定义**：跨 ADB、DroidCast 及 MuMu IPC 后端统一解码输出的标准 1920×1080 纯画布 RGB 画面矩阵，不包含黑边或未解码压缩字节。
+- **定义**：跨 ADB、DroidCast、MuMu IPC 及 LD 截图增强后端统一解码输出的标准 1920×1080 纯画布 RGB 画面矩阵，不包含黑边或未解码压缩字节。
 - **代码映射**：`CanvasFrame`, `FrameBuffer`
 - **_Avoid_**: `Scaled preview`, `Raw stream byte`
 

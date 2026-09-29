@@ -1,6 +1,7 @@
 import json
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from arknights_mower.utils.maa_check import (
@@ -15,6 +16,64 @@ from arknights_mower.utils.maa_check import (
 
 
 class TestMaaCheck(unittest.TestCase):
+    def test_check_route_keeps_the_active_application_sessions_transport(self):
+        import server
+        from arknights_mower.utils.device.application import DeviceControl
+
+        conf = SimpleNamespace(
+            maa_path="/maa",
+            maa_adb_path="missing-manual-adb",
+            adb="stale-device",
+            maa_conn_preset="General",
+            maa_touch_option="maatouch",
+        )
+        device = SimpleNamespace(
+            device_id="USB-123",
+            client=SimpleNamespace(adb_bin="sdk-adb", device_id="USB-123"),
+            close=lambda: None,
+        )
+        adapter = SimpleNamespace(open=lambda conf, **kwargs: device)
+        control = DeviceControl(lambda: conf, adapter)
+        self.assertTrue(control.start().ok)
+        self.addCleanup(control.close)
+        with (
+            patch.dict(
+                sys.modules,
+                {"arknights_mower.__main__": SimpleNamespace(device_control=control)},
+            ),
+            patch.object(server.config, "conf", conf),
+            patch.object(server.app, "token", "maa-test-token", create=True),
+            patch.dict(server.maa_check_job, {"status": "idle", "process": None}),
+            patch.object(server.subprocess, "Popen") as process,
+        ):
+            response = server.app.test_client().get(
+                "/check-maa", headers={"token": "maa-test-token"}
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["status"], "running")
+        params = json.loads(process.call_args.args[0][-1])
+        self.assertEqual(params["maa_adb_path"], "sdk-adb")
+        self.assertEqual(params["adb"], "USB-123")
+
+    def test_session_check_uses_verified_adb_and_serial(self):
+        for configured_adb in ("", "missing-manual-adb"):
+            with self.subTest(configured_adb=configured_adb):
+                conf = SimpleNamespace(
+                    maa_path="/maa",
+                    maa_adb_path=configured_adb,
+                    adb="stale-device",
+                    maa_conn_preset="General",
+                    maa_touch_option="maatouch",
+                )
+                device = SimpleNamespace(
+                    client=SimpleNamespace(adb_bin="sdk-adb", device_id="USB-123")
+                )
+                with patch("arknights_mower.utils.maa_check.config.conf", conf):
+                    command = maa_check_command(maa_check_params(device=device))
+                params = json.loads(command[-1])
+                self.assertEqual(params["maa_adb_path"], "sdk-adb")
+                self.assertEqual(params["adb"], "USB-123")
+
     def test_check_uses_configured_device(self):
         mock_conf = MagicMock(
             maa_path="/maa",

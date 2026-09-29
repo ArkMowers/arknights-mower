@@ -2,10 +2,14 @@ import json
 import os
 import pathlib
 import sys
+from typing import TYPE_CHECKING
 
 from arknights_mower.utils import config
 from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.update_runtime import frozen
+
+if TYPE_CHECKING:
+    from arknights_mower.utils.device.device import Device
 
 MAA_CHECK_TIMEOUT = 30
 
@@ -43,11 +47,23 @@ print(json.dumps(result, ensure_ascii=True))
 """
 
 
-def maa_check_params(adb: str | None = None) -> dict[str, str]:
+def maa_check_params(
+    adb: str | None = None, *, device: "Device | None" = None
+) -> dict[str, str]:
+    """Reuse the active session's transport when the caller supplies its device."""
     return {
         "maa_path": resolve_config_path(str(config.conf.maa_path)),
-        "maa_adb_path": resolve_config_path(str(config.conf.maa_adb_path)),
-        "adb": str(config.conf.adb if adb is None else adb),
+        "maa_adb_path": (
+            getattr(device.client, "adb_bin", None) if device is not None else None
+        )
+        or resolve_config_path(str(config.conf.maa_adb_path)),
+        "adb": str(
+            device.client.device_id
+            if device is not None
+            else config.conf.adb
+            if adb is None
+            else adb
+        ),
         "maa_conn_preset": str(config.conf.maa_conn_preset),
         "maa_touch_option": str(config.conf.maa_touch_option),
     }

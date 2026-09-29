@@ -55,6 +55,8 @@ classDiagram
 ```
 
 ### 1.1 Persisted Configuration (`DeviceProfile`)
+- Runtime package and endpoint observations belong to the session's profile copy. Startup, recovery and unrelated settings saves preserve the persisted user's selections, including when helper initialization fails.
+- MuMu idle shutdown disconnects the owned client's verified endpoint. A closed session or released client skips transport cleanup without substituting the saved endpoint or starting recovery.
 - Enforces `[INV-01]`: Persists explicit user selections (`preset_id`, paths, instance identifiers, capture/touch backends, and recovery policy parameters). Transient discovery scans and active socket handles exist in memory only.
 - Enforces `[INV-02]`: Resetting or changing any path, preset, or instance identity clears `last_serial` immediately, preventing stale endpoint reuse.
 - Enforces `[INV-04]`: IPC capture and touch backends operate as an indivisible pair.
@@ -66,7 +68,7 @@ classDiagram
 
 ### 1.3 Bound Instance Start (`DeviceControl.start_bound`)
 - An explicit start request launches only the bound instance through its preset's own multi-instance manager and verifies the connection inside the session's single monotonic budget. It selects no other instance on the host.
-- `MANAGED_INSTANCE_PRESETS` names the presets whose manager can launch the bound instance (`windows.mumu12`, `windows.ldplayer9`, `windows.nox`). Every other preset reports `start_unsupported` and keeps the manual launch.
+- `MANAGED_INSTANCE_PRESETS` names the presets whose manager can launch the bound instance (`windows.mumu12`, `windows.ldplayer9`, `windows.ldplayer14`, `windows.nox`). Every other preset reports `start_unsupported` and keeps the manual launch.
 - The request itself is the explicit launch consent: the manager can only launch the profile's own instance, and the endpoint it reports is verified before the profile is saved. The AVD, ReDroid and Genymotion routes keep their additional `confirmed_instance` token because their controllers start a target named in the request.
 - The request persists nothing: the endpoint and package it verifies reach the device profile through the ordinary save path.
 - The web UI exposes it as the `启动并测试连接` dropdown option next to the read-only `测试连接` action.
@@ -80,7 +82,7 @@ The subsystem integrates platform-specific emulators through deterministic disco
 | Platform / Vendor | Discovery Mechanism | Identity Verification |
 | :--- | :--- | :--- |
 | **Windows MuMu 12** | Registry query + `MuMuManager.exe info -v all` | Index binding, canvas frame check |
-| **Windows LDPlayer 9** | Registry query + `ldconsole.exe list2` | Process PID cross-referenced with TCP listening port |
+| **Windows LDPlayer 9 / 14** | Registry query + `ldconsole.exe list2` | Process PID cross-referenced with TCP listening port |
 | **Windows Nox** | `NoxConsole.exe list` + `.vbox` VM configuration | VM machine UUID, `topology_fingerprint` |
 | **Windows BlueStacks 5** | Registry query + `bluestacks.conf` | `bst.instance.<key>.status.adb_port` |
 | **macOS MuMu Pro** | Guided manual configuration (`manual.other`) | User-specified port, preflight gate |
@@ -93,6 +95,44 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 3. Subsystem Invariants
 
+- **[INV-DEV-09] Classified Failure Isolation**: Classified device failures, including Temporary Preparation errors, request owned resource cleanup and expose their structured verdict without requesting application shutdown.
+- Input surface mismatch or unreadable display state keeps the settings interface available. Failed compensation retains its recovery record. Unclassified internal faults still request coordinated application shutdown.
+- The [preparation failure decision](../../.agents/notes/implemented/bug-fix/2026-09-30-preparation-failure-isolation.md) records the classification boundary and regression coverage.
+
+- **[INV-DEV-08] Uncertain Input Delivery**: ADB input whose transmission or acknowledgement is uncertain fails without automatic command replay; the input boundary reports a structured delivery-unknown failure.
+- **[INV-DIAG-03] Accepted Archive Drain**: Shutdown preserves accepted screenshot and archive work until the common flush deadline; work discarded after that deadline is counted and starts no further file writes.
+- **[INV-DIAG-04] Encoded Recent Cache**: With ordinary history disabled, the recent error context retains encoded frames under its count and byte limits; capture submission performs no encoding and pending raw frames remain bounded.
+- **[INV-DIAG-05] Shared Frame Encoding**: Each admitted RGB snapshot has at most one encoding attempt; preview, history and error context share its encoded bytes, release the source snapshot after completion, and preserve bounded admission and independent progress of newer previews.
+- The [shared screenshot encoding contract](../../.agents/notes/implemented/simplification/2026-09-29-shared-screenshot-encoding.md) specifies ownership and offline verification.
+- The [preservation review repairs](../../.agents/notes/implemented/bug-fix/2026-09-29-preservation-review-repairs.md) define the regression contracts and their [shared boundaries](../../.agents/notes/implemented/simplification/2026-09-29-preservation-repair-boundaries.md).
+
+- **[INV-DEV-07] Capture Recovery Separation**: Normal frames use a fresh per-operation deadline; a degraded ADB backend verifies its bound target without invoking the replaced capture helper.
+- The first screenshot recovery, rebuild and degradation share the current Recovery Budget. Subsequent degraded frames validate target identity, boot completion and the actual ADB frame within a new operation deadline. Instance commands never exceed the lesser of their remaining local deadline, the enclosing Recovery Budget and the command limit.
+- Immediate backend edits compare against the saved Device Profile to preserve IPC pairing while identity drafts remain unpersisted.
+- The [session review repairs](../../.agents/notes/implemented/bug-fix/2026-09-29-session-review-repairs.md) and [ownership simplification](../../.agents/notes/implemented/simplification/2026-09-29-review-recovery-ownership.md) record the regression coverage.
+
+- **[INV-DEV-05] Capture Preset Compatibility**: Configuration updates reject incompatible vendor capture presets; capture entry points also verify the host, and UI preset changes clear incompatible capture and coupled touch selections in the draft.
+- **[INV-DEV-06] LD Capture Binding**: LD screenshot enhancement verifies the selected ADB endpoint against the selected instance and accepts frames only while its process identity and 1920×1080 dimensions remain unchanged.
+- The [LD capture decision](../../.agents/notes/implemented/feature/2026-09-29-ld-capture.md) defines the vendor boundary and its [shared process lifecycle](../../.agents/notes/implemented/simplification/2026-09-29-native-capture-owner.md).
+
+- **[INV-DEV-04] Launch Protection**: A session preserves the bound instance's configured startup interval before a subsequent automatic restart; waiting remains inside its Recovery Budget and respects cancellation.
+- `DeviceControl` supplies the existing `simulator.wait_time` to `DeviceSession.bind`. The session records launch issuance on its monotonic clock and retains it across recovery of the same Instance Binding. A different binding clears that observation. Readiness during the interval avoids a restart; an exhausted budget produces failure without an early stop.
+- The advanced device form edits `simulator.wait_time` independently of `recovery_timeout` (the entire Recovery Budget) and `recovery_local_wait` (the local observation window after a reconnect). Saving the interval preserves unconfirmed identity drafts.
+- **[INV-DIAG-01] Archive Deletion Cohesion**: Error archive deletion holds the store's archive lock and cancels its queued writes and active windows before late frames can recreate it.
+- **[INV-DIAG-02] Archive Error Isolation**: Invalid metadata in one error archive produces a diagnostic without terminating the archive worker.
+- `ScreenshotStore` owns both expiry and capacity retirement. `ScreenshotCleanup` advances bounded batches of ordinary frame files and leaves error archives to the store.
+- The [behavior preservation decision](../../.agents/notes/implemented/bug-fix/2026-09-29-upstream-behavior-preservation.md) records the restored contracts and offline verification.
+
+- **[INV-DEV-03] Startup Budget Isolation**: Each new device startup establishes its Recovery Budget before preparation; preparation, readiness, validation and helper initialization share that deadline without inheriting a previous run's deadline.
+- Preparation exhaustion prevents readiness probes and releases acquired resources. Readiness uses the deadline established before preparation, including on the first startup.
+- Before Temporary Preparation reads or modifies display geometry, the session resolves ADB within that deadline. The resolved path remains in the session copy and is reused by readiness; it does not overwrite the persisted Device Profile.
+- The [startup budget decision](../../.agents/notes/implemented/bug-fix/2026-09-29-startup-recovery-budget.md) records the implementation and offline verification.
+
+- **[INV-DEV-02] Lifecycle Command Isolation**: Simulator lifecycle commands pass literal argument lists without a shell and act only on an explicitly identified instance; unavailable instance control fails without a host-wide action.
+- Windows MuMu offers only the `windows.mumu12` preset, labeled **MuMu 12**. Retired MuMu 6 configurations load as `manual.other` with the endpoint and game confirmation cleared; no MuMu 6 discovery or lifecycle adapter is registered.
+- The [preset support decision](../../.agents/notes/implemented/simplification/2026-09-29-emulator-preset-support.md) records MuMu 6 removal and LDPlayer 14 capture coverage.
+- The [command isolation decision](../../.agents/notes/implemented/bug-fix/2026-09-29-review-command-isolation.md) records the review repairs and their offline verification.
+
 - **[INV-DEV-01] Native Back Dispatch**: When the selected touch backend is MuMu IPC, Android BACK uses the owned MuMu IPC worker; an uncertain result stops the session without input replay or ADB fallback.
 - `Device.send_keyevent(4)` selects the transport from the configured touch backend and dispatches `MuMuInputSession.back()`, which maps Android BACK to native MuMu key `1`. Temporary helper removal during recovery does not alter this selection. Key down and key up share the existing bounded worker and the session input failure boundary.
 - Other Android keycodes use ADB. `TouchFailure.backend` records the selected touch backend, while `TouchFailure.transport` identifies the transport that failed. ADB failure diagnostics name ADB and direct the user to check the ADB connection.
@@ -101,7 +141,9 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 4. Capture Frame Contract & Storage
 
-- **Canvas Frame Standard**: All screenshot capture backends (ADB raw, ADB gzip, DroidCast HTTP, and MuMu IPC) yield an uncompressed `(1080, 1920, 3)` `uint8` RGB matrix.
+- **Canvas Frame Standard**: All screenshot capture backends (ADB raw, ADB gzip, DroidCast HTTP, MuMu IPC, and LD screenshot enhancement) yield an uncompressed `(1080, 1920, 3)` `uint8` RGB matrix.
+- **Vendor Compatibility**: MuMu screenshot enhancement requires Windows MuMu 12 and paired MuMu touch. LD screenshot enhancement (`ld_native`) requires Windows x64, LDPlayer 9 or 14, its installed `ldopengl64.dll`, and a `list2` result with confirmed 1920×1080 dimensions. LD touch remains scrcpy or MaaTouch. Unsupported configurations fail without another backend being selected.
+- **LD Capture Lifetime**: Preflight owns a temporary capture session; runtime reuses its native worker until rebuild or close. Manager queries verify process identity and dimensions around each frame within the same deadline. LD capture checks the selected endpoint through the existing LDPlayer resolver before opening the DLL. The worker converts bottom-up BGR to RGB and never invokes emulator lifecycle commands.
 - **Bounded In-Memory Slot**: Web UI live preview uses an atomic single-frame slot with background JPEG encoding, avoiding frame queuing latency.
 - **Ring Buffer Eviction**: Historical frames enqueue into a bounded worker ring buffer, encoding to disk (`screenshot/YYYYMMDD-HH/`) with fixed capacity ceilings and rolling hourly cleanup.
 
@@ -120,7 +162,7 @@ The session classifies device health into deterministic verdicts via [`Readiness
 When a device becomes unresponsive or disconnected:
 1. `DeviceSession` evaluates the configurable [`RecoveryPolicy`](../../arknights_mower/utils/device/session.py).
 2. Attempts reconnection up to `recovery_attempts` within the monotonic budget `recovery_timeout`.
-3. Pauses for `recovery_local_wait` post-boot to allow Android runtime services to stabilize.
+3. Observes readiness for up to `recovery_local_wait` after a local reconnect, stopping the wait as soon as the target is ready.
 4. If the budget exhausts without reaching `ready`, the session terminates with a structured failure without retrying infinitely.
 
 ---

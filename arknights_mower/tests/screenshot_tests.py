@@ -93,6 +93,32 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue((archive / previous.name).exists())
         self.assertTrue((archive / Path(future).name).exists())
 
+    def test_error_log_archive_keeps_links_to_copied_screenshots(self):
+        event_time = time.time_ns()
+        image_time = event_time - 2 * 10**9
+        image = self.seed(
+            datetime.fromtimestamp(image_time / 10**9).strftime("%Y%m%d-%H"),
+            image_time,
+        )
+        log_folder = self.root.parent / "log"
+        log_folder.mkdir()
+        when = datetime.fromtimestamp(event_time / 10**9)
+        (log_folder / "runtime.log").write_text(
+            f"{when:%Y-%m-%d %H:%M:%S} task.py:1 ERROR 任务失败\n",
+            encoding="utf-8",
+        )
+        archive_id = self.store.mark_error(event_time, "任务失败")
+        self.store.start()
+        archived = self.root / "errors" / archive_id / image.name
+        deadline = time.monotonic() + 3
+        while not archived.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
+        self.assertTrue(archived.exists())
+        image.unlink()
+        self.store._save_error_logs(archive_id)
+        rows = json.loads((archived.parent / "logs.json").read_text(encoding="utf-8"))
+        self.assertEqual(rows[0]["screenshot"], f"errors/{archive_id}/{image.name}")
+
     def test_overlapping_errors_share_archive_and_backfill_extended_window(self):
         second = time.time_ns()
         first = second - 9 * 60 * 10**9
@@ -211,32 +237,6 @@ class ScreenshotTests(unittest.TestCase):
         self.store._save_error_logs(archive_id)
         self.assertFalse(archive.exists())
 
-    def test_error_log_archive_keeps_links_to_copied_screenshots(self):
-        event_time = time.time_ns()
-        image_time = event_time - 2 * 10**9
-        image = self.seed(
-            datetime.fromtimestamp(image_time / 10**9).strftime("%Y%m%d-%H"),
-            image_time,
-        )
-        log_folder = self.root.parent / "log"
-        log_folder.mkdir()
-        when = datetime.fromtimestamp(event_time / 10**9)
-        (log_folder / "runtime.log").write_text(
-            f"{when:%Y-%m-%d %H:%M:%S} task.py:1 ERROR 任务失败\n",
-            encoding="utf-8",
-        )
-        archive_id = self.store.mark_error(event_time, "任务失败")
-        self.store.start()
-        archived = self.root / "errors" / archive_id / image.name
-        deadline = time.monotonic() + 3
-        while not archived.exists() and time.monotonic() < deadline:
-            Event().wait(0.01)
-        self.assertTrue(archived.exists())
-        image.unlink()
-        self.store._save_error_logs(archive_id)
-        rows = json.loads((archived.parent / "logs.json").read_text(encoding="utf-8"))
-        self.assertEqual(rows[0]["screenshot"], f"errors/{archive_id}/{image.name}")
-
     def test_pending_screenshots_in_error_window_are_not_evicted(self):
         self.limit_store(max_pending_count=2)
         before = self.store.submit(b"before")
@@ -268,8 +268,12 @@ class ScreenshotTests(unittest.TestCase):
         self.store.start()
         screenshot = self.store.submit(b"after restart")
         self.wait_idle()
+        archived = self.root / "errors" / archive_id / Path(screenshot).name
+        deadline = time.monotonic() + 3
+        while not archived.exists() and time.monotonic() < deadline:
+            Event().wait(0.01)
         self.assertEqual(
-            (self.root / "errors" / archive_id / Path(screenshot).name).read_bytes(),
+            archived.read_bytes(),
             b"after restart",
         )
 
@@ -467,7 +471,7 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(self.logger.warning.call_count, 2)
         self.assertEqual(self.store.stats()["dropped"], 5)
 
-    def test_close_at_capacity_returns_on_timeout_then_drains_after_disk_recovers(self):
+    def test_close_at_capacity_discards_waiting_work_after_deadline(self):
         self.limit_store(max_pending_count=2)
         entered, release = Event(), Event()
         write = self.store._write
@@ -492,7 +496,8 @@ class ScreenshotTests(unittest.TestCase):
             finally:
                 release.set()
                 self.store.close()
-        self.assertEqual(self.store.stats()["saved"], 2)
+        self.assertEqual(self.store.stats()["saved"], 1)
+        self.assertEqual(self.store.stats()["shutdown_dropped"], 1)
         self.assertEqual(self.store.stats()["pending_bytes"], 0)
         self.assertTrue(all(not thread.is_alive() for thread in self.store._threads))
 
@@ -924,6 +929,67 @@ class ScreenshotTests(unittest.TestCase):
         self.assertTrue(archives[0].exists())
         self.assertLessEqual(self.store._archive_bytes, 1024**2)
 
+    def test_cleanup_retires_archive_windows_and_queued_writes(self):
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                self.limit_store(archive_limit_mb=lambda: 0 if expired else 1)
+                now = time.time_ns()
+                timestamp = (
+                    now - (RUNTIME_LOG_RETENTION_HOURS + 1) * 3600 * 10**9
+                    if expired
+                    else now
+                )
+                archive_id = self.store.mark_error(timestamp, "归档测试")
+                archive = self.root / "errors" / archive_id
+                archive.mkdir(parents=True)
+                (archive / "event.json").write_text(
+                    json.dumps({"time_ns": timestamp}), encoding="utf-8"
+                )
+                (archive / "large.jpg").write_bytes(b"x" * (1024**2 + 1))
+                self.store.cleanup()
+                self.assertFalse(archive.exists())
+                self.assertIn(archive_id, self.store._deleted_archives)
+                self.assertEqual(self.store._error_windows, [])
+                self.assertEqual(list(self.store._archive_queue), [])
+                self.assertEqual(self.store._log_archive_queue, [])
+                from arknights_mower.utils.screenshot import Screenshot
+
+                frame = Screenshot("late.jpg", b"late", timestamp, 0, True, False)
+                self.assertFalse(self.store._archive_frame(frame))
+                self.assertFalse(archive.exists())
+
+    def test_invalid_log_metadata_does_not_stop_later_archive_work(self):
+        now = time.time_ns()
+        pending = []
+        for index, metadata in enumerate(({}, [], {"time_ns": None})):
+            with self.subTest(metadata=metadata):
+                archive_id = str(now + index)
+                archive = self.root / "errors" / archive_id
+                archive.mkdir(parents=True)
+                (archive / "event.json").write_text(
+                    json.dumps(metadata), encoding="utf-8"
+                )
+                pending.append((0, archive_id))
+        good_id = str(now + 10)
+        good = self.root / "errors" / good_id
+        good.mkdir()
+        (good / "event.json").write_text(json.dumps({"time_ns": now}), encoding="utf-8")
+        pending.append((0, good_id))
+        self.store._log_archive_queue = pending
+        self.store.start()
+        deadline = time.monotonic() + 3
+        while not (good / "logs.json").exists() and time.monotonic() < deadline:
+            Event().wait(0.005)
+        self.assertEqual(
+            json.loads((good / "logs.json").read_text(encoding="utf-8")), []
+        )
+        self.logger.error.assert_called_once()
+        self.assertTrue(
+            next(
+                t for t in self.store._threads if t.name == "screenshot-archiver"
+            ).is_alive()
+        )
+
     def test_archive_limit_can_be_changed_and_zero_disables_it(self):
         limit = [0]
         self.limit_store(archive_limit_mb=lambda: limit[0])
@@ -999,18 +1065,10 @@ class ScreenshotTests(unittest.TestCase):
     def test_important_retention_keeps_latest_100_including_new_arrival(self):
         old = time.time_ns() - 2 * 3600 * 10**9
         paths = [self.seed("run_order", old + i) for i in range(105)]
-        images = self.store._images
-        scans = 0
-
-        def with_new_arrival(folder):
-            nonlocal scans
-            scans += 1
-            if scans == 2:
-                self.seed("run_order", old + 200)
-            yield from images(folder)
-
-        with patch.object(self.store, "_images", side_effect=with_new_arrival):
-            self.store._remove_expired(self.root / "run_order", 0, keep_latest=100)
+        self.assertFalse(self.store.cleanup()["complete"])
+        self.seed("run_order", old + 200)
+        while not self.store.cleanup()["complete"]:
+            pass
         self.assertTrue(all(not path.exists() for path in paths[:5]))
         self.assertTrue(all(path.exists() for path in paths[5:]))
         self.assertTrue((self.root / "run_order" / f"{old + 200}.jpg").exists())
@@ -1018,7 +1076,8 @@ class ScreenshotTests(unittest.TestCase):
     def test_furniture_cleanup_retains_latest_100_evidence_frames(self):
         old = time.time_ns() - 2 * 3600 * 10**9
         paths = [self.seed("furniture", old + i) for i in range(105)]
-        self.store.cleanup()
+        while not self.store.cleanup()["complete"]:
+            pass
         self.assertTrue(all(not path.exists() for path in paths[:5]))
         self.assertTrue(all(path.exists() for path in paths[5:]))
 

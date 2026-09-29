@@ -172,12 +172,20 @@ class DesktopProcessTests(unittest.TestCase):
         self.assertTrue(parent.closed)
         self.assertTrue(child.closed)
 
+
+class DesktopLauncherTests(unittest.TestCase):
     def test_macos_launcher_does_not_start_multiprocessing_tracker(self):
         import webview_ui
 
         with (
             mock.patch.object(sys, "platform", "darwin"),
-            mock.patch.object(desktop_process, "start_worker") as launch,
+            mock.patch.object(
+                desktop_process,
+                "start_worker",
+                return_value=(mock.sentinel.process, mock.sentinel.channel),
+            ) as launch,
+            mock.patch.object(webview_ui, "own_channel") as own_channel,
+            mock.patch.object(webview_ui, "own_child") as own_child,
             mock.patch.object(
                 webview_ui.mp, "Process", side_effect=AssertionError("extra process")
             ),
@@ -185,8 +193,15 @@ class DesktopProcessTests(unittest.TestCase):
                 webview_ui.mp, "Queue", side_effect=AssertionError("shared semaphore")
             ),
         ):
-            webview_ui.start_desktop_child("tray", "test", 1234, "http://localhost")
-        launch.assert_called_once_with("tray", "test", 1234, "http://localhost")
+            result = webview_ui.start_desktop_child(
+                "tray", "test", 1234, "http://localhost"
+            )
+        self.assertEqual(result, (mock.sentinel.process, mock.sentinel.channel))
+        launch.assert_called_once_with(
+            "tray", "test", 1234, "http://localhost", log_queue=None
+        )
+        own_channel.assert_called_once_with(mock.sentinel.channel)
+        own_child.assert_called_once_with(mock.sentinel.process, None)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,5 @@
-import subprocess
 import unittest
 from contextlib import ExitStack
-from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from arknights_mower.utils import config
@@ -16,9 +14,7 @@ def _device() -> Device:
 
 
 class TestIsAppRunningInBackground(unittest.TestCase):
-    """#159：is_app_running_in_background 走同一条持久 adb 会话 ps/stopped 双查，
-    无法判定时按「运行中」处理，避免误判重新拉起游戏（Bug 2 的 pidof 假阴性根因）。
-    """
+    """is_app_running_in_background 走持久 adb 会话检查进程存活。"""
 
     def setUp(self):
         self.enterContext(patch.object(Device, "recover", lambda self, func: func()))
@@ -33,33 +29,15 @@ class TestIsAppRunningInBackground(unittest.TestCase):
             f"ps -A | grep {config.conf.APPNAME} | grep -v grep"
         )
 
-    def test_ps_empty_force_stopped_returns_false(self):
+    def test_ps_empty_returns_false(self):
         device = _device()
-        device.client.run.side_effect = [b"", b"Packages:\n  stopped=true\n"]
+        device.client.run.return_value = b""
         self.assertFalse(device.is_app_running_in_background())
 
-    def test_ps_empty_not_force_stopped_returns_true(self):
-        device = _device()
-        device.client.run.side_effect = [b"", b"Packages:\n  stopped=false\n"]
-        self.assertTrue(device.is_app_running_in_background())
-
-    def test_ps_empty_no_stopped_field_returns_true(self):
-        device = _device()
-        device.client.run.side_effect = [b"", b"Packages:\n  userId=10104\n"]
-        self.assertTrue(device.is_app_running_in_background())
-
-    def test_query_error_returns_true(self):
+    def test_query_error_returns_false(self):
         device = _device()
         device.client.run.side_effect = RuntimeError("adb server is not working")
-        self.assertTrue(device.is_app_running_in_background())
-
-    def test_ps_empty_dumpsys_error_returns_true(self):
-        device = _device()
-        device.client.run.side_effect = [
-            b"",
-            RuntimeError("adb server is not working"),
-        ]
-        self.assertTrue(device.is_app_running_in_background())
+        self.assertFalse(device.is_app_running_in_background())
 
     def test_bring_to_foreground_uses_persistent_session(self):
         device = _device()
@@ -70,9 +48,9 @@ class TestIsAppRunningInBackground(unittest.TestCase):
 
 
 class TestCheckCurrentFocus(unittest.TestCase):
-    """#160：check_current_focus 四态 + 瞬时错误不重启、设备无法连接才自动重启模拟器。
+    """check_current_focus 状态与重连重试。
 
-    前台→无动作；后台/无法判定→bring_to_foreground；进程停止→launch；
+    前台→无动作；后台→bring_to_foreground；进程停止→launch；
     瞬时错误→重连重试；设备无法连接→自动重启模拟器（重启有上限）。
     """
 
@@ -88,7 +66,7 @@ class TestCheckCurrentFocus(unittest.TestCase):
         self.device.start_droidcast = MagicMock()
         self.restart_mock = self.enterContext(
             patch(
-                "arknights_mower.utils.device.recovery.restart_simulator",
+                "arknights_mower.utils.simulator.restart_simulator",
                 return_value=True,
             )
         )
@@ -118,10 +96,19 @@ class TestCheckCurrentFocus(unittest.TestCase):
     def test_focus_other_game_in_background_brings_to_foreground(self):
         self.device.current_focus = MagicMock(return_value=self.LAUNCHER_FOCUS)
         with self._patchers():
-            result = self.device.check_current_focus()
+            with self.assertLogs("arknights_mower.utils.log", level="INFO") as logs:
+                result = self.device.check_current_focus()
         self.assertTrue(result)
         self.device.bring_to_foreground.assert_called_once_with()
         self.device.launch.assert_not_called()
+        self.assertIn("游戏不在前台，正在把游戏调到前台", "\n".join(logs.output))
+
+    def test_launch_reports_the_game_start(self):
+        device = _device()
+        with self._patchers():
+            with self.assertLogs("arknights_mower.utils.log", level="INFO") as logs:
+                device.launch()
+        self.assertIn("明日方舟，启动！", "\n".join(logs.output))
 
     def test_focus_other_game_not_running_launches(self):
         self.device.current_focus = MagicMock(return_value=self.LAUNCHER_FOCUS)
@@ -143,25 +130,23 @@ class TestCheckCurrentFocus(unittest.TestCase):
         self.reconnect_once.assert_called_once_with(wait_for_device=True)
         self.device.bring_to_foreground.assert_called_once_with()
 
-    def test_confirmed_dead_auto_restarts_then_raises(self):
+    def test_confirmed_dead_exhausts_local_budget(self):
         self.device.current_focus = MagicMock(side_effect=ConnectionError(b"closed"))
         with self._patchers():
-            with self.assertRaisesRegex(ConnectionError, "重启模拟器"):
+            with self.assertRaisesRegex(ConnectionError, "局部连接预算耗尽"):
                 self.device.check_current_focus()
-        # 首次操作 + 初始恢复及三次重启后的每轮三次验证；最后一次重启也必须验证。
-        self.assertEqual(self.device.current_focus.call_count, 13)
-        self.assertEqual(self.restart_mock.call_count, 3)
+        self.assertEqual(self.device.current_focus.call_count, 4)
+        self.restart_mock.assert_not_called()
         self.device.launch.assert_not_called()
 
-    def test_confirmed_dead_restarts_and_recovers(self):
-        # 3 次瞬时失败判定设备无法连接 → 自动重启模拟器 → 重启后恢复
+    def test_last_local_attempt_can_recover(self):
         self.device.current_focus = MagicMock(
-            side_effect=[ConnectionError(b"closed")] * 4 + [self.LAUNCHER_FOCUS]
+            side_effect=[ConnectionError(b"closed")] * 3 + [self.LAUNCHER_FOCUS]
         )
         with self._patchers():
             result = self.device.check_current_focus()
         self.assertTrue(result)
-        self.restart_mock.assert_called_once_with()
+        self.restart_mock.assert_not_called()
         self.device.bring_to_foreground.assert_called_once_with()
 
     def test_mower_exit_propagates_immediately(self):
@@ -172,18 +157,18 @@ class TestCheckCurrentFocus(unittest.TestCase):
         self.assertEqual(self.device.current_focus.call_count, 1)
 
     def test_reconnect_failure_does_not_escape_recover(self):
-        # recover 里 reconnect 抛错不再穿出：计入重试，最终仍走自动重启（修复点）
+        # A failed reconnect consumes the same local budget.
         self.device.current_focus = MagicMock(side_effect=ConnectionError(b"closed"))
         self.reconnect_once.side_effect = RuntimeError("adb server 挂了")
         with self._patchers():
-            with self.assertRaisesRegex(ConnectionError, "重启模拟器"):
+            with self.assertRaisesRegex(ConnectionError, "局部连接预算耗尽"):
                 self.device.check_current_focus()
         self.assertEqual(self.device.current_focus.call_count, 1)
-        self.assertEqual(self.reconnect_once.call_count, 12)
-        self.assertEqual(self.restart_mock.call_count, 3)
+        self.assertEqual(self.reconnect_once.call_count, 3)
+        self.restart_mock.assert_not_called()
         self.device.launch.assert_not_called()
 
-    def test_runtime_retries_then_restarts_regardless_of_idle_option(self):
+    def test_runtime_local_recovery_is_independent_of_idle_option(self):
         for close_when_idle in (False, True):
             with (
                 self.subTest(close_when_idle=close_when_idle),
@@ -192,7 +177,7 @@ class TestCheckCurrentFocus(unittest.TestCase):
                 operation = MagicMock(
                     side_effect=[ConnectionError("offline"), "connected"]
                 )
-                self.reconnect_once.side_effect = [ConnectionError("offline")] * 3 + [
+                self.reconnect_once.side_effect = [ConnectionError("offline")] * 2 + [
                     None
                 ]
                 actions = MagicMock()
@@ -203,164 +188,17 @@ class TestCheckCurrentFocus(unittest.TestCase):
                 self.assertEqual(
                     actions.mock_calls,
                     [call.operation()]
-                    + [call.reconnect(wait_for_device=True)] * 3
+                    + [call.reconnect(wait_for_device=True)] * 2
                     + [
-                        call.restart(),
                         call.reconnect(wait_for_device=True),
                         call.operation(),
                     ],
                 )
 
 
-class TestStartDroidcast(unittest.TestCase):
-    """install 失败（如设备瞬时离线）返回 False 而不抛错，不让重连崩（修复点）。"""
-
-    def test_install_failure_returns_false(self):
-        device = _device()
-        device.get_droidcast_classpath = MagicMock(return_value=None)
-        device.client.cmd = MagicMock(side_effect=RuntimeError("device offline"))
-        self.assertFalse(device.start_droidcast())
-
-    def setUp(self):
-        self.device = _device()
-        self.device.client.device_id = "127.0.0.1:16384"
-        self.device.client.cmd_shell.return_value = (
-            "package:/data/app/droidcast/base.apk"
-        )
-        self.device.client.cmd.return_value = "Success"
-        self.runtime = SimpleNamespace(port=0, process=None)
-        self.enterContext(patch.object(config, "droidcast", self.runtime))
-        self.new_port = self.enterContext(
-            patch(
-                "arknights_mower.utils.device.device.get_new_port", return_value=54321
-            )
-        )
-
-    def test_missing_package_installs_then_starts(self):
-        self.device.client.cmd_shell.side_effect = [
-            "",
-            "package:/data/app/droidcast/base.apk\n",
-        ]
-        self.assertTrue(self.device.start_droidcast())
-        self.assertEqual(self.device.client.cmd.call_args_list[0].args[0][0], "install")
-        self.device.client.process.assert_called_once_with(
-            "CLASSPATH=/data/app/droidcast/base.apk",
-            ["app_process", "/", "com.rayworks.droidcast.Main", "--port=54321"],
-        )
-
-    def test_missing_package_exit_code_one_installs(self):
-        self.device.client.cmd_shell.side_effect = [
-            subprocess.CalledProcessError(1, "pm path", output=b""),
-            "package:/data/app/droidcast/base.apk\n",
-        ]
-        self.assertTrue(self.device.start_droidcast())
-        self.assertEqual(self.device.client.cmd.call_args_list[0].args[0][0], "install")
-
-    def test_existing_package_does_not_install(self):
-        self.device.client.cmd_shell.return_value = (
-            "package:/data/app/droidcast/base.apk"
-        )
-        self.assertTrue(self.device.start_droidcast())
-        self.device.client.cmd.assert_called_once_with(
-            "forward --no-rebind tcp:54321 tcp:54321"
-        )
-
-    def test_reconnect_reuses_matching_forward(self):
-        self.runtime.port = 54321
-        self.device.client.cmd.return_value = (
-            "127.0.0.1:16416 tcp:54320 tcp:54320\n127.0.0.1:16384 tcp:54321 tcp:54321\n"
-        )
-        with patch(
-            "arknights_mower.utils.device.device.is_port_in_use", return_value=True
-        ):
-            self.assertTrue(self.device.start_droidcast())
-        self.device.client.cmd.assert_called_once_with("forward --list", True)
-        self.new_port.assert_not_called()
-        self.assertEqual(self.runtime.port, 54321)
-
-    def test_other_forward_is_not_rebound(self):
-        for mapping in (
-            "127.0.0.1:16416 tcp:54320 tcp:54320\n",
-            "127.0.0.1:16384 tcp:54320 tcp:12345\n",
-        ):
-            with self.subTest(mapping=mapping):
-                self.runtime.port = 54320
-                self.device.client.cmd.reset_mock()
-                self.device.client.cmd.return_value = mapping
-                with patch(
-                    "arknights_mower.utils.device.device.is_port_in_use",
-                    return_value=True,
-                ):
-                    self.assertTrue(self.device.start_droidcast())
-                self.assertEqual(
-                    self.device.client.cmd.call_args_list,
-                    [
-                        call("forward --list", True),
-                        call("forward --no-rebind tcp:54321 tcp:54321"),
-                    ],
-                )
-
-    def test_failed_forward_lookup_does_not_reuse_occupied_port(self):
-        self.runtime.port = 54320
-        self.device.client.cmd.side_effect = [ConnectionError("lookup failed"), ""]
-        with patch(
-            "arknights_mower.utils.device.device.is_port_in_use", return_value=True
-        ):
-            self.assertTrue(self.device.start_droidcast())
-        self.device.client.cmd.assert_called_with(
-            "forward --no-rebind tcp:54321 tcp:54321"
-        )
-
-    def test_port_race_retries_with_new_port_without_overwriting(self):
-        self.new_port.side_effect = [54321, 54322]
-        previous_process = MagicMock()
-        self.runtime.process = previous_process
-        self.device.client.cmd.side_effect = [
-            subprocess.CalledProcessError(1, "adb forward", output=b"cannot rebind"),
-            "",
-        ]
-        with self.assertRaises(subprocess.CalledProcessError):
-            self.device.start_droidcast()
-        self.assertEqual(self.runtime.port, 0)
-        self.device.client.process.assert_not_called()
-        previous_process.terminate.assert_not_called()
-        self.assertTrue(self.device.start_droidcast())
-        self.assertEqual(self.runtime.port, 54322)
-        self.assertEqual(
-            self.device.client.cmd.call_args_list,
-            [
-                call("forward --no-rebind tcp:54321 tcp:54321"),
-                call("forward --no-rebind tcp:54322 tcp:54322"),
-            ],
-        )
-
-    def test_query_failure_does_not_install(self):
-        for error in (
-            ConnectionError("offline"),
-            subprocess.CalledProcessError(1, "pm path", output=b"device not found"),
-            subprocess.CalledProcessError(1, "pm path", output=None),
-            subprocess.CalledProcessError(2, "pm path", output=b""),
-        ):
-            with self.subTest(error=error):
-                self.device.client.cmd_shell.side_effect = error
-                with self.assertRaises(type(error)):
-                    self.device.start_droidcast()
-        self.device.client.cmd.assert_not_called()
-        self.device.client.process.assert_not_called()
-
-    def test_unexpected_query_output_does_not_install(self):
-        self.device.client.cmd_shell.return_value = "Error: package manager unavailable"
-        with self.assertRaises(ValueError):
-            self.device.start_droidcast()
-        self.device.client.cmd.assert_not_called()
-
-    def test_install_failure_does_not_start_server(self):
-        self.device.client.cmd_shell.return_value = ""
-        self.device.client.cmd.return_value = "Failure [INSTALL_FAILED_INTERNAL_ERROR]"
-        self.assertFalse(self.device.start_droidcast())
-        self.device.client.process.assert_not_called()
-
+class TestDroidCastConnectionOrdering(unittest.TestCase):
     def test_reconnect_failure_does_not_start_touch_service(self):
+        self.device = _device()
         self.device.control = None
         self.device.start_droidcast = MagicMock(return_value=False)
         with (

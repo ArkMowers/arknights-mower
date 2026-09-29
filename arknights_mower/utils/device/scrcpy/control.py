@@ -1,7 +1,8 @@
 import functools
 import socket
 import struct
-from time import sleep
+
+from arknights_mower.utils.device.io_budget import budget_sleep
 
 from . import const
 
@@ -16,10 +17,12 @@ def inject(control_type: int):
     def wrapper(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
-            package = struct.pack(">B", control_type) + f(*args, **kwargs)
-            if args[0].parent.control_socket is not None:
-                with args[0].parent.control_socket_lock:
-                    args[0].parent.control_socket.send(package)
+            with args[0].parent.control_socket_lock:
+                stream = args[0].parent.control_socket
+                if stream is None:
+                    raise ConnectionError("scrcpy control socket is closed")
+                package = struct.pack(">B", control_type) + f(*args, **kwargs)
+                stream.sendall(package)
             return package
 
         return inner
@@ -242,7 +245,7 @@ class ControlSender:
             if next_x == end_x and next_y == end_y:
                 self.touch(next_x, next_y, const.ACTION_UP)
                 break
-            sleep(move_steps_delay)
+            budget_sleep(move_steps_delay)
 
     def tap(self, x, y, hold_time: float = 0.07) -> None:
         """
@@ -253,5 +256,5 @@ class ControlSender:
             hold_time: hold time
         """
         self.touch(x, y, const.ACTION_DOWN)
-        sleep(hold_time)
+        budget_sleep(hold_time)
         self.touch(x, y, const.ACTION_UP)

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, ref } from 'vue'
+import { createApp, nextTick, ref } from 'vue'
 import { createPinia } from 'pinia'
 import axios from 'axios'
 import { useConfigStore } from './config'
 
-vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
 let store
 afterEach(() => {
   store?.$dispose()
@@ -26,24 +26,26 @@ describe('MAA restore theme config', () => {
     for (const key of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[key] = []
     expect(store.maa_restore_theme_enable).toBe(false)
     expect(store.maa_restore_theme).toBe('')
-    axios.post.mockResolvedValue({ data: {} })
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
     store.maa_restore_theme_enable = true
     store.maa_restore_theme = '夜间'
     loaded.value = true
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
-    expect(axios.post.mock.calls[0][1]).toMatchObject({
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toMatchObject({
       maa_restore_theme_enable: true,
       maa_restore_theme: '夜间'
     })
     store.maa_restore_theme_enable = false
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
-    expect(axios.post.mock.calls[1][1]).toMatchObject({
-      maa_restore_theme_enable: false,
-      maa_restore_theme: '夜间'
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(2))
+    expect(axios.patch.mock.calls[1][1]).toMatchObject({
+      maa_restore_theme_enable: false
     })
     store.maa_restore_theme = ''
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(3))
-    expect(axios.post.mock.calls[2][1].maa_restore_theme).toBe('')
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(3))
+    expect(axios.patch.mock.calls[2][1].maa_restore_theme).toBe('')
     loaded.value = false
   })
 
@@ -70,6 +72,6 @@ describe('MAA restore theme config', () => {
     await store.load_config()
     expect(store.maa_restore_theme_enable).toBe(false)
     expect(store.maa_restore_theme).toBe('')
-    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
   })
 })

@@ -337,8 +337,10 @@ class MaaClientTypeTests(unittest.TestCase):
     """#260：StartUp 与 Fight 下发协议必填的 client_type，由 package_type 推导。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
-    def _append(self, task_type, package_type):
+    def _append(self, task_type, package_type, *, game_package=None):
         solver = BaseSchedulerSolver()
+        if game_package is not None:
+            solver.device = SimpleNamespace(game_package=game_package)
         solver.MAA = MagicMock()
         solver.stages = []
         with (
@@ -376,6 +378,14 @@ class MaaClientTypeTests(unittest.TestCase):
         call = self._append("Fight", 2)
         task_config = call.args[1]
         self.assertEqual(task_config["client_type"], "Bilibili")
+
+    def test_runtime_package_overrides_saved_selection_for_maa(self):
+        for task_type in ("StartUp", "Fight"):
+            with self.subTest(task_type=task_type):
+                result = self._append(
+                    task_type, 1, game_package="com.hypergryph.arknights.bilibili"
+                )
+                self.assertEqual(result.args[1]["client_type"], "Bilibili")
 
 
 class MaaVisitFriendModeTests(unittest.TestCase):

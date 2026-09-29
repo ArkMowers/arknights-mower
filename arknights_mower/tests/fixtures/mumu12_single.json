@@ -1,0 +1,11 @@
+{
+  "0": {
+    "index": "0",
+    "name": "明日方舟 主号",
+    "error_code": 0,
+    "is_process_started": true,
+    "is_android_started": true,
+    "adb_host_ip": "127.0.0.1",
+    "adb_port": 16384
+  }
+}

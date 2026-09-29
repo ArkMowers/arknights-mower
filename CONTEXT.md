@@ -39,7 +39,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **_Avoid_**: `Permanent configuration`, `Unmanaged resolution change`
 
 ### Capture Frame
-- **Definition**: A decoded, standard 1920×1080 RGB canvas matrix unified across ADB, DroidCast, and MuMu IPC backends, excluding black borders or raw compressed bytes.
+- **Definition**: A decoded, standard 1920×1080 RGB canvas matrix unified across ADB, DroidCast, MuMu IPC, and LD screenshot enhancement backends, excluding black borders or raw compressed bytes.
 - **Code Mapping**: `CanvasFrame`, `FrameBuffer`
 - **_Avoid_**: `Scaled preview`, `Raw stream byte`
 

@@ -2,6 +2,7 @@ import ast
 import copy
 from datetime import datetime, timedelta
 from itertools import product
+from typing import Any, Literal, overload
 
 from evalidate import Expr, base_eval_model
 
@@ -165,7 +166,19 @@ def _validate_expression_resources(expression: str) -> None:
                 raise ValueError("幂运算结果过大")
 
 
-def build_global_plan(*, include_source=False):
+@overload
+def build_global_plan(*, include_source: Literal[False] = False) -> dict[str, Any]: ...
+
+
+@overload
+def build_global_plan(
+    *, include_source: Literal[True]
+) -> tuple[dict[str, Any], dict[str, Any]]: ...
+
+
+def build_global_plan(
+    *, include_source: bool = False
+) -> dict[str, Any] | tuple[dict[str, Any], dict[str, Any]]:
     """构建完整的 global_plan，包括 Plan 对象，用于运行时"""
     from ..utils import config
     from ..utils.logic_expression import get_logic_exp

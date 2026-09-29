@@ -1,33 +1,46 @@
 from __future__ import annotations
 
 import atexit
-import gzip
 import os
 import subprocess
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta
+from threading import Event, Lock, RLock
 from typing import Optional
 
 import cv2
-import numpy as np
 
-from arknights_mower import __rootdir__, __system__
+from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import DEFAULT_LAUNCH_COMMAND
+from arknights_mower.utils.config.device_profile import capture_compatibility_error
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.droidcast import DroidCastSession
+from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
 from arknights_mower.utils.device.maatouch import MaaTouch
-from arknights_mower.utils.device.mumu12ipc.core import MuMu12IPC
+from arknights_mower.utils.device.mumu12ipc.capture import MuMuCaptureSession
+from arknights_mower.utils.device.mumu12ipc.input import MuMuInputSession as MuMu12IPC
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
     recover_connection,
 )
 from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.image import bytes2img, img2bytes
-from arknights_mower.utils.log import logger, save_screenshot
-from arknights_mower.utils.network import get_new_port, is_port_in_use
-from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.device.screenshot import capture_adb_frame
+from arknights_mower.utils.device.screenshot_backend import (
+    ScreenshotFailure,
+    ScreenshotSession,
+    validate_frame,
+)
+from arknights_mower.utils.device.touch_backend import TouchFailure, touch_backends
+from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.log import (
+    logger,
+    save_screenshot_frame,
+)
 
 
 class Device:
@@ -40,15 +53,80 @@ class Device:
             self, device: Device, client: ADBClient = None, touch_device: str = None
         ) -> None:
             self.device = device
+            self.owner_pid = os.getpid()
             self.maatouch = None
             self.mumu12IPC = None
             self.scrcpy = None
-            if config.conf.mumu12IPC:
-                self.mumu12IPC = MuMu12IPC(device)
-            elif config.conf.touch_method == "maatouch":
-                self.maatouch = MaaTouch(client)
-            else:
-                self.scrcpy = Scrcpy(client)
+            self._close_lock = Lock()
+            self._close_error = None
+            self._interrupted = False
+            self.profile = device.profile.model_copy(deep=True)
+            backend = self.profile.touch_backend
+            try:
+                capability = next(
+                    item
+                    for item in touch_backends(self.profile, __system__)
+                    if item["backend"] == backend
+                )
+                if not capability["available"]:
+                    raise ValueError(capability["reason"])
+                if backend == "mumu_ipc":
+                    self.mumu12IPC = MuMu12IPC(device)
+                elif backend == "maatouch":
+                    self.maatouch = MaaTouch(client)
+                else:
+                    self.scrcpy = Scrcpy(client)
+            except MowerExit:
+                raise
+            except Exception as exc:
+                raise TouchFailure(self.profile, __system__, exc) from exc
+
+        def close(self):
+            if self.owner_pid != os.getpid():
+                return
+            with self._close_lock:
+                if self._close_error is not None:
+                    raise self._close_error
+
+                errors = []
+                resources = (
+                    (self.scrcpy, "stop"),
+                    (self.maatouch, "close"),
+                    (self.mumu12IPC, "disconnect"),
+                )
+                self.scrcpy = self.maatouch = self.mumu12IPC = None
+                for resource, method in resources:
+                    if resource is not None:
+                        try:
+                            getattr(resource, method)()
+                        except Exception as exc:
+                            errors.append(exc)
+                if errors:
+                    for error in errors[1:]:
+                        errors[0].add_note(str(error))
+                    self._close_error = errors[0]
+                    self._close_error.cleanup_failed = True
+                    raise self._close_error
+
+        def interrupt(self):
+            if self.owner_pid != os.getpid():
+                return
+            with self._close_lock:
+                if self._interrupted:
+                    return
+                self._interrupted = True
+                helpers = self.scrcpy, self.maatouch, self.mumu12IPC
+            errors = []
+            for helper in helpers:
+                if interrupt := getattr(helper, "interrupt", None):
+                    try:
+                        interrupt()
+                    except Exception as exc:
+                        errors.append(exc)
+            if errors:
+                for error in errors[1:]:
+                    errors[0].add_note(str(error))
+                raise errors[0]
 
         def tap(self, point: tuple[int, int]) -> None:
             if self.mumu12IPC:
@@ -128,12 +206,24 @@ class Device:
         touch_device: str = None,
         *,
         wait_for_device: bool = True,
+        adb_bin: str = None,
+        strict_target: bool = False,
+        profile=None,
     ) -> None:
+        if strict_target and (not device_id or not device_id.strip()):
+            raise ValueError("设备 serial 不能为空")
         self.device_id = device_id
+        self.adb_bin = adb_bin
+        self.strict_target = strict_target
+        self._profile = profile.model_copy(deep=True) if profile is not None else None
         self.connect = connect
         self.touch_device = touch_device
         self.client = None
         self.control = None
+        self.owner_pid = os.getpid()
+        self._resource_lock = RLock()
+        self._interrupted = Event()
+        self._close_error = None
         self._recovery_active = False
         self._recovery_error = None
         try:
@@ -144,9 +234,18 @@ class Device:
         # 进程退出时释放 adb 资源，避免退出后 DroidCast/scrcpy 等常驻连接藕断丝连
         atexit.register(self.close)
 
+    @property
+    def profile(self):
+        return getattr(self, "_profile", None) or config.conf.device
+
+    @property
+    def game_package(self):
+        profile = getattr(self, "_profile", None)
+        return profile.game_package if profile is not None else config.conf.APPNAME
+
     @classmethod
     def create(cls, *, connection_retries: int = 3) -> Device:
-        """首次连接策略和后续三次重连共用同一个恢复入口。"""
+        """Legacy construction permits bounded local attempts only."""
         return recover_connection(
             lambda *, wait_for_device: cls(wait_for_device=wait_for_device),
             first_attempts=connection_retries,
@@ -155,7 +254,11 @@ class Device:
 
     @contextmanager
     def _recovery_scope(self):
-        if config.stop_mower.is_set():
+        self._check_open()
+        if config.stop_mower.is_set() or (
+            getattr(self, "_interrupted", None) is not None
+            and self._interrupted.is_set()
+        ):
             raise MowerExit
         # 某些业务层会捕获 Exception；同一设备恢复耗尽后不能被它们重新开启恢复。
         if error := getattr(self, "_recovery_error", None):
@@ -170,18 +273,55 @@ class Device:
         finally:
             self._recovery_active = previous
 
+    def _check_open(self):
+        owner = getattr(self, "owner_pid", os.getpid())
+        interrupted = getattr(self, "_interrupted", None)
+        if owner != os.getpid() or (interrupted is not None and interrupted.is_set()):
+            raise MowerExit("设备会话已关闭或所有权不匹配")
+        if error := getattr(self, "_close_error", None):
+            raise error
+
     def _stop_control(self):
         control = getattr(self, "control", None)
         if control is None:
             return
-        # IPC 沿用原有连接生命周期；通用 ADB 重连不释放或替换它。
-        if control.mumu12IPC is None:
+        control.close()
+        # Keep cleanup visible to a concurrent rebind until it has completed.
+        # A failed cleanup also remains latched and cannot authorize replacement.
+        if self.control is control:
             self.control = None
-        if control.scrcpy is not None:
-            try:
-                control.scrcpy.stop()
-            except Exception:
-                logger.debug("关闭 scrcpy 失败", exc_info=True)
+
+    def interrupt_input(self):
+        """Unblock an owned input process before application close takes its lock."""
+        self._stop_control()
+
+    def interrupt_io(self):
+        """Cancel I/O; retain helper ownership for cleanup after restoration."""
+        if getattr(self, "owner_pid", None) != os.getpid():
+            return
+        with self._resource_lock:
+            if self._interrupted.is_set():
+                return
+            self._interrupted.set()
+            resources = (
+                (self.control, "interrupt"),
+                (getattr(self, "_mumu_capture", None), "interrupt"),
+                (getattr(self, "_ld_capture", None), "interrupt"),
+                (getattr(self, "_droidcast", None), "interrupt"),
+                (self.client, "interrupt_io"),
+            )
+        errors = []
+        for resource, method in resources:
+            if interrupt := getattr(resource, method, None):
+                try:
+                    interrupt()
+                except Exception as exc:
+                    errors.append(exc)
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(str(error))
+            self._close_error = errors[0]
+            raise errors[0]
 
     def _connect_once(self, *, wait_for_device: bool = True) -> None:
         """一次完整连接：先确认 ADB 在线，再初始化截图和触控，各执行一次。"""
@@ -189,25 +329,54 @@ class Device:
             try:
                 self.close()
                 if self.client is None:
-                    self.client = ADBClient(
-                        self.device_id, self.connect, wait_for_device=wait_for_device
-                    )
+                    options = {"wait_for_device": wait_for_device}
+                    if getattr(self, "strict_target", False):
+                        options.update(adb_bin=self.adb_bin, strict_target=True)
+                    self.client = ADBClient(self.device_id, self.connect, **options)
                 else:
                     self.client.reconnect(wait_for_device=wait_for_device)
                 self.device_id = self.client.device_id
                 if not self.check_resolution():
                     raise MowerExit
                 if config.conf.droidcast.enable:
-                    if not self.start_droidcast():
-                        raise ConnectionError("DroidCast启动失败")
+                    try:
+                        if not self.start_droidcast():
+                            raise ConnectionError("DroidCast启动失败")
+                    except Exception as exc:
+                        if getattr(self, "strict_target", False):
+                            raise ScreenshotFailure(
+                                config.conf.device, __system__, exc
+                            ) from exc
+                        raise
                 if self.control is None:
                     self.control = Device.Control(self, self.client)
+                self._check_open()
             except Exception:
                 self.close()
                 raise
 
     def start(self, *, wait_for_device: bool = True) -> None:
         self._connect_once(wait_for_device=wait_for_device)
+
+    def rebind_target(self, serial: str, adb_path: str, *, game_package=None) -> None:
+        """Rebuild this handle only after its application verified the endpoint."""
+        self._check_open()
+        if not serial.strip():
+            raise ValueError("设备 serial 不能为空")
+        self.close()
+        self.control = None
+        self.client = None
+        self.device_id = serial
+        self.adb_bin = adb_path
+        self._profile = self.profile.model_copy(
+            update={
+                "last_serial": serial,
+                "adb_path": adb_path,
+                "game_package": game_package or self.game_package,
+            }
+        )
+        self.strict_target = True
+        self._connect_once(wait_for_device=False)
 
     def run(self, cmd: str) -> Optional[bytes]:
         return self.recover(lambda: self.client.run(cmd))
@@ -220,16 +389,19 @@ class Device:
         mode = launch_conf.mode or ("tap" if launch_conf.enable else "adb")
 
         if mode == "tap":
-            self.run(f"input tap {launch_conf.x} {launch_conf.y}")
+            self._input_once(
+                lambda: self.client.run(f"input tap {launch_conf.x} {launch_conf.y}"),
+                transport="adb",
+            )
         elif mode == "custom":
             command = launch_conf.command or DEFAULT_LAUNCH_COMMAND
-            command = command.replace("{package}", config.conf.APPNAME).replace(
+            command = command.replace("{package}", self.game_package).replace(
                 "{activity}", config.APP_ACTIVITY_NAME
             )
             logger.info("执行自定义启动命令")
             self.run(command)
         else:
-            self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
+            self.run(f"am start -n {self.game_package}/{config.APP_ACTIVITY_NAME}")
 
     def exit(self) -> None:
         """exit the application"""
@@ -237,7 +409,7 @@ class Device:
 
         logger.info("退出游戏")
         logger.debug("device.exit 调用来源:\n" + "".join(traceback.format_stack()[:-1]))
-        self.run(f"am force-stop {config.conf.APPNAME}")
+        self.run(f"am force-stop {self.game_package}")
 
     def return_home(self) -> None:
         """exit the application"""
@@ -247,192 +419,173 @@ class Device:
     def send_keyevent(self, keycode: int) -> None:
         """send a key event"""
         logger.debug(f"keyevent: {keycode}")
+        if keycode == 4 and self.profile.touch_backend == "mumu_ipc":
+            # Android BACK (4) maps to MuMu's native BACK (1) in back().
+            self._input_once(lambda: self.control.mumu12IPC.back())
+            return
         command = f"input keyevent {keycode}"
-        self.run(command)
+        self._input_once(lambda: self.client.run(command), transport="adb")
 
     def send_text(self, text: str) -> None:
         """send a text"""
         logger.debug(f"text: {repr(text)}")
         text = text.replace('"', '\\"')
         command = f'input text "{text}"'
-        self.run(command)
+        self._input_once(lambda: self.client.run(command), transport="adb")
 
     def is_app_running_in_background(self) -> bool:
-        """检查游戏进程是否存活；无法判定时按「运行中」处理，避免误判重新拉起游戏。"""
+        """检查游戏进程是否存活。"""
         try:
-            # 同一条持久 adb 会话查询，避免另起 adb.exe 进程的竞态假阴性（根因）
-            output = self.run(f"ps -A | grep {config.conf.APPNAME} | grep -v grep")
-            if output.strip():
-                return True
-            # ps 查不到：只有 dumpsys package 能检出 force-stop（stopped=true）
-            package = self.run(f"dumpsys package {config.conf.APPNAME}")
-            if b"stopped=true" in package:
-                return False
+            # 同一条持久 adb 会话查询
+            output = self.run(f"ps -A | grep {self.game_package} | grep -v grep")
+            return bool(output and output.strip())
         except (MowerExit, DeviceRecoveryError):
             raise
         except Exception as e:
             logger.debug(f"检查应用是否在后台运行时出错：{e}")
-            return True
-        # ps 查不到、又非 force-stop：无法判定，按「运行中」处理
-        return True
+            return False
 
     def bring_to_foreground(self):
-        self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
-
-    def get_droidcast_classpath(self) -> str | None:
-        # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
-        try:
-            out = self.client.cmd_shell("pm path com.rayworks.droidcast", decode=True)
-        except subprocess.CalledProcessError as e:
-            # Android 部分版本在包不存在时返回退出码 1，且没有输出。
-            if e.returncode == 1 and e.output is not None and not e.output.strip():
-                return None
-            logger.exception("无法获取CLASSPATH")
-            raise
-        except Exception:
-            logger.exception("无法获取CLASSPATH")
-            raise
-        if not out.strip():
-            return None
-        prefix = "package:"
-        postfix = ".apk"
-        beg = out.index(prefix, 0)
-        end = out.rfind(postfix)
-        class_path = out[beg + len(prefix) : (end + len(postfix))].strip()
-        class_path = "CLASSPATH=" + class_path
-        logger.info(f"成功获取CLASSPATH：{class_path}")
-        return class_path
+        self.run(f"am start -n {self.game_package}/{config.APP_ACTIVITY_NAME}")
 
     def start_droidcast(self) -> bool:
-        class_path = self.get_droidcast_classpath()
-        if not class_path:
-            logger.info("安装DroidCast")
-            apk_path = f"{__rootdir__}/vendor/droidcast/DroidCast-debug-1.2.1.apk"
-            try:
-                out = self.client.cmd(["install", apk_path], decode=True)
-            except (MowerExit, DeviceRecoveryError):
-                raise
-            except Exception as e:
-                # 设备瞬时离线时 install 会失败：按「装不上」返回 False，不让重连崩
-                logger.warning(f"DroidCast安装失败：{e}")
-                return False
-            if "Success" in out:
-                logger.info("DroidCast安装完成，获取CLASSPATH")
-            else:
-                logger.error(f"DroidCast安装失败：{out}")
-                return False
-            class_path = self.get_droidcast_classpath()
-            if not class_path:
-                logger.error(f"无法获取CLASSPATH：{out}")
-                return False
-        port = config.droidcast.port
-        occupied_by_adb_forward = False
-        if port != 0 and is_port_in_use(port):
-            try:
-                forward_list = self.client.cmd("forward --list", True).splitlines()
-                expected = [self.client.device_id, f"tcp:{port}", f"tcp:{port}"]
-                occupied_by_adb_forward = any(
-                    line.split() == expected for line in forward_list
+        with getattr(self, "_resource_lock", nullcontext()):
+            self._check_open()
+            capture = getattr(self, "_droidcast", None)
+            if capture is None:
+                capture = DroidCastSession(
+                    self.client.adb_bin,
+                    self.device_id,
+                    rotate=config.conf.droidcast.rotate,
                 )
-            except (MowerExit, DeviceRecoveryError):
-                raise
-            except Exception as e:
-                logger.exception(e)
-            if not occupied_by_adb_forward:
-                port = 0
-        if port == 0:
-            port = get_new_port()
-            config.droidcast.port = port
-            logger.info(f"更新DroidCast端口为{port}")
-        else:
-            logger.info(f"保持DroidCast端口为{port}")
-        if not occupied_by_adb_forward:
-            try:
-                self.client.cmd(f"forward --no-rebind tcp:{port} tcp:{port}")
-            except subprocess.CalledProcessError:
-                # 选端口后仍可能发生占用，交由连接恢复流程重新分配。
-                config.droidcast.port = 0
-                raise
-        logger.info("ADB端口转发成功，启动DroidCast")
-        if config.droidcast.process is not None:
-            config.droidcast.process.terminate()
-        process = self.client.process(
-            class_path,
-            [
-                "app_process",
-                "/",
-                "com.rayworks.droidcast.Main",
-                f"--port={port}",
-            ],
-        )
-        config.droidcast.process = process
+                self._droidcast = capture
+        capture.start(install=True)
+        if (
+            getattr(self, "_interrupted", None) is not None
+            and self._interrupted.is_set()
+        ):
+            capture.interrupt()
+            self._check_open()
         return True
 
-    def screencap(self) -> bytes:
+    def capture_frame(self):
+        """One acquisition; the application owns retries and frame validation."""
+        self._check_open()
+        backend = self.profile.screenshot_backend
+        if reason := capture_compatibility_error(
+            self.profile.preset_id, backend, __system__
+        ):
+            raise ValueError(reason)
+        if backend == "ld_native":
+            with getattr(self, "_resource_lock", nullcontext()):
+                self._check_open()
+                if getattr(self, "_ld_capture", None) is None:
+                    self._ld_capture = LDCaptureSession(
+                        self.profile, self.client.adb_bin, self.device_id
+                    )
+                capture = self._ld_capture
+            return self._validated(capture.capture_frame())
+        if backend == "mumu_ipc":
+            with getattr(self, "_resource_lock", nullcontext()):
+                self._check_open()
+                if getattr(self, "_mumu_capture", None) is None:
+                    self._mumu_capture = MuMuCaptureSession(self.profile)
+                capture = self._mumu_capture
+            return self._validated(capture.capture_frame())
+        if backend == "adb_gzip":
+            return capture_adb_frame(self.client.adb_bin, self.device_id)
+        if backend == "droidcast":
+            if getattr(self, "_droidcast", None) is None:
+                self.start_droidcast()
+            return self._validated(self._droidcast.capture_frame())
+        if backend == "custom":
+            from arknights_mower.utils.device.preflight_io import custom_capture_argv
+
+            argv = custom_capture_argv(
+                config.conf.custom_screenshot.command,
+                self.client.adb_bin,
+                self.device_id,
+            )
+            timeout = io_timeout(10)
+            if argv[0] == self.client.adb_bin:
+                timeout = guard_adb(argv[0], timeout=timeout, run=subprocess.run)
+            data = subprocess.check_output(
+                argv,
+                timeout=timeout,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
+                if __system__ == "windows"
+                else 0,
+            )
+            return bytes2img(data)
+        raise ValueError(f"不支持的截图后端：{backend}")
+
+    def standard_frame(self):
+        """The plain ADB screencap used for degradation, on the same target."""
+        self._check_open()
+        return capture_adb_frame(self.client.adb_bin, self.device_id)
+
+    @staticmethod
+    def _validated(frame):
+        """Classify an owned helper frame here, where the backend is known.
+
+        A helper that answered with the wrong size has already done its own
+        bounded rebuild, so the size error must reach the caller as a terminal
+        verdict instead of entering the generic retry path.
+        """
+        validate_frame(frame)
+        return frame
+
+    def rebuild_screenshot(self):
+        """Release/recreate only resources belonging to the selected capture."""
+        self._check_open()
+        backend = self.profile.screenshot_backend
+        if backend == "ld_native":
+            capture = getattr(self, "_ld_capture", None)
+            if capture is not None:
+                capture.close()
+                self._ld_capture = None
+        if backend == "mumu_ipc":
+            capture = getattr(self, "_mumu_capture", None)
+            if capture is not None:
+                capture.close()
+                self._mumu_capture = None
+        elif backend == "droidcast":
+            self.start_droidcast()
+        # ADB and custom captures own only the bounded per-call connection or
+        # process. A new acquisition naturally creates their next resource.
+
+    def screencap(self):
+        """Return current RGB/gray frames; persistence owns JPEG encoding."""
+        from arknights_mower.utils.performance import effective_performance_profile
+
         start_time = datetime.now()
         screenshot_interval = config.conf.screenshot_interval
+        if getattr(config.conf, "performance_mode", None) == "auto":
+            screenshot_interval = effective_performance_profile(
+                config.conf, config.screenshot_avg, config.screenshot_count
+            ).screenshot_interval
         min_time = config.screenshot_time + timedelta(milliseconds=screenshot_interval)
         delta = (min_time - start_time).total_seconds()
         if delta > 0:
             time.sleep(delta)
             start_time = min_time
 
-        if self.control.mumu12IPC:
-            # 瞬时错误重建 IPC 重试；重试耗尽且设备无法连接时自动重启模拟器
-            for _ in range(3):
-                try:
-                    img = self.control.mumu12IPC.capture_display()
-                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-                    break
-                except MowerExit:
-                    raise
-                except Exception as e:
-                    logger.exception(e)
-                    self.control.mumu12IPC = MuMu12IPC(self.device)
-            else:
-                restart_simulator()
-                self.control.mumu12IPC = MuMu12IPC(self.device)
-                img = self.control.mumu12IPC.capture_display()
-                gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        elif config.conf.droidcast.enable:
-            session = config.droidcast.session
-
-            def grab_droidcast() -> bytes:
-                port = config.droidcast.port
-                url = f"http://127.0.0.1:{port}/screenshot"
-                return session.get(url).content
-
-            img = bytes2img(self.recover(grab_droidcast))
-            if config.conf.droidcast.rotate:
-                img = cv2.rotate(img, cv2.ROTATE_180)
-            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        elif config.conf.custom_screenshot.enable:
-            command = config.conf.custom_screenshot.command
-
-            def grab_custom() -> bytes:
-                return subprocess.check_output(
-                    command,
-                    shell=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                    if __system__ == "windows"
-                    else 0,
-                )
-
-            data = self.recover(grab_custom)
-            img = bytes2img(data)
-            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        if control := getattr(self, "session_control", None):
+            img = control.capture().unwrap()
+        elif (
+            hasattr(self, "control")
+            and hasattr(self.control, "mumu12IPC")
+            and hasattr(self.control.mumu12IPC, "capture_display")
+        ):
+            img = self.control.mumu12IPC.capture_display()
         else:
-            command = "screencap 2>/dev/null | gzip -1"
-            resp = self.recover(lambda: self.run(command))
-            data = gzip.decompress(resp)
-            array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
-                1080, 1920, 4
+            if not hasattr(self, "_screenshot"):
+                self._screenshot = ScreenshotSession(config.conf.device, __system__)
+            img = self._screenshot.capture(
+                self.capture_frame, self.rebuild_screenshot, lambda: None
             )
-            img = cv2.cvtColor(array, cv2.COLOR_RGBA2RGB)
-            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-
-        screencap = img2bytes(img)
-        save_screenshot(screencap)
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         stop_time = datetime.now()
         config.screenshot_time = stop_time
@@ -447,7 +600,8 @@ class Device:
                 f"截图用时{interval:.0f}ms 平均用时{config.screenshot_avg:.0f}ms"
             )
 
-        return screencap, img, gray
+        save_screenshot_frame(img, capture_ms=interval)
+        return None, img, gray
 
     def current_focus(self) -> str:
         """detect current focus app"""
@@ -469,20 +623,14 @@ class Device:
     def tap(self, point: tuple[int, int]) -> None:
         """tap"""
         logger.debug(f"tap: {point}")
-        if self.control is not None and self.control.mumu12IPC:
-            self.control.tap(point)
-        else:
-            self.recover(lambda: self.control.tap(point))
+        self._input_once(lambda: self.control.tap(point))
 
     def swipe(
         self, start: tuple[int, int], end: tuple[int, int], duration: int = 100
     ) -> None:
         """swipe"""
         logger.debug(f"swipe: {start} -> {end}, duration={duration}")
-        if self.control is not None and self.control.mumu12IPC:
-            self.control.swipe(start, end, duration)
-        else:
-            self.recover(lambda: self.control.swipe(start, end, duration))
+        self._input_once(lambda: self.control.swipe(start, end, duration))
 
     def swipe_ext(
         self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 200
@@ -491,38 +639,87 @@ class Device:
         logger.debug(
             f"swipe_ext: points={points}, durations={durations}, up_wait={up_wait}"
         )
-        if self.control is not None and self.control.mumu12IPC:
-            self.control.swipe_ext(points, durations, up_wait)
-        else:
-            self.recover(lambda: self.control.swipe_ext(points, durations, up_wait))
+        self._input_once(lambda: self.control.swipe_ext(points, durations, up_wait))
+
+    def _input_once(self, operation, *, transport=None):
+        """A transport error cannot tell us whether Android received the input."""
+
+        def send():
+            with self._recovery_scope():
+                try:
+                    return operation()
+                except (MowerExit, TouchFailure):
+                    raise
+                except Exception as exc:
+                    failure = TouchFailure(
+                        config.conf.device,
+                        __system__,
+                        exc,
+                        delivery_unknown=True,
+                        transport=transport,
+                    )
+                    try:
+                        self._stop_control()
+                    except Exception as cleanup_error:
+                        failure.cleanup_failed = True
+                        failure.add_note(f"关闭触控后端失败：{cleanup_error}")
+                    raise failure from exc
+
+        control = getattr(self, "session_control", None)
+        if control is not None and not control.executing:
+            return control.execute(lambda device: send()).unwrap()
+        return send()
 
     def close(self) -> None:
-        """释放 adb 相关资源（常驻子进程与 socket）。
+        """Detach each owned resource once, then attempt every cleanup."""
+        if getattr(self, "owner_pid", None) != os.getpid():
+            return
+        with self._resource_lock:
+            resources = (
+                (getattr(self, "_mumu_capture", None), "close"),
+                (getattr(self, "_ld_capture", None), "close"),
+                (getattr(self, "_droidcast", None), "close"),
+                (self.control, "close"),
+                (self.client, "close"),
+            )
+            self._mumu_capture = self._droidcast = self.control = self.client = None
+            self._ld_capture = None
+            errors = [self._close_error] if self._close_error is not None else []
+            for resource, method in resources:
+                operation = getattr(resource, method, None)
+                if operation is not None:
+                    try:
+                        operation()
+                    except Exception as exc:
+                        if exc not in errors:
+                            errors.append(exc)
+            if errors:
+                for error in errors[1:]:
+                    errors[0].add_note(str(error))
+                self._close_error = errors[0]
+                self._close_error.cleanup_failed = True
+                raise self._close_error
 
-        mower 的 DroidCast 截图子进程与 scrcpy 常驻连接都依赖模拟器连接；退出时不清理
-        会一直占住（共享 adb socket 与 mower 所在目录），需关闭模拟器才释放。该方法由
-        atexit 注册，进程退出时调用，幂等可重复调用。
-        """
-        try:
-            process = getattr(config.droidcast, "process", None)
-            if process is not None:
-                process.terminate()
-                config.droidcast.process = None
-        except Exception:
-            logger.debug("终止 DroidCast 进程失败", exc_info=True)
-        self._stop_control()
-
-    def reconnect(self, *, retries: int = 3, restarts: int = 2) -> None:
-        """恢复设备连接；每轮最多三次完整连接，耗尽后才重启模拟器。"""
+    def reconnect(self, *, retries: int = 3, restarts: int = 0) -> None:
+        """Delegate lifecycle policy to the owning application session."""
+        if control := getattr(self, "session_control", None):
+            control.recover().unwrap()
+            return
         if getattr(self, "_recovery_active", False):
             return self._connect_once()
         with self._recovery_scope():
             return recover_connection(
-                self._connect_once, retries=retries, restarts=restarts
+                self._connect_once,
+                retries=retries,
+                restarts=0 if getattr(self, "strict_target", False) else restarts,
             )
 
-    def recover(self, func, retries: int = 3, restarts: int = 2):
+    def recover(self, func, retries: int = 3, restarts: int = 0):
         """正常操作失败后进入统一恢复；嵌套设备操作不再扩增重试次数。"""
+        if control := getattr(self, "session_control", None):
+            if control.executing or getattr(self, "_recovery_active", False):
+                return func()
+            return control.execute(lambda device: func()).unwrap()
         if getattr(self, "_recovery_active", False):
             return func()
         with self._recovery_scope():
@@ -539,30 +736,33 @@ class Device:
                 return func()
 
             return recover_connection(
-                retry_operation, retries=retries, restarts=restarts
+                retry_operation,
+                retries=retries,
+                restarts=0 if getattr(self, "strict_target", False) else restarts,
             )
 
     def check_current_focus(self) -> bool:
-        """检查游戏是否在前台；不在则切回/拉起；仅设备无法连接时才自动重启模拟器。"""
+        """检查游戏前台状态，设备故障交回所属应用会话。"""
         update = False
 
         def check() -> bool:
             nonlocal update
             focus = self.current_focus()
             # 前台判定：package 前缀匹配（游戏包下任何界面都算前台，免疫新 activity）
-            if focus.startswith(config.conf.APPNAME + "/"):
+            if focus.startswith(self.game_package + "/"):
                 return update
             if self.is_app_running_in_background():
+                logger.info("游戏不在前台，正在把游戏调到前台...")
                 self.bring_to_foreground()
                 csleep(2)
             else:
-                # 游戏进程已停止（force-stop），重拉前台
+                # 游戏进程未运行，重新启动
                 self.launch()
                 csleep(10)
             update = True
             return update
 
-        return self.recover(check, retries=3, restarts=3)
+        return self.recover(check)
 
     def check_resolution(self) -> bool:
         """检查分辨率"""

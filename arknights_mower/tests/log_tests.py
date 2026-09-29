@@ -44,6 +44,7 @@ class MultiProcessLogTestBase(unittest.TestCase):
         if log._store_instance is not None:
             log._store_instance.close()
             log._store_instance = None
+        log._store_closed = False
 
 
 class LogFileHandlerTest(MultiProcessLogTestBase):
@@ -183,6 +184,11 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
 
 
 class ScreenshotStoreStartupTest(MultiProcessLogTestBase):
+    def test_exit_before_first_capture_rejects_late_store_creation(self):
+        log.close_screenshot_store()
+        log.save_screenshot(b"late frame")
+        self.assertIsNone(log.get_screenshot_store())
+
     def test_import_builds_no_screenshot_store(self):
         # 回归：ScreenshotStore 不在导入时建立。清理线程启动时会先扫一遍历史截图，
         # 而导入本模块的进程（测试、开发服务器、各种脚本）并没有删图的意图；多份
@@ -215,7 +221,12 @@ class ScreenshotStoreStartupTest(MultiProcessLogTestBase):
         self.assertIsNotNone(store)
         self.assertEqual(
             sorted(thread.name for thread in store._threads),
-            ["screenshot-archiver", "screenshot-cleaner", "screenshot-writer"],
+            [
+                "screenshot-archiver",
+                "screenshot-cleaner",
+                "screenshot-preview",
+                "screenshot-writer",
+            ],
         )
         self.assertEqual(store.folder, path.get_path("@app/screenshot"))
 

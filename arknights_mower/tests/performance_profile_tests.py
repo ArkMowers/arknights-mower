@@ -236,13 +236,13 @@ def test_capture_metrics_do_not_change_auto_mode(monkeypatch):
     monkeypatch.setattr(
         config, "screenshot_time", datetime.now() - timedelta(seconds=10)
     )
-    monkeypatch.setattr(device_module, "save_screenshot", lambda *_: None)
+    monkeypatch.setattr(device_module, "save_screenshot_frame", lambda *_, **__: None)
     device = object.__new__(Device)
-    device.control = SimpleNamespace(
-        mumu12IPC=SimpleNamespace(
-            capture_display=lambda: np.zeros((2, 2, 3), dtype=np.uint8)
-        )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    device.session_control = SimpleNamespace(
+        capture=lambda: SimpleNamespace(unwrap=lambda: frame)
     )
+    monkeypatch.setattr(device_module.time, "sleep", lambda _: None)
 
     device.screencap()
     assert config.screenshot_count == 100

@@ -242,8 +242,11 @@ def _add_group_to_fix_plan(fix_plan: dict, op_data: Operators, group: str) -> No
         fix_plan[agent.room][agent.index] = name
 
 
-def _maa_client_type() -> str:
+def _maa_client_type(device=None) -> str:
     """推导 MAA 集成协议的客户端类型：官服 Official，B 服 Bilibili。"""
+    package = getattr(device, "game_package", None)
+    if package in {"com.hypergryph.arknights", "com.hypergryph.arknights.bilibili"}:
+        return "Official" if package == "com.hypergryph.arknights" else "Bilibili"
     return "Official" if config.conf.package_type == 1 else "Bilibili"
 
 
@@ -8026,7 +8029,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             InstanceOptionType.touch_type, conf.maa_touch_option
         )
         if self.MAA.connect(
-            resolve_config_path(conf.maa_adb_path),
+            getattr(self.device.client, "adb_bin", None)
+            or resolve_config_path(conf.maa_adb_path),
             self.device.client.device_id,
             conf.maa_conn_preset,
         ):
@@ -8037,7 +8041,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def append_maa_task(self, type):
         if type == "StartUp":
-            self.MAA.append_task("StartUp", {"client_type": _maa_client_type()})
+            self.MAA.append_task(
+                "StartUp",
+                {"client_type": _maa_client_type(getattr(self, "device", None))},
+            )
         elif type == "Fight":
             self.maybe_switch_expired_activity_plan()
             conf = config.conf
@@ -8066,7 +8073,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "times": 999,
                         "series": 0,
                         "report_to_penguin": True,
-                        "client_type": _maa_client_type(),
+                        "client_type": _maa_client_type(getattr(self, "device", None)),
                         "penguin_id": conf.maa_penguin_id,
                         "DrGrandet": False,
                         "server": "CN",

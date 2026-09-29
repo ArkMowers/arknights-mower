@@ -20,7 +20,7 @@ flowchart TD
         subgraph DeviceSubsystem ["Device Control Subsystem"]
             Profile["DeviceProfile (Conf.device)"]
             Session["DeviceSession Lifecycle"]
-            Transport["Transport Backends (ADB, MuMu IPC, DroidCast)"]
+            Transport["Transport Backends (ADB, MuMu IPC, DroidCast, LD screenshot enhancement)"]
             SharedAdb["Shared ADB Guard (guard_adb)"]
             Recovery["RecoveryPolicy"]
             Buffer["Canvas FrameBuffer (1920x1080)"]
