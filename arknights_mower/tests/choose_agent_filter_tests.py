@@ -258,6 +258,7 @@ def test_resting_operator_is_scanned_without_skipping_pages(monkeypatch):
 
 def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
+    solver.task = None
     current = list(RESIDENTS if residents is None else residents)
     selected = current.copy()
     cards = current.copy()
@@ -277,6 +278,7 @@ def selection_solver(monkeypatch, residents=None):
         is_dorm_replacement_for_slot=lambda *args, **kwargs: False,
         get_current_operator=lambda *args, **kwargs: None,
     )
+    solver.op_data.add = lambda op: solver.op_data.operators.setdefault(op.name, op)
     solver.last_room = ""
     solver.choose_error = set()
     solver.preserve_resting_crafters = MagicMock()

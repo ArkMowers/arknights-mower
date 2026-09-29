@@ -36,8 +36,10 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.task = task
     solver.tasks = [task]
+    solver._refresh_deferred_product_reservations = MagicMock()
     solver.recog = MagicMock(w=1920, h=1080)
     solver.op_data = SimpleNamespace(
+        skip_idle_dorm_release=lambda name: False,
         operators={
             "赫拉格": SimpleNamespace(
                 current_room="dormitory_1" if entry == "release" else "factory",
@@ -45,7 +47,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
                 mood=24,
                 is_high=lambda: False,
             )
-        }
+        },
     )
     for method in [
         "enter_room",
@@ -135,7 +137,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         assert selected == []
 
 
-def test_infra_main_release_task_supports_legacy_operator_data(monkeypatch):
+def test_infra_main_dispatches_verified_release_task(monkeypatch):
     from arknights_mower.solvers import base_schedule as base
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -146,7 +148,9 @@ def test_infra_main_release_task_supports_legacy_operator_data(monkeypatch):
         task_plan={"dormitory_1": ["Free"]},
     )
     solver.tasks = [solver.task]
+    solver._refresh_deferred_product_reservations = MagicMock()
     solver.op_data = SimpleNamespace(
+        skip_idle_dorm_release=lambda name: False,
         operators={
             "赫拉格": SimpleNamespace(
                 current_room="dormitory_1",
@@ -154,7 +158,7 @@ def test_infra_main_release_task_supports_legacy_operator_data(monkeypatch):
                 mood=24,
                 is_high=lambda: False,
             )
-        }
+        },
     )
     solver.agent_arrange = MagicMock(return_value=True)
     solver.backup_plan_solver = MagicMock(return_value=False)
