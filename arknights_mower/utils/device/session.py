@@ -279,6 +279,7 @@ class DeviceSession:
         target_desc = (
             f"ADB serial {profile.last_serial.strip() or '未填写'}"
             if profile.preset_id == "macos.mumu_pro"
+            and not profile.topology_fingerprint
             else f"多开实例 {profile.instance_id}{instance_desc}"
         )
         logger.info(
@@ -474,6 +475,8 @@ class DeviceSession:
                 )
                 return self.last
         if not serial:
+            if profile.preset_id == "macos.mumu_pro" and instance.state == "starting":
+                self.last = ReadinessResult("booting", "", self.adb_path, "starting")
             return self.last
         states = [
             state
@@ -597,12 +600,26 @@ class DeviceSession:
         return ready
 
     def _ensure_ready(self, deadline: float, frame_probe=None) -> ReadinessResult:
+        if (
+            self.profile.preset_id == "macos.mumu_pro"
+            and self.profile.topology_fingerprint
+        ):
+            prepare = getattr(self.simulator, "prepare_mumu_pro", None)
+            if prepare is not None:
+                try:
+                    prepare(self.profile, self._remaining(deadline))
+                except InstanceBindingError as exc:
+                    self.last = ReadinessResult(
+                        "offline", "", self.adb_path, code=exc.code, message=str(exc)
+                    )
+                    raise SessionFailure(self.last, str(exc)) from exc
         observation = self.observe(deadline, frame_probe=frame_probe)
         self._check_observation(observation)
         if observation.state == "ready":
             return observation
         if (
             self.profile.preset_id == "macos.mumu_pro"
+            and not self.profile.topology_fingerprint
             and observation.instance_state == "stopped"
         ):
             raise SessionFailure(
@@ -649,7 +666,10 @@ class DeviceSession:
         frame_only = observation.code == "frame_failed" and bool(observation.serial)
         restartable = (
             observation.instance_state in {"running", "starting"}
-            and self.profile.preset_id != "macos.mumu_pro"
+            and (
+                self.profile.preset_id != "macos.mumu_pro"
+                or bool(self.profile.topology_fingerprint)
+            )
             and not frame_only
         )
         local_actions = (
@@ -694,7 +714,10 @@ class DeviceSession:
                         )
                     return observation
         if observation.instance_state == "stopped":
-            if self.profile.preset_id == "macos.mumu_pro":
+            if (
+                self.profile.preset_id == "macos.mumu_pro"
+                and not self.profile.topology_fingerprint
+            ):
                 raise SessionFailure(
                     observation,
                     "MuMu Pro 实例尚未启动，请在模拟器中手动启动后重试。",
@@ -812,6 +835,11 @@ class DeviceSession:
             succeeded = operation(self._remaining(deadline))
         except (MowerExit, SessionFailure):
             raise
+        except InstanceBindingError as exc:
+            self.last = ReadinessResult(
+                "offline", "", self.adb_path, code=exc.code, message=str(exc)
+            )
+            raise SessionFailure(self.last, str(exc)) from exc
         except SharedADBError as exc:
             logger.error(f"设备恢复动作失败（共享 ADB server）：{exc}")
             self.last = ReadinessResult(

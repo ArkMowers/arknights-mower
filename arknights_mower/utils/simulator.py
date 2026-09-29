@@ -75,8 +75,9 @@ def restart_simulator(stop: bool = True, start: bool = True) -> bool:
     if not stop:
         return True
     if config.conf.device.preset_id == "macos.mumu_pro":
-        logger.warning("MuMu Pro 未提供已确认的实例关停命令，请手动关闭")
-        return False
+        from arknights_mower.__main__ import device_control
+
+        return device_control.stop_bound_mumu_pro()
     if config.conf.device.preset_id in {"macos.avd", "linux.avd"}:
         from arknights_mower.__main__ import device_control
 

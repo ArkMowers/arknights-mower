@@ -12,7 +12,7 @@ Local contract for the Vue 3 frontend application under `ui/`.
 - **Dynamic Policy Exposure**: Advanced recovery configuration (`recovery_timeout`, `recovery_attempts`, `recovery_local_wait`, `recovery_shutdown_wait`, `manager_query_timeout`) binds dynamically to backend recovery policies.
 - **Target Clearance**: Modifying preset or instance selections in the UI must immediately invalidate and clear `last_serial` to prevent stale endpoint reuse.
 - **IPC Backend Coupling**: Selecting MuMu IPC capture backend automatically couples the touch backend to MuMu IPC; selecting alternative touch methods disables IPC capture.
-- **Bound Instance Start**: The start-and-test action is offered only for presets whose own multi-instance manager can launch the bound instance (`windows.mumu12`, `windows.ldplayer9`, `windows.nox`), and it launches nothing else.
+- **Bound Instance Start**: Detection starts only a selected supported instance after a stopped verdict; multiple candidates require selection. MuMu Pro may open its manager application before this check. The independent connection test performs no lifecycle actions. AVD, redroid and Genymotion requests carry the current selected instance as immediate confirmation.
 
 ## 2. Testing Discipline
 

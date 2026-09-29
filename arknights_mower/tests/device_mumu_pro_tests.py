@@ -11,6 +11,7 @@ from arknights_mower.tests.device_session_tests import ADB, Adapter, Clock, Simu
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.discovery import DiscoveryService
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.preflight import PreflightService
 from arknights_mower.utils.device.session import (
     DeviceSession,
@@ -142,6 +143,72 @@ class MuMuProTests(unittest.TestCase):
                 with self.assertRaises(SessionFailure):
                     session.ensure_ready()
                 self.assertEqual(simulator.actions, [])
+
+    def test_selected_stopped_instance_automatically_starts_without_adopting_others(
+        self,
+    ):
+        adb, simulator = ADB(), Simulator()
+        simulator.state = "stopped"
+        serial = "127.0.0.1:16416"
+
+        def started():
+            simulator.state = "running"
+            simulator.serial = serial
+            adb.rows = [("127.0.0.1:16384", "device"), (serial, "device")]
+            adb.boot = "1"
+
+        simulator.on_start = started
+        session = DeviceSession(
+            adb, simulator, clock=Clock(), policy=RecoveryPolicy(timeout=5)
+        )
+        profile = self.conf.device.model_copy(
+            update={"instance_id": "1", "topology_fingerprint": "a" * 64}
+        )
+        session.bind(profile)
+        self.assertEqual(session.ensure_ready().serial, serial)
+        self.assertEqual(simulator.actions, ["start"])
+
+    def test_starting_without_port_is_booting_and_does_not_connect_stale_serial(self):
+        adb, simulator = ADB(), Simulator()
+        simulator.state = "starting"
+        simulator.serial = None
+        session = DeviceSession(adb, simulator, clock=Clock())
+        session.bind(
+            self.conf.device.model_copy(update={"topology_fingerprint": "a" * 64})
+        )
+        observation = session.observe()
+        self.assertEqual(observation.state, "booting")
+        self.assertEqual(observation.instance_state, "starting")
+        self.assertEqual(observation.serial, "")
+        self.assertEqual(simulator.actions, [])
+
+    def test_manager_preparation_failure_preserves_verdict_without_vm_action(self):
+        adb, simulator = ADB(), Simulator()
+        simulator.prepare_mumu_pro = Mock(
+            side_effect=InstanceBindingError(
+                "mumu_pro_manager_start_failed", "管理器尚未就绪"
+            )
+        )
+        session = DeviceSession(adb, simulator, clock=Clock())
+        session.bind(
+            self.conf.device.model_copy(update={"topology_fingerprint": "a" * 64})
+        )
+        with self.assertRaises(SessionFailure) as raised:
+            session.ensure_ready()
+        self.assertEqual(
+            raised.exception.observation.code, "mumu_pro_manager_start_failed"
+        )
+        self.assertEqual(simulator.actions, [])
+        result = self.control._failure("connection_failed", raised.exception)
+        self.assertEqual(result.error.code, "mumu_pro_manager_start_failed")
+
+    def test_manual_start_and_idle_stop_require_verified_selection(self):
+        self.conf.close_simulator_when_idle = True
+        self.assertEqual(
+            self.control.start_bound().error.code, "mumu_pro_selection_required"
+        )
+        self.assertFalse(self.control.stop_bound_mumu_pro())
+        self.command.assert_not_called()
 
     def test_manual_entry_still_requires_explicit_target_and_read_only_preflight(self):
         self.conf = Conf(device={"preset_id": "manual.other", "last_serial": ""})

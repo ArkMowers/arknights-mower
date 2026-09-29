@@ -18,7 +18,7 @@ date: 2026-09-30
 
 ## Root Cause and Implementation
 
-The compatibility preset rejected every preflight and session observation before ADB validation. The settings interface hid `last_serial` and sent a profile without a manager path to the unavailable discovery route. Preflight and session now use the shared exact-serial gate. The legacy idle stop path declines MuMu Pro manager commands. The [simplification audit](../simplification/2026-09-30-reuse-manual-adb-gate.md) records the reused boundaries.
+The compatibility preset rejected every preflight and session observation before ADB validation. The settings interface hid `last_serial` and sent a profile without a manager path to the unavailable discovery route. Preflight and session now use the shared exact-serial gate. The idle stop path declines unverified manual targets and delegates verified selections to single-instance control. The [simplification audit](../simplification/2026-09-30-reuse-manual-adb-gate.md) records the reused boundaries.
 
 ## Verification
 

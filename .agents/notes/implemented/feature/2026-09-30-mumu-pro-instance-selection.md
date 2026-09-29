@@ -12,13 +12,13 @@ date: 2026-09-30
 ## Contract
 
 - **[INV-DEV-11] MuMu Pro Verified Selection**: Read-only `mumutool info all` discovery offers each distinct instance. A selection saves its index and a Topology Fingerprint of the VM path. Preflight and recovery query the selected index again, verify that fingerprint, and use only its current ADB port.
-- Malformed manager output, duplicate indices, paths or ports, and changed VM paths fail before ADB access. A stopped instance requires a manual launch. No manager start or stop command is issued.
+- Malformed manager output, duplicate indices, paths or ports, and changed VM paths fail before ADB access. Lifecycle commands verify the same identity before operating on one selected index; manual serial profiles still require manual launch.
 - A user may still enter an explicit ADB serial without a fingerprint; [manual binding](../bug-fix/2026-09-30-mumu-pro-manual-binding.md) defines that mode's weaker identity guarantee.
-- The settings view shows instance name, index, state and current serial. It presents a repeated error once and describes read-only discovery and manual lifecycle accurately.
+- The settings view shows instance name, index, state and current serial. It presents a repeated error once and describes detection startup and the independent read-only connection test.
 
 ## Implementation
 
-`MuMuProController` bounds the official query and validates its JSON fields. `DiscoveryService` maps observations into the existing instance selector and checks saved bindings. `DeviceSession` avoids manager lifecycle actions. The settings view reuses discovery selection and deduplicates the error message.
+`MuMuProController` bounds the official query and validates its JSON fields. `DiscoveryService` maps observations into the existing instance selector and checks saved bindings. `DeviceSession` starts and recovers only the verified selected instance. The settings view reuses discovery selection and deduplicates the error message.
 
 ## Verification
 

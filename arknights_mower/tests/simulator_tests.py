@@ -78,7 +78,9 @@ class TestSimulatorSessionDelegation(unittest.TestCase):
     def test_mumu_pro_idle_stop_never_uses_unverified_manager_command(self):
         self.conf.device.preset_id = "macos.mumu_pro"
         self.conf.simulator.name = "MuMuPro"
+        self.control.stop_bound_mumu_pro.return_value = False
         self.assertFalse(simulator.restart_simulator(start=False))
+        self.control.stop_bound_mumu_pro.assert_called_once_with()
         self.command.assert_not_called()
 
 

@@ -8,6 +8,7 @@ import {
   deviceAvdStartRequest,
   deviceRedroidStartRequest,
   deviceGenymotionStartRequest,
+  deviceStartupRequest,
   deviceSuccessPatch,
   deviceDetectionDraft,
   savePreflightDevice,
@@ -318,10 +319,9 @@ describe('Linux Genymotion compatibility settings', () => {
 
   it('requires immediate confirmation of the complete VM binding before starting', () => {
     const state = deviceSettingsState({ profile: genymotion, metadata })
-    expect(state.actions.startGenymotion).toEqual({
+    expect(state.actions.startBound).toEqual({
       visible: true,
       disabled: false,
-      instance: genymotion.instance_id,
       label: '启动并测试连接'
     })
     expect(deviceGenymotionStartRequest(genymotion, genymotion, genymotion.instance_id)).toEqual({
@@ -333,9 +333,9 @@ describe('Linux Genymotion compatibility settings', () => {
     }
     for (const change of [{ manager_path: '' }, { instance_id: 'Mower Android' }]) {
       const draft = { ...genymotion, ...change }
-      expect(
-        deviceSettingsState({ profile: draft, metadata }).actions.startGenymotion.disabled
-      ).toBe(true)
+      expect(deviceSettingsState({ profile: draft, metadata }).actions.startBound.disabled).toBe(
+        true
+      )
       expect(() => deviceGenymotionStartRequest(genymotion, draft, draft.instance_id)).toThrow()
     }
     for (const context of [
@@ -344,10 +344,10 @@ describe('Linux Genymotion compatibility settings', () => {
       { metadata, busy: true }
     ]) {
       expect(
-        deviceSettingsState({ profile: genymotion, ...context }).actions.startGenymotion.disabled
+        deviceSettingsState({ profile: genymotion, ...context }).actions.startBound.disabled
       ).toBe(true)
     }
-    expect(deviceSettingsState({ profile, metadata }).actions.startGenymotion.visible).toBe(false)
+    expect(deviceSettingsState({ profile, metadata }).actions.startBound.visible).toBe(false)
   })
 
   it('explains unavailable official information and opens complete manual configuration without the old binding', () => {
@@ -453,10 +453,9 @@ describe('local Docker redroid device settings', () => {
   it('discovers unbound containers and preflights only a saved local binding', () => {
     const bound = deviceSettingsState({ profile: redroid, metadata })
     expect(bound.actions.detect.endpoint).toBe('preflight')
-    expect(bound.actions.startRedroid).toMatchObject({
+    expect(bound.actions.startBound).toMatchObject({
       visible: true,
-      disabled: false,
-      instance: redroid.instance_id
+      disabled: false
     })
     for (const change of [
       { instance_id: '' },
@@ -466,7 +465,7 @@ describe('local Docker redroid device settings', () => {
     ]) {
       const state = deviceSettingsState({ profile: { ...redroid, ...change }, metadata })
       expect(state.actions.detect.endpoint).toBe('discover')
-      expect(state.actions.startRedroid.disabled).toBe(true)
+      expect(state.actions.startBound.disabled).toBe(true)
     }
     expect(bound.summary).toContain('mower-redroid')
   })
@@ -486,7 +485,7 @@ describe('local Docker redroid device settings', () => {
       { metadata, busy: true }
     ]) {
       expect(
-        deviceSettingsState({ profile: redroid, ...context }).actions.startRedroid.disabled
+        deviceSettingsState({ profile: redroid, ...context }).actions.startBound.disabled
       ).toBe(true)
     }
     const unsupported = deviceSettingsState({
@@ -678,7 +677,7 @@ describe('device settings state', () => {
       expect(state.fields.map((field) => field.key)).toEqual(fields)
       expect(state.message).toBe(message)
       expect(state.actions.detect.endpoint).toBe('preflight')
-      expect(state.actions.detect.label).toBe('重试连接')
+      expect(state.actions.detect.label).toBe('检测并启动')
     }
   })
   it('requires a fresh Waydroid selection when the official session identity changes', () => {
@@ -826,15 +825,15 @@ describe('device settings state', () => {
     const unbound = { ...profile, preset_id: 'macos.mumu_pro', instance_id: '', last_serial: '' }
     const state = deviceSettingsState({ profile: unbound, metadata })
     expect(state.compatibilityLabel).toBe('兼容性记录')
-    expect(state.discoveryLabel).toBe('官方 mumutool（只读）')
-    expect(state.compatibilityNote).toContain('检测并选择运行中的 MuMu Pro 实例')
+    expect(state.discoveryLabel).toBe('官方 mumutool')
+    expect(state.compatibilityNote).toContain('列出实例')
     expect(state.compatibilityNote).toContain('端口被其他实例复用')
     const advancedState = deviceSettingsState({ profile: unbound, metadata, advanced: true })
     expect(advancedState.fields.find((field) => field.key === 'installation_path').help).toContain(
       '/Applications/MuMuPlayer.app'
     )
     expect(advancedState.fields.find((field) => field.key === 'manager_path').help).toContain(
-      '不会启动或关闭模拟器'
+      '核验所选实例后可启动或关闭'
     )
     expect(state.fields.map((field) => field.key)).not.toContain('instance_id')
     expect(state.actions.detect.endpoint).toBe('discover')
@@ -963,10 +962,9 @@ describe('device settings state', () => {
       }
     }
     const state = deviceSettingsState({ profile: avd, metadata, result })
-    expect(state.actions.startAvd).toEqual({
+    expect(state.actions.startBound).toEqual({
       visible: true,
       disabled: false,
-      instance: 'Mower_API_35',
       label: '启动并测试连接'
     })
     expect(state.actions.detect.endpoint).toBe('preflight')
@@ -974,19 +972,19 @@ describe('device settings state', () => {
     expect(state.bindingHelp).toContain('mower 启动')
     for (const context of [{ busy: true }, { metadata: { ...metadata, active: true } }]) {
       expect(
-        deviceSettingsState({ profile: avd, metadata, ...context }).actions.startAvd.disabled
+        deviceSettingsState({ profile: avd, metadata, ...context }).actions.startBound.disabled
       ).toBe(true)
     }
     for (const instance_id of ['', '-1', 'Mower;other']) {
       expect(
-        deviceSettingsState({ profile: { ...avd, instance_id }, metadata }).actions.startAvd
+        deviceSettingsState({ profile: { ...avd, instance_id }, metadata }).actions.startBound
           .disabled
       ).toBe(true)
     }
-    expect(deviceSettingsState({ profile, metadata }).actions.startAvd.visible).toBe(false)
+    expect(deviceSettingsState({ profile, metadata }).actions.startBound.visible).toBe(false)
     expect(
-      deviceSettingsState({ profile: avd, metadata: { host_platform: 'windows' } }).actions.startAvd
-        .disabled
+      deviceSettingsState({ profile: avd, metadata: { host_platform: 'windows' } }).actions
+        .startBound.disabled
     ).toBe(true)
   })
   it('discovers AVDs on Mac and Linux while keeping a selected AVD on read-only preflight', () => {
@@ -1661,7 +1659,7 @@ describe('device settings state', () => {
       expect(state.actions.detect.endpoint).toBe('preflight')
       expect(state.fields.map((field) => field.key)).toEqual(result?.error.fields || [])
       expect(state.summary).toBe('雷电模拟器 9 · 雷电主账号')
-      if (result) expect(state.actions.detect.label).toBe('重试连接')
+      if (result) expect(state.actions.detect.label).toBe('检测并启动')
     }
   })
 
@@ -2207,8 +2205,12 @@ describe('device settings state', () => {
       label: '启动并测试连接'
     })
     expect(state.actions.detect.endpoint).toBe('preflight')
-    expect(state.actions.detect.options.map((option) => option.key)).toEqual(['detect', 'start'])
-    expect(state.actions.detect.options[0].label).toBe('测试连接')
+    expect(state.actions.detect.options.map((option) => option.key)).toEqual([
+      'detect',
+      'preflight',
+      'start'
+    ])
+    expect(state.actions.detect.options[0].label).toBe('检测并启动')
     // The read-only rule and the save rule sit next to the status tag, not in a
     // notice above the buttons.
     expect(state.bindingHelp).toBe('')
@@ -2251,7 +2253,7 @@ describe('device settings state', () => {
 
     const locked = deviceSettingsState({ profile: bound, metadata: { ...metadata, active: true } })
     expect(locked.actions.startBound.disabled).toBe(true)
-    expect(locked.actions.detect.options[1].disabled).toBe(true)
+    expect(locked.actions.detect.options[2].disabled).toBe(true)
 
     // The backend's own set is authoritative when it reports one.
     const backendSaysNo = deviceSettingsState({
@@ -2333,4 +2335,49 @@ describe('connection settings placement', () => {
     expect(genymotion.bindingHelp).toContain('只复核所选 VM')
     expect(genymotion.connectionHelp).toContain('这份设备设置才会保存')
   })
+})
+
+it('honors an empty backend startup capability list and rejects unverified MuMu serial startup', () => {
+  const selected = {
+    preset_id: 'macos.mumu_pro',
+    instance_id: '1',
+    topology_fingerprint: 'a'.repeat(64)
+  }
+  expect(
+    deviceSettingsState({
+      profile: selected,
+      metadata: { host_platform: 'macos', managed_instance_presets: [] }
+    }).actions.startBound.visible
+  ).toBe(false)
+  expect(() =>
+    deviceStartupRequest({}, selected, { host_platform: 'macos', managed_instance_presets: [] })
+  ).toThrow()
+  expect(() =>
+    deviceStartupRequest(
+      {},
+      { ...selected, topology_fingerprint: '', last_serial: '127.0.0.1:16416' },
+      { host_platform: 'macos' }
+    )
+  ).toThrow()
+  const request = deviceStartupRequest({}, selected, { host_platform: 'macos' })
+  expect(request.endpoint).toBe('start')
+  expect(request.payload.device.instance_id).toBe('1')
+})
+
+it('keeps a MuMu Pro instance error visible without hiding other candidates', () => {
+  const result = {
+    kind: 'discovery',
+    candidates: [
+      { key: 'failed', preset_id: 'macos.mumu_pro', instance_id: '0', state: 'error' },
+      { key: 'healthy', preset_id: 'macos.mumu_pro', instance_id: '1', state: 'stopped' }
+    ]
+  }
+  const state = deviceSettingsState({
+    profile: { ...profile, preset_id: 'macos.mumu_pro' },
+    result,
+    metadata: { host_platform: 'macos' }
+  })
+  expect(state.instances.options).toHaveLength(2)
+  expect(state.instances.options[0].label).toContain('操作失败')
+  expect(state.instances.options[1].label).toContain('已停止')
 })

@@ -19,7 +19,7 @@ MuMu Pro is NetEase's Android emulator for macOS. The bundled `mumutool info` co
 - **[INV-01] Rejection of Untrusted Endpoints**: Prior to verified `mumutool info` contracts, guessing endpoints or adopting foreign online ADB devices is strictly forbidden.
 - **[INV-02] Guided Manual Configuration**: Failed discovery returns actionable guidance; the MuMu Pro preset accepts a user-specified ADB serial.
 - **[INV-03] Unified Preflight Gate**: The selected endpoint passes standard read-only preflight (boot completion, 1920x1080 canvas frame, package detection).
-- The [manual binding repair](../bug-fix/2026-09-30-mumu-pro-manual-binding.md) restores connection under this preset while keeping manager operations unavailable.
+- The [manual binding repair](../bug-fix/2026-09-30-mumu-pro-manual-binding.md) restores connection under this preset while keeping lifecycle operations unavailable for manual serial profiles.
 - The [instance selection decision](2026-09-30-mumu-pro-instance-selection.md) adds read-only discovery and per-instance identity checks.
 
 ---

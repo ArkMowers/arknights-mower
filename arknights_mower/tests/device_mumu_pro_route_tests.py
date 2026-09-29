@@ -3,7 +3,7 @@
 import json
 import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
 from arknights_mower.tests.device_application_tests import ManualAdapter
@@ -63,6 +63,30 @@ class MuMuProRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json
 
+    def test_detection_manager_start_requires_explicit_boolean_and_matching_preset(
+        self,
+    ):
+
+        with patch.object(
+            self.control,
+            "prepare_mumu_pro_manager",
+            wraps=self.control.prepare_mumu_pro_manager,
+        ) as prepare:
+            self.post_device("/device/discover", {"preset_id": MUMU_PRESET})
+            prepare.assert_not_called()
+            invalid = self.client.post(
+                "/device/discover", headers=self.headers, json={"start_manager": "true"}
+            )
+            self.assertEqual(invalid.status_code, 400)
+            prepare.assert_not_called()
+            rejected = self.client.post(
+                "/device/discover",
+                headers=self.headers,
+                json={"device": {"preset_id": "manual.other"}, "start_manager": True},
+            )
+            self.assertEqual(rejected.json["error"]["code"], "start_unsupported")
+            prepare.assert_called_once()
+
     def assert_manual_required(self, result):
         self.assertFalse(result["ok"])
         self.assertEqual(result["candidates"], [])
@@ -107,6 +131,7 @@ class MuMuProRouteTests(unittest.TestCase):
             )
 
         simulator = ProductionSimulator(run=run)
+        simulator._mumu_pro._connect = MagicMock()
         self.control = DeviceControl(
             lambda: config.conf,
             ManualAdapter(),

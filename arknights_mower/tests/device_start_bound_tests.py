@@ -98,6 +98,37 @@ class StartBoundTests(unittest.TestCase):
         self.assertEqual(stopped_at, [47])
         self.assertEqual(self.simulator.actions, ["start", "stop", "start"])
 
+    def test_macos_mumu_pro_selected_instance_uses_shared_launch_route(self):
+        self.io.host = "macos"
+        before = self.path.read_bytes()
+        ready = self.start(
+            device={
+                "preset_id": "macos.mumu_pro",
+                "instance_id": "1",
+                "topology_fingerprint": "a" * 64,
+                "adb_path": "verified-adb",
+            }
+        )
+        self.assertTrue(ready["ok"], ready["error"])
+        self.assertEqual(self.simulator.actions, ["start"])
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_linux_waydroid_selected_session_uses_shared_launch_route(self):
+        self.io.host = "linux"
+        self.io.installed.update({"/usr/bin/waydroid", "/var/lib/waydroid"})
+        ready = self.start(
+            device={
+                "preset_id": "linux.waydroid",
+                "instance_id": "waydroid:501",
+                "manager_path": "/usr/bin/waydroid",
+                "installation_path": "/var/lib/waydroid",
+                "config_path": "/var/lib/waydroid/waydroid.cfg",
+                "adb_path": "verified-adb",
+            }
+        )
+        self.assertTrue(ready["ok"], ready["error"])
+        self.assertEqual(self.simulator.actions, ["start"])
+
     def test_presets_without_a_manager_are_rejected_without_starting(self):
         rejected = self.start(
             device={

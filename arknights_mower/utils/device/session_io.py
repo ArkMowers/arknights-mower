@@ -453,7 +453,10 @@ _INSTANCE_MANAGERS = {
 }
 
 # Presets whose own multi-instance manager can launch an already bound instance.
-MANAGED_INSTANCE_PRESETS = frozenset(_INSTANCE_MANAGERS)
+MANAGED_INSTANCE_PRESETS = frozenset(_INSTANCE_MANAGERS) | {
+    MUMU_PRO_PRESET,
+    WAYDROID_PRESET,
+}
 
 
 class ProductionSimulator:
@@ -491,6 +494,9 @@ class ProductionSimulator:
         )
         self._mumu_pro = MuMuProController(run=self._run, monotonic=monotonic)
 
+    def prepare_mumu_pro(self, profile, timeout=6):
+        return self._mumu_pro.prepare_manager(profile, timeout)
+
     def discover_mumu_pro(self, profile, timeout=6):
         return self._mumu_pro.discover(profile, timeout)
 
@@ -520,7 +526,9 @@ class ProductionSimulator:
         return adapter
 
     def start(self, profile, timeout: float) -> bool:
-        if profile.preset_id == "linux.genymotion":
+        if profile.preset_id == MUMU_PRO_PRESET:
+            started = self._mumu_pro.start(profile, timeout)
+        elif profile.preset_id == "linux.genymotion":
             started = self._genymotion.start(profile, timeout)
         elif profile.preset_id == REDROID_PRESET:
             started = self._redroid.start(profile, timeout)
@@ -539,6 +547,8 @@ class ProductionSimulator:
         return started
 
     def stop(self, profile, timeout: float) -> bool:
+        if profile.preset_id == MUMU_PRO_PRESET:
+            return self._mumu_pro.stop(profile, timeout)
         if profile.preset_id == "linux.genymotion":
             return self._genymotion.stop(profile, timeout)
         if profile.preset_id == REDROID_PRESET:
