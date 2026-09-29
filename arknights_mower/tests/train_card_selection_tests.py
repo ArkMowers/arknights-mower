@@ -167,3 +167,45 @@ def test_unselected_card_below_blue_frame_is_not_ambiguous():
     lower_scope = ((631, 909), (820, 941))
     assert agent_card_selected(frame, NORMAL_SCOPE) is True
     assert agent_card_selected(frame, lower_scope) is False
+
+
+def test_notice_over_selected_card_does_not_interrupt_verification(monkeypatch):
+    frame = normal_card_frame(True)
+    frame[95:145] = 50
+    page = (("但书", NORMAL_SCOPE),)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    monkeypatch.setattr(base_mixin, "operator_list", lambda img, **kwargs: page)
+
+    assert agent_card_selected(frame, NORMAL_SCOPE) is True
+    assert solver.wait_for_arranged_agents(["但书"]) == ["但书"]
+
+
+def test_notice_over_selected_training_card_uses_remaining_border():
+    frame = card_frame(True)
+    frame[95:145] = 50
+
+    assert train_card_selected(frame, SCOPE) is True
+
+
+def test_neighboring_blue_frames_do_not_select_occluded_card(monkeypatch):
+    frame = normal_card_frame(False)
+    for top_left, bottom_right in (
+        ((393, 113), (614, 532)),
+        ((825, 113), (1046, 532)),
+        ((609, 534), (830, 953)),
+    ):
+        cv2.rectangle(frame, top_left, bottom_right, (0, 180, 230), 7)
+    frame[95:145] = 50
+
+    assert agent_card_selected(frame, NORMAL_SCOPE) is not True
+    page = (("但书", NORMAL_SCOPE),)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    monkeypatch.setattr(base_mixin, "operator_list", lambda img, **kwargs: page)
+    with pytest.raises(AgentSelectionNotReady):
+        solver.wait_for_arranged_agents(["但书"])
