@@ -19,6 +19,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-12] Android Configuration Ownership**: Do all configuration boundaries retain Android-managed settings independently of desktop Device Profile values, including malformed desktop-only fields, while preserving editable game server selection, Base Plans, weekly plans and general task settings through export/import round trips?
+
 - [ ] **[INV-DEV-11] MuMu Pro Verified Selection**: Does discovery expose distinct instances from bounded manager output, and does each connection recheck index and topology fingerprint before accepting that instance's current ADB endpoint, without manager lifecycle commands?
 
 - [ ] **[INV-DEV-10] MuMu Pro Manual Binding**: Does the MuMu Pro preset use only the selected serial after standard preflight, reject missing or mismatched targets, and avoid unverified manager start and stop commands?
