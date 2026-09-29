@@ -39,7 +39,9 @@ def room_reader():
             config=SimpleNamespace(free_room=False),
         )
 
-        def update_detail(name, value, room, index, update_time):
+        def update_detail(
+            name, value, room, index, update_time, *, preserve_depletion_rate=False
+        ):
             target.mood = value
             target.current_room = room
             target.current_index = index

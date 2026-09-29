@@ -272,3 +272,55 @@ def test_empty_exhaust_trigger_and_planning_wakeup_are_not_consumed(solver):
     solver.tasks.extend(triggers)
     solver._prepare_shift_cycle(task)
     assert all(any(t is trigger for t in solver.tasks) for trigger in triggers)
+
+
+def test_projection_reuses_eval_rules_without_copying_runtime_builtins(solver):
+    class RuntimeBuiltin:
+        def __deepcopy__(self, memo):
+            raise TypeError("runtime builtin cannot be copied")
+
+    # eval 注入的内建对象可能包含平台扩展句柄，不能随心情缓存深拷贝。
+    solver.op_data.eval_model.imported_functions["__builtins__"] = {
+        "runtime_handle": RuntimeBuiltin()
+    }
+    task = backup.resting(solver)
+    before = backup.positions(solver.op_data)
+    solver._prepare_shift_cycle(task)
+    assert backup.positions(solver.op_data) == before
+    assert task.plan
+    apply(solver, task)
+    assert not solver.agent_get_mood(read_rooms=False, return_plan=True)
+
+
+def test_vacancy_check_does_not_start_work_correction_without_rotation(solver):
+    for op in solver.op_data.operators.values():
+        op.mood = 24
+    # 独立工作纠错留给原巡检流程，不能因为空床额外生成换班。
+    solver.op_data.operators["薇薇安娜"]._current_room = ""
+    solver.agent_get_mood = MagicMock(
+        side_effect=AssertionError("unexpected correction")
+    )
+    before = backup.positions(solver.op_data)
+    assert solver._fill_empty_dorms()
+    assert all(task.type == TaskTypes.FILL_DORM for task in solver.tasks)
+    assert backup.positions(solver.op_data) == before
+    solver.agent_get_mood.assert_not_called()
+
+
+def test_vacancy_check_converges_eligible_rotation_before_idle_filling(solver):
+    for op in solver.op_data.operators.values():
+        op.mood = 24
+    for name in solver.op_data.groups["红松"]:
+        solver.op_data.operators[name].mood = 1
+    before = backup.positions(solver.op_data)
+    assert solver._fill_empty_dorms()
+    assert backup.positions(solver.op_data) == before
+    assert len(solver.tasks) == 1
+    task = solver.tasks[0]
+    assert task.type == TaskTypes.SHIFT_OFF
+    apply(solver, task)
+    assert all(
+        solver.op_data.operators[name].is_resting()
+        for name in solver.op_data.groups["红松"]
+    )
+    assert not solver.agent_get_mood(read_rooms=False, return_plan=True)

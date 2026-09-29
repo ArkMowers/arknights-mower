@@ -13,6 +13,8 @@ Experimental Dynamic Shift Transition converges backup conditions, eligible off-
 
 [INV-SCHED-05] Complete Shift Projection requires both backup conditions and the resulting roster to stabilize. A repeated state or the iteration bound raises `ValueError` before committing the task or actual occupancy. Initial mood probes, Fiammetta charging, product-switch reservations, and urgent trade/mastery deadlines retain their existing dispatch boundaries. Unknown game-selected `Free` occupants are resolved during actual selection and require a later evaluation with that new information.
 
+Vacancy checks start complete convergence only when `resting` produces an off-shift arrangement, including its dorm slots. Otherwise they retain empty-only filling and leave work correction to its existing entry point. Projection deep-copies scheduling state while sharing the expression validation model; Python runtime builtins injected by expression evaluation are not copied.
+
 Fiammetta's temporary dorm transitions preserve the measured work depletion rate while normal mood sampling updates the mood and timestamp. Subsequent work inspections continue calibrating the rate under [INV-SCHED-01].
 
 ## Simplification evidence
@@ -21,4 +23,4 @@ Fiammetta's temporary dorm transitions preserve the measured work depletion rate
 
 ## Verification
 
-`shift_cycle_convergence_tests.py` covers return-triggered rotation, cache isolation, failure rollback, urgent-task protection, and a six-backup Scheduling Plan with a recorded cache and later return intent. That fixture reconstructs a planning scenario; it is not a complete device replay. Existing backup replay and dorm suites cover final-post legality and bed preservation. Charge-return reading tests cover depletion-rate retention.
+`shift_cycle_convergence_tests.py` covers return-triggered rotation, cache isolation, failure rollback, urgent-task protection, and a six-backup Scheduling Plan with a recorded cache and later return intent. That fixture reconstructs a planning scenario; it is not a complete device replay. Existing backup replay and dorm suites cover final-post legality and bed preservation. Charge-return reading tests cover depletion-rate retention. Vacancy regressions cover admission guards, urgent deadlines, and rotation before filling; a non-copyable runtime builtin verifies expression-model reuse.

@@ -477,7 +477,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ):
             return False
         shift = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
-        self._prepare_shift_cycle(shift)
+        self._prepare_shift_cycle(shift, vacancy_only=True)
         if any(not room.startswith("dorm") for room in shift.plan):
             self.tasks.append(shift)
             return True
@@ -3986,7 +3986,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             projected.swap_plan(conditions)
         return projected.products, projected.plan
 
-    def _prepare_shift_cycle(self, task):
+    def _prepare_shift_cycle(self, task, *, vacancy_only=False):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
         if (
             not self.op_data.experimental_dorm_logic
@@ -4040,8 +4040,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         consumed = {id(t) for t in coalesced}
         simulation = copy.copy(self)
-        simulation.op_data = copy.deepcopy(self.op_data)
+        # 求值模型只读复用；eval 注入的 Python 内建对象不能全部深拷贝。
+        simulation.op_data = copy.deepcopy(
+            self.op_data, {id(self.op_data.eval_model): self.op_data.eval_model}
+        )
         pending = [t for t in self.tasks if t is not task and id(t) not in consumed]
+        if vacancy_only:
+            # 单纯补空床不发起工作纠错；已有下班需求才展开整轮换班。
+            simulation.tasks = copy.deepcopy(pending)
+            simulation.task = None
+            simulation.total_agent = [
+                op
+                for op in simulation.op_data.operators.values()
+                if op.is_high() and not op.room.startswith("dorm")
+            ]
+            intent = simulation.resting()
+            if not intent:
+                return
+            _merge_dorm_arrangement(
+                intent, try_reorder(simulation.op_data, intent) or {}
+            )
         step = SchedulerTask(task_type=task.type, task_plan=copy.deepcopy(intent))
         returning = set()
         seen = set()

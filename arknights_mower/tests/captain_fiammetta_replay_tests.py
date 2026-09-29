@@ -118,8 +118,8 @@ def test_logged_charge_replaces_old_rest_in_one_final_arrangement(captain):
     captain.agent_arrange = MagicMock(side_effect=arrange)
     captain.infra_main()
     assert len(seen) == 1
-    assert seen[0]["central"][1] == "歌蕾蒂娅"
-    assert captain.op_data.operators["歌蕾蒂娅"].current_room == "central"
+    # 完整收敛只提交实际差异；原本就在目标岗位的人可以保留 Current。
+    assert captain.op_data.get_current_operator("central", 1).name == "歌蕾蒂娅"
     assert all(captain.op_data.operators[n].is_working() for n in deepsea)
     assert captain.op_data.operators["信仰搅拌机"].is_resting()
 
