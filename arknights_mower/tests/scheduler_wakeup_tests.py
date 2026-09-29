@@ -65,6 +65,7 @@ def scheduler(monkeypatch):
     solver.craft_material = MagicMock(side_effect=solver.skip)
     wake = Event()
     monkeypatch.setattr(config, "wake_scheduler", wake)
+    monkeypatch.setattr(config, "maintenance_recheck", Event())
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(config.conf, "enable_mastery", False)
     monkeypatch.setattr(base_schedule, "datetime", Clock)
@@ -165,6 +166,21 @@ def test_maintenance_sleep_ignores_regular_scheduler_wakeup(scheduler):
 
     assert scheduler.clock.now() == started_at + timedelta(seconds=2)
     assert scheduler.wake.is_set()
+    assert not scheduler.solver.sleeping
+
+
+def test_maintenance_wake_returns_to_main_before_dispatch(scheduler):
+    def start_maintenance():
+        config.maintenance_recheck.set()
+        scheduler.wake.set()
+
+    scheduler.on_sleep = start_maintenance
+    scheduler.solver.run()
+
+    scheduler.solver.agent_arrange.assert_not_called()
+    assert scheduler.shift in scheduler.solver.tasks
+    assert scheduler.clock.now() < scheduler.shift.time
+    assert config.maintenance_recheck.is_set()
     assert not scheduler.solver.sleeping
 
 

@@ -106,10 +106,12 @@ def _arm_maintenance_timer(info: MaintenanceInfo, now=None):
                 with _maintenance_timer_lock:
                     _maintenance_timer = None
                     _maintenance_timer_key = None
+                config.maintenance_recheck.set()
                 config.wake_scheduler.set()
             elif info.update_type == "major":
                 _stop_for_major_update(info)
             else:
+                config.maintenance_recheck.set()
                 config.wake_scheduler.set()
 
         timer = Timer(delay, begin_maintenance)
@@ -258,6 +260,7 @@ def _read_depot_scan_timestamp(path):
 # 执行自动排班
 def main(saved_state, restart_after_mood_read=False):
     global base_scheduler
+    config.maintenance_recheck.clear()
     try:
         with resource_task_session():
             return _main(saved_state, restart_after_mood_read)
@@ -473,6 +476,7 @@ def simulate(saved, restart_after_mood_read=False):
             logger.exception(ex)
     while True:
         try:
+            config.maintenance_recheck.clear()
             refresh_resource_at_boundary()
             maintenance = NewsChecker.get_maintenance()
             _apply_version_update_resting_threshold(maintenance, base_scheduler)
@@ -629,6 +633,9 @@ def simulate(saved, restart_after_mood_read=False):
                             ).total_seconds()
 
                     base_scheduler.rest_until_next_task()
+                    # A maintenance timer may have ended this sleep. Recheck the
+                    # announcement before dispatching another scheduler task.
+                    continue
 
             result = base_scheduler.run()
             if result == "restart_after_mood_read":
