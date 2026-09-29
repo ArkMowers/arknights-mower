@@ -197,6 +197,15 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 reserved.add(candidate)
                 break
             else:
+                if (
+                    op_data.experimental_dorm_logic
+                    and not op.group
+                    and op.exhaust_require
+                    and op.rest_in_full
+                ):
+                    # 独立暖机干员继续本轮恢复；正常规划按床位时间重建回班任务。
+                    slots[index] = "Current"
+                    continue
                 if op.group:
                     recalling_groups.add(op.group)
                 logger.debug(
