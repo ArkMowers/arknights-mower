@@ -181,6 +181,35 @@ def test_fiammetta_removed_from_dorm_invalidates_only_idle_reservation(room_read
     assert solver.op_data.operators["菲亚梅塔"].current_room == ""
 
 
+@pytest.mark.parametrize("experimental", [False, True])
+@pytest.mark.parametrize("strict", [False, True])
+def test_early_limit_release_is_recorded_only_after_actual_departure(
+    room_reader, experimental, strict
+):
+    solver, target, deadline = room_reader(room="dormitory_1", name="令", mood=11)
+    target.upper_limit = 12
+    solver.op_data.experimental_dorm_logic = experimental
+    solver.op_data.get_dorm_by_name = lambda name: (None, None)
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data="令",
+        time=deadline,
+        strict_mood_limit=strict,
+    )
+    # 任务存在但实际仍在宿舍时，不结束本轮休息。
+    solver.get_agent_from_room("dormitory_1")
+    assert getattr(target, "rest_mood_release_limit", None) is None
+    assert target.current_room == "dormitory_1"
+    solver.find.side_effect = None
+    solver.find.return_value = True  # 实读确认床位已空。
+    solver.get_agent_from_room("dormitory_1")
+    assert target.current_room == ""
+    assert target.mood == 11
+    assert getattr(target, "rest_mood_release_limit", None) == (
+        12 if experimental and strict else None
+    )
+
+
 @pytest.mark.parametrize("location", ["dormitory_2", "", "unexpected_occupant"])
 def test_fiammetta_reschedules_from_actual_room_after_move(room_reader, location):
     solver, fia, deadline = room_reader(room="dormitory_2", name="菲亚梅塔", mood=24)

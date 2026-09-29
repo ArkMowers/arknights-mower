@@ -436,6 +436,7 @@ def simulate(saved, restart_after_mood_read=False):
                     v, "resting_from_train", False
                 )
                 for attr, default in (
+                    ("rest_mood_release_limit", None),
                     ("dorm_mood_fallback", ""),
                     ("dorm_mood_peers", {}),
                     ("idle_rest_check", None),

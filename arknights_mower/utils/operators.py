@@ -679,7 +679,12 @@ class Operators:
             self.has_rest_mood_limit(name)
             and op is not None
             and has_resting_mood(op)
-            and resting_mood(op) >= op.upper_limit
+            and (
+                resting_mood(op) >= op.upper_limit
+                or self.experimental_dorm_logic
+                and not op.current_room
+                and getattr(op, "rest_mood_release_limit", None) == op.upper_limit
+            )
         )
 
     def is_free_room_excluded(self, name):
@@ -1346,6 +1351,9 @@ class Operators:
             operator.dorm_mood_fallback = getattr(exist, "dorm_mood_fallback", "")
             operator.dorm_mood_peers = getattr(exist, "dorm_mood_peers", {}).copy()
             operator.idle_rest_check = getattr(exist, "idle_rest_check", None)
+            operator.rest_mood_release_limit = getattr(
+                exist, "rest_mood_release_limit", None
+            )
             operator.standby_low_priority = getattr(
                 exist, "standby_low_priority", False
             )
@@ -1568,6 +1576,7 @@ class Operators:
                         op = projected.operators[name]
                         # 不触发 current_room 的通知／记账回调。
                         op._current_room, op.current_index = room, index
+                        op.rest_mood_release_limit = None
             for bed in projected.dorm:
                 occupant = projected.get_current_operator(*bed.position)
                 if occupant is not None and projected.is_recovery_dorm(
@@ -2197,6 +2206,7 @@ class Operator:
         self.dorm_recovery_room = ""
         self.dorm_recovery_index = -1
         self.resting_from_train = False
+        self.rest_mood_release_limit = None
         # (单回宿管姓名, 床位, 移动版本)；旧缓存的全宿管姓名元组会自动失效。
         self.dorm_recovery_fixed = ()
         self.single_recovery_manager = False
@@ -2232,6 +2242,8 @@ class Operator:
                 self.dorm_mood_peers = {}
             self.clear_dorm_recovery()
             self._current_room = value
+            if value:
+                self.rest_mood_release_limit = None
             started_working = not was_working and self.is_working()
             if Operators.current_room_changed_callback and (
                 started_working or self.refresh_order_room[0] or self.refresh_drained
