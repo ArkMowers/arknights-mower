@@ -157,3 +157,44 @@ def test_legacy_fia_keeps_existing_cache_selection(solver):
     solver.plan_fia()
     solver.enter_room.assert_not_called()
     assert solver.tasks[0].plan == {ROOM: ["伊内丝", "菲亚梅塔"]}
+
+
+@pytest.mark.parametrize("read_mood", [False, True])
+@pytest.mark.parametrize("experimental", [False, True])
+def test_charge_return_keeps_work_rate_and_later_work_can_recalibrate(
+    solver, monkeypatch, read_mood, experimental
+):
+    import numpy as np
+
+    data = solver.op_data
+    data.config.experimental_dorm_logic = experimental
+    target = data.operators["讯使"]
+    target._current_room, target.current_index = ROOM, 2
+    target.mood, target.time_stamp, target.depletion_rate = 24, datetime.now(), 3.25
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA, task_plan={"contact": ["讯使"]}
+    )
+    solver.tasks = [solver.task]
+    solver.recog = MagicMock(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    solver.find = MagicMock(return_value=None)
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.scroll_room_operators = MagicMock()
+    solver.read_screen = MagicMock(return_value="讯使")
+    solver.read_accurate_mood = MagicMock(return_value=24)
+    solver.read_operator_time = MagicMock(return_value=datetime.now())
+    monkeypatch.setattr(target, "need_to_refresh", lambda **kw: read_mood)
+    monkeypatch.setattr(
+        "arknights_mower.solvers.record.save_agent_action", lambda *a, **kw: None
+    )
+    solver.get_agent_from_room("contact")
+    assert target.current_room == "contact"
+    assert target.depletion_rate == 3.25
+    assert target.mood == 24
+    half_hour = target.time_stamp + timedelta(minutes=30)
+    assert target.current_mood(half_hour) == pytest.approx(22.375)
+    # 正常工作实读仍校准速度，充能保护不是永久锁定速度。
+    target.time_stamp = datetime.now() - timedelta(hours=1)
+    data.update_detail(target.name, 20, "contact", 0, True)
+    assert target.depletion_rate == pytest.approx(4, abs=0.01)

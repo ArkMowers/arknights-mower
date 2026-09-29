@@ -1104,6 +1104,7 @@ class Operators:
         current_index,
         update_time=False,
         related_operator=None,
+        preserve_depletion_rate=False,
     ):
         """更新对象的详细信息，并记录到SQLite数据库
         参数:
@@ -1113,6 +1114,7 @@ class Operators:
         current_index(int): 当前索引（新）。
         update_time(bool, 可选): 是否更新时间戳，默认为
         False 是否刷新时间
+        preserve_depletion_rate(bool): 临时充能换位保留工作消耗速度，仍更新心情采样。
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
@@ -1131,7 +1133,11 @@ class Operators:
         ) and (current_room, current_index) == (agent.room, agent.index)
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
-            if agent.time_stamp is not None and agent.mood > mood:
+            if (
+                not preserve_depletion_rate
+                and agent.time_stamp is not None
+                and agent.mood > mood
+            ):
                 time_difference = datetime.now() - agent.time_stamp
                 if time_difference > timedelta(minutes=29):
                     logger.debug("开始计算心情掉率")
@@ -1152,7 +1158,8 @@ class Operators:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
-            agent.depletion_rate = 0
+            if not preserve_depletion_rate:
+                agent.depletion_rate = 0
         if from_dorm:
             idx, dorm = self.get_dorm_by_name(name)
             if dorm and dorm.name == name:

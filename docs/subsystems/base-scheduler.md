@@ -54,6 +54,10 @@ flowchart TD
 - Replaces static timetable rotations with condition-driven transitions between work facilities and dormitories.
 - Handles off-shift rotation for exhausted operators, on-shift deployment for replacements, post-rest stationing, trade order runs (Proviso, Tequila, Closure), and Fiammetta energy charges.
 
+- Experimental ordinary shifts converge backup conditions, subsequent eligible off-shift groups, cached corrections, and final empty-bed filling in an isolated projection. Failed convergence preserves actual occupancy and the original task.
+- Temporary Fiammetta dorm visits retain the measured work depletion rate; mood and sample timestamps still refresh.
+- Decision record: [Complete shift convergence](../../.agents/notes/implemented/simplification/2026-09-29-complete-shift-convergence.md).
+
 ### 2.6 Clue Collection & Exchange
 - Directs operators stationed in the Reception Room to gather clues 1 through 7, receive clues from friends, and gift surplus clues.
 - Initiates 24-hour Clue Parties upon completing full clue sets and tracks active party state (`party_time`) to activate corresponding backup plans.
@@ -77,6 +81,7 @@ flowchart TD
 - **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Dormitory beds are strictly single-occupancy; operators reaching maximum mood must immediately release beds to unblock rotation queues.
 - **[INV-SCHED-04] Shift Transition Compensation**: Condition-triggered shifts (order runs, backup plans) must preserve state rollback on failure, avoiding orphaned room assignments.
 - **[INV-REC-02] Occluded Operator Selection**: A card with an obscured upper selection border is confirmed only when both vertical borders and the leading portion of its lower border are visible; adjacent card borders cannot confirm selection.
+- **[INV-SCHED-05] Complete Shift Projection**: Experimental ordinary shifts submit only after backup conditions, eligible rotations, cached corrections, and final bed filling stabilize on an isolated projection; failure preserves the original task and actual occupancy.
 
 ---
 

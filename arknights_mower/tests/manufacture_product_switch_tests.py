@@ -319,11 +319,13 @@ def test_infra_main_switches_before_shift_off_arrangement(experimental):
     )
     solver.find = MagicMock(return_value=(1, 1))
     solver.refresh_connecting = False
+    solver._prepare_shift_cycle = MagicMock()
     solver._switch_products_before_arrangement = MagicMock()
     solver.agent_arrange = MagicMock(return_value=True)
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.plan_metadata = MagicMock()
     sequence = MagicMock()
+    sequence.attach_mock(solver._prepare_shift_cycle, "prepare")
     sequence.attach_mock(solver._switch_products_before_arrangement, "switch")
     sequence.attach_mock(solver.agent_arrange, "arrange")
 
@@ -331,7 +333,7 @@ def test_infra_main_switches_before_shift_off_arrangement(experimental):
         solver.infra_main()
 
     assert [call[0] for call in sequence.mock_calls] == (
-        ["switch", "arrange"] if experimental else ["arrange"]
+        ["prepare", "switch", "arrange"] if experimental else ["arrange"]
     )
 
 
@@ -347,6 +349,7 @@ def test_infra_main_keeps_shift_off_pending_when_product_switch_waits():
     solver.tasks = [task]
     solver.find = MagicMock(return_value=(1, 1))
     solver.refresh_connecting = False
+    solver._prepare_shift_cycle = MagicMock()
     solver._switch_products_before_arrangement = MagicMock(
         side_effect=base.ProductSwitchDeferred("无人机不足", minutes=7)
     )
