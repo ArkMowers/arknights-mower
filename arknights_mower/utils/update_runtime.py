@@ -351,6 +351,11 @@ def detached_options():
     return {"start_new_session": True}
 
 
+def hidden_console_options():
+    """Hide console tools started by a windowed application on Windows."""
+    return {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+
+
 def launch_environment(record, job_id="", background=False):
     env = os.environ.copy()
     # A frozen child must initialize its own bootloader/runtime, including after

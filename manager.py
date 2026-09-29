@@ -109,6 +109,7 @@ class Api:
 
         from arknights_mower.utils.update_runtime import (
             active_job,
+            hidden_console_options,
             installation_root,
             launch_environment,
         )
@@ -132,7 +133,9 @@ class Api:
         env = launch_environment(
             {"data_dir": os.environ.get("MOWER_DATA_DIR", ""), "managed": True}
         )
-        process = Popen(command, cwd=installation_root(), env=env)
+        process = Popen(
+            command, cwd=installation_root(), env=env, **hidden_console_options()
+        )
         # Reap instances even while the manager window stays open.
         Thread(target=process.wait, daemon=True).start()
         return {"ok": True}

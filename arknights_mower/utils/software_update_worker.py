@@ -29,6 +29,7 @@ if __package__:
     from .update_runtime import (
         InstanceScanError,
         detached_options,
+        hidden_console_options,
         instances,
         launch_environment,
         process_alive,
@@ -43,6 +44,7 @@ else:
     from update_runtime import (
         InstanceScanError,
         detached_options,
+        hidden_console_options,
         instances,
         launch_environment,
         process_alive,
@@ -97,7 +99,11 @@ def generated_npm_lockfile(git, root, env=None):
     try:
         local = target.read_bytes()
         committed = subprocess.check_output(
-            [git, "show", "HEAD:" + NPM_LOCKFILE], cwd=root, env=env, timeout=10
+            [git, "show", "HEAD:" + NPM_LOCKFILE],
+            cwd=root,
+            env=env,
+            timeout=10,
+            **hidden_console_options(),
         )
         if npm_lockfile_without_metadata(local) == npm_lockfile_without_metadata(
             committed
@@ -132,6 +138,7 @@ def require_clean_source(git, root, env=None, *, force=False, environment=None):
         text=True,
         encoding="utf-8",
         timeout=10,
+        **hidden_console_options(),
     )
     if isinstance(changes, bytes):
         changes = changes.decode("utf-8", errors="replace")
@@ -153,6 +160,7 @@ def require_clean_source(git, root, env=None, *, force=False, environment=None):
             text=True,
             encoding="utf-8",
             timeout=10,
+            **hidden_console_options(),
         )
         entries.extend(tracked.rstrip().splitlines())
     generated = {}
@@ -628,6 +636,7 @@ class Worker:
                     ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                     check=False,
                     timeout=15,
+                    **hidden_console_options(),
                 )
             else:
                 try:
@@ -647,6 +656,7 @@ class Worker:
             text=True,
             encoding="utf-8",
             timeout=60,
+            **hidden_console_options(),
         ).strip()
 
     def prepare_source(self):

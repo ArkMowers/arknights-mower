@@ -17,6 +17,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.update_runtime import hidden_console_options
 
 
 def retry_wrapper(max_retries: int = 3, delay: float = 0.5):
@@ -238,7 +239,11 @@ class MuMu12IPC:
         cmd = [self._manager, subcmd, "-v", str(self._index), "-a"]
         try:
             out = subprocess.run(
-                cmd, capture_output=True, text=True, check=True
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                **hidden_console_options(),
             ).stdout.strip()
             return json.loads(out)
         except Exception as e:
@@ -256,7 +261,13 @@ class MuMu12IPC:
                 "core_version",
             ]
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    **hidden_console_options(),
+                )
                 output = result.stdout.strip()
                 return output
                 # logger.debug("MuMu setting info loaded and cached.")
@@ -281,7 +292,13 @@ class MuMu12IPC:
         """获取模拟器运行状态（实时查询）"""
         cmd = [self._manager, "api", "-v", str(self._index), "player_state"]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                **hidden_console_options(),
+            )
             player_index = None
             found_condition = False
             stdout = result.stdout
