@@ -109,14 +109,14 @@ function reload() {
   <n-card title="配置导出与导入">
     <n-space vertical :size="16">
       <n-text>
-        将当前实例的 config 文件夹打包为 ZIP，保留 conf.yml、plan.json、周计划等配置原文件， 不包含
-        state.json。主排班和所有备用排班均包含在 plan.json 中。
+        将当前实例的 config 配置原文件与 tmp 数据表、库存和记录一起打包为 ZIP，不包含
+        state.json。主排班和所有备用排班均包含在 plan.json 中，数据库包含专精计划和历史数据。
       </n-text>
       <n-text depth="3">
         导入时保留当前管理页面端口、访问令牌和网络代理，以及需要重启生效的托盘和窗口尺寸。
         其余配置按备份恢复，并自动刷新页面加载，无需重启 Mower。
-        备份包含账号、密码和密钥，请妥善保管。导入前会自动备份现有配置。 config
-        文件夹以外的数据（包括数据库、其他实例及浏览器偏好）不在备份中。
+        备份包含账号、密码和密钥，请妥善保管。导入前会自动备份现有配置及 tmp 数据，
+        导入后清空调度状态缓存。资源包、更新文件、其他实例及浏览器偏好不在备份中。
       </n-text>
       <n-space>
         <n-button :loading="busy" :disabled="busy || pendingReload" @click="exportConfig">
@@ -155,7 +155,8 @@ function reload() {
       :positive-button-props="{ disabled: busy }"
       @positive-click="importConfig"
     >
-      将使用「{{ filename }}」恢复配置，保留当前管理页面端口、访问令牌和网络代理。 请先停止
+      将使用「{{ filename }}」恢复配置及备份内的 tmp 数据表、库存和记录，覆盖对应本机数据，
+      未包含的数据文件保持不变。保留当前管理页面端口、访问令牌和网络代理。请先停止
       Mower；导入前会自动生成恢复备份。托盘和窗口尺寸保持不变，导入成功后自动刷新页面加载新配置，
       无需重启 Mower，且此次刷新不会自动开始任务。
     </n-modal>

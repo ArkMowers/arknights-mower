@@ -1,15 +1,17 @@
-"""Back up and restore the current instance's config directory as a ZIP."""
+"""Back up and restore instance configuration and persistent data as a ZIP."""
 
 import json
 import os
 import sqlite3
 import stat
 import sys
-from contextlib import closing, nullcontext
+from contextlib import closing
 from datetime import datetime
 from io import BytesIO
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+from tempfile import TemporaryDirectory
 from threading import RLock
+from time import monotonic
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 from zlib import error as ZlibError
@@ -31,6 +33,15 @@ MAX_BACKUP_BYTES = 16 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
 IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "state.json"}
+TMP_DATA_FILES = {
+    "data.db",
+    "cultivate.json",
+    "depotresult.csv",
+    "depotmerged.csv",
+    "report.csv",
+    "skland.csv",
+    "workshop_preset.json",
+}
 
 
 class LocalConfigError(ValueError):
@@ -65,12 +76,83 @@ def _local_snapshot():
     return files, names
 
 
-def _archive_bytes(files):
+def _copy_database(source, destination):
+    deadline = monotonic() + 10
+    with (
+        closing(
+            sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True, timeout=5)
+        ) as reader,
+        closing(sqlite3.connect(destination, timeout=5)) as writer,
+    ):
+        page_size = reader.execute("PRAGMA page_size").fetchone()[0]
+        page_count = reader.execute("PRAGMA page_count").fetchone()[0]
+        if page_count * page_size > MAX_BACKUP_BYTES:
+            raise LocalConfigError("本机数据库超过 16 MB，无法生成备份")
+
+        def progress(status, remaining, total):
+            if status == sqlite3.SQLITE_DONE:
+                return
+            if total * page_size > MAX_BACKUP_BYTES:
+                raise LocalConfigError("本机数据库超过 16 MB，无法生成备份")
+            if monotonic() >= deadline:
+                raise sqlite3.OperationalError("数据库备份超时，请停止写入后重试")
+
+        reader.backup(writer, pages=256, progress=progress, sleep=0.05)
+
+
+def _tmp_snapshot(total):
+    root = get_path("@app/tmp")
+    files = {}
+    if root.is_symlink():
+        raise LocalConfigError("本机 tmp 目录是符号链接，请改用普通目录后重试")
+    if not root.exists():
+        return files
+    if not root.is_dir():
+        raise LocalConfigError("本机 tmp 路径不是目录，请改用普通目录后重试")
+    for suffix in ("-wal", "-shm", "-journal"):
+        path = root / f"data.db{suffix}"
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise LocalConfigError("本机数据库辅助文件包含符号链接或目录")
+    for path in root.iterdir():
+        if path.name.casefold() in TMP_DATA_FILES and (
+            path.name not in TMP_DATA_FILES or path.is_symlink() or not path.is_file()
+        ):
+            raise LocalConfigError("本机 tmp 数据文件包含符号链接、目录或大小写冲突")
+    for name in sorted(TMP_DATA_FILES):
+        path = root / name
+        if not path.is_file():
+            continue
+        if name == "data.db":
+            try:
+                with TemporaryDirectory() as directory:
+                    snapshot = Path(directory) / "data.db"
+                    _copy_database(path, snapshot)
+                    content = snapshot.read_bytes()
+            except sqlite3.Error as exc:
+                raise LocalConfigError(
+                    "本机数据库无法备份，请检查数据库或停止写入后重试"
+                ) from exc
+        else:
+            with path.open("rb") as stream:
+                content = stream.read(MAX_BACKUP_BYTES - total + 1)
+        total += len(content)
+        if total > MAX_BACKUP_BYTES:
+            raise LocalConfigError("本机配置和数据内容超过 16 MB，无法生成备份")
+        files[name] = content
+    return files
+
+
+def _archive_bytes(files, tmp_files):
+    if len(files) + len(tmp_files) > MAX_ARCHIVE_ENTRIES:
+        raise LocalConfigError("本机配置和数据文件数量超过 1024 个，请整理后重试")
     output = BytesIO()
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
         archive.writestr("config/", b"")
         for name, content in files.items():
             archive.writestr(f"config/{name}", content)
+        archive.writestr("tmp/", b"")
+        for name, content in tmp_files.items():
+            archive.writestr(f"tmp/{name}", content)
     raw = output.getvalue()
     if len(raw) > MAX_BACKUP_BYTES:
         raise LocalConfigError("本机配置生成的 ZIP 超过 16 MB，无法导出或生成恢复备份")
@@ -84,10 +166,11 @@ def _write_bytes(path, content):
 def export_archive():
     with backup_lock, workshop_lock:
         files, _ = _local_snapshot()
-        return _archive_bytes(files)
+        tmp_files = _tmp_snapshot(sum(map(len, files.values())))
+        return _archive_bytes(files, tmp_files)
 
 
-def read_archive(raw):
+def read_archive(raw, *, include_tmp=False):
     """Read bounded regular files without extracting ZIP paths to the filesystem."""
     if len(raw) > MAX_BACKUP_BYTES:
         raise ValueError("备份文件不能超过 16 MB")
@@ -95,12 +178,13 @@ def read_archive(raw):
         with ZipFile(BytesIO(raw)) as archive:
             infos = archive.infolist()
             if len(infos) > MAX_ARCHIVE_ENTRIES + sum(
-                info.filename == "config/" for info in infos
+                info.filename in {"config/", "tmp/"} for info in infos
             ):
                 raise ValueError("压缩包文件数量过多")
             if sum(info.file_size for info in infos) > MAX_BACKUP_BYTES:
-                raise ValueError("解压后的配置不能超过 16 MB")
+                raise ValueError("解压后的配置和数据不能超过 16 MB")
             files, seen, kinds = {}, set(), {}
+            tmp_files = {}
             for info in infos:
                 name = info.filename
                 parts = name.rstrip("/").split("/")
@@ -124,9 +208,20 @@ def read_archive(raw):
                         }
                         for part in parts
                     )
-                    or parts[0] != "config"
+                    or parts[0] not in {"config", "tmp"}
                     or (
-                        len(parts) > 2 and parts[1].casefold() in IMPORT_PRESERVED_FILES
+                        parts[0] == "tmp"
+                        and len(parts) > 1
+                        and (
+                            len(parts) != 2
+                            or parts[1] not in TMP_DATA_FILES
+                            or info.is_dir()
+                        )
+                    )
+                    or (
+                        parts[0] == "config"
+                        and len(parts) > 2
+                        and parts[1].casefold() in IMPORT_PRESERVED_FILES
                     )
                     or info.flag_bits & 1
                     or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR))
@@ -146,14 +241,15 @@ def read_archive(raw):
                 if len(parts) < 2:
                     raise ValueError("配置文件必须位于 config 目录内")
                 relative = PurePosixPath(*parts[1:]).as_posix()
-                files[relative] = archive.read(info)
+                target = tmp_files if parts[0] == "tmp" else files
+                target[relative] = archive.read(info)
             # Also reject file/directory collisions before any writes.
             for name in files:
                 if any(
                     parent.as_posix() in files for parent in PurePosixPath(name).parents
                 ):
                     raise ValueError("压缩包中的文件与目录冲突")
-            return files
+            return (files, tmp_files) if include_tmp else files
     except (BadZipFile, RuntimeError, NotImplementedError, ZlibError) as exc:
         raise ValueError("请选择包含 config 文件夹的 ZIP 备份") from exc
 
@@ -241,12 +337,35 @@ def _validate_configuration(files):
     return data, conf, plan, dorm_order_migrated
 
 
+def _prepare_database(content, path):
+    if not content.startswith(b"SQLite format 3\x00"):
+        raise ValueError("备份中的 data.db 不是有效的 SQLite 数据库")
+    path.write_bytes(content)
+    try:
+        with closing(sqlite3.connect(path)) as conn, conn:
+            conn.execute("PRAGMA trusted_schema=OFF")
+            if conn.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                raise ValueError("备份中的 data.db 完整性校验失败")
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
+            ).fetchone():
+                conn.execute("DELETE FROM saved_state")
+    except sqlite3.Error as exc:
+        raise ValueError("备份中的 data.db 无法读取") from exc
+
+
 def import_configuration(raw):
-    with backup_lock, workshop_lock:
-        files = read_archive(raw)
+    with backup_lock, workshop_lock, TemporaryDirectory() as directory:
+        files, tmp_files = read_archive(raw, include_tmp=True)
         data, conf, plan, dorm_order_migrated = _validate_configuration(files)
+        prepared = Path(directory) / "incoming.db"
+        if "data.db" in tmp_files:
+            _prepare_database(tmp_files["data.db"], prepared)
         root = config.conf_path.parent
         previous, local_names = _local_snapshot()
+        previous_tmp = _tmp_snapshot(sum(map(len, previous.values())))
+        if "data.db" not in tmp_files and "data.db" in previous_tmp:
+            _prepare_database(previous_tmp["data.db"], prepared)
         # Reject destination path collisions before backup or write.
         for name in files:
             for part in (PurePosixPath(name), *PurePosixPath(name).parents):
@@ -263,7 +382,7 @@ def import_configuration(raw):
             get_path("@app/config-backups")
             / f"before-import-{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex[:8]}.zip"
         )
-        _write_bytes(recovery, _archive_bytes(previous))
+        _write_bytes(recovery, _archive_bytes(previous, previous_tmp))
         contents = dict(files)
         contents["conf.yml"] = yaml.safe_dump(
             {
@@ -286,44 +405,47 @@ def import_configuration(raw):
             contents["plan.json"] = json.dumps(
                 plan.model_dump(exclude_none=True), ensure_ascii=False, indent=2
             ).encode("utf-8")
-        written = []
-        database = get_path("@app/tmp/data.db")
-        transaction = (
-            closing(sqlite3.connect(database))
-            if database.is_file()
-            else nullcontext(None)
+        tmp_root = get_path("@app/tmp")
+        database = tmp_root / "data.db"
+        database_existed = database.is_file()
+        originals = {
+            **{root / name: content for name, content in previous.items()},
+            **{tmp_root / name: content for name, content in previous_tmp.items()},
+        }
+        targets = {root / name: content for name, content in contents.items()}
+        targets.update(
+            {
+                tmp_root / name: content
+                for name, content in tmp_files.items()
+                if name != "data.db"
+            }
         )
-        with transaction as conn:
-            try:
-                if conn is not None:
-                    conn.execute("BEGIN IMMEDIATE")
-                    if conn.execute(
-                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_state'"
-                    ).fetchone():
-                        conn.execute("DELETE FROM saved_state")
-                for name in sorted(set(previous) | set(contents)):
-                    if name.casefold() in IMPORT_PRESERVED_FILES:
-                        continue
-                    target = root / name
-                    if name in contents:
-                        content = contents[name]
-                        _write_bytes(target, content)
-                    else:
-                        target.unlink()
-                    written.append(name)
-                if conn is not None:
-                    conn.commit()
-            except Exception:
-                if conn is not None:
-                    conn.rollback()
-                for name in reversed(written):
-                    target = root / name
-                    if name in previous:
-                        content = previous[name]
-                        _write_bytes(target, content)
-                    else:
-                        target.unlink(missing_ok=True)
-                raise
+        removed = {root / name for name in previous.keys() - contents.keys()}
+        written = []
+        try:
+            for target in sorted(set(targets) | removed):
+                if (
+                    target.parent == root
+                    and target.name.casefold() in IMPORT_PRESERVED_FILES
+                ):
+                    continue
+                if target in targets:
+                    _write_bytes(target, targets[target])
+                else:
+                    target.unlink()
+                written.append(target)
+            if prepared.exists():
+                database.parent.mkdir(parents=True, exist_ok=True)
+                _copy_database(prepared, database)
+        except Exception:
+            if not database_existed:
+                database.unlink(missing_ok=True)
+            for target in reversed(written):
+                if target in originals:
+                    _write_bytes(target, originals[target])
+                else:
+                    target.unlink(missing_ok=True)
+            raise
         config.conf, config.plan = conf, plan
         if module := sys.modules.get("arknights_mower.utils.config.weekly_plan_loader"):
             module._weekly_plan_manager = None
