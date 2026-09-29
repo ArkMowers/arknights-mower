@@ -48,7 +48,9 @@ class MuMuProDiscoveryTests(unittest.TestCase):
             rows = [row for row in self.rows if str(row["index"]) == argv[-1]]
             if not selected:
                 rows = self.rows
-            return subprocess.CompletedProcess(argv, 0, output(rows, selected=selected), b"")
+            return subprocess.CompletedProcess(
+                argv, 0, output(rows, selected=selected), b""
+            )
 
         self.run = Mock(side_effect=run)
         self.controller = MuMuProController(run=self.run)
@@ -64,13 +66,20 @@ class MuMuProDiscoveryTests(unittest.TestCase):
             [item["serial"] for item in items],
             ["127.0.0.1:16384", "127.0.0.1:16416"],
         )
-        self.assertNotEqual(items[0]["topology_fingerprint"], items[1]["topology_fingerprint"])
+        self.assertNotEqual(
+            items[0]["topology_fingerprint"], items[1]["topology_fingerprint"]
+        )
         self.run.assert_called_once()
-        self.assertEqual(self.run.call_args.args[0], [str(Path(self.manager).resolve()), "info", "all"])
+        self.assertEqual(
+            self.run.call_args.args[0],
+            [str(Path(self.manager).resolve()), "info", "all"],
+        )
         self.assertLessEqual(self.run.call_args.kwargs["timeout"], 3)
 
     def test_bound_instance_is_rechecked_and_port_may_change(self):
-        binding = self.controller.discover(self.profile)["installations"][0]["instances"][0]
+        binding = self.controller.discover(self.profile)["installations"][0][
+            "instances"
+        ][0]
         profile = self.profile.model_copy(
             update={
                 "instance_id": binding["instance_id"],
@@ -81,10 +90,14 @@ class MuMuProDiscoveryTests(unittest.TestCase):
         observed = self.controller.inspect(profile, 5)
         self.assertEqual(observed.serial, "127.0.0.1:18000")
         self.assertEqual(observed.state, "running")
-        self.assertEqual(self.run.call_args.args[0], [str(Path(self.manager).resolve()), "info", "0"])
+        self.assertEqual(
+            self.run.call_args.args[0], [str(Path(self.manager).resolve()), "info", "0"]
+        )
 
     def test_recreated_index_rejects_endpoint_before_adb(self):
-        binding = self.controller.discover(self.profile)["installations"][0]["instances"][0]
+        binding = self.controller.discover(self.profile)["installations"][0][
+            "instances"
+        ][0]
         profile = self.profile.model_copy(
             update={
                 "instance_id": "0",
@@ -106,10 +119,17 @@ class MuMuProDiscoveryTests(unittest.TestCase):
             b"not json",
             json.dumps({"errcode": 42001, "return": {}}).encode(),
             json.dumps({"errcode": False, "return": {}}).encode(),
-            json.dumps({"errcode": 0, "return": {"count": 2, "results": [self.rows[0]]}}).encode(),
+            json.dumps(
+                {"errcode": 0, "return": {"count": 2, "results": [self.rows[0]]}}
+            ).encode(),
             output([self.rows[0], {**self.rows[1], "index": 0}]),
             output([self.rows[0], {**self.rows[1], "adb_port": 16384}]),
-            output([self.rows[0], {**self.rows[1], "bundle_path": self.rows[0]["bundle_path"]}]),
+            output(
+                [
+                    self.rows[0],
+                    {**self.rows[1], "bundle_path": self.rows[0]["bundle_path"]},
+                ]
+            ),
             output([{**self.rows[0], "bundle_path": "relative"}]),
         ]
         for value in cases:

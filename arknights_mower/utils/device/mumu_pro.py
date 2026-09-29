@@ -29,7 +29,11 @@ def _instance(raw):
     port = raw.get("adb_port")
     if type(index) is not int or index < 0 or not isinstance(name, str):
         raise ValueError("MuMu Pro 实例序号或名称无效")
-    if not name.strip() or not isinstance(bundle, str) or not Path(bundle).is_absolute():
+    if (
+        not name.strip()
+        or not isinstance(bundle, str)
+        or not Path(bundle).is_absolute()
+    ):
         raise ValueError("MuMu Pro 实例文件路径无效")
     if "\x00" in bundle or state not in {"running", "starting", "stopped"}:
         raise ValueError("MuMu Pro 实例状态无效")
@@ -105,7 +109,11 @@ class MuMuProController:
             path = (
                 Path(resolve_config_path(root)) if root else DEFAULT_APP
             ) / MANAGER_RELATIVE_PATH
-        if path.name != "mumutool" or not path.is_file() or not os.access(path, os.X_OK):
+        if (
+            path.name != "mumutool"
+            or not path.is_file()
+            or not os.access(path, os.X_OK)
+        ):
             raise InstanceBindingError(
                 "mumu_pro_manager_missing",
                 "未找到 MuMu Pro 的 mumutool，请检查安装目录或管理程序路径。",

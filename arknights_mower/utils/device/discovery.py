@@ -122,7 +122,9 @@ class DiscoveryService:
                     "failed",
                     profile.last_serial,
                     error=PreflightError(
-                        "unsupported_host", "MuMu Pro 只能在 macOS 上检测。", fields=["preset_id"]
+                        "unsupported_host",
+                        "MuMu Pro 只能在 macOS 上检测。",
+                        fields=["preset_id"],
                     ),
                 )
             return preflight.check(
@@ -258,7 +260,9 @@ class DiscoveryService:
                 return DiscoveryResult(
                     host,
                     error=PreflightError(
-                        "unsupported_host", "MuMu Pro 只能在 macOS 上检测。", fields=["preset_id"]
+                        "unsupported_host",
+                        "MuMu Pro 只能在 macOS 上检测。",
+                        fields=["preset_id"],
                     ),
                 )
             if not hasattr(self._simulator, "discover_mumu_pro"):

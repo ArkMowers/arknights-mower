@@ -102,7 +102,9 @@ class MuMuProRouteTests(unittest.TestCase):
             chosen = next((row for row in rows if str(row["index"]) == argv[-1]), None)
             payload = chosen if selected else {"count": len(rows), "results": rows}
             response = {"errcode": 0, "message": "", "return": payload}
-            return subprocess.CompletedProcess(argv, 0, json.dumps(response).encode(), b"")
+            return subprocess.CompletedProcess(
+                argv, 0, json.dumps(response).encode(), b""
+            )
 
         simulator = ProductionSimulator(run=run)
         self.control = DeviceControl(
@@ -115,13 +117,17 @@ class MuMuProRouteTests(unittest.TestCase):
         self.addCleanup(self.control.close)
         self.io.targets = [(OLD_SERIAL, "device"), (MANUAL_SERIAL, "device")]
         before = self.path.read_bytes()
-        discovered = self.post_device("/device/discover", {"manager_path": str(manager)})
+        discovered = self.post_device(
+            "/device/discover", {"manager_path": str(manager)}
+        )
         self.assertTrue(discovered["ok"], discovered["error"])
         self.assertEqual(discovered["status"], "selection_required")
         self.assertEqual(len(discovered["candidates"]), 2)
         self.assertIsNone(discovered["selected_key"])
         selected = next(
-            candidate for candidate in discovered["candidates"] if candidate["instance_id"] == "1"
+            candidate
+            for candidate in discovered["candidates"]
+            if candidate["instance_id"] == "1"
         )
         checked = self.post_device("/device/preflight", selected["binding"])
         self.assertTrue(checked["ok"], checked["error"])

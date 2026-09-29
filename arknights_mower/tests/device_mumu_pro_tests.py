@@ -134,7 +134,9 @@ class MuMuProTests(unittest.TestCase):
                     adb,
                     simulator,
                     clock=Clock(),
-                    policy=RecoveryPolicy(timeout=5, attempts=2, local_wait=1, poll_interval=1),
+                    policy=RecoveryPolicy(
+                        timeout=5, attempts=2, local_wait=1, poll_interval=1
+                    ),
                 )
                 session.bind(self.conf.device)
                 with self.assertRaises(SessionFailure):
