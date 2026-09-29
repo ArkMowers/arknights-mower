@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import datetime
 import hmac
+import ipaddress
 import json
 import mimetypes
 import os
@@ -67,6 +68,7 @@ mimetypes.add_type("image/webp", ".webp")
 
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25, "max_message_size": 64 * 1024}
+app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = False
 sock = Sock(app)
 CORS(app)
 network_settings.start_proxy_sync()
@@ -577,8 +579,50 @@ def require_ai_token(f):
     return decorated_function
 
 
-def _authorize_websocket(ws):
-    """Authenticate before either WebSocket may read data or call local tools."""
+def _local_log_request_allowed(require_origin=False):
+    if not app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"]:
+        return False
+    try:
+        if not ipaddress.ip_address(request.remote_addr).is_loopback:
+            return False
+        if urlparse(request.host_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
+            return False
+    except (TypeError, ValueError):
+        return False
+    origin = request.headers.get("Origin")
+    if require_origin and not origin:
+        return False
+    if origin and not _diagnostic_delete_origin_allowed(origin):
+        return False
+    referer = request.headers.get("Referer")
+    if referer:
+        try:
+            source = urlparse(referer)
+        except ValueError:
+            return False
+        if not _diagnostic_delete_origin_allowed(f"{source.scheme}://{source.netloc}"):
+            return False
+    if request.headers.get("Sec-Fetch-Site") not in {None, "none", "same-origin"}:
+        return False
+    return True
+
+
+def require_log_read(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if (
+            not hasattr(app, "token")
+            or request.headers.get("token", "") == app.token
+            or _local_log_request_allowed()
+        ):
+            return f(*args, **kwargs)
+        abort(403)
+
+    return decorated_function
+
+
+def _authorize_websocket(ws, allow_local_log=False):
+    """Check a WebSocket's credential or local log-read boundary before use."""
 
     def reject():
         try:
@@ -589,6 +633,8 @@ def _authorize_websocket(ws):
 
     expected = getattr(app, "token", "")
     origin = request.headers.get("Origin", "")
+    if allow_local_log and _local_log_request_allowed(require_origin=True):
+        return True
     if not expected or not origin or not _diagnostic_delete_origin_allowed(origin):
         return reject()
     try:
@@ -1185,7 +1231,7 @@ def stop_maa():
 
 @sock.route("/log")
 def log(ws):
-    if not _authorize_websocket(ws):
+    if not _authorize_websocket(ws, allow_local_log=True):
         return
     log_stream.serve(ws)
 
@@ -1200,7 +1246,7 @@ def serve_screenshot(filename):
 
 
 @app.route("/diagnostics/timeline")
-@require_token
+@require_log_read
 def diagnostic_timeline():
     timestamp = request.args.get("at", type=int)
     if timestamp is None or timestamp < 0 or timestamp > (time.time() + 3600) * 1000:
@@ -1213,7 +1259,7 @@ def diagnostic_timeline():
 
 
 @app.route("/diagnostics/errors")
-@require_token
+@require_log_read
 def diagnostic_errors():
     return {"events": error_events(get_path("@app/screenshot"))}
 
@@ -1235,7 +1281,7 @@ def _send_diagnostic_bundle(center, archive_id=None):
 
 
 @app.route("/diagnostics/export")
-@require_token
+@require_log_read
 def diagnostic_export():
     timestamp = request.args.get("at", type=int)
     if timestamp is None or timestamp < 0 or timestamp > (time.time() + 3600) * 1000:
@@ -1248,7 +1294,7 @@ def diagnostic_export():
 
 
 @app.route("/diagnostics/errors/<archive_id>/logs")
-@require_token
+@require_log_read
 def diagnostic_error_logs(archive_id):
     if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
         abort(404)
@@ -1303,7 +1349,7 @@ def diagnostic_error_analyze(archive_id):
 
 
 @app.route("/diagnostics/errors/<archive_id>/export")
-@require_token
+@require_log_read
 def diagnostic_error_export(archive_id):
     if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
         abort(404)

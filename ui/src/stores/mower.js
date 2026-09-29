@@ -38,7 +38,6 @@ export const useMowerStore = defineStore('mower', () => {
   const speed_msg = ref([])
   function listen_ws() {
     const token = new URLSearchParams(window.location.search).get('token')
-    if (!token) return
     let backend_url
     if (import.meta.env.DEV) {
       backend_url = import.meta.env.VITE_HTTP_URL
@@ -47,7 +46,9 @@ export const useMowerStore = defineStore('mower', () => {
     }
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(ws_url)
-    ws.value.onopen = () => ws.value.send(JSON.stringify({ token }))
+    ws.value.onopen = () => {
+      if (token) ws.value.send(JSON.stringify({ token }))
+    }
     ws.value.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {

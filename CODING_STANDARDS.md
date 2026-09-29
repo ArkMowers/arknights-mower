@@ -28,6 +28,9 @@
 ### 2.4 Device Control & Transport
 - **[INV-DEV-01] Native Back Dispatch**: When the selected touch backend is MuMu IPC, Android BACK uses the owned MuMu IPC worker; an uncertain result stops the session without input replay or ADB fallback.
 
+### 2.5 Web Access
+- **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
+
 
 ## 3. Concurrency & Resource Lifecycle
 

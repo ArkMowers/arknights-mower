@@ -93,6 +93,8 @@ class TrayRecoveryTests(unittest.TestCase):
                 for item in patches:
                     stack.enter_context(item)
                 webview_ui.run_desktop()
+                self.assertTrue(server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"])
+                self.assertTrue(server.app.token)
                 self.assertEqual(len(launches), 2)
                 recovered.get.assert_called_once()
                 self.assertTrue(conf.stop_mower.is_set())

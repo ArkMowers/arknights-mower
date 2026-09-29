@@ -611,9 +611,10 @@ def run_desktop():
         splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
     import server
 
-    # Local-only sessions still need a credential for HTTP and WebSocket APIs.
-    # Keep it in memory; remote binding remains an explicit setting.
+    # Keep a session credential for protected APIs even when remote access is off.
+    # Local log reads can use the loopback and same-origin boundary instead.
     server.app.token = runtime_token
+    server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = not token and host == "127.0.0.1"
 
     registration.running = lambda: bool(
         server.mower_thread and server.mower_thread.is_alive()

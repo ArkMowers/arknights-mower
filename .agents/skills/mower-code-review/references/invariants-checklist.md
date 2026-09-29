@@ -42,6 +42,10 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-REC-01] Standard Canvas Frame Contract**: Do recognition models operate exclusively on standard 1920×1080 pure RGB matrices? Do recognition failures return structured verdicts without blocking the scheduler dispatch loop?
 
+### 2.5 Web Access
+
+- [ ] **[INV-WEB-01] Local Log Read Boundary**: In a WebView session without a configured token, do read-only log requests require loopback and valid browser origin metadata while AI chat and mutating endpoints retain credential checks?
+
 ---
 
 ## 3. Extensibility Protocol: Adding Invariants for Future Modules
