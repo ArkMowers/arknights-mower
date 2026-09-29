@@ -227,17 +227,22 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         self.assertIsNone(rp._task_owner)
 
     def test_migration_copies_old_shared_and_keeps_original(self):
+        self.assertEqual(self.installed_version(), "v2026.08.22-0000000")
         with zipfile.ZipFile(io.BytesIO(resource_zip())) as archive:
             archive.extractall(self.shared_legacy)
         self.assertTrue(rp.migrate_legacy_resource_overlay())
+        # Migration publishes files; cached selection changes at a safe boundary.
+        rp.reload_resource_caches_if_changed()
         self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
         self.assertTrue((self.shared_legacy / rp._RESOURCE_MARKER).is_file())
         self.assertFalse(rp.migrate_legacy_resource_overlay())
 
     def test_migration_can_use_legacy_instance_directory(self):
+        self.assertEqual(self.installed_version(), "v2026.08.22-0000000")
         with zipfile.ZipFile(io.BytesIO(resource_zip())) as archive:
             archive.extractall(self.legacy)
         self.assertTrue(rp.migrate_legacy_resource_overlay())
+        rp.reload_resource_caches_if_changed()
         self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
 
     def test_file_lock_is_exclusive_and_released(self):
