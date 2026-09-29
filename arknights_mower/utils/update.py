@@ -1,10 +1,12 @@
 import os
+import subprocess
 import zipfile
 
 import requests
 
 from .. import __version__
 from .github_download import request_download
+from .update_runtime import hidden_console_options
 
 
 # 编写bat脚本，删除旧程序，运行新程序
@@ -32,8 +34,13 @@ def __write_restart_cmd(new_name, old_name):
     TempList += "exit"
     b.write(TempList)
     b.close()
-    # subprocess.Popen("upgrade.bat") #不显示cmd窗口
-    os.system("start upgrade.bat")  # 显示cmd窗口
+    subprocess.Popen(
+        ["cmd.exe", "/c", "upgrade.bat"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        **hidden_console_options(),
+    )
     os._exit(0)
 
 

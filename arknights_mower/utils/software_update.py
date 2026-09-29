@@ -390,6 +390,7 @@ def resolve_source_remote(remote=None):
                 encoding="utf-8",
                 stderr=subprocess.PIPE,
                 timeout=10,
+                **runtime.hidden_console_options(),
             ).strip()
         except subprocess.CalledProcessError as error:
             raise ValueError(
@@ -430,7 +431,12 @@ def source_repository():
     if not git or not (root / ".git").exists():
         raise ValueError("版本管理需要 Git 检出目录和 Git 工具")
     current = subprocess.check_output(
-        [git, "rev-parse", "HEAD"], cwd=root, text=True, encoding="utf-8", timeout=10
+        [git, "rev-parse", "HEAD"],
+        cwd=root,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
+        **runtime.hidden_console_options(),
     ).strip()
     branch = subprocess.check_output(
         [git, "branch", "--show-current"],
@@ -438,6 +444,7 @@ def source_repository():
         text=True,
         encoding="utf-8",
         timeout=10,
+        **runtime.hidden_console_options(),
     ).strip()
     network_settings.apply_http_proxy()
     proxy = network_settings.get_effective_settings()["http_proxy"]
@@ -1151,6 +1158,7 @@ def check(channel, proxy=None):
             text=True,
             encoding="utf-8",
             timeout=10,
+            **runtime.hidden_console_options(),
         ).strip()
         available = current != plan["commit"]
     else:
