@@ -59,6 +59,7 @@ def scheduler(monkeypatch):
     solver.check_current_focus = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.queue_product_switches = MagicMock()
+    solver._prepare_shift_cycle = MagicMock()
     solver.agent_get_mood = MagicMock(return_value=True)
     solver.restart_after_mood_read = False
     solver.agent_arrange = MagicMock(side_effect=lambda *args: solver.skip())

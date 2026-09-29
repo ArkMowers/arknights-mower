@@ -32,6 +32,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-02] Dormitory Entry Sequence**: Does dorm bed assignment dispatch operators in strict priority tier sequence to ensure single-target dorm buffs hit designated operators?
 - [ ] **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Are beds strictly single-occupancy? Do operators reaching maximum mood release beds immediately to unblock rotation queues?
 - [ ] **[INV-SCHED-04] Shift Transition Compensation**: Do event-driven shifts (order runs, backup plans) handle dispatch failures gracefully without leaving facilities unassigned?
+- [ ] **[INV-SCHED-05] Complete Shift Projection**: Do backup conditions, subsequent rotations, cached corrections, and final bed filling converge on a copy before one arrangement is submitted, with failure preserving actual state?
 
 ### 2.3 Presentation Layer (UI)
 

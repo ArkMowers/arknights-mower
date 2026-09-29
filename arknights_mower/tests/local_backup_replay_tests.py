@@ -177,7 +177,10 @@ def test_full_plan_real_correction_after_recovery_skips_backup_posts(replay):
     assert task.plan["room_2_2"][2] == "迷迭香"
     final = execute(replay, task)
     assert final["room_3_2"][1:] == ["槐琥", "迷迭香"]
-    assert final["room_2_2"][1:] == ["乌尔比安", "安哲拉"]
+    # 完整轮休可同时安排红松下班；深海直接进入最终生效表的岗位。
+    for name in ("乌尔比安", "安哲拉"):
+        op = replay.op_data.operators[name]
+        assert (op.current_room, op.current_index) == (op.room, op.index)
     assert not replay.op_data.plan_condition[3]
     assert not any(t.meta_data == "副表内存收敛" and t.plan for t in replay.tasks)
     assert not replay.agent_get_mood(read_rooms=False, return_plan=True)

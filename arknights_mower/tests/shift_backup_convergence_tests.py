@@ -250,6 +250,9 @@ def test_correction_executes_final_main_posts_without_intermediate_backup_posts(
 ):
     task = resting(solver)
     task.type = kind
+    # 本例仅验证回班岗位；低心情下一组同步下班由完整轮休测试覆盖。
+    for name in solver.op_data.groups["深海"]:
+        solver.op_data.operators[name].mood = 24
     solver.plan_metadata = MagicMock()
 
     def arrange(plan, get_time):

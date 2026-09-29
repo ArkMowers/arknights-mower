@@ -568,7 +568,12 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
     )
     assert solver.backup_plan_solver()
     solver.task = next(t for t in solver.tasks if t.type == TaskTypes.RE_ORDER)
-    solver.agent_arrange.side_effect = lambda plan, get_time: plan.clear()
+
+    def arrange(plan, get_time):
+        solver.op_data = solver.op_data.project_arrangements([plan])
+        plan.clear()
+
+    solver.agent_arrange.side_effect = arrange
     solver.skip = base.BaseSchedulerSolver.skip.__get__(solver)
     solver.infra_main()
     assert solver.planned  # 重排完成仍按原流程跳过本轮常规规划。

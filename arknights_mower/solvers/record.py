@@ -156,6 +156,7 @@ def save_action_to_sqlite_decorator(func):
         related_operator=None,
         mood_event=None,
         recorded_at=None,
+        preserve_depletion_rate=False,
     ):
         agent = self.operators[name]  # 干员
 
@@ -163,7 +164,15 @@ def save_action_to_sqlite_decorator(func):
         agent_is_high = agent.is_high()  # 是否高优先级
 
         # 调用原函数
-        result = func(self, name, mood, current_room, current_index, update_time)
+        result = func(
+            self,
+            name,
+            mood,
+            current_room,
+            current_index,
+            update_time,
+            preserve_depletion_rate=preserve_depletion_rate,
+        )
         if not update_time:
             return
         save_agent_action(

@@ -2948,6 +2948,7 @@ class TestDormShiftOffMerge(unittest.TestCase):
             task_type=TaskTypes.FILL_DORM,
         )
         with (
+            patch.object(solver, "_prepare_shift_cycle"),
             patch.object(
                 base_schedule, "vacant_dorm_slots", return_value={("dormitory_1", 1)}
             ),
