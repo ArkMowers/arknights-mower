@@ -107,7 +107,7 @@ def find_next_task(
 
 def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     time_now = time_now or datetime.now()
-    # 空床补位与专精交接交给统一保护；强制上限沿用立即处理规则。
+    # 强制上限不参加延期；统一保护会为它预留离宿时间并避开阻塞任务。
     enabled = config.conf.enable_mastery
     fixed = {
         id(t)
@@ -136,7 +136,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
             for t in tasks
         ):
             return None
-    tasks.sort(key=lambda t: t.time)
+    _sort_dispatch_tasks(tasks, time_now)
     return conflict
 
 
@@ -187,8 +187,89 @@ def protect_priority_tasks(
                 logger.debug(f"宿舍任务时间不足，移至{deadline.type.display_value}之后")
             else:
                 cursor = start + timedelta(minutes=minutes)
-    tasks.sort(key=lambda t: t.time)
+    if config.conf.experimental_dorm_logic:
+        _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now)
+    _sort_dispatch_tasks(tasks, now)
     return conflict
+
+
+def _sort_dispatch_tasks(tasks, now):
+    # 尚未开始的清退可以提前；关键任务已经到点时，不再被清退抢占。
+    due_priority = (
+        {id(task) for task in _priority_tasks(tasks) if task.time <= now}
+        if config.conf.experimental_dorm_logic
+        else set()
+    )
+    tasks.sort(key=lambda task: (id(task) not in due_priority, task.time))
+
+
+def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
+    """上限是离宿截止时间；提前腾出操作窗口，不等阻塞任务结束。"""
+    releases = [
+        task
+        for task in tasks
+        if getattr(task, "strict_mood_limit", False) and task.plan
+    ]
+    if not releases:
+        return
+    blockers = sorted(
+        (
+            task
+            for task in tasks
+            if not getattr(task, "strict_mood_limit", False)
+            and (task.type != TaskTypes.SWAP_SUPPORT or config.conf.enable_mastery)
+        ),
+        key=lambda task: task.time,
+        reverse=True,
+    )
+    next_start = datetime.max
+    for release in sorted(
+        releases,
+        key=lambda task: (
+            getattr(task, "mood_limit_deadline", task.time),
+            task.meta_data,
+            tuple(sorted(task.plan)),
+        ),
+        reverse=True,
+    ):
+        # 固定原始截止时间，重复调度不能不断扣减操作耗时。
+        if not hasattr(release, "mood_limit_deadline"):
+            release.mood_limit_deadline = release.time
+        duration = timedelta(
+            minutes=sum(estimate_dorm_minutes(room) for room in release.plan)
+        )
+        start = min(
+            release.time, min(release.mood_limit_deadline, next_start) - duration
+        )
+        for task in blockers:
+            if (
+                task.type in (TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT)
+                and task.time <= now
+            ):
+                # 已到期的关键任务先执行，不再尝试把清退塞到它前面。
+                continue
+            if task.type == TaskTypes.RUN_ORDER:
+                # 跑单时间已扣除进站提前量，还需预留确认、收单和归位。
+                minutes = (
+                    max(run_order_delay, config.conf.run_order_delay)
+                    + 2 * execution_time
+                )
+            elif task.type == TaskTypes.SWAP_SUPPORT:
+                minutes = max(3, _ordinary_task_minutes(task, execution_time))
+            elif _is_dorm_only_task(task):
+                minutes = sum(estimate_dorm_minutes(room) for room in task.plan)
+            else:
+                minutes = _ordinary_task_minutes(task, execution_time)
+            end = max(now, task.time) + timedelta(minutes=minutes)
+            if start <= end and max(now, start) + duration >= task.time:
+                start = min(start, task.time - duration - timedelta(seconds=1))
+        if start < release.time:
+            logger.info(
+                f"心情上限离宿提前至 {start:%H:%M:%S}，"
+                f"截止 {release.mood_limit_deadline:%H:%M:%S}：{release.meta_data}"
+            )
+            release.time = start
+        next_start = start
 
 
 def _avoid_swap_with_orders(tasks, swap, timing):

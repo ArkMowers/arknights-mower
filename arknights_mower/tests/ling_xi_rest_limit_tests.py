@@ -135,11 +135,14 @@ def test_unknown_mood_without_timer_does_not_release(solver):
     assert not any(t.strict_mood_limit for t in solver.tasks)
 
 
+@pytest.mark.parametrize("mood", [11, 20.8])
 def test_departed_operator_waits_without_recalling_group_or_refilling(
-    solver, monkeypatch
+    solver, monkeypatch, mood
 ):
+    if mood < 12 and not solver.op_data.experimental_dorm_logic:
+        pytest.skip("稳定逻辑不提前清退")
     name = limited_name(solver)
-    solver.op_data.operators[name].mood = 20.8
+    solver.op_data.operators[name].mood = mood
     solver.plan_metadata()
     task = release(solver)
     solver.task = task
@@ -153,6 +156,9 @@ def test_departed_operator_waits_without_recalling_group_or_refilling(
     solver.preserve_resting_crafters(agents, "dormitory_1")
     assert agents[3] == ("" if solver.op_data.experimental_dorm_logic else "Free")
     solver.op_data = solver.op_data.project_arrangements([task.plan])
+    if mood < 12 and solver.op_data.experimental_dorm_logic:
+        # 实际读房确认离宿后会记录本轮提前清退，心情仍保留真实值。
+        solver.op_data.operators[name].rest_mood_release_limit = 12
     assert solver.op_data.operators[name].current_room == ""
     assert solver.op_data.operators["絮雨"].is_resting()
     solver.task, solver.tasks = None, []
@@ -183,6 +189,64 @@ def test_equal_mode_removes_old_limit_and_release(solver):
     assert not any(t.strict_mood_limit for t in solver.tasks)
 
 
+@pytest.mark.parametrize("projected", [False, True])
+def test_early_release_wait_ends_on_next_work_assignment(solver, projected):
+    data = solver.op_data
+    op = data.operators[limited_name(solver)]
+    op.current_room, op.current_index = "", -1
+    op.mood, op.rest_mood_release_limit = 11, 12
+    assert data.rest_mood_complete(op.name) is data.experimental_dorm_logic
+    if data.experimental_dorm_logic:
+        assert op.name not in solver.get_free_list([])
+    if projected:
+        data = data.project_arrangements(
+            [{"central": [op.name]}, {"central": ["Free"]}]
+        )
+        op = data.operators[op.name]
+    else:
+        op.current_room = "central"
+        op.current_room = ""
+    assert op.rest_mood_release_limit is None
+    assert not data.rest_mood_complete(op.name)
+    assert op.mood == 11
+
+
+def test_early_release_wait_survives_plan_rebuild_but_not_higher_cap(solver):
+    data = solver.op_data
+    name = limited_name(solver)
+    op = data.operators[name]
+    op.current_room, op.current_index = "", -1
+    op.mood, op.rest_mood_release_limit = 11, 12
+    assert data.swap_plan([], refresh=True) is None
+    op = data.operators[name]
+    assert op.rest_mood_release_limit == 12
+    assert op.mood == 11
+    assert data.rest_mood_complete(name) is data.experimental_dorm_logic
+    data.set_mood_limit(name, upper_limit=20)
+    assert not data.rest_mood_complete(name)
+
+
+def test_early_release_preparation_keeps_actual_mood_and_return_task(solver):
+    name = limited_name(solver)
+    op = solver.op_data.operators[name]
+    op.mood = 11
+    solver.plan_metadata()
+    task = release(solver)
+    idx, bed = solver.op_data.get_dorm_by_name(name)
+    returning = next(t for t in solver.tasks if t.type == TaskTypes.SHIFT_ON)
+    returning.meta_data = f"dorm{idx}"
+    original_time = returning.time
+    assert solver.prepare_release_dorm(task)
+    assert returning in solver.tasks
+    assert returning.time == original_time
+    assert returning.plan["central"] == [name]
+    assert op.rest_mood_release_limit is None
+    if solver.op_data.experimental_dorm_logic:
+        assert (op.mood, op.time_stamp) == (11, NOW)
+    else:
+        assert (op.mood, op.time_stamp) == (12, bed.time)
+
+
 def test_strict_release_is_not_delayed_by_merging_or_run_order(solver):
     solver.op_data.operators[limited_name(solver)].mood = 12
     solver.plan_metadata()
@@ -193,7 +257,9 @@ def test_strict_release_is_not_delayed_by_merging_or_run_order(solver):
     tasks = [task, order]
     merge_release_dorm(tasks, 10)
     scheduling(tasks, time_now=NOW)
-    assert task.time == NOW
+    assert task.time <= NOW
+    if not solver.op_data.experimental_dorm_logic:
+        assert task.time == NOW
 
 
 def test_rebuild_uses_confirmed_new_bed(solver):

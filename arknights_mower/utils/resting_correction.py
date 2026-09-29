@@ -40,6 +40,7 @@ def _resting_members(op_data):
                 not op.current_room
                 and (
                     op_data._can_standby(op)
+                    or op_data.rest_mood_complete(op.name)
                     or op.time_stamp is not None
                     and op.mood >= op.upper_limit
                 )

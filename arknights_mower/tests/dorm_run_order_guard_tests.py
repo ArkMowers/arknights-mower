@@ -65,7 +65,7 @@ def test_guard_rechecks_room_and_does_not_delay_strict_limit(schedule, strict):
     assert dorm.time == (now if strict else order.time + timedelta(seconds=1))
     if strict:
         scheduling(tasks, time_now=now)
-        assert dorm.time == now
+        assert dorm.time <= now
 
 
 def test_runtime_guard_keeps_unfinished_room_only(schedule):

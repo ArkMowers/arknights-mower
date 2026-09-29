@@ -877,7 +877,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 旧住客已离开或换位，不能清退后来的入住者。
             task.plan = {}
             return False
-        if task.meta_data in {item.operator for item in config.conf.workshop_settings}:
+        if not (experimental and strict) and task.meta_data in {
+            item.operator for item in config.conf.workshop_settings
+        }:
             logger.info("检测到释放干员为工作站加工干员，切换为工作站任务")
             self.craft_material()
             if operator.mood < 24:
@@ -897,8 +899,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     dorm_list = update_task.meta_data.split(",")
                     dorm_list.remove("dorm" + str(idx))
                     update_task.meta_data = ",".join(dorm_list)
-                    operator.mood = operator.upper_limit
-                    operator.time_stamp = dorm.time
+                    if not (experimental and strict):
+                        operator.mood = operator.upper_limit
+                        operator.time_stamp = dorm.time
         return True
 
     def collect_release_dorm_batch(self):
@@ -992,8 +995,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
             protect_priority_tasks(self.tasks)
-            if self.task.time > datetime.now() or not any(
-                task is self.task for task in self.tasks
+            if (
+                self.task.time > datetime.now()
+                or not any(task is self.task for task in self.tasks)
+                or (
+                    self.tasks
+                    and self.tasks[0] is not self.task
+                    and (
+                        getattr(self.tasks[0], "strict_mood_limit", False)
+                        or config.conf.experimental_dorm_logic
+                        and (
+                            self.tasks[0].type == TaskTypes.RUN_ORDER
+                            or config.conf.enable_mastery
+                            and self.tasks[0].type == TaskTypes.SWAP_SUPPORT
+                        )
+                    )
+                    and self.tasks[0].time <= datetime.now()
+                )
             ):
                 self.task = None
                 self.skip()
@@ -1846,6 +1864,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     is not None
                     and (
                         _agent.workaholic
+                        or self.op_data.rest_mood_complete(key)
                         or _agent.time_stamp is not None
                         and (
                             _agent.current_mood() >= _agent.upper_limit
@@ -7372,6 +7391,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         dorm.reset()
                 self.op_data.operators[_operator].current_room = ""
                 self.op_data.operators[_operator].current_index = -1
+                if (
+                    room.startswith("dorm")
+                    and getattr(self.op_data, "experimental_dorm_logic", False)
+                    and getattr(self.task, "strict_mood_limit", False)
+                    and self.task.meta_data == _operator
+                ):
+                    # 实际离宿后才记账，不改写真实心情；等待原回班任务，
+                    # 防止提前清退者被重新塞回宿舍或触发整组纠错。
+                    op = self.op_data.operators[_operator]
+                    op.rest_mood_release_limit = op.upper_limit
                 if _operator == "菲亚梅塔":
                     self._refresh_fiammetta_task(None)
                 if (
@@ -9785,6 +9814,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         一份几乎相同的实现，其中两份漏掉了 `sleeping`，正是 /status 卡在
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
+        if config.conf.experimental_dorm_logic and any(
+            getattr(task, "strict_mood_limit", False) for task in self.tasks
+        ):
+            # 睡眠前就计算提前量，不能睡到原上限时刻才发现需要提前离宿。
+            protect_priority_tasks(self.tasks)
         first = self.tasks[0]
         remaining_time = (first.time - datetime.now()).total_seconds()
         self.handle_idle_action(remaining_time)
