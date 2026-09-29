@@ -68,12 +68,12 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **_Avoid_**: `Building slot`, `Isolated room`
 
 ### 宿舍心情恢复 (`Dormitory Recovery`)
-- **定义**：干员进驻宿舍恢复心情的过程。结合房间顺序与干员优先级梯度分配床位，依入驻顺序保障定向宿管加成，并在心情回满后自动腾退床位。
+- **定义**：干员进驻宿舍恢复心情的过程。按宿舍分床优先级分配床位，建立并保留单回位置；离宿依据回班、不养闲人和个人上限规则分别处理。
 - **代码映射**：[`dorm_recovery.py`](arknights_mower/utils/dorm_recovery.py), [`resting_tier`](arknights_mower/utils/resting_priority.py)
 - **_Avoid_**: `Sleep queue`, `Rest list`
 
 ### 心情消耗速率 (`Depletion Rate`)
-- **定义**：干员进驻工作设施时每小时消耗的心情点数。基准值为 1.0 点/小时，由两次进驻信息读取差值实测动态算出，用于推算余量与预测耗尽时间。
+- **定义**：干员进驻工作设施时每小时消耗的心情点数。基础消耗为 1 点/小时，实际速度受干员、设施及技能等因素影响。Mower 根据有效的工作心情读数估算实际速度，用于预测心情和下班时间；肥鸭充能造成的心情突变不计入工作消耗。
 - **代码映射**：[`Operator.depletion_rate`](arknights_mower/utils/operators.py)
 - **_Avoid_**: `Drain speed`, `Depletion cost`
 
@@ -91,3 +91,47 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **定义**：消耗发电站充能恢复的基建无人机（每架抵扣 3 分钟），为指定制造站或贸易站加速生产与订单获取的机制。
 - **代码映射**：[`drone_plan`](arknights_mower/utils/manufacture_product.py), [`DRONE_SECONDS`](arknights_mower/utils/manufacture_product.py)
 - **_Avoid_**: `Speed up`, `Drone boost`
+
+### 完整换班收敛 (`Complete Shift Convergence`)
+- **定义**: 执行换人前，根据已有信息一起计算上下班、副表切换、宿舍重排和补床，直到副表条件与人员安排不再变化，再提交一份最终安排。实际读屏获得新信息后仍可重新规划。
+- **代码映射**: [`BaseSchedulerSolver._prepare_shift_cycle`](arknights_mower/solvers/base_schedule.py)
+
+### 实际驻员／预演驻员 (`Actual and Projected Occupancy`)
+- **定义**: 实际驻员是最近一次确认的干员位置；预演驻员是假设任务执行后的位置，仅用于计算。预演不移动游戏中的干员，也不提前覆盖实际位置缓存。
+- **代码映射**: [`Operators.project_arrangements`](arknights_mower/utils/operators.py)
+
+### 宿舍分床优先级 (`Dormitory Bed Priority`)
+- **定义**: 决定谁优先获得休息位、单回位，以及谁可以接管较低优先级的床位。同级比较距各自心情上限还差多少点，差得越多越优先；已入住者换位仍须遵守保位规则。
+- **代码映射**: [`resting_key`](arknights_mower/utils/resting_priority.py)
+
+### 下班候选顺序 (`Off-Shift Candidate Order`)
+- **定义**: 按当前心情减去有效下限，从小到大尝试安排休息，再检查替班、床位、编组和用尽等条件。宿舍分床优先级不直接让某人提前下班。
+- **代码映射**: [`BaseSchedulerSolver.resting`](arknights_mower/solvers/base_schedule.py)
+
+### 单回宿管／单回目标 (`Single-Target Recovery Manager and Target`)
+- **定义**: 单回宿管是宿舍第 1 或第 2 位具有指定单人心情恢复技能的干员；单回目标是安排接受加成的休息干员。目标直接占住最终位置；前方非宿管位置保留已满心情的原住者，否则用最高心情的可用空闲干员垫位，确认后恢复其余入住者。相关宿管与目标均未移动或替换时保留配置；目标回满后，游戏可自动转移加成。
+- **代码映射**: [`recovery_order_plan`](arknights_mower/utils/dorm_recovery.py)
+
+### 回满目标／强制离宿上限 (`Recovery Target and Mandatory Release Limit`)
+- **定义**: 回满目标是排班认定休息完成的有效心情值，不一定为 24。强制离宿上限是达到后须安排离宿的个人限制，包括个人设置和令夕规则。全局上限用于确定回满目标，不要求因此将宿舍留空。
+- **代码映射**: [`Operators.has_rest_mood_limit`](arknights_mower/utils/operators.py)
+
+### 不养闲人清退／上限强制离宿 (`Idle Dormitory Release and Mood-Limit Release`)
+- **定义**: 不养闲人清退为其他人腾出休息位，受开关、排除名单和满员兜底规则约束。上限强制离宿遵守个人心情限制，不受不养闲人开关和排除名单豁免。离宿不等于安排上班；执行前须核验原住者仍在对应床位。
+- **代码映射**: [`BaseSchedulerSolver.prepare_release_dorm`](arknights_mower/solvers/base_schedule.py)
+
+### 动态 Free 位／实际空床 (`Dynamic Free Slot and Vacant Bed`)
+- **定义**: 排班表中的 Free 位是不固定主班、可动态安排休息者的位置；任务中的 Free 表示由选人流程确定入住者。实际空床是位置缓存确认无人占用的床位，补人还须检查任务预约。
+- **代码映射**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
+
+### 有效心情缓存／默认心情 (`Valid Mood Cache and Default Mood`)
+- **定义**: 有效心情缓存包含真实读数、读取时间及可用的推算结果。缺少有效缓存时，宿舍候选排序按默认 24 心情处理；默认值不能作为已确认满心情的依据。
+- **代码映射**: [`has_resting_mood`](arknights_mower/utils/resting_priority.py)
+
+### 初始化心情补读 (`Initial Mood Sampling`)
+- **定义**: 启动后，将需要但尚无有效心情数据的干员临时安排进宿舍轮流读取。补读期间保留原位置缓存并暂停副表切换；全部读完后，首次副表判断使用补读前的位置和新心情。
+- **代码映射**: [`BaseSchedulerSolver._read_initial_dorm_mood`](arknights_mower/solvers/base_schedule.py)
+
+### 肥鸭充能 (`Fiammetta Charging`)
+- **定义**: 利用菲亚梅塔技能为指定干员恢复心情的特殊任务，包含临时换位、充能和后续安排。充能流程暂停副表切换；更新心情和读取时间，保留工作心情消耗速度，之后由正常工作读数继续校准。
+- **代码映射**: [`BaseSchedulerSolver.plan_fia`](arknights_mower/solvers/base_schedule.py)

@@ -12,7 +12,7 @@ from arknights_mower.solvers import base_schedule, record
 from arknights_mower.solvers import mastery_reader as reader
 from arknights_mower.utils import mastery_db, mastery_support_data
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.scheduler_task import TaskTypes
 
 
 class MasteryRestartTests(unittest.TestCase):
@@ -502,40 +502,3 @@ class MasteryRestartTests(unittest.TestCase):
         reader.reconcile_short(self.solver, self.room)
         self.assertEqual(self.plan(), before)
         self.assertEqual(self.solver.tasks, [])
-
-    def test_mood_reload_keeps_only_fresh_mastery_tasks(self):
-        import arknights_mower.__main__ as entry
-
-        mastery_db.update_plan_status(self.plan_id, "training", swap_frozen=1)
-        reader.reconcile_short(self.solver, self.room)
-        collect = self.assert_one_task(TaskTypes.SKILL_UPGRADE)
-        swap = SchedulerTask(time=collect.time, task_type=TaskTypes.SWAP_SUPPORT)
-        swap.plan_key = "another-plan"
-        shift = SchedulerTask(time=collect.time, task_type=TaskTypes.SHIFT_ON)
-        fresh_state = {"tasks": [collect, swap, shift], "operators": {"fresh": "mood"}}
-        # The first simulate run writes the new snapshot after re-reading rooms.
-        simulate = MagicMock()
-
-        def run(saved, restart_after_mood_read=False):
-            if restart_after_mood_read:
-                self.assertIsNone(saved)
-                self.assertTrue(record.save_state_to_db(fresh_state))
-                return "restart_after_mood_read"
-
-        simulate.side_effect = run
-        with (
-            patch.object(entry.rapidocr, "initialize_ocr"),
-            patch.object(entry, "simulate", simulate),
-        ):
-            entry._main({}, restart_after_mood_read=True)
-        restored = simulate.call_args.args[0]
-        self.assertEqual(
-            [task.type for task in restored["tasks"]],
-            [TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT],
-        )
-        self.assertEqual(
-            [task.plan_key for task in restored["tasks"]],
-            [str(self.plan_id), "another-plan"],
-        )
-        self.assertEqual(restored["operators"], fresh_state["operators"])
-        self.assertEqual(self.plan()["status"], "training")

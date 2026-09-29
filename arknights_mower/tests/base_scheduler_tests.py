@@ -330,13 +330,11 @@ class TestInitialSimulatorRecovery(unittest.TestCase):
         self.assertEqual(scheduler._initial_mood_probe_layout, layout)
         self.assertIsNot(scheduler._initial_mood_probe_layout, layout)
 
-    def test_experimental_initialization_never_requests_mood_reload(self):
+    def test_unified_initialization_never_requests_mood_reload(self):
         scheduler = MagicMock()
         scheduler.initialize_operators.return_value = "测试完成"
         self.initialize.return_value = scheduler
-        with patch.object(base_schedule.config.conf, "experimental_dorm_logic", True):
-            self.main.simulate(None, restart_after_mood_read=True)
-        self.assertFalse(scheduler.restart_after_mood_read)
+        self.main.simulate(None)
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
 
     def test_saved_mood_state_refreshes_backup_plan_before_run(self):
@@ -688,7 +686,6 @@ class TestBaseScheduler(unittest.TestCase):
         solver.tasks = []
         solver.drone_room = None
         solver.op_data = MagicMock()
-        solver.op_data.experimental_dorm_logic = True
         solver.op_data.plan = {
             "dormitory_1": [Room("Free", "", []) for _ in range(5)],
             "meeting": [Room("但书", "", [])],
@@ -701,26 +698,6 @@ class TestBaseScheduler(unittest.TestCase):
 
         solver.plan_run_order.assert_called_once_with("meeting")
         solver.op_data.get_current_room.assert_not_called()
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_run_order_solver_keeps_legacy_dorm_scan_gate(self):
-        solver = BaseSchedulerSolver()
-        solver.tasks = []
-        solver.drone_room = None
-        solver.op_data = MagicMock()
-        solver.op_data.experimental_dorm_logic = False
-        solver.op_data.plan = {
-            "dormitory_1": [Room("Free", "", []) for _ in range(5)],
-            "meeting": [Room("但书", "", [])],
-        }
-        solver.op_data.run_order_rooms = {"meeting": "但书"}
-        solver.op_data.get_current_room.return_value = None
-        solver.plan_run_order = MagicMock()
-        solver.check_fia = MagicMock(return_value=(None, None))
-
-        solver.run_order_solver()
-
-        solver.plan_run_order.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_handle_error_appends_immediate_empty_task_after_clearing(self):
@@ -865,7 +842,8 @@ class TestBaseScheduler(unittest.TestCase):
         with patch.object(BaseSchedulerSolver, "agent_get_mood") as mock_agent_get_mood:
             mock_agent_get_mood.return_value = None
             solver.backup_plan_solver()
-            self.assertEqual(len(solver.tasks), 1)
+            self.assertEqual(solver.op_data.plan_condition, [True])
+            self.assertEqual(sum(bool(task.plan) for task in solver.tasks), 1)
             solver.party_time = datetime.now()
             solver.backup_plan_solver()
             self.assertTrue(
@@ -933,6 +911,18 @@ class TestBaseScheduler(unittest.TestCase):
             ],
             "contact": [Room("桑葚", "乌有", ["絮雨"])],
         }
+        for i, managers in enumerate(
+            (
+                ("杜林", "闪灵"),
+                ("冰酿", "塑心"),
+                ("波登可", "流明"),
+                ("桃金娘", "夜莺"),
+            ),
+            1,
+        ):
+            plan_config[f"dormitory_{i}"] = [
+                Room(name, "", []) for name in managers
+            ] + [Room("Free", "", []) for _ in range(3)]
         backup_plan1_config = {
             "central": [
                 Room("阿米娅", "", ["诗怀雅"]),
@@ -973,7 +963,7 @@ class TestBaseScheduler(unittest.TestCase):
                     backup_plan1_config,
                     agent_base_config0,
                     trigger=LogicExpression(
-                        "op_data.operators['令'].current_room.startswith('dorm')",
+                        "op_data.operators['令'].is_resting()",
                         "and",
                         LogicExpression(
                             "op_data.operators['温蒂'].current_mood() - op_data.operators['承曦格雷伊'].current_mood()",
@@ -996,7 +986,7 @@ class TestBaseScheduler(unittest.TestCase):
 
         solver = BaseSchedulerSolver()
         solver.global_plan = plan
-        solver.initialize_operators()
+        assert solver.initialize_operators() is None
         solver.tasks = []
         with patch.object(BaseSchedulerSolver, "agent_get_mood") as mock_agent_get_mood:
             mock_agent_get_mood.return_value = None
@@ -1004,15 +994,15 @@ class TestBaseScheduler(unittest.TestCase):
             solver.op_data.operators["温蒂"].mood = 12
             solver.op_data.operators["承曦格雷伊"].mood = 7
             solver.backup_plan_solver()
-            self.assertEqual(len(solver.tasks), 1)
+            self.assertEqual(solver.op_data.plan_condition, [True])
             solver.op_data.operators["承曦格雷伊"].mood = 12
             solver.backup_plan_solver()
             self.assertTrue(
                 all(not condition for condition in solver.op_data.plan_condition)
             )
 
-    def _create_backup_refresh_solver(self, experimental=False):
-        agent_base_config = PlanConfig("", "", "", experimental_dorm_logic=experimental)
+    def _create_backup_refresh_solver(self):
+        agent_base_config = PlanConfig("", "", "")
         default_plan = {"meeting": [Room("伊内丝", "", ["陈"])]}
         backup_plan = {"meeting": [Room("见行者", "", ["陈"])]}
         plan = {
@@ -1047,8 +1037,8 @@ class TestBaseScheduler(unittest.TestCase):
 
         return solver, read_meeting
 
-    def _create_no_train_plan_solver(self, experimental=False):
-        agent_base_config = PlanConfig("", "", "", experimental_dorm_logic=experimental)
+    def _create_no_train_plan_solver(self):
+        agent_base_config = PlanConfig("", "", "")
         plan = {
             "default_plan": Plan(
                 {"meeting": [Room("伊内丝", "", ["陈"])]},
@@ -1145,71 +1135,6 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertIn("讯使", resting_names)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_resting_assigns_idle_low_replacement_to_dorm(self):
-        solver = self._build_resting_solver()
-        op = solver.op_data.operators["陈"]
-        op.mood = 5
-        op.current_room = ""
-        op.room = ""
-        solver.total_agent = [op]
-        with (
-            patch.object(base_schedule.config.conf, "enable_mastery", False),
-            patch.object(BaseSchedulerSolver, "plan_metadata", lambda self: None),
-        ):
-            solver.resting()
-        self.assertIn("陈", [d.name for d in solver.op_data.dorm])
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_resting_low_replacements_get_distinct_slots(self):
-        solver = self._build_resting_solver()
-        for name in ["陈", "红"]:
-            op = solver.op_data.operators[name]
-            op.mood = 5
-            op.current_room = ""
-            op.room = ""
-        solver.total_agent = [solver.op_data.operators[n] for n in ["陈", "红"]]
-        with (
-            patch.object(base_schedule.config.conf, "enable_mastery", False),
-            patch.object(BaseSchedulerSolver, "plan_metadata", lambda self: None),
-        ):
-            solver.resting()
-        dorm_names = [d.name for d in solver.op_data.dorm]
-        self.assertEqual(1, dorm_names.count("陈"))
-        self.assertEqual(1, dorm_names.count("红"))
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_resting_does_not_evict_resting_low_replacement(self):
-        """生产日志中的低优互踢活锁：新低优不能覆盖正在休息的低优。"""
-        solver = self._build_resting_solver()
-        chen = solver.op_data.operators["陈"]
-        chen.mood = 5
-        chen.current_room = "dormitory_1"
-        chen.current_index = 3
-        occupied = next(
-            d for d in solver.op_data.dorm if d.position == ("dormitory_1", 3)
-        )
-        occupied.name = "陈"
-
-        hong = solver.op_data.operators["红"]
-        hong.mood = 5
-        hong.current_room = ""
-        hong.room = ""
-        solver.total_agent = [hong]
-        with (
-            patch.object(base_schedule.config.conf, "enable_mastery", False),
-            patch.object(BaseSchedulerSolver, "plan_metadata", lambda self: None),
-        ):
-            solver.resting()
-
-        dorm = {d.position: d.name for d in solver.op_data.dorm}
-        self.assertEqual("陈", dorm[("dormitory_1", 3)])
-        self.assertIn("红", dorm.values())
-        self.assertNotEqual(
-            ("dormitory_1", 3),
-            next(d.position for d in solver.op_data.dorm if d.name == "红"),
-        )
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_assign_dorm_returns_none_when_low_beds_are_occupied(self):
         solver = self._build_resting_solver()
         for name, index in [("陈", 3), ("红", 4)]:
@@ -1256,6 +1181,7 @@ class TestBaseScheduler(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_get_agent_from_room_uses_train_slots_without_train_plan(self):
         solver = self._create_no_train_plan_solver()
+        solver.task = None
 
         with (
             patch.object(BaseSchedulerSolver, "turn_on_room_detail"),
@@ -1287,7 +1213,6 @@ class TestBaseScheduler(unittest.TestCase):
                         "op_data.operators['能天使'].is_working()", "==", "False"
                     ),
                     task={"meeting": ["Current"]},
-                    trigger_timing="BEGINNING",
                 )
             ],
         }
@@ -1325,42 +1250,11 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks, [])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_infra_main_requests_restart_after_mood_read(self):
-        solver = BaseSchedulerSolver()
-        solver.task = None
-        solver.planned = False
-        solver.tasks = []
-        solver.restart_after_mood_read = True
-        solver.defer_backup_plan_until_mood_read = True
-        solver.op_data = SimpleNamespace(experimental_dorm_logic=False)
-
-        with (
-            patch.object(BaseSchedulerSolver, "find", return_value=True),
-            patch.object(BaseSchedulerSolver, "no_pending_task", return_value=True),
-            patch.object(
-                BaseSchedulerSolver,
-                "agent_get_mood",
-                return_value="self_correction",
-            ) as mock_agent_get_mood,
-            patch.object(BaseSchedulerSolver, "run_order_solver") as mock_run_order,
-            patch.object(BaseSchedulerSolver, "plan_solver") as mock_plan,
-        ):
-            result = solver.infra_main()
-
-        self.assertEqual(result, "restart_after_mood_read")
-        self.assertFalse(solver.restart_after_mood_read)
-        self.assertFalse(solver.defer_backup_plan_until_mood_read)
-        mock_agent_get_mood.assert_called_once_with(skip_dorm=True)
-        mock_run_order.assert_not_called()
-        mock_plan.assert_not_called()
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_replan_scans_stale_mood_before_calculating_tasks(self):
         solver = BaseSchedulerSolver()
         solver.task = None
         solver.planned = False
         solver.tasks = []
-        solver.restart_after_mood_read = False
         solver.defer_backup_plan_until_mood_read = False
 
         with (
@@ -1380,13 +1274,12 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertTrue(solver.planned)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_experimental_first_scan_applies_backup_before_correction(self):
+    def test_unified_first_scan_applies_backup_before_correction(self):
         # 当前会客室里是副表干员，主表纠错不应先将其换回伊内丝。
-        solver, read_meeting = self._create_backup_refresh_solver(experimental=True)
+        solver, read_meeting = self._create_backup_refresh_solver()
         solver.task = None
         solver.planned = False
         solver.defer_backup_plan_until_mood_read = True
-        solver.restart_after_mood_read = True
         with (
             patch.object(base_schedule, "_training_room_scan_disabled", True),
             patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1401,7 +1294,6 @@ class TestBaseScheduler(unittest.TestCase):
             self.assertNotEqual(solver.infra_main(), "restart_after_mood_read")
             self.assertEqual(solver.op_data.plan_condition, [True])
             self.assertEqual(solver.op_data.plan["meeting"][0].agent, "见行者")
-            self.assertFalse(solver.restart_after_mood_read)
             self.assertFalse(solver.defer_backup_plan_until_mood_read)
             self.assertFalse(
                 any(
@@ -1419,12 +1311,11 @@ class TestBaseScheduler(unittest.TestCase):
             run_order.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_experimental_initial_scan_without_backup_plans_normally(self):
-        solver = self._create_no_train_plan_solver(experimental=True)
+    def test_unified_initial_scan_without_backup_plans_normally(self):
+        solver = self._create_no_train_plan_solver()
         solver.task = None
         solver.planned = False
         solver.defer_backup_plan_until_mood_read = True
-        solver.restart_after_mood_read = False
         with (
             patch.object(base_schedule, "_training_room_scan_disabled", True),
             patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1449,11 +1340,10 @@ class TestBaseScheduler(unittest.TestCase):
     def test_initial_sampling_finishes_before_backup_and_normal_planning(self):
         for completed in (False, True):
             with self.subTest(completed=completed):
-                solver = self._create_no_train_plan_solver(experimental=True)
+                solver = self._create_no_train_plan_solver()
                 solver.task = None
                 solver.planned = False
                 solver.defer_backup_plan_until_mood_read = True
-                solver.restart_after_mood_read = False
                 events = []
                 with (
                     patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1493,14 +1383,13 @@ class TestBaseScheduler(unittest.TestCase):
                 self.assertEqual(plan.call_count, int(completed))
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_experimental_initial_scan_keeps_recovered_training_tasks(self):
+    def test_unified_initial_scan_keeps_recovered_training_tasks(self):
         for task_type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT):
             with self.subTest(task_type=task_type):
-                solver = self._create_no_train_plan_solver(experimental=True)
+                solver = self._create_no_train_plan_solver()
                 solver.task = None
                 solver.planned = False
                 solver.defer_backup_plan_until_mood_read = True
-                solver.restart_after_mood_read = True
                 task = SchedulerTask(task_type=task_type)
                 with (
                     patch.object(BaseSchedulerSolver, "find", return_value=True),
@@ -1515,7 +1404,6 @@ class TestBaseScheduler(unittest.TestCase):
                 ):
                     self.assertTrue(solver.infra_main())
                 self.assertEqual(solver.tasks, [task])
-                self.assertFalse(solver.restart_after_mood_read)
                 correction.assert_not_called()
                 plan.assert_not_called()
                 run_order.assert_not_called()
@@ -2898,7 +2786,9 @@ class TestDormShiftOffMerge(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_plan_solver_keeps_work_and_dorm_in_one_shift_off_task(self):
         solver = BaseSchedulerSolver()
-        solver.op_data = SimpleNamespace(operators={}, print=lambda: "{}")
+        solver.op_data = SimpleNamespace(operators={}, dorm=[], print=lambda: "{}")
+        solver._prepare_shift_cycle = MagicMock()
+        solver._refresh_deferred_product_reservations = MagicMock()
         solver.tasks = []
         solver.find_next_task = MagicMock(return_value=None)
         solver.plan_metadata = MagicMock()
@@ -2936,7 +2826,6 @@ class TestDormShiftOffMerge(unittest.TestCase):
     def test_empty_dorm_fill_does_not_require_run_order_deferral(self):
         solver = BaseSchedulerSolver()
         solver.op_data = SimpleNamespace(
-            experimental_dorm_logic=True,
             config=SimpleNamespace(free_room=True),
         )
         order = SchedulerTask(task_type=TaskTypes.RUN_ORDER)
@@ -2964,18 +2853,6 @@ class TestDormShiftOffMerge(unittest.TestCase):
         fill.assert_called_once_with(
             {}, None, solver.op_data, [order, fill_task], empty_only=True
         )
-
-    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_legacy_dorm_does_not_add_priority_vacancy_tasks(self):
-        solver = BaseSchedulerSolver()
-        solver.op_data = SimpleNamespace(
-            experimental_dorm_logic=False,
-            config=SimpleNamespace(free_room=True),
-        )
-        solver.tasks = [SchedulerTask()]
-        with patch.object(base_schedule, "try_add_release_dorm") as fill:
-            self.assertFalse(solver._fill_empty_dorms())
-        fill.assert_not_called()
 
 
 class TestDroneAccelerate(unittest.TestCase):
@@ -3200,6 +3077,7 @@ class TestManualClueTask(unittest.TestCase):
         solver.tasks = [task]
         # __init__ 被 stub 掉，party_time 的 setter 需要 op_data 存在才能走下去
         solver.op_data = None
+        solver._refresh_deferred_product_reservations = MagicMock()
         with (
             patch.object(solver, "find", return_value=((0, 0), (10, 10))),
             patch.object(solver, "clue_new") as clue_new,

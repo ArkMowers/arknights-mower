@@ -20,7 +20,6 @@ from arknights_mower.utils.scheduler_task import (
 
 @pytest.fixture
 def schedule(monkeypatch):
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", True)
     monkeypatch.setattr(config.conf, "enable_mastery", False)
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
     now = datetime.now()
@@ -35,21 +34,13 @@ def schedule(monkeypatch):
     return now, dorm, order
 
 
-def test_observed_duration_moves_dorm_but_legacy_uses_original_estimate(
-    schedule, monkeypatch
-):
+def test_observed_duration_moves_dorm(schedule, monkeypatch):
     now, dorm, order = schedule
     operation_timing._dorm_durations["dormitory_1"] = deque([120])
     tasks = [dorm, order]
     scheduling(tasks, time_now=now)
     assert tasks[0] is order
     assert dorm.time > order.time
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", False)
-    dorm.time = now
-    tasks = [dorm, order]
-    scheduling(tasks, time_now=now)
-    assert tasks[0] is dorm
-    assert dorm.time == now
 
 
 @pytest.mark.parametrize("strict", [False, True])
@@ -74,7 +65,7 @@ def test_runtime_guard_keeps_unfinished_room_only(schedule):
     instance = object.__new__(BaseSchedulerSolver)
     instance.task = dorm
     instance.tasks = [dorm, order]
-    instance.op_data = MagicMock(experimental_dorm_logic=True)
+    instance.op_data = MagicMock()
     dorm.plan["dormitory_2"] = ["Free"]
 
     def arrange(new_plan, room, plan, **kwargs):
@@ -110,10 +101,8 @@ def test_successful_room_measurement_updates_estimate(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("experimental", [False, True])
-def test_vacancy_fill_yields_to_imminent_order(schedule, monkeypatch, experimental):
+def test_vacancy_fill_yields_to_imminent_order(schedule, monkeypatch):
     now, dorm, order = schedule
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", experimental)
     dorm.type = TaskTypes.FILL_DORM
     order.time = now + timedelta(seconds=10)
     original_order_time = order.time
@@ -145,7 +134,7 @@ def test_real_room_dispatch_skips_vacancy_fill_before_imminent_order(schedule):
     order.time = now + timedelta(seconds=5)
     instance = object.__new__(BaseSchedulerSolver)
     instance.task, instance.tasks = dorm, [dorm, order]
-    instance.op_data = MagicMock(experimental_dorm_logic=True)
+    instance.op_data = MagicMock()
     dorm.plan["dormitory_2"] = ["Free"]
 
     def arrange(new_plan, room, plan, **kwargs):

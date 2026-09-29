@@ -3,7 +3,6 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from arknights_mower.utils import config
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import (
@@ -123,7 +122,7 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(tasks[2].plan["task"], "Task 4")
         self.assertEqual(res, None)
 
-    def test_experimental_dorm_only_tasks_merge_and_yield_to_run_order(self):
+    def test_unified_dorm_only_tasks_merge_and_yield_to_run_order(self):
         now = datetime(2026, 9, 23, 2, 15)
         dorm_tasks = [
             SchedulerTask(
@@ -139,9 +138,7 @@ class TestScheduling(unittest.TestCase):
             task_type=TaskTypes.RUN_ORDER,
         )
         tasks = [*dorm_tasks, run_order]
-
-        with patch.object(config.conf, "experimental_dorm_logic", True):
-            scheduling(tasks, time_now=now)
+        scheduling(tasks, time_now=now)
 
         self.assertEqual(len(tasks), 2)
         self.assertEqual(tasks[0], run_order)
@@ -149,12 +146,10 @@ class TestScheduling(unittest.TestCase):
         self.assertGreater(tasks[1].time, run_order.time)
         self.assertEqual(set(tasks[1].plan), {f"dormitory_{i}" for i in range(1, 5)})
 
-    def test_dorm_wakeup_yields_to_run_order_in_both_modes(self):
-        for experimental, work_room in [(True, False), (False, False), (True, True)]:
+    def test_dorm_wakeup_yields_to_run_order(self):
+        for work_room in (False, True):
             for wake_type in (TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER):
-                with self.subTest(
-                    experimental=experimental, work_room=work_room, wake_type=wake_type
-                ):
+                with self.subTest(work_room=work_room, wake_type=wake_type):
                     now = datetime(2026, 9, 23, 12)
                     dorm = SchedulerTask(
                         time=now,
@@ -178,9 +173,6 @@ class TestScheduling(unittest.TestCase):
                             ),
                         )
                     with (
-                        patch.object(
-                            config.conf, "experimental_dorm_logic", experimental
-                        ),
                         patch(
                             "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
                             return_value=(None, None),
@@ -241,10 +233,7 @@ class TestScheduling(unittest.TestCase):
             task_type=TaskTypes.RUN_ORDER,
         )
         tasks = [shift_off, reorder, followup, shift_on, run_order]
-        stable_tasks = copy.deepcopy(tasks)
-
-        with patch.object(config.conf, "experimental_dorm_logic", True):
-            scheduling(tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
+        scheduling(tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
 
         self.assertEqual(
             [task.type for task in tasks],
@@ -270,26 +259,6 @@ class TestScheduling(unittest.TestCase):
                 run_order.time + timedelta(seconds=1),
                 run_order.time + timedelta(seconds=2),
             ),
-        )
-
-        with patch.object(config.conf, "experimental_dorm_logic", False):
-            scheduling(stable_tasks, time_now=datetime(2026, 9, 22, 5, 25, 30))
-        self.assertEqual(
-            [task.type for task in stable_tasks],
-            [
-                TaskTypes.RUN_ORDER,
-                TaskTypes.SHIFT_OFF,
-                TaskTypes.RE_ORDER,
-                TaskTypes.NOT_SPECIFIC,
-                TaskTypes.SHIFT_ON,
-            ],
-        )
-        self.assertEqual(
-            sum(
-                any(room.startswith("dormitory_") for room in task.plan)
-                for task in stable_tasks
-            ),
-            3,
         )
 
     def test_deferred_dorm_merge_preserves_special_tasks(self):
@@ -559,7 +528,7 @@ class TestScheduling(unittest.TestCase):
                     Room("Current", "", []),
                 ]
             },
-            PlanConfig("", "", "", experimental_dorm_logic=True),
+            PlanConfig("", "", ""),
         )
         op_data.global_plan["backup_plans"] = [backup]
         op_data.backup_plans = [backup]
@@ -743,7 +712,6 @@ class TestScheduling(unittest.TestCase):
             "稀音,黑键,伊内丝,承曦格雷伊",
             "稀音,柏喙,伊内丝",
             "见行者",
-            experimental_dorm_logic=True,
         )
         plan_config = {
             "central": [

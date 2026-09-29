@@ -258,18 +258,18 @@ def _read_depot_scan_timestamp(path):
 
 
 # 执行自动排班
-def main(saved_state, restart_after_mood_read=False):
+def main(saved_state):
     global base_scheduler
     config.maintenance_recheck.clear()
     try:
         with resource_task_session():
-            return _main(saved_state, restart_after_mood_read)
+            return _main(saved_state)
     finally:
         _cancel_maintenance_timer()
         base_scheduler = None
 
 
-def _main(saved_state, restart_after_mood_read=False):
+def _main(saved_state):
     logger.info("开始运行Mower")
     maintenance = NewsChecker.get_maintenance()
     if maintenance is not None:
@@ -282,21 +282,7 @@ def _main(saved_state, restart_after_mood_read=False):
     data = None
     if saved_state != {}:
         data = saved_state
-    result = simulate(data, restart_after_mood_read)
-    if result == "restart_after_mood_read":
-        from arknights_mower.solvers.record import load_state
-        from arknights_mower.utils.scheduler_task import TaskTypes
-
-        logger.info("正在按载入心情数据模式重启Mower")
-        saved_state = load_state() or {}
-        # simulate 已保存本次读取后的新状态。排班任务需要按新心情重建，但训练室
-        # 刚恢复的收取/换人任务必须保留，否则近期读过的训练室可能数小时不再进入。
-        saved_state["tasks"] = [
-            task
-            for task in saved_state.get("tasks", [])
-            if task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
-        ]
-        simulate(saved_state)
+    simulate(data)
 
 
 def initialize(
@@ -336,7 +322,7 @@ def initialize(
     return base_scheduler
 
 
-def simulate(saved, restart_after_mood_read=False):
+def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
     """
@@ -362,9 +348,6 @@ def simulate(saved, restart_after_mood_read=False):
             if config.stop_mower.is_set():
                 raise MowerExit
             base_scheduler = initialize([], connection_retries=connection_retries)
-            base_scheduler.restart_after_mood_read = (
-                restart_after_mood_read and not config.conf.experimental_dorm_logic
-            )
             # saved=None 表示没有可载入的运行缓存。此时干员 current_room 尚未读取，
             # 首轮任务开始前必须暂缓副表判断，避免把“未知”误判成“不在工作”。
             base_scheduler.defer_backup_plan_until_mood_read = saved is None or bool(
@@ -633,14 +616,7 @@ def simulate(saved, restart_after_mood_read=False):
                     # announcement before dispatching another scheduler task.
                     continue
 
-            result = base_scheduler.run()
-            if result == "restart_after_mood_read":
-                from arknights_mower.solvers.record import save_current_state
-
-                if save_current_state():
-                    return result
-                logger.warning("心情数据保存失败，直接刷新副表后继续当前Mower流程")
-                base_scheduler.backup_plan_solver()
+            base_scheduler.run()
             reconnect_tries = 0
         except MowerExit:
             return

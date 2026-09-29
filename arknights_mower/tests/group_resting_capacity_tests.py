@@ -63,7 +63,6 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = True
     for field in (
         "fodder_operators",
         "t5_operators",
@@ -100,7 +99,6 @@ def solver(monkeypatch):
                 "",
                 resting_standby=",".join(DEEP[1:]),
                 ope_resting_priority=DEEP[0],
-                experimental_dorm_logic=True,
             ),
         ),
         "backup_plans": [],
@@ -561,17 +559,6 @@ def test_candidate_below_rescue_line_cannot_wait_without_bed(solver):
     assert plan == {}
     assert replacements == []
     assert [(bed.name, bed.time) for bed in data.dorm] == before
-
-
-def test_ungrouped_candidate_extension_is_disabled_with_stable_logic(solver):
-    name = OTHERS[0]
-    conf = solver.global_plan["default_plan"].config
-    conf.resting_standby = [name]
-    conf.experimental_dorm_logic = False
-
-    assert solver.initialize_operators() is None
-    assert solver.op_data.operators[name].resting_priority != "standby"
-    assert not solver.op_data._can_standby(solver.op_data.operators[name])
 
 
 def test_normal_low_gets_last_spare_bed_before_candidate(solver):

@@ -89,7 +89,6 @@ export const useConfigStore = defineStore('config', () => {
   const workshop_deer_fodder = ref(defaultDeerFodder())
   const workshop_min_bonus = ref(80)
   const workshop_protect_t2_device_rock = ref(false)
-  const workshop_low_priority_rest = ref(true)
   const fodder_operators = ref(['九色鹿'])
   const t5_operators = ref(['年'])
   const book_operators = ref(['司霆惊蛰'])
@@ -150,13 +149,10 @@ export const useConfigStore = defineStore('config', () => {
   const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
-  const experimental_dorm_logic = ref(false)
-  const dorm_order = ref([])
   const merge_interval = ref(10)
   const group_rest_in_full_on_mood_gap = ref(true)
   const group_mood_gap_max_extra_wait_hours = ref(0)
   const fia_fool = ref(true)
-  const refresh_backup_plan_after_mood = ref(true)
   const assistant_follows_schedule = ref(false)
   const enable_mastery = ref(true)
   const sign_in = ref({ enable: true })
@@ -579,14 +575,11 @@ export const useConfigStore = defineStore('config', () => {
     sf_target.value = response.data.secret_front.target
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
-    experimental_dorm_logic.value = response.data.experimental_dorm_logic ?? false
-    dorm_order.value = response.data.dorm_order ? response.data.dorm_order.split(',') : []
     merge_interval.value = response.data.merge_interval
     group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
     group_mood_gap_max_extra_wait_hours.value =
       response.data.group_mood_gap_max_extra_wait_hours ?? 0
     fia_fool.value = response.data.fia_fool
-    refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? true
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
     enable_mastery.value = response.data.enable_mastery ?? true
     swap_contact_train.value = response.data.swap_contact_train ?? false
@@ -601,7 +594,6 @@ export const useConfigStore = defineStore('config', () => {
     workshop_deer_fodder.value = response.data.workshop_deer_fodder ?? defaultDeerFodder()
     workshop_min_bonus.value = response.data.workshop_min_bonus ?? 80
     workshop_protect_t2_device_rock.value = response.data.workshop_protect_t2_device_rock ?? false
-    workshop_low_priority_rest.value = response.data.workshop_low_priority_rest ?? true
     fodder_operators.value = response.data.fodder_operators || ['九色鹿']
     t5_operators.value = response.data.t5_operators || ['年']
     book_operators.value = response.data.book_operators || ['司霆惊蛰']
@@ -745,13 +737,10 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
-      experimental_dorm_logic: experimental_dorm_logic.value,
-      dorm_order: dorm_order.value.join(','),
       merge_interval: merge_interval.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
-      refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
       enable_mastery: enable_mastery.value,
       sign_in: sign_in.value,
@@ -766,7 +755,6 @@ export const useConfigStore = defineStore('config', () => {
       workshop_deer_fodder: workshop_deer_fodder.value,
       workshop_min_bonus: workshop_min_bonus.value,
       workshop_protect_t2_device_rock: workshop_protect_t2_device_rock.value,
-      workshop_low_priority_rest: workshop_low_priority_rest.value,
       fodder_operators: fodder_operators.value,
       t5_operators: t5_operators.value,
       book_operators: book_operators.value,
@@ -794,13 +782,10 @@ export const useConfigStore = defineStore('config', () => {
       version_update_resting_threshold: version_update_resting_threshold.value / 100,
       version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       free_room: free_room.value,
-      experimental_dorm_logic: experimental_dorm_logic.value,
-      dorm_order: Array.isArray(dorm_order.value) ? dorm_order.value.join(',') : dorm_order.value,
       merge_interval: merge_interval.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
-      refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,
@@ -946,7 +931,6 @@ export const useConfigStore = defineStore('config', () => {
     workshop_deer_fodder,
     workshop_min_bonus,
     workshop_protect_t2_device_rock,
-    workshop_low_priority_rest,
     fodder_operators,
     t5_operators,
     book_operators,
@@ -1001,13 +985,10 @@ export const useConfigStore = defineStore('config', () => {
     sf_target,
     touch_method,
     free_room,
-    experimental_dorm_logic,
-    dorm_order,
     merge_interval,
     group_rest_in_full_on_mood_gap,
     group_mood_gap_max_extra_wait_hours,
     fia_fool,
-    refresh_backup_plan_after_mood,
     assistant_follows_schedule,
     enable_mastery,
     sign_in,

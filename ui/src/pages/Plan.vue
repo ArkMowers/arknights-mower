@@ -11,7 +11,7 @@ import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edi
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
 
 const config_store = useConfigStore()
-const { free_blacklist, theme, experimental_dorm_logic } = storeToRefs(config_store)
+const { free_blacklist, theme } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const mower_store = useMowerStore()
@@ -54,9 +54,6 @@ const show_advanced_settings_dialog = ref(false)
 
 const generating_image = ref(false)
 const show_mood_limits_dialog = ref(false)
-watch(experimental_dorm_logic, (enabled) => {
-  if (!enabled) show_mood_limits_dialog.value = false
-})
 
 const message = useMessage()
 const dialog = useDialog()
@@ -239,8 +236,6 @@ function create_sub_plan() {
       operator: '',
       right: ''
     },
-    trigger_timing: 'AFTER_PLANNING',
-    exit_trigger_timing: null,
     task: {},
     name: `plan${backup_plans.value.length}`
   })
@@ -674,9 +669,7 @@ function movePlanForward() {
   <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
   <div class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
     <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
-    <n-button v-if="experimental_dorm_logic" @click="show_mood_limits_dialog = true">
-      设置心情上下限
-    </n-button>
+    <n-button @click="show_mood_limits_dialog = true"> 设置心情上下限 </n-button>
   </div>
   <n-form
     class="w-980 mx-auto mb-12 px-12 mw-980"
@@ -685,25 +678,6 @@ function movePlanForward() {
     label-width="160"
     label-align="left"
   >
-    <n-form-item v-if="!experimental_dorm_logic">
-      <template #label>
-        <span>令夕模式</span>
-        <help-text>
-          <div>令夕上班时起作用</div>
-          <div>启动Mower前需要手动对齐心情</div>
-          <div>感知：夕心情-令心情=12</div>
-          <div>烟火：令心情-夕心情=12</div>
-          <div>均衡：夕令心情一样</div>
-        </help-text>
-      </template>
-      <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
-        <n-space>
-          <n-radio :value="1">感知信息</n-radio>
-          <n-radio :value="2">人间烟火</n-radio>
-          <n-radio :value="3">均衡模式</n-radio>
-        </n-space>
-      </n-radio-group>
-    </n-form-item>
     <n-form-item>
       <template #label
         ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
@@ -717,9 +691,7 @@ function movePlanForward() {
       <template #label>
         <span>需要用尽心情的干员</span>
         <help-text>
-          <template v-if="experimental_dorm_logic">用尽按当前心情下限计算，</template>
-          <template v-else>用尽后下班，</template>
-          优先取得替班；被占用时先换替班，否则叫回占用组。
+          用尽按当前心情下限计算， 优先取得替班；被占用时先换替班，否则叫回占用组。
         </help-text>
       </template>
       <slick-operator-select
@@ -731,16 +703,13 @@ function movePlanForward() {
       <template #label>
         <span>宿舍高优先级干员</span>
         <help-text>
-          <template v-if="experimental_dorm_logic">
-            <p>
-              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
-              空闲；同级距心情上限更远者优先。
-            </p>
-            <p>
-              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
-            </p>
-          </template>
-          <template v-else>按名单顺序优先分床，不改变下班顺序。</template>
+          <p>
+            名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
+            空闲；同级距心情上限更远者优先。
+          </p>
+          <p>
+            只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
+          </p>
         </help-text>
       </template>
       <slick-operator-select
@@ -752,10 +721,7 @@ function movePlanForward() {
       <template #label>
         <span>宿舍低优先级干员</span>
         <help-text>
-          <template v-if="experimental_dorm_logic">
-            低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
-          </template>
-          <template v-else>降低宿舍分床优先级，不改变下班顺序。</template>
+          低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
         </help-text>
       </template>
       <slick-operator-select
@@ -763,7 +729,7 @@ function movePlanForward() {
         v-model="current_conf.resting_priority"
       ></slick-operator-select>
     </n-form-item>
-    <n-form-item v-if="experimental_dorm_logic">
+    <n-form-item>
       <template #label>
         <span>宿舍高优先级替班</span>
         <help-text
@@ -779,12 +745,8 @@ function movePlanForward() {
       <template #label>
         <span>宿舍休息候补干员</span>
         <help-text>
-          <template v-if="experimental_dorm_logic">
-            有床休息，无床或被更高优接管后待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线升为低优并保床。
-          </template>
-          <template v-else>
-            仅限绑组，须同组有高优休息。随组待命、回班，空位可补床，非急救时可给高优让床。
-          </template>
+          有床休息，无床或被更高优接管后待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线升为低优并保床。
+
           <p>待命不恢复心情；用尽、回满、固定宿舍和零心情工作干员不适用。</p>
         </help-text>
       </template>
@@ -805,12 +767,7 @@ function movePlanForward() {
     <n-form-item>
       <template #label>
         <span>宿舍黑名单</span>
-        <help-text>
-          <template v-if="experimental_dorm_logic"
-            >不参与动态分床和补床，固定宿舍岗位不受影响。</template
-          >
-          <template v-else>不参与空闲干员补床。</template>
-        </help-text>
+        <help-text> 不参与动态分床和补床，固定宿舍岗位不受影响。 </help-text>
       </template>
       <slick-operator-select
         :disabled="edit_locked"
@@ -847,7 +804,7 @@ function movePlanForward() {
         v-model="current_conf.refresh_drained"
       ></slick-operator-select>
     </n-form-item>
-    <n-form-item v-if="experimental_dorm_logic">
+    <n-form-item>
       <template #label>
         <span>宿舍优先级排序</span>
         <help-text>
@@ -881,7 +838,6 @@ function movePlanForward() {
     </template>
   </n-modal>
   <n-modal
-    v-if="experimental_dorm_logic"
     v-model:show="show_mood_limits_dialog"
     :auto-focus="false"
     preset="card"

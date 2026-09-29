@@ -17,7 +17,6 @@ def op_data(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = True
     data = Operators(
         {
             "default_plan": Plan(
@@ -28,7 +27,7 @@ def op_data(monkeypatch):
                         for name in ["杜林", "闪灵", "爱丽丝", "桃金娘", "Free"]
                     ],
                 },
-                PlanConfig("", "", "", free_room=True, experimental_dorm_logic=True),
+                PlanConfig("", "", "", free_room=True),
             ),
             "backup_plans": [],
         }
@@ -135,7 +134,6 @@ def test_empty_dynamic_bed_also_accepts_waiting_operator(op_data):
 
 
 def test_legacy_empty_dynamic_bed_also_accepts_waiting_operator(op_data):
-    op_data.config.experimental_dorm_logic = False
     op_data.dorm[0].reset()
     op_data.operators["空爆"].current_room = ""
     tasks = []

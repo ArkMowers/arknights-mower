@@ -14,7 +14,6 @@ from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.plan import (  # noqa: E402
     Plan,
     PlanConfig,
-    PlanTriggerTiming,
     Room,
 )
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
@@ -53,7 +52,6 @@ def solver(monkeypatch):
                 trigger=LogicExpression(
                     "op_data.operators['黑键'].is_resting()", "==", "True"
                 ),
-                trigger_timing="AFTER_PLANNING",
             )
         ],
     }
@@ -95,41 +93,9 @@ def test_shift_off_recomputes_emergency_return_after_backup_switch(solver):
     assert solver.op_data.operators["歌蕾蒂娅"].exhaust_require
     assert return_task(solver).time == datetime(2026, 9, 11, 17, 5, 3)
     assert return_task(solver).plan["dormitory_1"][0] == "塑心"
-    solver.agent_arrange.assert_called_once_with({"contact": ["红"]}, True)
-
-
-def test_completed_shift_off_queues_new_plan_correction_before_backup_task(solver):
-    backup = solver.op_data.backup_plans[0]
-    backup.trigger_timing = PlanTriggerTiming.BEFORE_PLANNING
-    backup.task = {"central": ["Current"]}
-    current = SchedulerTask(
-        time=datetime(2026, 9, 11, 16),
-        task_plan={"contact": ["红"]},
-        task_type=TaskTypes.SHIFT_OFF,
-    )
-    solver.task = current
-    solver.tasks = [current]
-
-    def queue_correction(*, force=False):
-        assert force
-        solver.tasks.append(
-            SchedulerTask(
-                task_plan={"contact": ["黑键"]},
-                task_type=TaskTypes.SELF_CORRECTION,
-            )
-        )
-        return "self_correction"
-
-    solver.agent_get_mood = MagicMock(side_effect=queue_correction)
-    solver.infra_main()
-
-    correction = next(
-        task for task in solver.tasks if task.type == TaskTypes.SELF_CORRECTION
-    )
-    backup_task = next(task for task in solver.tasks if task.plan == backup.task)
-    assert correction.time < backup_task.time
-    assert current not in solver.tasks
-    solver.agent_get_mood.assert_called_once_with(force=True)
+    solver.agent_arrange.assert_called_once()
+    assert solver.agent_arrange.call_args.args[0]["contact"] == ["红"]
+    assert "dormitory_1" in solver.agent_arrange.call_args.args[0]
 
 
 def test_truthy_switch_without_generated_tasks_does_not_start_correction(solver):
@@ -140,6 +106,7 @@ def test_truthy_switch_without_generated_tasks_does_not_start_correction(solver)
     )
     solver.task = current
     solver.tasks = [current]
+    solver._prepare_shift_cycle = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=True)
     solver.agent_get_mood = MagicMock()
 
@@ -156,23 +123,11 @@ def test_switch_rebuilds_existing_return_and_preserves_other_tasks(solver, custo
     assert old_task.time == datetime(2026, 9, 11, 16, 24, 21)
     depot = SchedulerTask(task_type=TaskTypes.DEPOT)
     solver.tasks.append(depot)
-    assert solver.backup_plan_solver() == bool(custom_task)
+    assert solver.backup_plan_solver() is False
     assert return_task(solver).time == datetime(2026, 9, 11, 17, 5, 3)
     assert all(t is not old_task for t in solver.tasks)
     assert any(t is depot for t in solver.tasks)
-    if custom_task:
-        assert any(t.plan == custom_task for t in solver.tasks)
-
-
-def test_unchanged_or_not_yet_eligible_backup_keeps_return(solver):
-    solver.plan_metadata()
-    original = return_task(solver)
-    solver.backup_plan_solver(PlanTriggerTiming.BEFORE_PLANNING)
-    assert return_task(solver) is original
-    solver.backup_plan_solver()
-    updated = return_task(solver)
-    solver.backup_plan_solver()
-    assert return_task(solver) is updated
+    assert not any(t.plan == {"central": ["Current"]} for t in solver.tasks)
 
 
 def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
@@ -180,17 +135,13 @@ def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
     assert all(t.type != TaskTypes.SHIFT_ON for t in solver.tasks)
 
 
-def enable_experimental_dorm_logic(solver):
-    solver.op_data.config.experimental_dorm_logic = True
-    solver.op_data.global_plan["default_plan"].config.experimental_dorm_logic = True
-    for backup in solver.op_data.global_plan["backup_plans"]:
-        backup.config.experimental_dorm_logic = True
+def reset_default_plan(solver):
     assert solver.op_data.swap_plan([False], refresh=True) is None
 
 
 @pytest.fixture
 def meeting_transition(solver):
-    """alex 的切表场景：一人已在宿舍回满，另一人待命，独立副表仍开启。"""
+    """会客室切表场景：一人已在宿舍回满，另一人待命，独立副表仍开启。"""
     solver.global_plan = {
         "default_plan": Plan(
             {
@@ -206,7 +157,7 @@ def meeting_transition(solver):
                     *[Room("Free", "", []) for _ in range(3)],
                 ],
             },
-            PlanConfig("", "", "", experimental_dorm_logic=True),
+            PlanConfig("", "", ""),
         ),
         "backup_plans": [
             Plan(
@@ -257,7 +208,6 @@ def meeting_transition(solver):
             task_plan={"central": ["歌蕾蒂娅"]},
         )
     ]
-    config.conf.experimental_dorm_logic = True
     return solver
 
 
@@ -445,7 +395,7 @@ def test_completed_arrangement_rebuilds_from_observed_beds(
 
 
 def test_unrelated_experimental_backup_switch_skips_dorm_reorder(solver, monkeypatch):
-    enable_experimental_dorm_logic(solver)
+    reset_default_plan(solver)
     reorder = MagicMock(return_value={"dormitory_1": ["Current"] * 5})
     monkeypatch.setattr(base, "rebalance_plan_swap_dorms", reorder)
 
@@ -455,9 +405,9 @@ def test_unrelated_experimental_backup_switch_skips_dorm_reorder(solver, monkeyp
     assert [task.type for task in solver.tasks] == [TaskTypes.NOT_SPECIFIC]
 
 
-def test_experimental_backup_keeps_zero_mood_worker_on_shift(solver):
+def test_unified_backup_keeps_zero_mood_worker_on_shift(solver):
     solver.op_data.global_plan["default_plan"].config.workaholic = ["歌蕾蒂娅"]
-    enable_experimental_dorm_logic(solver)
+    reset_default_plan(solver)
     worker = solver.op_data.operators["歌蕾蒂娅"]
     worker.mood = 0
     worker.time_stamp = datetime(2026, 9, 11, 16, 2, 21)
@@ -468,8 +418,8 @@ def test_experimental_backup_keeps_zero_mood_worker_on_shift(solver):
     assert all("central" not in task.plan for task in solver.tasks)
 
 
-def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
-    enable_experimental_dorm_logic(solver)
+def test_unified_backup_bed_change_still_reorders(solver, monkeypatch):
+    reset_default_plan(solver)
     solver.op_data.backup_plans[0].plan["dormitory_1"] = [
         Room("Current", "", []),
         Room("Current", "", []),
@@ -493,11 +443,8 @@ def test_experimental_backup_bed_change_still_reorders(solver, monkeypatch):
     ]
 
 
-@pytest.mark.parametrize("append_empty_task", [False, True])
-def test_backup_reorder_wakes_planning_even_with_existing_return(
-    solver, monkeypatch, append_empty_task
-):
-    enable_experimental_dorm_logic(solver)
+def test_backup_reorder_wakes_planning_even_with_existing_return(solver, monkeypatch):
+    reset_default_plan(solver)
     solver.plan_metadata()
     monkeypatch.setattr(
         base, "dorm_rebalance_signature", lambda data: tuple(data.plan_condition)
@@ -513,29 +460,22 @@ def test_backup_reorder_wakes_planning_even_with_existing_return(
     )
     generated = []
 
-    assert solver.backup_plan_solver(
-        append_empty_task=append_empty_task, generated_tasks=generated
-    )
+    assert solver.backup_plan_solver(generated_tasks=generated)
 
     assert any(t.type == TaskTypes.SHIFT_ON for t in solver.tasks)
     wakeups = [t for t in solver.tasks if t.type == TaskTypes.NOT_SPECIFIC]
-    assert len(wakeups) == int(append_empty_task)
-    if append_empty_task:
-        assert wakeups[0].time == generated[0].time
-        assert wakeups[0] in generated
+    assert len(wakeups) == int(True)
+    assert wakeups[0].time == generated[0].time
+    assert wakeups[0] in generated
 
 
-@pytest.mark.parametrize("experimental", [False, True])
 def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
-    solver, monkeypatch, experimental
+    solver, monkeypatch
 ):
     solver.global_plan["default_plan"].plan["room_1_1"] = [
         Room("鸿雪", "", ["但书", "深巡"])
     ]
-    if experimental:
-        enable_experimental_dorm_logic(solver)
-    else:
-        assert solver.op_data.swap_plan([False], refresh=True) is None
+    reset_default_plan(solver)
     # 原版常规规划要求宿舍满员；让两种模式在相同可用状态下比较。
     for index, name in ((3, "陈"), (4, "红")):
         solver.op_data.operators[name].current_room = "dormitory_1"
@@ -583,7 +523,6 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
     solver.task, solver.planned = wakeup, False
     solver.infra_main()
     solver.agent_get_mood = MagicMock(return_value=None)
-    solver.restart_after_mood_read = False
     solver.plan_solver = MagicMock()
     solver.op_data.operators["歌蕾蒂娅"].mood = 24
     solver.op_data.operators["歌蕾蒂娅"].time_stamp = base.datetime.now()
@@ -599,259 +538,6 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
     solver.get_run_order_time.assert_called_once_with("room_1_1")
 
 
-def test_plan_swap_dorm_reorder_adds_empty_followup_with_future_mastery(
-    solver, monkeypatch
-):
-    mastery = SchedulerTask(
-        time=datetime(2026, 9, 11, 20),
-        task_type=TaskTypes.SKILL_UPGRADE,
-    )
-    solver.tasks = [mastery]
-    monkeypatch.setattr(
-        base,
-        "rebalance_plan_swap_dorms",
-        MagicMock(return_value={"dormitory_1": ["Current"] * 5}),
-    )
-
-    assert solver.backup_plan_solver() is True
-
-    generated = [task for task in solver.tasks if task is not mastery]
-    assert [task.type for task in generated] == [
-        TaskTypes.RE_ORDER,
-        TaskTypes.NOT_SPECIFIC,
-    ]
-    assert generated[0].time == generated[1].time == base.datetime.now()
-
-
-def test_embedded_plan_swap_dorm_reorder_does_not_add_empty_followup(
-    solver, monkeypatch
-):
-    monkeypatch.setattr(
-        base,
-        "rebalance_plan_swap_dorms",
-        MagicMock(return_value={"dormitory_1": ["Current"] * 5}),
-    )
-
-    assert solver.backup_plan_solver(append_empty_task=False) is True
-
-    assert [task.type for task in solver.tasks] == [TaskTypes.RE_ORDER]
-
-
-def test_before_dorm_task_supersedes_same_dorm_and_preserves_other_dorms(solver):
-    backup = solver.op_data.backup_plans[0]
-    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
-    backup.task = {
-        "dormitory_1": ["隐德来希", "Current", "Current", "Current", "Current"]
-    }
-    black_key = solver.op_data.operators["黑键"]
-    black_key.current_room, black_key.current_index = "contact", 0
-    current = SchedulerTask(
-        time=datetime(2026, 9, 11, 16),
-        task_plan={
-            "contact": ["红"],
-            "dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"],
-            "dormitory_2": ["Current"] * 5,
-        },
-        task_type=TaskTypes.SHIFT_OFF,
-    )
-    solver.task = current
-    solver.tasks = [current]
-    arranged = []
-
-    def arrange_room(new_plan, room, plan, get_time=False):
-        arranged.append(room)
-        del plan[room]
-        if room == "contact":
-            black_key.current_room, black_key.current_index = "dormitory_1", 2
-        return new_plan
-
-    solver.agent_arrange_room = MagicMock(side_effect=arrange_room)
-    solver.agent_arrange = base.BaseSchedulerSolver.agent_arrange.__get__(solver)
-    solver.queue_product_switches = MagicMock()
-
-    assert solver.agent_arrange(current.plan, get_time=True) is False
-    assert arranged == ["contact"]
-    assert current.plan == {"dormitory_2": ["Current"] * 5}
-    generated = next(task for task in solver.tasks if task is not current)
-    assert generated.plan == backup.task
-    assert generated.time == current.time - timedelta(microseconds=1)
-    assert solver.op_data.plan_condition == [True]
-
-
-def test_before_dorm_deactivation_restores_main_plan_before_dorm(solver):
-    backup = solver.op_data.backup_plans[0]
-    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
-    backup.plan = {
-        "dormitory_1": [
-            Room("隐德来希", "", []),
-            *[Room("Current", "", []) for _ in range(4)],
-        ]
-    }
-    backup.task = {
-        "dormitory_1": [
-            "隐德来希",
-            "Current",
-            "Current",
-            "Current",
-            "Current",
-        ]
-    }
-    solver.op_data.swap_plan([True], refresh=True)
-    black_key = solver.op_data.operators["黑键"]
-    black_key.current_room, black_key.current_index = "contact", 0
-    current = SchedulerTask(
-        time=datetime(2026, 9, 11, 16),
-        task_plan={
-            "contact": ["红"],
-            "dormitory_1": ["隐德来希", "冰酿", "黑键", "Free", "Free"],
-        },
-        task_type=TaskTypes.SHIFT_OFF,
-    )
-    solver.task = current
-    solver.tasks = [current]
-    arranged = []
-
-    def arrange_room(new_plan, room, plan, get_time=False):
-        arranged.append(room)
-        del plan[room]
-        return new_plan
-
-    solver.agent_arrange_room = MagicMock(side_effect=arrange_room)
-    solver.agent_arrange = base.BaseSchedulerSolver.agent_arrange.__get__(solver)
-    solver.queue_product_switches = MagicMock()
-
-    assert solver.agent_arrange(current.plan, get_time=True) is False
-    assert arranged == ["contact"]
-    assert current.plan == {}
-    generated = next(task for task in solver.tasks if task is not current)
-    assert generated.plan == {
-        "dormitory_1": [
-            "塑心",
-            "Current",
-            "Current",
-            "Current",
-            "Current",
-        ]
-    }
-    assert generated.time == current.time - timedelta(microseconds=1)
-    assert solver.op_data.plan_condition == [False]
-
-
-def test_infra_main_keeps_deferred_dorm_task(solver):
-    current = SchedulerTask(
-        task_plan={"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]},
-        task_type=TaskTypes.SHIFT_OFF,
-    )
-    solver.task = current
-    solver.tasks = [current]
-    solver.agent_arrange.return_value = False
-    solver.plan_metadata = MagicMock()
-
-    solver.infra_main()
-
-    assert current in solver.tasks
-    assert current.plan
-    solver.plan_metadata.assert_not_called()
-    solver.skip.assert_called()
-
-
-def test_infra_main_removes_fully_superseded_dorm_task(solver):
-    current = SchedulerTask(
-        task_plan={"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]},
-        task_type=TaskTypes.SHIFT_OFF,
-    )
-    generated = SchedulerTask(
-        task_plan={
-            "dormitory_1": ["隐德来希", "Current", "Current", "Current", "Current"]
-        }
-    )
-    solver.task = current
-    solver.tasks = [generated, current]
-
-    def supersede_current(plan, get_time):
-        plan.clear()
-        return False
-
-    solver.agent_arrange.side_effect = supersede_current
-    solver.plan_metadata = MagicMock()
-
-    solver.infra_main()
-
-    assert current not in solver.tasks
-    assert generated in solver.tasks
-    solver.plan_metadata.assert_not_called()
-    solver.skip.assert_called()
-
-
-def test_before_dorm_timing_order_and_parser():
-    assert Plan.set_timing_enum("before_work") is PlanTriggerTiming.BEFORE_WORK
-    assert Plan.set_timing_enum("before_dorm") is PlanTriggerTiming.BEFORE_DORM
-    assert (
-        PlanTriggerTiming.BEGINNING.value
-        < PlanTriggerTiming.BEFORE_WORK.value
-        < PlanTriggerTiming.BEFORE_DORM.value
-        < PlanTriggerTiming.BEFORE_PLANNING.value
-    )
-
-
-def test_exit_timing_defaults_to_entry_timing_and_can_be_independent():
-    inherited = Plan({}, PlanConfig("", "", ""), trigger_timing="BEFORE_DORM")
-    independent = Plan(
-        {},
-        PlanConfig("", "", ""),
-        trigger_timing="BEFORE_DORM",
-        exit_trigger_timing="BEFORE_WORK",
-    )
-
-    assert inherited.exit_trigger_timing is PlanTriggerTiming.BEFORE_DORM
-    assert independent.trigger_timing is PlanTriggerTiming.BEFORE_DORM
-    assert independent.exit_trigger_timing is PlanTriggerTiming.BEFORE_WORK
-
-
-def test_backup_uses_independent_exit_timing(solver):
-    backup = solver.op_data.backup_plans[0]
-    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
-    backup.exit_trigger_timing = PlanTriggerTiming.BEFORE_WORK
-    solver.op_data.plan_condition = [True]
-    solver.op_data.operators["黑键"].is_resting = MagicMock(return_value=False)
-
-    solver.backup_plan_solver(PlanTriggerTiming.BEGINNING)
-    assert solver.op_data.plan_condition == [True]
-
-    solver.backup_plan_solver(PlanTriggerTiming.BEFORE_WORK)
-    assert solver.op_data.plan_condition == [False]
-
-
-def test_before_work_exit_defers_current_room_before_entering_it(solver):
-    backup = solver.op_data.backup_plans[0]
-    backup.trigger_timing = PlanTriggerTiming.BEFORE_DORM
-    backup.exit_trigger_timing = PlanTriggerTiming.BEFORE_WORK
-    backup.task = {"contact": ["红"]}
-    solver.op_data.plan_condition = [True]
-    solver.op_data.operators["黑键"].is_resting = MagicMock(return_value=False)
-    current = SchedulerTask(
-        time=datetime(2026, 9, 11, 16),
-        task_plan={
-            "contact": ["红"],
-            "dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"],
-        },
-        task_type=TaskTypes.SHIFT_OFF,
-    )
-    solver.task = current
-    solver.tasks = [current]
-    solver.agent_arrange_room = MagicMock()
-    solver.agent_arrange = base.BaseSchedulerSolver.agent_arrange.__get__(solver)
-    solver.queue_product_switches = MagicMock()
-
-    assert solver.agent_arrange(current.plan, get_time=True) is False
-
-    solver.agent_arrange_room.assert_not_called()
-    assert current.plan == {"dormitory_1": ["塑心", "冰酿", "黑键", "Free", "Free"]}
-    generated = next(task for task in solver.tasks if task is not current)
-    assert generated.plan == {"contact": ["黑键"]}
-    assert generated.time == current.time - timedelta(microseconds=1)
-
-
 def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver):
     solver.plan_metadata()
     old_task = return_task(solver)
@@ -861,8 +547,9 @@ def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver)
     # 模拟副表调整了工位（黑键与陈换位），并将歌蕾蒂娅设为用尽
     backup = solver.op_data.backup_plans[0]
     backup.plan = {
-        "contact": [Room("陈", "", [])],
-        "central": [Room("黑键", "感知", ["陈"])],
+        "contact": [Room("陈", "", ["砾"])],
+        "central": [Room("黑键", "感知", ["红"])],
+        "meeting": [Room("歌蕾蒂娅", "", ["陈"])],
     }
     backup.config.exhaust_require = ["歌蕾蒂娅"]
 
@@ -871,12 +558,11 @@ def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver)
     # 副表已生效且修改了 contact 和 central 的计划
     assert solver.op_data.plan["contact"][0].agent == "陈"
     assert solver.op_data.plan["central"][0].agent == "黑键"
-    new_task = return_task(solver)
-    # 回班任务的时间按副表配置消除急救推迟到 17:05
-    assert new_task.time == datetime(2026, 9, 11, 17, 5, 3)
-    # 回班工位依然保留下班时的快照（contact 的黑键），没有被副表改写为 central
-    assert new_task.plan["contact"][0] == "黑键"
-    assert "central" not in new_task.plan
+    # The final correction now includes the returning operator directly.
+    merged = [task for task in solver.tasks if task.plan]
+    assert len(merged) == 1
+    assert merged[0].plan == {"central": ["黑键"], "contact": ["陈"]}
+    assert not any(task.type == TaskTypes.SHIFT_ON for task in solver.tasks)
 
 
 def test_deactivation_restores_main_plan_targets_preventing_stickiness(solver):
@@ -884,27 +570,24 @@ def test_deactivation_restores_main_plan_targets_preventing_stickiness(solver):
     # 模拟副表生效
     backup = solver.op_data.backup_plans[0]
     backup.plan = {
-        "contact": [Room("陈", "", [])],
-        "central": [Room("黑键", "感知", ["陈"])],
+        "contact": [Room("陈", "", ["砾"])],
+        "central": [Room("黑键", "感知", ["红"])],
+        "meeting": [Room("歌蕾蒂娅", "", ["陈"])],
     }
     backup.config.exhaust_require = ["歌蕾蒂娅"]
     solver.backup_plan_solver()
     assert solver.op_data.plan_condition == [True]
 
-    # 模拟副表期间存在的某任务记录了副表工位 central
-    task = return_task(solver)
-    task.plan = {"central": ["黑键"]}
-
-    # 条件变更，黑键离开宿舍，副表条件失效
-    solver.op_data.operators["黑键"].is_resting = MagicMock(return_value=False)
+    # Complete the pending arrangement before evaluating the next real state.
+    transition = next(task.plan for task in solver.tasks if task.plan)
+    solver.op_data = solver.op_data.project_arrangements([transition])
+    solver.tasks.clear()
     solver.backup_plan_solver()
-
-    # 副表失效，恢复主表
     assert solver.op_data.plan_condition == [False]
-    new_task = return_task(solver)
-    # 不会发生工位粘滞，黑键回班工位正确恢复为主表工位 contact，而不是副表 central
-    assert new_task.plan["contact"][0] == "黑键"
-    assert "central" not in new_task.plan
+    merged = [task for task in solver.tasks if task.plan]
+    assert len(merged) == 1
+    assert merged[0].plan["contact"] == ["黑键"]
+    assert "黑键" not in merged[0].plan.get("central", [])
 
 
 def test_shift_on_slot_collision_falls_back_gracefully(solver):
@@ -943,30 +626,23 @@ def test_shift_on_slot_collision_falls_back_gracefully(solver):
     assert "陈" in all_assigned
 
 
-@pytest.mark.parametrize("experimental", [False, True])
-@pytest.mark.parametrize("timing", [None, *PlanTriggerTiming])
-def test_active_fiammetta_blocks_every_backup_trigger(solver, experimental, timing):
-    if experimental:
-        enable_experimental_dorm_logic(solver)
+def test_active_fiammetta_blocks_every_backup_trigger(solver):
+    reset_default_plan(solver)
     data = solver.op_data
     solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
     data.evaluate_expression = MagicMock(wraps=data.evaluate_expression)
     original = list(data.plan_condition)
     generated = []
-    assert solver.backup_plan_solver(timing, generated_tasks=generated) is False
+    assert solver.backup_plan_solver(generated_tasks=generated) is False
     assert data.plan_condition == original
     assert generated == []
     assert solver.tasks == []
     data.evaluate_expression.assert_not_called()
 
 
-@pytest.mark.parametrize("experimental", [False, True])
 @pytest.mark.parametrize("phase", ["trigger", "charge", "restore"])
-def test_due_fiammetta_blocks_backup_between_tasks_and_after_restart(
-    solver, experimental, phase
-):
-    if experimental:
-        enable_experimental_dorm_logic(solver)
+def test_due_fiammetta_blocks_backup_between_tasks_and_after_restart(solver, phase):
+    reset_default_plan(solver)
     plans = {
         "trigger": {},
         "charge": {"dormitory_1": ["歌蕾蒂娅", "菲亚梅塔"]},
@@ -991,10 +667,8 @@ def test_due_fiammetta_blocks_backup_between_tasks_and_after_restart(
     assert data.evaluate_expression.called
 
 
-@pytest.mark.parametrize("experimental", [False, True])
-def test_gladiia_temporary_charge_does_not_activate_rest_backup(solver, experimental):
-    if experimental:
-        enable_experimental_dorm_logic(solver)
+def test_gladiia_temporary_charge_does_not_activate_rest_backup(solver):
+    reset_default_plan(solver)
     data = solver.op_data
     data.backup_plans[0].trigger = LogicExpression(
         "op_data.operators['歌蕾蒂娅'].is_resting()", "==", "True"

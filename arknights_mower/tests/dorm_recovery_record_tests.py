@@ -45,8 +45,8 @@ def test_repeated_read_preserves_deadline_in_test_mode(solver, elapsed):
     bed.time = due
     data.update_detail("赫默", 24 if elapsed else 11, ROOM, 3)
     data.refresh_dorm_time(ROOM, 3, {"agent": "赫默", "time": NOW + timedelta(hours=5)})
-    assert (bed.time == due) is data.experimental_dorm_logic
-    if data.experimental_dorm_logic and elapsed:
+    assert (bed.time == due) is True
+    if elapsed:
         data.correct_dorm()
         assert data.operators["赫默"].mood == 24
 
@@ -72,7 +72,7 @@ def test_recovery_record_lifecycle(solver, destination):
         data.update_detail("深巡", 10, ROOM, 3)
     data.update_detail(name, 10, room, index)
     _, bed = data.get_dorm_by_name(name)
-    kept = data.experimental_dorm_logic and destination == "same"
+    kept = destination == "same"
     assert (bed is not None and bed.time == due) is kept
     if destination in ("leave", "other_room"):
         assert not any(bed.name == name for bed in data.dorm)
@@ -99,20 +99,15 @@ def test_daily_room_read_only_ocr_changed_positions(solver, monkeypatch, swapped
     solver.read_accurate_mood = MagicMock(return_value=10)
     solver.read_operator_time = MagicMock(return_value=NOW + timedelta(hours=6))
     solver.get_agent_from_room(ROOM)
-    if data.experimental_dorm_logic:
-        assert solver.read_operator_time.call_count == (2 if swapped else 0)
-        assert data.dorm[0].time == expected[0]
-        if not swapped:
-            assert [bed.time for bed in data.dorm] == expected
-    else:
-        assert solver.read_operator_time.call_count == 3
+    assert solver.read_operator_time.call_count == (2 if swapped else 0)
+    assert data.dorm[0].time == expected[0]
+    if not swapped:
+        assert [bed.time for bed in data.dorm] == expected
 
 
 @pytest.mark.parametrize("timer", ["past", "future", "missing"])
 def test_full_releases_have_identity_and_execute_individually(solver, timer):
     data = solver.op_data
-    if not data.experimental_dorm_logic:
-        return
     populate(data)
     data.config.free_room = True
     for bed in data.dorm:
@@ -147,8 +142,6 @@ def test_full_releases_have_identity_and_execute_individually(solver, timer):
 
 def test_stale_named_release_cannot_evict_new_occupant(solver):
     data = solver.op_data
-    if not data.experimental_dorm_logic:
-        return
     populate(data)
     data.config.free_room = True
     tasks = plan_metadata(data, [])
@@ -173,15 +166,11 @@ def test_all_rescue_covers_prefer_higher_cached_mood_only_in_test_mode(
         data.operators[name].mood, data.operators[name].time_stamp = mood, NOW
     op = data.operators["絮雨"]
     op.replacement = ["结城理", "酒神"]
-    assert data.replacement_candidates(op) == (
-        ["酒神", "结城理"] if data.experimental_dorm_logic else op.replacement
-    )
+    assert data.replacement_candidates(op) == (["酒神", "结城理"])
 
 
 def test_selected_work_cover_cannot_also_reserve_a_rest_bed(shift_solver):
     data = shift_solver.op_data
-    if not data.experimental_dorm_logic:
-        return
     cover = data.operators["伺夜"]
     cover.mood = 0
     shift_solver.total_agent.append(cover)
@@ -212,8 +201,7 @@ def test_named_releases_keep_original_merge_window(
     late = next(task for task in tasks if task.plan[ROOM][3] == "Free")
     assert late.time == second
     assert early.time == (second + timedelta(seconds=1) if merged else first)
-    if data.experimental_dorm_logic:
-        assert (early.meta_data, late.meta_data) == ("诗怀雅", "赫默")
+    assert (early.meta_data, late.meta_data) == ("诗怀雅", "赫默")
 
 
 def test_default_merge_window_is_ten_minutes():

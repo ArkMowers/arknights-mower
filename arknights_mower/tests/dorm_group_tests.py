@@ -32,7 +32,6 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = True
     instance = object.__new__(BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
@@ -48,7 +47,7 @@ def solver(monkeypatch):
                     *[Room("Free", "", []) for _ in range(3)],
                 ],
             },
-            PlanConfig("", "", "", experimental_dorm_logic=True),
+            PlanConfig("", "", ""),
         ),
         "backup_plans": [],
     }
@@ -228,12 +227,11 @@ def test_idle_release_of_main_keeps_later_group_return(solver, priority):
     ] == ["伊内丝", "银灰"]
 
 
-@pytest.mark.parametrize("protection", ["excluded", "disabled", "legacy"])
+@pytest.mark.parametrize("protection", ["excluded", "disabled"])
 def test_main_idle_release_respects_switch_and_exclusions(solver, protection):
     shift_off(solver)
     data = solver.op_data
     data.config.free_room = protection != "disabled"
-    data.config.experimental_dorm_logic = protection != "legacy"
     if protection == "excluded":
         data.config.free_room_exclusions = ["银灰"]
     member = data.operators["银灰"]
@@ -385,7 +383,7 @@ def test_working_group_does_not_treat_resident_as_resting_witness(solver):
     }
 
 
-def test_experimental_correction_does_not_duplicate_pending_plan(solver):
+def test_unified_correction_does_not_duplicate_pending_plan(solver):
     solver.op_data.operators["冰酿"].current_room = ""
     solver.op_data.operators["冰酿"].current_index = -1
 
@@ -892,21 +890,6 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
     assert target.dorm_recovery_room == "dormitory_1"
 
 
-def test_closing_bed_rebalance_is_disabled_with_stable_logic(solver):
-    configure_explicit_free_bed(solver)
-    data = solver.op_data
-    data.config.experimental_dorm_logic = False
-    data.dorm[0].name = "泥岩"
-    before = [(bed.name, bed.time) for bed in data.dorm]
-    plan = {"dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]}
-
-    recalled = rebalance_closing_dorm_slots(data, plan, {"伊内丝"})
-
-    assert recalled == {"伊内丝"}
-    assert plan == {"dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]}
-    assert [(bed.name, bed.time) for bed in data.dorm] == before
-
-
 def test_auto_free_occupant_can_be_replaced_after_recovery_finishes(solver):
     configure_explicit_free_bed(solver)
     data = solver.op_data
@@ -1173,7 +1156,7 @@ def test_fia_keeps_original_priority_instead_of_dorm_candidate_mood_sort(
 
 
 @pytest.fixture
-def legacy_solver(solver):
+def ungrouped_solver(solver):
     solver.global_plan["default_plan"].plan["dormitory_1"][0].group = ""
     solver.op_data.plan["dormitory_1"][0].group = ""
     solver.op_data.operators["塑心"].group = ""
@@ -1181,67 +1164,65 @@ def legacy_solver(solver):
     return solver
 
 
-def test_ungrouped_dorm_does_not_run_group_correction(legacy_solver, monkeypatch):
+def test_ungrouped_dorm_does_not_run_group_correction(ungrouped_solver, monkeypatch):
     from arknights_mower.utils import resting_correction
 
     correction = MagicMock(side_effect=AssertionError("dorm groups are disabled"))
     monkeypatch.setattr(resting_correction, "correct_group_dorms", correction)
-    assert not legacy_solver.op_data.has_dorm_groups()
-    assert legacy_solver.agent_get_mood() is None
-    assert legacy_solver.tasks == []
+    assert not ungrouped_solver.op_data.has_dorm_groups()
+    assert ungrouped_solver.agent_get_mood() is None
+    assert ungrouped_solver.tasks == []
     correction.assert_not_called()
 
 
-def test_ungrouped_absent_resident_keeps_legacy_average_mood(legacy_solver):
-    data = legacy_solver.op_data
+def test_ungrouped_absent_resident_keeps_average_mood(ungrouped_solver):
+    data = ungrouped_solver.op_data
     data.operators["塑心"].current_room = ""
     assert data.average_mood() == pytest.approx(39 / 96)
 
 
-def test_ungrouped_resident_keeps_legacy_exhaust_flag(legacy_solver):
-    legacy_solver.global_plan["default_plan"].config.exhaust_require = ["塑心"]
-    assert legacy_solver.initialize_operators() is None
-    assert "塑心" in legacy_solver.op_data.exhaust_agent
-    assert not legacy_solver.op_data.has_dorm_groups()
+def test_ungrouped_resident_keeps_exhaust_flag(ungrouped_solver):
+    ungrouped_solver.global_plan["default_plan"].config.exhaust_require = ["塑心"]
+    assert ungrouped_solver.initialize_operators() is None
+    assert "塑心" in ungrouped_solver.op_data.exhaust_agent
+    assert not ungrouped_solver.op_data.has_dorm_groups()
 
 
 def test_ungrouped_fixed_slot_keeps_legacy_full_mood_release(
-    legacy_solver, monkeypatch
+    ungrouped_solver, monkeypatch
 ):
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
-    legacy_solver.op_data.config.free_room = True
+    ungrouped_solver.op_data.config.free_room = True
     monkeypatch.setattr(
-        legacy_solver, "preserve_resting_crafters", lambda agents, room: None
+        ungrouped_solver, "preserve_resting_crafters", lambda agents, room: None
     )
     monkeypatch.setattr(
-        legacy_solver.op_data,
+        ungrouped_solver.op_data,
         "get_current_room",
         MagicMock(side_effect=RuntimeError("before UI")),
     )
     with pytest.raises(RuntimeError, match="before UI"):
-        legacy_solver.choose_agent(agents, "dormitory_1")
+        ungrouped_solver.choose_agent(agents, "dormitory_1")
     assert agents == ["Free", "冰酿", "Free", "Free", "Free"]
 
 
 @pytest.mark.parametrize("operation", ["shift", "priority"])
-def test_normal_group_keeps_legacy_in_place_order(legacy_solver, operation):
-    data = legacy_solver.op_data
+def test_normal_group_keeps_legacy_in_place_order(ungrouped_solver, operation):
+    data = ungrouped_solver.op_data
     original = data.groups["联动"]
     for name, mood in [("伊内丝", 10), ("银灰", 8), ("讯使", 3)]:
         data.operators[name].mood = mood
     if operation == "shift":
-        plan, _ = shift_off(legacy_solver)
+        plan, _ = shift_off(ungrouped_solver)
         assert "dormitory_1" not in plan
     else:
-        legacy_solver.rearrange_resting_priority("联动")
+        ungrouped_solver.rearrange_resting_priority("联动")
     assert data.groups["联动"] is original
     assert original == ["讯使", "银灰", "伊内丝"]
 
 
-@pytest.mark.parametrize("experimental", [False, True])
-def test_multiple_idle_beds_finishing_together_generate_release(solver, experimental):
+def test_multiple_idle_beds_finishing_together_generate_release(solver):
     data = solver.op_data
-    data.config.experimental_dorm_logic = experimental
     data.config.free_room = True
     completed_at = datetime.now() + timedelta(hours=1)
     for bed in data.dorm:
@@ -1249,23 +1230,12 @@ def test_multiple_idle_beds_finishing_together_generate_release(solver, experime
         data.operators[bed.name].mood = 10
 
     solver.plan_metadata()
-
-    if experimental:
-        assert len(solver.tasks) == 3
-        assert {task.meta_data for task in solver.tasks} == {
-            bed.name for bed in data.dorm
-        }
-        for task in solver.tasks:
-            assert task.type == TaskTypes.RELEASE_DORM
-            assert completed_at <= task.time <= completed_at + timedelta(seconds=1)
-            op = data.operators[task.meta_data]
-            expected = ["Current"] * 5
-            expected[op.current_index] = "Free"
-            assert task.plan == {op.current_room: expected}
-    else:
-        assert len(solver.tasks) == 1
-        assert solver.tasks[0].type == TaskTypes.RELEASE_DORM
-        assert solver.tasks[0].time == completed_at
-        assert solver.tasks[0].plan == {
-            "dormitory_1": ["Current", "Current", "Free", "Free", "Free"]
-        }
+    assert len(solver.tasks) == 3
+    assert {task.meta_data for task in solver.tasks} == {bed.name for bed in data.dorm}
+    for task in solver.tasks:
+        assert task.type == TaskTypes.RELEASE_DORM
+        assert completed_at <= task.time <= completed_at + timedelta(seconds=1)
+        op = data.operators[task.meta_data]
+        expected = ["Current"] * 5
+        expected[op.current_index] = "Free"
+        assert task.plan == {op.current_room: expected}

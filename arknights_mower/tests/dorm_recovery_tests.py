@@ -106,7 +106,6 @@ def arrange(solver, agents=None):
 
 
 def test_simple_fill_skips_temporary_recovery_arrangement(solver):
-    solver.op_data.config.experimental_dorm_logic = True
     solver.task.type = TaskTypes.FILL_DORM
     solver.task.simple_dorm_fill = True
     arrange(solver)
@@ -338,7 +337,6 @@ def test_changing_target_clears_previous_single_recovery_recipient(solver):
 def test_higher_priority_admission_reestablishes_single_recovery_and_reads_times(
     solver,
 ):
-    solver.op_data.config.experimental_dorm_logic = True
     arrange(solver)
     # 银灰已经获得单回；陈尚在宿舍外，计划新入住最后一个动态位。
     solver.physical[-1] = ""
@@ -636,8 +634,6 @@ def test_restoring_lower_mood_competitors_never_moves_single_recovery_target(sol
 @pytest.mark.parametrize(
     "unavailable",
     [
-        "unknown",
-        "not_full",
         "working",
         "blacklisted",
         "workaholic",
@@ -649,18 +645,13 @@ def test_no_safe_padding_restores_roster_without_compressing_target(
     solver, unavailable
 ):
     padding = solver.op_data.operators["黑角"]
-    if unavailable == "unknown":
-        padding.time_stamp = None
-    elif unavailable == "not_full":
-        padding.mood = 23
-    elif unavailable == "working":
+    if unavailable == "working":
         padding.current_room = "meeting"
     elif unavailable == "blacklisted":
         solver.op_data.config.free_blacklist.append(padding.name)
     elif unavailable == "workaholic":
         padding.workaholic = True
     elif unavailable == "limit":
-        solver.op_data.config.experimental_dorm_logic = True
         solver.op_data.config.operator_mood_limits = {"黑角": {"upper": 12}}
         padding.upper_limit = 12
     else:
@@ -708,7 +699,6 @@ def test_final_roster_reads_time_again_even_when_target_keeps_same_slot(
 ):
     from datetime import timedelta
 
-    solver.op_data.config.experimental_dorm_logic = True
     old_time = datetime.now() + timedelta(hours=1)
     final_time = old_time + timedelta(hours=1)
     read = solver.get_agent_from_room.side_effect
@@ -730,3 +720,38 @@ def test_final_roster_reads_time_again_even_when_target_keeps_same_slot(
 
     assert observed[-1] is None
     assert solver.op_data.get_dorm_by_name("银灰")[1].time == final_time
+
+
+@pytest.mark.parametrize("mood", [23, 15])
+def test_highest_idle_mood_can_pad_target_without_being_full(solver, mood):
+    solver.op_data.operators["黑角"].mood = mood
+    solver.op_data.add(Operator("芬", ""))
+    other = solver.op_data.operators["芬"]
+    other.mood, other.time_stamp = mood - 1, datetime.now()
+    arrange(solver)
+    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+    assert all(names[3] == "银灰" for names in solver.confirms)
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
+def test_full_preceding_resident_is_not_replaced_by_idle_padding(solver):
+    solver.op_data.operators["红"].mood = 24
+    arrange(solver)
+    assert solver.confirms == [["杜林", "琴柳", "红", "银灰", ""], FINAL]
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
+def test_retained_full_resident_readback_must_not_compete_with_target(solver):
+    solver.op_data.operators["红"].mood = 24
+    read = solver.get_agent_from_room.side_effect
+
+    def read_mood(*args):
+        result = read(*args)
+        if solver.confirms:
+            solver.op_data.operators["红"].mood = 1
+        return result
+
+    solver.get_agent_from_room.side_effect = read_mood
+    arrange(solver)
+    assert solver.physical == FINAL
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ""

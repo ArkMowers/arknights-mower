@@ -360,7 +360,7 @@ def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(
 
 
 @pytest.mark.parametrize(
-    "blocked", ["legacy", "personal_cap", "reserved", "stale_empty", "initializing"]
+    "blocked", ["personal_cap", "reserved", "stale_empty", "initializing"]
 )
 @pytest.mark.parametrize("free_room", [False, True])
 def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked, free_room):
@@ -373,8 +373,6 @@ def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked, free_
     instance.tasks, instance.task = [], None
     if blocked == "initializing":
         instance.defer_backup_plan_until_mood_read = True
-    elif blocked == "legacy":
-        data.config.experimental_dorm_logic = False
     elif blocked == "personal_cap":
         data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 12}
         data.operators["红"].upper_limit = 12

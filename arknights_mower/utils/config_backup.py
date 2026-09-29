@@ -19,6 +19,7 @@ from yamlcore import CoreLoader
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RegularTaskPart
 from arknights_mower.utils.config.plan import (
+    has_retired_dorm_options,
     migrate_legacy_dorm_order,
     parse_plan_document,
 )
@@ -192,16 +193,10 @@ def _validate_configuration(files):
     plan_data = _object_file(files, "plan.json")
     # Some older exports were normalized through the newer schema and therefore carry
     # an empty main-plan field even though the global value was still authoritative.
-    if (
-        conf.experimental_dorm_logic
-        and legacy_dorm_order
-        and plan_data.get("conf", {}).get("dorm_order") == ""
-    ):
+    if (legacy_dorm_order) and plan_data.get("conf", {}).get("dorm_order") == "":
         plan_data["conf"].pop("dorm_order")
     plan = parse_plan_document(plan_data)
-    dorm_order_migrated = conf.experimental_dorm_logic and migrate_legacy_dorm_order(
-        plan, plan_data, legacy_dorm_order
-    )
+    dorm_order_migrated = migrate_legacy_dorm_order(plan, plan_data, legacy_dorm_order)
     weekly = _object_file(files, "weekly_plans.yml", optional=True)
     if weekly is not None:
         plans = weekly.get("plans")
@@ -267,9 +262,23 @@ def import_configuration(raw):
         _write_bytes(recovery, _archive_bytes(previous))
         contents = dict(files)
         contents["conf.yml"] = yaml.safe_dump(
-            data, allow_unicode=True, sort_keys=False
+            {
+                key: value
+                for key, value in data.items()
+                if key
+                not in {
+                    "experimental_dorm_logic",
+                    "refresh_backup_plan_after_mood",
+                    "workshop_low_priority_rest",
+                    "dorm_order",
+                }
+            },
+            allow_unicode=True,
+            sort_keys=False,
         ).encode("utf-8")
-        if dorm_order_migrated:
+        if dorm_order_migrated or has_retired_dorm_options(
+            _object_file(files, "plan.json")
+        ):
             contents["plan.json"] = json.dumps(
                 plan.model_dump(exclude_none=True), ensure_ascii=False, indent=2
             ).encode("utf-8")

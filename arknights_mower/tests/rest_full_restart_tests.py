@@ -36,7 +36,7 @@ def solver(monkeypatch):
                 DORM: [Room("冰酿", "", []), Room("闪灵", "", [])]
                 + [Room("Free", "", []) for _ in range(3)],
             },
-            PlanConfig("阿罗玛", "阿罗玛", "", experimental_dorm_logic=True),
+            PlanConfig("阿罗玛", "阿罗玛", ""),
         ),
         "backup_plans": [],
     }
@@ -157,13 +157,11 @@ def test_completed_warmup_can_return_after_restart(solver, upper):
     ) == {"contact": ["阿罗玛"]}
 
 
-@pytest.mark.parametrize("setting", ["experimental", "exhaust", "full"])
+@pytest.mark.parametrize("setting", ["exhaust", "full"])
 def test_other_correction_rules_are_unchanged(solver, setting):
     lose_tasks(solver, False)
     op = solver.op_data.operators["阿罗玛"]
-    if setting == "experimental":
-        solver.op_data.config.experimental_dorm_logic = False
-    elif setting == "exhaust":
+    if setting == "exhaust":
         op.exhaust_require = False
     else:
         op.rest_in_full = False

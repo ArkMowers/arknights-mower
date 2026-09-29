@@ -115,10 +115,8 @@ def test_disabling_feature_or_removing_name_restores_takeover(op_data):
     try_add_release_dorm({}, None, op_data, tasks)
     assert tasks[0].plan[ROOM][-1] == "红"
     op_data.config.free_room_exclusions = ["空爆"]
-    op_data.config.experimental_dorm_logic = False
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
-    assert tasks[0].plan[ROOM][-1] == "红"
-    op_data.config.experimental_dorm_logic = True
+    assert tasks == []
     op_data.config.free_room = False
     assert not op_data.is_free_room_excluded("空爆")

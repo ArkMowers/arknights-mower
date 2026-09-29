@@ -29,7 +29,6 @@ def captain(monkeypatch):
     for module in (base, operators, scheduler_task):
         monkeypatch.setattr(module, "datetime", Clock)
     monkeypatch.setattr(config, "conf", config.Conf())
-    config.conf.experimental_dorm_logic = True
     config.conf.enable_mastery = False
     monkeypatch.setattr(
         config,
@@ -270,13 +269,3 @@ def test_connected_old_tasks_converge_without_duplicate_operator(captain):
     ]
     assert len(assigned) == len(set(assigned))
     assert "阿罗玛" in final.plan["room_2_2"]
-
-
-def test_legacy_backup_keeps_existing_dispatch(captain):
-    captain.op_data.config.experimental_dorm_logic = False
-    captain._legacy_backup_plan_solver = MagicMock(return_value=True)
-    captain._coalesce_backup_transition = MagicMock(
-        side_effect=AssertionError("legacy")
-    )
-    assert captain.backup_plan_solver()
-    captain._legacy_backup_plan_solver.assert_called_once()

@@ -24,7 +24,6 @@ def dorm_solver(monkeypatch):
     config.conf.book_operators = []
     config.conf.workshop_manual_backup = None
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = True
     solver = object.__new__(BaseSchedulerSolver)
     solver.global_plan = {
         "default_plan": Plan(
@@ -35,7 +34,7 @@ def dorm_solver(monkeypatch):
                     for name in ["塑心", "冰酿", "Free", "Free", "Free"]
                 ],
             },
-            PlanConfig("", "", "", experimental_dorm_logic=True),
+            PlanConfig("", "", ""),
         ),
         "backup_plans": [],
     }

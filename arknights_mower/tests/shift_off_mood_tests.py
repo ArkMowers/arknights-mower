@@ -15,14 +15,13 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import try_reorder  # noqa: E402
 
 
-@pytest.fixture(params=[False, True], ids=["legacy", "experimental"])
-def solver(request, monkeypatch):
+@pytest.fixture
+def solver(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base, "_is_mastery_busy", lambda name: False)
     monkeypatch.setattr(logger, "disabled", True)
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = request.param
     instance = object.__new__(base.BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
@@ -49,7 +48,6 @@ def solver(request, monkeypatch):
                 "",
                 "",
                 ope_resting_priority="歌蕾蒂娅",
-                experimental_dorm_logic=request.param,
             ),
         ),
         "backup_plans": [],

@@ -21,7 +21,6 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 def solver(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = True
     monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     data = Operators(
         {
@@ -32,7 +31,7 @@ def solver(monkeypatch):
                     "dormitory_1": [Room("杜林", "", []), Room("蜜莓", "", [])]
                     + [Room("Free", "", []) for _ in range(3)],
                 },
-                PlanConfig("", "", "", experimental_dorm_logic=True),
+                PlanConfig("", "", ""),
                 products={"room_1_1": "lmd", "room_2_2": "lmd"},
             ),
             "backup_plans": [
@@ -175,13 +174,3 @@ def test_orundum_room_still_gets_normal_mood_scan(solver, monkeypatch):
     # 常规巡检还会检查训练室；这里约束卖玉房间仍被正常扫描一次。
     assert solver.enter_room.call_args_list.count(call("room_1_1")) == 1
     assert solver.get_agent_from_room.call_args_list.count(call("room_1_1", None)) == 1
-
-
-def test_sync_does_not_change_legacy_queue(solver):
-    solver.op_data.config.experimental_dorm_logic = False
-    solver.op_data.products["room_1_1"] = "orundum"
-    task = SchedulerTask(task_type=TaskTypes.RUN_ORDER, meta_data="room_1_1")
-    solver.tasks = [task]
-    solver._sync_run_order_tasks()
-    assert solver.tasks == [task]
-    assert "room_1_1" in solver.op_data.run_order_rooms

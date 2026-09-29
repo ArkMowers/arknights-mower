@@ -3,7 +3,6 @@
 import copy
 import pickle
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,18 +13,6 @@ from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
-
-
-@pytest.mark.parametrize("state", ["missing", "none", "legacy"])
-def test_backup_guard_preserves_legacy_dispatch_before_operators_are_ready(state):
-    instance = object.__new__(base.BaseSchedulerSolver)
-    if state != "missing":
-        instance.op_data = (
-            None if state == "none" else SimpleNamespace(experimental_dorm_logic=False)
-        )
-    instance._legacy_backup_plan_solver = MagicMock(return_value=False)
-    assert instance.backup_plan_solver() is False
-    instance._legacy_backup_plan_solver.assert_called_once()
 
 
 @pytest.fixture
@@ -52,7 +39,7 @@ def solver(monkeypatch):
                         *[Room("Free", "", []) for _ in range(3)],
                     ],
                 },
-                PlanConfig("", "", "", experimental_dorm_logic=True),
+                PlanConfig("", "", ""),
             ),
             "backup_plans": [
                 Plan(
@@ -441,7 +428,7 @@ def test_special_tasks_are_not_simulated_as_normal_shifts(solver, kind):
     assert not hasattr(task, "backup_shift_conditions")
 
 
-def test_due_fiammetta_and_legacy_mode_keep_original_behavior(solver):
+def test_due_fiammetta_defers_convergence_until_finished(solver):
     task = downshift(solver)
     solver.tasks.append(
         SchedulerTask(
@@ -451,6 +438,5 @@ def test_due_fiammetta_and_legacy_mode_keep_original_behavior(solver):
     solver._prepare_shift_backup(task)
     assert not hasattr(task, "backup_shift_conditions")
     solver.tasks.pop()
-    solver.op_data.config.experimental_dorm_logic = False
     solver._prepare_shift_backup(task)
-    assert not hasattr(task, "backup_shift_conditions")
+    assert hasattr(task, "backup_shift_conditions")

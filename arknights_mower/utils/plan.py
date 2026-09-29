@@ -26,23 +26,6 @@ def effective_dorm_room_order(values: list[str]) -> list[str]:
     return result
 
 
-class PlanTriggerTiming(Enum):
-    "副表触发时机"
-
-    BEGINNING = 0
-    "任务开始"
-    BEFORE_WORK = 100
-    "进入第一个工作站前"
-    BEFORE_DORM = 200
-    "入住宿舍前"
-    BEFORE_PLANNING = 300
-    "下班结束"
-    AFTER_PLANNING = 600
-    "上班结束"
-    END = 999
-    "任务结束"
-
-
 class BaseProduct(Enum):
     "基地产物"
 
@@ -75,7 +58,6 @@ class PlanConfig:
         resting_standby: str = "",
         dorm_order: str = "",
         dorm_order_override: Optional[bool] = None,
-        experimental_dorm_logic: bool = False,
         mood_limits: Optional[dict] = None,
         operator_mood_limits: Optional[dict] = None,
         resting_priority_replacement: str = "",
@@ -136,7 +118,6 @@ class PlanConfig:
                 != DEFAULT_DORM_ROOM_ORDER
             )
         )
-        self.experimental_dorm_logic = experimental_dorm_logic
 
     def is_rest_in_full(self, agent_name) -> bool:
         return agent_name in self.rest_in_full
@@ -198,7 +179,7 @@ class PlanConfig:
                     merged_list.append(item)
             setattr(n, p, merged_list)
         # 副表未显式设置宿舍顺序时继承此前结果；只有显式设置的副表覆盖。
-        if self.experimental_dorm_logic and target.dorm_order_override:
+        if target.dorm_order_override:
             n.dorm_order = copy.deepcopy(target.dorm_order)
             n.dorm_order_override = True
         if target.mood_limits is not None:
@@ -246,8 +227,6 @@ class Plan:
         config: PlanConfig,
         trigger: Optional[LogicExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
-        trigger_timing: Optional[str] = None,
-        exit_trigger_timing: Optional[str] = None,
         name: Optional[str] = "",
         products: Optional[dict[str, str]] = None,
     ):
@@ -255,19 +234,13 @@ class Plan:
         Args:
             plan: 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
             config: 基建计划相关配置，必须填写全部配置
-            trigger: 触发备用plan 的条件（必填）就是每次最多只有一个备用plan触发
-            task: 触发备用plan 的时间生成的任务（选填）
-            trigger_timing: 触发时机
-            exit_trigger_timing: 退出时机；未填写时与触发时机一致
+            trigger: 副表生效条件；所有副表条件统一收敛
+            task: 副表生效时合入最终安排的换人名单（选填）
         """
         self.plan = plan
         self.config = config
         self.trigger = trigger
         self.task = task
-        self.trigger_timing = self.set_timing_enum(trigger_timing)
-        self._exit_trigger_timing = (
-            self.set_timing_enum(exit_trigger_timing) if exit_trigger_timing else None
-        )
         self.name = name
         self.products = products or {}
 
@@ -291,25 +264,3 @@ class Plan:
             for slot in room
             if slot.agent not in IGNORED_NAMES
         }
-
-    @property
-    def exit_trigger_timing(self) -> PlanTriggerTiming:
-        """未单独配置时动态跟随切入时机。"""
-        return self._exit_trigger_timing or self.trigger_timing
-
-    @exit_trigger_timing.setter
-    def exit_trigger_timing(self, value: Optional[str | PlanTriggerTiming]):
-        if value is None:
-            self._exit_trigger_timing = None
-        elif isinstance(value, PlanTriggerTiming):
-            self._exit_trigger_timing = value
-        else:
-            self._exit_trigger_timing = self.set_timing_enum(value)
-
-    @staticmethod
-    def set_timing_enum(value: str) -> PlanTriggerTiming:
-        "将字符串转换为副表触发时机"
-        try:
-            return PlanTriggerTiming[value.upper()]
-        except Exception:
-            return PlanTriggerTiming.AFTER_PLANNING

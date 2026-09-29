@@ -10,13 +10,10 @@ ADVANCED_SETTING_KEYS = (
     "version_update_resting_threshold",
     "version_update_threshold_advance_hours",
     "free_room",
-    "experimental_dorm_logic",
-    "dorm_order",
     "merge_interval",
     "group_rest_in_full_on_mood_gap",
     "group_mood_gap_max_extra_wait_hours",
     "fia_fool",
-    "refresh_backup_plan_after_mood",
     "assistant_follows_schedule",
     "fia_threshold",
     "rescue_threshold",
@@ -34,7 +31,18 @@ def apply_advanced_settings(conf: Conf, settings: dict | None) -> Conf:
     if settings is None:
         return conf
     # 旧排班文件可能仍携带已移除的手工补货房间设置。
-    settings = {key: value for key, value in settings.items() if key != "reload_room"}
+    settings = {
+        key: value
+        for key, value in settings.items()
+        if key
+        not in {
+            "reload_room",
+            "experimental_dorm_logic",
+            "refresh_backup_plan_after_mood",
+            "workshop_low_priority_rest",
+            "dorm_order",
+        }
+    }
     unknown = settings.keys() - ADVANCED_SETTING_KEYS
     if unknown:
         raise ValueError(f"未知的高级设置：{', '.join(sorted(unknown))}")

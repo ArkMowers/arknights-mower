@@ -58,13 +58,10 @@ def test_timeout_reopens_release_and_clears_checks_without_changing_beds(solver)
     assert resident.dorm_mood_fallback == ROOM
 
 
-def test_timeout_boundary_and_legacy_mode(op_data):
+def test_timeout_boundary(op_data):
     now = datetime.now()
     op_data.stop_idle_dorm_search(now)
     assert not op_data.refresh_idle_dorm_search(now=now + timedelta(minutes=59))
-    op_data.config.experimental_dorm_logic = False
-    assert not op_data.refresh_idle_dorm_search(now=now + timedelta(hours=3))
-    op_data.config.experimental_dorm_logic = True
     assert op_data.refresh_idle_dorm_search(now=now + timedelta(minutes=60))
     assert not op_data.refresh_idle_dorm_search(now=now + timedelta(hours=4))
 
@@ -127,7 +124,7 @@ def test_group_refresh_waits_for_all_rooms_and_does_not_repeat(solver, task_type
     assert data.idle_dorm_search_exhausted
 
 
-@pytest.mark.parametrize("case", ["single", "fia", "initial", "legacy"])
+@pytest.mark.parametrize("case", ["single", "fia", "initial"])
 def test_non_group_or_temporary_arrangement_does_not_refresh(solver, case):
     instance, _ = solver
     data = instance.op_data
@@ -139,7 +136,7 @@ def test_non_group_or_temporary_arrangement_does_not_refresh(solver, case):
     elif case == "initial":
         instance._initial_mood_probe_active = True
     else:
-        data.config.experimental_dorm_logic = False
+        pass
     data.stop_idle_dorm_search()
     instance._track_idle_dorm_shift(task.plan)
     for name in ("银灰", "红"):

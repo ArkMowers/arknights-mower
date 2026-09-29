@@ -29,11 +29,12 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 ### 2.2 Base Infrastructure & Scheduling Domain
 
 - [ ] **[INV-SCHED-01] Empirical Depletion Rate**: Are operator exhaustion forecasts calculated dynamically from inspection deltas rather than hardcoded assumptions?
-- [ ] **[INV-SCHED-02] Dormitory Entry Sequence**: Does dorm bed assignment dispatch operators in strict priority tier sequence to ensure single-target dorm buffs hit designated operators?
-- [ ] **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Are beds strictly single-occupancy? Do operators reaching maximum mood release beds immediately to unblock rotation queues?
+- [ ] **[INV-SCHED-02] Stable Recovery Position**: The target retains its final slot during recovery setup and roster restoration; earlier non-manager slots use confirmed full residents or the highest-mood eligible idle padding, with actual readback required before recording recovery.
+- [ ] **[INV-SCHED-03] Bed Ownership and Release**: Beds have one occupant; release validates occupant identity and respects idle-release exclusions and full-occupancy fallback, while personal mood limits remain mandatory.
 - [ ] **[INV-SCHED-04] Shift Transition Compensation**: Do event-driven shifts (order runs, backup plans) handle dispatch failures gracefully without leaving facilities unassigned?
 - [ ] **[INV-SCHED-05] Complete Shift Projection**: Do backup conditions, subsequent rotations, cached corrections, and final bed filling converge on a copy before one arrangement is submitted, with failure preserving actual state?
 - [ ] **[INV-SCHED-06] Manufacturing Switch Boundary**: Does a switch after Drone Acceleration track the accelerated current unit and avoid treating the next unit's countdown as unfinished work?
+- [ ] **[INV-SCHED-07] Unified Dormitory Policy**: All scheduling uses the same dormitory policy; retired mode keys neither select legacy behavior nor prevent old configuration imports.
 
 ### 2.3 Presentation Layer (UI)
 

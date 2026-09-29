@@ -10,7 +10,7 @@ const plan_store = usePlanStore()
 const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme, experimental_dorm_logic } = storeToRefs(config_store)
+const { theme } = storeToRefs(config_store)
 
 const outer = ref(null)
 
@@ -613,10 +613,7 @@ function set_facility(e) {
             <help-text>
               <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
               <p>宿舍替班按已知心情从低到高选择，已在岗者保留。</p>
-              <p v-if="experimental_dorm_logic">
-                宿舍替换填 Free 可在下班时开放休息床位；具体替班须为非主班。
-              </p>
-              <p v-else>宿舍绑组须填具体替班，不支持临时 Free 床位。</p>
+              <p>宿舍替换填 Free 可在下班时开放休息床位；具体替班须为非主班。</p>
             </help-text>
           </td>
           <td class="table-space group">
@@ -630,7 +627,7 @@ function set_facility(e) {
             <n-form-item :show-label="false" :show-feedback="false">
               <slick-operator-select
                 :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
-                :include-free="experimental_dorm_logic && facility.startsWith('dorm')"
+                :include-free="facility.startsWith('dorm')"
                 v-model="current_plan[facility].plans[i - 1].replacement"
                 class="replacement-select"
               />

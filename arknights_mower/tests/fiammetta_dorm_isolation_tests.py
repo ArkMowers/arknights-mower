@@ -15,10 +15,8 @@ ROOM = "dormitory_1"
 solver = dorm_group_tests.solver
 
 
-@pytest.mark.parametrize("experimental", [False, True])
-def test_real_selection_keeps_full_charge_target(solver, monkeypatch, experimental):
+def test_real_selection_keeps_full_charge_target(solver, monkeypatch):
     data = solver.op_data
-    data.config.experimental_dorm_logic = experimental
     data.config.free_room = True
     data.add(Operator("菲亚梅塔", ROOM, index=3))
     data.operators["伊内丝"].mood = 24
@@ -35,14 +33,10 @@ def test_real_selection_keeps_full_charge_target(solver, monkeypatch, experiment
     instance.get_free_list.assert_not_called()
 
 
-@pytest.mark.parametrize("experimental", [False, True])
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("phase", ["charge", "restore"])
-def test_fiammetta_exact_roster_survives_dorm_normalization(
-    solver, experimental, free_room, phase
-):
+def test_fiammetta_exact_roster_survives_dorm_normalization(solver, free_room, phase):
     data = solver.op_data
-    data.config.experimental_dorm_logic = experimental
     data.config.free_room = free_room
     data.add(Operator("菲亚梅塔", ROOM, index=3))
     data.operators["伊内丝"].mood = 24
@@ -150,24 +144,13 @@ def test_fia_failed_mood_read_does_not_schedule_from_stale_cache(solver):
     assert solver.tasks == []
 
 
-def test_legacy_fia_keeps_existing_cache_selection(solver):
-    solver.op_data.config.experimental_dorm_logic = False
-    solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
-    solver.check_fia = lambda: (["伊内丝"], ROOM)
-    solver.plan_fia()
-    solver.enter_room.assert_not_called()
-    assert solver.tasks[0].plan == {ROOM: ["伊内丝", "菲亚梅塔"]}
-
-
 @pytest.mark.parametrize("read_mood", [False, True])
-@pytest.mark.parametrize("experimental", [False, True])
 def test_charge_return_keeps_work_rate_and_later_work_can_recalibrate(
-    solver, monkeypatch, read_mood, experimental
+    solver, monkeypatch, read_mood
 ):
     import numpy as np
 
     data = solver.op_data
-    data.config.experimental_dorm_logic = experimental
     target = data.operators["讯使"]
     target._current_room, target.current_index = ROOM, 2
     target.mood, target.time_stamp, target.depletion_rate = 24, datetime.now(), 3.25
