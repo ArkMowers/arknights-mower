@@ -65,7 +65,9 @@ flowchart TD
 ### 2.7 Drone Acceleration
 - Consumes Power Plant drones (each drone deducting 3 minutes) to accelerate manufacturing lines or trading post orders.
 - Deconflicts concurrent trade order runs with scheduled acceleration windows.
-- Calculates precise single-unit drone counts before manufacturing product switches, preventing partial progress loss.
+- Calculates current-unit drone counts before manufacturing product switches, subject to the configured progress-loss tolerance.
+- After Drone Acceleration, carries the accelerated current unit's remaining time to the product change confirmation. A countdown for the next unit does not defer the switch.
+- The [manufacturing switch boundary decision](../../.agents/notes/implemented/bug-fix/2026-09-29-manufacturing-switch-boundary.md) records the failure case and verification.
 
 ### 2.8 Operator Selection Verification
 - Confirms a selected card by its blue border before committing a facility assignment.
@@ -80,6 +82,7 @@ flowchart TD
 - **[INV-SCHED-02] Dormitory Entry Sequence**: Dorm bed assignment must dispatch operators in strict priority tier sequence to guarantee single-target dorm buffs hit designated priority operators.
 - **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Dormitory beds are strictly single-occupancy; operators reaching maximum mood must immediately release beds to unblock rotation queues.
 - **[INV-SCHED-04] Shift Transition Compensation**: Condition-triggered shifts (order runs, backup plans) must preserve state rollback on failure, avoiding orphaned room assignments.
+- **[INV-SCHED-06] Manufacturing Switch Boundary**: After Drone Acceleration, a manufacturing product switch tracks completion of the accelerated current unit; the next unit's countdown never postpones that switch.
 - **[INV-REC-02] Occluded Operator Selection**: A card with an obscured upper selection border is confirmed only when both vertical borders and the leading portion of its lower border are visible; adjacent card borders cannot confirm selection.
 - **[INV-SCHED-05] Complete Shift Projection**: Experimental ordinary shifts submit only after backup conditions, eligible rotations, cached corrections, and final bed filling stabilize on an isolated projection; failure preserves the original task and actual occupancy.
 

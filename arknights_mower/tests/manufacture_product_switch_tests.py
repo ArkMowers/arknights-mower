@@ -690,6 +690,86 @@ def test_experimental_product_change_uses_speed_and_configured_buffer(monkeypatc
     )
 
 
+@pytest.mark.parametrize(
+    "current_product, target_product, current_remaining, drones, elapsed_seconds",
+    [
+        ("gold", "exp3", 150, 1, 0),
+        ("gold", "exp3", 3605, 20, 10),
+        ("exp3", "gold", 9900, 55, 0),
+    ],
+)
+def test_accelerated_unit_rollover_does_not_defer_next_product(
+    monkeypatch,
+    current_product,
+    target_product,
+    current_remaining,
+    drones,
+    elapsed_seconds,
+):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    total_seconds = 5000 + current_remaining
+    solver = acceleration_solver(available_drones=100, current_total=total_seconds)
+    solver.op_data = SimpleNamespace(experimental_dorm_logic=True)
+    solver.read_manufacture_product.side_effect = [
+        current_product,
+        current_product,
+        target_product,
+    ]
+    solver._cache_facility_state = MagicMock()
+    solver._read_manufacture_speed = MagicMock(return_value=2.0)
+    solver._select_manufacture_product = MagicMock()
+    solver.recog.update = MagicMock()
+    observation = {
+        "room": "room_1_2",
+        "current_product": current_product,
+        "target_product": target_product,
+        "total_seconds": total_seconds,
+        "current_remaining": current_remaining,
+        "drone_count": drones,
+        "production_rate": 2.0,
+    }
+
+    solver._execute_manufacture_acceleration(observation)
+    solver._confirm_drone_count.assert_called_once_with(drones)
+    observation["accelerated_at"] -= timedelta(seconds=elapsed_seconds)
+    # The panel includes a full new unit after the accelerated unit ends.
+    solver._read_manufacture_total_seconds.return_value = (
+        total_seconds
+        - current_remaining
+        + MANUFACTURE_PRODUCTS[current_product].unit_seconds
+    )
+
+    solver._change_manufacture_product(observation)
+
+    solver._select_manufacture_product.assert_called_once()
+    assert solver._select_manufacture_product.call_args.args == (target_product,)
+    assert solver._read_manufacture_total_seconds.call_count == 1
+
+
+def test_accelerated_unit_with_remaining_work_still_defers(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    solver = acceleration_solver(available_drones=100, current_total=5000)
+    solver.op_data = SimpleNamespace(experimental_dorm_logic=True)
+    solver._cache_facility_state = MagicMock()
+    solver._read_manufacture_speed = MagicMock(return_value=2.0)
+    solver._select_manufacture_product = MagicMock()
+    observation = {
+        "room": "room_1_2",
+        "current_product": "gold",
+        "target_product": "exp3",
+        "production_rate": 2.0,
+        "total_seconds": 5000,
+        "current_remaining": 600,
+        "remaining_after_acceleration": 600,
+        "accelerated_at": datetime.now(),
+    }
+
+    with pytest.raises(base.ProductSwitchDeferred):
+        solver._change_manufacture_product(observation)
+
+    solver._select_manufacture_product.assert_not_called()
+
+
 def test_drone_cap_and_direct_switch_only_apply_to_experimental_dorm(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     config.conf.product_switching.max_drones_per_switch = 3
