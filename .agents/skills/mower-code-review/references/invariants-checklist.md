@@ -41,6 +41,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 ### 2.4 Vision & Recognition Domain
 
 - [ ] **[INV-REC-01] Standard Canvas Frame Contract**: Do recognition models operate exclusively on standard 1920×1080 pure RGB matrices? Do recognition failures return structured verdicts without blocking the scheduler dispatch loop?
+- [ ] **[INV-REC-02] Occluded Operator Selection**: Does an obscured upper border require both vertical borders and the leading portion of the lower border, while adjacent card borders remain insufficient?
 
 ### 2.5 Web Access
 

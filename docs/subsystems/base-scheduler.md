@@ -63,6 +63,11 @@ flowchart TD
 - Deconflicts concurrent trade order runs with scheduled acceleration windows.
 - Calculates precise single-unit drone counts before manufacturing product switches, preventing partial progress loss.
 
+### 2.8 Operator Selection Verification
+- Confirms a selected card by its blue border before committing a facility assignment.
+- When a scrolling notice obscures the upper border, the remaining two vertical borders and the leading portion of the lower border confirm selection. Ambiguous borders retain the existing bounded recognition retry.
+- The [operator selection decision](../../.agents/notes/implemented/bug-fix/2026-09-29-notice-occluded-operator-selection.md) records the failure case and verification.
+
 ---
 
 ## 3. Subsystem Invariants
@@ -71,6 +76,7 @@ flowchart TD
 - **[INV-SCHED-02] Dormitory Entry Sequence**: Dorm bed assignment must dispatch operators in strict priority tier sequence to guarantee single-target dorm buffs hit designated priority operators.
 - **[INV-SCHED-03] Bed Exclusivity & Prompt Release**: Dormitory beds are strictly single-occupancy; operators reaching maximum mood must immediately release beds to unblock rotation queues.
 - **[INV-SCHED-04] Shift Transition Compensation**: Condition-triggered shifts (order runs, backup plans) must preserve state rollback on failure, avoiding orphaned room assignments.
+- **[INV-REC-02] Occluded Operator Selection**: A card with an obscured upper selection border is confirmed only when both vertical borders and the leading portion of its lower border are visible; adjacent card borders cannot confirm selection.
 
 ---
 

@@ -75,11 +75,17 @@ def agent_card_selected(img, scope, *, train=False):
         return None
     frame = cv2.cvtColor(img[top:bottom, left:right], cv2.COLOR_RGB2HSV)
     blue = cv2.inRange(frame, (96, 140, 160), (105, 255, 255)) > 0
-    # 略过角落；青蓝描边应同时沿上下两条长边出现。
+    # 略过角落；完整边框用上下沿及任一侧确认。
     upper = blue[:8, 8:-8].mean()
     lower = blue[-8:, 8:-8].mean()
-    side = max(blue[8:-8, :8].mean(), blue[8:-8, -8:].mean())
-    if upper > 0.45 and lower > 0.45 and side > 0.45:
+    left_side = blue[8:-8, :8].mean()
+    right_side = blue[8:-8, -8:].mean()
+    if upper > 0.45 and lower > 0.45 and max(left_side, right_side) > 0.45:
+        return True
+    # 滚动通告只遮住上沿时，使用下沿靠上的像素和左右两侧确认。
+    # 相邻下排卡片的上沿会落在下沿靠下的像素，不能据此判为选中。
+    lower_inner = blue[-8:-5, 8:-8].mean()
+    if lower_inner > 0.45 and min(left_side, right_side) > 0.45:
         return True
     # 相邻卡片只隔几像素，前一张的边框可能擦到本卡一条边；
     # 另一条边仍明显缺失时判为未选中，避免整页校验一直等待。
