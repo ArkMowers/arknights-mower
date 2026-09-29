@@ -13,6 +13,7 @@ from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.scheduler_task import (
     TaskTypes,
     generate_plan_by_drom,
+    merge_release_dorm,
     plan_metadata,
 )
 
@@ -106,7 +107,7 @@ def test_daily_room_read_only_ocr_changed_positions(solver, monkeypatch, swapped
 
 
 @pytest.mark.parametrize("timer", ["past", "future", "missing"])
-def test_full_releases_have_identity_and_execute_individually(solver, timer):
+def test_full_releases_keep_identity_and_execute_as_one_room(solver, timer):
     data = solver.op_data
     populate(data)
     data.config.free_room = True
@@ -119,10 +120,11 @@ def test_full_releases_have_identity_and_execute_individually(solver, timer):
         )
     tasks = plan_metadata(data, [])
     releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
-    assert {task.meta_data for task in releases} == {"诗怀雅", "赫默", "深巡"}
+    assert len(releases) == 1
+    assert set(releases[0].release_dorm_targets()) == {"诗怀雅", "赫默", "深巡"}
     for task in releases:
         assert task.time <= NOW + timedelta(seconds=2)
-        assert sum(names.count("Free") for names in task.plan.values()) == 1
+        assert sum(names.count("Free") for names in task.plan.values()) == 3
         task.time = NOW  # 模拟调度等待到执行时刻。
         solver.task, solver.tasks = task, [task]
         solver.agent_arrange = MagicMock()
@@ -132,7 +134,7 @@ def test_full_releases_have_identity_and_execute_individually(solver, timer):
     # 一次执行失败后仍占床，重算时仍须生成；已离宿后才停止。
     assert (
         len([t for t in plan_metadata(data, []) if t.type == TaskTypes.RELEASE_DORM])
-        == 3
+        == 1
     )
     data = data.project_arrangements(
         [{ROOM: ["Current", "Current", "Free", "Free", "Free"]}]
@@ -146,8 +148,9 @@ def test_stale_named_release_cannot_evict_new_occupant(solver):
     data.config.free_room = True
     tasks = plan_metadata(data, [])
     task = next(t for t in tasks if t.type == TaskTypes.RELEASE_DORM)
-    op = data.operators[task.meta_data]
-    op.current_room, op.current_index = "", -1
+    for name in task.meta_data.split(","):
+        op = data.operators[name]
+        op.current_room, op.current_index = "", -1
     task.time = NOW
     solver.task, solver.tasks = task, [task]
     solver.agent_arrange = MagicMock()
@@ -196,13 +199,48 @@ def test_named_releases_keep_original_merge_window(
         data,
         release_tasks={first: ([data.dorm[0]], None), second: ([data.dorm[1]], None)},
     )
-    assert len(tasks) == 2
+    merge_release_dorm(tasks, interval)
+    assert len(tasks) == (1 if merged else 2)
     early = next(task for task in tasks if task.plan[ROOM][2] == "Free")
     late = next(task for task in tasks if task.plan[ROOM][3] == "Free")
     assert late.time == second
-    assert early.time == (second + timedelta(seconds=1) if merged else first)
-    assert (early.meta_data, late.meta_data) == ("诗怀雅", "赫默")
+    assert early.time == (second if merged else first)
+    assert early.meta_data == ("诗怀雅,赫默" if merged else "诗怀雅")
+    assert set(late.release_dorm_targets()) == (
+        {"诗怀雅", "赫默"} if merged else {"赫默"}
+    )
 
 
 def test_default_merge_window_is_ten_minutes():
     assert config.Conf().merge_interval == 10
+
+
+def test_room_read_cancels_only_departed_member_of_merged_release(solver, monkeypatch):
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    data = solver.op_data
+    populate(data)
+    data.config.free_room = True
+    for bed in data.dorm:
+        bed.time = NOW
+    solver.tasks = plan_metadata(data, [])
+    assert len(solver.tasks) == 1
+    solver.task = SchedulerTask()
+    monkeypatch.setattr(
+        "arknights_mower.solvers.record.save_agent_action", lambda *a, **kw: None
+    )
+    solver.recog = MagicMock(gray=np.zeros((1080, 1920), dtype=np.uint8))
+    solver.find = MagicMock(return_value=None)
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.scroll_room_operators = MagicMock()
+    solver.read_screen = MagicMock(
+        side_effect=["冰酿", "闪灵", "诗怀雅", "斥罪", "深巡"]
+    )
+    solver.read_accurate_mood = MagicMock(return_value=10)
+    solver.read_operator_time = MagicMock(return_value=NOW + timedelta(hours=6))
+    solver.get_agent_from_room(ROOM)
+    assert len(solver.tasks) == 1
+    assert set(solver.tasks[0].release_dorm_targets()) == {"诗怀雅", "深巡"}
+    assert solver.tasks[0].plan[ROOM][3] == "Current"

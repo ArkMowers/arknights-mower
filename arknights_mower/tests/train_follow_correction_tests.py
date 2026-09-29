@@ -147,3 +147,37 @@ def test_execution_keeps_live_trainee_and_off_does_not_run_mastery(
         if state != "empty":
             solver.refresh_current_room.assert_called_once_with("train", [1])
     assert not plan
+
+
+@pytest.mark.parametrize("train_size", [None, 0, 1])
+@pytest.mark.parametrize("current_index", [0, 1])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_correction_from_unscheduled_train_slot_keeps_configured_targets(
+    solver, train_size, current_index, enabled
+):
+    config.conf.enable_mastery = enabled
+    config.conf.assistant_follows_schedule = False
+    data = solver.op_data
+    data.plan = {"central": [Room("褐果", "", [])]}
+    data.operators = {name: op for name, op in data.operators.items() if name == "褐果"}
+    worker = data.operators["褐果"]
+    worker.room, worker.index = "central", 0
+    worker.current_room, worker.current_index = "train", current_index
+    worker.time_stamp = datetime.now()
+    if train_size is not None:
+        data.plan["train"] = [Room("夜莺", "", [])] * train_size
+        if train_size:
+            data.operators["夜莺"] = Operator(
+                "夜莺",
+                "",
+                current_room="train" if current_index == 1 else "",
+                current_index=0,
+            )
+    original = {room: list(slots) for room, slots in data.plan.items()}
+    result = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert result["central"] == ["褐果"]
+    if train_size == 1 and current_index == 0:
+        assert result["train"] == ["夜莺"]
+    else:
+        assert "train" not in result
+    assert data.plan == original

@@ -1,4 +1,4 @@
-"""同宿舍批量清退：不跨任务、逐人复核、失败可重试，最终只安排一次。"""
+"""队列按宿舍合并清退：保留身份、任务边界和失败重试。"""
 
 import copy
 from datetime import datetime, timedelta
@@ -49,6 +49,8 @@ def batch_solver(solver):
 
 
 def run_batch(instance, action=None):
+    merge_release_dorm(instance.tasks, 10)
+    instance.task = instance.tasks[0]
     plans = []
 
     def arrange(plan, get_time):
@@ -64,6 +66,9 @@ def run_batch(instance, action=None):
 
 def test_same_room_release_executes_one_arrangement(batch_solver):
     instance, _ = batch_solver
+    merge_release_dorm(instance.tasks, 10)
+    assert len(instance.tasks) == 1
+    instance.task = instance.tasks[0]
     instance.find = MagicMock(return_value=True)
     instance.agent_arrange = MagicMock()
     instance.backup_plan_solver = MagicMock(return_value=False)
@@ -121,10 +126,8 @@ def test_batch_preserves_special_release_boundaries(
         )
     elif boundary == "other_room":
         second.plan = {"dormitory_2": second.plan[ROOM]}
-    elif boundary == "legacy":
-        pass
     else:
-        second.time = datetime.now() + timedelta(minutes=2)
+        second.time = datetime.now() + timedelta(minutes=11)
     plan, _ = run_batch(instance)
     assert len(instance.tasks) == 2
     assert plan[ROOM].count("Free") == 1
@@ -143,18 +146,22 @@ def test_original_ten_minute_alignment_only_batches_finished_recovery(
     first.time, second.time = now - timedelta(minutes=5), now
     merge_release_dorm(instance.tasks, 10)
     instance.task = instance.tasks[0]
-    assert instance.tasks[1].time == now + timedelta(seconds=1)
+    assert len(instance.tasks) == 1
+    assert instance.task.time == now
     if not already_full:
-        _, bed = instance.op_data.get_dorm_by_name(instance.tasks[1].meta_data)
+        _, bed = instance.op_data.get_dorm_by_name("桃金娘")
         bed.time = now + timedelta(minutes=1)
+        instance.op_data.operators["桃金娘"].mood = 10
     plan, _ = run_batch(instance)
     assert plan[ROOM].count("Free") == (2 if already_full else 1)
     assert len(instance.tasks) == (1 if already_full else 2)
 
 
 @pytest.mark.parametrize("failed", [False, True])
-def test_retry_keeps_individual_tasks_and_rechecks_identity(batch_solver, failed):
+def test_retry_keeps_merged_task_and_rechecks_identity(batch_solver, failed):
     instance, _ = batch_solver
+    merge_release_dorm(instance.tasks, 10)
+    instance.task = instance.tasks[0]
     originals = [(t, t.meta_data, copy.deepcopy(t.plan)) for t in instance.tasks]
 
     def stop(plan):
@@ -171,7 +178,7 @@ def test_retry_keeps_individual_tasks_and_rechecks_identity(batch_solver, failed
     else:
         _, result = run_batch(instance, stop)
         assert result is False
-        assert instance.tasks[0].time == instance.tasks[1].time
+        assert len(instance.tasks) == 1
     for task, name, plan in originals:
         assert task in instance.tasks
         assert task.meta_data == name
@@ -278,3 +285,110 @@ def test_planner_and_selection_share_mood_gap_and_exclusion_rules(solver):
     agents = tasks[0].plan[ROOM]
     instance.prepare_dorm_selection(agents, ROOM)
     assert agents[-1] == "红"
+
+
+def release(name, room, index, time):
+    row = ["Current"] * 5
+    row[index] = "Free"
+    return SchedulerTask(
+        time=time,
+        task_plan={room: row},
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data=name,
+    )
+
+
+def test_screenshot_queue_merges_by_room_and_sorts():
+    now = datetime.now()
+    tasks = [
+        release(name, room, index, now + timedelta(seconds=offset))
+        for name, room, index, offset in (
+            ("甲", "dormitory_4", 4, 0),
+            ("乙", "dormitory_2", 2, 1),
+            ("丙", "dormitory_2", 3, 1),
+            ("丁", "dormitory_2", 4, 1),
+            ("戊", "dormitory_3", 3, 1),
+            ("己", "dormitory_4", 3, 1),
+        )
+    ]
+    merge_release_dorm(tasks, 10)
+    assert [list(task.plan) for task in tasks] == [
+        ["dormitory_2"],
+        ["dormitory_3"],
+        ["dormitory_4"],
+    ]
+    assert [next(iter(task.plan.values())).count("Free") for task in tasks] == [3, 1, 2]
+    assert all(task.time == now + timedelta(seconds=1) for task in tasks)
+    assert tasks[2].release_dorm_targets() == {
+        "甲": ("dormitory_4", 4),
+        "己": ("dormitory_4", 3),
+    }
+    snapshot = copy.deepcopy([task.__dict__ for task in tasks])
+    merge_release_dorm(tasks, 10)
+    assert [task.__dict__ for task in tasks] == snapshot
+
+
+def test_merged_release_cancels_only_departed_operator(batch_solver):
+    instance, _ = batch_solver
+    merge_release_dorm(instance.tasks, 10)
+    task = instance.tasks[0]
+    task.remove_release_dorm_operator("空爆")
+    assert task.meta_data == "桃金娘"
+    assert task.plan == {ROOM: ["Current"] * 3 + ["Free", "Current"]}
+    task.remove_release_dorm_operator("桃金娘")
+    assert task.plan == {}
+
+
+def test_queue_merge_does_not_extend_window_on_repeated_scheduling():
+    now = datetime.now()
+    tasks = [
+        release("甲", ROOM, 2, now),
+        release("乙", ROOM, 3, now + timedelta(minutes=9)),
+    ]
+    merge_release_dorm(tasks, 10)
+    tasks.append(release("丙", ROOM, 4, now + timedelta(minutes=18)))
+    merge_release_dorm(tasks, 10)
+    assert len(tasks) == 2
+    assert tasks[0].time == now + timedelta(minutes=9)
+
+
+def test_queue_merge_preserves_conflicting_bed_identities():
+    now = datetime.now()
+    tasks = [release("甲", ROOM, 3, now), release("乙", ROOM, 3, now)]
+    merge_release_dorm(tasks, 10)
+    assert len(tasks) == 2
+    assert {task.meta_data for task in tasks} == {"甲", "乙"}
+
+
+def test_merged_release_preserves_identity_after_cache_roundtrip(batch_solver):
+    import pickle
+
+    instance, _ = batch_solver
+    merge_release_dorm(instance.tasks, 10)
+    instance.tasks = pickle.loads(pickle.dumps(instance.tasks))
+    instance.op_data.operators["空爆"].current_index = 2
+    plan, _ = run_batch(instance)
+    assert plan == {ROOM: ["Current"] * 3 + ["Free", "Current"]}
+
+
+@pytest.mark.parametrize(
+    "barrier",
+    [
+        TaskTypes.RUN_ORDER,
+        TaskTypes.SWAP_SUPPORT,
+        TaskTypes.SHIFT_ON,
+        TaskTypes.FIAMMETTA,
+    ],
+)
+def test_queue_merge_keeps_intervening_task_order(barrier):
+    now = datetime.now()
+    tasks = [
+        release("甲", "dormitory_4", 2, now),
+        SchedulerTask(time=now + timedelta(minutes=1), task_type=barrier),
+        release("乙", "dormitory_4", 3, now + timedelta(minutes=2)),
+    ]
+    original = tasks.copy()
+    merge_release_dorm(tasks, 10)
+    assert all(task is before for task, before in zip(tasks, original))
+    assert len(tasks) == 3
+    assert tasks[0].time == now

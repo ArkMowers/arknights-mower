@@ -858,6 +858,46 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.tasks = plan_metadata(self.op_data, self.tasks)
 
     def prepare_release_dorm(self, task):
+        """合并任务逐人核验；一人失效不取消其他人的清退。"""
+        if not hasattr(task, "release_targets"):
+            return self._prepare_release_dorm_member(task)
+        plan, valid = {}, {}
+        get_time = False
+        now = datetime.now()
+        for name, (room, index) in task.release_dorm_targets().items():
+            row = ["Current"] * len(task.plan[room])
+            row[index] = "Free"
+            member = SchedulerTask(
+                time=task.time,
+                task_plan={room: row},
+                task_type=TaskTypes.RELEASE_DORM,
+                meta_data=name,
+            )
+            operator = self.op_data.operators.get(name)
+            _, bed = self.op_data.get_dorm_by_name(name)
+            if (
+                operator is not None
+                and (operator.current_room, operator.current_index) == (room, index)
+                and not self.op_data.skip_idle_dorm_release(name)
+                and resting_mood(operator, now) < operator.upper_limit
+                and bed is not None
+                and bed.time is not None
+                and bed.time > now
+            ):
+                # 换位或重新读时使回满时间延后时，只重排尚未回满者。
+                member.time = bed.time
+                self.tasks.append(member)
+                continue
+            get_time |= self._prepare_release_dorm_member(member)
+            if not member.plan:
+                continue
+            _merge_dorm_arrangement(plan, member.plan)
+            valid[name] = (room, index)
+        task.plan, task.release_targets = plan, valid
+        task.meta_data = ",".join(valid)
+        return get_time
+
+    def _prepare_release_dorm_member(self, task):
         """逐人校验身份、床位和上限；保留加工及原回班引用处理。"""
         strict = getattr(task, "strict_mood_limit", False)
         operator = self.op_data.operators.get(task.meta_data)
@@ -913,78 +953,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         operator.time_stamp = dorm.time
         return True
 
-    def collect_release_dorm_batch(self):
-        """收集连续且已回满的同宿舍任务；队列仍保留每人的独立身份。"""
-        task = self.task
-        batch = [task]
-        workshop = {item.operator for item in config.conf.workshop_settings}
-        if (not task.plan) or task.strict_mood_limit or task.meta_data in workshop:
-            return batch
-        room = next(iter(task.plan))
-        now = datetime.now()
-        previous_time = task.time
-        following = False
-        for release in self.tasks:
-            if release is task:
-                following = True
-                continue
-            if not following:
-                continue
-            # 不跨过跑单、上班、加工或强制上限，也不提前清退尚未回满者。
-            if (
-                release.type != TaskTypes.RELEASE_DORM
-                or release.strict_mood_limit
-                or release.meta_data in workshop
-                or set(release.plan) != {room}
-            ):
-                break
-            if release.time > now:
-                # 原10分钟合并会把任务依次错开1秒；这些人已回满时一起换出。
-                _, bed = self.op_data.get_dorm_by_name(release.meta_data)
-                if (
-                    release.time > previous_time + timedelta(seconds=1)
-                    or bed is None
-                    or bed.time is None
-                    or bed.time > now
-                ):
-                    break
-            previous_time = release.time
-            self.prepare_release_dorm(release)
-            batch.append(release)
-        return batch
-
     def arrange_release_dorm(self):
-        """只在本次换人中合并名单；失败或延期仍按原逐人任务重试。"""
+        """执行队列中的合并清退；失败只重试尚未完成的房间。"""
         task = self.task
         get_time = self.prepare_release_dorm(task)
-        batch = self.collect_release_dorm_batch()
-        if len(batch) == 1:
-            return self.agent_arrange(task.plan, get_time), get_time
-        original_plan, original_meta = task.plan, task.meta_data
-        plan = {}
-        for release in batch:
-            _merge_dorm_arrangement(plan, release.plan)
-        names = [release.meta_data for release in batch if release.plan]
-        task.plan, task.meta_data = plan, ",".join(names)
+        original_plan = copy.deepcopy(task.plan)
         completed = False
         try:
-            logger.info(f"同宿舍合并清退 {names}，一次完成换人")
             result = self.agent_arrange(task.plan, get_time)
             completed = result is not False
-            if completed:
-                consumed = {id(release) for release in batch[1:]}
-                self.tasks[:] = [
-                    item for item in self.tasks if id(item) not in consumed
-                ]
-            else:
-                # 跑单保护可能延期了当前任务；其余同批任务也一并让路。
-                for release in batch[1:]:
-                    release.time = max(release.time, task.time)
-                self.tasks.sort(key=lambda item: item.time)
             return result, get_time
         finally:
-            task.plan = {} if completed else original_plan
-            task.meta_data = original_meta
+            # Free 在选人时会解析成姓名；重试仍按原身份核验，已完成房间不复原。
+            task.plan = (
+                {} if completed else {room: original_plan[room] for room in task.plan}
+            )
 
     def infra_main(self):
         """位于基建首页"""
@@ -1820,13 +1803,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ) or (_agent.current_room != "" and _agent.room != _agent.current_room):
                     moved_room = _agent.current_room
                     moved_index = _agent.current_index
-                    if moved_room not in fix_plan.keys():
-                        fix_plan[moved_room] = ["Current"] * len(
-                            self.op_data.plan[moved_room]
-                        )
-                    fix_plan[moved_room][moved_index] = self.op_data.plan[moved_room][
-                        moved_index
-                    ].agent
+                    # 真实位置可能在未配置的训练室；只恢复排班明确管理的原槽位。
+                    moved_slots = self.op_data.plan.get(moved_room, [])
+                    if 0 <= moved_index < len(moved_slots):
+                        fix_plan.setdefault(moved_room, ["Current"] * len(moved_slots))[
+                            moved_index
+                        ] = moved_slots[moved_index].agent
         # 还要确保同一组在同时上班
         for g in self.op_data.groups:
             g_agents = [
@@ -7009,8 +6991,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     release_task = self.find_next_task(
                         task_type=TaskTypes.RELEASE_DORM, meta_data=_operator
                     )
-                    if release_task and self.task != release_task:
-                        self.tasks.remove(release_task)
+                    if release_task and self.task is not release_task:
+                        release_task.remove_release_dorm_operator(_operator)
+                        if not release_task.plan:
+                            self.tasks.remove(release_task)
                 logger.info(f"重设 {_operator} 至空闲")
         if released_support is not None and (
             not released_support.current_room or released_support.is_resting()
