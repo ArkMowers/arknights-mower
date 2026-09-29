@@ -330,10 +330,6 @@ def initialize(
     base_scheduler.drone_room = (
         None if config.conf.drone_room == "" else config.conf.drone_room
     )
-    base_scheduler.reload_room = list(
-        filter(None, config.conf.reload_room.replace("，", ",").split(","))
-    )
-
     # 关闭游戏次数计数器
     base_scheduler.task_count = 0
 
