@@ -6,7 +6,7 @@ import { useConfigStore } from './config'
 import { usePlanStore } from './plan'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
 
-vi.mock('axios', () => ({ default: { post: vi.fn(), get: vi.fn() } }))
+vi.mock('axios', () => ({ default: { post: vi.fn(), patch: vi.fn(), get: vi.fn() } }))
 let stores = []
 afterEach(() => {
   for (const store of stores) store.$dispose()
@@ -25,6 +25,7 @@ function setup() {
   for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) config[name] = []
   plan.plan = plan.fill_empty({})
   axios.post.mockResolvedValue({ data: {} })
+  axios.patch.mockResolvedValue({ data: {} })
   return { config, plan, loaded }
 }
 
@@ -65,19 +66,21 @@ describe('configuration restore autosave coordination', () => {
   it('drains scheduled edits then prevents old stores from overwriting restored values', async () => {
     const { config, plan, loaded } = setup()
     loaded.value = true
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
     config.account = 'latest draft'
     await nextTick()
     const saves = createSaveCoordinator(config, plan)
     await saves.pauseAndDrain()
-    expect(axios.post.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1].account).toBe(
+    expect(axios.patch.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1].account).toBe(
       'latest draft'
     )
     const count = axios.post.mock.calls.length
+    const patchCount = axios.patch.mock.calls.length
     config.account = 'stale value'
     plan.ling_xi = 2
     await nextTick()
     expect(axios.post).toHaveBeenCalledTimes(count)
+    expect(axios.patch).toHaveBeenCalledTimes(patchCount)
   })
 
   it('restart drains requests without resubmitting stale browser settings', async () => {
@@ -85,9 +88,11 @@ describe('configuration restore autosave coordination', () => {
     loaded.value = true
     await drainConfigurationSaves(config, plan)
     axios.post.mockClear()
+    axios.patch.mockClear()
     // A manually restored file can now differ from this unchanged page.
     await drainConfigurationSaves(config, plan)
     expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
   })
 })
 
@@ -99,14 +104,16 @@ describe('maintenance save coordination', () => {
     const saves = createSaveCoordinator(config, plan)
     await saves.pauseAndDrain()
     axios.post.mockClear()
+    axios.patch.mockClear()
     config.account = 'edit during restart'
     plan.ling_xi = 2
     await nextTick()
     expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
     expect(saves.paused.value).toBe(true)
     saves.resume()
     await drainConfigurationSaves(config, plan)
-    expect(axios.post.mock.calls.find(([url]) => url.endsWith('/conf'))[1].account).toBe(
+    expect(axios.patch.mock.calls.find(([url]) => url.endsWith('/conf'))[1].account).toBe(
       'edit during restart'
     )
     expect(axios.post.mock.calls.find(([url]) => url.endsWith('/plan'))[1].conf.ling_xi).toBe(2)
@@ -115,7 +122,7 @@ describe('maintenance save coordination', () => {
   it('waits for in-flight requests before starting maintenance', async () => {
     const { config, plan } = setup()
     let finish
-    axios.post.mockImplementationOnce(
+    axios.patch.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve
@@ -138,7 +145,7 @@ describe('maintenance save coordination', () => {
 
   it('releases its pause when a queued save fails', async () => {
     const { config, plan } = setup()
-    axios.post.mockRejectedValueOnce(new Error('save failed'))
+    axios.patch.mockRejectedValueOnce(new Error('save failed'))
     const saving = config.save_config().catch(() => {})
     const saves = createSaveCoordinator(config, plan)
     await expect(saves.pauseAndDrain()).rejects.toThrow('save failed')
@@ -178,7 +185,8 @@ describe('maintenance save coordination', () => {
     plan.dorm_order = ['dormitory_2', 'dormitory_1', 'dormitory_3', 'dormitory_4']
     await nextTick()
     await drainConfigurationSaves(config, plan)
-    const confPayload = axios.post.mock.calls.findLast(([url]) => url.endsWith('/conf'))[1]
+    expect(axios.patch).not.toHaveBeenCalled()
+    const confPayload = config.build_config()
     const planPayload = axios.post.mock.calls.findLast(([url]) => url.endsWith('/plan'))[1]
     expect(confPayload).not.toHaveProperty('dorm_order')
     expect(planPayload.conf.dorm_order).toBe('dormitory_2,dormitory_1,dormitory_3,dormitory_4')

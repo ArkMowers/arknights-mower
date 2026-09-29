@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+import os
 import socket
+from threading import Lock
 
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
 
 class Socket:
     """Connect ADB server with socket"""
 
-    def __init__(self, server: tuple[str, int], timeout: int) -> None:
+    def __init__(self, server: tuple[str, int], timeout: float) -> None:
         try:
+            self.owner_pid = os.getpid()
+            self._close_lock = Lock()
+            self._interrupted = False
             self.sock = None
-            self.sock = socket.create_connection(server, timeout=timeout)
+            self.timeout = timeout
+            self.sock = socket.create_connection(server, timeout=io_timeout(timeout))
+            io_timeout(timeout)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except ConnectionRefusedError as e:
             logger.error(f"ConnectionRefusedError: {server}")
@@ -21,15 +29,31 @@ class Socket:
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
-        pass
+        self.close()
 
     def __del__(self) -> None:
         self.close()
 
     def close(self) -> None:
-        """close socket"""
-        self.sock and self.sock.close()
-        self.sock = None
+        """Detach once and interrupt a blocking send/receive before closing."""
+        self.interrupt()
+
+    def interrupt(self):
+        """Windows requires closing the socket to reliably wake blocked I/O."""
+        if getattr(self, "owner_pid", None) != os.getpid():
+            return
+        with self._close_lock:
+            if self._interrupted:
+                return
+            self._interrupted = True
+            sock, self.sock = self.sock, None
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            finally:
+                sock.close()
 
     def recv_all(self, chunklen: int = 65536) -> bytes:
         data = []
@@ -42,7 +66,7 @@ class Socket:
                 buf = bytearray(chunklen)
                 view = memoryview(buf)
                 pos = 0
-            rcvlen = self.sock.recv_into(view)
+            rcvlen = self.recv_into(view, len(view))
             if rcvlen == 0:
                 break
             view = view[rcvlen:]
@@ -55,7 +79,7 @@ class Socket:
         view = memoryview(buf)
         pos = 0
         while pos < len:
-            rcvlen = self.sock.recv_into(view)
+            rcvlen = self.recv_into(view, len - pos)
             if rcvlen == 0:
                 break
             view = view[rcvlen:]
@@ -78,17 +102,24 @@ class Socket:
             raise ConnectionError(self.recv_response())
 
     def recv(self, len: int) -> bytes:
-        return self.sock.recv(len)
+        self.sock.settimeout(io_timeout(self.timeout))
+        data = self.sock.recv(len)
+        io_timeout(self.timeout)
+        return data
 
     def send(self, data: bytes) -> Socket:
         """send data to server"""
-        self.sock.send(data)
-        return self
+        return self.sendall(data)
 
     def sendall(self, data: bytes) -> Socket:
         """send data to server"""
+        self.sock.settimeout(io_timeout(self.timeout))
         self.sock.sendall(data)
+        io_timeout(self.timeout)
         return self
 
-    def recv_into(self, buffer, nbytes: int) -> None:
-        self.sock.recv_into(buffer, nbytes)
+    def recv_into(self, buffer, nbytes: int) -> int:
+        self.sock.settimeout(io_timeout(self.timeout))
+        received = self.sock.recv_into(buffer, nbytes)
+        io_timeout(self.timeout)
+        return received

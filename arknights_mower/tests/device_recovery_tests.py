@@ -1,7 +1,8 @@
 """统一连接入口的调用链回归：使用真实恢复/ADB 选择/scrcpy 启动逻辑，替换外部 I/O。"""
 
+import os
 import unittest
-from threading import Event
+from threading import Event, RLock
 from unittest.mock import MagicMock, call, patch
 
 from arknights_mower.utils import config
@@ -16,6 +17,10 @@ from arknights_mower.utils.device.recovery import (
 
 def disconnected_device():
     device = object.__new__(Device)
+    device.owner_pid = os.getpid()
+    device._resource_lock = RLock()
+    device._interrupted = Event()
+    device._close_error = None
     device.device_id = None
     device.connect = None
     device.client = None
@@ -31,7 +36,7 @@ class TestRecoveryPolicy(unittest.TestCase):
         self.enterContext(patch.object(config, "stop_mower", self.stop))
         self.restart = self.enterContext(
             patch(
-                "arknights_mower.utils.device.recovery.restart_simulator",
+                "arknights_mower.utils.simulator.restart_simulator",
                 return_value=True,
             )
         )
@@ -58,12 +63,13 @@ class TestRecoveryPolicy(unittest.TestCase):
         self.assertEqual(self.device._connect_once.call_count, 3)
         self.restart.assert_not_called()
 
-    def test_last_restart_also_gets_a_full_connection_group(self):
+    def test_legacy_restart_parameter_cannot_extend_local_budget(self):
         connect = MagicMock(side_effect=[ConnectionError("offline")] * 8 + ["ok"])
-        self.assertEqual(recover_connection(connect), "ok")
-        self.assertEqual(connect.call_count, 9)
-        self.assertEqual(self.restart.call_count, 2)
-        self.assertEqual(self.sleep.call_count, 6)
+        with self.assertRaises(DeviceRecoveryError):
+            recover_connection(connect, restarts=2)
+        self.assertEqual(connect.call_count, 3)
+        self.restart.assert_not_called()
+        self.assertEqual(self.sleep.call_count, 2)
 
     def test_failed_reconnection_never_repeats_operation(self):
         self.device._connect_once.side_effect = ConnectionError("offline")
@@ -98,13 +104,12 @@ class TestRecoveryPolicy(unittest.TestCase):
         operation.assert_called_once_with()
         self.restart.assert_not_called()
 
-    def test_failed_restart_stops_without_new_connections(self):
-        self.restart.return_value = False
+    def test_local_exhaustion_does_not_request_simulator_restart(self):
         connect = MagicMock(side_effect=ConnectionError("offline"))
-        with self.assertRaisesRegex(DeviceRecoveryError, "模拟器重启失败"):
+        with self.assertRaisesRegex(DeviceRecoveryError, "局部连接预算耗尽"):
             recover_connection(connect)
         self.assertEqual(connect.call_count, 3)
-        self.restart.assert_called_once_with()
+        self.restart.assert_not_called()
 
     def test_stop_before_operation_skips_all_device_access(self):
         self.stop.set()
@@ -157,7 +162,6 @@ class TestDeviceConnectionChain(unittest.TestCase):
         self.enterContext(patch.object(config.conf, "touch_method", "scrcpy"))
         self.enterContext(patch.object(config.conf, "mumu12IPC", False))
         self.enterContext(patch.object(config.conf.droidcast, "enable", False))
-        self.enterContext(patch.object(config.droidcast, "process", None))
         self.register = self.enterContext(
             patch("arknights_mower.utils.device.device.atexit.register")
         )
@@ -177,14 +181,14 @@ class TestDeviceConnectionChain(unittest.TestCase):
         self.session.devices_list.return_value = [(self.TARGET, "device")]
         self.enterContext(patch("arknights_mower.utils.device.adb_client.core.csleep"))
         self.scrcpy_sleep = self.enterContext(
-            patch("arknights_mower.utils.device.scrcpy.core.csleep")
+            patch("arknights_mower.utils.device.scrcpy.core.budget_sleep")
         )
         self.retry_sleep = self.enterContext(
             patch("arknights_mower.utils.device.recovery.csleep")
         )
         self.restart = self.enterContext(
             patch(
-                "arknights_mower.utils.device.recovery.restart_simulator",
+                "arknights_mower.utils.simulator.restart_simulator",
                 return_value=True,
             )
         )
@@ -250,22 +254,22 @@ class TestDeviceConnectionChain(unittest.TestCase):
         with self.assertRaises(DeviceRecoveryError):
             device.reconnect(restarts=0)
         self.assertIsNone(device.control)
-        old_control.scrcpy.stop.assert_called_once_with()
+        old_control.close.assert_called_once_with()
         self.push.assert_not_called()
         self.server.assert_not_called()
         self.restart.assert_not_called()
 
-    def test_three_reconnections_start_scrcpy_three_times_not_nine(self):
+    def test_touch_initialization_failure_does_not_open_nested_retries(self):
         device = disconnected_device()
         with self.assertRaises(DeviceRecoveryError):
             device.reconnect(restarts=0)
-        self.assertEqual(self.push.call_count, 3)
-        self.assertEqual(self.stream.call_count, 3)
-        self.assertEqual(len(self.servers), 3)
+        self.assertEqual(self.push.call_count, 1)
+        self.assertEqual(self.stream.call_count, 1)
+        self.assertEqual(len(self.servers), 1)
         for server in self.servers:
             server.close.assert_called_once_with()
-        self.assertEqual(self.scrcpy_sleep.call_args_list, [call(0), call(0.5)] * 3)
-        self.assertEqual(self.retry_sleep.call_args_list, [call(1), call(1)])
+        self.assertEqual(self.scrcpy_sleep.call_args_list, [call(0), call(0.5)])
+        self.retry_sleep.assert_not_called()
         self.restart.assert_not_called()
         self.assertIsNone(device.control)
 
@@ -273,7 +277,7 @@ class TestDeviceConnectionChain(unittest.TestCase):
         from arknights_mower.utils.solver import BaseSolver
 
         video, control = MagicMock(), MagicMock()
-        video.recv.side_effect = [b"\x00", b"emulator", b"\x07\x80\x04\x38"]
+        video.recv_exactly.side_effect = [b"\x00", b"emulator", b"\x07\x80\x04\x38"]
         self.stream.side_effect = [video, control]
         with patch("arknights_mower.utils.solver.Recognizer"):
             solver = BaseSolver(connection_retries=1)
@@ -288,7 +292,7 @@ class TestDeviceConnectionChain(unittest.TestCase):
         from arknights_mower.utils.solver import BaseSolver
 
         video, control = MagicMock(), MagicMock()
-        video.recv.side_effect = [b"\x00", b"emulator", b"\x07\x80\x04\x38"]
+        video.recv_exactly.side_effect = [b"\x00", b"emulator", b"\x07\x80\x04\x38"]
         self.stream.side_effect = [video, control]
         actions = MagicMock()
         with (
@@ -332,11 +336,11 @@ class TestDeviceConnectionChain(unittest.TestCase):
         self.restart.assert_not_called()
         self.register.assert_not_called()
 
-    def test_service_failure_cleans_up_droidcast_process(self):
-        process = MagicMock()
+    def test_service_failure_closes_owned_droidcast_session(self):
+        capture = MagicMock()
 
         def start_droidcast(device):
-            config.droidcast.process = process
+            device._droidcast = capture
             return True
 
         with (
@@ -345,8 +349,7 @@ class TestDeviceConnectionChain(unittest.TestCase):
             self.assertRaisesRegex(ConnectionError, "scrcpy unavailable"),
         ):
             Device()
-        process.terminate.assert_called_once_with()
-        self.assertIsNone(config.droidcast.process)
+        capture.close.assert_called_with()
         self.register.assert_not_called()
 
     def test_resolution_failure_does_not_start_scrcpy_or_restart(self):
@@ -356,9 +359,11 @@ class TestDeviceConnectionChain(unittest.TestCase):
         self.push.assert_not_called()
         self.restart.assert_not_called()
 
-    def test_ipc_stays_lazy_and_adb_reconnect_preserves_its_instance(self):
+    def test_ipc_stays_lazy_and_reconnect_releases_the_previous_control(self):
         with (
-            patch.object(config.conf, "mumu12IPC", True),
+            patch.object(config.conf.device, "touch_backend", "mumu_ipc"),
+            patch.object(config.conf.device, "preset_id", "windows.mumu12"),
+            patch("arknights_mower.utils.device.device.__system__", "windows"),
             patch("arknights_mower.utils.device.device.MuMu12IPC") as ipc,
             patch.object(Device, "check_current_focus") as focus,
         ):
@@ -367,20 +372,23 @@ class TestDeviceConnectionChain(unittest.TestCase):
             original_control = device.control
             device.reconnect(restarts=0)
             device.close()
-            self.assertIs(device.control, original_control)
-            self.assertIs(device.control.mumu12IPC, ipc.return_value)
-            ipc.assert_called_once_with(device)
-            self.assertEqual(ipc.return_value.mock_calls, [])
+            self.assertIsNone(device.control)
+            self.assertIsNone(original_control.mumu12IPC)
+            self.assertEqual(ipc.call_count, 2)
+            self.assertEqual(
+                ipc.return_value.mock_calls, [call.disconnect(), call.disconnect()]
+            )
             focus.assert_not_called()
         self.push.assert_not_called()
         self.restart.assert_not_called()
 
-    def test_ipc_inputs_keep_their_existing_recovery(self):
+    def test_ipc_uncertain_input_latches_at_device_boundary(self):
         device = disconnected_device()
         with (
-            patch.object(config.conf, "mumu12IPC", True),
+            patch.object(config.conf.device, "touch_backend", "mumu_ipc"),
+            patch.object(config.conf.device, "preset_id", "windows.mumu12"),
+            patch("arknights_mower.utils.device.device.__system__", "windows"),
             patch("arknights_mower.utils.device.device.MuMu12IPC") as ipc,
-            patch.object(device, "recover") as recover,
         ):
             device.control = Device.Control(device)
             ipc.return_value.tap.side_effect = RuntimeError("IPC input failure")
@@ -391,11 +399,11 @@ class TestDeviceConnectionChain(unittest.TestCase):
                 lambda: device.swipe_ext([(1, 2), (3, 4)], [100]),
             )
             for operation in operations:
-                with self.assertRaisesRegex(RuntimeError, "IPC input failure"):
+                with self.assertRaisesRegex(DeviceRecoveryError, "IPC input failure"):
                     operation()
-            recover.assert_not_called()
             ipc.return_value.tap.assert_called_once_with(1, 2)
-            self.assertEqual(ipc.return_value.swipe.call_count, 2)
+            ipc.return_value.swipe.assert_not_called()
+            ipc.return_value.disconnect.assert_called_once_with()
         self.restart.assert_not_called()
 
 

@@ -5,8 +5,8 @@ import networkx as nx
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene, SceneComment
-from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.solver import BaseSolver
 
 DG = nx.DiGraph()
@@ -422,6 +422,7 @@ class SceneGraphSolver(BaseSolver):
             return
 
         error_count = 0
+        game_restarted = False
 
         unknown_count = 0
         while (current := self.scene()) != scene:
@@ -470,11 +471,11 @@ class SceneGraphSolver(BaseSolver):
                     self.sleep()
                     error_count += 1
                     continue
-                if restart_simulator():
-                    self.device.reconnect()
-                    self.check_current_focus()
-                else:
-                    self.restart_game()
+                if game_restarted:
+                    raise RecognizeError("场景转移在游戏重启后仍持续失败") from e
+                self.device.reconnect()
+                self.restart_game()
+                game_restarted = True
                 error_count = 0
             # 每圈强制清场景缓存：转移静默失败（如 tap_element 找不到元素直接返回
             # False）时缓存不失效，get_scene 一直返回陈旧场景导致死循环刷日志

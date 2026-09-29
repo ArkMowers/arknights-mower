@@ -2,7 +2,6 @@
 import multiprocessing as mp
 import os
 import platform
-import secrets
 import sys
 from urllib.parse import quote
 
@@ -398,6 +397,10 @@ def webview_window(
         if mode_ready and not closing:
             save_window_mode(mode)
 
+    # The window close event is not an exit request: it only stops size
+    # persistence. With the tray enabled, closing the window leaves this
+    # instance running in the tray, and the application exits through the
+    # supervisor loop instead of this event.
     window.events.closing += on_closing
     window.events.maximized += lambda: remember_mode("maximized")
     window.events.restored += lambda: remember_mode("normal")
@@ -481,30 +484,85 @@ def webview_window(
 
 
 def close_child(process, connection=None):
-    """Reap auxiliary processes when their windows or tray close."""
-    if process is None or process.pid is None:
+    """Only reap a recorded child created by this process, once."""
+    if process is None:
         return
-    if process.is_alive() and connection is not None:
-        try:
-            connection.send("exit")
-        except (BrokenPipeError, OSError):
-            pass
-        process.join(3)
-    if process.is_alive():
-        process.terminate()
-    process.join(3)
-    if process.is_alive():
-        process.kill()
-        process.join(3)
+    record = getattr(process, "_mower_cleanup", None)
+    if record is None:
+        if (
+            getattr(process, "_parent_pid", None) != os.getpid()
+            and getattr(process, "owner_pid", None) != os.getpid()
+        ):
+            return
+        record = own_child(process, connection)
+    record.close()
+
+
+def close_channel(channel):
+    if channel is not None:
+        record = getattr(channel, "_mower_cleanup", None)
+        if record is not None:
+            record.close()
+
+
+def own_channel(channel):
+    from arknights_mower.utils.lifecycle import Phase, shutdown
+
+    def close():
+        # The queue feeder may have no reader left. Discard pending UI/log data.
+        cancel = getattr(channel, "cancel_join_thread", None)
+        if cancel is not None:
+            cancel()
+        channel.close()
+
+    channel._mower_cleanup = shutdown.own(
+        f"desktop channel {id(channel)}", close, Phase.CHANNEL
+    )
+    return channel
+
+
+def own_child(process, connection=None):
+    from threading import Thread
+
+    from arknights_mower.utils.device.owned import close_process
+    from arknights_mower.utils.lifecycle import Phase, shutdown
+
+    pid = process.pid
+    owner_pid = os.getpid()
+
+    def close():
+        if process.pid != pid or pid is None:
+            return
+        if connection is not None and process.is_alive():
+
+            def notify():
+                try:
+                    connection.send("exit")
+                except (BrokenPipeError, EOFError, OSError):
+                    pass
+
+            sender = Thread(target=notify, daemon=True)
+            sender.start()
+            sender.join(0.2)
+        close_process(process, owner_pid, timeout=3)
+
+    record = shutdown.own(f"desktop child {pid}:{id(process)}", close, Phase.UI)
+    process._mower_cleanup = record
+    return record
 
 
 def start_desktop_child(kind, *args, log_queue=None):
+    from arknights_mower.utils.lifecycle import shutdown
+
+    if shutdown.closing:
+        raise RuntimeError("Mower 正在退出，不能创建窗口或托盘")
     if sys.platform == "darwin":
         from arknights_mower.utils.desktop_process import start_worker
 
-        if log_queue is not None:
-            return start_worker(kind, *args, log_queue=log_queue)
-        return start_worker(kind, *args)
+        process, parent = start_worker(kind, *args, log_queue=log_queue)
+        own_channel(parent)
+        own_child(process, parent if kind == "window" else None)
+        return process, parent
     target = {
         "splash": splash_screen,
         "tray": start_tray,
@@ -515,10 +573,19 @@ def start_desktop_child(kind, *args, log_queue=None):
         args = (*args, log_queue)
     else:
         parent = child = mp.Queue()
+    own_channel(parent)
     process = mp.Process(target=target, args=(child, *args), daemon=True)
-    process.start()
-    if kind == "window":
-        child.close()
+    try:
+        process.start()
+        own_child(process, parent if kind == "window" else None)
+    except BaseException:
+        if process.pid is not None:
+            close_child(process, parent if kind == "window" else None)
+        close_channel(parent)
+        raise
+    finally:
+        if kind == "window":
+            child.close()
     return process, parent
 
 
@@ -527,12 +594,55 @@ def background_requested():
 
 
 def run_desktop():
+    from arknights_mower.utils.lifecycle import shutdown
+
+    reason = "window"
+    try:
+        _run_desktop()
+    except KeyboardInterrupt:
+        reason = "ctrl_c"
+    except BaseException:
+        reason = "startup_failure"
+        raise
+    finally:
+        shutdown.close(reason)
+
+
+def start_http_server(app, host, port):
+    from threading import Thread
+
+    from werkzeug.serving import make_server
+
+    from arknights_mower.utils.lifecycle import Phase, shutdown
+
+    http = make_server(host, port, app, threaded=True)
+    worker = Thread(
+        target=http.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True
+    )
+    try:
+        worker.start()
+    except BaseException:
+        http.server_close()
+        raise
+
+    def close():
+        http.shutdown()
+        http.server_close()
+        worker.join(3)
+        if worker.is_alive():
+            raise TimeoutError("HTTP 服务线程未在退出预算内结束")
+
+    shutdown.own("HTTP server", close, Phase.SERVER)
+
+
+def _run_desktop():
     from queue import Empty
     from threading import Thread
     from time import monotonic, sleep
 
     from arknights_mower.utils import path
     from arknights_mower.utils import update_runtime as runtime
+    from arknights_mower.utils.lifecycle import Phase, shutdown
 
     owner = runtime.read_json(runtime.state_dir() / "active/owner.json", {})
     if runtime.active_job() and os.environ.get("MOWER_RESTART_JOB") != owner.get("id"):
@@ -550,18 +660,27 @@ def run_desktop():
         space = None
     path.global_space = space
     instance_name = sys.argv[2] if len(sys.argv) >= 3 else ""
-    from arknights_mower.utils.log import init_file_logging, start_mp_listener
+    from arknights_mower.utils.log import (
+        close_logging,
+        close_mp_logging,
+        close_screenshot_store,
+        init_file_logging,
+        start_mp_listener,
+    )
 
     # 文件日志只由主进程建立。子进程（webview_window 等）不调用 init_file_logging，
     # 否则它们经 title_version→resource_version import log.py 时会各自打开
     # runtime.log，Windows 上整点切换日志文件（os.rename 需独占）就会因多进程同时持有而失败。
     init_file_logging()
+    shutdown.own("file and queue logging", close_logging, Phase.LOG)
+    shutdown.own("screenshots", close_screenshot_store, Phase.SCREENSHOTS)
     splash_queue = None
     splash_process = None
     tray_process = None
     registration = runtime.RuntimeRegistration(
         "instance", space=path.global_space, name=instance_name
     )
+    shutdown.own("runtime registration", registration.close, Phase.REGISTRATION)
     if not background:
         splash_process, splash_queue = start_desktop_child("splash")
         splash_queue.put({"type": "text", "data": "加载配置文件"})
@@ -573,7 +692,6 @@ def run_desktop():
     keep_running = tray or sys.platform == "darwin"
     # Keep the single file writer on every platform. macOS uses a pipe instead
     # of shared semaphores so closing GUI helpers leaves no resource tracker.
-    log_listener = None
     mp_log_queue = None
     if not background or tray:
         if sys.platform == "darwin":
@@ -582,10 +700,11 @@ def run_desktop():
             mp_log_queue = log_channel()
         else:
             mp_log_queue = mp.Queue()
+        own_channel(mp_log_queue)
         start_mp_listener(mp_log_queue)
-        from arknights_mower.utils import log as mower_log
+        shutdown.own("child log listener", close_mp_logging, Phase.LOG_RELAY)
+    import secrets
 
-        log_listener = mower_log.mp_listener
     token = conf.webview.token
     runtime_token = token or secrets.token_urlsafe(32)
     host = "0.0.0.0" if token else "127.0.0.1"
@@ -596,8 +715,6 @@ def run_desktop():
         else (conf.webview.port if token else get_new_port())
     )
     if is_port_in_use(port):
-        close_child(splash_process)
-        registration.close()
         raise RuntimeError(f"端口{port}已被占用，无法启动！")
     from hashlib import sha256
 
@@ -615,6 +732,7 @@ def run_desktop():
     # Local log reads can use the loopback and same-origin boundary instead.
     server.app.token = runtime_token
     server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = not token and host == "127.0.0.1"
+    server.register_shutdown(shutdown)
 
     registration.running = lambda: bool(
         server.mower_thread and server.mower_thread.is_alive()
@@ -622,10 +740,11 @@ def run_desktop():
     url = f"http://127.0.0.1:{port}"
     url += f"?token={runtime_token}"
     url = append_query_param(url, "instance_name", instance_name)
-    Thread(
-        target=server.app.run, kwargs={"host": host, "port": port}, daemon=True
-    ).start()
+    start_http_server(server.app, host, port)
+    ready_deadline = monotonic() + 15
     while not is_port_in_use(port):
+        if shutdown.closing or monotonic() >= ready_deadline:
+            raise TimeoutError("HTTP 服务未在启动预算内就绪")
         sleep(0.1)
     registration.record["ready"] = True
     registration.publish()
@@ -635,8 +754,7 @@ def run_desktop():
     def close_tray():
         nonlocal tray_process, tray_queue
         close_child(tray_process)
-        if tray_queue is not None:
-            tray_queue.close()
+        close_channel(tray_queue)
         tray_process = None
         tray_queue = None
 
@@ -663,8 +781,7 @@ def run_desktop():
 
     def open_window():
         close_child(config.webview_process)
-        if config.parent_conn is not None:
-            config.parent_conn.close()
+        close_channel(config.parent_conn)
         config.webview_process, config.parent_conn = start_desktop_child(
             "window",
             path.global_space,
@@ -689,9 +806,13 @@ def run_desktop():
     resume_mode = os.environ.pop("MOWER_RESUME_MODE", "")
 
     def resume_after_update():
-        while runtime.active_job() and not registration.shutdown_requested():
+        while (
+            runtime.active_job()
+            and not registration.shutdown_requested()
+            and not shutdown.closing
+        ):
             sleep(0.5)
-        if registration.shutdown_requested():
+        if registration.shutdown_requested() or shutdown.closing:
             return
         with server.app.test_request_context(headers={"token": runtime_token}):
             if resume_mode in ("0", "1"):
@@ -708,7 +829,7 @@ def run_desktop():
         Thread(target=resume_after_update, daemon=True).start()
     manager_missing_since = None
     try:
-        while True:
+        while not shutdown.closing:
             if registration.shutdown_requested():
                 if (
                     server._job_running(server.maa_update_job)
@@ -720,12 +841,13 @@ def run_desktop():
                 with server.app.test_request_context(headers={"token": runtime_token}):
                     stopped = server.stop() == "true"
                 if stopped and registration.shutdown_requested():
+                    shutdown.request("runtime_request")
                     break
             if config.webview_process and not config.webview_process.is_alive():
                 close_child(config.webview_process)
                 config.webview_process = None
                 if config.parent_conn is not None:
-                    config.parent_conn.close()
+                    close_channel(config.parent_conn)
                     config.parent_conn = None
                 if not keep_running:
                     break
@@ -758,6 +880,9 @@ def run_desktop():
                 if msg == "toggle":
                     if config.webview_process and config.webview_process.is_alive():
                         close_child(config.webview_process, config.parent_conn)
+                        config.webview_process = None
+                        close_channel(config.parent_conn)
+                        config.parent_conn = None
                     else:
                         open_window()
                 elif msg == "browser":
@@ -765,19 +890,11 @@ def run_desktop():
 
                     webbrowser.open(url)
             if "exit" in messages:
+                shutdown.request("tray")
                 break
-    finally:
-        config.stop_mower.set()
-        close_child(config.webview_process, getattr(config, "parent_conn", None))
-        close_tray()
-        if config.parent_conn is not None:
-            config.parent_conn.close()
-            config.parent_conn = None
-        if log_listener is not None:
-            log_listener.stop()
-        if mp_log_queue is not None:
-            mp_log_queue.close()
-        registration.close()
+    except KeyboardInterrupt:
+        shutdown.request("ctrl_c")
+        raise
 
 
 if __name__ == "__main__":

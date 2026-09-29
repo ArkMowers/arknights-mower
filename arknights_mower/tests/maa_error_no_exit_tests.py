@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -30,6 +31,49 @@ class MaaErrorNoExitTests(unittest.TestCase):
         )
         self.addCleanup(self.unexpected_idle.assert_not_called)
         self.addCleanup(self.unexpected_error.assert_not_called)
+
+    def test_initialize_maa_uses_the_sessions_verified_adb(self):
+        for configured_adb in ("", "missing-manual-adb"):
+            with (
+                self.subTest(configured_adb=configured_adb),
+                tempfile.TemporaryDirectory() as maa_path,
+            ):
+                solver = BaseSchedulerSolver.__new__(BaseSchedulerSolver)
+                solver.device = SimpleNamespace(
+                    client=SimpleNamespace(adb_bin="sdk-adb", device_id="USB-123")
+                )
+                asst = MagicMock()
+                asst.return_value.connect.return_value = True
+                response = MagicMock()
+                response.__enter__.return_value.content = b"{}"
+                conf = SimpleNamespace(
+                    maa_path=maa_path,
+                    maa_adb_path=configured_adb,
+                    maa_touch_option="maatouch",
+                    maa_conn_preset="General",
+                )
+                with (
+                    patch.object(base_schedule.config, "conf", conf),
+                    patch.dict(base_schedule.os.environ, {"MOWER_ANDROID": "0"}),
+                    patch.object(sys, "path", list(sys.path)),
+                    patch.dict(
+                        sys.modules,
+                        {
+                            "asst": MagicMock(),
+                            "asst.asst": SimpleNamespace(Asst=asst),
+                            "asst.utils": SimpleNamespace(
+                                InstanceOptionType=SimpleNamespace(touch_type=2),
+                                Message=int,
+                            ),
+                        },
+                    ),
+                    patch.object(base_schedule.requests, "get", return_value=response),
+                ):
+                    solver.initialize_maa()
+                    self.addCleanup(solver.MAA.stop)
+                asst.return_value.connect.assert_called_once_with(
+                    "sdk-adb", "USB-123", "General"
+                )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_initialize_maa_failure_does_not_exit_game(self):

@@ -20,6 +20,8 @@ class Channel:
         self.connection = connection
         self.writer = writer if writer is not None else connection
         self.write_lock = Lock()
+        self.owner_pid = os.getpid()
+        self.closed = False
 
     def send(self, message):
         with self.write_lock:
@@ -37,9 +39,27 @@ class Channel:
         return self.recv()
 
     def close(self):
-        self.connection.close()
-        if self.writer is not self.connection:
-            self.writer.close()
+        if self.closed or self.owner_pid != os.getpid():
+            return
+        self.closed = True
+        errors = []
+        ends = (
+            (self.connection,)
+            if self.writer is self.connection
+            else (
+                self.connection,
+                self.writer,
+            )
+        )
+        for end in ends:
+            try:
+                end.close()
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(str(error))
+            raise errors[0]
 
 
 def log_channel():
@@ -54,6 +74,7 @@ class DesktopProcess:
         self.process = process
         self.channel = channel
         self.pid = process.pid
+        self.owner_pid = os.getpid()
 
     def is_alive(self):
         return self.process.poll() is None
@@ -70,6 +91,9 @@ class DesktopProcess:
 
     def kill(self):
         self.process.kill()
+
+    def close(self):
+        self.channel.close()
 
 
 def start_worker(kind, *args, log_queue=None):
@@ -96,9 +120,17 @@ def start_worker(kind, *args, log_queue=None):
     try:
         # Keep instance paths and browser tokens off the process command line.
         channel.send(args)
-    except BaseException:
-        worker.terminate()
-        worker.join()
+    except BaseException as error:
+        from arknights_mower.utils.device.owned import close_process
+
+        for cleanup in (
+            channel.close,
+            lambda: close_process(worker, worker.owner_pid),
+        ):
+            try:
+                cleanup()
+            except Exception as cleanup_error:
+                error.add_note(f"关闭部分初始化的桌面资源失败：{cleanup_error}")
         raise
     return worker, channel
 

@@ -3,8 +3,6 @@
 import json
 from threading import RLock
 
-from pydantic import BaseModel
-
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RIICPart
 from arknights_mower.utils.path import get_path
@@ -103,7 +101,8 @@ def read_user_config():
     with workshop_lock:
         conf = config.conf.model_copy(deep=True)
         warning = initialize_manual_settings(conf)
-        save_conf(conf)
+        # Loading a settings page must not persist migrations. The save path
+        # initializes the same manual state before applying an explicit edit.
         return {**conf.model_dump(), **workshop_state(conf, warning)}
 
 
@@ -139,18 +138,6 @@ def _edit_legacy(conf, req):
         conf.workshop_generation += 1
 
 
-def _merge_model_fields(model, updates):
-    data = model.model_dump()
-    for name, value in updates.items():
-        current = getattr(model, name, None)
-        data[name] = (
-            _merge_model_fields(current, value)
-            if isinstance(current, BaseModel) and isinstance(value, dict)
-            else value
-        )
-    return data
-
-
 def _wake_scheduler_if_running():
     # Import lazily to avoid making configuration loading depend on the runtime.
     from arknights_mower.__main__ import base_scheduler
@@ -176,7 +163,7 @@ def save_user_config(req):
         editable.setdefault("workshop_deer_fodder", state.workshop_deer_fodder)
         # Web forms only submit fields they expose. Keep all other settings,
         # including values restored from a full configuration backup.
-        conf = config.Conf(**_merge_model_fields(state, editable))
+        conf = state.updated(editable)
         if not conf.enable_mastery:
             restore_manual_settings(conf)
         save_conf(conf)

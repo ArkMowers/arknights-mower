@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import atexit
 import datetime
 import hmac
 import ipaddress
@@ -19,6 +20,7 @@ from zlib import error as ZlibError
 from flask import Flask, abort, g, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
+from pydantic import ValidationError
 from simple_websocket import ConnectionClosed
 from werkzeug.exceptions import NotFound
 from werkzeug.security import safe_join
@@ -39,11 +41,13 @@ from arknights_mower.utils.diagnostics import (
     export_bundle,
     timeline,
 )
+from arknights_mower.utils.lifecycle import shutdown
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.log_stream import LogStream
 from arknights_mower.utils.maa_check import (
     MAA_CHECK_TIMEOUT,
     maa_check_command,
+    maa_check_params,
     maa_check_timeout_result,
     parse_maa_check_output,
 )
@@ -621,12 +625,43 @@ def require_log_read(f):
     return decorated_function
 
 
+def _diagnostic_delete_origin_allowed(origin):
+    if not origin:
+        return True
+    try:
+        source = urlparse(origin)
+        target = urlparse(request.host_url)
+        if (
+            source.scheme not in {"http", "https"}
+            or not source.hostname
+            or source.username
+            or source.password
+            or source.path
+            or source.params
+            or source.query
+            or source.fragment
+        ):
+            return False
+        if source.scheme == target.scheme and source.netloc == target.netloc:
+            return True
+        # MOWER_DEV_PORT configures the same explicit loopback port in Vite.
+        loopback = {"localhost", "127.0.0.1", "::1"}
+        return (
+            target.hostname in loopback
+            and source.hostname in loopback
+            and source.scheme == "http"
+            and source.port == int(os.environ.get("MOWER_DEV_PORT", "5173"))
+        )
+    except ValueError:
+        return False
+
+
 def _authorize_websocket(ws, allow_local_log=False):
     """Check a WebSocket's credential or local log-read boundary before use."""
 
     def reject():
         try:
-            ws.close()
+            ws.close(reason=4401, message="Unauthorized")
         except (ConnectionClosed, OSError):
             pass
         return False
@@ -671,10 +706,17 @@ def serialize_configuration_requests():
     ):
         backup_lock.acquire()
         g.configuration_locked = True
+    if request.path == "/conf" or request.path.startswith("/device/"):
+        from arknights_mower.__main__ import device_control
+
+        device_control.configuration_lock.acquire()
+        g.device_configuration_lock = device_control.configuration_lock
 
 
 @app.teardown_request
 def release_configuration_lock(error):
+    if lock := g.pop("device_configuration_lock", None):
+        lock.release()
     if g.pop("configuration_locked", False):
         backup_lock.release()
 
@@ -819,7 +861,126 @@ def not_found(e):
     return {"error": "Not Found"}, 404
 
 
-@app.route("/conf", methods=["GET", "POST"])
+@app.route("/device/status", methods=["GET"])
+@require_token
+def device_status():
+    from arknights_mower.__main__ import device_control
+
+    status = device_control.settings_status()
+    status["active"] = status["active"] or bool(
+        mower_thread and mower_thread.is_alive()
+    )
+    return status
+
+
+@app.route("/device/preflight", methods=["POST"])
+@app.route("/device/discover", methods=["POST"])
+@app.route("/device/start", methods=["POST"])
+@app.route("/device/avd/start", methods=["POST"])
+@app.route("/device/redroid/start", methods=["POST"])
+@app.route("/device/genymotion/start", methods=["POST"])
+@require_token
+def device_preflight():
+    from arknights_mower.__main__ import device_control
+    from arknights_mower.utils.device.preflight import GAME_PACKAGES
+
+    payload = request.get_json(silent=True)
+    discovery = request.path == "/device/discover"
+    start_bound = request.path == "/device/start"
+    start_avd = request.path == "/device/avd/start"
+    start_redroid = request.path == "/device/redroid/start"
+    start_genymotion = request.path == "/device/genymotion/start"
+    start_confirmed = start_avd or start_redroid or start_genymotion
+    allowed = {"device"} if discovery else {"device", "confirmed_package"}
+    if start_confirmed:
+        allowed.add("confirmed_instance")
+    if not isinstance(payload, dict) or set(payload) - allowed:
+        return {
+            "error": "invalid_configuration",
+            "message": "检测参数必须是设备配置对象",
+        }, 400
+    device = payload.get("device", {})
+    if start_confirmed and (
+        not isinstance(payload.get("confirmed_instance"), str)
+        or not payload["confirmed_instance"].strip()
+    ):
+        return {
+            "error": "start_confirmation_required",
+            "message": "请明确确认要启动的实例。",
+        }, 400
+    confirmed = payload.get("confirmed_package")
+    if not isinstance(device, dict) or (
+        confirmed is not None and confirmed not in GAME_PACKAGES
+    ):
+        return {
+            "error": "invalid_configuration",
+            "message": "设备配置或游戏包无效",
+        }, 400
+    if mower_thread and mower_thread.is_alive():
+        return {
+            **device_control.settings_status(),
+            "ok": False,
+            "error": {
+                "code": "device_session_active",
+                "message": "请停止当前任务后重新检测设备。",
+                "action": "stop",
+                "fields": [],
+            },
+        }, 409
+    try:
+        # Draft inspection is deliberately separate from /conf persistence.
+        configuration = config.conf.updated({"device": device})
+        if (
+            configuration.device.preset_id
+            in {"macos.bluestacks_air", "manual.other", "manual.physical"}
+            and "last_serial" in device
+        ):
+            # An explicit manual/Air target in a read-only draft is a new choice,
+            # even if it equals the previous profile's endpoint.
+            # Persisted binding changes still clear endpoints through /conf.
+            configuration.device.last_serial = device["last_serial"]
+    except (ValidationError, ValueError) as exc:
+        return {"error": "invalid_configuration", "message": str(exc)}, 400
+    if discovery:
+        return device_control.discover(configuration).to_dict()
+    if start_bound:
+        return device_control.start_bound(
+            configuration, confirmed_package=confirmed
+        ).to_dict()
+    if start_confirmed:
+        launch = (
+            device_control.start_avd
+            if start_avd
+            else device_control.start_redroid
+            if start_redroid
+            else device_control.start_genymotion
+        )
+        return launch(
+            configuration,
+            confirmed_instance=payload["confirmed_instance"],
+            confirmed_package=confirmed,
+        ).to_dict()
+    return device_control.preflight(
+        configuration, confirmed_package=confirmed
+    ).to_dict()
+
+
+@app.route("/device/boss_key", methods=["POST"])
+@require_token
+def device_boss_key():
+    from arknights_mower.utils.device.window import trigger_simulator_boss_key
+
+    payload = request.get_json(silent=True) or {}
+    hotkey = (
+        payload.get("hotkey")
+        or getattr(config.conf.device, "simulator_hotkey", "")
+        or getattr(config.conf.simulator, "hotkey", "")
+    )
+    result = trigger_simulator_boss_key(hotkey, delay=0.0)
+    return result, (200 if result.get("ok") else 400)
+
+
+@app.route("/conf", methods=["GET", "POST", "PATCH"])
 @require_token
 def load_config():
     if request.method == "GET":
@@ -856,7 +1017,25 @@ def load_config():
             data["maa_weekly_plan_active"] = manager.get_active_plan_key()
         return data
     else:
-        req = dict(request.json or {})
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return {
+                "error": "invalid_configuration",
+                "message": "配置必须是 JSON 对象",
+            }, 400
+        req = dict(payload)
+        from arknights_mower.__main__ import device_control
+
+        if device_control.active or (mower_thread and mower_thread.is_alive()):
+            try:
+                proposed = config.conf.updated(req)
+            except (ValidationError, ValueError) as exc:
+                return {"error": "invalid_configuration", "message": str(exc)}, 400
+            if device_control.configuration_changes_target(proposed):
+                return {
+                    "error": "device_session_active",
+                    "message": "设备会话正在运行，请停止任务后修改目标或截图、触控设置",
+                }, 409
         requested_plan_key = str(req.pop("maa_weekly_plan_active", "")).strip()
         from arknights_mower.utils.config.weekly_plan_loader import (
             get_weekly_plan_manager,
@@ -898,7 +1077,20 @@ def load_config():
         ]
         from arknights_mower.utils.workshop_config import save_user_config
 
-        state = save_user_config(req)
+        try:
+            state = save_user_config(req)
+        except (ValidationError, ValueError) as exc:
+            return {"error": "invalid_configuration", "message": str(exc)}, 400
+        except OSError:
+            logger.exception("Failed to save configuration")
+            return {
+                "error": "configuration_save_failed",
+                "message": "配置保存失败，请检查文件权限或稍后重试",
+            }, 500
+        if request.method == "PATCH":
+            from arknights_mower.utils.workshop_config import read_user_config
+
+            return {**read_user_config(), **state}
         if "workshop_manual_settings" in req or "workshop_settings_generation" in req:
             return {"message": "New config saved!", **state}
         return "New config saved!"
@@ -1121,19 +1313,68 @@ def get_status():
     return response
 
 
-@app.route("/start/<start_type>")
+@app.route("/start/<start_type>", methods=["GET", "POST"])
 @require_token
 def start(start_type):
-    return str(_start_mower(start_type)).lower()
+    if request.method == "GET":
+        return str(_start_mower(start_type)).lower()
+    payload = request.get_json(silent=True)
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"preparation_serial"}
+        or not _valid_preparation_serial(payload["preparation_serial"])
+    ):
+        return {
+            "error": "invalid_preparation_consent",
+            "message": "临时整备必须明确授权当前配置的实体设备 serial，且只用于本次启动。",
+        }, 400
+    return str(_start_mower(start_type, payload["preparation_serial"])).lower()
 
 
-def _start_mower(start_type):
+def _valid_preparation_serial(serial):
+    return (
+        isinstance(serial, str)
+        and bool(serial.strip())
+        and config.conf.device.preset_id == "manual.physical"
+        and config.conf.device.last_serial == serial
+    )
+
+
+def _run_mower_worker(saved_state, preparation_serial=None):
+    """The worker thread reports a device verdict instead of dying with it.
+
+    ``main`` restores its own resources and then propagates a fatal device
+    error; nothing above the thread can act on that exception, so its reason is
+    reported and the run ends while the application keeps serving the UI.
+    """
+    from arknights_mower.__main__ import main
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+
+    try:
+        if preparation_serial is None:
+            main(saved_state)
+        else:
+            main(
+                saved_state,
+                preparation_serial=preparation_serial,
+            )
+    except DeviceRecoveryError as exc:
+        logger.error(f"设备连接恢复失败，本次运行已停止：{exc}")
+
+
+def _start_mower(start_type, preparation_serial=None):
     global mower_thread
 
-    if active_job():
+    if shutdown.closing or active_job():
         return False
 
     with maa_maintenance_lock:
+        if shutdown.closing:
+            return False
+        if preparation_serial is not None and not _valid_preparation_serial(
+            preparation_serial
+        ):
+            return False
         if (
             mower_thread
             and mower_thread.is_alive()
@@ -1151,9 +1392,14 @@ def _start_mower(start_type):
         saved_state = {} if start_type == "2" else (load_state() or {})
         if start_type == "1":
             saved_state["tasks"] = []
-        from arknights_mower.__main__ import main
-
-        mower_thread = Thread(target=main, args=(saved_state,), daemon=True)
+        mower_thread = Thread(
+            target=_run_mower_worker,
+            args=(saved_state,),
+            kwargs={"preparation_serial": preparation_serial}
+            if preparation_serial is not None
+            else {},
+            daemon=True,
+        )
         # /task 路由（views/task.py）独立判定「mower 正在运行」，须与本模块同步
         set_mower_thread(mower_thread)
         log_stream.clear()
@@ -1180,6 +1426,8 @@ def scheduled_start():
     ):
         return {"error": "预约时间必须在未来 30 天内"}, 400
     with maa_maintenance_lock:
+        if shutdown.closing:
+            return {"error": "Mower 正在退出"}, 409
         if mower_thread and mower_thread.is_alive():
             return {"error": "Mower 正在运行"}, 409
         start_at = _schedule_start(delay_seconds)
@@ -1191,22 +1439,69 @@ def scheduled_start():
 @require_token
 @save_state
 def stop():
+    return str(_stop_mower()).lower()
+
+
+def _stop_mower(timeout=10):
+    """Let the worker's run boundary restore preparation before it exits."""
     global mower_thread
 
-    if mower_thread is None:
-        return "true"
-
     config.stop_mower.set()
-
-    mower_thread.join(10)
-    if mower_thread.is_alive():
-        logger.error("Mower线程仍在运行")
-        return "false"
-    else:
+    deadline = time.monotonic() + timeout
+    if not maa_maintenance_lock.acquire(timeout=timeout):
+        logger.error("等待任务状态锁超时，保留未完成的设备恢复记录")
+        return False
+    try:
+        if mower_thread is None:
+            return True
+        mower_thread.join(max(0, deadline - time.monotonic()))
+        if mower_thread.is_alive():
+            logger.error(
+                "Mower 线程仍在退出；未完成的实体设备恢复记录将保留至重连补偿。"
+            )
+            return False
         logger.info("成功停止mower线程")
         mower_thread = None
         set_mower_thread(None)
-        return "true"
+        return True
+    finally:
+        maa_maintenance_lock.release()
+
+
+def register_shutdown(lifecycle):
+    """Attach the worker/device boundary also for the headless Flask entry."""
+    from arknights_mower import __main__ as mower
+    from arknights_mower.utils.lifecycle import Phase
+    from arknights_mower.utils.log import close_logging, close_screenshot_store
+
+    def wait_worker():
+        if not _stop_mower(timeout=10):
+            raise TimeoutError("Mower 工作线程未在退出预算内结束")
+
+    lifecycle.own(
+        "device gate", lambda: mower.device_control.begin_shutdown(), Phase.GATE
+    )
+    lifecycle.own("worker signal", config.stop_mower.set, Phase.SIGNAL)
+    lifecycle.own("scheduled starts", _cancel_scheduled_start, Phase.SIGNAL)
+    lifecycle.own(
+        "device I/O", lambda: mower.device_control.interrupt_io(), Phase.INTERRUPT
+    )
+    lifecycle.own("mower worker", wait_worker, Phase.WORKER)
+
+    def close_device_session():
+        # A deferred close is retried once here; either outcome is recorded and
+        # never allowed to skip the phases that still own resources.
+        for result in (
+            mower.device_control.close(),
+            mower.device_control.final_release(),
+        ):
+            if not result.ok:
+                logger.error(f"关闭设备会话失败：{result.error.message}")
+
+    lifecycle.own("device session", close_device_session, Phase.DEVICE)
+    lifecycle.own("screenshots", close_screenshot_store, Phase.SCREENSHOTS)
+    lifecycle.own("file and queue logging", close_logging, Phase.LOG)
+    lifecycle.watch()
 
 
 @app.route("/stop-maa")
@@ -1355,37 +1650,6 @@ def diagnostic_error_export(archive_id):
     return _send_diagnostic_bundle(center, archive_id)
 
 
-def _diagnostic_delete_origin_allowed(origin):
-    if not origin:
-        return True
-    try:
-        source = urlparse(origin)
-        target = urlparse(request.host_url)
-        if (
-            source.scheme not in {"http", "https"}
-            or not source.hostname
-            or source.username
-            or source.password
-            or source.path
-            or source.params
-            or source.query
-            or source.fragment
-        ):
-            return False
-        if source.scheme == target.scheme and source.netloc == target.netloc:
-            return True
-        # 本机 Vite 开发服务器与后端分别使用 5173 和 8000 等端口。
-        loopback = {"localhost", "127.0.0.1", "::1"}
-        return (
-            target.hostname in loopback
-            and source.hostname in loopback
-            and source.scheme == "http"
-            and source.port == 5173
-        )
-    except ValueError:
-        return False
-
-
 @app.route("/diagnostics/errors/<archive_id>", methods=["DELETE"])
 @require_token
 def diagnostic_error_delete(archive_id):
@@ -1417,6 +1681,14 @@ def get_screenshot_preview():
     from arknights_mower.views.screenshot import latest_screenshot_response
 
     return latest_screenshot_response()
+
+
+@app.route("/screenshot/stats")
+@require_token
+def get_screenshot_stats():
+    from arknights_mower.views.screenshot import screenshot_stats_response
+
+    return screenshot_stats_response()
 
 
 @app.route("/latest-screenshot")
@@ -1628,6 +1900,8 @@ def validate_backup_plans_route():
 @app.route("/check-maa")
 @require_token
 def get_maa_adb_version():
+    from arknights_mower.__main__ import device_control
+
     with maa_check_lock:
         _collect_maa_check_result()
         if maa_check_job["status"] == "running":
@@ -1637,8 +1911,16 @@ def get_maa_adb_version():
             }
 
         try:
+            with device_control.configuration_lock:
+                params = (
+                    device_control.execute(
+                        lambda device: maa_check_params(device=device)
+                    ).unwrap()
+                    if device_control.active
+                    else maa_check_params()
+                )
             process = subprocess.Popen(
-                maa_check_command(),
+                maa_check_command(params),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -3002,3 +3284,7 @@ app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(
 )
 app.register_blueprint(process_control_bp)
 app.register_blueprint(ui_state_bp)
+
+# Flask CLI handles Ctrl+C itself; atexit enters the same process-owned close.
+register_shutdown(shutdown)
+atexit.register(shutdown.close)

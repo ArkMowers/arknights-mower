@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel
 from yamlcore import CoreDumper, CoreLoader
 
+from arknights_mower import __system__
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.plan import (
     PlanModel,
@@ -118,6 +119,8 @@ migrate_app_config_paths()
 
 
 def save_conf():
+    conf.sync_legacy_device_fields()
+
     def dump(f):
         yaml.dump(
             conf.model_dump(exclude_unset=True),
@@ -157,7 +160,14 @@ def load_conf():
     operation_recovery_successes = 0
     if not conf_path.is_file():
         conf_path.parent.mkdir(exist_ok=True)
-        conf = Conf()
+        # A fresh Mac/Linux host has no chosen endpoint. Keep legacy migration
+        # unchanged, but do not give new users the old MuMu default port.
+        conf = (
+            Conf(device={})
+            if __system__ in {"darwin", "linux"}
+            and os.environ.get("MOWER_ANDROID") != "1"
+            else Conf()
+        )
         save_conf()
         return
     with conf_path.open("r", encoding="utf-8") as f:

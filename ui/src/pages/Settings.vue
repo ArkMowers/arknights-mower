@@ -4,7 +4,14 @@ import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
-import { folder_dialog } from '@/utils/dialog'
+import DeviceSettings from '@/components/DeviceSettings.vue'
+import ChatBotSetting from '../components/ChatBotSetting.vue'
+import SoftwareUpdate from '../components/SoftwareUpdate.vue'
+import NetworkSettings from '../components/NetworkSettings.vue'
+import ConfigBackup from '../components/ConfigBackup.vue'
+import WorkshopManualSettings from '../components/WorkshopManualSettings.vue'
+
+defineOptions({ name: 'MowerSettings' })
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -20,7 +27,6 @@ const {
   drone_room,
   swap_contact_train,
   start_automatically,
-  adb,
   package_type,
   simulator,
   theme,
@@ -35,21 +41,22 @@ const {
   webview,
   runtime_platform,
   fix_mumu12_adb_disconnect,
-  touch_method,
-  droidcast,
-  mumu12IPC,
-  maa_adb_path,
   maa_gap,
-  custom_screenshot,
   waiting_scene,
   enable_party,
   leifeng_mode,
   item_list,
   workshop_manual_settings,
-  workshop_preset_warning,
-  ai_type,
-  ai_key
+  workshop_preset_warning
 } = storeToRefs(config_store)
+
+const archive_limit_gib = computed({
+  get: () => screenshot_archive_limit_mb.value / 1024,
+  set: (value) => {
+    if (Number.isFinite(value))
+      screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
+  }
+})
 
 const performance_mode_options = computed(() => [
   { label: '自动', value: 'auto' },
@@ -64,13 +71,6 @@ const performance_effective_label = computed(
       performance_effective_mode.value
     ] || performance_effective_mode.value
 )
-const archive_limit_gib = computed({
-  get: () => screenshot_archive_limit_mb.value / 1024,
-  set: (value) => {
-    if (Number.isFinite(value))
-      screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
-  }
-})
 
 function apply_performance_mode(mode) {
   if (runtime_platform.value === 'android' && ['xhigh', 'high'].includes(mode)) mode = 'medium'
@@ -90,18 +90,6 @@ const facility_with_empty = computed(() => {
   return [{ label: '（加速任意贸易站）', value: '' }].concat(left_side_facility)
 })
 
-const simulator_types = [
-  { label: '夜神', value: '夜神' },
-  { label: '蓝叠模拟器Air（macOS）', value: 'BlueStacksAir' },
-  { label: 'MuMu模拟器12', value: 'MuMu12' },
-  { label: 'Waydroid', value: 'Waydroid' },
-  { label: '雷电模拟器9', value: '雷电9' },
-  { label: 'ReDroid', value: 'ReDroid' },
-  { label: 'MuMu模拟器Pro', value: 'MuMuPro' },
-  { label: 'Genymotion', value: 'Genymotion' },
-  { label: '其它', value: '' }
-]
-
 const launch_options = [
   { label: '使用adb命令启动', value: 'adb' },
   { label: '点击屏幕启动', value: 'tap' },
@@ -113,13 +101,6 @@ const defaultLaunchCommand =
 
 function reset_launch_command() {
   tap_to_launch_game.value.command = defaultLaunchCommand
-}
-
-async function select_simulator_folder() {
-  const folder_path = await folder_dialog()
-  if (folder_path) {
-    simulator.value.simulator_folder = folder_path
-  }
 }
 
 const scale_marks = {}
@@ -204,50 +185,6 @@ onMounted(() => {
 })
 onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPreferences))
 
-import { file_dialog } from '@/utils/dialog'
-
-async function select_maa_adb_path() {
-  const file_path = await file_dialog()
-  if (file_path) {
-    maa_adb_path.value = file_path
-  }
-}
-
-const screenshot_method = computed({
-  get() {
-    let result = 'adb_gzip'
-    if (droidcast.value.enable) {
-      result = 'droidcast'
-    } else if (custom_screenshot.value.enable) {
-      result = 'custom'
-    } else if (mumu12IPC.value) {
-      result = 'mumu12IPC'
-    }
-    if (result === 'mumu12IPC' && simulator.value.name !== 'MuMu12') {
-      return 'adb_gzip'
-    }
-    return result
-  },
-  set(value) {
-    droidcast.value.enable = false
-    custom_screenshot.value.enable = false
-    mumu12IPC.value = false
-    if (value == 'droidcast') {
-      droidcast.value.enable = true
-    } else if (value == 'custom') {
-      custom_screenshot.value.enable = true
-    } else if (value == 'mumu12IPC' && simulator.value.name === 'MuMu12') {
-      mumu12IPC.value = true
-    }
-  }
-})
-
-const tested = ref(false)
-const image = ref('')
-const elapsed = ref(0)
-const loading = ref(false)
-const axios = inject('axios')
-
 const scene_name = {
   CONNECTING: '正在提交反馈至神经',
   UNKNOWN: '未知',
@@ -257,61 +194,37 @@ const scene_name = {
   OPERATOR_ONGOING: '代理作战'
 }
 
-const onSelectionChange = (newValue) => {
-  if (newValue === '夜神') {
-    simulator.value.index = '-1'
-  } else {
-    simulator.value.index = '0'
+const idleAction = computed({
+  get: () => {
+    if (return_home_when_idle.value) return 'home'
+    if (exit_game_when_idle.value) return 'exit'
+    return close_simulator_when_idle.value ? 'close' : 'idle'
+  },
+  set: (value) => {
+    return_home_when_idle.value = value === 'home'
+    exit_game_when_idle.value = value === 'exit'
+    close_simulator_when_idle.value = value === 'close'
   }
-}
-import ChatBotSetting from '../components/ChatBotSetting.vue'
-import SoftwareUpdate from '../components/SoftwareUpdate.vue'
-import NetworkSettings from '../components/NetworkSettings.vue'
-import ConfigBackup from '../components/ConfigBackup.vue'
-import WorkshopManualSettings from '../components/WorkshopManualSettings.vue'
-
-const idleAction = ref('') // 'idle' | 'home' | 'exit' | 'close'
+})
 const networkSettings = ref(null)
 const softwareUpdate = ref(null)
 
-const idleOptions = [
+const simulatorLifecycleAllowed = computed(
+  () => config_store.device_profile?.preset_id !== 'manual.physical'
+)
+const displayedIdleAction = computed({
+  get: () =>
+    !simulatorLifecycleAllowed.value && idleAction.value === 'close' ? 'idle' : idleAction.value,
+  set: (value) => {
+    idleAction.value = value
+  }
+})
+const idleOptions = computed(() => [
   { label: '无操作', value: 'idle' },
   { label: '返回首页', value: 'home' },
   { label: '退出游戏', value: 'exit' },
-  { label: '关闭模拟器', value: 'close' }
-]
-
-watch(idleAction, (val) => {
-  if (val == 'idle') {
-    return_home_when_idle.value = false
-    exit_game_when_idle.value = false
-    close_simulator_when_idle.value = false
-    return
-  }
-  return_home_when_idle.value = val === 'home'
-  exit_game_when_idle.value = val === 'exit'
-  close_simulator_when_idle.value = val === 'close'
-})
-
-watch(
-  [return_home_when_idle, exit_game_when_idle, close_simulator_when_idle],
-  ([home, exit, close]) => {
-    if (home) idleAction.value = 'home'
-    else if (exit) idleAction.value = 'exit'
-    else if (close) idleAction.value = 'close'
-    else idleAction.value = 'idle'
-  }
-)
-
-if (return_home_when_idle.value) {
-  idleAction.value = 'home'
-} else if (exit_game_when_idle.value) {
-  idleAction.value = 'exit'
-} else if (close_simulator_when_idle.value) {
-  idleAction.value = 'close'
-} else {
-  idleAction.value = 'idle'
-}
+  ...(simulatorLifecycleAllowed.value ? [{ label: '关闭模拟器', value: 'close' }] : [])
+])
 </script>
 
 <template>
@@ -325,111 +238,18 @@ if (return_home_when_idle.value) {
             label-width="120"
             label-align="left"
           >
-            <n-form-item label="服务器">
-              <n-radio-group v-model:value="package_type">
-                <n-space>
-                  <n-radio value="official">官服</n-radio>
-                  <n-radio value="bilibili">BiliBili服</n-radio>
-                </n-space>
-              </n-radio-group>
-            </n-form-item>
-            <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
-              >设备连接由 Android 应用管理。</n-alert
-            >
-            <n-form-item v-if="runtime_platform !== 'android'">
-              <template #label>
-                <span>ADB路径</span>
-                <help-text>
-                  <div>MuMu12：<code>模拟器路径\\shell\\adb.exe</code></div>
-                  <div>
-                    macOS 和 Linux 安装包自带 ADB。默认的 @internal/platform-tools/adb
-                    随程序位置解析，也可以手动选择其他 ADB。
-                  </div>
-                </help-text>
-              </template>
-              <n-input v-model:value="maa_adb_path" />
-              <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
-            </n-form-item>
-            <n-form-item v-if="runtime_platform !== 'android'">
-              <template #label>
-                <span>ADB连接地址</span>
-                <help-text>
-                  <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
-                  <div>夜神：<code>127.0.0.1:62001</code></div>
-                  <div>蓝叠Air：<code>127.0.0.1:5555</code></div>
-                </help-text>
-              </template>
-              <n-input v-model:value="adb" />
-            </n-form-item>
-            <n-form-item label="触控方案" v-if="runtime_platform !== 'android'">
-              <n-radio-group v-model:value="touch_method">
-                <n-space>
-                  <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
-                  <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
-                </n-space>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="模拟器" v-if="runtime_platform !== 'android'">
-              <n-select
-                v-model:value="simulator.name"
-                :options="simulator_types"
-                @update:value="onSelectionChange"
-              />
-            </n-form-item>
-            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
-              <template #label>
-                <span>模拟器文件夹</span>
-                <help-text>
-                  <div>夜神：写到bin文件夹</div>
-                  <div>MuMu12: 写到nx_main文件夹</div>
-                </help-text>
-              </template>
-              <n-input v-model:value="simulator.simulator_folder" />
-              <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
-            </n-form-item>
-            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
-              <template #label>
-                <span>多开编号</span>
-                <help-text>
-                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
-                </help-text>
-              </template>
-              <n-input v-model:value="simulator.index" />
-            </n-form-item>
-            <n-form-item
-              label="模拟器启动时间"
-              v-if="runtime_platform !== 'android' && simulator.name"
-            >
-              <mower-input-number v-model:value="simulator.wait_time">
-                <template #suffix>秒</template>
-              </mower-input-number>
-            </n-form-item>
-            <n-form-item v-if="runtime_platform !== 'android' && simulator.name">
-              <template #label>
-                <span>模拟器老板键</span>
-                <help-text>
-                  <div>启动模拟器后按此快捷键</div>
-                  <div>若不需要此功能，请留空</div>
-                  <div>加号分隔按键，不要空格</div>
-                  <div>
-                    按键名参考
-                    <n-button
-                      text
-                      tag="a"
-                      href="https://pyautogui.readthedocs.io/en/latest/keyboard.html#keyboard-keys"
-                      target="_blank"
-                      type="primary"
-                    >
-                      KEYBOARD_KEYS
-                    </n-button>
-                  </div>
-                </help-text>
-              </template>
-              <n-input
-                v-model:value="simulator.hotkey"
-                placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
-              />
-            </n-form-item>
+            <DeviceSettings v-if="runtime_platform !== 'android'" />
+            <template v-else>
+              <n-form-item label="服务器">
+                <n-radio-group v-model:value="package_type">
+                  <n-space>
+                    <n-radio value="official">官服</n-radio>
+                    <n-radio value="bilibili">Bilibili 服</n-radio>
+                  </n-space>
+                </n-radio-group>
+              </n-form-item>
+              <n-alert :show-icon="false">设备连接由 Android 应用管理。</n-alert>
+            </template>
             <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
             </n-form-item>
@@ -466,11 +286,20 @@ if (return_home_when_idle.value) {
                 <help-text>
                   <div>返回首页：降低功耗</div>
                   <div>退出游戏：降低功耗</div>
-                  <div>关闭模拟器：减少空闲时的资源占用、避免模拟器长时间运行出现问题</div>
+                  <div v-if="simulatorLifecycleAllowed">
+                    关闭模拟器：减少空闲时的资源占用、避免模拟器长时间运行出现问题
+                  </div>
+                  <div
+                    v-if="
+                      ['macos.avd', 'linux.avd'].includes(config_store.device_profile?.preset_id)
+                    "
+                  >
+                    AVD 仅关闭 mower 启动的目标，再次启动需要确认；普通退出 mower 不会关闭 AVD。
+                  </div>
                 </help-text>
               </template>
 
-              <n-select v-model:value="idleAction" :options="idleOptions" />
+              <n-select v-model:value="displayedIdleAction" :options="idleOptions" />
             </n-form-item>
             <n-form-item
               :show-label="false"
@@ -490,50 +319,6 @@ if (return_home_when_idle.value) {
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
-            </n-form-item>
-            <n-form-item label="截图方案" v-if="runtime_platform !== 'android'">
-              <n-radio-group v-model:value="screenshot_method">
-                <n-flex>
-                  <n-radio value="adb_gzip">
-                    ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
-                  </n-radio>
-                  <n-radio value="droidcast">
-                    DroidCast<help-text>有损压缩，速度更快</help-text>
-                  </n-radio>
-                  <n-radio v-if="simulator.name === 'MuMu12'" value="mumu12IPC">
-                    MuMu 截图增强<help-text>如果选择，则强制使用MuMu自带的触控方案</help-text>
-                  </n-radio>
-                  <n-radio value="custom">
-                    自定义命令<help-text>向<code>STDOUT</code>打印图像</help-text>
-                  </n-radio>
-                </n-flex>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="旋转截图" v-if="runtime_platform !== 'android' && droidcast.enable">
-              <n-radio-group v-model:value="droidcast.rotate">
-                <n-flex>
-                  <n-radio :value="false">不旋转</n-radio>
-                  <n-radio :value="true">旋转180度</n-radio>
-                </n-flex>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item
-              label="截图命令"
-              v-if="runtime_platform !== 'android' && custom_screenshot.enable"
-            >
-              <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
-              <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
-                测试
-              </n-button>
-            </n-form-item>
-            <n-form-item
-              v-if="runtime_platform !== 'android' && custom_screenshot.enable && tested"
-              :show-label="false"
-            >
-              <n-flex vertical>
-                <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
-                <div>（截图用时{{ elapsed }}ms）</div>
-              </n-flex>
             </n-form-item>
             <n-form-item label="设备性能适配">
               <n-radio-group :value="performance_mode" @update:value="apply_performance_mode">
@@ -616,7 +401,7 @@ if (return_home_when_idle.value) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(value, key) in waiting_scene">
+                  <tr v-for="(value, key) in waiting_scene" :key="key">
                     <td>{{ scene_name[key] }}</td>
                     <td>
                       <mower-input-number

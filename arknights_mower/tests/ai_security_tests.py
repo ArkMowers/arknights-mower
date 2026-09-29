@@ -26,8 +26,9 @@ class FakeSocket:
     def send(self, value):
         self.sent.append(json.loads(value))
 
-    def close(self):
+    def close(self, reason=None, message=None):
         self.closed = True
+        self.close_reason = reason
 
 
 class WebSocketSecurityTests(unittest.TestCase):
@@ -61,6 +62,19 @@ class WebSocketSecurityTests(unittest.TestCase):
                 allowed, ws = self._authorize(frames, origin)
                 self.assertFalse(allowed)
                 self.assertTrue(ws.closed)
+                self.assertEqual(ws.close_reason, 4401)
+
+    def test_configured_dev_port_is_explicit_and_loopback_only(self):
+        with patch.dict("os.environ", {"MOWER_DEV_PORT": "5174"}):
+            for origin, expected in (
+                ("http://127.0.0.1:5174", True),
+                ("http://127.0.0.1:5173", False),
+                ("http://attacker.example:5174", False),
+            ):
+                allowed, _ = self._authorize(
+                    [json.dumps({"token": "test-secret"})], origin
+                )
+                self.assertEqual(allowed, expected)
 
     def test_empty_configured_token_does_not_allow_chat(self):
         server.app.token = ""

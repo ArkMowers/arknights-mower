@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createWindowShellAdapter } from './adapter.js'
+import { createWindowShellAdapter, formatEmulatorLabel } from './adapter.js'
 
 // These mirror the bridge contract the Python side serves via get_platform();
 // the adapter must agree with whatever the backend reports, not with these.
@@ -434,5 +434,20 @@ describe('window shell adapter', () => {
     desktopWindow.dispatchEvent(new Event('focus'))
     await vi.advanceTimersByTimeAsync(1000)
     expect(adapter.connected.value).toBe(false)
+  })
+})
+
+describe('window shell emulator label', () => {
+  it('adds the configured multi-instance name to the emulator product name', () => {
+    expect(formatEmulatorLabel({ name: 'MuMu12', instanceName: '粥' })).toBe('MuMu12（粥）')
+    expect(formatEmulatorLabel({ name: 'MuMu12', instanceName: '  粥  ' })).toBe('MuMu12（粥）')
+  })
+
+  it('omits an unset instance name and an unknown emulator product', () => {
+    expect(formatEmulatorLabel({ name: 'MuMu12', instanceName: '' })).toBe('MuMu12')
+    expect(formatEmulatorLabel({ name: 'MuMu12', instanceName: '   ' })).toBe('MuMu12')
+    expect(formatEmulatorLabel({ name: 'MuMu12' })).toBe('MuMu12')
+    expect(formatEmulatorLabel({ name: '', instanceName: '粥' })).toBe('')
+    expect(formatEmulatorLabel()).toBe('')
   })
 })

@@ -1,168 +1,150 @@
-import json
+"""Legacy lifecycle callers delegate startup/recovery to the application."""
+
+import subprocess
+import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, patch
 
 from arknights_mower.utils import config, simulator
-from arknights_mower.utils.device.adb_client import core as adb_core
+from arknights_mower.utils.device.application import DeviceControl
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 
 
-class TestSimulatorReady(unittest.TestCase):
+class TestSimulatorSessionDelegation(unittest.TestCase):
     def setUp(self):
-        self.old_target = "127.0.0.1:16384"
-        self.new_target = "127.0.0.1:16416"
+        self.control = MagicMock()
+        self.control.start.return_value.ok = True
+        self.control.recover.return_value.ok = True
+        self.enterContext(
+            patch.dict(
+                sys.modules,
+                {
+                    "arknights_mower.__main__": SimpleNamespace(
+                        device_control=self.control
+                    )
+                },
+            )
+        )
         self.conf = SimpleNamespace(
-            adb=self.old_target,
+            device=SimpleNamespace(preset_id="windows.mumu12"),
             fix_mumu12_adb_disconnect=False,
-            simulator=SimpleNamespace(
-                name="MuMu12", index="0", simulator_folder="", wait_time=2, hotkey=""
-            ),
+            simulator=SimpleNamespace(name="MuMu12", index="0", simulator_folder=""),
         )
         self.enterContext(patch.object(config, "conf", self.conf))
-        self.discover = self.enterContext(
-            patch.object(simulator, "query_mumu_adb_port", return_value=None)
+        self.command = self.enterContext(
+            patch.object(simulator, "run_command", return_value=True)
         )
-        self.session = self.enterContext(patch.object(simulator, "Session"))
-        self.session.return_value.devices_list.return_value = []
-        self.popen = self.enterContext(patch.object(simulator.subprocess, "Popen"))
-        self.popen.return_value.poll.return_value = 0
-        self.popen.return_value.returncode = 0
-        self.sleep = self.enterContext(patch.object(simulator, "csleep"))
-        self.enterContext(patch.object(simulator, "_last_launch", None))
 
-    def test_second_restart_waits_until_start_time_has_elapsed(self):
-        self.conf.simulator.wait_time = 30
-        events = []
-        self.sleep.side_effect = lambda seconds: events.append(("sleep", seconds))
+    def test_start_only_delegates_without_issuing_a_stop(self):
+        self.assertTrue(simulator.restart_simulator(stop=False))
+        self.control.start.assert_called_once_with()
+        self.control.recover.assert_not_called()
+        self.command.assert_not_called()
 
-        def run_command(command, *_args):
-            events.append(("command", command))
-            return True
+    def test_restart_request_uses_the_session_recovery_budget(self):
+        self.assertTrue(simulator.restart_simulator())
+        self.control.recover.assert_called_once_with()
+        self.control.start.assert_not_called()
+        self.command.assert_not_called()
 
-        with (
-            patch.object(simulator.time, "monotonic", side_effect=[100, 102, 130]),
-            patch.object(simulator, "run_command", side_effect=run_command),
-        ):
-            self.assertTrue(simulator.restart_simulator(stop=False))
-            self.assertTrue(simulator.restart_simulator())
-
-        self.assertEqual(events[2], ("sleep", 28))
-        self.assertIn("shutdown_player", events[3][1])
-
-    def test_restart_after_start_time_does_not_wait_again(self):
-        self.conf.simulator.wait_time = 30
-        with (
-            patch.object(simulator.time, "monotonic", side_effect=[100, 131, 134]),
-            patch.object(simulator, "run_command", return_value=True),
-        ):
-            self.assertTrue(simulator.restart_simulator(stop=False))
-            self.assertTrue(simulator.restart_simulator())
-
-        self.sleep.assert_has_calls([call(3), call(3)])
-        self.assertEqual(self.sleep.call_count, 2)
-
-    def test_only_device_state_is_ready(self):
-        for target in (self.old_target, ""):
-            for state in ("offline", "unauthorized", "device"):
-                with self.subTest(target=target, state=state):
-                    self.conf.adb = target
-                    self.session.return_value.devices_list.return_value = [
-                        (self.old_target, state)
-                    ]
-                    self.assertEqual(simulator.adb_ready(), state == "device")
-
-    def test_other_online_device_does_not_make_target_ready(self):
-        self.session.return_value.devices_list.return_value = [
-            (self.old_target, "offline"),
-            (self.new_target, "device"),
-        ]
-        self.assertFalse(simulator.adb_ready())
-
-    def test_empty_device_list_is_not_ready(self):
-        self.conf.adb = ""
-        self.assertFalse(simulator.adb_ready())
-
-    def test_cold_start_discovers_new_port_without_extra_restart(self):
-        # 启动前及首轮等待尚无端口，第二轮等待才发现新端口。
-        self.discover.side_effect = [None, None, self.new_target]
-        self.session.return_value.devices_list.side_effect = [
-            [],
-            [(self.new_target, "device")],
-        ]
-        self.assertTrue(simulator.restart_simulator(stop=False, start=True))
-        self.assertEqual(self.conf.adb, self.new_target)
-        self.session.return_value.connect.assert_called_with(
-            self.new_target, throw_error=True
+    def test_exhausted_session_error_reaches_the_caller(self):
+        self.control.recover.return_value.unwrap.side_effect = DeviceRecoveryError(
+            "shared budget exhausted"
         )
-        self.popen.assert_called_once()
-        self.assertIn("launch_player", self.popen.call_args.args[0])
+        with self.assertRaisesRegex(DeviceRecoveryError, "shared budget exhausted"):
+            simulator.restart_simulator()
+        self.command.assert_not_called()
 
-    def test_cold_start_hides_every_windows_port_discovery_process(self):
-        # 使用真实端口查询：启动前和首轮探测未就绪，第二轮才发现新端口。
-        # 设置 120 秒仍可在就绪后提前继续，隐藏窗口不改变等待/重发现规则。
-        self.conf.simulator.wait_time = 120
-        self.discover.side_effect = adb_core.query_mumu_adb_port
-        self.session.return_value.devices_list.side_effect = [
-            [],
-            [(self.new_target, "device")],
-        ]
-        no_window = 0x08000000
-        with (
-            patch.object(adb_core, "__system__", "windows"),
-            patch.object(simulator, "__system__", "windows"),
-            patch.object(adb_core.os.path, "isfile", return_value=True),
-            patch.object(
-                adb_core.subprocess, "CREATE_NO_WINDOW", no_window, create=True
+    def test_explicit_idle_stop_remains_stop_only(self):
+        self.assertTrue(simulator.restart_simulator(start=False))
+        self.command.assert_called_once_with(
+            ["MuMuManager.exe", "api", "-v", "0", "shutdown_player"], "", 10, True
+        )
+        self.control.start.assert_not_called()
+        self.control.recover.assert_not_called()
+
+    def test_physical_devices_never_receive_simulator_commands(self):
+        self.conf.device.preset_id = "manual.physical"
+        self.assertFalse(simulator.restart_simulator())
+        self.assertFalse(simulator.restart_simulator(start=False))
+        self.command.assert_not_called()
+        self.control.recover.assert_not_called()
+
+    def test_failed_stop_is_not_reported_as_success(self):
+        self.command.return_value = False
+        self.assertFalse(simulator.restart_simulator(start=False))
+
+
+class TestMuMuTransportCleanup(unittest.TestCase):
+    def setUp(self):
+        self.conf = SimpleNamespace(
+            adb="127.0.0.1:16384",
+            maa_adb_path="saved-adb.exe",
+            device=SimpleNamespace(preset_id="windows.mumu12"),
+            fix_mumu12_adb_disconnect=True,
+            simulator=SimpleNamespace(name="MuMu12", index="0", simulator_folder=""),
+        )
+        self.enterContext(patch.object(config, "conf", self.conf))
+        self.device = SimpleNamespace(
+            device_id="127.0.0.1:16416",
+            client=SimpleNamespace(
+                device_id="127.0.0.1:16416", adb_bin="verified-adb.exe"
             ),
-            patch.object(adb_core.subprocess, "run") as run,
-        ):
-            run.side_effect = [
-                SimpleNamespace(stdout="{}"),
-                SimpleNamespace(stdout="{}"),
-                SimpleNamespace(stdout=json.dumps({"0": {"adb_port": 16416}})),
-            ]
-            self.assertTrue(simulator.restart_simulator(stop=False, start=True))
-        self.assertEqual(run.call_count, 3)
-        for invocation in run.call_args_list:
-            self.assertEqual(
-                invocation.args[0], ["MuMuManager.exe", "info", "-v", "all"]
+        )
+        self.device.close = lambda: setattr(self.device, "client", None)
+        self.control = DeviceControl(
+            lambda: self.conf,
+            SimpleNamespace(open=lambda *_args, **_kwargs: self.device),
+        )
+        self.control.start().unwrap()
+        self.addCleanup(self.control.close)
+        self.enterContext(
+            patch.dict(
+                sys.modules,
+                {
+                    "arknights_mower.__main__": SimpleNamespace(
+                        device_control=self.control
+                    )
+                },
             )
-            self.assertEqual(invocation.kwargs["creationflags"], no_window)
-            self.assertTrue(invocation.kwargs["capture_output"])
-        self.popen.assert_called_once()
-        self.assertEqual(self.popen.call_args.kwargs["creationflags"], no_window)
-        self.assertEqual(self.conf.adb, self.new_target)
-        self.sleep.assert_has_calls([call(3), call(1)])
-        self.assertEqual(self.sleep.call_count, 2)
+        )
+        self.stop = self.enterContext(
+            patch.object(simulator, "run_command", return_value=True)
+        )
+        self.disconnect = self.enterContext(patch.object(simulator, "run_adb"))
 
-    def test_non_windows_port_discovery_does_not_use_windows_creation_flags(self):
-        for platform in ("linux", "darwin"):
-            with (
-                self.subTest(platform=platform),
-                patch.object(adb_core, "__system__", platform),
-                patch.object(adb_core.os.path, "isfile", return_value=True),
-                patch.object(adb_core.subprocess, "run") as run,
-            ):
-                run.return_value.stdout = json.dumps({"0": {"adb_port": 16416}})
-                self.assertEqual(
-                    adb_core.query_mumu_adb_port(self.conf.simulator), self.new_target
-                )
-                run.assert_called_once()
-                self.assertEqual(run.call_args.kwargs["creationflags"], 0)
+    def test_idle_stop_disconnects_only_the_verified_runtime_endpoint(self):
+        self.assertTrue(simulator.restart_simulator(start=False))
 
-    def test_discovery_failure_keeps_configured_target(self):
-        self.session.return_value.devices_list.return_value = [
-            (self.old_target, "device")
-        ]
-        self.assertTrue(simulator.adb_ready())
-        self.assertEqual(self.conf.adb, self.old_target)
+        self.stop.assert_called_once()
+        self.disconnect.assert_called_once()
+        self.assertEqual(
+            self.disconnect.call_args.args[0],
+            ["verified-adb.exe", "disconnect", "127.0.0.1:16416"],
+        )
+        self.assertEqual(self.conf.adb, "127.0.0.1:16384")
+        self.assertEqual(self.conf.maa_adb_path, "saved-adb.exe")
 
-    def test_wait_for_adb_handles_exception_gracefully(self):
-        process = self.popen.return_value
-        with patch.object(
-            simulator, "adb_ready", side_effect=RuntimeError("cannot connect: 10061")
-        ):
-            self.assertFalse(simulator.wait_for_adb(process, 1))
+    def test_closed_session_never_disconnects_the_saved_endpoint(self):
+        self.control.close()
+
+        self.assertTrue(simulator.restart_simulator(start=False))
+
+        self.disconnect.assert_not_called()
+
+    def test_released_client_never_disconnects_the_saved_endpoint(self):
+        self.device.close()
+
+        self.assertTrue(simulator.restart_simulator(start=False))
+
+        self.disconnect.assert_not_called()
+
+    def test_failed_disconnect_does_not_recover_the_stopped_instance(self):
+        self.disconnect.side_effect = subprocess.TimeoutExpired("adb", 5)
+        with patch.object(self.control, "recover") as recover:
+            self.assertTrue(simulator.restart_simulator(start=False))
+        recover.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,20 @@
 
 Actionable operational guide for diagnosing device connection failures, offline states, capture decoding errors, and recovery budget timeouts.
 
+## Local Development Origin
+
+The backend and Vite use `MOWER_DEV_PORT` for the explicitly allowed loopback development port (default `5173`). Authentication remains required; other origins remain denied.
+
+1. Set the same environment variable in both the backend and frontend terminals, for example in PowerShell:
+   ```powershell
+   $env:MOWER_DEV_PORT = '5174'
+   ```
+2. Start the backend and Vite with that environment. Vite reports an error if the requested port is occupied.
+3. Verify that authenticated WebSocket requests from that loopback port succeed and requests from an unconfigured port are rejected:
+   ```bash
+   pytest arknights_mower/tests/ai_security_tests.py -k configured_dev_port
+   ```
+
 ---
 
 ## 1. Inspect Readiness Classification
@@ -47,6 +61,16 @@ print(f"ADB daemon protocol version: {version}")
 ---
 
 ## 3. Verify Canvas Frame Decoding
+
+### LD Screenshot Enhancement
+
+1. Select Windows LDPlayer 9 or 14 and confirm the target instance through device detection. Select **LD 截图增强** in the capture backend menu; keep scrcpy or MaaTouch for input.
+2. Confirm that the emulator installation contains `ldopengl64.dll` and uses landscape 1920×1080. The adapter requires Windows x64 and a manager version reporting dimensions in `list2`.
+3. Run the read-only connection test. A missing DLL, unreported dimensions or changed instance produces a visible capture error. Upgrade the emulator or manually select another compatible capture backend before retrying.
+4. Verify the adapter offline without launching an emulator:
+   ```bash
+   pytest arknights_mower/tests/device_ld_capture_tests.py arknights_mower/tests/device_capture_compatibility_tests.py
+   ```
 
 If capture operations return errors, verify that decoded frames strictly conform to the 1920×1080 RGB standard:
 

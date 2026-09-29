@@ -105,7 +105,7 @@ class ProcessControlTests(unittest.TestCase):
             (state,) = thread.call_args.kwargs["args"]
             self.assertEqual(state["tasks"], [])
             self.assertEqual(state["operators"], {"operator": "saved-mood"})
-            self.assertNotIn("kwargs", thread.call_args.kwargs)
+            self.assertEqual(thread.call_args.kwargs.get("kwargs", {}), {})
 
     def test_route_requires_token_and_intent_header(self):
         app = Flask(__name__)

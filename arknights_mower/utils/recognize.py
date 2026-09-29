@@ -9,8 +9,15 @@ from arknights_mower.utils import config, vision_np
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
-from arknights_mower.utils.log import logger, save_screenshot
+from arknights_mower.utils.image import (
+    bytes2img,
+    cmatch,
+    cropimg,
+    img2bytes,
+    loadres,
+    thres2,
+)
+from arknights_mower.utils.log import logger, save_screenshot_frame
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.scene import Scene, SceneComment
@@ -46,8 +53,11 @@ class Recognizer:
 
     @property
     def screencap(self):
-        if self._screencap is None:
+        """Encode only explicit byte requests, retaining the current observation."""
+        if self._img is None:
             self.start()
+        if self._screencap is None:
+            self._screencap = bytes(img2bytes(self._img))
         return self._screencap
 
     @property
@@ -106,7 +116,7 @@ class Recognizer:
 
     def save_screencap(self, folder):
         # del folder  # 兼容2024.05旧版接口
-        save_screenshot(self.screencap, folder)
+        save_screenshot_frame(self.img, folder)
 
     def detect_index_scene(self) -> bool:
         res = loadres("index_nav", True)

@@ -145,7 +145,7 @@ def test_old_active_backup_migrates_and_can_still_restore():
     assert not conf.workshop_auto_active
 
 
-def test_initialized_form_remains_inactive_after_config_reload(
+def test_preview_is_read_only_and_explicit_save_preserves_inactive_form_on_reload(
     next_skill, tmp_path, monkeypatch
 ):
     from arknights_mower.tests.workshop_automation_tests import _real_save_conf
@@ -153,8 +153,15 @@ def test_initialized_form_remains_inactive_after_config_reload(
     monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
     monkeypatch.setattr(config, "save_conf", _real_save_conf)
     config.conf.workshop_settings = [manual_setting()]
+    config.save_conf()
+    before = config.conf_path.read_bytes()
     state.get_path("").write_text("[]")
-    state.read_user_config()
+    assert state.read_user_config()["workshop_manual_settings"] == []
+    assert config.conf_path.read_bytes() == before
+    config.load_conf()
+    assert config.conf.workshop_manual_backup is None
+    assert config.conf.workshop_settings == [manual_setting()]
+    state.save_user_config({})
     config.load_conf()
     assert not config.conf.workshop_auto_active
     assert config.conf.workshop_manual_backup == []

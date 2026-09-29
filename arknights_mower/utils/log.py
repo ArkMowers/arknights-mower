@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
 from queue import Queue
-from threading import Lock
+from threading import Lock, Thread
 
 import colorlog
 
@@ -190,11 +190,52 @@ def start_mp_listener(queue) -> None:
     mp_listener.start()
 
 
+def _stop_listener(bounded_listener, timeout=2):
+    if bounded_listener is None:
+        return
+
+    # QueueListener.stop has an unbounded join (and a pipe sentinel may block).
+    # The daemon sender and bounded reader join keep shutdown finite.
+    def notify():
+        try:
+            bounded_listener.enqueue_sentinel()
+        except (EOFError, OSError, ValueError):
+            pass
+
+    sender = Thread(target=notify, daemon=True)
+    sender.start()
+    sender.join(timeout)
+    worker = bounded_listener._thread
+    if worker is not None:
+        worker.join(timeout)
+
+
+def close_mp_logging():
+    global mp_listener
+    current, mp_listener = mp_listener, None
+    _stop_listener(current)
+
+
+def close_logging():
+    """Release only mower's listeners and file handler, after other resources."""
+    global fhlr
+    close_mp_logging()
+    logger.removeHandler(queue_handler)
+    if mp_queue_handler is not None:
+        logger.removeHandler(mp_queue_handler)
+    _stop_listener(listener)
+    current, fhlr = fhlr, None
+    if current is not None:
+        logger.removeHandler(current)
+        current.close()
+
+
 _store_instance: ScreenshotStore | None = None
 _store_lock = Lock()
+_store_closed = False
 
 
-def _store() -> ScreenshotStore:
+def _store() -> ScreenshotStore | None:
     """返回本进程的截图存储，第一次提交截图时才建立后台线程。
 
     与 fhlr 同样不在导入时建立：导入本模块的进程（测试、开发服务器、各种抓图
@@ -204,6 +245,8 @@ def _store() -> ScreenshotStore:
     """
     global _store_instance
     with _store_lock:
+        if _store_closed:
+            return _store_instance
         if _store_instance is None:
             store = ScreenshotStore(
                 get_path("@app/screenshot"),
@@ -212,7 +255,7 @@ def _store() -> ScreenshotStore:
                 archive_limit_mb=lambda: config.conf.screenshot_archive_limit_mb,
             )
             store.start()
-            atexit.register(store.close)
+            atexit.register(close_screenshot_store)
             _store_instance = store
         return _store_instance
 
@@ -222,8 +265,34 @@ def get_screenshot_store() -> ScreenshotStore | None:
     return _store_instance
 
 
+def close_screenshot_store(timeout=5) -> dict:
+    """Close at process exit, retaining the final snapshot for diagnostics."""
+    global _store_closed
+    with _store_lock:
+        _store_closed = True
+        store = _store_instance
+    if store is None:
+        return {"remaining_threads": []}
+    result = store.close(timeout=timeout)
+    if result["remaining_threads"]:
+        logger.warning("截图关闭超过等待预算，剩余后台操作：%s", result)
+    return result
+
+
 def save_screenshot(img: bytes, sub_folder=None) -> None:
-    filename = _store().submit(img, sub_folder)
+    store = _store()
+    if store is None:
+        return
+    filename = store.submit(img, sub_folder)
+    logger.debug(filename)
+
+
+def save_screenshot_frame(img, sub_folder=None, *, capture_ms=None) -> None:
+    """Submit RGB without waiting for the background encoder or filesystem."""
+    store = _store()
+    if store is None:
+        return
+    filename = store.submit_frame(img, sub_folder, capture_ms=capture_ms)
     logger.debug(filename)
 
 
