@@ -399,10 +399,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         :param clue_collect: bool, 是否收取线索
         """
 
+        if config.maintenance_recheck.is_set():
+            return
         self.error = False
         self.handle_error(True)
 
         while True:
+            if config.maintenance_recheck.is_set():
+                return
             self._sync_run_order_tasks()
             self._fill_empty_dorms()
             scheduling(self.tasks)
@@ -418,6 +422,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始")
             # 休眠可能被新增任务唤醒；返回后重新排序、选择并检查到期时间。
             self._idle_sleep(reschedule_time)
+        if config.maintenance_recheck.is_set():
+            return
         if self.party_time is not None and self.party_time < datetime.now():
             self.party_time = None
         if self.free_clue is not None and self.free_clue != get_server_weekday():
@@ -440,6 +446,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logMsg = "||".join([str(t) for t in self.tasks])
         logger.debug("当前任务: " + logMsg)
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
+        if config.maintenance_recheck.is_set():
+            return
         return super().run()
 
     def _fill_empty_dorms(self):

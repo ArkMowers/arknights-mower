@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from arknights_mower import __main__ as mower_main
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 
 
@@ -19,9 +20,11 @@ class NewsCheckerTests(unittest.TestCase):
         NewsChecker.last_check_ts = None
         mower_main._flash_probe_ids.clear()
         mower_main._cancel_maintenance_timer()
+        config.maintenance_recheck.clear()
 
     def tearDown(self):
         mower_main._cancel_maintenance_timer()
+        config.maintenance_recheck.clear()
 
     def test_major_update_is_detected_from_client_download_notice(self):
         item = {
@@ -326,6 +329,7 @@ class NewsCheckerTests(unittest.TestCase):
         with patch.object(config.wake_scheduler, "set") as wake:
             callback()
         wake.assert_called_once_with()
+        self.assertTrue(config.maintenance_recheck.is_set())
 
     def test_future_major_update_arms_stop_timer(self):
         info = MaintenanceInfo(
@@ -347,6 +351,82 @@ class NewsCheckerTests(unittest.TestCase):
         self.assertTrue(timer.daemon)
         timer.start.assert_called_once_with()
         mower_main._cancel_maintenance_timer()
+
+    def test_flash_update_timer_wakes_scheduler_for_maintenance(self):
+        info = MaintenanceInfo(
+            start=datetime(2026, 9, 11, 16),
+            end=datetime(2026, 9, 11, 16, 10),
+            update_type="hot",
+            title="闪断更新公告",
+            url="https://example.test/news/2",
+            announcement_id="2",
+        )
+        timer = Mock()
+
+        with (
+            patch.object(mower_main, "Timer", return_value=timer) as timer_class,
+            patch.object(config.wake_scheduler, "set") as wake,
+        ):
+            mower_main._arm_maintenance_timer(info, datetime(2026, 9, 11, 15, 59))
+            timer_class.call_args.args[1]()
+
+        self.assertTrue(config.maintenance_recheck.is_set())
+        wake.assert_called_once_with()
+
+    def test_major_update_timer_stops_without_hot_update_wakeup(self):
+        info = MaintenanceInfo(
+            start=datetime(2026, 9, 4, 6),
+            end=datetime(2026, 9, 4, 12),
+            update_type="major",
+            title="版本更新停机维护公告",
+            url="https://example.test/news/1",
+            announcement_id="1",
+        )
+        timer = Mock()
+
+        with (
+            patch.object(mower_main, "Timer", return_value=timer) as timer_class,
+            patch.object(mower_main, "_stop_for_major_update") as stop,
+            patch.object(config.wake_scheduler, "set") as wake,
+        ):
+            mower_main._arm_maintenance_timer(info, datetime(2026, 9, 4, 5, 59))
+            timer_class.call_args.args[1]()
+
+        stop.assert_called_once_with(info)
+        wake.assert_not_called()
+        self.assertFalse(config.maintenance_recheck.is_set())
+
+    def test_idle_wake_rechecks_maintenance_before_running_task(self):
+        now = datetime.now()
+        info = MaintenanceInfo(
+            start=now,
+            end=now + timedelta(minutes=10),
+            update_type="hot",
+            title="闪断更新公告",
+            url="https://example.test/news/2",
+            announcement_id="2",
+        )
+        scheduler = Mock()
+        scheduler.tasks = [SimpleNamespace(time=now + timedelta(minutes=1))]
+        scheduler.initialize_operators.return_value = None
+        scheduler.op_data.validate_backup_plans.return_value = {"success": True}
+
+        with (
+            patch.object(config.conf, "close_simulator_when_idle", False),
+            patch.object(mower_main, "base_scheduler", None),
+            patch.object(mower_main, "initialize", return_value=scheduler),
+            patch.object(mower_main, "refresh_resource_at_boundary"),
+            patch.object(mower_main, "_apply_version_update_resting_threshold"),
+            patch.object(
+                NewsChecker, "get_maintenance", side_effect=[None, None, info]
+            ) as get_maintenance,
+            patch.object(mower_main, "_handle_maintenance", side_effect=MowerExit),
+        ):
+            mower_main.simulate(None)
+
+        scheduler.rest_until_next_task.assert_called_once_with()
+        scheduler.run.assert_not_called()
+        self.assertEqual(get_maintenance.call_count, 3)
 
     def test_early_login_failure_retries_in_five_minutes(self):
         info = MaintenanceInfo(
