@@ -176,14 +176,6 @@ def test_unknown_mood_remains_full_and_priority_still_precedes_gap(op_data):
     assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
 
 
-def test_legacy_resting_key_retains_raw_mood_order(op_data):
-    op_data.config.experimental_dorm_logic = False
-    first = set_tier(op_data, "银灰", RestingTier.PRIORITY, 10)
-    first.upper_limit = 12
-    set_tier(op_data, "红", RestingTier.PRIORITY, 12)
-    assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
-
-
 def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
     set_tier(op_data, "陈", RestingTier.REPLACEMENT, 3)
     op_data.plan[ROOM][3] = Room("Free", "", [])
@@ -265,13 +257,11 @@ def test_priority_replacement_list_only_promotes_replacement_identity(op_data, t
     assert resting_tier(op_data, "陈") == expected
 
 
-def test_priority_replacement_disabled_in_legacy_and_never_overrides_exclusions(
+def test_priority_replacement_never_overrides_exclusions(
     op_data,
 ):
     set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT)
-    op_data.config.experimental_dorm_logic = False
-    assert resting_tier(op_data, "红") == RestingTier.REPLACEMENT
-    op_data.config.experimental_dorm_logic = True
+    assert resting_tier(op_data, "红") == RestingTier.PRIORITY_REPLACEMENT
     op_data.operators["红"].workaholic = True
     assert resting_tier(op_data, "红") == RestingTier.EXCLUDED
     op_data.operators["红"].workaholic = False

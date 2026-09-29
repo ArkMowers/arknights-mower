@@ -51,6 +51,7 @@ def test_failed_swap_dispatch_keeps_collection(failure):
     if failure == "route":
         plan["support_plan"]["stages"] = []
     solver = object.__new__(BaseSchedulerSolver)
+    solver._refresh_deferred_product_reservations = MagicMock()
     task = SchedulerTask(task_type=TaskTypes.SWAP_SUPPORT)
     task.plan_key = "1"
     solver.task, solver.tasks = task, [task]

@@ -1,4 +1,4 @@
-"""为首个 Free 位建立单回入驻顺序，不改变最终床位分配。"""
+"""在目标最终床位建立单回入驻顺序。"""
 
 from arknights_mower.utils.dorm_candidates import dorm_candidates
 from arknights_mower.utils.resting_priority import has_resting_mood, resting_mood
@@ -50,8 +50,8 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
     """建立单回时就占住最终床位，补回其他人后目标仍在原位。
 
     保留前两位的单回宿管；其他 Free 位和未满心情（或心情未知）的
-    绑组宿舍替班暂时撤下。中间空缺只能用已读到真实 24 心情的空闲者垫位，
-    不能留空让游戏压缩名单。没有合适垫位者时不执行这次单回确认。
+    绑组宿舍替班暂时撤下。目标前方已满心情的入住者保留，其他中间空缺用最高心情的空闲者垫位，
+    不能留空让游戏压缩名单。没有可用垫位者时不执行这次单回确认。
     """
     target = recovery_target(op_data, room, agents)
     if target is None:
@@ -79,6 +79,12 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
         if name == target.name or name in manager_names:
             retained.append(name)
             continue
+        op = op_data.operators.get(name)
+        if index < target_index:
+            retained.append(
+                name if has_resting_mood(op) and resting_mood(op) >= 24 else ""
+            )
+            continue
         if op_data.is_dynamic_dorm_position(room, index, name):
             retained.append("")
             continue
@@ -101,10 +107,15 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
             current_residents=op_data.get_current_room(room, True),
         )
         padding = iter(
-            candidate
-            for candidate in candidates.full
-            if has_resting_mood(op_data.operators[candidate])
-            and resting_mood(op_data.operators[candidate]) >= 24
+            sorted(
+                (
+                    name
+                    for name in candidates.recovering + candidates.full
+                    if op_data.operators[name].current_room in ("", room)
+                ),
+                key=lambda name: resting_mood(op_data.operators[name]),
+                reverse=True,
+            )
         )
         for index, name in enumerate(retained):
             if not name:

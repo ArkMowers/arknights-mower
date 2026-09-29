@@ -138,11 +138,9 @@ def test_busy_and_working_operators_are_not_moved_for_sampling(solver, monkeypat
     assert not has_resting_mood(solver.op_data.operators["红"])
 
 
-@pytest.mark.parametrize("reason", ["legacy", "no_dorm", "imminent"])
+@pytest.mark.parametrize("reason", ["no_dorm", "imminent"])
 def test_no_sampling_when_disabled_or_room_or_time_is_unavailable(solver, reason):
-    if reason == "legacy":
-        solver.op_data.config.experimental_dorm_logic = False
-    elif reason == "no_dorm":
+    if reason == "no_dorm":
         solver.op_data.plan = {
             room: slots
             for room, slots in solver.op_data.plan.items()
@@ -164,7 +162,6 @@ def test_failed_arrangement_restores_task_context_and_does_not_claim_completion(
 
 
 def test_room_sampling_does_not_fill_empty_slots_or_reorder_vip(room_solver):
-    room_solver.op_data.config.experimental_dorm_logic = True
     room_solver.preserve_resting_crafters = MagicMock()
     room_solver.ensure_dorm_recovery_order = MagicMock()
     room = dorm_recovery_tests.ROOM

@@ -18,7 +18,6 @@ from arknights_mower.utils.scheduler_task import (
 
 @pytest.fixture(autouse=True)
 def settings(monkeypatch):
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", True)
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "run_order_delay", 5)
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
@@ -107,15 +106,14 @@ def test_other_blocking_work_does_not_push_release_past_limit(kind):
     assert limit.time + timedelta(minutes=1.5) < task.time
 
 
-def test_legacy_and_ordinary_release_keep_their_original_timing(monkeypatch):
+def test_ordinary_release_keeps_original_timing(monkeypatch):
     now = datetime.now()
     limit = release_at(now + timedelta(minutes=30))
     ordinary = SchedulerTask(time=limit.time, task_type=TaskTypes.RELEASE_DORM)
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", False)
     tasks = [limit, ordinary]
     protect_priority_tasks(tasks, time_now=now)
-    assert limit.time == ordinary.time == now + timedelta(minutes=30)
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", True)
+    assert limit.time < ordinary.time
+    assert ordinary.time == now + timedelta(minutes=30)
     protect_priority_tasks([ordinary], time_now=now)
     assert ordinary.time == now + timedelta(minutes=30)
 
@@ -147,7 +145,6 @@ def test_early_limit_release_skips_optional_workshop(monkeypatch):
     )
     solver = object.__new__(BaseSchedulerSolver)
     solver.op_data = SimpleNamespace(
-        experimental_dorm_logic=True,
         operators={"令": op},
         has_rest_mood_limit=lambda _: True,
     )

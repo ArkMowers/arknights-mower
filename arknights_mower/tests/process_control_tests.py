@@ -19,52 +19,30 @@ from arknights_mower.views.process_control import process_control_bp
 
 
 class ProcessControlTests(unittest.TestCase):
-    def test_mood_reload_switch_defaults_on(self):
-        from arknights_mower.utils.config.conf import Conf
-
-        self.assertTrue(Conf().refresh_backup_plan_after_mood)
-
-    def test_reset_start_skips_saved_state_and_respects_mood_reload_switch(self):
+    def test_reset_start_skips_saved_state(self):
         import server
 
-        for enabled, experimental in (
-            (False, False),
-            (True, False),
-            (False, True),
-            (True, True),
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(server, "active_job", return_value=False),
+            patch.object(server, "_job_running", return_value=False),
+            patch.object(server, "mower_thread", None),
+            patch.object(server, "log_stream"),
+            patch.object(server, "get_path", return_value=Path(folder)),
+            patch.object(server.config, "stop_mower"),
+            patch.object(
+                server,
+                "load_state",
+                side_effect=ValueError("incompatible snapshot"),
+            ) as load,
+            patch.object(server, "Thread") as thread,
+            patch.object(server, "set_mower_thread"),
         ):
-            with (
-                self.subTest(enabled=enabled, experimental=experimental),
-                patch.object(
-                    server.config.conf, "experimental_dorm_logic", experimental
-                ),
-                tempfile.TemporaryDirectory() as folder,
-                patch.object(server, "active_job", return_value=False),
-                patch.object(server, "_job_running", return_value=False),
-                patch.object(server, "mower_thread", None),
-                patch.object(server, "log_stream"),
-                patch.object(server, "get_path", return_value=Path(folder)),
-                patch.object(server.config, "stop_mower"),
-                patch.object(
-                    server.config.conf,
-                    "refresh_backup_plan_after_mood",
-                    enabled,
-                ),
-                patch.object(
-                    server,
-                    "load_state",
-                    side_effect=ValueError("incompatible snapshot"),
-                ) as load,
-                patch.object(server, "Thread") as thread,
-                patch.object(server, "set_mower_thread"),
-            ):
-                headers = {"token": getattr(server.app, "token", "")}
-                response = server.app.test_client().get("/start/2", headers=headers)
-                self.assertEqual(response.get_data(as_text=True), "true")
-                load.assert_not_called()
-                self.assertEqual(
-                    thread.call_args.kwargs["args"], ({}, enabled and not experimental)
-                )
+            headers = {"token": getattr(server.app, "token", "")}
+            response = server.app.test_client().get("/start/2", headers=headers)
+            self.assertEqual(response.get_data(as_text=True), "true")
+            load.assert_not_called()
+            self.assertEqual(thread.call_args.kwargs["args"], ({},))
 
     def test_resume_start_keeps_run_order_and_mastery_tasks(self):
         import server
@@ -99,7 +77,7 @@ class ProcessControlTests(unittest.TestCase):
             response = server.app.test_client().get("/start/0", headers=headers)
             self.assertEqual(response.get_data(as_text=True), "true")
             load.assert_called_once_with()
-            self.assertEqual(thread.call_args.kwargs["args"], (saved_state, False))
+            self.assertEqual(thread.call_args.kwargs["args"], (saved_state,))
             self.assertEqual(
                 [task.type for task in saved_state["tasks"]],
                 [TaskTypes.RUN_ORDER, TaskTypes.SKILL_UPGRADE],
@@ -124,10 +102,9 @@ class ProcessControlTests(unittest.TestCase):
             headers = {"token": getattr(server.app, "token", "")}
             response = server.app.test_client().get("/start/1", headers=headers)
             self.assertEqual(response.get_data(as_text=True), "true")
-            state, restart_after_mood_read = thread.call_args.kwargs["args"]
+            (state,) = thread.call_args.kwargs["args"]
             self.assertEqual(state["tasks"], [])
             self.assertEqual(state["operators"], {"operator": "saved-mood"})
-            self.assertFalse(restart_after_mood_read)
             self.assertNotIn("kwargs", thread.call_args.kwargs)
 
     def test_route_requires_token_and_intent_header(self):

@@ -68,7 +68,6 @@ def test_fill_entry_does_not_jump_ahead_of_due_return(solver):
     "priority", [TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT]
 )
 def test_urgent_task_preserves_original_boundary(solver, monkeypatch, priority):
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", True)
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     task = backup.resting(solver)
     deadline = SchedulerTask(task_type=priority, time=datetime.now())

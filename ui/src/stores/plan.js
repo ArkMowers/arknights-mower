@@ -205,9 +205,8 @@ export const usePlanStore = defineStore('plan', () => {
     for (let b of backup_plans.value) {
       b.conf.mood_limits ??= null
       b.conf.operator_mood_limits ??= {}
-      if (!Object.prototype.hasOwnProperty.call(b, 'exit_trigger_timing')) {
-        b.exit_trigger_timing = null
-      }
+      delete b.trigger_timing
+      delete b.exit_trigger_timing
       for (const i of backup_conf_convert_list) {
         b.conf[i] = i === 'dorm_order' ? normalizeBackupDormOrder(b.conf) : str2list(b.conf[i])
       }
@@ -251,6 +250,8 @@ export const usePlanStore = defineStore('plan', () => {
     }
     if (advancedSettingsSource) result.advanced_settings = advancedSettingsSource()
     for (const b of result.backup_plans) {
+      delete b.trigger_timing
+      delete b.exit_trigger_timing
       for (const i of backup_conf_convert_list) {
         b.conf[i] = list2str(b.conf[i])
       }

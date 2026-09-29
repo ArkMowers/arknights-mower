@@ -33,7 +33,6 @@ def replay(monkeypatch):
     for module in (base, operators, scheduler_task):
         monkeypatch.setattr(module, "datetime", Clock)
     monkeypatch.setattr(config, "conf", config.Conf())
-    config.conf.experimental_dorm_logic = True
     config.conf.enable_mastery = False
     monkeypatch.setattr(
         config,

@@ -30,12 +30,14 @@ def room_reader():
             need_to_refresh=MagicMock(return_value=True),
             current_mood=MagicMock(return_value=mood),
             is_working=MagicMock(return_value=not room.startswith("dorm")),
+            is_resting=MagicMock(return_value=room.startswith("dorm")),
         )
         op_data = SimpleNamespace(
             operators={name: target},
             plan={room: [SimpleNamespace(agent="Free")]},
             true_exhaust_room={"central"},
             dorm=[],
+            get_dorm_by_name=MagicMock(return_value=(None, None)),
             config=SimpleNamespace(free_room=False),
         )
 
@@ -117,7 +119,6 @@ def test_fiammetta_keeps_countdown_even_when_in_central(room_reader):
 def test_fiammetta_read_refreshes_reservation_from_actual_slot(room_reader, phase):
     room = "dormitory_1"
     solver, fia, deadline = room_reader(room=room, name="菲亚梅塔", mood=7.5)
-    solver.op_data.experimental_dorm_logic = True
     solver.op_data.get_dorm_by_name = lambda name: (None, None)
     solver.op_data.plan[room][0].agent = "杜林"
     fia.current_room, fia.current_index = "dormitory_2", 2
@@ -147,12 +148,11 @@ def test_fiammetta_read_refreshes_reservation_from_actual_slot(room_reader, phas
     assert solver.tasks == [charge, restore, reserved]
 
 
-@pytest.mark.parametrize("guard", ["retry", "initial", "legacy", "selected"])
+@pytest.mark.parametrize("guard", ["retry", "initial", "selected"])
 def test_fiammetta_refresh_preserves_retry_and_initialization_guards(
     room_reader, guard
 ):
     solver, _, deadline = room_reader(room="dormitory_1", name="菲亚梅塔", mood=8)
-    solver.op_data.experimental_dorm_logic = guard != "legacy"
     old_time = deadline + timedelta(hours=1)
     task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, time=old_time)
     solver.tasks = [task]
@@ -168,7 +168,6 @@ def test_fiammetta_refresh_preserves_retry_and_initialization_guards(
 
 def test_fiammetta_removed_from_dorm_invalidates_only_idle_reservation(room_reader):
     solver, _, deadline = room_reader(room="dormitory_1", name="菲亚梅塔", mood=8)
-    solver.op_data.experimental_dorm_logic = True
     solver.op_data.get_dorm_by_name = lambda name: (None, None)
     solver.find.return_value = True
     solver.find.side_effect = None  # 实际房间已空，肥鸭离宿。
@@ -183,14 +182,12 @@ def test_fiammetta_removed_from_dorm_invalidates_only_idle_reservation(room_read
     assert solver.op_data.operators["菲亚梅塔"].current_room == ""
 
 
-@pytest.mark.parametrize("experimental", [False, True])
 @pytest.mark.parametrize("strict", [False, True])
 def test_early_limit_release_is_recorded_only_after_actual_departure(
-    room_reader, experimental, strict
+    room_reader, strict
 ):
     solver, target, deadline = room_reader(room="dormitory_1", name="令", mood=11)
     target.upper_limit = 12
-    solver.op_data.experimental_dorm_logic = experimental
     solver.op_data.get_dorm_by_name = lambda name: (None, None)
     solver.task = SchedulerTask(
         task_type=TaskTypes.RELEASE_DORM,
@@ -208,7 +205,7 @@ def test_early_limit_release_is_recorded_only_after_actual_departure(
     assert target.current_room == ""
     assert target.mood == 11
     assert getattr(target, "rest_mood_release_limit", None) == (
-        12 if experimental and strict else None
+        12 if (strict) else None
     )
 
 
@@ -216,7 +213,6 @@ def test_early_limit_release_is_recorded_only_after_actual_departure(
 def test_fiammetta_reschedules_from_actual_room_after_move(room_reader, location):
     solver, fia, deadline = room_reader(room="dormitory_2", name="菲亚梅塔", mood=24)
     fia.current_room = "dormitory_2" if location == "unexpected_occupant" else location
-    solver.op_data.experimental_dorm_logic = True
     solver.op_data.run_order_rooms = {}
     solver.op_data.exhaust_agent = set()
     solver._sync_run_order_tasks = MagicMock()
@@ -333,6 +329,7 @@ def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
         },
         true_exhaust_room=set(),
         dorm=[],
+        get_dorm_by_name=MagicMock(return_value=(None, None)),
         config=SimpleNamespace(free_room=False),
         update_detail=MagicMock(return_value=None),
         refresh_dorm_time=MagicMock(),
@@ -400,7 +397,6 @@ def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
         operators={"伊内丝": target, "菲亚梅塔": fia},
         get_current_room=MagicMock(side_effect=current_room),
         run_order_rooms={},
-        experimental_dorm_logic=already_arranged,
     )
     solver.enter_room = MagicMock()
     solver.turn_on_room_detail = MagicMock()
@@ -490,11 +486,10 @@ def test_zero_mood_without_working_exhaustion_semantics_keeps_countdown(
     solver.recog.update.assert_not_called()
 
 
-@pytest.mark.parametrize("experimental", [False, True])
 @pytest.mark.parametrize("rest_in_full", [False, True])
 @pytest.mark.parametrize("lower,mood", [(0, 2), (10, 12), (12, 12), (12, 11)])
 def test_exhaust_task_uses_custom_lower_limit_with_original_preparation_margin(
-    monkeypatch, experimental, rest_in_full, lower, mood
+    monkeypatch, rest_in_full, lower, mood
 ):
     now = datetime(2026, 9, 26, 12)
     clock = MagicMock()
@@ -513,7 +508,6 @@ def test_exhaust_task_uses_custom_lower_limit_with_original_preparation_margin(
         run_order_rooms={},
         exhaust_agent={op.name},
         rest_in_full_group={op.name} if rest_in_full else set(),
-        experimental_dorm_logic=experimental,
     )
     solver._sync_run_order_tasks = MagicMock()
     solver.check_fia = MagicMock(return_value=(None, None))
@@ -525,7 +519,7 @@ def test_exhaust_task_uses_custom_lower_limit_with_original_preparation_margin(
     solver.run_order_solver()
     assert len(solver.tasks) == 1
     task = solver.tasks[0]
-    remaining = 6 * ((mood - lower) / mood if experimental else 1)
+    remaining = 6 * ((mood - lower) / mood)
     expected = max(
         now,
         now

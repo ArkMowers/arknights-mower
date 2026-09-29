@@ -105,9 +105,7 @@ def test_batch_does_not_cross_another_task(batch_solver, barrier):
     assert plan[ROOM].count("Free") == 1
 
 
-@pytest.mark.parametrize(
-    "boundary", ["strict", "workshop", "other_room", "future", "legacy"]
-)
+@pytest.mark.parametrize("boundary", ["strict", "workshop", "other_room", "future"])
 def test_batch_preserves_special_release_boundaries(
     batch_solver, boundary, monkeypatch
 ):
@@ -124,7 +122,7 @@ def test_batch_preserves_special_release_boundaries(
     elif boundary == "other_room":
         second.plan = {"dormitory_2": second.plan[ROOM]}
     elif boundary == "legacy":
-        instance.op_data.config.experimental_dorm_logic = False
+        pass
     else:
         second.time = datetime.now() + timedelta(minutes=2)
     plan, _ = run_batch(instance)

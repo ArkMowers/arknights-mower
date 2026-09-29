@@ -18,14 +18,13 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
 
-@pytest.fixture(params=[False, True])
-def solver(request, monkeypatch):
+@pytest.fixture
+def solver(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     monkeypatch.setattr(base_schedule, "send_message", MagicMock())
     config.conf.enable_mastery = False
-    config.conf.experimental_dorm_logic = request.param
     instance = object.__new__(BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
@@ -37,7 +36,7 @@ def solver(request, monkeypatch):
                 "dormitory_1": [Room("冰酿", "", []), Room("闪灵", "", [])]
                 + [Room("Free", "", []) for _ in range(3)],
             },
-            PlanConfig("机械师", "机械师", "", experimental_dorm_logic=request.param),
+            PlanConfig("机械师", "机械师", ""),
         ),
         "backup_plans": [],
     }
@@ -173,8 +172,6 @@ def test_busy_alternates_and_group_member_block_recall(solver, monkeypatch):
 
 
 def test_pending_product_reservation_is_not_taken(solver):
-    if not solver.op_data.experimental_dorm_logic:
-        pytest.skip("延期产物换班只在实验模式启用")
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF, task_plan={"room_2_2": ["槐琥"]}
     )
@@ -242,8 +239,6 @@ def test_training_protection_prevents_partial_group_recall(solver):
 
 
 def test_group_recall_restores_temporary_dorm_slot_and_keeps_occupant(solver):
-    if not solver.op_data.experimental_dorm_logic:
-        pytest.skip("临时宿舍床位只在实验模式启用")
     solver.global_plan["default_plan"].plan["dormitory_1"][1] = Room(
         "爱丽丝", "感知", ["Free"]
     )

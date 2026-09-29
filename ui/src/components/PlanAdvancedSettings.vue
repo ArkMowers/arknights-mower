@@ -15,13 +15,10 @@ const {
   version_update_resting_threshold,
   version_update_threshold_advance_hours,
   free_room,
-  experimental_dorm_logic,
-  dorm_order,
   merge_interval,
   group_rest_in_full_on_mood_gap,
   group_mood_gap_max_extra_wait_hours,
   fia_fool,
-  refresh_backup_plan_after_mood,
   assistant_follows_schedule,
   fia_threshold,
   rescue_threshold,
@@ -40,14 +37,10 @@ const {
       <n-form-item>
         <template #label>
           <span>切产物单次无人机上限</span>
-          <help-text
-            >仅测试宿舍逻辑生效。0
-            表示不限制；达到上限后等待当前一份自然完成，再确认切换。</help-text
-          >
+          <help-text>0 表示不限制；达到上限后等待当前一份自然完成，再确认切换。</help-text>
         </template>
         <mower-input-number
           v-model:value="product_switching.max_drones_per_switch"
-          :disabled="!experimental_dorm_logic"
           :min="0"
           :max="200"
         >
@@ -63,24 +56,18 @@ const {
         </n-checkbox>
       </n-form-item>
       <n-form-item v-if="product_switching.grandet_mode" :show-label="false">
-        <n-checkbox
-          v-model:checked="product_switching.use_drones_when_leaving_orirock"
-          :disabled="!experimental_dorm_logic"
-        >
+        <n-checkbox v-model:checked="product_switching.use_drones_when_leaving_orirock">
           切出源石碎片时使用无人机
           <help-text>
-            仅测试宿舍逻辑生效。关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
+            关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
           </help-text>
         </n-checkbox>
       </n-form-item>
       <n-form-item :show-label="false">
-        <n-checkbox
-          v-model:checked="product_switching.direct_when_drones_insufficient"
-          :disabled="!experimental_dorm_logic"
-        >
+        <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient">
           允许无人机不足时直接切换产物
           <help-text>
-            仅测试宿舍逻辑生效。开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
+            开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
           </help-text>
         </n-checkbox>
       </n-form-item>
@@ -105,8 +92,7 @@ const {
         <template #label>
           <span>葛朗台切产物缓冲时间</span>
           <help-text>
-            测试宿舍逻辑开启时，当前一份完成后在制造计划取消确认页等待这段时间再确认；关闭时沿用原有等待流程。默认
-            2 秒。
+            当前一份完成后，在制造计划取消确认页等待这段时间再确认。默认 2 秒。
           </help-text>
         </template>
         <mower-input-number
@@ -201,33 +187,16 @@ const {
           <template #suffix>小时</template>
         </mower-input-number>
       </n-form-item>
-      <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="experimental_dorm_logic">
-          测试宿舍逻辑
-          <help-text>
-            <template v-if="experimental_dorm_logic">
-              已开启：按层级和心情分床，支持候补补床、临时 Free
-              床位及新入住者单回竞争，日常保留床位。
-            </template>
-            <template v-else> 已关闭：使用原宿舍规则，休息优先名单按填写顺序分床。 </template>
-            <p>两种模式均按「心情－个人下限」排序下班。</p>
-          </help-text>
-        </n-checkbox>
-      </n-form-item>
+
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="free_room">
           宿舍不养闲人
           <help-text>
-            <template v-if="experimental_dorm_logic">
-              按宿舍优先级补床，支持待命候补和新入住者单回竞争；保留恢复中的主班、候补及固定宿舍岗位。
-            </template>
-            <template v-else>
-              将未满心情的空闲干员补入可释放床位；加工干员优先级由自动加工设置控制。
-            </template>
+            心情回满后清退并补人；排除干员留宿至上班。候补可让位给更高优先级者。
           </help-text>
         </n-checkbox>
       </n-form-item>
-      <n-form-item v-if="free_room && experimental_dorm_logic">
+      <n-form-item v-if="free_room">
         <template #label>
           <span>不养闲人排除干员</span>
           <help-text
@@ -239,13 +208,7 @@ const {
           :disabled="disabled"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item v-if="!experimental_dorm_logic">
-        <template #label>
-          <span>宿舍优先级排序</span>
-          <help-text>稳定版全局设置，对主表及全部副表共同生效。</help-text>
-        </template>
-        <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
-      </n-form-item>
+
       <n-form-item v-if="free_room">
         <template #label>
           <span>任务合并间隔</span>
@@ -294,14 +257,7 @@ const {
           >
         </n-checkbox>
       </n-form-item>
-      <n-form-item v-if="!experimental_dorm_logic" :show-label="false">
-        <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
-          读取心情后先刷新副表
-          <help-text
-            >默认开启。缓存清零重启时，会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班；若关闭，则沿用普通首次规划流程。</help-text
-          >
-        </n-checkbox>
-      </n-form-item>
+
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="assistant_follows_schedule">
           训练室协助位总是跟随排班

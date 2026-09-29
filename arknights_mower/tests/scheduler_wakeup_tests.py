@@ -49,7 +49,6 @@ def scheduler(monkeypatch):
         operators={},
         dorm=[],
         correct_dorm=MagicMock(),
-        experimental_dorm_logic=False,
     )
     solver.recog = MagicMock()
     solver._simulator_closed_for_idle = False
@@ -59,9 +58,10 @@ def scheduler(monkeypatch):
     solver.check_current_focus = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.queue_product_switches = MagicMock()
+    solver._sync_run_order_tasks = MagicMock()
+    solver._switch_products_before_arrangement = MagicMock()
     solver._prepare_shift_cycle = MagicMock()
     solver.agent_get_mood = MagicMock(return_value=True)
-    solver.restart_after_mood_read = False
     solver.agent_arrange = MagicMock(side_effect=lambda *args: solver.skip())
     solver.craft_material = MagicMock(side_effect=solver.skip)
     wake = Event()
@@ -123,9 +123,11 @@ def scheduler(monkeypatch):
 @pytest.mark.parametrize("during_wait", [False, True])
 def test_invalid_run_order_is_removed_before_scheduling(scheduler, during_wait):
     solver = scheduler.solver
-    solver.op_data.experimental_dorm_logic = True
     solver.op_data.run_order_rooms = {"room_1_1": {}} if during_wait else {}
     solver.op_data.refresh_run_order_rooms = MagicMock()
+    solver._sync_run_order_tasks = (
+        base_schedule.BaseSchedulerSolver._sync_run_order_tasks.__get__(solver)
+    )
     stale = SchedulerTask(
         scheduler.clock.now() + timedelta(minutes=2 if during_wait else -1),
         {"room_1_1": ["Current"]},

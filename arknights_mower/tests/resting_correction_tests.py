@@ -313,7 +313,6 @@ def test_correction_prefers_cached_healthy_cover(solver):
     solver.enter_room.assert_not_called()
 
 
-@pytest.mark.parametrize("experimental", [False, True])
 @pytest.mark.parametrize(
     "moods,expected",
     [
@@ -324,14 +323,11 @@ def test_correction_prefers_cached_healthy_cover(solver):
         ([None, 12, 20], [0, 1, 2]),
     ],
 )
-def test_work_replacement_cache_soft_preference(
-    solver, monkeypatch, experimental, moods, expected
-):
+def test_work_replacement_cache_soft_preference(solver, monkeypatch, moods, expected):
     from arknights_mower.utils import config
 
     monkeypatch.setattr(config.conf, "rescue_threshold", 0.75)
     data = solver.op_data
-    data.config.experimental_dorm_logic = experimental
     op = data.operators["斯卡蒂"]
     names = ["多萝西", "砾", "淬羽赫默"]
     op.replacement = names.copy()
@@ -354,7 +350,6 @@ def test_work_replacement_uses_own_mood_limits(solver):
 def _redface_cover_scenario(solver, *, cover_mood=0, spare_mood=12):
     """The primary is recovering and the current legal cover has run out of mood."""
     data = solver.op_data
-    data.config.experimental_dorm_logic = True
     original = data.operators["歌蕾蒂娅"]
     original.replacement = ["薇薇安娜", "赫默"]
     data.plan["central"][0].replacement = original.replacement.copy()
@@ -450,18 +445,15 @@ def test_redface_recheck_uses_each_candidates_custom_rescue_threshold(solver):
     assert plan == {"central": ["砾"]}
 
 
-@pytest.mark.parametrize(
-    "read_rooms,experimental", [(True, True), (False, True), (True, False)]
-)
+@pytest.mark.parametrize("read_rooms", [True, False])
 def test_redface_recheck_runs_only_after_live_read_in_experimental_mode(
-    solver, monkeypatch, read_rooms, experimental
+    solver, monkeypatch, read_rooms
 ):
     monkeypatch.setattr(
         "arknights_mower.solvers.base_schedule._is_mastery_busy", lambda name: False
     )
     apply_plan(solver, solver.agent_get_mood(read_rooms=False, return_plan=True))
     data, _, spare = _redface_cover_scenario(solver, spare_mood=1)
-    data.config.experimental_dorm_logic = experimental
     owner = data.operators["歌蕾蒂娅"]
     owner.rest_in_full = True
     owner.replacement.append("砾")
@@ -471,7 +463,7 @@ def test_redface_recheck_runs_only_after_live_read_in_experimental_mode(
 
     plan = solver.agent_get_mood(read_rooms=read_rooms, return_plan=True)
 
-    assert plan == ({"central": ["砾"]} if read_rooms and experimental else {})
+    assert plan == ({"central": ["砾"]} if (read_rooms) else {})
     assert solver._read_agent_mood.call_count == int(read_rooms)
     assert owner.is_resting()
     assert spare.current_room == ""

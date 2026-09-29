@@ -1151,17 +1151,9 @@ def _start_mower(start_type):
         saved_state = {} if start_type == "2" else (load_state() or {})
         if start_type == "1":
             saved_state["tasks"] = []
-        # 测试宿舍在首次扫描后直接收敛副表；旧宿舍保留可选重载流程。
-        restart_after_mood_read = (
-            start_type == "2"
-            and not config.conf.experimental_dorm_logic
-            and config.conf.refresh_backup_plan_after_mood
-        )
         from arknights_mower.__main__ import main
 
-        mower_thread = Thread(
-            target=main, args=(saved_state, restart_after_mood_read), daemon=True
-        )
+        mower_thread = Thread(target=main, args=(saved_state,), daemon=True)
         # /task 路由（views/task.py）独立判定「mower 正在运行」，须与本模块同步
         set_mower_thread(mower_thread)
         log_stream.clear()

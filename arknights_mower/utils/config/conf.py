@@ -436,7 +436,7 @@ class RIICPart(ConfModel):
         drone_loss_seconds: int = Field(default=30, ge=0, le=180)
         "允许额外一架无人机浪费的加速秒数"
         waiting_seconds: int = Field(default=2, ge=0, le=60)
-        "测试宿舍逻辑下为制造计划确认前缓冲；旧逻辑沿用自然完成后的等待"
+        "制造计划取消确认前的缓冲时间"
 
     class WorkShopSetting(ConfModel):
         items: list[WorkShopItem] = []
@@ -521,8 +521,6 @@ class RIICPart(ConfModel):
 
     free_room: bool = False
     "宿舍不养闲人模式"
-    experimental_dorm_logic: bool = False
-    "测试宿舍逻辑；关闭时使用稳定版宿舍分配规则"
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
@@ -572,8 +570,6 @@ class RIICPart(ConfModel):
     "加工站一键设置的副产品概率加成下限（百分比）"
     workshop_protect_t2_device_rock: bool = False
     "禁止加工消耗装置、固源岩（仅 T2），材料预算也排除对应合成配方"
-    workshop_low_priority_rest: bool = True
-    "稳定版加工干员最低宿舍恢复优先级"
     t5_operators: list[str] = ["年"]
     "自动专精 T5 加工干员"
     book_operators: list[str] = ["司霆惊蛰"]
@@ -582,10 +578,6 @@ class RIICPart(ConfModel):
     "自动专精 非 T5 材料加工干员"
     merge_interval: float = 10
     "不养闲人合并间隔"
-    dorm_order: str = ""
-    "稳定版全局宿舍优先级"
-    refresh_backup_plan_after_mood: bool = True
-    "仅旧宿舍逻辑：缓存清零后读取心情并重载调度器，默认开启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True

@@ -68,12 +68,12 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **_Avoid_**: `Building slot`, `Isolated room`
 
 ### Dormitory Recovery
-- **Definition**: The process of restoring operator mood inside dormitories. Allocates beds by priority tiers, enforces entry sequence for single-target dorm manager buffs, and releases beds upon reaching mood limits.
+- **Definition**: The process of restoring operator mood inside dormitories. Allocates beds by priority tiers and establishes stable single-target recovery positions. Shift return, idle release, and personal mood limits determine departures separately.
 - **Code Mapping**: [`dorm_recovery.py`](arknights_mower/utils/dorm_recovery.py), [`resting_tier`](arknights_mower/utils/resting_priority.py)
 - **_Avoid_**: `Sleep queue`, `Rest list`
 
 ### Depletion Rate
-- **Definition**: The per-hour mood consumption metric for operators stationed in working facilities. Baseline is 1.0 point/hour, calculated dynamically from empirical differences between readings to predict exhaustion deadlines.
+- **Definition**: The per-hour mood consumption metric for operators stationed in working facilities. Base consumption is 1 point/hour; operators, facilities, and skills modify the actual rate. Mower estimates it from valid working mood readings to predict mood and shift deadlines. Mood jumps caused by Fiammetta charging are excluded.
 - **Code Mapping**: [`Operator.depletion_rate`](arknights_mower/utils/operators.py)
 - **_Avoid_**: `Drain speed`, `Depletion cost`
 
@@ -91,3 +91,47 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Definition**: The mechanism of consuming base drones recharged by Power Plants (1 drone = 3 minutes deduction) to accelerate production or trade orders.
 - **Code Mapping**: [`drone_plan`](arknights_mower/utils/manufacture_product.py), [`DRONE_SECONDS`](arknights_mower/utils/manufacture_product.py)
 - **_Avoid_**: `Speed up`, `Drone boost`
+
+### Complete Shift Convergence
+- **Definition**: Before operator changes, calculate shifts, backup conditions, dorm rearrangement, and filling together until conditions and occupancy stabilize. Submit one final arrangement; new observations can require another planning pass.
+- **Code Mapping**: [`BaseSchedulerSolver._prepare_shift_cycle`](arknights_mower/solvers/base_schedule.py)
+
+### Actual and Projected Occupancy
+- **Definition**: Actual occupancy records the most recently confirmed operator positions. Projected occupancy represents positions after hypothetical arrangements and does not move operators or overwrite actual position caches.
+- **Code Mapping**: [`Operators.project_arrangements`](arknights_mower/utils/operators.py)
+
+### Dormitory Bed Priority
+- **Definition**: Determines bed allocation, single-target recovery allocation, and eligible preemption of lower-priority residents. Within a tier, larger mood deficits from individual upper limits rank first. Existing residents remain subject to position-preservation rules.
+- **Code Mapping**: [`resting_key`](arknights_mower/utils/resting_priority.py)
+
+### Off-Shift Candidate Order
+- **Definition**: Consider operators in ascending order of current mood minus the effective lower limit, then check replacements, beds, groups, and exhaustion rules. Bed priority does not directly determine off-shift order.
+- **Code Mapping**: [`BaseSchedulerSolver.resting`](arknights_mower/solvers/base_schedule.py)
+
+### Single-Target Recovery Manager and Target
+- **Definition**: Managers occupy dorm slots 1 or 2 and have the recognized single-operator recovery skill. The target occupies its final slot throughout setup. Earlier non-manager slots retain confirmed full residents or use the highest-mood eligible idle operators as padding; the remaining roster is then restored. Preserve the assignment while relevant managers and target keep their positions. The game may transfer the buff after the target becomes full.
+- **Code Mapping**: [`recovery_order_plan`](arknights_mower/utils/dorm_recovery.py)
+
+### Recovery Target and Mandatory Release Limit
+- **Definition**: The recovery target is the effective mood value for completed rest, not necessarily 24. Personal limits and Ling/Xi rules can mandate dorm departure. A global upper limit defines recovery completion without requiring beds to remain vacant.
+- **Code Mapping**: [`Operators.has_rest_mood_limit`](arknights_mower/utils/operators.py)
+
+### Idle Dormitory Release and Mood-Limit Release
+- **Definition**: Idle release makes resting space available under the free-room setting, exclusions, and full-occupancy fallback. Mandatory mood-limit release enforces personal limits independently of those exemptions. Departure does not itself assign work; execution verifies the original occupant still owns the bed.
+- **Code Mapping**: [`BaseSchedulerSolver.prepare_release_dorm`](arknights_mower/solvers/base_schedule.py)
+
+### Dynamic Free Slot and Vacant Bed
+- **Definition**: A Free plan slot has no fixed primary occupant; a Free task placeholder delegates the occupant to selection. A vacant bed has no confirmed cached occupant and still requires reservation checks before filling.
+- **Code Mapping**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
+
+### Valid Mood Cache and Default Mood
+- **Definition**: A valid mood cache contains an observed value, timestamp, and usable estimate. Dorm candidate ranking treats missing valid readings as 24; this default does not confirm actual full mood.
+- **Code Mapping**: [`has_resting_mood`](arknights_mower/utils/resting_priority.py)
+
+### Initial Mood Sampling
+- **Definition**: At startup, temporarily rotate operators lacking required mood readings through a dorm. Preserve the original position cache and suspend backup switching during sampling. The first subsequent backup evaluation uses the original positions and new mood readings.
+- **Code Mapping**: [`BaseSchedulerSolver._read_initial_dorm_mood`](arknights_mower/solvers/base_schedule.py)
+
+### Fiammetta Charging
+- **Definition**: A special sequence uses Fiammetta to restore a target operator’s mood, including temporary placements, charging, and follow-up arrangements. Suspend backup switching during the sequence. Update mood and timestamps while preserving the work depletion rate for later calibration from normal work readings.
+- **Code Mapping**: [`BaseSchedulerSolver.plan_fia`](arknights_mower/solvers/base_schedule.py)

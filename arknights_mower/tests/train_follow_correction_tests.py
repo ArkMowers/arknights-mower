@@ -17,15 +17,14 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
 
-@pytest.fixture(params=[False, True])
-def solver(request, monkeypatch):
+@pytest.fixture
+def solver(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
-    monkeypatch.setattr(config.conf, "experimental_dorm_logic", request.param)
     monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
     plan = Plan(
         {"train": [Room("褐果", "", []), Room("桃金娘", "", [])]},
-        PlanConfig("", "", "", experimental_dorm_logic=request.param),
+        PlanConfig("", "", ""),
     )
     instance = object.__new__(BaseSchedulerSolver)
     instance.op_data = Operators({"default_plan": plan, "backup_plans": []})

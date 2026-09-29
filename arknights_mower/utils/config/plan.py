@@ -30,9 +30,9 @@ class PlanConf(BaseModel):
     resting_priority: str = ""
     "低优先级"
     resting_priority_replacement: str = ""
-    "测试宿舍逻辑：宿舍高优先级替班，仅提升替班身份"
+    "宿舍高优先级替班，仅提升替班身份"
     free_room_exclusions: str = ""
-    "测试宿舍逻辑：不养闲人排除干员，保留床位至上班；心情上限优先"
+    "不养闲人排除干员，保留床位至上班；心情上限优先"
     resting_standby: str = ""
     "宿舍休息候补干员"
     workaholic: str = ""
@@ -44,7 +44,7 @@ class PlanConf(BaseModel):
     ope_resting_priority: str = ""
     "休息排序优先级"
     dorm_order: str = ""
-    "测试宿舍逻辑下当前排班的宿舍房间优先级"
+    "当前排班的宿舍房间优先级"
 
 
 class BackupPlanConf(PlanConf):
@@ -141,9 +141,6 @@ class BackupPlan(BaseModel):
     plan: Plan1 = {}
     task: Task = {}
     trigger: Trigger = {}
-    trigger_timing: str = "AFTER_PLANNING"
-    # 空值表示始终跟随切入时机，兼容旧排班且允许之后修改切入时机。
-    exit_trigger_timing: Optional[str] = None
     name: str = "plan"
 
 
@@ -154,6 +151,30 @@ class PlanModel(BaseModel):
     backup_plans: list[BackupPlan] = []
     # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
     advanced_settings: Optional[dict[str, Any]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def retire_dorm_options(cls, data):
+        if not isinstance(data, dict) or not isinstance(
+            data.get("advanced_settings"), dict
+        ):
+            return data
+        data = dict(data)
+        settings = dict(data["advanced_settings"])
+        old_order = settings.pop("dorm_order", None)
+        if old_order:
+            conf = dict(data.get("conf") or {})
+            if not conf.get("dorm_order"):
+                conf["dorm_order"] = old_order
+            data["conf"] = conf
+        for key in (
+            "experimental_dorm_logic",
+            "refresh_backup_plan_after_mood",
+            "workshop_low_priority_rest",
+        ):
+            settings.pop(key, None)
+        data["advanced_settings"] = settings
+        return data
 
 
 def parse_plan_document(data) -> PlanModel:
@@ -192,10 +213,13 @@ def migrate_legacy_dorm_order(
 
     changed = False
     main_conf = data.get("conf")
-    if not isinstance(main_conf, dict) or "dorm_order" not in main_conf:
-        plan.conf.dorm_order = legacy_dorm_order
-        changed = True
-    normalized = room_order(plan.conf.dorm_order)
+    if not isinstance(main_conf, dict) or not main_conf.get("dorm_order"):
+        advanced = data.get("advanced_settings") or {}
+        inherited = advanced.get("dorm_order") or legacy_dorm_order
+        if inherited:
+            plan.conf.dorm_order = inherited
+            changed = True
+    normalized = room_order(plan.conf.dorm_order) if plan.conf.dorm_order else ""
     if plan.conf.dorm_order != normalized:
         plan.conf.dorm_order = normalized
         changed = True
@@ -208,6 +232,8 @@ def migrate_legacy_dorm_order(
         raw_order = str(raw_conf.get("dorm_order", "") or "")
         normalized = room_order(raw_order) if raw_order else ""
         explicit = raw_conf.get("dorm_order_override")
+        if explicit is None and not raw_order:
+            continue
         if explicit is None:
             explicit = bool(normalized and normalized != ",".join(rooms))
         explicit = bool(explicit)
@@ -219,3 +245,20 @@ def migrate_legacy_dorm_order(
             backup.conf.dorm_order_override = explicit
             changed = True
     return changed
+
+
+def has_retired_dorm_options(data: dict) -> bool:
+    """Whether a raw plan needs rewriting to remove retired settings."""
+    settings = data.get("advanced_settings") or {}
+    return bool(
+        {
+            "experimental_dorm_logic",
+            "refresh_backup_plan_after_mood",
+            "workshop_low_priority_rest",
+            "dorm_order",
+        }
+        & settings.keys()
+    ) or any(
+        "trigger_timing" in backup or "exit_trigger_timing" in backup
+        for backup in data.get("backup_plans", [])
+    )

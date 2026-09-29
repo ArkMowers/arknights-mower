@@ -88,6 +88,7 @@ def test_dispatch_removes_its_own_task_after_queue_reordering(clock):
     order, swap = pair()
     clock.now.return_value = swap.time
     solver = make_solver([swap, order])
+    solver._refresh_deferred_product_reservations = MagicMock()
     solver.task = swap
     solver.find = MagicMock(return_value=True)
     new_task = SchedulerTask(swap.time, task_type=TaskTypes.NOT_SPECIFIC)

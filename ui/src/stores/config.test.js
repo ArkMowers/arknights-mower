@@ -38,7 +38,7 @@ describe('workshop config autosave', () => {
     loaded.value = false
   })
 
-  it('saves stable crafter recovery priority without changing workshop selections', async () => {
+  it('omits retired dorm controls while saving workshop selections', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const loaded = ref(false)
@@ -47,18 +47,16 @@ describe('workshop config autosave', () => {
     app.provide('loaded', loaded)
     store = app.runWithContext(() => useConfigStore())
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
-    expect(store.experimental_dorm_logic).toBe(false)
-    expect(store.workshop_low_priority_rest).toBe(true)
+    expect(store).not.toHaveProperty('experimental_dorm_logic')
+    expect(store).not.toHaveProperty('workshop_low_priority_rest')
     store.fodder_operators = ['空爆']
     axios.post.mockResolvedValue({ data: {} })
     loaded.value = true
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
-    store.workshop_low_priority_rest = false
+    store.fodder_operators = ['红']
     await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
     expect(axios.post.mock.calls[1][1]).toMatchObject({
-      experimental_dorm_logic: false,
-      workshop_low_priority_rest: false,
-      fodder_operators: ['空爆']
+      fodder_operators: ['红']
     })
     loaded.value = false
   })

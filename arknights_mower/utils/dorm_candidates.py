@@ -1,4 +1,4 @@
-"""测试宿舍共用的空闲候选快照；规划与执行只区分是否允许主动安排候补。"""
+"""宿舍共用的空闲候选快照；规划与执行只区分是否允许主动安排候补。"""
 
 from dataclasses import dataclass
 from datetime import datetime

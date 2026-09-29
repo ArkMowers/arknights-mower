@@ -255,11 +255,3 @@ def test_idle_filling_preserves_queued_bed(residents):
     tasks = [SchedulerTask(task_plan={ROOM: ["Current"] * 3 + ["银灰", "Current"]})]
     try_add_release_dorm({}, None, data, tasks)
     assert tasks[1].plan == {ROOM: ["Current"] * 4 + ["红"]}
-
-
-def test_legacy_arrangement_is_unchanged(residents):
-    data = residents
-    data.config.experimental_dorm_logic = False
-    set_tier(data, "红", RestingTier.PRIORITY, 1)
-    plan = {ROOM: ["Current"] * 4 + ["红"]}
-    assert prioritize_new_dorm_recovery(data, plan) == plan

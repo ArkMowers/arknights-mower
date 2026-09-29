@@ -99,7 +99,7 @@ describe('宿舍休息候补配置', () => {
     expect(saved.backup_plans[0].conf.resting_priority_replacement).toBe('')
     expect(saved.backup_plans[0].conf.dorm_order).toBe('')
     expect(saved.backup_plans[0].conf.dorm_order_override).toBe(false)
-    expect(saved.backup_plans[0].exit_trigger_timing).toBeNull()
+    expect(saved.backup_plans[0]).not.toHaveProperty('exit_trigger_timing')
   })
 
   it('主副表候补名单和宿舍顺序导入后独立保存', async () => {
@@ -151,8 +151,8 @@ describe('宿舍休息候补配置', () => {
       'dormitory_3,dormitory_2,dormitory_1,dormitory_4'
     )
     expect(sent.backup_plans[0].conf.dorm_order_override).toBe(true)
-    expect(sent.backup_plans[0].trigger_timing).toBe('BEFORE_DORM')
-    expect(sent.backup_plans[0].exit_trigger_timing).toBe('BEFORE_WORK')
+    expect(sent.backup_plans[0]).not.toHaveProperty('trigger_timing')
+    expect(sent.backup_plans[0]).not.toHaveProperty('exit_trigger_timing')
     expect(sent.conf.resting_priority).toBe('')
     loaded.value = false
   })

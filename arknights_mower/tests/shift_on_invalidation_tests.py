@@ -31,7 +31,7 @@ def solver(monkeypatch):
                         *[Room("Free", "", []) for _ in range(3)],
                     ],
                 },
-                PlanConfig("", "", "", experimental_dorm_logic=True),
+                PlanConfig("", "", ""),
             ),
             "backup_plans": [],
         }
@@ -109,14 +109,6 @@ def test_rest_and_idle_changes_keep_the_return(solver, next_room):
     task = shift_on({"meeting": ["埃癸斯", "Current"]})
     solver.tasks = [task]
     solver.op_data.operators["埃癸斯"].current_room = next_room
-    assert solver.tasks == [task]
-
-
-def test_legacy_mode_keeps_its_original_return_behavior(solver):
-    solver.op_data.config.experimental_dorm_logic = False
-    task = shift_on({"meeting": ["埃癸斯", "Current"]})
-    solver.tasks = [task]
-    solver.op_data.update_detail("埃癸斯", 18, "room_3_3", 0, True)
     assert solver.tasks == [task]
 
 

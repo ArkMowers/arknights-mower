@@ -26,8 +26,6 @@ legacy_shift_solver = shift_off_mood_tests.solver
 
 @pytest.fixture
 def solver(legacy_solver):
-    config.conf.experimental_dorm_logic = True
-    legacy_solver.op_data.config.experimental_dorm_logic = True
     # 通用上限用不受令夕模式约束的工作组验证。
     data = legacy_solver.op_data
     old = data.plan["central"][0].agent
@@ -47,8 +45,6 @@ def solver(legacy_solver):
 
 @pytest.fixture
 def shift_solver(legacy_shift_solver):
-    config.conf.experimental_dorm_logic = True
-    legacy_shift_solver.op_data.config.experimental_dorm_logic = True
     return legacy_shift_solver
 
 
@@ -144,7 +140,6 @@ def test_backup_limits_inherit_override_and_restore(op_data):
 
 def test_individual_limits_override_mode_while_mode_overrides_global(legacy_solver):
     data = legacy_solver.op_data
-    data.config.experimental_dorm_logic = True
     name = data.plan["central"][0].agent
     assert data.operators[name].upper_limit == 12
     assert data.operators["絮雨"].lower_limit == 12
@@ -429,45 +424,13 @@ def test_completed_group_return_waits_only_for_related_arrangements(solver, rela
         if t.type == TaskTypes.SHIFT_ON
         and set(members) <= {name for names in t.plan.values() for name in names}
     )
-    expected = (
-        pending.time + timedelta(seconds=1)
-        if (related and data.experimental_dorm_logic)
-        else now
-    )
+    expected = pending.time + timedelta(seconds=1) if related else now
     assert task.time == expected
-
-
-def test_custom_limits_toggle_restores_original_ranges_and_keeps_config(op_data):
-    op_data.config.mood_limits = bounds(2, 20)
-    op_data.config.operator_mood_limits = {"银灰": bounds(4, 16)}
-    for enabled in (True, False, True):
-        op_data.config.experimental_dorm_logic = enabled
-        op_data.init_mood_limit()
-        for name, custom in [("银灰", (4, 16)), ("红", (2, 20))]:
-            op = op_data.operators[name]
-            assert (op.lower_limit, op.upper_limit) == (custom if enabled else (0, 24))
-            assert op_data.has_rest_mood_limit(name) is (enabled and name == "银灰")
-        assert op_data.config.operator_mood_limits["银灰"] == bounds(4, 16)
-
-
-def test_disabled_custom_limits_keep_ling_xi_automatic_rules(legacy_solver):
-    data = legacy_solver.op_data
-    data.config.experimental_dorm_logic = False
-    data.config.mood_limits = bounds(1, 20)
-    name = data.plan["central"][0].agent
-    data.config.operator_mood_limits = {name: bounds(4, 16)}
-    data.init_mood_limit()
-    assert data.custom_mood_limits(name) is None
-    assert data.operators[name].upper_limit == 12
-    assert data.operators["絮雨"].lower_limit == 12
-    assert data.has_rest_mood_limit(name)
-    assert not data.has_rest_mood_limit("絮雨")
 
 
 @pytest.mark.parametrize("mode", [1, 2, 3])
 def test_mode_changes_override_saved_custom_ranges(legacy_solver, mode):
     data = legacy_solver.op_data
-    data.config.experimental_dorm_logic = True
     name = data.plan["central"][0].agent
     data.config.mood_limits = bounds(1, 20)
     data.config.operator_mood_limits = {name: bounds(4, 16), "絮雨": bounds(3, 18)}
