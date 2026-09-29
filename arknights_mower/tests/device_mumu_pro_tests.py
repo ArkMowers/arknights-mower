@@ -1,16 +1,22 @@
-"""Unverified MuMu Pro bindings must require an explicit manual target."""
+"""MuMu Pro manual ADB binding and manager lifecycle isolation."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock
 
 from arknights_mower.tests.device_discovery_tests import DiscoveryIO
 from arknights_mower.tests.device_preflight_tests import PreflightIO
-from arknights_mower.tests.device_session_tests import ADB, Adapter, Clock
+from arknights_mower.tests.device_session_tests import ADB, Adapter, Clock, Simulator
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.discovery import DiscoveryService
 from arknights_mower.utils.device.preflight import PreflightService
-from arknights_mower.utils.device.session import DeviceSession, RecoveryPolicy
+from arknights_mower.utils.device.session import (
+    DeviceSession,
+    RecoveryPolicy,
+    SessionFailure,
+)
 from arknights_mower.utils.device.session_io import ProductionSimulator
 
 
@@ -23,6 +29,7 @@ class MuMuProTests(unittest.TestCase):
                 "preset_id": "macos.mumu_pro",
                 "instance_id": "0",
                 "last_serial": "127.0.0.1:16384",
+                "adb_path": "product-adb",
             }
         )
         self.command = Mock(side_effect=AssertionError("no confirmed manager contract"))
@@ -34,34 +41,42 @@ class MuMuProTests(unittest.TestCase):
             discovery=DiscoveryService(DiscoveryIO(), self.simulator),
         )
 
-    def assert_manual_required(self, result):
+    def assert_manual_required(self, result, code="mumu_pro_manual_required"):
         self.assertFalse(result["ok"])
         self.assertEqual(result["candidates"], [])
-        self.assertEqual(result["error"]["code"], "mumu_pro_manual_required")
+        self.assertEqual(result["error"]["code"], code)
         self.assertEqual(result["error"]["action"], "manual")
-        self.assertEqual(result["error"]["fields"], [])
 
-    def test_unverified_discovery_offers_manual_setup_without_air_or_adb_guess(self):
-        before = self.conf.model_dump()
-        self.assert_manual_required(self.control.discover().to_dict())
+    def test_missing_manager_offers_manual_setup_without_adb_guess(self):
+        with TemporaryDirectory() as directory:
+            self.conf.device.manager_path = str(Path(directory) / "mumutool")
+            before = self.conf.model_dump()
+            self.assert_manual_required(
+                self.control.discover().to_dict(), "mumu_pro_manager_missing"
+            )
         self.assertEqual(self.conf.model_dump(), before)
         self.command.assert_not_called()
 
-    def test_preflight_rejects_saved_endpoint_even_when_an_adb_target_is_ready(self):
+    def test_preflight_verifies_only_saved_endpoint_even_with_other_devices(self):
         self.io.targets = [("127.0.0.1:16384", "device"), ("USB-123", "device")]
-        self.io.devices = Mock(side_effect=AssertionError("must not probe old serial"))
+        self.conf.device.installation_path = "/old/MuMuPro.app"
+        self.conf.device.manager_path = "/old/mumutool"
+        original_devices = self.io.devices
+        self.io.devices = Mock(side_effect=original_devices)
         before = self.conf.model_dump()
         result = self.control.preflight().to_dict()
-        self.assert_manual_required(result)
-        self.assertEqual(result["serial"], "")
-        self.assertEqual(result["observations"], {})
+        self.assertTrue(result["ok"], result["error"])
+        self.assertEqual(result["serial"], "127.0.0.1:16384")
+        self.io.devices.assert_called_once_with("product-adb", "127.0.0.1:16384")
+        self.assertEqual(result["observations"]["frame"], [1920, 1080])
         self.assertEqual(self.conf.model_dump(), before)
 
-    def test_new_session_never_adopts_old_serial_or_controls_another_instance(self):
+    def test_new_session_uses_saved_serial_without_manager_commands(self):
+        self.io.paths.add("verified-adb")
+        self.io.targets = [("127.0.0.1:16384", "device"), ("USB-123", "device")]
         adb = ADB()
         adb.rows = [("127.0.0.1:16384", "device"), ("USB-123", "device")]
         adb.boot = "1"
-        adb.devices = Mock(side_effect=AssertionError("must not adopt old serial"))
         control = DeviceControl(
             lambda: self.conf,
             Adapter(),
@@ -72,13 +87,59 @@ class MuMuProTests(unittest.TestCase):
         )
         before = self.conf.model_dump()
         result = control.start()
-        self.assertFalse(result.ok)
-        self.assertEqual(result.error.code, "mumu_pro_manual_required")
-        self.assertEqual(result.readiness.code, "mumu_pro_manual_required")
-        self.assertEqual(result.readiness.serial, "")
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.readiness.serial, "127.0.0.1:16384")
         self.assertEqual(adb.actions, [])
         self.command.assert_not_called()
         self.assertEqual(self.conf.model_dump(), before)
+
+    def test_missing_target_never_adopts_another_online_device(self):
+        self.conf.device.last_serial = ""
+        self.io.targets = [("USB-123", "device")]
+        result = self.control.preflight()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "target_required")
+        self.assertEqual(result.serial, "")
+        self.command.assert_not_called()
+
+    def test_saved_target_absent_does_not_adopt_another_online_instance(self):
+        self.io.targets = [("127.0.0.1:16416", "device")]
+        result = self.control.preflight()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "target_absent")
+        self.assertEqual(result.serial, "127.0.0.1:16384")
+        self.command.assert_not_called()
+
+    def test_selected_instance_cannot_bypass_missing_binding_checker(self):
+        self.conf.device.topology_fingerprint = "a" * 64
+        self.io.targets = [("127.0.0.1:16384", "device")]
+        original_devices = self.io.devices
+        self.io.devices = Mock(side_effect=original_devices)
+        control = DeviceControl(
+            lambda: self.conf, Adapter(), preflight=PreflightService(self.io)
+        )
+        result = control.preflight()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "binding_failed")
+        self.io.devices.assert_not_called()
+
+    def test_stopped_or_unresponsive_instance_never_receives_manager_commands(self):
+        for state in ("stopped", "running"):
+            with self.subTest(state=state):
+                adb = ADB()
+                simulator = Simulator()
+                simulator.state = state
+                simulator.serial = "127.0.0.1:16384" if state == "running" else None
+                session = DeviceSession(
+                    adb,
+                    simulator,
+                    clock=Clock(),
+                    policy=RecoveryPolicy(timeout=5, attempts=2, local_wait=1, poll_interval=1),
+                )
+                session.bind(self.conf.device)
+                with self.assertRaises(SessionFailure):
+                    session.ensure_ready()
+                self.assertEqual(simulator.actions, [])
 
     def test_manual_entry_still_requires_explicit_target_and_read_only_preflight(self):
         self.conf = Conf(device={"preset_id": "manual.other", "last_serial": ""})

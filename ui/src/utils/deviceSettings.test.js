@@ -790,10 +790,10 @@ describe('device settings state', () => {
     expect(state.actions.manualFallback).toEqual({
       visible: true,
       disabled: false,
-      preset: 'manual.other',
-      label: '进入高级手动配置'
+      preset: 'macos.mumu_pro',
+      label: '手动填写连接地址'
     })
-    expect(state.fields.map((field) => field.key)).not.toContain('last_serial')
+    expect(state.fields.map((field) => field.key)).toContain('last_serial')
     expect(state.fields.map((field) => field.key)).toContain('manager_path')
     expect(
       deviceSettingsState({ profile: bound, metadata: { ...metadata, active: true }, result })
@@ -804,7 +804,7 @@ describe('device settings state', () => {
     )
     const manual = manualDeviceDraft(bound, state.actions.manualFallback.preset)
     expect(manual).toMatchObject({
-      preset_id: 'manual.other',
+      preset_id: 'macos.mumu_pro',
       installation_path: '',
       manager_path: '',
       instance_id: '',
@@ -826,9 +826,17 @@ describe('device settings state', () => {
     const unbound = { ...profile, preset_id: 'macos.mumu_pro', instance_id: '', last_serial: '' }
     const state = deviceSettingsState({ profile: unbound, metadata })
     expect(state.compatibilityLabel).toBe('兼容性记录')
-    expect(state.discoveryLabel).toBe('官方管理工具（待核验）')
-    expect(state.compatibilityNote).toContain('不代表永久支持承诺')
-    expect(state.compatibilityNote).toContain('暂未提供自动发现')
+    expect(state.discoveryLabel).toBe('官方 mumutool（只读）')
+    expect(state.compatibilityNote).toContain('检测并选择运行中的 MuMu Pro 实例')
+    expect(state.compatibilityNote).toContain('端口被其他实例复用')
+    const advancedState = deviceSettingsState({ profile: unbound, metadata, advanced: true })
+    expect(advancedState.fields.find((field) => field.key === 'installation_path').help).toContain(
+      '/Applications/MuMuPlayer.app'
+    )
+    expect(advancedState.fields.find((field) => field.key === 'manager_path').help).toContain(
+      '不会启动或关闭模拟器'
+    )
+    expect(state.fields.map((field) => field.key)).not.toContain('instance_id')
     expect(state.actions.detect.endpoint).toBe('discover')
     expect(state.actions.discover.visible).toBe(true)
     const bound = {
@@ -844,7 +852,66 @@ describe('device settings state', () => {
     })
     expect(failed.actions.detect.endpoint).toBe('preflight')
     expect(failed.actions.discover.visible).toBe(true)
+    expect(failed.fields.map((field) => field.key)).toContain('last_serial')
+    const serialOnly = { ...unbound, last_serial: '127.0.0.1:16384' }
+    expect(deviceSettingsState({ profile: serialOnly, metadata }).actions.detect.endpoint).toBe(
+      'preflight'
+    )
     expect(deviceSettingsState({ profile, metadata }).compatibilityLabel).toBe('')
+  })
+  it('lists MuMu Pro instances by index and serial and verifies the selected binding', () => {
+    const result = {
+      kind: 'discovery',
+      status: 'selection_required',
+      candidates: [
+        {
+          key: 'one',
+          preset_id: 'macos.mumu_pro',
+          instance_id: '0',
+          instance_name: 'VM 0',
+          state: 'running',
+          serial: '127.0.0.1:16384'
+        },
+        {
+          key: 'two',
+          preset_id: 'macos.mumu_pro',
+          instance_id: '1',
+          instance_name: 'VM 1',
+          state: 'running',
+          serial: '127.0.0.1:16416'
+        }
+      ]
+    }
+    const unbound = { ...profile, preset_id: 'macos.mumu_pro', last_serial: '' }
+    const state = deviceSettingsState({ profile: unbound, metadata: { host_platform: 'macos' }, result })
+    expect(state.instances.options).toHaveLength(2)
+    expect(state.instances.options[1].label).toContain('VM 1 · 实例 1 · 运行中 · 127.0.0.1:16416')
+    const bound = {
+      ...unbound,
+      instance_id: '1',
+      topology_fingerprint: 'a'.repeat(64),
+      last_serial: '127.0.0.1:16416'
+    }
+    const boundState = deviceSettingsState({ profile: bound, metadata: { host_platform: 'macos' }, advanced: true })
+    expect(boundState.actions.detect.endpoint).toBe('preflight')
+    expect(boundState.compatibilityNote).toContain('实例文件路径核验')
+    expect(boundState.fields.map((field) => field.key)).toContain('instance_id')
+  })
+  it('shows a repeated discovery failure only once', () => {
+    const error = {
+      code: 'mumu_pro_manager_missing',
+      message: '未找到 MuMu Pro 的 mumutool',
+      action: 'manual',
+      fields: ['manager_path']
+    }
+    const state = deviceSettingsState({
+      profile: { ...profile, preset_id: 'macos.mumu_pro' },
+      metadata: { host_platform: 'macos', error },
+      result: { kind: 'discovery', error, errors: [error] }
+    })
+    expect(state.message).toBe(error.message)
+    expect(state.preparationMessage).toBe('')
+    expect(state.actions.manualFallback.visible).toBe(true)
   })
   it('submits one immediate AVD confirmation for the exact instance without persisting consent', () => {
     const bound = {

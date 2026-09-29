@@ -10,15 +10,17 @@ date: 2026-09-26
 [English](2026-09-26-mumu-pro-macos-compatibility.md) | [中文](2026-09-26-mumu-pro-macos-compatibility.zh.md)
 
 ## 1. Context & Motivation
-MuMu Pro is NetEase's Android emulator for macOS. Because the official CLI `mumutool info` output lacks public specifications, `macos.mumu_pro` is maintained as a documented compatibility preset providing guided manual configuration rather than unverified heuristic discovery.
+MuMu Pro is NetEase's Android emulator for macOS. The bundled `mumutool info` command exposes a bounded instance list and a per-instance query on the tested installation. The compatibility preset retains manual ADB serial configuration for environments where that output cannot be verified.
 
 ---
 
 ## 2. Invariants & Guarantees
 
 - **[INV-01] Rejection of Untrusted Endpoints**: Prior to verified `mumutool info` contracts, guessing endpoints or adopting foreign online ADB devices is strictly forbidden.
-- **[INV-02] Guided Manual Configuration**: Discovery returns actionable guidance directing users to `manual.other` for explicit serial/port binding.
-- **[INV-03] Unified Preflight Gate**: Manual endpoints must pass standard read-only preflight (boot completion, 1920x1080 canvas frame, package detection).
+- **[INV-02] Guided Manual Configuration**: Failed discovery returns actionable guidance; the MuMu Pro preset accepts a user-specified ADB serial.
+- **[INV-03] Unified Preflight Gate**: The selected endpoint passes standard read-only preflight (boot completion, 1920x1080 canvas frame, package detection).
+- The [manual binding repair](../bug-fix/2026-09-30-mumu-pro-manual-binding.md) restores connection under this preset while keeping manager operations unavailable.
+- The [instance selection decision](2026-09-30-mumu-pro-instance-selection.md) adds read-only discovery and per-instance identity checks.
 
 ---
 

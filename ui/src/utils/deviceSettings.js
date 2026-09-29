@@ -142,7 +142,9 @@ export function devicePreflightRequest(profile, draft, confirmedPackage = null) 
       ...configPatch(profile, draft),
       // A reselected Air or manual endpoint may equal the previous binding's serial.
       // Preserve that explicit target through the backend's binding reset.
-      ...(draft.preset_id === 'macos.bluestacks_air' || draft.preset_id?.startsWith('manual.')
+      ...(draft.preset_id === 'macos.bluestacks_air' ||
+      draft.preset_id === 'macos.mumu_pro' ||
+      draft.preset_id?.startsWith('manual.')
         ? { last_serial: draft.last_serial ?? '' }
         : {})
     },
@@ -397,9 +399,9 @@ const presetPlaceholders = {
     last_serial: '例如：127.0.0.1:5555'
   },
   'macos.mumu_pro': {
-    installation_path: '例如：/Applications/MuMuPlayerPro.app',
-    manager_path: '例如：/Applications/MuMuPlayerPro.app/Contents/MacOS/mumutool',
-    adb_path: '例如：/Applications/MuMuPlayerPro.app/Contents/MacOS/adb',
+    installation_path: '例如：/Applications/MuMuPlayer.app',
+    manager_path: '例如：/Applications/MuMuPlayer.app/Contents/MacOS/mumutool',
+    adb_path: '例如：/Applications/MuMuPlayer.app/Contents/MacOS/adb',
     instance_id: '0',
     instance_name: '选填',
     last_serial: '例如：127.0.0.1:16384'
@@ -508,14 +510,14 @@ export function deviceSettingsState({
     /^waydroid:\d+$/.test(profile.instance_id || '') &&
     Boolean(
       profile.manager_path?.trim() &&
-      profile.installation_path?.trim() &&
-      profile.config_path?.trim()
+        profile.installation_path?.trim() &&
+        profile.config_path?.trim()
     )
   const mumuPro = profile.preset_id === 'macos.mumu_pro'
   const boundMumuPro =
     mumuPro &&
-    /^\d+$/.test(profile.instance_id || '') &&
-    Boolean(profile.installation_path?.trim() || profile.manager_path?.trim())
+    (Boolean(profile.last_serial?.trim()) ||
+      (Boolean(profile.topology_fingerprint?.trim()) && /^\d+$/.test(profile.instance_id || '')))
   const avd = ['macos.avd', 'linux.avd'].includes(profile.preset_id)
   const genymotion = profile.preset_id === 'linux.genymotion'
   const boundGenymotion =
@@ -543,9 +545,15 @@ export function deviceSettingsState({
           label: [
             presetLabels[candidate.preset_id],
             candidate.instance_name,
-            candidate.preset_id === 'linux.genymotion' ? candidate.instance_id : '',
+            candidate.preset_id === 'linux.genymotion'
+              ? candidate.instance_id
+              : candidate.preset_id === 'macos.mumu_pro'
+                ? `实例 ${candidate.instance_id}`
+                : '',
             { running: '运行中', starting: '启动中', stopped: '已停止' }[candidate.state],
-            candidate.installation_path
+            candidate.preset_id === 'macos.mumu_pro'
+              ? candidate.serial
+              : candidate.installation_path
           ]
             .filter(Boolean)
             .join(' · ')
@@ -639,6 +647,9 @@ export function deviceSettingsState({
     ? metadata.error
     : null
   const errors = [result?.error, ...(result?.errors || []), runtimeBackendError].filter(Boolean)
+  const messages = [...new Set(errors.map((error) => error.message).filter(Boolean))]
+  const preparationMessage =
+    metadata.preparation?.last_error || (runtimeBackendError ? '' : metadata.error?.message) || ''
   const screenshotError = errors.find((error) => screenshotFailureCodes.includes(error.code))
   const screenshotAlternatives = (screenshotError?.alternatives || []).map((item) => item.label)
   const touchError = errors.find((error) => touchFailureCodes.includes(error.code))
@@ -661,7 +672,7 @@ export function deviceSettingsState({
     key in fieldLabels &&
     !connectionBackendKeys.includes(key) &&
     !(discovery && instances.options.length && key === 'instance_id') &&
-    !(mumuPro && key === 'last_serial') &&
+    !(mumuPro && !profile.topology_fingerprint && ['instance_id', 'instance_name'].includes(key)) &&
     !(air && ['manager_path', 'config_path', 'instance_id', 'instance_name'].includes(key)) &&
     !(key === 'config_path' && !needsConfigPath)
   const buildField = (key) => {
@@ -679,7 +690,19 @@ export function deviceSettingsState({
                 : backendOptions[key]
     const presetsMap = presetPlaceholders[profile.preset_id] || presetPlaceholders.default
     const placeholder = presetsMap[key] || presetPlaceholders.default[key] || ''
-    const help = fieldHelpTexts[key] || ''
+    const help = mumuPro
+      ? {
+          installation_path:
+            'MuMu Pro 应用路径；留空时使用 /Applications/MuMuPlayer.app。仅用于读取实例列表。',
+          manager_path: 'mumutool 路径；留空时从应用路径查找。仅查询实例，不会启动或关闭模拟器。',
+          instance_id: '从检测结果中选择的实例序号；手动填写 ADB 地址时无需填写。',
+          last_serial: profile.topology_fingerprint
+            ? '检测连接时从已选实例读取当前 ADB 地址；无需手动维护。'
+            : '手动模式下填写目标实例的 ADB 地址，例如 127.0.0.1:16384。'
+        }[key] ||
+        fieldHelpTexts[key] ||
+        ''
+      : fieldHelpTexts[key] || ''
     const span = [
       'instance_id',
       'instance_name',
@@ -752,24 +775,26 @@ export function deviceSettingsState({
             : result?.ok
               ? '连接正常'
               : '尚未检测',
-    message: [...new Set(errors.map((error) => error.message).filter(Boolean))].join('\n'),
+    message: messages.join('\n'),
     screenshotAlternativeMessage: screenshotAlternatives.length
       ? `可选截图后端：${screenshotAlternatives.join('、')}。如需更换，请手动选择截图后端并重新检测。`
       : '',
     touchAlternativeMessage: touchAlternatives.length
       ? `可选触控后端：${touchAlternatives.join('、')}。如需更换，请手动选择触控后端并重新检测。`
       : '',
-    guidance: result?.guidance || '',
+    guidance: messages.includes(result?.guidance) ? '' : result?.guidance || '',
     compatibilityLabel: mumuPro || genymotion ? '兼容性记录' : waydroid ? '主要对象' : '',
     discoveryLabel: mumuPro
-      ? '官方管理工具（待核验）'
+      ? '官方 mumutool（只读）'
       : genymotion
         ? '官方 gmtool'
         : waydroid
           ? '官方状态与 ADB 连接信息'
           : '',
     compatibilityNote: mumuPro
-      ? 'MuMu Pro 属于兼容性记录，不代表永久支持承诺。官方输出契约待核验，暂未提供自动发现、同实例端点刷新或生命周期控制，请使用高级手动配置。'
+      ? profile.topology_fingerprint
+        ? '所选实例由 mumutool 的实例文件路径核验，再读取当前 ADB 端口测试连接。启动或关闭实例请在 MuMu Pro 中操作。'
+        : '可检测并选择运行中的 MuMu Pro 实例；也可在高级设置填写 ADB serial。仅手动 serial 模式无法识别端口被其他实例复用。'
       : genymotion
         ? 'Genymotion 属于 Linux 兼容性记录，不代表永久支持承诺。发现能力取决于官方 gmtool 可确认的输出；管理工具缺失、版本不兼容或输出不完整时，请使用高级手动配置。'
         : '',
@@ -789,10 +814,7 @@ export function deviceSettingsState({
     connectionHelp: managedStart
       ? '“测试连接”只读取当前连接，不会启动或重启模拟器；模拟器没开时，可从按钮旁的下拉选“启动并测试连接”。连接验证通过后，这份设备设置才会保存。'
       : '“测试连接”只读取当前连接，不会启动或重启设备；请先确保目标设备已经启动。连接验证通过后，这份设备设置才会保存。',
-    preparationMessage:
-      metadata.preparation?.last_error ||
-      (runtimeBackendError ? '' : metadata.error?.message) ||
-      '',
+    preparationMessage: messages.includes(preparationMessage) ? '' : preparationMessage,
     fields,
     connectionFields,
     connectionVisible,
@@ -804,8 +826,8 @@ export function deviceSettingsState({
         visible:
           (mumuPro || redroid || genymotion) && errors.some((error) => error.action === 'manual'),
         disabled: locked,
-        preset: 'manual.other',
-        label: '进入高级手动配置'
+        preset: mumuPro ? 'macos.mumu_pro' : 'manual.other',
+        label: mumuPro ? '手动填写连接地址' : '进入高级手动配置'
       },
       startAvd: {
         visible: avd,

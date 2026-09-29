@@ -25,8 +25,8 @@ from arknights_mower.utils.device.mumu_discovery import (
     parse_mumu_instances,
     run_mumu_command,
 )
+from arknights_mower.utils.device.mumu_pro import MUMU_PRO_PRESET, MuMuProController
 from arknights_mower.utils.device.nox_endpoint import NoxBindingReader
-from arknights_mower.utils.device.preflight import mumu_pro_manual_error
 from arknights_mower.utils.device.preflight_io import ProductionPreflightIO
 from arknights_mower.utils.device.redroid import REDROID_PRESET, RedroidController
 from arknights_mower.utils.device.screenshot import capture_adb_frame
@@ -489,6 +489,10 @@ class ProductionSimulator:
         self._bluestacks_resolver = BlueStacksEndpointResolver(
             run=run, probe=probe, monotonic=monotonic
         )
+        self._mumu_pro = MuMuProController(run=self._run, monotonic=monotonic)
+
+    def discover_mumu_pro(self, profile, timeout=6):
+        return self._mumu_pro.discover(profile, timeout)
 
     def _adapter(self, profile, timeout):
         factory = _INSTANCE_MANAGERS.get(profile.preset_id)
@@ -547,15 +551,14 @@ class ProductionSimulator:
         return adapter.act(False) if adapter else False
 
     def inspect(self, profile, timeout: float) -> InstanceObservation:
+        if profile.preset_id == MUMU_PRO_PRESET:
+            return self._mumu_pro.inspect(profile, timeout)
         if profile.preset_id == "linux.genymotion":
             return self._genymotion.inspect(profile, timeout)
         if profile.preset_id == REDROID_PRESET:
             return self._redroid.inspect(profile, timeout)
         if profile.preset_id == WAYDROID_PRESET:
             return self._waydroid.inspect(profile, timeout)
-        if profile.preset_id == "macos.mumu_pro":
-            error = mumu_pro_manual_error()
-            raise InstanceBindingError(error.code, error.message, error.fields)
         if profile.preset_id in AVD_PRESETS and self._avd is not None:
             return self._avd.inspect(profile, timeout)
         if profile.preset_id == "windows.bluestacks5":
