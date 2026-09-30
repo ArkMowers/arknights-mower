@@ -27,6 +27,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
             and not op.is_high()
             and name not in protected | selected | required | set(TRADE_ORDER_AGENTS)
             and not state.is_dorm_replacement(name)
+            and not state.replacement_exhausted(name)
             and not is_busy(name)
         )
 

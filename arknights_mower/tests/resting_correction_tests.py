@@ -460,19 +460,19 @@ def test_redface_recheck_skips_unavailable_best_candidate(solver, unavailable):
     assert plan == {"central": ["赫默"]}
 
 
-def test_redface_recheck_uses_each_candidates_personal_lower_limit(solver):
-    data, _, spare = _redface_cover_scenario(solver, spare_mood=12)
-    owner = data.operators["歌蕾蒂娅"]
-    owner.replacement.append("砾")
-    data.plan["central"][0].replacement = owner.replacement.copy()
-    spare.lower_limit, spare.upper_limit = 12, 24
-    data.operators["砾"].mood = 13
+def test_redface_recheck_accepts_measured_mood_above_recovery_upper_limit(solver):
+    data, cover, spare = _redface_cover_scenario(solver, cover_mood=17, spare_mood=17)
+    cover.lower_limit, cover.upper_limit = 12, 16
+    cover.time_stamp = datetime.now() - timedelta(hours=2)
+    cover.depletion_rate = 3
+    spare.lower_limit, spare.upper_limit = 12, 16
     plan = {}
 
     reconsider_low_mood_replacements(data, plan, MagicMock(return_value=False))
 
-    # 首个候补已经到个人下限，才继续使用名单中的下一位。
-    assert plan == {"central": ["砾"]}
+    assert cover.current_mood() < cover.lower_limit
+    assert spare.mood > spare.upper_limit
+    assert plan == {"central": ["赫默"]}
 
 
 @pytest.mark.parametrize("read_rooms", [True, False])

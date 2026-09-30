@@ -1550,8 +1550,18 @@ class Operators:
             return self.is_dynamic_dorm_position(room, index, name)
         return False
 
+    def replacement_exhausted(self, name, now=None):
+        """仅对有效实测心情判断工作替班是否已到个人下限。"""
+        candidate = self.operators.get(name)
+        return (
+            candidate is not None
+            and candidate.time_stamp is not None
+            and 0 <= candidate.mood <= 24
+            and candidate.current_mood(now) <= candidate.lower_limit
+        )
+
     def replacement_candidates(self, operator):
-        """工作替班按配置顺序取用；仅跳过已实测用尽的候补。"""
+        """工作替班按配置顺序取用；已用尽候补稳定移到末尾。"""
         candidates = [
             name
             for name in operator.replacement
@@ -1562,14 +1572,7 @@ class Operators:
             now = datetime.now()
 
             def exhausted_last(name):
-                candidate = self.operators.get(name)
-                exhausted = (
-                    candidate is not None
-                    and candidate.time_stamp is not None
-                    and 0 <= candidate.mood <= 24
-                    and candidate.current_mood(now) <= candidate.lower_limit
-                )
-                return (exhausted,)
+                return (self.replacement_exhausted(name, now),)
 
             # 候补列表本身就是效率优先级；仍可工作的候补严格保持配置顺序。
             # 真正到个人下限的候补只移到列表末尾，不从候补集合中删除，

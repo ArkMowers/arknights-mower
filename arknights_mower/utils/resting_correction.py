@@ -114,14 +114,7 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
             ):
                 continue
             cover = op_data.operators.get(current)
-            if (
-                cover is None
-                or cover.time_stamp is None
-                or not 0 <= cover.mood <= cover.upper_limit
-            ):
-                continue
-            mood = cover.current_mood(now)
-            if mood > cover.lower_limit:
+            if cover is None or not op_data.replacement_exhausted(current, now):
                 # 当前替班只要还有可工作心情，就继续使用；后面的候补即使
                 # 心情更高，也不能越过排班表里已经配置好的效率顺序。
                 continue
@@ -139,13 +132,13 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     or candidate.current_room
                     and not candidate.is_resting()
                     or candidate.time_stamp is None
-                    or not 0 <= candidate.mood <= candidate.upper_limit
+                    or not 0 <= candidate.mood <= 24
                     or candidate.rest_in_full
                     and candidate.is_resting()
                     and candidate.current_mood(now) < candidate.upper_limit
                     or op_data.is_dorm_replacement(name)
                     or is_busy(name)
-                    or candidate.current_mood(now) <= candidate.lower_limit
+                    or op_data.replacement_exhausted(name, now)
                 ):
                     continue
                 fix_plan.setdefault(room, ["Current"] * len(slots))[index] = name
@@ -189,6 +182,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     or candidate in reserved | resting
                     or candidate in TRADE_ORDER_AGENTS
                     or op_data.is_dorm_replacement(candidate)
+                    or op_data.replacement_exhausted(candidate)
                     or not _can_move(cover, room, requested, resting)
                     or is_busy(candidate)
                 ):

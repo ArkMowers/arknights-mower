@@ -3326,6 +3326,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 replacement = self.op_data.operators[obj]
                 if replacement.current_room != "" and not replacement.is_resting():
                     return False
+                if not x.room.startswith("dorm") and self.op_data.replacement_exhausted(
+                    obj
+                ):
+                    return False
                 return (
                     obj not in TRADE_ORDER_AGENTS
                     and not _is_mastery_busy(obj)
