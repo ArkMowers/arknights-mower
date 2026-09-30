@@ -36,7 +36,7 @@ class BlueStacksAirTests(unittest.TestCase):
     def install(self):
         (self.app / "Contents/MacOS").mkdir(parents=True)
         (self.app / "Contents/Info.plist").write_bytes(b"fixture application")
-        self.io.installed.add(str(self.app))
+        self.io.installed.add(str(self.app.resolve()))
 
     def test_adb_disabled_returns_enable_steps_and_endpoint_repair(self):
         self.install()

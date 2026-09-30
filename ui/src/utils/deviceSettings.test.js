@@ -677,7 +677,7 @@ describe('device settings state', () => {
       expect(state.fields.map((field) => field.key)).toEqual(fields)
       expect(state.message).toBe(message)
       expect(state.actions.detect.endpoint).toBe('preflight')
-      expect(state.actions.detect.label).toBe('检测并启动')
+      expect(state.actions.detect.label).toBe('启动并检测')
     }
   })
   it('requires a fresh Waydroid selection when the official session identity changes', () => {
@@ -1659,7 +1659,7 @@ describe('device settings state', () => {
       expect(state.actions.detect.endpoint).toBe('preflight')
       expect(state.fields.map((field) => field.key)).toEqual(result?.error.fields || [])
       expect(state.summary).toBe('雷电模拟器 9 · 雷电主账号')
-      if (result) expect(state.actions.detect.label).toBe('检测并启动')
+      if (result) expect(state.actions.detect.label).toBe('启动并检测')
     }
   })
 
@@ -2210,7 +2210,7 @@ describe('device settings state', () => {
       'preflight',
       'start'
     ])
-    expect(state.actions.detect.options[0].label).toBe('检测并启动')
+    expect(state.actions.detect.options[0].label).toBe('启动并检测')
     // The read-only rule and the save rule sit next to the status tag, not in a
     // notice above the buttons.
     expect(state.bindingHelp).toBe('')

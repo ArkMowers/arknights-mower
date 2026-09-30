@@ -1,0 +1,21 @@
+{
+  "title": "MuMu Pro Manager Preparation Cancellation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/mumu_pro.py",
+    "arknights_mower/utils/device/application.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_pro_cancellation_tests.py",
+    "arknights_mower/tests/device_bluestacks_air_tests.py",
+    "arknights_mower/tests/device_bluestacks_air_route_tests.py"
+  ]
+}

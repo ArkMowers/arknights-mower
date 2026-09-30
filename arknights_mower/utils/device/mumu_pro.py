@@ -9,6 +9,7 @@ import time
 from hashlib import sha256
 from pathlib import Path
 
+from arknights_mower.utils.csleep import csleep
 from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
     run_endpoint_command,
@@ -108,7 +109,7 @@ class MuMuProController:
         *,
         run=subprocess.run,
         monotonic=time.monotonic,
-        sleep=time.sleep,
+        sleep=csleep,
         connect=socket.create_connection,
     ):
         self._run = run
@@ -143,6 +144,7 @@ class MuMuProController:
         path = self._manager(profile)
 
         def port_available():
+            csleep(0)
             remaining = deadline - self._monotonic()
             if remaining <= 0:
                 raise TimeoutError("MuMu Pro 管理服务启动时间预算已耗尽")
@@ -170,6 +172,7 @@ class MuMuProController:
                 app = path.parent.parent.parent
                 if app.suffix != ".app" or not (app / "Contents/Info.plist").is_file():
                     raise ValueError("请指定 MuMu Pro 应用内的 mumutool 路径")
+                csleep(0)
                 run_endpoint_command(
                     ["/usr/bin/open", "-a", str(app)],
                     timeout=deadline - self._monotonic(),
@@ -179,6 +182,7 @@ class MuMuProController:
                 )
             empty_inventory = False
             while True:
+                csleep(0)
                 remaining = deadline - self._monotonic()
                 if remaining <= 0:
                     if empty_inventory:
@@ -186,6 +190,7 @@ class MuMuProController:
                     raise TimeoutError("MuMu Pro 管理服务尚未就绪")
                 try:
                     instances = self._query(path, "all", remaining)
+                    csleep(0)
                     if instances or not opened:
                         return True
                     empty_inventory = True

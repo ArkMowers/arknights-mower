@@ -2,6 +2,7 @@
 
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from typing import Protocol
@@ -61,7 +62,9 @@ def _concurrent(operations):
     removes another product's candidates, and the order stays stable.
     """
     with ThreadPoolExecutor(max_workers=len(operations)) as executor:
-        futures = [executor.submit(operation) for operation in operations]
+        futures = [
+            executor.submit(copy_context().run, operation) for operation in operations
+        ]
         results = []
         for future in futures:
             try:
