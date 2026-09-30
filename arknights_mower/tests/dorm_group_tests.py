@@ -1093,7 +1093,8 @@ def test_resident_mood_does_not_compete_for_worker_replacements(
     solver.op_data.groups["联动"].remove("塑心")
     solver.op_data.groups["联动"].insert(0, "塑心")
     set_resident_candidates(solver, ["陈", "黑角"])
-    solver.op_data.operators["陈"].mood = 0
+    # 这个用例只验证宿舍成员心情不参与工作替班竞争；工作替班本身需保持可用。
+    solver.op_data.operators["陈"].mood = 1
     monkeypatch.setattr(
         resident,
         "current_mood",
