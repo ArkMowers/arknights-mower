@@ -20,3 +20,5 @@ Host process termination and HTTP closure run even when the target is absent. Th
 ## Verification
 
 Hermetic tests cover target disappearance, foreign mapping preservation, repeated close, the next verified instance startup, removal/disconnection races, surviving owned forwards, guarded host inventory, malformed or unavailable inventory and an unconfirmed offline transport. Existing permission-denied, changed process identity and host-resource cleanup tests remain authoritative.
+
+Read-only preflight capture tests require the verified ADB binary for every command. Only the exact server-level `forward --list` inventory omits the device selector; every other capture and cleanup command retains the selected serial.

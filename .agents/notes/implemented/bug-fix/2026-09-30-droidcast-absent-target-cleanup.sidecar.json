@@ -13,6 +13,7 @@
     "arknights_mower/utils/device/droidcast.py"
   ],
   "test_suites": [
-    "arknights_mower/tests/device_droidcast_tests.py"
+    "arknights_mower/tests/device_droidcast_tests.py",
+    "arknights_mower/tests/device_preflight_io_tests.py"
   ]
 }
