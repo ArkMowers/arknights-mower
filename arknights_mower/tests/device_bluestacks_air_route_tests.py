@@ -38,7 +38,7 @@ class BlueStacksAirRouteTests(unittest.TestCase):
         )
         self.io = PreflightIO()
         self.io.host = "macos"
-        self.io.installed.add(str(self.app))
+        self.io.installed.add(str(self.app.resolve()))
         self.io.targets = [(AIR_SERIAL, "device")]
         self.sources = DiscoveryIO()
         self.control = DeviceControl(
@@ -114,7 +114,9 @@ class BlueStacksAirRouteTests(unittest.TestCase):
             detected = self.discover()
         self.assert_ready(detected)
         boot.assert_called_once_with("product-adb", AIR_SERIAL)
-        self.assertEqual(detected["profile_patch"]["installation_path"], str(self.app))
+        self.assertEqual(
+            detected["profile_patch"]["installation_path"], str(self.app.resolve())
+        )
         self.assertEqual(detected["profile_patch"]["instance_id"], "")
         self.assertEqual(detected["profile_patch"]["manager_path"], "")
         self.assertIn("不提供多实例", detected["guidance"])
@@ -183,7 +185,9 @@ class BlueStacksAirRouteTests(unittest.TestCase):
         config.load_conf()
         reloaded = self.client.get("/conf", headers=self.headers).json
         self.assertEqual(reloaded["device"]["preset_id"], AIR_PRESET)
-        self.assertEqual(reloaded["device"]["installation_path"], str(self.app))
+        self.assertEqual(
+            reloaded["device"]["installation_path"], str(self.app.resolve())
+        )
         self.assertEqual(reloaded["device"]["last_serial"], AIR_SERIAL)
         self.assertEqual(reloaded["device"]["game_package"], GAME_PACKAGE)
         self.assertEqual(reloaded["device"]["instance_id"], "")

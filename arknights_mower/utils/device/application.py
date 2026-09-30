@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeVar, cast
 import numpy as np
 
 from arknights_mower import __system__
-from arknights_mower.utils.csleep import MowerExit, cancellation_scope
+from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.discovery import DiscoveryResult, DiscoveryService
 from arknights_mower.utils.device.endpoint_identity import (
@@ -488,6 +488,7 @@ class DeviceControl(Generic[D]):
                         else ProductionSimulator()
                     )
                     simulator.prepare_mumu_pro(configuration.device, 6)
+                    csleep(0)
                     result.ok = True
                 except MowerExit:
                     raise
