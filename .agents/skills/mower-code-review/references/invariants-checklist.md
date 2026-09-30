@@ -19,6 +19,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-16] Absent Target Cleanup**: Does an absent DroidCast target permit idempotent cleanup and the next verified startup only after owned forwards are absent, while unconfirmed transport failures, residual owned mappings and host cleanup failures remain blocking without touching foreign resources or shared ADB state?
+
 - [ ] **[INV-DEV-15] Settings Cancellation Isolation**: Do settings operations ignore stopped-task cancellation without clearing shared events, propagate independent caller-context copies to parallel discovery providers, check cancellation at manager command, polling and completion boundaries, retain shutdown and closure cancellation, restore the caller's policy, and return structured HTTP cancellation while concurrent tasks still stop?
 
 - [ ] **[INV-DEV-14] Startup Reconnect Budget**: Does a rejected startup reconnect retain bounded targeted retries and readiness polling within the same deadline, without another instance, repeated restart, or suppressed binding, shared ADB and cancellation failures?

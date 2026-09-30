@@ -302,10 +302,13 @@ class ReadOnlyCaptureTests(unittest.TestCase):
         self.assertEqual(len(http.calls), 1)
         self.assertTrue(http.calls[0][1]["stream"])
         self.assertFalse(http.calls[0][1]["allow_redirects"])
+        commands = [call.args[0] for call in run.call_args_list]
+        inventory = ["verified-adb", "forward", "--list"]
+        self.assertIn(inventory, commands)
         self.assertTrue(
             all(
-                call.args[0][:3] == ["verified-adb", "-s", "USB-A"]
-                for call in run.call_args_list
+                command == inventory or command[:3] == ["verified-adb", "-s", "USB-A"]
+                for command in commands
             )
         )
         self.assertTrue(all(0 < timeout <= 10 for timeout in android.timeouts))

@@ -16,11 +16,18 @@ import requests
 from urllib3.exceptions import ReadTimeoutError
 
 from arknights_mower.tests.device_screenshot_backend_tests import CaptureAdapter
-from arknights_mower.tests.device_session_tests import ADB, Clock, Preflight, Simulator
+from arknights_mower.tests.device_session_tests import (
+    ADB,
+    Adapter,
+    Clock,
+    Preflight,
+    Simulator,
+)
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.device import droidcast
 from arknights_mower.utils.device.adb_client.server import SharedADBError
+from arknights_mower.utils.device.adb_client.server import run_adb as guarded_run_adb
 from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.session import DeviceSession
@@ -58,12 +65,20 @@ class Android:
         self.remote = {}
         self.processes = []
         self.spawn_error = None
+        self.transport_error = None
 
     def run(self, argv, **kwargs):
         self.timeouts.append(kwargs["timeout"])
-        serial, args = argv[2], argv[3:]
-        assert serial == self.serial, argv
+        if argv[1:] == ["forward", "--list"]:
+            serial, args = None, argv[1:]
+        else:
+            serial, args = argv[2], argv[3:]
+            assert serial == self.serial, argv
         self.commands.append(args)
+        if serial is not None and self.transport_error:
+            raise subprocess.CalledProcessError(
+                1, argv, output=b"", stderr=self.transport_error
+            )
         output = b""
         if args[:3] == ["shell", "pm", "path"]:
             output = b"package:/data/app/droidcast/base.apk\n" if self.version else b""
@@ -264,6 +279,172 @@ class DroidCastTests(unittest.TestCase):
         with patch(f"{MODULE}.run_adb", exited):
             self.assertTrue(self.control.close().ok)
         self.assertEqual(self.android.forwards, {})
+
+    def test_absent_device_cleanup_is_idempotent_and_preserves_foreign_resources(self):
+        self.assertTrue(self.control.capture().ok)
+        foreign = ("OTHER", "tcp:12345")
+        self.android.forwards = {"tcp:23456": foreign}
+        self.android.remote.clear()
+        self.android.transport_error = b"adb: device 'USB-A' not found\n"
+        self.assertTrue(self.control.close().ok)
+        self.assertTrue(self.control.close().ok)
+        self.assertEqual(self.android.forwards, {"tcp:23456": foreign})
+        self.assertEqual(self.android.processes[0].terminated, 1)
+        self.assertEqual(self.http.closed, 1)
+
+    def test_absent_device_cleanup_allows_the_next_verified_instance_start(self):
+        self.conf.device.preset_id = "windows.mumu12"
+        self.conf.device.instance_id = "0"
+        before = self.conf.model_dump()
+        self.assertTrue(self.control.capture().ok)
+        self.android.remote.clear()
+        self.android.forwards.clear()
+        self.android.transport_error = b"adb: device 'USB-A' not found\n"
+        self.assertTrue(self.control.close().ok)
+        self.simulator.state = "stopped"
+        self.adb.rows = []
+
+        def start_selected():
+            self.simulator.state = "running"
+            self.simulator.serial = "USB-A"
+            self.adb.rows = [("USB-A", "device")]
+
+        self.simulator.on_start = start_selected
+        self.control._adapter = Adapter()
+        started = self.control.start()
+        self.assertTrue(started.ok, started.error)
+        self.assertEqual(started.serial, "USB-A")
+        self.assertEqual(self.simulator.actions, ["start"])
+        self.assertEqual(self.conf.model_dump(), before)
+
+    def test_unreachable_device_with_owned_forward_remains_a_cleanup_failure(self):
+        self.assertTrue(self.control.capture().ok)
+        self.android.remote.clear()
+        self.android.transport_error = b"adb: device 'USB-A' not found\n"
+        self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.control.start().error.code, "close_failed")
+        self.assertEqual(len(self.android.forwards), 1)
+        self.assertEqual(self.android.processes[0].terminated, 1)
+        self.assertEqual(self.http.closed, 1)
+
+    def test_offline_transport_is_not_assumed_to_have_no_remote_resources(self):
+        self.assertTrue(self.control.capture().ok)
+        self.android.forwards.clear()
+        self.android.transport_error = b"error: device offline\n"
+        self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.control.start().error.code, "close_failed")
+        self.assertEqual(self.android.processes[0].terminated, 1)
+        self.assertEqual(self.http.closed, 1)
+
+    def test_forward_disappearance_during_remove_is_confirmed_before_success(self):
+        self.assertTrue(self.control.capture().ok)
+        run = self.android.run
+
+        def disconnected_during_remove(argv, **options):
+            if argv[3:5] == ["forward", "--remove"]:
+                self.android.forwards.clear()
+                raise subprocess.CalledProcessError(
+                    1, argv, output=b"", stderr=b"adb: device 'USB-A' not found\n"
+                )
+            return run(argv, **options)
+
+        with patch(f"{MODULE}.run_adb", disconnected_during_remove):
+            self.assertTrue(self.control.close().ok)
+        self.assertEqual(self.android.forwards, {})
+
+    def test_device_disappearance_during_process_identity_check_is_already_clean(self):
+        self.assertTrue(self.control.capture().ok)
+        run = self.android.run
+
+        def disconnected_during_identity(argv, **options):
+            if argv[3:5] == ["shell", "cat"]:
+                self.android.remote.clear()
+                self.android.forwards.clear()
+                self.android.transport_error = b"adb: device 'USB-A' not found\n"
+            return run(argv, **options)
+
+        with patch(f"{MODULE}.run_adb", disconnected_during_identity):
+            self.assertTrue(self.control.close().ok)
+        self.assertEqual(self.http.closed, 1)
+
+    def test_other_device_not_found_error_is_not_ignored(self):
+        self.assertTrue(self.control.capture().ok)
+        self.android.forwards.clear()
+        self.android.transport_error = b"adb: device 'USB-B' not found\n"
+        self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.control.start().error.code, "close_failed")
+
+    def test_unverified_host_inventory_keeps_cleanup_failed(self):
+        self.assertTrue(self.control.capture().ok)
+        run = self.android.run
+        self.android.forwards.clear()
+        self.android.remote.clear()
+        self.android.transport_error = b"adb: device 'USB-A' not found\n"
+
+        def unavailable_inventory(argv, **options):
+            if "--list" in argv:
+                raise SharedADBError("共享 ADB 检查失败")
+            return run(argv, **options)
+
+        with patch(f"{MODULE}.run_adb", unavailable_inventory):
+            self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.control.start().error.code, "close_failed")
+        self.assertEqual(self.android.processes[0].terminated, 1)
+        self.assertEqual(self.http.closed, 1)
+
+    def test_cleanup_inventory_is_a_guarded_host_read_and_mutations_remain_selected(
+        self,
+    ):
+        self.assertTrue(self.control.capture().ok)
+        commands = []
+
+        def run_cli(argv, **options):
+            commands.append(argv)
+            if argv[1:] == ["version"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, b"Android Debug Bridge version 1.0.41\n", b""
+                )
+            return self.android.run(argv, **options)
+
+        with (
+            patch(f"{MODULE}.run_adb", guarded_run_adb),
+            patch(f"{MODULE}.subprocess.run", run_cli),
+            patch(
+                "arknights_mower.utils.device.adb_client.server.probe_adb_server",
+                return_value=41,
+            ) as probe,
+        ):
+            self.assertTrue(self.control.close().ok)
+        self.assertGreater(probe.call_count, 0)
+        self.assertIn(["chosen-adb", "forward", "--list"], commands)
+        for command in commands:
+            if command[1:] not in (["version"], ["forward", "--list"]):
+                self.assertEqual(command[:3], ["chosen-adb", "-s", "USB-A"])
+
+    def test_malformed_host_inventory_is_not_evidence_of_completed_cleanup(self):
+        self.assertTrue(self.control.capture().ok)
+        run = self.android.run
+
+        def malformed_inventory(argv, **options):
+            if "--list" in argv:
+                return SimpleNamespace(stdout=b"invalid inventory output", returncode=0)
+            return run(argv, **options)
+
+        with patch(f"{MODULE}.run_adb", malformed_inventory):
+            self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.control.start().error.code, "close_failed")
+        self.assertEqual(self.android.processes[0].terminated, 1)
+        self.assertEqual(self.http.closed, 1)
+
+    def test_absent_device_does_not_suppress_host_cleanup_failure(self):
+        self.assertTrue(self.control.capture().ok)
+        self.android.remote.clear()
+        self.android.forwards.clear()
+        self.android.transport_error = b"adb: device 'USB-A' not found\n"
+        with patch.object(self.http, "close", side_effect=OSError("HTTP close failed")):
+            self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.control.start().error.code, "close_failed")
+        self.assertEqual(self.android.processes[0].terminated, 1)
 
     def test_stream_read_timeout_is_structured(self):
         def response(*args, **kwargs):

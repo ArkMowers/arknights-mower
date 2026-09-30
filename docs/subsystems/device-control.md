@@ -98,6 +98,9 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 3. Subsystem Invariants
 
+- **[INV-DEV-16] Absent Target Cleanup**: An exact selected-device-not-found response during permitted DroidCast cleanup does not create a permanent startup failure when guarded server-level forward inspection confirms no owned mapping remains. Host process and HTTP resources still close. Unknown transport errors, surviving owned mappings and host cleanup failures retain the cleanup-failure guard; foreign resources, Device Profile and shared ADB state remain unchanged.
+- The [absent-target cleanup decision](../../.agents/notes/implemented/bug-fix/2026-09-30-droidcast-absent-target-cleanup.md) specifies cleanup ownership and subsequent startup regression coverage.
+
 - **[INV-DEV-15] Settings Cancellation Isolation**: Device settings discovery, connection testing, manager preparation and startup use context-local cancellation independent of `config.stop_mower`. They leave that task signal unchanged and remain cancellable by process shutdown or device closure. Each parallel discovery provider receives an independent copy of the caller's context. Scope exit restores the caller's policy; parallel task threads retain task cancellation. The shared HTTP boundary returns `device_operation_cancelled` for cancellation instead of an unhandled server error. Settings helper waits share the same scope and Recovery Budget.
 - The [settings cancellation decision](../../.agents/notes/implemented/bug-fix/2026-09-30-device-settings-cancellation.md) specifies the shared cancellation boundary and its regression coverage.
 - The [discovery worker cancellation decision](../../.agents/notes/implemented/bug-fix/2026-09-30-discovery-worker-cancellation.md) specifies independent provider contexts and real thread-pool regression coverage.

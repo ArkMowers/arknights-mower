@@ -72,9 +72,10 @@ class DroidCastSession:
     ):
         if not cleanup and self._interrupted.is_set():
             raise DroidCastError("closed", "DroidCast 会话正在关闭")
+        selector = [] if args == ["forward", "--list"] else ["-s", self.serial]
         try:
             return run_adb(
-                [self.adb_path, "-s", self.serial, *args],
+                [self.adb_path, *selector, *args],
                 run=runner or subprocess.run,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -88,9 +89,17 @@ class DroidCastSession:
             if (
                 missing_ok
                 and exc.returncode == 1
-                and exc.stdout is not None
-                and not exc.stdout.strip()
-                and not (exc.stderr or b"").strip()
+                and not (exc.stdout or b"").strip()
+                and (
+                    exc.stdout is not None
+                    and not (exc.stderr or b"").strip()
+                    or cleanup
+                    and (exc.stderr or b"").strip()
+                    in {
+                        f"adb: device '{self.serial}' not found".encode(),
+                        f"error: device '{self.serial}' not found".encode(),
+                    }
+                )
             ):
                 return b""
             detail = (exc.stdout or b"") + (exc.stderr or b"")
@@ -251,7 +260,20 @@ class DroidCastSession:
             ["forward", "--list"], stage="forward_failed", cleanup=cleanup
         ).decode("utf-8", "replace")
         expected = [self.serial, f"tcp:{self.port}", f"tcp:{self.port}"]
-        return any(row.split() == expected for row in rows.splitlines())
+        matched = False
+        for row in rows.splitlines():
+            entry = row.split()
+            if not entry:
+                continue
+            if len(entry) != 3 or any(
+                not re.fullmatch(r"[^:\s]+:\S+", endpoint) for endpoint in entry[1:]
+            ):
+                raise DroidCastError(
+                    "cleanup_failed" if cleanup else "forward_failed",
+                    "DroidCast 转发清单格式无效，无法确认自有映射",
+                )
+            matched = matched or entry == expected
+        return matched
 
     def _arm_mapping_check(self):
         """Read the mapping on the first frame of every interval.
@@ -396,12 +418,14 @@ class DroidCastSession:
                         ["shell", "cat", f"/proc/{pid.decode()}/cmdline"],
                         stage="cleanup_failed",
                         cleanup=True,
+                        missing_ok=True,
                     )
                     if identity.split(b"\0", 1)[0] == self.name.encode():
                         self._adb(
                             ["shell", "kill", pid.decode()],
                             stage="cleanup_failed",
                             cleanup=True,
+                            missing_ok=True,
                         )
             except Exception as exc:
                 errors.append(exc)
@@ -422,11 +446,15 @@ class DroidCastSession:
         if self.port is not None:
             try:
                 if self._mapping_matches(cleanup=True):
-                    self._adb(
-                        ["forward", "--remove", f"tcp:{self.port}"],
-                        stage="cleanup_failed",
-                        cleanup=True,
-                    )
+                    try:
+                        self._adb(
+                            ["forward", "--remove", f"tcp:{self.port}"],
+                            stage="cleanup_failed",
+                            cleanup=True,
+                        )
+                    except DroidCastError:
+                        if self._mapping_matches(cleanup=True):
+                            raise
             except Exception as exc:
                 errors.append(exc)
             finally:
