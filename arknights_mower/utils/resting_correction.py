@@ -90,7 +90,7 @@ def _can_move(op, room, plan, resting):
 
 
 def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
-    """已在岗的合法替班进入急救线后，再尝试排班表中的其他候补。"""
+    """已在岗合法替班真正用尽后，再按排班表顺序寻找下一候补。"""
     now = datetime.now()
     reserved = {
         name
@@ -121,13 +121,13 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
             ):
                 continue
             mood = cover.current_mood(now)
-            if mood >= op_data.rescue_mood_threshold(cover):
+            if mood > cover.lower_limit:
+                # 当前替班只要还有可工作心情，就继续使用；后面的候补即使
+                # 心情更高，也不能越过排班表里已经配置好的效率顺序。
                 continue
             owner = op_data.operators.get(slot.agent)
             if owner is None:
                 continue
-            # 复用工作替班排序：非急救候选优先；都在急救线下时心情高者优先。
-            # 先排序再逐一校验可用性，不能按原名单遇到稍高心情者就直接换班。
             for name in op_data.replacement_candidates(owner):
                 candidate = op_data.operators.get(name)
                 if (
@@ -145,12 +145,12 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     and candidate.current_mood(now) < candidate.upper_limit
                     or op_data.is_dorm_replacement(name)
                     or is_busy(name)
-                    or candidate.current_mood(now) <= mood
+                    or candidate.current_mood(now) <= candidate.lower_limit
                 ):
                     continue
                 fix_plan.setdefault(room, ["Current"] * len(slots))[index] = name
                 reserved.add(name)
-                logger.info("替班%s心情不足，使用同岗位候补%s", current, name)
+                logger.info("替班%s心情用尽，按顺序使用同岗位候补%s", current, name)
                 break
 
 

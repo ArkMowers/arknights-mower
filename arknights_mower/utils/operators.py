@@ -1551,7 +1551,7 @@ class Operators:
         return False
 
     def replacement_candidates(self, operator):
-        """工作替班避让缓存中的急救低心情；宿舍和肥鸭沿用各自规则。"""
+        """工作替班按配置顺序取用；仅跳过已实测用尽的候补。"""
         candidates = [
             name
             for name in operator.replacement
@@ -1560,26 +1560,20 @@ class Operators:
         ]
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
             now = datetime.now()
-
-            def rescue_order(name):
+            ordered = []
+            for name in candidates:
                 candidate = self.operators.get(name)
                 if (
-                    candidate is None
-                    or candidate.time_stamp is None
-                    or not 0 <= candidate.mood <= 24
+                    candidate is not None
+                    and candidate.time_stamp is not None
+                    and 0 <= candidate.mood <= candidate.upper_limit
+                    and candidate.current_mood(now) <= candidate.lower_limit
                 ):
-                    # 未知心情保留原有可用性，不把默认 24 当成实测满心情。
-                    return (False, 0)
-                mood = candidate.current_mood(now)
-                below = mood < self.rescue_mood_threshold(candidate)
-                return (
-                    below,
-                    -mood if (below) else 0,
-                )
-
-            # 正常/未知心情沿用名单顺序；急救候选优先使用
-            # 心情较高者，避免所有人都过线后仍征用名单首位的零心情干员。
-            return sorted(candidates, key=rescue_order)
+                    # 候补列表本身就是效率优先级。只有真正用尽到个人下限
+                    # 才跳过；未知心情维持原有可用性和原名单顺序。
+                    continue
+                ordered.append(name)
+            return ordered
         if (
             not operator.room.startswith("dorm")
             or not operator.group

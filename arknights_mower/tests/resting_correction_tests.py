@@ -316,14 +316,16 @@ def test_correction_prefers_cached_healthy_cover(solver):
 @pytest.mark.parametrize(
     "moods,expected",
     [
-        ([6, 12, 20], [1, 2, 0]),
-        ([9, 12, 20], [0, 1, 2]),
-        ([6, 5, 4], [0, 1, 2]),
-        ([6, None, 20], [1, 2, 0]),
+        ([6, 12, 20], [0, 1, 2]),
+        ([0, 12, 20], [1, 2]),
+        ([0, 0, 20], [2]),
+        ([6, None, 20], [0, 1, 2]),
         ([None, 12, 20], [0, 1, 2]),
     ],
 )
-def test_work_replacement_cache_soft_preference(solver, monkeypatch, moods, expected):
+def test_work_replacement_preserves_configured_priority(
+    solver, monkeypatch, moods, expected
+):
     from arknights_mower.utils import config
 
     monkeypatch.setattr(config.conf, "rescue_threshold", 0.75)
@@ -343,8 +345,11 @@ def test_work_replacement_uses_own_mood_limits(solver):
     op = data.operators["斯卡蒂"]
     op.replacement = ["多萝西", "砾"]
     cover = data.operators["多萝西"]
+    cover.time_stamp = datetime.now()
     cover.lower_limit, cover.upper_limit, cover.mood = 12, 24, 15
-    assert data.replacement_candidates(op) == ["砾", "多萝西"]
+    assert data.replacement_candidates(op) == ["多萝西", "砾"]
+    cover.mood = 12
+    assert data.replacement_candidates(op) == ["砾"]
 
 
 def _redface_cover_scenario(solver, *, cover_mood=0, spare_mood=12):
@@ -375,14 +380,14 @@ def test_redface_legal_cover_rechecks_other_configured_replacements(solver):
 @pytest.mark.parametrize(
     "cover_mood,moods,expected",
     [
-        (0, [1, 15], "砾"),
-        (0, [1, 5], "砾"),
+        (0, [1, 15], "赫默"),
+        (0, [1, 5], "赫默"),
         (0, [5, 1], "赫默"),
-        (0, [15, 20], "赫默"),  # 非急救候选仍遵循配置顺序。
-        (5, [1, 5], None),  # 不因同心情候选而反复换人。
+        (0, [15, 20], "赫默"),
+        (5, [1, 5], None),  # 当前替班未用尽，不因后面的候补更满而提前更换。
     ],
 )
-def test_redface_recheck_reuses_work_replacement_priority(
+def test_redface_recheck_preserves_configured_priority(
     solver, monkeypatch, cover_mood, moods, expected
 ):
     from arknights_mower.utils import config
@@ -430,18 +435,18 @@ def test_redface_recheck_skips_unavailable_best_candidate(solver, unavailable):
     assert plan == {"central": ["赫默"]}
 
 
-def test_redface_recheck_uses_each_candidates_custom_rescue_threshold(solver):
-    data, _, spare = _redface_cover_scenario(solver, spare_mood=15)
+def test_redface_recheck_uses_each_candidates_personal_lower_limit(solver):
+    data, _, spare = _redface_cover_scenario(solver, spare_mood=12)
     owner = data.operators["歌蕾蒂娅"]
     owner.replacement.append("砾")
     data.plan["central"][0].replacement = owner.replacement.copy()
     spare.lower_limit, spare.upper_limit = 12, 24
-    data.operators["砾"].mood = 12
+    data.operators["砾"].mood = 13
     plan = {}
 
     reconsider_low_mood_replacements(data, plan, MagicMock(return_value=False))
 
-    # 15 对该干员仍低于个人急救线；另一人 12 已脱离急救线，应优先使用。
+    # 首个候补已经到个人下限，才继续使用名单中的下一位。
     assert plan == {"central": ["砾"]}
 
 
@@ -453,7 +458,7 @@ def test_redface_recheck_runs_only_after_live_read_in_experimental_mode(
         "arknights_mower.solvers.base_schedule._is_mastery_busy", lambda name: False
     )
     apply_plan(solver, solver.agent_get_mood(read_rooms=False, return_plan=True))
-    data, _, spare = _redface_cover_scenario(solver, spare_mood=1)
+    data, _, spare = _redface_cover_scenario(solver, spare_mood=0)
     owner = data.operators["歌蕾蒂娅"]
     owner.rest_in_full = True
     owner.replacement.append("砾")
