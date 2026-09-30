@@ -19,6 +19,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-14] Startup Reconnect Budget**: Does a rejected startup reconnect retain bounded targeted retries and readiness polling within the same deadline, without another instance, repeated restart, or suppressed binding, shared ADB and cancellation failures?
+
 - [ ] **[INV-DEV-12] Android Configuration Ownership**: Do all configuration boundaries retain Android-managed settings independently of desktop Device Profile values, including malformed desktop-only fields, while preserving editable game server selection, Base Plans, weekly plans and general task settings through export/import round trips?
 
 - [ ] **[INV-DEV-13] Detection Startup Target**: Does detection start only a selected supported target after a stopped verdict, preserve ambiguous selections, and keep the separate connection test read-only?
