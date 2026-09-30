@@ -963,14 +963,15 @@ class Operators:
         return get_inventory_counts([item_name]).get(item_name, 0)
 
     def major_maintenance_remaining_hours(self) -> float:
-        """返回距离下一次停服大版本维护的小时数。"""
+        """返回停服大更新开始前的小时数；已停服时条件不成立。"""
         info = NewsChecker.get_maintenance()
         if info is None or info.update_type != "major" or info.is_flash_update:
             return float("inf")
-        return max(0.0, (info.start - datetime.now()).total_seconds() / 3600)
+        hours = (info.start - datetime.now()).total_seconds() / 3600
+        return hours if hours > 0 else float("inf")
 
     def next_major_maintenance_check(self, now=None):
-        """维护条件阈值及公告结束时唤醒调度器，继续使用正常副表收敛。"""
+        """在维护条件阈值时唤醒调度器；停服由现有维护流程接管。"""
         thresholds = [
             hours
             for backup in self.backup_plans
@@ -989,8 +990,6 @@ class Operators:
             except OverflowError:
                 # 极大的提前量已成立，不需要安排未来的阈值检查。
                 continue
-        if getattr(info, "end", None) is not None:
-            times.append(info.end)
         return min((time for time in times if time > now), default=None)
 
     def _group_moods(self, group: str) -> list[float]:

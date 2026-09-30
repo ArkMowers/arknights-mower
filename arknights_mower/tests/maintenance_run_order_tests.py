@@ -13,6 +13,7 @@ from arknights_mower.solvers.base_schedule import (  # noqa: E402
     ProductSwitchDeferred,
 )
 from arknights_mower.utils import config  # noqa: E402
+from arknights_mower.utils import operators as operators_module  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.news_checker import (  # noqa: E402
     MaintenanceInfo,
@@ -232,7 +233,7 @@ def test_timer_wakes_at_threshold_and_preserves_other_tasks(solver, monkeypatch)
     assert solver.tasks == [other]
 
 
-def test_timer_handles_nested_thresholds_and_announcement_end(solver, monkeypatch):
+def test_timer_handles_nested_thresholds_without_post_stop_check(solver, monkeypatch):
     info = maintenance_info(datetime.now() + timedelta(hours=2))
     monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
     data = solver.op_data
@@ -242,8 +243,47 @@ def test_timer_handles_nested_thresholds_and_announcement_end(solver, monkeypatc
     assert data.next_major_maintenance_check(info.start - timedelta(hours=1)) == (
         info.start - timedelta(minutes=30)
     )
-    assert data.next_major_maintenance_check(info.start) == info.end
+    assert data.next_major_maintenance_check(info.start - timedelta(minutes=10)) is None
+    assert data.next_major_maintenance_check(info.start) is None
     assert data.next_major_maintenance_check(info.end) is None
+
+
+def test_maintenance_condition_expires_at_stop_and_exits_on_restart(
+    solver, monkeypatch
+):
+    start = datetime(2026, 9, 30, 16)
+    now = start - timedelta(minutes=30)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(operators_module, "datetime", Clock)
+    info = maintenance_info(start)
+    # 公告仍被缓存时，停服开始边界也必须使条件失效。
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
+    solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [True]
+    assert solver.op_data.run_order_paused
+
+    now = start - timedelta(microseconds=1)
+    assert solver.op_data.evaluate_expression(str(maintenance_trigger()))
+    now = start
+    assert not solver.op_data.evaluate_expression(str(maintenance_trigger()))
+
+    # 停服期间任务线程已停止，只检查条件失效，不执行换班。
+    now = start + timedelta(hours=1)
+    assert not solver.op_data.evaluate_expression(str(maintenance_trigger()))
+    assert solver.op_data.plan_condition == [True]
+
+    # 更新客户端后重启任务，首轮检查退出保存的维护副表。
+    now = info.end + timedelta(minutes=1)
+    solver.tasks = []
+    solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [False]
+    assert not solver.op_data.run_order_paused
+    assert set(solver.op_data.run_order_rooms) == {"room_1_1", "room_2_2"}
 
 
 def test_entry_advances_existing_maintenance_orders_before_swap(solver, monkeypatch):

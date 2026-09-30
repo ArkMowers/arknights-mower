@@ -15,7 +15,7 @@ The [base scheduling contract](../../../../docs/subsystems/base-scheduler.md) ow
 
 ## Implementation
 
-The maintenance row edits an existing comparison with a default threshold of half an hour. `Operators.next_major_maintenance_check` supplies threshold and announcement-end deadlines. One empty scheduler task wakes normal backup convergence; it carries no new persistent configuration.
+The maintenance row edits an existing comparison with a default threshold of half an hour. `Operators.next_major_maintenance_check` supplies only future threshold deadlines. The condition becomes false at downtime start; the existing major-update flow saves state and stops the automation thread. The first normal backup check after task restart exits the backup, without an exit shift during downtime. The [cutoff and evaluation correction](../bug-fix/2026-09-30-maintenance-cutoff-condition-evaluation.md) defines the boundary tests. One empty scheduler task wakes normal backup convergence; it carries no new persistent configuration.
 
 Entry advances only the existing pre-maintenance order batch through `adjust_run_order_for_maintenance`. Tasks retain the Drone Acceleration flag and their retry times; queued roster restoration inherits the batch marker. Backup switching waits until the batch completes. New run-order creation pauses during entry.
 

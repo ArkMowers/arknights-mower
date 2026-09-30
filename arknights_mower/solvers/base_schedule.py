@@ -3203,17 +3203,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             previous_dorm_layout = dorm_rebalance_signature(self.op_data)
             seen = {tuple(original)}
             current = original
+            conditions = initial_conditions
             while True:
-                conditions = []
                 for bp in self.op_data.backup_plans:
-                    func = str(bp.trigger)
-                    logger.debug(func)
-                    conditions.append(bool(self.op_data.evaluate_expression(func)))
+                    logger.debug(str(bp.trigger))
                 if conditions == current:
                     break
-                if self._advance_orders_before_maintenance(conditions):
-                    if current != original:
-                        self.op_data.swap_plan(original, refresh=True)
+                if current != original and self._advance_orders_before_maintenance(
+                    conditions
+                ):
+                    self.op_data.swap_plan(original, refresh=True)
                     return False
                 key = tuple(conditions)
                 if key in seen:
@@ -3232,6 +3231,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.swap_plan(original, refresh=True)
                     return False
                 current = conditions
+                conditions = [
+                    bool(self.op_data.evaluate_expression(str(bp.trigger)))
+                    for bp in self.op_data.backup_plans
+                ]
 
             if current == original:
                 return False
