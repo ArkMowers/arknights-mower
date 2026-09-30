@@ -433,9 +433,9 @@ function render_custom_tip(option) {
     blur-after-select
     :get-show="() => true"
   />
-  <n-text v-if="op_type == 'rescue'" style="max-width: 480px">
+  <help-text v-if="op_type == 'rescue'" label="查看救急模式说明" :max-width="480">
     {{ rescue_condition_help }} 条件填写为「救急模式 == True」。
-  </n-text>
+  </help-text>
   <template v-if="op_type == 'op'">
     <n-select
       :default-value="op_data.operator"
