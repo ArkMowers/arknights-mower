@@ -69,12 +69,14 @@ def agent_card_selected(img, scope, *, train=False):
     else:
         # alexsun 归档普通选人页实测：姓名框 (631,488)-(820,520)，
         # 蓝框约 (609,113)-(834,536)。
-        left, right = name_left - 22, name_right + 14
+        # 选中蓝框会扩宽姓名分割区域；普通卡片宽度固定，不能随右边界移动。
+        left, right = name_left - 22, name_left + 203
         top, bottom = name_top - 375, name_bottom + 16
     if left < 0 or top < 0 or right > img.shape[1] or bottom > img.shape[0]:
         return None
     frame = cv2.cvtColor(img[top:bottom, left:right], cv2.COLOR_RGB2HSV)
-    blue = cv2.inRange(frame, (96, 140, 160), (105, 255, 255)) > 0
+    # 卡片右侧阴影使蓝框亮度降到约 140，仍须满足色相和饱和度条件。
+    blue = cv2.inRange(frame, (96, 140, 160 if train else 140), (105, 255, 255)) > 0
     # 略过角落；完整边框用上下沿及任一侧确认。
     upper = blue[:8, 8:-8].mean()
     lower = blue[-8:, 8:-8].mean()
