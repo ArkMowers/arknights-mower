@@ -874,7 +874,7 @@ def test_deferred_product_shift_keeps_related_bed_and_splits_other_room():
 
 
 def test_reserved_product_bed_accepts_only_temporary_low_priority(monkeypatch):
-    operators = object.__new__(Operators)
+    operators = Operators(product_plan()[1])
     operators.config = SimpleNamespace()
     operators.is_effective_free_slot = MagicMock(return_value=True)
     operators.reserved_product_beds = {("dormitory_1", 0): "鸿雪"}
