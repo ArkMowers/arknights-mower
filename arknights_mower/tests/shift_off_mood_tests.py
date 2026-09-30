@@ -89,6 +89,7 @@ def test_dorm_priority_does_not_take_shared_cover_from_exhausted_group(
 
 
 def test_shift_off_keeps_original_mood_margin_against_lower_limit(solver):
+    config.conf.rescue_threshold = 0
     data = solver.op_data
     data.operators["令"].mood = 8
     data.operators["令"].lower_limit = 12
@@ -129,6 +130,7 @@ def test_idle_fill_waits_until_working_group_has_reserved_beds(solver):
 
 @pytest.mark.parametrize("solver", [True], indirect=True)
 def test_newcomer_uses_vip_vacated_by_same_shift_replacement(solver):
+    config.conf.rescue_threshold = 0
     data = solver.op_data
     first, second = "dormitory_1", "dormitory_2"
     # 首个宿舍只剩一个动态床位，正被本轮即将上岗的替班占用。

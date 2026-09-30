@@ -2523,6 +2523,7 @@ class TestDormShiftOffMerge(unittest.TestCase):
         solver = BaseSchedulerSolver()
         solver.op_data = SimpleNamespace(
             config=SimpleNamespace(free_room=True),
+            rescue_needed=MagicMock(return_value=False),
         )
         order = SchedulerTask(task_type=TaskTypes.RUN_ORDER)
         solver.tasks = [order]

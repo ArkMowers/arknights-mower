@@ -61,6 +61,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-06] Manufacturing Switch Boundary**: Does a switch after Drone Acceleration track the accelerated current unit and avoid treating the next unit's countdown as unfinished work?
 - [ ] **[INV-SCHED-07] Unified Dormitory Policy**: All scheduling uses the same dormitory policy; retired mode keys neither select legacy behavior nor prevent old configuration imports.
 - [ ] **[INV-SCHED-08] Unscheduled Training Slots**: Unconfigured training-room slots never produce static correction targets; automatic mastery still reads both facility slots.
+- [ ] **[INV-SCHED-09] Rescue Recovery Lifecycle**: Does rescue retain main-plan individual limits and majority completion, prioritize main primaries and priority replacements, and avoid occupied-bed clearing and excluded admissions?
+- [ ] **[INV-SCHED-10] Completed Exhaust Continuation**: Does an already-resting exhausted group leave normal planning and run-order recalculation enabled without allocating beds again?
 
 ### 2.3 Presentation Layer (UI)
 

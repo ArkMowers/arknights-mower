@@ -436,6 +436,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         self.op_data.correct_dorm()
+        self.op_data.rescue_needed()
         if not getattr(self, "defer_backup_plan_until_mood_read", False):
             self.backup_plan_solver()
             # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
@@ -454,6 +455,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             op_data is None or getattr(self, "defer_backup_plan_until_mood_read", False)
         ) or not vacant_dorm_slots(op_data):
             return False
+        op_data.rescue_needed()
         # 即将执行的换班统一安排最终床位，不先插入一轮临时补床。
         now = datetime.now()
         if any(
@@ -503,6 +505,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.op_data.operators[candidates[0]].group
             ]
         logger.debug(f"更新下班小组信息为{candidates}")
+        if all(self.op_data.operators[name].is_resting() for name in candidates):
+            logger.info(f"{self.task.meta_data} 已完成用尽下班，继续正常规划")
+            return
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         # 只计算无法直接接管的主力床位。低优、替班和临时休息干员会让床，
         # 不能在这里阻止整个大组尝试下班。
@@ -2733,6 +2738,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.backup_plan_solver()
 
     def resting(self, *, returning=()):
+        self.op_data.rescue_needed()
         self._refresh_deferred_product_reservations()
         reserved_names = self.op_data.reserved_product_replacements
         now = datetime.now()
@@ -2754,7 +2760,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 阈值暂定为 0.5；理想休息人数不能超过当前副表下真实可用床位。
         self.ideal_resting_count = (
             min(4, effective_dorm_count)
-            if self.op_data.average_mood()
+            if not self.op_data.rescue_mode
+            and self.op_data.average_mood()
             > self.op_data.config.resting_threshold * config.conf.rescue_threshold
             else effective_dorm_count
         )
@@ -2829,13 +2836,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 continue
             # 忽略 用尽，已经处理
-            if op.name in self.op_data.exhaust_agent:
+            if op.name in self.op_data.exhaust_agent and not self.op_data.rescue_mode:
                 continue
             # 忽略掉心情值没低于上限的的
             if op.current_mood() > self.op_data.resting_mood_threshold(op):
                 continue
             if op.group != "":
-                if op.group in self.op_data.exhaust_group:
+                if (
+                    op.group in self.op_data.exhaust_group
+                    and not self.op_data.rescue_mode
+                ):
                     # 忽略掉用尽心情的分组
                     continue
                 group_resting = self.op_data.groups[op.group]
@@ -3333,6 +3343,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and obj not in __replacement
                     and obj not in reserved_names
                     and not self.op_data.is_dorm_replacement(obj)
+                    and not self.op_data.is_rescue_recovering(obj)
                     and (
                         x.room.startswith("dorm") or replacement.current_room != x.room
                     )

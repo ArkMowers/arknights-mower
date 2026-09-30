@@ -69,6 +69,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 
 ### 宿舍心情恢复 (`Dormitory Recovery`)
 - **定义**：干员进驻宿舍恢复心情的过程。按宿舍分床优先级分配床位，建立并保留单回位置；离宿依据回班、不养闲人和个人上限规则分别处理。
+- **救急条件**：救急条件在至少两名且半数可轮休主班低于各自救急线时成立，持续至多数主班达到主表心情上限；可作为副表条件，未配置时仅使用现有 Free 床位。
 - **代码映射**：[`dorm_recovery.py`](arknights_mower/utils/dorm_recovery.py), [`resting_tier`](arknights_mower/utils/resting_priority.py)
 - **_Avoid_**: `Sleep queue`, `Rest list`
 

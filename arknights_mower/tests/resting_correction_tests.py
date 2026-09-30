@@ -11,7 +11,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils.operators import Dormitory, Operator, Operators  # noqa: E402
-from arknights_mower.utils.plan import PlanConfig, Room  # noqa: E402
+from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.resting_correction import (  # noqa: E402
     prefer_resting_replacements,
     reconsider_low_mood_replacements,
@@ -20,8 +20,12 @@ from arknights_mower.utils.resting_correction import (  # noqa: E402
 
 @pytest.fixture
 def solver():
-    data = object.__new__(Operators)
-    data.config = PlanConfig("", "", "")
+    data = Operators(
+        {
+            "default_plan": Plan({}, PlanConfig("", "", "")),
+            "backup_plans": [],
+        }
+    )
     data.plan = {
         "central": [Room("歌蕾蒂娅", "深海", ["薇薇安娜"])],
         "room_2_2": [Room("引星棘刺", "自动化", ["淬羽赫默"])],
