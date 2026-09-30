@@ -151,6 +151,7 @@ def test_group_larger_than_bed_count_validates_and_round_trip_converges(solver):
 
 
 def test_group_mood_gap_full_rest_can_be_disabled(solver):
+    config.conf.rescue_threshold = 0
     shift_off(solver)
     data = solver.op_data
     now = datetime.now()
@@ -229,6 +230,7 @@ def test_idle_release_of_main_keeps_later_group_return(solver, priority):
 
 @pytest.mark.parametrize("protection", ["excluded", "disabled"])
 def test_main_idle_release_respects_switch_and_exclusions(solver, protection):
+    config.conf.rescue_threshold = 0
     shift_off(solver)
     data = solver.op_data
     data.config.free_room = protection != "disabled"
@@ -914,6 +916,7 @@ def test_auto_free_occupant_can_be_replaced_after_recovery_finishes(solver):
 
 
 def test_mood_driven_resting_schedules_resident_cover(solver, monkeypatch):
+    config.conf.rescue_threshold = 0
     monkeypatch.setattr(solver, "plan_metadata", lambda: None)
     solver.total_agent = [
         op

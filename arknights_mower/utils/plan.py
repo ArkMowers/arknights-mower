@@ -1,3 +1,4 @@
+import ast
 import copy
 from enum import Enum
 from typing import Optional, Self
@@ -243,6 +244,21 @@ class Plan:
         self.task = task
         self.name = name
         self.products = products or {}
+
+    @property
+    def uses_rescue_condition(self) -> bool:
+        try:
+            expression = ast.parse(str(self.trigger), mode="eval")
+        except SyntaxError:
+            return False
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "op_data"
+            and node.func.attr == "rescue_needed"
+            for node in ast.walk(expression)
+        )
 
     def scheduled_names(self, include_tasks: bool = False) -> set[str]:
         """Return assigned operators, including replacements and optional tasks."""

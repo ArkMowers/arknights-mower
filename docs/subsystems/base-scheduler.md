@@ -34,6 +34,10 @@ flowchart TD
 - Configures assigned primary operators, operator groups, replacements, products, and resting rules across all base facilities.
 - Manages the baseline master plan (`plan1`) and condition-triggered backup plans (`backup_plans`).
 - Condition triggers monitor facility state, clue party status (`party_time`), and operator exhaustion.
+- `op_data.rescue_needed()` is an optional boolean backup-plan condition. At least two and at least half of eligible main-plan primaries below their individual rescue lines enter rescue; completion by a strict majority exits it. Unknown readings remain in the denominator without voting low or complete. Completion is retained across ordinary returns within one rescue episode.
+- Rescue lines use each main-plan lower limit plus its mood range multiplied by the main-plan resting threshold and global rescue threshold. Main primaries and main-plan priority replacements receive the highest resting tier while exclusions retain precedence. Explicit working assignments from an active rescue backup default to zero-mood work and require no replacements; inherited slots retain their main-plan rules. Backup plans retain normal ordering, editing, and removal.
+- Rescue uses existing vacant Free beds and never batches a clearing of occupied beds. Existing residents release their beds at their individual upper limits through ordinary release tasks; idle-release exclusions remain effective. Without a rescue backup condition, ordinary rotations still rescue exhausted primaries and preserve recovery to their configured upper limits. Ordinary idle filling does not consume rescue vacancies.
+- Runtime snapshots retain the rescue episode and completed main identities only when main-plan individual limits match on restart.
 
 ### 2.2 Operator Mood & Depletion Rate
 - Tracks operator mood within the numerical range of 0 to 24.
@@ -98,8 +102,13 @@ flowchart TD
 - **[INV-SCHED-06] Manufacturing Switch Boundary**: After Drone Acceleration, a manufacturing product switch tracks completion of the accelerated current unit; the next unit's countdown never postpones that switch.
 - **[INV-SCHED-07] Unified Dormitory Policy**: All scheduling uses the same dormitory policy; retired mode keys neither select legacy behavior nor prevent old configuration imports.
 - **[INV-SCHED-08] Unscheduled Training Slots**: Unconfigured training-room slots never produce static correction targets; automatic mastery still reads both facility slots.
+- **[INV-SCHED-09] Rescue Recovery Lifecycle**: Rescue evaluates main-plan individual mood limits, preserves main-primary and priority-replacement recovery until their upper limits, and exits after majority completion without clearing occupied beds or admitting excluded workers.
+- **[INV-SCHED-10] Completed Exhaust Continuation**: An exhausted-shift task whose full working group already rests preserves normal planning and run-order recalculation without reserving another bed or invoking skip.
+
 - **[INV-REC-02] Occluded Operator Selection**: A card with an obscured upper selection border is confirmed only when both vertical borders and the leading portion of its lower border are visible; adjacent card borders cannot confirm selection.
 - **[INV-SCHED-05] Complete Shift Projection**: Ordinary shifts submit only after backup conditions, eligible rotations, cached corrections, and final bed filling stabilize on an isolated projection; failure preserves the original task and actual occupancy.
+
+Rescue condition and completed-task coverage: [Rescue backup condition](../../.agents/notes/implemented/feature/2026-09-30-rescue-backup-condition.md).
 
 ---
 

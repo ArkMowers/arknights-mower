@@ -69,6 +69,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Dormitory Recovery
 - **Definition**: The process of restoring operator mood inside dormitories. Allocates beds by priority tiers and establishes stable single-target recovery positions. Shift return, idle release, and personal mood limits determine departures separately.
+- **Rescue Condition**: The rescue condition holds when at least two and at least half of eligible main-plan primary operators fall below their individual rescue mood thresholds, and remains active until a majority reach their main-plan upper mood limits. It can trigger a backup plan; without that condition configured, rescue uses only existing Free beds.
 - **Code Mapping**: [`dorm_recovery.py`](arknights_mower/utils/dorm_recovery.py), [`resting_tier`](arknights_mower/utils/resting_priority.py)
 - **_Avoid_**: `Sleep queue`, `Rest list`
 

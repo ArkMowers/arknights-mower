@@ -446,6 +446,14 @@ def simulate(saved):
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})
             )
+            rescue = saved.get("rescue_state", {})
+            if rescue.get("main_limits") == base_scheduler.op_data.main_recovery_limits:
+                base_scheduler.op_data.rescue_mode = bool(rescue.get("active", False))
+                base_scheduler.op_data.rescue_armed = bool(rescue.get("armed", True))
+                base_scheduler.op_data.rescue_completed = (
+                    set(rescue.get("completed", ()))
+                    & base_scheduler.op_data.main_recovery_limits.keys()
+                )
             base_scheduler.op_data.idle_dorm_search_exhausted = saved.get(
                 "idle_dorm_search_exhausted", False
             )

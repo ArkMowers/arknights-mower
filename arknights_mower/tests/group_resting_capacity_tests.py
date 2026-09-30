@@ -395,7 +395,7 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
         occupant = data.operators[occupant_name]
         occupant.current_room, occupant.current_index = bed.position
         occupant.resting_priority = "high"
-        occupant.mood = 5
+        occupant.mood = 10
         occupant.time_stamp = now
         bed.name = occupant_name
         bed.time = now + timedelta(hours=1 if index == 0 else 2)
@@ -405,6 +405,7 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     candidate.mood = 10
     candidate.time_stamp = now
     solver.total_agent = [candidate]
+    assert not data.rescue_needed()
 
     plan = solver.resting()
 
