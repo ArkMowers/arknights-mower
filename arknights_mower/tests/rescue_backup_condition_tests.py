@@ -1,14 +1,12 @@
 import sys
 from copy import deepcopy
 from datetime import datetime, timedelta
+from importlib import import_module
 from threading import Event
 from unittest.mock import MagicMock
 
 import pytest
 
-sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
-
-from arknights_mower.solvers import base_schedule
 from arknights_mower.utils import config, operators, scheduler_task
 from arknights_mower.utils.dorm_candidates import dorm_candidates
 from arknights_mower.utils.exhaust_replacement import plan_exhaust_support
@@ -17,6 +15,9 @@ from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.resting_priority import RestingTier, resting_tier
 from arknights_mower.utils.scheduler_task import TaskTypes, plan_metadata
+
+sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
+base_schedule = import_module("arknights_mower.solvers.base_schedule")
 
 NOW = datetime(2026, 9, 30, 8)
 PRIMARY = ["伊内丝", "银灰", "讯使", "能天使"]
