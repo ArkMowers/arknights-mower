@@ -417,24 +417,24 @@ const activeTriggerLabel = computed(() => {
     if (preview.startSnapshot && preview.endSnapshot) {
       const startStr = formatTimestamp(preview.startSnapshot.at).slice(5, 10)
       const endStr = formatTimestamp(preview.endSnapshot.at).slice(5, 10)
-      return `对比：${startStr} ~ ${endStr}`
+      return `${startStr} ~ ${endStr}`
     }
-    return '对比：按快照'
+    return '按快照'
   }
 
   const preset = current.preset || 'previous'
   const foundPreset = BASELINE_PRESETS.find((p) => p.key === preset)
   if (foundPreset && preset !== 'custom') {
-    return `对比：${foundPreset.label}`
+    return foundPreset.label
   }
 
   if (current.range && current.range[0] && current.range[1]) {
     const startStr = formatTimestamp(Math.floor(current.range[0] / 1000)).slice(5, 10)
     const endStr = formatTimestamp(Math.floor(current.range[1] / 1000)).slice(5, 10)
-    return `对比：${startStr} ~ ${endStr}`
+    return `${startStr} ~ ${endStr}`
   }
 
-  return '对比：较上次'
+  return '较上次'
 })
 </script>
 
@@ -679,12 +679,35 @@ html[data-mower-theme='dark'] .baseline-trigger-btn {
 html[data-mower-theme='dark'] .baseline-popover-card {
   background: var(--mower-surface, rgb(28, 28, 33));
   border-color: var(--mower-border, rgba(255, 255, 255, 0.12));
+  color: rgba(255, 255, 255, 0.9);
+}
+
+html[data-mower-theme='dark'] .mode-hint,
+html[data-mower-theme='dark'] .pane-section-title,
+html[data-mower-theme='dark'] .time-card-label,
+html[data-mower-theme='dark'] .match-range-text {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+html[data-mower-theme='dark'] .match-count-text {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 html[data-mower-theme='dark'] .preset-pill-btn {
   background: var(--mower-control-surface, rgb(36, 36, 42));
   border-color: var(--mower-border, rgba(255, 255, 255, 0.1));
   color: #eeeeee;
+}
+
+html[data-mower-theme='dark'] .preset-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--mower-primary, #63e2b7);
+}
+
+html[data-mower-theme='dark'] .preset-pill-btn.active {
+  background: var(--mower-primary, #63e2b7);
+  border-color: var(--mower-primary, #63e2b7);
+  color: #000000;
 }
 
 html[data-mower-theme='dark'] .popover-divider {

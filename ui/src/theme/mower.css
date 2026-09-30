@@ -12,6 +12,11 @@
 }
 
 html[data-mower-theme='dark'],
+html[data-window-shell-theme='dark'] {
+  color-scheme: dark;
+}
+
+html[data-mower-theme='dark'],
 html[data-mower-theme='dark'] .provider {
   --mower-segment-rail: rgb(24, 24, 28);
   --mower-segment-active: rgb(49, 49, 55);
