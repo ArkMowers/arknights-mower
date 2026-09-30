@@ -317,8 +317,8 @@ def test_correction_prefers_cached_healthy_cover(solver):
     "moods,expected",
     [
         ([6, 12, 20], [0, 1, 2]),
-        ([0, 12, 20], [1, 2]),
-        ([0, 0, 20], [2]),
+        ([0, 12, 20], [1, 2, 0]),
+        ([0, 0, 20], [2, 0, 1]),
         ([6, None, 20], [0, 1, 2]),
         ([None, 12, 20], [0, 1, 2]),
     ],
@@ -349,7 +349,7 @@ def test_work_replacement_uses_own_mood_limits(solver):
     cover.lower_limit, cover.upper_limit, cover.mood = 12, 24, 15
     assert data.replacement_candidates(op) == ["多萝西", "砾"]
     cover.mood = 12
-    assert data.replacement_candidates(op) == ["砾"]
+    assert data.replacement_candidates(op) == ["砾", "多萝西"]
 
 
 def _redface_cover_scenario(solver, *, cover_mood=0, spare_mood=12):

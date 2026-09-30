@@ -1560,20 +1560,21 @@ class Operators:
         ]
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
             now = datetime.now()
-            ordered = []
-            for name in candidates:
+
+            def exhausted_last(name):
                 candidate = self.operators.get(name)
-                if (
+                exhausted = (
                     candidate is not None
                     and candidate.time_stamp is not None
                     and 0 <= candidate.mood <= candidate.upper_limit
                     and candidate.current_mood(now) <= candidate.lower_limit
-                ):
-                    # 候补列表本身就是效率优先级。只有真正用尽到个人下限
-                    # 才跳过；未知心情维持原有可用性和原名单顺序。
-                    continue
-                ordered.append(name)
-            return ordered
+                )
+                return (exhausted,)
+
+            # 候补列表本身就是效率优先级；仍可工作的候补严格保持配置顺序。
+            # 真正到个人下限的候补只移到列表末尾，不从候补集合中删除，
+            # 避免其他分床/预留逻辑失去对该干员的完整候补关系。
+            return sorted(candidates, key=exhausted_last)
         if (
             not operator.room.startswith("dorm")
             or not operator.group
