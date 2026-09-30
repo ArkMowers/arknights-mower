@@ -1,4 +1,4 @@
-"""Configuration-directory ZIP download and restore endpoints."""
+"""Instance configuration and persistent-data ZIP download and restore endpoints."""
 
 import sqlite3
 from datetime import datetime
@@ -90,6 +90,6 @@ def import_backup():
             }, 500
         return {
             "ok": True,
-            "message": "配置已导入。当前管理页面端口、访问令牌、网络代理、托盘及窗口尺寸保持不变。",
+            "message": "配置及备份内的 tmp 数据已导入。当前管理页面端口、访问令牌、网络代理、托盘及窗口尺寸保持不变。",
             "recovery_path": recovery,
         }

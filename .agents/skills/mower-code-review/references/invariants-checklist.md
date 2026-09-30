@@ -83,6 +83,10 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-WEB-01] Local Log Read Boundary**: In a WebView session without a configured token, do read-only log requests require loopback and valid browser origin metadata while AI chat and mutating endpoints retain credential checks?
 
+### 2.6 Configuration Backup
+
+- [ ] **[INV-CFG-01] Configuration Data Cohesion**: Does import validate configuration and tmp data before writing, preserve local access settings, clear saved scheduling state, and restore original files when any write or database restore fails?
+
 ---
 
 ## 3. Extensibility Protocol: Adding Invariants for Future Modules

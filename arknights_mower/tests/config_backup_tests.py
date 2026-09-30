@@ -45,11 +45,15 @@ def storage(tmp_path, monkeypatch):
     return get_path
 
 
-def archive(files):
+def archive(files, tmp_files=None):
     stream = BytesIO()
     with ZipFile(stream, "w") as zipped:
         for name, value in files.items():
             zipped.writestr(f"config/{name}", value)
+        if tmp_files is not None:
+            zipped.writestr("tmp/", b"")
+            for name, value in tmp_files.items():
+                zipped.writestr(f"tmp/{name}", value)
     return stream.getvalue()
 
 
@@ -94,7 +98,7 @@ def populated_plan():
     )
 
 
-def test_export_preserves_original_bytes_and_only_config_folder(storage):
+def test_export_preserves_original_bytes_and_includes_persistent_tmp_data(storage):
     config.conf_path.write_text(
         "# original comment\naccount: 原始账号\n", encoding="utf-8"
     )
@@ -109,6 +113,258 @@ def test_export_preserves_original_bytes_and_only_config_folder(storage):
         "plan.json": config.plan_path.read_bytes(),
         "nested/custom.yml": b"# custom\nx: 1\n",
     }
+    _, tables = backup.read_archive(backup.export_archive(), include_tmp=True)
+    assert set(tables) == {"data.db"}
+
+
+def test_tmp_data_and_all_database_tables_round_trip(storage):
+    for name in backup.TMP_DATA_FILES - {"data.db"}:
+        storage(f"@app/tmp/{name}").write_bytes(f"original {name}\r\n".encode())
+    database = storage("@app/tmp/data.db")
+    with closing(sqlite3.connect(database)) as conn, conn:
+        conn.execute("CREATE TABLE mastery_plan(char_name TEXT)")
+        conn.execute("INSERT INTO mastery_plan VALUES ('阿米娅')")
+        conn.execute("CREATE TABLE custom_table(value TEXT)")
+        conn.execute("INSERT INTO custom_table VALUES ('custom')")
+    raw = backup.export_archive()
+    config_files, original_tables = backup.read_archive(raw, include_tmp=True)
+    assert set(original_tables) == backup.TMP_DATA_FILES
+    for name in backup.TMP_DATA_FILES - {"data.db"}:
+        storage(f"@app/tmp/{name}").write_bytes(b"changed")
+    with closing(sqlite3.connect(database)) as conn, conn:
+        conn.execute("DELETE FROM mastery_plan")
+        conn.execute("UPDATE custom_table SET value='changed'")
+        conn.execute("CREATE TABLE local_only(value TEXT)")
+    recovery = backup.import_configuration(raw)
+    assert backup.read_archive(raw) == config_files
+    for name in backup.TMP_DATA_FILES - {"data.db"}:
+        assert storage(f"@app/tmp/{name}").read_bytes() == original_tables[name]
+    with closing(sqlite3.connect(database)) as conn:
+        assert conn.execute("SELECT char_name FROM mastery_plan").fetchall() == [
+            ("阿米娅",)
+        ]
+        assert conn.execute("SELECT value FROM custom_table").fetchall() == [
+            ("custom",)
+        ]
+        assert conn.execute("SELECT value FROM reports").fetchall() == [("keep",)]
+        assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (0,)
+        assert not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='local_only'"
+        ).fetchone()
+    _, recovery_tables = backup.read_archive(
+        Path(recovery).read_bytes(), include_tmp=True
+    )
+    assert recovery_tables["report.csv"] == b"changed"
+    backup.import_configuration(Path(recovery).read_bytes())
+    assert storage("@app/tmp/report.csv").read_bytes() == b"changed"
+    with closing(sqlite3.connect(database)) as conn:
+        assert conn.execute("SELECT value FROM custom_table").fetchall() == [
+            ("changed",)
+        ]
+
+
+def test_database_snapshot_includes_committed_wal_data(storage, tmp_path):
+    database = storage("@app/tmp/data.db")
+    with closing(sqlite3.connect(database)) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("UPDATE reports SET value='wal value'")
+        conn.commit()
+        assert Path(f"{database}-wal").stat().st_size > 0
+        raw = backup.export_archive()
+        _, tables = backup.read_archive(raw, include_tmp=True)
+        snapshot = tmp_path / "exported.db"
+        snapshot.write_bytes(tables["data.db"])
+        with closing(sqlite3.connect(snapshot)) as reader:
+            assert reader.execute("SELECT value FROM reports").fetchall() == [
+                ("wal value",)
+            ]
+        conn.execute("UPDATE reports SET value='changed'")
+        conn.commit()
+        backup.import_configuration(raw)
+        assert conn.execute("SELECT value FROM reports").fetchall() == [("wal value",)]
+
+
+def test_legacy_and_partial_tmp_archives_preserve_missing_local_data(storage):
+    local = storage("@app/tmp/cultivate.json")
+    local.write_bytes(b'{"items":{}}')
+    files = backup.read_archive(backup.export_archive())
+    backup.import_configuration(archive(files))
+    assert local.read_bytes() == b'{"items":{}}'
+    backup.import_configuration(archive(files, {"report.csv": b"new report"}))
+    assert local.read_bytes() == b'{"items":{}}'
+    assert storage("@app/tmp/report.csv").read_bytes() == b"new report"
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
+        assert conn.execute("SELECT value FROM reports").fetchall() == [("keep",)]
+        assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (0,)
+
+
+def test_restores_database_and_data_to_an_instance_without_tmp(storage):
+    storage("@app/tmp/report.csv").write_bytes(b"report")
+    raw = backup.export_archive()
+    storage("@app/tmp/report.csv").unlink()
+    storage("@app/tmp/data.db").unlink()
+    storage("@app/tmp").rmdir()
+    backup.import_configuration(raw)
+    assert storage("@app/tmp/report.csv").read_bytes() == b"report"
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
+        assert conn.execute("SELECT value FROM reports").fetchall() == [("keep",)]
+
+
+def test_export_excludes_resource_metadata_updates_and_unrelated_tmp_files(storage):
+    for name in ("resource_version.json", "mower.zip", "build.log", "other.csv"):
+        storage(f"@app/tmp/{name}").write_bytes(b"excluded")
+    storage("@app/tmp/resource").mkdir()
+    storage("@app/tmp/resource/data.json").write_bytes(b"excluded")
+    _, tables = backup.read_archive(backup.export_archive(), include_tmp=True)
+    assert set(tables) == {"data.db"}
+
+
+@pytest.mark.parametrize(
+    "content", [b"not sqlite", b"SQLite format 3\x00" + b"x" * 100]
+)
+def test_invalid_database_is_rejected_before_any_write(storage, content):
+    before = backup.export_archive()
+    files = backup.read_archive(before)
+    raw = archive(files, {"data.db": content, "report.csv": b"new"})
+    with pytest.raises(ValueError):
+        backup.import_configuration(raw)
+    assert backup.read_archive(
+        backup.export_archive(), include_tmp=True
+    ) == backup.read_archive(before, include_tmp=True)
+    assert not storage("@app/config-backups").exists()
+
+
+@pytest.mark.parametrize("failure", ["tmp", "database"])
+def test_tmp_or_database_failure_rolls_back_configuration_and_data(
+    storage, monkeypatch, failure
+):
+    report = storage("@app/tmp/report.csv")
+    report.write_bytes(b"original")
+    files, tables = backup.read_archive(backup.export_archive(), include_tmp=True)
+    files["conf.yml"] = b"account: imported\n"
+    raw = archive(files, {**tables, "cultivate.json": b"new", "report.csv": b"changed"})
+    before = backup.export_archive()
+    previous_conf, previous_plan = config.conf, config.plan
+    write = backup._write_bytes
+    copy_database = backup._copy_database
+
+    def fail_write(path, content):
+        if path == report and content == b"changed":
+            raise OSError("tmp write failed")
+        write(path, content)
+
+    def fail_database(source, destination):
+        if destination == storage("@app/tmp/data.db"):
+            raise sqlite3.OperationalError("database restore failed")
+        copy_database(source, destination)
+
+    if failure == "tmp":
+        monkeypatch.setattr(backup, "_write_bytes", fail_write)
+    else:
+        monkeypatch.setattr(backup, "_copy_database", fail_database)
+    with pytest.raises((OSError, sqlite3.Error)):
+        backup.import_configuration(raw)
+    assert config.conf is previous_conf and config.plan is previous_plan
+    assert backup.read_archive(
+        backup.export_archive(), include_tmp=True
+    ) == backup.read_archive(before, include_tmp=True)
+    assert not storage("@app/tmp/cultivate.json").exists()
+    assert len(list(storage("@app/config-backups").glob("*.zip"))) == 1
+
+
+@pytest.mark.parametrize(
+    "name", ["resource_version.json", "nested/report.csv", "DATA.DB", "data.db-wal"]
+)
+def test_rejects_non_data_tmp_members(storage, name):
+    raw = archive(backup.read_archive(backup.export_archive()), {name: b"invalid"})
+    with pytest.raises(ValueError):
+        backup.import_configuration(raw)
+    assert not storage("@app/config-backups").exists()
+
+
+@pytest.mark.parametrize("name", ["report.csv", "data.db", "REPORT.CSV"])
+def test_local_tmp_links_or_case_collisions_prevent_export_and_import(storage, name):
+    raw = backup.export_archive()
+    path = storage(f"@app/tmp/{name}")
+    path.unlink(missing_ok=True)
+    path.symlink_to(config.conf_path)
+    for action in (backup.export_archive, lambda: backup.import_configuration(raw)):
+        with pytest.raises(backup.LocalConfigError):
+            action()
+    assert not storage("@app/config-backups").exists()
+
+
+def test_combined_config_and_tmp_size_is_bounded(storage, monkeypatch):
+    database_size = storage("@app/tmp/data.db").stat().st_size
+    files = backup.read_archive(backup.export_archive())
+    config_size = sum(map(len, files.values()))
+    storage("@app/tmp/report.csv").write_bytes(b"x" * 128)
+    monkeypatch.setattr(backup, "MAX_BACKUP_BYTES", database_size + config_size + 64)
+    with pytest.raises(backup.LocalConfigError):
+        backup.export_archive()
+
+
+@pytest.mark.parametrize("database_exists", [False, True])
+def test_database_backup_timeout_rolls_back_partially_copied_pages(
+    storage, monkeypatch, database_exists
+):
+    database = storage("@app/tmp/data.db")
+    with closing(sqlite3.connect(database)) as conn, conn:
+        conn.execute("CREATE TABLE large_table(value BLOB)")
+        conn.execute("INSERT INTO large_table VALUES (zeroblob(1200000))")
+    raw = backup.export_archive()
+    files, tables = backup.read_archive(raw, include_tmp=True)
+    files["conf.yml"] = b"account: imported\n"
+    raw = archive(files, {**tables, "report.csv": b"new"})
+    if database_exists:
+        with closing(sqlite3.connect(database)) as conn, conn:
+            conn.execute("UPDATE reports SET value='local'")
+    else:
+        database.unlink()
+    copy_database = backup._copy_database
+
+    def timeout(source, destination):
+        if destination == database:
+            with monkeypatch.context() as patch:
+                clock = iter((0, 11))
+                patch.setattr(backup, "monotonic", lambda: next(clock))
+                copy_database(source, destination)
+        else:
+            copy_database(source, destination)
+
+    monkeypatch.setattr(backup, "_copy_database", timeout)
+    previous = config.conf_path.read_bytes()
+    with pytest.raises(sqlite3.OperationalError, match="超时"):
+        backup.import_configuration(raw)
+    assert config.conf_path.read_bytes() == previous
+    assert not storage("@app/tmp/report.csv").exists()
+    if database_exists:
+        with closing(sqlite3.connect(database)) as conn:
+            assert conn.execute("SELECT value FROM reports").fetchall() == [("local",)]
+            assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (1,)
+            assert conn.execute("PRAGMA quick_check").fetchone() == ("ok",)
+    else:
+        assert not database.exists()
+
+
+def test_completed_database_copy_does_not_report_a_post_commit_timeout(
+    storage, tmp_path, monkeypatch
+):
+    destination = tmp_path / "copy.db"
+    clock = iter((0, 11))
+    monkeypatch.setattr(backup, "monotonic", lambda: next(clock))
+    backup._copy_database(storage("@app/tmp/data.db"), destination)
+    with closing(sqlite3.connect(destination)) as conn:
+        assert conn.execute("SELECT value FROM reports").fetchall() == [("keep",)]
+
+
+@pytest.mark.parametrize("suffix", ["-wal", "-shm", "-journal"])
+def test_rejects_local_database_auxiliary_links(storage, suffix):
+    raw = backup.export_archive()
+    storage(f"@app/tmp/data.db{suffix}").symlink_to(config.conf_path)
+    with pytest.raises(backup.LocalConfigError):
+        backup.import_configuration(raw)
+    assert not storage("@app/config-backups").exists()
 
 
 def test_populated_plan_and_original_files_survive_restore_and_repeated_reload(
@@ -324,6 +580,20 @@ def test_routes_validate_auth_busy_format_and_download(client):
     assert client.application.token == "old-token"
 
 
+def test_route_rejects_invalid_database_without_writing_configuration(client, storage):
+    files = backup.read_archive(backup.export_archive())
+    previous = config.conf_path.read_bytes()
+    response = client.post(
+        "/config-backup/import",
+        data=archive(files, {"data.db": b"not a database"}),
+        headers={"token": "old-token", "X-Mower-Settings": "1"},
+    )
+    assert response.status_code == 400
+    assert response.json["ok"] is False
+    assert config.conf_path.read_bytes() == previous
+    assert not storage("@app/config-backups").exists()
+
+
 def test_oversized_import_is_rejected(client, monkeypatch):
     monkeypatch.setattr("arknights_mower.views.config_backup.MAX_BACKUP_BYTES", 32)
     assert (
@@ -382,6 +652,25 @@ def test_plan_entry_imports_json_or_zip_without_other_settings(
         exclude_none=True
     )
     assert config.conf_path.read_bytes() == before
+
+
+def test_plan_entry_reads_new_zip_without_restoring_tmp_data(
+    plan_client, storage, populated_plan
+):
+    files, tables = backup.read_archive(backup.export_archive(), include_tmp=True)
+    files["plan.json"] = populated_plan.model_dump_json()
+    raw = archive(files, {**tables, "report.csv": b"archive report"})
+    storage("@app/tmp/report.csv").write_bytes(b"local report")
+    database = storage("@app/tmp/data.db")
+    with closing(sqlite3.connect(database)) as conn, conn:
+        conn.execute("UPDATE reports SET value='local'")
+    response = post_plan_file(plan_client, raw, "backup.zip", "application/zip")
+    assert response.get_data(as_text=True) == "排班已加载"
+    assert config.plan == populated_plan
+    assert storage("@app/tmp/report.csv").read_bytes() == b"local report"
+    with closing(sqlite3.connect(database)) as conn:
+        assert conn.execute("SELECT value FROM reports").fetchall() == [("local",)]
+        assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (1,)
 
 
 @pytest.mark.parametrize(

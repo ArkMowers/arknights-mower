@@ -54,6 +54,9 @@
 ### 2.5 Web Access
 - **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
 
+### 2.6 Configuration Backup
+- **[INV-CFG-01] Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.
+
 
 ## 3. Concurrency & Resource Lifecycle
 
