@@ -1708,8 +1708,18 @@ class Operators:
             return self.is_dynamic_dorm_position(room, index, name)
         return False
 
+    def replacement_exhausted(self, name, now=None):
+        """仅对有效实测心情判断工作替班是否已到个人下限。"""
+        candidate = self.operators.get(name)
+        return (
+            candidate is not None
+            and candidate.time_stamp is not None
+            and 0 <= candidate.mood <= 24
+            and candidate.current_mood(now) <= candidate.lower_limit
+        )
+
     def replacement_candidates(self, operator):
-        """工作替班避让缓存中的急救低心情；宿舍和肥鸭沿用各自规则。"""
+        """工作替班按配置顺序取用；已用尽候补稳定移到末尾。"""
         candidates = [
             name
             for name in operator.replacement
@@ -1719,25 +1729,13 @@ class Operators:
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
             now = datetime.now()
 
-            def rescue_order(name):
-                candidate = self.operators.get(name)
-                if (
-                    candidate is None
-                    or candidate.time_stamp is None
-                    or not 0 <= candidate.mood <= 24
-                ):
-                    # 未知心情保留原有可用性，不把默认 24 当成实测满心情。
-                    return (False, 0)
-                mood = candidate.current_mood(now)
-                below = mood < self.rescue_mood_threshold(candidate)
-                return (
-                    below,
-                    -mood if (below) else 0,
-                )
+            def exhausted_last(name):
+                return (self.replacement_exhausted(name, now),)
 
-            # 正常/未知心情沿用名单顺序；急救候选优先使用
-            # 心情较高者，避免所有人都过线后仍征用名单首位的零心情干员。
-            return sorted(candidates, key=rescue_order)
+            # 候补列表本身就是效率优先级；仍可工作的候补严格保持配置顺序。
+            # 真正到个人下限的候补只移到列表末尾，不从候补集合中删除，
+            # 避免其他分床/预留逻辑失去对该干员的完整候补关系。
+            return sorted(candidates, key=exhausted_last)
         if (
             not operator.room.startswith("dorm")
             or not operator.group

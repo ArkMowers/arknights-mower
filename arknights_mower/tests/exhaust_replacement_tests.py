@@ -94,6 +94,31 @@ def test_swap_cover_then_rest_exhausted_operator(solver):
     base_schedule.send_message.assert_not_called()
 
 
+def test_exhaust_support_allows_zero_mood_cover_for_group_dorm_member(solver):
+    data = solver.op_data
+    data.add(Operator("黑角", ""))
+    data.plan["dormitory_1"][1].group = "用尽"
+    data.plan["dormitory_1"][1].replacement = ["黑角"]
+    data.operators["闪灵"].group = "用尽"
+    data.operators["闪灵"].replacement = ["黑角"]
+    data.operators["机械师"].group = "用尽"
+    data.groups["用尽"] = ["机械师", "闪灵"]
+
+    blackhorn = data.operators["黑角"]
+    blackhorn.mood = 0
+    blackhorn.time_stamp = datetime.now()
+
+    solver.task.meta_data = "机械师,闪灵"
+    solver.overtake_room()
+
+    assert solver.tasks[0].plan == {"room_2_2": ["引星棘刺"]}
+    task = finish_support(solver)
+    assert task.type == TaskTypes.SHIFT_OFF
+    assert task.plan["room_3_3"] == ["槐琥"]
+    assert task.plan["dormitory_1"][1] == "黑角"
+    assert "机械师" in task.plan["dormitory_1"]
+
+
 def test_no_other_cover_recalls_only_owning_group(solver):
     solver.op_data.operators["苍苔"].replacement = ["槐琥"]
     # 心情更高的无关休息者不能抢先被叫回。
@@ -219,13 +244,14 @@ def test_completed_exhaust_off_preserves_normal_planning(solver, grouped, mood):
     base_schedule.send_message.assert_not_called()
 
 
-@pytest.mark.parametrize("all_zero_mood", [False, True])
+@pytest.mark.parametrize("primaries_zero_mood", [False, True])
 def test_residual_exhaust_off_requeues_run_order_after_coordination(
-    solver, monkeypatch, all_zero_mood
+    solver, monkeypatch, primaries_zero_mood
 ):
-    if all_zero_mood:
+    if primaries_zero_mood:
         for op in solver.op_data.operators.values():
-            op.mood, op.time_stamp = 0, datetime.now()
+            if op.is_high():
+                op.mood, op.time_stamp = 0, datetime.now()
     solver.overtake_room()
     support, residual = solver.tasks
     solver.op_data = solver.op_data.project_arrangements([support.plan])
@@ -278,6 +304,23 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     solver.get_run_order_time.assert_called_once()
     solver.enter_room.assert_not_called()
     base_schedule.send_message.assert_not_called()
+
+
+def test_exhaust_off_without_workable_replacements_preserves_occupancy(solver):
+    data = solver.op_data
+    for op in data.operators.values():
+        op.mood, op.time_stamp = 0, datetime.now()
+    before = {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    }
+
+    solver.overtake_room()
+
+    assert solver.tasks == []
+    assert {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    } == before
+    base_schedule.send_message.assert_called_once()
 
 
 def test_alternate_does_not_take_another_exhausted_members_cover(solver):

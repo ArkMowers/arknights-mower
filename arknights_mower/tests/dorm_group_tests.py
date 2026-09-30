@@ -1009,6 +1009,59 @@ def test_normal_workplace_keeps_configured_replacement_order(solver):
     assert shift_off(solver)[0]["meeting"][0] == "陈"
 
 
+def configure_work_cover_mood_limits(solver, second_mood):
+    data = solver.op_data
+    data.add(Operator("砾", ""))
+    worker = data.operators["伊内丝"]
+    worker.replacement = ["陈", "砾"]
+    data.plan["meeting"][0].replacement = worker.replacement.copy()
+    data.config.operator_mood_limits = {"砾": {"lower": 12, "upper": 16}}
+    data.init_mood_limit()
+
+    now = datetime.now()
+    first = data.operators["陈"]
+    first.current_room, first.current_index = "", -1
+    first.mood, first.time_stamp = 0, now
+    second = data.operators["砾"]
+    second.current_room, second.current_index = "", -1
+    second.mood, second.time_stamp = second_mood, now
+    return data
+
+
+def test_work_replacement_all_exhausted_aborts_group_shift(solver):
+    data = configure_work_cover_mood_limits(solver, 11)
+    plan, replacements = {}, []
+
+    solver.get_resting_plan(data.groups["联动"], replacements, plan, 0)
+
+    assert plan == {}
+    assert replacements == []
+
+
+@pytest.mark.parametrize("blocked", ["busy", "reserved"])
+def test_work_replacement_never_falls_back_to_exhausted_when_healthy_is_blocked(
+    solver, monkeypatch, blocked
+):
+    data = configure_work_cover_mood_limits(solver, 13)
+    if blocked == "busy":
+        monkeypatch.setattr(
+            base_schedule, "_is_mastery_busy", lambda name: name == "砾"
+        )
+    else:
+        task = SchedulerTask(
+            task_type=TaskTypes.SHIFT_OFF, task_plan={"meeting": ["砾"]}
+        )
+        task.product_shift_locked = True
+        task.product_lock_names = {"砾"}
+        solver.tasks.append(task)
+    plan, replacements = {}, []
+
+    solver.get_resting_plan(data.groups["联动"], replacements, plan, 0)
+
+    assert plan == {}
+    assert replacements == []
+
+
 def test_dorm_correction_selects_low_mood_cover_but_does_not_churn(solver):
     set_resident_candidates(solver, ["黑角", "泥岩"])
     solver.op_data.operators["黑角"].mood = 20
@@ -1043,7 +1096,8 @@ def test_resident_mood_does_not_compete_for_worker_replacements(
     solver.op_data.groups["联动"].remove("塑心")
     solver.op_data.groups["联动"].insert(0, "塑心")
     set_resident_candidates(solver, ["陈", "黑角"])
-    solver.op_data.operators["陈"].mood = 0
+    # 这个用例只验证宿舍成员心情不参与工作替班竞争；工作替班本身需保持可用。
+    solver.op_data.operators["陈"].mood = 1
     monkeypatch.setattr(
         resident,
         "current_mood",

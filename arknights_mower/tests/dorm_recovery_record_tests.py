@@ -175,7 +175,8 @@ def test_all_rescue_covers_prefer_higher_cached_mood_only_in_test_mode(
 def test_selected_work_cover_cannot_also_reserve_a_rest_bed(shift_solver):
     data = shift_solver.op_data
     cover = data.operators["伺夜"]
-    cover.mood = 0
+    # 这里验证的是“已选中的工作替班不能同时占休息床”，不是零心情兜底。
+    cover.mood = 1
     shift_solver.total_agent.append(cover)
     plan = shift_solver.resting()
     assert plan["room_1_1"] == [cover.name]
