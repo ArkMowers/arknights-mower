@@ -20,20 +20,24 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
     plan, selected = {}, set()
     data = op_data.project_arrangements([])
 
-    def eligible(state, name):
+    def eligible(state, name, target):
         op = state.operators.get(name)
         return (
             op is not None
             and not op.is_high()
             and name not in protected | selected | required | set(TRADE_ORDER_AGENTS)
             and not state.is_dorm_replacement(name)
-            and not state.replacement_exhausted(name)
+            and (
+                target.room.startswith("dorm") or not state.replacement_exhausted(name)
+            )
             and not is_busy(name)
         )
 
-    def available(state, name):
+    def available(state, name, target):
         op = state.operators.get(name)
-        return eligible(state, name) and (not op.current_room or op.is_resting())
+        return eligible(state, name, target) and (
+            not op.current_room or op.is_resting()
+        )
 
     def protected_rest(state, name):
         op = state.operators[name]
@@ -96,14 +100,14 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         if data.is_auto_free_dorm_operator(worker):
             continue
         covers = data.replacement_candidates(worker)
-        free = next((cover for cover in covers if available(data, cover)), None)
+        free = next((cover for cover in covers if available(data, cover, worker)), None)
         if free is not None:
             selected.add(free)
             continue
         # 只协调正在给其他主班顶岗的替班，不能搬走原岗位主班或训练干员。
         occupied = []
         for cover in covers:
-            if not eligible(data, cover):
+            if not eligible(data, cover, worker):
                 continue
             op = data.operators[cover]
             if not op.is_working() or op.current_room == "train":
@@ -127,7 +131,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 (
                     other
                     for other in data.replacement_candidates(owner)
-                    if other not in cover_names and available(data, other)
+                    if other not in cover_names and available(data, other, owner)
                 ),
                 None,
             )
@@ -146,7 +150,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 if result is None:
                     continue
                 trial, projected = result
-                if not available(projected, cover):
+                if not available(projected, cover, worker):
                     continue
                 plan, data = trial, projected
                 selected.add(cover)
@@ -163,7 +167,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
             (
                 other
                 for other in data.replacement_candidates(worker)
-                if available(data, other)
+                if available(data, other, worker)
             ),
             None,
         )

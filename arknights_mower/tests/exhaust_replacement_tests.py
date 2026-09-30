@@ -94,6 +94,31 @@ def test_swap_cover_then_rest_exhausted_operator(solver):
     base_schedule.send_message.assert_not_called()
 
 
+def test_exhaust_support_allows_zero_mood_cover_for_group_dorm_member(solver):
+    data = solver.op_data
+    data.add(Operator("黑角", ""))
+    data.plan["dormitory_1"][1].group = "用尽"
+    data.plan["dormitory_1"][1].replacement = ["黑角"]
+    data.operators["闪灵"].group = "用尽"
+    data.operators["闪灵"].replacement = ["黑角"]
+    data.operators["机械师"].group = "用尽"
+    data.groups["用尽"] = ["机械师", "闪灵"]
+
+    blackhorn = data.operators["黑角"]
+    blackhorn.mood = 0
+    blackhorn.time_stamp = datetime.now()
+
+    solver.task.meta_data = "机械师,闪灵"
+    solver.overtake_room()
+
+    assert solver.tasks[0].plan == {"room_2_2": ["引星棘刺"]}
+    task = finish_support(solver)
+    assert task.type == TaskTypes.SHIFT_OFF
+    assert task.plan["room_3_3"] == ["槐琥"]
+    assert task.plan["dormitory_1"][1] == "黑角"
+    assert "机械师" in task.plan["dormitory_1"]
+
+
 def test_no_other_cover_recalls_only_owning_group(solver):
     solver.op_data.operators["苍苔"].replacement = ["槐琥"]
     # 心情更高的无关休息者不能抢先被叫回。
