@@ -64,6 +64,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.3 Presentation Layer (UI)
 
+- [ ] **[INV-UI-03] Selected Instance Persistence**: Does selecting a detected instance save its identity before connection testing, preserve it on failure, avoid unverified endpoint persistence, and prevent startup after an identity save failure?
+
 - [ ] **[INV-UI-01] Unpersisted Candidate State**: Do discovery tables remain in local Pinia/component state without mutating persisted profile until user explicit save?
 - [ ] **[INV-UI-02] Recovery Policy Binding**: Are advanced recovery parameters bidirectionally bound to backend defaults without local shadow overrides?
 

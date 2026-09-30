@@ -113,6 +113,28 @@ class MuMuProIdleRecoveryTests(unittest.TestCase):
         self.adb.recover.assert_called_once()
         self.assertEqual(self.simulator.actions, ["start"])
 
+    def test_explicit_retry_resets_actions_and_deadline_without_clearing_identity(self):
+        self.adb.recover = Mock(return_value=False)
+        with self.assertRaises(SessionFailure):
+            self.session.ensure_ready()
+        self.assertEqual(self.session.actions, 3)
+        self.assertEqual(self.clock.now, 60)
+        self.simulator.state = "stopped"
+
+        def reconnect(adb_path, serial, timeout):
+            self.ready()
+            return True
+
+        self.adb.recover = Mock(side_effect=reconnect)
+        self.assertEqual(self.session.ensure_ready().serial, self.serial)
+        self.assertEqual(self.session.actions, 2)
+        self.assertEqual(self.session._deadline, 120)
+        self.adb.recover.assert_called_once()
+        self.assertEqual(self.simulator.actions, ["start", "start"])
+        self.assertEqual(self.session.profile.instance_id, "2")
+        self.assertEqual(self.session.profile.topology_fingerprint, "a" * 64)
+        self.assertEqual(self.profile.last_serial, "127.0.0.1:16416")
+
     def test_shared_adb_error_is_terminal_without_retry(self):
         self.adb.recover = Mock(side_effect=SharedADBError("共享 ADB 服务不可用"))
         with self.assertRaises(SessionFailure) as failure:

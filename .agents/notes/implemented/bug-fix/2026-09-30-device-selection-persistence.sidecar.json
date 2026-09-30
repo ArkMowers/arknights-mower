@@ -1,0 +1,21 @@
+{
+  "title": "Device Selection Persistence",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-03]",
+    "[INV-DEV-03]"
+  ],
+  "code_symbols": [
+    "ui/src/components/DeviceSettings.vue",
+    "ui/src/utils/deviceSettings.js"
+  ],
+  "test_suites": [
+    "ui/src/components/DeviceSettings.test.js",
+    "arknights_mower/tests/device_mumu_pro_idle_recovery_tests.py"
+  ]
+}

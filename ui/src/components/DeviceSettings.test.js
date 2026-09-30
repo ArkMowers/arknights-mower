@@ -316,8 +316,76 @@ it('keeps multiple stopped candidates pending until a user selects one', async (
     'preflight',
     'start'
   ])
-  expect(state.client.post.mock.calls[2][1].device.instance_id).toBe('1')
-  expect(state.config.save_config).not.toHaveBeenCalled()
+  expect(state.config.device_profile).toMatchObject({
+    instance_id: '1',
+    topology_fingerprint: '1'.repeat(64),
+    last_serial: '',
+    game_package_confirmed: false
+  })
+  expect(state.config.save_config).toHaveBeenCalledOnce()
+})
+
+it('retains a selected MuMu Pro identity after failed startup and retries the same target', async () => {
+  state.client.get.mockResolvedValue({ data: { host_platform: 'macos' } })
+  const binding = {
+    preset_id: 'macos.mumu_pro',
+    instance_id: '0',
+    instance_name: 'alex',
+    topology_fingerprint: 'a'.repeat(64)
+  }
+  component.draft.value = { ...state.config.device_profile, last_serial: '127.0.0.1:16448' }
+  component.metadata.value = { host_platform: 'macos' }
+  component.result.value = { kind: 'discovery', candidates: [{ key: 'alex', binding }] }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  const savedTargets = []
+  state.client.post = vi.fn(async (url) => {
+    savedTargets.push({ ...state.config.device_profile })
+    return {
+      data: {
+        ok: false,
+        error: { code: url.endsWith('/preflight') ? 'instance_stopped' : 'startup_timeout' }
+      }
+    }
+  })
+  await component.detect('discover', 'alex')
+  expect(state.config.device_profile).toMatchObject({ ...binding, last_serial: '' })
+  expect(component.draft.value).toMatchObject({ ...binding, last_serial: '' })
+  expect(component.savedHint.value).toBe(true)
+  expect(state.config.save_config).toHaveBeenCalledOnce()
+  await component.startBound()
+  expect(state.client.post.mock.calls.map(([url]) => url.split('/device/')[1])).toEqual([
+    'preflight',
+    'start',
+    'start'
+  ])
+  expect(savedTargets).toHaveLength(3)
+  for (const target of savedTargets) expect(target).toMatchObject({ ...binding, last_serial: '' })
+  expect(component.result.value.error.code).toBe('startup_timeout')
+})
+
+it('does not launch a selected instance if saving its identity fails', async () => {
+  const previous = { ...state.config.device_profile }
+  component.metadata.value = { host_platform: 'macos' }
+  component.result.value = {
+    kind: 'discovery',
+    candidates: [
+      {
+        key: 'alex',
+        binding: {
+          preset_id: 'macos.mumu_pro',
+          instance_id: '0',
+          topology_fingerprint: 'a'.repeat(64)
+        }
+      }
+    ]
+  }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.config.save_config.mockRejectedValue(new Error('保存配置失败'))
+  state.client.post = vi.fn()
+  await component.detect('discover', 'alex')
+  expect(state.client.post).not.toHaveBeenCalled()
+  expect(state.config.device_profile).toEqual(previous)
+  expect(component.requestError.value).toBe('保存配置失败')
 })
 
 it('starts the unique discovered target after its stopped preflight', async () => {

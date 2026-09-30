@@ -9,6 +9,7 @@ import {
   deviceStartupRequest,
   deviceDetectionDraft,
   savePreflightDevice,
+  saveDiscoveredDevice,
   deviceStatusResult,
   editDeviceDraft,
   manualDeviceDraft,
@@ -236,21 +237,16 @@ async function bindInstance(key, autoStart = true) {
   const candidate =
     result.value?.kind === 'discovery' && result.value.candidates?.find((item) => item.key === key)
   if (!candidate?.binding) return
-  draft.value = {
-    ...editDeviceDraft(
-      draft.value,
-      'preset_id',
-      candidate.binding.preset_id || draft.value.preset_id
-    ),
-    config_path: '',
-    instance_uuid: '',
-    topology_fingerprint: '',
-    ...candidate.binding,
-    last_serial: '',
-    game_package_confirmed: false
-  }
   selectedKey.value = key
   dirty.value = true
+  draft.value = await saveDiscoveredDevice({
+    config,
+    profile: draft.value,
+    result: result.value,
+    key
+  })
+  dirty.value = false
+  flashSaved()
   manual.value = false
   confirmedPackage.value = null
   result.value = null

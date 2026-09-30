@@ -98,6 +98,9 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 3. Subsystem Invariants
 
+- **[INV-UI-03] Selected Instance Persistence**: Choosing a detected instance saves its explicit identity before connection testing or startup. Failed readiness preserves the choice; a rejected identity save prevents startup and restores the previous saved Device Profile. Connection success alone saves the verified endpoint and game package. Manual identity edits remain drafts until validated, and candidate lists remain ephemeral.
+- The [device selection persistence decision](../../.agents/notes/implemented/bug-fix/2026-09-30-device-selection-persistence.md) specifies selection and retry coverage.
+
 - **[INV-DEV-14] Startup Reconnect Budget**: Rejected ADB reconnects during startup readiness retain bounded retries and observation within the existing deadline. `DeviceSession._wait_ready` retries only unconfirmed connections, counts each reconnect in the existing action budget, and uses `_wait_local` before another attempt. Exhausted actions permit only read-only readiness polling until the same deadline; binding changes, shared ADB errors and cancellation remain terminal.
 - The [MuMu Pro idle reconnect decision](../../.agents/notes/implemented/bug-fix/2026-09-30-mumu-pro-idle-reconnect.md) records the shared readiness boundary and its regression tests.
 

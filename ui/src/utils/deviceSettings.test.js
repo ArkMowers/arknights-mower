@@ -2215,7 +2215,7 @@ describe('device settings state', () => {
     // notice above the buttons.
     expect(state.bindingHelp).toBe('')
     expect(state.connectionHelp).toContain('启动并测试连接')
-    expect(state.connectionHelp).toContain('连接验证通过后，这份设备设置才会保存')
+    expect(state.connectionHelp).toContain('连接失败不撤销选择')
 
     const ld14State = deviceSettingsState({
       profile: {
@@ -2313,7 +2313,7 @@ describe('connection settings placement', () => {
     expect(mumu.bindingHelp).toBe('')
     expect(mumu.connectionHelp).toContain('不会启动或重启模拟器')
     expect(mumu.connectionHelp).toContain('启动并测试连接')
-    expect(mumu.connectionHelp).toContain('连接验证通过后，这份设备设置才会保存')
+    expect(mumu.connectionHelp).toContain('ADB 地址和游戏包在验证通过后保存')
 
     const manual = deviceSettingsState({ profile })
     expect(manual.bindingHelp).toBe('')
@@ -2333,7 +2333,7 @@ describe('connection settings placement', () => {
       metadata: { host_platform: 'linux' }
     })
     expect(genymotion.bindingHelp).toContain('只复核所选 VM')
-    expect(genymotion.connectionHelp).toContain('这份设备设置才会保存')
+    expect(genymotion.connectionHelp).toContain('先保存编号和身份核验信息')
   })
 })
 
