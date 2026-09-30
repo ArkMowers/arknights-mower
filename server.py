@@ -882,7 +882,12 @@ def device_status():
 @require_token
 def device_preflight():
     from arknights_mower.__main__ import device_control
-    from arknights_mower.utils.device.preflight import GAME_PACKAGES
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.preflight import (
+        GAME_PACKAGES,
+        PreflightError,
+        PreflightResult,
+    )
 
     payload = request.get_json(silent=True)
     discovery = request.path == "/device/discover"
@@ -953,32 +958,44 @@ def device_preflight():
             configuration.device.last_serial = device["last_serial"]
     except (ValidationError, ValueError) as exc:
         return {"error": "invalid_configuration", "message": str(exc)}, 400
-    if payload.get("start_manager"):
-        prepared = device_control.prepare_mumu_pro_manager(configuration)
-        if not prepared.ok:
-            return prepared.to_dict()
-    if discovery:
-        return device_control.discover(configuration).to_dict()
-    if start_bound:
-        return device_control.start_bound(
+    try:
+        if payload.get("start_manager"):
+            prepared = device_control.prepare_mumu_pro_manager(configuration)
+            if not prepared.ok:
+                return prepared.to_dict()
+        if discovery:
+            return device_control.discover(configuration).to_dict()
+        if start_bound:
+            return device_control.start_bound(
+                configuration, confirmed_package=confirmed
+            ).to_dict()
+        if start_confirmed:
+            launch = (
+                device_control.start_avd
+                if start_avd
+                else device_control.start_redroid
+                if start_redroid
+                else device_control.start_genymotion
+            )
+            return launch(
+                configuration,
+                confirmed_instance=payload["confirmed_instance"],
+                confirmed_package=confirmed,
+            ).to_dict()
+        return device_control.preflight(
             configuration, confirmed_package=confirmed
         ).to_dict()
-    if start_confirmed:
-        launch = (
-            device_control.start_avd
-            if start_avd
-            else device_control.start_redroid
-            if start_redroid
-            else device_control.start_genymotion
-        )
-        return launch(
-            configuration,
-            confirmed_instance=payload["confirmed_instance"],
-            confirmed_package=confirmed,
+    except MowerExit:
+        return PreflightResult(
+            False,
+            "",
+            "cancelled",
+            "",
+            error=PreflightError(
+                "device_operation_cancelled",
+                "设备操作已取消；若设备会话或进程正在关闭，请等待完成后重试。",
+            ),
         ).to_dict()
-    return device_control.preflight(
-        configuration, confirmed_package=confirmed
-    ).to_dict()
 
 
 @app.route("/device/boss_key", methods=["POST"])

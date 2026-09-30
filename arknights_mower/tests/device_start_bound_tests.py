@@ -1,15 +1,23 @@
 """Start-and-verify for an instance the bound preset's own manager can launch."""
 
 import unittest
-from unittest.mock import patch
+from threading import Event
+from unittest.mock import Mock, patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
 from arknights_mower.tests.device_preflight_tests import PreflightIO
 from arknights_mower.tests.device_session_tests import ADB, Adapter, Clock, Simulator
 from arknights_mower.utils import config
+from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.application import DeviceControl
+from arknights_mower.utils.device.discovery import DiscoveryResult
+from arknights_mower.utils.device.io_budget import budget_sleep
 from arknights_mower.utils.device.preflight import PreflightService
-from arknights_mower.utils.device.session import DeviceSession, RecoveryPolicy
+from arknights_mower.utils.device.session import (
+    DeviceSession,
+    RecoveryPolicy,
+    SystemClock,
+)
 
 SERIAL = "127.0.0.1:16384"
 INSTALLATION = "C:/MuMuPlayer"
@@ -112,6 +120,142 @@ class StartBoundTests(unittest.TestCase):
         self.assertTrue(ready["ok"], ready["error"])
         self.assertEqual(self.simulator.actions, ["start"])
         self.assertEqual(self.path.read_bytes(), before)
+
+    def test_stopped_task_does_not_cancel_mumu_pro_settings_with_production_clock(self):
+        stopped = Event()
+        stopped.set()
+        self.enterContext(patch.object(config, "stop_mower", stopped))
+        self.io.host = "macos"
+        self.mark_started()
+        self.control._session.clock = SystemClock()
+        before = self.path.read_bytes()
+        ready = self.start(
+            device={
+                "preset_id": "macos.mumu_pro",
+                "instance_id": "0",
+                "topology_fingerprint": "a" * 64,
+                "adb_path": "verified-adb",
+            }
+        )
+        self.assertTrue(ready["ok"], ready["error"])
+        self.assertTrue(stopped.is_set())
+        self.assertEqual(self.path.read_bytes(), before)
+        with self.assertRaises(MowerExit):
+            self.control._session.clock.sleep(0)
+        started = self.control.start()
+        self.assertFalse(started.ok)
+        self.assertEqual(started.status, "cancelled")
+        self.assertTrue(stopped.is_set())
+
+    def test_stopped_task_does_not_cancel_settings_launch_or_capture_helper_wait(self):
+        stopped = Event()
+        stopped.set()
+        self.enterContext(patch.object(config, "stop_mower", stopped))
+        capture = self.io.capture_frame
+
+        def capture_after_wait(*args):
+            budget_sleep(0)
+            return capture(*args)
+
+        self.enterContext(patch.object(self.io, "capture_frame", capture_after_wait))
+        self.assertTrue(self.start()["ok"])
+        self.assertEqual(self.simulator.actions, ["start"])
+        self.assertTrue(stopped.is_set())
+        with self.assertRaises(MowerExit):
+            csleep(0)
+
+    def test_shutdown_during_settings_start_returns_structured_cancellation(self):
+        def shutdown_after_start():
+            self.mark_started()
+            self.control.begin_shutdown()
+
+        self.simulator.on_start = shutdown_after_start
+        cancelled = self.start()
+        self.assertFalse(cancelled["ok"])
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(cancelled["error"]["code"], "device_operation_cancelled")
+        self.assertEqual(self.simulator.actions, ["start"])
+
+    def test_pending_close_during_settings_start_remains_cancellable(self):
+        stopped = Event()
+        stopped.set()
+        self.enterContext(patch.object(config, "stop_mower", stopped))
+
+        def close_after_start():
+            self.mark_started()
+            self.control._pending_close.set()
+
+        self.simulator.on_start = close_after_start
+        cancelled = self.start()
+        self.assertFalse(cancelled["ok"])
+        self.assertEqual(cancelled["error"]["code"], "device_operation_cancelled")
+        self.assertEqual(self.simulator.actions, ["start"])
+        self.assertTrue(stopped.is_set())
+
+    def test_stopped_task_does_not_cancel_read_only_settings_operations(self):
+        stopped = Event()
+        stopped.set()
+        self.enterContext(patch.object(config, "stop_mower", stopped))
+        self.io.targets = [("USB-123", "device")]
+        capture = self.io.capture_frame
+
+        def capture_after_wait(*args):
+            budget_sleep(0)
+            return capture(*args)
+
+        def discover_after_wait(*args):
+            csleep(0)
+            return DiscoveryResult("windows", ok=True)
+
+        self.enterContext(patch.object(self.io, "capture_frame", capture_after_wait))
+        self.control._discovery = Mock(discover=discover_after_wait)
+        before = self.path.read_bytes()
+        for route in ("/device/preflight", "/device/discover"):
+            with self.subTest(route=route):
+                response = self.client.post(route, headers=self.headers, json={})
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.json["ok"], response.json["error"])
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertTrue(stopped.is_set())
+
+    def test_settings_routes_classify_cancellation_without_changing_configuration(self):
+        before = self.path.read_bytes()
+        routes = (
+            ("/device/preflight", "preflight", {}),
+            ("/device/discover", "discover", {}),
+            ("/device/start", "start_bound", {}),
+            ("/device/avd/start", "start_avd", {"confirmed_instance": "target"}),
+            (
+                "/device/redroid/start",
+                "start_redroid",
+                {"confirmed_instance": "target"},
+            ),
+            (
+                "/device/genymotion/start",
+                "start_genymotion",
+                {"confirmed_instance": "target"},
+            ),
+            (
+                "/device/preflight",
+                "prepare_mumu_pro_manager",
+                {"start_manager": True},
+            ),
+        )
+        for route, method, payload in routes:
+            with (
+                self.subTest(route=route, method=method),
+                patch.object(self.control, method, side_effect=MowerExit),
+            ):
+                response = self.client.post(route, headers=self.headers, json=payload)
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.json["ok"])
+                self.assertEqual(response.json["status"], "cancelled")
+                self.assertEqual(
+                    response.json["error"]["code"], "device_operation_cancelled"
+                )
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.simulator.actions, [])
 
     def test_linux_waydroid_selected_session_uses_shared_launch_route(self):
         self.io.host = "linux"

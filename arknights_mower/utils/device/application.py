@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeVar, cast
 import numpy as np
 
 from arknights_mower import __system__
-from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.csleep import MowerExit, cancellation_scope
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.discovery import DiscoveryResult, DiscoveryService
 from arknights_mower.utils.device.endpoint_identity import (
@@ -287,10 +287,17 @@ class DeviceControl(Generic[D]):
         self.configuration_lock = RLock()
 
     @contextmanager
-    def _configuration(self):
+    def _configuration(self, *, settings: bool = False):
         self.configuration_lock.acquire()
         try:
-            yield
+            with (
+                cancellation_scope(
+                    lambda: self._shutdown.is_set() or self._pending_close.is_set()
+                )
+                if settings
+                else nullcontext()
+            ):
+                yield
         finally:
             # Pair release with the timeout handoff: either the closing caller
             # acquires the lock, or this operation owns the deferred cleanup.
@@ -392,7 +399,7 @@ class DeviceControl(Generic[D]):
             PreflightResult,
         )
 
-        with self._configuration():
+        with self._configuration(settings=True):
             if self.active:
                 return PreflightResult(
                     False,
@@ -458,7 +465,7 @@ class DeviceControl(Generic[D]):
         )
         from arknights_mower.utils.device.session_io import ProductionSimulator
 
-        with self._configuration():
+        with self._configuration(settings=True):
             host = self.settings_status()["host_platform"]
             result = PreflightResult(False, host, "failed", "")
             if self._shutdown.is_set() or self._pending_close.is_set():
@@ -493,7 +500,7 @@ class DeviceControl(Generic[D]):
     ) -> "DiscoveryResult | PreflightResult":
         from arknights_mower.utils.device.preflight import PreflightError
 
-        with self._configuration():
+        with self._configuration(settings=True):
             host = self.settings_status()["host_platform"]
             if self.active:
                 return DiscoveryResult(
@@ -587,7 +594,7 @@ class DeviceControl(Generic[D]):
                 self.serial,
                 error=PreflightError("session_closing", "设备会话正在关闭"),
             )
-        with self._configuration():
+        with self._configuration(settings=True):
             host = self.settings_status()["host_platform"]
             configuration = configuration or self._read_configuration()
             profile = configuration.device
@@ -744,7 +751,7 @@ class DeviceControl(Generic[D]):
                 self.serial,
                 error=PreflightError("session_closing", "设备会话正在关闭"),
             )
-        with self._configuration():
+        with self._configuration(settings=True):
             host = self.settings_status()["host_platform"]
             profile = (configuration or self._read_configuration()).device
             result = PreflightResult(False, host, "failed", "")
