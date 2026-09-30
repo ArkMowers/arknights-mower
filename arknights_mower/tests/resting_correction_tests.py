@@ -352,6 +352,31 @@ def test_work_replacement_uses_own_mood_limits(solver):
     assert data.replacement_candidates(op) == ["砾", "多萝西"]
 
 
+def test_work_replacement_accepts_measured_mood_above_recovery_upper_limit(solver):
+    data = solver.op_data
+    op = data.operators["斯卡蒂"]
+    op.replacement = ["多萝西", "砾"]
+    data.config = PlanConfig(
+        "",
+        "",
+        "",
+        operator_mood_limits={"多萝西": {"lower": 12, "upper": 16}},
+    )
+    data.init_mood_limit()
+
+    cover = data.operators["多萝西"]
+    cover.mood = 17
+    cover.time_stamp = datetime.now() - timedelta(hours=2)
+    cover.depletion_rate = 3
+    spare = data.operators["砾"]
+    spare.mood = 20
+    spare.time_stamp = datetime.now()
+
+    assert cover.upper_limit == 16
+    assert cover.current_mood() < cover.lower_limit
+    assert data.replacement_candidates(op) == ["砾", "多萝西"]
+
+
 def _redface_cover_scenario(solver, *, cover_mood=0, spare_mood=12):
     """The primary is recovering and the current legal cover has run out of mood."""
     data = solver.op_data

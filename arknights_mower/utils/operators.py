@@ -1566,7 +1566,7 @@ class Operators:
                 exhausted = (
                     candidate is not None
                     and candidate.time_stamp is not None
-                    and 0 <= candidate.mood <= candidate.upper_limit
+                    and 0 <= candidate.mood <= 24
                     and candidate.current_mood(now) <= candidate.lower_limit
                 )
                 return (exhausted,)
