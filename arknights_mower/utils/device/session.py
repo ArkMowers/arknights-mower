@@ -876,14 +876,23 @@ class DeviceSession:
                     and observation.serial
                     and observation.state != "booting"
                     and observation.serial not in connected
+                    and self.actions < self.policy.attempts
                 ):
-                    connected.add(observation.serial)
-                    self._action(
+                    recovered = self._action(
                         lambda timeout: self.adb.recover(
                             self.adb_path, observation.serial, timeout
                         ),
                         deadline,
+                        required=False,
                     )
+                    if recovered:
+                        connected.add(observation.serial)
+                    else:
+                        observation = self._wait_local(
+                            deadline, frame_probe=frame_probe
+                        )
+                        if observation.state == "ready":
+                            return observation
                 self.clock.sleep(
                     min(self.policy.poll_interval, self._remaining(deadline))
                 )
