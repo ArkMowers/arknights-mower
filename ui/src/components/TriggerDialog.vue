@@ -11,15 +11,6 @@ import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
-import { rescue_condition_help, rescue_trigger } from '@/utils/trigger_rescue'
-
-const editor_key = ref(0)
-
-function use_rescue_trigger() {
-  if (edit_locked.value) return
-  update_trigger(rescue_trigger())
-  editor_key.value += 1
-}
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
@@ -51,16 +42,8 @@ function update_trigger(data) {
     style="width: auto; max-width: 90vw"
   >
     <n-scrollbar style="max-height: 80vh; margin-top: 5px">
-      <n-alert title="救急副表条件" type="info" style="margin-bottom: 8px">
-        {{ rescue_condition_help }}
-        <n-button :disabled="edit_locked" @click="use_rescue_trigger">使用救急条件</n-button>
-      </n-alert>
       <n-scrollbar x-scrollable>
-        <trigger-editor
-          :key="editor_key"
-          :data="backup_plans[sub_plan].trigger"
-          @update="update_trigger"
-        />
+        <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
       </n-scrollbar>
       <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
         <n-code

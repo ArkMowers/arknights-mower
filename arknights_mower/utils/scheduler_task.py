@@ -601,35 +601,45 @@ def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now
         tasks.sort(key=lambda x: x.time)
 
 
-def adjust_run_order_for_maintenance(tasks, run_order_delay=5):
+def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None):
     """
     将维护期附近的 RUN_ORDER 任务提前到维护前，避免维护期冲突。
     :param tasks: 任务列表
     :param st: 维护开始时间（本地时间，datetime）
     :param ed: 维护结束时间（本地时间，datetime）
     :param run_order_delay: 跑单间隔（分钟）
+    :param advance_time: 维护副表要求更早执行时使用的截止时间
     """
     time_gap = max(run_order_delay * 2, 10)  # 确保最小间隔为10分钟操作时间
     st, ed = NewsChecker.get_update_time()
     if not st or not ed:
         logger.debug("无法获取维护时间，跳过调整 RUN_ORDER 任务")
-        return
+        return []
     window_start = st - timedelta(minutes=time_gap)
     window_end = ed + timedelta(minutes=time_gap)
     # 找出需要调整的任务
     run_order_tasks = [
         t
         for t in tasks
-        if t.type == TaskTypes.RUN_ORDER and window_start < t.time < window_end
+        if t.type == TaskTypes.RUN_ORDER
+        and (
+            window_start < t.time < window_end
+            or advance_time is not None
+            and getattr(t, "maintenance_start", None) == st
+        )
     ]
     # 按原 time 排序
     run_order_tasks.sort(key=lambda t: t.time)
     # 依次调整时间
     for i, t in enumerate(run_order_tasks, 1):
-        new_time = window_start - timedelta(seconds=i)
+        new_time = min(window_start, advance_time or window_start) - timedelta(
+            seconds=i
+        )
         logger.info(f"维护期附近的跑单任务已提前到 {new_time}（原定 {t.time}）")
         t.time = new_time
         t.adjusted = True  # 标记为已调整
+        t.maintenance_start = st
+    return run_order_tasks
 
 
 def _native_return(op_data, plan, names):

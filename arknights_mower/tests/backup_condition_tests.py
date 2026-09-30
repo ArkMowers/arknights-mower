@@ -61,14 +61,18 @@ def test_non_major_or_flash_maintenance_does_not_trigger(monkeypatch, info):
     )
 
 
-def test_started_major_maintenance_has_zero_remaining_hours(monkeypatch):
+@pytest.mark.parametrize("hours", [0, -1])
+def test_started_major_maintenance_does_not_trigger(monkeypatch, hours):
     op_data = operators()
     monkeypatch.setattr(
         "arknights_mower.utils.operators.NewsChecker.get_maintenance",
-        lambda: maintenance(hours=-1),
+        lambda: maintenance(hours=hours),
     )
 
-    assert op_data.major_maintenance_remaining_hours() == 0
+    assert op_data.major_maintenance_remaining_hours() == float("inf")
+    assert not op_data.evaluate_expression(
+        "op_data.major_maintenance_remaining_hours() <= 0.5"
+    )
 
 
 def test_group_mood_supports_min_max_and_excludes_zero_mood_workers():

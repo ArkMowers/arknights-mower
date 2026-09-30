@@ -67,6 +67,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-08] Unscheduled Training Slots**: Unconfigured training-room slots never produce static correction targets; automatic mastery still reads both facility slots.
 - [ ] **[INV-SCHED-09] Rescue Recovery Lifecycle**: Does rescue retain main-plan individual limits and majority completion, prioritize main primaries and priority replacements, and avoid occupied-bed clearing and excluded admissions?
 - [ ] **[INV-SCHED-10] Completed Exhaust Continuation**: Does an already-resting exhausted group leave normal planning and run-order recalculation enabled without allocating beds again?
+- [ ] **[INV-SCHED-11] Maintenance Backup Ordering**: A maintenance backup checks its configured deadline, completes the existing pre-maintenance drone-accelerated order batch before switching, and suppresses all trade order generation only while its effective primary slots contain trade order agents; its maintenance condition is false from downtime start, and backup exit waits for a normal check after task restart.
 
 ### 2.3 Presentation Layer (UI)
 

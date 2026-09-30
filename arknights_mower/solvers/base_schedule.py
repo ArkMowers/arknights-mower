@@ -104,6 +104,7 @@ from arknights_mower.utils.resting_priority import (
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    adjust_run_order_for_maintenance,
     defer_dorm_before_priority_task,
     dorm_rebalance_signature,
     find_next_task,
@@ -403,6 +404,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
         self.error = False
         self.handle_error(True)
+        self._schedule_maintenance_backup_check()
 
         while True:
             if config.maintenance_recheck.is_set():
@@ -2435,6 +2437,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tasks[:] = [task for task in self.tasks if id(task) not in invalid_ids]
 
     def plan_run_order(self, room):
+        if getattr(self, "maintenance_entry_pending", False):
+            return
         self._sync_run_order_tasks()
         if room not in self.op_data.run_order_rooms:
             return
@@ -3095,6 +3099,58 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             getattr(self, "defer_backup_plan_until_mood_read", False)
         )
 
+    def _advance_orders_before_maintenance(self, conditions):
+        """复用停服前提前跑单，完成无人机加速及原班恢复后才切副表。"""
+        entering = any(
+            active and not previous and backup.uses_major_maintenance_condition
+            for active, previous, backup in zip(
+                conditions, self.op_data.plan_condition, self.op_data.backup_plans
+            )
+        )
+        if not entering:
+            self.maintenance_entry_pending = False
+            return False
+        pending = [
+            task
+            for task in self.tasks
+            if getattr(task, "maintenance_advance_before_backup", False)
+        ]
+        if not pending and not getattr(self, "maintenance_entry_pending", False):
+            pending = adjust_run_order_for_maintenance(
+                self.tasks, config.conf.run_order_delay, advance_time=datetime.now()
+            )
+            for task in pending:
+                task.maintenance_advance_before_backup = True
+            if pending:
+                self.tasks.sort(key=lambda task: task.time)
+                logger.info("提前执行停服前跑单任务，完成后再切换维护副表")
+        self.maintenance_entry_pending = bool(pending)
+        return self.maintenance_entry_pending
+
+    def _schedule_maintenance_backup_check(self):
+        op_data = getattr(self, "op_data", None)
+        if not isinstance(op_data, Operators):
+            return
+        deadline = op_data.next_major_maintenance_check()
+        checks = [
+            task
+            for task in self.tasks
+            if task.type == TaskTypes.NOT_SPECIFIC
+            and task.meta_data == "maintenance_backup_check"
+        ]
+        # 保留已到期检查，避免睡眠刚结束就删除尚未执行的唤醒。
+        if any(task.time <= datetime.now() for task in checks):
+            return
+        if deadline is not None and len(checks) == 1 and checks[0].time == deadline:
+            return
+        check_ids = {id(task) for task in checks}
+        self.tasks[:] = [task for task in self.tasks if id(task) not in check_ids]
+        if deadline is not None:
+            self.tasks.append(
+                SchedulerTask(time=deadline, meta_data="maintenance_backup_check")
+            )
+            self.tasks.sort(key=lambda task: task.time)
+
     def backup_plan_solver(
         self,
         custom_task_time=None,
@@ -3125,6 +3181,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return False
         try:
             if not self.op_data.backup_plans:
+                self.maintenance_entry_pending = False
+                return False
+
+            initial_conditions = [
+                bool(self.op_data.evaluate_expression(str(backup.trigger)))
+                for backup in self.op_data.backup_plans
+            ]
+            if self._advance_orders_before_maintenance(initial_conditions):
                 return False
 
             if any(
@@ -3139,14 +3203,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             previous_dorm_layout = dorm_rebalance_signature(self.op_data)
             seen = {tuple(original)}
             current = original
+            conditions = initial_conditions
             while True:
-                conditions = []
                 for bp in self.op_data.backup_plans:
-                    func = str(bp.trigger)
-                    logger.debug(func)
-                    conditions.append(bool(self.op_data.evaluate_expression(func)))
+                    logger.debug(str(bp.trigger))
                 if conditions == current:
                     break
+                if current != original and self._advance_orders_before_maintenance(
+                    conditions
+                ):
+                    self.op_data.swap_plan(original, refresh=True)
+                    return False
                 key = tuple(conditions)
                 if key in seen:
                     logger.error(
@@ -3164,6 +3231,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.swap_plan(original, refresh=True)
                     return False
                 current = conditions
+                conditions = [
+                    bool(self.op_data.evaluate_expression(str(bp.trigger)))
+                    for bp in self.op_data.backup_plans
+                ]
 
             if current == original:
                 return False
@@ -3562,6 +3633,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def _prepare_shift_cycle(self, task, *, vacancy_only=False):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
+        if getattr(self, "maintenance_entry_pending", False):
+            raise ProductSwitchDeferred(
+                "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
+            )
         if (self._initial_mood_read_pending()) or getattr(
             task, "backup_shift_active", False
         ):
@@ -3859,6 +3934,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             and self.op_data.plan_condition == conditions
         ):
             return
+        if self._advance_orders_before_maintenance(conditions):
+            raise ProductSwitchDeferred(
+                "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
+            )
         previous = list(self.op_data.plan_condition)
         if error := self.op_data.swap_plan(conditions, refresh=True):
             self.op_data.swap_plan(previous, refresh=True)
@@ -7872,13 +7951,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if config.conf.run_order_buffer_time > 0:
                 self.agent_arrange_room({}, run_order_room, new_plan, skip_enter=True)
             else:
-                self.tasks.append(
-                    SchedulerTask(
-                        time=self.tasks[0].time,
-                        task_plan=new_plan,
-                        task_type=TaskTypes.RUN_ORDER,
-                    )
+                restore_task = SchedulerTask(
+                    time=self.tasks[0].time,
+                    task_plan=new_plan,
+                    task_type=TaskTypes.RUN_ORDER,
                 )
+                if getattr(self.task, "maintenance_advance_before_backup", False):
+                    restore_task.maintenance_advance_before_backup = True
+                self.tasks.append(restore_task)
                 self.skip()
         elif len(new_plan) > 1:
             self.tasks.append(
@@ -9330,6 +9410,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         一份几乎相同的实现，其中两份漏掉了 `sleeping`，正是 /status 卡在
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
+        self._schedule_maintenance_backup_check()
         if any(getattr(task, "strict_mood_limit", False) for task in self.tasks):
             # 睡眠前就计算提前量，不能睡到原上限时刻才发现需要提前离宿。
             protect_priority_tasks(self.tasks)

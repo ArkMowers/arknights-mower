@@ -23,6 +23,7 @@
 - **[INV-SCHED-08] Unscheduled Training Slots**: Unconfigured training-room slots never produce static correction targets; automatic mastery still reads both facility slots.
 - **[INV-SCHED-09] Rescue Recovery Lifecycle**: Rescue evaluates main-plan individual mood limits, preserves main-primary and priority-replacement recovery until their upper limits, and exits after majority completion without clearing occupied beds or admitting excluded workers.
 - **[INV-SCHED-10] Completed Exhaust Continuation**: An exhausted-shift task whose full working group already rests preserves normal planning and run-order recalculation without reserving another bed or invoking skip.
+- **[INV-SCHED-11] Maintenance Backup Ordering**: A maintenance backup checks its configured deadline, completes the existing pre-maintenance drone-accelerated order batch before switching, and suppresses all trade order generation only while its effective primary slots contain trade order agents; its maintenance condition is false from downtime start, and backup exit waits for a normal check after task restart.
 
 ### 2.2 Presentation Layer (UI)
 - **[INV-UI-03] Selected Instance Persistence**: Selecting a detected instance saves its explicit identity before connection testing or startup; failure preserves that choice without an unverified endpoint, while a rejected identity save prevents lifecycle actions and preserves the previous saved Device Profile.

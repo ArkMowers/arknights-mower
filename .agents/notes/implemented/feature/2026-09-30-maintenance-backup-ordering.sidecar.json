@@ -1,0 +1,21 @@
+{
+  "title": "Maintenance Backup Ordering",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-11]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.next_major_maintenance_check",
+    "arknights_mower.utils.operators.Operators.swap_plan",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._advance_orders_before_maintenance",
+    "arknights_mower.utils.scheduler_task.adjust_run_order_for_maintenance"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maintenance_run_order_tests.py"
+  ]
+}
