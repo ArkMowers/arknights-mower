@@ -145,7 +145,7 @@ const type_options = [
   { label: '生产设施统计', value: 'facility_stat' },
   { label: '绑组心情', value: 'group_mood' },
   { label: '线索交流结束时间', value: 'impart' },
-  { label: '距离停服大更新维护时长（小时）', value: 'major_maintenance' },
+  { label: '停服大更新前（定时触发）', value: 'major_maintenance' },
   { label: '常量/自定义', value: 'custom' }
 ]
 
@@ -435,6 +435,14 @@ function render_custom_tip(option) {
   />
   <help-text v-if="op_type == 'rescue'" label="查看救急模式说明" :max-width="480">
     {{ rescue_condition_help }} 条件填写为「救急模式 == True」。
+  </help-text>
+  <help-text v-if="op_type == 'major_maintenance'" label="查看停服大更新副表说明" :max-width="480">
+    默认在停服大更新开始前半小时触发，可在同一行修改提前小时数。到达设定时间时，调度器自动检查此副表；其他组合条件仍须成立。
+    触发后先提前执行已有跑单任务，使用无人机加速；跑单及原班恢复完成后，再执行副表换班。提前跑单期间不生成新的跑单任务。
+    此副表的主班位置允许填写但书、龙舌兰、佩佩、可露希尔，仍需填写普通替班。
+    当此副表生效且合并后的主班保留这些干员时，所有贸易站暂停生成跑单任务，已排队的跑单及跑单时间刷新任务也会移除。
+    副表退出或这些主班被其他副表覆盖后，恢复正常跑单。只使用此条件、未将跑单干员填入主班时，跑单照常运行。
+    未检测到停服大更新时，此定时条件不成立；闪断更新不计入。
   </help-text>
   <template v-if="op_type == 'op'">
     <n-select

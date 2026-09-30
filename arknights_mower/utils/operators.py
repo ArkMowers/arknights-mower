@@ -360,17 +360,32 @@ class Operators:
     def __repr__(self):
         return f"Operators(operators={self.operators})"
 
+    @property
+    def run_order_paused(self) -> bool:
+        return bool(self.maintenance_primary_slots)
+
     def swap_plan(self, condition, refresh=False):
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         self.products = copy.deepcopy(self.global_plan["default_plan"].products)
         self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
         rescue_slots = {}
+        self.maintenance_primary_slots = set()
         self.rescue_plan_active = False
         for index, success in enumerate(condition):
             if success:
                 self.plan, self.config = self.merge_plan(index, self.config, self.plan)
                 backup = self.global_plan["backup_plans"][index]
                 self.products.update(backup.products)
+                maintenance = backup.uses_major_maintenance_condition
+                for room, slots in backup.plan.items():
+                    if room not in self.plan:
+                        continue
+                    for slot_index, slot in enumerate(slots):
+                        if slot.agent == "Current":
+                            continue
+                        self.maintenance_primary_slots.discard((room, slot_index))
+                        if maintenance and slot.agent in TRADE_ORDER_AGENTS:
+                            self.maintenance_primary_slots.add((room, slot_index))
                 rescue = backup.uses_rescue_condition
                 self.rescue_plan_active |= rescue
                 for room, slots in backup.plan.items():
@@ -451,7 +466,10 @@ class Operators:
             for idx, data in enumerate(self.plan[room]):
                 if data.agent not in agent_list and data.agent != "Free":
                     return f"干员名输入错误: 房间->{room}, 干员->{data.agent}"
-                if data.agent in TRADE_ORDER_AGENTS:
+                if (
+                    data.agent in TRADE_ORDER_AGENTS
+                    and (room, idx) not in self.maintenance_primary_slots
+                ):
                     return f"高效组不可用龙舌兰，但书,佩佩，可露希尔 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and idx == 1:
                     return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
@@ -525,6 +543,14 @@ class Operators:
                     if _replacement not in agent_list and data.agent != "Free":
                         return f"干员名输入错误: 房间->{room}, 干员->{_replacement}"
                     if data.agent != "菲亚梅塔":
+                        # 暂停跑单时保留原表的跑单标记，不将主班降为替班。
+                        if (
+                            self.run_order_paused
+                            and _replacement in TRADE_ORDER_AGENTS
+                            and _replacement in self.operators
+                            and self.operators[_replacement].is_high()
+                        ):
+                            continue
                         # 普通替换
                         if (
                             _replacement in self.operators
@@ -943,6 +969,30 @@ class Operators:
             return float("inf")
         return max(0.0, (info.start - datetime.now()).total_seconds() / 3600)
 
+    def next_major_maintenance_check(self, now=None):
+        """维护条件阈值及公告结束时唤醒调度器，继续使用正常副表收敛。"""
+        thresholds = [
+            hours
+            for backup in self.backup_plans
+            for hours in backup.major_maintenance_thresholds
+        ]
+        if not thresholds:
+            return None
+        info = NewsChecker.get_maintenance()
+        if info is None or info.update_type != "major" or info.is_flash_update:
+            return None
+        now = now or datetime.now()
+        times = []
+        for hours in thresholds:
+            try:
+                times.append(info.start - timedelta(hours=hours))
+            except OverflowError:
+                # 极大的提前量已成立，不需要安排未来的阈值检查。
+                continue
+        if getattr(info, "end", None) is not None:
+            times.append(info.end)
+        return min((time for time in times if time > now), default=None)
+
     def _group_moods(self, group: str) -> list[float]:
         members = self.groups.get(group)
         if not members:
@@ -980,9 +1030,10 @@ class Operators:
         }
 
     def is_run_order_room(self, room: str) -> bool:
-        """按生效排班和实际订单过滤跑单；卖玉及切换中的卖玉房间不插拔。"""
+        """按维护副表、生效排班和实际订单过滤跑单。"""
         return (
-            room.startswith("room")
+            not self.run_order_paused
+            and room.startswith("room")
             and self.products.get(room) != "orundum"
             and self.facility_states.get(room, {}).get("product") != "orundum"
             and any(

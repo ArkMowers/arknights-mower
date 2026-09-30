@@ -1,5 +1,6 @@
 import ast
 import copy
+import math
 from enum import Enum
 from typing import Optional, Self
 
@@ -247,6 +248,14 @@ class Plan:
 
     @property
     def uses_rescue_condition(self) -> bool:
+        return self.uses_condition("rescue_needed")
+
+    @property
+    def uses_major_maintenance_condition(self) -> bool:
+        return self.uses_condition("major_maintenance_remaining_hours")
+
+    def uses_condition(self, method: str) -> bool:
+        """识别条件中的实际调用；字符串常量不授予副表能力。"""
         try:
             expression = ast.parse(str(self.trigger), mode="eval")
         except SyntaxError:
@@ -256,9 +265,34 @@ class Plan:
             and isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "op_data"
-            and node.func.attr == "rescue_needed"
+            and node.func.attr == method
             for node in ast.walk(expression)
         )
+
+    @property
+    def major_maintenance_thresholds(self) -> list[float]:
+        """读取定时条件的提前小时数，兼容嵌套条件中的原有比较式。"""
+        try:
+            expression = ast.parse(str(self.trigger), mode="eval")
+        except SyntaxError:
+            return []
+        thresholds = []
+        for node in ast.walk(expression):
+            if not (
+                isinstance(node, ast.Compare)
+                and len(node.ops) == 1
+                and isinstance(node.ops[0], ast.LtE)
+                and ast.unparse(node.left)
+                == "op_data.major_maintenance_remaining_hours()"
+            ):
+                continue
+            try:
+                hours = ast.literal_eval(node.comparators[0])
+            except (ValueError, TypeError):
+                continue
+            if type(hours) in (int, float) and 0 <= hours and math.isfinite(hours):
+                thresholds.append(float(hours))
+        return thresholds
 
     def scheduled_names(self, include_tasks: bool = False) -> set[str]:
         """Return assigned operators, including replacements and optional tasks."""
