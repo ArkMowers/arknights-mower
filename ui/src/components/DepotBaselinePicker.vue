@@ -4,7 +4,7 @@
       v-model:show="popoverOpen"
       trigger="click"
       placement="bottom-end"
-      :flip="false"
+      :flip="true"
       raw
       :show-arrow="false"
       class="baseline-popover-panel"
@@ -282,16 +282,21 @@ function initDraftFromValue() {
 }
 
 /**
- * 弹窗一律向下展开（:flip="false" 修的是被吸顶工具栏遮住的老问题），代价是触发
- * 按钮越靠屏幕下方，卡片越容易伸出视口底部，"确定"就点不到了。这里按触发按钮到
- * 视口底部的实际距离给卡片一个即时高度上限，让它自己内部滚动，而不是整块飘出去。
+ * 动态计算面板最大高度：结合视口与触发按钮位置，考虑界面缩放比例，
+ * 兼顾向下或向上翻转的可用空间，保证关键内容与操作按钮完整呈现。
  */
 function updatePanelSpace() {
   const trigger = triggerRef.value
   if (!trigger || typeof window === 'undefined') return
   const rect = trigger.getBoundingClientRect()
-  const available = window.innerHeight - rect.bottom - 16
-  panelMaxHeight.value = `${Math.max(180, Math.min(available, window.innerHeight - 120))}px`
+  const zoomScale =
+    Number(getComputedStyle(document.documentElement).getPropertyValue('--mower-zoom')) ||
+    Number(document.documentElement.style.zoom) ||
+    1.0
+  const availableBelow = (window.innerHeight - rect.bottom - 16) / zoomScale
+  const availableAbove = (rect.top - 16) / zoomScale
+  const maxAvailable = Math.max(availableBelow, availableAbove)
+  panelMaxHeight.value = `${Math.max(360, Math.min(520, maxAvailable))}px`
 }
 
 function handlePopoverShowChange(show) {
@@ -658,11 +663,18 @@ const activeTriggerLabel = computed(() => {
 }
 
 .popover-action-row {
+  position: sticky;
+  bottom: -14px;
+  background: var(--mower-surface, #ffffff);
+  padding-top: 8px;
+  padding-bottom: 2px;
+  border-top: 1px solid var(--mower-border, rgba(0, 0, 0, 0.08));
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+  z-index: 10;
 }
 
 .action-btn {
@@ -721,5 +733,10 @@ html[data-mower-theme='dark'] .time-input-card {
 
 html[data-mower-theme='dark'] .match-summary-card {
   background: var(--mower-segment-rail, rgb(36, 36, 42));
+}
+
+html[data-mower-theme='dark'] .popover-action-row {
+  background: var(--mower-surface, rgb(28, 28, 33));
+  border-color: var(--mower-border, rgba(255, 255, 255, 0.08));
 }
 </style>

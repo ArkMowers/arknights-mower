@@ -775,6 +775,8 @@ function start() {
 function apply_zoom(scale) {
   const s = Number(scale) || 1.0
   document.documentElement.style.zoom = s
+  document.documentElement.style.setProperty('--mower-zoom', String(s))
+  document.documentElement.style.setProperty('--mower-zoom-inverse', String(1 / s))
   actions_on_resize()
 }
 
@@ -1300,6 +1302,15 @@ html[data-window-shell-theme='dark'] {
   display: none;
   width: 0;
   height: 0;
+}
+
+/* 修复界面缩放（CSS zoom）下 Naive UI / vueuc 浮层（popover / dropdown / select / tooltip / date-picker 等）坐标二次缩放漂移 */
+.v-binder-follower-container {
+  zoom: var(--mower-zoom-inverse, 1);
+}
+
+.v-binder-follower-content > * {
+  zoom: var(--mower-zoom, 1);
 }
 
 .n-tab-pane {

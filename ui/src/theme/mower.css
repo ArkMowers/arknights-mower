@@ -1,5 +1,7 @@
 .provider,
 :root {
+  --mower-zoom: 1;
+  --mower-zoom-inverse: 1;
   --mower-segment-rail: #efefed;
   --mower-segment-active: #ffffff;
   --mower-segment-muted: rgba(31, 30, 28, 0.5);
