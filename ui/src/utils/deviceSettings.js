@@ -843,7 +843,7 @@ export function deviceSettingsState({
     // The status tag explains how a connection is verified and when the form is
     // written: the sentence that used to sit in the notice above the buttons.
     connectionHelp: managedStart
-      ? '“检测并启动”先测试所选实例，仅在确认为已停止时尝试启动；其他错误显示修复提示。多个实例需先选定目标，下拉“测试连接”只读取状态，不会启动或重启模拟器及其管理器。“启动并测试连接”按恢复策略处理所选实例。连接验证通过后，这份设备设置才会保存。'
+      ? '“检测并启动”先测试所选实例，仅在确认为已停止时尝试启动；其他错误显示修复提示。多个实例需先选定目标，下拉“测试连接”只读取状态，不会启动或重启模拟器及其管理器。“启动并测试连接”按恢复策略处理所选实例。从检测结果选择的实例先保存编号和身份核验信息，连接失败不撤销选择；ADB 地址和游戏包在验证通过后保存。'
       : '“测试连接”只读取当前连接，不会启动或重启设备；请先确保目标设备已经启动。连接验证通过后，这份设备设置才会保存。',
     preparationMessage: messages.includes(preparationMessage) ? '' : preparationMessage,
     fields,
