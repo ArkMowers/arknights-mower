@@ -205,6 +205,12 @@ def current_state():
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
+        "rescue_state": {
+            "active": getattr(data, "rescue_mode", False),
+            "armed": getattr(data, "rescue_armed", True),
+            "completed": sorted(getattr(data, "rescue_completed", ())),
+            "main_limits": getattr(data, "main_recovery_limits", {}),
+        },
         "idle_dorm_search_exhausted": getattr(
             data, "idle_dorm_search_exhausted", False
         ),

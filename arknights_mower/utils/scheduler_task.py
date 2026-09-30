@@ -667,6 +667,7 @@ def _recovery_aware_assignments(
         candidate[2]
         for candidate in candidates
         if _active_recovery_room(op_data, candidate[2])
+        or op_data.is_rescue_recovering(candidate[2])
     }
     kept = list(candidates[:capacity])
     kept_names = {candidate[2] for candidate in kept}
@@ -1025,6 +1026,7 @@ def generate_plan_by_drom(
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
         exhaust_exist = False
+        rescue_batch = any(op_data.is_rescue_recovering(bed.name) for bed in dorms)
         for room in dorms:
             if not room.name or room.name not in op_data.operators:
                 logger.debug(f"跳过已失效的宿舍回班项：{room}")
@@ -1059,7 +1061,7 @@ def generate_plan_by_drom(
                 if rest_in_full is None:
                     # 执行端按姓名和床位双重校验；同刻回满也分别记录身份，
                     # 避免空身份被跳过，或旧任务误清后来入住的人。
-                    if op_data.config.free_room:
+                    if op_data.config.free_room or op_data.rescue_mode:
                         release_plan = {
                             target_room: ["Current"] * len(op_data.plan[target_room])
                         }
@@ -1122,7 +1124,7 @@ def generate_plan_by_drom(
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
         earliest = _after_pending_arrangements(plan, pending_resources)
         if rest_in_full:
-            if exhaust_exist:
+            if exhaust_exist or rescue_batch:
                 time = max(time, current_time, earliest)
             else:
                 time = max(time - timedelta(minutes=8), current_time, earliest)
@@ -1135,7 +1137,9 @@ def generate_plan_by_drom(
             )
         else:
             added = False
-            if rest_in_full is None and not op_data.config.free_room:
+            if rest_in_full is None and not (
+                op_data.config.free_room or op_data.rescue_mode
+            ):
                 continue
             for idx in range(len(result) - 1, -1, -1):
                 if result[idx].time < time:
@@ -1183,6 +1187,7 @@ def generate_plan_by_drom(
 
 
 def plan_metadata(op_data, tasks):
+    op_data.rescue_needed()
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task for task in tasks if (getattr(task, "product_shift_locked", False))
@@ -1282,7 +1287,10 @@ def plan_metadata(op_data, tasks):
             dorm
             for dorm in dorms
             if op_data.operators[dorm.name].is_high()
-            and op_data.operators[dorm.name].resting_priority == "high"
+            and (
+                op_data.operators[dorm.name].resting_priority == "high"
+                or op_data.is_rescue_recovering(dorm.name)
+            )
         ]
         if len(_high_dorms) == 0:
             high_dorms = [
@@ -1303,7 +1311,10 @@ def plan_metadata(op_data, tasks):
         if high_dorms and group_name:
             # 高优先干员恢复时间差过大时，可延后整组回班。
             base_time = high_dorms[0].time
-            need_early = not op_data.operators[high_dorms[0].name].exhaust_require
+            need_early = not (
+                op_data.operators[high_dorms[0].name].exhaust_require
+                or any(op_data.is_rescue_recovering(bed.name) for bed in high_dorms)
+            )
             mood_gap_full_rest = False
             if (
                 config.conf.group_rest_in_full_on_mood_gap
@@ -1380,7 +1391,7 @@ def plan_metadata(op_data, tasks):
                             new_task[task_time][1] or rest_in_full,
                         )
     release_tasks = {}
-    if op_data.config.free_room:
+    if op_data.config.free_room or op_data.rescue_mode:
         for room in free_rooms:
             # 防止时间和前面重复
             if min_resting_time != datetime.max:
@@ -1395,7 +1406,7 @@ def plan_metadata(op_data, tasks):
                     datetime.now()
                     if observed_full
                     else room.time
-                    if operator.is_high()
+                    if operator.is_high() or op_data.rescue_mode
                     else min(room.time, min_resting_time)
                 )
                 release_tasks.setdefault(task_time, ([], None))[0].append(room)

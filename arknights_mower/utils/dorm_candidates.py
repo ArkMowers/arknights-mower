@@ -68,4 +68,10 @@ def dorm_candidates(
     full.sort(key=fill_key)
     unregistered = unregistered_idle_candidates(op_data, excluded)
     filling = sorted([*recovering, *full, *unregistered], key=fill_key)
+    if getattr(op_data, "rescue_mode", False):
+        recovering = [
+            name for name in recovering if name in op_data.main_rescue_priority
+        ]
+        full, unregistered = [], []
+        filling = list(recovering)
     return DormCandidates(recovering, full, unregistered, filling)
