@@ -1,5 +1,7 @@
 .provider,
 :root {
+  --mower-zoom: 1;
+  --mower-zoom-inverse: 1;
   --mower-segment-rail: #efefed;
   --mower-segment-active: #ffffff;
   --mower-segment-muted: rgba(31, 30, 28, 0.5);
@@ -9,6 +11,11 @@
   --mower-segment-capsule-shadow:
     inset 0 0 0 1px rgba(55, 49, 43, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.88),
     0 1px 3px rgba(55, 49, 43, 0.13), 0 4px 10px -7px rgba(55, 49, 43, 0.32);
+}
+
+html[data-mower-theme='dark'],
+html[data-window-shell-theme='dark'] {
+  color-scheme: dark;
 }
 
 html[data-mower-theme='dark'],

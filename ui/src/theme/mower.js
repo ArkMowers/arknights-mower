@@ -476,6 +476,9 @@ export const mowerDarkThemeOverrides = createMowerTheme({
 
 function createMowerCssVariables(theme) {
   return {
+    '--mower-text': theme.common.textColorBase,
+    '--mower-text-muted': theme.common.textColor3,
+    '--mower-border': theme.common.borderColor,
     '--mower-surface': theme.common.cardColor,
     '--mower-shadow-surface': 'none',
     '--mower-shadow-control': 'none',

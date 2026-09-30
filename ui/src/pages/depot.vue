@@ -1,5 +1,5 @@
 <template>
-  <div class="depot-page">
+  <div ref="depotPageRef" class="depot-page">
     <!-- ① 顶部总览看板 -->
     <n-card class="depot-hero" :bordered="false">
       <!-- 头部：标题、状态与快捷操作 -->
@@ -1658,8 +1658,20 @@ async function exportDepotImage(scope = 'all') {
   }
 }
 
+const depotPageRef = ref(null)
 const mobileRailRef = ref(null)
 const stickyBarRef = ref(null)
+let stickyBarObserver = null
+
+function updateStickyOffsets() {
+  if (!stickyBarRef.value || !depotPageRef.value) return
+  const el = stickyBarRef.value
+  const height = el.offsetHeight || Math.round(el.getBoundingClientRect().height || 0)
+  if (height > 0) {
+    depotPageRef.value.style.setProperty('--depot-toolbar-height', `${height}px`)
+    depotPageRef.value.style.setProperty('--depot-sticky-top', `${height + 8}px`)
+  }
+}
 
 function scrollRailToActive(key) {
   if (!mobileRailRef.value || !key) return
@@ -1680,8 +1692,7 @@ function scrollToTier(tierKey) {
   scrollRailToActive(tierKey)
   const target = sectionElements.get(tierKey)
   if (target) {
-    // 工具栏高度会随移动端筛选展开、换行和窗口宽度变化。
-    target.style.scrollMarginTop = `${(stickyBarRef.value?.getBoundingClientRect().height || 0) + 8}px`
+    updateStickyOffsets()
     target.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
@@ -1858,6 +1869,13 @@ watch(
 
 onMounted(async () => {
   depotStore.loadReport().catch(() => {})
+  if (typeof ResizeObserver !== 'undefined' && stickyBarRef.value) {
+    stickyBarObserver = new ResizeObserver(() => {
+      updateStickyOffsets()
+    })
+    stickyBarObserver.observe(stickyBarRef.value)
+  }
+  updateStickyOffsets()
   await nextTick()
   setupIntersectionObserver()
 })
@@ -1870,6 +1888,10 @@ onUnmounted(() => {
   if (observer) {
     observer.disconnect()
     observer = null
+  }
+  if (stickyBarObserver) {
+    stickyBarObserver.disconnect()
+    stickyBarObserver = null
   }
 })
 </script>
@@ -1892,6 +1914,8 @@ onUnmounted(() => {
 
 <style scoped>
 .depot-page {
+  --depot-toolbar-height: 96px;
+  --depot-sticky-top: calc(var(--depot-toolbar-height) + 8px);
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -2665,7 +2689,7 @@ onUnmounted(() => {
 /* 左侧导航栏（桌面端吸顶位置随顶部工具栏顺延） */
 .depot-nav-rail {
   position: sticky;
-  top: 76px;
+  top: var(--depot-sticky-top, 104px);
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -2674,6 +2698,8 @@ onUnmounted(() => {
   border-radius: 10px;
   background: var(--mower-surface);
   border: var(--depot-hairline);
+  max-height: calc(100vh - var(--depot-sticky-top, 104px) - 24px);
+  overflow-y: auto;
 }
 
 .rail-header {
@@ -2916,7 +2942,7 @@ onUnmounted(() => {
   .tier-group-section {
     content-visibility: auto;
     contain-intrinsic-size: auto 240px;
-    scroll-margin-top: 98px;
+    scroll-margin-top: var(--depot-sticky-top, 98px);
   }
 
   .items-card-grid {
@@ -2978,7 +3004,7 @@ onUnmounted(() => {
 .tier-group-section {
   content-visibility: auto;
   contain-intrinsic-size: auto 300px;
-  scroll-margin-top: 68px;
+  scroll-margin-top: var(--depot-sticky-top, 104px);
 }
 
 .tier-group-header {
