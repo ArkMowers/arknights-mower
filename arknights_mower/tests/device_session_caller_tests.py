@@ -18,6 +18,7 @@ class SessionControl:
         self.executing = False
         self.operations = 0
         self.recoveries = 0
+        self.stops = 0
 
     def execute(self, operation):
         self.operations += 1
@@ -34,6 +35,10 @@ class SessionControl:
     def recover(self):
         self.recoveries += 1
         return SimpleNamespace(unwrap=lambda: None)
+
+    def stop_bound_simulator(self):
+        self.stops += 1
+        return True
 
 
 class DeviceSessionCallerTests(unittest.TestCase):
@@ -111,11 +116,15 @@ class DeviceSessionCallerTests(unittest.TestCase):
             patch.object(config.conf, "adb", "127.0.0.1:16384"),
             patch.object(config.conf, "maa_adb_path", "saved-adb"),
             patch.object(config.conf, "fix_mumu12_adb_disconnect", True),
-            patch("arknights_mower.utils.simulator.run_command", return_value=True),
+            patch(
+                "arknights_mower.utils.simulator.run_command", return_value=True
+            ) as legacy_stop,
         ):
             self.assertTrue(restart_simulator(start=False))
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.args[0], ["chosen-adb", "version"])
+        legacy_stop.assert_not_called()
+        self.assertEqual(self.session.stops, 1)
         self.assertEqual(self.session.operations, 1)
         self.assertEqual(self.session.recoveries, 0)
 

@@ -10,6 +10,7 @@ import numpy as np
 from arknights_mower.tests.device_session_tests import ADB, Clock
 from arknights_mower.utils.config.device_profile import DeviceProfile
 from arknights_mower.utils.device.adb_client.server import SharedADBError
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.session import (
     DeviceSession,
     InstanceObservation,
@@ -349,6 +350,214 @@ class DisplayProbeTests(unittest.TestCase):
             adapter.frame_size("chosen-adb", "USB-A", 5)
 
 
+class SimulatorStopBindingTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.presets = ("windows.mumu12", "windows.ldplayer9", "windows.ldplayer14")
+
+    def profile(self, preset):
+        manager = self.folder / (
+            "MuMuManager.exe" if preset == "windows.mumu12" else "ldconsole.exe"
+        )
+        manager.touch()
+        return DeviceProfile(
+            preset_id=preset,
+            manager_path=str(manager),
+            instance_id="2",
+            instance_name="chosen",
+            adb_path="unavailable-adb",
+            last_serial="127.0.0.1:5559",
+        )
+
+    def information(self, profile):
+        if profile.preset_id == "windows.mumu12":
+            return json.dumps(
+                {
+                    "2": {
+                        "index": 2,
+                        "name": profile.instance_name,
+                        "is_process_started": True,
+                        "is_android_started": True,
+                        "adb_port": 16448,
+                    }
+                }
+            ).encode()
+        return f"2,{profile.instance_name},0,0,1,223,224\n".encode()
+
+    def commands(self, profile):
+        if profile.preset_id == "windows.mumu12":
+            return [
+                [profile.manager_path, "info", "-v", "2"],
+                [profile.manager_path, "api", "-v", "2", "shutdown_player"],
+            ]
+        return [
+            [profile.manager_path, "list2"],
+            [profile.manager_path, "quit", "--index", "2"],
+        ]
+
+    def test_offline_adb_does_not_block_manager_verified_stop(self):
+        for preset in self.presets:
+            with self.subTest(preset=preset):
+                profile = self.profile(preset)
+                before = profile.model_dump()
+                run = Mock(
+                    side_effect=[
+                        subprocess.CompletedProcess(
+                            [], 0, self.information(profile), b""
+                        ),
+                        subprocess.CompletedProcess([], 0, b'{"code":0}', b""),
+                    ]
+                )
+                probe = Mock(side_effect=AssertionError("shutdown cannot use ADB"))
+                listeners = Mock(
+                    side_effect=AssertionError("shutdown cannot use ports")
+                )
+                simulator = ProductionSimulator(
+                    run=run, probe=probe, listener_ports=listeners
+                )
+
+                self.assertTrue(simulator.stop(profile, 10))
+
+                self.assertEqual(
+                    [command.args[0] for command in run.call_args_list],
+                    self.commands(profile),
+                )
+                probe.assert_not_called()
+                listeners.assert_not_called()
+                self.assertEqual(profile.model_dump(), before)
+                for command in run.call_args_list:
+                    self.assertGreater(command.kwargs["timeout"], 0)
+                    self.assertLessEqual(command.kwargs["timeout"], 10)
+                    self.assertFalse(command.kwargs.get("shell", False))
+
+    def test_changed_or_ambiguous_identity_never_authorizes_stop(self):
+        for preset in self.presets:
+            profile = self.profile(preset)
+            valid = self.information(profile)
+            invalid = (
+                valid.replace(b"chosen", b"recreated"),
+                b"{}" if preset == "windows.mumu12" else b"0,other,0,0,1,123,124\n",
+                b'[{"index":2},{"index":2}]'
+                if preset == "windows.mumu12"
+                else valid + valid,
+                b'{"2":{"index":3}}'
+                if preset == "windows.mumu12"
+                else b'2,"unterminated,0,0,1,223,224',
+            )
+            for output in invalid:
+                with self.subTest(preset=preset, output=output):
+                    before = profile.model_dump()
+                    run = Mock(
+                        return_value=subprocess.CompletedProcess([], 0, output, b"")
+                    )
+
+                    with self.assertRaises(InstanceBindingError):
+                        ProductionSimulator(run=run).stop(profile, 10)
+
+                    run.assert_called_once()
+                    self.assertEqual(run.call_args.args[0], self.commands(profile)[0])
+                    self.assertEqual(profile.model_dump(), before)
+
+    def test_binding_query_and_stop_share_one_deadline(self):
+        for preset in self.presets:
+            with self.subTest(preset=preset):
+                profile = self.profile(preset)
+                clock = Clock()
+                calls = []
+
+                def run(argv, **options):
+                    calls.append((argv, options["timeout"]))
+                    query = argv == self.commands(profile)[0]
+                    clock.now += 2 if query else 1
+                    output = self.information(profile) if query else b'{"code":0}'
+                    return subprocess.CompletedProcess(argv, 0, output, b"")
+
+                self.assertTrue(
+                    ProductionSimulator(run=run, monotonic=clock.monotonic).stop(
+                        profile, 4
+                    )
+                )
+
+                self.assertEqual([argv for argv, _ in calls], self.commands(profile))
+                self.assertEqual([timeout for _, timeout in calls], [3, 2])
+
+    def test_exhausted_query_deadline_never_issues_stop(self):
+        for preset in self.presets:
+            with self.subTest(preset=preset):
+                profile = self.profile(preset)
+                clock = Clock()
+                calls = []
+
+                def run(argv, **options):
+                    calls.append(argv)
+                    clock.now += options["timeout"]
+                    return subprocess.CompletedProcess(
+                        argv, 0, self.information(profile), b""
+                    )
+
+                with self.assertRaises(TimeoutError):
+                    ProductionSimulator(run=run, monotonic=clock.monotonic).stop(
+                        profile, 3
+                    )
+
+                self.assertEqual(calls, [self.commands(profile)[0]])
+
+    def test_query_failure_never_issues_stop(self):
+        for preset in self.presets:
+            with self.subTest(preset=preset):
+                profile = self.profile(preset)
+                run = Mock(side_effect=subprocess.TimeoutExpired("manager query", 3))
+
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    ProductionSimulator(run=run).stop(profile, 10)
+
+                run.assert_called_once()
+                self.assertEqual(run.call_args.args[0], self.commands(profile)[0])
+
+    def test_start_keeps_one_lifecycle_command_without_binding_query(self):
+        for preset in self.presets:
+            with self.subTest(preset=preset):
+                profile = self.profile(preset)
+                run = Mock(
+                    return_value=subprocess.CompletedProcess([], 0, b'{"code":0}', b"")
+                )
+
+                self.assertTrue(ProductionSimulator(run=run).start(profile, 10))
+
+                run.assert_called_once()
+                expected = self.commands(profile)[1]
+                expected = [
+                    "launch_player"
+                    if argument == "shutdown_player"
+                    else "launch"
+                    if argument == "quit"
+                    else argument
+                    for argument in expected
+                ]
+                self.assertEqual(run.call_args.args[0], expected)
+
+    def test_ldplayer_gb18030_instance_name_remains_verifiable(self):
+        for preset in self.presets[1:]:
+            with self.subTest(preset=preset):
+                profile = self.profile(preset)
+                profile.instance_name = "日常号"
+                run = Mock(
+                    side_effect=[
+                        subprocess.CompletedProcess(
+                            [], 0, "2,日常号,0,0,1,223,224\n".encode("gb18030"), b""
+                        ),
+                        subprocess.CompletedProcess([], 0, b"", b""),
+                    ]
+                )
+
+                self.assertTrue(ProductionSimulator(run=run).stop(profile, 10))
+
+                self.assertEqual(
+                    [command.args[0] for command in run.call_args_list],
+                    self.commands(profile),
+                )
+
+
 class SimulatorIOTests(unittest.TestCase):
     def test_manager_zero_exit_error_output_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -479,7 +688,13 @@ class SimulatorIOTests(unittest.TestCase):
                 preset_id="windows.mumu12", manager_path=str(manager), instance_id="2"
             )
             run = Mock(
-                return_value=subprocess.CompletedProcess([], 0, b'{"code":0}', b"")
+                side_effect=[
+                    subprocess.CompletedProcess([], 0, b'{"code":0}', b""),
+                    subprocess.CompletedProcess(
+                        [], 0, b'{"2":{"is_process_started":false}}', b""
+                    ),
+                    subprocess.CompletedProcess([], 0, b'{"code":0}', b""),
+                ]
             )
             simulator = ProductionSimulator(run=run)
             self.assertTrue(simulator.start(profile, 30))
@@ -488,6 +703,7 @@ class SimulatorIOTests(unittest.TestCase):
                 [call.args[0] for call in run.call_args_list],
                 [
                     [str(manager), "api", "-v", "2", "launch_player"],
+                    [str(manager), "info", "-v", "2"],
                     [str(manager), "api", "-v", "2", "shutdown_player"],
                 ],
             )
@@ -495,8 +711,10 @@ class SimulatorIOTests(unittest.TestCase):
                 all(
                     QUERY_TIMEOUT < call.kwargs["timeout"] <= 30
                     for call in run.call_args_list
+                    if call.args[0][1] == "api"
                 )
             )
+            self.assertLessEqual(run.call_args_list[1].kwargs["timeout"], QUERY_TIMEOUT)
 
     def test_mumu_state_query_keeps_its_own_short_bound(self):
         """``info`` answers a readiness poll; it never holds the transaction."""
@@ -525,9 +743,14 @@ class SimulatorIOTests(unittest.TestCase):
             )
             for code, expected in ((7, "7"), (-506 % 2**32, "-506")):
                 with self.subTest(code=code):
-                    run = Mock(
-                        return_value=subprocess.CompletedProcess([], code, b"", b"")
-                    )
+
+                    def run(argv, **_options):
+                        if argv[1] == "info":
+                            return subprocess.CompletedProcess(
+                                argv, 0, b'{"2":{"is_process_started":false}}', b""
+                            )
+                        return subprocess.CompletedProcess(argv, code, b"", b"")
+
                     simulator = ProductionSimulator(run=run)
                     # The vendor's own rejection stays a named, actionable
                     # verdict instead of a subprocess exception.

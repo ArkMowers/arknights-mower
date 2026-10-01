@@ -74,29 +74,12 @@ def restart_simulator(stop: bool = True, start: bool = True) -> bool:
         return result.ok
     if not stop:
         return True
-    if config.conf.device.preset_id == "macos.mumu_pro":
-        from arknights_mower.__main__ import device_control
+    from arknights_mower.__main__ import device_control
 
-        return device_control.stop_bound_mumu_pro()
-    if config.conf.device.preset_id in {"macos.avd", "linux.avd"}:
-        from arknights_mower.__main__ import device_control
-
-        return device_control.stop_owned_avd()
-    data = config.conf.simulator
-    simulator_type = data.name
-    if simulator_type not in [item.value for item in Simulator_Type]:
-        logger.warning(f"尚未支持{simulator_type}自动关闭")
-        return False
-    try:
-        commands = build_command_set(simulator_type, data.index)
-    except ValueError as exc:
-        logger.warning(str(exc))
-        return False
-    logger.info(f"关闭{simulator_type}模拟器")
-    stopped = run_command(commands.stop, data.simulator_folder, 10, True)
+    stopped = device_control.stop_bound_simulator()
     if (
         stopped
-        and simulator_type == Simulator_Type.MuMu12.value
+        and config.conf.device.preset_id == "windows.mumu12"
         and config.conf.fix_mumu12_adb_disconnect
     ):
         _clear_mumu_adb_transport()

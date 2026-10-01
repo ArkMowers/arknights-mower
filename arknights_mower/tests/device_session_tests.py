@@ -3,11 +3,18 @@
 import unittest
 from unittest.mock import Mock
 
+import pytest
+
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.device.application import DeviceControl
+from arknights_mower.utils.device.endpoint_identity import CONFIRMED_START_PRESETS
 from arknights_mower.utils.device.preflight import PreflightError, PreflightResult
 from arknights_mower.utils.device.preparation import PreparationSession
-from arknights_mower.utils.device.session import DeviceSession
+from arknights_mower.utils.device.session import (
+    DeviceSession,
+    RecoveryPolicy,
+    SessionFailure,
+)
 
 
 class Preflight:
@@ -772,6 +779,188 @@ class DeviceSessionTests(unittest.TestCase):
         text = "\n".join(logs.output)
         self.assertIn("设备观察：state=absent 实例=stopped", text)
         self.assertNotIn("显示=", text)
+
+
+@pytest.mark.parametrize(
+    "preset_id",
+    [
+        "windows.mumu12",
+        "windows.ldplayer9",
+        "windows.ldplayer14",
+        "windows.nox",
+        "macos.mumu_pro",
+        "linux.waydroid",
+        *sorted(CONFIRMED_START_PRESETS),
+    ],
+)
+@pytest.mark.parametrize("phase", ["startup", "runtime"])
+class TestStartupReconnectBudget:
+    @pytest.fixture(autouse=True)
+    def setup_session(self, preset_id, phase):
+        self.clock, self.adb, self.simulator = Clock(), ADB(), Simulator()
+        self.preset_id = preset_id
+        self.launch_actions = [] if preset_id in CONFIRMED_START_PRESETS else ["start"]
+        self.serial = "127.0.0.1:16416"
+        self.other_serial = "127.0.0.1:16384"
+        self.conf = Conf(
+            device={
+                "preset_id": preset_id,
+                "instance_id": "1",
+                "topology_fingerprint": "a" * 64,
+                "last_serial": self.serial,
+            }
+        )
+        self.profile_before = self.conf.device.model_dump()
+        self.adb.rows = [(self.other_serial, "device"), (self.serial, "device")]
+        self.adb.boot = "1"
+        self.simulator.state, self.simulator.serial = "running", self.serial
+        self.session = DeviceSession(
+            self.adb,
+            self.simulator,
+            clock=self.clock,
+            policy=RecoveryPolicy(
+                attempts=3, timeout=180, local_wait=10, poll_interval=1
+            ),
+        )
+        self.session.bind(self.conf.device)
+        if phase == "runtime":
+            assert self.session.ensure_ready().serial == self.serial
+        self.clock.sleep(40)
+        self.simulator.state = "stopped" if self.launch_actions else "starting"
+        self.simulator.serial = None if self.launch_actions else self.serial
+        self.adb.rows = [(self.other_serial, "device")]
+
+        def started():
+            self.simulator.state, self.simulator.serial = "starting", self.serial
+
+        self.simulator.on_start = started
+
+    def test_startup_readiness_retries_rejected_reconnect(self):
+        attempts = []
+
+        def reconnect(adb_path, serial, timeout):
+            attempts.append((adb_path, serial, timeout, self.clock.now))
+            self.clock.sleep(10.8)
+            if len(attempts) == 1:
+                return False
+            self.adb.rows.append((self.serial, "device"))
+            self.simulator.state = "running"
+            return True
+
+        self.adb.recover = Mock(side_effect=reconnect)
+        assert self.session.ensure_ready().serial == self.serial
+        assert self.simulator.actions == self.launch_actions
+        assert self.session.actions == len(self.launch_actions) + 2
+        assert len(attempts) == 2
+        assert all(attempt[:2] == ("verified-adb", self.serial) for attempt in attempts)
+        assert attempts[1][3] - attempts[0][3] >= 20.8
+        assert attempts[1][2] < attempts[0][2]
+        assert self.session._deadline == 220
+        assert self.clock.now < 220
+        assert set(self.simulator.bindings) == {(self.preset_id, "1")}
+        assert self.conf.device.model_dump() == self.profile_before
+        assert self.session.profile.model_dump() == self.profile_before
+        assert (self.other_serial, "device") in self.adb.rows
+
+    def test_rejected_reconnect_allows_verified_local_readiness(self):
+        self.adb.recover = Mock(return_value=False)
+        devices = self.adb.devices
+
+        def ready_later(adb_path, timeout):
+            if self.clock.now >= 44:
+                self.adb.rows = [
+                    (self.other_serial, "device"),
+                    (self.serial, "device"),
+                ]
+                self.simulator.state = "running"
+            return devices(adb_path, timeout)
+
+        self.adb.devices = ready_later
+        assert self.session.ensure_ready().serial == self.serial
+        self.adb.recover.assert_called_once_with("verified-adb", self.serial, 180)
+        assert self.clock.now == 44
+        assert self.session.actions == len(self.launch_actions) + 1
+        assert self.simulator.actions == self.launch_actions
+
+    def test_reconnect_failure_keeps_one_deadline_and_target(self):
+        self.adb.recover = Mock(return_value=False)
+        with pytest.raises(SessionFailure) as failure:
+            self.session.ensure_ready()
+        assert "设备恢复时间预算已耗尽" in str(failure.value)
+        assert failure.value.observation.serial == self.serial
+        assert self.clock.now == 220
+        assert self.session.actions == 3
+        assert self.simulator.actions == self.launch_actions
+        assert self.adb.recover.call_count == 3 - len(self.launch_actions)
+        assert all(
+            call.args[:2] == ("verified-adb", self.serial)
+            for call in self.adb.recover.call_args_list
+        )
+        assert self.conf.device.model_dump() == self.profile_before
+        assert self.adb.rows == [(self.other_serial, "device")]
+
+    def test_binding_change_stops_before_reconnect_retry(self):
+        from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+
+        self.adb.recover = Mock(return_value=False)
+        inspect = self.simulator.inspect
+
+        def changed_binding(profile, timeout):
+            if self.clock.now >= 42:
+                raise InstanceBindingError("binding_changed", "实例身份已变化")
+            return inspect(profile, timeout)
+
+        self.simulator.inspect = changed_binding
+        with pytest.raises(SessionFailure) as failure:
+            self.session.ensure_ready()
+        assert failure.value.observation.code == "binding_changed"
+        self.adb.recover.assert_called_once()
+        assert self.simulator.actions == self.launch_actions
+        assert self.clock.now == 42
+
+    def test_shared_adb_failure_is_terminal(self):
+        from arknights_mower.utils.device.adb_client.server import SharedADBError
+
+        self.adb.recover = Mock(side_effect=SharedADBError("共享 ADB 服务不可用"))
+        with pytest.raises(SessionFailure) as failure:
+            self.session.ensure_ready()
+        assert failure.value.observation.code == "adb_server_unavailable"
+        self.adb.recover.assert_called_once()
+        assert self.simulator.actions == self.launch_actions
+        assert self.clock.now == 40
+
+    def test_shutdown_during_local_wait_prevents_retry(self):
+        from arknights_mower.utils.csleep import MowerExit
+
+        self.adb.recover = Mock(return_value=False)
+        sleep = self.clock.sleep
+
+        def stop_when_waiting(seconds):
+            sleep(seconds)
+            if seconds > 0:
+                self.session.begin_shutdown()
+
+        self.clock.sleep = stop_when_waiting
+        with pytest.raises(MowerExit):
+            self.session.ensure_ready()
+        self.adb.recover.assert_called_once()
+        assert self.simulator.actions == self.launch_actions
+        assert self.clock.now == 41
+
+
+@pytest.mark.parametrize("preset_id", sorted(CONFIRMED_START_PRESETS))
+def test_stopped_confirmed_start_presets_never_reuse_launch_consent(preset_id):
+    clock, adb, simulator = Clock(), ADB(), Simulator()
+    profile = Conf(device={"preset_id": preset_id, "instance_id": "1"}).device
+    simulator.state = "stopped"
+    adb.recover = Mock()
+    session = DeviceSession(adb, simulator, clock=clock)
+    session.bind(profile)
+    with pytest.raises(SessionFailure) as failure:
+        session.ensure_ready()
+    assert failure.value.observation.code == "start_confirmation_required"
+    adb.recover.assert_not_called()
+    assert simulator.actions == []
 
 
 if __name__ == "__main__":

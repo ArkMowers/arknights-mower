@@ -207,7 +207,7 @@ class MuMuProTests(unittest.TestCase):
         self.assertEqual(
             self.control.start_bound().error.code, "mumu_pro_selection_required"
         )
-        self.assertFalse(self.control.stop_bound_mumu_pro())
+        self.assertFalse(self.control.stop_bound_simulator())
         self.command.assert_not_called()
 
     def test_manual_entry_still_requires_explicit_target_and_read_only_preflight(self):

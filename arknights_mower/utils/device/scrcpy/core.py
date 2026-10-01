@@ -236,6 +236,42 @@ class Client:
         """check if adb server alive"""
         return self.client.check_server_alive()
 
+    def check_control_alive(self) -> bool:
+        """Detect control EOF without consuming data or sending input."""
+        budget_sleep(0)
+        if not self.control_socket_lock.acquire(blocking=False):
+            raise TimeoutError("scrcpy 输入连接探测锁忙，连接状态未确认")
+        try:
+            if self.owner_pid != os.getpid() or self._interrupted:
+                raise ConnectionError("scrcpy 会话已关闭或所有权不匹配")
+            stream = self.control_socket
+            connection = stream.sock if stream is not None else None
+            if connection is None or connection.fileno() < 0:
+                return False
+            timeout = connection.gettimeout()
+            try:
+                connection.settimeout(0)
+                alive = bool(connection.recv(1, socket.MSG_PEEK))
+            except BlockingIOError:
+                alive = True
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                alive = False
+            except OSError:
+                if connection.fileno() >= 0:
+                    raise
+                alive = False
+            finally:
+                if connection.fileno() >= 0:
+                    try:
+                        connection.settimeout(timeout)
+                    except OSError:
+                        if connection.fileno() >= 0:
+                            raise
+            budget_sleep(0)
+            return alive and connection.fileno() >= 0
+        finally:
+            self.control_socket_lock.release()
+
     def tap(self, x: int, y: int) -> None:
         self.control.tap(x, y)
 

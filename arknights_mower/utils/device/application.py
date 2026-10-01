@@ -42,6 +42,7 @@ from arknights_mower.utils.device.session import (
 )
 from arknights_mower.utils.device.touch_backend import TouchFailure, touch_backends
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.performance import is_android_runtime
 
 if TYPE_CHECKING:
     from arknights_mower.utils.config.conf import Conf
@@ -798,22 +799,31 @@ class DeviceControl(Generic[D]):
             self._last_preflight = result
             return result
 
-    def stop_bound_mumu_pro(self) -> bool:
-        """Apply explicit idle shutdown to the verified selected MuMu Pro instance."""
+    def stop_bound_simulator(self) -> bool:
+        """Apply idle shutdown through the selected simulator's verified adapter."""
         if self._shutdown.is_set() or self._pending_close.is_set():
             return False
         with self._configuration():
             conf = self._read_configuration()
             if (
                 not conf.close_simulator_when_idle
-                or conf.device.preset_id != "macos.mumu_pro"
-                or not conf.device.topology_fingerprint
-                or self._session is None
+                or is_android_runtime()
+                or conf.device.preset_id == "manual.physical"
                 or self._shutdown.is_set()
                 or self._pending_close.is_set()
             ):
                 return False
-            return self._session.simulator.stop(conf.device, 10)
+            try:
+                if conf.device.preset_id in AVD_PRESETS:
+                    return self.stop_owned_avd()
+                if self._session is None or (
+                    conf.device.preset_id == "macos.mumu_pro"
+                    and not conf.device.topology_fingerprint
+                ):
+                    return False
+                return self._session.simulator.stop(conf.device, 10)
+            except InstanceBindingError as exc:
+                raise PreflightRejected(str(exc), exc.code) from exc
 
     def stop_owned_avd(self) -> bool:
         """Explicit task-end policy, separate from ordinary application close."""
@@ -1264,9 +1274,15 @@ class DeviceControl(Generic[D]):
                     or self._closing_count
                 ):
                     raise MowerExit("设备会话正在关闭")
-                # A ready target needs no backend rebuild. If recovery took an
-                # action or changed endpoints, validate before reusing helpers.
-                if self._session.actions or ready.serial != self.serial:
+                input_probe = getattr(self._device, "input_alive", None)
+                with self._io_budget():
+                    input_closed = input_probe is not None and not input_probe()
+                if input_closed and not self._session.actions:
+                    deadline = (
+                        self._session.clock.monotonic() + self._session.remaining()
+                    )
+                    self._session._action(lambda timeout: True, deadline)
+                if self._session.actions or ready.serial != self.serial or input_closed:
                     if (
                         self._preparation is not None
                         and self._preparation.prepared_size
@@ -1298,6 +1314,12 @@ class DeviceControl(Generic[D]):
                         raise MowerExit("设备会话正在关闭")
                     with self._io_budget():
                         self._adapter.rebind(self._device, result)
+                        if input_probe is not None and not input_probe():
+                            raise TouchFailure(
+                                profile,
+                                __system__,
+                                ConnectionError("触控连接初始化后已断开，尚未发送输入"),
+                            )
                 self._state = "connected"
                 return DeviceResult(
                     True, self._state, self.serial, self._device, readiness=ready

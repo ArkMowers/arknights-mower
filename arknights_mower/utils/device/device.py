@@ -139,6 +139,12 @@ class Device:
             else:
                 raise NotImplementedError
 
+        def input_alive(self) -> bool:
+            if self.scrcpy is not None:
+                probe = getattr(self.scrcpy, "check_control_alive", None)
+                return probe() if probe is not None else True
+            return self.maatouch is not None or self.mumu12IPC is not None
+
         def swipe(
             self, start: tuple[int, int], end: tuple[int, int], duration: int
         ) -> None:
@@ -646,6 +652,16 @@ class Device:
 
         def send():
             with self._recovery_scope():
+                if transport != "adb" and not self.input_alive():
+                    control = getattr(self, "session_control", None)
+                    if control is not None:
+                        control.recover().unwrap()
+                    if not self.input_alive():
+                        raise TouchFailure(
+                            self.profile,
+                            __system__,
+                            ConnectionError("触控连接已断开，尚未发送输入"),
+                        )
                 try:
                     return operation()
                 except (MowerExit, TouchFailure):
@@ -669,6 +685,18 @@ class Device:
         if control is not None and not control.executing:
             return control.execute(lambda device: send()).unwrap()
         return send()
+
+    def input_alive(self) -> bool:
+        self._check_open()
+        try:
+            if self.control is None:
+                return False
+            probe = getattr(self.control, "input_alive", None)
+            return probe() if probe is not None else True
+        except (MowerExit, TouchFailure):
+            raise
+        except Exception as exc:
+            raise TouchFailure(self.profile, __system__, exc) from exc
 
     def close(self) -> None:
         """Detach each owned resource once, then attempt every cleanup."""

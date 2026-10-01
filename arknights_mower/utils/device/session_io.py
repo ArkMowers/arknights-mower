@@ -1,5 +1,6 @@
 """Single-attempt, deadline-bounded I/O for the application device session."""
 
+import csv
 import json
 import os
 import re
@@ -54,7 +55,9 @@ class _CommandWindow:
             raise TimeoutError("设备会话操作时间预算已耗尽")
         return remaining
 
-    def run(self, argv: list[str], timeout: float | None = None) -> str:
+    def run(
+        self, argv: list[str], timeout: float | None = None, *, raw_output: bool = False
+    ) -> str | bytes:
         """One bounded command; an explicit timeout only tightens this window.
 
         A polled read-only query passes its own short bound, because an answer
@@ -80,6 +83,8 @@ class _CommandWindow:
         error = result.stderr.decode("utf-8", "replace").strip()
         if re.search(r"\b(error|failed|failure|invalid)\b", error, re.I):
             raise RuntimeError(error)
+        if raw_output:
+            return result.stdout
         return result.stdout.decode("utf-8", "replace").strip()
 
 
@@ -345,6 +350,8 @@ class _MuMuManager(_InstanceManager):
         return resolve_mumu_paths(profile.installation_path, profile.manager_path)[1]
 
     def act(self, start):
+        if not start:
+            self.inspect()
         # A lifecycle action, not a query: MuMu hands the instance to a player
         # that is still cold-booting, so the command gets the transaction time.
         output = self.command(
@@ -396,6 +403,20 @@ class _LDPlayerManager(_InstanceManager):
         return str(manager) if manager else ""
 
     def act(self, start):
+        if not start:
+            from arknights_mower.utils.device.ldplayer_discovery import (
+                parse_ldplayer_instances,
+            )
+
+            listing = self.window.run([self.manager, "list2"], raw_output=True)
+            try:
+                parse_ldplayer_instances(
+                    listing, self.profile.instance_id, self.profile.instance_name
+                )
+            except (ValueError, csv.Error) as exc:
+                raise InstanceBindingError(
+                    "binding_changed", str(exc), ["instance_id", "instance_name"]
+                ) from exc
         output = self.command(
             [
                 self.manager,
