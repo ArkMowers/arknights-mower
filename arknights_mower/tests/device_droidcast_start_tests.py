@@ -3,13 +3,13 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 
 from arknights_mower.tests.device_droidcast_tests import HTTP, MODULE, Android
 from arknights_mower.tests.device_preflight_tests import PreflightIO
-from arknights_mower.tests.device_session_tests import Adapter
+from arknights_mower.tests.device_session_tests import Adapter, Clock
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.device_profile import DeviceProfile
 from arknights_mower.utils.device.application import (
@@ -43,20 +43,27 @@ class RecordingAdapter(Adapter):
 
 class DroidCastStartTests(unittest.TestCase):
     def setUp(self):
-        self.android, self.http = Android(), HTTP()
+        self.profile = DeviceProfile(
+            last_serial="USB-A",
+            adb_path="manual-adb",
+            screenshot_backend="droidcast",
+        )
+
+        self.android, self.http = Android(adb_path=self.profile.adb_path), HTTP()
+        self.clock = Clock()
+        self.spawned = self.android.spawned
+        self.spawn_selected = self.android.spawn
         self.android.version = "1.3.0"
         for name, value in (
             ("run_adb", self.android.run),
             ("guard_adb", lambda *args, **kwargs: None),
             ("subprocess.Popen", self.android.spawn),
             ("requests.Session", lambda: self.http),
+            ("get_new_port", Mock(side_effect=range(50000, 50064))),
+            ("time.monotonic", self.clock.monotonic),
+            ("budget_sleep", self.clock.sleep),
         ):
             self.enterContext(patch(f"{MODULE}.{name}", value))
-        self.profile = DeviceProfile(
-            last_serial="USB-A",
-            adb_path="manual-adb",
-            screenshot_backend="droidcast",
-        )
         self.configuration = Conf(device=self.profile)
         self.io = CapturePreflightIO(ProductionPreflightIO(lambda: self.configuration))
         self.io.targets = [("USB-A", "device")]
@@ -78,6 +85,17 @@ class DroidCastStartTests(unittest.TestCase):
     def installs(self):
         return [args for args in self.android.commands if args[0] == "install"]
 
+    def test_spawn_rejects_wrong_adb_or_target_without_creating_resources(self):
+        for adb_path, serial in (("chosen-adb", "USB-A"), ("manual-adb", "USB-B")):
+            with self.subTest(adb_path=adb_path, serial=serial):
+                with self.assertRaises(AssertionError):
+                    self.spawn_selected(
+                        [adb_path, "-s", serial, "shell", "--nice-name=foreign"]
+                    )
+        self.assertEqual(self.spawned, [])
+        self.assertEqual(self.android.processes, [])
+        self.assertEqual(self.android.remote, {})
+
     def test_prepare_capture_receives_validated_target_and_selected_game_package(self):
         prepared = []
 
@@ -93,6 +111,8 @@ class DroidCastStartTests(unittest.TestCase):
         )
         self.assertEqual(result.observations["frame"], [1920, 1080])
         self.assertEqual(self.installs(), [])
+        self.assertEqual(len(self.spawned), 1)
+        self.assertEqual(self.spawned[0][:4], ["manual-adb", "-s", "USB-A", "shell"])
 
     def test_runtime_start_upgrades_before_the_first_capture(self):
         self.android.version = "1.2.1"
@@ -199,6 +219,13 @@ class DroidCastStartTests(unittest.TestCase):
         self.assertTrue(result.ok, result.error)
         self.assertEqual(prepared, [("manual-adb", "USB-A")])
         self.assertEqual(len(self.android.processes), 2)
+        self.assertEqual(len(self.spawned), 2)
+        self.assertTrue(
+            all(
+                command[:4] == ["manual-adb", "-s", "USB-A", "shell"]
+                for command in self.spawned
+            )
+        )
         self.assertEqual(self.android.forwards, {})
 
     def test_other_selected_backend_does_not_prepare_droidcast(self):

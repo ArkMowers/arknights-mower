@@ -4,11 +4,12 @@ import ipaddress
 import time
 from pathlib import Path
 
-from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.adb_client.server import current_adb_server, guard_adb
 from arknights_mower.utils.device.endpoint_identity import (
     BOOT_ID_COMMAND,
     InstanceBindingError,
     InstanceEndpointPending,
+    connect_endpoint_candidates,
     parse_adb_devices,
     parse_boot_id,
     run_endpoint_command,
@@ -55,7 +56,7 @@ class _NoxObservation:
             raise TimeoutError("夜神实例复核超时。")
         return io_timeout(min(3, available))
 
-    def command(self, argv, *, adb=False):
+    def command(self, argv, *, adb=False, delegated_adb=False):
         try:
             output = run_endpoint_command(
                 argv,
@@ -64,6 +65,7 @@ class _NoxObservation:
                 probe=self.reader.probe,
                 monotonic=self.reader.monotonic,
                 adb=adb,
+                delegated_adb=delegated_adb,
             )
         except ValueError as exc:
             raise InstanceBindingError(
@@ -179,6 +181,18 @@ class _NoxObservation:
         selected = parse_adb_devices(
             self.command([self.profile.adb_path, "devices", "-l"], adb=True)
         )
+        if current_adb_server() is not None:
+            connect_endpoint_candidates(
+                self.profile.adb_path,
+                [serial for serial in candidates if selected.get(serial) != ["device"]],
+                self.command,
+            )
+            vendor = parse_adb_devices(
+                self.command([str(bundled), "devices", "-l"], adb=True)
+            )
+            selected = parse_adb_devices(
+                self.command([self.profile.adb_path, "devices", "-l"], adb=True)
+            )
         usable = []
         states = []
         for serial in candidates:
@@ -199,7 +213,8 @@ class _NoxObservation:
                         "adb",
                         f"-name:{instance['instance_name']}",
                         f"-command:{BOOT_ID_COMMAND}",
-                    ]
+                    ],
+                    delegated_adb=True,
                 )
             )
             if boot:

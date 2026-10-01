@@ -571,7 +571,8 @@ class DeviceSession:
         self, *, deadline: float | None = None, frame_probe=None
     ) -> ReadinessResult:
         """One transaction; every action and wait uses this single deadline."""
-        deadline = self.begin_budget(deadline=deadline)
+        if deadline is None or deadline != self._deadline:
+            deadline = self.begin_budget(deadline=deadline)
         logger.debug(
             f"开始设备就绪检查：超时保护 {self.policy.timeout:g} 秒，"
             f"最大重试 {self.policy.attempts} 次"
@@ -678,11 +679,10 @@ class DeviceSession:
             else self.policy.attempts
         )
         for _ in range(local_actions):
-            recovered = True
             # Only an unknown transport skips endpoint recovery; a target that is
             # reachable but not showing the required canvas still reconnects.
             if observation.serial and observation.code != "transport_probe_failed":
-                recovered = self._action(
+                self._action(
                     lambda timeout: self.adb.recover(
                         self.adb_path, observation.serial, timeout
                     ),
@@ -695,10 +695,6 @@ class DeviceSession:
                 self._action(lambda timeout: True, deadline)
             observation = self._wait_local(deadline, frame_probe=frame_probe)
             if observation.state == "ready":
-                if not recovered:
-                    raise SessionFailure(
-                        observation, "设备恢复命令未确认成功，请显式重试"
-                    )
                 return observation
         if restartable and self._launched_at is not None:
             protected_until = self._launched_at + self._startup_wait
@@ -708,10 +704,6 @@ class DeviceSession:
                     deadline, until=protected_until, frame_probe=frame_probe
                 )
                 if observation.state == "ready":
-                    if local_actions and not recovered:
-                        raise SessionFailure(
-                            observation, "设备恢复命令未确认成功，请显式重试"
-                        )
                     return observation
         if observation.instance_state == "stopped":
             if (
@@ -841,7 +833,9 @@ class DeviceSession:
             )
             raise SessionFailure(self.last, str(exc)) from exc
         except SharedADBError as exc:
-            logger.error(f"设备恢复动作失败（共享 ADB server）：{exc}")
+            if getattr(exc, "cleanup_failed", False):
+                raise
+            logger.error(f"设备恢复动作失败（ADB 服务）：{exc}")
             self.last = ReadinessResult(
                 "offline",
                 self.last.serial,

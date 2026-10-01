@@ -288,8 +288,8 @@ class DeviceControlShutdownTests(unittest.TestCase):
         device.close = lambda: events.append("helpers")
         control.begin_shutdown()
         control.interrupt_io()
-        self.assertFalse(control.close().ok)
-        self.assertFalse(control.close().ok)
+        self.assertTrue(control.close().ok)
+        self.assertTrue(control.close().ok)
         self.assertEqual(events, ["interrupt", "restore", "helpers"])
 
     def test_shutdown_during_adapter_start_releases_the_late_device_once(self):
@@ -367,7 +367,7 @@ class DeviceControlShutdownTests(unittest.TestCase):
         # releases what it owns without asking the application to exit.
         self.assertEqual(notifications, [])
         self.assertFalse(control.shutdown_requested)
-        self.assertTrue(device.closed)
+        self.assertFalse(device.closed)
         self.assertEqual(simulator.actions, [])
         # The application stays alive: the verdict is latched for the user to fix
         # and reported again instead of the process having requested an exit.

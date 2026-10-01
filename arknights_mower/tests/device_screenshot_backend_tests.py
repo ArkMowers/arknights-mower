@@ -102,14 +102,34 @@ class ScreenshotBackendTests(unittest.TestCase):
         self.assertEqual(self.handle.captures, 2)
         self.assertEqual(self.handle.rebuilds, 1)
 
-    def test_successful_rebuild_does_not_renew_the_session_budget(self):
+    def test_each_capture_incident_rebuilds_once_without_renewing_its_deadline(self):
         black = np.zeros((1080, 1920, 3), dtype=np.uint8)
-        self.handle.frames = [ValueError("truncated"), black, ValueError("truncated")]
-        self.handle.standard_frames = [RuntimeError("standard ADB unavailable")]
-        self.assertTrue(self.control.capture().ok)
-        self.assertFalse(self.control.capture().ok)
-        self.assertEqual(self.handle.rebuilds, 1)
-        self.assertEqual(self.handle.captures, 3)
+        self.handle.frames = [
+            ValueError("first truncated frame"),
+            black,
+            ValueError("second truncated frame"),
+            black,
+        ]
+
+        def rebuild():
+            self.handle.rebuilds += 1
+            self.session.clock.sleep(self.session.policy.timeout - 1)
+
+        self.handle.rebuild_screenshot = rebuild
+        before = self.conf.model_dump()
+        with patch.object(
+            self.session, "begin_budget", wraps=self.session.begin_budget
+        ) as begin:
+            for incident in (1, 2):
+                result = self.control.capture()
+                self.assertTrue(result.ok, result.error)
+                self.assertIs(result.value, black)
+                self.assertEqual(self.handle.rebuilds, incident)
+                self.assertEqual(self.session.remaining(), 1)
+                self.assertEqual(begin.call_count, incident)
+        self.assertEqual(self.handle.captures, 4)
+        self.assertEqual(self.handle.standard_captures, 0)
+        self.assertEqual(self.conf.model_dump(), before)
 
     def test_repeated_valid_black_frames_do_not_trigger_recovery(self):
         self.handle.frames = [np.zeros((1080, 1920, 3), dtype=np.uint8)]

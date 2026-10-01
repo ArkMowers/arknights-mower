@@ -1,0 +1,47 @@
+{
+  "title": "Recoverable Device Failures",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-17]",
+    "[INV-DEV-18]",
+    "[INV-SCHED-13]",
+    "[INV-REC-03]",
+    "[INV-03]",
+    "[INV-04]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/recovery.py",
+    "arknights_mower/utils/device/application.py",
+    "arknights_mower/utils/device/session.py",
+    "arknights_mower/utils/device/device.py",
+    "arknights_mower/utils/device/screenshot_backend.py",
+    "arknights_mower/utils/device/adb_client/core.py",
+    "arknights_mower/utils/device/adb_client/socket.py",
+    "arknights_mower/utils/device/scrcpy/control.py",
+    "arknights_mower/utils/device/scrcpy/core.py",
+    "arknights_mower/utils/device/maatouch/core.py",
+    "arknights_mower/utils/device/maatouch/session.py",
+    "arknights_mower/utils/graph.py",
+    "arknights_mower/__main__.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_recovery_supervision_tests.py",
+    "arknights_mower/tests/device_session_tests.py",
+    "arknights_mower/tests/device_touch_tests.py",
+    "arknights_mower/tests/device_screenshot_backend_tests.py",
+    "arknights_mower/tests/screenshot_session_recovery_tests.py",
+    "arknights_mower/tests/device_maatouch_tests.py",
+    "arknights_mower/tests/device_scrcpy_tests.py",
+    "arknights_mower/tests/adb_client_tests.py",
+    "arknights_mower/tests/device_preparation_lifecycle_tests.py",
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/device_settings_route_tests.py",
+    "arknights_mower/tests/scene_graph_recovery_tests.py"
+  ]
+}

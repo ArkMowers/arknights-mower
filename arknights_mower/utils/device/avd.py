@@ -14,7 +14,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from arknights_mower.utils.device.adb_client.server import run_adb
+from arknights_mower.utils.device.adb_client.server import (
+    current_adb_server,
+    emulator_connect_target,
+    run_adb,
+)
 from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
     parse_adb_devices,
@@ -323,6 +327,17 @@ class AVDController:
             if owner.process.poll() is not None:
                 del self._owned[key]
             self._early_exit(profile, owner)
+        if current_adb_server() is not None:
+            serial = (
+                owner.serial
+                if owner is not None and owner.serial
+                else profile.last_serial
+            )
+            endpoint = emulator_connect_target(serial)
+            if endpoint is not None:
+                self._command(
+                    [profile.adb_path, "connect", endpoint], deadline, adb=True
+                )
         rows = parse_adb_devices(
             self._command(
                 [profile.adb_path, "devices", "-l"], deadline, adb=True

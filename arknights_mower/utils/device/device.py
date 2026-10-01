@@ -6,8 +6,9 @@ import subprocess
 import time
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta
+from math import isfinite
 from threading import Event, Lock, RLock
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import cv2
 
@@ -17,9 +18,17 @@ from arknights_mower.utils.config.conf import DEFAULT_LAUNCH_COMMAND
 from arknights_mower.utils.config.device_profile import capture_compatibility_error
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
-from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.adb_client.server import (
+    adb_command,
+    adb_subprocess_options,
+    guard_adb,
+)
 from arknights_mower.utils.device.droidcast import DroidCastSession
-from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.io_budget import (
+    budget_sleep,
+    device_io_budget,
+    io_timeout,
+)
 from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
 from arknights_mower.utils.device.maatouch import MaaTouch
 from arknights_mower.utils.device.mumu12ipc.capture import MuMuCaptureSession
@@ -41,6 +50,13 @@ from arknights_mower.utils.log import (
     logger,
     save_screenshot_frame,
 )
+
+
+class _PreparedTouch(NamedTuple):
+    points: list[tuple[int, int]]
+    durations: list[int]
+    up_wait: int
+    display_frames: tuple[int, int, int] | None
 
 
 class Device:
@@ -128,11 +144,11 @@ class Device:
                     errors[0].add_note(str(error))
                 raise errors[0]
 
-        def tap(self, point: tuple[int, int]) -> None:
+        def tap(self, point: tuple[int, int], *, display_frames=None) -> None:
             if self.mumu12IPC:
                 self.mumu12IPC.tap(point[0], point[1])
             elif self.maatouch:
-                self.maatouch.tap([point], self.device.display_frames())
+                self.maatouch.tap([point], display_frames)
             elif self.scrcpy:
                 self.scrcpy.tap(point[0], point[1])
 
@@ -146,16 +162,19 @@ class Device:
             return self.maatouch is not None or self.mumu12IPC is not None
 
         def swipe(
-            self, start: tuple[int, int], end: tuple[int, int], duration: int
+            self,
+            start: tuple[int, int],
+            end: tuple[int, int],
+            duration: int,
+            *,
+            display_frames=None,
         ) -> None:
             if self.mumu12IPC:
                 self.mumu12IPC.swipe(
                     start[0], start[1], end[0], end[1], duration=duration / 1000
                 )
             elif self.maatouch:
-                self.maatouch.swipe(
-                    [start, end], self.device.display_frames(), duration=duration
-                )
+                self.maatouch.swipe([start, end], display_frames, duration=duration)
             elif self.scrcpy:
                 self.scrcpy.swipe(start[0], start[1], end[0], end[1], duration / 1000)
 
@@ -163,7 +182,12 @@ class Device:
                 raise NotImplementedError
 
         def swipe_ext(
-            self, points: list[tuple[int, int]], durations: list[int], up_wait: int
+            self,
+            points: list[tuple[int, int]],
+            durations: list[int],
+            up_wait: int,
+            *,
+            display_frames=None,
         ) -> None:
             if self.mumu12IPC:
                 total = len(durations)
@@ -183,25 +207,27 @@ class Device:
             elif self.maatouch:
                 self.maatouch.swipe(
                     points,
-                    self.device.display_frames(),
+                    display_frames,
                     duration=durations,
                     up_wait=up_wait,
                 )
             elif self.scrcpy:
-                total = len(durations)
-                for idx, (S, E, D) in enumerate(
-                    zip(points[:-1], points[1:], durations)
-                ):
-                    self.scrcpy.swipe(
-                        S[0],
-                        S[1],
-                        E[0],
-                        E[1],
-                        D / 1000,
-                        up_wait / 1000 if idx == total - 1 else 0,
-                        fall=idx == 0,
-                        lift=idx == total - 1,
-                    )
+                sender = getattr(self.scrcpy, "control", None)
+                with getattr(sender, "input_operation", nullcontext)():
+                    total = len(durations)
+                    for index, (start, end, duration) in enumerate(
+                        zip(points[:-1], points[1:], durations)
+                    ):
+                        self.scrcpy.swipe(
+                            start[0],
+                            start[1],
+                            end[0],
+                            end[1],
+                            duration / 1000,
+                            up_wait / 1000 if index == total - 1 else 0,
+                            fall=index == 0,
+                            lift=index == total - 1,
+                        )
             else:
                 raise NotImplementedError
 
@@ -230,6 +256,7 @@ class Device:
         self._resource_lock = RLock()
         self._interrupted = Event()
         self._close_error = None
+        self._interrupt_error = None
         self._recovery_active = False
         self._recovery_error = None
         try:
@@ -326,7 +353,7 @@ class Device:
         if errors:
             for error in errors[1:]:
                 errors[0].add_note(str(error))
-            self._close_error = errors[0]
+            self._interrupt_error = errors[0]
             raise errors[0]
 
     def _connect_once(self, *, wait_for_device: bool = True) -> None:
@@ -369,7 +396,10 @@ class Device:
         self._check_open()
         if not serial.strip():
             raise ValueError("设备 serial 不能为空")
+        if getattr(getattr(self, "_recovery_error", None), "cleanup_failed", False):
+            raise self._recovery_error
         self.close()
+        self._recovery_error = None
         self.control = None
         self.client = None
         self.device_id = serial
@@ -513,8 +543,11 @@ class Device:
                 self.device_id,
             )
             timeout = io_timeout(10)
+            options = {}
             if argv[0] == self.client.adb_bin:
                 timeout = guard_adb(argv[0], timeout=timeout, run=subprocess.run)
+                argv = adb_command(argv)
+                options = adb_subprocess_options()
             data = subprocess.check_output(
                 argv,
                 timeout=timeout,
@@ -522,6 +555,7 @@ class Device:
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if __system__ == "windows"
                 else 0,
+                **options,
             )
             return bytes2img(data)
         raise ValueError(f"不支持的截图后端：{backend}")
@@ -629,14 +663,27 @@ class Device:
     def tap(self, point: tuple[int, int]) -> None:
         """tap"""
         logger.debug(f"tap: {point}")
-        self._input_once(lambda: self.control.tap(point))
+        self._input_once(
+            lambda prepared: self.control.tap(
+                prepared.points[0], display_frames=prepared.display_frames
+            ),
+            prepare=lambda: self._prepare_touch([point]),
+        )
 
     def swipe(
         self, start: tuple[int, int], end: tuple[int, int], duration: int = 100
     ) -> None:
         """swipe"""
         logger.debug(f"swipe: {start} -> {end}, duration={duration}")
-        self._input_once(lambda: self.control.swipe(start, end, duration))
+        self._input_once(
+            lambda prepared: self.control.swipe(
+                prepared.points[0],
+                prepared.points[1],
+                prepared.durations[0],
+                display_frames=prepared.display_frames,
+            ),
+            prepare=lambda: self._prepare_touch([start, end], [duration]),
+        )
 
     def swipe_ext(
         self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 200
@@ -645,40 +692,137 @@ class Device:
         logger.debug(
             f"swipe_ext: points={points}, durations={durations}, up_wait={up_wait}"
         )
-        self._input_once(lambda: self.control.swipe_ext(points, durations, up_wait))
+        self._input_once(
+            lambda prepared: self.control.swipe_ext(
+                prepared.points,
+                prepared.durations,
+                prepared.up_wait,
+                display_frames=prepared.display_frames,
+            ),
+            prepare=lambda: self._prepare_touch(points, durations, up_wait),
+        )
 
-    def _input_once(self, operation, *, transport=None):
+    def _prepare_touch(self, points, durations=None, up_wait=0):
+        prepared_points = []
+        for point in points:
+            horizontal, vertical = point
+            coordinates = int(horizontal), int(vertical)
+            if any(not -(2**31) <= value < 2**31 for value in coordinates):
+                raise ValueError("输入坐标超出有效范围")
+            prepared_points.append(coordinates)
+        if not prepared_points or (
+            durations is not None and len(durations) + 1 != len(points)
+        ):
+            raise ValueError("输入路径与时长数量不匹配")
+        prepared_durations = [float(duration) for duration in durations or []]
+        prepared_wait = float(up_wait)
+        if any(
+            not isfinite(value) or value < 0
+            for value in [*prepared_durations, prepared_wait]
+        ):
+            raise ValueError("输入时长必须为有限非负数")
+        frames = None
+        if self.profile.touch_backend == "maatouch":
+            try:
+                frames = self.display_frames()
+            except MowerExit:
+                raise
+            except Exception as exc:
+                raise TouchFailure(
+                    self.profile,
+                    __system__,
+                    exc,
+                    transport="adb",
+                    phase="preparation",
+                    retryable=isinstance(exc, (ConnectionError, TimeoutError)),
+                ) from exc
+        if frames is not None:
+            width, height, rotation = frames
+            if width <= 0 or height <= 0 or rotation not in (0, 1, 2, 3):
+                raise ValueError("输入显示尺寸或旋转无效")
+        elif self.profile.touch_backend == "maatouch" and config.MNT_COMPATIBILITY_MODE:
+            raise ValueError("输入显示尺寸尚未确认")
+        return _PreparedTouch(
+            prepared_points,
+            [int(duration) for duration in prepared_durations],
+            int(prepared_wait),
+            frames,
+        )
+
+    @contextmanager
+    def _input_budget(self):
+        deadline = time.monotonic() + self.profile.recovery_timeout
+
+        def remaining():
+            self._check_open()
+            csleep(0)
+            seconds = deadline - time.monotonic()
+            if seconds <= 0:
+                raise TimeoutError("输入恢复时间预算已耗尽")
+            return seconds
+
+        with device_io_budget(remaining):
+            yield
+
+    def _input_once(self, operation, *, transport=None, prepare=None):
         """A transport error cannot tell us whether Android received the input."""
 
         def send():
             with self._recovery_scope():
-                if transport != "adb" and not self.input_alive():
-                    control = getattr(self, "session_control", None)
-                    if control is not None:
-                        control.recover().unwrap()
-                    if not self.input_alive():
-                        raise TouchFailure(
-                            self.profile,
-                            __system__,
-                            ConnectionError("触控连接已断开，尚未发送输入"),
-                        )
+                input_started = False
                 try:
-                    return operation()
+                    with self._input_budget():
+                        if transport != "adb":
+                            try:
+                                needs_recovery = not self.input_alive()
+                            except TouchFailure as probe_error:
+                                if not probe_error.retryable:
+                                    raise
+                                needs_recovery = True
+                            if needs_recovery:
+                                control = getattr(self, "session_control", None)
+                                if control is not None:
+                                    control.recover().unwrap()
+                                if not self.input_alive():
+                                    raise TouchFailure(
+                                        self.profile,
+                                        __system__,
+                                        ConnectionError("触控连接已断开，尚未发送输入"),
+                                    )
+                        prepared = prepare() if prepare is not None else None
+                        input_started = True
+                        return (
+                            operation(prepared) if prepare is not None else operation()
+                        )
                 except (MowerExit, TouchFailure):
                     raise
                 except Exception as exc:
+                    if not input_started and isinstance(exc, DeviceRecoveryError):
+                        raise
+                    delivery_unknown = input_started and (
+                        getattr(
+                            exc,
+                            "delivery_unknown",
+                            getattr(exc, "input_not_sent", False) is not True,
+                        )
+                        is not False
+                    )
                     failure = TouchFailure(
                         config.conf.device,
                         __system__,
                         exc,
-                        delivery_unknown=True,
+                        delivery_unknown=delivery_unknown,
                         transport=transport,
+                        phase="preparation",
+                        retryable=not delivery_unknown
+                        and isinstance(exc, (ConnectionError, TimeoutError)),
                     )
-                    try:
-                        self._stop_control()
-                    except Exception as cleanup_error:
-                        failure.cleanup_failed = True
-                        failure.add_note(f"关闭触控后端失败：{cleanup_error}")
+                    if delivery_unknown:
+                        try:
+                            self._stop_control()
+                        except Exception as cleanup_error:
+                            failure.cleanup_failed = True
+                            failure.add_note(f"关闭触控后端失败：{cleanup_error}")
                     raise failure from exc
 
         control = getattr(self, "session_control", None)
@@ -689,14 +833,72 @@ class Device:
     def input_alive(self) -> bool:
         self._check_open()
         try:
-            if self.control is None:
-                return False
-            probe = getattr(self.control, "input_alive", None)
-            return probe() if probe is not None else True
+            with self._input_budget():
+                for attempt in range(self.profile.recovery_attempts + 1):
+                    budget_sleep(0)
+                    if self.control is None:
+                        return False
+                    probe = getattr(self.control, "input_alive", None)
+                    try:
+                        return probe() if probe is not None else True
+                    except TimeoutError:
+                        if attempt >= self.profile.recovery_attempts:
+                            raise
+                        budget_sleep(min(0.1, self.profile.recovery_local_wait))
         except (MowerExit, TouchFailure):
             raise
         except Exception as exc:
+            raise TouchFailure(
+                self.profile,
+                __system__,
+                exc,
+                phase="probe",
+                retryable=isinstance(exc, TimeoutError),
+            ) from exc
+
+    def rebuild_input(self) -> bool:
+        """Replace an independent input helper after Instance Binding verification."""
+        self._check_open()
+        if self.profile.touch_backend == "mumu_ipc":
+            return False
+        failure = getattr(self, "_recovery_error", None)
+        if getattr(failure, "cleanup_failed", False):
+            raise failure
+        replacement = None
+        try:
+            with self._input_budget():
+                if self.client is None or self.client.device_id != self.device_id:
+                    raise ConnectionError("输入辅助连接缺少已验证的 ADB 目标")
+                self._stop_control()
+                budget_sleep(0)
+                replacement = Device.Control(self, self.client)
+                budget_sleep(0)
+                with self._resource_lock:
+                    self._check_open()
+                    self.control = replacement
+            if failure is not None:
+                self._recovery_error = None
+            return True
+        except Exception as exc:
+            if replacement is not None and self.control is not replacement:
+                try:
+                    replacement.close()
+                except Exception as cleanup_error:
+                    exc.cleanup_failed = True
+                    exc.add_note(f"关闭未注册的触控后端失败：{cleanup_error}")
+            if getattr(exc, "cleanup_failed", False):
+                self._close_error = exc
+            if isinstance(exc, (MowerExit, TouchFailure)):
+                raise
             raise TouchFailure(self.profile, __system__, exc) from exc
+
+    def resume_verified(self) -> None:
+        """Release a failure only after application verifies the bound target."""
+        with self._input_budget():
+            failure = getattr(self, "_recovery_error", None)
+            if getattr(failure, "cleanup_failed", False):
+                raise failure
+            self._recovery_error = None
 
     def close(self) -> None:
         """Detach each owned resource once, then attempt every cleanup."""
@@ -722,11 +924,14 @@ class Device:
                         if exc not in errors:
                             errors.append(exc)
             if errors:
+                if interrupt_error := getattr(self, "_interrupt_error", None):
+                    errors[0].add_note(f"清理前中断 I/O 也失败：{interrupt_error}")
                 for error in errors[1:]:
                     errors[0].add_note(str(error))
                 self._close_error = errors[0]
                 self._close_error.cleanup_failed = True
                 raise self._close_error
+            self._interrupt_error = None
 
     def reconnect(self, *, retries: int = 3, restarts: int = 0) -> None:
         """Delegate lifecycle policy to the owning application session."""

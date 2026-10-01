@@ -95,8 +95,10 @@ flowchart TD
 ---
 
 ## 3. Subsystem Invariants
+- **[INV-SCHED-13] Pending Task Preservation**: Device recovery preserves the scheduler and pending tasks, refreshes the Capture Frame before dispatch resumes and pauses unverified side effects without ending the automation worker or replaying uncertain input. Ordinary graph navigation retains its call stack and resumes from a fresh scene; task-level uncertainty retains a local device dispatch pause.
+- The [recoverable device failure contract](../../.agents/notes/implemented/simplification/2026-10-01-recoverable-device-failures.md) defines supervision, cooldown and offline verification.
 
-- **[INV-REC-03] Scene Recovery Limit**: Repeated scene transition exceptions permit one game restart per navigation call, then raise a recognition failure; cancellation and device failures propagate immediately.
+- **[INV-REC-03] Scene Recovery Limit**: Repeated recognition transition exceptions permit one game restart per navigation call, then raise a recognition failure. Ordinary navigation input faults recover the same target and refresh the scene inside the existing call; cancellation and unverified side effects propagate without input replay.
 - Scheduling dispatch, arrangement, MAA and local operation boundaries propagate classified device failures without consuming the pending task, invoking recognition retries or restarting the game. A missed trade order retains the existing detection and replanning behavior.
 - Scene navigation retries a failing transition six times before device recovery and game restart. A second exhausted retry sequence raises `RecognizeError` to the caller. Device recovery remains responsible for the existing Instance Binding; scene navigation issues no simulator lifecycle commands.
 - The [session review repairs](../../.agents/notes/implemented/bug-fix/2026-09-29-session-review-repairs.md) define the offline regression cases.

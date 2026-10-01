@@ -4,6 +4,8 @@ import math
 import os
 import pathlib
 import re
+import shlex
+import subprocess
 import sys
 from collections import defaultdict, deque
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
@@ -63,7 +65,14 @@ from arknights_mower.utils.datetime import (
     format_time,
     get_server_weekday,
 )
+from arknights_mower.utils.device.adb_client.server import (
+    SharedADBError,
+    adb_command,
+    current_adb_server,
+    guard_adb,
+)
 from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.dorm_candidates import dorm_candidates, vacant_dorm_slots
@@ -8124,9 +8133,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option
         )
+        adb_path = getattr(self.device.client, "adb_bin", None) or resolve_config_path(
+            conf.maa_adb_path
+        )
+        if current_adb_server() is not None:
+            for name in ("adblite_enabled", "kill_on_adb_exit"):
+                option = getattr(InstanceOptionType, name, None)
+                if option is None or not self.MAA.set_instance_option(option, "0"):
+                    raise SharedADBError(
+                        "MAA 无法禁用 AdbLite 或退出时停止 ADB，拒绝使用自有服务连接"
+                    )
+            guard_adb(adb_path, timeout=io_timeout(10))
+            command = adb_command([adb_path])
+            adb_path = (
+                subprocess.list2cmdline(command)
+                if os.name == "nt"
+                else shlex.join(command)
+            )
         if self.MAA.connect(
-            getattr(self.device.client, "adb_bin", None)
-            or resolve_config_path(conf.maa_adb_path),
+            adb_path,
             self.device.client.device_id,
             conf.maa_conn_preset,
         ):
@@ -8685,7 +8710,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.restore_maa_theme()
             self.rest_until_next_task()
             self.MAA = None
-        except (MowerExit, DeviceRecoveryError):
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
             if self.MAA is not None:
                 self.maa_stop()
                 logger.info("停止MAA")

@@ -303,6 +303,53 @@ class ScrcpyTests(unittest.TestCase):
         self.assertEqual(len(self.transport.commands), 1)
         self.assertIs(helper, app._device.scrcpy)
 
+    def test_packet_construction_failure_is_not_sent_and_does_not_leak_state(self):
+        app = self.control()
+        helper = app.start().unwrap().scrcpy
+        wire = self.transport.wires[-1]
+        with self.assertRaises(struct.error) as raised:
+            helper.tap(2**31, 45)
+        self.assertFalse(raised.exception.delivery_unknown)
+        self.assertEqual(wire.sent, [])
+        helper.tap(23, 45)
+        self.assertEqual(len(wire.sent), 2)
+
+    def test_busy_send_lock_is_not_sent_without_blocking(self):
+        app = self.control()
+        helper = app.start().unwrap().scrcpy
+        wire = self.transport.wires[-1]
+        helper.control_socket_lock = Lock()
+        helper.control_socket_lock.acquire()
+        try:
+            with self.assertRaises(TimeoutError) as raised:
+                helper.tap(23, 45)
+            self.assertFalse(raised.exception.delivery_unknown)
+            self.assertEqual(wire.sent, [])
+        finally:
+            helper.control_socket_lock.release()
+        helper.tap(23, 45)
+        self.assertEqual(len(wire.sent), 2)
+
+    def test_packet_preparation_after_down_keeps_whole_tap_unknown(self):
+        for direct_sender in (False, True):
+            with self.subTest(direct_sender=direct_sender):
+                app = self.control()
+                helper = app.start().unwrap().scrcpy
+                wire = self.transport.wires[-1]
+                send = wire.sendall
+
+                def change_geometry(packet):
+                    send(packet)
+                    helper.resolution = None
+
+                wire.sendall = change_geometry
+                sender = helper.control if direct_sender else helper
+                with self.assertRaises(TypeError) as raised:
+                    sender.tap(23, 45)
+                self.assertTrue(raised.exception.delivery_unknown)
+                self.assertEqual(len(wire.sent), 1)
+                app.close()
+
     def test_close_failure_does_not_skip_remaining_owned_resources(self):
         app = self.control()
         self.assertTrue(app.start().ok)
@@ -376,6 +423,42 @@ class ScrcpyTests(unittest.TestCase):
                 self.assertEqual(len(self.transport.commands), starts)
                 self.assertEqual(self.conf.device.touch_backend, "scrcpy")
                 self.assertTrue(app.close().ok)
+
+    def test_server_guard_before_first_packet_keeps_input_undispatched(self):
+        app = self.control()
+        helper = app.start().unwrap().scrcpy
+        failure = ConnectionError("service ownership changed before send")
+        failure.input_not_sent = True
+        with (
+            patch.object(helper.control_socket, "sendall", side_effect=failure),
+            self.assertRaises(ConnectionError) as raised,
+        ):
+            helper.tap(23, 45)
+        self.assertFalse(raised.exception.delivery_unknown)
+        self.assertEqual(sum(len(wire.sent) for wire in self.transport.wires), 0)
+
+    def test_server_guard_after_down_preserves_uncertain_gesture(self):
+        app = self.control()
+        helper = app.start().unwrap().scrcpy
+        stream = helper.control_socket
+        original_send = stream.sendall
+        failure = ConnectionError("service ownership changed before up")
+        failure.input_not_sent = True
+        packets = []
+
+        def send(payload):
+            if packets:
+                raise failure
+            packets.append(payload)
+            return original_send(payload)
+
+        with (
+            patch.object(stream, "sendall", side_effect=send),
+            self.assertRaises(ConnectionError) as raised,
+        ):
+            helper.tap(23, 45)
+        self.assertTrue(raised.exception.delivery_unknown)
+        self.assertEqual(sum(len(wire.sent) for wire in self.transport.wires), 1)
 
     def test_disconnect_recovery_replaces_owned_resources_without_duplicate_server(
         self,

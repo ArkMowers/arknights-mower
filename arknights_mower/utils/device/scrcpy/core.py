@@ -286,31 +286,29 @@ class Client:
         fall: bool = True,
         lift: bool = True,
     ):
-        frame_time = 1 / 60
+        with self.control.input_operation():
+            frame_time = 1 / 60
 
-        start_time = time.perf_counter()
-        end_time = start_time + move_duraion
-        fall and self.control.touch(x0, y0, const.ACTION_DOWN)
-        t1 = time.perf_counter()
-        step_time = t1 - start_time
-        if step_time < frame_time:
-            budget_sleep(frame_time - step_time)
-        while True:
-            t0 = time.perf_counter()
-            if t0 > end_time:
-                break
-            time_progress = (t0 - start_time) / move_duraion
-            path_progress = time_progress
-            self.control.touch(
-                int(x0 + (x1 - x0) * path_progress),
-                int(y0 + (y1 - y0) * path_progress),
-                const.ACTION_MOVE,
-            )
-            t1 = time.perf_counter()
-            step_time = t1 - t0
+            start_time = time.perf_counter()
+            end_time = start_time + move_duraion
+            fall and self.control.touch(x0, y0, const.ACTION_DOWN)
+            step_time = time.perf_counter() - start_time
             if step_time < frame_time:
                 budget_sleep(frame_time - step_time)
-        self.control.touch(x1, y1, const.ACTION_MOVE)
-        if hold_before_release > 0:
-            budget_sleep(hold_before_release)
-        lift and self.control.touch(x1, y1, const.ACTION_UP)
+            while True:
+                step_start = time.perf_counter()
+                if step_start > end_time:
+                    break
+                time_progress = (step_start - start_time) / move_duraion
+                self.control.touch(
+                    int(x0 + (x1 - x0) * time_progress),
+                    int(y0 + (y1 - y0) * time_progress),
+                    const.ACTION_MOVE,
+                )
+                step_time = time.perf_counter() - step_start
+                if step_time < frame_time:
+                    budget_sleep(frame_time - step_time)
+            self.control.touch(x1, y1, const.ACTION_MOVE)
+            if hold_before_release > 0:
+                budget_sleep(hold_before_release)
+            lift and self.control.touch(x1, y1, const.ACTION_UP)

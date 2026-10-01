@@ -7,6 +7,8 @@ date: 2026-10-01
 
 # Shared Idle Recovery
 
+The [recoverable device failure contract](../../implemented/simplification/2026-10-01-recoverable-device-failures.md) replaces the input-failure termination policy below. Idle lifecycle ownership remains unchanged.
+
 ## Contract
 
 [INV-DEV-14] Startup Reconnect Budget preserves the same bounded reconnect and observation policy after an instance launch or restart during an existing task as during initial startup. Each observation verifies the same Instance Binding; shared ADB failures, binding changes and cancellation remain terminal.

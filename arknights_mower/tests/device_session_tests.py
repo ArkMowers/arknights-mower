@@ -208,7 +208,7 @@ class StartupProtectionTests(unittest.TestCase):
         self.assertEqual(result.error.code, "frame_failed")
         self.assertEqual(events, [("start", 0)])
 
-    def test_uncertain_reconnect_stays_failed_after_protected_wait(self):
+    def test_verified_readiness_accepts_rejected_reconnect_after_protected_wait(self):
         control, clock, adb, conf, events = self.start_instance()
         adb.recover = Mock(return_value=False)
         sleep = clock.sleep
@@ -220,8 +220,11 @@ class StartupProtectionTests(unittest.TestCase):
 
         clock.sleep = ready_later
         result = control.recover()
-        self.assertFalse(result.ok)
-        self.assertIn("设备恢复命令未确认成功", result.error.message)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.readiness.state, "ready")
+        self.assertEqual(result.serial, "USB-A")
+        self.assertEqual(clock.now, 20)
+        adb.recover.assert_called_once()
         self.assertEqual(events, [("start", 0)])
 
     def test_startup_protection_respects_cancellation(self):
@@ -516,11 +519,16 @@ class DeviceSessionTests(unittest.TestCase):
         self.control.start()
         self.assertEqual(self.simulator.actions, ["start"])
 
-    def test_failed_final_preflight_latches_until_explicit_close(self):
+    def test_failed_final_preflight_latches_start_but_explicit_recover_retries(self):
         self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
+        profile_before = self.conf.device.model_dump()
 
         class InvalidFrame(Preflight):
-            def check(self, profile):
+            valid = False
+
+            def check(self, profile, **options):
+                if self.valid:
+                    return super().check(profile)
                 return PreflightResult(
                     False,
                     "windows",
@@ -529,15 +537,53 @@ class DeviceSessionTests(unittest.TestCase):
                     error=PreflightError("frame_failed", "invalid frame"),
                 )
 
+        preflight = InvalidFrame()
+        preflight.check = Mock(wraps=preflight.check)
         self.control = DeviceControl(
-            lambda: self.conf, Adapter(), session=self.session, preflight=InvalidFrame()
+            lambda: self.conf, Adapter(), session=self.session, preflight=preflight
         )
+        self.addCleanup(self.control.close)
         initial = self.control.start()
         observations = len(self.simulator.bindings)
         self.assertEqual(initial.error.code, "frame_failed")
         self.assertEqual(self.control.start().error.code, "frame_failed")
-        self.assertEqual(self.control.recover().error.code, "frame_failed")
         self.assertEqual(len(self.simulator.bindings), observations)
+        self.assertEqual(preflight.check.call_count, 1)
+
+        self.clock.sleep(self.session.policy.timeout + 1)
+        retried = self.control.recover()
+        self.assertFalse(retried.ok)
+        self.assertEqual(retried.error.code, initial.error.code)
+        self.assertEqual(len(self.simulator.bindings), observations + 1)
+        self.assertEqual(preflight.check.call_count, 2)
+        self.assertEqual(
+            self.session._deadline, self.clock.now + self.session.policy.timeout
+        )
+        failed_deadline = self.session._deadline
+
+        preflight.valid = True
+        self.assertEqual(self.control.start().error.code, initial.error.code)
+        self.assertEqual(len(self.simulator.bindings), observations + 1)
+        self.assertEqual(preflight.check.call_count, 2)
+        self.clock.sleep(self.session.policy.timeout + 1)
+        recovered = self.control.recover()
+        self.assertTrue(recovered.ok, recovered.error)
+        self.assertEqual(recovered.serial, "USB-A")
+        self.assertEqual(recovered.value.device_id, "USB-A")
+        self.assertEqual(len(self.simulator.bindings), observations + 2)
+        self.assertEqual(preflight.check.call_count, 3)
+        self.assertGreater(self.session._deadline, failed_deadline)
+        self.assertEqual(
+            self.session._deadline, self.clock.now + self.session.policy.timeout
+        )
+        self.assertLessEqual(self.session.actions, self.session.policy.attempts)
+        self.assertEqual(
+            set(self.simulator.bindings),
+            {(self.conf.device.preset_id, self.conf.device.instance_id)},
+        )
+        self.assertEqual(self.conf.device.model_dump(), profile_before)
+        self.assertEqual(self.adb.actions, [])
+        self.assertEqual(self.simulator.actions, [])
 
     def test_final_validation_and_helper_open_share_remaining_deadline(self):
         from arknights_mower.utils.device.io_budget import io_timeout
@@ -881,6 +927,86 @@ class TestStartupReconnectBudget:
         assert self.clock.now == 44
         assert self.session.actions == len(self.launch_actions) + 1
         assert self.simulator.actions == self.launch_actions
+
+    @pytest.mark.parametrize("ready_after", [4, 20])
+    @pytest.mark.parametrize("reconnect_error", [False, True])
+    def test_running_instance_accepts_verified_readiness_after_reconnect_failure(
+        self, ready_after, reconnect_error
+    ):
+        self.simulator.state, self.simulator.serial = "running", self.serial
+        self.session._launched_at = self.clock.now
+        self.adb.recover = (
+            Mock(side_effect=ConnectionError("重连确认失败"))
+            if reconnect_error
+            else Mock(return_value=False)
+        )
+        devices = self.adb.devices
+
+        def ready_later(adb_path, timeout):
+            if self.clock.now >= 40 + ready_after:
+                self.adb.rows = [
+                    (self.other_serial, "device"),
+                    (self.serial, "device"),
+                ]
+            return devices(adb_path, timeout)
+
+        self.adb.devices = ready_later
+        result = self.session.ensure_ready()
+        assert result.state == "ready"
+        assert result.serial == self.serial
+        assert self.clock.now == 40 + ready_after
+        assert self.session._deadline == 220
+        assert self.session.actions == self.adb.recover.call_count
+        assert 1 <= self.session.actions <= self.session.policy.attempts
+        assert all(
+            call.args[:2] == ("verified-adb", self.serial) and 0 < call.args[2] <= 180
+            for call in self.adb.recover.call_args_list
+        )
+        assert self.simulator.actions == []
+        assert set(self.simulator.bindings) == {(self.preset_id, "1")}
+        assert self.conf.device.model_dump() == self.profile_before
+        assert self.session.profile.model_dump() == self.profile_before
+        assert (self.other_serial, "device") in self.adb.rows
+
+    @pytest.mark.parametrize(
+        "failure_kind", ["binding_changed", "adb_server_unavailable", "cancelled"]
+    )
+    def test_running_reconnect_failure_preserves_observation_safety_boundaries(
+        self, failure_kind
+    ):
+        from arknights_mower.utils.csleep import MowerExit
+        from arknights_mower.utils.device.adb_client.server import SharedADBError
+        from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+
+        self.simulator.state, self.simulator.serial = "running", self.serial
+        self.adb.recover = Mock(return_value=False)
+        inspect = self.simulator.inspect
+
+        def failed_observation(profile, timeout):
+            if self.clock.now >= 42:
+                if failure_kind == "binding_changed":
+                    raise InstanceBindingError("binding_changed", "实例身份已变化")
+                if failure_kind == "adb_server_unavailable":
+                    raise SharedADBError("共享 ADB 服务不可用")
+                raise MowerExit("设备会话正在关闭")
+            return inspect(profile, timeout)
+
+        self.simulator.inspect = failed_observation
+        expected_exception = (
+            MowerExit if failure_kind == "cancelled" else SessionFailure
+        )
+        with pytest.raises(expected_exception) as failure:
+            self.session.ensure_ready()
+        if failure_kind != "cancelled":
+            assert failure.value.observation.code == failure_kind
+        self.adb.recover.assert_called_once_with("verified-adb", self.serial, 180)
+        assert self.session.actions == 1
+        assert self.session._deadline == 220
+        assert self.clock.now == 42
+        assert self.simulator.actions == []
+        assert self.conf.device.model_dump() == self.profile_before
+        assert self.session.profile.model_dump() == self.profile_before
+        assert self.adb.rows == [(self.other_serial, "device")]
 
     def test_reconnect_failure_keeps_one_deadline_and_target(self):
         self.adb.recover = Mock(return_value=False)

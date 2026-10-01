@@ -133,7 +133,7 @@ class DeviceSessionCallerTests(unittest.TestCase):
         touch.tap.side_effect = ConnectionError("delivery unknown")
         with self.assertRaisesRegex(ConnectionError, "delivery unknown"):
             self.device.tap((50, 60))
-        touch.tap.assert_called_once_with((50, 60))
+        touch.tap.assert_called_once_with((50, 60), display_frames=None)
         touch.close.assert_called_once_with()
         self.assertIsNone(self.device.control)
         self.assertEqual(self.session.operations, 1)

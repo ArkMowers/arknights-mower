@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 from arknights_mower.tests.device_application_tests import ManualAdapter, ManualDevice
@@ -163,7 +164,8 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                     [{"backend": "scrcpy", "label": "scrcpy 1.21"}],
                 )
                 if delivery_unknown:
-                    self.assertIn("不会自动重复动作", error["message"])
+                    self.assertIn("不会自动重复输入", error["message"])
+                    self.assertIn("相关任务已暂停", error["message"])
                 self.assertEqual(response.json["touch_backend_profile"], "manual.other")
                 capabilities = {
                     item["backend"]: item for item in response.json["touch_backends"]
@@ -610,15 +612,25 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                 self.assertEqual(response.json["error"]["action"], "retry")
                 self.assertTrue(response.json["error"]["message"])
 
-    def test_physical_preflight_stops_without_legacy_simulator_start(self):
+    def test_physical_preflight_retains_failure_until_cancel_without_simulator_start(
+        self,
+    ):
         config.conf = config.conf.updated({"device": {"preset_id": "manual.physical"}})
         config.conf.close_simulator_when_idle = True
         io = PreflightIO()
         self.main.device_control = DeviceControl(
             lambda: config.conf, ManualAdapter(), preflight=PreflightService(io)
         )
+        stop = Event()
+
+        def cancel(seconds):
+            self.assertEqual(seconds, 30)
+            stop.set()
+            raise MowerExit()
+
         with (
-            patch.object(config.stop_mower, "is_set", return_value=False),
+            patch.object(config, "stop_mower", stop),
+            patch.object(self.main, "csleep", side_effect=cancel) as cooldown,
             patch.object(self.main, "base_scheduler", None),
             patch(
                 "arknights_mower.utils.simulator.restart_simulator",
@@ -628,6 +640,8 @@ class DeviceSettingsRouteTests(unittest.TestCase):
             ),
         ):
             self.main.simulate(None)
+        cooldown.assert_called_once_with(30)
+        self.assertFalse(self.main.device_control.shutdown_requested)
         self.assertEqual(
             self.main.device_control.settings_status()["preflight"]["error"]["code"],
             "target_required",

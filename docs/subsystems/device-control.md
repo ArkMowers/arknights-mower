@@ -98,6 +98,9 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 3. Subsystem Invariants
 
+- **[INV-DEV-19] Owned ADB Recovery**: Desktop simulator runs use an owned foreground ADB server on an ephemeral loopback port with USB and automatic transport discovery disabled. Sustained failed service probes authorize bounded owned-process recovery, never shared-server termination; original instance verification precedes helper reconstruction and preserves pending tasks and uncertain-input pauses. Physical devices, native Android and inactive settings keep shared-server behavior.
+- The [owned ADB recovery contract](../../.agents/notes/implemented/architecture/2026-10-01-owned-adb-recovery.md) defines service ownership, probe thresholds and routing.
+
 - The [shared idle recovery decision](../../.agents/notes/implemented/bug-fix/2026-10-01-shared-idle-recovery.md) defines cross-platform launch recovery, pre-input helper recovery and idle lifecycle ownership.
 - Automatic idle shutdown uses the selected Device Profile and its lifecycle adapter. Index-based Windows MuMu and LDPlayer shutdown revalidates manager identity within the same command deadline; changed or ambiguous identity prevents shutdown without requiring ADB readiness. Binding failures leave this boundary as a classified verdict rather than entering scheduling recognition recovery. Unsupported presets remain manual, and AVD shutdown remains restricted to owned instances.
 
@@ -130,7 +133,9 @@ The subsystem integrates platform-specific emulators through deterministic disco
 - The [MuMu Pro connection repair](../../.agents/notes/implemented/bug-fix/2026-09-30-mumu-pro-manual-binding.md) records the regression and focused coverage.
 
 - **[INV-DEV-09] Classified Failure Isolation**: Classified device failures, including Temporary Preparation errors, request owned resource cleanup and expose their structured verdict without requesting application shutdown.
-- **[INV-DEV-17] Pre-Input Helper Recovery**: A control helper proven unavailable before input is rebuilt only after revalidating the same Instance Binding within the Recovery Budget. The scrcpy control probe checks EOF without sending input or consuming buffered data. Healthy helpers remain unchanged; unavailable helpers use the selected backend and existing bounded recovery, with another liveness check after rebuild. Any failure after input transmission starts retains the terminal delivery-unknown verdict without replay or backend substitution.
+- **[INV-DEV-18] Recovery Cycle Continuation**: Failed finite Recovery Budgets retain the selected Instance Binding and repeat only after cancellable cooldown. Verified readiness supersedes an unconfirmed reconnect response. Shared ADB and identity failures pause target operations without selecting another endpoint.
+- **[INV-DEV-17] Pre-Input Helper Recovery**: A control helper unavailable before input recovers only after same-target validation within the Recovery Budget. Probe uncertainty does not authorize input. Input-only recovery rebuilds the selected control helper while preserving healthy ADB and capture resources; MuMu IPC retains paired recovery. Actual cleanup failure blocks replacement. Uncertain delivery interrupts the operation without replay; ordinary graph navigation re-observes the scene within its existing call, while unverified side effects pause device dispatch.
+- The [recoverable failure contract](../../.agents/notes/implemented/simplification/2026-10-01-recoverable-device-failures.md) records recovery ownership and verification.
 - Input surface mismatch or unreadable display state keeps the settings interface available. Failed compensation retains its recovery record. Unclassified internal faults still request coordinated application shutdown.
 - The [preparation failure decision](../../.agents/notes/implemented/bug-fix/2026-09-30-preparation-failure-isolation.md) records the classification boundary and regression coverage.
 
@@ -168,7 +173,7 @@ The subsystem integrates platform-specific emulators through deterministic disco
 - The [preset support decision](../../.agents/notes/implemented/simplification/2026-09-29-emulator-preset-support.md) records MuMu 6 removal and LDPlayer 14 capture coverage.
 - The [command isolation decision](../../.agents/notes/implemented/bug-fix/2026-09-29-review-command-isolation.md) records the review repairs and their offline verification.
 
-- **[INV-DEV-01] Native Back Dispatch**: When the selected touch backend is MuMu IPC, Android BACK uses the owned MuMu IPC worker; an uncertain result stops the session without input replay or ADB fallback.
+- **[INV-DEV-01] Native Back Dispatch**: When the selected touch backend is MuMu IPC, Android BACK uses the owned MuMu IPC worker; an uncertain result interrupts the operation without input replay or ADB fallback.
 - `Device.send_keyevent(4)` selects the transport from the configured touch backend and dispatches `MuMuInputSession.back()`, which maps Android BACK to native MuMu key `1`. Temporary helper removal during recovery does not alter this selection. Key down and key up share the existing bounded worker and the session input failure boundary.
 - Other Android keycodes use ADB. `TouchFailure.backend` records the selected touch backend, while `TouchFailure.transport` identifies the transport that failed. ADB failure diagnostics name ADB and direct the user to check the ADB connection.
 
@@ -198,7 +203,8 @@ When a device becomes unresponsive or disconnected:
 1. `DeviceSession` evaluates the configurable [`RecoveryPolicy`](../../arknights_mower/utils/device/session.py).
 2. Attempts reconnection up to `recovery_attempts` within the monotonic budget `recovery_timeout`.
 3. Observes readiness for up to `recovery_local_wait` after a local reconnect, stopping the wait as soon as the target is ready.
-4. If the budget exhausts without reaching `ready`, the session terminates with a structured failure without retrying infinitely.
+4. If the budget exhausts without reaching `ready`, the current recovery cycle returns a structured failure. Task supervision retains the scheduler and pending tasks and waits through a cancellable 30-second cooldown before another finite cycle; no failed cycle selects another instance or expands its own deadline.
+5. Ordinary navigation re-observes the Capture Frame before selecting a new edge. An uncertain side effect retains a device dispatch pause and diagnostic frames until explicit cancellation and state verification; it never enters ordinary task replay.
 
 ---
 

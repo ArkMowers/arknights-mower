@@ -1,4 +1,4 @@
-"""Observe the shared ADB server before allowing a compatible CLI to use it.
+"""Guard shared ADB and route simulator operations through an owned server.
 
 An ADB CLI can kill an existing server on a protocol-version mismatch. The
 host:version socket request and local `adb version` command do not do that.
@@ -9,6 +9,75 @@ import re
 import socket
 import subprocess
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+_owned_server = ContextVar("owned_adb_server", default=None)
+
+
+@contextmanager
+def adb_server_scope(server):
+    token = _owned_server.set(server)
+    try:
+        yield
+    finally:
+        _owned_server.reset(token)
+
+
+def current_adb_server():
+    return _owned_server.get()
+
+
+def adb_server_address():
+    server = current_adb_server()
+    return server.address if server is not None else ("127.0.0.1", 5037)
+
+
+def emulator_connect_target(serial):
+    match = re.fullmatch(r"emulator-([0-9]{1,5})", serial)
+    if match is None:
+        return None
+    port = int(match[1])
+    if port % 2 or not 1024 <= port < 65535:
+        return None
+    return f"emu:{port},{port + 1}"
+
+
+def adb_command(argv):
+    server = current_adb_server()
+    if server is None:
+        return argv
+    index = 1
+    while index < len(argv) and argv[index].startswith("-"):
+        option = argv[index]
+        if option.startswith(("-H", "-P", "-L")):
+            raise SharedADBError("自有 ADB 命令不能重定向服务地址")
+        index += 2 if option in {"-s", "-t"} else 1
+    if index < len(argv) and argv[index] in {
+        "kill-server",
+        "start-server",
+        "server",
+        "fork-server",
+        "nodaemon",
+    }:
+        raise SharedADBError("ADB 服务生命周期只能由其进程所有者管理")
+    host, port = server.address
+    return [argv[0], "-H", host, "-P", str(port), *argv[1:]]
+
+
+def adb_subprocess_options(environment=None):
+    server = current_adb_server()
+    if server is None:
+        return {}
+    host, port = server.address
+    environment = dict(os.environ if environment is None else environment)
+    environment.update(
+        ADB_SERVER_SOCKET=f"tcp:{host}:{port}",
+        ANDROID_ADB_SERVER_ADDRESS=host,
+        ANDROID_ADB_SERVER_PORT=str(port),
+        ADB_SERVER_PORT=str(port),
+    )
+    return {"env": environment}
 
 
 class SharedADBError(RuntimeError):
@@ -34,7 +103,9 @@ def _check_server_environment(environment):
             raise SharedADBError(f"{name} 重定向了 ADB server，无法安全验证共享 server")
 
 
-def probe_adb_server(timeout, *, monotonic=time.monotonic, socket_factory=None):
+def probe_adb_server(
+    timeout, *, monotonic=time.monotonic, socket_factory=None, address=None
+):
     """Return its protocol version; only a refused connect means no server."""
     deadline = monotonic() + max(0, timeout)
     factory = socket_factory or socket.socket
@@ -42,7 +113,7 @@ def probe_adb_server(timeout, *, monotonic=time.monotonic, socket_factory=None):
         with factory(socket.AF_INET, socket.SOCK_STREAM) as connection:
             connection.settimeout(_remaining(deadline, monotonic))
             try:
-                connection.connect(("127.0.0.1", 5037))
+                connection.connect(address or ("127.0.0.1", 5037))
             except ConnectionRefusedError:
                 return None
             connection.settimeout(_remaining(deadline, monotonic))
@@ -74,6 +145,10 @@ def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monoton
     _check_server_environment(os.environ)
     deadline = monotonic() + max(0, timeout)
     runner = run or subprocess.run
+    owned = current_adb_server()
+    if owned is not None:
+        owned.check(adb_path, timeout=_remaining(deadline, monotonic))
+        return _remaining(deadline, monotonic)
     try:
         if probe is None:
             version = probe_adb_server(
@@ -136,6 +211,9 @@ def run_adb(argv, *, timeout, run=None, probe=None, monotonic=time.monotonic, **
             probe=probe,
             monotonic=monotonic,
         )
+    if current_adb_server() is not None and command != "version":
+        kwargs.update(adb_subprocess_options(kwargs.get("env")))
+        argv = adb_command(argv)
     result = runner(argv, timeout=_remaining(deadline, monotonic), **kwargs)
     _remaining(deadline, monotonic)
     return result

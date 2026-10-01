@@ -19,8 +19,11 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-19] Owned ADB Recovery**: Does sustained service failure rebuild only the owned foreground ADB process on an isolated loopback port within the existing budget, preserve shared and USB transports, and revalidate the original target before replacing helpers without replaying uncertain input?
+
 - [ ] **[INV-DEV-16] Absent Target Cleanup**: Does an absent DroidCast target permit idempotent cleanup and the next verified startup only after owned forwards are absent, while unconfirmed transport failures, residual owned mappings and host cleanup failures remain blocking without touching foreign resources or shared ADB state?
-- [ ] **[INV-DEV-17] Pre-Input Helper Recovery**: Does a proven unavailable helper recover before any input only after the same Instance Binding is revalidated within the Recovery Budget, while uncertain delivery remains terminal without replay or an implicit backend switch?
+- [ ] **[INV-DEV-18] Recovery Cycle Continuation**: Do failed finite recovery cycles retain the same Instance Binding, wait through cancellable cooldown and accept verified readiness despite an unconfirmed reconnect response?
+- [ ] **[INV-DEV-17] Pre-Input Helper Recovery**: Does helper recovery validate the same target within its budget, preserve healthy resources during input-only repair and require fresh scene or side-effect reconciliation after uncertain delivery without replay or backend substitution?
 
 - [ ] **[INV-DEV-15] Settings Cancellation Isolation**: Do settings operations ignore stopped-task cancellation without clearing shared events, propagate independent caller-context copies to parallel discovery providers, check cancellation at manager command, polling and completion boundaries, retain shutdown and closure cancellation, restore the caller's policy, and return structured HTTP cancellation while concurrent tasks still stop?
 
@@ -54,9 +57,10 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-03] Failure Preserves Target Identity**: In case of device failure, timeout, or discovery error, does the session halt cleanly without drifting to other online devices on the host?
 - [ ] **[INV-04] IPC Pair Cohesion**: If MuMu IPC screenshot backend is used, is IPC touch backend selected as well?
 - [ ] **[INV-05] Shared ADB Guard**: Are ADB commands preceded by socket-level handshake? Is implicit `adb kill-server` prohibited?
-- [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result stop the session without input replay or ADB fallback?
+- [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
+- [ ] **[INV-SCHED-13] Pending Task Preservation**: Does device recovery preserve the scheduler and pending tasks, refresh the Capture Frame before resuming and pause unverified side effects without ending the automation worker or replaying input?
 
 - [ ] **[INV-SCHED-01] Empirical Depletion Rate**: Are operator exhaustion forecasts calculated dynamically from inspection deltas rather than hardcoded assumptions?
 - [ ] **[INV-SCHED-02] Stable Recovery Position**: The target retains its final slot during recovery setup and roster restoration; earlier non-manager slots use confirmed full residents or the highest-mood eligible idle padding, with actual readback required before recording recovery.
@@ -80,7 +84,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
-- [ ] **[INV-REC-03] Scene Recovery Limit**: Do repeated scene transition exceptions stop after one game restart per navigation call, while cancellation and device failures propagate without replay?
+- [ ] **[INV-REC-03] Scene Recovery Limit**: Do recognition failures retain one game restart per navigation call, ordinary navigation input faults recover and refresh inside that call, and cancellation and unverified side effects propagate without input replay?
 
 - [ ] **[INV-DIAG-01] Archive Deletion Cohesion**: Do expiry and capacity deletion use the store's archive lock and cancel queued writes and active windows so late frames cannot recreate retired archives?
 - [ ] **[INV-DIAG-02] Archive Error Isolation**: Does malformed archive metadata leave the worker able to process subsequent archives?
