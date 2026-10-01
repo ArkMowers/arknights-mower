@@ -1,0 +1,30 @@
+---
+title: ADB Capture Timeout Preserves Budget
+status: implemented
+category: bug-fix
+date: 2026-10-02
+---
+
+# ADB Capture Timeout Preserves Budget
+
+[English](2026-10-02-capture-timeout-clamp.md) | [中文](2026-10-02-capture-timeout-clamp.zh.md)
+
+## 契约
+
+ADB 截图的守卫、SDK 查询、帧读取及解码共享一个单调时钟截止时间。每次剩余超时都不超过初始有效截图预算及上层 I/O 预算；截止时间耗尽后，在继续 I/O 前报错。
+
+## 实现
+
+两次时钟读数相同时，浮点加减可能产生略大于十秒的剩余超时。按初始有效预算夹紧保持配置上限，无需放宽断言。[设备控制契约](../../../../docs/subsystems/device-control.md)定义共享 ADB 守卫与有限 I/O 预算。
+
+## 验证
+
+在舍入边界固定单调时钟复现 Windows 兼容性检查失败。模拟守卫与两次原始套接字请求保持调用顺序，超时不超过预算。
+
+## 规范审查
+
+通过。现有术语及配置结构保持原状。测试隔离设备及网络操作。分析预算、截止时间上限与调用方状态保留符合既有契约。
+
+## 功能审查
+
+通过。定向回归验证调用方行为及边界情况。运行时配置检查保留既有错误处理。

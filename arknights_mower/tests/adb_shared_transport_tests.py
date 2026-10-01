@@ -104,7 +104,10 @@ def test_raw_capture_socket_uses_shared_server_and_pinned_target(monkeypatch):
     connection.__exit__.assert_called_once()
 
 
-def test_capture_guard_precedes_both_raw_socket_requests(monkeypatch):
+@pytest.mark.parametrize("clock_start", [0.0, 510.2])
+def test_capture_guard_precedes_both_raw_socket_requests(monkeypatch, clock_start):
+    # 510.2 + 10 - 510.2 略大于 10，固定时钟复现 Windows 的舍入边界。
+    monkeypatch.setattr(screenshot.time, "monotonic", lambda: clock_start)
     connections = [Mock(), Mock()]
     for connection, output in zip(connections, [b"30\n", b"gzip frame"]):
         connection.__enter__ = Mock(return_value=connection)

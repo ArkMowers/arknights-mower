@@ -189,6 +189,7 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 4. Capture Frame Contract & Storage
 
+- ADB gzip capture shares one deadline across guarding, SDK query, frame read and decoding. Each remaining timeout is clamped to the initial effective capture budget and any parent I/O budget. The [capture timeout decision](../../.agents/notes/implemented/bug-fix/2026-10-02-capture-timeout-clamp.md) records the cross-platform boundary test.
 - **Canvas Frame Standard**: All screenshot capture backends (ADB raw, ADB gzip, DroidCast HTTP, MuMu IPC, and LD screenshot enhancement) yield an uncompressed `(1080, 1920, 3)` `uint8` RGB matrix.
 - **Vendor Compatibility**: MuMu screenshot enhancement requires Windows MuMu 12 and paired MuMu touch. LD screenshot enhancement (`ld_native`) requires Windows x64, LDPlayer 9 or 14, its installed `ldopengl64.dll`, and a `list2` result with confirmed 1920×1080 dimensions. LD touch remains scrcpy or MaaTouch. Unsupported configurations fail without another backend being selected.
 - **LD Capture Lifetime**: Preflight owns a temporary capture session; runtime reuses its native worker until rebuild or close. Manager queries verify process identity and dimensions around each frame within the same deadline. LD capture checks the selected endpoint through the existing LDPlayer resolver before opening the DLL. The worker converts bottom-up BGR to RGB and never invokes emulator lifecycle commands.

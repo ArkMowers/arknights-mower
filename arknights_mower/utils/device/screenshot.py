@@ -129,10 +129,11 @@ def capture_adb_frame(adb_path: str, serial: str) -> np.ndarray:
     """
     if not serial.strip():
         raise ValueError("ADB 截图必须明确指定设备 serial")
-    deadline = time.monotonic() + io_timeout(CAPTURE_TIMEOUT)
+    capture_timeout = io_timeout(CAPTURE_TIMEOUT)
+    deadline = time.monotonic() + capture_timeout
 
     def remaining():
-        timeout = io_timeout(deadline - time.monotonic())
+        timeout = io_timeout(min(capture_timeout, deadline - time.monotonic()))
         if timeout <= 0:
             raise TimeoutError("ADB gzip 截图执行或读取超时")
         return timeout
