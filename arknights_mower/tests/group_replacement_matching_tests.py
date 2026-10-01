@@ -90,7 +90,15 @@ def test_failed_group_preserves_existing_plan_and_beds(solver, failure):
     else:
         for index, bed in enumerate(data.dorm):
             name = ["银灰", "能天使", "讯使", "鸿雪", "温蒂", "清流"][index]
-            data.add(Operator(name, "meeting", operator_type="high", mood=0))
+            data.add(
+                Operator(
+                    name,
+                    "meeting",
+                    operator_type="high",
+                    resting_priority="high",
+                    mood=0,
+                )
+            )
             resident = data.operators[name]
             resident._current_room, resident.current_index = bed.position
             bed.name, bed.time = name, datetime.now() + timedelta(hours=5)
@@ -116,7 +124,7 @@ def test_failed_group_reports_actual_shared_cover_shortage(solver, monkeypatch):
     assert plan == {} and replacements == []
 
 
-def test_mass_recovery_releases_only_completed_low_priority_beds(solver):
+def test_mass_recovery_takes_legacy_idle_beds_regardless_of_completion(solver):
     data = solver.op_data
     data.rescue_mode = True
     for name, mood in [("埃癸斯", 24), ("苏苏洛", 0)]:
@@ -127,8 +135,8 @@ def test_mass_recovery_releases_only_completed_low_priority_beds(solver):
         op.time_stamp = datetime.now()
         bed.name, bed.time = name, datetime.now() + timedelta(hours=5)
     data.main_rescue_priority.update(["埃癸斯", "苏苏洛"])
-    assert data._slot_takable(data.dorm[0], True, requester="令")
-    assert not data._slot_takable(data.dorm[1], True, requester="令")
+    assert data._slot_takable(data.dorm[0], requester="令")
+    assert data._slot_takable(data.dorm[1], requester="令")
 
 
 def test_shared_covers_keep_original_preferences_when_already_feasible(solver):

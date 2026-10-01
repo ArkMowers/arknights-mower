@@ -5,6 +5,8 @@ category: bug-fix
 date: 2026-10-01
 ---
 
+Bed takeover and rescue standby eligibility follow [priority-aware dormitory recovery](../simplification/2026-10-02-priority-aware-dorm-recovery.md), which supersedes unconditional bed retention described here.
+
 # Dormitory and Group Shift Planning
 
 [English](2026-10-01-dormitory-and-group-shift-planning.md) | [中文](2026-10-01-dormitory-and-group-shift-planning.zh.md)

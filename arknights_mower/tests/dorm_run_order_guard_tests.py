@@ -66,6 +66,7 @@ def test_runtime_guard_keeps_unfinished_room_only(schedule):
     instance.task = dorm
     instance.tasks = [dorm, order]
     instance.op_data = MagicMock()
+    instance.preserve_resting_crafters = MagicMock()
     dorm.plan["dormitory_2"] = ["Free"]
 
     def arrange(new_plan, room, plan, **kwargs):
@@ -135,6 +136,7 @@ def test_real_room_dispatch_skips_vacancy_fill_before_imminent_order(schedule):
     instance = object.__new__(BaseSchedulerSolver)
     instance.task, instance.tasks = dorm, [dorm, order]
     instance.op_data = MagicMock()
+    instance.preserve_resting_crafters = MagicMock()
     dorm.plan["dormitory_2"] = ["Free"]
 
     def arrange(new_plan, room, plan, **kwargs):

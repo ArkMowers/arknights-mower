@@ -119,10 +119,12 @@ from arknights_mower.utils.scheduler_task import (
     adjust_run_order_for_maintenance,
     defer_dorm_before_priority_task,
     dorm_rebalance_signature,
+    dorm_residents,
     find_next_task,
     plan_metadata,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
+    restore_displaced_resting,
     scheduling,
     simplify_dorm_fill,
     try_add_release_dorm,
@@ -2872,7 +2874,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             can_preempt = self._resting_tier(op) <= RestingTier.LOW_MAIN and any(
                 bed.name
                 and resting_tier(self.op_data, bed.name) > self._resting_tier(op)
-                and self.op_data._slot_takable(bed, True, requester=op.name)
+                and self.op_data._slot_takable(bed, requester=op.name)
                 for bed in self.op_data.dorm
             )
             has_group_dorm_bed = op.group and self.op_data.group_dorm_bed_count(
@@ -3534,13 +3536,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]
             # 床位判断和分配使用同一套规则。先为整组模拟预留，避免低优占床
             # 提前挡住大组，也避免分到一半才失败留下脏状态。
-            previous = {bed.position: bed.name for bed in self.op_data.dorm}
+            previous = dorm_residents(self.op_data)
             dorms = self.op_data.assign_dorm_group(
                 resting_agents, active_groups=active_groups
             )
             if dorms is None:
                 return
-            self.restore_displaced_resting(previous, __plan)
+            restore_displaced_resting(self.op_data, previous, __plan, self.tasks)
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
             logger.debug(dorms)
@@ -3551,58 +3553,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if plan[k][idx] == "Current" and name != "Current":
                         plan[k][idx] = name
             logger.debug(f"当前plan{plan}")
-
-    def restore_displaced_resting(self, previous, plan):
-        """接管主班床位时显式处理回班，不能等纠错发现缺床成员。"""
-        displaced = {
-            previous[bed.position]
-            for bed in self.op_data.dorm
-            if previous.get(bed.position) and previous[bed.position] != bed.name
-        }
-        recalled = set()
-        for name in displaced:
-            op = self.op_data.operators.get(name)
-            if op is None or not op.is_high():
-                continue
-            members = self.op_data.groups[op.group] if op.group else [name]
-            if op.name in self.op_data.standby_candidates(members):
-                logger.info(f"{name}的候补床位被接管，随组待命")
-                continue
-            recalled.update(members)
-        for name in recalled:
-            op = self.op_data.operators[name]
-            plan.setdefault(op.room, ["Current"] * len(self.op_data.plan[op.room]))[
-                op.index
-            ] = name
-        if recalled:
-            logger.info(f"休息床位被更高优先级接管，安排整组回班：{sorted(recalled)}")
-            for bed in self.op_data.dorm:
-                if bed.name in recalled:
-                    room, index = bed.position
-                    plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                        index
-                    ] = "Free"
-                    bed.reset()
-        changed_slots = {
-            bed.position
-            for bed in self.op_data.dorm
-            if previous.get(bed.position) != bed.name
-        }
-        # 已接管床位不能继续执行旧的释放任务；已召回成员也不重复预约回班。
-        for task in self.tasks[:]:
-            if task.type not in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM):
-                continue
-            for room, names in list(task.plan.items()):
-                for index, name in enumerate(names):
-                    if (task.type == TaskTypes.SHIFT_ON and name in recalled) or (
-                        task.type == TaskTypes.RELEASE_DORM
-                        and (room, index) in changed_slots
-                    ):
-                        names[index] = "Current"
-                if all(name == "Current" for name in names):
-                    del task.plan[room]
-            if not task.plan:
-                self.tasks.remove(task)
 
     def initialize_operators(self):
         self.op_data = Operators(self.global_plan)
@@ -6310,27 +6260,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 full = (
                     has_resting_mood(current, now) and mood >= current.upper_limit
                 ) or (bed is not None and bed.time is not None and bed.time <= now)
-                # 主班通过自己的上下班任务移动，Free 不隐式召回整组。
+                slot = self.op_data.plan[room][index]
                 if (
                     current.is_high()
                     and not full
-                    and not self.op_data.standby_can_yield(current)
+                    and self.op_data.is_auto_free_dorm_slot(room, index)
+                    and slot.agent == current.name
                 ):
-                    slot = self.op_data.plan[room][index]
-                    opening_explicit_free = (
-                        self.op_data.is_auto_free_dorm_slot(room, index)
-                        and slot.agent == current.name
-                    )
-                    if opening_explicit_free:
-                        continue
-                    agents[index] = current.name
                     continue
                 if not full:
                     if (
                         not replacements
                         or bed is None
                         or not self.op_data._slot_takable(
-                            bed, protect_resting=True, requester=replacements[0].name
+                            bed, requester=replacements[0].name
                         )
                     ):
                         agents[index] = current.name
@@ -8086,6 +8029,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.task.plan.clear()
                 self.task.plan.update(remaining)
             plan = self.task.plan
+        if self.task.type != TaskTypes.FIAMMETTA:
+            previous = dorm_residents(self.op_data)
+            for dorm_room in list(plan):
+                if dorm_room.startswith("dorm"):
+                    self.preserve_resting_crafters(plan[dorm_room], dorm_room)
+            restore_displaced_resting(self.op_data, previous, plan, self.tasks)
         rooms = list(plan.keys())
         # 保存原班：#907 无人机加速失败时恢复，避免任务以空 plan 在下一轮被误消费
         original_plan = (

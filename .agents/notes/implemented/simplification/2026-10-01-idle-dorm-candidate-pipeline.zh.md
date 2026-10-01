@@ -5,6 +5,8 @@ category: simplification
 date: 2026-10-01
 ---
 
+床位接管与救急候补资格采用[按优先级统一宿舍恢复](../simplification/2026-10-02-priority-aware-dorm-recovery.zh.md)，取代本文中的无条件保床规则。
+
 # 不养闲人共用候选流程
 
 [English](2026-10-01-idle-dorm-candidate-pipeline.md) | [中文](2026-10-01-idle-dorm-candidate-pipeline.zh.md)

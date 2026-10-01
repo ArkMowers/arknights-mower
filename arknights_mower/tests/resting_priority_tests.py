@@ -60,28 +60,17 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
     current = set_tier(data, "空爆", occupant, 12)
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
-    expected = False
-    if occupant > RestingTier.LOW_MAIN and incoming < occupant:
-        expected = incoming <= RestingTier.PRIORITY_REPLACEMENT
-        if incoming == RestingTier.STANDBY and occupant == RestingTier.REPLACEMENT:
-            expected = True
-        if (
-            incoming in (RestingTier.STANDBY, RestingTier.REPLACEMENT)
-            and occupant == RestingTier.IDLE
-        ):
-            expected = mood is not None and mood <= 22
-    assert (
-        data._find_dorm_slot(request.name, set(), group_resting=True) is not None
-    ) == expected
+    expected = incoming < occupant
+    assert (data._find_dorm_slot(request.name, set()) is not None) == expected
 
 
 @pytest.mark.parametrize("tier", [RestingTier.STANDBY, RestingTier.REPLACEMENT])
 @pytest.mark.parametrize("mood", [-1, 25])
-def test_invalid_cached_mood_defaults_full_and_preserves_idle(op_data, tier, mood):
+def test_unknown_cached_mood_does_not_override_identity_priority(op_data, tier, mood):
     op_data.dorm[0].time = datetime.now() + timedelta(hours=1)
     op_data.operators["空爆"].mood = 3
     set_tier(op_data, "红", tier, mood)
-    assert op_data.assign_dorm("红") is None
+    assert op_data.assign_dorm("红") is not None
 
 
 def test_free_selection_keeps_idle_bed_with_unknown_replacement(op_data):
@@ -238,13 +227,13 @@ def test_workshop_selection_does_not_override_schedule_identity(op_data):
 @pytest.mark.parametrize(
     "mood,known,temporary,expected",
     [
-        (8, True, False, RestingTier.PRIORITY),
+        (8, True, False, RestingTier.PRIORITY_REPLACEMENT),
         (20, True, False, RestingTier.PRIORITY_REPLACEMENT),
-        (24, False, False, RestingTier.PRIORITY),
+        (24, False, False, RestingTier.PRIORITY_REPLACEMENT),
         (8, True, True, RestingTier.PRIORITY_REPLACEMENT),
     ],
 )
-def test_rescue_promotes_unfinished_members_without_protecting_temporary_fillers(
+def test_rescue_retains_configured_priority_for_every_admission_source(
     op_data, state, mood, known, temporary, expected
 ):
     op = set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT, mood)

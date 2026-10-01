@@ -258,8 +258,8 @@ def test_same_tier_compares_absolute_mood(op_data):
     assert tasks[0].plan[ROOM][-1] == "红"
 
 
-@pytest.mark.parametrize("mood,expected", [(22, True), (22.01, False)])
-def test_free_room_obeys_idle_takeover_limit(op_data, mood, expected):
+@pytest.mark.parametrize("mood,expected", [(22, True), (22.01, True)])
+def test_free_room_obeys_strict_identity_priority(op_data, mood, expected):
     op_data.operators["空爆"].mood = 2
     op_data.dorm[0].time = datetime.now() + timedelta(hours=5)
     op_data.operators["红"].mood = mood

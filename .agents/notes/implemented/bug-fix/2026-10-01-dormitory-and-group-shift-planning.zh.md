@@ -5,6 +5,8 @@ category: bug-fix
 date: 2026-10-01
 ---
 
+床位接管与救急候补资格采用[按优先级统一宿舍恢复](../simplification/2026-10-02-priority-aware-dorm-recovery.zh.md)，取代本文中的无条件保床规则。
+
 # 宿舍与大组换班规划
 
 [English](2026-10-01-dormitory-and-group-shift-planning.md) | [中文](2026-10-01-dormitory-and-group-shift-planning.zh.md)

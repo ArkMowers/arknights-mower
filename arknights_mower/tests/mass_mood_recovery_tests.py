@@ -297,7 +297,7 @@ def test_protected_replacement_keeps_bed_and_is_not_borrowed(solver):
     data = admit(data, [COVERS[0]], [5])
     bed = data.get_dorm_by_name(COVERS[0])[1]
     assert data.is_rescue_recovering(COVERS[0])
-    assert not data._slot_takable(bed, False, requester=PRIMARY[0])
+    assert data._slot_takable(bed, requester=PRIMARY[0])
     assert COVERS[0] not in data.replacement_candidates(data.operators[PRIMARY[0]])
     data.operators[COVERS[0]].mood = data.operators[COVERS[0]].upper_limit
     data.rescue_needed()
@@ -323,7 +323,7 @@ def test_unknown_formal_recovery_resident_is_not_borrowed(solver):
     assert data.is_rescue_recovering(COVERS[0])
     assert COVERS[0] not in data.replacement_candidates(data.operators[PRIMARY[0]])
     bed = data.get_dorm_by_name(COVERS[0])[1]
-    assert not data._slot_takable(bed, False, requester=PRIMARY[0])
+    assert data._slot_takable(bed, requester=PRIMARY[0])
 
 
 def test_majority_completion_requires_fresh_trigger_before_reentry(solver):

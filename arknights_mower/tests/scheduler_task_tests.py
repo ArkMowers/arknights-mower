@@ -645,7 +645,9 @@ class TestScheduling(unittest.TestCase):
             plan[destination.position[0]][destination.position[1]], target.name
         )
 
-    def test_single_recovery_target_is_exempt_from_capacity_drop(self):
+    def test_single_recovery_target_cannot_displace_higher_tier_during_capacity_drop(
+        self,
+    ):
         op_data = self.init_opdata()
         protected_bed, preferred_bed = op_data.dorm[:2]
         protected = op_data.operators["麒麟R夜刀"]
@@ -666,8 +668,8 @@ class TestScheduling(unittest.TestCase):
 
         rebalance_plan_swap_dorms(op_data, previous)
 
-        self.assertEqual(op_data.dorm[0].name, protected.name)
-        self.assertEqual(protected.dorm_recovery_room, protected.current_room)
+        self.assertEqual(op_data.dorm[0].name, preferred.name)
+        self.assertEqual(protected.dorm_recovery_room, "")
 
     def test_backup_overlay_blocks_task_rebuild_and_free_room_writes(self):
         op_data = self.init_opdata()
