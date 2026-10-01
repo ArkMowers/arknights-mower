@@ -15,6 +15,7 @@ from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     merge_release_dorm,
+    plan_metadata,
 )
 
 solver = dorm_empty_release_tests.solver
@@ -110,7 +111,7 @@ def test_batch_does_not_cross_another_task(batch_solver, barrier):
     assert plan[ROOM].count("Free") == 1
 
 
-@pytest.mark.parametrize("boundary", ["strict", "workshop", "other_room", "future"])
+@pytest.mark.parametrize("boundary", ["strict", "other_room", "future"])
 def test_batch_preserves_special_release_boundaries(
     batch_solver, boundary, monkeypatch
 ):
@@ -118,12 +119,6 @@ def test_batch_preserves_special_release_boundaries(
     second = instance.tasks[1]
     if boundary == "strict":
         second.strict_mood_limit = True
-    elif boundary == "workshop":
-        monkeypatch.setattr(
-            config,
-            "conf",
-            SimpleNamespace(workshop_settings=[SimpleNamespace(operator="空爆")]),
-        )
     elif boundary == "other_room":
         second.plan = {"dormitory_2": second.plan[ROOM]}
     else:
@@ -131,6 +126,50 @@ def test_batch_preserves_special_release_boundaries(
     plan, _ = run_batch(instance)
     assert len(instance.tasks) == 2
     assert plan[ROOM].count("Free") == 1
+
+
+def test_workshop_setting_does_not_split_dorm_release(batch_solver, monkeypatch):
+    instance, _ = batch_solver
+    monkeypatch.setattr(
+        config.conf, "workshop_settings", [SimpleNamespace(operator="空爆")]
+    )
+    instance.craft_material = MagicMock()
+    plan, _ = run_batch(instance)
+    assert plan[ROOM].count("Free") == 2
+    assert len(instance.tasks) == 1
+    instance.craft_material.assert_not_called()
+
+
+@pytest.mark.parametrize("gap,merged", [(8, True), (11, False)])
+def test_exhausted_main_does_not_advance_individual_release_batch(
+    batch_solver, gap, merged
+):
+    instance, _ = batch_solver
+    data = instance.op_data
+    now = datetime.now()
+    main = data.operators["银灰"]
+    main.current_room, main.current_index = "meeting", 0
+    main.mood, main.depletion_rate, main.time_stamp = 0, 1, now
+    data.operators["桃金娘"].operator_type = "low"
+    due = {
+        "桃金娘": now + timedelta(hours=3),
+        "空爆": now + timedelta(hours=3, minutes=gap),
+    }
+    for bed in data.dorm:
+        data.operators[bed.name].mood = 10
+        data.operators[bed.name].time_stamp = now
+        bed.time = due[bed.name]
+
+    tasks = plan_metadata(data, [])
+
+    releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
+    assert len(releases) == (1 if merged else 2)
+    for task in releases:
+        targets = task.release_dorm_targets()
+        assert task.time == max(due[name] for name in targets)
+        assert all(task.time >= due[name] for name in targets)
+    if merged:
+        assert set(releases[0].release_dorm_targets()) == set(due)
 
 
 @pytest.mark.parametrize("already_full", [True, False])
@@ -224,7 +263,7 @@ def test_arrange_room_resolves_selection_once_before_recovery_order(solver):
     instance.scene = MagicMock(return_value=0)
     instance.tap_confirm = MagicMock()
     instance.get_agent_from_room = MagicMock(
-        side_effect=lambda *args: [{"agent": name} for name in selected]
+        side_effect=lambda *args, **kwargs: [{"agent": name} for name in selected]
     )
     resolve = instance.prepare_dorm_selection
     instance.prepare_dorm_selection = MagicMock(wraps=resolve)

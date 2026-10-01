@@ -306,6 +306,7 @@ class Operators:
         self.group_dorm = []
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
+        self.dorm_mood_estimates = {}
         self.workaholic_agent = set()
         self.free_blacklist = []
         self.rescue_mode = False
@@ -786,8 +787,8 @@ class Operators:
             self.idle_dorm_search_stopped_at = now or datetime.now()
             logger.info("游戏最低心情候选也已回满，停止本轮主动查找休息者")
 
-    def refresh_idle_dorm_search(self, reason=None, now=None):
-        """实际轮休／协助位释放，或停止满 1 小时后开放新一轮搜索。"""
+    def refresh_idle_dorm_search(self, reason=None, now=None, *, names=None):
+        """事件只刷新相关候选；停止满 1 小时后刷新全部候选。"""
         now = now or datetime.now()
         if reason is None:
             if (
@@ -799,8 +800,18 @@ class Operators:
             reason = "停止搜索已满 1 小时"
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
+        if names is None:
+            self.dorm_mood_estimates.clear()
+            names = self.operators
+        else:
+            names = set(names)
+            for name in names:
+                self.dorm_mood_estimates.pop(name, None)
         # 不动床位及预计回满时间，只撤销上一轮搜索产生的临时保护。
-        for op in self.operators.values():
+        for name in names:
+            op = self.operators.get(name)
+            if op is None:
+                continue
             op.dorm_mood_fallback = ""
             op.dorm_mood_peers = {}
             op.idle_rest_check = None
@@ -816,6 +827,7 @@ class Operators:
             and op.current_room.startswith("dorm")
             and getattr(op, "dorm_mood_fallback", "") == op.current_room
             and resting_tier(self, name) != RestingTier.EXCLUDED
+            and has_resting_mood(op)
             and resting_mood(op) >= op.upper_limit
             and not self.has_rest_mood_limit(name)
         )
@@ -1211,6 +1223,11 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
+        if update_time or (agent.current_room, agent.current_index) != (
+            current_room,
+            current_index,
+        ):
+            self.dorm_mood_estimates.pop(name, None)
         retained_time = None
         _, previous_bed = self.get_dorm_by_name(name)
         if (
@@ -1449,6 +1466,7 @@ class Operators:
             operator.standby_low_priority = getattr(
                 exist, "standby_low_priority", False
             )
+            operator.temporary_dorm_fill = getattr(exist, "temporary_dorm_fill", False)
         self.operators[operator.name] = operator
         self.apply_custom_mood_limits(operator)
         self.apply_ling_xi_mood_limits()
@@ -1555,13 +1573,15 @@ class Operators:
     def is_rescue_recovering(self, name, now=None):
         op = self.operators.get(name)
         return bool(
-            self.rescue_mode
-            and name in self.main_rescue_priority
+            (self.rescue_mode or self.rescue_plan_active)
             and op is not None
             and op.is_resting()
+            and not getattr(op, "temporary_dorm_fill", False)
             and resting_tier(self, name) != RestingTier.EXCLUDED
             and not self.rest_mood_complete(name)
-            and resting_mood(op, now) < op.upper_limit
+            and (
+                not has_resting_mood(op, now) or resting_mood(op, now) < op.upper_limit
+            )
         )
 
     def resting_mood_threshold(self, op):
@@ -1723,6 +1743,9 @@ class Operators:
                         # 不触发 current_room 的通知／记账回调。
                         op._current_room, op.current_index = room, index
                         op.rest_mood_release_limit = None
+            for op in projected.operators.values():
+                if not op.is_resting():
+                    op.temporary_dorm_fill = False
             for bed in projected.dorm:
                 occupant = projected.get_current_operator(*bed.position)
                 if occupant is not None and projected.is_recovery_dorm(
@@ -1774,6 +1797,7 @@ class Operators:
             name
             for name in operator.replacement
             if name != "Free"
+            and not self.is_rescue_recovering(name)
             and not (operator.room.startswith("dorm") and self.rest_mood_complete(name))
         ]
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
@@ -1909,13 +1933,25 @@ class Operators:
             ):
                 return False
         name = dorm.name
-        if self.rescue_mode and (
-            name or self.get_current_operator(*dorm.position) is not None
+        if (
+            not name
+            and (resident := self.get_current_operator(*dorm.position))
+            and self.is_recovery_dorm(dorm, resident.name)
         ):
-            return False
-        if name == "" or name not in self.operators:
+            if (
+                self.rescue_mode or self.rescue_plan_active
+            ) and not resident.temporary_dorm_fill:
+                return False
+            name = resident.name
+        if name == "":
             return True
+        if name not in self.operators:
+            return not (self.rescue_mode or self.rescue_plan_active)
         op = self.operators[name]
+        if (self.rescue_mode or self.rescue_plan_active) and not has_resting_mood(op):
+            return False
+        if self.is_rescue_recovering(name):
+            return False
         if self.is_free_room_excluded(name):
             return False
         # 已预留、尚未执行入驻的床位不能被本轮后续组重复分配。
@@ -2230,6 +2266,8 @@ class Operator:
         self.dorm_mood_fallback = ""
         self.dorm_mood_peers = {}
         self.idle_rest_check = None
+        # 普通补床住客随时给主班让床，不计入集中恢复正式批次。
+        self.temporary_dorm_fill = False
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
@@ -2259,6 +2297,8 @@ class Operator:
                 self.dorm_mood_peers = {}
             self.clear_dorm_recovery()
             self._current_room = value
+            if not value or not value.startswith("dorm"):
+                self.temporary_dorm_fill = False
             if value:
                 self.rest_mood_release_limit = None
             started_working = not was_working and self.is_working()

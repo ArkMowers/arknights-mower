@@ -258,11 +258,11 @@ def test_rescue_entry_rescales_existing_countdown_to_main_upper_limit(data):
 def test_priority_uses_main_plan_identity_even_after_rescue_swap(data):
     configure_rescue(data)
     set_moods(data, [0, 0, 0, 0])
+    data.operators[COVERS[2]].mood = 0
     assert data.rescue_needed()
     assert data.swap_plan([True], refresh=True) is None
     for name in [*PRIMARY, COVERS[2]]:
         assert resting_tier(data, name) == RestingTier.PRIORITY
-    data.operators[COVERS[2]].mood = 0
     data.operators[PRIMARY[0]]._current_room = ""
     data.operators[PRIMARY[1]]._current_room = ""
     assert {PRIMARY[0], PRIMARY[1], COVERS[2]} <= set(dorm_candidates(data).recovering)
@@ -345,13 +345,20 @@ def test_fallback_exhausted_primaries_use_normal_shift_without_clear(data):
     assert not any(getattr(task, "rescue_dorm_clear", False) for task in solver.tasks)
 
 
-def test_rescue_never_uses_unknown_idle_filling_or_excluded_workers(data):
+def test_rescue_keeps_shared_candidates_and_excludes_blacklisted_workers(
+    data, monkeypatch
+):
+    monkeypatch.setattr(
+        "arknights_mower.utils.resting_priority.agent_list",
+        [*data.operators, "伊芙利特"],
+    )
     set_moods(data, [0, 0, 0, 0])
     data.operators[COVERS[2]].mood = 0
     data.config.free_blacklist.append(COVERS[2])
     assert data.rescue_needed()
     candidates = dorm_candidates(data)
-    assert candidates.unregistered == []
+    assert candidates.unknown == ["伊芙利特"]
+    assert "伊芙利特" in candidates.filling
     assert COVERS[2] not in candidates.filling
     data.operators[PRIMARY[0]].workaholic = True
     assert data.assign_dorm(PRIMARY[0]) is None
@@ -432,6 +439,58 @@ def test_rescue_waits_for_existing_residents_cap_instead_of_clearing_beds(data):
     assert releases[0].time == NOW + timedelta(hours=4)
     assert data.dorm[0].name == before[0].name
     assert data.dorm[0].time == before[0].time
+
+
+def test_existing_replacement_recovery_is_protected_without_candidate_promotion(data):
+    set_moods(data, [0, 0, 0, 0])
+    data.operators[COVERS[0]].mood = 5
+    assert data.rescue_needed()
+    assert COVERS[0] not in data.main_rescue_priority
+    assert resting_tier(data, COVERS[0]) == RestingTier.REPLACEMENT
+    assert not data.is_rescue_recovering(COVERS[0])
+    data = admit(data, [COVERS[0]])
+    assert data.is_rescue_recovering(COVERS[0])
+    assert resting_tier(data, COVERS[0]) == RestingTier.REPLACEMENT
+    assert COVERS[0] not in data.replacement_candidates(data.operators[PRIMARY[0]])
+    assert not data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+
+
+@pytest.mark.parametrize("cached_bed", [False, True])
+def test_known_temporary_fill_yields_without_joining_formal_recovery(data, cached_bed):
+    set_moods(data, [0, 0, 0, 0])
+    data.operators[COVERS[0]].mood = 5
+    assert data.rescue_needed()
+    data = admit(data, [COVERS[0]])
+    resident = data.operators[COVERS[0]]
+    resident.temporary_dorm_fill = True
+    if not cached_bed:
+        data.dorm[0].name = ""
+    assert not data.is_rescue_recovering(resident.name)
+    assert data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+
+
+@pytest.mark.parametrize("unknown", ["missing_sample", "invalid_mood"])
+def test_temporary_fill_does_not_yield_with_unknown_mood(data, unknown):
+    set_moods(data, [0, 0, 0, 0])
+    assert data.rescue_needed()
+    data = admit(data, [COVERS[0]])
+    resident = data.operators[COVERS[0]]
+    resident.temporary_dorm_fill = True
+    if unknown == "missing_sample":
+        resident.time_stamp = None
+    else:
+        resident.mood = -1
+    assert not data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+
+
+def test_completed_existing_recovery_can_release_its_bed(data):
+    set_moods(data, [0, 0, 0, 0])
+    assert data.rescue_needed()
+    data = admit(data, [COVERS[0]])
+    resident = data.operators[COVERS[0]]
+    assert resident.mood == resident.upper_limit
+    assert not data.is_rescue_recovering(resident.name)
+    assert data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
 
 
 def test_rescue_preserves_idle_release_exclusions(data):

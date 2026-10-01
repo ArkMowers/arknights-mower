@@ -7,7 +7,11 @@ from typing import Literal
 from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
-from arknights_mower.utils.dorm_candidates import dorm_candidates, vacant_dorm_slots
+from arknights_mower.utils.dorm_candidates import (
+    dorm_candidates,
+    dorm_task_reservations,
+    vacant_dorm_slots,
+)
 from arknights_mower.utils.furniture_task import (
     FURNITURE_EXIT_SECONDS,
     FURNITURE_RUN_SECONDS,
@@ -1227,6 +1231,20 @@ def plan_metadata(op_data, tasks):
         if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
         or id(t) in locked_ids
     ]
+    if op_data.rescue_mode:
+        _, reserved_slots = dorm_task_reservations(
+            op_data, [task for task in tasks if task.type != TaskTypes.FILL_DORM]
+        )
+        vacancies = vacant_dorm_slots(op_data, reserved_slots)
+        preserved = []
+        for task in tasks:
+            if task.type != TaskTypes.FILL_DORM or id(task) in locked_ids:
+                preserved.append(task)
+                continue
+            _, changed_slots = _arrangement_resources(task.plan)
+            if changed_slots and changed_slots <= vacancies:
+                preserved.append(task)
+        tasks = preserved
     pending_arrangements = []
     # 按实际床位定时；迁移完成读房后会重建，避免清理尚未发生的未来位置。
     limited_releases = plan_mood_limit_releases(op_data)
@@ -1315,15 +1333,25 @@ def plan_metadata(op_data, tasks):
                 ]
         else:
             high_dorms = _high_dorms
+        rescue_batch = any(op_data.is_rescue_recovering(dorm.name) for dorm in dorms)
+        if rescue_batch:
+            high_dorms = [
+                dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+            ]
         rest_in_full_dorms = [
-            dorm for dorm in high_dorms if op_data.operators[dorm.name].rest_in_full
+            dorm
+            for dorm in high_dorms
+            if op_data.operators[dorm.name].rest_in_full
+            or op_data.is_rescue_recovering(dorm.name)
         ]
         if high_dorms and group_name:
+            if rescue_batch and any(dorm.time is None for dorm in high_dorms):
+                continue
             # 高优先干员恢复时间差过大时，可延后整组回班。
             base_time = high_dorms[0].time
-            need_early = not (
-                op_data.operators[high_dorms[0].name].exhaust_require
-                or any(op_data.is_rescue_recovering(bed.name) for bed in high_dorms)
+            need_early = (
+                not rescue_batch
+                and not op_data.operators[high_dorms[0].name].exhaust_require
             )
             mood_gap_full_rest = False
             if (
@@ -1344,7 +1372,11 @@ def plan_metadata(op_data, tasks):
                         need_early = False
             if rest_in_full_dorms:
                 max_rest_in_full_time = max(
-                    (dorm.time for dorm in rest_in_full_dorms if dorm.time is not None),
+                    (
+                        dorm.time
+                        for dorm in (high_dorms if rescue_batch else rest_in_full_dorms)
+                        if dorm.time is not None
+                    ),
                     default=None,
                 )
             nearest_dorm = min(
@@ -1386,7 +1418,9 @@ def plan_metadata(op_data, tasks):
             # high_droms 如果触发急救模式，后面的移送到急救前
             for room in high_dorms:
                 if room.time and room.name:
-                    rest_in_full = op_data.operators[room.name].rest_in_full
+                    rest_in_full = op_data.operators[
+                        room.name
+                    ].rest_in_full or op_data.is_rescue_recovering(room.name)
                     task_time = (
                         min(room.time, min_resting_time)
                         if not rest_in_full
@@ -1403,22 +1437,13 @@ def plan_metadata(op_data, tasks):
     release_tasks = {}
     if op_data.config.free_room or op_data.rescue_mode:
         for room in free_rooms:
-            # 防止时间和前面重复
-            if min_resting_time != datetime.max:
-                min_resting_time += timedelta(seconds=10)
             operator = op_data.operators[room.name]
             observed_full = (
                 operator.time_stamp is not None
             ) and operator.mood >= operator.upper_limit
             if (room.time or observed_full) and room.name:
-                # 主班只在自身回满后离宿待命，不能被其他工作组的急救时间提前清退。
-                task_time = (
-                    datetime.now()
-                    if observed_full
-                    else room.time
-                    if operator.is_high() or op_data.rescue_mode
-                    else min(room.time, min_resting_time)
-                )
+                # 清退使用个人回满时刻；主班抢床交给轮休层级接管。
+                task_time = datetime.now() if observed_full else room.time
                 release_tasks.setdefault(task_time, ([], None))[0].append(room)
     # 独立的个人离宿时刻不受整组回满、不养闲人和任务合并影响。
     generated = generate_plan_by_drom(
@@ -1548,9 +1573,9 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
     # 其他任务已选好但尚未实际入住的床位，不参与本轮交换。
     for bed in op_data.dorm:
         op = op_data.operators.get(bed.name)
-        if (
-            op is not None
-            and bed.name not in explicit_names
+        if op is not None and (
+            op_data.is_rescue_recovering(bed.name)
+            or bed.name not in explicit_names
             and (op.current_room, op.current_index) != bed.position
         ):
             locked_rooms.add(bed.position[0])
@@ -1624,10 +1649,19 @@ def try_reorder(op_data, new_plan):
 
     # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
     # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。
+    protected_indices = {
+        index
+        for index, bed in enumerate(dorm)
+        if op_data.is_rescue_recovering(bed.name)
+    }
     effective_free_indices = [
-        idx for idx, room in enumerate(dorm) if op_data.is_effective_free_slot(room)
+        idx
+        for idx, room in enumerate(dorm)
+        if op_data.is_effective_free_slot(room) and idx not in protected_indices
     ]
-    blocked_indices = set(range(len(dorm))) - set(effective_free_indices)
+    blocked_indices = (
+        set(range(len(dorm))) - set(effective_free_indices) - protected_indices
+    )
     for idx in blocked_indices:
         dorm[idx].name = ""
         dorm[idx].time = None
@@ -1669,12 +1703,14 @@ def next_workshop_task_time(tasks, earliest=None):
 
 def try_workshop_tasks(op_data, tasks):
     # 如果没有其他任务则进行加工站干员检查
-    from arknights_mower.data import workshop_formula
     from arknights_mower.utils.workshop_automation import (
         restore_if_no_plans,
         workshop_task_current,
     )
-    from arknights_mower.utils.workshop_limits import batch_limit
+    from arknights_mower.utils.workshop_limits import (
+        workshop_material_block_reason,
+        workshop_operator_block_reason,
+    )
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
@@ -1694,194 +1730,168 @@ def try_workshop_tasks(op_data, tasks):
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
-            valid = False
-            if item.operator in op_data.operators.keys():
-                agent = op_data.operators[item.operator]
-                valid = agent.mood > 22
-            else:
+            reason = workshop_operator_block_reason(
+                op_data, item.operator, tasks, minimum_mood=22
+            ) or workshop_material_block_reason(
+                item.operator, item.items, inventory_data
+            )
+            if reason:
+                logger.info(f"{item.operator}加工跳过：{reason}")
+                continue
+            if item.operator not in op_data.operators:
                 logger.info(f"自动添加{item.operator}至干员数据列表")
-                valid = True
                 op_data.add(Operator(item.operator, ""))
-            match = False
-            base_material_match = False
-            non_base_material_match = False
-            if item.operator == "九色鹿":
-                base_material_match = False
-                non_base_material_match = False
-                for material in item.items:
-                    for name in material.item_names:
-                        metadata = workshop_formula[name]
-                        if batch_limit(name, metadata, material, inventory_data) > 0:
-                            if metadata["apCost"] < 4 or metadata["tab"] == "基建材料":
-                                base_material_match = True
-                            elif (
-                                metadata["apCost"] == 4
-                                and metadata["tab"] != "基建材料"
-                            ):
-                                non_base_material_match = True
-                match = base_material_match and non_base_material_match
-                if not match:
-                    logger.info(
-                        f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个小于4心情垫刀材料和一个4心情精英材料"
-                    )
-            else:
-                for material in item.items:
-                    for name in material.item_names:
-                        metadata = workshop_formula[name]
-                        if batch_limit(name, metadata, material, inventory_data) > 0:
-                            match = True
-                            break
-                if not match:
-                    logger.info(f"{item.operator}材料设置不符合要求: 请检查合成数量")
-            if match and valid:
-                source = "专精备料" if item.source == "mastery" else "手动配置"
-                logger.info(f"{item.operator}满足使用条件，生成加工站任务（{source}）")
-                task = SchedulerTask(
-                    time=next_workshop_task_time(tasks),
-                    task_type=TaskTypes.WORKSHOP,
-                    meta_data=item.operator,
-                )
-                from arknights_mower.utils.workshop_automation import (
-                    stamp_workshop_task,
-                )
+            source = "专精备料" if item.source == "mastery" else "手动配置"
+            logger.info(f"{item.operator}满足使用条件，生成加工站任务（{source}）")
+            task = SchedulerTask(
+                time=next_workshop_task_time(tasks),
+                task_type=TaskTypes.WORKSHOP,
+                meta_data=item.operator,
+            )
+            from arknights_mower.utils.workshop_automation import (
+                stamp_workshop_task,
+            )
 
-                stamp_workshop_task(task)
-                tasks.append(task)
-                pending_operators.add(item.operator)
-            else:
-                logger.debug("数据不满足条件，跳过加工站任务生成")
+            stamp_workshop_task(task)
+            tasks.append(task)
+            pending_operators.add(item.operator)
     else:
-        logger.debug("没有加工站配置或仓库数据，跳过加工站任务生成")
+        if not config.conf.workshop_settings:
+            logger.debug("未配置加工站任务，跳过任务生成")
+        else:
+            logger.info("尚无仓库读数，无法核验加工原料及成品库存，跳过任务生成")
 
 
 def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
+    """普通宿舍补位先使用真空床，再按统一候选与接管规则替换住客。"""
     if not op_data.config.free_room:
         if plan:
             return
         # 空床补位独立于不养闲人；关闭清退时只填空床，不替换已入住者。
         empty_only = True
-    # 有plan 的情况
-    for k, v in plan.items():
-        for name in v:
-            if name in op_data.operators and time is not None:
-                _idx, __dorm = op_data.get_dorm_by_name(name)
+    if op_data.rescue_mode and not plan:
+        # 主班轮休先预约床位；集中恢复期间普通人只填剩余真空床。
+        empty_only = True
+    if plan:
+        for names in plan.values():
+            for name in names:
+                if name not in op_data.operators or time is None:
+                    continue
+                _, bed = op_data.get_dorm_by_name(name)
                 if (
-                    __dorm
-                    and op_data.is_effective_free_slot(__dorm)
-                    and __dorm.time is not None
-                    and __dorm.time < time
+                    bed is not None
+                    and op_data.is_effective_free_slot(bed)
+                    and bed.time is not None
+                    and bed.time < time
                 ):
                     add_release_dorm(tasks, op_data, name)
-    # 普通情况
-    if not plan:
-        try:
-            # 查看是否有未满心情的人
-            logger.info("检查宿舍空床" if empty_only else "启动不养闲人安排空余宿舍位")
-            now = datetime.now()
-            standby_waiting = {
-                op.name
-                for op in op_data.operators.values()
-                if op_data.is_standby(op.name)
-            }
-            reserved = {
-                name
-                for task in tasks
-                for names in task.plan.values()
-                for name in names
-                if name not in ("", "Current", "Free")
-                and not (name in standby_waiting and task.type == TaskTypes.SHIFT_ON)
-            }
-            reserved_slots = {
-                (room, index)
-                for task in tasks
-                for room, names in task.plan.items()
-                for index, name in enumerate(names)
-                if name != "Current"
-            }
-            vacancies = vacant_dorm_slots(op_data, reserved_slots)
-            if empty_only and not vacancies:
-                return
-            # 空床单独生成优先补位任务，不把已满宿舍的普通换人夹带到跑单前。
-            filling_vacancies = bool(vacancies)
-            candidates = dorm_candidates(
-                op_data, reserved, include_standby=True, now=now
-            )
-            waiting_list = [op_data.operators[name] for name in candidates.recovering]
-            full_list = [op_data.operators[name] for name in candidates.full]
-            idle_fallback = candidates.unregistered
-            if not waiting_list and not full_list and not idle_fallback:
-                return
-            logger.debug(
-                f"有{len(waiting_list)}个干员需要恢复，{len(full_list)}个满心情候选可补空床"
-            )
-            plan = {}
-            # 有空床先入住，再竞争单回；不要在仍有空床时把候补提前踢出。
-            for value in sorted(op_data.dorm, key=lambda bed: bool(bed.name)):
-                if (
-                    filling_vacancies or not value.name
-                ) and value.position not in vacancies:
+        return
+
+    try:
+        now = datetime.now()
+        reserved_names, reserved_slots = dorm_task_reservations(op_data, tasks)
+        vacancies = vacant_dorm_slots(op_data, reserved_slots)
+        logger.info("检查宿舍空床" if empty_only else "启动不养闲人安排空余宿舍位")
+        if empty_only and not vacancies:
+            return
+        candidates = dorm_candidates(op_data, reserved_names, now=now)
+        recovering = iter(candidates.recovering)
+        waiting = next(recovering, None)
+        full = iter(
+            name
+            for name in candidates.filling
+            if name not in candidates.recovering and name not in candidates.unknown
+        )
+        search_unknown = bool(candidates.unknown)
+        replacement_search = search_unknown and not op_data.idle_dorm_search_exhausted
+        if waiting is None and not candidates.filling:
+            return
+
+        filling_vacancies = bool(vacancies)
+        arrangement = {}
+        residents = []
+        for bed in op_data.dorm:
+            if bed.position in reserved_slots or not op_data.is_effective_free_slot(
+                bed
+            ):
+                continue
+            if filling_vacancies:
+                if bed.position not in vacancies:
                     continue
-                if not waiting_list and not full_list and not idle_fallback:
-                    break
-                if value.name and not waiting_list:
-                    continue
-                room, index = value.position
+                occupant = None
+            else:
+                occupant = op_data.operators.get(bed.name)
                 if (
-                    value.position in reserved_slots
-                    or not op_data.is_effective_free_slot(value)
+                    occupant is None
+                    or (occupant.current_room, occupant.current_index) != bed.position
+                    or op_data.is_free_room_excluded(occupant.name)
+                    or op_data.is_rescue_recovering(occupant.name)
                 ):
                     continue
-                if op_data.is_free_room_excluded(value.name):
-                    continue
-                agent = op_data.operators.get(value.name)
-                if agent is not None:
-                    if (agent.current_room, agent.current_index) != value.position:
-                        continue
-                    mood = resting_mood(agent, now)
-                    full = (mood >= agent.upper_limit) or (
-                        value.time is not None and value.time <= now
-                    )
-                    # 未恢复完成时复用层级接管规则；普通候补可向更高层级让床。
-                    if not full and not op_data._slot_takable(
-                        value, protect_resting=True, requester=waiting_list[0].name
+                complete = (
+                    has_resting_mood(occupant, now)
+                    and resting_mood(occupant, now) >= occupant.upper_limit
+                ) or (bed.time is not None and bed.time <= now)
+                if not complete:
+                    if waiting is None or not op_data._slot_takable(
+                        bed, protect_resting=True, requester=waiting
                     ):
                         continue
-                elif value.name:
+                elif waiting is None and (
+                    not replacement_search
+                    or op_data.is_full_dorm_fallback(occupant.name)
+                    or op_data.has_rest_mood_limit(occupant.name)
+                ):
                     continue
-                if waiting_list:
-                    rest = waiting_list.pop(0)
-                elif full_list:
-                    rest = full_list.pop(0)
-                    rest.dorm_mood_fallback = room
+
+            if waiting is not None:
+                incoming = waiting
+                waiting = next(recovering, None)
+            elif search_unknown:
+                # 未知心情统一通过游戏心情升序选人，不能把默认 24 当实读。
+                incoming = "Free"
+                if occupant is not None:
+                    residents.append(occupant.name)
+            else:
+                incoming = next(full, None)
+                if incoming is None:
+                    break
+                if incoming in op_data.operators:
+                    op_data.operators[incoming].dorm_mood_fallback = bed.position[0]
                 else:
-                    plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[
-                        index
-                    ] = "Free"
-                    continue
-                plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = (
-                    rest.name
-                )
-            if plan:
-                task = SchedulerTask(
-                    time=now,
-                    task_plan=plan,
-                    task_type=TaskTypes.FILL_DORM
-                    if filling_vacancies
-                    else TaskTypes.NOT_SPECIFIC,
-                )
-                if filling_vacancies:
-                    task.dorm_fill_plan = copy.deepcopy(plan)
-                    simplify_dorm_fill(task, tasks, now)
-                if not getattr(task, "simple_dorm_fill", False):
-                    task.plan = prioritize_new_dorm_recovery(
-                        op_data, task.plan, reserved_slots
-                    )
-                label = "宿舍补位" if filling_vacancies else "不养闲人"
-                logger.debug(f"{label}任务：{task.plan}")
-                logger.info(f"添加{label}任务完成")
-                tasks.append(task)
-        except Exception as ex:
-            logger.exception(ex)
+                    # 未登记卡片不能成为换班预演的明确姓名；实际选人再登记。
+                    incoming = "Free"
+            room, index = bed.position
+            arrangement.setdefault(room, ["Current"] * len(op_data.plan[room]))[
+                index
+            ] = incoming
+
+        if not arrangement:
+            return
+        task = SchedulerTask(
+            time=now,
+            task_plan=arrangement,
+            task_type=TaskTypes.FILL_DORM
+            if filling_vacancies
+            else TaskTypes.NOT_SPECIFIC,
+        )
+        if residents:
+            task.dorm_mood_residents = residents
+        task.dorm_fill_plan = copy.deepcopy(arrangement)
+        if filling_vacancies:
+            simplify_dorm_fill(task, tasks, now)
+            if op_data.rescue_mode:
+                task.simple_dorm_fill = True
+        if not getattr(task, "simple_dorm_fill", False):
+            task.plan = prioritize_new_dorm_recovery(op_data, task.plan, reserved_slots)
+        tasks.append(task)
+        logger.info(
+            "添加%s任务完成：%s",
+            "宿舍补位" if filling_vacancies else "不养闲人",
+            task.plan,
+        )
+    except Exception as ex:
+        logger.exception(ex)
 
 
 def add_release_dorm(tasks, op_data, name):
@@ -1922,7 +1932,6 @@ def set_type_enum(value):
 
 def merge_release_dorm(tasks, merge_interval):
     """同一时间窗口按宿舍合并清退，逐人保留原床位身份。"""
-    workshop = {item.operator for item in config.conf.workshop_settings}
     tasks.sort(key=lambda task: task.time)
     chunks, rooms = [], {}
     latest = None
@@ -1944,7 +1953,6 @@ def merge_release_dorm(tasks, merge_interval):
             and not getattr(task, "product_shift_locked", False)
             and len(task.plan) == 1
             and targets
-            and not (targets.keys() & workshop)
             and all(
                 name in ("Current", "Free")
                 for row in task.plan.values()

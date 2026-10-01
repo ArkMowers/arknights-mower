@@ -22,6 +22,7 @@ def solver(monkeypatch):
     monkeypatch.setattr(base, "_is_mastery_busy", lambda name: False)
     monkeypatch.setattr(logger, "disabled", True)
     config.conf.enable_mastery = False
+    config.conf.rescue_threshold = 0
     instance = object.__new__(base.BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(

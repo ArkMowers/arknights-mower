@@ -72,6 +72,35 @@ def test_furniture_recipes_share_real_output_stock():
     )
 
 
+def test_material_diagnostics_keep_a_ready_recipe_despite_other_blocked_recipes():
+    setting = WorkShopItem(
+        item_names=["提纯源岩", "糖聚块"], self_upper_limit=10, children_lower_limit=0
+    )
+    assert (
+        workshop_limits.workshop_material_block_reason(
+            "年", [setting], {"提纯源岩": 0, "固源岩组": 4}
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("ready", ["fodder", "elite", "both"])
+def test_deer_diagnostics_distinguish_missing_material_combination(ready):
+    names = {"fodder": "碳素", "elite": "提纯源岩"}
+    selected = list(names.values()) if ready == "both" else [names[ready]]
+    settings = [
+        WorkShopItem(item_names=selected, self_upper_limit=10, children_lower_limit=0)
+    ]
+    stock = {"碳素": 0, "碳": 10, "提纯源岩": 0, "固源岩组": 10}
+    reason = workshop_limits.workshop_material_block_reason("九色鹿", settings, stock)
+    if ready == "both":
+        assert reason is None
+    elif ready == "fodder":
+        assert reason == "缺少可加工的 4 心情精英材料"
+    else:
+        assert reason == "缺少可加工的垫刀材料（小于 4 心情或基建材料）"
+
+
 @pytest.mark.parametrize("gold", [None, 0])
 def test_gold_is_assumed_sufficient_and_is_not_counted(gold):
     name = "聚合剂"
@@ -165,8 +194,10 @@ def game(monkeypatch, inventory):
     monkeypatch.setattr(base, "save_exception", MagicMock())
     monkeypatch.setattr(base, "send_message", MagicMock())
     solver = object.__new__(base.BaseSchedulerSolver)
+    solver._plan_dorm_recovery = MagicMock(return_value=True)
+    solver.tasks = []
     solver.recog = MagicMock(w=1920, h=1080)
-    solver.op_data = SimpleNamespace(operators={})
+    solver.op_data = SimpleNamespace(operators={}, refresh_idle_dorm_search=MagicMock())
     state = SimpleNamespace(
         scene=base.Scene.FACTORY_DASHBOARD,
         selected=None,
@@ -334,7 +365,7 @@ def test_exhausted_operator_skips_before_entry_or_immediately_after_existing_moo
         "特克诺": SimpleNamespace(mood=24, current_room="factory", current_index=0),
     }
 
-    def arrange(plan):
+    def arrange(plan, get_time=False):
         if plan == {"factory": ["蜜莓"]}:
             solver.op_data.operators["蜜莓"].mood = 0
 
@@ -370,6 +401,8 @@ def test_resting_or_unknown_mood_is_refreshed_by_existing_entry_read(
     solver.op_data.operators = {
         "蜜莓": SimpleNamespace(mood=old_mood, current_room=room, current_index=2),
     }
+    if room.startswith("dorm"):
+        solver.op_data.operators["蜜莓"].current_mood = lambda: 24
 
     def arrange(plan):
         solver.op_data.operators["蜜莓"].mood = 24

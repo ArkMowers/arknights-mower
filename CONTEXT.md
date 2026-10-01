@@ -70,6 +70,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Dormitory Recovery
 - **Definition**: The process of restoring operator mood inside dormitories. Allocates beds by priority tiers and establishes stable single-target recovery positions. Shift return, idle release, and personal mood limits determine departures separately.
+- Idle recovery planning and selection share candidates and reservations, distinguish unknown readings from verified mood, and check unknown mood in the game's ascending-mood list before retaining completed residents. Primary recovery reservations take precedence over ordinary vacancy filling; ordinary filling does not acquire concentrated-recovery protection. Crafting runs as an independent task after dormitory arrangements.
 - **Rescue Condition**: The rescue condition holds when at least two and at least half of eligible main-plan primary operators fall below their individual rescue mood thresholds, and remains active until a majority reach their main-plan upper mood limits. It can trigger a backup plan; without that condition configured, rescue uses only existing Free beds.
 - **Code Mapping**: [`dorm_recovery.py`](arknights_mower/utils/dorm_recovery.py), [`resting_tier`](arknights_mower/utils/resting_priority.py)
 - **_Avoid_**: `Sleep queue`, `Rest list`
@@ -127,12 +128,12 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
 
 ### Valid Mood Cache and Default Mood
-- **Definition**: A valid mood cache contains an observed value, timestamp, and usable estimate. Dorm candidate ranking treats missing valid readings as 24; this default does not confirm actual full mood.
+- **Definition**: A valid mood cache requires a measured value, timestamp, and usable prediction. Without it, candidate screening, ordering, and primary shift selection use selection-card estimates for up to one hour: green faces map to 24, red faces to 0, and yellow faces use approximate bar values strictly between 0 and 24. Unreadable cards remain unknown. Estimates do not establish measured full recovery, sample timestamps, depletion rates, recovery deadlines, or completion at mandatory personal limits.
 - **Code Mapping**: [`has_resting_mood`](arknights_mower/utils/resting_priority.py)
 
-### Initial Mood Sampling
-- **Definition**: At startup, temporarily rotate operators lacking required mood readings through a dorm. Preserve the original position cache and suspend backup switching during sampling. The first subsequent backup evaluation uses the original positions and new mood readings.
-- **Code Mapping**: [`BaseSchedulerSolver._read_initial_dorm_mood`](arknights_mower/solvers/base_schedule.py)
+### Initial Mood Observation
+- **Definition**: Startup reads actual room occupancy and estimates missing mood on an ordinary facility selection page before backup evaluation and cached correction. Observation does not select operators or confirm arrangements. Bounded scanning preserves partial estimates and continues startup when cards are unreadable. Normal room inspection calibrates measured mood and recovery time.
+- **Code Mapping**: [`BaseSchedulerSolver._read_initial_card_mood`](arknights_mower/solvers/base_schedule.py)
 
 ### Fiammetta Charging
 - **Definition**: A special sequence uses Fiammetta to restore a target operator’s mood, including temporary placements, charging, and follow-up arrangements. Suspend backup switching during the sequence. Update mood and timestamps while preserving the work depletion rate for later calibration from normal work readings.

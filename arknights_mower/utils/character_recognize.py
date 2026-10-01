@@ -17,6 +17,61 @@ from arknights_mower.utils.resource_pkg import (
 kernel = np.ones((10, 10), np.uint8)
 
 
+def estimate_agent_mood(img, scope):
+    """绿色笑脸为 24、红色为 0；其余卡片按白条粗估，裁切返回未知。"""
+    if (
+        not isinstance(img, np.ndarray)
+        or img.ndim != 3
+        or img.shape[2] != 3
+        or scope is None
+    ):
+        return None
+    (left, top), (right, bottom) = scope
+    if (
+        left < 0
+        or top < 28
+        or right > img.shape[1]
+        or bottom > img.shape[0]
+        or not 180 <= right - left <= 210
+    ):
+        return None
+    # 姓名框左侧定位固定的笑脸及白条，避开选中边框和技能图标。
+    icon = img[top - 28 : top - 2, left + 16 : left + 43]
+    hsv = cv2.cvtColor(icon, cv2.COLOR_RGB2HSV)
+    colored = (hsv[:, :, 1] > 80) & (hsv[:, :, 2] > 150)
+    mood_color = (hsv[:, :, 0] < 85) | (hsv[:, :, 0] > 170)
+    if np.count_nonzero(colored & mood_color) < 15:
+        return None
+    # 只在笑脸圆内分类，避免立绘、技能和选中边框的颜色干扰。
+    yy, xx = np.ogrid[:26, :27]
+    face = ((xx - 13) ** 2 + (yy - 13) ** 2 <= 11**2) & colored
+    hue = hsv[:, :, 0]
+    votes = (
+        np.count_nonzero(face & ((hue < 10) | (hue > 170))),
+        np.count_nonzero(face & (hue >= 16) & (hue < 37)),
+        np.count_nonzero(face & (hue >= 37) & (hue < 85)),
+    )
+    ranked = sorted(votes)
+    if ranked[-1] >= 15 and ranked[-1] >= 2 * ranked[-2]:
+        if votes[0] == ranked[-1]:
+            return 0.0
+        if votes[2] == ranked[-1]:
+            return 24.0
+    bar = img[top - 17 : top - 13, left + 45 : left + 171]
+    bright = bar.min(axis=2) > 185
+    neutral = np.ptp(bar, axis=2) < 45
+    filled = (bright & neutral).mean(axis=0) >= 0.5
+    visible = (bar.max(axis=2) > 30).mean(axis=0) >= 0.5
+    if visible.mean() < 0.9:
+        return None
+    # 白条连续地从左向右延伸；不把立绘反光或遮挡当心情。
+    indices = np.flatnonzero(filled)
+    if indices.size and (indices[0] > 4 or np.any(np.diff(indices) > 3)):
+        return None
+    # 黄色笑脸未回满，条长误差不能使其被筛成满心情。
+    return max(0.1, min(23.9, round(float(filled.mean() * 24), 1)))
+
+
 def _load_models():
     with lzma.open(
         str(resource_pkg_path("arknights_mower/models/operator_select.model")), "rb"

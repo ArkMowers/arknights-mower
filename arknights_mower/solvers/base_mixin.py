@@ -11,7 +11,11 @@ import numpy as np
 from arknights_mower.data import workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import config, rapidocr, segment
-from arknights_mower.utils.character_recognize import operator_list, operator_list_train
+from arknights_mower.utils.character_recognize import (
+    estimate_agent_mood,
+    operator_list,
+    operator_list_train,
+)
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -635,6 +639,8 @@ class BaseMixin:
         train=False,
         observation=None,
         respect_train_selection=False,
+        mood_estimates=None,
+        skip_full_mood=False,
     ):
         if not self.low_frame_rate_mode:
             return self._scan_agent_fast(
@@ -644,6 +650,8 @@ class BaseMixin:
                 full_scan,
                 train,
                 respect_train_selection,
+                mood_estimates,
+                skip_full_mood,
             )
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
         ret = self.wait_for_agent_page(
@@ -651,7 +659,12 @@ class BaseMixin:
         )
         select_name = []
         while True:
-            target = next(((name, scope) for name, scope in ret if name in agent), None)
+            eligible = self.observe_agent_moods(
+                ret, agent, mood_estimates, skip_full_mood, train=train
+            )
+            target = next(
+                ((name, scope) for name, scope in ret if name in eligible), None
+            )
             if target is None:
                 return select_name, ret
             name, scope = target
@@ -684,6 +697,8 @@ class BaseMixin:
         full_scan,
         train,
         respect_train_selection=False,
+        mood_estimates=None,
+        skip_full_mood=False,
     ):
         """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
         try:
@@ -707,10 +722,15 @@ class BaseMixin:
                 False,
                 train,
                 respect_train_selection,
+                mood_estimates,
+                skip_full_mood,
             )
+        eligible = self.observe_agent_moods(
+            ret, agent, mood_estimates, skip_full_mood, train=train
+        )
         selected = []
         for name, scope in ret:
-            if name and name in agent:
+            if name and name in eligible:
                 is_selected = (
                     agent_card_selected(self.recog.img, scope, train=train)
                     if isinstance(self.recog.img, np.ndarray)
@@ -728,6 +748,26 @@ class BaseMixin:
                 if max_agent_count != -1 and len(selected) >= max_agent_count:
                     break
         return selected, ret
+
+    def observe_agent_moods(
+        self, page, candidates, estimates, skip_full, *, train=False
+    ):
+        """复用识别帧记录候选预估，不刷新截图或修改干员实读数据。"""
+        eligible = set(candidates)
+        if estimates is None or train:
+            return eligible
+        now = datetime.now()
+        for name, scope in page:
+            if name not in eligible:
+                continue
+            mood = estimate_agent_mood(self.recog.img, scope)
+            if mood is None:
+                estimates.pop(name, None)
+                continue
+            estimates[name] = (mood, now)
+            if skip_full and mood >= 24:
+                eligible.discard(name)
+        return eligible
 
     @timed_step("verify")
     def wait_for_arranged_agents(
@@ -1180,11 +1220,13 @@ class BaseMixin:
 
     def read_accurate_mood(self, img):
         try:
+            if not isinstance(img, np.ndarray) or img.ndim != 2 or not img.size:
+                return -1
             img = thres2(img, 200)
             return cv2.countNonZero(img) * 24 / 310
         except Exception as e:
             logger.exception(e)
-            return 24
+            return -1
 
     def detect_product_complete(self):
         for product in [

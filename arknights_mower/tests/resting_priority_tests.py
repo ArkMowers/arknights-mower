@@ -234,6 +234,28 @@ def test_workshop_selection_does_not_override_schedule_identity(op_data):
     assert resting_tier(op_data, "红") == RestingTier.PRIORITY
 
 
+@pytest.mark.parametrize("state", ["rescue_mode", "rescue_plan_active"])
+@pytest.mark.parametrize(
+    "mood,known,temporary,expected",
+    [
+        (8, True, False, RestingTier.PRIORITY),
+        (20, True, False, RestingTier.PRIORITY_REPLACEMENT),
+        (24, False, False, RestingTier.PRIORITY),
+        (8, True, True, RestingTier.PRIORITY_REPLACEMENT),
+    ],
+)
+def test_rescue_promotes_unfinished_members_without_protecting_temporary_fillers(
+    op_data, state, mood, known, temporary, expected
+):
+    op = set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT, mood)
+    op.upper_limit = 20
+    op.time_stamp = datetime.now() if known else None
+    op.temporary_dorm_fill = temporary
+    op_data.main_rescue_priority = {op.name}
+    setattr(op_data, state, True)
+    assert resting_tier(op_data, op.name) == expected
+
+
 def test_explicit_priority_replacement_is_protected_from_equal_or_lower_tiers(op_data):
     op_data.dorm[0].name = "红"
     op_data.dorm[0].time = datetime.now() + timedelta(hours=2)

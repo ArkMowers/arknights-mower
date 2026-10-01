@@ -66,6 +66,44 @@ def test_timeout_boundary(op_data):
     assert not op_data.refresh_idle_dorm_search(now=now + timedelta(hours=4))
 
 
+def test_event_refresh_preserves_unrelated_candidates_and_beds(op_data):
+    data = op_data
+    now = datetime.now()
+    affected = data.operators["红"]
+    unrelated = data.operators["空爆"]
+    for op in (affected, unrelated):
+        op.dorm_mood_fallback = ROOM
+        op.dorm_mood_peers = {"银灰": now}
+        op.idle_rest_check = (24, op.mood, op.time_stamp)
+        data.dorm_mood_estimates[op.name] = (24, now)
+    data.dorm_mood_estimates["未登记干员"] = (5, now)
+    bed_state = [(bed.name, bed.time, bed.position) for bed in data.dorm]
+    measured = (affected.mood, affected.time_stamp, affected.depletion_rate)
+    data.stop_idle_dorm_search(now)
+
+    data.refresh_idle_dorm_search(reason="加工结束", names=["红", "红", "不存在"])
+
+    assert not data.idle_dorm_search_exhausted
+    assert data.dorm_mood_estimates == {
+        "空爆": (24, now),
+        "未登记干员": (5, now),
+    }
+    assert affected.dorm_mood_fallback == ""
+    assert affected.dorm_mood_peers == {}
+    assert affected.idle_rest_check is None
+    assert unrelated.dorm_mood_fallback == ROOM
+    assert unrelated.dorm_mood_peers == {"银灰": now}
+    assert unrelated.idle_rest_check == (24, unrelated.mood, unrelated.time_stamp)
+    assert measured == (affected.mood, affected.time_stamp, affected.depletion_rate)
+    assert bed_state == [(bed.name, bed.time, bed.position) for bed in data.dorm]
+
+    data.stop_idle_dorm_search(now)
+    assert data.refresh_idle_dorm_search(now=now + timedelta(hours=1))
+    assert data.dorm_mood_estimates == {}
+    assert unrelated.dorm_mood_fallback == ""
+    assert unrelated.idle_rest_check is None
+
+
 def group_arrangement(instance, task_type=TaskTypes.SHIFT_OFF):
     data = instance.op_data
     for index, name in enumerate(("银灰", "红")):
@@ -90,6 +128,12 @@ def test_group_refresh_waits_for_all_rooms_and_does_not_repeat(solver, task_type
     instance, _ = solver
     data = instance.op_data
     task = group_arrangement(instance, task_type)
+    unrelated = (6, datetime.now())
+    data.dorm_mood_estimates = {
+        "银灰": (24, datetime.now()),
+        "红": (24, datetime.now()),
+        "空爆": unrelated,
+    }
     data.stop_idle_dorm_search()
     fail_once = True
 
@@ -112,6 +156,7 @@ def test_group_refresh_waits_for_all_rooms_and_does_not_repeat(solver, task_type
 
     instance.agent_arrange(task.plan)
     assert not data.idle_dorm_search_exhausted
+    assert data.dorm_mood_estimates == {"空爆": unrelated}
     data.stop_idle_dorm_search()
     # 同任务收尾、重复纠错已经到位的两个人，都不刷新。
     instance._finish_idle_dorm_shift()
@@ -134,7 +179,7 @@ def test_non_group_or_temporary_arrangement_does_not_refresh(solver, case):
     elif case == "fia":
         task.type = TaskTypes.FIAMMETTA
     elif case == "initial":
-        instance._initial_mood_probe_active = True
+        instance.defer_backup_plan_until_mood_read = True
     else:
         pass
     data.stop_idle_dorm_search()
@@ -196,12 +241,18 @@ def test_actual_training_read_reopens_once_without_workshop_configuration(
     elif case == "fia":
         instance.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
     data.stop_idle_dorm_search()
+    unrelated = (6, datetime.now())
+    data.dorm_mood_estimates = {
+        "空爆": (24, datetime.now()),
+        "银灰": unrelated,
+    }
 
     instance.get_agent_from_room("train", [0])
 
     assert data.idle_dorm_search_exhausted == (case != "released")
     if case == "released":
         assert old.current_room == ""
+        assert data.dorm_mood_estimates == {"银灰": unrelated}
         data.stop_idle_dorm_search()
         instance.get_agent_from_room("train", [0])
         assert data.idle_dorm_search_exhausted

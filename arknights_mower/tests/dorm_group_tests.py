@@ -32,6 +32,7 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
     config.conf.enable_mastery = False
+    config.conf.rescue_threshold = 0
     instance = object.__new__(BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
@@ -313,7 +314,11 @@ def test_released_main_can_still_trigger_its_own_return_batch(solver):
     assert tasks[1].plan["meeting"] == ["伊内丝", "银灰"]
 
 
-def test_zero_mood_worker_only_follows_group_shift(solver):
+@pytest.mark.parametrize("rescue", [False, True])
+def test_zero_mood_worker_only_follows_group_shift(solver, rescue):
+    if rescue:
+        config.conf.rescue_threshold = 0.75
+        assert solver.op_data.rescue_needed()
     worker = solver.op_data.operators["讯使"]
     worker.workaholic = True
     worker.mood = 0

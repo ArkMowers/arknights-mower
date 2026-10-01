@@ -1,5 +1,6 @@
 """Exercise the real crafting loop while HTTP configuration restores its recipes."""
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -12,7 +13,7 @@ from arknights_mower.utils import workshop_automation as auto
 from arknights_mower.utils import workshop_config as state
 
 
-@pytest.mark.parametrize("entry", ["workshop", "release", "direct", "furniture-page"])
+@pytest.mark.parametrize("entry", ["workshop", "direct", "furniture-page"])
 @pytest.mark.parametrize("cancel_at", [None, "scan", "selection", "submit"])
 @pytest.mark.parametrize("cancel_by", ["disable", "delete"])
 def test_restore_during_real_crafting_never_submits_manual_recipe(
@@ -27,24 +28,28 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     config.conf.workshop_settings = [manual]
     auto.update_workshop_config()
     task = SchedulerTask(
-        task_type=TaskTypes.RELEASE_DORM if entry == "release" else TaskTypes.WORKSHOP,
+        task_type=TaskTypes.WORKSHOP,
         meta_data="赫拉格",
-        task_plan={"dormitory_1": ["Free"]} if entry == "release" else {},
     )
     if entry == "workshop":
         auto.stamp_workshop_task(task)
     solver = object.__new__(base.BaseSchedulerSolver)
+    solver._plan_dorm_recovery = MagicMock(return_value=True)
     solver.task = task
     solver.tasks = [task]
     solver._refresh_deferred_product_reservations = MagicMock()
     solver.recog = MagicMock(w=1920, h=1080)
     solver.op_data = SimpleNamespace(
+        refresh_idle_dorm_search=MagicMock(),
         skip_idle_dorm_release=lambda name: False,
         operators={
             "赫拉格": SimpleNamespace(
-                current_room="dormitory_1" if entry == "release" else "factory",
+                current_room="factory",
                 current_index=0,
                 mood=24,
+                time_stamp=datetime.now(),
+                current_mood=lambda now=None: 24,
+                upper_limit=24,
                 is_high=lambda: False,
             )
         },
@@ -122,9 +127,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     )
     errors = MagicMock()
     monkeypatch.setattr(base, "save_exception", errors)
-    if entry == "release":
-        solver.infra_main()
-    elif entry == "direct":
+    if entry == "direct":
         solver.generate_product("赫拉格")
     else:
         solver.craft_material()
@@ -156,11 +159,15 @@ def test_infra_main_dispatches_verified_release_task(monkeypatch):
                 current_room="dormitory_1",
                 current_index=0,
                 mood=24,
+                time_stamp=datetime.now(),
+                current_mood=lambda now=None: 24,
+                upper_limit=24,
                 is_high=lambda: False,
             )
         },
     )
     solver.agent_arrange = MagicMock(return_value=True)
+    solver.craft_material = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.plan_metadata = MagicMock()
     solver.planned = True
@@ -178,6 +185,7 @@ def test_infra_main_dispatches_verified_release_task(monkeypatch):
     solver.infra_main()
 
     solver.agent_arrange.assert_called_once()
+    solver.craft_material.assert_not_called()
     solver.backup_plan_solver.assert_called_once()
 
 

@@ -127,7 +127,8 @@ def test_normal_planning_rebuilds_only_one_return_at_effective_limit(
     expected = NOW + timedelta(hours=(upper - op.mood) / 2)
     assert bed.time == expected
     solver._read_agent_mood = MagicMock()
-    solver.resting = MagicMock(return_value={})
+    # 保留真实轮休与元数据重建，仅隔离设备观测。
+    solver._scan_card_moods = MagicMock()
     solver._fill_empty_dorms = MagicMock()
     solver.backup_plan_solver = MagicMock()
     monkeypatch.setattr(base, "try_reorder", lambda *args: None)

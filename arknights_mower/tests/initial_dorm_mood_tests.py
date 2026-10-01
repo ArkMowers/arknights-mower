@@ -1,338 +1,206 @@
-"""初始化漏读心情按 Free 数选择宿舍，少量只换 Free，多量整间轮读。"""
+"""初始化卡牌预估只读页面，实际位置与恢复计时保持独立。"""
 
 import copy
-from datetime import datetime
-from math import ceil
+import pickle
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from arknights_mower.solvers import base_schedule, record
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.tests import (
-    dorm_empty_release_tests,
-    dorm_recovery_tests,
-    dorm_release_tests,
-)
-from arknights_mower.utils.operators import Operator
-from arknights_mower.utils.plan import Room
+from arknights_mower.tests import dorm_release_tests, group_resting_capacity_tests
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 from arknights_mower.utils.resting_priority import has_resting_mood
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 op_data = dorm_release_tests.op_data
-selection_solver = dorm_empty_release_tests.solver
-room_solver = dorm_recovery_tests.solver
-ROOM = "dormitory_2"
-ORIGINAL = ["芬", "香草", "翎羽", "克洛丝", "安赛尔"]
+ROOM = dorm_release_tests.ROOM
 
 
 @pytest.fixture
-def solver(op_data):
-    data = op_data
-    data.plan[ROOM] = [
-        Room(name, "", []) for name in ["芬", "香草", "Free", "Free", "Free"]
-    ]
-    for index, name in enumerate(ORIGINAL):
-        data.add(Operator(name, ROOM if index < 2 else "", index=index))
-        op = data.operators[name]
-        op.current_room, op.current_index = ROOM, index
-        op.mood, op.time_stamp = 24, datetime.now()
-    for room, names in (
-        ("room_1_1", ["陈", "煌", "能天使"]),
-        ("room_1_2", ["德克萨斯", "拉普兰德"]),
-    ):
-        data.plan[room] = [Room(name, "", []) for name in names]
-        for index, name in enumerate(names):
-            data.add(Operator(name, room, index=index, operator_type="high"))
-    data.operators["银灰"].time_stamp = None
-    data.operators["红"].time_stamp = None
-    data.config.resting_priority_replacement = ["红"]
-    data.plan["meeting"][0].replacement.append("白雪")
-    data.add(Operator("白雪", ""))
+def solver(op_data, monkeypatch):
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+    monkeypatch.setattr(base_schedule, "agent_card_selected", lambda img, scope: False)
+    monkeypatch.setattr(base_schedule, "monotonic", MagicMock(return_value=0))
+    monkeypatch.setattr(
+        base_schedule, "estimate_agent_mood", lambda img, scope: img[scope]
+    )
     instance = object.__new__(BaseSchedulerSolver)
-    instance.op_data = data
+    instance.op_data = op_data
     instance.task = None
     instance.tasks = []
+    instance.defer_backup_plan_until_mood_read = True
+    instance.recog = SimpleNamespace(img={0: 3, 1: 24}, w=1920, h=1080)
+    for op in op_data.operators.values():
+        op.mood, op.time_stamp = 24, datetime.now()
+    op_data.operators["银灰"].time_stamp = None
+    op_data.operators["红"].time_stamp = None
+    op_data.config.resting_priority_replacement = ["红"]
     instance.enter_room = MagicMock()
-    instance.back = MagicMock()
-    instance.translate_room = lambda room: room
-    instance.get_agent_from_room = MagicMock()
+    instance.find = MagicMock(return_value=True)
+    instance.tap = MagicMock()
+    instance.agent_arrange_room = MagicMock(
+        side_effect=AssertionError("no trial admission")
+    )
+    instance.tap_confirm = MagicMock(side_effect=AssertionError("no confirmation"))
+    instance.back_to_infrastructure = MagicMock()
     instance.no_pending_task = MagicMock(return_value=True)
-    instance.arranged = []
-
-    def arrange(new_plan, room, plan, *, get_time, mood_probe):
-        assert get_time and mood_probe
-        data = instance.op_data
-        names = plan[room].copy()
-        instance.arranged.append((room, names))
-        for op in data.operators.values():
-            if op.current_room == room and op.name not in names:
-                op.current_room, op.current_index = "", -1
-        for index, name in enumerate(names):
-            if name:
-                data.update_detail(name, 8, room, index, True)
-        del plan[room]
-        return new_plan
-
-    instance.agent_arrange_room = MagicMock(side_effect=arrange)
-    instance.missing = [
-        op.name
-        for op in data.operators.values()
-        if not has_resting_mood(op) and op.name != "白雪"
-    ]
-    assert len(instance.missing) == 7
+    instance.swipe_left = MagicMock()
+    instance.switch_arrange_order = MagicMock()
+    instance.wait_for_agent_page = MagicMock(return_value=[("银灰", 0), ("红", 1)])
+    instance.swipe_agent_page = MagicMock(return_value=(1, None))
     return instance
 
 
-@pytest.mark.parametrize("count", [1, 3, 4, 5, 6, 7])
-def test_free_count_boundary_and_full_room_batches_without_restore(solver, count):
-    targets = solver.missing[:count]
-    for name in solver.missing[count:]:
-        solver.op_data.operators[name].time_stamp = datetime.now()
-    assert solver._read_initial_dorm_mood()
-    assert solver.task is None
-    assert solver.tasks == []
-    assert len(solver.arranged) == (1 if count <= 3 else ceil(count / 5))
-    assert all(room == ROOM for room, _ in solver.arranged)
-    if count <= 3:
-        expected = ORIGINAL.copy()
-        expected[2 : 2 + count] = targets
-        assert solver.arranged[0][1] == expected
+def test_startup_scans_cards_without_selection_or_occupancy_changes(solver):
+    data = solver.op_data
+    before = copy.deepcopy(data.operators)
+    beds = copy.deepcopy([vars(bed) for bed in data.all_dorms()])
+    task = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks = [task]
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(data, "银灰") == 3
+    assert dorm_candidate_mood(data, "红") == 24
+    assert {name: vars(op) for name, op in data.operators.items()} == {
+        name: vars(op) for name, op in before.items()
+    }
+    assert [vars(bed) for bed in data.all_dorms()] == beds
+    assert solver.tasks == [task]
+    solver.swipe_left.assert_called_once_with(1, "ALL")
+    solver.tap.assert_called_once_with((1920 * 0.38, 1080 * 0.95), interval=0.5)
+    solver.switch_arrange_order.assert_called_once_with(
+        "心情", solver.enter_room.call_args.args[0], True
+    )
+    solver.agent_arrange_room.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    solver.back_to_infrastructure.assert_called_once()
+    assert not solver.enter_room.call_args.args[0].startswith("dorm")
+    assert not has_resting_mood(data.operators["银灰"])
+
+
+@pytest.mark.parametrize("failure", ["unreadable", "not_owned", "page_failed"])
+def test_estimate_failure_does_not_block_startup_or_trigger_trial_admissions(
+    solver, failure
+):
+    if failure == "unreadable":
+        solver.recog.img = {0: None, 1: None}
+    elif failure == "not_owned":
+        solver.wait_for_agent_page.return_value = [("未知", 0)]
     else:
-        for index, (_, names) in enumerate(solver.arranged):
-            batch = targets[index * 5 : (index + 1) * 5]
-            assert names == batch + [""] * (5 - len(batch))
-    assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
-    assert solver._initial_mood_probe_layout[ROOM] == solver.arranged[-1][1]
-    assert all(has_resting_mood(solver.op_data.operators[name]) for name in targets)
-    assert not has_resting_mood(solver.op_data.operators["白雪"])
-    count_before = len(solver.arranged)
-    assert solver._read_initial_dorm_mood()
-    assert len(solver.arranged) == count_before
+        solver.wait_for_agent_page.side_effect = RuntimeError("page failed")
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(solver.op_data, "银灰") is None
+    solver.back_to_infrastructure.assert_called_once()
+    solver.agent_arrange_room.assert_not_called()
 
 
-def test_deferred_batch_continues_from_remaining_unknowns(solver):
-    solver.no_pending_task.side_effect = [True, True, False]
-    assert not solver._read_initial_dorm_mood()
-    assert len(solver.arranged) == 1
-    read_names = {name for name in solver.arranged[0][1] if name}
-    solver.no_pending_task.side_effect = None
-    assert solver._read_initial_dorm_mood()
-    assert len(solver.arranged) == 2
-    assert all(
-        has_resting_mood(solver.op_data.operators[name]) for name in solver.missing
-    )
-    # 下轮只补余下两人；上一批读数已经保留，不重新逐个试读。
-    assert set(solver.arranged[-1][1][2:4]) == set(solver.missing) - read_names
+@pytest.mark.parametrize("error", [MowerExit(), ConnectionError()])
+def test_partial_estimates_survive_cancelled_scan(solver, error):
+    solver.wait_for_agent_page.side_effect = [[("银灰", 0)], error]
+    with pytest.raises(type(error)):
+        solver._read_initial_card_mood()
+    assert dorm_candidate_mood(solver.op_data, "银灰") == 3
+    solver.back_to_infrastructure.assert_called_once()
 
 
-def test_busy_and_working_operators_are_not_moved_for_sampling(solver, monkeypatch):
-    monkeypatch.setattr(
-        "arknights_mower.solvers.base_schedule.busy_resting_names", lambda: {"红"}
-    )
-    solver.op_data.operators["银灰"].current_room = "train"
-    assert solver._read_initial_dorm_mood()
-    selected = {name for _, names in solver.arranged for name in names}
-    assert "红" not in selected
-    assert "银灰" not in selected
-    assert not has_resting_mood(solver.op_data.operators["红"])
-
-
-@pytest.mark.parametrize("reason", ["no_dorm", "imminent"])
-def test_no_sampling_when_disabled_or_room_or_time_is_unavailable(solver, reason):
-    if reason == "no_dorm":
-        solver.op_data.plan = {
-            room: slots
-            for room, slots in solver.op_data.plan.items()
-            if not room.startswith("dorm")
-        }
+@pytest.mark.parametrize("reason", ["all_measured", "no_facility", "imminent"])
+def test_no_selection_page_when_not_needed_or_unavailable(solver, reason):
+    if reason == "all_measured":
+        for op in solver.op_data.operators.values():
+            op.time_stamp = datetime.now()
+    elif reason == "no_facility":
+        solver.op_data.plan = {ROOM: solver.op_data.plan[ROOM]}
     else:
         solver.no_pending_task.return_value = False
-    assert solver._read_initial_dorm_mood() == (reason != "imminent")
-    solver.agent_arrange_room.assert_not_called()
+    solver._read_initial_card_mood()
     solver.enter_room.assert_not_called()
 
 
-def test_failed_arrangement_restores_task_context_and_does_not_claim_completion(solver):
-    solver.agent_arrange_room.side_effect = RuntimeError("read failed")
-    with pytest.raises(RuntimeError, match="read failed"):
-        solver._read_initial_dorm_mood()
-    assert solver.task is None
-    assert not has_resting_mood(solver.op_data.operators[solver.missing[0]])
+def test_startup_card_scan_has_time_budget(solver, monkeypatch):
+    monkeypatch.setattr(base_schedule, "monotonic", MagicMock(side_effect=[0, 0, 46]))
+    solver.wait_for_agent_page.return_value = [("银灰", 0)]
+    solver._read_initial_card_mood()
+    assert solver.wait_for_agent_page.call_count == 1
+    solver.swipe_agent_page.assert_not_called()
+    assert dorm_candidate_mood(solver.op_data, "银灰") == 3
 
 
-def test_room_sampling_does_not_fill_empty_slots_or_reorder_vip(room_solver):
-    room_solver.preserve_resting_crafters = MagicMock()
-    room_solver.ensure_dorm_recovery_order = MagicMock()
-    room = dorm_recovery_tests.ROOM
-    plan = {room: ["陈", "", "", "", ""]}
-    room_solver.agent_arrange_room({}, room, plan, get_time=True, mood_probe=True)
-    assert plan == {}
-    assert room_solver.physical == ["陈", "", "", "", ""]
-    room_solver.preserve_resting_crafters.assert_not_called()
-    room_solver.ensure_dorm_recovery_order.assert_not_called()
-    kwargs = room_solver.choose_agent.call_args.kwargs
-    assert kwargs["mood_probe"] and kwargs["preserve_dorm_occupants"]
-    assert not kwargs["fast_mode"]
+def test_startup_card_scan_has_page_budget(solver):
+    solver.wait_for_agent_page.side_effect = [[(f"其他{i}", 0)] for i in range(30)]
+    solver._read_initial_card_mood()
+    assert solver.wait_for_agent_page.call_count == 20
+    assert solver.swipe_agent_page.call_count == 19
+    solver.back_to_infrastructure.assert_called_once()
 
 
-def test_exact_sampling_selection_keeps_requested_full_operator(selection_solver):
-    instance, selected = selection_solver
-    data = instance.op_data
-    data.config.operator_mood_limits["空爆"] = {"lower": 0, "upper": 12}
-    data.operators["空爆"].upper_limit = 12
-    agents = ["空爆", "", "", "", ""]
-    instance.choose_agent(
-        agents,
-        dorm_empty_release_tests.ROOM,
-        fast_mode=False,
-        preserve_dorm_occupants=True,
-        mood_probe=True,
-    )
-    assert selected == ["空爆"]
+def test_deadline_preserves_partial_estimates(solver):
+    solver.no_pending_task.side_effect = [True, True, False]
+    solver.wait_for_agent_page.return_value = [("银灰", 0)]
+    solver._read_initial_card_mood()
+    assert solver.wait_for_agent_page.call_count == 1
+    assert dorm_candidate_mood(solver.op_data, "银灰") == 3
 
 
-def test_zero_free_slots_still_uses_whole_dorm_capacity(solver):
-    for room, slots in solver.op_data.plan.items():
-        if room.startswith("dorm"):
-            for slot in slots:
-                if slot.agent == "Free":
-                    slot.agent = "空爆"
-    assert solver._read_initial_dorm_mood()
-    assert len(solver.arranged) == 2
-    assert all(len(names) == 5 for _, names in solver.arranged)
-    assert all(
-        has_resting_mood(solver.op_data.operators[name]) for name in solver.missing
-    )
-
-
-def test_missing_reading_is_not_treated_as_success(solver):
-    def no_read(new_plan, room, plan, **kwargs):
-        del plan[room]
-
-    solver.agent_arrange_room.side_effect = no_read
-    with pytest.raises(RuntimeError, match="仍未读到心情"):
-        solver._read_initial_dorm_mood()
-    assert solver.task is None
-
-
-def test_sampling_keeps_original_residents_beds_and_tasks_even_between_batches(solver):
-    original = solver.op_data
-    locations = {
-        name: (op.current_room, op.current_index)
-        for name, op in original.operators.items()
-    }
-    beds = copy.deepcopy([vars(bed) for bed in original.all_dorms()])
-    pending = SchedulerTask(task_plan={ROOM: ["Current"] * 4 + ["Free"]})
-    solver.tasks = [pending]
-    arrange = solver.agent_arrange_room.side_effect
-
-    def sample(*args, **kwargs):
-        result = arrange(*args, **kwargs)
-        assert solver.op_data is not original
-        assert {
-            name: (op.current_room, op.current_index)
-            for name, op in original.operators.items()
-        } == locations
-        assert [vars(bed) for bed in original.all_dorms()] == beds
-        # 模拟读房清理旧清退任务，只能影响采样副本的队列。
-        solver.tasks.clear()
-        assert not solver.backup_plan_solver()
-        return result
-
-    solver.agent_arrange_room.side_effect = sample
-    assert solver._read_initial_dorm_mood()
-    assert solver.op_data is original
-    assert solver.tasks == [pending]
-    assert original.get_current_room(ROOM, True) == ORIGINAL
-    assert all(original.operators[name].mood == 8 for name in solver.missing)
-
-
-def test_failed_sampling_keeps_original_cache_and_completed_readings(solver):
-    original = solver.op_data
-    arrange = solver.agent_arrange_room.side_effect
-
-    def fail_after_read(*args, **kwargs):
-        arrange(*args, **kwargs)
-        raise RuntimeError("interrupted after reading")
-
-    solver.agent_arrange_room.side_effect = fail_after_read
-    with pytest.raises(RuntimeError, match="interrupted"):
-        solver._read_initial_dorm_mood()
-    assert solver.op_data is original
-    assert original.get_current_room(ROOM, True) == ORIGINAL
-    assert not solver._initial_mood_probe_active
-    assert all(
-        has_resting_mood(original.operators[name]) for name in solver.missing[:5]
-    )
-    solver.agent_arrange_room.side_effect = arrange
-    assert solver._read_initial_dorm_mood()
-    assert all(has_resting_mood(original.operators[name]) for name in solver.missing)
-
-
-def test_first_backup_uses_original_residents_and_new_mood(solver):
+def test_actual_mood_overrides_card_and_estimate_expiry_keeps_unknown(solver):
     data = solver.op_data
-    data.plan_condition = [False]
-    data.backup_plans = [
-        SimpleNamespace(
-            trigger="op_data.operators['芬'].current_room != dormitory_2 or op_data.operators['银灰'].current_mood() > 10",
-            products={},
-        )
-    ]
-    solver.defer_backup_plan_until_mood_read = True
-    data.evaluate_expression = MagicMock(wraps=data.evaluate_expression)
-    assert solver._read_initial_dorm_mood()
-    assert not solver.backup_plan_solver()
-    data.evaluate_expression.assert_not_called()
-    solver.defer_backup_plan_until_mood_read = False
-    assert not solver.backup_plan_solver()
-    data.evaluate_expression.assert_called_once()
-    assert data.plan_condition == [False]
-    assert data.operators["芬"].current_room == ROOM
-    assert data.operators["银灰"].mood == 8
+    solver._read_initial_card_mood()
+    op = data.operators["银灰"]
+    assert op.current_mood() == 24  # 通用计时、加工和充能消费者仍不取得卡片预估。
+    data.dorm_mood_estimates["银灰"] = (3, datetime.now() - timedelta(hours=1))
+    assert dorm_candidate_mood(data, "银灰") is None
+    data.update_detail("银灰", 12, "meeting", 0, True)
+    data.dorm_mood_estimates["银灰"] = (3, datetime.now())
+    assert dorm_candidate_mood(data, "银灰") == pytest.approx(12)
 
 
-def test_finish_hands_actual_positions_to_normal_correction(solver):
-    assert solver._read_initial_dorm_mood()
-    actual = solver.arranged[-1][1]
-    solver._finish_initial_dorm_mood([])
-    assert solver.op_data.get_current_room(ROOM, True) == actual
-    task = solver.tasks[0]
-    assert task.type == TaskTypes.SELF_CORRECTION
-    assert task.plan[ROOM][:2] == ORIGINAL[:2]
-    assert task.backup_shift_active
-    assert not solver.backup_plan_solver()
-    assert solver._initial_mood_probe_layout == {}
+def test_legacy_probe_room_is_really_read_despite_recent_cache(solver, monkeypatch):
+    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
+    solver._initial_mood_refresh_rooms = {ROOM}
+    for op in solver.op_data.operators.values():
+        op.need_to_refresh = lambda: False
+    resident = solver.op_data.operators["空爆"]
+    resident.current_room = ROOM
+    resident.time_stamp = datetime.now()
+    solver.get_agent_from_room = MagicMock(return_value=[{"agent": "空爆", "mood": 12}])
+    solver.back = MagicMock()
+    solver._read_agent_mood()
+    solver.enter_room.assert_called_once_with(ROOM)
+    solver.get_agent_from_room.assert_called_once()
+    assert solver._initial_mood_refresh_rooms == set()
+    solver.agent_arrange_room.assert_not_called()
 
 
-def test_finish_preserves_explicit_backup_arrangements_and_other_tasks(solver):
-    assert solver._read_initial_dorm_mood()
-    backup = SchedulerTask(
-        task_plan={ROOM: ["香草", "芬", "Current", "Current", "Current"]}
-    )
-    unrelated = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
-    solver.tasks = [unrelated, backup]
-    solver.agent_get_mood = MagicMock(return_value={ROOM: ORIGINAL.copy()})
-    solver._finish_initial_dorm_mood([backup])
-    assert solver.tasks[0].plan[ROOM] == ["香草", "芬", *ORIGINAL[2:]]
-    assert solver.tasks[1:] == [unrelated]
+def test_saved_state_uses_live_operators_and_tasks_without_card_estimates(
+    solver, monkeypatch
+):
+    from arknights_mower import __main__ as main
+
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    for attr in (
+        "daily_visit_friend",
+        "daily_report",
+        "daily_skland",
+        "daily_mail",
+        "task_count",
+    ):
+        setattr(solver, attr, 0)
+    solver._read_initial_card_mood()
+    solver._initial_mood_refresh_rooms = {ROOM}
+    snapshot = pickle.loads(pickle.dumps(record.current_state()))
+    assert snapshot["operators"]["银灰"].time_stamp is None
+    assert snapshot["initial_mood_pending"]
+    assert snapshot["initial_mood_refresh_rooms"] == [ROOM]
+    assert "initial_mood_probe_layout" not in snapshot
+    assert "dorm_mood_estimates" not in snapshot
+    assert record.current_state()["operators"] is solver.op_data.operators
+    assert record.current_state()["tasks"] is solver.tasks
 
 
-def test_finish_failure_keeps_original_cache_for_retry(solver):
-    assert solver._read_initial_dorm_mood()
-    original = solver.op_data
-    solver.agent_get_mood = MagicMock(side_effect=RuntimeError("correction failed"))
-    with pytest.raises(RuntimeError, match="correction failed"):
-        solver._finish_initial_dorm_mood([])
-    assert solver.op_data is original
-    assert solver.defer_backup_plan_until_mood_read
-    assert solver._initial_mood_probe_layout
-
-
-@pytest.mark.parametrize("stage", ["scanning", "sampling"])
-def test_initialization_blocks_all_backup_entry_points(solver, stage):
-    solver.defer_backup_plan_until_mood_read = stage == "scanning"
-    solver._initial_mood_probe_active = stage == "sampling"
+def test_initialization_blocks_backup_and_position_callbacks(solver):
     data = solver.op_data
     data.evaluate_expression = MagicMock(
         side_effect=AssertionError("must not evaluate")
@@ -349,52 +217,273 @@ def test_initialization_blocks_all_backup_entry_points(solver, stage):
     solver._cancel_pending_shift_on.assert_not_called()
 
 
-def test_saved_state_during_probe_uses_original_cache(solver, monkeypatch):
-    from arknights_mower import __main__ as main
-    from arknights_mower.solvers.record import current_state
-
-    monkeypatch.setattr(main, "base_scheduler", solver)
-    for attr in (
-        "daily_visit_friend",
-        "daily_report",
-        "daily_skland",
-        "daily_mail",
-        "task_count",
-    ):
-        setattr(solver, attr, 0)
-    original = solver.op_data
-    tasks = solver.tasks
-    arrange = solver.agent_arrange_room.side_effect
-    snapshots = []
-
-    def sample(*args, **kwargs):
-        result = arrange(*args, **kwargs)
-        state = current_state()
-        assert state["operators"] is original.operators
-        assert state["tasks"] is tasks
-        assert state["dorm"] is original.dorm
-        assert state["initial_mood_pending"]
-        snapshots.append(state)
-        return result
-
-    solver.agent_arrange_room.side_effect = sample
-    assert solver._read_initial_dorm_mood()
-    assert snapshots
-    assert snapshots[-1]["operators"]["芬"].current_room == ROOM
-
-
-def test_next_initial_scan_does_not_overwrite_original_sampled_room(
-    solver, monkeypatch
+def test_initial_estimate_triggers_main_group_shift_without_writing_measured_cache(
+    monkeypatch,
 ):
-    from arknights_mower.solvers import base_schedule
+    instance = group_resting_capacity_tests.solver.__wrapped__(monkeypatch)
+    data = instance.op_data
+    name = group_resting_capacity_tests.DEEP[0]
+    op = data.operators[name]
+    op.mood, op.time_stamp = 24, None
+    data.dorm_mood_estimates[name] = (0, datetime.now())
+    assert instance.resting()
+    assert op.mood == 24 and op.time_stamp is None
+    assert not has_resting_mood(op)
 
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
-    assert solver._read_initial_dorm_mood()
-    solver.defer_backup_plan_until_mood_read = True
-    solver.enter_room.reset_mock()
+
+def test_unknown_main_does_not_trigger_off_shift_without_a_card(monkeypatch):
+    instance = group_resting_capacity_tests.solver.__wrapped__(monkeypatch)
+    data = instance.op_data
+    for name in group_resting_capacity_tests.DEEP:
+        data.operators[name].mood = -1
+        data.operators[name].time_stamp = None
+    assert instance.resting() == {}
+
+
+def test_failed_actual_initial_read_keeps_gate_closed(solver):
+    solver.planned = False
+    solver.skip = MagicMock()
+    solver._read_agent_mood = MagicMock(side_effect=RuntimeError("room failed"))
+    solver._read_initial_card_mood = MagicMock()
+    solver.backup_plan_solver = MagicMock()
+    solver.infra_main()
+    assert solver.defer_backup_plan_until_mood_read
+    solver._read_initial_card_mood.assert_not_called()
+    solver.backup_plan_solver.assert_not_called()
+
+
+def test_low_card_estimate_preserves_startup_occupancy_correction_order(monkeypatch):
+    instance = group_resting_capacity_tests.solver.__wrapped__(monkeypatch)
+    data = instance.op_data
+    name = group_resting_capacity_tests.DEEP[0]
+    op = data.operators[name]
+    op.current_room, op.current_index = "", -1
+    op.mood, op.time_stamp = 24, None
+    data.dorm_mood_estimates[name] = (0, datetime.now())
+    assert (
+        instance.agent_get_mood(skip_dorm=True, read_rooms=False) == "self_correction"
+    )
+    assert instance.tasks[0].type == TaskTypes.SELF_CORRECTION
+    assert instance.tasks[0].plan[op.room][op.index] == name
+    assert dorm_candidate_mood(data, name) == 0
+
+
+def test_first_green_non_target_stops_and_defaults_all_later_candidates(solver):
+    data = solver.op_data
+    data.operators["红"].time_stamp = None
+    solver.wait_for_agent_page.return_value = [("银灰", 0), ("空爆", 1), ("红", 2)]
+    # 绿色卡牌后的范围不可读取，证明扫描真正终止而不是读完整页。
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(data, "银灰") == 3
+    assert dorm_candidate_mood(data, "红") == 24
+    assert data.dorm_mood_estimates["迷迭香"][0] == 24
+    solver.swipe_agent_page.assert_not_called()
+    assert not has_resting_mood(data.operators["红"])
+
+
+def test_unreadable_card_before_green_remains_unknown(solver):
+    solver.recog.img = {0: None, 1: 24}
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(solver.op_data, "银灰") is None
+    assert dorm_candidate_mood(solver.op_data, "红") == 24
+    solver.swipe_agent_page.assert_not_called()
+
+
+def test_previously_scanned_low_and_unknown_moods_survive_later_green(solver):
+    data = solver.op_data
+    data.operators["爱丽丝"].time_stamp = None
+    solver.recog.img = {0: 3, 1: 24, 2: None}
+    solver.wait_for_agent_page.side_effect = [
+        [("银灰", 0), ("爱丽丝", 2)],
+        [("空爆", 1)],
+    ]
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(data, "银灰") == 3
+    assert dorm_candidate_mood(data, "爱丽丝") is None
+    assert dorm_candidate_mood(data, "红") == 24
+    assert solver.swipe_agent_page.call_count == 1
+
+
+def test_yellow_near_full_does_not_stop_ascending_scan(solver):
+    solver.recog.img = {0: 23.9, 1: 24}
+    solver.wait_for_agent_page.side_effect = [[("银灰", 0)], [("空爆", 1)]]
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(solver.op_data, "银灰") == 23.9
+    assert dorm_candidate_mood(solver.op_data, "红") == 24
+    assert solver.swipe_agent_page.call_count == 1
+
+
+@pytest.mark.parametrize("selected", [True, None])
+def test_unconfirmed_clear_never_infers_full_from_pinned_green(
+    solver, monkeypatch, selected
+):
+    monkeypatch.setattr(
+        base_schedule, "agent_card_selected", lambda img, scope: selected
+    )
+    solver.wait_for_agent_page.return_value = [("空爆", 1), ("银灰", 0)]
+    solver._read_initial_card_mood()
+    assert solver.op_data.dorm_mood_estimates == {}
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_overlap_unreadable_card_keeps_prior_low_observation(solver):
+    pages = iter([[("银灰", 0)], [("银灰", 2), ("空爆", 1)]])
+    solver.recog.img = {0: 3, 1: 24, 2: None}
+    solver.wait_for_agent_page.side_effect = lambda **kwargs: next(pages)
+    solver._read_initial_card_mood()
+    assert dorm_candidate_mood(solver.op_data, "银灰") == 3
+    assert dorm_candidate_mood(solver.op_data, "红") == 24
+
+
+def test_initial_and_idle_planning_share_one_scan_per_run(solver):
+    solver._read_initial_card_mood()
+    solver._scan_card_moods()
+    assert solver.enter_room.call_count == 1
+    solver._card_moods_scanned_this_run = False
+    solver._scan_card_moods()
+    assert solver.enter_room.call_count == 2
+
+
+def test_idle_scan_refreshes_even_when_all_primary_mood_is_measured(solver):
     for op in solver.op_data.operators.values():
-        op.need_to_refresh = lambda: False
-    solver.op_data.operators["芬"].need_to_refresh = lambda: True
-    solver._read_agent_mood()
+        op.time_stamp = datetime.now()
+    solver._scan_card_moods()
+    solver.enter_room.assert_called_once()
+    assert solver.op_data.dorm_mood_estimates["迷迭香"][0] == 24
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("scan_moods", [False, True])
+def test_real_primary_planning_observes_cards_before_candidate_selection(
+    solver, monkeypatch, enabled, scan_moods
+):
+    solver.op_data.config.free_room = enabled
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    events = []
+    solver._scan_card_moods = MagicMock(side_effect=lambda: events.append("scan"))
+    solver.resting = MagicMock(side_effect=lambda: events.append("primary") or {})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    assert solver._plan_primary_recovery(scan_moods=scan_moods)
+    assert events == (["scan", "primary"] if enabled and scan_moods else ["primary"])
+
+
+@pytest.mark.parametrize(
+    "cache",
+    [
+        "measured",
+        "estimated",
+        "unregistered",
+        "unknown",
+        "full",
+        "expired",
+        "measured_full",
+    ],
+)
+def test_cached_recovery_candidate_avoids_physical_scan(solver, monkeypatch, cache):
+    data = solver.op_data
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    now = datetime.now()
+    op = data.operators["红"]
+    if cache == "measured":
+        op.mood, op.time_stamp = 6, now
+    elif cache == "unregistered":
+        data.dorm_mood_estimates["迷迭香"] = (6, now)
+    elif cache == "measured_full":
+        op.mood, op.time_stamp = 24, now
+        data.dorm_mood_estimates["红"] = (6, now)
+    elif cache != "unknown":
+        data.dorm_mood_estimates["红"] = (
+            24 if cache == "full" else 6,
+            now - timedelta(hours=1) if cache == "expired" else now,
+        )
+    before = copy.deepcopy(data.dorm_mood_estimates)
+    assert solver._plan_primary_recovery()
+    solver.resting.assert_called_once_with()
+    if cache in ("measured", "estimated", "unregistered"):
+        solver.enter_room.assert_not_called()
+        assert data.dorm_mood_estimates == before
+        assert not getattr(solver, "_card_moods_scanned_this_run", False)
+        # 下一次调度也复用有效候选，不能因调度轮次变化而重新扫描。
+        solver._card_moods_scanned_this_run = False
+        assert solver._plan_primary_recovery()
+        solver.enter_room.assert_not_called()
+    else:
+        solver.enter_room.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "unavailable",
+    ["working", "reserved", "blacklisted", "training", "busy", "limit", "checked"],
+)
+def test_ineligible_low_cache_does_not_suppress_scan(solver, monkeypatch, unavailable):
+    data = solver.op_data
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    data.dorm_mood_estimates["红"] = (6, datetime.now())
+    op = data.operators["红"]
+    if unavailable == "working":
+        op.current_room, op.current_index = "meeting", 0
+    elif unavailable == "reserved":
+        solver.tasks = [
+            SchedulerTask(task_type=TaskTypes.WORKSHOP, task_plan={"factory": ["红"]})
+        ]
+    elif unavailable == "blacklisted":
+        data.config.free_blacklist.append("红")
+    elif unavailable == "training":
+        op.current_room, op.current_index = "train", 0
+    elif unavailable == "busy":
+        monkeypatch.setattr(
+            "arknights_mower.utils.dorm_candidates.busy_resting_names", lambda: {"红"}
+        )
+    elif unavailable == "limit":
+        data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 20}
+        op.upper_limit = 20
+    else:
+        op.mood, op.time_stamp = 6, datetime.now()
+        op.idle_rest_check = (24, op.mood, op.time_stamp)
+    assert solver._plan_primary_recovery()
+    solver.enter_room.assert_called_once()
+
+
+def test_scan_opens_when_last_cached_candidate_becomes_reserved(solver, monkeypatch):
+    data = solver.op_data
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    data.dorm_mood_estimates["红"] = (6, datetime.now())
+    assert solver._plan_primary_recovery()
     solver.enter_room.assert_not_called()
-    assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
+    solver.tasks = [
+        SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan={ROOM: ["红"]})
+    ]
+    assert solver._plan_primary_recovery()
+    solver.enter_room.assert_called_once()
+
+
+def test_queued_shift_does_not_scan_or_replan_candidates(solver):
+    solver.op_data.config.free_room = True
+    solver.defer_backup_plan_until_mood_read = False
+    solver.tasks = [SchedulerTask(task_type=TaskTypes.SHIFT_OFF)]
+    solver._scan_card_moods = MagicMock()
+    solver.resting = MagicMock()
+    assert solver._plan_primary_recovery() is None
+    solver._scan_card_moods.assert_not_called()
+    solver.resting.assert_not_called()
+
+
+@pytest.mark.parametrize("error", [MowerExit(), ConnectionError()])
+def test_real_primary_planning_propagates_scan_transport_failures(solver, error):
+    solver.op_data.config.free_room = True
+    solver.defer_backup_plan_until_mood_read = False
+    solver._scan_card_moods = MagicMock(side_effect=error)
+    solver.resting = MagicMock()
+    with pytest.raises(type(error)):
+        solver._plan_primary_recovery()
+    solver.resting.assert_not_called()

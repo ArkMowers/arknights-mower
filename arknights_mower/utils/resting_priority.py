@@ -41,9 +41,15 @@ def resting_tier(op_data, name):
     if name in op_data.config.free_blacklist or (op is not None and op.workaholic):
         return RestingTier.EXCLUDED
     if (
-        getattr(op_data, "rescue_mode", False)
-        or getattr(op_data, "rescue_plan_active", False)
-    ) and name in getattr(op_data, "main_rescue_priority", ()):
+        (
+            getattr(op_data, "rescue_mode", False)
+            or getattr(op_data, "rescue_plan_active", False)
+        )
+        and name in getattr(op_data, "main_rescue_priority", ())
+        and op is not None
+        and not getattr(op, "temporary_dorm_fill", False)
+        and (not has_resting_mood(op) or resting_mood(op) < op.upper_limit)
+    ):
         return RestingTier.PRIORITY
     if name in op_data.config.ope_resting_priority:
         return RestingTier.PRIORITY
