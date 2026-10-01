@@ -47,6 +47,8 @@ The 55 focused Python suites pass 1,795 tests and 36 subtests. The seven fronten
 
 Final lifecycle review adds regression coverage for stop/status interface errors, failed state persistence during stop confirmation, malformed persisted phases and locally invalidated readings for absent residents. The five focused lifecycle, shared-bed and governance suites pass 165 tests and ten subtests after these corrections.
 
+CI exposed a preparation-lifecycle scheduler fixture missing the new emergency state contract. Updating only the fixture preserves production validation; the three preparation and cached-scheduler suites pass 184 tests and 26 subtests.
+
 ## Standards Findings
 
 The lifecycle retains finite external-control budgets, verified cleanup, measured/estimated separation and isolated native projection. Glossary synchronization remains a separately approved edit under the root agent directives.
