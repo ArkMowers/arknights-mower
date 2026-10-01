@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -45,7 +46,9 @@ def service(tmp_path, monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
     clock = Clock()
-    host = SimpleNamespace(version=41, mutations=[])
+    host = SimpleNamespace(
+        version=41, mutations=[], clients={"selected-adb": (41, "35.0.2")}
+    )
 
     def probe(timeout):
         if isinstance(host.version, Exception):
@@ -58,12 +61,16 @@ def service(tmp_path, monkeypatch):
 
     def run(argv, **kwargs):
         if argv[1] == "version":
+            protocol, release = host.clients[argv[0]]
             return subprocess.CompletedProcess(
-                argv, 0, b"Android Debug Bridge version 1.0.41\n", b""
+                argv,
+                0,
+                f"Android Debug Bridge version 1.0.{protocol}\nVersion {release}\n".encode(),
+                b"",
             )
-        assert argv == ["selected-adb", "start-server"]
+        assert argv[0] in host.clients and argv[1:] == ["start-server"]
         host.mutations.append("start-server")
-        host.version = 41
+        host.version = host.clients[argv[0]][0]
         return subprocess.CompletedProcess(argv, 0, b"", b"")
 
     runner, observer, killer = (
@@ -96,6 +103,435 @@ def establish_failure(service):
     with pytest.raises(SharedADBError, match="30 秒"):
         service.recovery.recover("selected-adb", timeout=5)
     service.clock.sleep(30)
+
+
+@pytest.fixture
+def different_adb_clients(service):
+    paths = []
+    for name, release in (
+        ("platform tools", "36.0.0"),
+        ("vendor tools", "32.0.0-vendor"),
+    ):
+        binary = service.options["lock_path"].parent / name / "adb.exe"
+        binary.parent.mkdir()
+        binary.touch()
+        paths.append(str(binary))
+        service.host.clients[str(binary)] = (41, release)
+    return tuple((SharedADBRecovery(**service.options), path) for path in paths)
+
+
+def test_different_compatible_binaries_share_healthy_server_without_actions(
+    service, different_adb_clients
+):
+    action = Mock()
+    for recovery, binary in (*different_adb_clients, *different_adb_clients):
+        assert recovery.recover(binary, timeout=5, action=action) is False
+        assert recovery.adb_path == binary
+        assert recovery.generation == 0
+        assert recovery._lock_path == service.options["lock_path"]
+    assert [entry.args[0] for entry in service.runner.call_args_list] == [
+        [binary, "version"]
+        for _, binary in (*different_adb_clients, *different_adb_clients)
+    ]
+    action.assert_not_called()
+    assert service.host.mutations == []
+    assert not service.options["lock_path"].exists()
+
+
+@pytest.mark.parametrize("starter", [0, 1])
+def test_different_binary_reuses_first_clients_started_server(
+    service, different_adb_clients, starter
+):
+    recovery, binary = different_adb_clients[starter]
+    peer, peer_binary = different_adb_clients[1 - starter]
+    service.host.version = None
+    assert recovery.recover(binary, timeout=5) is True
+    assert peer.recover(peer_binary, timeout=5) is False
+    assert recovery.adb_path == binary
+    assert peer.adb_path == peer_binary
+    assert recovery.generation == peer.generation == 1
+    assert service.host.mutations == ["start-server"]
+    assert [
+        entry.args[0]
+        for entry in service.runner.call_args_list
+        if entry.args[0][1] == "start-server"
+    ] == [[binary, "start-server"]]
+    service.kill.assert_not_called()
+
+
+@pytest.mark.parametrize("starter", [0, 1])
+def test_incompatible_peer_never_replaces_first_started_server(
+    service, different_adb_clients, starter
+):
+    recovery, binary = different_adb_clients[starter]
+    peer, peer_binary = different_adb_clients[1 - starter]
+    service.host.clients[binary] = (40, "older-vendor")
+    service.host.version = None
+    assert recovery.recover(binary, timeout=5) is True
+    with pytest.raises(SharedADBError, match="版本不一致"):
+        peer.recover(peer_binary, timeout=5)
+    assert recovery.recover(binary, timeout=5) is False
+    assert recovery.adb_path == binary
+    assert peer.adb_path == peer_binary
+    assert service.host.version == 40
+    assert service.host.mutations == ["start-server"]
+    service.kill.assert_not_called()
+
+
+@pytest.mark.parametrize("protocol", [40, 42])
+def test_different_incompatible_binary_never_interrupts_compatible_peer(
+    service, different_adb_clients, protocol
+):
+    recovery, binary = different_adb_clients[0]
+    peer, peer_binary = different_adb_clients[1]
+    service.host.clients[peer_binary] = (protocol, "vendor-mismatch")
+    action = Mock()
+    with pytest.raises(SharedADBError, match="版本不一致"):
+        peer.recover(peer_binary, timeout=5, action=action)
+    assert recovery.recover(binary, timeout=5) is False
+    assert recovery.adb_path == binary
+    assert peer.adb_path == peer_binary
+    assert recovery.generation == peer.generation == 0
+    assert service.host.version == 41
+    assert service.host.mutations == []
+    action.assert_not_called()
+    service.kill.assert_not_called()
+
+
+@pytest.mark.parametrize("starter", [0, 1])
+def test_different_binary_restart_updates_peer_generation_without_second_restart(
+    service, different_adb_clients, starter
+):
+    service.host.version = SharedADBHandshakeTimeout("stalled")
+    for recovery, binary in different_adb_clients:
+        with pytest.raises(SharedADBError, match="30 秒"):
+            recovery.recover(binary, timeout=5)
+    service.clock.sleep(30)
+    recovery, binary = different_adb_clients[starter]
+    peer, peer_binary = different_adb_clients[1 - starter]
+    assert recovery.recover(binary, timeout=5) is True
+    assert peer.recover(peer_binary, timeout=5) is False
+    assert recovery.adb_path == binary
+    assert peer.adb_path == peer_binary
+    assert recovery.generation == peer.generation == 1
+    assert service.host.mutations == ["host:kill", "start-server"]
+    service.kill.assert_called_once()
+    assert [
+        entry.args[0]
+        for entry in service.runner.call_args_list
+        if entry.args[0][1] == "start-server"
+    ] == [[binary, "start-server"]]
+
+
+def test_failed_restart_cooldown_is_shared_across_different_binaries(
+    service, different_adb_clients
+):
+    service.host.version = SharedADBHandshakeTimeout("stalled")
+    for recovery, binary in different_adb_clients:
+        with pytest.raises(SharedADBError, match="30 秒"):
+            recovery.recover(binary, timeout=5)
+    service.clock.sleep(30)
+    recovery, binary = different_adb_clients[0]
+    peer, peer_binary = different_adb_clients[1]
+    service.kill.side_effect = SharedADBError("host:kill rejected")
+    with pytest.raises(SharedADBError, match="host:kill rejected"):
+        recovery.recover(binary, timeout=5)
+    with pytest.raises(SharedADBError, match="冷却"):
+        peer.recover(peer_binary, timeout=5)
+    assert recovery.generation == peer.generation == 1
+    service.kill.assert_called_once()
+    assert service.host.mutations == []
+
+
+@pytest.fixture
+def shared_applications(service, different_adb_clients):
+    from arknights_mower.tests.device_session_tests import Adapter, Preflight, Simulator
+    from arknights_mower.utils.config.conf import Conf
+    from arknights_mower.utils.device.application import DeviceControl
+    from arknights_mower.utils.device.session import DeviceSession, RecoveryPolicy
+    from arknights_mower.utils.device.session_io import ProductionSessionADB
+
+    targets = {
+        binary: f"127.0.0.1:{19001 + index}"
+        for index, (_, binary) in enumerate(different_adb_clients)
+    }
+    states = {serial: "device" for serial in targets.values()}
+    original_run = service.runner.side_effect
+
+    def run(argv, **kwargs):
+        if argv[1] in {"version", "start-server"}:
+            result = original_run(argv, **kwargs)
+            if argv[1] == "start-server":
+                states.clear()
+            return result
+        if argv[1:] == ["devices"]:
+            output = "List of devices attached\n" + "\n".join(
+                f"{serial}\t{state}" for serial, state in states.items()
+            )
+        else:
+            serial = argv[2]
+            assert serial == targets[argv[0]]
+            if argv[1] == "disconnect":
+                state = states.pop(serial, None)
+                output = (
+                    f"disconnected {serial}"
+                    if state is not None
+                    else f"error: no such device '{serial}'"
+                )
+            elif argv[1] == "connect":
+                states[serial] = "device"
+                output = f"connected to {serial}"
+            elif argv[1:] == ["-s", serial, "shell", "getprop", "sys.boot_completed"]:
+                output = "1"
+            elif argv[1:] == ["-s", serial, "shell", "wm", "size"]:
+                output = "Physical size: 1920x1080"
+            else:
+                raise AssertionError(argv)
+        return subprocess.CompletedProcess(argv, 0, output.encode(), b"")
+
+    def frame(binary, serial, timeout):
+        assert timeout > 0
+        assert serial == targets[binary]
+        assert states.get(serial) == "device"
+        return 1920, 1080
+
+    service.runner.side_effect = run
+    applications = []
+    with ExitStack() as resources:
+        for index, (recovery, binary) in enumerate(different_adb_clients):
+            conf = Conf(
+                device={
+                    "preset_id": "windows.mumu12",
+                    "instance_id": str(index),
+                    "last_serial": targets[binary],
+                    "adb_path": binary,
+                    "screenshot_backend": "adb_gzip",
+                }
+            )
+            simulator = Simulator()
+            simulator.state, simulator.serial = "running", targets[binary]
+            adapter = Adapter()
+            adapter.rebind = Mock(wraps=adapter.rebind)
+            adb = ProductionSessionADB(
+                run=service.runner,
+                probe=service.probe,
+                monotonic=service.clock.monotonic,
+                frame=frame,
+            )
+            session = DeviceSession(
+                adb, simulator, clock=service.clock, policy=RecoveryPolicy(local_wait=1)
+            )
+            control = DeviceControl(
+                lambda conf=conf: conf,
+                adapter,
+                session=session,
+                preflight=Preflight(),
+                adb_recovery=recovery,
+            )
+            resources.enter_context(control.run())
+            applications.append(
+                SimpleNamespace(
+                    control=control,
+                    session=session,
+                    conf=conf,
+                    adapter=adapter,
+                    recovery=recovery,
+                    simulator=simulator,
+                    states=states,
+                )
+            )
+        yield applications
+
+
+@pytest.mark.parametrize("starter", [0, 1])
+def test_different_adb_instances_restore_own_targets_and_helpers_after_shared_restart(
+    service, shared_applications, starter
+):
+    snapshots = [application.conf.model_dump() for application in shared_applications]
+    devices = [
+        application.control.start().unwrap() for application in shared_applications
+    ]
+    service.host.version = SharedADBHandshakeTimeout("stalled")
+    for application in shared_applications:
+        assert not application.control.recover().ok
+        application.adapter.rebind.assert_not_called()
+    service.clock.sleep(30)
+    for index in (starter, 1 - starter):
+        application = shared_applications[index]
+        assert application.control.recover().unwrap() is devices[index]
+        application.adapter.rebind.assert_called_once()
+        result = application.adapter.rebind.call_args.args[1]
+        assert result.serial == application.conf.device.last_serial
+        assert result.adb_path == application.conf.device.adb_path
+        assert application.session.adb_path == application.conf.device.adb_path
+        assert application.recovery.generation == 1
+        assert application.control._bound_adb_generation == 1
+        assert application.simulator.actions == []
+        assert application.conf.model_dump() == snapshots[index]
+        assert application.control.recover().unwrap() is devices[index]
+        application.adapter.rebind.assert_called_once()
+    assert service.host.mutations == ["host:kill", "start-server"]
+    service.kill.assert_called_once()
+    assert [
+        entry.args[0]
+        for entry in service.runner.call_args_list
+        if entry.args[0][1] == "start-server"
+    ] == [[shared_applications[starter].conf.device.adb_path, "start-server"]]
+    assert [
+        entry.args[0]
+        for entry in service.runner.call_args_list
+        if entry.args[0][1] == "connect"
+    ] == [
+        [
+            shared_applications[index].conf.device.adb_path,
+            "connect",
+            shared_applications[index].conf.device.last_serial,
+        ]
+        for index in (starter, 1 - starter)
+    ]
+
+
+@pytest.mark.parametrize("unverified", [0, 1])
+def test_different_adb_peer_waits_for_valid_frame_before_generation_binding(
+    service, shared_applications, unverified
+):
+    snapshots = [application.conf.model_dump() for application in shared_applications]
+    devices = [
+        application.control.start().unwrap() for application in shared_applications
+    ]
+    service.host.version = SharedADBHandshakeTimeout("stalled")
+    for application in shared_applications:
+        assert not application.control.recover().ok
+    service.clock.sleep(30)
+    healthy = shared_applications[1 - unverified]
+    affected = shared_applications[unverified]
+    original_frame = affected.session.adb._frame
+    frame_dimensions = [(1280, 720)]
+
+    def sample_frame(binary, serial, timeout):
+        original_frame(binary, serial, timeout)
+        return frame_dimensions[0]
+
+    affected.session.adb._frame = Mock(side_effect=sample_frame)
+    assert healthy.control.recover().unwrap() is devices[1 - unverified]
+    result = affected.control.recover()
+    assert not result.ok
+    assert result.error.code == "frame_failed"
+    assert affected.recovery.generation == 1
+    assert affected.control._bound_adb_generation == 0
+    affected.adapter.rebind.assert_not_called()
+    assert healthy.control.recover().unwrap() is devices[1 - unverified]
+    healthy.adapter.rebind.assert_called_once()
+    frame_dimensions[0] = (1920, 1080)
+    assert affected.control.recover().unwrap() is devices[unverified]
+    assert affected.control._bound_adb_generation == 1
+    affected.adapter.rebind.assert_called_once()
+    for index, application in enumerate(shared_applications):
+        assert application.conf.model_dump() == snapshots[index]
+        assert application.simulator.actions == []
+    assert service.host.mutations == ["host:kill", "start-server"]
+    service.kill.assert_called_once()
+
+
+@pytest.mark.parametrize("incompatible", [0, 1])
+@pytest.mark.parametrize("protocol", [40, 42])
+def test_incompatible_instance_preserves_healthy_peer_and_both_configurations(
+    service, shared_applications, incompatible, protocol
+):
+    snapshots = [application.conf.model_dump() for application in shared_applications]
+    devices = [
+        application.control.start().unwrap() for application in shared_applications
+    ]
+    affected = shared_applications[incompatible]
+    healthy = shared_applications[1 - incompatible]
+    service.host.clients[affected.conf.device.adb_path] = (protocol, "vendor-mismatch")
+    service.runner.reset_mock()
+    result = affected.control.recover()
+    assert not result.ok
+    assert result.error.code == "recovery_failed"
+    assert "版本不一致" in result.error.message
+    assert healthy.control.recover().unwrap() is devices[1 - incompatible]
+    operation = Mock(return_value="healthy task")
+    assert healthy.control.execute(operation).unwrap() == "healthy task"
+    operation.assert_called_once_with(devices[1 - incompatible])
+    for index, application in enumerate(shared_applications):
+        assert application.conf.model_dump() == snapshots[index]
+        assert not application.control.shutdown_requested
+        assert application.recovery.generation == 0
+        application.adapter.rebind.assert_not_called()
+    assert all(
+        entry.args[0][1] == "version"
+        for entry in service.runner.call_args_list
+        if entry.args[0][0] == affected.conf.device.adb_path
+    )
+    assert service.host.version == 41
+    assert service.host.mutations == []
+    service.kill.assert_not_called()
+    service.host.clients[affected.conf.device.adb_path] = (41, "compatible-replacement")
+    assert affected.control.recover().unwrap() is devices[incompatible]
+    assert affected.conf.model_dump() == snapshots[incompatible]
+    affected.adapter.rebind.assert_not_called()
+    assert service.host.mutations == []
+
+
+@pytest.mark.parametrize("offline", [(0,), (1,), (0, 1)])
+def test_different_adb_offline_targets_reconnect_without_restarting_healthy_host(
+    service, shared_applications, offline
+):
+    snapshots = [application.conf.model_dump() for application in shared_applications]
+    devices = [
+        application.control.start().unwrap() for application in shared_applications
+    ]
+    for index in offline:
+        application = shared_applications[index]
+        application.states[application.conf.device.last_serial] = "offline"
+    service.runner.reset_mock()
+    for index, application in enumerate(shared_applications):
+        assert application.control.recover().unwrap() is devices[index]
+        assert application.conf.model_dump() == snapshots[index]
+        assert application.recovery.generation == 0
+        assert application.simulator.actions == []
+        if index in offline:
+            application.adapter.rebind.assert_called_once()
+        else:
+            application.adapter.rebind.assert_not_called()
+    assert [
+        entry.args[0]
+        for entry in service.runner.call_args_list
+        if entry.args[0][1] == "connect"
+    ] == [
+        [
+            shared_applications[index].conf.device.adb_path,
+            "connect",
+            shared_applications[index].conf.device.last_serial,
+        ]
+        for index in offline
+    ]
+    assert service.host.version == 41
+    assert service.host.mutations == []
+    service.kill.assert_not_called()
+
+
+@pytest.mark.parametrize("closed", [0, 1])
+def test_closing_different_adb_instance_preserves_healthy_peer_dispatch(
+    service, shared_applications, closed
+):
+    devices = [
+        application.control.start().unwrap() for application in shared_applications
+    ]
+    peer = shared_applications[1 - closed]
+    original = peer.conf.model_dump()
+    assert shared_applications[closed].control.close().ok
+    assert devices[closed].closed
+    assert peer.control.recover().unwrap() is devices[1 - closed]
+    operation = Mock(return_value="healthy task")
+    assert peer.control.execute(operation).unwrap() == "healthy task"
+    operation.assert_called_once_with(devices[1 - closed])
+    assert peer.conf.model_dump() == original
+    peer.adapter.rebind.assert_not_called()
+    assert service.host.version == 41
+    assert service.host.mutations == []
+    service.kill.assert_not_called()
 
 
 def test_healthy_host_does_not_restart_or_consume_action_even_if_devices_offline(
@@ -459,7 +895,15 @@ def hold_lock(path, acquired, release):
             raise RuntimeError("test lock release timed out")
 
 
-def test_cross_process_lock_is_bounded_and_releases_without_unlinking(service):
+@pytest.mark.parametrize("client_index", [None, 0, 1])
+def test_cross_process_lock_is_bounded_and_releases_without_unlinking(
+    service, different_adb_clients, client_index
+):
+    recovery, binary = (
+        (service.recovery, "selected-adb")
+        if client_index is None
+        else different_adb_clients[client_index]
+    )
     context = multiprocessing.get_context("spawn")
     acquired, release = context.Event(), context.Event()
     process = context.Process(
@@ -468,11 +912,11 @@ def test_cross_process_lock_is_bounded_and_releases_without_unlinking(service):
     process.start()
     try:
         assert acquired.wait(5)
-        assert service.recovery.recover("selected-adb", timeout=5) is False
+        assert recovery.recover(binary, timeout=5) is False
         assert service.clock.now == 0
         service.host.version = None
         with pytest.raises(SharedADBError, match="时间预算"):
-            service.recovery.recover("selected-adb", timeout=0.2)
+            recovery.recover(binary, timeout=0.2)
         assert service.clock.now == pytest.approx(0.2)
         assert service.host.mutations == []
     finally:
@@ -484,7 +928,7 @@ def test_cross_process_lock_is_bounded_and_releases_without_unlinking(service):
     assert process.exitcode == 0
     assert service.options["lock_path"].exists()
     service.host.version = 41
-    assert service.recovery.recover("selected-adb", timeout=5) is False
+    assert recovery.recover(binary, timeout=5) is False
 
 
 def test_healthy_host_never_creates_coordination_marker(service):
@@ -601,5 +1045,22 @@ def test_windows_empty_file_initializes_lock_byte_and_unlocks(service, monkeypat
     assert service.options["lock_path"].read_bytes() == b"\0"
 
 
-def test_default_lock_path_is_shared_independent_of_binary():
-    assert SharedADBRecovery()._lock_path == SharedADBRecovery()._lock_path
+def test_default_lock_path_is_shared_independent_of_binary(
+    service, different_adb_clients, monkeypatch
+):
+    home = service.options["lock_path"].parent
+    monkeypatch.setattr(shared.Path, "home", lambda: home)
+    options = {
+        name: value for name, value in service.options.items() if name != "lock_path"
+    }
+    clients = [
+        (SharedADBRecovery(**options), binary) for _, binary in different_adb_clients
+    ]
+    expected = home / ".cache" / "arknights-mower" / "adb-5037.lock"
+    for recovery, binary in clients:
+        assert recovery._lock_path == expected
+        assert recovery.recover(binary, timeout=5) is False
+        assert recovery._lock_path == expected
+        assert recovery.adb_path == binary
+    assert not expected.exists()
+    assert service.host.mutations == []

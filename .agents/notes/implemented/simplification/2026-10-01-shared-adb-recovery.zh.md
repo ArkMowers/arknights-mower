@@ -37,6 +37,8 @@ date: 2026-10-01
 
 [锁字节兼容性测试](../testing/2026-10-01-adb-lock-byte-test.zh.md) 在停止失败时验证持久化代次，不读取 Windows 上已锁住的记录首字节。
 
+[不同 ADB 程序组合回归](../testing/2026-10-01-different-adb-client-regressions.zh.md) 验证两个实例的独立程序选择、协议兼容、共享协调及原目标应用恢复。
+
 实现与测试负责人使用 `adb_shared_server_tests.py` 和 `adb_shared_transport_tests.py`，与桌面 CI 路径和本提案 sidecar 一致。针对性离线测试替换探测、进程、锁与时钟，覆盖服务健康而设备离线、版本不匹配、主机故障次数与三十秒持续时间门槛、并发进程、共享冷却、锁内健康探测、取消、预算耗尽、重启验证失败、共享路由与同目标辅助服务重建。
 
 `device_adb_recovery_tests.py` 覆盖应用协调器、其他进程代次变化、同目标验证、辅助服务重建、取消与动作预算。`device_control_shutdown_tests.py` 保留延后与幂等辅助资源清理覆盖。`scheduler_recovery_preservation_tests.py` 保留任务延续覆盖。`server_status_tests.py` 与针对性的前端状态和设备设置测试保留启动与恢复标签、停止操作、数据与设置锁覆盖。CI 替换自有服务测试名称，同时保留既有状态回归测试。
