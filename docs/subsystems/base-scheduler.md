@@ -31,6 +31,8 @@ flowchart TD
 ## 2. Core Concepts & Functional Contracts
 
 ### 2.1 Scheduling Plan (`Scheduling Plan`)
+- Manual and startup validation check the baseline and every possible backup activation combination with `Operators.swap_plan(..., refresh=True)`, the same merged-plan checker used by shift projection. Checks retain declaration-order overrides and whole-slot `Current` inheritance, including replacements. Independent operator models preserve actual occupancy and active conditions; failures identify the active backups.
+- Static trigger analysis shares known operator working/resting states, room string comparisons and clue-party null checks through supported Boolean logic. Unsupported, missing, time-dependent and state-mutating conditions retain independent activation choices. The validator excludes only logically impossible combinations, admits at most 16384 distinct activation combinations and analyzes at most 262144 symbolic states. Exceeding either budget returns an incomplete-validation failure. There is no fixed backup-count limit: 14 independent conditions fit the combination budget, and shared or mutually exclusive conditions permit more backups. Static validation does not prove future dynamic convergence. The [validation decision](../../.agents/notes/implemented/bug-fix/2026-10-02-backup-validation-coverage.md) records the regression.
 - Configures assigned primary operators, operator groups, replacements, products, and resting rules across all base facilities.
 - Manages the baseline master plan (`plan1`) and condition-triggered backup plans (`backup_plans`).
 - Condition triggers monitor facility state, clue party status (`party_time`), and operator exhaustion.
@@ -104,6 +106,7 @@ flowchart TD
 ---
 
 ## 3. Subsystem Invariants
+- **[INV-SCHED-16] Backup Validation Coverage**: Validation excludes only backup activation combinations disproved by supported trigger logic, reports success only after every remaining combination passes the same merged-plan validation as shift projection, and preserves the caller's active plan and actual occupancy.
 - **[INV-SCHED-13] Pending Task Preservation**: Device recovery preserves the scheduler and pending tasks, refreshes the Capture Frame before dispatch resumes and pauses unverified side effects without ending the automation worker or replaying uncertain input. Ordinary graph navigation retains its call stack and resumes from a fresh scene; task-level uncertainty retains a local device dispatch pause.
 - The [recoverable device failure contract](../../.agents/notes/implemented/simplification/2026-10-01-recoverable-device-failures.md) defines supervision, cooldown and offline verification.
 - Resumed scheduler entry rebuilds stale ordinary plans without deleting future explicit `FURNITURE`, `DEPOT`, `CLUE` or `WORKSHOP` tasks, or future `RUN_ORDER` tasks. Critical appointments retain their existing preservation policy; expired ordinary plans and expired noncritical tasks retain their existing cleanup. Queue rebuilding adds an immediate correction task so retained future work does not postpone normal planning. The [release and task retention decision](../../.agents/notes/implemented/bug-fix/2026-10-01-recovery-release-and-task-retention.md) records the real scheduler-entry regressions.
