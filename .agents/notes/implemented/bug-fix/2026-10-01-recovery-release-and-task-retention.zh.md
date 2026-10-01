@@ -9,7 +9,7 @@ date: 2026-10-01
 
 ## 契约
 
-[INV-DEV-19] 在进程退出和空闲清理期间保留共享 ADB 服务运行。[设备控制](../../../../docs/subsystems/device-control.md) 定义应用自有辅助资源释放、延后清理与幂等关闭。[共享 ADB 恢复提案](../../proposed/simplification/2026-10-01-shared-adb-recovery.zh.md)替代本记录的前台服务所有权与监听验证部分；辅助资源清理和任务保留仍然有效。
+[INV-DEV-19] 在进程退出和空闲清理期间保留共享 ADB 服务运行。[设备控制](../../../../docs/subsystems/device-control.md) 定义应用自有辅助资源释放、延后清理与幂等关闭。[共享 ADB 恢复决策](../../implemented/simplification/2026-10-01-shared-adb-recovery.zh.md)替代本记录的前台服务所有权与监听验证部分；辅助资源清理和任务保留仍然有效。
 
 [INV-SCHED-13] 覆盖恢复后的调度器入口，不仅覆盖恢复函数返回。[基建调度](../../../../docs/subsystems/base-scheduler.md) 定义未来显式任务保留与过期排班重建。
 

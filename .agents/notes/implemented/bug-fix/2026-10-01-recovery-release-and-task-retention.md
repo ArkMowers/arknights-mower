@@ -9,7 +9,7 @@ date: 2026-10-01
 
 ## Contract
 
-[INV-DEV-19] leaves the shared ADB server running during process shutdown and idle cleanup. [Device Control](../../../../docs/subsystems/device-control.md) defines application-owned helper release, deferred cleanup and idempotent closure. The [shared ADB recovery proposal](../../proposed/simplification/2026-10-01-shared-adb-recovery.md) replaces the foreground-server ownership and listener-verification portions of this note; helper cleanup and task retention remain active.
+[INV-DEV-19] leaves the shared ADB server running during process shutdown and idle cleanup. [Device Control](../../../../docs/subsystems/device-control.md) defines application-owned helper release, deferred cleanup and idempotent closure. The [shared ADB recovery decision](../../implemented/simplification/2026-10-01-shared-adb-recovery.md) replaces the foreground-server ownership and listener-verification portions of this note; helper cleanup and task retention remain active.
 
 [INV-SCHED-13] covers the resumed scheduler entry, not only recovery's return. [Base Scheduling](../../../../docs/subsystems/base-scheduler.md) defines future explicit task preservation and stale-plan rebuilding.
 
