@@ -149,22 +149,29 @@ class SessionADBTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.args[0], [str(adb_path), "version"])
 
-    def test_usb_and_emulator_recovery_never_use_tcp_or_global_commands(self):
-        for serial in ("USB_123", "emulator-5554"):
+    def test_usb_and_emulator_recovery_only_address_the_pinned_target(self):
+        for serial, response, command in (
+            (
+                "USB_123",
+                b"reconnecting USB_123 [device]",
+                ["adb", "-s", "USB_123", "reconnect"],
+            ),
+            (
+                "emulator-5554",
+                b"Connected to emulator on ports 5554,5555",
+                ["adb", "connect", "emu:5554,5555"],
+            ),
+        ):
             with self.subTest(serial=serial):
                 run = Mock(
-                    return_value=subprocess.CompletedProcess(
-                        [], 0, f"reconnecting {serial} [device]".encode(), b""
-                    )
+                    return_value=subprocess.CompletedProcess([], 0, response, b"")
                 )
                 self.assertTrue(
                     ProductionSessionADB(probe=lambda timeout: None, run=run).recover(
                         "adb", serial, 5
                     )
                 )
-                self.assertEqual(
-                    run.call_args.args[0], ["adb", "-s", serial, "reconnect"]
-                )
+                self.assertEqual(run.call_args.args[0], command)
                 self.assertEqual(run.call_count, 1)
 
     def test_recovery_rejects_misleading_zero_exit_and_nonzero_exit(self):

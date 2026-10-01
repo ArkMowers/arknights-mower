@@ -4,12 +4,11 @@ import ipaddress
 import time
 from pathlib import Path
 
-from arknights_mower.utils.device.adb_client.server import current_adb_server, guard_adb
+from arknights_mower.utils.device.adb_client.server import guard_adb
 from arknights_mower.utils.device.endpoint_identity import (
     BOOT_ID_COMMAND,
     InstanceBindingError,
     InstanceEndpointPending,
-    connect_endpoint_candidates,
     parse_adb_devices,
     parse_boot_id,
     run_endpoint_command,
@@ -42,6 +41,27 @@ class NoxBindingReader:
         serial = current.endpoint(instance)
         return InstanceObservation("running", serial)
 
+    def recover(self, profile, manager, timeout, reconnect):
+        current = self.open(profile, manager, timeout)
+        instance = current.instance()
+        if instance["state"] != "running":
+            return False
+        try:
+            current.endpoint(instance)
+            return True
+        except InstanceEndpointPending:
+            pass
+        candidates = current.candidates()
+        for serial in candidates:
+            current.confirm(instance, candidates)
+            reconnect(profile.adb_path, serial, current.remaining())
+        current.confirm(instance, candidates)
+        try:
+            current.endpoint(instance)
+        except InstanceEndpointPending:
+            return False
+        return True
+
 
 class _NoxObservation:
     def __init__(self, reader, profile, manager, timeout):
@@ -56,7 +76,7 @@ class _NoxObservation:
             raise TimeoutError("夜神实例复核超时。")
         return io_timeout(min(3, available))
 
-    def command(self, argv, *, adb=False, delegated_adb=False):
+    def command(self, argv, *, adb=False):
         try:
             output = run_endpoint_command(
                 argv,
@@ -65,7 +85,6 @@ class _NoxObservation:
                 probe=self.reader.probe,
                 monotonic=self.reader.monotonic,
                 adb=adb,
-                delegated_adb=delegated_adb,
             )
         except ValueError as exc:
             raise InstanceBindingError(
@@ -181,18 +200,6 @@ class _NoxObservation:
         selected = parse_adb_devices(
             self.command([self.profile.adb_path, "devices", "-l"], adb=True)
         )
-        if current_adb_server() is not None:
-            connect_endpoint_candidates(
-                self.profile.adb_path,
-                [serial for serial in candidates if selected.get(serial) != ["device"]],
-                self.command,
-            )
-            vendor = parse_adb_devices(
-                self.command([str(bundled), "devices", "-l"], adb=True)
-            )
-            selected = parse_adb_devices(
-                self.command([self.profile.adb_path, "devices", "-l"], adb=True)
-            )
         usable = []
         states = []
         for serial in candidates:
@@ -213,8 +220,7 @@ class _NoxObservation:
                         "adb",
                         f"-name:{instance['instance_name']}",
                         f"-command:{BOOT_ID_COMMAND}",
-                    ],
-                    delegated_adb=True,
+                    ]
                 )
             )
             if boot:
@@ -232,15 +238,7 @@ class _NoxObservation:
                     )
                     if boot == candidate_boot:
                         matches.append(serial)
-        confirmed = self.instance()
-        if (confirmed["pid"], confirmed["instance_name"], confirmed["state"]) != (
-            instance["pid"],
-            instance["instance_name"],
-            instance["state"],
-        ) or self.candidates() != candidates:
-            raise InstanceBindingError(
-                "binding_changed", "夜神实例在验证期间变化，请重试。", []
-            )
+        self.confirm(instance, candidates)
         if self.profile.last_serial in matches:
             return self.profile.last_serial
         if len(matches) == 1:
@@ -267,3 +265,14 @@ class _NoxObservation:
             "endpoint_unresolved",
             "无法将当前 ADB 端点与所选夜神 VM 对应，请检查 ADB 或使用其他模拟器手动入口。",
         )
+
+    def confirm(self, instance, candidates):
+        confirmed = self.instance()
+        if (confirmed["pid"], confirmed["instance_name"], confirmed["state"]) != (
+            instance["pid"],
+            instance["instance_name"],
+            instance["state"],
+        ) or self.candidates() != candidates:
+            raise InstanceBindingError(
+                "binding_changed", "夜神实例在验证期间变化，请重试。", []
+            )

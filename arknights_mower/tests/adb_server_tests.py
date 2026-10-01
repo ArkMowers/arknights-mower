@@ -6,10 +6,13 @@ from unittest.mock import MagicMock, Mock, patch
 
 from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
+    SharedADBHandshakeTimeout,
     guard_adb,
+    kill_adb_server,
     probe_adb_server,
     run_adb,
 )
+from arknights_mower.utils.device.endpoint_identity import emulator_connect_target
 
 
 class SharedADBTests(unittest.TestCase):
@@ -145,6 +148,9 @@ class SharedADBTests(unittest.TestCase):
         for args in (
             ["kill-server"],
             ["start-server"],
+            ["server"],
+            ["fork-server"],
+            ["nodaemon", "server"],
             ["-H", "other", "devices"],
             ["-P5556", "devices"],
         ):
@@ -218,6 +224,66 @@ class ServerProbeTests(unittest.TestCase):
                 connection.recv.side_effect = chunks
                 with self.assertRaises(SharedADBError):
                     probe_adb_server(5, socket_factory=factory)
+
+    def test_only_connected_handshake_timeout_is_recoverable(self):
+        factory, connection = self.connection()
+        connection.recv.side_effect = socket.timeout("stalled")
+        with self.assertRaises(SharedADBHandshakeTimeout):
+            probe_adb_server(5, socket_factory=factory)
+        connection.connect.side_effect = socket.timeout("connect stalled")
+        with self.assertRaises(SharedADBError) as raised:
+            probe_adb_server(5, socket_factory=factory)
+        self.assertNotIsInstance(raised.exception, SharedADBHandshakeTimeout)
+
+    def test_protocol_errors_and_eof_are_not_recoverable_timeouts(self):
+        for chunks in ([b"FAIL"], [b"OKAY", b"0004", b"oops"], [b""]):
+            factory, connection = self.connection()
+            connection.recv.side_effect = chunks
+            with self.assertRaises(SharedADBError) as raised:
+                probe_adb_server(5, socket_factory=factory)
+            self.assertNotIsInstance(raised.exception, SharedADBHandshakeTimeout)
+
+    def test_explicit_stop_targets_shared_socket_and_validates_fragmented_ack(self):
+        factory, connection = self.connection()
+        connection.recv.side_effect = [b"OK", b"AY"]
+        kill_adb_server(5, socket_factory=factory)
+        connection.connect.assert_called_once_with(("127.0.0.1", 5037))
+        connection.sendall.assert_called_once_with(b"0009host:kill")
+        self.assertEqual(connection.recv.call_count, 2)
+        factory.return_value.__exit__.assert_called_once()
+
+    def test_explicit_stop_rejection_or_invalid_ack_fails_promptly(self):
+        for response in (b"FAIL", b"oops", b""):
+            factory, connection = self.connection()
+            connection.recv.return_value = response
+            with self.assertRaises(SharedADBError):
+                kill_adb_server(5, socket_factory=factory)
+            connection.recv.assert_called_once_with(4)
+            factory.return_value.__exit__.assert_called_once()
+
+    def test_explicit_stop_ack_timeout_closes_socket(self):
+        factory, connection = self.connection()
+        connection.recv.side_effect = socket.timeout("ACK stalled")
+        with self.assertRaises(SharedADBError):
+            kill_adb_server(5, socket_factory=factory)
+        factory.return_value.__exit__.assert_called_once()
+
+    def test_explicit_stop_send_error_is_bounded_and_closes_socket(self):
+        factory, connection = self.connection()
+        connection.sendall.side_effect = socket.timeout("stalled")
+        with self.assertRaises(SharedADBError):
+            kill_adb_server(5, socket_factory=factory)
+        factory.return_value.__exit__.assert_called_once()
+
+    def test_emulator_serial_helper_remains_available_without_routing(self):
+        self.assertEqual(emulator_connect_target("emulator-5554"), "emu:5554,5555")
+        for serial in (
+            "emulator-5555",
+            "emulator-1022",
+            "emulator-65536",
+            "127.0.0.1:5555",
+        ):
+            self.assertIsNone(emulator_connect_target(serial))
 
 
 if __name__ == "__main__":

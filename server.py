@@ -1321,19 +1321,32 @@ def get_status():
         "remaining_seconds": None,
     }
     if mower_thread and mower_thread.is_alive():
-        from arknights_mower.__main__ import base_scheduler
+        from arknights_mower.__main__ import base_scheduler, device_control
 
-        if base_scheduler and mower_thread.is_alive():
-            response["plan_condition"] = list(base_scheduler.op_data.plan_condition)
-            for idx, plan in enumerate(base_scheduler.op_data.backup_plans):
-                if response["plan_condition"][idx]:
-                    response["plan_condition"][idx] = plan.name
-            response["plan_condition"] = [
-                name for name in response["plan_condition"] if name
-            ]
-
-            # 添加工作状态信息
-            response["status"] = "sleeping" if base_scheduler.sleeping else "working"
+        device_state = device_control.status().status
+        response["status"] = (
+            "recovering"
+            if device_state in {"failed", "paused"}
+            or (device_state == "starting" and base_scheduler is not None)
+            else "starting"
+        )
+        if base_scheduler is not None:
+            op_data = base_scheduler.op_data
+            if op_data is not None:
+                response["plan_condition"] = list(op_data.plan_condition)
+                for idx, plan in enumerate(op_data.backup_plans):
+                    if response["plan_condition"][idx]:
+                        response["plan_condition"][idx] = plan.name
+                response["plan_condition"] = [
+                    name for name in response["plan_condition"] if name
+                ]
+            if (
+                device_state not in {"failed", "paused", "starting"}
+                and op_data is not None
+            ):
+                response["status"] = (
+                    "sleeping" if base_scheduler.sleeping else "working"
+                )
             if base_scheduler.tasks and len(base_scheduler.tasks) > 0:
                 response["next_task_time"] = base_scheduler.tasks[0].time.strftime(
                     "%Y-%m-%d %H:%M:%S"

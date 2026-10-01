@@ -1,11 +1,13 @@
 ---
 title: 自有 ADB 恢复
-status: implemented
+status: archived
 category: architecture
 date: 2026-10-01
 ---
 
 # 自有 ADB 恢复
+
+> 由[共享 ADB 恢复](../../implemented/simplification/2026-10-01-shared-adb-recovery.zh.md)替代。本归档记录保留原始已提交的所有权契约，不是当前有效的 [INV-DEV-19] 契约。
 
 ## 契约
 

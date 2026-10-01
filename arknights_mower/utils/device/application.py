@@ -16,10 +16,7 @@ import numpy as np
 
 from arknights_mower import __system__
 from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
-from arknights_mower.utils.device.adb_client.server import (
-    SharedADBError,
-    adb_server_scope,
-)
+from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.discovery import DiscoveryResult, DiscoveryService
 from arknights_mower.utils.device.endpoint_identity import (
     AVD_PRESETS,
@@ -160,7 +157,7 @@ def prepare_droidcast_capture(adb_path, serial, profile):
 
 def create_device_control() -> "DeviceControl[Device]":
     from arknights_mower.utils import config
-    from arknights_mower.utils.device.adb_client.owned import OwnedADBServer
+    from arknights_mower.utils.device.adb_client.shared import SharedADBRecovery
     from arknights_mower.utils.device.avd import AVDController
     from arknights_mower.utils.device.genymotion import GenymotionController
     from arknights_mower.utils.device.preflight import PreflightService
@@ -196,7 +193,7 @@ def create_device_control() -> "DeviceControl[Device]":
         lambda: config.conf,
         LegacyDeviceAdapter(),
         on_fatal=shutdown.request,
-        adb_server=OwnedADBServer(),
+        adb_recovery=SharedADBRecovery(),
         preflight=PreflightService(ProductionPreflightIO(lambda: config.conf)),
         prepare_capture=prepare_droidcast_capture,
         session=DeviceSession(ProductionSessionADB(), simulator),
@@ -257,11 +254,10 @@ class DeviceControl(Generic[D]):
         genymotion=None,
         prepare_capture: Callable | None = None,
         on_fatal: Callable[[str], None] | None = None,
-        adb_server=None,
+        adb_recovery=None,
     ):
         self._on_fatal = on_fatal
-        self._adb_server = adb_server
-        self._uses_owned_adb = False
+        self._adb_recovery = adb_recovery
         self._bound_adb_generation = None
         self._fatal_notified = False
         self._read_configuration = read_configuration
@@ -303,12 +299,11 @@ class DeviceControl(Generic[D]):
         self.configuration_lock.acquire()
         try:
             with (
-                adb_server_scope(self._adb_server if self._uses_owned_adb else None),
                 cancellation_scope(
                     lambda: self._shutdown.is_set() or self._pending_close.is_set()
                 )
                 if settings
-                else nullcontext(),
+                else nullcontext()
             ):
                 yield
         finally:
@@ -873,19 +868,10 @@ class DeviceControl(Generic[D]):
             # A previous offline close is retried by begin's compensation,
             # rather than treating its cached result as a permanent failure.
             self.close()
-        profile = getattr(self._read_configuration(), "device", None)
         self._run_active = True
         self._run_authorization = preparation_serial
-        self._uses_owned_adb = (
-            self._adb_server is not None
-            and self._session is not None
-            and profile is not None
-            and profile.preset_id != "manual.physical"
-            and not is_android_runtime()
-        )
         try:
-            with adb_server_scope(self._adb_server if self._uses_owned_adb else None):
-                yield
+            yield
         finally:
             self._run_authorization = None
             self._run_active = False
@@ -956,7 +942,7 @@ class DeviceControl(Generic[D]):
                     ),
                 )
                 deadline = self._session.begin_budget()
-                if self._uses_owned_adb:
+                if self._adb_recovery is not None:
                     self._recover_adb_server(deadline)
             if self._preparation is not None:
                 with self._io_budget():
@@ -1034,8 +1020,8 @@ class DeviceControl(Generic[D]):
             return self._failure("start_failed", exc)
         if self._session is not None:
             self._device.session_control = self
-        if self._uses_owned_adb:
-            self._bound_adb_generation = self._adb_server.generation
+        if self._adb_recovery is not None:
+            self._bound_adb_generation = self._adb_recovery.generation
         self._serial = self._device.device_id
         self._state = "paused" if self._dispatch_pause is not None else "connected"
         if self._dispatch_pause is not None:
@@ -1330,12 +1316,12 @@ class DeviceControl(Generic[D]):
                     return self._failure("recovery_failed", exc)
             try:
                 deadline = None
-                if self._uses_owned_adb:
+                if self._adb_recovery is not None:
                     deadline = self._session.begin_budget()
                     self._recover_adb_server(deadline)
                 server_changed = (
-                    self._uses_owned_adb
-                    and self._bound_adb_generation != self._adb_server.generation
+                    self._adb_recovery is not None
+                    and self._bound_adb_generation != self._adb_recovery.generation
                 )
                 if (
                     frame_probe is None
@@ -1433,8 +1419,10 @@ class DeviceControl(Generic[D]):
                                         "触控连接初始化后已断开，尚未发送输入"
                                     ),
                                 )
-                            if self._uses_owned_adb:
-                                self._bound_adb_generation = self._adb_server.generation
+                            if self._adb_recovery is not None:
+                                self._bound_adb_generation = (
+                                    self._adb_recovery.generation
+                                )
                 self._state = (
                     "paused" if self._dispatch_pause is not None else "connected"
                 )
@@ -1473,11 +1461,17 @@ class DeviceControl(Generic[D]):
         except Exception as exc:
             raise PreflightRejected(str(exc), "missing_adb") from exc
         with self._io_budget():
-            return self._adb_server.recover(
+
+            def cancelled():
+                self._session.clock.sleep(0)
+                return self._shutdown.is_set() or self._pending_close.is_set()
+
+            return self._adb_recovery.recover(
                 adb_path,
                 timeout=self._session.remaining(),
+                cancelled=cancelled,
                 action=lambda operation: self._session._action(
-                    lambda timeout: operation(), deadline
+                    lambda timeout: operation(), deadline, required=False
                 ),
             )
 
@@ -1586,19 +1580,7 @@ class DeviceControl(Generic[D]):
                 logger.debug("中断设备 I/O 失败，继续清理自有资源", exc_info=True)
 
     def _close(self) -> DeviceResult[None]:
-        with adb_server_scope(self._adb_server if self._uses_owned_adb else None):
-            result = self._close_resources()
-            if self._uses_owned_adb and (
-                not self._run_active or self.shutdown_requested
-            ):
-                try:
-                    self._adb_server.close()
-                    self._uses_owned_adb = False
-                except Exception as exc:
-                    self._state = "failed"
-                    self._close_result = self._failure("close_failed", exc)
-                    return self._close_result
-            return result
+        return self._close_resources()
 
     def _close_resources(self) -> DeviceResult[None]:
         self._deferred_close = False
