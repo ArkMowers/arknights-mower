@@ -70,6 +70,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 
 ### 宿舍心情恢复 (`Dormitory Recovery`)
 - **定义**：干员进驻宿舍恢复心情的过程。按宿舍分床优先级分配床位，建立并保留单回位置；离宿依据回班、不养闲人和个人上限规则分别处理。
+- 不养闲人的规划与选人共用候选和预约规则，区分未知读数与已核验心情；保留已回满的原住客前，通过游戏心情升序列表核验未知心情。主班恢复的床位预约优先于普通空床补位，普通补位不获得集中恢复批次保护。加工在宿舍安排完成后作为独立任务执行。
 - **救急条件**：救急条件在至少两名且半数可轮休主班低于各自救急线时成立，持续至多数主班达到主表心情上限；可作为副表条件，未配置时仅使用现有 Free 床位。
 - **代码映射**：[`dorm_recovery.py`](arknights_mower/utils/dorm_recovery.py), [`resting_tier`](arknights_mower/utils/resting_priority.py)
 - **_Avoid_**: `Sleep queue`, `Rest list`
@@ -127,12 +128,12 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **代码映射**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
 
 ### 有效心情缓存／默认心情 (`Valid Mood Cache and Default Mood`)
-- **定义**: 有效心情缓存包含真实读数、读取时间及可用的推算结果。缺少有效缓存时，宿舍候选排序按默认 24 心情处理；默认值不能作为已确认满心情的依据。
+- **定义**: 有效心情缓存包含实读数值、读取时间及可用的推算结果。缺少有效缓存时，候选筛选、排序和主班轮休选择使用有效期一小时的选人卡牌预估：绿色笑脸为 24，红色为 0，黄色按心情条长度粗估且严格介于 0 与 24 之间。读不清的卡牌保持未知。预估不构成实读回满、采样时间、心情掉率、恢复截止时间或达到个人强制上限的依据。
 - **代码映射**: [`has_resting_mood`](arknights_mower/utils/resting_priority.py)
 
-### 初始化心情补读 (`Initial Mood Sampling`)
-- **定义**: 启动后，将需要但尚无有效心情数据的干员临时安排进宿舍轮流读取。补读期间保留原位置缓存并暂停副表切换；全部读完后，首次副表判断使用补读前的位置和新心情。
-- **代码映射**: [`BaseSchedulerSolver._read_initial_dorm_mood`](arknights_mower/solvers/base_schedule.py)
+### 初始化心情观测 (`Initial Mood Observation`)
+- **定义**: 启动先读取实际房间驻员，再在普通设施选人页预估缺少的心情，随后进行副表判断和缓存纠偏。观测不选择干员、不确认安排。有界扫描保留部分预估，卡牌读不清时仍继续启动；正常巡检校准实读心情和恢复时间。
+- **代码映射**: [`BaseSchedulerSolver._read_initial_card_mood`](arknights_mower/solvers/base_schedule.py)
 
 ### 肥鸭充能 (`Fiammetta Charging`)
 - **定义**: 利用菲亚梅塔技能为指定干员恢复心情的特殊任务，包含临时换位、充能和后续安排。充能流程暂停副表切换；更新心情和读取时间，保留工作心情消耗速度，之后由正常工作读数继续校准。

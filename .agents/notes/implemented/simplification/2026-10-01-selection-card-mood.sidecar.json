@@ -1,0 +1,22 @@
+{
+  "title": "Selection Card Mood Estimates",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]",
+    "[INV-SCHED-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.character_recognize.estimate_agent_mood",
+    "arknights_mower.utils.dorm_candidates.dorm_candidate_mood",
+    "arknights_mower.solvers.base_mixin.BaseMixin.scan_agent"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/selection_card_mood_tests.py",
+    "arknights_mower/tests/dorm_unknown_selection_tests.py"
+  ]
+}

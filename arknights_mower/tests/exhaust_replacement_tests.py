@@ -435,3 +435,19 @@ def test_exhaust_simulation_clones_mutable_state_without_copying_eval_capsule(
     assert solver._plan_exhaust_support(["机械师"]) is True
     assert source.operators["机械师"].mood == before_mood
     assert source.dorm[0].name == before_bed
+
+
+def test_partially_resting_exhaust_group_retains_planning(solver):
+    solver.op_data.operators["苍苔"].group = "用尽"
+    solver.op_data.groups["用尽"] = ["苍苔", "机械师"]
+    solver.task.meta_data = "苍苔"
+    solver.get_resting_plan = MagicMock()
+    solver._plan_exhaust_support = MagicMock(return_value=None)
+
+    solver.overtake_room()
+
+    assert solver.tasks == []
+    solver.get_resting_plan.assert_called_once_with(["苍苔", "机械师"], [], {}, 2)
+    solver._plan_exhaust_support.assert_called_once_with(["苍苔", "机械师"])
+    assert solver.planned
+    base_schedule.send_message.assert_called_once()

@@ -134,7 +134,7 @@ def test_non_group_or_temporary_arrangement_does_not_refresh(solver, case):
     elif case == "fia":
         task.type = TaskTypes.FIAMMETTA
     elif case == "initial":
-        instance._initial_mood_probe_active = True
+        instance.defer_backup_plan_until_mood_read = True
     else:
         pass
     data.stop_idle_dorm_search()

@@ -7,6 +7,30 @@ from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 from arknights_mower.utils.scheduler_task import rebalance_closing_dorm_slots
 
 
+def match_replacements(options, *, allow_partial=False):
+    """保留可行首选；默认要求完整匹配，协调阶段可取得最大部分匹配。"""
+    owners = {}
+
+    def reserve(name, seen):
+        for cover in options[name]:
+            if cover not in owners:
+                owners[cover] = name
+                return True
+        for cover in options[name]:
+            if cover in seen:
+                continue
+            seen.add(cover)
+            if reserve(owners[cover], seen):
+                owners[cover] = name
+                return True
+        return False
+
+    for name in options:
+        if not reserve(name, set()) and not allow_partial:
+            return None
+    return {name: cover for cover, name in owners.items()}
+
+
 def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), fia=()):
     """返回能让用尽组取得替班和床位的前置安排；失败不改变真实状态。"""
     protected = set(protected) | set(op_data.reserved_product_replacements)
@@ -97,15 +121,29 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
             data.operators[name].current_mood() - data.operators[name].lower_limit,
         ),
     )
+
+    def free_matching(*, allow_partial=True):
+        selected.clear()
+        options = {
+            name: [
+                cover
+                for cover in data.replacement_candidates(data.operators[name])
+                if available(data, cover, data.operators[name])
+            ]
+            for name in ordered
+            if not data.is_auto_free_dorm_operator(data.operators[name])
+        }
+        matching = match_replacements(options, allow_partial=allow_partial)
+        if matching is not None:
+            selected.update(matching.values())
+        return matching
+
+    matching = free_matching()
     for name in ordered:
         worker = data.operators[name]
-        if data.is_auto_free_dorm_operator(worker):
+        if data.is_auto_free_dorm_operator(worker) or name in matching:
             continue
         covers = data.replacement_candidates(worker)
-        free = next((cover for cover in covers if available(data, cover, worker)), None)
-        if free is not None:
-            selected.add(free)
-            continue
         # 只协调正在给其他主班顶岗的替班，不能搬走原岗位主班或训练干员。
         occupied = []
         for cover in covers:
@@ -143,7 +181,6 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 owner.index
             ] = alternate
             data = op_data.project_arrangements([plan])
-            selected.add(cover)
             resolved = True
             break
         if not resolved:
@@ -155,27 +192,15 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 if not available(projected, cover, worker):
                     continue
                 plan, data = trial, projected
-                selected.add(cover)
                 resolved = True
                 break
         if not resolved:
             return None
-    selected.clear()
-    for name in ordered:
-        worker = data.operators[name]
-        if data.is_auto_free_dorm_operator(worker):
-            continue
-        cover = next(
-            (
-                other
-                for other in data.replacement_candidates(worker)
-                if available(data, other, worker)
-            ),
-            None,
-        )
-        if cover is None:
+        matching = free_matching()
+        if name not in matching:
             return None
-        selected.add(cover)
+    if free_matching(allow_partial=False) is None:
+        return None
     if can_rest(data):
         return plan
 

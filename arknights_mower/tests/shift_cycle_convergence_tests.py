@@ -312,11 +312,14 @@ def test_vacancy_check_converges_eligible_rotation_before_idle_filling(solver):
     for name in solver.op_data.groups["红松"]:
         solver.op_data.operators[name].mood = 1
     before = backup.positions(solver.op_data)
-    assert solver._fill_empty_dorms()
+    assert solver._fill_empty_dorms() is False
     assert backup.positions(solver.op_data) == before
     assert len(solver.tasks) == 1
     task = solver.tasks[0]
     assert task.type == TaskTypes.SHIFT_OFF
+    solver._prepare_shift_cycle(task)
+    assert backup.positions(solver.op_data) == before
+    assert task.backup_shift_conditions == [True]
     apply(solver, task)
     assert all(
         solver.op_data.operators[name].is_resting()

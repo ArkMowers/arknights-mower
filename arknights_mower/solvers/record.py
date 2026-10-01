@@ -197,8 +197,7 @@ def current_state():
 
     if base_scheduler is None or base_scheduler.op_data is None:
         return None
-    original = getattr(base_scheduler, "_initial_mood_original_state", None)
-    data, tasks = original or (base_scheduler.op_data, base_scheduler.tasks)
+    data, tasks = base_scheduler.op_data, base_scheduler.tasks
     return {
         "dorm": data.all_dorms(),
         "tasks": tasks,
@@ -219,10 +218,9 @@ def current_state():
         ),
         "initial_mood_pending": bool(
             getattr(base_scheduler, "defer_backup_plan_until_mood_read", False)
-            or getattr(base_scheduler, "_initial_mood_probe_active", False)
         ),
-        "initial_mood_probe_layout": getattr(
-            base_scheduler, "_initial_mood_probe_layout", {}
+        "initial_mood_refresh_rooms": sorted(
+            getattr(base_scheduler, "_initial_mood_refresh_rooms", ())
         ),
         "daily_visit_friend": base_scheduler.daily_visit_friend,
         "daily_report": base_scheduler.daily_report,

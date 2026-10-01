@@ -106,7 +106,7 @@ def test_vacancy_fill_allocates_last_free_slot_to_regular_replacement_first(
     dorm_solver.total_agent = [crafter, replacement]
     dorm_solver.resting()
     assert next(d for d in dorm_solver.op_data.dorm if d.position[1] == 3).name == ""
-    assert dorm_solver._fill_empty_dorms()
+    assert dorm_solver._fill_empty_dorms(primary_planned=True)
     assert len(dorm_solver.tasks) == 1
     assert dorm_solver.tasks[0].type == TaskTypes.FILL_DORM
     assert dorm_solver.tasks[0].plan["dormitory_1"][3] == "红"
@@ -122,7 +122,7 @@ def test_crafter_uses_spare_slot_when_replacements_are_full(dorm_solver, free_ro
     dorm_solver.op_data.operators["陈"].mood = 24
     dorm_solver.total_agent = [crafter, replacement]
     dorm_solver.resting()
-    assert dorm_solver._fill_empty_dorms()
+    assert dorm_solver._fill_empty_dorms(primary_planned=True)
     assert len(dorm_solver.tasks) == 1
     assert dorm_solver.tasks[0].type == TaskTypes.FILL_DORM
     assert dorm_solver.tasks[0].plan["dormitory_1"][3] == "空爆"

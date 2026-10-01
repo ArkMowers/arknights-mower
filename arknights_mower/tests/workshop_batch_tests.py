@@ -23,17 +23,30 @@ def batch(monkeypatch):
 
     monkeypatch.setattr(base, "datetime", Clock)
     monkeypatch.setattr(config.conf, "enable_mastery", False)
-    snapshot = SimpleNamespace()
+    snapshot = SimpleNamespace(
+        settings=[
+            SimpleNamespace(operator=name, enabled=True, items=[])
+            for name in ("蜜莓", "年", "空爆", "特克诺")
+        ]
+    )
     snapshots = MagicMock(return_value=snapshot)
     monkeypatch.setattr(workshop_automation, "workshop_task_snapshot", snapshots)
+    # 此套件隔离连续加工的恢复边界；材料真实性由调人前检查套件覆盖。
+    monkeypatch.setattr(
+        "arknights_mower.utils.workshop_limits.workshop_material_block_reason",
+        lambda *args: None,
+    )
+    monkeypatch.setattr(base, "get_inventory_counts", lambda: {})
     errors = MagicMock()
     monkeypatch.setattr(base, "save_exception", errors)
     solver = object.__new__(base.BaseSchedulerSolver)
+    solver._plan_dorm_recovery = MagicMock(return_value=True)
     rooms = {
         "factory": ["特克诺"],
         "dormitory_1": ["蜜莓", "年", "空爆", "同寝干员", "宿管"],
     }
     solver.op_data = SimpleNamespace(
+        refresh_idle_dorm_search=MagicMock(),
         plan=deepcopy(rooms),
         operators={
             name: SimpleNamespace(current_room=room, current_index=i, mood=24)
@@ -56,7 +69,7 @@ def batch(monkeypatch):
     arrangements = []
     crafts = []
 
-    def arrange(plan):
+    def arrange(plan, get_time=False):
         arrangements.append(deepcopy(plan))
         for room, names in plan.items():
             for i, name in enumerate(names):
@@ -138,7 +151,8 @@ def test_batch_stops_at_task_boundary(batch, boundary):
 @pytest.mark.parametrize("skip", ["stale", "exhausted"])
 def test_skipped_middle_task_does_not_restore_early(batch, skip):
     if skip == "stale":
-        batch.snapshots.side_effect = [SimpleNamespace(), None, SimpleNamespace()]
+        snapshot = batch.snapshots.return_value
+        batch.snapshots.side_effect = [snapshot, None, snapshot]
     else:
         op = batch.solver.op_data.operators["年"]
         op.mood, op.current_room, op.current_index = 0, "", -1
@@ -261,4 +275,52 @@ def test_stop_signal_does_not_switch_to_another_operator(batch):
     assert batch.solver.task is first
     assert len(batch.solver.tasks) == 3
     assert batch.arrangements == [{"factory": ["蜜莓"]}]
+    batch.errors.assert_not_called()
+
+
+@pytest.mark.parametrize("nearby", [False, True])
+def test_completed_workshop_allows_fresh_scan_but_preserves_nearby_task(
+    batch, monkeypatch, nearby
+):
+    solver = batch.solver
+    completed = solver.task
+    solver.tasks[:] = [completed]
+    pending = SchedulerTask(
+        time=batch.clock.now() + timedelta(seconds=45),
+        task_type=TaskTypes.REFRESH_TIME,
+    )
+    if nearby:
+        solver.tasks.append(pending)
+    solver.op_data.plan["meeting"] = ["同寝干员"]
+    solver.op_data.dorm_mood_estimates = {"蜜莓": (24, batch.clock.now())}
+    solver._card_moods_scanned_this_run = True
+    solver.op_data.refresh_idle_dorm_search.side_effect = lambda **kwargs: (
+        solver.op_data.dorm_mood_estimates.clear()
+    )
+    solver.recog = SimpleNamespace(img={}, w=1920, h=1080)
+    solver.tap = MagicMock()
+    solver.swipe_left = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.wait_for_agent_page = MagicMock(return_value=[("蜜莓", 0)])
+    solver.back_to_infrastructure = MagicMock()
+    monkeypatch.setattr(base, "agent_card_selected", lambda *args: False)
+    monkeypatch.setattr(base, "estimate_agent_mood", lambda *args: 24)
+
+    def replan():
+        assert all(task is not completed for task in solver.tasks)
+        assert batch.arrangements[-1]["factory"] == ["特克诺"]
+        assert solver.op_data.dorm_mood_estimates == {}
+        # 保留真实扫描和 no_pending_task，验证任务收尾不会自挡。
+        solver._scan_card_moods()
+        return True
+
+    solver._plan_dorm_recovery.side_effect = replan
+    solver.craft_material()
+    if nearby:
+        solver.wait_for_agent_page.assert_not_called()
+        assert solver.tasks == [pending]
+    else:
+        solver.wait_for_agent_page.assert_called_once()
+        assert solver.op_data.dorm_mood_estimates["蜜莓"][0] == 24
+        assert solver.tasks == []
     batch.errors.assert_not_called()

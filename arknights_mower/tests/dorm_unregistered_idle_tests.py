@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from arknights_mower.solvers.base_mixin import AgentSelectionNotReady
 from arknights_mower.tests import dorm_empty_release_tests
 from arknights_mower.utils import config, resting_priority, scheduler_task
 from arknights_mower.utils.scheduler_task import (
@@ -207,8 +208,9 @@ def test_missing_owned_candidate_stops_search_without_registering_catalogue(
     screen_only(instance, [])
     plan = selected.copy() + ["Free"]
     instance.task = SchedulerTask(task_plan={ROOM: plan})
-    with pytest.raises(Exception, match="列表已到末尾|足够的可用宿舍"):
+    with pytest.raises(AgentSelectionNotReady):
         instance.choose_agent(plan, ROOM)
+    assert instance.scan_agent.call_count <= 51
     assert "陈" not in instance.op_data.operators
 
 
@@ -308,8 +310,8 @@ def test_unknown_vacancy_fill_is_reserved_once_without_deferral_event(
         time=datetime.now() + timedelta(seconds=5), task_type=TaskTypes.RUN_ORDER
     )
     instance.tasks, instance.task = [order], None
-    assert instance._fill_empty_dorms()
-    assert not instance._fill_empty_dorms()
+    assert instance._fill_empty_dorms(primary_planned=True)
+    assert not instance._fill_empty_dorms(primary_planned=True)
     assert len(instance.tasks) == 2
     fill = next(t for t in instance.tasks if t.type == TaskTypes.FILL_DORM)
     assert fill.plan[ROOM][-1] == "Free"
@@ -334,6 +336,31 @@ def test_full_dorm_keeps_nearby_order_guard(solver):
     assert instance.tasks[0] is order
 
 
+def test_full_resident_replacement_is_queued_before_workshop(solver, monkeypatch):
+    from arknights_mower.solvers import base_schedule
+
+    instance, _ = solver
+    instance.op_data.operators["银灰"].current_room = "meeting"
+    instance.op_data.operators["红"].current_room = ""
+    instance.op_data.operators["红"].mood = 10
+    instance.tasks, instance.task = [], None
+    instance._plan_primary_recovery = MagicMock(return_value=True)
+    instance.agent_get_mood = MagicMock(return_value={})
+    workshop = MagicMock(
+        side_effect=lambda data, tasks: tasks.append(
+            SchedulerTask(task_type=TaskTypes.WORKSHOP)
+        )
+    )
+    monkeypatch.setattr(base_schedule, "try_workshop_tasks", workshop)
+
+    instance.plan_solver()
+
+    assert len(instance.tasks) == 1
+    assert instance.tasks[0].plan[ROOM][-1] == "红"
+    assert instance.tasks[0].type == TaskTypes.NOT_SPECIFIC
+    workshop.assert_not_called()
+
+
 @pytest.mark.parametrize("free_room", [False, True])
 def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(
     solver, free_room
@@ -354,7 +381,7 @@ def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(
     data.add(Operator("陈", "", mood=12, time_stamp=datetime.now()))
     data.plan["meeting"][0].replacement.append("陈")
     instance.tasks, instance.task = [], None
-    assert instance._fill_empty_dorms()
+    assert instance._fill_empty_dorms(primary_planned=True)
     assert instance.tasks[0].type == TaskTypes.FILL_DORM
     assert instance.tasks[0].plan == {ROOM: ["Current"] * 4 + ["红"]}
 
@@ -382,7 +409,7 @@ def test_vacancy_priority_keeps_existing_admission_guards(solver, blocked, free_
         # 床位记录虽然空了，实际位置缓存仍有人，不能误当空床插队换人。
         data.operators["空爆"]._current_room = ROOM
         data.operators["空爆"].current_index = 4
-    assert not instance._fill_empty_dorms()
+    assert not instance._fill_empty_dorms(primary_planned=True)
 
 
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT])
@@ -402,7 +429,7 @@ def test_nearby_priority_task_skips_single_recovery_competition(
     instance.tasks = [priority]
     compete = MagicMock(wraps=scheduler_task.prioritize_new_dorm_recovery)
     monkeypatch.setattr(scheduler_task, "prioritize_new_dorm_recovery", compete)
-    assert instance._fill_empty_dorms()
+    assert instance._fill_empty_dorms(primary_planned=True)
     fill = next(t for t in instance.tasks if t.type == TaskTypes.FILL_DORM)
     assert getattr(fill, "simple_dorm_fill", False) == simple
     assert compete.call_count == (0 if simple else 1)

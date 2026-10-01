@@ -90,6 +90,7 @@ def solver(monkeypatch):
             *[Room("Free", "", []) for _ in range(3)],
         ]
     instance = object.__new__(BaseSchedulerSolver)
+    instance._scan_card_moods = MagicMock()
     instance.global_plan = {
         "default_plan": Plan(
             rooms,
@@ -378,6 +379,7 @@ def test_workshop_selection_does_not_disable_group_standby(solver):
 
 
 def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
+    config.conf.rescue_threshold = 0
     name = OTHERS[0]
     observed = {
         room: [slot.agent for slot in slots]

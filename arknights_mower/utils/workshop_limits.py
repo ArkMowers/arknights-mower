@@ -56,6 +56,87 @@ def batch_limit(name, metadata, setting, inventory):
     )
 
 
+def workshop_material_block_reason(operator, items, inventory):
+    """入队和调人前共用材料检查；可加工返回 None，否则指出阻塞原因。"""
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_recipes import scope_workshop_items
+
+    if not items:
+        return "未配置加工配方"
+    scoped = scope_workshop_items(operator, items, workshop_formula)
+    if not scoped:
+        return "没有符合干员材料范围及材料保护规则的配方"
+    available, blocked = [], []
+    for item in scoped:
+        for name in item.item_names:
+            metadata = workshop_formula[name]
+            if batch_limit(name, metadata, item, inventory) > 0:
+                available.append(metadata)
+                continue
+            quantities = recipe_quantities(name, metadata)
+            if not workshop_recipe_allowed(metadata):
+                blocked.append(f"{name}使用受保护材料")
+            elif quantities is None:
+                blocked.append(f"{name}缺少有效配方数量")
+            else:
+                output, count, costs = quantities
+                missing = [mat for mat in (output, *costs) if mat not in inventory]
+                if missing:
+                    blocked.append(f"{name}缺少仓库读数：{'、'.join(missing)}")
+                elif inventory[output] + count > item.self_upper_limit:
+                    blocked.append(
+                        f"{output}成品达到合成上限或剩余额度不足一批"
+                        f"（库存 {inventory[output]}，上限 {item.self_upper_limit}）"
+                    )
+                else:
+                    shortages = [
+                        f"{mat}库存 {inventory[mat]}，需 {required}，保留 {item.children_lower_limit}"
+                        for mat, required in costs.items()
+                        if inventory[mat] - item.children_lower_limit < required
+                    ]
+                    blocked.append(f"{name}原料不足（{'；'.join(shortages)}）")
+    if not available:
+        reasons = list(dict.fromkeys(blocked))
+        return "；".join(reasons[:3]) or "未配置加工配方"
+    if operator == "九色鹿":
+        if not any(
+            entry["apCost"] < 4 or entry["tab"] == "基建材料" for entry in available
+        ):
+            return "缺少可加工的垫刀材料（小于 4 心情或基建材料）"
+        if not any(
+            entry["apCost"] == 4 and entry["tab"] != "基建材料" for entry in available
+        ):
+            return "缺少可加工的 4 心情精英材料"
+    return None
+
+
+def workshop_operator_block_reason(
+    op_data, operator, tasks=(), *, current_task=None, minimum_mood=0
+):
+    """返回加工受阻原因；自动入队和调人前共享心情及预约规则。"""
+    if getattr(op_data, "is_rescue_recovering", lambda name: False)(operator):
+        return "正在集中恢复，暂不借出加工"
+    for task in tasks:
+        if (
+            task is not current_task
+            and getattr(task.type, "name", "") != "WORKSHOP"
+            and any(operator in names for names in task.plan.values())
+        ):
+            return f"已被{task.type.display_value}任务预约"
+    op = op_data.operators.get(operator)
+    if op is None:
+        return None
+    mood = op.current_mood() if hasattr(op, "current_mood") else op.mood
+    # 未知心情的手动加工沿用入站读取；自动入队仍需已知心情超过门槛。
+    if mood < 0 and minimum_mood == 0:
+        return None
+    if mood < 0:
+        return "心情尚未读取，无法确认自动加工门槛"
+    if mood <= minimum_mood:
+        return f"心情不足（当前 {mood:.1f}，需大于 {minimum_mood}）"
+    return None
+
+
 def deer_batch_limit(gap, ap_cost):
     """Stop fodder before the guaranteed byproduct, then craft one T4 item."""
     if gap <= 0 or ap_cost <= 0:

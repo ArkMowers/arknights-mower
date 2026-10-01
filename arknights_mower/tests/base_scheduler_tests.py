@@ -243,8 +243,7 @@ class TestMoodInitialization(unittest.TestCase):
             }
         )
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
-        self.assertEqual(scheduler._initial_mood_probe_layout, layout)
-        self.assertIsNot(scheduler._initial_mood_probe_layout, layout)
+        self.assertEqual(scheduler._initial_mood_refresh_rooms, set(layout))
 
     def test_unified_initialization_never_requests_mood_reload(self):
         scheduler = MagicMock()
@@ -994,6 +993,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.defer_backup_plan_until_mood_read = True
         with (
             patch.object(base_schedule, "_training_room_scan_disabled", True),
+            patch.object(BaseSchedulerSolver, "_read_initial_card_mood"),
             patch.object(BaseSchedulerSolver, "find", return_value=True),
             patch.object(BaseSchedulerSolver, "enter_room") as enter,
             patch.object(
@@ -1030,6 +1030,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.defer_backup_plan_until_mood_read = True
         with (
             patch.object(base_schedule, "_training_room_scan_disabled", True),
+            patch.object(BaseSchedulerSolver, "_read_initial_card_mood"),
             patch.object(BaseSchedulerSolver, "find", return_value=True),
             patch.object(BaseSchedulerSolver, "enter_room") as enter,
             patch.object(
@@ -1049,7 +1050,7 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual(solver.tasks, [])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_initial_sampling_finishes_before_backup_and_normal_planning(self):
+    def test_initial_card_scan_finishes_before_backup_and_normal_planning(self):
         for completed in (False, True):
             with self.subTest(completed=completed):
                 solver = self._create_no_train_plan_solver()
@@ -1066,7 +1067,7 @@ class TestBaseScheduler(unittest.TestCase):
                     ),
                     patch.object(
                         solver,
-                        "_read_initial_dorm_mood",
+                        "_read_initial_card_mood",
                         side_effect=lambda: (events.append("sample"), completed)[1],
                     ),
                     patch.object(
@@ -1085,14 +1086,10 @@ class TestBaseScheduler(unittest.TestCase):
                     solver.infra_main()
                 self.assertEqual(
                     events,
-                    ["scan", "sample", "backup", "correct"]
-                    if completed
-                    else ["scan", "sample"],
+                    ["scan", "sample", "backup", "correct"],
                 )
-                self.assertEqual(
-                    solver.defer_backup_plan_until_mood_read, not completed
-                )
-                self.assertEqual(plan.call_count, int(completed))
+                self.assertEqual(solver.defer_backup_plan_until_mood_read, False)
+                self.assertEqual(plan.call_count, 1)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_unified_initial_scan_keeps_recovered_training_tasks(self):
@@ -2498,7 +2495,13 @@ class TestDormShiftOffMerge(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_plan_solver_keeps_work_and_dorm_in_one_shift_off_task(self):
         solver = BaseSchedulerSolver()
-        solver.op_data = SimpleNamespace(operators={}, dorm=[], print=lambda: "{}")
+        solver.op_data = SimpleNamespace(
+            config=SimpleNamespace(free_room=False),
+            operators={},
+            dorm=[],
+            print=lambda: "{}",
+            rescue_needed=MagicMock(return_value=False),
+        )
         solver._prepare_shift_cycle = MagicMock()
         solver._refresh_deferred_product_reservations = MagicMock()
         solver.tasks = []
@@ -2551,6 +2554,7 @@ class TestDormShiftOffMerge(unittest.TestCase):
         )
         with (
             patch.object(solver, "_prepare_shift_cycle"),
+            patch.object(solver, "_plan_primary_recovery", return_value=True),
             patch.object(
                 base_schedule, "vacant_dorm_slots", return_value={("dormitory_1", 1)}
             ),

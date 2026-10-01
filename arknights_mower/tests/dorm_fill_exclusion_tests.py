@@ -10,7 +10,11 @@ from arknights_mower.tests import (
     initial_dorm_mood_tests,
 )
 from arknights_mower.utils.operators import Operator
-from arknights_mower.utils.resting_priority import has_resting_mood
+from arknights_mower.utils.resting_priority import (
+    RestingTier,
+    has_resting_mood,
+    resting_tier,
+)
 from arknights_mower.utils.scheduler_task import try_add_release_dorm
 
 op_data = dorm_empty_release_tests.op_data
@@ -136,24 +140,21 @@ def test_excluded_resident_cannot_be_retained_by_full_or_exemption_flags(
 
 @pytest.mark.parametrize("kind", ["blacklist", "workaholic"])
 @pytest.mark.parametrize("name", ["银灰", "红"])
-def test_initial_main_and_priority_replacement_reading_respects_exclusions(
+def test_initial_card_observation_preserves_main_and_replacement_exclusions(
     initial_solver, kind, name
 ):
     exclude(initial_solver.op_data, name, kind)
-    assert initial_solver._read_initial_dorm_mood()
-    assert name not in {n for _, names in initial_solver.arranged for n in names}
+    initial_solver._read_initial_card_mood()
+    assert resting_tier(initial_solver.op_data, name) == RestingTier.EXCLUDED
+    initial_solver.agent_arrange_room.assert_not_called()
     assert not has_resting_mood(initial_solver.op_data.operators[name])
 
 
 @pytest.mark.parametrize("kind", ["blacklist", "workaholic"])
-def test_initial_free_only_batch_does_not_reselect_excluded_free_resident(
-    initial_solver, kind
-):
-    for name in initial_solver.missing[1:]:
-        initial_solver.op_data.operators[name].time_stamp = datetime.now()
-    exclude(initial_solver.op_data, "安赛尔", kind)
-    assert initial_solver._read_initial_dorm_mood()
-    assert len(initial_solver.arranged) == 1
-    names = initial_solver.arranged[0][1]
-    assert names[:2] == ["芬", "香草"]
-    assert "安赛尔" not in names
+def test_initial_card_read_does_not_move_excluded_residents(initial_solver, kind):
+    data = initial_solver.op_data
+    exclude(data, "空爆", kind)
+    before = data.get_current_room(ROOM, True)
+    initial_solver._read_initial_card_mood()
+    assert data.get_current_room(ROOM, True) == before
+    initial_solver.agent_arrange_room.assert_not_called()

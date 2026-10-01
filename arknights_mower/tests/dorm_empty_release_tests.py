@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from types import MethodType
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -34,6 +35,7 @@ def solver(op_data, monkeypatch):
     for op in data.operators.values():
         op.mood, op.depletion_rate, op.time_stamp = 24, 0, datetime.now()
     instance, selected = selection_solver(monkeypatch, residents=residents)
+    instance._scan_card_moods = MagicMock()
     instance.op_data = data
     instance.tasks = []
     instance.task = SchedulerTask(
@@ -175,7 +177,7 @@ def test_unknown_replacement_fills_empty_bed_and_real_read_controls_recovery(
     data.dorm[0].time = None
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
-    assert tasks[0].plan[ROOM][-1] == "红"
+    assert tasks[0].plan[ROOM][-1] == "Free"
     data.update_detail("红", 8, ROOM, 4, True)
     assert not data.is_full_dorm_fallback("红")
     assert data.operators["红"].mood == 8

@@ -372,9 +372,10 @@ def simulate(saved):
             base_scheduler.defer_backup_plan_until_mood_read = saved is None or bool(
                 saved.get("initial_mood_pending", False)
             )
-            base_scheduler._initial_mood_probe_layout = copy.deepcopy(
-                saved.get("initial_mood_probe_layout", {}) if saved else {}
-            )
+            # 旧补读快照的实际宿舍可能已换人，只重读房态，不续跑临时试住。
+            base_scheduler._initial_mood_refresh_rooms = set(
+                saved.get("initial_mood_refresh_rooms", ()) if saved else ()
+            ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})
             success = True
         except MowerExit:
             return
