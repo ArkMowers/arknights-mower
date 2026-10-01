@@ -8,7 +8,12 @@ import zlib
 
 import numpy as np
 
-from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.adb_client.server import (
+    adb_server_address,
+    current_adb_server,
+    guard_adb,
+)
+from arknights_mower.utils.device.adb_client.socket import verify_owned_server
 from arknights_mower.utils.device.io_budget import io_timeout
 
 WIDTH, HEIGHT = 1920, 1080
@@ -71,15 +76,21 @@ def decode_adb_frame(compressed: bytes, *, header_size: int) -> np.ndarray:
 
 def _adb_output(serial, command, limit, remaining):
     """One selected transport, one command, capped reads and no socket retries."""
-    with socket.create_connection(
-        ("127.0.0.1", 5037), timeout=remaining()
-    ) as connection:
+    owner = current_adb_server()
+    endpoint = adb_server_address()
+    generation = owner.generation if owner is not None else None
+    if owner is not None:
+        verify_owned_server(owner, endpoint, generation, timeout=remaining())
+    with socket.create_connection(endpoint, timeout=remaining()) as connection:
+        verify_owned_server(owner, endpoint, generation)
 
         def receive(length):
             output = bytearray()
             while len(output) < length:
                 connection.settimeout(remaining())
+                verify_owned_server(owner, endpoint, generation)
                 data = connection.recv(length - len(output))
+                verify_owned_server(owner, endpoint, generation)
                 remaining()
                 if not data:
                     raise ConnectionError("ADB 截图协议响应被截断")
@@ -90,6 +101,8 @@ def _adb_output(serial, command, limit, remaining):
             payload = service.encode("utf-8")
             if len(payload) > 65535:
                 raise ValueError("ADB 截图请求长度超过协议上限")
+            if owner is not None:
+                verify_owned_server(owner, endpoint, generation, timeout=remaining())
             connection.settimeout(remaining())
             connection.sendall(f"{len(payload):04x}".encode() + payload)
             status = receive(4)
@@ -109,8 +122,10 @@ def _adb_output(serial, command, limit, remaining):
         request(f"exec:{command}")
         output = bytearray()
         while True:
+            verify_owned_server(owner, endpoint, generation)
             connection.settimeout(remaining())
             data = connection.recv(min(65536, limit + 1 - len(output)))
+            verify_owned_server(owner, endpoint, generation)
             remaining()
             if not data:
                 return bytes(output)
@@ -138,14 +153,20 @@ def capture_adb_frame(adb_path: str, serial: str) -> np.ndarray:
         return timeout
 
     guard_adb(adb_path, timeout=remaining())
+    owner = current_adb_server()
+    endpoint = adb_server_address()
+    generation = owner.generation if owner is not None else None
     sdk_output = _adb_output(serial, "getprop ro.build.version.sdk", 64, remaining)
+    verify_owned_server(owner, endpoint, generation)
     if re.fullmatch(rb"[1-9][0-9]{0,3}\s*", sdk_output) is None:
         raise ValueError("ADB 无法确认 Android SDK 版本，不能验证截图帧头")
     header_size = 16 if int(sdk_output) >= 27 else 12
     compressed = _adb_output(
         serial, "screencap 2>/dev/null | gzip -1", MAX_COMPRESSED_BYTES, remaining
     )
+    verify_owned_server(owner, endpoint, generation)
     remaining()
     frame = decode_adb_frame(compressed, header_size=header_size)
+    verify_owned_server(owner, endpoint, generation)
     remaining()
     return frame

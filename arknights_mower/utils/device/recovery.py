@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TypeVar
 
 from arknights_mower.utils import config
@@ -9,7 +11,37 @@ T = TypeVar("T")
 
 
 class DeviceRecoveryError(ConnectionError):
-    """设备恢复已耗尽；上层不得再启动另一轮连接重试或模拟器重启。"""
+    """当前设备恢复预算耗尽；任务保留意图并在冷却后建立新的有限预算。"""
+
+
+_input_reconciliation = ContextVar("input_reconciliation", default="task")
+
+
+def input_reconciliation():
+    return _input_reconciliation.get()
+
+
+@contextmanager
+def input_reconciliation_scope(mode):
+    token = _input_reconciliation.set(mode)
+    try:
+        yield
+    finally:
+        _input_reconciliation.reset(token)
+
+
+def wait_for_recovery(recover_once, *, retry_errors, cooldown=30.0):
+    """Retain run intent while each recovery cycle has its own finite budget."""
+    while not config.stop_mower.is_set():
+        try:
+            result = recover_once()
+            if config.stop_mower.is_set():
+                raise MowerExit
+            return result
+        except retry_errors as exc:
+            logger.warning("设备恢复暂停，%.0f 秒后重新检查所选目标：%s", cooldown, exc)
+            csleep(max(1.0, cooldown))
+    raise MowerExit
 
 
 DEFAULT_RECOVERY_RETRIES: int = 3

@@ -1,0 +1,25 @@
+{
+  "title": "Owned ADB Recovery",
+  "status": "implemented",
+  "category": "architecture",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]",
+    "[INV-05]",
+    "[INV-03]",
+    "[INV-DEV-18]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/adb_client/owned.py",
+    "arknights_mower/utils/device/adb_client/server.py",
+    "arknights_mower/utils/device/application.py",
+    "arknights_mower/utils/device/avd.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_owned_server_tests.py",
+    "arknights_mower/tests/adb_owned_transport_tests.py"
+  ]
+}

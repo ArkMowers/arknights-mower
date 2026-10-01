@@ -2,14 +2,51 @@ import functools
 
 import networkx as nx
 
-from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    input_reconciliation_scope,
+    wait_for_recovery,
+)
+from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.solver import BaseSolver
 
 DG = nx.DiGraph()
+SCENE_RECONCILABLE_TRANSITIONS = frozenset(
+    {
+        "back_to_index",
+        "index_to_infra",
+        "index_to_friend",
+        "index_to_mission",
+        "index_to_recruit",
+        "index_to_shop",
+        "index_to_terminal",
+        "index_to_depot",
+        "index_to_mail",
+        "index_nav",
+        "nav_mission",
+        "nav_index",
+        "nav_terminal",
+        "nav_recruit",
+        "nav_shop",
+        "nav_friend",
+        "mission_to_weekly",
+        "mission_trainee_to_daily",
+        "shop_to_credit",
+        "shop_confirm",
+        "friend_list",
+        "business_card",
+        "infra_back",
+        "riic_back",
+        "riic",
+        "control_central",
+        "recruit_back",
+    }
+)
 
 
 def edge(v_from: int, v_to: int, interval: int = 1):
@@ -461,8 +498,28 @@ class SceneGraphSolver(BaseSolver):
             transition = DG.edges[current, next_scene]["transition"]
 
             try:
-                transition(self)
+                mode = (
+                    "scene"
+                    if getattr(transition, "__name__", "")
+                    in SCENE_RECONCILABLE_TRANSITIONS
+                    else "task"
+                )
+                with input_reconciliation_scope(mode):
+                    transition(self)
                 error_count = 0
+            except TouchFailure as exc:
+                if exc.reconciliation != "scene" or exc.cleanup_failed:
+                    raise
+
+                def resume_navigation():
+                    self.device.reconnect()
+                    self.recog.update()
+
+                csleep(30)
+                wait_for_recovery(
+                    resume_navigation, retry_errors=RECOVERABLE_DEVICE_ERRORS
+                )
+                continue
             except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as e:

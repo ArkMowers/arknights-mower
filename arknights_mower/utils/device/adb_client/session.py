@@ -6,7 +6,12 @@ import struct
 import time
 from threading import Lock
 
-from arknights_mower.utils.device.adb_client.socket import Socket
+from arknights_mower.utils.device.adb_client.server import (
+    adb_server_address,
+    adb_server_scope,
+    current_adb_server,
+)
+from arknights_mower.utils.device.adb_client.socket import Socket, verify_owned_server
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
@@ -18,9 +23,16 @@ class Session:
         self.owner_pid = os.getpid()
         self._lock = Lock()
         self._closed = False
-        self.server = "127.0.0.1", 5037
+        self.server = adb_server_address()
         self.timeout = 5
         self.device_id = None
+        self.server_owner = current_adb_server()
+        self.server_generation = (
+            self.server_owner.generation if self.server_owner is not None else None
+        )
+        verify_owned_server(
+            self.server_owner, self.server, self.server_generation, timeout=self.timeout
+        )
         self.sock = Socket(self.server, self.timeout)
 
     def __enter__(self) -> Session:
@@ -73,9 +85,19 @@ class Session:
         } or cmd.startswith("host:transport:")
         while self.timeout <= 10:
             try:
-                if self._closed or self.owner_pid != os.getpid():
-                    raise ConnectionError("ADB 会话已关闭或所有权不匹配")
-                io_timeout(self.timeout)
+                try:
+                    if self._closed or self.owner_pid != os.getpid():
+                        raise ConnectionError("ADB 会话已关闭或所有权不匹配")
+                    io_timeout(self.timeout)
+                    verify_owned_server(
+                        self.server_owner,
+                        self.server,
+                        self.server_generation,
+                        timeout=self.timeout,
+                    )
+                except Exception as exc:
+                    exc.input_not_sent = True
+                    raise
                 self.sock.send(data).check_okay()
                 return self
             except socket.timeout:
@@ -94,7 +116,14 @@ class Session:
                     raise
                 logger.warning(f"socket.timeout: {self.timeout}s, +5s")
                 self.timeout += 5
-                replacement = Socket(self.server, self.timeout)
+                verify_owned_server(
+                    self.server_owner,
+                    self.server,
+                    self.server_generation,
+                    timeout=self.timeout,
+                )
+                with adb_server_scope(self.server_owner):
+                    replacement = Socket(self.server, self.timeout)
                 with self._lock:
                     if self._closed:
                         replacement.close()

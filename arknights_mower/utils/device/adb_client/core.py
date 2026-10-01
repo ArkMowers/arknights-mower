@@ -9,7 +9,12 @@ from weakref import WeakSet
 from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.config.device_profile import LEGACY_NAMES
-from arknights_mower.utils.device.adb_client.server import guard_adb, run_adb
+from arknights_mower.utils.device.adb_client.server import (
+    adb_command,
+    adb_subprocess_options,
+    guard_adb,
+    run_adb,
+)
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.device.adb_client.utils import run_cmd
@@ -100,7 +105,7 @@ class Client:
         if self.__check_adb(adb_bin):
             self.adb_bin = adb_bin
             return
-        raise RuntimeError("Can't start adb server")
+        raise ConnectionError("Can't start adb server")
 
     def __init_device(self, *, wait_for_device: bool = True) -> None:
         if getattr(self, "strict_target", False):
@@ -109,7 +114,9 @@ class Client:
             rows = Session().devices_list()
             matches = [state for serial, state in rows if serial == self.device_id]
             if matches != ["device"]:
-                raise RuntimeError("Device connection failure: pinned target not ready")
+                raise ConnectionError(
+                    "Device connection failure: pinned target not ready"
+                )
             return
         # wait for the newly started ADB server to probe emulators
         csleep(1)
@@ -118,7 +125,7 @@ class Client:
         try:
             self.__exec("start-server")
         except (subprocess.CalledProcessError, OSError) as e:
-            raise RuntimeError("Can't start adb server") from e
+            raise ConnectionError("Can't start adb server") from e
         self.__connect_device()
         # 模拟器重启/更新后设备可能尚未在 adb 就绪：端点可能会漂移、设备短暂离线或仍在注册。
         # 首次连接先快速探测，失败后由上层立即启动模拟器；重启后及运行中重连保留等待。
@@ -147,7 +154,7 @@ class Client:
             logger.error(
                 "未检测到相应设备。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。"
             )
-            raise RuntimeError("Device connection failure")
+            raise ConnectionError("Device connection failure")
 
     def __connect_device(self) -> None:
         """选定 device_id 并建立到对应端点的连接（原 __init_device 的选中/连接逻辑）。"""
@@ -249,7 +256,7 @@ class Client:
         """get a session between adb client and adb server"""
         self._check_open()
         if not self.check_server_alive():
-            raise RuntimeError("ADB server is not working")
+            raise ConnectionError("ADB server is not working")
         session = Session()
         with self._resource_lock:
             if self._closed or self._interrupted:
@@ -307,7 +314,11 @@ class Client:
     def run(self, cmd: str) -> Optional[bytes]:
         """run adb exec command"""
         logger.debug(f"command: {cmd}")
-        session = self.session()
+        try:
+            session = self.session()
+        except Exception as exc:
+            exc.input_not_sent = True
+            raise
         try:
             resp = session.exec(cmd)
         finally:
@@ -344,10 +355,11 @@ class Client:
         cmd = [self.adb_bin, "-s", self.device_id, "shell", path] + args
         guard_adb(self.adb_bin, timeout=io_timeout(10), run=subprocess.run)
         return subprocess.Popen(
-            cmd,
+            adb_command(cmd),
             stdout=subprocess.DEVNULL,
             stderr=stderr,
             creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+            **adb_subprocess_options(),
         )
 
     def push(self, target_path: str, target: bytes) -> None:

@@ -16,7 +16,12 @@ from urllib3.exceptions import HTTPError, ReadTimeoutError
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.adb_client.server import guard_adb, run_adb
+from arknights_mower.utils.device.adb_client.server import (
+    adb_command,
+    adb_subprocess_options,
+    guard_adb,
+    run_adb,
+)
 from arknights_mower.utils.device.io_budget import budget_sleep, io_timeout
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.network import get_new_port
@@ -206,21 +211,24 @@ class DroidCastSession:
                 self.adb_path, timeout=io_timeout(COMMAND_TIMEOUT), run=subprocess.run
             )
             self.process = subprocess.Popen(
-                [
-                    self.adb_path,
-                    "-s",
-                    self.serial,
-                    "shell",
-                    f"CLASSPATH={shlex.quote(path)}",
-                    "app_process",
-                    "/",
-                    f"--nice-name={self.name}",
-                    f"{PACKAGE}.Main",
-                    f"--port={port}",
-                ],
+                adb_command(
+                    [
+                        self.adb_path,
+                        "-s",
+                        self.serial,
+                        "shell",
+                        f"CLASSPATH={shlex.quote(path)}",
+                        "app_process",
+                        "/",
+                        f"--nice-name={self.name}",
+                        f"{PACKAGE}.Main",
+                        f"--port={port}",
+                    ]
+                ),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                **adb_subprocess_options(),
             )
             self.http = requests.Session()
             self.http.trust_env = False
@@ -246,7 +254,7 @@ class DroidCastSession:
 
         def record_success(argv, **options):
             result = subprocess.run(argv, **options)
-            if argv == expected and result.returncode == 0:
+            if argv == adb_command(expected) and result.returncode == 0:
                 # run_adb checks its deadline again after the command returns.
                 # Preserve confirmed ownership even if that check then fails.
                 self.port = port

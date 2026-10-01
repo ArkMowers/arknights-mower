@@ -4,6 +4,8 @@ import math
 import os
 import pathlib
 import re
+import shlex
+import subprocess
 import sys
 from collections import defaultdict, deque
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
@@ -66,7 +68,14 @@ from arknights_mower.utils.datetime import (
     format_time,
     get_server_weekday,
 )
+from arknights_mower.utils.device.adb_client.server import (
+    SharedADBError,
+    adb_command,
+    current_adb_server,
+    guard_adb,
+)
 from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.dorm_candidates import (
@@ -641,9 +650,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.device.exit()
                 self.check_current_focus()
         if self.error or force:
+            now = datetime.now()
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (
-                self.find_next_task(datetime.now()) is None
+                self.find_next_task(now) is None
                 and self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE) is None
             ):
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
@@ -656,17 +666,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 TaskTypes.SWITCH_PRODUCT,
                 TaskTypes.FIAMMETTA,
             }
+            future_preserved = {
+                TaskTypes.RUN_ORDER,
+                TaskTypes.FURNITURE,
+                TaskTypes.DEPOT,
+                TaskTypes.CLUE,
+                TaskTypes.WORKSHOP,
+            }
             if any(
-                t.time < datetime.now() - timedelta(minutes=15)
-                and t.type not in preserved
+                t.time < now - timedelta(minutes=15) and t.type not in preserved
                 for t in self.tasks
             ):
-                logger.info("检测到执行超过15分钟的任务，重建普通排班并保留关键预约")
+                logger.info(
+                    "检测到执行超过15分钟的任务，重建普通排班并保留关键预约与未来显式任务"
+                )
                 self.tasks = [
                     t
                     for t in self.tasks
                     if t.type in preserved
-                    or (t.type == TaskTypes.RUN_ORDER and t.time > datetime.now())
+                    or (t.type in future_preserved and t.time > now)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -8321,9 +8339,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option
         )
+        adb_path = getattr(self.device.client, "adb_bin", None) or resolve_config_path(
+            conf.maa_adb_path
+        )
+        if current_adb_server() is not None:
+            for name in ("adblite_enabled", "kill_on_adb_exit"):
+                option = getattr(InstanceOptionType, name, None)
+                if option is None or not self.MAA.set_instance_option(option, "0"):
+                    raise SharedADBError(
+                        "MAA 无法禁用 AdbLite 或退出时停止 ADB，拒绝使用自有服务连接"
+                    )
+            guard_adb(adb_path, timeout=io_timeout(10))
+            command = adb_command([adb_path])
+            adb_path = (
+                subprocess.list2cmdline(command)
+                if os.name == "nt"
+                else shlex.join(command)
+            )
         if self.MAA.connect(
-            getattr(self.device.client, "adb_bin", None)
-            or resolve_config_path(conf.maa_adb_path),
+            adb_path,
             self.device.client.device_id,
             conf.maa_conn_preset,
         ):
@@ -8882,7 +8916,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.restore_maa_theme()
             self.rest_until_next_task()
             self.MAA = None
-        except (MowerExit, DeviceRecoveryError):
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
             if self.MAA is not None:
                 self.maa_stop()
                 logger.info("停止MAA")

@@ -1,5 +1,7 @@
 """Input delivery and backend selection at the device application boundary."""
 
+import io
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,13 +10,21 @@ from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import MagicMock, call, patch
 
+from arknights_mower.tests.device_maatouch_tests import OwnedProcess
 from arknights_mower.tests.device_mumu_frame_tests import NativeRenderer, connected_ipc
 from arknights_mower.tests.device_session_tests import ADB, Clock, Preflight, Simulator
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.device_profile import PresetId
 from arknights_mower.utils.device.application import DeviceControl, LegacyDeviceAdapter
+from arknights_mower.utils.device.io_budget import device_io_budget
+from arknights_mower.utils.device.maatouch.core import Client as MaaTouchClient
 from arknights_mower.utils.device.preflight import PreflightError
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    input_reconciliation_scope,
+)
+from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.device.session import DeviceSession
 from arknights_mower.utils.device.touch_backend import TouchFailure
 
@@ -90,24 +100,57 @@ class TouchTests(unittest.TestCase):
     def test_uncertain_tap_latches_failure_without_replay_or_peer_switch(self):
         device = self.control.start().unwrap()
         before = self.conf.model_dump()
+        capture = MagicMock()
+        device._droidcast = capture
+        client = device.client
         self.backend.error = OSError("delivery unknown")
         result = self.control.execute(lambda target: target.tap((20, 30)))
         self.assertEqual(result.error.code, "touch_result_unknown")
+        error = self.control.settings_status()["error"]
         self.assertFalse(self.control.execute(lambda target: target.tap((20, 30))).ok)
-        self.assertFalse(self.control.recover().ok)
         self.assertFalse(self.control.start().ok)
         self.assertEqual(self.backend.sent, [(20, 30)])
         self.assertEqual(self.conf.model_dump(), before)
         self.assertEqual(self.adb.actions, [])
         self.assertEqual(self.simulator.actions, [])
         self.peer.assert_not_called()
-        error = self.control.settings_status()["error"]
         self.assertTrue(error["delivery_unknown"])
         self.assertEqual(error["backend"], "scrcpy")
         self.assertEqual(
             error["alternatives"], [{"backend": "maatouch", "label": "MaaTouch"}]
         )
         self.assertEqual(device.device_id, "USB-A")
+        replacement = InputBackend()
+        self.factory.return_value = replacement
+        self.assertTrue(self.control.recover().ok)
+        self.assertIs(device.client, client)
+        self.assertIs(device._droidcast, capture)
+        capture.close.assert_not_called()
+        self.assertEqual(self.backend.sent, [(20, 30)])
+        self.assertEqual(replacement.sent, [])
+        self.assertFalse(self.control.start().ok)
+        self.assertFalse(self.control.execute(lambda target: target.tap((40, 50))).ok)
+        with self.assertRaises(TouchFailure) as raised:
+            device.tap((40, 50))
+        self.assertIs(raised.exception, result.error.cause)
+        self.assertEqual(self.backend.sent, [(20, 30)])
+        self.assertEqual(replacement.sent, [])
+
+    def test_scene_unknown_recovery_does_not_replay_original_navigation(self):
+        device = self.control.start().unwrap()
+        self.backend.error = OSError("navigation delivery unknown")
+        with input_reconciliation_scope("scene"):
+            result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertEqual(result.error.cause.reconciliation, "scene")
+        replacement = InputBackend()
+        self.factory.return_value = replacement
+        self.assertTrue(self.control.recover().ok)
+        self.assertEqual(self.backend.sent, [(20, 30)])
+        self.assertEqual(replacement.sent, [])
+        self.assertTrue(self.control.start().ok)
+        with input_reconciliation_scope("scene"):
+            device.tap((40, 50))
+        self.assertEqual(replacement.sent, [(40, 50)])
 
     def test_closed_scrcpy_is_rebuilt_before_input_even_when_target_is_ready(self):
         device = self.control.start().unwrap()
@@ -162,7 +205,7 @@ class TouchTests(unittest.TestCase):
         self.assertEqual(self.adb.actions, [])
         self.assertEqual(self.simulator.actions, [])
 
-    def test_replacement_scrcpy_already_closed_never_sends_or_rebuilds_again(self):
+    def test_replacement_scrcpy_dead_rebuilds_only_within_budget_without_input(self):
         self.control.start().unwrap()
         self.backend.check_control_alive = lambda: False
         replacement = InputBackend()
@@ -172,8 +215,13 @@ class TouchTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(self.backend.sent, [])
         self.assertEqual(replacement.sent, [])
-        self.assertEqual(self.factory.call_count, 2)
-        self.assertFalse(self.control.recover().ok)
+        self.assertEqual(
+            self.factory.call_count, self.conf.device.recovery_attempts + 1
+        )
+        self.assertFalse(self.control.execute(lambda target: target.tap((20, 30))).ok)
+        self.assertEqual(
+            self.factory.call_count, self.conf.device.recovery_attempts + 1
+        )
 
     def test_closed_scrcpy_cleanup_failure_blocks_input_and_replacement(self):
         self.control.start().unwrap()
@@ -191,21 +239,425 @@ class TouchTests(unittest.TestCase):
         self.assertFalse(self.control.close().ok)
         self.assertFalse(self.control.start().ok)
 
-    def test_input_probe_timeout_does_not_authorize_helper_rebuild_or_input(self):
+    def test_unconfirmed_probe_repair_exhausts_budget_without_sending_input(self):
         self.control.start().unwrap()
 
         def unknown_probe():
             raise TimeoutError("scrcpy probe unconfirmed")
 
         self.backend.check_control_alive = unknown_probe
-        result = self.control.execute(lambda target: target.tap((20, 30)))
+        with patch("arknights_mower.utils.device.device.budget_sleep"):
+            result = self.control.execute(lambda target: target.tap((20, 30)))
         self.assertFalse(result.ok)
         self.assertEqual(result.error.code, "touch_initialization_failed")
         self.assertFalse(result.error.cause.delivery_unknown)
         self.assertEqual(self.backend.sent, [])
-        self.assertEqual(self.factory.call_count, 1)
+        self.assertEqual(
+            self.factory.call_count, self.conf.device.recovery_attempts + 1
+        )
+        self.assertEqual(
+            self.control._session.actions, self.conf.device.recovery_attempts
+        )
         self.assertEqual(self.adb.actions, [])
         self.assertEqual(self.simulator.actions, [])
+
+    def test_transient_probe_timeout_rechecks_before_sending_once(self):
+        device = self.control.start().unwrap()
+        probe = MagicMock(
+            side_effect=[TimeoutError("busy"), TimeoutError("busy"), True]
+        )
+        self.backend.check_control_alive = probe
+        with patch("arknights_mower.utils.device.device.budget_sleep"):
+            device.tap((20, 30))
+        self.assertEqual(probe.call_count, 3)
+        self.assertEqual(self.backend.sent, [(20, 30)])
+        self.assertEqual(self.factory.call_count, 1)
+
+    def test_unconfirmed_probe_stops_after_bounded_attempts_without_assuming_alive(
+        self,
+    ):
+        device = self.control.start().unwrap()
+        probe = MagicMock(side_effect=TimeoutError("busy"))
+        self.backend.check_control_alive = probe
+        with patch("arknights_mower.utils.device.device.budget_sleep"):
+            with self.assertRaises(TouchFailure) as raised:
+                device.input_alive()
+        self.assertEqual(probe.call_count, self.conf.device.recovery_attempts + 1)
+        self.assertEqual(raised.exception.phase, "probe")
+        self.assertTrue(raised.exception.retryable)
+        self.assertFalse(raised.exception.delivery_unknown)
+        self.assertEqual(self.backend.sent, [])
+
+    def test_probe_cancelled_during_recheck_never_sends_input(self):
+        from arknights_mower.utils.csleep import MowerExit
+
+        device = self.control.start().unwrap()
+        self.backend.check_control_alive = MagicMock(side_effect=TimeoutError("busy"))
+        with patch(
+            "arknights_mower.utils.device.device.budget_sleep",
+            side_effect=MowerExit("cancelled"),
+        ):
+            with self.assertRaises(MowerExit):
+                device.input_alive()
+        self.assertEqual(self.backend.sent, [])
+
+    def test_local_input_rebuild_preserves_capture_and_adb(self):
+        device = self.control.start().unwrap()
+        before = self.conf.model_dump()
+        capture = MagicMock()
+        device._droidcast = capture
+        old_client = device.client
+        replacement = InputBackend()
+        self.factory.return_value = replacement
+        self.assertTrue(device.rebuild_input())
+        self.assertIs(device.client, old_client)
+        self.assertIs(device._droidcast, capture)
+        capture.close.assert_not_called()
+        self.assertEqual(self.backend.closed, 1)
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertEqual(self.conf.model_dump(), before)
+
+    def test_local_input_rebuild_refuses_to_split_ipc_pair(self):
+        device, channel, _ = self.start_mumu_input()
+        old_control = device.control
+        old_client = device.client
+        self.assertFalse(device.rebuild_input())
+        self.assertIs(device.control, old_control)
+        self.assertIs(device.client, old_client)
+        channel.close.assert_not_called()
+
+    def test_local_input_rebuild_does_not_replace_failed_cleanup(self):
+        device = self.control.start().unwrap()
+
+        def failed_close():
+            raise OSError("owned helper remains live")
+
+        self.backend.stop = failed_close
+        with self.assertRaises(TouchFailure) as raised:
+            device.rebuild_input()
+        self.assertTrue(raised.exception.cleanup_failed)
+        self.assertEqual(self.factory.call_count, 1)
+        self.backend.stop = lambda: None
+
+    def test_cancelled_input_rebuild_retains_failed_partial_cleanup(self):
+        from arknights_mower.utils.csleep import MowerExit
+
+        device = self.control.start().unwrap()
+        replacement = InputBackend()
+        replacement.stop = MagicMock(side_effect=OSError("new helper remains live"))
+        self.factory.return_value = replacement
+        with patch(
+            "arknights_mower.utils.device.device.budget_sleep",
+            side_effect=[None, MowerExit("cancelled")],
+        ):
+            with self.assertRaises(MowerExit) as raised:
+                device.rebuild_input()
+        self.assertTrue(raised.exception.cleanup_failed)
+        replacement.stop.assert_called_once()
+        self.assertIsNone(device.control)
+        with self.assertRaises(MowerExit):
+            device.resume_verified()
+        self.assertEqual(replacement.sent, [])
+
+    def test_input_probe_retains_outer_deadline(self):
+        device = self.control.start().unwrap()
+        clock = self.control._session.clock
+        self.backend.check_control_alive = MagicMock(side_effect=TimeoutError("busy"))
+
+        def remaining():
+            available = 0.1 - clock.now
+            if available <= 0:
+                raise TimeoutError("outer deadline")
+            return available
+
+        with self.assertRaises(TimeoutError):
+            with (
+                patch(
+                    "arknights_mower.utils.device.device.time.monotonic",
+                    clock.monotonic,
+                ),
+                patch("arknights_mower.utils.device.io_budget.csleep", clock.sleep),
+                device_io_budget(remaining),
+            ):
+                with self.assertRaises(TouchFailure) as raised:
+                    device.input_alive()
+        self.assertEqual(clock.now, 0.1)
+        self.assertEqual(raised.exception.phase, "probe")
+        self.assertEqual(self.backend.sent, [])
+
+    def test_resume_verified_releases_non_touch_failure_without_replaying_input(self):
+        device = self.control.start().unwrap()
+        device._recovery_error = DeviceRecoveryError("previous readiness failed")
+        device.resume_verified()
+        self.assertIsNone(device._recovery_error)
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(self.factory.call_count, 1)
+
+    def test_local_input_rebuild_releases_non_touch_failure_only_after_cleanup(self):
+        device = self.control.start().unwrap()
+        device._recovery_error = DeviceRecoveryError("previous readiness failed")
+        replacement = InputBackend()
+        self.factory.return_value = replacement
+        self.assertTrue(device.rebuild_input())
+        self.assertIsNone(device._recovery_error)
+        self.assertEqual(self.backend.closed, 1)
+        self.assertEqual(replacement.sent, [])
+
+    def test_resume_verified_keeps_cleanup_failure_latched(self):
+        device = self.control.start().unwrap()
+        failure = TouchFailure(self.conf.device, "windows", OSError("owned helper"))
+        failure.cleanup_failed = True
+        device._recovery_error = failure
+        with self.assertRaises(TouchFailure):
+            device.resume_verified()
+        self.assertIs(device._recovery_error, failure)
+        self.assertEqual(self.backend.sent, [])
+
+    def test_verified_rebind_releases_old_non_touch_failure_after_cleanup(self):
+        device = self.control.start().unwrap()
+        device._recovery_error = DeviceRecoveryError("previous readiness failed")
+        replacement = InputBackend()
+        self.factory.return_value = replacement
+        device.rebind_target("USB-A", "verified-adb")
+        self.assertIsNone(device._recovery_error)
+        self.assertEqual(self.backend.closed, 1)
+        self.assertEqual(replacement.sent, [])
+
+    def test_maatouch_display_preparation_failure_is_not_delivery_unknown(self):
+        self.conf.device.touch_backend = "maatouch"
+        self.conf.sync_legacy_device_fields()
+        self.peer.return_value = self.backend
+        device = self.control.start().unwrap()
+        with patch.object(
+            device, "display_frames", side_effect=ValueError("invalid geometry")
+        ):
+            with self.assertRaises(TouchFailure) as raised:
+                device.tap((20, 30))
+        self.assertEqual(raised.exception.phase, "preparation")
+        self.assertEqual(raised.exception.code, "touch_preparation_failed")
+        self.assertFalse(raised.exception.delivery_unknown)
+        self.assertEqual(raised.exception.transport, "adb")
+        self.assertEqual(self.backend.sent, [])
+
+    def real_maatouch(self, process):
+        self.conf.device.touch_backend = "maatouch"
+        self.conf.sync_legacy_device_fields()
+        with patch.object(MaaTouchClient, "start"):
+            self.peer.return_value = MaaTouchClient(self.io)
+        self.enterContext(
+            patch(
+                "arknights_mower.utils.device.maatouch.session.subprocess.Popen",
+                return_value=process,
+            )
+        )
+        self.enterContext(
+            patch("arknights_mower.utils.device.maatouch.session.guard_adb")
+        )
+        return self.control.start().unwrap()
+
+    def test_real_maatouch_handshake_timeout_is_not_input_delivery_unknown(self):
+        process = OwnedProcess()
+        device = self.real_maatouch(process)
+        with patch(
+            "arknights_mower.utils.device.maatouch.session.Session._io",
+            side_effect=TimeoutError("header timed out before input"),
+        ):
+            result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertFalse(result.error.cause.delivery_unknown)
+        self.assertEqual(result.error.cause.phase, "preparation")
+        self.assertTrue(result.error.cause.retryable)
+        self.assertIsNotNone(device.control)
+        self.assertTrue(process.stdin.closed)
+
+    def test_real_maatouch_swipe_builds_integer_millisecond_commands(self):
+        commands = []
+
+        class CommandPipe(io.StringIO):
+            def write(self, content):
+                commands.append(content)
+                return super().write(content)
+
+        process = OwnedProcess()
+        process.stdin = CommandPipe()
+        device = self.real_maatouch(process)
+        with patch("arknights_mower.utils.device.maatouch.session.Session.wait"):
+            device.swipe_ext([(20, 30), (40, 50)], [100], up_wait=200)
+        waits = [
+            line
+            for command in commands
+            for line in command.splitlines()
+            if line.startswith("w ")
+        ]
+        self.assertIn("w 200", waits)
+        self.assertIn("w 10", waits)
+        self.assertTrue(all(line[2:].isdecimal() for line in waits))
+        self.assertTrue(process.stdin.closed)
+
+    def test_real_maatouch_preparation_after_down_remains_unknown_without_replay(self):
+        commands = []
+
+        class CommandPipe(io.StringIO):
+            def write(self, content):
+                commands.append(content)
+                return super().write(content)
+
+        process = OwnedProcess()
+        process.stdin = CommandPipe()
+        device = self.real_maatouch(process)
+        with (
+            patch("arknights_mower.utils.device.maatouch.session.Session.wait"),
+            patch(
+                "arknights_mower.utils.device.maatouch.command.CommandBuilder.move",
+                side_effect=ValueError("move preparation after down"),
+            ),
+        ):
+            result = self.control.execute(
+                lambda target: target.swipe_ext([(20, 30), (40, 50)], [100])
+            )
+        self.assertTrue(result.error.cause.delivery_unknown)
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(commands[0].startswith("d 0 20 30 100\n"))
+        self.assertTrue(process.stdin.closed)
+        with self.assertRaises(TouchFailure):
+            device.swipe_ext([(20, 30), (40, 50)], [100])
+        self.assertEqual(len(commands), 1)
+
+    def test_real_maatouch_presend_cleanup_failure_stays_permanently_blocked(self):
+        process = OwnedProcess()
+        process.stdout = io.StringIO("invalid header\n")
+        process.exit_on_eof = 3
+        self.real_maatouch(process)
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.error.cause.delivery_unknown)
+        self.assertTrue(result.error.cause.cleanup_failed)
+        self.assertFalse(self.control.recover().ok)
+        self.assertFalse(self.control.start().ok)
+        self.assertFalse(self.control.execute(lambda target: target.tap((20, 30))).ok)
+        self.assertEqual(self.peer.call_count, 1)
+
+    def test_scrcpy_coordinate_range_matches_signed_packet_fields(self):
+        device, helper = self.real_scrcpy()
+        wire = helper.control_socket
+        for coordinate in (-(2**31) - 1, 2**31):
+            with self.subTest(coordinate=coordinate):
+                with self.assertRaises(ValueError):
+                    device._prepare_touch([(coordinate, 30)])
+        with patch("arknights_mower.utils.device.scrcpy.control.budget_sleep"):
+            device.tap((2**31 - 1, -(2**31)))
+        packet = wire.sendall.call_args_list[0].args[0]
+        self.assertEqual(struct.unpack(">ii", packet[10:18]), (2**31 - 1, 0))
+
+    def real_scrcpy(self):
+        with patch.object(Scrcpy, "start"):
+            helper = Scrcpy(self.io)
+        helper.resolution = (1920, 1080)
+        helper.control_socket = MagicMock()
+        helper.control_socket.sendall.return_value = None
+        helper.check_control_alive = lambda: True
+        self.factory.return_value = helper
+        return self.control.start().unwrap(), helper
+
+    def test_real_scrcpy_packet_construction_failure_is_not_delivery_unknown(self):
+        device, helper = self.real_scrcpy()
+        wire = helper.control_socket
+        helper.resolution = (65536, 1080)
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertFalse(result.error.cause.delivery_unknown)
+        self.assertEqual(result.error.cause.phase, "preparation")
+        wire.sendall.assert_not_called()
+        self.assertIs(device.control.scrcpy, helper)
+
+    def test_scrcpy_packet_failure_after_down_remains_unknown_without_replay(self):
+        device, helper = self.real_scrcpy()
+        wire = helper.control_socket
+        wire.sendall.side_effect = lambda packet: setattr(helper, "resolution", None)
+        with patch("arknights_mower.utils.device.scrcpy.control.budget_sleep"):
+            result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertTrue(result.error.cause.delivery_unknown)
+        wire.sendall.assert_called_once()
+        self.assertEqual(wire.sendall.call_args.args[0][:2], b"\x02\x00")
+        with self.assertRaises(TouchFailure):
+            device.tap((20, 30))
+        wire.sendall.assert_called_once()
+
+    def test_scrcpy_later_segment_preparation_failure_keeps_prior_delivery_unknown(
+        self,
+    ):
+        device, helper = self.real_scrcpy()
+        wire = helper.control_socket
+        swipe = helper.swipe
+
+        def invalidate_after_first_segment(*args, **kwargs):
+            swipe(*args, **kwargs)
+            helper.resolution = None
+
+        helper.swipe = invalidate_after_first_segment
+        with patch("arknights_mower.utils.device.scrcpy.core.budget_sleep"):
+            result = self.control.execute(
+                lambda target: target.swipe_ext([(20, 30), (40, 50), (60, 70)], [0, 0])
+            )
+        self.assertFalse(result.ok)
+        self.assertTrue(result.error.cause.delivery_unknown)
+        self.assertEqual(wire.sendall.call_count, 2)
+        with self.assertRaises(TouchFailure):
+            device.swipe_ext([(20, 30), (40, 50), (60, 70)], [0, 0])
+        self.assertEqual(wire.sendall.call_count, 2)
+
+    def test_invalid_later_swipe_point_fails_before_any_segment_is_sent(self):
+        device = self.control.start().unwrap()
+        with self.assertRaises(TouchFailure) as raised:
+            device.swipe_ext([(20, 30), (40, 50), ("invalid", 70)], [100, 100])
+        self.assertFalse(raised.exception.delivery_unknown)
+        self.assertEqual(raised.exception.phase, "preparation")
+        self.assertEqual(self.backend.sent, [])
+
+    def test_maatouch_display_preparation_is_performed_once_before_each_send(self):
+        self.conf.device.touch_backend = "maatouch"
+        self.conf.sync_legacy_device_fields()
+        self.peer.return_value = self.backend
+        device = self.control.start().unwrap()
+        geometry = (1920, 1080, 1)
+        with patch.object(device, "display_frames", return_value=geometry) as display:
+            device.tap((20, 30))
+            device.swipe((20, 30), (40, 50))
+            device.swipe_ext([(20, 30), (40, 50), (60, 70)], [100, 100])
+        self.assertEqual(display.call_count, 3)
+        self.assertEqual(len(self.backend.sent), 3)
+        self.assertTrue(all(sent[1] == geometry for sent in self.backend.sent))
+
+    def test_maatouch_send_timeout_remains_delivery_unknown_without_replay(self):
+        self.conf.device.touch_backend = "maatouch"
+        self.conf.sync_legacy_device_fields()
+        self.peer.return_value = self.backend
+        device = self.control.start().unwrap()
+        self.backend.error = TimeoutError("send not acknowledged")
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertEqual(result.error.code, "touch_result_unknown")
+        self.assertTrue(result.error.cause.delivery_unknown)
+        self.assertEqual(result.error.cause.phase, "delivery")
+        self.assertEqual(self.backend.sent, [([(20, 30)], None)])
+        with self.assertRaises(TouchFailure):
+            device.tap((20, 30))
+        self.assertEqual(self.backend.sent, [([(20, 30)], None)])
+
+    def test_touch_failure_captures_reconciliation_without_changing_delivery_verdict(
+        self,
+    ):
+        task_failure = TouchFailure(
+            self.conf.device, "windows", OSError("unknown"), delivery_unknown=True
+        )
+        with input_reconciliation_scope("scene"):
+            scene_failure = TouchFailure(
+                self.conf.device, "windows", OSError("unknown"), delivery_unknown=True
+            )
+        self.assertEqual(task_failure.reconciliation, "task")
+        self.assertEqual(scene_failure.reconciliation, "scene")
+        self.assertEqual(scene_failure.to_dict()["reconciliation"], "scene")
+        self.assertTrue(scene_failure.delivery_unknown)
+        self.assertEqual(scene_failure.code, "touch_result_unknown")
 
     def test_missing_runtime_input_control_is_not_considered_healthy(self):
         device = self.control.start().unwrap()
@@ -335,6 +787,9 @@ class TouchTests(unittest.TestCase):
             with self.subTest(failed_event=failed_event):
                 self.control.close()
                 device, channel, context = self.start_mumu_input()
+                before = self.conf.model_dump()
+                capture = MagicMock()
+                device._mumu_capture = capture
                 replies = [("error", f"{failed_event} failed: -5", -5)]
                 expected = [call(("key_down", (1,)))]
                 if failed_event == "key_up":
@@ -347,12 +802,20 @@ class TouchTests(unittest.TestCase):
                 self.assertIn(failed_event, result.error.message)
                 with self.assertRaises(TouchFailure):
                     device.send_keyevent(4)
-                self.assertFalse(self.control.recover().ok)
                 self.assertFalse(self.control.start().ok)
                 self.assertEqual(channel.send.call_args_list, expected)
                 self.assertEqual(self.io.sent, [])
                 context.Process.return_value.start.assert_called_once()
                 channel.close.assert_called_once()
+                channel.recv.side_effect = None
+                channel.recv.return_value = ("ok", "", None)
+                self.assertTrue(self.control.recover().ok)
+                self.assertEqual(context.Process.return_value.start.call_count, 2)
+                self.assertEqual(channel.send.call_args_list, expected)
+                capture.close.assert_called_once()
+                self.assertEqual(self.io.sent, [])
+                self.assertEqual(device.device_id, "USB-A")
+                self.assertEqual(self.conf.model_dump(), before)
 
     def test_mumu_back_waiting_for_recovery_keeps_native_transport(self):
         device, channel, _ = self.start_mumu_input()
@@ -734,6 +1197,85 @@ class TouchTests(unittest.TestCase):
                 closer.join(2)
         self.assertTrue(close_results[0].ok)
         self.assertEqual(self.backend.closed, 1)
+
+    def test_real_device_successful_close_supersedes_interrupt_failure(self):
+        device = self.control.start().unwrap()
+        interrupt_error = OSError("interrupt failed")
+        self.backend.interrupt = MagicMock(side_effect=interrupt_error)
+        self.io.close = MagicMock()
+        capture = MagicMock()
+        device._droidcast = capture
+
+        self.assertTrue(self.control.close().ok)
+        self.assertTrue(self.control.close().ok)
+
+        self.assertEqual(self.backend.closed, 1)
+        self.io.close.assert_called_once_with()
+        capture.close.assert_called_once_with()
+        self.assertIsNone(device._close_error)
+        self.assertIsNone(device._interrupt_error)
+        self.assertIsNone(self.control._helper_cleanup_error)
+        replacement = self.control.start().unwrap()
+        self.assertIsNot(replacement, device)
+        self.assertEqual(replacement.device_id, "USB-A")
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.backend.sent, [])
+
+    def test_real_device_cleanup_failure_retains_interrupt_diagnostic(self):
+        device = self.control.start().unwrap()
+        interrupt_error = OSError("interrupt failed")
+        cleanup_error = OSError("owned control could not be closed")
+        self.backend.interrupt = MagicMock(side_effect=interrupt_error)
+        self.backend.stop = MagicMock(side_effect=cleanup_error)
+        self.io.close = MagicMock()
+        capture = MagicMock()
+        device._droidcast = capture
+
+        result = self.control.close()
+
+        self.assertFalse(result.ok)
+        self.assertIs(result.error.cause, cleanup_error)
+        self.assertTrue(cleanup_error.cleanup_failed)
+        self.assertIn("interrupt failed", " ".join(cleanup_error.__notes__))
+        self.assertIs(device._close_error, cleanup_error)
+        self.assertIs(self.control._helper_cleanup_error, cleanup_error)
+        self.io.close.assert_called_once_with()
+        capture.close.assert_called_once_with()
+        self.backend.stop.assert_called_once_with()
+        self.assertFalse(self.control.close().ok)
+        self.assertFalse(self.control.start().ok)
+        self.assertFalse(self.control.recover().ok)
+        self.assertEqual(self.factory.call_count, 1)
+
+    def test_real_device_interrupt_does_not_overwrite_prior_cleanup_failure(self):
+        device = self.control.start().unwrap()
+        cleanup_error = OSError("owned control could not be closed")
+        interrupt_error = OSError("capture interrupt failed")
+        capture = MagicMock()
+        capture.interrupt.side_effect = interrupt_error
+        device._droidcast = capture
+        self.backend.stop = MagicMock(side_effect=cleanup_error)
+
+        with self.assertRaises(TouchFailure) as raised:
+            device.rebuild_input()
+        self.assertTrue(raised.exception.cleanup_failed)
+        self.assertIs(device._close_error, cleanup_error)
+
+        with self.assertRaises(OSError) as raised:
+            device.interrupt_io()
+        self.assertIs(raised.exception, interrupt_error)
+        self.assertIs(device._close_error, cleanup_error)
+
+        result = self.control.close()
+        self.assertFalse(result.ok)
+        self.assertIs(result.error.cause, cleanup_error)
+        self.assertTrue(cleanup_error.cleanup_failed)
+        self.assertIn("capture interrupt failed", " ".join(cleanup_error.__notes__))
+        capture.close.assert_called_once_with()
+        self.assertFalse(self.control.start().ok)
+        self.assertFalse(self.control.recover().ok)
+        self.assertEqual(self.factory.call_count, 1)
 
     def test_failed_control_cleanup_remains_visible_and_blocks_replacement(self):
         self.control.start().unwrap()

@@ -234,7 +234,7 @@ class TestDeviceConnectionChain(unittest.TestCase):
                 ):
                     self.session.devices_list.return_value = devices
                     with self.assertRaisesRegex(
-                        RuntimeError, "Device connection failure"
+                        ConnectionError, "Device connection failure"
                     ):
                         Device(wait_for_device=wait)
                     droidcast.assert_not_called()

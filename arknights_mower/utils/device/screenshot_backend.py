@@ -1,10 +1,12 @@
-"""Validation, one owned-resource rebuild and one ADB fallback per capture session."""
+"""Capture incidents use one owned rebuild and verified same-target ADB degradation."""
 
 import numpy as np
 
 from arknights_mower.utils.config.device_profile import capture_compatibility_error
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.droidcast import DroidCastError
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 
 BACKEND_LABELS = {
@@ -20,23 +22,9 @@ STANDARD_ADB_BACKEND = "adb_gzip"
 # Only a capture failure of a helper backend can be answered by the plain ADB
 # path; the plain path itself has no lower rung.
 DEGRADABLE_BACKEND = "droidcast"
-# Stage failures that already name their own repair. Degrading would replace a
-# precise code with a generic capture failure, so the selected backend latches.
-# These are DroidCastError's own codes, which carry the "droidcast_" prefix.
-# The HTTP interface is the helper's own transport: by the time it fails, the
-# helper has already answered through it, so a plain screencap cannot recover it.
-TERMINAL_BACKEND_CODES = frozenset(
+BLOCKING_BACKEND_CODES = frozenset(
     {
-        "droidcast_version_required",
-        "droidcast_version_failed",
-        "droidcast_install_failed",
-        "droidcast_signature_conflict",
-        "droidcast_forward_failed",
-        "droidcast_start_failed",
-        "droidcast_start_timeout",
-        "droidcast_frame_failed",
-        "droidcast_http_failed",
-        "droidcast_http_timeout",
+        "droidcast_closed",
         "droidcast_cleanup_failed",
         "droidcast_ownership_conflict",
     }
@@ -84,9 +72,19 @@ class ScreenshotFailure(DeviceRecoveryError):
         self.backend = profile.screenshot_backend
         self.alternatives = screenshot_alternatives(profile, host)
         self.degraded = degraded
+        self.cause = cause
+        self.fallback = fallback
+        self.cleanup_failed = (
+            getattr(cause, "cleanup_failed", False)
+            or getattr(fallback, "cleanup_failed", False)
+            or getattr(cause, "code", None) == "droidcast_cleanup_failed"
+            or getattr(fallback, "code", None) == "droidcast_cleanup_failed"
+        )
         # A resolution mismatch is a deterministic configuration error. It never
         # enters the screenshot retry, transport or restart loops.
-        self.size_mismatch = isinstance(cause, FrameSizeMismatch)
+        self.size_mismatch = isinstance(cause, FrameSizeMismatch) or isinstance(
+            fallback, FrameSizeMismatch
+        )
         self.code = (
             "frame_size_mismatch"
             if self.size_mismatch
@@ -117,7 +115,7 @@ class ScreenshotFailure(DeviceRecoveryError):
 
 
 class ScreenshotSession:
-    """One rebuild of the selected backend, then one standard ADB fallback."""
+    """Each capture incident permits one rebuild; failures remain diagnostic only."""
 
     def __init__(self, profile, host):
         self.profile = profile.model_copy(deep=True)
@@ -128,71 +126,74 @@ class ScreenshotSession:
         self.failure = None
 
     def capture(self, capture, rebuild, recover, standard_adb=None):
-        if self.failure is not None:
-            raise self.failure
+        self.rebuilt = False
         if self.degraded:
             return self._standard_frame(standard_adb)
         try:
-            return validate_frame(capture())
-        except (MowerExit, DeviceRecoveryError):
+            frame = validate_frame(capture())
+        except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
             raise
         except FrameSizeMismatch as exc:
-            # A wrong-size frame is deterministic and came from a working capture
-            # path, so it is terminal without another rebuild.
-            self._latch_failure(exc)
-            return None
+            self._raise_failure(exc)
         except Exception as exc:
             cause = exc
-        if not self.rebuilt:
-            # Readiness/recovery belongs to the application, never the helper.
-            self.rebuilt = True
+        else:
+            self.failure = None
+            return frame
+        if self._blocks_recovery(cause):
+            self._raise_failure(cause)
+        self.rebuilt = True
+        try:
             rebuilt_by_recovery = recover()
-            try:
-                if not rebuilt_by_recovery:
-                    rebuild()
-                return validate_frame(capture())
-            except MowerExit:
-                raise
-            except FrameSizeMismatch as exc:
-                self._latch_failure(exc)
-                return None
-            except Exception as exc:
-                cause = exc
-        # An install, package, forward or helper-start failure already carries its
-        # own code; a plain screencap cannot observe it and would hide that stage.
-        if getattr(cause, "code", None) in TERMINAL_BACKEND_CODES:
-            self._latch_failure(cause)
-            return None
-        # The rung only helps a transport-level failure of the selected capture.
+            if not rebuilt_by_recovery:
+                rebuild()
+            frame = validate_frame(capture())
+        except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
+            raise
+        except FrameSizeMismatch as exc:
+            self._raise_failure(exc)
+        except Exception as exc:
+            cause = exc
+        else:
+            self.rebuilt = False
+            self.failure = None
+            return frame
+        if self._blocks_recovery(cause):
+            self._raise_failure(cause)
         if self.backend != DEGRADABLE_BACKEND or standard_adb is None:
-            self._latch_failure(cause)
-            return None
+            self._raise_failure(cause)
         return self._standard_frame(standard_adb, cause)
 
     def _standard_frame(self, standard_adb, cause=None):
         """One plain ADB screencap, recorded as this session's degradation."""
+        if cause is None and self.degraded and self.failure is not None:
+            cause = self.failure.cause
         if standard_adb is None:
-            self._latch_failure(cause or RuntimeError("无法降级到标准 ADB 截图"))
-            return None
+            self._raise_failure(cause or RuntimeError("无法降级到标准 ADB 截图"))
         try:
             frame = validate_frame(standard_adb())
-        except MowerExit:
+        except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
             raise
-        except DeviceRecoveryError:
-            raise
-        except FrameSizeMismatch as exc:
-            # A wrong-size fallback is the terminal verdict, not a peer failure.
-            self._latch_failure(exc if cause is None else cause, exc)
-            return None
         except Exception as exc:
-            self._latch_failure(cause, exc)
-            return None
+            self._raise_failure(cause or exc, exc if cause is not None else None)
         self.backend = STANDARD_ADB_BACKEND
         self.degraded = True
+        self.rebuilt = False
+        if cause is not None:
+            self.failure = ScreenshotFailure(
+                self.profile, self.host, cause, degraded=True
+            )
         return frame
 
-    def _latch_failure(self, cause, fallback=None):
-        """A latched failure remains visible without retrying cleanup."""
+    @staticmethod
+    def _blocks_recovery(cause):
+        return (
+            getattr(cause, "cleanup_failed", False)
+            or getattr(cause, "code", None) in BLOCKING_BACKEND_CODES
+        )
+
+    def _raise_failure(self, cause, fallback=None):
+        """Report this capture's failure without disabling subsequent captures."""
         failure = ScreenshotFailure(
             self.profile, self.host, cause, degraded=self.degraded, fallback=fallback
         )
