@@ -33,14 +33,15 @@ def test_rescue_fills_unreserved_vacancy_without_changing_other_residents(
     assert not data.dorm[0].name
 
 
-def test_rescue_filling_cannot_take_an_occupied_bed(op_data, monkeypatch):
+def test_rescue_filling_can_replace_completed_ordinary_resident(op_data, monkeypatch):
     monkeypatch.setattr(resting_priority, "agent_list", list(op_data.operators))
     op_data.rescue_mode = True
     tasks = []
 
     scheduler_task.try_add_release_dorm({}, None, op_data, tasks)
 
-    assert tasks == []
+    assert len(tasks) == 1
+    assert tasks[0].plan[ROOM][-1] == "红"
     assert op_data.dorm[0].name == "空爆"
 
 

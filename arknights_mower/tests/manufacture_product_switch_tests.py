@@ -891,16 +891,16 @@ def test_reserved_product_bed_accepts_only_temporary_low_priority(monkeypatch):
     )
     bed = SimpleNamespace(position=("dormitory_1", 0), name="")
 
-    assert operators._slot_takable(bed, True, requester="鸿雪")
-    assert not operators._slot_takable(bed, True, requester="陈")
-    assert not operators._slot_takable(bed, True, requester="红")
-    assert operators._slot_takable(bed, True, requester="Lancet-2")
-    assert operators._slot_takable(bed, True, requester="城墙")
+    assert operators._slot_takable(bed, requester="鸿雪")
+    assert not operators._slot_takable(bed, requester="陈")
+    assert not operators._slot_takable(bed, requester="红")
+    assert operators._slot_takable(bed, requester="Lancet-2")
+    assert operators._slot_takable(bed, requester="城墙")
     bed.name = "Lancet-2"
     operators.operators["Lancet-2"] = SimpleNamespace(
         current_room="dormitory_1", current_index=0
     )
-    assert operators._slot_takable(bed, True, requester="鸿雪")
+    assert operators._slot_takable(bed, requester="鸿雪")
 
 
 def test_deferred_shift_blocks_shared_replacement_and_releases_reservation():

@@ -28,8 +28,8 @@ def test_excluded_resident_is_never_idle_fill_capacity(op_data, mood, overdue):
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert tasks == []
-    assert not op_data._slot_takable(op_data.dorm[0], False, requester="银灰")
-    assert not op_data._slot_takable(op_data.dorm[0], True, requester="红")
+    assert not op_data._slot_takable(op_data.dorm[0], requester="银灰")
+    assert not op_data._slot_takable(op_data.dorm[0], requester="红")
 
 
 def test_excluded_resident_has_no_early_release_even_with_future_work(op_data):

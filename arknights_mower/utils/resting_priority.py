@@ -40,17 +40,6 @@ def resting_tier(op_data, name):
     op = op_data.operators.get(name)
     if name in op_data.config.free_blacklist or (op is not None and op.workaholic):
         return RestingTier.EXCLUDED
-    if (
-        (
-            getattr(op_data, "rescue_mode", False)
-            or getattr(op_data, "rescue_plan_active", False)
-        )
-        and name in getattr(op_data, "main_rescue_priority", ())
-        and op is not None
-        and not getattr(op, "temporary_dorm_fill", False)
-        and (not has_resting_mood(op) or resting_mood(op) < op.upper_limit)
-    ):
-        return RestingTier.PRIORITY
     if name in op_data.config.ope_resting_priority:
         return RestingTier.PRIORITY
     if op is not None:
@@ -68,6 +57,21 @@ def resting_tier(op_data, name):
                 "low": RestingTier.LOW_MAIN,
                 "standby": RestingTier.STANDBY,
             }[op.resting_priority]
+        # 救急副表替下的原主班沿用配置层级，不因临时身份变为普通替班。
+        if op_data.rescue_plan_active and name in op_data.main_recovery_limits:
+            if op_data.config.is_resting_priority(name):
+                return RestingTier.LOW_MAIN
+            if (
+                op_data.config.is_resting_standby(name)
+                and not op_data.config.is_rest_in_full(name)
+                and not op.exhaust_require
+            ):
+                return (
+                    RestingTier.LOW_MAIN
+                    if op.standby_low_priority
+                    else RestingTier.STANDBY
+                )
+            return RestingTier.MAIN
         if getattr(op, "resting_from_train", False):
             return _replacement_tier(op_data, name)
     # 菲亚梅塔的名单是充能目标，不是普通替班。

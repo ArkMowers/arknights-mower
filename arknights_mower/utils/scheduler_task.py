@@ -681,7 +681,6 @@ def _recovery_aware_assignments(
         candidate[2]
         for candidate in candidates
         if _active_recovery_room(op_data, candidate[2])
-        or op_data.is_rescue_recovering(candidate[2])
     }
     kept = list(candidates[:capacity])
     kept_names = {candidate[2] for candidate in kept}
@@ -694,6 +693,8 @@ def _recovery_aware_assignments(
                 index
                 for index in range(len(kept) - 1, -1, -1)
                 if kept[index][2] not in protected
+                and resting_key(op_data, name)[0]
+                <= resting_key(op_data, kept[index][2])[0]
             ),
             None,
         )
@@ -1762,15 +1763,107 @@ def try_workshop_tasks(op_data, tasks):
             logger.info("尚无仓库读数，无法核验加工原料及成品库存，跳过任务生成")
 
 
+def dorm_residents(op_data):
+    """床位缓存缺名时用实际驻员补齐，让床补偿与接管判定使用同一身份。"""
+    return {
+        bed.position: bed.name
+        or (
+            resident.name
+            if (resident := op_data.get_current_operator(*bed.position)) is not None
+            and op_data.is_recovery_dorm(bed, resident.name)
+            else ""
+        )
+        for bed in op_data.dorm
+    }
+
+
+def restore_displaced_resting(op_data, previous, plan, tasks):
+    """接管保留候补的回班来源；必需组员失床时显式召回整组。"""
+    current = dorm_residents(op_data)
+    for bed in op_data.dorm:
+        names = plan.get(bed.position[0], [])
+        index = bed.position[1]
+        if (
+            index < len(names)
+            and names[index] != "Current"
+            and not (
+                names[index] in ("Free", "")
+                and bed.name != previous.get(bed.position, "")
+                and bed.name
+            )
+        ):
+            current[bed.position] = "" if names[index] in ("Free", "") else names[index]
+    retained = set(current.values())
+    displaced = {
+        name
+        for position, name in previous.items()
+        if name and name != current.get(position) and name not in retained
+    }
+    recalled = set()
+    for name in displaced:
+        op = op_data.operators.get(name)
+        if op is None or not op.is_high() or op.room not in op_data.plan:
+            continue
+        members = op_data.groups[op.group] if op.group else [name]
+        if op_data._can_standby(op) and any(
+            anchor.name in retained
+            and anchor.is_high()
+            and not op_data._can_standby(anchor)
+            and not anchor.room.startswith("dorm")
+            and not anchor.workaholic
+            and not op_data.rest_mood_complete(anchor.name)
+            and (not op.group or anchor.group == op.group)
+            for anchor in op_data.operators.values()
+        ):
+            logger.info(f"{name}的候补床位被接管，随组待命")
+            continue
+        recalled.update(members)
+    for name in recalled:
+        op = op_data.operators[name]
+        plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))[op.index] = (
+            name
+        )
+    if recalled:
+        logger.info(f"休息床位被更高优先级接管，安排整组回班：{sorted(recalled)}")
+        for bed in op_data.dorm:
+            if bed.name in recalled:
+                room, index = bed.position
+                if current.get(bed.position) in recalled:
+                    plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[
+                        index
+                    ] = "Free"
+                bed.reset()
+    changed_slots = {
+        bed.position
+        for bed in op_data.dorm
+        if previous.get(bed.position) != current.get(bed.position)
+    }
+    # 已接管床位不能继续执行旧的释放任务；已召回成员也不重复预约回班。
+    for task in tasks[:]:
+        if task.plan is plan or task.type not in (
+            TaskTypes.SHIFT_ON,
+            TaskTypes.RELEASE_DORM,
+        ):
+            continue
+        for room, names in list(task.plan.items()):
+            for index, name in enumerate(names):
+                if (task.type == TaskTypes.SHIFT_ON and name in recalled) or (
+                    task.type == TaskTypes.RELEASE_DORM
+                    and (room, index) in changed_slots
+                ):
+                    names[index] = "Current"
+            if all(name == "Current" for name in names):
+                del task.plan[room]
+        if not task.plan:
+            tasks.remove(task)
+
+
 def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
     """普通宿舍补位先使用真空床，再按统一候选与接管规则替换住客。"""
     if not op_data.config.free_room:
         if plan:
             return
         # 空床补位独立于不养闲人；关闭清退时只填空床，不替换已入住者。
-        empty_only = True
-    if op_data.rescue_mode and not plan:
-        # 主班轮休先预约床位；集中恢复期间普通人只填剩余真空床。
         empty_only = True
     if plan:
         for names in plan.values():
@@ -1825,7 +1918,6 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                     occupant is None
                     or (occupant.current_room, occupant.current_index) != bed.position
                     or op_data.is_free_room_excluded(occupant.name)
-                    or op_data.is_rescue_recovering(occupant.name)
                 ):
                     continue
                 complete = (
@@ -1834,7 +1926,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 ) or (bed.time is not None and bed.time <= now)
                 if not complete:
                     if waiting is None or not op_data._slot_takable(
-                        bed, protect_resting=True, requester=waiting
+                        bed, requester=waiting
                     ):
                         continue
                 elif waiting is None and (
@@ -1868,6 +1960,8 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
 
         if not arrangement:
             return
+        previous = dorm_residents(op_data)
+        restore_displaced_resting(op_data, previous, arrangement, tasks)
         task = SchedulerTask(
             time=now,
             task_plan=arrangement,

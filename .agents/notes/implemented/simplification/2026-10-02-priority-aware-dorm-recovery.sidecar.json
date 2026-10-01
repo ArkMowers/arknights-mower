@@ -1,0 +1,31 @@
+{
+  "title": "Priority Aware Dormitory Recovery",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-13]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.resting_priority.resting_tier",
+    "arknights_mower.utils.operators.Operators._slot_takable",
+    "arknights_mower.utils.operators.Operators._can_standby",
+    "arknights_mower.utils.operators.Operators.is_rescue_recovering",
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.preserve_resting_crafters",
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/rescue_priority_takeover_tests.py",
+    "arknights_mower/tests/resting_preemption_tests.py",
+    "arknights_mower/tests/rescue_dorm_fill_tests.py",
+    "arknights_mower/tests/mass_mood_recovery_tests.py",
+    "arknights_mower/tests/group_resting_capacity_tests.py",
+    "arknights_mower/tests/rescue_priority_replay_tests.py",
+    "arknights_mower/tests/rescue_backup_condition_tests.py"
+  ]
+}

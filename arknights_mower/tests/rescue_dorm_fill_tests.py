@@ -77,7 +77,7 @@ def test_actual_rescue_fill_does_not_reserve_ordinary_bed(temporary_fill):
     assert resident.temporary_dorm_fill
     data.rescue_needed()
     assert not data.is_rescue_recovering("红", NOW)
-    assert data._slot_takable(bed, True, requester=PRIMARY[0])
+    assert data._slot_takable(bed, requester=PRIMARY[0])
     reserved = {
         index for index, candidate in enumerate(data.dorm) if candidate is not bed
     }
@@ -115,7 +115,7 @@ def test_explicit_dorm_projection_preserves_temporary_fill_without_promotion(
         assert projected.operators["红"].temporary_dorm_fill
         assert not projected.is_rescue_recovering("红", NOW)
         assert projected._slot_takable(
-            projected.get_dorm_by_name("红")[1], True, requester=PRIMARY[0]
+            projected.get_dorm_by_name("红")[1], requester=PRIMARY[0]
         )
     assert data.operators["红"].temporary_dorm_fill
     assert data.operators["红"].current_index == 4
@@ -131,9 +131,7 @@ def test_formal_assignment_promotes_ordinary_fill_into_protected_batch(temporary
     assert not data.operators["红"].temporary_dorm_fill
     data.rescue_needed()
     assert data.is_rescue_recovering("红", NOW)
-    assert not data._slot_takable(
-        data.get_dorm_by_name("红")[1], True, requester=PRIMARY[0]
-    )
+    assert data._slot_takable(data.get_dorm_by_name("红")[1], requester=PRIMARY[0])
 
 
 def test_repeated_read_and_ordinary_reorder_preserve_temporary_fill(temporary_fill):
@@ -160,11 +158,11 @@ def test_formal_low_priority_batch_keeps_bed_until_upper_limit(solver):
     data.rescue_needed()
     bed = data.get_dorm_by_name(COVERS[0])[1]
     assert data.is_rescue_recovering(COVERS[0], NOW)
-    assert not data._slot_takable(bed, True, requester=PRIMARY[0])
+    assert data._slot_takable(bed, requester=PRIMARY[0])
     data.operators[COVERS[0]].mood = data.operators[COVERS[0]].upper_limit
     data.rescue_needed()
     assert not data.is_rescue_recovering(COVERS[0], NOW)
-    assert data._slot_takable(bed, True, requester=PRIMARY[0])
+    assert data._slot_takable(bed, requester=PRIMARY[0])
 
 
 @pytest.mark.parametrize("admission", ["ordinary", "formal", "legacy"])
@@ -213,7 +211,7 @@ def test_restart_preserves_dorm_admission_identity(solver, monkeypatch, admissio
     ordinary = admission == "ordinary"
     assert restored.temporary_dorm_fill is ordinary
     assert fresh.is_rescue_recovering(restored.name, NOW) is not ordinary
-    assert fresh._slot_takable(bed, True, requester=PRIMARY[0]) is ordinary
+    assert fresh._slot_takable(bed, requester=PRIMARY[0])
     assert (restored.current_room, restored.current_index) == (
         resident.current_room,
         resident.current_index,
@@ -293,7 +291,7 @@ def test_ordinary_admission_before_rescue_keeps_yielding_after_actual_readback(
         assert current.operators["红"].temporary_dorm_fill
         assert not current.is_rescue_recovering("红", NOW)
         assert current._slot_takable(
-            current.get_dorm_by_name("红")[1], True, requester=PRIMARY[0]
+            current.get_dorm_by_name("红")[1], requester=PRIMARY[0]
         )
 
 
@@ -319,8 +317,8 @@ def test_ordinary_fill_cross_bed_readback_preserves_formal_recovery(temporary_fi
     for current in (data, data.project_arrangements([instance.task.plan])):
         assert not current.operators["红"].temporary_dorm_fill
         assert current.is_rescue_recovering("红", NOW)
-        assert not current._slot_takable(
-            current.get_dorm_by_name("红")[1], True, requester=PRIMARY[0]
+        assert current._slot_takable(
+            current.get_dorm_by_name("红")[1], requester=PRIMARY[0]
         )
 
 
@@ -351,5 +349,5 @@ def test_shift_cycle_retains_ordinary_fill_source_through_actual_readback(
         assert current.operators["红"].temporary_dorm_fill
         assert not current.is_rescue_recovering("红", NOW)
         assert current._slot_takable(
-            current.get_dorm_by_name("红")[1], True, requester=PRIMARY[0]
+            current.get_dorm_by_name("红")[1], requester=PRIMARY[0]
         )

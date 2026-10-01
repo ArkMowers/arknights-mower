@@ -5,6 +5,8 @@ category: simplification
 date: 2026-10-01
 ---
 
+Bed takeover and rescue standby eligibility follow [priority-aware dormitory recovery](../simplification/2026-10-02-priority-aware-dorm-recovery.md), which supersedes unconditional bed retention described here.
+
 # Shared Idle Dormitory Candidate Pipeline
 
 [English](2026-10-01-idle-dorm-candidate-pipeline.md) | [中文](2026-10-01-idle-dorm-candidate-pipeline.zh.md)

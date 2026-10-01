@@ -262,7 +262,9 @@ def test_priority_uses_main_plan_identity_even_after_rescue_swap(data):
     assert data.rescue_needed()
     assert data.swap_plan([True], refresh=True) is None
     for name in [*PRIMARY, COVERS[2]]:
-        assert resting_tier(data, name) == RestingTier.PRIORITY
+        assert resting_tier(data, name) == (
+            RestingTier.PRIORITY_REPLACEMENT if name == COVERS[2] else RestingTier.MAIN
+        )
     data.operators[PRIMARY[0]]._current_room = ""
     data.operators[PRIMARY[1]]._current_room = ""
     assert {PRIMARY[0], PRIMARY[1], COVERS[2]} <= set(dorm_candidates(data).recovering)
@@ -316,7 +318,7 @@ def test_fallback_keeps_occupied_beds_and_uses_existing_vacancies(data):
     assert data.rescue_needed()
     data = admit(data, PRIMARY[:2])
     before = deepcopy(data.dorm)
-    assert not data._slot_takable(data.dorm[0], False, requester=PRIMARY[2])
+    assert not data._slot_takable(data.dorm[0], requester=PRIMARY[2])
     slot = data.assign_dorm(PRIMARY[2])
     assert slot is not None
     assert slot.position == data.dorm[2].position
@@ -413,17 +415,17 @@ def test_rescue_preserves_occupied_beds_even_without_registered_resident(data):
     assert data.rescue_needed()
     bed = data.dorm[0]
     bed.name = "未登记干员"
-    assert not data._slot_takable(bed, False, requester=PRIMARY[0])
+    assert not data._slot_takable(bed, requester=PRIMARY[0])
 
 
-def test_rescue_vacancy_requires_both_bed_and_resident_cache_to_be_empty(data):
+def test_rescue_resolves_uncached_lower_priority_resident_before_takeover(data):
     set_moods(data, [0, 0, 0, 0])
     assert data.rescue_needed()
     bed = data.dorm[0]
     resident = data.operators[COVERS[0]]
     resident._current_room, resident.current_index = bed.position
     assert bed.name == ""
-    assert not data._slot_takable(bed, False, requester=PRIMARY[0])
+    assert data._slot_takable(bed, requester=PRIMARY[0])
 
 
 def test_rescue_waits_for_existing_residents_cap_instead_of_clearing_beds(data):
@@ -441,7 +443,7 @@ def test_rescue_waits_for_existing_residents_cap_instead_of_clearing_beds(data):
     assert data.dorm[0].time == before[0].time
 
 
-def test_existing_replacement_recovery_is_protected_without_candidate_promotion(data):
+def test_ordinary_replacement_recovery_can_yield_without_candidate_promotion(data):
     set_moods(data, [0, 0, 0, 0])
     data.operators[COVERS[0]].mood = 5
     assert data.rescue_needed()
@@ -449,10 +451,10 @@ def test_existing_replacement_recovery_is_protected_without_candidate_promotion(
     assert resting_tier(data, COVERS[0]) == RestingTier.REPLACEMENT
     assert not data.is_rescue_recovering(COVERS[0])
     data = admit(data, [COVERS[0]])
-    assert data.is_rescue_recovering(COVERS[0])
+    assert not data.is_rescue_recovering(COVERS[0])
     assert resting_tier(data, COVERS[0]) == RestingTier.REPLACEMENT
-    assert COVERS[0] not in data.replacement_candidates(data.operators[PRIMARY[0]])
-    assert not data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+    assert COVERS[0] in data.replacement_candidates(data.operators[PRIMARY[0]])
+    assert data._slot_takable(data.dorm[0], requester=PRIMARY[0])
 
 
 @pytest.mark.parametrize("cached_bed", [False, True])
@@ -466,11 +468,11 @@ def test_known_temporary_fill_yields_without_joining_formal_recovery(data, cache
     if not cached_bed:
         data.dorm[0].name = ""
     assert not data.is_rescue_recovering(resident.name)
-    assert data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+    assert data._slot_takable(data.dorm[0], requester=PRIMARY[0])
 
 
 @pytest.mark.parametrize("unknown", ["missing_sample", "invalid_mood"])
-def test_temporary_fill_does_not_yield_with_unknown_mood(data, unknown):
+def test_known_lower_identity_yields_even_with_unknown_mood(data, unknown):
     set_moods(data, [0, 0, 0, 0])
     assert data.rescue_needed()
     data = admit(data, [COVERS[0]])
@@ -480,7 +482,7 @@ def test_temporary_fill_does_not_yield_with_unknown_mood(data, unknown):
         resident.time_stamp = None
     else:
         resident.mood = -1
-    assert not data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+    assert data._slot_takable(data.dorm[0], requester=PRIMARY[0])
 
 
 def test_completed_existing_recovery_can_release_its_bed(data):
@@ -490,7 +492,7 @@ def test_completed_existing_recovery_can_release_its_bed(data):
     resident = data.operators[COVERS[0]]
     assert resident.mood == resident.upper_limit
     assert not data.is_rescue_recovering(resident.name)
-    assert data._slot_takable(data.dorm[0], False, requester=PRIMARY[0])
+    assert data._slot_takable(data.dorm[0], requester=PRIMARY[0])
 
 
 def test_rescue_preserves_idle_release_exclusions(data):
@@ -677,3 +679,39 @@ def test_rescue_episode_survives_restart_only_for_same_main_limits(
         main.simulate(saved)
     assert fresh.rescue_mode is not changed_limits
     assert fresh.rescue_completed == (set() if changed_limits else {PRIMARY[0]})
+
+
+@pytest.mark.parametrize(
+    "tier",
+    [RestingTier.MAIN, RestingTier.LOW_MAIN, RestingTier.STANDBY, RestingTier.PRIORITY],
+)
+def test_rescue_backup_keeps_original_primary_tier_without_automatic_promotion(
+    data, tier
+):
+    name = PRIMARY[0]
+    baseline = data.global_plan["default_plan"].config
+    if tier == RestingTier.LOW_MAIN:
+        baseline.resting_priority = [name]
+    elif tier == RestingTier.STANDBY:
+        baseline.resting_standby = [name]
+    elif tier == RestingTier.PRIORITY:
+        baseline.ope_resting_priority = [name]
+    assert data.swap_plan([], refresh=True) is None
+    before = resting_tier(data, name)
+    assert before == tier
+    configure_rescue(data)
+    assert data.swap_plan([True], refresh=True) is None
+    assert not data.operators[name].is_high()
+    assert resting_tier(data, name) == before
+    assert resting_tier(data, COVERS[0]) == RestingTier.EXCLUDED
+
+
+def test_rescue_backup_keeps_escalated_standby_tier_until_actual_return(data):
+    name = PRIMARY[0]
+    data.global_plan["default_plan"].config.resting_standby = [name]
+    assert data.swap_plan([], refresh=True) is None
+    data.operators[name].standby_low_priority = True
+    configure_rescue(data)
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.operators[name].standby_low_priority
+    assert resting_tier(data, name) == RestingTier.LOW_MAIN
