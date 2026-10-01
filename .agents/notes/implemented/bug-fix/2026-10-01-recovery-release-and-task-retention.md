@@ -25,4 +25,6 @@ Linux listener tests substitute both platform selectors, the process socket tabl
 
 `scheduler_recovery_preservation_tests.py` covers stale-plan boundaries, critical appointments, task payload retention, actual scheduler dispatch and the worker's recovery-to-scheduler transition. The existing transport tests retain shared-server and same-target routing coverage.
 
+The worker test substitutes the active selection-card startup read and asserts that it runs once. The worker and scheduler share a virtual clock; recovery and scheduler waits advance that clock without wall-clock sleep. Retired dormitory-probe methods are absent from the fixture.
+
 No live device, remote configuration, Device Profile schema or glossary definition changes.
