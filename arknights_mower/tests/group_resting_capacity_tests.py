@@ -407,7 +407,6 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     candidate.mood = 10
     candidate.time_stamp = now
     solver.total_agent = [candidate]
-    assert not data.rescue_needed()
 
     plan = solver.resting()
 

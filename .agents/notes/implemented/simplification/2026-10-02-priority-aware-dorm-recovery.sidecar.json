@@ -14,7 +14,6 @@
     "arknights_mower.utils.resting_priority.resting_tier",
     "arknights_mower.utils.operators.Operators._slot_takable",
     "arknights_mower.utils.operators.Operators._can_standby",
-    "arknights_mower.utils.operators.Operators.is_rescue_recovering",
     "arknights_mower.utils.scheduler_task.try_add_release_dorm",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.preserve_resting_crafters",
     "arknights_mower.utils.scheduler_task.restore_displaced_resting"

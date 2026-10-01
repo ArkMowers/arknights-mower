@@ -1,9 +1,12 @@
 ---
 title: Rescue Condition Help
-status: implemented
+status: archived
 category: simplification
 date: 2026-09-30
 ---
+
+Superseded by [MAA assisted emergency recovery](../../implemented/simplification/2026-10-02-maa-assisted-emergency.md).
+
 
 # Rescue Condition Help
 
@@ -19,7 +22,7 @@ The banner and inline paragraph repeat the same description. The preset button i
 
 ## Verification
 
-Focused [rescue expression tests](../../../../ui/src/utils/trigger_rescue.test.js), Vue component compilation, formatting, and repository governance checks cover the retained expression contract and source validity. The [original rescue condition decision](../../implemented/feature/2026-09-30-rescue-backup-condition.md) defines scheduling behavior.
+Focused retired rescue expression tests, Vue component compilation, formatting, and repository governance checks cover the retained expression contract and source validity. The [original rescue condition decision](../feature/2026-09-30-rescue-backup-condition.md) defines scheduling behavior.
 
 ## Standards Findings
 

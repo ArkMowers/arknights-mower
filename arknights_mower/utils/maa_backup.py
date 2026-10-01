@@ -216,6 +216,10 @@ class VerifiedAsst:
             )
             self._cleanup_thread.start()
 
+    @property
+    def run_successful(self):
+        return self._outcome.successful
+
     def running(self):
         running = self._asst.running()
         self._active = bool(running)

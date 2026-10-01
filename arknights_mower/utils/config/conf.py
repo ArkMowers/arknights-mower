@@ -298,6 +298,8 @@ class LongTaskPart(ConfModel):
 
 
 class MaaPart(ConfModel):
+    maa_emergency_infrast_enable: bool = False
+    "初始化确认原生轮休无法周转时，使用一次 MAA 临时换班"
     maa_path: str = Field(default_factory=default_maa_directory)
     maa_mirrorchyan_token: str = ""
     "Mirror酱下载 Token"

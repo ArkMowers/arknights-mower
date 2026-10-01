@@ -114,8 +114,6 @@ def workshop_operator_block_reason(
     op_data, operator, tasks=(), *, current_task=None, minimum_mood=0
 ):
     """返回加工受阻原因；自动入队和调人前共享心情及预约规则。"""
-    if getattr(op_data, "is_rescue_recovering", lambda name: False)(operator):
-        return "正在集中恢复，暂不借出加工"
     for task in tasks:
         if (
             task is not current_task

@@ -1,8 +1,92 @@
 from __future__ import annotations
 
+import ast
+import copy
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
+
+
+def contains_retired_rescue_condition(value) -> bool:
+    """识别实际救急调用；嵌套条件和字符串常量分别处理。"""
+    if isinstance(value, BaseModel):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        return any(contains_retired_rescue_condition(part) for part in value.values())
+    if not isinstance(value, str):
+        return False
+    try:
+        tree = ast.parse(value, mode="eval")
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "op_data"
+        and node.func.attr == "rescue_needed"
+        for node in ast.walk(tree)
+    )
+
+
+def retire_rescue_backups(data):
+    """返回退役副表后的独立文档和旧索引到新索引的映射。"""
+    result = copy.deepcopy(data)
+    backups, indices = [], {}
+    for index, backup in enumerate(data.get("backup_plans", [])):
+        if contains_retired_rescue_condition(backup.get("trigger", {})):
+            continue
+        indices[index] = len(backups)
+        backups.append(copy.deepcopy(backup))
+    if "backup_plans" in data:
+        result["backup_plans"] = backups
+    return result, indices
+
+
+def migrate_backup_tasks(tasks, old_names, new_names, indices, *, retired=False):
+    """迁移可识别的条件向量；移除退役副表的派生任务，保留专项任务。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    result = []
+    for original in tasks:
+        task = copy.deepcopy(original)
+        flags = getattr(task, "backup_shift_conditions", None)
+        derived = (
+            flags is not None
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "pending_backup_product_switch", False)
+        )
+        if retired and derived:
+            # 混合副表安排不能仅删除一个条件位后继续执行旧的实际名单。
+            continue
+        if flags is not None:
+            if old_names:
+                previous = dict(zip(old_names, flags))
+                task.backup_shift_conditions = [
+                    previous.get(name, False) for name in new_names
+                ]
+            elif len(flags) == len(new_names):
+                task.backup_shift_conditions = list(flags)
+            elif indices:
+                mapped = [False] * len(new_names)
+                for old, new in indices.items():
+                    if old < len(flags) and new < len(mapped):
+                        mapped[new] = flags[old]
+                task.backup_shift_conditions = mapped
+            else:
+                continue
+        if retired and task.type in (
+            TaskTypes.SHIFT_OFF,
+            TaskTypes.SHIFT_ON,
+            TaskTypes.EXHAUST_OFF,
+            TaskTypes.FILL_DORM,
+            TaskTypes.RELEASE_DORM,
+            TaskTypes.SELF_CORRECTION,
+            TaskTypes.RE_ORDER,
+        ):
+            continue
+        result.append(task)
+    return result
 
 
 class MoodLimits(BaseModel):
@@ -151,6 +235,13 @@ class PlanModel(BaseModel):
     backup_plans: list[BackupPlan] = []
     # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
     advanced_settings: Optional[dict[str, Any]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def retire_rescue_conditions(cls, data):
+        if isinstance(data, dict):
+            return retire_rescue_backups(data)[0]
+        return data
 
     @model_validator(mode="before")
     @classmethod

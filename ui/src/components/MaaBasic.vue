@@ -16,6 +16,7 @@ const {
   maa_mirrorchyan_token,
   maa_update_channel,
   maa_auto_check_update,
+  maa_emergency_infrast_enable,
   maa_restore_theme_enable,
   maa_restore_theme,
   maa_conn_preset,
@@ -883,6 +884,14 @@ onUnmounted(() => {
       label-width="96"
       label-align="left"
     >
+      <n-form-item label="MAA 协助救急">
+        <n-switch v-model:value="maa_emergency_infrast_enable" />
+        <help-text label="MAA 协助救急说明" :max-width="480">
+          启动时确认 Mower 无法及时周转后，使用一次 MAA
+          临时换班。期间暂停副表与普通换班，继续收取订单和产物、恢复心情；跑单干员被占用时暂停跑单。肥鸭与专精不限制
+          MAA 选人。
+        </help-text>
+      </n-form-item>
       <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
         >设备连接与 MAA 路径由 Android 应用管理。</n-alert
       >

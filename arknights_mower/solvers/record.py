@@ -73,6 +73,17 @@ def _ensure_tables(conn):
             conn.execute("ALTER TABLE agent_action ADD COLUMN related_operator TEXT")
         if "mood_event" not in agent_action_columns:
             conn.execute("ALTER TABLE agent_action ADD COLUMN mood_event TEXT")
+        for name, column_type in (
+            ("context_key", "TEXT"),
+            ("current_index", "INTEGER"),
+        ):
+            if name not in agent_action_columns:
+                conn.execute(
+                    f"ALTER TABLE agent_action ADD COLUMN {name} {column_type}"
+                )
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS agent_action_name_time ON agent_action(name, "current_time")'
+        )
         conn.commit()
         _tables_created = True
 
@@ -110,6 +121,8 @@ def save_agent_action(
     related_operator=None,
     mood_event=None,
     current_time=None,
+    context_key=None,
+    current_index=None,
 ):
     """写入一条心情历史；允许充能事件指定成对的展示时间。"""
     current_time = current_time or datetime.now()
@@ -119,8 +132,8 @@ def save_agent_action(
                 """
                 INSERT INTO agent_action (
                     name, agent_current_room, current_room, is_high,
-                    agent_group, mood, current_time, related_operator, mood_event
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    agent_group, mood, current_time, related_operator, mood_event, context_key, current_index
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -132,6 +145,8 @@ def save_agent_action(
                     str(current_time),
                     related_operator,
                     mood_event,
+                    context_key,
+                    current_index,
                 ),
             )
             connection.commit()
@@ -175,6 +190,8 @@ def save_action_to_sqlite_decorator(func):
         )
         if not update_time:
             return
+        from arknights_mower.utils.emergency_recovery import mood_context
+
         save_agent_action(
             name,
             agent_current_room,
@@ -183,8 +200,11 @@ def save_action_to_sqlite_decorator(func):
             agent.group,
             mood,
             related_operator=related_operator,
-            mood_event=mood_event,
+            mood_event=mood_event
+            or ("crafting" if current_room == "factory" else None),
             current_time=recorded_at,
+            context_key=mood_context(self, current_room),
+            current_index=current_index,
         )
 
         return result
@@ -204,12 +224,8 @@ def current_state():
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
-        "rescue_state": {
-            "active": getattr(data, "rescue_mode", False),
-            "armed": getattr(data, "rescue_armed", True),
-            "completed": sorted(getattr(data, "rescue_completed", ())),
-            "main_limits": getattr(data, "main_recovery_limits", {}),
-        },
+        "maa_emergency_state": getattr(base_scheduler, "emergency_state", None),
+        "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
             data, "idle_dorm_search_exhausted", False
         ),
@@ -228,6 +244,21 @@ def current_state():
         "daily_mail": base_scheduler.daily_mail,
         "task_count": base_scheduler.task_count,
     }
+
+
+def emergency_mood_history(name, now=None):
+    """返回最近两周最多二百条实测记录；旧记录的环境保持未知。"""
+    now = now or datetime.now()
+    rows = _fetchall(
+        'SELECT mood, "current_time", agent_current_room, current_room, mood_event, '
+        "context_key, current_index FROM agent_action WHERE name = ? "
+        'AND "current_time" >= ? AND "current_time" <= ? '
+        'ORDER BY "current_time" DESC, rowid DESC LIMIT 200',
+        name,
+        str(now - timedelta(days=14)),
+        str(now),
+    )
+    return list(reversed(rows))
 
 
 def save_state_to_db(saved_state):

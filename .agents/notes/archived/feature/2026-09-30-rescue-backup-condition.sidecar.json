@@ -1,6 +1,6 @@
 {
   "title": "Rescue backup condition",
-  "status": "implemented",
+  "status": "archived",
   "category": "feature",
   "date": "2026-09-30",
   "authors": [
@@ -16,7 +16,6 @@
   ],
   "test_suites": [
     "arknights_mower/tests/rescue_backup_condition_tests.py",
-    "arknights_mower/tests/exhaust_replacement_tests.py",
-    "ui/src/utils/trigger_rescue.test.js"
+    "arknights_mower/tests/exhaust_replacement_tests.py"
   ]
 }

@@ -54,7 +54,6 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
             and (
                 target.room.startswith("dorm") or not state.replacement_exhausted(name)
             )
-            and not state.is_rescue_recovering(name)
             and not is_busy(name)
         )
 
@@ -67,8 +66,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
     def protected_rest(state, name):
         op = state.operators[name]
         return op.is_resting() and (
-            state.is_rescue_recovering(name)
-            or op.rest_in_full
+            op.rest_in_full
             and op.exhaust_require
             or op.group in state.rest_in_full_group
             and op.group in state.exhaust_group

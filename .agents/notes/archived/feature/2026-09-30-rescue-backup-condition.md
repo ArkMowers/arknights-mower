@@ -1,9 +1,12 @@
 ---
 title: Rescue backup condition
-status: implemented
+status: archived
 category: feature
 date: 2026-09-30
 ---
+
+Superseded by [MAA assisted emergency recovery](../../implemented/simplification/2026-10-02-maa-assisted-emergency.md).
+
 
 # Rescue backup condition
 

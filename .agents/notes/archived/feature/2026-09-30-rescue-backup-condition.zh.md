@@ -1,9 +1,12 @@
 ---
 title: 救急副表条件
-status: implemented
+status: archived
 category: feature
 date: 2026-09-30
 ---
+
+由 [MAA 协助救急恢复](../../implemented/simplification/2026-10-02-maa-assisted-emergency.zh.md) 取代。
+
 
 # 救急副表条件
 

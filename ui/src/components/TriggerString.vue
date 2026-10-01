@@ -4,7 +4,6 @@ const emit = defineEmits(['update'])
 
 import { ref, watch, computed, onMounted, h } from 'vue'
 import { NAvatar } from 'naive-ui'
-import { rescue_condition_expression, rescue_condition_help } from '@/utils/trigger_rescue'
 import {
   inventory_expression,
   inventory_options,
@@ -35,7 +34,6 @@ watch(data, () => {
 })
 
 const op_data = computed(() => {
-  if (data.value === rescue_condition_expression) return { type: 'rescue' }
   let x = data.value.match(/op_data.operators\['(.+?)'\].is_resting\(\)/)
   if (x && x[0] == data.value) {
     return {
@@ -130,15 +128,12 @@ const op_type = computed(() => {
     return 'major_maintenance'
   } else if (op_data.value.type == 'group_mood') {
     return 'group_mood'
-  } else if (op_data.value.type == 'rescue') {
-    return 'rescue'
   } else {
     return 'op'
   }
 })
 
 const type_options = [
-  { label: '救急模式', value: 'rescue' },
   { label: '干员属性', value: 'op' },
   { label: '仓库资源', value: 'inventory' },
   { label: '设施状态', value: 'facility' },
@@ -176,8 +171,6 @@ function set_op_type(v) {
     data.value = 'op_data.major_maintenance_remaining_hours()'
   } else if (v == 'group_mood') {
     data.value = group_mood_expression(groups.value[0] || '')
-  } else if (v == 'rescue') {
-    data.value = rescue_condition_expression
   }
 }
 
@@ -433,9 +426,6 @@ function render_custom_tip(option) {
     blur-after-select
     :get-show="() => true"
   />
-  <help-text v-if="op_type == 'rescue'" label="查看救急模式说明" :max-width="480">
-    {{ rescue_condition_help }} 条件填写为「救急模式 == True」。
-  </help-text>
   <help-text v-if="op_type == 'major_maintenance'" label="查看停服大更新副表说明" :max-width="480">
     默认在停服大更新开始前半小时触发，可在同一行修改提前小时数。到达设定时间时，调度器自动检查此副表；其他组合条件仍须成立。
     到达公告停服开始时间后，此条件变为不成立，Mower 保存状态并停止任务线程。更新客户端后需重新启动

@@ -74,7 +74,6 @@ def test_legacy_idle_resident_has_no_formal_rescue_protection(solver, temporary)
     bed.name = name
     op._current_room, op.current_index = bed.position
     data.rescue_mode = True
-    assert not data.is_rescue_recovering(name, NOW)
     assert data._slot_takable(bed, requester=PRIMARY[0])
 
 
@@ -86,7 +85,7 @@ def test_rescue_does_not_disable_configured_standby(solver):
     data.operators.pop(PRIMARY[1])
     data.add(Operator(PRIMARY[1], "room_1_2", index=0, operator_type="high"))
     candidate = data.operators[PRIMARY[1]]
-    assert candidate.rest_in_full
+    assert not candidate.rest_in_full
     assert candidate.resting_priority == "standby"
     candidate.standby_low_priority = True
     assert data._can_standby(candidate)

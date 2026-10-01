@@ -1,0 +1,590 @@
+"""一次 MAA 接管后的宿舍恢复与正常排班交接。"""
+
+import copy
+from datetime import datetime, timedelta
+from time import monotonic
+
+from arknights_mower.data import base_room_list
+from arknights_mower.solvers.record import emergency_mood_history, save_current_state
+from arknights_mower.utils import config, detector
+from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.emergency_recovery import (
+    ORDINARY_SHIFTS,
+    emergency_dorm_plan,
+    history_cycle,
+    history_rate,
+    mood_context,
+    native_opportunity,
+    primary_names,
+    recovery_target,
+)
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory
+from arknights_mower.utils.recognize import Scene
+from arknights_mower.utils.resting_priority import has_resting_mood
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    try_workshop_tasks,
+)
+
+CHECK_META = "maa_emergency_check"
+COLLECTION_INTERVAL = timedelta(minutes=15)
+
+
+class EmergencyRecoveryMixin:
+    def _emergency_active(self):
+        state = getattr(self, "emergency_state", None)
+        return isinstance(state, dict) and state.get("phase") in (
+            "dispatching",
+            "recovering",
+            "returning",
+        )
+
+    def _emergency_frozen(self):
+        return self._emergency_active() and not getattr(
+            self, "_emergency_handoff", False
+        )
+
+    def _emergency_read_rooms(self, rooms):
+        """读实际名单并清除本房间未出现的旧驻员；不生成工作站纠错。"""
+        for room in sorted(set(rooms)):
+            if room not in self.op_data.plan or room == "train":
+                continue
+            self.enter_room(room)
+            observed = self.get_agent_from_room(room, None, force_mood=True)
+            actual = {item["agent"] for item in observed if item.get("agent")}
+            for op in self.op_data.operators.values():
+                if op.current_room == room and op.name not in actual:
+                    op.current_room, op.current_index = "", -1
+            self.back()
+        self.back_to_infrastructure()
+
+    def _emergency_save(self):
+        if not save_current_state():
+            raise RuntimeError("救急运行状态保存失败，未派发 MAA")
+
+    def _emergency_startup(self):
+        """初始化读取后检查一次；已派发批次只核对实际状态。"""
+        self._emergency_read_rooms(
+            room for room in self.op_data.plan if room in base_room_list
+        )
+        self._read_initial_card_mood()
+        self.defer_backup_plan_until_mood_read = False
+        if self._emergency_active():
+            self._emergency_validate_state()
+            if self.emergency_state["phase"] == "dispatching":
+                self.emergency_state["phase"] = "recovering"
+            if self.emergency_state.get("dispatch") == "started":
+                self.emergency_state["dispatch"] = "unknown"
+                logger.warning("MAA 救急换班结果未知，按实际驻员继续恢复，不重复派发")
+            self._open_emergency_beds()
+            self.emergency_state["next_read"] = datetime.now()
+            self.emergency_state["observed_at"] = datetime.now()
+            self.emergency_state["temporary_roster"] = {
+                room: self.op_data.get_current_room(room, True)
+                for room in self.op_data.plan
+                if not room.startswith("dorm")
+            }
+            self._emergency_startup_pending = False
+            return
+        self.backup_plan_solver()
+        self._emergency_startup_pending = False
+        if not config.conf.maa_emergency_infrast_enable:
+            return
+        data = self.op_data
+        names = primary_names(data)
+        required = []
+        rates, deadlines = {}, {}
+        now = datetime.now()
+        for name in names:
+            op = data.operators[name]
+            if not has_resting_mood(op) or op.is_resting() or data._can_standby(op):
+                continue
+            line = data.rescue_mood_threshold(op)
+            rate = history_rate(
+                emergency_mood_history(name),
+                op.current_room,
+                mood_context(data, op.current_room),
+            )
+            if rate:
+                rates[name] = rate
+            if op.mood < line:
+                required.append(name)
+            elif rate:
+                crossing = now + timedelta(hours=(op.mood - line) / rate)
+                if crossing <= now + timedelta(hours=12):
+                    deadlines[name] = crossing
+                    required.append(name)
+        if not required:
+            return
+        projection = native_opportunity(
+            self, required, now, deadlines=deadlines, rates=rates
+        )
+        if projection.opportunity is not None or not projection.complete:
+            logger.info("原生救急仍有恢复机会或观察不足，不派发 MAA")
+            return
+        state = {
+            "phase": "dispatching",
+            "dispatch": "started",
+            "frozen_conditions": list(data.plan_condition),
+            "backup_names": [backup.name for backup in data.backup_plans],
+            "dorm_layout": {
+                room: [slot.agent for slot in slots]
+                for room, slots in data.plan.items()
+                if room.startswith("dorm")
+            },
+            "work_contexts": {
+                name: mood_context(data, data.operators[name].room) for name in names
+            },
+            "targets": {name: recovery_target(data, name)[0] for name in names},
+            "target_sources": {name: "fallback" for name in names},
+            "target_basis": {},
+            "temporary_roster": {},
+            "next_read": now,
+        }
+        self.emergency_state = state
+        self._emergency_update_targets()
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.type
+            not in ORDINARY_SHIFTS | {TaskTypes.FILL_DORM, TaskTypes.RELEASE_DORM}
+            and not getattr(task, "backup_shift_active", False)
+            and not (
+                task.type == TaskTypes.NOT_SPECIFIC
+                and any(not room.startswith("dorm") for room in task.plan)
+            )
+        ]
+        self._emergency_save()
+        self._run_emergency_maa()
+        state["phase"] = "recovering"
+        self.back_to_infrastructure()
+        self._emergency_collect()
+        self._emergency_read_rooms(room for room in data.plan if room in base_room_list)
+        state["temporary_roster"] = {
+            room: data.get_current_room(room, True)
+            for room in data.plan
+            if not room.startswith("dorm")
+        }
+        self._open_emergency_beds()
+        state["observed_at"] = datetime.now()
+        self._emergency_save()
+
+    def _emergency_validate_state(self):
+        state = self.emergency_state
+        if not (
+            isinstance(state.get("targets"), dict)
+            and isinstance(state.get("dorm_layout"), dict)
+            and isinstance(state.get("backup_names"), list)
+            and isinstance(state.get("frozen_conditions"), list)
+            and isinstance(state.get("work_contexts"), dict)
+            and len(state["backup_names"]) == len(state["frozen_conditions"])
+            and all(
+                isinstance(value, (int, float)) and 0 <= value < float("inf")
+                for value in state["targets"].values()
+            )
+        ):
+            raise MowerExit("MAA 救急缓存结构不完整，保留缓存并停止；未重复派发 MAA")
+
+    def _run_emergency_maa(self):
+        state = self.emergency_state
+        deadline = monotonic() + 600
+        asst = None
+        state["dispatch"] = "failed"
+        try:
+            self.initialize_maa()
+            asst = self.MAA
+            mapping = {
+                "制造站": "Mfg",
+                "贸易站": "Trade",
+                "发电站": "Power",
+                "控制中枢": "Control",
+                "会客室": "Reception",
+                "办公室": "Office",
+                "加工站": "Processing",
+            }
+            fixed = {
+                "central": "Control",
+                "meeting": "Reception",
+                "contact": "Office",
+                "factory": "Processing",
+            }
+            facilities = []
+            for room, slots in self.op_data.plan.items():
+                if not slots or room.startswith("dorm") or room == "train":
+                    continue
+                facility = fixed.get(room) or mapping.get(slots[0].facility)
+                if facility and facility not in facilities:
+                    facilities.append(facility)
+            if not facilities:
+                raise RuntimeError("没有可交给 MAA 的工作设施")
+            pending_moods = [
+                self.op_data.operators[name].mood
+                for name, target in state["targets"].items()
+                if has_resting_mood(self.op_data.operators.get(name))
+                and self.op_data.operators[name].mood < target
+            ]
+            params = {
+                "mode": 0,
+                "facility": facilities,
+                "threshold": min(1, (max(pending_moods, default=0) + 1) / 24),
+                "drones": "_NotUse",
+                "replenish": False,
+                "fiammetta_recovery_enabled": False,
+            }
+            if monotonic() >= deadline:
+                raise TimeoutError("MAA 救急初始化超时")
+            if not asst.append_task("Infrast", params) or not asst.start():
+                raise RuntimeError("MAA 救急换班未能启动")
+            state["dispatch"] = "started"
+            while asst.running():
+                if config.stop_mower.is_set() or config.stop_maa.is_set():
+                    raise MowerExit
+                if monotonic() >= deadline:
+                    raise TimeoutError("MAA 救急换班超过十分钟")
+                csleep(1)
+            if not asst.run_successful:
+                raise RuntimeError("MAA 救急换班没有完整成功回调")
+            state["dispatch"] = "completed"
+        except MowerExit:
+            state["dispatch"] = "interrupted"
+            raise
+        except Exception as exc:
+            state["dispatch"] = "failed"
+            state["error"] = str(exc)
+            logger.error("MAA 救急换班失败：%s；核对实际驻员后继续恢复", exc)
+        finally:
+            if asst is None:
+                asst = getattr(self, "MAA", None)
+            if asst is not None:
+                asst.stop()
+                stop_deadline = monotonic() + 15
+                while asst.running() and monotonic() < stop_deadline:
+                    csleep(1)
+                if asst.running():
+                    state["error"] = "MAA 未确认停止，停止 Mower 设备操作"
+                    self._emergency_save()
+                    raise MowerExit(state["error"])
+                self.MAA = None
+            self._emergency_save()
+            self.recog.reset_after_external_control()
+
+    def _open_emergency_beds(self):
+        from arknights_mower.utils import dorm_skills
+
+        data = self.op_data
+        times = {bed.position: bed.time for bed in data.all_dorms()}
+        data.dorm = []
+        data.group_dorm = []
+        for room, original in self.emergency_state["dorm_layout"].items():
+            for index, name in enumerate(original):
+                if name == "菲亚梅塔":
+                    data.plan[room][index].agent = name
+                    continue
+                data.plan[room][index].agent = "Free"
+                resident = data.get_current_operator(room, index)
+                data.dorm.append(
+                    Dormitory(
+                        (room, index),
+                        resident.name if resident else "",
+                        times.get((room, index)),
+                    )
+                )
+        data.refresh_dorm_manager_flags(force=True)
+        for names in self.emergency_state["dorm_layout"].values():
+            for name in names[:2]:
+                op = data.operators.get(name)
+                if op is not None and op.is_resting():
+                    op.single_recovery_manager = dorm_skills.is_single_recovery_manager(
+                        name
+                    )
+
+    def _emergency_update_targets(self):
+        data, state = self.op_data, self.emergency_state
+        if state["phase"] == "returning":
+            return
+        probe = copy.copy(self)
+        normal = copy.deepcopy(data)
+        if normal.swap_plan(list(state["frozen_conditions"]), refresh=True):
+            return
+        plan = {
+            room: [slot.agent for slot in slots]
+            for room, slots in data.plan.items()
+            if not room.startswith("dorm")
+        }
+        probe.op_data = normal.project_arrangements([plan])
+        probe.tasks = []
+        probe._emergency_handoff = True
+        for name in state["targets"]:
+            op = data.operators.get(name)
+            if op is None:
+                continue
+            rows = emergency_mood_history(name)
+            rate = history_rate(rows, op.room, state["work_contexts"].get(name))
+            members = data.groups.get(op.group, [name])
+            opportunity = (
+                native_opportunity(probe, members).opportunity if rate else None
+            )
+            cycle = history_cycle(rows, op.room, state["work_contexts"].get(name))
+            immediate = opportunity
+            if opportunity is not None and cycle is not None:
+                opportunity = max(opportunity, datetime.now() + timedelta(hours=cycle))
+            # 可执行的充能预约优先使用实测生成的时刻；空的肥鸭任务不证明机会。
+            charges = [
+                task.time
+                for task in self.tasks
+                if task.type == TaskTypes.FIAMMETTA
+                and task.plan
+                and task.meta_data == name
+            ]
+            if charges and rate:
+                opportunity = max(datetime.now(), min(charges))
+            target, source = recovery_target(data, name, rate, opportunity)
+            if target > op.upper_limit and immediate is not None:
+                # 历史周期过长时改用已证明可执行的更早轮休，而非截断目标。
+                target, source = recovery_target(data, name, rate, immediate)
+                source = "earlier_native_rotation"
+            state["targets"][name], state["target_sources"][name] = target, source
+            state.setdefault("target_basis", {})[name] = {
+                "work_context": state["work_contexts"].get(name),
+                "rate": rate,
+                "cycle_hours": cycle,
+                "opportunity": opportunity,
+                "calculated_at": datetime.now(),
+                "normal_line": data.resting_mood_threshold(op),
+                "source": source,
+            }
+
+    def _emergency_run_order_available(self, room, plan=None):
+        if not self._emergency_frozen():
+            return True
+        required = (
+            {
+                name
+                for names in plan.values()
+                for name in names
+                if name in TRADE_ORDER_AGENTS
+            }
+            if plan
+            else {
+                name
+                for slot in self.op_data.plan.get(room, [])
+                for name in slot.replacement
+                if name in TRADE_ORDER_AGENTS
+            }
+        )
+        return bool(required) and all(
+            (op := self.op_data.operators.get(name)) is not None
+            and (not op.is_working() or op.current_room == room and not plan)
+            for name in required
+        )
+
+    def _emergency_filter_tasks(self):
+        if not self._emergency_frozen():
+            return
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.type not in ORDINARY_SHIFTS
+            and not getattr(task, "backup_shift_active", False)
+            and not (
+                task.type == TaskTypes.NOT_SPECIFIC
+                and any(not room.startswith("dorm") for room in task.plan)
+            )
+            and not (
+                task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+                and task.meta_data
+                and not self._emergency_run_order_available(task.meta_data, task.plan)
+            )
+        ]
+
+    def _emergency_tick(self):
+        self._emergency_filter_tasks()
+        state = self.emergency_state
+        now = datetime.now()
+        if now >= state.get("next_read", now):
+            if state.pop("observed_at", None) is None:
+                self._emergency_read_rooms(
+                    {room for room in self.op_data.plan if room.startswith("dorm")}
+                    | {
+                        op.current_room
+                        for name in state["targets"]
+                        if (op := self.op_data.operators.get(name)) is not None
+                        and op.current_room in base_room_list
+                    }
+                )
+            self._emergency_update_targets()
+            if self._emergency_ready():
+                if self._emergency_restore():
+                    return
+            if state["phase"] == "returning":
+                state["next_read"] = now + timedelta(minutes=5)
+            else:
+                self._open_emergency_beds()
+                self._emergency_plan_beds(state)
+                state["next_read"] = now + timedelta(
+                    minutes=self._emergency_read_minutes()
+                )
+        last = self.last_execution.get("todo")
+        if state["phase"] == "recovering":
+            try_workshop_tasks(self.op_data, self.tasks)
+        collection = now if last is None else last + COLLECTION_INTERVAL
+        due = min(state["next_read"], max(now, collection))
+        if not any(task.meta_data == CHECK_META for task in self.tasks):
+            self.tasks.append(SchedulerTask(time=due, meta_data=CHECK_META))
+        self._emergency_save()
+
+    def _emergency_plan_beds(self, state):
+        plan = emergency_dorm_plan(self.op_data, state, self.tasks)
+        for room, original in state["dorm_layout"].items():
+            for index, name in enumerate(original):
+                if name == "菲亚梅塔":
+                    current = self.op_data.get_current_operator(room, index)
+                    if current is None or current.name != name:
+                        plan.setdefault(room, ["Current"] * len(original))[index] = name
+        if plan and not any(
+            getattr(task, "emergency_dorm", False) for task in self.tasks
+        ):
+            task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
+            task.emergency_dorm = True
+            self.tasks.append(task)
+
+    def _emergency_read_minutes(self):
+        waits = []
+        for name, target in self.emergency_state["targets"].items():
+            op = self.op_data.operators.get(name)
+            if (
+                op is None
+                or not op.is_resting()
+                or not has_resting_mood(op)
+                or op.mood >= target
+            ):
+                continue
+            rate = history_rate(
+                emergency_mood_history(name),
+                op.current_room,
+                mood_context(self.op_data, op.current_room),
+                op.current_index,
+                recovering=True,
+            )
+            waits.append((target - op.mood) / rate * 60 if rate else 15)
+        return max(5, min(30, min(waits, default=15)))
+
+    def _emergency_ready(self):
+        if any(
+            task.plan
+            and (
+                task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
+                and task.time <= datetime.now()
+                or hasattr(task, "emergency_original_roster")
+            )
+            for task in self.tasks
+        ):
+            return False
+        return all(
+            (op := self.op_data.operators.get(name)) is not None
+            and (
+                self.op_data._can_standby(op)
+                or has_resting_mood(op)
+                and op.mood >= target
+            )
+            for name, target in self.emergency_state["targets"].items()
+        )
+
+    def _emergency_restore(self):
+        """重新求值副表，交接成功后清除批次；重试不重新派发 MAA。"""
+        state = self.emergency_state
+        state["phase"] = "returning"
+        self._emergency_handoff = True
+        try:
+            names = [backup.name for backup in self.op_data.backup_plans]
+            previous = dict(
+                zip(
+                    state.get("handoff_names", state["backup_names"]),
+                    state.get("handoff_conditions", state["frozen_conditions"]),
+                )
+            )
+            error = self.op_data.swap_plan(
+                [previous.get(name, False) for name in names], refresh=True
+            )
+            if error:
+                raise RuntimeError(error)
+            generated = []
+            if "handoff_plan" not in state:
+                self.backup_plan_solver(generated_tasks=generated)
+            plan = (
+                copy.deepcopy(state.get("handoff_plan"))
+                if "handoff_plan" in state
+                else self.agent_get_mood(read_rooms=False, return_plan=True) or {}
+            )
+            for task in generated:
+                for room, slots in task.plan.items():
+                    row = plan.setdefault(room, ["Current"] * len(slots))
+                    for index, name in enumerate(slots):
+                        if name != "Current":
+                            row[index] = name
+            probe = copy.copy(self)
+            probe.op_data = self.op_data.project_arrangements([plan])
+            probe.tasks = []
+            # 各组需要完整替班与床位；不同组不要求同时占满普通床位。
+            groups = {}
+            for name in primary_names(probe.op_data):
+                op = probe.op_data.operators[name]
+                if probe.op_data._can_standby(op):
+                    continue
+                if not has_resting_mood(op) or op.mood < state["targets"].get(
+                    name, recovery_target(probe.op_data, name)[0]
+                ):
+                    return False
+                groups[op.group or name] = probe.op_data.groups.get(op.group, [name])
+            for members in groups.values():
+                if native_opportunity(probe, members).opportunity is None:
+                    return False
+            state["handoff_plan"] = copy.deepcopy(plan)
+            state["handoff_names"] = names
+            state["handoff_conditions"] = list(self.op_data.plan_condition)
+            self._emergency_save()
+            if plan and self.agent_arrange(plan, get_time=True) is False:
+                state["handoff_plan"] = copy.deepcopy(plan)
+                self._emergency_save()
+                return False
+            self._emergency_read_rooms(
+                room
+                for room in self.op_data.plan
+                if room != "train" and room in base_room_list
+            )
+            remaining = self.agent_get_mood(read_rooms=False, return_plan=True)
+            if remaining:
+                state["handoff_plan"] = copy.deepcopy(remaining)
+                self._emergency_save()
+                return False
+            self.emergency_state = None
+            self.tasks[:] = [
+                task for task in self.tasks if task.meta_data != CHECK_META
+            ]
+            self.run_order_solver()
+            self.plan_metadata()
+            self._emergency_save()
+            logger.info("主班实际心情满足目标且原生周转可行，MAA 协助救急结束")
+            return True
+        finally:
+            self._emergency_handoff = False
+            if self.emergency_state and "handoff_plan" not in state:
+                state["phase"] = "recovering"
+                self._open_emergency_beds()
+
+    def _emergency_collect(self):
+        """普通收取保持十五分钟节奏，不依赖暂停的跑单队列。"""
+        last = self.last_execution.get("todo")
+        if last is not None and datetime.now() < last + COLLECTION_INTERVAL:
+            return
+        self.recog.update()
+        notification = detector.infra_notification(self.recog.img)
+        if notification is None:
+            self.last_execution["todo"] = datetime.now()
+            return
+        self.tap(notification)
+        self.scene_graph_navigation(Scene.INFRA_TODOLIST)
+        self.todo_list()
+        self.scene_graph_navigation(Scene.INFRA_MAIN)

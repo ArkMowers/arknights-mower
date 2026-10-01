@@ -14,6 +14,26 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
+  it('saves the independent emergency switch without enabling ordinary MAA tasks', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.maa_emergency_infrast_enable).toBe(false)
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.maa_emergency_infrast_enable = true
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ maa_emergency_infrast_enable: true })
+    loaded.value = false
+  })
+
   it('defaults T2 protection off and saves it without changing manual materials', async () => {
     pinia = createPinia()
     setActivePinia(pinia)

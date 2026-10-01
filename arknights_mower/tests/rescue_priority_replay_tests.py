@@ -58,7 +58,6 @@ def logged_solver(monkeypatch):
         saved = next(b for b in state["dorms"] if tuple(b["position"]) == bed.position)
         bed.name = saved["name"]
         bed.time = datetime.fromisoformat(saved["time"]) if saved["time"] else None
-    assert data.rescue_needed()
     data.shadow_copy = data.operators.copy()
     assert data.init_and_validate(True) is None
     data.first_init = False
@@ -81,7 +80,6 @@ def test_logged_group_can_leave_work_after_lower_priority_beds_yield(
     assert sum(data.is_effective_free_slot(bed) for bed in data.dorm) == 7
     for name in ("苏苏洛", "空爆", "凯尔希·思衡托"):
         assert resting_tier(data, name) == RestingTier.IDLE
-        assert not data.is_rescue_recovering(name)
     members = data.groups[group]
     plan, replacements = {}, []
     solver.get_resting_plan(
@@ -105,7 +103,4 @@ def test_logged_group_can_leave_work_after_lower_priority_beds_yield(
         and name not in optional
     }
     assert required <= admitted
-    assert not any(
-        bed.name in members and bed.name in data.rescue_workers for bed in data.dorm
-    )
     solver.enter_room.assert_not_called()
