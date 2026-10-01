@@ -17,7 +17,7 @@ Dormitory candidate selection reads each recognized card's face color in the exi
 
 ## Guarantees
 
-[INV-SCHED-15] Selection Estimate Isolation: Selection-card mood estimates support candidate screening, ordering, and primary shift selection only; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks.
+[INV-SCHED-15] Selection Estimate Isolation: Selection-card mood estimates support candidate screening, ordering, and primary shift selection only; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks. Regular candidate planning scans cards only when no eligible idle recovery candidate has valid measured or estimated mood.
 
 Card estimates expire after one hour. Actual mood readback and position changes invalidate only the affected estimate; cached occupancy reads preserve it. Facility-completion events refresh only affected candidates. An hourly exhausted-search reset clears all estimates. Actual valid mood takes precedence. Exclusions and task reservations remain authoritative.
 

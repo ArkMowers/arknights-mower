@@ -368,6 +368,105 @@ def test_real_primary_planning_observes_cards_before_candidate_selection(
     assert events == (["scan", "primary"] if enabled and scan_moods else ["primary"])
 
 
+@pytest.mark.parametrize(
+    "cache",
+    [
+        "measured",
+        "estimated",
+        "unregistered",
+        "unknown",
+        "full",
+        "expired",
+        "measured_full",
+    ],
+)
+def test_cached_recovery_candidate_avoids_physical_scan(solver, monkeypatch, cache):
+    data = solver.op_data
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    now = datetime.now()
+    op = data.operators["红"]
+    if cache == "measured":
+        op.mood, op.time_stamp = 6, now
+    elif cache == "unregistered":
+        data.dorm_mood_estimates["迷迭香"] = (6, now)
+    elif cache == "measured_full":
+        op.mood, op.time_stamp = 24, now
+        data.dorm_mood_estimates["红"] = (6, now)
+    elif cache != "unknown":
+        data.dorm_mood_estimates["红"] = (
+            24 if cache == "full" else 6,
+            now - timedelta(hours=1) if cache == "expired" else now,
+        )
+    before = copy.deepcopy(data.dorm_mood_estimates)
+    assert solver._plan_primary_recovery()
+    solver.resting.assert_called_once_with()
+    if cache in ("measured", "estimated", "unregistered"):
+        solver.enter_room.assert_not_called()
+        assert data.dorm_mood_estimates == before
+        assert not getattr(solver, "_card_moods_scanned_this_run", False)
+        # 下一次调度也复用有效候选，不能因调度轮次变化而重新扫描。
+        solver._card_moods_scanned_this_run = False
+        assert solver._plan_primary_recovery()
+        solver.enter_room.assert_not_called()
+    else:
+        solver.enter_room.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "unavailable",
+    ["working", "reserved", "blacklisted", "training", "busy", "limit", "checked"],
+)
+def test_ineligible_low_cache_does_not_suppress_scan(solver, monkeypatch, unavailable):
+    data = solver.op_data
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    data.dorm_mood_estimates["红"] = (6, datetime.now())
+    op = data.operators["红"]
+    if unavailable == "working":
+        op.current_room, op.current_index = "meeting", 0
+    elif unavailable == "reserved":
+        solver.tasks = [
+            SchedulerTask(task_type=TaskTypes.WORKSHOP, task_plan={"factory": ["红"]})
+        ]
+    elif unavailable == "blacklisted":
+        data.config.free_blacklist.append("红")
+    elif unavailable == "training":
+        op.current_room, op.current_index = "train", 0
+    elif unavailable == "busy":
+        monkeypatch.setattr(
+            "arknights_mower.utils.dorm_candidates.busy_resting_names", lambda: {"红"}
+        )
+    elif unavailable == "limit":
+        data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 20}
+        op.upper_limit = 20
+    else:
+        op.mood, op.time_stamp = 6, datetime.now()
+        op.idle_rest_check = (24, op.mood, op.time_stamp)
+    assert solver._plan_primary_recovery()
+    solver.enter_room.assert_called_once()
+
+
+def test_scan_opens_when_last_cached_candidate_becomes_reserved(solver, monkeypatch):
+    data = solver.op_data
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    data.dorm_mood_estimates["红"] = (6, datetime.now())
+    assert solver._plan_primary_recovery()
+    solver.enter_room.assert_not_called()
+    solver.tasks = [
+        SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan={ROOM: ["红"]})
+    ]
+    assert solver._plan_primary_recovery()
+    solver.enter_room.assert_called_once()
+
+
 def test_queued_shift_does_not_scan_or_replan_candidates(solver):
     solver.op_data.config.free_room = True
     solver.defer_backup_plan_until_mood_read = False

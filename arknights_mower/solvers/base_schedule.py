@@ -2717,7 +2717,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 and self.op_data.config.free_room
                 and not self._initial_mood_read_pending()
             ):
-                self._scan_card_moods()
+                reserved, _ = dorm_task_reservations(
+                    self.op_data, [self.task, *self.tasks]
+                )
+                candidates = dorm_candidates(self.op_data, reserved)
+                if not candidates.recovering and not any(
+                    (mood := dorm_candidate_mood(self.op_data, name)) is not None
+                    and mood
+                    < getattr(self.op_data.operators.get(name), "upper_limit", 24)
+                    for name in candidates.unknown
+                ):
+                    self._scan_card_moods()
             new_plan = self.resting()
         except (
             MowerExit,
