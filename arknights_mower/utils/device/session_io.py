@@ -19,7 +19,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     emulator_connect_target,
 )
 from arknights_mower.utils.device.genymotion import GenymotionController
-from arknights_mower.utils.device.io_budget import device_io_budget
+from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.ldplayer_endpoint import LDPlayerEndpointResolver
 from arknights_mower.utils.device.manager_io import run_manager_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
@@ -68,7 +68,7 @@ class _CommandWindow:
         bound, so cutting it off ends a transaction that still has its whole
         budget, its remaining actions and nothing wrong with the device.
         """
-        remaining = self.remaining()
+        remaining = io_timeout(self.remaining())
         bound = self._command_timeout if timeout is None else timeout
         if bound is not None:
             remaining = min(remaining, bound)
@@ -153,6 +153,7 @@ class ProductionSessionADB:
         self._run = guarded_run
         # A vendor manager is not ADB: it must never reach the shared-server guard.
         self._manager_run = run or subprocess.run
+        self._probe = probe
         self._monotonic = monotonic
         self._profile = None
         self._read_configuration = read_configuration or _read_runtime_configuration
@@ -261,15 +262,33 @@ class ProductionSessionADB:
 
     def recover(self, adb_path: str, serial: str, timeout: float) -> bool:
         if not serial.strip():
+            if self._profile is not None and self._profile.preset_id == "windows.nox":
+                from arknights_mower.utils.device.nox_discovery import (
+                    locate_nox_manager,
+                )
+
+                profile = self._profile.model_copy(update={"adb_path": adb_path})
+                manager, _ = locate_nox_manager(
+                    profile.manager_path or profile.installation_path
+                )
+                if manager is None:
+                    raise InstanceBindingError(
+                        "binding_failed", "找不到已绑定实例的管理程序", ["manager_path"]
+                    )
+                return NoxBindingReader(
+                    run=self._manager_run,
+                    probe=self._probe,
+                    monotonic=self._monotonic,
+                ).recover(profile, manager, timeout, self.recover)
             raise ValueError("设备 serial 不能为空")
         window = self._adb_window(timeout)
         if endpoint := emulator_connect_target(serial):
             output = window.run([adb_path, "connect", endpoint])
             console_port, adb_port = endpoint.removeprefix("emu:").split(",")
-            return output in {
-                f"Connected to emulator on ports {console_port},{adb_port}",
-                f"Emulator already registered on port {adb_port}",
-            }
+            if output == f"Connected to emulator on ports {console_port},{adb_port}":
+                return True
+            if output != f"Emulator already registered on port {adb_port}":
+                return False
         if is_tcp_serial(serial):
             missing = f"error: no such device '{serial}'"
             try:

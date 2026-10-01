@@ -533,7 +533,6 @@ def test_maa_connect_preserves_shared_compatibility(
     "response,accepted",
     [
         ("Connected to emulator on ports 5558,5559", True),
-        ("Emulator already registered on port 5559", True),
         ("Connected to emulator on ports 5554,5555", False),
         ("Emulator already registered on port 5555", False),
         ("connected to 127.0.0.1:5559", False),
@@ -551,6 +550,98 @@ def test_selected_emulator_alias_recovery_connects_only_pinned_ports(
     assert runner.call_args.args == ([ADB, "connect", "emu:5558,5559"],)
     assert_child_options(runner.call_args.kwargs)
     assert 0 < runner.call_args.kwargs["timeout"] <= 5
+
+
+@pytest.mark.parametrize(
+    "reconnect_response,accepted",
+    [
+        ("reconnecting emulator-5558 [offline]", True),
+        ("reconnecting emulator-5554 [offline]", False),
+        ("reconnecting emulator-5558 failed", False),
+    ],
+)
+def test_registered_offline_emulator_alias_requires_targeted_reconnect(
+    reconnect_response, accepted
+):
+    state = ["offline"]
+
+    def run(argv, **kwargs):
+        if argv == [ADB, "connect", "emu:5558,5559"]:
+            output = "Emulator already registered on port 5559"
+        elif argv == [ADB, "-s", "emulator-5558", "reconnect"]:
+            output = reconnect_response
+            if accepted:
+                state[0] = "device"
+        else:
+            raise AssertionError(argv)
+        return subprocess.CompletedProcess(argv, 0, output.encode(), b"")
+
+    runner = Mock(side_effect=run)
+    adb = ProductionSessionADB(run=runner, probe=lambda timeout: None)
+    assert adb.recover(ADB, "emulator-5558", 5) is accepted
+    assert state[0] == ("device" if accepted else "offline")
+    assert [entry.args[0] for entry in runner.call_args_list] == [
+        [ADB, "connect", "emu:5558,5559"],
+        [ADB, "-s", "emulator-5558", "reconnect"],
+    ]
+
+
+def test_registered_emulator_reconnect_shares_the_connect_deadline():
+    now = [0]
+
+    def run(argv, **kwargs):
+        now[0] = 5
+        return subprocess.CompletedProcess(
+            argv, 0, b"Emulator already registered on port 5559", b""
+        )
+
+    runner = Mock(side_effect=run)
+    with pytest.raises(SharedADBError):
+        ProductionSessionADB(
+            run=runner, probe=lambda timeout: None, monotonic=lambda: now[0]
+        ).recover(ADB, "emulator-5558", 5)
+    assert runner.call_count == 1
+
+
+def test_registered_emulator_reconnect_uses_only_remaining_time():
+    now = [0]
+
+    def run(argv, **kwargs):
+        if argv[1] == "connect":
+            now[0] = 2
+            output = "Emulator already registered on port 5559"
+        else:
+            output = "reconnecting emulator-5558 [offline]"
+        return subprocess.CompletedProcess(argv, 0, output.encode(), b"")
+
+    runner = Mock(side_effect=run)
+    assert ProductionSessionADB(
+        run=runner, probe=lambda timeout: None, monotonic=lambda: now[0]
+    ).recover(ADB, "emulator-5558", 5)
+    assert [entry.kwargs["timeout"] for entry in runner.call_args_list] == [5, 3]
+
+
+def test_registered_emulator_cancellation_never_sends_targeted_reconnect():
+    from arknights_mower.tests.device_session_tests import Clock
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.session import DeviceSession
+
+    def run(argv, **kwargs):
+        bound.begin_shutdown()
+        return subprocess.CompletedProcess(
+            argv, 0, b"Emulator already registered on port 5559", b""
+        )
+
+    runner = Mock(side_effect=run)
+    adb = ProductionSessionADB(run=runner, probe=lambda timeout: None)
+    bound = DeviceSession(adb, Mock(), clock=Clock())
+    deadline = bound.begin_budget()
+    with pytest.raises(MowerExit):
+        bound._action(
+            lambda timeout: adb.recover(ADB, "emulator-5558", timeout), deadline
+        )
+    runner.assert_called_once()
+    assert runner.call_args.args[0] == [ADB, "connect", "emu:5558,5559"]
 
 
 def test_maa_guard_failure_returns_to_device_recovery_without_discarding_tasks(

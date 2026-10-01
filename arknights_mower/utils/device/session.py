@@ -14,6 +14,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
     InstanceEndpointPending,
 )
+from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.preflight import parse_display_size
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.log import logger
@@ -681,7 +682,13 @@ class DeviceSession:
         for _ in range(local_actions):
             # Only an unknown transport skips endpoint recovery; a target that is
             # reachable but not showing the required canvas still reconnects.
-            if observation.serial and observation.code != "transport_probe_failed":
+            if (
+                observation.serial
+                or (
+                    self.profile.preset_id == "windows.nox"
+                    and observation.instance_state == "starting"
+                )
+            ) and observation.code != "transport_probe_failed":
                 self._action(
                     lambda timeout: self.adb.recover(
                         self.adb_path, observation.serial, timeout
@@ -824,7 +831,8 @@ class DeviceSession:
             f"{'启动实例' if starting else '重连设备'}"
         )
         try:
-            succeeded = operation(self._remaining(deadline))
+            with device_io_budget(lambda: self._remaining(deadline)):
+                succeeded = operation(self._remaining(deadline))
         except (MowerExit, SessionFailure):
             raise
         except InstanceBindingError as exc:
@@ -867,7 +875,13 @@ class DeviceSession:
                     return observation
                 if (
                     connect
-                    and observation.serial
+                    and (
+                        observation.serial
+                        or (
+                            self.profile.preset_id == "windows.nox"
+                            and observation.instance_state == "starting"
+                        )
+                    )
                     and observation.state != "booting"
                     and observation.serial not in connected
                     and self.actions < self.policy.attempts

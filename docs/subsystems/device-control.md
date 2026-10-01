@@ -64,6 +64,7 @@ classDiagram
 ### 1.2 Session Lifecycle (`DeviceSession`)
 - Enforces `[INV-03]`: The session binds to a verified instance identity. If the target is absent, offline, or unresponsive, recovery attempts target that instance only, without silent fallback to other online devices on the host.
 - Enforces `[INV-05]`: ADB operations route through [`guard_adb`](../../arknights_mower/utils/device/adb_client/server.py), verifying socket server availability without issuing implicit `kill-server` commands.
+- Read-only Nox inspection never registers ADB transports. Runtime recovery of an unresolved Nox endpoint verifies its saved VM identity, reconnects only current enabled loopback ADB forwards, and confirms manager/direct boot identity before helper reconstruction. A selected `emulator-*` alias receiving an exact already-registered response performs targeted `-s serial reconnect` inside the registration deadline. The [bound endpoint registration decision](../../.agents/notes/implemented/bug-fix/2026-10-01-adb-endpoint-registration.md) records these recovery boundaries and regressions.
 - The session reports one user-visible line per connection state change — the selected device, the instance launch, the ADB connect and the successful connection — and keeps attempt counters, budgets and observation snapshots in the debug log.
 
 ### 1.3 Bound Instance Start (`DeviceControl.start_bound`)
