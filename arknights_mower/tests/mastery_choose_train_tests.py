@@ -21,6 +21,7 @@ choose_train = BaseSchedulerSolver.choose_train
 class TestUnscheduledTrainingRoom(unittest.TestCase):
     def make_operators(self, support="", trainee="号角", plan=None):
         data = object.__new__(Operators)
+        data.config = types.SimpleNamespace(free_room=False)
         data.plan = {} if plan is None else plan
         data.operators = {
             name: types.SimpleNamespace(
@@ -219,6 +220,32 @@ class TestChooseTrainCurrentReplacement(unittest.TestCase):
             solver.choose_train_ope.called,
             "idx1 Current 应视为保持原样（替换后与其 scan 相同），不应触发 choose_train_ope",
         )
+
+    def test_assistant_departure_mood_uses_existing_slot_scan(self):
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                solver = make_solver(
+                    scenes=[
+                        Scene.INFRA_DETAILS,
+                        Scene.INFRA_DETAILS,
+                        Scene.INFRA_ARRANGE_ORDER,
+                        Scene.INFRA_DETAILS,
+                    ],
+                    scan_results=[
+                        [{"agent": "褐果"}, {"agent": "桃金娘"}],
+                        [{"agent": "夜莺"}, {"agent": "桃金娘"}],
+                    ],
+                )
+                solver.op_data.config.free_room = enabled
+                desired = ["夜莺", "Current"]
+                choose_train(solver, desired)
+                self.assertEqual(solver.get_agent_from_room.call_count, 2)
+                for invocation in solver.get_agent_from_room.call_args_list:
+                    self.assertEqual(invocation.args, ("train",))
+                    self.assertEqual(
+                        invocation.kwargs,
+                        {"departing_plan": desired} if enabled else {},
+                    )
 
 
 class TestChooseTrainOpensCheckInDetail(unittest.TestCase):

@@ -301,7 +301,7 @@ def test_plan_solver_runs_primary_phase_once_before_both_idle_stages(
     solver.tasks = []
     order = []
     solver._plan_primary_recovery = MagicMock(
-        side_effect=lambda: order.append("primary") or True
+        side_effect=lambda **kwargs: order.append("primary") or True
     )
     solver._fill_empty_dorms = MagicMock(
         side_effect=lambda **kwargs: order.append("fill")
@@ -316,7 +316,7 @@ def test_plan_solver_runs_primary_phase_once_before_both_idle_stages(
     solver.plan_solver()
 
     assert order == ["primary", "fill", "replace", "workshop"]
-    solver._plan_primary_recovery.assert_called_once_with()
+    solver._plan_primary_recovery.assert_called_once_with(scan_moods=True)
 
 
 def test_maintenance_sleep_ignores_regular_scheduler_wakeup(scheduler):

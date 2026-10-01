@@ -114,6 +114,34 @@ def test_simple_fill_skips_temporary_recovery_arrangement(solver):
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_idle_departure_observation_precedes_selection(solver, enabled):
+    solver.op_data.config.free_room = enabled
+    solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    solver.prepare_dorm_selection = MagicMock(return_value=[])
+    target = ["杜林", "琴柳", "红", "陈", "黑角"]
+    solver.task.plan = {ROOM: target.copy()}
+    observe = solver.get_agent_from_room.side_effect
+    choose = solver.choose_agent.side_effect
+    events = []
+
+    def read(room, read_time_index=None, *, departing_plan=None):
+        events.append("departure" if departing_plan is not None else "readback")
+        if departing_plan is not None:
+            assert departing_plan == target
+        return observe(room, read_time_index)
+
+    def select(*args, **kwargs):
+        events.append("selection")
+        return choose(*args, **kwargs)
+
+    solver.get_agent_from_room.side_effect = read
+    solver.choose_agent.side_effect = select
+    arrange(solver)
+    assert events == (["departure"] if enabled else []) + ["selection", "readback"]
+    assert solver.physical == target
+
+
 @pytest.mark.parametrize(
     "task_type",
     [TaskTypes.SHIFT_OFF, TaskTypes.SELF_CORRECTION, TaskTypes.NOT_SPECIFIC],

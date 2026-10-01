@@ -854,11 +854,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 and not first_task.plan
                 and first_task.meta_data in processed_agents
             ):
-                # 已完成的加工不再阻挡候选观测，其他临近任务继续保留。
+                # 已完成的加工不再占用任务预约，其他临近任务继续保留。
                 self.tasks[:] = [t for t in self.tasks if t is not first_task]
-            self.op_data.refresh_idle_dorm_search(reason="加工结束后复核恢复需求")
-            self._card_moods_scanned_this_run = False
-            if not self._plan_dorm_recovery():
+            self.op_data.refresh_idle_dorm_search(
+                reason="加工结束后复核恢复需求", names=processed_agents
+            )
+            if not self._plan_dorm_recovery(scan_moods=False):
                 self.plan_metadata()
 
     def _next_workshop_task(self, first_task):
@@ -2684,7 +2685,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # return adjust_0_room , adjust_0_room_len
         return adjust_0_room
 
-    def _plan_primary_recovery(self):
+    def _plan_primary_recovery(self, *, scan_moods=True):
         """共用主班轮休规划；普通补位和加工随后安排。"""
         self.op_data.rescue_needed()
         if any(
@@ -2711,7 +2712,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if self.find_next_task(task_type=TaskTypes.SHIFT_OFF):
                 logger.info("有未完成的下班任务")
                 return
-            if self.op_data.config.free_room and not self._initial_mood_read_pending():
+            if (
+                scan_moods
+                and self.op_data.config.free_room
+                and not self._initial_mood_read_pending()
+            ):
                 self._scan_card_moods()
             new_plan = self.resting()
         except (
@@ -2743,11 +2748,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         return True
 
-    def _plan_dorm_recovery(self):
+    def _plan_dorm_recovery(self, *, scan_moods=True):
         """共用主班、空床和不养闲人规划；宿舍事件不等待加工入队空档。"""
         if self._initial_mood_read_pending():
             return False
-        if not self._plan_primary_recovery():
+        if not self._plan_primary_recovery(scan_moods=scan_moods):
             return False
         self._fill_empty_dorms(primary_planned=True)
         if self.op_data.config.free_room or not self.find_next_task(
@@ -5954,7 +5959,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             elif scene == Scene.INFRA_DETAILS and self.find("room_detail"):
                 if tasks[0] == "scan":
-                    scan_result = self.get_agent_from_room("train")
+                    if self.op_data.config.free_room:
+                        scan_result = self.get_agent_from_room(
+                            "train", departing_plan=agents
+                        )
+                    else:
+                        scan_result = self.get_agent_from_room("train")
                     logger.debug(f"需要选择的干员：{scan_result}")
                     if len(scan_result) < len(agents):
                         scan_result.extend([""] * (len(agents) - len(scan_result)))
@@ -6927,7 +6937,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
-    def get_agent_from_room(self, room, read_time_index=None, related_operators=None):
+    def get_agent_from_room(
+        self,
+        room,
+        read_time_index=None,
+        related_operators=None,
+        *,
+        departing_plan=None,
+    ):
         # 只观察真实读房；初始化试住和肥鸭临时换位不产生新的休息周期。
         released_support = None
         if self._can_refresh_idle_dorm_search():
@@ -7039,6 +7056,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.operators[_name].need_to_refresh(r=room)
                     or (self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON)
                     or i in read_time_index
+                    or (
+                        departing_plan is not None
+                        and i < len(departing_plan)
+                        and departing_plan[i] != "Current"
+                        and _name not in departing_plan
+                    )
+                    or (
+                        self.op_data.config.free_room and previous_position != (room, i)
+                    )
                 )
                 if (
                     room.startswith("dorm")
@@ -7230,7 +7256,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if released_support is not None and (
             not released_support.current_room or released_support.is_resting()
         ):
-            self.op_data.refresh_idle_dorm_search(reason="专精协助位干员已释放")
+            self.op_data.refresh_idle_dorm_search(
+                reason="专精协助位干员已释放", names=[released_support.name]
+            )
         return result
 
     def refresh_current_room(self, room, current_index=None):
@@ -7745,6 +7773,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if item1 != item2:
                                 same = False
                 if not same:
+                    if (
+                        self._can_refresh_idle_dorm_search()
+                        and self.task.type != TaskTypes.RUN_ORDER
+                        and room != "train"
+                        and self.op_data.config.free_room
+                    ):
+                        # 换人前顺路读取离开者，不额外读取其工作／恢复倒计时。
+                        self.get_agent_from_room(room, departing_plan=plan[room])
                     # 沿用原跑单流程：换人前校准确认时刻，选人失败重试不重复读。
                     if (
                         len(new_plan) == 1
@@ -7994,7 +8030,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ]
         if completed:
             self.op_data.refresh_idle_dorm_search(
-                reason=f"成组下班已完成：{', '.join(completed)}"
+                reason=f"成组下班已完成：{', '.join(completed)}",
+                names={name for group in completed for name in groups[group]},
             )
             for group in completed:
                 del groups[group]

@@ -263,7 +263,7 @@ def test_arrange_room_resolves_selection_once_before_recovery_order(solver):
     instance.scene = MagicMock(return_value=0)
     instance.tap_confirm = MagicMock()
     instance.get_agent_from_room = MagicMock(
-        side_effect=lambda *args: [{"agent": name} for name in selected]
+        side_effect=lambda *args, **kwargs: [{"agent": name} for name in selected]
     )
     resolve = instance.prepare_dorm_selection
     instance.prepare_dorm_selection = MagicMock(wraps=resolve)

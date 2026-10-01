@@ -108,6 +108,39 @@ def test_zero_mood_outside_central_keeps_existing_countdown(room_reader, room):
     solver.recog.update.assert_not_called()
 
 
+@pytest.mark.parametrize("room", ["central", "factory", "train"])
+@pytest.mark.parametrize("target", ["Current", "歌蕾蒂娅", "红", "Free"])
+def test_departure_reads_actual_mood_without_forcing_countdown(
+    room_reader, room, target
+):
+    solver, op, _ = room_reader(room=room, mood=7)
+    op.need_to_refresh.return_value = False
+    op.mood = 24
+    op.current_mood.return_value = 24
+    result = solver.get_agent_from_room(room, departing_plan=[target])
+    leaving = target not in ("Current", "歌蕾蒂娅")
+    assert result[0]["mood"] == (7 if leaving else 24)
+    assert op.mood == (7 if leaving else 24)
+    assert solver.read_accurate_mood.call_count == int(leaving)
+    solver.read_operator_time.assert_not_called()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_idle_recovery_reads_new_factory_arrival_despite_recent_cache(
+    room_reader, enabled
+):
+    solver, op, _ = room_reader(room="factory", mood=7)
+    solver.op_data.config.free_room = enabled
+    op.current_room, op.current_index = "", -1
+    op.need_to_refresh.return_value = False
+    op.mood = 24
+    op.current_mood.return_value = 24
+    result = solver.get_agent_from_room("factory")
+    assert result[0]["mood"] == (7 if enabled else 24)
+    assert solver.read_accurate_mood.call_count == int(enabled)
+    solver.read_operator_time.assert_not_called()
+
+
 def test_fiammetta_keeps_countdown_even_when_in_central(room_reader):
     solver, _, deadline = room_reader(name="菲亚梅塔")
     assert solver.get_agent_from_room("central", [0])[0]["time"] == deadline

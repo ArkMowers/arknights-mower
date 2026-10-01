@@ -353,8 +353,9 @@ def test_idle_scan_refreshes_even_when_all_primary_mood_is_measured(solver):
 
 
 @pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("scan_moods", [False, True])
 def test_real_primary_planning_observes_cards_before_candidate_selection(
-    solver, monkeypatch, enabled
+    solver, monkeypatch, enabled, scan_moods
 ):
     solver.op_data.config.free_room = enabled
     solver.defer_backup_plan_until_mood_read = False
@@ -363,8 +364,8 @@ def test_real_primary_planning_observes_cards_before_candidate_selection(
     solver._scan_card_moods = MagicMock(side_effect=lambda: events.append("scan"))
     solver.resting = MagicMock(side_effect=lambda: events.append("primary") or {})
     monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
-    assert solver._plan_primary_recovery()
-    assert events == (["scan", "primary"] if enabled else ["primary"])
+    assert solver._plan_primary_recovery(scan_moods=scan_moods)
+    assert events == (["scan", "primary"] if enabled and scan_moods else ["primary"])
 
 
 def test_queued_shift_does_not_scan_or_replan_candidates(solver):

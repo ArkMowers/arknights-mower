@@ -14,7 +14,8 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 def test_batch_replans_once_after_actual_restoration(batch):
     solver = batch.solver
 
-    def replan():
+    def replan(*, scan_moods):
+        assert not scan_moods
         for room, names in solver.op_data.plan.items():
             for index, name in enumerate(names):
                 op = solver.op_data.operators[name]
@@ -26,9 +27,11 @@ def test_batch_replans_once_after_actual_restoration(batch):
     solver.craft_material()
 
     assert batch.crafts == ["蜜莓", "年", "空爆"]
-    solver._plan_dorm_recovery.assert_called_once_with()
+    solver._plan_dorm_recovery.assert_called_once_with(scan_moods=False)
     assert solver.agent_arrange.call_args.kwargs == {"get_time": True}
-    solver.op_data.refresh_idle_dorm_search.assert_called_once()
+    solver.op_data.refresh_idle_dorm_search.assert_called_once_with(
+        reason="加工结束后复核恢复需求", names={"蜜莓", "年", "空爆"}
+    )
 
 
 def test_failed_restoration_does_not_plan_from_unconfirmed_positions(batch):
@@ -53,6 +56,7 @@ def test_idle_crafter_replaces_full_resident_despite_nearby_task(op_data):
     solver.op_data = op_data
     op_data.operators["银灰"].current_room = "meeting"
     op_data.operators["银灰"].current_index = 0
+    op_data.operators["空爆"].dorm_mood_fallback = ROOM
     crafter = op_data.operators["红"]
     crafter.mood = 24
     solver.task = SchedulerTask(task_type=TaskTypes.WORKSHOP, meta_data="红")
@@ -81,4 +85,5 @@ def test_idle_crafter_replaces_full_resident_despite_nearby_task(op_data):
         {ROOM: ["Current"] * 4 + ["红"]}
     ]
     assert op_data.operators["空爆"].current_room == ROOM
-    solver._plan_primary_recovery.assert_called_once_with()
+    assert op_data.operators["空爆"].dorm_mood_fallback == ROOM
+    solver._plan_primary_recovery.assert_called_once_with(scan_moods=False)

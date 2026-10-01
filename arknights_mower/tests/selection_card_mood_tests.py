@@ -180,6 +180,27 @@ def test_room_readback_overrides_estimate_and_new_search_clears_it(solver):
     assert data.dorm_mood_estimates == {}
 
 
+def test_cached_occupancy_read_preserves_estimate_until_measurement(solver):
+    instance, _ = solver
+    data = instance.op_data
+    op = data.operators["空爆"]
+    estimate = (6, datetime.now())
+    data.dorm_mood_estimates[op.name] = estimate
+    data.update_detail(op.name, op.mood, op.current_room, op.current_index, False)
+    assert data.dorm_mood_estimates[op.name] == estimate
+    data.update_detail(op.name, 8, op.current_room, op.current_index, True)
+    assert op.name not in data.dorm_mood_estimates
+
+
+def test_position_change_invalidates_only_moved_operator_estimate(solver):
+    instance, _ = solver
+    data = instance.op_data
+    now = datetime.now()
+    data.dorm_mood_estimates = {"空爆": (24, now), "红": (6, now)}
+    data.update_detail("空爆", 24, "", -1, False)
+    assert data.dorm_mood_estimates == {"红": (6, now)}
+
+
 def test_full_estimate_keeps_full_resident_without_trial_admission(solver):
     instance, _ = solver
     data = instance.op_data

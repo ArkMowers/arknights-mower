@@ -2,13 +2,14 @@
 
 from copy import deepcopy
 from datetime import datetime, timedelta
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from arknights_mower.solvers import base_schedule as base
 from arknights_mower.utils import config, workshop_automation
+from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -279,8 +280,9 @@ def test_stop_signal_does_not_switch_to_another_operator(batch):
 
 
 @pytest.mark.parametrize("nearby", [False, True])
-def test_completed_workshop_allows_fresh_scan_but_preserves_nearby_task(
-    batch, monkeypatch, nearby
+@pytest.mark.parametrize("scanned", [False, True])
+def test_completed_workshop_refreshes_only_crafters_without_rescanning(
+    batch, nearby, scanned
 ):
     solver = batch.solver
     completed = solver.task
@@ -292,35 +294,27 @@ def test_completed_workshop_allows_fresh_scan_but_preserves_nearby_task(
     if nearby:
         solver.tasks.append(pending)
     solver.op_data.plan["meeting"] = ["同寝干员"]
-    solver.op_data.dorm_mood_estimates = {"蜜莓": (24, batch.clock.now())}
-    solver._card_moods_scanned_this_run = True
-    solver.op_data.refresh_idle_dorm_search.side_effect = lambda **kwargs: (
-        solver.op_data.dorm_mood_estimates.clear()
+    unrelated = (6, batch.clock.now())
+    solver.op_data.dorm_mood_estimates = {
+        "蜜莓": (24, batch.clock.now()),
+        "同寝干员": unrelated,
+    }
+    solver.op_data.operators["同寝干员"].idle_rest_check = "unchanged"
+    solver._card_moods_scanned_this_run = scanned
+    solver.op_data.refresh_idle_dorm_search = MethodType(
+        Operators.refresh_idle_dorm_search, solver.op_data
     )
-    solver.recog = SimpleNamespace(img={}, w=1920, h=1080)
-    solver.tap = MagicMock()
-    solver.swipe_left = MagicMock()
-    solver.switch_arrange_order = MagicMock()
-    solver.wait_for_agent_page = MagicMock(return_value=[("蜜莓", 0)])
-    solver.back_to_infrastructure = MagicMock()
-    monkeypatch.setattr(base, "agent_card_selected", lambda *args: False)
-    monkeypatch.setattr(base, "estimate_agent_mood", lambda *args: 24)
 
-    def replan():
+    def replan(*, scan_moods):
+        assert not scan_moods
         assert all(task is not completed for task in solver.tasks)
         assert batch.arrangements[-1]["factory"] == ["特克诺"]
-        assert solver.op_data.dorm_mood_estimates == {}
-        # 保留真实扫描和 no_pending_task，验证任务收尾不会自挡。
-        solver._scan_card_moods()
+        assert solver.op_data.dorm_mood_estimates == {"同寝干员": unrelated}
+        assert solver.op_data.operators["同寝干员"].idle_rest_check == "unchanged"
         return True
 
     solver._plan_dorm_recovery.side_effect = replan
     solver.craft_material()
-    if nearby:
-        solver.wait_for_agent_page.assert_not_called()
-        assert solver.tasks == [pending]
-    else:
-        solver.wait_for_agent_page.assert_called_once()
-        assert solver.op_data.dorm_mood_estimates["蜜莓"][0] == 24
-        assert solver.tasks == []
+    assert solver._card_moods_scanned_this_run == scanned
+    assert solver.tasks == ([pending] if nearby else [])
     batch.errors.assert_not_called()
