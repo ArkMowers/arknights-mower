@@ -1,3 +1,4 @@
+import errno
 import json
 import multiprocessing
 import os
@@ -299,12 +300,23 @@ def test_protocol_version_cannot_be_derived_from_unverified_binary(service):
     assert service.host.mutations == []
 
 
-def test_failed_restart_persists_generation_before_kill_and_peer_observes_it(service):
+@pytest.mark.parametrize("locked_byte_unreadable", [False, True])
+def test_failed_restart_persists_generation_before_kill_and_peer_observes_it(
+    service, monkeypatch, locked_byte_unreadable
+):
     establish_failure(service)
+    if locked_byte_unreadable:
+        monkeypatch.setattr(
+            type(service.options["lock_path"]),
+            "read_bytes",
+            Mock(side_effect=PermissionError(errno.EACCES, "locked byte")),
+        )
 
     def kill(timeout):
         assert service.recovery.generation == 1
-        record = json.loads(service.options["lock_path"].read_bytes()[1:])
+        with service.options["lock_path"].open("rb") as handle:
+            handle.seek(1)
+            record = json.loads(handle.read(1024))
         assert record["generation"] == 1
         raise SharedADBError("host:kill failed")
 
