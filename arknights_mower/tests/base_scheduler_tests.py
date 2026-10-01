@@ -21,6 +21,13 @@ from arknights_mower.solvers.base_schedule import (  # noqa: E402
     BaseSchedulerSolver,
     _add_group_to_fix_plan,
 )
+from arknights_mower.utils.config.device_profile import DeviceProfile  # noqa: E402
+from arknights_mower.utils.device.recovery import DeviceRecoveryError  # noqa: E402
+from arknights_mower.utils.device.session import (  # noqa: E402
+    ReadinessResult,
+    SessionFailure,
+)
+from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
@@ -173,6 +180,15 @@ class TestIdleSimulatorWake(unittest.TestCase):
         self.solver.recog.update.assert_not_called()
         self.assertTrue(self.solver._simulator_closed_for_idle)
         self.assertFalse(self.solver.sleeping)
+
+    def test_failed_idle_shutdown_is_visible_without_false_wake_start(self):
+        self.restart.return_value = False
+        with patch.object(base_schedule.logger, "warning") as warning:
+            self.solver.handle_idle_action(600)
+        warning.assert_called_once()
+        self.assertFalse(self.solver._simulator_closed_for_idle)
+        self.solver._idle_sleep(0)
+        self.restart.assert_called_once_with(start=False)
 
     def test_reconnect_failure_does_not_repeat_direct_start(self):
         self.solver.handle_idle_action(600)
@@ -2788,6 +2804,68 @@ class TestManualClueTask(unittest.TestCase):
         self.assertEqual(solver.tasks, [])  # 任务已消费
 
 
+class TestSchedulerDispatchDeviceFailure(unittest.TestCase):
+    def failures(self):
+        return (
+            SessionFailure(ReadinessResult("offline", "selected"), "offline"),
+            TouchFailure(
+                DeviceProfile(),
+                "windows",
+                BrokenPipeError("ACTION_UP"),
+                delivery_unknown=True,
+            ),
+        )
+
+    def make_solver(self):
+        solver = object.__new__(BaseSchedulerSolver)
+        solver.find = MagicMock(return_value=True)
+        solver.skip = MagicMock()
+        solver.tasks = []
+        solver.error = False
+        return solver
+
+    def test_terminal_failure_preserves_current_task_and_stops_dispatch(self):
+        for failure in self.failures():
+            with self.subTest(failure=type(failure).__name__):
+                solver = self.make_solver()
+                task = SchedulerTask(
+                    time=datetime.now(), task_plan={}, task_type=TaskTypes.CLUE
+                )
+                solver.task = task
+                solver.tasks = [task]
+                solver._run_clue_flow = MagicMock(side_effect=failure)
+                with patch.object(base_schedule, "save_exception") as archive:
+                    with self.assertRaises(type(failure)) as raised:
+                        solver.infra_main()
+                self.assertIs(raised.exception, failure)
+                solver._run_clue_flow.assert_called_once_with()
+                solver.skip.assert_not_called()
+                archive.assert_not_called()
+                self.assertEqual(solver.tasks, [task])
+                self.assertIs(solver.task, task)
+
+    def test_terminal_failure_in_planning_does_not_mark_plan_complete(self):
+        for failure in self.failures():
+            with self.subTest(failure=type(failure).__name__):
+                solver = self.make_solver()
+                solver.task = None
+                solver.planned = False
+                solver.no_pending_task = MagicMock(return_value=True)
+                solver.agent_get_mood = MagicMock(side_effect=failure)
+                solver.run_order_solver = MagicMock()
+                solver.plan_solver = MagicMock()
+                with patch.object(base_schedule, "save_exception") as archive:
+                    with self.assertRaises(type(failure)) as raised:
+                        solver.infra_main()
+                self.assertIs(raised.exception, failure)
+                solver.agent_get_mood.assert_called_once_with(skip_dorm=True)
+                solver.run_order_solver.assert_not_called()
+                solver.plan_solver.assert_not_called()
+                solver.skip.assert_not_called()
+                archive.assert_not_called()
+                self.assertFalse(solver.planned)
+
+
 class TestRunOrderCountdownTiming(unittest.TestCase):
     def setUp(self):
         self.conf = SimpleNamespace(
@@ -2857,6 +2935,30 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_called_once_with()
         solver.sleep.assert_called_once_with(90.0)
         self.assertEqual(result, {room: ["旧干员"]})
+
+    def test_terminal_device_failure_stops_arrangement_without_retry(self):
+        for failure in (
+            DeviceRecoveryError("recovery exhausted"),
+            SessionFailure(ReadinessResult("offline", "selected"), "offline"),
+            TouchFailure(
+                DeviceProfile(),
+                "windows",
+                BrokenPipeError("ACTION_UP"),
+                delivery_unknown=True,
+            ),
+        ):
+            with self.subTest(failure=type(failure).__name__):
+                solver, room, _ = self.make_solver()
+                solver.choose_agent.side_effect = failure
+                with patch.object(base_schedule, "save_exception"):
+                    with self.assertRaises(type(failure)) as raised:
+                        solver.agent_arrange_room({}, room, solver.task.plan)
+                self.assertIs(raised.exception, failure)
+                solver.choose_agent.assert_called_once()
+                solver.tap_confirm.assert_not_called()
+                solver.recog.update.assert_not_called()
+                solver.back.assert_called_once()
+                self.assertIn(room, solver.task.plan)
 
     def test_invalid_countdown_uses_original_missed_order_path(self):
         for remaining in (0, -1, 660, 900):

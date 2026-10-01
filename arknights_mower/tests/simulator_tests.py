@@ -16,6 +16,7 @@ class TestSimulatorSessionDelegation(unittest.TestCase):
         self.control = MagicMock()
         self.control.start.return_value.ok = True
         self.control.recover.return_value.ok = True
+        self.control.stop_bound_simulator.return_value = True
         self.enterContext(
             patch.dict(
                 sys.modules,
@@ -56,11 +57,66 @@ class TestSimulatorSessionDelegation(unittest.TestCase):
             simulator.restart_simulator()
         self.command.assert_not_called()
 
+    def test_idle_shutdown_delegates_to_shared_control_for_every_preset(self):
+        self.control.stop_bound_simulator.return_value = True
+        for preset in (
+            "windows.mumu12",
+            "windows.ldplayer9",
+            "windows.ldplayer14",
+            "windows.nox",
+            "windows.bluestacks5",
+            "macos.mumu_pro",
+            "macos.bluestacks_air",
+            "macos.avd",
+            "linux.avd",
+            "linux.waydroid",
+            "linux.redroid",
+            "linux.genymotion",
+            "manual.other",
+        ):
+            with self.subTest(preset=preset):
+                self.conf.device.preset_id = preset
+                self.control.reset_mock()
+                self.command.reset_mock()
+
+                self.assertTrue(simulator.restart_simulator(start=False))
+
+                self.control.stop_bound_simulator.assert_called_once_with()
+                self.control.start.assert_not_called()
+                self.control.recover.assert_not_called()
+                self.command.assert_not_called()
+
+    def test_shared_idle_shutdown_failure_never_uses_legacy_commands(self):
+        self.control.stop_bound_simulator.return_value = False
+
+        self.assertFalse(simulator.restart_simulator(start=False))
+
+        self.control.stop_bound_simulator.assert_called_once_with()
+        self.command.assert_not_called()
+
+    def test_explicit_noop_never_issues_a_lifecycle_command(self):
+        self.assertTrue(simulator.restart_simulator(stop=False, start=False))
+
+        self.control.stop_bound_simulator.assert_not_called()
+        self.command.assert_not_called()
+
+    def test_terminal_shutdown_failure_does_not_retry_or_start_the_instance(self):
+        failure = DeviceRecoveryError("session failed")
+        self.control.stop_bound_simulator.side_effect = failure
+
+        with self.assertRaises(DeviceRecoveryError) as raised:
+            simulator.restart_simulator(start=False)
+
+        self.assertIs(raised.exception, failure)
+        self.control.stop_bound_simulator.assert_called_once_with()
+        self.control.start.assert_not_called()
+        self.control.recover.assert_not_called()
+        self.command.assert_not_called()
+
     def test_explicit_idle_stop_remains_stop_only(self):
         self.assertTrue(simulator.restart_simulator(start=False))
-        self.command.assert_called_once_with(
-            ["MuMuManager.exe", "api", "-v", "0", "shutdown_player"], "", 10, True
-        )
+        self.control.stop_bound_simulator.assert_called_once_with()
+        self.command.assert_not_called()
         self.control.start.assert_not_called()
         self.control.recover.assert_not_called()
 
@@ -72,15 +128,16 @@ class TestSimulatorSessionDelegation(unittest.TestCase):
         self.control.recover.assert_not_called()
 
     def test_failed_stop_is_not_reported_as_success(self):
-        self.command.return_value = False
+        self.control.stop_bound_simulator.return_value = False
         self.assertFalse(simulator.restart_simulator(start=False))
 
     def test_mumu_pro_idle_stop_never_uses_unverified_manager_command(self):
         self.conf.device.preset_id = "macos.mumu_pro"
         self.conf.simulator.name = "MuMuPro"
-        self.control.stop_bound_mumu_pro.return_value = False
+        self.control.stop_bound_simulator.return_value = False
         self.assertFalse(simulator.restart_simulator(start=False))
-        self.control.stop_bound_mumu_pro.assert_called_once_with()
+        self.control.stop_bound_simulator.assert_called_once_with()
+        self.control.stop_bound_mumu_pro.assert_not_called()
         self.command.assert_not_called()
 
 
@@ -118,7 +175,9 @@ class TestMuMuTransportCleanup(unittest.TestCase):
             )
         )
         self.stop = self.enterContext(
-            patch.object(simulator, "run_command", return_value=True)
+            patch.object(
+                self.control, "stop_bound_simulator", create=True, return_value=True
+            )
         )
         self.disconnect = self.enterContext(patch.object(simulator, "run_adb"))
 
@@ -136,8 +195,9 @@ class TestMuMuTransportCleanup(unittest.TestCase):
 
     def test_closed_session_never_disconnects_the_saved_endpoint(self):
         self.control.close()
+        self.stop.return_value = False
 
-        self.assertTrue(simulator.restart_simulator(start=False))
+        self.assertFalse(simulator.restart_simulator(start=False))
 
         self.disconnect.assert_not_called()
 

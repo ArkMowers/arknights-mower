@@ -5,13 +5,16 @@ import unittest
 from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import MagicMock, call, patch
 
 from arknights_mower.tests.device_mumu_frame_tests import NativeRenderer, connected_ipc
 from arknights_mower.tests.device_session_tests import ADB, Clock, Preflight, Simulator
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.config.device_profile import PresetId
 from arknights_mower.utils.device.application import DeviceControl, LegacyDeviceAdapter
+from arknights_mower.utils.device.preflight import PreflightError
 from arknights_mower.utils.device.session import DeviceSession
 from arknights_mower.utils.device.touch_backend import TouchFailure
 
@@ -105,6 +108,171 @@ class TouchTests(unittest.TestCase):
             error["alternatives"], [{"backend": "maatouch", "label": "MaaTouch"}]
         )
         self.assertEqual(device.device_id, "USB-A")
+
+    def test_closed_scrcpy_is_rebuilt_before_input_even_when_target_is_ready(self):
+        device = self.control.start().unwrap()
+        before = self.conf.model_dump()
+        self.backend.check_control_alive = lambda: False
+        replacement = InputBackend()
+        replacement.check_control_alive = lambda: True
+
+        def rebuild(client):
+            self.assertEqual(self.backend.closed, 1)
+            self.assertEqual(self.backend.sent, [])
+            self.assertEqual(client.device_id, "USB-A")
+            return replacement
+
+        self.factory.side_effect = rebuild
+        device.tap((20, 30))
+        self.assertEqual(replacement.sent, [(20, 30)])
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertEqual(self.control._session.actions, 1)
+        self.assertEqual(self.adb.actions, [])
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.conf.model_dump(), before)
+        self.peer.assert_not_called()
+
+    def test_explicit_readiness_recovery_does_not_reuse_known_closed_scrcpy(self):
+        self.control.start().unwrap()
+        self.backend.check_control_alive = lambda: False
+        replacement = InputBackend()
+        self.factory.return_value = replacement
+        self.assertTrue(self.control.recover().ok)
+        self.assertEqual(self.backend.closed, 1)
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertEqual(replacement.sent, [])
+
+    def test_healthy_scrcpy_is_not_rebuilt_before_input_or_ready_recovery(self):
+        device = self.control.start().unwrap()
+        self.backend.check_control_alive = lambda: True
+        device.tap((20, 30))
+        self.assertTrue(self.control.recover().ok)
+        self.assertEqual(self.backend.sent, [(20, 30)])
+        self.assertEqual(self.backend.closed, 0)
+        self.assertEqual(self.factory.call_count, 1)
+
+    def test_closed_scrcpy_without_recovery_attempts_sends_no_input(self):
+        self.conf.device.recovery_attempts = 0
+        self.control.start().unwrap()
+        self.backend.check_control_alive = lambda: False
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(self.factory.call_count, 1)
+        self.assertEqual(self.adb.actions, [])
+        self.assertEqual(self.simulator.actions, [])
+
+    def test_replacement_scrcpy_already_closed_never_sends_or_rebuilds_again(self):
+        self.control.start().unwrap()
+        self.backend.check_control_alive = lambda: False
+        replacement = InputBackend()
+        replacement.check_control_alive = lambda: False
+        self.factory.return_value = replacement
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(replacement.sent, [])
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertFalse(self.control.recover().ok)
+
+    def test_closed_scrcpy_cleanup_failure_blocks_input_and_replacement(self):
+        self.control.start().unwrap()
+        self.backend.check_control_alive = lambda: False
+
+        def broken_stop():
+            self.backend.closed += 1
+            raise OSError("owned control remains live")
+
+        self.backend.stop = broken_stop
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(self.factory.call_count, 1)
+        self.assertFalse(self.control.close().ok)
+        self.assertFalse(self.control.start().ok)
+
+    def test_input_probe_timeout_does_not_authorize_helper_rebuild_or_input(self):
+        self.control.start().unwrap()
+
+        def unknown_probe():
+            raise TimeoutError("scrcpy probe unconfirmed")
+
+        self.backend.check_control_alive = unknown_probe
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "touch_initialization_failed")
+        self.assertFalse(result.error.cause.delivery_unknown)
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(self.factory.call_count, 1)
+        self.assertEqual(self.adb.actions, [])
+        self.assertEqual(self.simulator.actions, [])
+
+    def test_missing_runtime_input_control_is_not_considered_healthy(self):
+        device = self.control.start().unwrap()
+        device._stop_control()
+        self.assertIsNone(device.control)
+        self.assertFalse(device.input_alive())
+        self.assertEqual(self.backend.closed, 1)
+
+    def test_closed_scrcpy_rebuild_revalidates_before_opening_helpers(self):
+        self.control.start().unwrap()
+        before = self.conf.model_dump()
+        self.backend.check_control_alive = lambda: False
+        check = self.control._preflight.check
+
+        def reject(profile, **options):
+            result = check(profile, **options)
+            result.ok = False
+            result.error = PreflightError("binding_failed", "binding changed")
+            return result
+
+        self.control._preflight.check = reject
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "binding_failed")
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(self.factory.call_count, 1)
+        self.assertEqual(self.conf.model_dump(), before)
+
+    def test_closed_scrcpy_recovery_is_shared_by_all_device_presets(self):
+        for preset in get_args(PresetId):
+            with self.subTest(preset=preset):
+                self.control.close()
+                self.conf.device.preset_id = preset
+                self.conf.sync_legacy_device_fields()
+                self.simulator.state = "running"
+                self.simulator.serial = "USB-A"
+                self.backend = InputBackend()
+                self.factory.return_value = self.backend
+                device = self.control.start().unwrap()
+                self.backend.check_control_alive = lambda: False
+                replacement = InputBackend()
+                self.factory.return_value = replacement
+                before = self.conf.model_dump()
+                device.tap((20, 30))
+                self.assertEqual(self.backend.sent, [])
+                self.assertEqual(self.backend.closed, 1)
+                self.assertEqual(replacement.sent, [(20, 30)])
+                self.assertEqual(self.conf.model_dump(), before)
+                self.assertEqual(self.adb.actions, [])
+                self.assertEqual(self.simulator.actions, [])
+                self.peer.assert_not_called()
+
+    def test_closed_scrcpy_rebuild_cannot_exceed_recovery_deadline(self):
+        self.control.start().unwrap()
+        self.backend.check_control_alive = lambda: False
+        replacement = InputBackend()
+
+        def late_rebuild(client):
+            self.control._session.clock.now += self.conf.device.recovery_timeout
+            return replacement
+
+        self.factory.side_effect = late_rebuild
+        result = self.control.execute(lambda target: target.tap((20, 30)))
+        self.assertFalse(result.ok)
+        self.assertEqual(self.backend.sent, [])
+        self.assertEqual(replacement.sent, [])
+        self.assertEqual(self.factory.call_count, 2)
 
     def test_uncertain_key_does_not_send_again_from_outer_solver(self):
         device = self.control.start().unwrap()

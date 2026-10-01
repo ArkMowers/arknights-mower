@@ -20,10 +20,11 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 ### 2.1 Device Control & Transport Domain
 
 - [ ] **[INV-DEV-16] Absent Target Cleanup**: Does an absent DroidCast target permit idempotent cleanup and the next verified startup only after owned forwards are absent, while unconfirmed transport failures, residual owned mappings and host cleanup failures remain blocking without touching foreign resources or shared ADB state?
+- [ ] **[INV-DEV-17] Pre-Input Helper Recovery**: Does a proven unavailable helper recover before any input only after the same Instance Binding is revalidated within the Recovery Budget, while uncertain delivery remains terminal without replay or an implicit backend switch?
 
 - [ ] **[INV-DEV-15] Settings Cancellation Isolation**: Do settings operations ignore stopped-task cancellation without clearing shared events, propagate independent caller-context copies to parallel discovery providers, check cancellation at manager command, polling and completion boundaries, retain shutdown and closure cancellation, restore the caller's policy, and return structured HTTP cancellation while concurrent tasks still stop?
 
-- [ ] **[INV-DEV-14] Startup Reconnect Budget**: Does a rejected startup reconnect retain bounded targeted retries and readiness polling within the same deadline, without another instance, repeated restart, or suppressed binding, shared ADB and cancellation failures?
+- [ ] **[INV-DEV-14] Startup Reconnect Budget**: Do initial startup and runtime launch across supported presets retain bounded targeted retries and readiness polling after a rejected reconnect within the same deadline, without another instance, repeated restart, or suppressed binding, shared ADB and cancellation failures?
 
 - [ ] **[INV-DEV-12] Android Configuration Ownership**: Do all configuration boundaries retain Android-managed settings independently of desktop Device Profile values, including malformed desktop-only fields, while preserving editable game server selection, Base Plans, weekly plans and general task settings through export/import round trips?
 
@@ -68,6 +69,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-09] Rescue Recovery Lifecycle**: Does rescue retain main-plan individual limits and majority completion, prioritize main primaries and priority replacements, and avoid occupied-bed clearing and excluded admissions?
 - [ ] **[INV-SCHED-10] Completed Exhaust Continuation**: Does an already-resting exhausted group leave normal planning and run-order recalculation enabled without allocating beds again?
 - [ ] **[INV-SCHED-11] Maintenance Backup Ordering**: A maintenance backup checks its configured deadline, completes the existing pre-maintenance drone-accelerated order batch before switching, and suppresses all trade order generation only while its effective primary slots contain trade order agents; its maintenance condition is false from downtime start, and backup exit waits for a normal check after task restart.
+- [ ] **[INV-SCHED-12] Idle Lifecycle Ownership**: Does idle shutdown use the authoritative Device Profile and verified lifecycle adapter, revalidate selected identity before shutdown within the same deadline, record a wake only after confirmed shutdown, and preserve ownership, Android isolation and unsupported-control refusal without legacy commands?
 
 ### 2.3 Presentation Layer (UI)
 

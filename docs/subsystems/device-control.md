@@ -98,6 +98,9 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 ## 3. Subsystem Invariants
 
+- The [shared idle recovery decision](../../.agents/notes/implemented/bug-fix/2026-10-01-shared-idle-recovery.md) defines cross-platform launch recovery, pre-input helper recovery and idle lifecycle ownership.
+- Automatic idle shutdown uses the selected Device Profile and its lifecycle adapter. Index-based Windows MuMu and LDPlayer shutdown revalidates manager identity within the same command deadline; changed or ambiguous identity prevents shutdown without requiring ADB readiness. Binding failures leave this boundary as a classified verdict rather than entering scheduling recognition recovery. Unsupported presets remain manual, and AVD shutdown remains restricted to owned instances.
+
 - **[INV-DEV-16] Absent Target Cleanup**: An exact selected-device-not-found response during permitted DroidCast cleanup does not create a permanent startup failure when guarded server-level forward inspection confirms no owned mapping remains. Host process and HTTP resources still close. Unknown transport errors, surviving owned mappings and host cleanup failures retain the cleanup-failure guard; foreign resources, Device Profile and shared ADB state remain unchanged.
 - The [absent-target cleanup decision](../../.agents/notes/implemented/bug-fix/2026-09-30-droidcast-absent-target-cleanup.md) specifies cleanup ownership and subsequent startup regression coverage.
 
@@ -109,7 +112,7 @@ The subsystem integrates platform-specific emulators through deterministic disco
 - **[INV-UI-03] Selected Instance Persistence**: Choosing a detected instance saves its explicit identity before connection testing or startup. Failed readiness preserves the choice; a rejected identity save prevents startup and restores the previous saved Device Profile. Connection success alone saves the verified endpoint and game package. Manual identity edits remain drafts until validated, and candidate lists remain ephemeral.
 - The [device selection persistence decision](../../.agents/notes/implemented/bug-fix/2026-09-30-device-selection-persistence.md) specifies selection and retry coverage.
 
-- **[INV-DEV-14] Startup Reconnect Budget**: Rejected ADB reconnects during startup readiness retain bounded retries and observation within the existing deadline. `DeviceSession._wait_ready` retries only unconfirmed connections, counts each reconnect in the existing action budget, and uses `_wait_local` before another attempt. Exhausted actions permit only read-only readiness polling until the same deadline; binding changes, shared ADB errors and cancellation remain terminal.
+- **[INV-DEV-14] Startup Reconnect Budget**: Rejected ADB reconnects during initial startup or runtime launch readiness retain bounded retries and observation within the existing deadline for every supported preset. `DeviceSession._wait_ready` retries only unconfirmed connections, counts each reconnect in the existing action budget, and uses `_wait_local` before another attempt. Exhausted actions permit only read-only readiness polling until the same deadline; binding changes, shared ADB errors and cancellation remain terminal.
 - The [MuMu Pro idle reconnect decision](../../.agents/notes/implemented/bug-fix/2026-09-30-mumu-pro-idle-reconnect.md) records the shared readiness boundary and its regression tests.
 
 - **[INV-DEV-12] Android Configuration Ownership**: Android-managed settings remain authoritative through configuration load, import, partial update and save/reload. `Conf` removes the incoming desktop Device Profile before validation and derives its own profile from the installed Android adapter's validated native fields; Android partial updates use that same boundary instead of desktop binding validation.
@@ -127,6 +130,7 @@ The subsystem integrates platform-specific emulators through deterministic disco
 - The [MuMu Pro connection repair](../../.agents/notes/implemented/bug-fix/2026-09-30-mumu-pro-manual-binding.md) records the regression and focused coverage.
 
 - **[INV-DEV-09] Classified Failure Isolation**: Classified device failures, including Temporary Preparation errors, request owned resource cleanup and expose their structured verdict without requesting application shutdown.
+- **[INV-DEV-17] Pre-Input Helper Recovery**: A control helper proven unavailable before input is rebuilt only after revalidating the same Instance Binding within the Recovery Budget. The scrcpy control probe checks EOF without sending input or consuming buffered data. Healthy helpers remain unchanged; unavailable helpers use the selected backend and existing bounded recovery, with another liveness check after rebuild. Any failure after input transmission starts retains the terminal delivery-unknown verdict without replay or backend substitution.
 - Input surface mismatch or unreadable display state keeps the settings interface available. Failed compensation retains its recovery record. Unclassified internal faults still request coordinated application shutdown.
 - The [preparation failure decision](../../.agents/notes/implemented/bug-fix/2026-09-30-preparation-failure-isolation.md) records the classification boundary and regression coverage.
 

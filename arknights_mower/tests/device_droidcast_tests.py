@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from threading import Event, RLock
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
@@ -167,7 +167,10 @@ class DroidCastTests(unittest.TestCase):
         self.device._resource_lock = RLock()
         self.device._interrupted = Event()
         self.device._close_error = None
-        self.device.control = None
+        self.input_control = SimpleNamespace(
+            input_alive=Mock(return_value=True), close=Mock(), interrupt=Mock()
+        )
+        self.device.control = self.input_control
         self.device.device_id = "USB-A"
         self.device.client = SimpleNamespace(adb_bin="chosen-adb", device_id="USB-A")
         self.adb, self.simulator = ADB(), Simulator()
@@ -223,7 +226,12 @@ class DroidCastTests(unittest.TestCase):
 
     def test_http_timeout_rebuilds_once_and_keeps_selected_backend(self):
         self.http.failure = requests.ReadTimeout("read stalled")
-        result = self.control.capture()
+        with patch.object(
+            self.control._adapter, "rebind", wraps=self.control._adapter.rebind
+        ) as rebind:
+            result = self.control.capture()
+        rebind.assert_not_called()
+        self.input_control.input_alive.assert_called_once_with()
         self.assertEqual(result.error.code, "droidcast_http_timeout")
         self.assertEqual(len(self.android.processes), 2)
         self.assertEqual(self.android.processes[0].terminated, 1)

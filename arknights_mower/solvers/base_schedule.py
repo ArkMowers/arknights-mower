@@ -64,6 +64,7 @@ from arknights_mower.utils.datetime import (
     get_server_weekday,
 )
 from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.dorm_candidates import dorm_candidates, vacant_dorm_slots
 from arknights_mower.utils.email import maa_template, send_message, task_template
@@ -1191,7 +1192,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     f"{e}，未完成的切换任务推迟至 {retry_time.strftime('%H:%M:%S')}"
                 )
                 self.skip()
-            except MowerExit:
+            except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as e:
                 save_exception(e)
@@ -1242,7 +1243,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         return True
                     self.run_order_solver()
                     self.plan_solver()
-            except MowerExit:
+            except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as e:
                 save_exception(e)
@@ -7687,7 +7688,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if self.scene() in self.waiting_scene:
                     if not self.waiting_solver():
                         return
-            except MowerExit:
+            except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as e:
                 save_exception(e)
@@ -8684,7 +8685,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.restore_maa_theme()
             self.rest_until_next_task()
             self.MAA = None
-        except MowerExit:
+        except (MowerExit, DeviceRecoveryError):
             if self.MAA is not None:
                 self.maa_stop()
                 logger.info("停止MAA")
@@ -9228,7 +9229,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info("local operation finished without executing any stage")
 
             scheduling(self.tasks)
-        except MowerExit:
+        except (MowerExit, DeviceRecoveryError):
             raise
         except Exception as e:
             save_exception(e)
@@ -9444,6 +9445,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if config.conf.close_simulator_when_idle and remaining_time > 300:
             if restart_simulator(start=False):
                 self._simulator_closed_for_idle = True
+            else:
+                logger.warning(
+                    "空闲关闭模拟器失败，继续等待；请检查所选实例和管理程序。"
+                )
         elif config.conf.exit_game_when_idle and remaining_time > 300:
             self.device.exit()
         elif config.conf.return_home_when_idle:

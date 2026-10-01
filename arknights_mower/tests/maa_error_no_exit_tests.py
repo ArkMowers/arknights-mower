@@ -10,6 +10,86 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils.config.device_profile import DeviceProfile  # noqa: E402
+from arknights_mower.utils.device.recovery import DeviceRecoveryError  # noqa: E402
+from arknights_mower.utils.device.session import (  # noqa: E402
+    ReadinessResult,
+    SessionFailure,
+)
+from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E402
+
+
+class TestSchedulerTerminalDeviceFailures(unittest.TestCase):
+    def failures(self):
+        return (
+            DeviceRecoveryError("recovery exhausted"),
+            SessionFailure(ReadinessResult("offline", "selected"), "offline"),
+            TouchFailure(
+                DeviceProfile(),
+                "windows",
+                BrokenPipeError("ACTION_UP"),
+                delivery_unknown=True,
+            ),
+        )
+
+    def make_solver(self):
+        solver = object.__new__(BaseSchedulerSolver)
+        solver.MAA = None
+        solver.device = MagicMock()
+        solver.recog = MagicMock()
+        solver.last_execution = {"maa": datetime.now()}
+        solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=1))]
+        solver.local_operation_followup_time = None
+        solver._idle_sleep = MagicMock()
+        solver.check_current_focus = MagicMock()
+        return solver
+
+    def test_terminal_failure_after_idle_is_not_reported_as_maa_error(self):
+        for failure in self.failures():
+            with self.subTest(failure=type(failure).__name__):
+                solver = self.make_solver()
+                solver.rest_until_next_task = MagicMock(side_effect=failure)
+                conf = SimpleNamespace(
+                    maa_gap=4,
+                    RG=False,
+                    SSS=False,
+                    RCL=False,
+                    RA=False,
+                    SF=False,
+                    maa_rg_sleep_min="12:00",
+                    maa_rg_sleep_max="12:00",
+                )
+                with (
+                    patch.object(base_schedule.config, "conf", conf),
+                    patch.object(base_schedule, "send_message") as notify,
+                    patch.object(base_schedule, "save_exception") as archive,
+                ):
+                    with self.assertRaises(type(failure)) as raised:
+                        solver.maa_plan_solver()
+                self.assertIs(raised.exception, failure)
+                solver.rest_until_next_task.assert_called_once_with()
+                solver._idle_sleep.assert_not_called()
+                solver.device.exit.assert_not_called()
+                solver.check_current_focus.assert_not_called()
+                notify.assert_not_called()
+                archive.assert_not_called()
+
+    def test_terminal_failure_in_local_solver_does_not_exit_or_relaunch_game(self):
+        for failure in self.failures():
+            with self.subTest(failure=type(failure).__name__):
+                solver = self.make_solver()
+                solver.mower_stage_plan = MagicMock(side_effect=failure)
+                with (
+                    patch.object(base_schedule, "send_message") as notify,
+                    patch.object(base_schedule, "save_exception") as archive,
+                ):
+                    with self.assertRaises(type(failure)) as raised:
+                        solver.mower_plan_solver(one_time=True)
+                self.assertIs(raised.exception, failure)
+                solver.device.exit.assert_not_called()
+                solver.check_current_focus.assert_not_called()
+                notify.assert_not_called()
+                archive.assert_not_called()
 
 
 class MaaErrorNoExitTests(unittest.TestCase):

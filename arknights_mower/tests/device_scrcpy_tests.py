@@ -1,17 +1,20 @@
 """scrcpy ownership and delivery through the device application boundary."""
 
+import errno
 import os
 import socket
 import struct
 import unittest
-from threading import Lock
-from unittest.mock import patch
+from threading import Event, Lock, RLock, Thread
+from unittest.mock import MagicMock, patch
 
 from arknights_mower.tests.device_session_tests import ADB, Clock, Preflight, Simulator
 from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.scrcpy import Scrcpy
+from arknights_mower.utils.device.scrcpy.core import Client
 from arknights_mower.utils.device.session import DeviceSession
 
 
@@ -151,6 +154,154 @@ class ScrcpyTests(unittest.TestCase):
         self.assertTrue(app.close().ok)
         self.assertTrue(app.close().ok)
         self.assertTrue(all(wire.closed == 1 for wire in self.transport.wires))
+
+    def probe_client(self, stream):
+        helper = object.__new__(Client)
+        helper.owner_pid = os.getpid()
+        helper._interrupted = False
+        helper.control_socket_lock = RLock()
+        helper.control_socket = stream
+        helper.stop = lambda: None
+        return helper
+
+    def test_control_probe_detects_eof_without_sending_input(self):
+        local, peer = socket.socketpair()
+        self.addCleanup(local.close)
+        peer.close()
+        helper = self.probe_client(type("Stream", (), {"sock": local})())
+        self.assertFalse(helper.check_control_alive())
+
+    def test_control_probe_is_nonblocking_and_preserves_pending_data(self):
+        local, peer = socket.socketpair()
+        self.addCleanup(local.close)
+        self.addCleanup(peer.close)
+        local.settimeout(7)
+        helper = self.probe_client(type("Stream", (), {"sock": local})())
+        self.assertTrue(helper.check_control_alive())
+        peer.sendall(b"pending clipboard")
+        self.assertTrue(helper.check_control_alive())
+        self.assertEqual(local.gettimeout(), 7)
+        self.assertEqual(local.recv(64), b"pending clipboard")
+
+    def test_control_probe_detects_detached_stream(self):
+        helper = self.probe_client(type("Stream", (), {"sock": None})())
+        self.assertFalse(helper.check_control_alive())
+
+    def test_control_probe_keeps_unknown_read_failures_terminal(self):
+        connection = MagicMock()
+        connection.fileno.return_value = 7
+        helper = self.probe_client(type("Stream", (), {"sock": connection})())
+        for failure in (socket.timeout("probe timeout"), OSError("probe denied")):
+            with self.subTest(failure=type(failure).__name__):
+                connection.recv.side_effect = failure
+                with self.assertRaises(type(failure)):
+                    helper.check_control_alive()
+                connection.sendall.assert_not_called()
+
+    def test_control_probe_detects_reset_but_not_would_block(self):
+        connection = MagicMock()
+        connection.fileno.return_value = 7
+        helper = self.probe_client(type("Stream", (), {"sock": connection})())
+        for failure, alive in (
+            (ConnectionResetError("peer reset"), False),
+            (BlockingIOError("no pending data"), True),
+        ):
+            with self.subTest(alive=alive):
+                connection.recv.side_effect = failure
+                self.assertEqual(helper.check_control_alive(), alive)
+
+    def test_control_probe_concurrent_close_is_known_before_input(self):
+        connection = MagicMock()
+        connection.fileno.return_value = 7
+        helper = self.probe_client(type("Stream", (), {"sock": connection})())
+
+        def closed(*args):
+            connection.fileno.return_value = -1
+            raise OSError(errno.EBADF, "socket closed")
+
+        connection.recv.side_effect = closed
+        self.assertFalse(helper.check_control_alive())
+        connection.settimeout.assert_called_once_with(0)
+        connection.sendall.assert_not_called()
+
+    def test_control_probe_close_during_timeout_restore_is_not_hidden_failure(self):
+        connection = MagicMock()
+        connection.gettimeout.return_value = 7
+        connection.fileno.return_value = 7
+        connection.recv.return_value = b"pending"
+        helper = self.probe_client(type("Stream", (), {"sock": connection})())
+
+        def settimeout(seconds):
+            if seconds != 0:
+                connection.fileno.return_value = -1
+                raise OSError(errno.EBADF, "socket closed")
+
+        connection.settimeout.side_effect = settimeout
+        self.assertFalse(helper.check_control_alive())
+        connection.sendall.assert_not_called()
+
+    def test_control_probe_checks_cancellation_after_restoring_timeout(self):
+        connection = MagicMock()
+        connection.gettimeout.return_value = 7
+        connection.fileno.return_value = 7
+        connection.recv.return_value = b"pending"
+        helper = self.probe_client(type("Stream", (), {"sock": connection})())
+        with patch(
+            "arknights_mower.utils.device.scrcpy.core.budget_sleep",
+            side_effect=[None, MowerExit("cancelled")],
+        ):
+            with self.assertRaises(MowerExit):
+                helper.check_control_alive()
+        connection.settimeout.assert_any_call(0)
+        connection.settimeout.assert_any_call(7)
+        connection.recv.assert_called_once_with(1, socket.MSG_PEEK)
+        connection.sendall.assert_not_called()
+
+    def test_control_probe_busy_lock_is_unknown_without_reading_or_sending(self):
+        connection = MagicMock()
+        connection.fileno.return_value = 7
+        connection.recv.return_value = b"pending"
+        helper = self.probe_client(type("Stream", (), {"sock": connection})())
+        acquired, release = Event(), Event()
+
+        def clipboard_reader():
+            with helper.control_socket_lock:
+                acquired.set()
+                release.wait(1)
+
+        worker = Thread(target=clipboard_reader)
+        worker.start()
+        try:
+            self.assertTrue(acquired.wait(1))
+            with self.assertRaises(TimeoutError):
+                helper.check_control_alive()
+        finally:
+            release.set()
+            worker.join(1)
+        self.assertFalse(worker.is_alive())
+        connection.recv.assert_not_called()
+        connection.sendall.assert_not_called()
+        connection.settimeout.assert_not_called()
+
+    def test_broken_pipe_after_touch_down_never_restarts_or_replays(self):
+        app = self.control()
+        helper = app.start().unwrap().scrcpy
+        wire = self.transport.wires[-1]
+        sendall = wire.sendall
+
+        def send(data):
+            if wire.sent:
+                wire.failure = BrokenPipeError("touch up delivery unknown")
+            sendall(data)
+
+        wire.sendall = send
+        result = app.execute(lambda handle: handle.scrcpy.tap(23, 45))
+        self.assertFalse(result.ok)
+        self.assertEqual(len(wire.sent), 2)
+        self.assertEqual(wire.sent[0][:2], b"\x02\x00")
+        self.assertEqual(wire.sent[1][:2], b"\x02\x01")
+        self.assertEqual(len(self.transport.commands), 1)
+        self.assertIs(helper, app._device.scrcpy)
 
     def test_close_failure_does_not_skip_remaining_owned_resources(self):
         app = self.control()
