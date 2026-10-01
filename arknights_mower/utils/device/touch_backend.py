@@ -3,7 +3,10 @@
 from pathlib import Path
 
 from arknights_mower import __rootdir__
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    input_reconciliation,
+)
 
 TOUCH_LABELS = {"scrcpy": "scrcpy 1.21", "maatouch": "MaaTouch", "mumu_ipc": "MuMu IPC"}
 
@@ -61,20 +64,36 @@ def touch_backends(profile, host):
 
 
 class TouchFailure(DeviceRecoveryError):
-    def __init__(self, profile, host, cause, *, delivery_unknown=False, transport=None):
+    def __init__(
+        self,
+        profile,
+        host,
+        cause,
+        *,
+        delivery_unknown=False,
+        transport=None,
+        phase="initialization",
+        retryable=False,
+    ):
         self.backend = profile.touch_backend
         self.transport = transport or self.backend
         self.delivery_unknown = delivery_unknown
+        self.phase = "delivery" if delivery_unknown else phase
+        self.retryable = retryable and not delivery_unknown
+        self.reconciliation = input_reconciliation()
         self.cleanup_failed = getattr(cause, "cleanup_failed", False)
         self.code = (
             "touch_result_unknown"
             if delivery_unknown
+            else "touch_probe_failed"
+            if phase == "probe"
+            else "touch_preparation_failed"
+            if phase == "preparation"
             else "touch_initialization_failed"
         )
         if self.transport == "adb":
             self.alternatives = []
             label = "ADB"
-            remedy = "请结束本次运行并检查 ADB 连接和设备状态，确认后重试。"
         else:
             self.alternatives = [
                 {"backend": item["backend"], "label": item["label"]}
@@ -82,12 +101,22 @@ class TouchFailure(DeviceRecoveryError):
                 if item["available"] and item["backend"] != self.backend
             ]
             label = TOUCH_LABELS[self.backend]
-            remedy = (
-                "请结束本次运行并检查设备状态，确认后重试或手动选择其他兼容触控后端。"
-            )
-        reason = (
-            "输入发送结果不明确，已停止本次会话，不会自动重复动作"
+        remedy = (
+            "正在恢复设备连接并重新识别画面，不会重复发送原输入。"
+            if delivery_unknown and self.reconciliation == "scene"
+            else "正在恢复设备连接；输入结果待核实，相关任务已暂停，请确认画面和任务状态后继续。"
             if delivery_unknown
+            else "正在重试发送前检查或恢复辅助连接；仍未确认时暂停相关任务，请检查设备状态。"
+            if self.retryable
+            else "请检查设备连接与触控配置后重试；不会自动切换触控后端。"
+        )
+        reason = (
+            "输入发送结果不明确，已停止本次动作，不会自动重复输入"
+            if delivery_unknown
+            else "输入连接状态尚未确认，尚未发送输入"
+            if phase == "probe"
+            else "输入发送前准备失败，尚未发送输入"
+            if phase == "preparation"
             else "触控初始化失败"
         )
         super().__init__(f"{label} {reason}：{cause}。{remedy}")
@@ -102,4 +131,7 @@ class TouchFailure(DeviceRecoveryError):
             "transport": self.transport,
             "alternatives": self.alternatives,
             "delivery_unknown": self.delivery_unknown,
+            "phase": self.phase,
+            "retryable": self.retryable,
+            "reconciliation": self.reconciliation,
         }

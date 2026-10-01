@@ -4,8 +4,21 @@ import os
 import socket
 from threading import Lock
 
+from arknights_mower.utils.device.adb_client.server import current_adb_server
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
+
+
+def verify_owned_server(owner, endpoint, generation, *, timeout=None):
+    """An owned connection never adopts another listener or server generation."""
+    if owner is None:
+        return
+    if owner.generation != generation or owner.address != endpoint:
+        raise ConnectionError("ADB 服务已重建，旧连接不能继续使用")
+    if timeout is not None:
+        owner.check(owner.adb_path, timeout=io_timeout(timeout))
+        if owner.generation != generation or owner.address != endpoint:
+            raise ConnectionError("ADB 服务已重建，旧连接不能继续使用")
 
 
 class Socket:
@@ -18,12 +31,24 @@ class Socket:
             self._interrupted = False
             self.sock = None
             self.timeout = timeout
+            self.server = server
+            self.server_owner = current_adb_server()
+            self.server_generation = (
+                self.server_owner.generation if self.server_owner is not None else None
+            )
+            verify_owned_server(
+                self.server_owner, server, self.server_generation, timeout=timeout
+            )
             self.sock = socket.create_connection(server, timeout=io_timeout(timeout))
+            verify_owned_server(self.server_owner, server, self.server_generation)
             io_timeout(timeout)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except ConnectionRefusedError as e:
             logger.error(f"ConnectionRefusedError: {server}")
             raise e
+        except BaseException:
+            self.close()
+            raise
 
     def __enter__(self) -> Socket:
         return self
@@ -33,6 +58,14 @@ class Socket:
 
     def __del__(self) -> None:
         self.close()
+
+    def _verify_server(self, *, timeout=None):
+        verify_owned_server(
+            getattr(self, "server_owner", None),
+            getattr(self, "server", None),
+            getattr(self, "server_generation", None),
+            timeout=timeout,
+        )
 
     def close(self) -> None:
         """Detach once and interrupt a blocking send/receive before closing."""
@@ -85,7 +118,7 @@ class Socket:
             view = view[rcvlen:]
             pos += rcvlen
         if pos != len:
-            raise EOFError("recv_exactly %d bytes failed" % len)
+            raise ConnectionError("recv_exactly %d bytes failed" % len)
         return bytes(buf)
 
     def recv_response(self) -> bytes:
@@ -102,8 +135,10 @@ class Socket:
             raise ConnectionError(self.recv_response())
 
     def recv(self, len: int) -> bytes:
+        self._verify_server()
         self.sock.settimeout(io_timeout(self.timeout))
         data = self.sock.recv(len)
+        self._verify_server()
         io_timeout(self.timeout)
         return data
 
@@ -113,13 +148,21 @@ class Socket:
 
     def sendall(self, data: bytes) -> Socket:
         """send data to server"""
-        self.sock.settimeout(io_timeout(self.timeout))
+        try:
+            self._verify_server(timeout=self.timeout)
+            self.sock.settimeout(io_timeout(self.timeout))
+        except Exception as exc:
+            exc.input_not_sent = True
+            raise
         self.sock.sendall(data)
+        self._verify_server()
         io_timeout(self.timeout)
         return self
 
     def recv_into(self, buffer, nbytes: int) -> int:
+        self._verify_server()
         self.sock.settimeout(io_timeout(self.timeout))
         received = self.sock.recv_into(buffer, nbytes)
+        self._verify_server()
         io_timeout(self.timeout)
         return received

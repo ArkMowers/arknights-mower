@@ -7,7 +7,11 @@ from threading import Event, RLock, Thread
 
 from arknights_mower import __system__
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
-from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.adb_client.server import (
+    adb_command,
+    adb_subprocess_options,
+    guard_adb,
+)
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
@@ -25,6 +29,7 @@ class Session:
         self._lock = RLock()
         self._closed_event = Event()
         self._io_thread = None
+        self.input_started = False
         if not defer_start:
             self.__enter__()
 
@@ -42,22 +47,25 @@ class Session:
             if time.monotonic() >= deadline:
                 raise TimeoutError("MaaTouch 初始化超时")
             self.process = subprocess.Popen(
-                [
-                    client.adb_bin,
-                    "-s",
-                    client.device_id,
-                    "shell",
-                    "CLASSPATH=/data/local/tmp/maatouch",
-                    "app_process",
-                    "/",
-                    "com.shxyke.MaaTouch.App",
-                ],
+                adb_command(
+                    [
+                        client.adb_bin,
+                        "-s",
+                        client.device_id,
+                        "shell",
+                        "CLASSPATH=/data/local/tmp/maatouch",
+                        "app_process",
+                        "/",
+                        "com.shxyke.MaaTouch.App",
+                    ]
+                ),
                 stdout=subprocess.PIPE,
                 stdin=subprocess.PIPE,
                 text=True,
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if __system__ == "windows"
                 else 0,
+                **adb_subprocess_options(),
             )
 
         def read_header():
@@ -86,7 +94,7 @@ class Session:
             f"max_contact: {max_contacts}; max_x: {max_x}; max_y: {max_y}; max_pressure: {max_pressure}"
         )
 
-    def _io(self, operation, timeout=10):
+    def _io(self, operation, timeout=10, *, input_operation=False):
         """Bound pipe operations on Windows too; closing reaps their process."""
         done = Event()
         result = []
@@ -109,6 +117,8 @@ class Session:
             if time.monotonic() >= deadline:
                 raise TimeoutError("MaaTouch I/O 超时")
             self._io_thread = Thread(target=run, daemon=True, name="maatouch-io")
+            if input_operation:
+                self.input_started = True
             self._io_thread.start()
         while not done.is_set():
             remaining = min(deadline - time.monotonic(), io_timeout(10))
@@ -206,7 +216,7 @@ class Session:
                 raise ConnectionError("MaaTouch 写入不完整，发送结果无法确认")
             self.process.stdin.flush()
 
-        self._io(write)
+        self._io(write, input_operation=True)
 
     def wait(self, seconds: float) -> None:
         """Wait for the requested gesture, while keeping shutdown interruptible."""

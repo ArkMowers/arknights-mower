@@ -133,20 +133,43 @@ class PreparationLifecycleTests(unittest.TestCase):
         self.assertIsNone(self.main.main({}, preparation_serial="USB-123"))
         self.assert_restored()
 
-    def test_fatal_worker_error_and_keyboard_interrupt_restore_preparation(self):
-        for error in (DeviceRecoveryError("exhausted"), KeyboardInterrupt()):
-            with self.subTest(error=type(error).__name__):
-                self.io.writes.clear()
+    def test_keyboard_interrupt_restores_preparation(self):
+        error = KeyboardInterrupt()
 
-                def fail():
-                    self.assert_prepared()
-                    raise error
+        def fail():
+            self.assert_prepared()
+            raise error
 
-                self.step = fail
-                with self.assertRaises(type(error)) as caught:
-                    self.main.main({}, preparation_serial="USB-123")
-                self.assertIs(caught.exception, error)
-                self.assert_restored()
+        self.step = fail
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            self.main.main({}, preparation_serial="USB-123")
+        self.assertIs(caught.exception, error)
+        self.assert_restored()
+
+    def test_device_recovery_retains_preparation_until_worker_cancellation(self):
+        turns = []
+        refreshed = []
+
+        def step():
+            self.assert_prepared()
+            turns.append(True)
+            if len(turns) == 1:
+                raise DeviceRecoveryError("exhausted")
+            raise MowerExit()
+
+        def refresh():
+            self.assert_prepared()
+            self.assertEqual(self.io.writes, [("USB-123", [1920, 1080])])
+            refreshed.append(True)
+
+        self.step, self.refresh = step, refresh
+        with patch.object(self.main, "csleep") as cooldown:
+            self.main.main({}, preparation_serial="USB-123")
+        cooldown.assert_called_once_with(30)
+        self.assertEqual(turns, [True, True])
+        self.assertEqual(refreshed, [True])
+        self.assertEqual(len(self.schedulers), 1)
+        self.assert_restored()
 
     def test_scheduler_initialization_failure_restores_before_propagating(self):
         def fail(*, device):

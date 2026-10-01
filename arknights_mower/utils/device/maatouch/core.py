@@ -32,17 +32,24 @@ class Client:
 
     @contextmanager
     def _operation(self):
-        with self._lock:
-            if self._closed or self._interrupted or self.owner_pid != os.getpid():
-                raise ConnectionError("MaaTouch 已关闭")
-            session = Session(self.client, defer_start=True)
-            self._sessions.add(session)
+        session = None
         try:
+            with self._lock:
+                if self._closed or self._interrupted or self.owner_pid != os.getpid():
+                    raise ConnectionError("MaaTouch 已关闭")
+                session = Session(self.client, defer_start=True)
+                self._sessions.add(session)
             with session:
                 yield session
+        except BaseException as exc:
+            exc.delivery_unknown = (
+                session.input_started if session is not None else False
+            )
+            raise
         finally:
-            with self._lock:
-                self._sessions.discard(session)
+            if session is not None:
+                with self._lock:
+                    self._sessions.discard(session)
 
     def close(self) -> None:
         with self._lock:

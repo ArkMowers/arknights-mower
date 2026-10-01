@@ -1,8 +1,10 @@
 """DroidCast lifecycle observed through the device-control capture boundary."""
 
+import gzip
 import io
 import os
 import re
+import struct
 import subprocess
 import unittest
 from pathlib import Path
@@ -33,6 +35,7 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.session import DeviceSession
 
 MODULE = "arknights_mower.utils.device.droidcast"
+SCREENSHOT_MODULE = "arknights_mower.utils.device.screenshot"
 
 
 class Process:
@@ -55,7 +58,8 @@ class Process:
 
 
 class Android:
-    def __init__(self):
+    def __init__(self, *, adb_path):
+        self.adb_path = adb_path
         self.serial = "USB-A"
         self.version = "1.2.1"
         self.install_output = b"Success\n"
@@ -64,10 +68,12 @@ class Android:
         self.forwards = {}
         self.remote = {}
         self.processes = []
+        self.spawned = []
         self.spawn_error = None
         self.transport_error = None
 
     def run(self, argv, **kwargs):
+        assert argv[0] == self.adb_path, argv
         self.timeouts.append(kwargs["timeout"])
         if argv[1:] == ["forward", "--list"]:
             serial, args = None, argv[1:]
@@ -112,13 +118,15 @@ class Android:
         return SimpleNamespace(stdout=output, returncode=0)
 
     def spawn(self, argv, **kwargs):
+        assert argv[:4] == [self.adb_path, "-s", self.serial, "shell"]
         if self.spawn_error:
             raise self.spawn_error
-        process = Process()
-        self.processes.append(process)
         name = next(
             arg.split("=", 1)[1] for arg in argv if arg.startswith("--nice-name=")
         )
+        self.spawned.append(list(argv))
+        process = Process()
+        self.processes.append(process)
         self.remote[100 + len(self.processes)] = name
         return process
 
@@ -146,12 +154,52 @@ class HTTP:
         self.closed += 1
 
 
+class StandardADB:
+    def __init__(self):
+        self.frame = np.full((1080, 1920, 3), 123, dtype=np.uint8)
+        self.commands = []
+        self.guards = []
+        self.failure = None
+
+    def guard(self, adb_path, *, timeout):
+        assert adb_path == "chosen-adb"
+        assert 0 < timeout <= 10
+        self.guards.append((adb_path, timeout))
+
+    def output(self, serial, command, limit, remaining):
+        assert serial == "USB-A"
+        timeout = remaining()
+        assert 0 < timeout <= 10
+        self.commands.append((serial, command, timeout))
+        if self.failure is not None:
+            raise self.failure
+        if command == "getprop ro.build.version.sdk":
+            return b"30\n"
+        assert command == "screencap 2>/dev/null | gzip -1"
+        height, width, _ = self.frame.shape
+        output = gzip.compress(
+            struct.pack("<IIII", width, height, 3, 1) + self.frame.tobytes()
+        )
+        assert len(output) <= limit
+        return output
+
+
 class DroidCastTests(unittest.TestCase):
     def setUp(self):
-        self.android, self.http, self.clock = Android(), HTTP(), Clock()
+        self.android, self.http, self.clock = (
+            Android(adb_path="chosen-adb"),
+            HTTP(),
+            Clock(),
+        )
+        self.standard = StandardADB()
+        self.enterContext(patch(f"{SCREENSHOT_MODULE}.guard_adb", self.standard.guard))
+        self.enterContext(
+            patch(f"{SCREENSHOT_MODULE}._adb_output", self.standard.output)
+        )
         for name, value in (
             ("run_adb", self.android.run),
             ("guard_adb", lambda *args, **kwargs: None),
+            ("get_new_port", Mock(side_effect=range(50000, 50064))),
             ("subprocess.Popen", self.android.spawn),
             ("requests.Session", lambda: self.http),
             ("time.monotonic", self.clock.monotonic),
@@ -174,6 +222,7 @@ class DroidCastTests(unittest.TestCase):
         self.device.device_id = "USB-A"
         self.device.client = SimpleNamespace(adb_bin="chosen-adb", device_id="USB-A")
         self.adb, self.simulator = ADB(), Simulator()
+        self.adb.resolve_adb = lambda profile, timeout: "chosen-adb"
         self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
         self.control = DeviceControl(
             lambda: self.conf,
@@ -183,6 +232,34 @@ class DroidCastTests(unittest.TestCase):
         )
         self.assertTrue(self.control.start().ok)
         self.addCleanup(self.control.close)
+        self.before = self.conf.model_dump()
+
+    def assert_adb_degraded(self, result, code, diagnosis=None):
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.value.shape, (1080, 1920, 3))
+        self.assertEqual(result.value.dtype, np.uint8)
+        self.assertTrue(np.array_equal(result.value, self.standard.frame))
+        self.assertEqual(result.serial, "USB-A")
+        self.assertEqual(self.control.serial, "USB-A")
+        self.assertEqual(self.conf.model_dump(), self.before)
+        status = self.control.settings_status()
+        self.assertEqual(status["screenshot_backend"]["selected"], "droidcast")
+        self.assertEqual(status["screenshot_backend"]["effective"], "adb_gzip")
+        self.assertTrue(status["screenshot_backend"]["degraded"])
+        self.assertEqual(status["error"]["code"], code)
+        if diagnosis is not None:
+            self.assertIn(diagnosis, status["error"]["message"])
+        self.assertTrue(self.standard.guards)
+        self.assertTrue(self.standard.commands)
+        self.assertEqual({serial for serial, _, _ in self.standard.commands}, {"USB-A"})
+        self.assertTrue(
+            any(
+                command.startswith("screencap ")
+                for _, command, _ in self.standard.commands
+            )
+        )
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.adb.actions, [])
 
     def test_old_version_is_replaced_before_a_real_sized_frame_is_accepted(self):
         result = self.control.capture()
@@ -209,9 +286,7 @@ class DroidCastTests(unittest.TestCase):
     def test_signature_conflict_is_actionable_and_never_uninstalls(self):
         self.android.install_output = b"Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]"
         result = self.control.capture()
-        self.assertFalse(result.ok)
-        self.assertEqual(result.error.code, "droidcast_signature_conflict")
-        self.assertIn("手动卸载", result.error.message)
+        self.assert_adb_degraded(result, "droidcast_signature_conflict", "手动卸载")
         self.assertEqual(self.android.version, "1.2.1")
         self.assertFalse(any(args[0] == "uninstall" for args in self.android.commands))
         self.assertEqual(self.android.processes, [])
@@ -220,7 +295,7 @@ class DroidCastTests(unittest.TestCase):
     def test_failed_helper_start_releases_forward_and_does_not_restart_emulator(self):
         self.android.spawn_error = OSError("spawn failed")
         result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_start_failed")
+        self.assert_adb_degraded(result, "droidcast_start_failed", "spawn failed")
         self.assertEqual(self.android.forwards, {})
         self.assertEqual(self.simulator.actions, [])
 
@@ -232,11 +307,15 @@ class DroidCastTests(unittest.TestCase):
             result = self.control.capture()
         rebind.assert_not_called()
         self.input_control.input_alive.assert_called_once_with()
-        self.assertEqual(result.error.code, "droidcast_http_timeout")
+        self.assert_adb_degraded(result, "droidcast_http_timeout", "超时")
         self.assertEqual(len(self.android.processes), 2)
         self.assertEqual(self.android.processes[0].terminated, 1)
-        self.assertFalse(self.control.capture().ok)
+        calls = len(self.http.calls)
+        self.assert_adb_degraded(
+            self.control.capture(), "droidcast_http_timeout", "超时"
+        )
         self.assertEqual(len(self.android.processes), 2)
+        self.assertEqual(len(self.http.calls), calls)
         self.assertEqual(self.simulator.actions, [])
         self.assertEqual(self.conf.device.screenshot_backend, "droidcast")
         self.assertFalse(self.http.trust_env)
@@ -465,7 +544,7 @@ class DroidCastTests(unittest.TestCase):
 
         self.http.get = response
         result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_http_timeout")
+        self.assert_adb_degraded(result, "droidcast_http_timeout", "超时")
 
     def test_adb_install_timeout_and_install_failure_do_not_start_helpers(self):
         run = self.android.run
@@ -478,14 +557,27 @@ class DroidCastTests(unittest.TestCase):
 
         with patch(f"{MODULE}.run_adb", timed_out):
             result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_install_failed")
+        self.assert_adb_degraded(result, "droidcast_install_failed", "超时")
+        self.assertEqual(self.android.processes, [])
+        self.assertEqual(self.android.forwards, {})
+
+    def test_install_failure_degrades_without_starting_a_helper(self):
+        self.android.install_output = b"Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]"
+        result = self.control.capture()
+        self.assert_adb_degraded(
+            result, "droidcast_install_failed", "INSTALL_FAILED_INSUFFICIENT_STORAGE"
+        )
+        self.assertEqual(self.android.version, "1.2.1")
         self.assertEqual(self.android.processes, [])
         self.assertEqual(self.android.forwards, {})
 
     def test_zero_exit_without_install_success_is_rejected(self):
         self.android.install_output = b"Failure [INSTALL_FAILED_INTERNAL_ERROR]"
         result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_install_failed")
+        self.assert_adb_degraded(
+            result, "droidcast_install_failed", "INSTALL_FAILED_INTERNAL_ERROR"
+        )
+        self.assertEqual(self.android.version, "1.2.1")
         self.assertEqual(self.android.processes, [])
 
     def test_frame_request_keeps_the_helper_default_payload(self):
@@ -522,6 +614,8 @@ class DroidCastTests(unittest.TestCase):
         self.assertEqual(used, set(), "取帧请求只使用 helper 的默认载荷")
 
     def test_query_failure_never_becomes_an_install_or_uninstall(self):
+        self.standard.failure = ConnectionError("device offline")
+
         def inaccessible(argv, **kwargs):
             self.android.commands.append(argv[3:])
             raise subprocess.CalledProcessError(1, argv, output=b"device offline")
@@ -548,10 +642,12 @@ class DroidCastTests(unittest.TestCase):
 
     def test_matching_foreign_forward_is_not_claimed_or_removed(self):
         self.android.forwards["tcp:54321"] = ("USB-A", "tcp:54321")
+        self.android.remote[456] = "foreign-process"
         with patch(f"{MODULE}.get_new_port", return_value=54321):
             result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_forward_failed")
+        self.assert_adb_degraded(result, "droidcast_forward_failed", "cannot rebind")
         self.assertEqual(self.android.forwards, {"tcp:54321": ("USB-A", "tcp:54321")})
+        self.assertEqual(self.android.remote, {456: "foreign-process"})
         self.assertEqual(self.android.processes, [])
 
     def test_forward_timeout_does_not_launch_a_helper(self):
@@ -565,7 +661,7 @@ class DroidCastTests(unittest.TestCase):
 
         with patch(f"{MODULE}.run_adb", stalled):
             result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_forward_failed")
+        self.assert_adb_degraded(result, "droidcast_forward_failed", "超时")
         self.assertEqual(self.android.processes, [])
 
     def test_nonzero_install_signature_conflict_keeps_actionable_error(self):
@@ -583,8 +679,11 @@ class DroidCastTests(unittest.TestCase):
 
         with patch(f"{MODULE}.run_adb", incompatible):
             result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_signature_conflict")
+        self.assert_adb_degraded(result, "droidcast_signature_conflict", "手动卸载")
         self.assertEqual(self.android.version, "1.2.1")
+        self.assertEqual(self.android.processes, [])
+        self.assertEqual(self.android.forwards, {})
+        self.assertFalse(any(args[0] == "uninstall" for args in self.android.commands))
 
     def test_wrong_actual_frame_is_rejected_without_switch_or_restart(self):
         self.http.data = cv2.imencode(".png", np.zeros((540, 960, 3), np.uint8))[
@@ -613,6 +712,67 @@ class DroidCastTests(unittest.TestCase):
         self.assertEqual(self.android.forwards, {})
         self.assertEqual(self.android.processes[0].terminated, 1)
         self.assertEqual(self.http.closed, 1)
+
+    def test_actual_cleanup_failure_never_degrades_to_healthy_adb(self):
+        self.assertTrue(self.control.capture().ok)
+        self.android.forwards["tcp:23456"] = ("OTHER", "tcp:12345")
+        self.android.remote[456] = "foreign-process"
+        self.http.failure = requests.ReadTimeout("helper capture failed")
+        run = self.android.run
+
+        def failed_kill(argv, **kwargs):
+            if argv[3:5] == ["shell", "kill"]:
+                raise subprocess.CalledProcessError(
+                    1, argv, output=b"permission denied"
+                )
+            return run(argv, **kwargs)
+
+        with patch(f"{MODULE}.run_adb", failed_kill):
+            result = self.control.capture()
+            self.assertFalse(result.ok)
+            self.assertTrue(result.error.cause.cleanup_failed)
+            self.assertIn("permission denied", result.error.message)
+            self.assertFalse(self.control.recover().ok)
+        self.assertEqual(self.standard.commands, [])
+        self.assertEqual(self.standard.guards, [])
+        self.assertEqual(len(self.android.processes), 1)
+        self.assertEqual(self.android.forwards, {"tcp:23456": ("OTHER", "tcp:12345")})
+        self.assertEqual(self.android.remote[456], "foreign-process")
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.conf.model_dump(), self.before)
+
+    def test_foreign_helper_ownership_never_rebuilds_or_degrades(self):
+        self.assertTrue(self.control.capture().ok)
+        self.device._droidcast.owner = os.getpid() + 1
+        forwards = dict(self.android.forwards)
+        remote = dict(self.android.remote)
+        commands = list(self.android.commands)
+        result = self.control.capture()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "droidcast_closed")
+        self.assertIn("所有权", result.error.message)
+        self.assertEqual(self.standard.commands, [])
+        self.assertEqual(self.standard.guards, [])
+        self.assertEqual(self.android.forwards, forwards)
+        self.assertEqual(self.android.remote, remote)
+        self.assertEqual(self.android.commands, commands)
+        self.assertEqual(len(self.android.processes), 1)
+        self.assertEqual(self.android.processes[0].terminated, 0)
+        self.assertEqual(self.http.closed, 0)
+        self.assertEqual(self.conf.model_dump(), self.before)
+
+    def test_degraded_capture_does_not_adopt_another_online_target(self):
+        self.http.failure = requests.ReadTimeout("helper unavailable")
+        self.assert_adb_degraded(self.control.capture(), "droidcast_http_timeout")
+        commands = list(self.standard.commands)
+        self.adb.rows = [("OTHER", "device")]
+        result = self.control.capture()
+        self.assertFalse(result.ok)
+        self.assertEqual(self.standard.commands, commands)
+        self.assertEqual(self.control.serial, "USB-A")
+        self.assertEqual(self.control._session.profile.last_serial, "USB-A")
+        self.assertEqual(self.conf.model_dump(), self.before)
+        self.assertEqual(len(self.android.processes), 2)
 
     def test_interruption_keeps_helper_and_forward_owned_until_final_close(self):
         self.assertTrue(self.control.capture().ok)
@@ -652,7 +812,9 @@ class DroidCastTests(unittest.TestCase):
             patch(f"{MODULE}.subprocess.run", self.android.run),
         ):
             result = self.control.capture()
-        self.assertEqual(result.error.code, "droidcast_forward_failed")
+        self.assert_adb_degraded(
+            result, "droidcast_forward_failed", "post-command deadline exhausted"
+        )
         self.assertEqual(self.android.forwards, {})
         self.assertEqual(self.android.processes, [])
 

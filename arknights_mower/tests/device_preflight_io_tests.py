@@ -109,7 +109,7 @@ class StrictTransportTests(unittest.TestCase):
                 patch("arknights_mower.utils.device.adb_client.core.subprocess.run"),
             ):
                 session.return_value.devices_list.return_value = rows
-                with self.assertRaisesRegex(RuntimeError, "pinned target"):
+                with self.assertRaisesRegex(ConnectionError, "pinned target"):
                     Client("chosen", adb_bin="chosen-adb", strict_target=True)
                 session.return_value.connect.assert_not_called()
 
@@ -149,8 +149,8 @@ class ReadOnlyCaptureTests(unittest.TestCase):
             )
         )
 
-    def configure_droidcast(self, version="1.3.0"):
-        android, http = Android(), HTTP()
+    def configure_droidcast(self, version="1.3.0", *, adb_path):
+        android, http = Android(adb_path=adb_path), HTTP()
         android.version = version
         module = "arknights_mower.utils.device.droidcast"
         run = self.enterContext(patch(f"{module}.run_adb", side_effect=android.run))
@@ -165,7 +165,9 @@ class ReadOnlyCaptureTests(unittest.TestCase):
     def test_missing_or_old_droidcast_requests_repair_without_installing(self):
         for version, missing_error in ((None, False), (None, True), ("1.2.1", False)):
             with self.subTest(version=version, missing_error=missing_error):
-                android, http, run, spawn = self.configure_droidcast(version)
+                android, http, run, spawn = self.configure_droidcast(
+                    version, adb_path="chosen-adb"
+                )
                 if missing_error:
                     run.side_effect = subprocess.CalledProcessError(
                         1, "pm path", output=b""
@@ -275,7 +277,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
 
     def test_droidcast_reads_current_version_and_cleans_its_owned_resources(self):
         configuration = SimpleNamespace(droidcast=SimpleNamespace(rotate=False))
-        android, http, run, spawn = self.configure_droidcast()
+        android, http, run, spawn = self.configure_droidcast(adb_path="verified-adb")
         frame = ProductionPreflightIO(lambda: configuration).capture_frame(
             "verified-adb", "USB-A", DeviceProfile(screenshot_backend="droidcast")
         )
@@ -294,6 +296,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
         self.assertEqual(android.forwards, {})
         self.assertEqual(android.processes[0].terminated, 1)
         helper = spawn.call_args.args[0]
+        self.assertEqual(helper[:4], ["verified-adb", "-s", "USB-A", "shell"])
         self.assertTrue(
             any(arg.startswith("--nice-name=mower-droidcast-") for arg in helper)
         )
@@ -317,7 +320,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
         self,
     ):
         configuration = SimpleNamespace(droidcast=SimpleNamespace(rotate=False))
-        android, http, _, _ = self.configure_droidcast()
+        android, http, _, _ = self.configure_droidcast(adb_path="chosen-adb")
         http.data = b"invalid image"
         get = http.get
 
@@ -339,7 +342,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
 
     def test_droidcast_reused_remote_pid_is_not_killed_during_preflight_cleanup(self):
         configuration = SimpleNamespace(droidcast=SimpleNamespace(rotate=False))
-        android, _, run, _ = self.configure_droidcast()
+        android, _, run, _ = self.configure_droidcast(adb_path="chosen-adb")
 
         def recycle_pid(argv, **kwargs):
             if argv[3:5] == ["shell", "cat"]:

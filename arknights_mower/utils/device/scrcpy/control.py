@@ -1,6 +1,8 @@
 import functools
 import socket
 import struct
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from arknights_mower.utils.device.io_budget import budget_sleep
 
@@ -17,12 +19,27 @@ def inject(control_type: int):
     def wrapper(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
-            with args[0].parent.control_socket_lock:
-                stream = args[0].parent.control_socket
-                if stream is None:
-                    raise ConnectionError("scrcpy control socket is closed")
-                package = struct.pack(">B", control_type) + f(*args, **kwargs)
-                stream.sendall(package)
+            sender = args[0]
+            with sender.input_operation() as delivery:
+                budget_sleep(0)
+                if not sender.parent.control_socket_lock.acquire(blocking=False):
+                    raise TimeoutError("scrcpy 输入连接锁忙，尚未发送本包")
+                try:
+                    stream = sender.parent.control_socket
+                    if stream is None:
+                        raise ConnectionError("scrcpy control socket is closed")
+                    package = struct.pack(">B", control_type) + f(*args, **kwargs)
+                    budget_sleep(0)
+                    previously_started = delivery["started"]
+                    delivery["started"] = True
+                    try:
+                        stream.sendall(package)
+                    except BaseException as exc:
+                        if getattr(exc, "input_not_sent", False) is True:
+                            delivery["started"] = previously_started
+                        raise
+                finally:
+                    sender.parent.control_socket_lock.release()
             return package
 
         return inner
@@ -33,6 +50,24 @@ def inject(control_type: int):
 class ControlSender:
     def __init__(self, parent):
         self.parent = parent
+        self._delivery = ContextVar("scrcpy_input_delivery", default=None)
+
+    @contextmanager
+    def input_operation(self):
+        """Preserve uncertain delivery across every packet of one input action."""
+        delivery = self._delivery.get()
+        if delivery is not None:
+            yield delivery
+            return
+        delivery = {"started": False}
+        token = self._delivery.set(delivery)
+        try:
+            yield delivery
+        except BaseException as exc:
+            exc.delivery_unknown = delivery["started"]
+            raise
+        finally:
+            self._delivery.reset(token)
 
     @inject(const.TYPE_INJECT_KEYCODE)
     def keycode(
@@ -209,43 +244,44 @@ class ControlSender:
         :return:
         """
 
-        self.touch(start_x, start_y, const.ACTION_DOWN)
-        next_x = start_x
-        next_y = start_y
+        with self.input_operation():
+            self.touch(start_x, start_y, const.ACTION_DOWN)
+            next_x = start_x
+            next_y = start_y
 
-        if end_x > self.parent.resolution[0]:
-            end_x = self.parent.resolution[0]
+            if end_x > self.parent.resolution[0]:
+                end_x = self.parent.resolution[0]
 
-        if end_y > self.parent.resolution[1]:
-            end_y = self.parent.resolution[1]
+            if end_y > self.parent.resolution[1]:
+                end_y = self.parent.resolution[1]
 
-        decrease_x = True if start_x > end_x else False
-        decrease_y = True if start_y > end_y else False
-        while True:
-            if decrease_x:
-                next_x -= move_step_length
-                if next_x < end_x:
-                    next_x = end_x
-            else:
-                next_x += move_step_length
-                if next_x > end_x:
-                    next_x = end_x
+            decrease_x = True if start_x > end_x else False
+            decrease_y = True if start_y > end_y else False
+            while True:
+                if decrease_x:
+                    next_x -= move_step_length
+                    if next_x < end_x:
+                        next_x = end_x
+                else:
+                    next_x += move_step_length
+                    if next_x > end_x:
+                        next_x = end_x
 
-            if decrease_y:
-                next_y -= move_step_length
-                if next_y < end_y:
-                    next_y = end_y
-            else:
-                next_y += move_step_length
-                if next_y > end_y:
-                    next_y = end_y
+                if decrease_y:
+                    next_y -= move_step_length
+                    if next_y < end_y:
+                        next_y = end_y
+                else:
+                    next_y += move_step_length
+                    if next_y > end_y:
+                        next_y = end_y
 
-            self.touch(next_x, next_y, const.ACTION_MOVE)
+                self.touch(next_x, next_y, const.ACTION_MOVE)
 
-            if next_x == end_x and next_y == end_y:
-                self.touch(next_x, next_y, const.ACTION_UP)
-                break
-            budget_sleep(move_steps_delay)
+                if next_x == end_x and next_y == end_y:
+                    self.touch(next_x, next_y, const.ACTION_UP)
+                    break
+                budget_sleep(move_steps_delay)
 
     def tap(self, x, y, hold_time: float = 0.07) -> None:
         """
@@ -255,6 +291,7 @@ class ControlSender:
             y: vertical position
             hold_time: hold time
         """
-        self.touch(x, y, const.ACTION_DOWN)
-        budget_sleep(hold_time)
-        self.touch(x, y, const.ACTION_UP)
+        with self.input_operation():
+            self.touch(x, y, const.ACTION_DOWN)
+            budget_sleep(hold_time)
+            self.touch(x, y, const.ACTION_UP)

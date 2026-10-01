@@ -7,6 +7,8 @@ date: 2026-10-01
 
 # 共享空闲恢复
 
+[可恢复设备故障契约](../../implemented/simplification/2026-10-01-recoverable-device-failures.zh.md)替代下述输入失败终止策略；空闲生命周期所有权保持不变。
+
 ## 契约
 
 [INV-DEV-14] Startup Reconnect Budget 要求现有任务内启动或重启实例后的重连与观察，采用初次启动相同的有界策略。每次观察验证同一实例绑定；共享 ADB 失败、绑定变化和取消仍立即终止恢复。

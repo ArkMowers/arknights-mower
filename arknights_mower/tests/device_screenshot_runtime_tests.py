@@ -1,4 +1,4 @@
-"""Runtime DroidCast readiness keeps the application's one-rebuild budget."""
+"""Runtime DroidCast incidents retain one rebuild and verified ADB degradation."""
 
 import unittest
 
@@ -9,6 +9,7 @@ from arknights_mower.tests import device_droidcast_tests
 
 class RuntimeCaptureTests(unittest.TestCase):
     setUp = device_droidcast_tests.DroidCastTests.setUp
+    assert_adb_degraded = device_droidcast_tests.DroidCastTests.assert_adb_degraded
 
     def test_rebuilt_helper_can_begin_listening_before_the_only_retry(self):
         self.assertTrue(self.control.capture().ok)
@@ -32,16 +33,19 @@ class RuntimeCaptureTests(unittest.TestCase):
         self.assertEqual(self.simulator.actions, [])
         self.assertGreater(self.clock.now, 0)
 
-    def test_rebuilt_helper_never_listening_stops_within_one_deadline(self):
+    def test_rebuilt_helper_never_listening_degrades_within_one_deadline(self):
         self.assertTrue(self.control.capture().ok)
         self.http.failure = requests.ConnectionError("not listening")
         result = self.control.capture()
-        self.assertFalse(result.ok)
-        self.assertIn("限定时间", result.error.message)
+        self.assert_adb_degraded(result, "droidcast_start_timeout", "限定时间")
         self.assertLessEqual(self.clock.now, 10.1)
         self.assertEqual(len(self.android.processes), 2)
-        self.assertFalse(self.control.capture().ok)
+        calls = len(self.http.calls)
+        self.assert_adb_degraded(
+            self.control.capture(), "droidcast_start_timeout", "限定时间"
+        )
         self.assertEqual(len(self.android.processes), 2)
+        self.assertEqual(len(self.http.calls), calls)
         self.assertEqual(self.simulator.actions, [])
 
     def test_helper_exit_is_reported_without_repeated_relaunch(self):
@@ -56,10 +60,11 @@ class RuntimeCaptureTests(unittest.TestCase):
 
         with patch("arknights_mower.utils.device.droidcast.subprocess.Popen", exited):
             result = self.control.capture()
-        self.assertFalse(result.ok)
-        self.assertIn("提前退出", result.error.message)
+        self.assert_adb_degraded(result, "droidcast_start_failed", "提前退出")
         self.assertEqual(len(self.android.processes), 2)
-        self.assertFalse(self.control.capture().ok)
+        self.assert_adb_degraded(
+            self.control.capture(), "droidcast_start_failed", "提前退出"
+        )
         self.assertEqual(len(self.android.processes), 2)
         self.assertEqual(self.http.calls, [])
 

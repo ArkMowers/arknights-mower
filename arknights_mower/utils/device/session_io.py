@@ -11,7 +11,11 @@ from pathlib import Path
 import numpy as np
 
 from arknights_mower.utils.device.adb_client.core import is_tcp_serial
-from arknights_mower.utils.device.adb_client.server import run_adb
+from arknights_mower.utils.device.adb_client.server import (
+    current_adb_server,
+    emulator_connect_target,
+    run_adb,
+)
 from arknights_mower.utils.device.bluestacks_endpoint import BlueStacksEndpointResolver
 from arknights_mower.utils.device.endpoint_identity import (
     AVD_PRESETS,
@@ -262,6 +266,15 @@ class ProductionSessionADB:
         if not serial.strip():
             raise ValueError("设备 serial 不能为空")
         window = self._adb_window(timeout)
+        if current_adb_server() is not None and (
+            endpoint := emulator_connect_target(serial)
+        ):
+            output = window.run([adb_path, "connect", endpoint])
+            console_port, adb_port = endpoint.removeprefix("emu:").split(",")
+            return output in {
+                f"Connected to emulator on ports {console_port},{adb_port}",
+                f"Emulator already registered on port {adb_port}",
+            }
         if is_tcp_serial(serial):
             missing = f"error: no such device '{serial}'"
             try:

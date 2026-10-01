@@ -11,8 +11,12 @@ from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
-from arknights_mower.utils.device.application import create_device_control
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.device.application import (
+    RECOVERABLE_DEVICE_ERRORS,
+    create_device_control,
+)
+from arknights_mower.utils.device.recovery import wait_for_recovery
+from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operators import Operator
@@ -349,14 +353,38 @@ def _initialize_scheduler(tasks, device):
     return base_scheduler
 
 
+def _resume_device_dispatch(scheduler=None, failure=None):
+    def resume():
+        if device_control.shutdown_requested or config.stop_mower.is_set():
+            raise MowerExit
+        device = device_control.recover().unwrap()
+        if scheduler is not None:
+            scheduler.device = device
+            scheduler.recog.device = device
+            scheduler.recog.update()
+        return device
+
+    csleep(30)
+    device = wait_for_recovery(resume, retry_errors=RECOVERABLE_DEVICE_ERRORS)
+    if isinstance(failure, TouchFailure) and failure.delivery_unknown:
+        logger.warning("输入结果待核实：保留当前任务，暂停设备调度，不重复提交副作用")
+        while not config.stop_mower.is_set():
+            device_control.pause_dispatch(failure)
+            csleep(30)
+            if device_control.shutdown_requested:
+                raise MowerExit
+            if scheduler is not None:
+                wait_for_recovery(resume, retry_errors=RECOVERABLE_DEVICE_ERRORS)
+        raise MowerExit
+    return device
+
+
 def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
     """
     logger.info(f"正在使用全局配置空间: {path.global_space}")
     tasks = saved["tasks"] if saved else []
-    reconnect_max_tries = 10
-    reconnect_tries = 0
     connection_retries = 1
     global base_scheduler
     if config.stop_mower.is_set():
@@ -376,10 +404,14 @@ def simulate(saved):
                 saved.get("initial_mood_probe_layout", {}) if saved else {}
             )
             success = True
+        except RECOVERABLE_DEVICE_ERRORS as exc:
+            try:
+                _resume_device_dispatch(failure=exc)
+            except MowerExit:
+                return
+            continue
         except MowerExit:
             return
-        except DeviceRecoveryError:
-            raise
         except Exception as e:
             logger.exception(e)
             if config.stop_mower.is_set():
@@ -387,7 +419,6 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
-                reconnect_tries = 0
                 connection_retries = 3
                 continue
             # Session startup owns the shared recovery budget. Initialization
@@ -636,11 +667,14 @@ def simulate(saved):
                     continue
 
             base_scheduler.run()
-            reconnect_tries = 0
+        except RECOVERABLE_DEVICE_ERRORS as exc:
+            try:
+                _resume_device_dispatch(base_scheduler, exc)
+            except MowerExit:
+                return
+            continue
         except MowerExit:
             return
-        except DeviceRecoveryError:
-            raise
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
             logger.exception(
                 "设备连接或页面识别失败：%s",
@@ -650,28 +684,12 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
-                reconnect_tries = 0
                 continue
-            reconnect_tries += 1
-            if reconnect_tries < reconnect_max_tries:
-                logger.warning("正在重新连接设备并恢复运行")
-                # 内层重连循环加次数上限，最后失败抛错而非无限重启
-                retry = 0
-                while retry < reconnect_max_tries:
-                    retry += 1
-                    try:
-                        base_scheduler = initialize([], base_scheduler)
-                        break
-                    except (MowerExit, DeviceRecoveryError):
-                        raise
-                    except Exception as e:
-                        if retry >= reconnect_max_tries:
-                            raise
-                        logger.exception("重新连接设备失败，将再次尝试：%s", e)
-                        base_scheduler.device.reconnect()
-                continue
-            else:
-                raise e
+            try:
+                _resume_device_dispatch(base_scheduler, e)
+            except MowerExit:
+                return
+            continue
         except RuntimeError as e:
             logger.exception(
                 "运行时发生错误，正在尝试恢复设备连接：%s",
@@ -682,7 +700,10 @@ def simulate(saved):
                 if config.stop_mower.is_set():
                     return
                 continue
-            base_scheduler.device.reconnect()
+            try:
+                _resume_device_dispatch(base_scheduler, e)
+            except MowerExit:
+                return
         except Exception as e:
             logger.exception(
                 "任务执行失败，正在刷新画面后继续：%s",
@@ -693,4 +714,10 @@ def simulate(saved):
                 if config.stop_mower.is_set():
                     return
                 continue
-            base_scheduler.recog.update()
+            try:
+                base_scheduler.recog.update()
+            except RECOVERABLE_DEVICE_ERRORS as exc:
+                try:
+                    _resume_device_dispatch(base_scheduler, exc)
+                except MowerExit:
+                    return

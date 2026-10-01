@@ -95,7 +95,9 @@ class TestInitDeviceWaitsForDevice(unittest.TestCase):
                 patch("arknights_mower.utils.device.adb_client.core.csleep") as sleep,
             ):
                 session.return_value.devices_list.return_value = devices
-                with self.assertRaisesRegex(RuntimeError, "Device connection failure"):
+                with self.assertRaisesRegex(
+                    ConnectionError, "Device connection failure"
+                ):
                     Device(wait_for_device=False)
                 # 只保留 ADB server 的初始探测延时，不耗完 60 秒的模拟器启动窗口。
                 sleep.assert_called_once_with(1)
@@ -186,7 +188,7 @@ class TestInitDeviceWaitsForDevice(unittest.TestCase):
             patch("arknights_mower.utils.device.adb_client.core.Session"),
             patch("arknights_mower.utils.device.adb_client.core.csleep"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "Device connection failure"):
+            with self.assertRaisesRegex(ConnectionError, "Device connection failure"):
                 client._Client__init_device()
         self.assertIsNone(client.device_id)
 
@@ -200,7 +202,7 @@ class TestInitDeviceWaitsForDevice(unittest.TestCase):
             patch("arknights_mower.utils.device.adb_client.core.Session"),
             patch("arknights_mower.utils.device.adb_client.core.csleep"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "Device connection failure"):
+            with self.assertRaisesRegex(ConnectionError, "Device connection failure"):
                 client._Client__init_device()
 
 

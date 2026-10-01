@@ -7,10 +7,11 @@ import subprocess
 import time
 from pathlib import Path
 
-from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.adb_client.server import current_adb_server, guard_adb
 from arknights_mower.utils.device.endpoint_identity import (
     BOOT_ID_COMMAND,
     InstanceBindingError,
+    connect_endpoint_candidates,
     parse_adb_devices,
     parse_boot_id,
     run_endpoint_command,
@@ -51,7 +52,7 @@ class LDPlayerEndpointResolver:
                 raise TimeoutError("雷电实例验证时间预算已耗尽")
             return io_timeout(min(3, available))
 
-        def run(argv, *, adb=False):
+        def run(argv, *, adb=False, delegated_adb=False):
             output = run_endpoint_command(
                 argv,
                 timeout=remaining(),
@@ -59,6 +60,7 @@ class LDPlayerEndpointResolver:
                 probe=self._probe,
                 monotonic=self._monotonic,
                 adb=adb,
+                delegated_adb=delegated_adb,
             )
             remaining()
             return output
@@ -109,23 +111,30 @@ class LDPlayerEndpointResolver:
             probe=self._probe,
             monotonic=self._monotonic,
         )
-        boot_id = parse_boot_id(
-            run(
-                [
-                    str(manager),
-                    "adb",
-                    "--index",
-                    profile.instance_id,
-                    "--command",
-                    BOOT_ID_COMMAND,
-                ]
+
+        def manager_boot_id():
+            boot_id = parse_boot_id(
+                run(
+                    [
+                        str(manager),
+                        "adb",
+                        "--index",
+                        profile.instance_id,
+                        "--command",
+                        BOOT_ID_COMMAND,
+                    ],
+                    delegated_adb=True,
+                )
             )
-        )
-        if not boot_id:
-            raise LDPlayerBindingError(
-                "endpoint_unresolved",
-                "雷电管理器未返回可验证的实例启动标识，请手动检查 ADB 地址",
-            )
+            if not boot_id:
+                raise LDPlayerBindingError(
+                    "endpoint_unresolved",
+                    "雷电管理器未返回可验证的实例启动标识，请手动检查 ADB 地址",
+                )
+            return boot_id
+
+        owned = current_adb_server() is not None
+        boot_id = None if owned else manager_boot_id()
         output = run([profile.adb_path, "devices", "-l"], adb=True)
         rows = parse_adb_devices(output)
         index = int(profile.instance_id)
@@ -137,6 +146,7 @@ class LDPlayerEndpointResolver:
         # Only sockets owned by this list2 VBox process can supply additional
         # candidates. Never probe every online ADB device looking for a match.
         listener_error = None
+        ports = []
         try:
             ports = (
                 self._listener_ports(instance["vbox_pid"], remaining())
@@ -148,6 +158,20 @@ class LDPlayerEndpointResolver:
             candidates.extend(ports)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             listener_error = str(exc)
+        if owned:
+            candidates = list(
+                dict.fromkeys(
+                    candidate for candidate in [*ports, *candidates] if candidate
+                )
+            )
+            candidates.sort(key=lambda serial: serial.startswith("emulator-"))
+            connect_endpoint_candidates(
+                profile.adb_path,
+                [serial for serial in candidates if rows.get(serial) != ["device"]],
+                run,
+            )
+            boot_id = manager_boot_id()
+            rows = parse_adb_devices(run([profile.adb_path, "devices", "-l"], adb=True))
         states = []
         matches = []
         for serial in dict.fromkeys(candidate for candidate in candidates if candidate):
