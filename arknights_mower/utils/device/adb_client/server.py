@@ -1,4 +1,4 @@
-"""Guard shared ADB and route simulator operations through an owned server.
+"""Guard commands against implicit shared ADB server replacement.
 
 An ADB CLI can kill an existing server on a protocol-version mismatch. The
 host:version socket request and local `adb version` command do not do that.
@@ -9,79 +9,16 @@ import re
 import socket
 import subprocess
 import time
-from contextlib import contextmanager
-from contextvars import ContextVar
 
-_owned_server = ContextVar("owned_adb_server", default=None)
-
-
-@contextmanager
-def adb_server_scope(server):
-    token = _owned_server.set(server)
-    try:
-        yield
-    finally:
-        _owned_server.reset(token)
-
-
-def current_adb_server():
-    return _owned_server.get()
-
-
-def adb_server_address():
-    server = current_adb_server()
-    return server.address if server is not None else ("127.0.0.1", 5037)
-
-
-def emulator_connect_target(serial):
-    match = re.fullmatch(r"emulator-([0-9]{1,5})", serial)
-    if match is None:
-        return None
-    port = int(match[1])
-    if port % 2 or not 1024 <= port < 65535:
-        return None
-    return f"emu:{port},{port + 1}"
-
-
-def adb_command(argv):
-    server = current_adb_server()
-    if server is None:
-        return argv
-    index = 1
-    while index < len(argv) and argv[index].startswith("-"):
-        option = argv[index]
-        if option.startswith(("-H", "-P", "-L")):
-            raise SharedADBError("自有 ADB 命令不能重定向服务地址")
-        index += 2 if option in {"-s", "-t"} else 1
-    if index < len(argv) and argv[index] in {
-        "kill-server",
-        "start-server",
-        "server",
-        "fork-server",
-        "nodaemon",
-    }:
-        raise SharedADBError("ADB 服务生命周期只能由其进程所有者管理")
-    host, port = server.address
-    return [argv[0], "-H", host, "-P", str(port), *argv[1:]]
-
-
-def adb_subprocess_options(environment=None):
-    server = current_adb_server()
-    if server is None:
-        return {}
-    host, port = server.address
-    environment = dict(os.environ if environment is None else environment)
-    environment.update(
-        ADB_SERVER_SOCKET=f"tcp:{host}:{port}",
-        ANDROID_ADB_SERVER_ADDRESS=host,
-        ANDROID_ADB_SERVER_PORT=str(port),
-        ADB_SERVER_PORT=str(port),
-    )
-    return {"env": environment}
+ADB_SERVER_ADDRESS = ("127.0.0.1", 5037)
 
 
 class SharedADBError(RuntimeError):
     """The shared server cannot safely be used by the selected ADB executable."""
+
+
+class SharedADBHandshakeTimeout(SharedADBError):
+    """A connected listener timed out while answering the host handshake."""
 
 
 def _remaining(deadline, monotonic):
@@ -103,32 +40,38 @@ def _check_server_environment(environment):
             raise SharedADBError(f"{name} 重定向了 ADB server，无法安全验证共享 server")
 
 
+def _receive(connection, length, deadline, monotonic):
+    output = bytearray()
+    while len(output) < length:
+        connection.settimeout(_remaining(deadline, monotonic))
+        data = connection.recv(length - len(output))
+        if not data:
+            raise SharedADBError("共享 ADB server 提前关闭了响应")
+        output.extend(data)
+    _remaining(deadline, monotonic)
+    return bytes(output)
+
+
 def probe_adb_server(
     timeout, *, monotonic=time.monotonic, socket_factory=None, address=None
 ):
     """Return its protocol version; only a refused connect means no server."""
     deadline = monotonic() + max(0, timeout)
     factory = socket_factory or socket.socket
+    connected = False
     try:
         with factory(socket.AF_INET, socket.SOCK_STREAM) as connection:
             connection.settimeout(_remaining(deadline, monotonic))
             try:
-                connection.connect(address or ("127.0.0.1", 5037))
+                connection.connect(address or ADB_SERVER_ADDRESS)
             except ConnectionRefusedError:
                 return None
+            connected = True
             connection.settimeout(_remaining(deadline, monotonic))
             connection.sendall(b"000chost:version")
 
             def receive(length):
-                output = bytearray()
-                while len(output) < length:
-                    connection.settimeout(_remaining(deadline, monotonic))
-                    data = connection.recv(length - len(output))
-                    if not data:
-                        raise SharedADBError("共享 ADB server 提前关闭了版本响应")
-                    output.extend(data)
-                _remaining(deadline, monotonic)
-                return bytes(output)
+                return _receive(connection, length, deadline, monotonic)
 
             if receive(4) != b"OKAY" or receive(4) != b"0004":
                 raise SharedADBError("共享 ADB server 返回的版本响应格式无效")
@@ -136,8 +79,64 @@ def probe_adb_server(
             if re.fullmatch(rb"[0-9a-fA-F]{4}", version) is None:
                 raise SharedADBError("共享 ADB server 返回的协议版本无效")
             return int(version, 16)
+    except socket.timeout as exc:
+        if connected:
+            raise SharedADBHandshakeTimeout(
+                "共享 ADB server 已连接，但主机握手超时"
+            ) from exc
+        raise SharedADBError("共享 ADB server 连接超时，保留现有监听") from exc
     except OSError as exc:
         raise SharedADBError(f"无法安全读取共享 ADB server 状态：{exc}") from exc
+
+
+def kill_adb_server(timeout, *, monotonic=time.monotonic, socket_factory=None):
+    """Send an explicit host:kill request to the shared loopback server only."""
+    deadline = monotonic() + max(0, timeout)
+    factory = socket_factory or socket.socket
+    try:
+        with factory(socket.AF_INET, socket.SOCK_STREAM) as connection:
+            connection.settimeout(_remaining(deadline, monotonic))
+            connection.connect(ADB_SERVER_ADDRESS)
+            connection.settimeout(_remaining(deadline, monotonic))
+            connection.sendall(b"0009host:kill")
+            response = _receive(connection, 4, deadline, monotonic)
+            if response == b"FAIL":
+                raise SharedADBError("共享 ADB server 拒绝显式停止请求（FAIL）")
+            if response != b"OKAY":
+                raise SharedADBError("共享 ADB server 返回无效的停止响应")
+    except OSError as exc:
+        raise SharedADBError(f"无法显式停止共享 ADB server：{exc}") from exc
+
+
+def adb_client_version(adb_path, *, timeout, run=None):
+    runner = run or subprocess.run
+    result = runner(
+        [adb_path, "version"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        timeout=timeout,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    result.check_returncode()
+    output = result.stdout
+    if isinstance(output, str):
+        output = output.encode("utf-8")
+    matches = re.findall(
+        rb"^Android Debug Bridge version 1\.0\.(\d+)\s*$", output, re.M
+    )
+    if len(matches) != 1 or int(matches[0]) <= 0:
+        raise SharedADBError("无法确认所选 ADB 程序的协议版本，保留共享 server")
+    return int(matches[0])
+
+
+def check_adb_version(client_version, server_version):
+    if type(server_version) is not int or server_version <= 0:
+        raise SharedADBError("共享 ADB server 的协议版本无效")
+    if client_version != server_version:
+        raise SharedADBError(
+            "所选 ADB 与已运行的共享 server 版本不一致；请使用兼容的 ADB，mower 不会重启共享 server"
+        )
 
 
 def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monotonic):
@@ -145,10 +144,6 @@ def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monoton
     _check_server_environment(os.environ)
     deadline = monotonic() + max(0, timeout)
     runner = run or subprocess.run
-    owned = current_adb_server()
-    if owned is not None:
-        owned.check(adb_path, timeout=_remaining(deadline, monotonic))
-        return _remaining(deadline, monotonic)
     try:
         if probe is None:
             version = probe_adb_server(
@@ -161,27 +156,12 @@ def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monoton
     if version is not None:
         if type(version) is not int or version <= 0:
             raise SharedADBError("共享 ADB server 的协议版本无效")
-        result = runner(
-            [adb_path, "version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
+        client_version = adb_client_version(
+            adb_path,
             timeout=_remaining(deadline, monotonic),
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            run=runner,
         )
-        result.check_returncode()
-        output = result.stdout
-        if isinstance(output, str):
-            output = output.encode("utf-8")
-        matches = re.findall(
-            rb"^Android Debug Bridge version 1\.0\.(\d+)\s*$", output, re.M
-        )
-        if len(matches) != 1:
-            raise SharedADBError("无法确认所选 ADB 程序的协议版本，保留共享 server")
-        if int(matches[0]) != version:
-            raise SharedADBError(
-                "所选 ADB 与已运行的共享 server 版本不一致；请使用兼容的 ADB，mower 不会重启共享 server"
-            )
+        check_adb_version(client_version, version)
     return _remaining(deadline, monotonic)
 
 
@@ -200,8 +180,8 @@ def run_adb(argv, *, timeout, run=None, probe=None, monotonic=time.monotonic, **
             raise SharedADBError("ADB server 地址必须与已验证的本地共享 server 一致")
         index += 2 if option in {"-s", "-t"} else 1
     command = argv[index] if index < len(argv) else ""
-    if command in {"kill-server", "start-server", "server", "fork-server"}:
-        raise SharedADBError("mower 不会重启或停止共享 ADB server")
+    if command in {"kill-server", "start-server", "server", "fork-server", "nodaemon"}:
+        raise SharedADBError("共享 ADB 服务生命周期只能由恢复协调器管理")
     runner = run or subprocess.run
     if command != "version":
         guard_adb(
@@ -211,9 +191,6 @@ def run_adb(argv, *, timeout, run=None, probe=None, monotonic=time.monotonic, **
             probe=probe,
             monotonic=monotonic,
         )
-    if current_adb_server() is not None and command != "version":
-        kwargs.update(adb_subprocess_options(kwargs.get("env")))
-        argv = adb_command(argv)
     result = runner(argv, timeout=_remaining(deadline, monotonic), **kwargs)
     _remaining(deadline, monotonic)
     return result

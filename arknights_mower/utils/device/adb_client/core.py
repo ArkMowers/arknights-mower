@@ -10,8 +10,6 @@ from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.config.device_profile import LEGACY_NAMES
 from arknights_mower.utils.device.adb_client.server import (
-    adb_command,
-    adb_subprocess_options,
     guard_adb,
     run_adb,
 )
@@ -355,11 +353,10 @@ class Client:
         cmd = [self.adb_bin, "-s", self.device_id, "shell", path] + args
         guard_adb(self.adb_bin, timeout=io_timeout(10), run=subprocess.run)
         return subprocess.Popen(
-            adb_command(cmd),
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=stderr,
             creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
-            **adb_subprocess_options(),
         )
 
     def push(self, target_path: str, target: bytes) -> None:

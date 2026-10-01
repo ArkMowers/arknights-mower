@@ -1,11 +1,13 @@
 ---
 title: Owned ADB Recovery
-status: implemented
+status: archived
 category: architecture
 date: 2026-10-01
 ---
 
 # Owned ADB Recovery
+
+> Superseded by [Shared ADB Recovery](../../implemented/simplification/2026-10-01-shared-adb-recovery.md). This archived note preserves the original committed ownership contract; it is not the active [INV-DEV-19] contract.
 
 ## Contract
 

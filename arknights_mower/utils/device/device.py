@@ -18,11 +18,7 @@ from arknights_mower.utils.config.conf import DEFAULT_LAUNCH_COMMAND
 from arknights_mower.utils.config.device_profile import capture_compatibility_error
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
-from arknights_mower.utils.device.adb_client.server import (
-    adb_command,
-    adb_subprocess_options,
-    guard_adb,
-)
+from arknights_mower.utils.device.adb_client.server import guard_adb
 from arknights_mower.utils.device.droidcast import DroidCastSession
 from arknights_mower.utils.device.io_budget import (
     budget_sleep,
@@ -543,11 +539,8 @@ class Device:
                 self.device_id,
             )
             timeout = io_timeout(10)
-            options = {}
             if argv[0] == self.client.adb_bin:
                 timeout = guard_adb(argv[0], timeout=timeout, run=subprocess.run)
-                argv = adb_command(argv)
-                options = adb_subprocess_options()
             data = subprocess.check_output(
                 argv,
                 timeout=timeout,
@@ -555,7 +548,6 @@ class Device:
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if __system__ == "windows"
                 else 0,
-                **options,
             )
             return bytes2img(data)
         raise ValueError(f"不支持的截图后端：{backend}")

@@ -4,8 +4,6 @@ import math
 import os
 import pathlib
 import re
-import shlex
-import subprocess
 import sys
 from collections import defaultdict, deque
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
@@ -67,8 +65,6 @@ from arknights_mower.utils.datetime import (
 )
 from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
-    adb_command,
-    current_adb_server,
     guard_adb,
 )
 from arknights_mower.utils.device.device import Device
@@ -8145,20 +8141,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         adb_path = getattr(self.device.client, "adb_bin", None) or resolve_config_path(
             conf.maa_adb_path
         )
-        if current_adb_server() is not None:
-            for name in ("adblite_enabled", "kill_on_adb_exit"):
-                option = getattr(InstanceOptionType, name, None)
-                if option is None or not self.MAA.set_instance_option(option, "0"):
-                    raise SharedADBError(
-                        "MAA 无法禁用 AdbLite 或退出时停止 ADB，拒绝使用自有服务连接"
-                    )
-            guard_adb(adb_path, timeout=io_timeout(10))
-            command = adb_command([adb_path])
-            adb_path = (
-                subprocess.list2cmdline(command)
-                if os.name == "nt"
-                else shlex.join(command)
-            )
+        for name in ("adblite_enabled", "kill_on_adb_exit"):
+            option = getattr(InstanceOptionType, name, None)
+            if option is not None:
+                self.MAA.set_instance_option(option, "0")
+        guard_adb(adb_path, timeout=io_timeout(10))
         if self.MAA.connect(
             adb_path,
             self.device.client.device_id,

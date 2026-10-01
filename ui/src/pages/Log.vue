@@ -13,8 +13,17 @@ import {
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
 const mower_store = useMowerStore()
-const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
-  storeToRefs(mower_store)
+const {
+  log,
+  log_mobile,
+  running,
+  status_label,
+  plan_condition,
+  log_lines,
+  task_list,
+  waiting,
+  get_task_id
+} = storeToRefs(mower_store)
 const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
@@ -463,6 +472,7 @@ async function db_delete(keys) {
           <span class="btn-text">立即停止</span>
         </n-button>
       </drop-down>
+      <n-text v-if="running" depth="3">{{ status_label }}</n-text>
       <start-schedule
         v-if="!running"
         :start="start"

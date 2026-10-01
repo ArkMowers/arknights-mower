@@ -16,8 +16,8 @@
     "arknights_mower/solvers/base_schedule.py"
   ],
   "test_suites": [
-    "arknights_mower/tests/adb_owned_server_tests.py",
-    "arknights_mower/tests/adb_owned_transport_tests.py",
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/device_adb_recovery_tests.py",
     "arknights_mower/tests/scheduler_recovery_preservation_tests.py"
   ]
 }

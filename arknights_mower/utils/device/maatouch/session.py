@@ -7,11 +7,7 @@ from threading import Event, RLock, Thread
 
 from arknights_mower import __system__
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
-from arknights_mower.utils.device.adb_client.server import (
-    adb_command,
-    adb_subprocess_options,
-    guard_adb,
-)
+from arknights_mower.utils.device.adb_client.server import guard_adb
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
@@ -47,25 +43,22 @@ class Session:
             if time.monotonic() >= deadline:
                 raise TimeoutError("MaaTouch 初始化超时")
             self.process = subprocess.Popen(
-                adb_command(
-                    [
-                        client.adb_bin,
-                        "-s",
-                        client.device_id,
-                        "shell",
-                        "CLASSPATH=/data/local/tmp/maatouch",
-                        "app_process",
-                        "/",
-                        "com.shxyke.MaaTouch.App",
-                    ]
-                ),
+                [
+                    client.adb_bin,
+                    "-s",
+                    client.device_id,
+                    "shell",
+                    "CLASSPATH=/data/local/tmp/maatouch",
+                    "app_process",
+                    "/",
+                    "com.shxyke.MaaTouch.App",
+                ],
                 stdout=subprocess.PIPE,
                 stdin=subprocess.PIPE,
                 text=True,
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if __system__ == "windows"
                 else 0,
-                **adb_subprocess_options(),
             )
 
         def read_header():

@@ -64,6 +64,27 @@ it('ignores empty or invalid startup protection edits and locks changes during a
   expect(state.config.simulator.wait_time).toBe(75)
 })
 
+it.each(['starting', 'failed', 'paused'])(
+  'locks the bound target while the worker is alive with device status %s',
+  async (status) => {
+    state.client.get.mockResolvedValueOnce({ data: { active: true, status } })
+    await component.readStatus()
+    expect(component.state.value.locked).toBe(true)
+    const before = { ...component.draft.value }
+    component.edit('last_serial', 'USB-other')
+    component.edit('touch_backend', 'maatouch')
+    await component.detect()
+    expect(component.draft.value).toEqual(before)
+    expect(state.config.save_config).not.toHaveBeenCalled()
+
+    state.client.get.mockResolvedValueOnce({ data: { active: false, status: 'closed' } })
+    await component.readStatus()
+    expect(component.state.value.locked).toBe(false)
+    component.edit('last_serial', 'USB-other')
+    expect(component.draft.value.last_serial).toBe('USB-other')
+  }
+)
+
 it('keeps vendor backend edits with an unconfirmed preset in the draft', () => {
   component.edit('preset_id', 'windows.ldplayer9')
   component.edit('screenshot_backend', 'ld_native')

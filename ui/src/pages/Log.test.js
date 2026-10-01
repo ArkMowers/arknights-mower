@@ -43,6 +43,7 @@ describe('log page', () => {
         log: ref(''),
         log_mobile: ref(''),
         running: ref(false),
+        status_label: ref('已停止'),
         plan_condition: ref([]),
         log_lines: ref([]),
         task_list: ref([]),
@@ -67,6 +68,32 @@ describe('log page', () => {
     scope.stop()
     vi.unstubAllGlobals()
   })
+
+  it.each(['启动中', '等待设备恢复'])(
+    'keeps Stop available during %s until the worker confirms exit',
+    async (label) => {
+      state.mower.refs.running.value = true
+      state.mower.refs.status_label.value = label
+      const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+      expect(component.running.value).toBe(true)
+      expect(component.status_label.value).toBe(label)
+      expect(component.waiting.value).toBe(false)
+
+      state.client.get.mockResolvedValueOnce({ data: false })
+      component.stop()
+      expect(component.waiting.value).toBe(true)
+      await nextTick()
+      expect(state.client.get).toHaveBeenCalledWith('/stop')
+      expect(component.running.value).toBe(true)
+      expect(component.waiting.value).toBe(false)
+
+      state.client.get.mockResolvedValueOnce({ data: true })
+      component.stop()
+      await nextTick()
+      expect(component.running.value).toBe(false)
+      expect(component.waiting.value).toBe(false)
+    }
+  )
 
   it('runs both process actions directly through ProcessControl', async () => {
     state.mower.refs.running.value = true

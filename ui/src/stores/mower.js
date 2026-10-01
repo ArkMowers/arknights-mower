@@ -26,6 +26,13 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const status = ref('stopped')
+  const status_label = computed(() =>
+    !running.value
+      ? '已停止'
+      : ({ starting: '启动中', recovering: '等待设备恢复', sleeping: '休眠中' }[status.value] ??
+        '运行中')
+  )
   const scheduled_start_at = ref(null)
   const auto_start_handled = ref(false)
   const plan_condition = ref([])
@@ -70,7 +77,8 @@ export const useMowerStore = defineStore('mower', () => {
   async function get_running() {
     const wasRunning = running.value
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
-    running.value = response.data['status'] !== 'stopped'
+    status.value = response.data.status
+    running.value = status.value !== 'stopped'
     scheduled_start_at.value = response.data.scheduled_start_at ?? null
     auto_start_handled.value = response.data.auto_start_handled === true
     plan_condition.value = response.data['plan_condition']
@@ -100,6 +108,8 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    status,
+    status_label,
     scheduled_start_at,
     auto_start_handled,
     plan_condition,

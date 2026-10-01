@@ -4,11 +4,7 @@ import os
 import re
 import subprocess
 
-from arknights_mower.utils.device.adb_client.server import (
-    adb_subprocess_options,
-    emulator_connect_target,
-    run_adb,
-)
+from arknights_mower.utils.device.adb_client.server import run_adb
 from arknights_mower.utils.device.manager_io import MAX_OUTPUT
 
 BOOT_ID_COMMAND = "shell cat /proc/sys/kernel/random/boot_id"
@@ -40,9 +36,7 @@ class InstanceEndpointPending(InstanceBindingError):
     """VM identity is confirmed; no endpoint is yet safe to connect or recover."""
 
 
-def run_endpoint_command(
-    argv, *, timeout, run, probe, monotonic, adb=False, delegated_adb=False
-):
+def run_endpoint_command(argv, *, timeout, run, probe, monotonic, adb=False):
     """One bounded command; callers own the complete verification deadline."""
     options = dict(
         stdout=subprocess.PIPE,
@@ -54,8 +48,6 @@ def run_endpoint_command(
     if adb:
         result = run_adb(argv, run=run, probe=probe, monotonic=monotonic, **options)
     else:
-        if delegated_adb:
-            options.update(adb_subprocess_options())
         result = run(argv, **options)
     result.check_returncode()
     output, error = result.stdout, result.stderr or b""
@@ -78,19 +70,14 @@ def parse_boot_id(output):
     return None
 
 
-def connect_endpoint_candidates(adb_path, candidates, command):
-    """Register only supplied instance candidates; boot identity confirms them."""
-    for serial in dict.fromkeys(candidate for candidate in candidates if candidate):
-        endpoint = emulator_connect_target(serial)
-        if endpoint is None:
-            address = re.fullmatch(r"(?:\[[^\]\s]+\]|[^:\s]+):([0-9]+)", serial)
-            if address is None or not 0 < int(address[1]) < 65536:
-                continue
-            endpoint = serial
-        try:
-            command([adb_path, "connect", endpoint], adb=True)
-        except subprocess.CalledProcessError:
-            continue
+def emulator_connect_target(serial):
+    match = re.fullmatch(r"emulator-([0-9]{1,5})", serial)
+    if match is None:
+        return None
+    port = int(match[1])
+    if port % 2 or not 1024 <= port < 65535:
+        return None
+    return f"emu:{port},{port + 1}"
 
 
 def parse_adb_devices(output):
