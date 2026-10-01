@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.utils import config, operators, schedule_roster
+from arknights_mower.utils import backup_validation, config, operators, schedule_roster
 from arknights_mower.utils.config.plan import parse_plan_document
 from arknights_mower.utils.config.plan_advanced import apply_advanced_settings
 from arknights_mower.utils.logic_expression import LogicExpression
@@ -92,7 +92,11 @@ def test_image_plan_rejects_the_same_error_as_shift_projection(image_plan):
 def test_corrected_image_plan_skips_mutually_exclusive_combinations(image_plan):
     image_plan["backup_plans"][3].plan["central"][4].replacement = ["清道夫"]
     result = initialize(image_plan).validate_backup_plans()
-    assert result == {"success": True, "message": "验证成功，共验证 32 次"}
+    assert result == {
+        "success": True,
+        "status": "passed",
+        "message": "验证成功，共验证 32 次",
+    }
 
 
 @pytest.mark.parametrize("reverse", [False, True])
@@ -116,7 +120,11 @@ def test_mutually_exclusive_backups_do_not_report_an_impossible_conflict():
         "op_data.operators['能天使'].is_working()", "==", "False"
     )
     result = initialize(plan).validate_backup_plans()
-    assert result == {"success": True, "message": "验证成功，共验证 2 次"}
+    assert result == {
+        "success": True,
+        "status": "passed",
+        "message": "验证成功，共验证 2 次",
+    }
 
 
 def test_twenty_mutually_exclusive_backups_are_supported():
@@ -134,7 +142,11 @@ def test_twenty_mutually_exclusive_backups_are_supported():
         for index in range(20)
     ]
     result = initialize(plan).validate_backup_plans()
-    assert result == {"success": True, "message": "验证成功，共验证 21 次"}
+    assert result == {
+        "success": True,
+        "status": "passed",
+        "message": "验证成功，共验证 21 次",
+    }
 
 
 def many_backup_solver(count, *, oscillating=False):
@@ -270,7 +282,11 @@ def test_later_backup_overrides_a_shared_slot_without_duplicate_primary_error():
     plan = two_backups()
     plan["backup_plans"][1].plan = {"central": [Room("德克萨斯", "", ["翎羽"])]}
     result = initialize(plan).validate_backup_plans()
-    assert result == {"success": True, "message": "验证成功，共验证 4 次"}
+    assert result == {
+        "success": True,
+        "status": "passed",
+        "message": "验证成功，共验证 4 次",
+    }
 
 
 @pytest.mark.parametrize("valid", [False, True])
@@ -330,4 +346,93 @@ def test_large_combination_space_never_reports_partial_validation_as_success(
     monkeypatch.setattr(operators, "MAX_BACKUP_VALIDATION_COMBINATIONS", 2)
     result = initialize(plan).validate_backup_plans()
     assert not result["success"]
+    assert result["status"] == "incomplete"
     assert "验证未完成" in result["message"]
+    assert "允许启动" in result["message"]
+
+
+@pytest.mark.parametrize("same_room", [False, True])
+def test_product_specific_backups_skip_only_same_room_exclusion(same_room):
+    plan = two_backups()
+    plan["backup_plans"][0].trigger = LogicExpression(
+        "op_data.facility_product('room_1_1')", "==", "gold"
+    )
+    second_room = "room_1_1" if same_room else "room_1_2"
+    plan["backup_plans"][1].trigger = LogicExpression(
+        f"op_data.facility_product('{second_room}')", "==", "exp3"
+    )
+    result = initialize(plan).validate_backup_plans()
+    assert result["success"] is same_room
+    assert result["status"] == ("passed" if same_room else "failed")
+    if same_room:
+        assert result["message"] == "验证成功，共验证 3 次"
+    else:
+        assert "替换组不可用高效组干员" in result["message"]
+
+
+def test_analysis_budget_returns_an_incomplete_warning_without_mutating_state(
+    monkeypatch,
+):
+    data = initialize(two_backups())
+    op = data.operators["能天使"]
+    op.mood = 7
+    monkeypatch.setattr(backup_validation, "MAX_CONDITION_STATES", 2)
+    result = data.validate_backup_plans()
+    assert result["success"] is False
+    assert result["status"] == "incomplete"
+    assert "状态数量超过分析上限" in result["message"]
+    assert "允许启动" in result["message"]
+    assert data.plan_condition == [False, False]
+    assert data.operators["能天使"] is op
+    assert op.mood == 7
+
+
+@pytest.mark.parametrize("failure", ["baseline", "ownership"])
+def test_configuration_errors_still_block_when_combination_budget_is_exhausted(
+    monkeypatch, failure
+):
+    plan = two_backups()
+    monkeypatch.setattr(operators, "MAX_BACKUP_VALIDATION_COMBINATIONS", 0)
+    if failure == "baseline":
+        plan["default_plan"].plan["central"][1].replacement = ["能天使"]
+    else:
+        monkeypatch.setattr(
+            schedule_roster, "validate_owned_operators", lambda _: "缺少已持有干员"
+        )
+    result = Operators(plan).validate_backup_plans()
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert "验证未完成" not in result["message"]
+
+
+def test_unexpected_analysis_error_is_not_an_incomplete_warning(monkeypatch):
+    monkeypatch.setattr(
+        backup_validation,
+        "possible_backup_conditions",
+        MagicMock(side_effect=ValueError("unexpected analysis failure")),
+    )
+    with pytest.raises(ValueError, match="unexpected analysis failure"):
+        initialize(two_backups()).validate_backup_plans()
+
+
+def test_runtime_still_rejects_active_conflict_after_incomplete_validation(monkeypatch):
+    plan = two_backups()
+    for backup, name in zip(plan["backup_plans"], ("能天使", "银灰")):
+        backup.trigger = LogicExpression(
+            f"op_data.operators['{name}'].is_working()", "==", "True"
+        )
+    data = initialize(plan)
+    for op in data.operators.values():
+        op.current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    data.first_init = False
+    monkeypatch.setattr(operators, "MAX_BACKUP_VALIDATION_COMBINATIONS", 2)
+    assert data.validate_backup_plans()["status"] == "incomplete"
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data, solver.tasks = data, []
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan={})
+    with pytest.raises(ValueError, match="上下班副表推演失败.*替换组不可用高效组干员"):
+        solver._prepare_shift_backup(task)
+    assert task.plan == {}
+    assert data.plan_condition == [False, False]
+    assert data.operators["能天使"].current_room == "central"

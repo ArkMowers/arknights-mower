@@ -359,7 +359,9 @@ async function validate_plan() {
         headers: { token: token }
       }
     )
-    if (data.success) {
+    if (data.status === 'incomplete') {
+      message.warning(data.message, { duration: 10000 })
+    } else if (data.success) {
       message.success(data.message)
     } else {
       message.error(data.message)

@@ -11,7 +11,7 @@ date: 2026-10-02
 
 ## Contract
 
-**[INV-SCHED-16] Backup Validation Coverage**: Validation excludes only backup activation combinations disproved by supported trigger logic, reports success only after every remaining combination passes the same merged-plan validation as shift projection, and preserves the caller's active plan and actual occupancy.
+**[INV-SCHED-16] Backup Validation Coverage**: Validation excludes only backup activation combinations disproved by supported trigger logic, reports success only after every remaining combination passes the same merged-plan validation as shift projection, and preserves the caller's active plan and actual occupancy. Budget exhaustion is an incomplete warning that permits startup; confirmed configuration errors remain blocking.
 
 The [subsystem contract](../../../../docs/subsystems/base-scheduler.md), [coding standards](../../../../CODING_STANDARDS.md) and [review checklist](../../../skills/mower-code-review/references/invariants-checklist.md) register this rule. The [simplification record](../simplification/2026-10-02-single-backup-validation.md) records caller evidence and removal of duplicate validation.
 
@@ -21,9 +21,9 @@ The decoded Scheduling Plan contains six backups. `深海强制上班` assigns �
 
 The validator uses the runtime merged-plan checker in independent operator models. Configuration failures identify the active backups and the same validation reason. Operator ownership precedes baseline validation. Candidate models omit actual-occupancy caches because configuration checks do not need observed mood or bed times.
 
-AST analysis shares known operator working/resting calls, current-room string equality/inequality and clue-party null comparisons, including nested Boolean operators. Unknown, missing, unsupported, time-dependent or state-mutating triggers retain independent whole-trigger choices. Analysis does not execute expressions or read actual occupancy. This conservative fallback includes simultaneous expression failures and never treats a mood threshold or rescue call as a fixed shared value.
+AST analysis shares known operator working/resting calls, current-room and same-room facility-product string equality/inequality, plus clue-party null comparisons, including nested Boolean operators. Unknown, missing, unsupported, time-dependent or state-mutating triggers retain independent whole-trigger choices. Analysis does not execute expressions or read actual occupancy. This conservative fallback includes simultaneous expression failures and never treats a mood threshold or rescue call as a fixed shared value.
 
-The admission budgets are 16384 distinct activation combinations and 262144 symbolic condition states. Exceeded budgets return incomplete-validation failures. Fourteen independent backups fit; twenty room-exclusive backups require twenty-one checks. There is no fixed table-count limit. Static validation covers merged configuration errors and does not prove all future dynamic convergence.
+The admission budgets are 16384 distinct activation combinations and 262144 symbolic condition states. Exceeded budgets return `status: incomplete` with `success: false`. Startup logs a warning and continues; manual validation shows a warning. Confirmed configuration errors still block startup. The [warning decision](../feature/2026-10-02-backup-validation-warning.md) defines this distinction. Fourteen independent backups fit; twenty room-exclusive backups require twenty-one checks. There is no fixed table-count limit. Static validation covers merged configuration errors and does not prove all future dynamic convergence.
 
 The [R.I.I.C-Calculator scheduler](https://github.com/Panda-Panta/R.I.I.C-Calculator/tree/main/src/scheduler) evaluates parsed conditions against simulation state and validates active merged plans. Its source is a reference for separating expression parsing from state evaluation; no source is copied into this implementation.
 
@@ -39,4 +39,4 @@ PASS. Actual occupancy, active conditions and operator identity are preserved; o
 
 ## Spec Findings
 
-PASS. Manual and startup callers share the runtime merged-plan checker. The decoded Scheduling Plan fails with both conflicting backup names and the shift-projection reason. Corrected configuration coverage prunes impossible combinations; twenty mutually exclusive backups pass. Focused regression and adjacent scheduling suites pass 164 tests and four subtests. Dynamic convergence remains a runtime check.
+PASS. Manual and startup callers share the runtime merged-plan checker. The decoded Scheduling Plan fails with both conflicting backup names and the shift-projection reason. Corrected configuration coverage prunes impossible combinations; twenty mutually exclusive backups pass. Focused regression and adjacent scheduling suites pass, including warning startup and product-condition coverage. Dynamic convergence remains a runtime check.

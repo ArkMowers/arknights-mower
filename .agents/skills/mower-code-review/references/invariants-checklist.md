@@ -60,7 +60,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
-- [ ] **[INV-SCHED-16] Backup Validation Coverage**: Does validation exclude only logically disproven activation combinations, cover all remaining combinations with the runtime merged-plan checker, report exceeded analysis or combination budgets as failure, identify active backups on error and preserve the caller's active plan and actual occupancy?
+- [ ] **[INV-SCHED-16] Backup Validation Coverage**: Does validation exclude only logically disproven activation combinations, cover all remaining combinations with the runtime merged-plan checker, distinguish incomplete budget warnings from blocking configuration failures, identify active backups on error and preserve the caller's active plan and actual occupancy?
 - [ ] **[INV-SCHED-13] Pending Task Preservation**: Does device recovery preserve the scheduler and pending tasks through real scheduler re-entry, retain future explicit tasks during stale ordinary-plan rebuilding, refresh the Capture Frame before resuming and pause unverified side effects without ending the automation worker or replaying input?
 
 - [ ] **[INV-SCHED-01] Empirical Depletion Rate**: Are operator exhaustion forecasts calculated dynamically from inspection deltas rather than hardcoded assumptions?

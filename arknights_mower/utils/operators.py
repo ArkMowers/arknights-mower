@@ -2130,15 +2130,22 @@ class Operators:
 
     def validate_backup_plans(self):
         """使用换班预演的合并校验检查可能的副表组合，保留当前排班与驻员。"""
-        from arknights_mower.utils.backup_validation import possible_backup_conditions
+        from arknights_mower.utils.backup_validation import (
+            BackupValidationLimitExceeded,
+            possible_backup_conditions,
+        )
         from arknights_mower.utils.schedule_roster import validate_owned_operators
 
         if error := validate_owned_operators(self.global_plan):
-            return {"success": False, "message": error}
+            return {"success": False, "status": "failed", "message": error}
 
         baseline = Operators(self.global_plan)
         if error := baseline.init_and_validate():
-            return {"success": False, "message": f"基础验证失败：{error}"}
+            return {
+                "success": False,
+                "status": "failed",
+                "message": f"基础验证失败：{error}",
+            }
         backup_count = len(self.backup_plans)
         # 仅按条件证明互斥；主力不重叠不能证明合并配置互不影响。
         try:
@@ -2147,8 +2154,12 @@ class Operators:
                 MAX_BACKUP_VALIDATION_COMBINATIONS,
                 known_operators=baseline.operators,
             )
-        except ValueError as error:
-            return {"success": False, "message": str(error)}
+        except BackupValidationLimitExceeded as error:
+            return {
+                "success": False,
+                "status": "incomplete",
+                "message": f"{error}。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
+            }
         tested_count = 0
         for flags in combinations:
             condition = list(flags)
@@ -2171,11 +2182,16 @@ class Operators:
                     else f"基础验证失败：{error}"
                 )
                 logger.info(message)
-                return {"success": False, "message": message}
+                return {"success": False, "status": "failed", "message": message}
         if backup_count == 0:
-            return {"success": True, "message": "没有备用计划，基础验证通过"}
+            return {
+                "success": True,
+                "status": "passed",
+                "message": "没有备用计划，基础验证通过",
+            }
         return {
             "success": True,
+            "status": "passed",
             "message": f"验证成功，共验证 {tested_count} 次",
         }
 

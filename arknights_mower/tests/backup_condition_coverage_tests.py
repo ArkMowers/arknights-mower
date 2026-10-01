@@ -198,3 +198,52 @@ def test_analyzed_conditions_cover_real_runtime_expression_results():
             )
             in combinations
         )
+
+
+def test_same_room_product_conditions_share_quoted_and_named_constants():
+    assert possibilities(
+        "op_data.facility_product('room_1_1') == 'gold'",
+        "exp3 == op_data.facility_product(room_1_1)",
+        "op_data.facility_product(room_1_1) != gold",
+    ) == {(True, False, False), (False, True, True), (False, False, True)}
+    assert (True, True) in possibilities(
+        "op_data.facility_product('room_1_1') == gold",
+        "op_data.facility_product('room_1_2') == exp3",
+    )
+
+
+def test_invalid_product_room_does_not_prove_exclusion():
+    assert possibilities(
+        "op_data.facility_product('missing') == gold",
+        "op_data.facility_product('missing') != gold",
+    ) == set(product([False, True], repeat=2))
+
+
+def test_product_conditions_cover_real_runtime_cached_and_baseline_values():
+    from arknights_mower.utils.operators import Operators
+    from arknights_mower.utils.plan import Plan, PlanConfig
+
+    main = Plan({}, PlanConfig("", "", ""), products={"room_1_1": "gold"})
+    data = Operators({"default_plan": main, "backup_plans": []})
+    expressions = [
+        "op_data.facility_product('room_1_1') == gold",
+        "exp3 == op_data.facility_product(room_1_1)",
+        "op_data.facility_product(room_1_1) != gold",
+    ]
+    combinations = possibilities(*expressions)
+    for cached in (None, "gold", "exp3", "lmd"):
+        data.facility_states = (
+            {} if cached is None else {"room_1_1": {"product": cached}}
+        )
+        assert (
+            tuple(
+                bool(data.evaluate_expression(expression)) for expression in expressions
+            )
+            in combinations
+        )
+    main.products.clear()
+    data.facility_states.clear()
+    assert (
+        tuple(bool(data.evaluate_expression(expression)) for expression in expressions)
+        in combinations
+    )
