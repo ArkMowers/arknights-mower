@@ -1588,7 +1588,9 @@ class DeviceControl(Generic[D]):
     def _close(self) -> DeviceResult[None]:
         with adb_server_scope(self._adb_server if self._uses_owned_adb else None):
             result = self._close_resources()
-            if self._uses_owned_adb and not self._run_active:
+            if self._uses_owned_adb and (
+                not self._run_active or self.shutdown_requested
+            ):
                 try:
                     self._adb_server.close()
                     self._uses_owned_adb = False

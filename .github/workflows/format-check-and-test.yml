@@ -48,6 +48,8 @@ jobs:
               - 'arknights_mower/utils/{screenshot,workshop_ui,rapidocr,scheduler_task}.py'
               - 'arknights_mower/views/task.py'
               - 'arknights_mower/tests/{scheduler_wakeup,screenshot,workshop_inflight}_tests.py'
+              - 'arknights_mower/utils/device/{application.py,adb_client/**}'
+              - 'arknights_mower/tests/{adb_owned_server,adb_owned_transport,scheduler_recovery_preservation}_tests.py'
               - 'arknights_mower/tests/fixtures/furniture/**'
 
               - 'arknights_mower/{__init__,__main__}.py'
@@ -248,7 +250,7 @@ jobs:
             arknights_mower.tests.software_update_progress_tests \
             arknights_mower.tests.process_control_tests \
             arknights_mower.tests.software_update_transaction_tests
-      - name: Verify furniture, OCR, scheduling and screenshot behavior on each OS
+      - name: Verify furniture, OCR, scheduling, screenshot and device recovery on each OS
         shell: bash
         env:
           PYTHONUTF8: "0"
@@ -259,6 +261,9 @@ jobs:
             arknights_mower/tests/furniture_data_tests.py \
             arknights_mower/tests/furniture_ocr_tests.py \
             arknights_mower/tests/scheduler_wakeup_tests.py \
+            arknights_mower/tests/scheduler_recovery_preservation_tests.py \
+            arknights_mower/tests/adb_owned_server_tests.py \
+            arknights_mower/tests/adb_owned_transport_tests.py \
             arknights_mower/tests/screenshot_tests.py \
             arknights_mower/tests/workshop_inflight_tests.py
 

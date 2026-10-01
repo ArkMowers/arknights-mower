@@ -606,9 +606,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.device.exit()
                 self.check_current_focus()
         if self.error or force:
+            now = datetime.now()
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (
-                self.find_next_task(datetime.now()) is None
+                self.find_next_task(now) is None
                 and self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE) is None
             ):
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
@@ -621,17 +622,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 TaskTypes.SWITCH_PRODUCT,
                 TaskTypes.FIAMMETTA,
             }
+            future_preserved = {
+                TaskTypes.RUN_ORDER,
+                TaskTypes.FURNITURE,
+                TaskTypes.DEPOT,
+                TaskTypes.CLUE,
+                TaskTypes.WORKSHOP,
+            }
             if any(
-                t.time < datetime.now() - timedelta(minutes=15)
-                and t.type not in preserved
+                t.time < now - timedelta(minutes=15) and t.type not in preserved
                 for t in self.tasks
             ):
-                logger.info("检测到执行超过15分钟的任务，重建普通排班并保留关键预约")
+                logger.info(
+                    "检测到执行超过15分钟的任务，重建普通排班并保留关键预约与未来显式任务"
+                )
                 self.tasks = [
                     t
                     for t in self.tasks
                     if t.type in preserved
-                    or (t.type == TaskTypes.RUN_ORDER and t.time > datetime.now())
+                    or (t.type in future_preserved and t.time > now)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始

@@ -1,6 +1,7 @@
 from contextlib import nullcontext
+from io import StringIO
 from subprocess import CompletedProcess, TimeoutExpired
-from threading import Event
+from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -386,6 +387,91 @@ def test_shutdown_defers_server_release_until_device_cleanup(service, applicatio
     assert service.owner.process is None
 
 
+@pytest.mark.parametrize("release", ["close", "final_release"])
+def test_exit_releases_owned_server_while_run_is_still_active(
+    service, application, release
+):
+    order = []
+    close_server = service.owner.close
+    service.owner.close = Mock(
+        side_effect=lambda **options: (order.append("server"), close_server(**options))[
+            -1
+        ]
+    )
+    with application.control.run():
+        device = application.control.start().unwrap()
+        close_device = device.close
+        device.close = lambda: (order.append("helpers"), close_device())[-1]
+        application.control.begin_shutdown()
+        assert application.control._run_active
+        assert getattr(application.control, release)().ok
+        assert device.closed
+        assert service.owner.process is None
+        assert order == ["helpers", "server"]
+        assert application.control.close().ok
+        assert application.control.final_release().ok
+    assert order == ["helpers", "server"]
+    service.children[0].terminate.assert_called_once_with()
+
+
+def test_idle_helper_cleanup_retains_server_until_whole_run_exit(service, application):
+    with application.control.run():
+        device = application.control.start().unwrap()
+        assert application.control.close().ok
+        assert device.closed
+        assert service.owner.process is service.children[0]
+        service.children[0].terminate.assert_not_called()
+    assert service.owner.process is None
+    service.children[0].terminate.assert_called_once_with()
+
+
+def test_deferred_shutdown_releases_server_after_live_helper_operation_returns(
+    service, application, monkeypatch
+):
+    entered, release = Event(), Event()
+    order = []
+    close_server = service.owner.close
+    service.owner.close = Mock(
+        side_effect=lambda **options: (order.append("server"), close_server(**options))[
+            -1
+        ]
+    )
+    monkeypatch.setattr(
+        application.control,
+        "_acquire_for_final_release",
+        lambda: application.control.configuration_lock.acquire(timeout=0.01),
+    )
+    with application.control.run():
+        device = application.control.start().unwrap()
+        close_device = device.close
+        device.close = lambda: (order.append("helpers"), close_device())[-1]
+
+        def operation(handle):
+            entered.set()
+            assert release.wait(2)
+
+        worker = Thread(target=lambda: application.control.execute(operation))
+        worker.start()
+        try:
+            assert entered.wait(1)
+            application.control.begin_shutdown()
+            assert application.control.close(timeout=0.01).error.code == "close_timeout"
+            assert application.control.final_release().error.code == "close_timeout"
+            assert not device.closed
+            assert service.owner.process is service.children[0]
+            assert order == []
+        finally:
+            release.set()
+            worker.join(2)
+        assert not worker.is_alive()
+        assert device.closed
+        assert service.owner.process is None
+        assert order == ["helpers", "server"]
+        assert application.control.close().ok
+        assert application.control.final_release().ok
+    service.children[0].terminate.assert_called_once_with()
+
+
 def test_invalid_adb_configuration_keeps_service_failure_classified(
     service, application
 ):
@@ -542,23 +628,34 @@ def test_windows_listener_probe_requires_exact_pid_endpoint_and_listen_state(
     assert not owned._owns_listener(123, 45001, 1)
 
 
-def test_linux_listener_probe_matches_process_socket_inode(monkeypatch, tmp_path):
+def test_linux_listener_probe_matches_process_socket_inode(monkeypatch):
     from arknights_mower.utils.device.adb_client import owned
 
-    table = tmp_path / "tcp"
-    table.write_text("0: 0100007F:AFC9 00000000:0000 0A 0 0 0 0 0 100\n")
-    descriptors = tmp_path / "fd"
-    descriptors.mkdir()
-    descriptor = descriptors / "3"
-    descriptor.symlink_to("socket:[100]")
+    descriptor = "/proc/123/fd/3"
+    readlink = Mock(return_value="socket:[100]")
+
+    def path(location):
+        if location == "/proc/123/net/tcp":
+            return SimpleNamespace(
+                open=lambda: StringIO(
+                    "0: 0100007F:AFC9 00000000:0000 0A 0 0 0 0 0 100\n"
+                )
+            )
+        assert location == "/proc/123/fd"
+        return SimpleNamespace(iterdir=lambda: iter([descriptor]))
+
     monkeypatch.setattr(owned.sys, "platform", "linux")
-    monkeypatch.setattr(
-        owned, "Path", lambda path: table if path.endswith("/tcp") else descriptors
+    monkeypatch.setattr(owned, "os", SimpleNamespace(name="posix", readlink=readlink))
+    monkeypatch.setattr(owned, "Path", path)
+    external = Mock(
+        side_effect=AssertionError("Linux listener tests cannot execute host commands")
     )
+    monkeypatch.setattr(owned, "run_manager_command", external)
     assert owned._owns_listener(123, 45001, 1)
-    descriptor.unlink()
-    descriptor.symlink_to("socket:[200]")
+    readlink.assert_called_once_with(descriptor)
+    readlink.return_value = "socket:[200]"
     assert not owned._owns_listener(123, 45001, 1)
+    external.assert_not_called()
 
 
 def test_owned_probes_never_contact_the_shared_service(service):

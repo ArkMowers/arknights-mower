@@ -19,7 +19,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
-- [ ] **[INV-DEV-19] Owned ADB Recovery**: Does sustained service failure rebuild only the owned foreground ADB process on an isolated loopback port within the existing budget, preserve shared and USB transports, and revalidate the original target before replacing helpers without replaying uncertain input?
+- [ ] **[INV-DEV-19] Owned ADB Recovery**: Does sustained service failure rebuild only the owned foreground ADB process on an isolated loopback port within the existing budget, preserve shared and USB transports, and revalidate the original target before replacing helpers without replaying uncertain input? Does shutdown release helpers before the server even with an active run context, including deferred cleanup, while normal idle cleanup retains the server?
 
 - [ ] **[INV-DEV-16] Absent Target Cleanup**: Does an absent DroidCast target permit idempotent cleanup and the next verified startup only after owned forwards are absent, while unconfirmed transport failures, residual owned mappings and host cleanup failures remain blocking without touching foreign resources or shared ADB state?
 - [ ] **[INV-DEV-18] Recovery Cycle Continuation**: Do failed finite recovery cycles retain the same Instance Binding, wait through cancellable cooldown and accept verified readiness despite an unconfirmed reconnect response?
@@ -60,7 +60,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
-- [ ] **[INV-SCHED-13] Pending Task Preservation**: Does device recovery preserve the scheduler and pending tasks, refresh the Capture Frame before resuming and pause unverified side effects without ending the automation worker or replaying input?
+- [ ] **[INV-SCHED-13] Pending Task Preservation**: Does device recovery preserve the scheduler and pending tasks through real scheduler re-entry, retain future explicit tasks during stale ordinary-plan rebuilding, refresh the Capture Frame before resuming and pause unverified side effects without ending the automation worker or replaying input?
 
 - [ ] **[INV-SCHED-01] Empirical Depletion Rate**: Are operator exhaustion forecasts calculated dynamically from inspection deltas rather than hardcoded assumptions?
 - [ ] **[INV-SCHED-02] Stable Recovery Position**: The target retains its final slot during recovery setup and roster restoration; earlier non-manager slots use confirmed full residents or the highest-mood eligible idle padding, with actual readback required before recording recovery.
