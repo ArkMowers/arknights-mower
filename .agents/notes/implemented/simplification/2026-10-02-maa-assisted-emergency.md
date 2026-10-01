@@ -45,6 +45,8 @@ Focused offline suites cover rescue-line entry, uncertain native opportunities, 
 
 The 55 focused Python suites pass 1,795 tests and 36 subtests. The seven frontend suites pass 66 tests; the production build, Ruff, Prettier and three governance gates pass.
 
+Final lifecycle review adds regression coverage for stop/status interface errors, failed state persistence during stop confirmation, malformed persisted phases and locally invalidated readings for absent residents. The five focused lifecycle, shared-bed and governance suites pass 165 tests and ten subtests after these corrections.
+
 ## Standards Findings
 
 The lifecycle retains finite external-control budgets, verified cleanup, measured/estimated separation and isolated native projection. Glossary synchronization remains a separately approved edit under the root agent directives.

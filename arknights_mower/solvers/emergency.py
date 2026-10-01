@@ -57,6 +57,7 @@ class EmergencyRecoveryMixin:
             for op in self.op_data.operators.values():
                 if op.current_room == room and op.name not in actual:
                     op.current_room, op.current_index = "", -1
+                    op.time_stamp = None
             self.back()
         self.back_to_infrastructure()
 
@@ -66,13 +67,14 @@ class EmergencyRecoveryMixin:
 
     def _emergency_startup(self):
         """初始化读取后检查一次；已派发批次只核对实际状态。"""
+        if getattr(self, "emergency_state", None) is not None:
+            self._emergency_validate_state()
         self._emergency_read_rooms(
             room for room in self.op_data.plan if room in base_room_list
         )
         self._read_initial_card_mood()
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
-            self._emergency_validate_state()
             if self.emergency_state["phase"] == "dispatching":
                 self.emergency_state["phase"] = "recovering"
             if self.emergency_state.get("dispatch") == "started":
@@ -174,7 +176,11 @@ class EmergencyRecoveryMixin:
     def _emergency_validate_state(self):
         state = self.emergency_state
         if not (
-            isinstance(state.get("targets"), dict)
+            isinstance(state, dict)
+            and state.get("phase") in ("dispatching", "recovering", "returning")
+            and state.get("dispatch")
+            in ("started", "completed", "failed", "unknown", "interrupted")
+            and isinstance(state.get("targets"), dict)
             and isinstance(state.get("dorm_layout"), dict)
             and isinstance(state.get("backup_names"), list)
             and isinstance(state.get("frozen_conditions"), list)
@@ -258,14 +264,20 @@ class EmergencyRecoveryMixin:
             if asst is None:
                 asst = getattr(self, "MAA", None)
             if asst is not None:
-                asst.stop()
-                stop_deadline = monotonic() + 15
-                while asst.running() and monotonic() < stop_deadline:
-                    csleep(1)
-                if asst.running():
-                    state["error"] = "MAA 未确认停止，停止 Mower 设备操作"
-                    self._emergency_save()
-                    raise MowerExit(state["error"])
+                try:
+                    asst.stop()
+                    stop_deadline = monotonic() + 15
+                    while asst.running() and monotonic() < stop_deadline:
+                        csleep(1)
+                    if asst.running():
+                        raise RuntimeError("停止确认超时")
+                except Exception as exc:
+                    state["error"] = f"MAA 未确认停止，停止 Mower 设备操作：{exc}"
+                    try:
+                        self._emergency_save()
+                    except Exception:
+                        logger.exception("MAA 停止异常后的救急状态无法保存")
+                    raise MowerExit(state["error"]) from exc
                 self.MAA = None
             self._emergency_save()
             self.recog.reset_after_external_control()

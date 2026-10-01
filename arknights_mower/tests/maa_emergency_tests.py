@@ -117,6 +117,18 @@ def test_measured_low_mood_dispatches_once_and_restart_only_reconciles(
     assert solver.emergency_state["dispatch"] == "unknown"
 
 
+@pytest.mark.parametrize("field", ["phase", "dispatch"])
+def test_invalid_persisted_episode_cannot_dispatch_again(solver, field):
+    setup_startup(solver)
+    state = make_episode(solver)
+    state[field] = "invalid"
+    config.conf.maa_emergency_infrast_enable = True
+    with pytest.raises(emergency.MowerExit, match="缓存结构不完整"):
+        solver._emergency_startup()
+    solver._emergency_read_rooms.assert_not_called()
+    solver._run_emergency_maa.assert_not_called()
+
+
 def test_card_estimates_do_not_establish_entry_or_ready(solver):
     setup_startup(solver)
     config.conf.maa_emergency_infrast_enable = True
@@ -129,6 +141,28 @@ def test_card_estimates_do_not_establish_entry_or_ready(solver):
     make_episode(solver)
     for name in PRIMARY:
         solver.op_data.dorm_mood_estimates[name] = (24, NOW)
+    assert not solver._emergency_ready()
+
+
+def test_observed_absence_invalidates_only_departed_resident_reading(solver):
+    missing = solver.op_data.operators[PRIMARY[0]]
+    untouched = solver.op_data.operators[COVERS[0]]
+    room = missing.current_room
+    original_stamp = untouched.time_stamp
+    observed = [
+        {"agent": op.name}
+        for op in solver.op_data.operators.values()
+        if op.current_room == room and op.name != missing.name
+    ]
+    solver.get_agent_from_room = MagicMock(return_value=observed)
+    solver.enter_room = MagicMock()
+    solver.back = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+    solver._emergency_read_rooms([room])
+    solver.get_agent_from_room.assert_called_once_with(room, None, force_mood=True)
+    assert missing.current_room == "" and missing.time_stamp is None
+    assert untouched.time_stamp == original_stamp
+    make_episode(solver)
     assert not solver._emergency_ready()
 
 
@@ -362,6 +396,32 @@ def test_check_task_rearms_collection_after_consumed_check(solver):
     solver._emergency_tick()
     assert len(solver.tasks) == 1
     assert solver.tasks[0].time == NOW + timedelta(minutes=15)
+
+
+@pytest.mark.parametrize("failure", ["stop", "running"])
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_stop_interface_errors_halt_even_if_state_save_fails(
+    solver, failure, save_fails
+):
+    make_episode(solver)
+    for slots in solver.op_data.plan.values():
+        for slot in slots:
+            slot.facility = "制造站"
+    asst = SimpleNamespace(
+        append_task=MagicMock(return_value=1),
+        start=MagicMock(return_value=False),
+        running=MagicMock(return_value=False),
+        stop=MagicMock(),
+    )
+    getattr(asst, failure).side_effect = RuntimeError("interface unavailable")
+    solver.initialize_maa = lambda: setattr(solver, "MAA", asst)
+    solver.recog = SimpleNamespace(reset_after_external_control=MagicMock())
+    if save_fails:
+        solver._emergency_save = MagicMock(side_effect=RuntimeError("db unavailable"))
+    with pytest.raises(emergency.MowerExit, match="未确认停止"):
+        solver._run_emergency_maa()
+    assert solver.MAA is asst
+    solver.recog.reset_after_external_control.assert_not_called()
 
 
 def test_history_cycle_keeps_charge_dependent_operator_separate():
