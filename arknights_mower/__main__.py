@@ -431,7 +431,9 @@ def simulate(saved):
         logger.error(validation_msg)
         return
     validation_msg = base_scheduler.op_data.validate_backup_plans()
-    if not validation_msg["success"]:
+    if validation_msg.get("status") == "incomplete":
+        logger.warning(f"排班校验未完成: {validation_msg['message']}")
+    elif not validation_msg["success"]:
         logger.error(f"排班验证失败: {validation_msg['message']}")
         return
     _apply_version_update_resting_threshold(

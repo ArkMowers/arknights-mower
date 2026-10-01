@@ -1935,12 +1935,16 @@ def validate_backup_plans_route():
         op = Operators(global_plan)
         validation_msg = op.init_and_validate()
         if validation_msg is not None:
-            return {"success": False, "message": validation_msg}
+            return {"success": False, "status": "failed", "message": validation_msg}
         result = op.validate_backup_plans()
         return result
     except Exception as e:
         logger.exception(e)
-        return {"success": False, "message": f"验证过程中发生错误: {str(e)}"}
+        return {
+            "success": False,
+            "status": "failed",
+            "message": f"验证过程中发生错误: {str(e)}",
+        }
 
 
 @app.route("/check-maa")

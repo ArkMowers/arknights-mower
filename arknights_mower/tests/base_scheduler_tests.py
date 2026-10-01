@@ -252,6 +252,41 @@ class TestMoodInitialization(unittest.TestCase):
         self.main.simulate(None)
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
 
+    def test_incomplete_validation_warns_and_enters_scheduler(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = None
+        scheduler.op_data.validate_backup_plans.return_value = {
+            "success": False,
+            "status": "incomplete",
+            "message": "组合校验超出预算，允许启动",
+        }
+        scheduler.run.side_effect = base_schedule.MowerExit
+        self.initialize.return_value = scheduler
+        with (
+            patch.object(self.main.NewsChecker, "get_maintenance", return_value=None),
+            patch.object(self.main.logger, "warning") as warning,
+        ):
+            self.main.simulate(None)
+        scheduler.run.assert_called_once_with()
+        warning.assert_called_once()
+        self.assertIn("允许启动", warning.call_args.args[0])
+
+    def test_failed_and_legacy_failed_validation_block_scheduler(self):
+        for status in ("failed", None):
+            with self.subTest(status=status):
+                scheduler = MagicMock()
+                scheduler.initialize_operators.return_value = None
+                result = {"success": False, "message": "已确认排班冲突"}
+                if status:
+                    result["status"] = status
+                scheduler.op_data.validate_backup_plans.return_value = result
+                self.initialize.return_value = scheduler
+                with patch.object(self.main.logger, "error") as error:
+                    self.main.simulate(None)
+                scheduler.run.assert_not_called()
+                error.assert_called_once()
+                self.assertIn("已确认排班冲突", error.call_args.args[0])
+
     def test_saved_mood_state_refreshes_backup_plan_before_run(self):
         scheduler = MagicMock()
         scheduler.initialize_operators.return_value = None

@@ -305,12 +305,3 @@ class Plan:
         if include_tasks:
             names.update(name for task in (self.task or {}).values() for name in task)
         return names - IGNORED_NAMES
-
-    def primary_names(self) -> set[str]:
-        """Return primary assignments used to compare backup plans."""
-        return {
-            slot.agent
-            for room in self.plan.values()
-            for slot in room
-            if slot.agent not in IGNORED_NAMES
-        }

@@ -1,7 +1,6 @@
 import ast
 import copy
 from datetime import datetime, timedelta
-from itertools import product
 from typing import Any, Literal, overload
 
 from evalidate import Expr, base_eval_model
@@ -28,6 +27,7 @@ from ..utils.news_checker import NewsChecker
 # 赤金交易订单干员常量
 TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
 DORMITORY_ROOMS = [f"dormitory_{index}" for index in range(1, 5)]
+MAX_BACKUP_VALIDATION_COMBINATIONS = 16384
 FACILITY_TYPE_IDS = {
     "贸易站": "trade",
     "制造站": "manufacture",
@@ -2129,77 +2129,70 @@ class Operators:
         return ret
 
     def validate_backup_plans(self):
+        """使用换班预演的合并校验检查可能的副表组合，保留当前排班与驻员。"""
+        from arknights_mower.utils.backup_validation import (
+            BackupValidationLimitExceeded,
+            possible_backup_conditions,
+        )
         from arknights_mower.utils.schedule_roster import validate_owned_operators
 
         if error := validate_owned_operators(self.global_plan):
-            return {"success": False, "message": error}
+            return {"success": False, "status": "failed", "message": error}
 
+        baseline = Operators(self.global_plan)
+        if error := baseline.init_and_validate():
+            return {
+                "success": False,
+                "status": "failed",
+                "message": f"基础验证失败：{error}",
+            }
         backup_count = len(self.backup_plans)
-        if backup_count == 0:
-            return {"success": True, "message": "没有备用计划，无需验证"}
-
-        agent_sets = [plan.primary_names() for plan in self.backup_plans]
-        adjacency = [set() for _ in range(backup_count)]
-        for i in range(backup_count):
-            for j in range(i + 1, backup_count):
-                if agent_sets[i].intersection(agent_sets[j]):
-                    adjacency[i].add(j)
-                    adjacency[j].add(i)
-
-        components: list[list[int]] = []
-        visited = [False] * backup_count
-        for i in range(backup_count):
-            if visited[i]:
-                continue
-            stack = [i]
-            component = []
-            while stack:
-                node = stack.pop()
-                if visited[node]:
-                    continue
-                visited[node] = True
-                component.append(node)
-                stack.extend(adjacency[node])
-            components.append(component)
-
-        tested_conditions: set[tuple[bool, ...]] = set()
-        tested_sequence: list[tuple[bool, ...]] = []
-
-        def validate_condition(condition: list[bool]) -> tuple[bool, str]:
-            key = tuple(condition)
-            if key in tested_conditions:
-                return True, ""
-            tested_conditions.add(key)
-            tested_sequence.append(key)
-            logger.debug(f"验证副表条件：{condition}")
-            validation_msg = self.swap_plan(condition, True)
-            if validation_msg is not None:
-                logger.info(
-                    f"替换排班验证错误：{validation_msg}, 附表条件为 {condition}"
+        # 仅按条件证明互斥；主力不重叠不能证明合并配置互不影响。
+        try:
+            combinations = possible_backup_conditions(
+                self.backup_plans,
+                MAX_BACKUP_VALIDATION_COMBINATIONS,
+                known_operators=baseline.operators,
+            )
+        except BackupValidationLimitExceeded as error:
+            return {
+                "success": False,
+                "status": "incomplete",
+                "message": f"{error}。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
+            }
+        tested_count = 0
+        for flags in combinations:
+            condition = list(flags)
+            # 每个组合从独立模型开始，失败及检查顺序都不影响实际排班和驻员。
+            simulation = copy.copy(baseline)
+            simulation.operators, simulation.dorm = {}, []
+            error = simulation.swap_plan(condition, refresh=True)
+            tested_count += 1
+            if error is not None:
+                active = "、".join(
+                    backup.name or f"副表{index + 1}"
+                    for index, (backup, enabled) in enumerate(
+                        zip(self.backup_plans, flags)
+                    )
+                    if enabled
                 )
-                return False, validation_msg
-            return True, ""
-
-        success, msg = validate_condition([False] * backup_count)
-        if not success:
-            return {"success": False, "message": f"基础验证失败：{msg}"}
-
-        for component in components:
-            size = len(component)
-            for combo in product([False, True], repeat=size):
-                if not any(combo):
-                    continue
-                condition = [False] * backup_count
-                for idx, flag in enumerate(combo):
-                    condition[component[idx]] = flag
-                success, msg = validate_condition(condition)
-                if not success:
-                    return {"success": False, "message": f"组件验证失败：{msg}"}
-
-        self.swap_plan([False] * backup_count, True)
+                message = (
+                    f"副表组合验证失败（{active}）：{error}"
+                    if active
+                    else f"基础验证失败：{error}"
+                )
+                logger.info(message)
+                return {"success": False, "status": "failed", "message": message}
+        if backup_count == 0:
+            return {
+                "success": True,
+                "status": "passed",
+                "message": "没有备用计划，基础验证通过",
+            }
         return {
             "success": True,
-            "message": f"验证成功，共验证 {len(tested_sequence)} 次",
+            "status": "passed",
+            "message": f"验证成功，共验证 {tested_count} 次",
         }
 
 
@@ -2418,68 +2411,3 @@ class Operator:
 
     def __repr__(self):
         return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}',refresh_order_room = {self.refresh_order_room})"
-
-
-def validate_backup_plans_offline():
-    """独立的验证函数，不依赖于 BaseSchedulerSolver"""
-    global_plan = build_global_plan()
-    backup_plans = global_plan["backup_plans"]
-
-    backup_count = len(backup_plans)
-    if backup_count == 0:
-        return {"success": True, "message": "没有备用计划，无需验证"}
-
-    agent_sets = [plan.primary_names() for plan in backup_plans]
-    adjacency = [set() for _ in range(backup_count)]
-    for i in range(backup_count):
-        for j in range(i + 1, backup_count):
-            if agent_sets[i].intersection(agent_sets[j]):
-                adjacency[i].add(j)
-                adjacency[j].add(i)
-
-    components: list[list[int]] = []
-    visited = [False] * backup_count
-    for i in range(backup_count):
-        if visited[i]:
-            continue
-        stack = [i]
-        component = []
-        while stack:
-            node = stack.pop()
-            if visited[node]:
-                continue
-            visited[node] = True
-            component.append(node)
-            stack.extend(adjacency[node])
-        components.append(component)
-
-    tested_conditions: set[tuple[bool, ...]] = set()
-    tested_sequence: list[tuple[bool, ...]] = []
-
-    # 复制类方法中的验证逻辑
-    for component in components:
-        if len(component) == 1:
-            continue
-        # 检查连通分量中的计划是否有冲突
-        for mask in product([False, True], repeat=len(component)):
-            if mask in tested_conditions:
-                continue
-            tested_conditions.add(mask)
-            tested_sequence.append(mask)
-            active_plans = [
-                backup_plans[i] for i, active in zip(component, mask) if active
-            ]
-            if not active_plans:
-                continue
-            combined_agents = set()
-            for plan in active_plans:
-                combined_agents.update(plan.primary_names())
-            if len(combined_agents) < sum(
-                len(plan.primary_names()) for plan in active_plans
-            ):
-                return {
-                    "success": False,
-                    "message": f"备用计划 {', '.join(str(i + 1) for i in component)} 中存在干员重复安排",
-                }
-
-    return {"success": True, "message": "备用计划验证通过"}

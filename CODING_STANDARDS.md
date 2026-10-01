@@ -13,6 +13,7 @@
 ## 2. Subsystem Invariants
 
 ### 2.1 Base Infrastructure & Scheduling
+- **[INV-SCHED-16] Backup Validation Coverage**: Validation excludes only backup activation combinations disproved by supported trigger logic, reports success only after every remaining combination passes the same merged-plan validation as shift projection, and preserves the caller's active plan and actual occupancy. Budget exhaustion is an incomplete warning that permits startup; confirmed configuration errors remain blocking.
 - **[INV-SCHED-13] Pending Task Preservation**: Device recovery preserves the scheduler and pending tasks through resumed scheduler entry, retains future explicit tasks when stale ordinary plans are rebuilt, refreshes the Capture Frame before resuming dispatch and pauses unverified side effects without ending the automation worker or replaying uncertain input.
 - **[INV-SCHED-01] Empirical Depletion Rate**: Mood forecasting must dynamically measure consecutive inspection deltas; uncalibrated static assumptions are prohibited.
 - **[INV-SCHED-02] Stable Recovery Position**: The target retains its final slot during recovery setup and roster restoration; earlier non-manager slots use confirmed full residents or the highest-mood eligible idle padding, with actual readback required before recording recovery.
