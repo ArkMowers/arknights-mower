@@ -434,6 +434,7 @@ def simulate(saved):
                     ("dorm_mood_fallback", ""),
                     ("dorm_mood_peers", {}),
                     ("idle_rest_check", None),
+                    ("temporary_dorm_fill", False),
                 ):
                     setattr(
                         base_scheduler.op_data.operators[k],

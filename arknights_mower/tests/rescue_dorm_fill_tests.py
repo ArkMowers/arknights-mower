@@ -1,6 +1,9 @@
 """集中恢复的普通空床补位保持可让床，正式恢复批次仍保床。"""
 
+import pickle
+from copy import deepcopy
 from datetime import timedelta
+from threading import Event
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -19,7 +22,7 @@ from arknights_mower.tests.mass_mood_recovery_tests import (
 )
 from arknights_mower.utils import resting_priority
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -162,6 +165,65 @@ def test_formal_low_priority_batch_keeps_bed_until_upper_limit(solver):
     data.rescue_needed()
     assert not data.is_rescue_recovering(COVERS[0], NOW)
     assert data._slot_takable(bed, True, requester=PRIMARY[0])
+
+
+@pytest.mark.parametrize("admission", ["ordinary", "formal", "legacy"])
+def test_restart_preserves_dorm_admission_identity(solver, monkeypatch, admission):
+    from arknights_mower import __main__ as main
+
+    data = solver.op_data
+    set_moods(data, [0] * 4)
+    data.operators[COVERS[0]].mood = 5
+    solver.op_data = data = admit(data, COVERS[:1], [5])
+    resident = data.operators[COVERS[0]]
+    resident.temporary_dorm_fill = admission == "ordinary"
+    for attr in (
+        "daily_visit_friend",
+        "daily_report",
+        "daily_skland",
+        "daily_mail",
+        "task_count",
+    ):
+        setattr(solver, attr, 0)
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    saved = pickle.loads(pickle.dumps(record.current_state()))
+    if admission == "legacy":
+        del saved["operators"][resident.name].temporary_dorm_fill
+    fresh = Operators(deepcopy(data.global_plan))
+    assert fresh.init_and_validate() is None
+    fresh.validate_backup_plans = MagicMock(return_value={"success": True})
+    restarted = object.__new__(type(solver))
+    restarted.op_data = fresh
+    restarted.initialize_operators = MagicMock(return_value=None)
+    monkeypatch.setattr(main, "initialize", MagicMock(return_value=restarted))
+    monkeypatch.setattr(main.config, "stop_mower", Event())
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(main, "_apply_version_update_resting_threshold", MagicMock())
+
+    class ReachedScheduling(BaseException):
+        pass
+
+    monkeypatch.setattr(
+        main, "refresh_resource_at_boundary", MagicMock(side_effect=ReachedScheduling)
+    )
+    with pytest.raises(ReachedScheduling):
+        main.simulate(saved)
+    restored = fresh.operators[resident.name]
+    bed = fresh.get_dorm_by_name(resident.name)[1]
+    ordinary = admission == "ordinary"
+    assert restored.temporary_dorm_fill is ordinary
+    assert fresh.is_rescue_recovering(restored.name, NOW) is not ordinary
+    assert fresh._slot_takable(bed, True, requester=PRIMARY[0]) is ordinary
+    assert (restored.current_room, restored.current_index) == (
+        resident.current_room,
+        resident.current_index,
+    )
+    assert (restored.mood, restored.time_stamp, restored.depletion_rate) == (
+        resident.mood,
+        resident.time_stamp,
+        resident.depletion_rate,
+    )
+    assert bed.time == data.get_dorm_by_name(resident.name)[1].time
 
 
 @pytest.fixture

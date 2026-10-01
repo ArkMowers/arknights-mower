@@ -20,7 +20,8 @@
     "arknights_mower.utils.operators.Operators.project_arrangements",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._plan_dorm_recovery",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.craft_material",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_release_dorm_member"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_release_dorm_member",
+    "arknights_mower.__main__.simulate"
   ],
   "test_suites": [
     "arknights_mower/tests/dorm_unknown_selection_tests.py",
@@ -34,6 +35,9 @@
     "arknights_mower/tests/dorm_release_tests.py",
     "arknights_mower/tests/dorm_batch_release_tests.py",
     "arknights_mower/tests/rescue_backup_condition_tests.py",
-    "arknights_mower/tests/shift_cycle_convergence_tests.py"
+    "arknights_mower/tests/shift_cycle_convergence_tests.py",
+    "arknights_mower/tests/rest_full_restart_tests.py",
+    "arknights_mower/tests/log_access_tests.py",
+    "arknights_mower/tests/local_backup_replay_tests.py"
   ]
 }

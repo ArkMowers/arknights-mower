@@ -91,7 +91,8 @@ class LocalLogAccessTests(unittest.TestCase):
     def test_local_log_socket_streams_without_token_frame(self):
         stream = LogStream()
         stream.publish("local-log-fixture")
-        with patch.object(server, "log_stream", stream):
+        # 仅绑定请求的日志流，后台日志消费者继续使用原流。
+        with patch.object(server.log_stream, "serve", stream.serve):
             service = make_server("127.0.0.1", 0, server.app, threaded=True)
             thread = Thread(target=service.serve_forever, daemon=True)
             thread.start()
@@ -99,6 +100,8 @@ class LocalLogAccessTests(unittest.TestCase):
                 connection = Client.connect(
                     f"ws://127.0.0.1:{service.server_port}/log",
                     headers={"Origin": "http://127.0.0.1"},
+                    # 按字节接收，避免客户端把同批首帧留在握手解析器中。
+                    receive_bytes=1,
                 )
                 try:
                     payload = json.loads(connection.receive(timeout=2))
