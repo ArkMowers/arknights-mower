@@ -1090,6 +1090,20 @@ class EmergencyRecoveryMixin:
                 task.emergency_staffing_members = sorted(
                     ready | members | set(state.get("staffing_members", ()))
                 )
+        for task in self.tasks:
+            if not getattr(task, "emergency_dorm", False):
+                continue
+            for room, row in list(task.plan.items()):
+                task.plan[room] = [
+                    "Current" if name in ready | members else name for name in row
+                ]
+                if all(name == "Current" for name in task.plan[room]):
+                    del task.plan[room]
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.plan or not getattr(task, "emergency_dorm", False)
+        ]
         if not members:
             state.pop("release_plan", None)
             state.pop("release_members", None)
@@ -1103,20 +1117,6 @@ class EmergencyRecoveryMixin:
             state["release_plan"] = copy.deepcopy(plan)
             self._emergency_save()
             return False
-        for task in self.tasks:
-            if not getattr(task, "emergency_dorm", False):
-                continue
-            for room, row in list(task.plan.items()):
-                task.plan[room] = [
-                    "Current" if name in members else name for name in row
-                ]
-                if all(name == "Current" for name in task.plan[room]):
-                    del task.plan[room]
-        self.tasks[:] = [
-            task
-            for task in self.tasks
-            if task.plan or not getattr(task, "emergency_dorm", False)
-        ]
         state["release_plan"] = copy.deepcopy(plan)
         state["release_members"] = sorted(members)
         self._emergency_save()

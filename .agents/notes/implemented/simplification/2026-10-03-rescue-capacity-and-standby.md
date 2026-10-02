@@ -37,6 +37,6 @@ Offline tests cover individual admission for a group exceeding bed capacity, wor
 
 ## Review
 
-Standards Findings: the first independent snapshot review identifies stale departure reservations after restart and continued room traversal after cancellation. Both fixes retain measured target responsibility and stop cancelled execution; fresh independent re-review verifies the repaired snapshot. The glossary retains its approved wording until the new exact bilingual replacement receives explicit user approval.
+Standards Findings: the first independent snapshot review identifies stale departure reservations after restart and continued room traversal after cancellation. Both fixes retain measured target responsibility and stop cancelled execution. The second independent review verifies those fixes and identifies stale queued admission of a newly ready idle primary. Admission reconciliation now removes ready and departing members before every release early return; focused regressions preserve admission for an unfinished control. A fresh independent session reviews the repaired snapshot. The glossary retains its approved wording until the new exact bilingual replacement receives explicit user approval.
 
-Spec Findings: pending offline tests and a fresh independent review session. No live device validation is performed.
+Spec Findings: thirteen focused offline suites pass 309 tests and four subtests after the queued-admission repair; a fresh independent review session remains pending. No live device validation is performed.

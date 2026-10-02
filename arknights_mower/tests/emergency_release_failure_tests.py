@@ -1,8 +1,11 @@
 """救急失败停止房间遍历，实测失效的已离宿主班可重新入宿。"""
 
 import pickle
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+import pytest
 
 from arknights_mower.solvers import base_schedule, emergency
 from arknights_mower.solvers.base_mixin import AgentSelectionNotReady
@@ -17,8 +20,12 @@ from arknights_mower.tests.emergency_group_return_tests import (
 )
 from arknights_mower.tests.emergency_group_staffing_tests import staffing as staffing
 from arknights_mower.tests.emergency_group_staffing_tests import staffing_task
-from arknights_mower.tests.mass_mood_recovery_tests import PRIMARY
-from arknights_mower.utils.emergency_recovery import emergency_dorm_plan
+from arknights_mower.tests.mass_mood_recovery_tests import NOW, PRIMARY
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.emergency_recovery import (
+    emergency_dorm_plan,
+    recovery_target,
+)
 from arknights_mower.utils.scheduler_task import SchedulerTask
 
 
@@ -154,3 +161,99 @@ def test_multiroom_release_failure_must_stop_outer_arrangement(
     solver._emergency_release_ready()
     assert solver.enter_room.call_count == 1
     assert solver.task is None
+
+
+@pytest.mark.parametrize("recalculate", [True, False])
+def test_pending_admission_does_not_reinsert_newly_ready_idle_primary(
+    group_return, monkeypatch, recalculate
+):
+    solver = group_return.solver
+    state = solver.emergency_state
+    name = PRIMARY[0]
+    operator = solver.op_data.operators[name]
+    operator.current_room, operator.current_index = "", -1
+    for bed in solver.op_data.all_dorms():
+        if bed.name == name:
+            bed.reset()
+    operator.mood, operator.time_stamp, operator.mood_is_prediction = 17, NOW, False
+    state["targets"][name], state["target_sources"][name] = recovery_target(
+        solver.op_data, name, rate=2, opportunity=NOW + timedelta(hours=4), now=NOW
+    )
+    assert state["target_sources"][name] == "history"
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+    fill = next(task for task in solver.tasks if getattr(task, "emergency_dorm", False))
+    assert any(name in row for row in fill.plan.values())
+    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+    fill = next(task for task in solver.tasks if getattr(task, "emergency_dorm", False))
+    state["next_read"] = NOW
+    state["observed_at"] = NOW
+    if not recalculate:
+        solver._emergency_update_targets = MagicMock()
+    solver._emergency_tick()
+    if recalculate:
+        assert state["targets"][name] < operator.mood
+        assert name in state["ready_members"]
+        assert fill not in solver.tasks
+        assert not fill.plan
+        assert all(
+            name not in row
+            for task in solver.tasks
+            if getattr(task, "emergency_dorm", False)
+            for row in task.plan.values()
+        )
+        return
+    else:
+        assert state["targets"][name] > operator.mood
+        assert name not in state.get("ready_members", ())
+    assert fill in solver.tasks
+    solver.task = fill
+    for room, row in fill.plan.items():
+        base_schedule.BaseSchedulerSolver.prepare_dorm_selection(solver, row, room)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.enter_room = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    solver.refresh_current_room = MagicMock()
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver._track_idle_dorm_shift = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+    solver.find = MagicMock(return_value=True)
+    solver.choose_agent = MagicMock(side_effect=MowerExit("offline selection boundary"))
+    solver.back_to_infrastructure = MagicMock()
+    solver.back = MagicMock()
+    solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
+    monkeypatch.setattr(
+        base_schedule, "defer_dorm_before_priority_task", lambda *args: False
+    )
+    with pytest.raises(MowerExit, match="offline selection boundary"):
+        base_schedule.BaseSchedulerSolver.agent_arrange(
+            solver, fill.plan, get_time=True
+        )
+    selected = solver.choose_agent.call_args.args[0]
+    assert name in selected, {
+        "ready": state["ready_members"],
+        "target": state["targets"][name],
+        "mood": operator.mood,
+        "dispatched": selected,
+    }
+
+
+def test_deferred_release_prunes_queued_admission_before_budget_return(group_return):
+    solver = group_return.solver
+    state = solver.emergency_state
+    solver._open_emergency_beds()
+    task = SchedulerTask(
+        task_plan={
+            "dormitory_2": ["Current", "Current", PRIMARY[0], PRIMARY[2], "Current"]
+        }
+    )
+    task.emergency_dorm = True
+    solver.tasks.append(task)
+    solver._emergency_operation_fits = MagicMock(return_value=False)
+    solver._emergency_release_ready()
+    assert task.plan["dormitory_2"][2] == "Current"
+    assert task.plan["dormitory_2"][3] == PRIMARY[2]
+    assert PRIMARY[0] in state["release_members"]
+    assert not state.get("ready_members")
+    solver.agent_arrange.assert_not_called()
