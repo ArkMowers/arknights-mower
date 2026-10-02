@@ -1,0 +1,24 @@
+{
+  "title": "Training Panel Identity and Failure Archives",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-05]",
+    "[INV-DIAG-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.mastery_reader._read_panel_text",
+    "arknights_mower.solvers.mastery._confirm_training_started",
+    "arknights_mower.solvers.mastery._exit_failed",
+    "arknights_mower.solvers.mastery._exit_arranging_timeout",
+    "arknights_mower.utils.email.send_message"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mastery_panel_identity_tests.py",
+    "arknights_mower/tests/email_notification_archive_tests.py"
+  ]
+}
