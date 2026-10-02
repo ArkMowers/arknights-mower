@@ -1,6 +1,7 @@
 """智能救急的临时驻员、实测退出和普通收取的离线契约。"""
 
 import copy
+import pickle
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -1379,3 +1380,113 @@ def test_returning_handoff_waits_when_arrangement_budget_reaches_strict_release(
     assert solver._emergency_restore()
     assert len(attempts) == 2
     assert solver.emergency_state is None
+
+
+@pytest.mark.parametrize("restarted", [False, True])
+@pytest.mark.parametrize("expired", [False, True])
+def test_handoff_cancels_deferred_emergency_fill_before_primary_returns(
+    solver, monkeypatch, restarted, expired
+):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    state = make_episode(solver)
+    data = solver.op_data
+    primary = PRIMARY[0]
+    data.update_detail(primary, 8, "", -1, True)
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+    pending = next(
+        task for task in solver.tasks if getattr(task, "emergency_dorm", False)
+    )
+    assert primary in pending.plan["dormitory_1"]
+    order = SchedulerTask(
+        time=NOW + timedelta(seconds=30),
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_2": ["但书"]},
+        meta_data="room_1_2",
+    )
+    solver.tasks.append(order)
+    emergency.protect_priority_tasks(solver.tasks, time_now=NOW)
+    assert pending.time > NOW
+    solver.tasks.remove(order)
+    if expired:
+        pending.time = NOW - timedelta(minutes=1)
+    if restarted:
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+        pending = next(task for task in solver.tasks if task.emergency_dorm)
+    for name in PRIMARY:
+        worker = data.operators[name]
+        data.update_detail(
+            name,
+            16 if name == primary else 24,
+            "" if name == primary else worker.room,
+            -1 if name == primary else worker.index,
+            True,
+        )
+    solver._track_idle_dorm_shift = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+    arrangements = []
+
+    def arrange_room(new_plan, room, plan, **kwargs):
+        assert pending not in solver.tasks
+        arrangements.append(copy.deepcopy({room: plan[room]}))
+        solver.op_data = solver.op_data.project_arrangements([{room: plan[room]}])
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = arrange_room
+    solver._emergency_read_rooms = MagicMock(return_value=True)
+    solver.plan_metadata = MagicMock(wraps=solver.plan_metadata)
+    assert solver._emergency_ready()
+    assert solver._emergency_restore()
+    assert solver.emergency_state is None
+    assert pending not in solver.tasks
+    assert solver.op_data.operators[primary].is_working()
+    returned = copy.deepcopy(arrangements)
+    # 已选中的旧任务引用也在真实派发入口按队列身份检查后放弃。
+    pending.time = NOW - timedelta(minutes=1)
+    solver.task = pending
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.skip = MagicMock()
+    assert solver.infra_main()
+    assert solver.task is None
+    assert solver.op_data.operators[primary].is_working()
+    assert arrangements == returned
+    solver.skip.assert_called_once()
+
+
+@pytest.mark.parametrize("phase", ["recovering", "returning"])
+def test_handoff_filter_removes_only_episode_fill_and_retains_restoration_tasks(
+    solver, phase
+):
+    state = make_episode(solver)
+    state["phase"] = phase
+    fill = SchedulerTask(
+        task_type=TaskTypes.FILL_DORM,
+        task_plan={"dormitory_1": ["Current", "Current", PRIMARY[0]]},
+    )
+    fill.emergency_dorm = True
+    release = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["Current", "Current", ""]},
+    )
+    release.strict_mood_limit = True
+    specialized = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER, task_plan={"room_1_2": [COVERS[1]]}
+    )
+    specialized.emergency_original_roster = {"room_1_2": [COVERS[1]]}
+    ordinary = SchedulerTask(
+        task_type=TaskTypes.FILL_DORM,
+        task_plan={"dormitory_1": ["Current", "Current", "Free"]},
+    )
+    solver.tasks = pickle.loads(pickle.dumps([fill, release, specialized, ordinary]))
+    queued_fill, queued_release, queued_specialized, queued_ordinary = solver.tasks
+
+    solver._emergency_filter_tasks()
+
+    assert solver.tasks == (
+        [queued_release, queued_specialized, queued_ordinary]
+        if phase == "returning"
+        else [queued_fill, queued_release, queued_specialized, queued_ordinary]
+    )

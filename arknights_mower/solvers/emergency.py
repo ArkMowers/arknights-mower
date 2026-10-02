@@ -584,6 +584,10 @@ class EmergencyRecoveryMixin:
             if task.type not in ORDINARY_SHIFTS
             and not getattr(task, "backup_shift_active", False)
             and not (
+                self.emergency_state["phase"] == "returning"
+                and getattr(task, "emergency_dorm", False)
+            )
+            and not (
                 task.type == TaskTypes.NOT_SPECIFIC
                 and any(not room.startswith("dorm") for room in task.plan)
                 and not getattr(task, "emergency_staffing", False)
@@ -757,6 +761,7 @@ class EmergencyRecoveryMixin:
             bed.position: (bed.name, bed.time) for bed in self.op_data.all_dorms()
         }
         state["phase"] = "returning"
+        self._emergency_filter_tasks()
         self._emergency_handoff = True
         try:
             names = [backup.name for backup in self.op_data.backup_plans]
