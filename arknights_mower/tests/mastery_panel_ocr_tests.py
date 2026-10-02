@@ -22,6 +22,7 @@ def solver_with_text(*texts):
         font = ImageFont.truetype(
             str(Path(__file__).parents[1] / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
             FONT_SIZE,
+            layout_engine=ImageFont.Layout.BASIC,
         )
         rendered = render_template(f"[{name}]", font)
         solver.recog.img[
@@ -221,6 +222,7 @@ def test_amiya_ocr_template_conflict_with_same_skill_index_stays_unknown():
     font = ImageFont.truetype(
         str(Path(__file__).parents[1] / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
         FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     rendered = render_template("[阿米娅]影霄·绝影", font)
     solver = solver_with_text("[阿米娅]精神爆发")

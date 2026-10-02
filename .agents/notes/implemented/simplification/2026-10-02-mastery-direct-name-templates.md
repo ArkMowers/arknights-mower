@@ -17,7 +17,7 @@ The name reader matches the complete bracketed operator name against the bundled
 
 ## Incident evidence
 
-The supplied archive contains 174 Capture Frames and a runtime log. At 2026-10-02 22:06:38, two OCR passes report `[白面]脑啡肽`; the game displays `[白面鸮]脑啡肽` and `15:14:09`. The log subsequently keeps the plan pending until the following day. It contains no application build identifier and does not establish the source revision used by the incident program.
+The supplied archive contains 174 Capture Frames and a runtime log. At 2026-10-02 22:06:38, two OCR passes report `[白面]脑啡肽`; the game displays `[白面鸮]脑啡肽` and `15:14:09`. The log subsequently keeps the plan pending until the following day. The user identifies the incident version as alpha10. The log contains no build commit identifier and does not establish its exact source revision.
 
 The pinned `rapidocr-onnxruntime==1.3.24` recognizer has 6,625 output symbols and excludes `鸮`, while including `白` and `面`. OCR cannot emit the complete name; thresholding cannot supply the absent symbol. Operator-list recognition already uses full-name pixel templates, separately from panel OCR.
 
@@ -27,7 +27,7 @@ Replay against alpha revision `7612ed88` confirms that the earlier omitted-name 
 
 The reader removes the name-specific thresholded OCR retry, one-character candidate search and name correction chain. Name matching uses the full roster and the current Capture Frame, independently of plans and OCR skill strings. Closing-bracket alignment rejects partial prefix matches such as `阿` within `阿米娅` or `凯尔希` within `凯尔希·思衡托`. Collections remain bounded by the bundled roster; no persisted cache, extra retry budget or operator-specific rule is introduced.
 
-Panel templates retain the existing 37-pixel `SourceHanSansCN-Medium-mastery.ttf` font subset. Middle-dot rendering retains `NotoSansHans-Medium-room.otf` advance widths. Operator-list templates use their own card geometry and are not substituted for panel templates. The model's existing font fingerprints, charset coverage and roster digest checks remain in place. The cropped fixture retains only the 520-by-42 panel region from `1790949998483007200.jpg`; account values and the complete runtime log remain outside the repository.
+Panel templates retain the existing 37-pixel `SourceHanSansCN-Medium-mastery.ttf` font subset. Middle-dot rendering retains `NotoSansHans-Medium-room.otf` advance widths. Operator-list templates use their own card geometry and are not substituted for panel templates. The offline generator and rendered test panels explicitly select Pillow BASIC layout, matching the bundled model; the platform default can enable RAQM and alter Latin-name kerning. Existing font fingerprints and charset coverage remain in generation and tests, and runtime recognition verifies the roster digest. The cropped fixture retains only the 520-by-42 panel region from `1790949998483007200.jpg`; account values and the complete runtime log remain outside the repository.
 
 The [scheduler contract](../../../../docs/subsystems/base-scheduler.md) owns name identity. The [diagnostics contract](../../../../docs/subsystems/device-control.md) retains selective screenshot archiving for visual ERROR notifications. Current glossary definitions remain accurate.
 

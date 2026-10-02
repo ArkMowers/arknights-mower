@@ -33,6 +33,7 @@ def panel_solver(text, pixels="[白面鸮]脑啡肽"):
     font = ImageFont.truetype(
         str(Path(__file__).parents[1] / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
         FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     rendered = (
         render_template(pixels, font) if pixels else np.zeros((0, 0), dtype=np.uint8)

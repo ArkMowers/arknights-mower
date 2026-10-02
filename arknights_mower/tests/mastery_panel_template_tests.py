@@ -99,7 +99,9 @@ def test_real_gamma_panel_matches_game_middle_dot_spacing():
 def test_other_skill_does_not_match_gamma():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     font = ImageFont.truetype(
-        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     rendered = render_template("[极境]聆听", font)
     image = np.zeros((42, 520), dtype=np.uint8)
@@ -117,7 +119,9 @@ def test_amiya_forms_are_collected_and_recognized():
         "char_1037_amiya3": ["哀恸共情", "慈悲愿景"],
     }
     font = ImageFont.truetype(
-        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     for cid, names in expected.items():
         assert [skill["name"] for skill in data["characters"][cid]["skills"]] == names
@@ -169,7 +173,9 @@ def test_name_templates_cover_the_bundled_roster():
 
     data = json.loads(DATA.read_text(encoding="utf-8"))
     font = ImageFont.truetype(
-        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     names = {
         char["name"]
@@ -225,4 +231,29 @@ def test_name_templates_reject_low_scores_and_close_competitors(monkeypatch, sco
     monkeypatch.setattr(template, "_name_score", lambda *_: next(values))
     assert (
         template.recognize_operator(np.zeros((42, 520), dtype=np.uint8), data) is None
+    )
+
+
+def test_generator_preserves_bundled_latin_name_spacing(tmp_path):
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    cid, char = next(
+        (cid, char)
+        for cid, char in data["characters"].items()
+        if char["name"] == "Miss.Christine"
+    )
+    generated = build_model(
+        {"characters": {cid: char}},
+        ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf",
+        tmp_path / "panel.model",
+        ROOT / "fonts/mastery-charset.txt",
+    )
+    with lzma.open(MODEL, "rb") as stream:
+        bundled = _BuiltinOnlyUnpickler(stream).load()
+    assert (
+        generated["entries"][cid]["prefix_width"]
+        == bundled["entries"][cid]["prefix_width"]
+    )
+    assert (
+        generated["entries"][cid]["name_template"]
+        == bundled["entries"][cid]["name_template"]
     )
