@@ -19,6 +19,7 @@ from arknights_mower.utils.device.adb_client.server import (
     kill_adb_server,
     probe_adb_server,
 )
+from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.log import logger
 
 
@@ -45,7 +46,7 @@ class SharedADBRecovery:
             if lock_path is not None
             else Path.home() / ".cache" / "arknights-mower" / "adb-5037.lock"
         )
-        self._run = run or subprocess.run
+        self._run = run or run_command
         self._probe = probe
         self._kill = kill
         self._monotonic = monotonic

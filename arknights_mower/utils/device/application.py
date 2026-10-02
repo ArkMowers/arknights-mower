@@ -971,6 +971,7 @@ class DeviceControl(Generic[D]):
                 )
             if self._preflight is not None:
                 self._state = "starting"
+                logger.info("正在检查设备 ADB、游戏安装与截图...")
                 with self._io_budget():
                     result = self._check_profile(profile)
                 self._last_preflight = result
@@ -992,6 +993,7 @@ class DeviceControl(Generic[D]):
                     or self._closing_count
                 ):
                     raise MowerExit("设备会话正在关闭")
+                logger.info("设备预检通过，正在初始化截图与触控...")
                 with self._io_budget():
                     self._device = self._adapter.open_verified(
                         runtime_configuration, result
@@ -1024,6 +1026,7 @@ class DeviceControl(Generic[D]):
             self._bound_adb_generation = self._adb_recovery.generation
         self._serial = self._device.device_id
         self._state = "paused" if self._dispatch_pause is not None else "connected"
+        logger.info(f"设备初始化完成：{self._serial}")
         if self._dispatch_pause is not None:
             self._last_error = self._dispatch_pause.to_dict()
         return DeviceResult(

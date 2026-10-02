@@ -87,9 +87,7 @@ class StrictTransportTests(unittest.TestCase):
             device.close()
 
     def test_empty_serial_is_rejected_before_any_adb_access(self):
-        with patch(
-            "arknights_mower.utils.device.adb_client.core.subprocess.run"
-        ) as run:
+        with patch("arknights_mower.utils.device.adb_client.core.run_command") as run:
             with self.assertRaises(ValueError):
                 Client("", adb_bin="chosen-adb", strict_target=True)
         run.assert_not_called()
@@ -106,7 +104,7 @@ class StrictTransportTests(unittest.TestCase):
                 patch(
                     "arknights_mower.utils.device.adb_client.core.Session"
                 ) as session,
-                patch("arknights_mower.utils.device.adb_client.core.subprocess.run"),
+                patch("arknights_mower.utils.device.adb_client.core.run_command"),
             ):
                 session.return_value.devices_list.return_value = rows
                 with self.assertRaisesRegex(ConnectionError, "pinned target"):
@@ -116,7 +114,7 @@ class StrictTransportTests(unittest.TestCase):
     def test_usb_transport_stays_pinned_and_never_uses_tcp_connect(self):
         with (
             patch("arknights_mower.utils.device.adb_client.core.Session") as session,
-            patch("arknights_mower.utils.device.adb_client.core.subprocess.run") as run,
+            patch("arknights_mower.utils.device.adb_client.core.run_command") as run,
             patch("arknights_mower.utils.device.adb_client.core.csleep"),
             patch(
                 "arknights_mower.utils.device.adb_client.core.query_mumu_adb_port"
@@ -205,9 +203,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
             )
             with (
                 self.subTest(command=command),
-                patch(
-                    "arknights_mower.utils.device.preflight_io.subprocess.run"
-                ) as run,
+                patch("arknights_mower.utils.device.preflight_io.run_command") as run,
             ):
                 with self.assertRaises(ValueError):
                     ProductionPreflightIO(lambda: configuration).capture_frame(
@@ -263,7 +259,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
         )
         png = cv2.imencode(".png", np.zeros((2, 3, 3), dtype=np.uint8))[1].tobytes()
         with patch(
-            "arknights_mower.utils.device.preflight_io.subprocess.run",
+            "arknights_mower.utils.device.preflight_io.run_command",
             return_value=SimpleNamespace(stdout=png),
         ) as run:
             frame = ProductionPreflightIO(lambda: configuration).capture_frame(
@@ -374,7 +370,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                 "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
             ) as context,
             patch(
-                "arknights_mower.utils.device.preflight_io.subprocess.run",
+                "arknights_mower.utils.device.preflight_io.run_command",
                 return_value=SimpleNamespace(stdout=b'{"0":{"adb_port":16384}}'),
             ) as run,
         ):
@@ -403,7 +399,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                     "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
                 ) as context,
                 patch(
-                    "arknights_mower.utils.device.preflight_io.subprocess.run",
+                    "arknights_mower.utils.device.preflight_io.run_command",
                     return_value=SimpleNamespace(stdout=b'{"0":{"adb_port":16384}}'),
                 ),
             ):
@@ -424,7 +420,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                 "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
             ) as context,
             patch(
-                "arknights_mower.utils.device.preflight_io.subprocess.run",
+                "arknights_mower.utils.device.preflight_io.run_command",
                 return_value=SimpleNamespace(stdout=b'{"0":{"adb_port":16384}}'),
             ),
         ):
@@ -471,7 +467,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                 "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
             ) as context,
             patch(
-                "arknights_mower.utils.device.preflight_io.subprocess.run",
+                "arknights_mower.utils.device.preflight_io.run_command",
                 return_value=SimpleNamespace(stdout=b'{"0":{"adb_port":16384}}'),
             ),
         ):
@@ -502,7 +498,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                 "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
             ) as context,
             patch(
-                "arknights_mower.utils.device.preflight_io.subprocess.run",
+                "arknights_mower.utils.device.preflight_io.run_command",
                 return_value=SimpleNamespace(
                     stdout=b'{"index":0,"name":"\xe6\x98\x8e\xe6\x97\xa5\xe6\x96\xb9\xe8\x88\x9f-MuMu\xe6\xa8\xa1\xe6\x8b\x9f\xe5\x99\xa812","adb_port":16384,"adb_host_ip":"127.0.0.1"}'
                 ),
@@ -528,7 +524,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                 "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
             ) as context,
             patch(
-                "arknights_mower.utils.device.preflight_io.subprocess.run",
+                "arknights_mower.utils.device.preflight_io.run_command",
                 return_value=SimpleNamespace(stdout=b'{"0":{"adb_port":16384}}'),
             ),
         ):
@@ -580,7 +576,7 @@ class ReadOnlyCaptureTests(unittest.TestCase):
                 "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
             ) as context,
             patch(
-                "arknights_mower.utils.device.preflight_io.subprocess.run",
+                "arknights_mower.utils.device.preflight_io.run_command",
                 return_value=SimpleNamespace(stdout=b'{"0":{"adb_port":16384}}'),
             ),
         ):
@@ -693,7 +689,11 @@ class DiscoveryIOTests(unittest.TestCase):
                 with (
                     patch.object(config, "conf", configuration),
                     patch(
-                        "arknights_mower.utils.device.preflight_io.subprocess.run",
+                        "arknights_mower.utils.device.preflight_io.run_command",
+                        side_effect=run,
+                    ),
+                    patch(
+                        "arknights_mower.utils.device.mumu12ipc.core.subprocess.run",
                         side_effect=run,
                     ),
                     patch(
@@ -725,7 +725,7 @@ class DiscoveryIOTests(unittest.TestCase):
             with (
                 self.subTest(output=output),
                 patch(
-                    "arknights_mower.utils.device.preflight_io.subprocess.run",
+                    "arknights_mower.utils.device.preflight_io.run_command",
                     return_value=SimpleNamespace(stdout=output),
                 ) as run,
             ):
@@ -737,7 +737,7 @@ class DiscoveryIOTests(unittest.TestCase):
 
     def test_absent_usb_never_gets_a_tcp_connect_or_implicit_selection(self):
         with patch(
-            "arknights_mower.utils.device.preflight_io.subprocess.run",
+            "arknights_mower.utils.device.preflight_io.run_command",
             return_value=SimpleNamespace(
                 stdout=b"List of devices attached\nother\tdevice\n"
             ),
@@ -751,7 +751,7 @@ class DiscoveryIOTests(unittest.TestCase):
 
     def test_missing_tcp_endpoint_connects_only_the_requested_endpoint(self):
         with patch(
-            "arknights_mower.utils.device.preflight_io.subprocess.run",
+            "arknights_mower.utils.device.preflight_io.run_command",
             side_effect=[
                 SimpleNamespace(stdout=output)
                 for output in (

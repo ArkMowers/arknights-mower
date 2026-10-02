@@ -21,7 +21,7 @@ from arknights_mower.utils.device.endpoint_identity import (
 from arknights_mower.utils.device.genymotion import GenymotionController
 from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.ldplayer_endpoint import LDPlayerEndpointResolver
-from arknights_mower.utils.device.manager_io import run_manager_command
+from arknights_mower.utils.device.manager_io import run_command, run_manager_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.mumu_discovery import (
     parse_mumu_instances,
@@ -152,7 +152,7 @@ class ProductionSessionADB:
 
         self._run = guarded_run
         # A vendor manager is not ADB: it must never reach the shared-server guard.
-        self._manager_run = run or subprocess.run
+        self._manager_run = run or run_command
         self._probe = probe
         self._monotonic = monotonic
         self._profile = None
@@ -523,7 +523,7 @@ class ProductionSimulator:
         redroid=None,
         genymotion=None,
     ):
-        self._run = run or subprocess.run
+        self._run = run or run_command
         self._monotonic = monotonic
         self._avd = avd
         self._redroid = redroid or RedroidController(run=run, monotonic=monotonic)
@@ -553,9 +553,9 @@ class ProductionSimulator:
         if factory is None:
             return None
         run = self._run
-        if factory is _MuMuManager and run is subprocess.run:
+        if factory is _MuMuManager and run is run_command:
             run = run_mumu_command
-        if factory is _LDPlayerManager and run is subprocess.run:
+        if factory is _LDPlayerManager and run is run_command:
             run = run_manager_command
         query_timeout = getattr(profile, "manager_query_timeout", 3.0)
         adapter = factory(
