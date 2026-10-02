@@ -489,7 +489,7 @@ class EmergencyRecoveryMixin:
         if state["phase"] == "returning":
             return
         probe = copy.copy(self)
-        normal = copy.deepcopy(data)
+        normal = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
         if normal.swap_plan(list(state["frozen_conditions"]), refresh=True):
             return
         plan = {

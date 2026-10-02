@@ -1,6 +1,7 @@
 """智能救急的临时驻员、实测退出和普通收取的离线契约。"""
 
 import copy
+import ctypes
 import pickle
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -1490,3 +1491,45 @@ def test_handoff_filter_removes_only_episode_fill_and_retains_restoration_tasks(
         if phase == "returning"
         else [queued_fill, queued_release, queued_specialized, queued_ordinary]
     )
+
+
+def test_target_projection_reuses_eval_capsule_and_isolates_mutable_state(
+    solver, monkeypatch
+):
+    state = make_episode(solver)
+    source = solver.op_data
+    make_capsule = ctypes.pythonapi.PyCapsule_New
+    make_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    make_capsule.restype = ctypes.py_object
+    capsule = make_capsule(ctypes.c_void_p(42), None, None)
+    source.eval_model.imported_functions["runtime_handle"] = capsule
+    source.evaluate_expression("True == True")
+    before_moods = {name: op.mood for name, op in source.operators.items()}
+    before_beds = [(bed.name, bed.time) for bed in source.dorm]
+    before_plan = repr(source.plan)
+    probes = []
+
+    def inspect_projection(probe, members):
+        projected = probe.op_data
+        probes.append(projected)
+        assert projected is not source
+        assert projected.eval_model is source.eval_model
+        assert projected.eval_model.imported_functions["runtime_handle"] is capsule
+        assert projected.plan is not source.plan
+        assert projected.config is not source.config
+        for name in members:
+            assert projected.operators[name] is not source.operators[name]
+            projected.operators[name].mood = 0
+        assert projected.dorm[0] is not source.dorm[0]
+        projected.dorm[0].name = ""
+        return NativeProjection(NOW + timedelta(hours=1), True)
+
+    monkeypatch.setattr(emergency, "history_rate", lambda *a: 2)
+    monkeypatch.setattr(emergency, "native_opportunity", inspect_projection)
+    solver._emergency_update_targets()
+
+    assert len(probes) == len(state["targets"])
+    assert all(value == "history" for value in state["target_sources"].values())
+    assert before_moods == {name: op.mood for name, op in source.operators.items()}
+    assert before_beds == [(bed.name, bed.time) for bed in source.dorm]
+    assert before_plan == repr(source.plan)
