@@ -51,7 +51,7 @@ CI exposed a preparation-lifecycle scheduler fixture missing the new emergency s
 
 ## Standards Findings
 
-The lifecycle retains finite external-control budgets, verified cleanup, measured/estimated separation and isolated native projection. Glossary synchronization remains a separately approved edit under the root agent directives.
+The lifecycle retains finite external-control budgets, verified cleanup, measured/estimated separation and isolated native projection. The domain glossary defines native rescue and MAA-assisted emergency recovery with matching bilingual contracts.
 
 ## Spec Findings
 
