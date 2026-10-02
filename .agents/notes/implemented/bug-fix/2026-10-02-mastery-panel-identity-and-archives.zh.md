@@ -32,6 +32,9 @@ date: 2026-10-02
 
 定向套件通过 574 项测试和 67 项子测试，覆盖身份、训练安排、通知、截图存储与治理。既有截图测试验证前后帧保存、关闭普通截图历史、重叠窗口合并、归档保留和有限存储。Ruff、差异空白检查及仓库治理检查通过。
 
+
+CI 暴露 `TestDroneAccelerate.test_infra_main_keeps_run_order_task_alive_across_two_passes` 的夹具缺失：测试跳过调度器初始化，却未提供实际占用状态，真实安排路径在 Drone Acceleration 之前就失败。夹具提供显式空床位与干员集合。两轮都断言房间安排和注入的 Drone Acceleration 失败确实执行，再验证原任务保留、计划恢复。生产补偿与宿舍读回保持不变。该测试保护 [INV-SCHED-04] Shift Transition Compensation，不引入抽象或设备操作。[调度回归套件](../../../../arknights_mower/tests/base_scheduler_tests.py)承载此夹具。
+
 ## Standards Findings
 
 PASS：身份来自 Capture Frame 和干员表模板。修改复用既有有限开训确认和有界截图存储，不引入设备操作或持久化配置，并保持权威术语表。invariant 已登记在编码标准、子系统契约和审查清单中。

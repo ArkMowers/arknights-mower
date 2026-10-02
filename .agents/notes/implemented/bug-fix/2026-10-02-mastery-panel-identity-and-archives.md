@@ -32,6 +32,9 @@ Focused offline tests cover omitted characters in `白面鸮`, same-frame templa
 
 The focused suites pass 574 tests and 67 subtests covering identity, arrangement, notifications, screenshot storage and governance. Existing screenshot tests verify preceding and following frame preservation, disabled ordinary history, overlapping-window merging, archive retention and bounded storage. Ruff, diff whitespace and repository governance checks pass.
 
+
+The CI run exposes an incomplete fixture in `TestDroneAccelerate.test_infra_main_keeps_run_order_task_alive_across_two_passes`: it bypasses scheduler initialization without providing actual occupancy, so the real arrangement path fails before Drone Acceleration. The fixture supplies explicit empty dorm and operator collections. Both iterations assert that room arrangement and the injected Drone Acceleration failure execute, then retain the original task and restore its plan. Production compensation and dormitory readback remain unchanged. This test protects [INV-SCHED-04] Shift Transition Compensation without adding an abstraction or device operation. The [scheduler regression suite](../../../../arknights_mower/tests/base_scheduler_tests.py) owns this fixture.
+
 ## Standards Findings
 
 PASS: Identity comes from the Capture Frame and roster templates. The change uses existing finite confirmation and bounded screenshot storage, introduces no device operations or persisted configuration, and preserves the authoritative glossary. Invariants are registered in standards, subsystem contracts and the review checklist.
