@@ -119,7 +119,10 @@ def workshop_operator_block_reason(
         if (
             task is not current_task
             and getattr(task.type, "name", "") != "WORKSHOP"
-            and operator in dorm_task_reservations(op_data, [task])[0]
+            and (
+                any(operator in names for names in task.plan.values())
+                or operator in dorm_task_reservations(op_data, [task])[0]
+            )
         ):
             if operator in getattr(task, "emergency_staffing_members", ()):
                 return "已被智能救急整组换班任务预约"

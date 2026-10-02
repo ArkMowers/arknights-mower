@@ -18,6 +18,8 @@
   "test_suites": [
     "arknights_mower/tests/emergency_group_beds_tests.py",
     "arknights_mower/tests/emergency_group_staffing_tests.py",
-    "arknights_mower/tests/emergency_group_return_tests.py"
+    "arknights_mower/tests/emergency_group_return_tests.py",
+    "arknights_mower/tests/emergency_group_reservation_tests.py",
+    "arknights_mower/tests/emergency_staffing_replan_tests.py"
   ]
 }
