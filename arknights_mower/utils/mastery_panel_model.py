@@ -21,7 +21,9 @@ MIDDLE_DOT_FONT = (
 def _middle_dot_font():
     from PIL import ImageFont
 
-    return ImageFont.truetype(str(MIDDLE_DOT_FONT), FONT_SIZE)
+    return ImageFont.truetype(
+        str(MIDDLE_DOT_FONT), FONT_SIZE, layout_engine=ImageFont.Layout.BASIC
+    )
 
 
 def _game_text_width(text, font):
@@ -111,7 +113,11 @@ def build_model(data, font_path, output_path, charset_path=None):
                 + "；请从当前游戏字体重新生成子集"
             )
     font_path = Path(font_path)
-    font = ImageFont.truetype(str(font_path), FONT_SIZE)
+    # The bundled panel model uses BASIC layout. Platform-default RAQM adds
+    # Latin kerning and shifts the full-name boundary.
+    font = ImageFont.truetype(
+        str(font_path), FONT_SIZE, layout_engine=ImageFont.Layout.BASIC
+    )
     entries = {}
     for cid, char in sorted(chars.items()):
         if char.get("rarity") not in (4, 5, 6) or not char.get("name"):
