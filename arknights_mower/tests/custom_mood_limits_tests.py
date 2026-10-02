@@ -17,6 +17,8 @@ from arknights_mower.tests import (
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanConf
 from arknights_mower.utils.emergency_recovery import mood_context
+from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import Operator, build_global_plan
 from arknights_mower.utils.plan import Plan, PlanConfig
 from arknights_mower.utils.scheduler_task import (
@@ -160,7 +162,9 @@ def test_emergency_nonreading_tick_keeps_personal_limit_deadline(emergency_solve
 
     releases = [task for task in solver.tasks if task.strict_mood_limit]
     assert len(releases) == 1
-    assert releases[0].time == ling_xi_rest_limit_tests.NOW + timedelta(minutes=10)
+    deadline = ling_xi_rest_limit_tests.NOW + timedelta(minutes=10)
+    assert releases[0].mood_limit_deadline == deadline
+    assert releases[0].time == deadline - timedelta(minutes=estimate_dorm_minutes(ROOM))
     assert releases[0].release_dorm_targets() == {"银灰": (ROOM, 3)}
     assert solver.emergency_state["phase"] == "staffing"
     assert staffing in solver.tasks
@@ -185,7 +189,10 @@ def test_emergency_reading_tick_replans_limit_after_new_observation(emergency_so
     solver._emergency_tick()
 
     release = next(task for task in solver.tasks if task.strict_mood_limit)
-    assert release.time == ling_xi_rest_limit_tests.NOW
+    assert release.mood_limit_deadline == ling_xi_rest_limit_tests.NOW
+    assert release.time == ling_xi_rest_limit_tests.NOW - timedelta(
+        minutes=estimate_dorm_minutes(ROOM)
+    )
     assert release.release_dorm_targets() == {"银灰": (ROOM, 3)}
     assert state["phase"] == "returning"
     assert not solver._emergency_ready()
@@ -416,6 +423,8 @@ def test_departure_room_read_replaces_prediction_before_emergency_exit(
     limited = solver.op_data.operators["银灰"]
     assert observed[3]["mood"] == limited.mood == actual_mood
     assert not limited.mood_is_prediction
+    assert not solver._emergency_ready()
+    solver.tasks.remove(release)
     assert solver._emergency_ready() is (actual_mood == 12)
     assert solver.emergency_state["targets"][limited.name] == 12
 
@@ -482,6 +491,154 @@ def test_real_strict_release_arrangement_reads_departure_before_selection(
     assert 11.8 in readings
     assert solver.op_data.operators["银灰"].mood == 11.8
     assert solver.emergency_state["targets"]["银灰"] == 12
+
+
+@pytest.fixture
+def completed_manager_exit_solver(emergency_solver):
+    solver = emergency_solver
+    data = solver.op_data
+    data.config.operator_mood_limits["冰酿"] = bounds(0, 12)
+    data.init_mood_limit()
+    data.global_plan["default_plan"].plan = copy.deepcopy(data.plan)
+    data.global_plan["default_plan"].config = copy.deepcopy(data.config)
+    data.update_detail("银灰", 12, ROOM, 3, True)
+    data.update_detail("絮雨", 24, ROOM, 2, True)
+    data.update_detail("冰酿", 12, ROOM, 0, True)
+    solver.op_data = data.project_arrangements(
+        [
+            {
+                "central": ["银灰"],
+                "contact": ["絮雨"],
+                ROOM: ["Free", "Current", "Free", "Free", "Free"],
+            }
+        ]
+    )
+    solver.op_data.operators["冰酿"].rest_mood_release_limit = 12
+    solver.backup_plan_solver = solver.__class__.backup_plan_solver.__get__(solver)
+    solver._emergency_read_rooms = MagicMock()
+    solver.arrangement_plans = []
+
+    def arrange(plan, get_time):
+        solver.arrangement_plans.append(copy.deepcopy(plan))
+        solver.op_data = solver.op_data.project_arrangements([plan])
+        plan.clear()
+        return True
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
+    return solver
+
+
+@pytest.mark.parametrize("source", ["correction", "cached", "backup"])
+def test_real_emergency_exit_never_recalls_completed_fixed_manager(
+    completed_manager_exit_solver, source
+):
+    solver = completed_manager_exit_solver
+    request = {ROOM: ["冰酿", "Current", "Current", "Current", "Current"]}
+    if source == "cached":
+        solver.emergency_state["handoff_plan"] = copy.deepcopy(request)
+    elif source == "backup":
+        backup = Plan(
+            {},
+            PlanConfig("", "", ""),
+            trigger=LogicExpression("True", "==", "True"),
+            task=copy.deepcopy(request),
+            name="宿管回位",
+        )
+        data = solver.op_data
+        data.backup_plans = data.global_plan["backup_plans"] = [backup]
+        data.plan_condition = [False]
+        solver.emergency_state["backup_names"] = [backup.name]
+        solver.emergency_state["frozen_conditions"] = [False]
+    assert solver._emergency_ready()
+
+    assert solver._emergency_restore()
+
+    assert solver.emergency_state is None
+    assert solver.op_data.operators["冰酿"].current_room == ""
+    for arranged in solver.arrangement_plans:
+        assert "冰酿" not in {name for row in arranged.values() for name in row}
+    assert "冰酿" not in {
+        name for task in solver.tasks for row in task.plan.values() for name in row
+    }
+    correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert "冰酿" not in {name for row in correction.values() for name in row}
+    if source == "backup":
+        assert solver.op_data.plan_condition == [True]
+
+
+def test_completed_fixed_manager_still_in_original_bed_is_preserved(
+    completed_manager_exit_solver,
+):
+    solver = completed_manager_exit_solver
+    manager = solver.op_data.operators["冰酿"]
+    solver.op_data.update_detail(manager.name, 12, ROOM, 0, True)
+    assert manager.rest_mood_release_limit is None
+    solver.emergency_state = None
+
+    correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
+
+    assert correction == {}
+    assert solver.op_data.get_current_operator(ROOM, 0).name == manager.name
+
+
+@pytest.mark.parametrize("outcome", ["failed", "exception", "partial", "replaced"])
+def test_failed_emergency_handoff_reopens_beds_with_resident_deadlines(
+    completed_manager_exit_solver, outcome
+):
+    solver = completed_manager_exit_solver
+    data = solver.op_data
+    data.update_detail("冰酿", 12, ROOM, 0, True)
+    solver._open_emergency_beds()
+    _, bed = data.get_dorm_by_name("冰酿")
+    deadline = ling_xi_rest_limit_tests.NOW + timedelta(hours=2)
+    bed.time = deadline
+    state = solver.emergency_state
+    state["handoff_plan"] = {"central": ["银灰"], "contact": ["絮雨"]}
+    previous_task = solver.task
+
+    def fail_handoff(plan, get_time):
+        assert get_time
+        assert solver.op_data.plan[ROOM][0].agent == "冰酿"
+        assert all(bed.position != (ROOM, 0) for bed in solver.op_data.all_dorms())
+        if outcome in ("partial", "replaced") and "central" in plan:
+            solver.op_data = solver.op_data.project_arrangements(
+                [{"central": plan.pop("central")}]
+            )
+        if outcome == "replaced":
+            solver.op_data.update_detail("冰酿", 12, "", -1, True)
+            solver.op_data.update_detail("斥罪", 6, ROOM, 0, True)
+        if outcome == "exception":
+            raise RuntimeError("handoff interrupted")
+        return False
+
+    solver.agent_arrange = MagicMock(side_effect=fail_handoff)
+
+    if outcome == "exception":
+        with pytest.raises(RuntimeError, match="handoff interrupted"):
+            solver._emergency_restore()
+    else:
+        assert not solver._emergency_restore()
+
+    if outcome in ("partial", "replaced"):
+        assert state["handoff_plan"] == {"contact": ["絮雨"]}
+        assert not solver._emergency_restore()
+        assert solver.agent_arrange.call_count == 2
+    else:
+        solver.agent_arrange.assert_called_once()
+    assert solver.task is previous_task
+    assert not solver._emergency_handoff
+    assert solver.emergency_state is state
+    assert state["phase"] == "returning"
+    assert solver.op_data.plan[ROOM][0].agent == "Free"
+    resident = "斥罪" if outcome == "replaced" else "冰酿"
+    _, reopened = solver.op_data.get_dorm_by_name(resident)
+    assert reopened.position == (ROOM, 0)
+    if outcome == "replaced":
+        assert reopened.time is None
+    else:
+        assert reopened.time == deadline
+    if outcome in ("partial", "replaced"):
+        assert state["handoff_plan"] == {"contact": ["絮雨"]}
 
 
 @pytest.mark.parametrize(

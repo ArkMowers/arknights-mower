@@ -1040,3 +1040,222 @@ def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver)
     solver._emergency_tick()
     assert room in solver._emergency_read_rooms.call_args.args[0]
     solver._emergency_scan_workers.assert_called_once()
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA])
+def test_staffing_reserves_original_worker_of_started_specialized_task(solver, kind):
+    from arknights_mower.utils.emergency_staffing import (
+        StaffingCandidate,
+        eligible_worker,
+    )
+
+    make_episode(solver)
+    room = "room_1_1"
+    data = solver.op_data
+    data.plan[room][0].facility = "制造站"
+    data.add(Operator("但书", ""))
+    original = COVERS[0]
+    task = SchedulerTask(task_type=kind, task_plan={room: ["但书"]})
+    task.emergency_original_roster = {room: [original]}
+    solver.tasks = [task]
+
+    def scan(room, facility, reserved, **kwargs):
+        assert original in reserved
+        assert not eligible_worker(data, original, 24, reserved)
+        return [StaffingCandidate(COVERS[1], 24, ())]
+
+    solver._emergency_scan_workers = MagicMock(side_effect=scan)
+
+    solver._emergency_schedule_staffing(initial=True)
+
+    solver._emergency_scan_workers.assert_called_once()
+    staffing = next(
+        task for task in solver.tasks if getattr(task, "emergency_staffing", False)
+    )
+    assert staffing.plan == {room: [COVERS[1]]}
+    assert task.emergency_original_roster == {room: [original]}
+
+
+def staffing_deadline_episode(solver, monkeypatch, seconds):
+    """实测清退时刻与设施扫描共用虚拟时钟，保留实际任务规划。"""
+    from arknights_mower.solvers import base_schedule, record
+    from arknights_mower.utils import operation_timing, operators, scheduler_task
+    from arknights_mower.utils.emergency_staffing import StaffingCandidate
+
+    clock = {"now": NOW}
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    for module in (
+        emergency,
+        emergency_recovery,
+        base_schedule,
+        operators,
+        scheduler_task,
+    ):
+        monkeypatch.setattr(module, "datetime", Clock)
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    monkeypatch.setattr(emergency, "load_skill_snapshot", lambda: None)
+    monkeypatch.setattr(operation_timing, "_dorm_durations", {})
+    state = make_episode(solver)
+    state["phase"] = "staffing"
+    state["next_read"] = NOW
+    data = solver.op_data
+    for name in PRIMARY:
+        op = data.operators[name]
+        data.update_detail(name, 8, op.current_room, op.current_index, True)
+        data.plan[op.room][op.index].facility = "制造站"
+    limited = data.operators[PRIMARY[0]]
+    data.config.operator_mood_limits = {limited.name: {"lower": 0, "upper": 12}}
+    data.init_mood_limit()
+    data.update_detail(limited.name, 10, "dormitory_1", 2, True)
+    _, bed = data.get_dorm_by_name(limited.name)
+    bed.time = NOW + timedelta(seconds=seconds)
+    state["targets"][limited.name] = 10.5
+    solver._emergency_read_rooms = MagicMock()
+    solver._emergency_collect = MagicMock()
+    solver._emergency_update_targets = MagicMock()
+    scans, saves = [], []
+
+    def scan(room, facility, reserved, **kwargs):
+        index = next(
+            i for i, name in enumerate(PRIMARY) if data.operators[name].room == room
+        )
+        assert COVERS[index] not in reserved
+        scans.append(room)
+        clock["now"] += timedelta(seconds=45)
+        return [StaffingCandidate(COVERS[index], 24, ())]
+
+    solver._emergency_scan_workers = MagicMock(side_effect=scan)
+    solver._emergency_save = MagicMock(
+        side_effect=lambda: saves.append(copy.deepcopy(state.get("staffing_plan", {})))
+    )
+    return state, clock, scans, saves, limited.name
+
+
+def test_staffing_tick_yields_before_near_personal_limit_release(solver, monkeypatch):
+    state, clock, scans, _, _ = staffing_deadline_episode(solver, monkeypatch, 120)
+
+    solver._emergency_tick()
+
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert not scans
+    assert release.mood_limit_deadline == NOW + timedelta(seconds=120)
+    assert release.time == NOW + timedelta(seconds=30)
+    assert clock["now"] < release.time <= clock["now"] + timedelta(seconds=46)
+    assert state["next_read"] <= clock["now"] + timedelta(minutes=1)
+    assert solver._emergency_active()
+
+
+@pytest.mark.parametrize("healthy_remaining", [False, True])
+def test_staffing_saves_partial_scan_and_resumes_remaining_facilities_after_release(
+    solver, monkeypatch, healthy_remaining
+):
+    state, clock, scans, saves, limited_name = staffing_deadline_episode(
+        solver, monkeypatch, 180
+    )
+    healthy_room = solver.op_data.operators[PRIMARY[1]].room
+    if healthy_remaining:
+        solver.op_data.update_detail(PRIMARY[1], 8, "", -1, True)
+        solver.op_data.update_detail(COVERS[1], 24, healthy_room, 0, True)
+
+    solver._emergency_tick()
+
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert len(scans) == 1
+    assert release.mood_limit_deadline == NOW + timedelta(seconds=180)
+    assert release.time == NOW + timedelta(seconds=90)
+    assert NOW + timedelta(seconds=46) < release.time
+    assert clock["now"] < release.time <= clock["now"] + timedelta(seconds=46)
+    assert state["staffing_plan"] == {scans[0]: [COVERS[0]]}
+    assert healthy_room in state["staffing_remaining"]
+    assert state["staffing_plan"] in saves
+    staffing = next(
+        task for task in solver.tasks if getattr(task, "emergency_staffing", False)
+    )
+    assert staffing.plan == state["staffing_plan"]
+    solver.op_data = solver.op_data.project_arrangements([staffing.plan])
+    solver.tasks.remove(staffing)
+    clock["now"] = NOW + timedelta(seconds=180)
+    solver.op_data.update_detail(limited_name, 12, "", -1, True)
+    solver.op_data.operators[limited_name].rest_mood_release_limit = 12
+    solver.tasks.remove(release)
+    state["next_read"] = clock["now"]
+
+    solver._emergency_tick()
+
+    assert len(scans) == 4 and len(set(scans)) == 4
+    remaining = next(
+        task for task in solver.tasks if getattr(task, "emergency_staffing", False)
+    )
+    expected = set(scans[1:]) - ({healthy_room} if healthy_remaining else set())
+    assert set(remaining.plan) == expected
+    assert scans[0] not in state["staffing_plan"]
+    assert not state.get("staffing_remaining")
+    assert not any(task.strict_mood_limit for task in solver.tasks)
+
+
+def test_staffing_deadline_yield_moves_existing_check_to_prompt_continuation(
+    solver, monkeypatch
+):
+    state, clock, scans, _, _ = staffing_deadline_episode(solver, monkeypatch, 120)
+    check = SchedulerTask(
+        time=NOW + timedelta(minutes=30), meta_data=emergency.CHECK_META
+    )
+    solver.tasks = [check]
+
+    solver._emergency_tick()
+
+    assert not scans
+    assert check.time == state["next_read"] == clock["now"] + timedelta(minutes=1)
+    assert [
+        task for task in solver.tasks if task.meta_data == emergency.CHECK_META
+    ] == [check]
+
+
+def test_returning_ready_waits_for_due_strict_release(solver, monkeypatch):
+    state, attempts = partial_handoff(solver, monkeypatch)
+    release = SchedulerTask(
+        time=NOW,
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["", "Current", "Current", "Current", "Current"]},
+    )
+    release.strict_mood_limit = True
+    solver.tasks = [release]
+
+    assert not solver._emergency_ready()
+    assert state["phase"] == "returning"
+    assert len(attempts) == 1
+    release.plan.clear()
+    assert solver._emergency_ready()
+
+
+@pytest.mark.parametrize("release_seconds", [44, 45])
+def test_returning_handoff_waits_when_arrangement_budget_reaches_strict_release(
+    solver, monkeypatch, release_seconds
+):
+    state, attempts = partial_handoff(solver, monkeypatch)
+    release = SchedulerTask(
+        time=NOW + timedelta(seconds=release_seconds),
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["", "Current", "Current", "Current", "Current"]},
+    )
+    release.strict_mood_limit = True
+    solver.tasks = [release]
+    pending = copy.deepcopy(state["handoff_plan"])
+
+    assert solver._emergency_ready()
+    assert not solver._emergency_restore()
+    assert len(attempts) == 1
+    assert state["handoff_plan"] == pending
+    assert state["phase"] == "returning"
+    assert release in solver.tasks and release.plan
+    assert not solver._emergency_handoff
+
+    solver.tasks.remove(release)
+    assert solver._emergency_restore()
+    assert len(attempts) == 2
+    assert solver.emergency_state is None

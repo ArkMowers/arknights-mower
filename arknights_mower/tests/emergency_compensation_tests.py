@@ -51,6 +51,7 @@ def selection_harness(solver, monkeypatch):
     solver._track_idle_dorm_shift = MagicMock()
     solver._finish_idle_dorm_shift = MagicMock()
     solver.drone = MagicMock()
+    solver.get_order_remaining_time = MagicMock(return_value=60)
     solver.skip = MagicMock()
     monkeypatch.setattr(
         base_schedule, "defer_dorm_before_priority_task", lambda *a: False
@@ -177,3 +178,120 @@ def test_run_order_immediate_and_queued_compensation_restore_observed_vacancies(
 
     assert solver.op_data.get_current_room(ROOM, True) == original
     solver.get_free_list.assert_not_called()
+
+
+def failed_started_order(solver, monkeypatch, buffer=0):
+    make_episode(solver)
+    place = selection_harness(solver, monkeypatch)
+    place([COVERS[0], ""])
+    config.conf.run_order_grandet_mode.enable = bool(buffer)
+    config.conf.run_order_grandet_mode.buffer_time = buffer
+    order = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={ROOM: ["但书", COVERS[1]]},
+        meta_data=ROOM,
+    )
+    order.adjusted = True
+    solver.task = order
+    solver.tasks = [order, SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)]
+    solver.drone.side_effect = RuntimeError("无人机加速失败")
+    with pytest.raises(RuntimeError, match="无人机加速失败"):
+        solver.agent_arrange(order.plan)
+    assert solver.op_data.get_current_room(ROOM, True) == ["但书", COVERS[1]]
+    assert order.plan == {ROOM: ["但书", COVERS[1]]}
+    assert order.emergency_original_roster == {ROOM: [COVERS[0], ""]}
+    solver.task = None
+    return order
+
+
+@pytest.mark.parametrize("buffer", [0, 1])
+def test_started_order_retry_survives_filter_and_restores_actual_empty_slot(
+    solver, monkeypatch, buffer
+):
+    order = failed_started_order(solver, monkeypatch, buffer)
+
+    solver._emergency_filter_tasks()
+
+    assert order in solver.tasks
+    solver.drone.side_effect = None
+    solver.task = order
+    solver.agent_arrange(order.plan)
+    if buffer == 0:
+        restore = next(
+            task
+            for task in solver.tasks
+            if task is not order and task.type == TaskTypes.RUN_ORDER
+        )
+        assert restore.emergency_original_roster == {ROOM: [COVERS[0], ""]}
+        solver.task = restore
+        solver.agent_arrange(restore.plan)
+    assert solver.op_data.get_current_room(ROOM, True) == [COVERS[0], ""]
+    solver.get_free_list.assert_not_called()
+
+
+def test_unstarted_busy_order_is_still_removed_without_claiming_compensation(
+    solver, monkeypatch
+):
+    make_episode(solver)
+    selection_harness(solver, monkeypatch)
+    solver.op_data.operators["但书"]._current_room = "room_1_2"
+    order = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={ROOM: ["但书", COVERS[1]]},
+        meta_data=ROOM,
+    )
+    solver.tasks = [order]
+
+    solver._emergency_filter_tasks()
+
+    assert not solver.tasks
+    assert not hasattr(order, "emergency_original_roster")
+    solver.choose_agent.assert_not_called()
+
+
+@pytest.mark.parametrize("buffer", [0, 1])
+def test_started_compensation_waits_for_original_worker_in_another_facility(
+    solver, monkeypatch, buffer
+):
+    order = failed_started_order(solver, monkeypatch, buffer)
+    solver.op_data.operators[COVERS[0]]._current_room = "room_1_2"
+    solver.op_data.operators[COVERS[0]].current_index = 0
+    solver._emergency_filter_tasks()
+    assert order in solver.tasks
+    solver.drone.side_effect = None
+    solver.task = order
+    solver.agent_arrange(order.plan)
+    restore = next(
+        task
+        for task in solver.tasks
+        if task is not order and task.type == TaskTypes.RUN_ORDER
+    )
+    solver.task = restore
+    solver.choose_agent.reset_mock()
+
+    solver.agent_arrange(restore.plan)
+
+    assert restore in solver.tasks
+    assert restore.plan == {ROOM: [COVERS[0], ""]}
+    assert solver.op_data.operators[COVERS[0]].current_room == "room_1_2"
+    solver.choose_agent.assert_not_called()
+    solver.op_data.operators[COVERS[0]]._current_room = ""
+    solver.op_data.operators[COVERS[0]].current_index = -1
+    solver.agent_arrange(restore.plan)
+    assert solver.op_data.get_current_room(ROOM, True) == [COVERS[0], ""]
+
+
+def test_run_order_sync_retains_started_responsibility_after_room_is_disabled(
+    solver, monkeypatch
+):
+    order = failed_started_order(solver, monkeypatch)
+    stale_refresh = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=ROOM)
+    solver.tasks.append(stale_refresh)
+
+    solver._sync_run_order_tasks()
+
+    assert ROOM not in solver.op_data.run_order_rooms
+    assert order in solver.tasks
+    assert order.plan == {ROOM: ["但书", COVERS[1]]}
+    assert order.emergency_original_roster == {ROOM: [COVERS[0], ""]}
+    assert stale_refresh not in solver.tasks

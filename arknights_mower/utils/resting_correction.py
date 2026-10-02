@@ -9,6 +9,20 @@ from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 PLACEHOLDERS = {"", "Current", "Free"}
 
 
+def suppress_completed_dorm_returns(op_data, plan):
+    """个人上限周期已完成的离宿者不被纠错或交接重新召回。"""
+    for room, row in list(plan.items()):
+        if not room.startswith("dorm"):
+            continue
+        for index, name in enumerate(row):
+            if name not in PLACEHOLDERS and op_data.rest_mood_complete(name):
+                current = op_data.get_current_operator(room, index)
+                if current is None or current.name != name:
+                    row[index] = "Current"
+        if all(name == "Current" for name in row):
+            del plan[room]
+
+
 def _resting_members(op_data):
     ends = {d.name: d.time for d in op_data.all_dorms() if d.name}
     resting, groups = set(), set()

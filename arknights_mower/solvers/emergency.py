@@ -33,12 +33,15 @@ from arknights_mower.utils.emergency_staffing import (
     select_workers,
 )
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory, Operator
 from arknights_mower.utils.recognize import Scene
+from arknights_mower.utils.resting_correction import suppress_completed_dorm_returns
 from arknights_mower.utils.resting_priority import busy_resting_names, has_resting_mood
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    protect_priority_tasks,
     try_workshop_tasks,
 )
 
@@ -179,6 +182,7 @@ class EmergencyRecoveryMixin:
         ]
         self._emergency_save()
         self._open_emergency_beds()
+        self.plan_metadata()
         self._emergency_schedule_staffing(initial=True)
         state["observed_at"] = datetime.now()
         self._emergency_save()
@@ -263,7 +267,9 @@ class EmergencyRecoveryMixin:
         if state["phase"] == "returning" or any(
             getattr(t, "emergency_staffing", False) for t in self.tasks
         ):
-            return
+            return True
+        protect_priority_tasks(self.tasks)
+        completed = True
         pending = state.get("staffing_plan", {})
         if not pending:
             reserved, _ = dorm_task_reservations(data, self.tasks)
@@ -286,6 +292,7 @@ class EmergencyRecoveryMixin:
                 room
                 for room in rooms
                 if initial
+                or room in state.get("staffing_remaining", ())
                 or any(
                     not eligible_worker(
                         data,
@@ -307,9 +314,21 @@ class EmergencyRecoveryMixin:
                 if name
             }
             snapshot = load_skill_snapshot() if repair else None
+            remaining = set(repair)
             for room in rooms:
                 if room not in repair:
                     continue
+                deadline = min(
+                    (
+                        task.time
+                        for task in self.tasks
+                        if getattr(task, "strict_mood_limit", False) and task.plan
+                    ),
+                    default=datetime.max,
+                )
+                if datetime.now() + timedelta(seconds=46) >= deadline:
+                    completed = False
+                    break
                 current = data.get_current_room(room, True)
                 candidates = self._emergency_scan_workers(
                     room, rooms[room], reserved, snapshot=snapshot
@@ -321,6 +340,7 @@ class EmergencyRecoveryMixin:
                     len(data.plan[room]),
                     current=current,
                 )
+                remaining.remove(room)
                 for name in names:
                     if name not in data.operators:
                         data.add(Operator(name, ""))
@@ -332,6 +352,10 @@ class EmergencyRecoveryMixin:
                     logger.warning(
                         f"智能救急 {room} 合格临时驻员不足，保留 {len(row) - len(names)} 个空位"
                     )
+            if remaining:
+                state["staffing_remaining"] = sorted(remaining)
+            else:
+                state.pop("staffing_remaining", None)
         if pending:
             state["staffing_plan"] = copy.deepcopy(pending)
             self._emergency_save()
@@ -344,6 +368,7 @@ class EmergencyRecoveryMixin:
             for room in data.plan
             if not room.startswith("dorm")
         }
+        return completed
 
     def _open_emergency_beds(self):
         from arknights_mower.utils import dorm_skills
@@ -457,8 +482,19 @@ class EmergencyRecoveryMixin:
         )
         return bool(required) and all(
             (op := self.op_data.operators.get(name)) is not None
-            and (not op.is_working() or op.current_room == room and not plan)
+            and (not op.is_working() or op.current_room == room)
             for name in required
+        )
+
+    def _emergency_compensation_available(self, plan):
+        """专项补偿等待其他工作设施释放原驻员，不抢占其岗位。"""
+        return all(
+            (op := self.op_data.operators.get(name)) is None
+            or not op.is_working()
+            or op.current_room == room
+            for room, row in plan.items()
+            for name in row
+            if name not in ("", "Free", "Current")
         )
 
     def _emergency_filter_tasks(self):
@@ -477,6 +513,7 @@ class EmergencyRecoveryMixin:
             and not (
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
                 and task.meta_data
+                and not hasattr(task, "emergency_original_roster")
                 and not self._emergency_run_order_available(task.meta_data, task.plan)
             )
         ]
@@ -515,6 +552,7 @@ class EmergencyRecoveryMixin:
                     | set(state.get("temporary_roster", {}))
                 )
         self.plan_metadata()
+        protect_priority_tasks(self.tasks)
         if read_due:
             self._emergency_update_targets()
             if self._emergency_ready():
@@ -524,15 +562,20 @@ class EmergencyRecoveryMixin:
                 state["next_read"] = now + timedelta(minutes=5)
             else:
                 self._open_emergency_beds()
-                self._emergency_schedule_staffing(initial=state["phase"] == "staffing")
+                scanned = self._emergency_schedule_staffing(
+                    initial=state["phase"] == "staffing"
+                )
                 self._emergency_plan_beds(state)
-                state["next_read"] = now + timedelta(
-                    minutes=self._emergency_read_minutes()
+                state["next_read"] = datetime.now() + timedelta(
+                    minutes=self._emergency_read_minutes() if scanned else 1
                 )
         if state["phase"] == "recovering":
             try_workshop_tasks(self.op_data, self.tasks)
             self.run_order_solver()
-        if not any(task.meta_data == CHECK_META for task in self.tasks):
+        check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
+        if check is not None:
+            check.time = state["next_read"]
+        else:
             self.tasks.append(
                 SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
             )
@@ -584,6 +627,8 @@ class EmergencyRecoveryMixin:
             and (
                 task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
                 and task.time <= datetime.now()
+                or getattr(task, "strict_mood_limit", False)
+                and task.time <= datetime.now()
                 or hasattr(task, "emergency_original_roster")
             )
             for task in self.tasks
@@ -608,6 +653,9 @@ class EmergencyRecoveryMixin:
     def _emergency_restore(self):
         """重新求值副表，交接成功后清除批次；失败按实际驻员继续交接。"""
         state = self.emergency_state
+        saved_beds = {
+            bed.position: (bed.name, bed.time) for bed in self.op_data.all_dorms()
+        }
         state["phase"] = "returning"
         self._emergency_handoff = True
         try:
@@ -637,6 +685,24 @@ class EmergencyRecoveryMixin:
                     for index, name in enumerate(slots):
                         if name != "Current":
                             row[index] = name
+                suppress_completed_dorm_returns(self.op_data, task.plan)
+            suppress_completed_dorm_returns(self.op_data, plan)
+            release_start = min(
+                (
+                    task.time
+                    for task in self.tasks
+                    if getattr(task, "strict_mood_limit", False) and task.plan
+                ),
+                default=datetime.max,
+            )
+            duration = timedelta(
+                minutes=sum(
+                    estimate_dorm_minutes(room) if room.startswith("dorm") else 0.75
+                    for room in plan
+                )
+            )
+            if datetime.now() + duration >= release_start:
+                return False
             probe = copy.copy(self)
             probe.op_data = self.op_data.project_arrangements([plan])
             probe.tasks = []
@@ -712,9 +778,14 @@ class EmergencyRecoveryMixin:
             return True
         finally:
             self._emergency_handoff = False
-            if self.emergency_state and "handoff_plan" not in state:
-                state["phase"] = "recovering"
+            if self.emergency_state:
+                if "handoff_plan" not in state:
+                    state["phase"] = "recovering"
                 self._open_emergency_beds()
+                for bed in self.op_data.all_dorms():
+                    saved = saved_beds.get(bed.position)
+                    if saved is not None and bed.name == saved[0]:
+                        bed.time = saved[1]
 
     def _emergency_collect(self):
         """心情复查时顺便收取，沿用普通收取的防重复间隔。"""

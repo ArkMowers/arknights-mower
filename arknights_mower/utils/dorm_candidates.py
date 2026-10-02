@@ -43,6 +43,12 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
     for task in tasks:
         if task is None:
             continue
+        names.update(
+            name
+            for row in getattr(task, "emergency_original_roster", {}).values()
+            for name in row
+            if name not in ("", "Current", "Free")
+        )
         returning = getattr(getattr(task, "type", None), "name", "") == "SHIFT_ON"
         for room, row in task.plan.items():
             for index, name in enumerate(row):

@@ -1947,7 +1947,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             prefer_resting_replacements(self.op_data, fix_plan, _is_mastery_busy)
             # 整组回班可能补入训练位，仍须经过相同的专精保护。
             self._suppress_train_correction(fix_plan)
-        from arknights_mower.utils.resting_correction import correct_group_dorms
+        from arknights_mower.utils.resting_correction import (
+            correct_group_dorms,
+            suppress_completed_dorm_returns,
+        )
 
         if self.op_data.has_dorm_groups():
             correct_group_dorms(self.op_data, fix_plan, _is_mastery_busy)
@@ -1957,6 +1960,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
 
             reconsider_low_mood_replacements(self.op_data, fix_plan, _is_mastery_busy)
+        suppress_completed_dorm_returns(self.op_data, fix_plan)
         if return_plan:
             return fix_plan
         if len(fix_plan.keys()) > 0:
@@ -2488,6 +2492,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
             and task.meta_data
             and task.meta_data not in op_data.run_order_rooms
+            and not hasattr(task, "emergency_original_roster")
         ]
         if invalid:
             logger.info(
@@ -3136,6 +3141,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         else:
             logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
 
+        from arknights_mower.utils.resting_correction import (
+            suppress_completed_dorm_returns,
+        )
+
+        suppress_completed_dorm_returns(self.op_data, transition_plan)
         transition_plan = {
             room: names
             for room, names in transition_plan.items()
@@ -8073,6 +8083,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         if self._emergency_frozen():
+            if (
+                self.task.type == TaskTypes.RUN_ORDER
+                and hasattr(self.task, "emergency_original_roster")
+                and not self._emergency_compensation_available(plan)
+            ):
+                self.task.time = datetime.now() + timedelta(minutes=1)
+                return False
             if self.task.type in (TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA):
                 if not hasattr(self.task, "emergency_original_roster"):
                     self.task.emergency_original_roster = {
@@ -8203,7 +8220,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and hasattr(self.task, "emergency_original_roster")
                     else [data.agent for data in self.op_data.plan[room]]
                 )
-            if config.conf.run_order_buffer_time > 0:
+            if config.conf.run_order_buffer_time > 0 and (
+                not self._emergency_frozen()
+                or self._emergency_compensation_available(new_plan)
+            ):
                 self.agent_arrange_room({}, run_order_room, new_plan, skip_enter=True)
             else:
                 restore_task = SchedulerTask(
