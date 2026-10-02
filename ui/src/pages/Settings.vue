@@ -541,7 +541,7 @@ const idleOptions = computed(() => [
                 </help-text>
               </n-checkbox>
             </n-form-item>
-            <n-form-item label="右侧房间位置">
+            <n-form-item :show-label="false">
               <n-checkbox v-model:checked="swap_contact_train"> 训练室在办公室上方 </n-checkbox>
             </n-form-item>
             <n-form-item>
