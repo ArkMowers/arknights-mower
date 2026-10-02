@@ -1759,7 +1759,7 @@ class Operators:
         )
 
     def _slot_takable(self, dorm, requester=None, active_groups=None):
-        """接管遵守恢复层级；救急同级固定住客实测完成后让床。"""
+        """救急实测回满宿管让床，其余接管遵守恢复层级。"""
         if not self.is_effective_free_slot(dorm, active_groups=active_groups):
             return False
         reserved_for = self.reserved_product_beds.get(dorm.position)
@@ -1792,8 +1792,8 @@ class Operators:
             resting_tier(self, name),
         )
         return requester_tier < resident_tier or (
-            requester_tier == resident_tier
-            and name in self.emergency_dorm_agents
+            name in self.emergency_dorm_agents
+            and (op.index < 2 or requester_tier == resident_tier)
             and has_resting_mood(op)
             and not op.mood_is_prediction
             and op.mood >= op.upper_limit

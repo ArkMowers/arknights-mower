@@ -1079,7 +1079,7 @@ def test_staffing_reserves_original_worker_of_started_specialized_task(solver, k
 @pytest.mark.parametrize("path", ["planner", "selection"])
 @pytest.mark.parametrize("lower_manager", [False, True])
 @pytest.mark.parametrize("resident_mood", [8, 24])
-def test_required_main_respects_explicit_priority_residents_in_full_emergency_dorm(
+def test_emergency_completed_managers_yield_with_other_priority_residents_retained(
     solver, monkeypatch, path, lower_manager, resident_mood
 ):
     from arknights_mower.solvers import record
@@ -1093,7 +1093,7 @@ def test_required_main_respects_explicit_priority_residents_in_full_emergency_do
     data = solver.op_data
     data.update_detail(incoming, 8, "", -1, True)
     for index, name in enumerate(residents):
-        data.update_detail(name, resident_mood, room, index, True)
+        data.update_detail(name, 8 if index == 1 else resident_mood, room, index, True)
     data.config.ope_resting_priority = residents.copy()
     solver._open_emergency_beds()
     assert len(data.dorm) == len(residents)
@@ -1103,15 +1103,16 @@ def test_required_main_respects_explicit_priority_residents_in_full_emergency_do
     if lower_manager:
         data.config.ope_resting_priority.remove(residents[0])
         data.operators[residents[0]].resting_priority = "low"
+    allowed = lower_manager or resident_mood == 24
     assert [
         bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
-    ] == ([(room, 0)] if lower_manager else [])
+    ] == ([(room, 0)] if allowed else [])
 
     plan = emergency_recovery.emergency_dorm_plan(data, state, solver.tasks)
     if path == "planner":
         assert plan == (
             {room: [incoming, "Current", "Current", "Current", "Current"]}
-            if lower_manager
+            if allowed
             else {}
         )
     else:
@@ -1124,15 +1125,17 @@ def test_required_main_respects_explicit_priority_residents_in_full_emergency_do
         )
         solver.task.emergency_dorm = True
         solver.prepare_dorm_selection(row, room)
-        assert row == ([incoming, *residents[1:]] if lower_manager else residents)
+        assert row == ([incoming, *residents[1:]] if allowed else residents)
 
     assert data.get_current_room(room, True) == residents
     assert not data.operators[incoming].current_room
 
 
 @pytest.mark.parametrize("manager_reading", ["full", "unfinished", "prediction"])
-def test_required_main_takes_equal_tier_manager_bed_only_after_measured_completion(
-    solver, monkeypatch, manager_reading
+@pytest.mark.parametrize("explicit_priority", [False, True])
+@pytest.mark.parametrize("manager_index", [0, 1])
+def test_completed_manager_yields_regardless_of_explicit_priority(
+    solver, monkeypatch, manager_reading, explicit_priority, manager_index
 ):
     from arknights_mower.solvers import record
     from arknights_mower.utils.resting_priority import RestingTier, resting_tier
@@ -1140,34 +1143,41 @@ def test_required_main_takes_equal_tier_manager_bed_only_after_measured_completi
     monkeypatch.setattr(record, "save_agent_action", MagicMock())
     state = make_episode(solver)
     room = "dormitory_1"
-    incoming, manager = PRIMARY[0], "冰酿"
-    residents = [manager, "闪灵", *COVERS[:3]]
+    incoming = PRIMARY[0]
+    residents = ["冰酿", "闪灵", *COVERS[:3]]
+    manager = residents[manager_index]
     data = solver.op_data
     data.update_detail(incoming, 8, "", -1, True)
     for index, name in enumerate(residents):
         data.update_detail(name, 8, room, index, True)
     data.update_detail(
-        manager, 23 if manager_reading == "unfinished" else 24, room, 0, True
+        manager,
+        23 if manager_reading == "unfinished" else 24,
+        room,
+        manager_index,
+        True,
     )
     data.operators[manager].mood_is_prediction = manager_reading == "prediction"
-    data.config.ope_resting_priority = residents[1:]
+    data.config.ope_resting_priority = [
+        name for name in residents if explicit_priority or name != manager
+    ]
     solver._open_emergency_beds()
-    assert (
-        resting_tier(data, incoming) == resting_tier(data, manager) == RestingTier.MAIN
+    assert resting_tier(data, incoming) == RestingTier.MAIN
+    assert resting_tier(data, manager) == (
+        RestingTier.PRIORITY if explicit_priority else RestingTier.MAIN
     )
+    assert data.operators[manager].index == manager_index
     assert manager in data.emergency_dorm_agents
     assert all(bed.name for bed in data.dorm)
     allowed = manager_reading == "full"
     assert [
         bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
-    ] == ([(room, 0)] if allowed else [])
+    ] == ([(room, manager_index)] if allowed else [])
 
     plan = emergency_recovery.emergency_dorm_plan(data, state, solver.tasks)
-    assert plan == (
-        {room: [incoming, "Current", "Current", "Current", "Current"]}
-        if allowed
-        else {}
-    )
+    expected = ["Current"] * 5
+    expected[manager_index] = incoming
+    assert plan == ({room: expected} if allowed else {})
     row = [
         residents[index] if name == "Current" else name
         for index, name in enumerate(plan.get(room, residents))
@@ -1177,7 +1187,10 @@ def test_required_main_takes_equal_tier_manager_bed_only_after_measured_completi
 
     solver.prepare_dorm_selection(row, room)
 
-    assert row == ([incoming, *residents[1:]] if allowed else residents)
+    expected = residents.copy()
+    if allowed:
+        expected[manager_index] = incoming
+    assert row == expected
     assert data.get_current_room(room, True) == residents
     assert not data.operators[incoming].current_room
 
