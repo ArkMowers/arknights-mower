@@ -7931,7 +7931,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     self.back_to_infrastructure()
                     self._emergency_read_rooms([room])
-                    self.emergency_state.get("staffing_plan", {}).pop(room, None)
+                    if not getattr(self.task, "emergency_staffing_members", ()):
+                        self.emergency_state.get("staffing_plan", {}).pop(room, None)
                     plan.pop(room, None)
                     self.emergency_state["next_read"] = datetime.now()
                     self._emergency_save()

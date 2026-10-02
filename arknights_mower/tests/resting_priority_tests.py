@@ -247,7 +247,6 @@ def test_intelligent_rescue_uses_configured_priority_for_last_available_bed(
     solver.emergency_state = {
         "phase": "recovering",
         "targets": {primary.name: 16},
-        "dorm_layout": {ROOM: [slot.agent for slot in op_data.plan[ROOM]]},
     }
     solver.tasks = [
         SchedulerTask(
@@ -256,10 +255,13 @@ def test_intelligent_rescue_uses_configured_priority_for_last_available_bed(
         )
     ]
 
-    solver._open_emergency_beds()
+    fixed_slots = [slot.agent for slot in op_data.plan[ROOM]][:4]
+    assert {bed.position for bed in op_data.all_dorms()} == {(ROOM, 4)}
     solver._emergency_plan_beds(solver.emergency_state)
 
     assert solver._emergency_active()
+    assert [slot.agent for slot in op_data.plan[ROOM]][:4] == fixed_slots
+    assert {bed.position for bed in op_data.all_dorms()} == {(ROOM, 4)}
     assert resting_tier(op_data, replacement.name) == replacement_tier
     assert len(solver.tasks) == 2
     assert solver.tasks[-1].emergency_dorm

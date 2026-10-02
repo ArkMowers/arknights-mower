@@ -121,7 +121,7 @@ def test_measured_low_mood_plans_once_and_restart_only_reconciles(solver, monkey
     assert solver.emergency_state["phase"] == "staffing"
 
 
-@pytest.mark.parametrize("field", ["phase", "targets", "dorm_layout"])
+@pytest.mark.parametrize("field", ["phase", "targets"])
 def test_invalid_persisted_episode_is_rejected_before_device_access(solver, field):
     setup_startup(solver)
     state = make_episode(solver)
@@ -792,7 +792,10 @@ def test_low_temporary_worker_is_repaired_and_plan_is_saved_before_enqueue(solve
         )
     )
     solver._emergency_schedule_staffing()
-    expected = {"room_1_1": [COVERS[0]]}
+    expected = {
+        "room_1_1": [COVERS[0]],
+        "dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"],
+    }
     assert snapshots == [(expected, [])]
     assert solver.tasks[0].plan == expected
     assert solver.tasks[0].emergency_staffing
@@ -991,7 +994,7 @@ def test_selection_scan_cancels_page_on_recognition_failure(solver, monkeypatch)
     solver.back_to_infrastructure.assert_called_once()
 
 
-def test_completed_primary_remains_reserved_until_unified_exit(solver):
+def test_completed_primary_remains_reserved_during_another_group_departure(solver):
     from arknights_mower.utils.emergency_staffing import (
         StaffingCandidate,
         eligible_worker,
@@ -999,7 +1002,9 @@ def test_completed_primary_remains_reserved_until_unified_exit(solver):
 
     state = make_episode(solver)
     data = solver.op_data
-    data.plan["room_1_1"][0].facility = "制造站"
+    room = data.operators[PRIMARY[1]].room
+    data.plan[room][0].facility = "制造站"
+    data.operators[PRIMARY[1]].mood = 8
     completed = PRIMARY[0]
     assert data.operators[completed].mood >= state["targets"][completed]
     observations = []
@@ -1013,7 +1018,10 @@ def test_completed_primary_remains_reserved_until_unified_exit(solver):
     solver._emergency_scan_workers = scan
     solver._emergency_schedule_staffing(initial=True)
     assert observations
-    assert solver.tasks[0].plan == {"room_1_1": [COVERS[0]]}
+    assert solver.tasks[0].plan[room] == [COVERS[0]]
+    projected = data.project_arrangements([solver.tasks[0].plan])
+    assert projected.operators[PRIMARY[1]].is_resting()
+    assert projected.operators[completed].current_room == data.operators[completed].room
 
 
 def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver):
@@ -1041,7 +1049,7 @@ def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver)
     solver._emergency_plan_beds = MagicMock()
     solver._emergency_tick()
     assert room in solver._emergency_read_rooms.call_args.args[0]
-    solver._emergency_scan_workers.assert_called_once()
+    solver._emergency_scan_workers.assert_not_called()
 
 
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA])
@@ -1052,13 +1060,14 @@ def test_staffing_reserves_original_worker_of_started_specialized_task(solver, k
     )
 
     make_episode(solver)
-    room = "room_1_1"
+    room = "room_1_2"
     data = solver.op_data
+    data.operators[PRIMARY[1]].mood = 8
     data.plan[room][0].facility = "制造站"
     data.add(Operator("但书", ""))
     original = COVERS[0]
-    task = SchedulerTask(task_type=kind, task_plan={room: ["但书"]})
-    task.emergency_original_roster = {room: [original]}
+    task = SchedulerTask(task_type=kind, task_plan={"room_1_1": ["但书"]})
+    task.emergency_original_roster = {"room_1_1": [original]}
     solver.tasks = [task]
 
     def scan(room, facility, reserved, **kwargs):
@@ -1074,14 +1083,15 @@ def test_staffing_reserves_original_worker_of_started_specialized_task(solver, k
     staffing = next(
         task for task in solver.tasks if getattr(task, "emergency_staffing", False)
     )
-    assert staffing.plan == {room: [COVERS[1]]}
-    assert task.emergency_original_roster == {room: [original]}
+    assert staffing.plan[room] == [COVERS[1]]
+    assert data.project_arrangements([staffing.plan]).operators[PRIMARY[1]].is_resting()
+    assert task.emergency_original_roster == {"room_1_1": [original]}
 
 
 @pytest.mark.parametrize("path", ["planner", "selection"])
 @pytest.mark.parametrize("lower_manager", [False, True])
 @pytest.mark.parametrize("resident_mood", [8, 24])
-def test_emergency_completed_managers_yield_with_other_priority_residents_retained(
+def test_emergency_preserves_configured_managers_and_priority_dynamic_residents(
     solver, monkeypatch, path, lower_manager, resident_mood
 ):
     from arknights_mower.solvers import record
@@ -1097,15 +1107,15 @@ def test_emergency_completed_managers_yield_with_other_priority_residents_retain
     for index, name in enumerate(residents):
         data.update_detail(name, 8 if index == 1 else resident_mood, room, index, True)
     data.config.ope_resting_priority = residents.copy()
-    solver._open_emergency_beds()
-    assert len(data.dorm) == len(residents)
+    assert len(data.dorm) == 3
+    assert {bed.position[1] for bed in data.dorm} == {2, 3, 4}
     assert all(bed.name for bed in data.dorm)
     assert resting_tier(data, incoming) == RestingTier.MAIN
     assert all(resting_tier(data, name) == RestingTier.PRIORITY for name in residents)
     if lower_manager:
         data.config.ope_resting_priority.remove(residents[0])
         data.operators[residents[0]].resting_priority = "low"
-    allowed = lower_manager or resident_mood == 24
+    allowed = False
     assert [
         bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
     ] == ([(room, 0)] if allowed else [])
@@ -1136,7 +1146,7 @@ def test_emergency_completed_managers_yield_with_other_priority_residents_retain
 @pytest.mark.parametrize("manager_reading", ["full", "unfinished", "prediction"])
 @pytest.mark.parametrize("explicit_priority", [False, True])
 @pytest.mark.parametrize("manager_index", [0, 1])
-def test_completed_manager_yields_regardless_of_explicit_priority(
+def test_configured_manager_keeps_position_for_every_measurement_and_priority(
     solver, monkeypatch, manager_reading, explicit_priority, manager_index
 ):
     from arknights_mower.solvers import record
@@ -1163,15 +1173,14 @@ def test_completed_manager_yields_regardless_of_explicit_priority(
     data.config.ope_resting_priority = [
         name for name in residents if explicit_priority or name != manager
     ]
-    solver._open_emergency_beds()
     assert resting_tier(data, incoming) == RestingTier.MAIN
     assert resting_tier(data, manager) == (
         RestingTier.PRIORITY if explicit_priority else RestingTier.MAIN
     )
     assert data.operators[manager].index == manager_index
-    assert manager in data.emergency_dorm_agents
+    assert {bed.position[1] for bed in data.dorm} == {2, 3, 4}
     assert all(bed.name for bed in data.dorm)
-    allowed = manager_reading == "full"
+    allowed = False
     assert [
         bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
     ] == ([(room, manager_index)] if allowed else [])
@@ -1273,12 +1282,13 @@ def test_staffing_tick_yields_before_near_personal_limit_release(solver, monkeyp
 
 
 @pytest.mark.parametrize("healthy_remaining", [False, True])
-def test_staffing_saves_partial_scan_and_resumes_remaining_facilities_after_release(
+def test_staffing_discards_unexecutable_group_scan_and_retries_after_release(
     solver, monkeypatch, healthy_remaining
 ):
     state, clock, scans, saves, limited_name = staffing_deadline_episode(
         solver, monkeypatch, 180
     )
+    solver._emergency_return_groups = MagicMock(return_value=False)
     healthy_room = solver.op_data.operators[PRIMARY[1]].room
     if healthy_remaining:
         solver.op_data.update_detail(PRIMARY[1], 8, "", -1, True)
@@ -1290,17 +1300,11 @@ def test_staffing_saves_partial_scan_and_resumes_remaining_facilities_after_rele
     assert len(scans) == 1
     assert release.mood_limit_deadline == NOW + timedelta(seconds=180)
     assert release.time == NOW + timedelta(seconds=90)
-    assert NOW + timedelta(seconds=46) < release.time
     assert clock["now"] < release.time <= clock["now"] + timedelta(seconds=46)
-    assert state["staffing_plan"] == {scans[0]: [COVERS[0]]}
-    assert healthy_room in state["staffing_remaining"]
-    assert state["staffing_plan"] in saves
-    staffing = next(
-        task for task in solver.tasks if getattr(task, "emergency_staffing", False)
-    )
-    assert staffing.plan == state["staffing_plan"]
-    solver.op_data = solver.op_data.project_arrangements([staffing.plan])
-    solver.tasks.remove(staffing)
+    assert not state.get("staffing_plan")
+    assert not state.get("staffing_members")
+    assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
+    assert not any(saved for saved in saves)
     clock["now"] = NOW + timedelta(seconds=180)
     solver.op_data.update_detail(limited_name, 12, "", -1, True)
     solver.op_data.operators[limited_name].rest_mood_release_limit = 12
@@ -1309,13 +1313,20 @@ def test_staffing_saves_partial_scan_and_resumes_remaining_facilities_after_rele
 
     solver._emergency_tick()
 
-    assert len(scans) == 4 and len(set(scans)) == 4
-    remaining = next(
+    staffing = next(
         task for task in solver.tasks if getattr(task, "emergency_staffing", False)
     )
-    expected = set(scans[1:]) - ({healthy_room} if healthy_remaining else set())
-    assert set(remaining.plan) == expected
-    assert scans[0] not in state["staffing_plan"]
+    member = PRIMARY[2] if healthy_remaining else PRIMARY[1]
+    room = solver.op_data.operators[member].room
+    assert len(scans) == 2 and scans[-1] == room
+    assert staffing.plan[room] == [COVERS[PRIMARY.index(member)]]
+    assert state["staffing_members"] == [member]
+    assert (
+        solver.op_data.project_arrangements([staffing.plan])
+        .operators[member]
+        .is_resting()
+    )
+    assert state["staffing_plan"] in saves
     assert not state.get("staffing_remaining")
     assert not any(task.strict_mood_limit for task in solver.tasks)
 
@@ -1395,7 +1406,6 @@ def test_handoff_cancels_deferred_emergency_fill_before_primary_returns(
     data = solver.op_data
     primary = PRIMARY[0]
     data.update_detail(primary, 8, "", -1, True)
-    solver._open_emergency_beds()
     solver._emergency_plan_beds(state)
     pending = next(
         task for task in solver.tasks if getattr(task, "emergency_dorm", False)

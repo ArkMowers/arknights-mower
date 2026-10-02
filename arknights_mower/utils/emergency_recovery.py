@@ -357,8 +357,8 @@ def native_opportunity(
     )
 
 
-def emergency_dorm_plan(data, state, tasks=()):
-    """共享恢复层级选择空闲主班；宿管按跨宿舍一号位、二号位恢复。"""
+def emergency_dorm_plan(data, state, tasks=(), *, members=None):
+    """绑定组整组入宿；指定成员时只规划该组，余床沿用共享候选。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
         dorm_candidates,
@@ -372,110 +372,131 @@ def emergency_dorm_plan(data, state, tasks=()):
         if getattr(task, "strict_mood_limit", False)
         for name in task.release_dorm_targets()
     )
+    requested_members = list(members) if members is not None else None
     need = []
-    for name, target in state["targets"].items():
-        op = data.operators.get(name)
-        if (
-            op is not None
-            and name not in reserved
-            and (not has_resting_mood(op) or op.mood < target)
-            and not data.rest_mood_complete(name)
-            and not op.is_working()
-            and resting_tier(data, name) != RestingTier.EXCLUDED
-        ):
-            need.append(name)
-    need.sort(key=lambda name: resting_key(data, name))
+    if requested_members is not None:
+        need = requested_members
+    else:
+        for name, target in state["targets"].items():
+            op = data.operators.get(name)
+            if (
+                op is not None
+                and name not in reserved
+                and (not has_resting_mood(op) or op.mood < target)
+                and not data.rest_mood_complete(name)
+                and not op.is_working()
+                and resting_tier(data, name) != RestingTier.EXCLUDED
+            ):
+                need.append(name)
     primary_need = set(need)
-    residents = {bed.name for bed in data.dorm if bed.name}
-    candidates = dorm_candidates(
-        data, reserved | set(state["targets"]), current_residents=residents
-    )
-    ordinary = [
-        name
-        for name in [*candidates.recovering, *candidates.unknown]
-        if name in data.operators
-        and (mood := dorm_candidate_mood(data, name)) is not None
-        and mood < 24
-    ]
+    for name in need:
+        op = data.operators.get(name)
+        if op is not None and op.group:
+            primary_need.update(data.groups.get(op.group, [name]))
+    residents = {bed.name for bed in data.all_dorms() if bed.name}
+    ordinary = []
+    if requested_members is None:
+        candidates = dorm_candidates(
+            data, reserved | set(state["targets"]), current_residents=residents
+        )
+        ordinary = [
+            name
+            for name in [*candidates.recovering, *candidates.unknown]
+            if name in data.operators
+            and (mood := dorm_candidate_mood(data, name)) is not None
+            and mood < 24
+        ]
+    else:
+        requested_members = list(primary_need)
     critical = {
         name for name in ordinary if resting_tier(data, name) <= RestingTier.MAIN
     }
     need = sorted(primary_need | critical, key=lambda name: resting_key(data, name))
     plan = {}
-    occupied = {
-        op.name: (op.current_room, op.current_index) for op in data.operators.values()
-    }
-    beds = [bed for bed in data.dorm if bed.position not in slots]
-    managers = {
-        name
-        for names in state["dorm_layout"].values()
-        for name in names[:2]
-        if name not in ("Free", "Current", "菲亚梅塔")
-    }
-
-    def place(name):
-        if any(bed.name == name for bed in beds):
-            return
-        target_bed = next(
-            (
-                bed
-                for bed in sorted(
-                    beds,
-                    key=lambda item: (
-                        bool(item.name),
-                        item.name in managers,
-                        -item.position[1]
-                        if item.name in managers
-                        else -resting_tier(data, item.name),
-                    ),
-                )
-                if bed.name not in reserved
-                and (
-                    not bed.name
-                    or bed.name in state["targets"]
-                    and has_resting_mood(data.operators.get(bed.name))
-                    and data.operators[bed.name].mood >= state["targets"][bed.name]
-                    or data._slot_takable(bed, requester=name)
-                )
-            ),
-            None,
+    protected_groups = set()
+    for group, names in data.groups.items():
+        if group in state.get("returned_groups", ()):
+            continue
+        group_ops = [data.operators[name] for name in names if name in data.operators]
+        if any(
+            op.name in state["targets"]
+            and not op.room.startswith("dorm")
+            and not op.is_working()
+            for op in group_ops
+        ) or any(
+            not op.is_working()
+            and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < 24)
+            for op in group_ops
+        ):
+            protected_groups.add(group)
+    beds = [
+        bed
+        for bed in data.all_dorms()
+        if bed.position not in slots
+        and bed.name not in reserved
+        and (
+            bed.name not in data.operators
+            or data.operators[bed.name].group not in protected_groups
         )
-        if target_bed is None:
-            return
-        room, index = target_bed.position
-        plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = name
-        beds.remove(target_bed)
+    ]
+    probe = copy.copy(data)
+    probe.dorm = beds
 
-    for name in need:
-        place(name)
-    for index in (0, 1):
-        for room, configured in state["dorm_layout"].items():
-            name = configured[index] if index < len(configured) else "Free"
-            if name in ("Free", "Current", "菲亚梅塔") or name in reserved:
+    def place(name, active_groups):
+        if name in residents or any(name in row for row in plan.values()):
+            return True
+        index = probe._find_dorm_slot(name, set(), active_groups=active_groups)
+        if index is None:
+            return False
+        bed = beds[index]
+        room, position = bed.position
+        plan.setdefault(room, ["Current"] * len(data.plan[room]))[position] = name
+        beds.remove(bed)
+        return True
+
+    def place_groups(names):
+        pending = set(names)
+        for name in sorted(pending, key=lambda name: resting_key(data, name)):
+            if name not in pending:
                 continue
             op = data.operators.get(name)
-            if (
-                op is None
-                or op.is_working()
-                or name in need
-                or data.rest_mood_complete(name)
+            if requested_members is not None:
+                members = requested_members
+            elif op is not None:
+                members = data.groups.get(op.group, [name]) if op.group else [name]
+            else:
+                continue
+            pending.difference_update(members)
+            if any(
+                member not in data.operators
+                or member in reserved
+                or data.operators[member].is_working()
+                or resting_tier(data, member) == RestingTier.EXCLUDED
+                or not data.operators[member].room.startswith("dorm")
+                and member not in primary_need | set(ordinary) | residents
+                for member in members
             ):
                 continue
-            bed = next((bed for bed in beds if bed.position == (room, index)), None)
-            if bed is None or bed.name in need or bed.name in reserved:
-                continue
-            if occupied.get(name) == (room, index):
-                beds.remove(bed)
-                continue
-            previous = occupied.get(name)
-            if previous and previous[0].startswith("dorm"):
-                plan.setdefault(previous[0], ["Current"] * len(data.plan[previous[0]]))[
-                    previous[1]
-                ] = "Free"
-            plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = name
-            beds.remove(bed)
-    for name in sorted(
-        set(ordinary) - critical, key=lambda name: resting_key(data, name)
-    ):
-        place(name)
+            active_groups = {
+                data.operators[member].group
+                for member in members
+                if data.operators[member].group
+            }
+            resting = [
+                member
+                for member in members
+                if not data.operators[member].room.startswith("dorm")
+            ]
+            previous_plan = {room: row.copy() for room, row in plan.items()}
+            previous_beds = beds.copy()
+            for member in sorted(resting, key=lambda member: resting_key(data, member)):
+                if not place(member, active_groups):
+                    plan.clear()
+                    plan.update(previous_plan)
+                    beds[:] = previous_beds
+                    break
+
+    place_groups(need)
+    if requested_members is None:
+        place_groups(set(ordinary) - critical)
     return plan

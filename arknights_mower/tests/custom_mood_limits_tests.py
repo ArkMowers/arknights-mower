@@ -92,11 +92,6 @@ def emergency_solver(solver, monkeypatch):
             name: mood_context(data, data.operators[name].room)
             for name in ("银灰", "絮雨")
         },
-        "dorm_layout": {
-            room: [slot.agent for slot in slots]
-            for room, slots in data.plan.items()
-            if room.startswith("dorm")
-        },
         "next_read": now + timedelta(minutes=30),
     }
     return solver
@@ -209,7 +204,6 @@ def test_emergency_bed_planning_preserves_resident_awaiting_personal_limit_relea
     assert solver.emergency_state["targets"]["银灰"] == release.mood_limit == 12
     assert solver.op_data.operators["银灰"].mood == 10
 
-    solver._open_emergency_beds()
     solver._emergency_plan_beds(solver.emergency_state)
 
     arrangements = [
@@ -241,7 +235,6 @@ def test_emergency_does_not_readmit_completed_limit_cycle_or_fabricate_target_mo
     assert limited.rest_mood_release_limit == 12
     assert data.rest_mood_complete(limited.name)
 
-    solver._open_emergency_beds()
     solver._emergency_plan_beds(solver.emergency_state)
 
     assert limited.name not in {
@@ -295,14 +288,18 @@ def test_emergency_fixed_manager_keeps_personal_limit_and_completed_cycle_identi
     assert data.has_rest_mood_limit("冰酿")
 
     for _ in range(2):
-        solver._open_emergency_beds()
-        assert data.plan[ROOM][0].agent == "Free"
+        assert data.plan[ROOM][0].agent == "冰酿"
         assert data.is_planned_operator("冰酿")
         assert data.has_rest_mood_limit("冰酿")
+        assert all(bed.position != (ROOM, 0) for bed in data.all_dorms())
         solver.plan_metadata()
-        release = next(task for task in solver.tasks if task.meta_data == "冰酿")
-        assert release.strict_mood_limit and release.mood_limit == 12
-        assert release.release_dorm_targets() == {"冰酿": (ROOM, 0)}
+        assert all(task.meta_data != "冰酿" for task in solver.tasks)
+
+    data.update_detail("冰酿", 12, ROOM, 4, True)
+    solver.plan_metadata()
+    release = next(task for task in solver.tasks if task.meta_data == "冰酿")
+    assert release.strict_mood_limit and release.mood_limit == 12
+    assert release.release_dorm_targets() == {"冰酿": (ROOM, 4)}
 
     solver.task = release
     assert solver.prepare_release_dorm(release)
@@ -377,7 +374,6 @@ def test_idle_predicted_completion_reopens_recovery_for_measured_confirmation(
     assert limited.time_stamp is None
     assert limited.rest_mood_release_limit is None
     assert not data.rest_mood_complete(limited.name)
-    solver._open_emergency_beds()
     solver._emergency_plan_beds(solver.emergency_state)
     placements = [
         task for task in solver.tasks if getattr(task, "emergency_dorm", False)
@@ -583,14 +579,13 @@ def test_completed_fixed_manager_still_in_original_bed_is_preserved(
 
 
 @pytest.mark.parametrize("outcome", ["failed", "exception", "partial", "replaced"])
-def test_failed_emergency_handoff_reopens_beds_with_resident_deadlines(
+def test_failed_emergency_handoff_preserves_normal_beds_and_resident_deadlines(
     completed_manager_exit_solver, outcome
 ):
     solver = completed_manager_exit_solver
     data = solver.op_data
-    data.update_detail("冰酿", 12, ROOM, 0, True)
-    solver._open_emergency_beds()
-    _, bed = data.get_dorm_by_name("冰酿")
+    data.update_detail("斥罪", 6, ROOM, 4, True)
+    _, bed = data.get_dorm_by_name("斥罪")
     deadline = ling_xi_rest_limit_tests.NOW + timedelta(hours=2)
     bed.time = deadline
     state = solver.emergency_state
@@ -606,8 +601,8 @@ def test_failed_emergency_handoff_reopens_beds_with_resident_deadlines(
                 [{"central": plan.pop("central")}]
             )
         if outcome == "replaced":
-            solver.op_data.update_detail("冰酿", 12, "", -1, True)
-            solver.op_data.update_detail("斥罪", 6, ROOM, 0, True)
+            solver.op_data.update_detail("斥罪", 6, "", -1, True)
+            solver.op_data.update_detail("Mon3tr", 6, ROOM, 4, True)
         if outcome == "exception":
             raise RuntimeError("handoff interrupted")
         return False
@@ -630,10 +625,11 @@ def test_failed_emergency_handoff_reopens_beds_with_resident_deadlines(
     assert not solver._emergency_handoff
     assert solver.emergency_state is state
     assert state["phase"] == "returning"
-    assert solver.op_data.plan[ROOM][0].agent == "Free"
-    resident = "斥罪" if outcome == "replaced" else "冰酿"
+    assert solver.op_data.plan[ROOM][0].agent == "冰酿"
+    assert all(bed.position != (ROOM, 0) for bed in solver.op_data.all_dorms())
+    resident = "Mon3tr" if outcome == "replaced" else "斥罪"
     _, reopened = solver.op_data.get_dorm_by_name(resident)
-    assert reopened.position == (ROOM, 0)
+    assert reopened.position == (ROOM, 4)
     if outcome == "replaced":
         assert reopened.time is None
     else:

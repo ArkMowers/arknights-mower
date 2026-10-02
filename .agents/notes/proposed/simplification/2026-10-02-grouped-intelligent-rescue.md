@@ -1,0 +1,30 @@
+---
+title: Grouped Intelligent Rescue
+status: proposed
+category: simplification
+date: 2026-10-02
+---
+
+# Grouped Intelligent Rescue
+
+## Contract
+
+[INV-SCHED-09] preserves the frozen primary schedule during intelligent rescue. One complete bound group receives complete automatic skill-based replacements and dormitory positions before leaving work. Each group returns to its original primary positions after all required members meet measured targets and continuing rotation is feasible. Other groups remain unchanged. Backup transitions remain frozen until final exit.
+
+## Simplification
+
+Group staffing replaces the initial whole-facility takeover and repeated facility repair scans. It reuses selection-card eligibility, facility scoring, complete replacement matching and the shared dormitory planner. The planner's explicit member scope omits ordinary filling and manager restoration while allocating a shift-off group. No published-state migration or additional configuration is introduced. The [base scheduling contract](../../../../docs/subsystems/base-scheduler.md) owns the scheduling guarantees.
+
+## Persistent Responsibility
+
+Staffing and early return save their complete plans and member reservations before device arrangement. Actual occupancy determines completed positions after partial execution and restart. Early return owns an explicitly authorized rescue task context and restores the prior task on every outcome. Targets remain measured; card estimates only screen replacements. Completed group returns invalidate obsolete dormitory filling for those members. Ordinary spare-bed filling follows shared recovery priority. Intelligent rescue preserves the normal dormitory layout and has no separate manager clearance, manager restoration or all-position opening path. After a group returns, every temporary working position is rescored with the fixed primary operators’ skills; actual mood readings remain unchanged.
+
+## Verification
+
+Offline group-bed, staffing and return regressions cover complete admission, rollback, automatic replacement shortages, measured completion, native rotation blocking, backup freeze, release windows and partial return restart. Targeted existing rescue and compensation suites retain production feasibility and observation checks.
+
+## Review
+
+Standards Findings: pending independent review.
+
+Spec Findings: pending independent review.

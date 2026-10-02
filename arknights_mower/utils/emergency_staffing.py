@@ -181,9 +181,13 @@ def facility_score(workers, facility, product):
     return total + sum(control.values())
 
 
-def select_workers(candidates, facility, product, slots, *, current=()):
+def select_workers(candidates, facility, product, slots, *, current=(), fixed=()):
     """比较有界候选组合；同分优先保持当前阵容，再取较高心情。"""
-    candidates = list({c.name: c for c in candidates}.values())
+    fixed = tuple({c.name: c for c in fixed}.values())
+    fixed_names = {c.name for c in fixed}
+    candidates = list(
+        {c.name: c for c in candidates if c.name not in fixed_names}.values()
+    )
     if not candidates or slots <= 0:
         return []
     current = set(current)
@@ -191,7 +195,7 @@ def select_workers(candidates, facility, product, slots, *, current=()):
     limit = 48 if facility in ("制造站", "贸易站") else 16
     candidates.sort(
         key=lambda c: (
-            facility_score([c], facility, product),
+            facility_score([c, *fixed], facility, product),
             c.name in current,
             c.mood,
         ),
@@ -228,7 +232,7 @@ def select_workers(candidates, facility, product, slots, *, current=()):
         return (
             producer,
             capacity,
-            facility_score([worker], facility, product),
+            facility_score([worker, *fixed], facility, product),
             worker.mood,
         )
 
@@ -241,7 +245,7 @@ def select_workers(candidates, facility, product, slots, *, current=()):
     best = max(
         combinations(candidates, count),
         key=lambda group: (
-            facility_score(group, facility, product),
+            facility_score([*group, *fixed], facility, product),
             sum(c.name in current for c in group),
             sum(c.mood for c in group),
         ),

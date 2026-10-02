@@ -9,7 +9,7 @@ date: 2026-10-02
 
 ## Contract
 
-[INV-SCHED-07] applies shared recovery tiers to emergency beds. The [manager admission decision](../simplification/2026-10-02-emergency-manager-admission.md) defines measured-completed manager admission independently of configured priority.
+[INV-SCHED-07] retains ordinary dormitory allocation and shared recovery tiers during intelligent rescue, including configured manager positions.
 
 [INV-SCHED-03] applies the existing strict-release operation allowance before collection and each room observation. Pending room identities persist after completed reads and survive restart. Deferred observations advance the existing rescue check and authorize no staffing, target or exit decision. A collection performed before a partial observation is not repeated during continuation; cooldown-only calls reserve no collection time.
 

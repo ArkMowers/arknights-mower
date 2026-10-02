@@ -1,6 +1,6 @@
 ---
 title: Intelligent Rescue Target Evaluation Isolation
-status: proposed
+status: implemented
 category: bug-fix
 date: 2026-10-03
 ---
@@ -21,6 +21,6 @@ The offline regression injects an actual PyCapsule into the evaluation model, ev
 
 ## Review
 
-Standards Findings: pending independent review.
+Standards Findings: PASS. Independent review verifies all four projection boundaries, mutable state isolation, and real PyCapsule coverage.
 
-Spec Findings: pending independent review.
+Spec Findings: PASS. The review runs 453 repository tests and 4 subtests, five additional path checks, and 215 tests with an actual PyCapsule. Governance, Ruff and formatting pass.
