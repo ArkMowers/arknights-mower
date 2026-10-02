@@ -884,14 +884,6 @@ onUnmounted(() => {
       label-width="96"
       label-align="left"
     >
-      <n-form-item label="MAA 协助救急">
-        <n-switch v-model:value="maa_emergency_infrast_enable" />
-        <help-text label="MAA 协助救急说明" :max-width="480">
-          启动时确认 Mower 无法及时周转后，使用一次 MAA
-          临时换班。期间暂停副表与普通换班，继续收取订单和产物、恢复心情；跑单干员被占用时暂停跑单。肥鸭与专精不限制
-          MAA 选人。
-        </help-text>
-      </n-form-item>
       <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
         >设备连接与 MAA 路径由 Android 应用管理。</n-alert
       >
@@ -921,6 +913,15 @@ onUnmounted(() => {
         </n-form-item>
       </template>
       <n-form-item label="恢复主题">
+        <template #label>
+          恢复主题
+          <help-text label="恢复主题说明" :max-width="480">
+            恢复主题需要 MAA v6.17.3 或更高版本。在本轮 MAA
+            日常及大型任务结束后、休息前，恢复到指定主题。
+            下拉列表包含国服游戏主题，请选择账号已解锁的主题；清空选择后不恢复。
+            手动停止、异常退出或调度时间不足时跳过。
+          </help-text>
+        </template>
         <n-checkbox v-model:checked="maa_restore_theme_enable">任务结束后恢复主题</n-checkbox>
       </n-form-item>
       <n-form-item v-if="maa_restore_theme_enable" label="目标主题">
@@ -933,12 +934,18 @@ onUnmounted(() => {
           @update:value="maa_restore_theme = $event ?? ''"
         />
       </n-form-item>
+      <n-form-item label="协助救急">
+        <template #label>
+          协助救急
+          <help-text label="协助救急说明" :max-width="480">
+            启动时确认 Mower 无法及时周转后，使用一次 MAA
+            临时换班。期间暂停副表与普通换班，继续收取订单和产物、恢复心情；跑单干员被占用时暂停跑单。肥鸭与专精不限制
+            MAA 选人。
+          </help-text>
+        </template>
+        <n-checkbox v-model:checked="maa_emergency_infrast_enable" aria-label="协助救急" />
+      </n-form-item>
     </n-form>
-    <p>
-      恢复主题需要 MAA v6.17.3 或更高版本。在本轮 MAA 日常及大型任务结束后、休息前，恢复到指定主题。
-      下拉列表包含国服游戏主题，请选择账号已解锁的主题；清空选择后不恢复。
-      手动停止、异常退出或调度时间不足时跳过。
-    </p>
     <n-divider />
     <div class="misc-container">
       <n-button :loading="maa_testing" :disabled="maa_testing" @click="test_maa">
