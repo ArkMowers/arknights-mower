@@ -1,0 +1,20 @@
+{
+  "title": "Estimated Idle Replacement",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]",
+    "[INV-SCHED-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.dorm_mood_fallback_candidates"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_estimated_replacement_tests.py"
+  ]
+}

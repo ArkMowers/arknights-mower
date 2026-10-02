@@ -19,4 +19,4 @@ A conflict advances the handoff and marks its early execution. Planned support e
 
 ## Verification
 
-Offline tests cover the reported nine-minute-fifty-four-second window, elapsed countdowns, exact completion and handoff boundaries, custom entry delays, repeated planning, multiple handoffs, overdue order dispatch, cleanup tasks and Drone Acceleration interruption. Planned execution tests distinguish ordinary timing from early execution and retain insufficient-training rejection.
+Offline tests cover the reported nine-minute-fifty-four-second window, elapsed countdowns, exact completion and handoff boundaries, configured fractional entry delays independently of order collision spacing, single-pass convergence across multiple orders, repeated planning, multiple handoffs, one-minute training-room handoffs, overdue order dispatch, cleanup tasks and Drone Acceleration interruption. Planned execution tests distinguish ordinary timing from early execution and retain insufficient-training rejection.

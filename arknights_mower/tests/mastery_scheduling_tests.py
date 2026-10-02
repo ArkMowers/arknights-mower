@@ -24,7 +24,8 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
         (-6, True),
         (-1, True),
         (0, True),
-        (2, True),
+        (0.5, True),
+        (1, False),
         (3, False),
         (9, False),
     ],
@@ -38,7 +39,7 @@ def test_swap_collision_includes_orders_on_both_sides(clock, offset, collision):
     assert (swap.time != at) == collision
     assert order.time == before
     if collision:
-        assert swap.time == order.time - timedelta(minutes=3, seconds=1)
+        assert swap.time == order.time - timedelta(minutes=1, seconds=1)
         assert swap.advance_support_swap is True
 
 
@@ -120,7 +121,7 @@ def test_protection_covers_custom_order_entry_delay(clock):
     clock.now.return_value = at - timedelta(hours=1)
     with patch.object(scheduler.config.conf, "run_order_delay", 15):
         assert scheduler.scheduling([order, swap]) is None
-    assert swap.time == before - timedelta(minutes=3, seconds=1)
+    assert swap.time == before - timedelta(minutes=1, seconds=1)
     assert order.time == before
 
 
@@ -270,7 +271,7 @@ def test_advance_stays_before_earliest_conflicting_order(clock):
     )
     times = order.time, earlier.time
     scheduler.scheduling([swap, order, earlier])
-    assert swap.time == earlier.time - timedelta(minutes=3, seconds=1)
+    assert swap.time == earlier.time - timedelta(minutes=1, seconds=1)
     assert (order.time, earlier.time) == times
 
 
@@ -284,3 +285,66 @@ def test_disabled_mastery_does_not_prioritize_advanced_swap(clock):
         scheduler.scheduling(tasks)
     assert (order.time, swap.time) == before
     assert tasks[0] is order
+
+
+@pytest.mark.parametrize("reverse_orders", [False, True])
+def test_multi_order_advancement_converges_in_one_pass(clock, reverse_orders):
+    now = datetime(2026, 10, 2, 11, 40)
+    first, swap = pair()
+    first.time = now + timedelta(minutes=12)
+    second = SchedulerTask(
+        now + timedelta(minutes=18),
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data="room_1_2",
+    )
+    swap.time = now + timedelta(minutes=20)
+    orders = [second, first] if reverse_orders else [first, second]
+    tasks = [*orders, swap]
+    original_order_times = first.time, second.time
+    expected = now + timedelta(minutes=10, seconds=59)
+    clock.now.return_value = now
+    for _ in range(3):
+        scheduler.scheduling(tasks)
+        assert swap.time == expected
+        assert tasks == [swap, first, second]
+        assert (first.time, second.time) == original_order_times
+
+
+@pytest.mark.parametrize("entry_delay", [1.25, 3, 5, 7.5])
+@pytest.mark.parametrize("slack_seconds", [-1, 0, 1])
+def test_handoff_uses_actual_entry_delay_boundary(clock, entry_delay, slack_seconds):
+    order, swap = pair()
+    now = clock.now.return_value
+    order.time = now
+    original = now + timedelta(minutes=entry_delay + 1.5, seconds=slack_seconds)
+    swap.time = original
+    tasks = [order, swap]
+    with patch.object(scheduler.config.conf, "run_order_delay", entry_delay):
+        scheduler.scheduling(tasks)
+    collision = slack_seconds < 0
+    assert swap.time == (now if collision else original)
+    assert bool(getattr(swap, "advance_support_swap", False)) == collision
+    assert tasks[0] is (swap if collision else order)
+    assert order.time == now
+
+
+def test_order_collision_spacing_does_not_change_handoff_entry_delay(clock):
+    order, swap = pair()
+    now = clock.now.return_value
+    order.time = now
+    swap.time = now + timedelta(minutes=5)
+    original = swap.time
+    with patch.object(scheduler.config.conf, "run_order_delay", 3):
+        scheduler.scheduling([order, swap], run_order_delay=15)
+    assert swap.time == original
+    assert not getattr(swap, "advance_support_swap", False)
+
+
+@pytest.mark.parametrize("room_count", [0, 1])
+def test_training_room_handoff_reserves_one_minute(clock, room_count):
+    order, swap = pair()
+    swap.plan = {"train": ["协助者"]} if room_count else {}
+    before = order.time
+    scheduler.scheduling([order, swap])
+    assert swap.time == before - timedelta(minutes=1, seconds=1)
+    assert order.time == before

@@ -147,3 +147,29 @@ def test_acceleration_stops_after_runtime_handoff_advancement(clock):
     assert solver.tap.call_count == 3
     assert solver.tasks[0] is swap
     assert swap.advance_support_swap is True
+
+
+def test_dispatch_rechecks_all_orders_after_handoff_advancement(clock):
+    first, swap = pair()
+    now = first.time
+    second = SchedulerTask(
+        now + timedelta(minutes=6),
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data="room_1_2",
+    )
+    swap.time = now + timedelta(minutes=7)
+    solver = make_solver([first, second, swap])
+    solver.task = first
+    solver.find = MagicMock(return_value=True)
+    solver.agent_arrange = MagicMock(return_value=False)
+    solver._refresh_deferred_product_reservations = MagicMock()
+    solver.skip = MagicMock()
+    clock.now.return_value = now
+    with patch.object(base_schedule, "datetime", scheduler.datetime):
+        assert solver.infra_main() is True
+    solver.agent_arrange.assert_not_called()
+    assert solver.task is None
+    assert solver.tasks[0] is swap
+    assert swap.time == now
+    assert first.time == now
+    assert second.time == now + timedelta(minutes=6)

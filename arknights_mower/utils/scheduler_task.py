@@ -157,7 +157,7 @@ def protect_priority_tasks(
         key=lambda t: t.time,
     )
     for swap in swaps:
-        _advance_swap_before_orders(tasks, swap, now, run_order_delay, execution_time)
+        _advance_swap_before_orders(tasks, swap, now, execution_time)
         _defer_work_before_swap(tasks, swap, (now, execution_time))
     cursor = now
     for task in sorted(tasks, key=lambda t: t.time):
@@ -265,13 +265,17 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
         next_start = start
 
 
-def _advance_swap_before_orders(tasks, swap, now, run_order_delay, execution_time):
-    entry_delay = timedelta(minutes=max(run_order_delay, config.conf.run_order_delay))
+def _advance_swap_before_orders(tasks, swap, now, execution_time):
+    entry_delay = timedelta(minutes=config.conf.run_order_delay)
     order_operations = timedelta(minutes=2 * execution_time)
     swap_duration = timedelta(minutes=_ordinary_task_minutes(swap, execution_time))
-    for task in tasks:
-        if task.type != TaskTypes.RUN_ORDER or not task.meta_data:
-            continue
+    # 从晚到早检查，提前产生的新冲突在同一轮内收敛。
+    orders = sorted(
+        (t for t in tasks if t.type == TaskTypes.RUN_ORDER and t.meta_data),
+        key=lambda t: t.time,
+        reverse=True,
+    )
+    for task in orders:
         start = max(now, task.time)
         # 已流逝的提前量不再占用后续时间，过期任务仍预留进驻与归位。
         finish = max(start, task.time + entry_delay) + order_operations
@@ -292,7 +296,7 @@ def _ordinary_task_minutes(task, execution_time):
     if task.type == TaskTypes.FURNITURE:
         return (FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS) / 60
     minutes = max(1, len(task.plan) * execution_time)
-    if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY, TaskTypes.SWAP_SUPPORT):
+    if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
         minutes = max(minutes, 3)
     # A downshift can insert an extra dorm-reordering action before itself.
     return minutes * 2 if task.type == TaskTypes.SHIFT_OFF else minutes
@@ -1900,7 +1904,10 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
             if name not in candidates.recovering and name not in candidates.unknown
         )
         search_unknown = bool(candidates.unknown)
-        replacement_search = search_unknown and not op_data.idle_dorm_search_exhausted
+        estimated_recovery = bool(candidates.estimated_recovering)
+        replacement_search = estimated_recovery or (
+            search_unknown and not op_data.idle_dorm_search_exhausted
+        )
         if waiting is None and not candidates.filling:
             return
 
@@ -1936,6 +1943,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 elif waiting is None and (
                     not replacement_search
                     or op_data.is_full_dorm_fallback(occupant.name)
+                    and not estimated_recovery
                     or op_data.has_rest_mood_limit(occupant.name)
                 ):
                     continue
