@@ -1,0 +1,21 @@
+{
+  "title": "Emergency Collection Coalescing",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_tick",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_collect"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_emergency_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/scheduler_wakeup_tests.py"
+  ]
+}

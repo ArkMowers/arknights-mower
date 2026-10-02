@@ -29,7 +29,7 @@ from arknights_mower.utils.scheduler_task import (
 )
 
 CHECK_META = "maa_emergency_check"
-COLLECTION_INTERVAL = timedelta(minutes=15)
+COLLECTION_COOLDOWN = timedelta(minutes=15)
 
 
 class EmergencyRecoveryMixin:
@@ -162,7 +162,6 @@ class EmergencyRecoveryMixin:
         self._run_emergency_maa()
         state["phase"] = "recovering"
         self.back_to_infrastructure()
-        self._emergency_collect()
         self._emergency_read_rooms(room for room in data.plan if room in base_room_list)
         state["temporary_roster"] = {
             room: data.get_current_room(room, True)
@@ -416,6 +415,7 @@ class EmergencyRecoveryMixin:
         state = self.emergency_state
         now = datetime.now()
         if now >= state.get("next_read", now):
+            self._emergency_collect()
             if state.pop("observed_at", None) is None:
                 self._emergency_read_rooms(
                     {room for room in self.op_data.plan if room.startswith("dorm")}
@@ -438,13 +438,12 @@ class EmergencyRecoveryMixin:
                 state["next_read"] = now + timedelta(
                     minutes=self._emergency_read_minutes()
                 )
-        last = self.last_execution.get("todo")
         if state["phase"] == "recovering":
             try_workshop_tasks(self.op_data, self.tasks)
-        collection = now if last is None else last + COLLECTION_INTERVAL
-        due = min(state["next_read"], max(now, collection))
         if not any(task.meta_data == CHECK_META for task in self.tasks):
-            self.tasks.append(SchedulerTask(time=due, meta_data=CHECK_META))
+            self.tasks.append(
+                SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
+            )
         self._emergency_save()
 
     def _emergency_plan_beds(self, state):
@@ -587,9 +586,9 @@ class EmergencyRecoveryMixin:
                 self._open_emergency_beds()
 
     def _emergency_collect(self):
-        """普通收取保持十五分钟节奏，不依赖暂停的跑单队列。"""
+        """心情复查时顺便收取，沿用普通收取的防重复间隔。"""
         last = self.last_execution.get("todo")
-        if last is not None and datetime.now() < last + COLLECTION_INTERVAL:
+        if last is not None and datetime.now() < last + COLLECTION_COOLDOWN:
             return
         self.recog.update()
         notification = detector.infra_notification(self.recog.img)

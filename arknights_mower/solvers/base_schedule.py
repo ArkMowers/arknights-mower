@@ -1119,7 +1119,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             try:
                 if self.task.meta_data == CHECK_META:
                     if self._emergency_active():
-                        self._emergency_collect()
                         self._emergency_tick()
                 elif self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
@@ -1369,7 +1368,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.planned = True
         elif not self.todo_task:
             if self._emergency_active():
-                self._emergency_collect()
                 self.todo_task = True
                 return True
             if (

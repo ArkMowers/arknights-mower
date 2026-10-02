@@ -226,15 +226,65 @@ def test_targets_use_individual_rates_and_preserve_infeasible_value(solver):
     assert target == 5
 
 
-def test_collection_wakes_before_long_mood_check_with_paused_orders(solver):
+@pytest.mark.parametrize("last_collection", [None, NOW - timedelta(minutes=16)])
+def test_collection_waits_for_mood_check_instead_of_waking_early(
+    solver, last_collection
+):
     make_episode(solver)
-    solver.last_execution["todo"] = NOW - timedelta(minutes=16)
+    solver.last_execution["todo"] = last_collection
+    solver._emergency_collect = MagicMock()
     solver._emergency_tick()
     check = next(
         task for task in solver.tasks if task.meta_data == emergency.CHECK_META
     )
-    assert check.time == NOW
+    assert check.time == NOW + timedelta(minutes=30)
     assert solver.emergency_state["next_read"] == NOW + timedelta(minutes=30)
+    solver._emergency_collect.assert_not_called()
+
+
+@pytest.mark.parametrize("observed", [False, True])
+def test_due_mood_check_collects_even_with_paused_order_agents(solver, observed):
+    state = make_episode(solver)
+    state["next_read"] = NOW
+    if observed:
+        state["observed_at"] = NOW
+    solver.op_data.add(Operator("但书", "", current_room="room_2_1", current_index=0))
+    order = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_1": ["但书"]},
+        meta_data="room_1_1",
+    )
+    solver.tasks = [order]
+    activity = []
+    solver._emergency_collect = MagicMock(
+        side_effect=lambda: activity.append("collect")
+    )
+    solver._emergency_read_rooms = MagicMock(
+        side_effect=lambda rooms: activity.append("read")
+    )
+    solver._emergency_update_targets = MagicMock()
+    solver._emergency_ready = MagicMock(return_value=False)
+    solver._emergency_plan_beds = MagicMock()
+    solver._emergency_tick()
+    assert activity == (["collect"] if observed else ["collect", "read"])
+    assert order not in solver.tasks
+    solver._emergency_collect.assert_called_once()
+
+
+def test_due_mood_check_collects_before_ready_handoff(solver):
+    state = make_episode(solver)
+    state["next_read"] = NOW
+    state["observed_at"] = NOW
+    activity = []
+    solver._emergency_collect = MagicMock(
+        side_effect=lambda: activity.append("collect")
+    )
+    solver._emergency_update_targets = MagicMock()
+    solver._emergency_restore = MagicMock(
+        side_effect=lambda: activity.append("restore") or True
+    )
+    solver._emergency_tick()
+    assert activity == ["collect", "restore"]
 
 
 def test_collection_reuses_todo_and_never_arranges_staff(solver, monkeypatch):
@@ -387,7 +437,7 @@ def test_stop_confirmation_failure_blocks_mower_device_actions(solver, monkeypat
     solver.recog.reset_after_external_control.assert_not_called()
 
 
-def test_check_task_rearms_collection_after_consumed_check(solver):
+def test_check_task_rearms_at_next_mood_read_after_consumed_check(solver):
     make_episode(solver)
     solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)]
     solver.last_execution["todo"] = NOW
@@ -395,7 +445,7 @@ def test_check_task_rearms_collection_after_consumed_check(solver):
     solver.task = consumed
     solver._emergency_tick()
     assert len(solver.tasks) == 1
-    assert solver.tasks[0].time == NOW + timedelta(minutes=15)
+    assert solver.tasks[0].time == NOW + timedelta(minutes=30)
 
 
 @pytest.mark.parametrize("failure", ["stop", "running"])
