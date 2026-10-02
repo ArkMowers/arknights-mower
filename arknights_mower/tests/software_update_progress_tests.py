@@ -1,5 +1,6 @@
 """Exercise authenticated progress handoff and cancellation on local sockets."""
 
+import ctypes
 import hashlib
 import json
 import os
@@ -23,7 +24,11 @@ from arknights_mower.utils.software_update_progress import (
     cancel_update,
     read_status,
 )
-from arknights_mower.utils.software_update_worker import UpdateCancelled, Worker
+from arknights_mower.utils.software_update_worker import (
+    UpdateCancelled,
+    WindowsCommandJob,
+    Worker,
+)
 from arknights_mower.views.software_update import software_update_bp
 
 
@@ -165,6 +170,123 @@ class ProgressTests(unittest.TestCase):
         worker = Worker(self.work / "job.json")
         cancel_update(self.state, self.job["id"])
         worker.run_command([sys.executable, "-c", "pass"], cancellable=False)
+
+    def test_windows_command_is_contained_before_it_can_spawn(self):
+        worker = Worker(self.work / "job.json")
+        events = []
+        process, job = Mock(), Mock()
+        process.wait.return_value = 0
+        job.start.side_effect = lambda value: events.append("start")
+        job.close.side_effect = lambda: events.append("close")
+        with (
+            patch("sys.platform", "win32"),
+            patch(
+                "arknights_mower.utils.software_update_worker.detached_options",
+                return_value={"creationflags": 0x08000000},
+            ),
+            patch(
+                "arknights_mower.utils.software_update_worker.WindowsCommandJob",
+                return_value=job,
+            ),
+            patch("subprocess.Popen", return_value=process) as spawn,
+        ):
+            worker.run_command(["npm.cmd", "run", "build"])
+        self.assertEqual(spawn.call_args.kwargs["creationflags"], 0x08000004)
+        job.start.assert_called_once_with(process)
+        self.assertEqual(events, ["start", "close"])
+
+    def test_windows_cancel_and_timeout_wait_for_the_owned_tree(self):
+        worker = Worker(self.work / "job.json")
+        for cancelled in (False, True):
+            with self.subTest(cancelled=cancelled):
+                process, job = Mock(), Mock()
+                events = []
+                job.close.side_effect = lambda: events.append("tree-stopped")
+                process.wait.side_effect = lambda **kwargs: events.append("root-waited")
+                with (
+                    patch("sys.platform", "win32"),
+                    patch(
+                        "arknights_mower.utils.software_update_worker.detached_options",
+                        return_value={"creationflags": 0},
+                    ),
+                    patch(
+                        "arknights_mower.utils.software_update_worker.WindowsCommandJob",
+                        return_value=job,
+                    ),
+                    patch("subprocess.Popen", return_value=process),
+                    patch.object(
+                        worker,
+                        "check_cancelled",
+                        side_effect=[None, UpdateCancelled()] if cancelled else None,
+                    ),
+                ):
+                    with self.assertRaises(
+                        UpdateCancelled if cancelled else subprocess.TimeoutExpired
+                    ):
+                        worker.run_command(["npm.cmd", "run", "build"], timeout=0)
+                self.assertEqual(events[:2], ["tree-stopped", "root-waited"])
+                process.kill.assert_not_called()
+
+    def test_windows_failed_containment_reaps_the_suspended_command(self):
+        worker = Worker(self.work / "job.json")
+        process, job = Mock(), Mock()
+        job.start.side_effect = OSError("fixture assignment failure")
+        with (
+            patch("sys.platform", "win32"),
+            patch(
+                "arknights_mower.utils.software_update_worker.detached_options",
+                return_value={"creationflags": 0},
+            ),
+            patch(
+                "arknights_mower.utils.software_update_worker.WindowsCommandJob",
+                return_value=job,
+            ),
+            patch("subprocess.Popen", return_value=process),
+        ):
+            with self.assertRaisesRegex(OSError, "assignment failure"):
+                worker.run_command(["npm.cmd", "run", "build"])
+        process.kill.assert_called_once()
+        process.wait.assert_called_once_with(timeout=15)
+        job.close.assert_called_once()
+
+    def test_windows_job_waits_for_all_descendants_and_closes_once(self):
+        class Accounting(ctypes.Structure):
+            _fields_ = [("ActiveProcesses", ctypes.c_uint32)]
+
+        job = object.__new__(WindowsCommandJob)
+        job.ctypes, job.Accounting, job.handle = ctypes, Accounting, 71
+        job.kernel = Mock()
+        counts = iter([2, 1, 0])
+
+        def query(handle, info, value, size, returned):
+            value._obj.ActiveProcesses = next(counts)
+            return True
+
+        job.kernel.QueryInformationJobObject.side_effect = query
+        with patch("time.sleep"):
+            job.close()
+            job.close()
+        self.assertEqual(job.kernel.QueryInformationJobObject.call_count, 3)
+        job.kernel.TerminateJobObject.assert_called_once_with(71, 1)
+        job.kernel.CloseHandle.assert_called_once_with(71)
+
+    def test_windows_job_cleanup_is_bounded_and_closes_on_timeout(self):
+        class Accounting(ctypes.Structure):
+            _fields_ = [("ActiveProcesses", ctypes.c_uint32)]
+
+        job = object.__new__(WindowsCommandJob)
+        job.ctypes, job.Accounting, job.handle = ctypes, Accounting, 71
+        job.kernel = Mock()
+
+        def query(handle, info, value, size, returned):
+            value._obj.ActiveProcesses = 1
+            return True
+
+        job.kernel.QueryInformationJobObject.side_effect = query
+        with patch("time.monotonic", side_effect=[0, 16]):
+            with self.assertRaisesRegex(TimeoutError, "15"):
+                job.close()
+        job.kernel.CloseHandle.assert_called_once_with(71)
 
     def test_download_cancel_removes_partial_package_without_stopping_instances(self):
         self.job.update(
