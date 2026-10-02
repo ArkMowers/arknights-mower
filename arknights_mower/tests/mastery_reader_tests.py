@@ -736,6 +736,14 @@ class TestReadRoomState(unittest.TestCase):
         # #73 三态倒计时：read_time 返回秒（None=读失败 / 0=00:00:00 / >0=有值）
         solver.read_time.return_value = countdown_seconds
         solver.read_screen.return_value = panel_text
+        # Room-state scenarios inject the independent name-template result.
+        name_patch = patch.object(
+            reader,
+            "recognize_operator",
+            return_value=reader._parse_panel_text(panel_text)[0],
+        )
+        name_patch.start()
+        self.addCleanup(name_patch.stop)
         # 默认没有「空闲中」标记（面板可读的训练/待收取房）；training_completed 也没有
         solver.find.side_effect = lambda res, *a, **k: None
         solver.enter_room = MagicMock()

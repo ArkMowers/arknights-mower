@@ -1,9 +1,11 @@
 import json
 import unittest
+from contextlib import ExitStack
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 import arknights_mower.solvers.mastery as mastery
 from arknights_mower.solvers import mastery_reader
@@ -14,19 +16,33 @@ from arknights_mower.utils.scheduler_task import TaskTypes
 START = datetime(2026, 7, 31, 12, 0, 0)
 
 
-def setUpModule():
-    # Arrangement scenarios define their own room state; never read user schedules.
-    schedule_patch = patch.object(config_mod, "plan", {})
-    schedule_patch.start()
-    unittest.addModuleCleanup(schedule_patch.stop)
-    # Synthetic occupants exercise confirmation against an explicit test roster.
-    roster_patch = patch.object(
-        mastery,
-        "agent_list",
-        set(mastery.agent_list) | {"测试干员", "错误干员", "路人干员", "char_test"},
-    )
-    roster_patch.start()
-    unittest.addModuleCleanup(roster_patch.stop)
+@pytest.fixture(scope="module", autouse=True)
+def scheduling_reader_fixtures():
+    # Scheduling scenarios supply synthetic identities at the reader boundary.
+    # Production template recognition is covered by the identity suite.
+    def read_fixture_panel(solver, img=None):
+        name, skill = mastery_reader._parse_panel_text(
+            solver.read_screen(
+                solver.recog.img, type="text", cord=mastery_reader.PANEL_REGION
+            )
+        )
+        return mastery_reader.RoomPanel(operator_name=name, skill_name=skill)
+
+    with ExitStack() as patches:
+        patches.enter_context(patch.object(config_mod, "plan", {}))
+        patches.enter_context(
+            patch.object(
+                mastery,
+                "agent_list",
+                set(mastery.agent_list)
+                | {"测试干员", "错误干员", "路人干员", "char_test"},
+            )
+        )
+        for module in (mastery, mastery_reader):
+            patches.enter_context(
+                patch.object(module, "_read_panel_text", read_fixture_panel)
+            )
+        yield
 
 
 def make_plan(**overrides):

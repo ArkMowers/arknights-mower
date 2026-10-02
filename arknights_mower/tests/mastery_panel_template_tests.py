@@ -99,7 +99,9 @@ def test_real_gamma_panel_matches_game_middle_dot_spacing():
 def test_other_skill_does_not_match_gamma():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     font = ImageFont.truetype(
-        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     rendered = render_template("[极境]聆听", font)
     image = np.zeros((42, 520), dtype=np.uint8)
@@ -117,7 +119,9 @@ def test_amiya_forms_are_collected_and_recognized():
         "char_1037_amiya3": ["哀恸共情", "慈悲愿景"],
     }
     font = ImageFont.truetype(
-        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"), FONT_SIZE
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
     )
     for cid, names in expected.items():
         assert [skill["name"] for skill in data["characters"][cid]["skills"]] == names
@@ -148,3 +152,108 @@ def test_font_subset_rejects_new_characters(tmp_path):
     with pytest.raises(ValueError, match="字体子集缺字"):
         build_model(changed, font, tmp_path / "unused.model", charset)
     assert not (tmp_path / "unused.model").exists()
+
+
+def test_full_name_templates_recognize_real_panels():
+    from arknights_mower.utils.mastery_panel_template import recognize_operator
+
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    for filename, expected in (
+        ("mastery_panel_carnelian.png", "卡涅利安"),
+        ("mastery_panel_hairin.png", "八幡海铃"),
+        ("mastery_panel_elysium_gamma.png", "极境"),
+        ("mastery_panel_ptilopsis_enkephalin.png", "白面鸮"),
+    ):
+        image = cv2.imread(str(ROOT / "tests/fixtures" / filename))
+        assert recognize_operator(image, data) == expected
+
+
+def test_name_templates_cover_the_bundled_roster():
+    from arknights_mower.utils.mastery_panel_template import recognize_operator
+
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    font = ImageFont.truetype(
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
+    )
+    names = {
+        char["name"]
+        for char in data["characters"].values()
+        if char.get("rarity") in (4, 5, 6)
+        and any(skill.get("name") for skill in char.get("skills", []))
+    }
+    for name in sorted(names):
+        rendered = render_template(f"[{name}]", font)
+        image = np.zeros((42, 520), dtype=np.uint8)
+        image[4 : 4 + rendered.shape[0], 5 : 5 + rendered.shape[1]] = rendered
+        assert recognize_operator(image, data) == name, name
+
+
+def test_name_templates_reject_unavailable_stale_and_blank_evidence(monkeypatch):
+    from arknights_mower.utils import mastery_panel_template as template
+
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    image = cv2.imread(
+        str(ROOT / "tests/fixtures/mastery_panel_ptilopsis_enkephalin.png")
+    )
+    assert template.recognize_operator(np.zeros_like(image), data) is None
+    stale = deepcopy(data)
+    stale["characters"]["char_128_plosis"]["skills"][0]["name"] += "更新"
+    assert template.recognize_operator(image, stale) is None
+    monkeypatch.setattr(template, "_load_model", lambda: None)
+    assert template.recognize_operator(image, data) is None
+
+
+@pytest.mark.parametrize("scores", [(0.69, 0.50), (0.90, 0.85)])
+def test_name_templates_reject_low_scores_and_close_competitors(monkeypatch, scores):
+    from arknights_mower.utils import mastery_panel_template as template
+
+    data = {
+        "characters": {
+            "one": {"name": "白面鸮", "rarity": 5},
+            "two": {"name": "白金", "rarity": 5},
+        }
+    }
+    model = {
+        "roster_sha256": skill_roster_digest(data),
+        "entries": {
+            cid: {
+                "name": char["name"],
+                "prefix_width": 100,
+                "name_template": np.zeros((2, 2), dtype=np.uint8),
+            }
+            for cid, char in data["characters"].items()
+        },
+    }
+    monkeypatch.setattr(template, "_load_model", lambda: model)
+    values = iter(scores)
+    monkeypatch.setattr(template, "_name_score", lambda *_: next(values))
+    assert (
+        template.recognize_operator(np.zeros((42, 520), dtype=np.uint8), data) is None
+    )
+
+
+def test_generator_preserves_bundled_latin_name_spacing(tmp_path):
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    cid, char = next(
+        (cid, char)
+        for cid, char in data["characters"].items()
+        if char["name"] == "Miss.Christine"
+    )
+    generated = build_model(
+        {"characters": {cid: char}},
+        ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf",
+        tmp_path / "panel.model",
+        ROOT / "fonts/mastery-charset.txt",
+    )
+    with lzma.open(MODEL, "rb") as stream:
+        bundled = _BuiltinOnlyUnpickler(stream).load()
+    assert (
+        generated["entries"][cid]["prefix_width"]
+        == bundled["entries"][cid]["prefix_width"]
+    )
+    assert (
+        generated["entries"][cid]["name_template"]
+        == bundled["entries"][cid]["name_template"]
+    )

@@ -20,6 +20,8 @@ class DormCandidates:
     full: list[str]
     # 缺少实读且尚需筛选；绿色笑脸观测仍只属于普通补位名单。
     unknown: list[str]
+    # 有效低心情卡片仍需实读，但足以触发普通满员住客替换。
+    estimated_recovering: list[str]
     # 满员兜底按心情；缺少实读时用卡片预估，不以恢复缺口排序。
     filling: list[str]
 
@@ -121,4 +123,10 @@ def dorm_candidates(
         for name in unknown
         if (mood := dorm_candidate_mood(op_data, name, now)) is None or mood < 24
     ]
-    return DormCandidates(recovering, full, unknown, filling)
+    estimated_recovering = [
+        name
+        for name in unknown
+        if (mood := dorm_candidate_mood(op_data, name, now)) is not None
+        and mood < getattr(op_data.operators.get(name), "upper_limit", 24)
+    ]
+    return DormCandidates(recovering, full, unknown, estimated_recovering, filling)

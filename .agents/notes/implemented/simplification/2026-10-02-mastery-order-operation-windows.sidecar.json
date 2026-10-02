@@ -1,0 +1,22 @@
+{
+  "title": "Mastery Order Operation Windows",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-17]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task._advance_swap_before_orders",
+    "arknights_mower.utils.scheduler_task._sort_dispatch_tasks",
+    "arknights_mower.solvers.mastery_support_swap._apply_swap"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mastery_scheduling_tests.py",
+    "arknights_mower/tests/mastery_drone_tests.py",
+    "arknights_mower/tests/mastery_support_swap_tests.py"
+  ]
+}

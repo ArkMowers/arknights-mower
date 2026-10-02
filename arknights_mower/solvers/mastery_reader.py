@@ -28,9 +28,12 @@ from typing import Optional
 
 from arknights_mower.data import agent_list
 from arknights_mower.utils import config
-from arknights_mower.utils.image import cropimg, rgb2gray, thres2
+from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.mastery_panel_template import recognize_skill
+from arknights_mower.utils.mastery_panel_template import (
+    recognize_operator,
+    recognize_skill,
+)
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
@@ -39,7 +42,6 @@ from arknights_mower.utils.skill_label import (
     _resolve_operator_char_id,
     format_skill_label,
     is_placeholder_skill_name,
-    normalize_skill_text,
     panel_skill_matches,
     resolve_panel_skill,
     resolve_panel_skill_fuzzy,
@@ -395,10 +397,7 @@ def _read_slot_mastery_tier(solver, skill_index):
 
 
 def _read_panel_text(solver, img=None) -> RoomPanel:
-    """读主面板 `[干员名]技能名` 文本；OCR 不可读 → 空面板（operator_name=""）。
-
-    只读文本、不读图标/倒计时，供确认开始等轻量归属校验用（避免依赖像素读取）。
-    """
+    """主面板姓名由完整模板确认，技能保留 OCR 与模板校验。"""
     from arknights_mower.utils.mastery_recommendation import get_skill_data
 
     if img is None:
@@ -408,66 +407,17 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
         except Exception as e:
             logger.debug(f"面板截图失败: {e}")
             return RoomPanel()
+    data = get_skill_data()
+    region = cropimg(img, PANEL_REGION)
+    operator_name = recognize_operator(region, data)
+    if not operator_name:
+        return RoomPanel()
     try:
         text = solver.read_screen(img, type="text", cord=PANEL_REGION)
     except Exception as e:
-        logger.debug(f"面板 OCR 失败: {e}")
-        return RoomPanel()
-    operator_name, skill_name = _parse_panel_text(text)
-    if operator_name and operator_name not in agent_list:
-        # Sparse white glyphs can disappear in the recognizer even with a high
-        # confidence score (e.g. 八 in 八幡海铃). Retry the same pixels with the
-        # background removed; never infer the occupant from the requested plan.
-        try:
-            region = cropimg(img, PANEL_REGION)
-            gray = rgb2gray(region) if region.ndim == 3 else region
-            retry_text = solver.read_screen(thres2(gray, 180), type="text")
-            retry_name, retry_skill = _parse_panel_text(retry_text)
-            if (
-                retry_name in agent_list
-                and skill_name
-                and normalize_skill_text(retry_skill)
-                == normalize_skill_text(skill_name)
-            ):
-                logger.info(
-                    f"训练室面板二次识别纠正姓名：{operator_name} → {retry_name}，"
-                    f"技能：{retry_skill}"
-                )
-                operator_name, skill_name = retry_name, retry_skill
-        except Exception as e:
-            logger.debug(f"训练室面板二次识别失败: {e}")
-    data = get_skill_data() if operator_name else {}
-    if operator_name not in agent_list and len(operator_name) >= 2 and skill_name:
-        # Both OCR passes can omit the same glyph. A roster candidate only
-        # supplies templates; the current pixels must confirm name and skill.
-        candidates = {
-            char["name"]
-            for char in data.get("characters", {}).values()
-            if char.get("name") in agent_list
-            and len(char["name"]) == len(operator_name) + 1
-            and any(
-                char["name"][:i] + char["name"][i + 1 :] == operator_name
-                for i in range(len(char["name"]))
-            )
-            and any(
-                normalize_skill_text(skill.get("name", ""))
-                == normalize_skill_text(skill_name)
-                for skill in char.get("skills", [])
-            )
-        }
-        confirmed = []
-        region = cropimg(img, PANEL_REGION)
-        for name in candidates:
-            match = recognize_skill(region, name, data)
-            if match is not None and normalize_skill_text(
-                match.name
-            ) == normalize_skill_text(skill_name):
-                confirmed.append(name)
-        if len(confirmed) == 1:
-            logger.info(
-                f"训练室面板模板纠正姓名：{operator_name} → {confirmed[0]}，技能：{skill_name}"
-            )
-            operator_name = confirmed[0]
+        logger.debug(f"面板技能 OCR 失败: {e}")
+        return RoomPanel(operator_name=operator_name)
+    _, skill_name = _parse_panel_text(text)
     if operator_name in agent_list:
         # OCR can confidently drop one character (e.g. 沙缚镣锁 → 沙缚锁).
         # Compare the same pixels with this operator's known skill templates.
@@ -480,7 +430,7 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
         )
         if has_named_skills:
             ocr_skill_index = resolve_panel_skill(operator_name, skill_name)
-            result = recognize_skill(cropimg(img, PANEL_REGION), operator_name, data)
+            result = recognize_skill(region, operator_name, data)
             if result is not None:
                 if ocr_skill_index is None:
                     logger.info(
