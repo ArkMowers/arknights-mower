@@ -432,10 +432,6 @@ def emergency_dorm_plan(data, state, tasks=()):
                     and has_resting_mood(data.operators.get(bed.name))
                     and data.operators[bed.name].mood >= state["targets"][bed.name]
                     or data._slot_takable(bed, requester=name)
-                    or name in primary_need
-                    and bed.name in managers
-                    and bed.name in data.operators
-                    and bed.name not in primary_need
                 )
             ),
             None,

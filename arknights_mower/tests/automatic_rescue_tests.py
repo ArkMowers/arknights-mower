@@ -268,7 +268,7 @@ def test_due_mood_check_collects_even_with_paused_order_agents(solver, observed)
         side_effect=lambda: activity.append("collect")
     )
     solver._emergency_read_rooms = MagicMock(
-        side_effect=lambda rooms: activity.append("read")
+        side_effect=lambda rooms, **kwargs: activity.append("read")
     )
     solver._emergency_update_targets = MagicMock()
     solver._emergency_ready = MagicMock(return_value=False)
@@ -1076,6 +1076,112 @@ def test_staffing_reserves_original_worker_of_started_specialized_task(solver, k
     assert task.emergency_original_roster == {room: [original]}
 
 
+@pytest.mark.parametrize("path", ["planner", "selection"])
+@pytest.mark.parametrize("lower_manager", [False, True])
+@pytest.mark.parametrize("resident_mood", [8, 24])
+def test_required_main_respects_explicit_priority_residents_in_full_emergency_dorm(
+    solver, monkeypatch, path, lower_manager, resident_mood
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.resting_priority import RestingTier, resting_tier
+
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    state = make_episode(solver)
+    room = "dormitory_1"
+    incoming = PRIMARY[0]
+    residents = ["冰酿", "闪灵", *COVERS[:3]]
+    data = solver.op_data
+    data.update_detail(incoming, 8, "", -1, True)
+    for index, name in enumerate(residents):
+        data.update_detail(name, resident_mood, room, index, True)
+    data.config.ope_resting_priority = residents.copy()
+    solver._open_emergency_beds()
+    assert len(data.dorm) == len(residents)
+    assert all(bed.name for bed in data.dorm)
+    assert resting_tier(data, incoming) == RestingTier.MAIN
+    assert all(resting_tier(data, name) == RestingTier.PRIORITY for name in residents)
+    if lower_manager:
+        data.config.ope_resting_priority.remove(residents[0])
+        data.operators[residents[0]].resting_priority = "low"
+    assert [
+        bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
+    ] == ([(room, 0)] if lower_manager else [])
+
+    plan = emergency_recovery.emergency_dorm_plan(data, state, solver.tasks)
+    if path == "planner":
+        assert plan == (
+            {room: [incoming, "Current", "Current", "Current", "Current"]}
+            if lower_manager
+            else {}
+        )
+    else:
+        row = [
+            residents[index] if name == "Current" else name
+            for index, name in enumerate(plan.get(room, residents))
+        ]
+        solver.task = SchedulerTask(
+            task_type=TaskTypes.FILL_DORM, task_plan={room: row}
+        )
+        solver.task.emergency_dorm = True
+        solver.prepare_dorm_selection(row, room)
+        assert row == ([incoming, *residents[1:]] if lower_manager else residents)
+
+    assert data.get_current_room(room, True) == residents
+    assert not data.operators[incoming].current_room
+
+
+@pytest.mark.parametrize("manager_reading", ["full", "unfinished", "prediction"])
+def test_required_main_takes_equal_tier_manager_bed_only_after_measured_completion(
+    solver, monkeypatch, manager_reading
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.resting_priority import RestingTier, resting_tier
+
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    state = make_episode(solver)
+    room = "dormitory_1"
+    incoming, manager = PRIMARY[0], "冰酿"
+    residents = [manager, "闪灵", *COVERS[:3]]
+    data = solver.op_data
+    data.update_detail(incoming, 8, "", -1, True)
+    for index, name in enumerate(residents):
+        data.update_detail(name, 8, room, index, True)
+    data.update_detail(
+        manager, 23 if manager_reading == "unfinished" else 24, room, 0, True
+    )
+    data.operators[manager].mood_is_prediction = manager_reading == "prediction"
+    data.config.ope_resting_priority = residents[1:]
+    solver._open_emergency_beds()
+    assert (
+        resting_tier(data, incoming) == resting_tier(data, manager) == RestingTier.MAIN
+    )
+    assert manager in data.emergency_dorm_agents
+    assert all(bed.name for bed in data.dorm)
+    allowed = manager_reading == "full"
+    assert [
+        bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
+    ] == ([(room, 0)] if allowed else [])
+
+    plan = emergency_recovery.emergency_dorm_plan(data, state, solver.tasks)
+    assert plan == (
+        {room: [incoming, "Current", "Current", "Current", "Current"]}
+        if allowed
+        else {}
+    )
+    row = [
+        residents[index] if name == "Current" else name
+        for index, name in enumerate(plan.get(room, residents))
+    ]
+    solver.task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan={room: row})
+    solver.task.emergency_dorm = True
+
+    solver.prepare_dorm_selection(row, room)
+
+    assert row == ([incoming, *residents[1:]] if allowed else residents)
+    assert data.get_current_room(room, True) == residents
+    assert not data.operators[incoming].current_room
+
+
 def staffing_deadline_episode(solver, monkeypatch, seconds):
     """实测清退时刻与设施扫描共用虚拟时钟，保留实际任务规划。"""
     from arknights_mower.solvers import base_schedule, record
@@ -1117,6 +1223,7 @@ def staffing_deadline_episode(solver, monkeypatch, seconds):
     state["targets"][limited.name] = 10.5
     solver._emergency_read_rooms = MagicMock()
     solver._emergency_collect = MagicMock()
+    solver.last_execution["todo"] = NOW
     solver._emergency_update_targets = MagicMock()
     scans, saves = [], []
 

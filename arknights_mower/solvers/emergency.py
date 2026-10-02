@@ -63,16 +63,48 @@ class EmergencyRecoveryMixin:
             self, "_emergency_handoff", False
         )
 
-    def _emergency_read_rooms(self, rooms):
+    def _emergency_operation_fits(self, seconds):
+        start = min(
+            (
+                task.time
+                for task in self.tasks
+                if getattr(task, "strict_mood_limit", False) and task.plan
+            ),
+            default=datetime.max,
+        )
+        return datetime.now() + timedelta(seconds=seconds + 1) < start
+
+    def _emergency_defer_read(self):
+        state = self.emergency_state
+        state["next_read"] = datetime.now() + timedelta(minutes=1)
+        check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
+        if check is None:
+            self.tasks.append(
+                SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
+            )
+        else:
+            check.time = state["next_read"]
+        self._emergency_save()
+
+    def _emergency_read_rooms(self, rooms, *, yield_to_releases=False):
         """读实际名单并清除本房间未出现的旧驻员；不生成工作站纠错。"""
         for name in (getattr(self, "emergency_state", None) or {}).get("targets", {}):
             op = self.op_data.operators.get(name)
             if op is not None and not op.current_room and op.mood_is_prediction:
                 op.time_stamp = None
                 op.rest_mood_release_limit = None
-        for room in sorted(set(rooms)):
-            if room not in self.op_data.plan or room == "train":
-                continue
+        state = self.emergency_state if yield_to_releases else None
+        rooms = sorted(
+            room for room in set(rooms) if room in self.op_data.plan and room != "train"
+        )
+        if state is not None:
+            rooms = state.setdefault("pending_read_rooms", rooms)
+        for room in list(rooms):
+            if yield_to_releases and not self._emergency_operation_fits(
+                estimate_dorm_minutes(room) * 60
+            ):
+                self.back_to_infrastructure()
+                return False
             self.enter_room(room)
             previous = {
                 op.name
@@ -86,7 +118,13 @@ class EmergencyRecoveryMixin:
                 op.current_room, op.current_index = "", -1
                 op.time_stamp = None
             self.back()
+            if state is not None:
+                rooms.remove(room)
+                self._emergency_save()
         self.back_to_infrastructure()
+        if state is not None:
+            state.pop("pending_read_rooms", None)
+        return True
 
     def _emergency_save(self):
         if not save_current_state():
@@ -96,9 +134,22 @@ class EmergencyRecoveryMixin:
         """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
         if getattr(self, "emergency_state", None) is not None:
             self._emergency_validate_state()
-        self._emergency_read_rooms(
-            room for room in self.op_data.plan if room in base_room_list
+        if self._emergency_active():
+            self._open_emergency_beds()
+            self.plan_metadata()
+            protect_priority_tasks(self.tasks)
+        if self._emergency_active() and self.emergency_state.get("handoff_observing"):
+            self._emergency_startup_pending = False
+            self._emergency_defer_read()
+            return
+        observed = self._emergency_read_rooms(
+            (room for room in self.op_data.plan if room in base_room_list),
+            yield_to_releases=self._emergency_active(),
         )
+        if observed is False:
+            self._emergency_startup_pending = False
+            self._emergency_defer_read()
+            return
         self._read_initial_card_mood()
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
@@ -318,15 +369,7 @@ class EmergencyRecoveryMixin:
             for room in rooms:
                 if room not in repair:
                     continue
-                deadline = min(
-                    (
-                        task.time
-                        for task in self.tasks
-                        if getattr(task, "strict_mood_limit", False) and task.plan
-                    ),
-                    default=datetime.max,
-                )
-                if datetime.now() + timedelta(seconds=46) >= deadline:
+                if not self._emergency_operation_fits(45):
                     completed = False
                     break
                 current = data.get_current_room(room, True)
@@ -538,19 +581,41 @@ class EmergencyRecoveryMixin:
                 }
                 self.run_order_solver()
         read_due = now >= state.get("next_read", now)
+        self.plan_metadata()
+        protect_priority_tasks(self.tasks)
         if read_due:
-            self._emergency_collect()
-            if state.pop("observed_at", None) is None:
-                self._emergency_read_rooms(
-                    {room for room in self.op_data.plan if room.startswith("dorm")}
-                    | {
-                        op.current_room
-                        for name in state["targets"]
-                        if (op := self.op_data.operators.get(name)) is not None
-                        and op.current_room in base_room_list
-                    }
-                    | set(state.get("temporary_roster", {}))
+            if state.get("handoff_observing"):
+                if not self._emergency_restore():
+                    self._emergency_defer_read()
+                return
+            rooms = (
+                {room for room in self.op_data.plan if room.startswith("dorm")}
+                | {
+                    op.current_room
+                    for name in state["targets"]
+                    if (op := self.op_data.operators.get(name)) is not None
+                    and op.current_room in base_room_list
+                }
+                | set(state.get("temporary_roster", {}))
+            )
+            if "pending_read_rooms" not in state:
+                state["read_collection_pending"] = True
+                if "observed_at" not in state:
+                    state["pending_read_rooms"] = sorted(rooms)
+            if state.get("read_collection_pending"):
+                last = self.last_execution.get("todo")
+                collection_due = (
+                    last is None or datetime.now() >= last + COLLECTION_COOLDOWN
                 )
+                if collection_due and not self._emergency_operation_fits(90):
+                    self._emergency_defer_read()
+                    return
+                self._emergency_collect()
+                state.pop("read_collection_pending", None)
+            if state.pop("observed_at", None) is None:
+                if self._emergency_read_rooms(rooms, yield_to_releases=True) is False:
+                    self._emergency_defer_read()
+                    return
         self.plan_metadata()
         protect_priority_tasks(self.tasks)
         if read_due:
@@ -671,6 +736,8 @@ class EmergencyRecoveryMixin:
             )
             if error:
                 raise RuntimeError(error)
+            if state.get("handoff_observing"):
+                return self._emergency_finish_handoff()
             generated = []
             if "handoff_plan" not in state:
                 self.backup_plan_solver(generated_tasks=generated)
@@ -687,58 +754,15 @@ class EmergencyRecoveryMixin:
                             row[index] = name
                 suppress_completed_dorm_returns(self.op_data, task.plan)
             suppress_completed_dorm_returns(self.op_data, plan)
-            release_start = min(
-                (
-                    task.time
-                    for task in self.tasks
-                    if getattr(task, "strict_mood_limit", False) and task.plan
-                ),
-                default=datetime.max,
-            )
             duration = timedelta(
                 minutes=sum(
                     estimate_dorm_minutes(room) if room.startswith("dorm") else 0.75
                     for room in plan
                 )
             )
-            if datetime.now() + duration >= release_start:
+            if not self._emergency_operation_fits(duration.total_seconds()):
                 return False
-            probe = copy.copy(self)
-            probe.op_data = self.op_data.project_arrangements([plan])
-            probe.tasks = []
-            # 各组需要完整替班与床位；不同组不要求同时占满普通床位。
-            groups = {}
-            feasible = True
-            for name in primary_names(probe.op_data):
-                op = probe.op_data.operators[name]
-                if probe.op_data._can_standby(op):
-                    continue
-                actual = self.op_data.operators.get(name)
-                returned = (
-                    "handoff_plan" in state
-                    and actual is not None
-                    and actual.is_working()
-                    and (actual.current_room, actual.current_index)
-                    == (op.room, op.index)
-                )
-                if (
-                    not has_resting_mood(op)
-                    or op.mood_is_prediction
-                    or not returned
-                    and op.mood
-                    < state["targets"].get(
-                        name, recovery_target(probe.op_data, name)[0]
-                    )
-                ):
-                    feasible = False
-                    break
-                groups[op.group or name] = probe.op_data.groups.get(op.group, [name])
-            if feasible:
-                feasible = all(
-                    native_opportunity(probe, members).opportunity is not None
-                    for members in groups.values()
-                )
-            if not feasible:
+            if not self._emergency_handoff_feasible(plan):
                 for key in ("handoff_plan", "handoff_names", "handoff_conditions"):
                     state.pop(key, None)
                 return False
@@ -757,25 +781,9 @@ class EmergencyRecoveryMixin:
                     state["handoff_plan"] = copy.deepcopy(plan)
                     self._emergency_save()
                     return False
-            self._emergency_read_rooms(
-                room
-                for room in self.op_data.plan
-                if room != "train" and room in base_room_list
-            )
-            remaining = self.agent_get_mood(read_rooms=False, return_plan=True)
-            if remaining:
-                state["handoff_plan"] = copy.deepcopy(remaining)
-                self._emergency_save()
-                return False
-            self.emergency_state = None
-            self.tasks[:] = [
-                task for task in self.tasks if task.meta_data != CHECK_META
-            ]
-            self.run_order_solver()
-            self.plan_metadata()
+            state["handoff_observing"] = True
             self._emergency_save()
-            logger.info("主班实际心情满足目标且原生周转可行，智能救急结束")
-            return True
+            return self._emergency_finish_handoff()
         finally:
             self._emergency_handoff = False
             if self.emergency_state:
@@ -786,6 +794,79 @@ class EmergencyRecoveryMixin:
                     saved = saved_beds.get(bed.position)
                     if saved is not None and bed.name == saved[0]:
                         bed.time = saved[1]
+
+    def _emergency_handoff_feasible(self, plan):
+        state = self.emergency_state
+        probe = copy.copy(self)
+        probe.op_data = self.op_data.project_arrangements([plan])
+        probe.tasks = []
+        # 各组需要完整替班与床位；不同组不要求同时占满普通床位。
+        groups = {}
+        feasible = True
+        for name in primary_names(probe.op_data):
+            op = probe.op_data.operators[name]
+            if probe.op_data._can_standby(op):
+                continue
+            actual = self.op_data.operators.get(name)
+            returned = (
+                "handoff_plan" in state
+                and actual is not None
+                and actual.is_working()
+                and (actual.current_room, actual.current_index) == (op.room, op.index)
+            )
+            if (
+                not has_resting_mood(op)
+                or op.mood_is_prediction
+                or not returned
+                and op.mood
+                < state["targets"].get(name, recovery_target(probe.op_data, name)[0])
+            ):
+                feasible = False
+                break
+            groups[op.group or name] = probe.op_data.groups.get(op.group, [name])
+        if feasible:
+            feasible = all(
+                native_opportunity(probe, members).opportunity is not None
+                for members in groups.values()
+            )
+        return feasible
+
+    def _emergency_finish_handoff(self):
+        state = self.emergency_state
+        if (
+            self._emergency_read_rooms(
+                (room for room in self.op_data.plan if room in base_room_list),
+                yield_to_releases=True,
+            )
+            is False
+        ):
+            self._emergency_defer_read()
+            return False
+        if not self._emergency_ready():
+            return False
+        if not self._emergency_handoff_feasible({}):
+            for key in (
+                "handoff_observing",
+                "handoff_plan",
+                "handoff_names",
+                "handoff_conditions",
+            ):
+                state.pop(key, None)
+            self._emergency_save()
+            return False
+        state.pop("handoff_observing", None)
+        remaining = self.agent_get_mood(read_rooms=False, return_plan=True)
+        if remaining:
+            state["handoff_plan"] = copy.deepcopy(remaining)
+            self._emergency_save()
+            return False
+        self.emergency_state = None
+        self.tasks[:] = [task for task in self.tasks if task.meta_data != CHECK_META]
+        self.run_order_solver()
+        self.plan_metadata()
+        self._emergency_save()
+        logger.info("主班实际心情满足目标且原生周转可行，智能救急结束")
+        return True
 
     def _emergency_collect(self):
         """心情复查时顺便收取，沿用普通收取的防重复间隔。"""

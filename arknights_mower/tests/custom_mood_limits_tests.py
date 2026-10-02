@@ -64,6 +64,7 @@ def bounds(lower=0, upper=24):
 
 @pytest.fixture
 def emergency_solver(solver, monkeypatch):
+    solver.last_execution = {}
     now = ling_xi_rest_limit_tests.NOW
 
     class Clock(datetime):
@@ -179,7 +180,7 @@ def test_emergency_reading_tick_replans_limit_after_new_observation(emergency_so
     solver.plan_metadata()
     assert solver.tasks[0].time > ling_xi_rest_limit_tests.NOW
 
-    def observe(rooms):
+    def observe(rooms, **kwargs):
         assert ROOM in rooms
         solver.op_data.update_detail("银灰", 12, ROOM, 3, True)
 
