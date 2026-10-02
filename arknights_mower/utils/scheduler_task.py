@@ -1896,7 +1896,10 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
             if name not in candidates.recovering and name not in candidates.unknown
         )
         search_unknown = bool(candidates.unknown)
-        replacement_search = search_unknown and not op_data.idle_dorm_search_exhausted
+        estimated_recovery = bool(candidates.estimated_recovering)
+        replacement_search = estimated_recovery or (
+            search_unknown and not op_data.idle_dorm_search_exhausted
+        )
         if waiting is None and not candidates.filling:
             return
 
@@ -1932,6 +1935,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 elif waiting is None and (
                     not replacement_search
                     or op_data.is_full_dorm_fallback(occupant.name)
+                    and not estimated_recovery
                     or op_data.has_rest_mood_limit(occupant.name)
                 ):
                     continue
