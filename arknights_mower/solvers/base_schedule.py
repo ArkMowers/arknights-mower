@@ -1069,6 +1069,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if not (strict):
                         operator.mood = operator.upper_limit
                         operator.time_stamp = dorm.time
+                        operator.mood_is_prediction = True
         return True
 
     def arrange_release_dorm(self):
@@ -2333,6 +2334,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             logger.info("检测到干员心情见底或材料不足，任务结束")
                             self.op_data.operators[agent].mood = 0
                             self.op_data.operators[agent].time_stamp = datetime.now()
+                            self.op_data.operators[agent].mood_is_prediction = True
                             logger.debug("设置加工站干员心情为0，别问我，我懒得算了")
                             continue
                         batches = batch_count
@@ -2373,6 +2375,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         mood_budget = max(0, mood_budget - batches * per_craft_mood)
                         operator.mood = mood_budget
                         operator.time_stamp = datetime.now()
+                        operator.mood_is_prediction = True
                         tab_queue = deque(available_groups().items())
                         if not tab_queue:
                             logger.info(
@@ -7792,7 +7795,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 same = False
                 if not same:
                     if (
-                        self._can_refresh_idle_dorm_search()
+                        self._emergency_active()
+                        and room.startswith("dorm")
+                        and self.task.type == TaskTypes.RELEASE_DORM
+                        and getattr(self.task, "strict_mood_limit", False)
+                        or self._can_refresh_idle_dorm_search()
                         and self.task.type != TaskTypes.RUN_ORDER
                         and room != "train"
                         and self.op_data.config.free_room

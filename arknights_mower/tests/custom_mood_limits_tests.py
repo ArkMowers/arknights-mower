@@ -1,6 +1,10 @@
+import copy
+import pickle
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -224,6 +228,10 @@ def test_emergency_does_not_readmit_completed_limit_cycle_or_fabricate_target_mo
     data.update_detail(other.name, 24, other.current_room, other.current_index, True)
     assert data.rest_mood_complete(limited.name)
     assert not solver._emergency_ready()
+    solver.back_to_infrastructure = MagicMock()
+    solver._emergency_read_rooms([])
+    assert limited.rest_mood_release_limit == 12
+    assert data.rest_mood_complete(limited.name)
 
     solver._open_emergency_beds()
     solver._emergency_plan_beds(solver.emergency_state)
@@ -235,6 +243,245 @@ def test_emergency_does_not_readmit_completed_limit_cycle_or_fabricate_target_mo
     assert limited.mood == 11.8
     assert solver.emergency_state["targets"][limited.name] == 12
     assert not solver._emergency_ready()
+
+
+def install_room_observation(solver, residents):
+    slot_tops = [135, 344, 553, 532, 741]
+    observed = iter(residents[index] for index in sorted(residents))
+    latest = {}
+
+    def read_name(*args, **kwargs):
+        latest["name"], latest["mood"] = next(observed)
+        return latest["name"]
+
+    solver.recog = SimpleNamespace(
+        gray=np.zeros((1080, 1920), dtype=np.uint8), update=MagicMock()
+    )
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.scroll_room_operators = MagicMock()
+    solver.find = MagicMock(
+        side_effect=lambda resource, scope=None: (
+            resource == "infra_no_operator"
+            and slot_tops.index(scope[0][1]) not in residents
+        )
+    )
+    solver.read_screen = MagicMock(side_effect=read_name)
+    solver.read_accurate_mood = MagicMock(side_effect=lambda image: latest["mood"])
+    solver.read_operator_time = MagicMock(
+        return_value=ling_xi_rest_limit_tests.NOW + timedelta(hours=3)
+    )
+
+
+def test_emergency_fixed_manager_keeps_personal_limit_and_completed_cycle_identity(
+    emergency_solver,
+):
+    solver = emergency_solver
+    data = solver.op_data
+    data.config.operator_mood_limits["冰酿"] = bounds(0, 12)
+    data.init_mood_limit()
+    data.global_plan["default_plan"].plan = copy.deepcopy(data.plan)
+    data.global_plan["default_plan"].config = copy.deepcopy(data.config)
+    data.update_detail("冰酿", 12, ROOM, 0, True)
+    assert data.has_rest_mood_limit("冰酿")
+
+    for _ in range(2):
+        solver._open_emergency_beds()
+        assert data.plan[ROOM][0].agent == "Free"
+        assert data.is_planned_operator("冰酿")
+        assert data.has_rest_mood_limit("冰酿")
+        solver.plan_metadata()
+        release = next(task for task in solver.tasks if task.meta_data == "冰酿")
+        assert release.strict_mood_limit and release.mood_limit == 12
+        assert release.release_dorm_targets() == {"冰酿": (ROOM, 0)}
+
+    solver.task = release
+    assert solver.prepare_release_dorm(release)
+    install_room_observation(solver, {1: ("闪灵", 6), 2: ("絮雨", 6), 3: ("银灰", 10)})
+    solver.get_agent_from_room(ROOM, departing_plan=release.plan[ROOM])
+    manager = data.operators["冰酿"]
+    assert manager.current_room == ""
+    assert manager.rest_mood_release_limit == 12
+    data.update_detail(manager.name, 11.8, "", -1, True)
+    assert data.rest_mood_complete(manager.name)
+    solver.tasks = []
+    solver._emergency_plan_beds(solver.emergency_state)
+    assert manager.name not in {
+        name for task in solver.tasks for row in task.plan.values() for name in row
+    }
+
+    data.global_plan["default_plan"].plan[ROOM][0].agent = "杜林"
+    assert data.swap_plan([], refresh=True) is None
+    assert not data.is_planned_operator(manager.name)
+    assert not data.has_rest_mood_limit(manager.name)
+
+
+@pytest.fixture
+def predicted_emergency_solver(emergency_solver):
+    solver = emergency_solver
+    data = solver.op_data
+    data.global_plan["default_plan"].plan = copy.deepcopy(data.plan)
+    data.global_plan["default_plan"].config = copy.deepcopy(data.config)
+    data.update_detail("银灰", 11.8, ROOM, 3, True)
+    data.update_detail("絮雨", 24, ROOM, 2, True)
+    _, bed = data.get_dorm_by_name("银灰")
+    bed.time = ling_xi_rest_limit_tests.NOW - timedelta(seconds=1)
+    data.correct_dorm()
+    return solver
+
+
+def test_new_operator_has_no_predicted_recovery_completion():
+    assert not Operator("银灰", "central").mood_is_prediction
+
+
+def test_predicted_dorm_completion_cannot_satisfy_emergency_exit(
+    predicted_emergency_solver,
+):
+    solver = predicted_emergency_solver
+    limited = solver.op_data.operators["银灰"]
+    assert limited.mood == 12 and limited.mood_is_prediction
+    assert not solver._emergency_ready()
+    solver.emergency_state["handoff_plan"] = {}
+    solver._emergency_read_rooms = MagicMock(
+        side_effect=AssertionError("unverified handoff must not read rooms")
+    )
+    assert not solver._emergency_restore()
+    assert solver.emergency_state is not None
+    assert solver.op_data.operators["银灰"].mood_is_prediction
+
+
+def test_idle_predicted_completion_reopens_recovery_for_measured_confirmation(
+    predicted_emergency_solver,
+):
+    solver = predicted_emergency_solver
+    data = solver.op_data
+    data.update_detail("银灰", 12, "", -1, False)
+    limited = data.operators["银灰"]
+    limited.rest_mood_release_limit = limited.upper_limit
+    assert limited.mood_is_prediction and limited.time_stamp is not None
+    assert data.rest_mood_complete(limited.name)
+    assert not solver._emergency_ready()
+    solver.back_to_infrastructure = MagicMock()
+
+    solver._emergency_read_rooms([])
+
+    assert limited.time_stamp is None
+    assert limited.rest_mood_release_limit is None
+    assert not data.rest_mood_complete(limited.name)
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(solver.emergency_state)
+    placements = [
+        task for task in solver.tasks if getattr(task, "emergency_dorm", False)
+    ]
+    assert len(placements) == 1
+    assert limited.name in placements[0].plan[ROOM]
+    assert not solver._emergency_ready()
+    assert solver.emergency_state["targets"][limited.name] == 12
+
+
+@pytest.mark.parametrize("restart", [False, True])
+def test_predicted_mood_survives_runtime_rebuild_until_a_real_read(
+    predicted_emergency_solver, restart
+):
+    solver = predicted_emergency_solver
+    data = solver.op_data
+    if restart:
+        data.operators["银灰"] = pickle.loads(pickle.dumps(data.operators["银灰"]))
+    assert data.swap_plan([], refresh=True) is None
+    limited = data.operators["银灰"]
+    assert limited.mood == 12 and limited.mood_is_prediction
+    data.update_detail(limited.name, 12, ROOM, 3, False)
+    assert limited.mood_is_prediction
+    data.update_detail(limited.name, 11.8, ROOM, 3, True)
+    assert not limited.mood_is_prediction
+    assert not solver._emergency_ready()
+
+
+@pytest.mark.parametrize("actual_mood", [11.8, 12])
+def test_departure_room_read_replaces_prediction_before_emergency_exit(
+    predicted_emergency_solver, actual_mood
+):
+    solver = predicted_emergency_solver
+    solver.plan_metadata()
+    release = next(task for task in solver.tasks if task.meta_data == "银灰")
+    solver.task = release
+    install_room_observation(
+        solver,
+        {0: ("冰酿", 6), 1: ("闪灵", 6), 2: ("絮雨", 24), 3: ("银灰", actual_mood)},
+    )
+
+    observed = solver.get_agent_from_room(ROOM, departing_plan=release.plan[ROOM])
+
+    limited = solver.op_data.operators["银灰"]
+    assert observed[3]["mood"] == limited.mood == actual_mood
+    assert not limited.mood_is_prediction
+    assert solver._emergency_ready() is (actual_mood == 12)
+    assert solver.emergency_state["targets"][limited.name] == 12
+
+
+@pytest.mark.parametrize("free_room", [False, True])
+def test_real_strict_release_arrangement_reads_departure_before_selection(
+    predicted_emergency_solver, free_room
+):
+    class SelectionBoundary(emergency.MowerExit):
+        pass
+
+    solver = predicted_emergency_solver
+    solver.op_data.config.free_room = free_room
+    solver.plan_metadata()
+    release = next(task for task in solver.tasks if task.meta_data == "银灰")
+    solver.task = release
+    solver.enter_room = MagicMock()
+    install_room_observation(
+        solver, {0: ("冰酿", 6), 1: ("闪灵", 6), 2: ("絮雨", 24), 3: ("银灰", 11.8)}
+    )
+    solver.get_agent_from_room = MagicMock(wraps=solver.get_agent_from_room)
+    observed = []
+    read_mood = solver.read_accurate_mood
+
+    def record_mood(image):
+        mood = read_mood(image)
+        observed.append(mood)
+        return mood
+
+    solver.read_accurate_mood = MagicMock(side_effect=record_mood)
+    find = solver.find
+    solver.find = MagicMock(
+        side_effect=lambda resource, scope=None: (
+            True if resource == "confirm_blue" else find(resource, scope)
+        )
+    )
+
+    at_selection = []
+
+    def stop_at_selection(*args, **kwargs):
+        limited = solver.op_data.operators["银灰"]
+        at_selection.append(
+            (
+                limited.mood,
+                limited.mood_is_prediction,
+                solver._emergency_ready(),
+                observed.copy(),
+            )
+        )
+        raise SelectionBoundary()
+
+    solver.choose_agent = MagicMock(side_effect=stop_at_selection)
+    solver.tap_confirm = MagicMock()
+    plan = {ROOM: ["冰酿", "闪灵", "絮雨", "Free", "Free"]}
+
+    with pytest.raises(SelectionBoundary):
+        solver.agent_arrange_room({}, ROOM, plan)
+
+    solver.choose_agent.assert_called_once()
+    solver.get_agent_from_room.assert_called_once_with(ROOM, departing_plan=plan[ROOM])
+    solver.tap_confirm.assert_not_called()
+    mood, predicted, ready, readings = at_selection[0]
+    assert mood == 11.8 and not predicted and not ready
+    assert 11.8 in readings
+    assert solver.op_data.operators["银灰"].mood == 11.8
+    assert solver.emergency_state["targets"]["银灰"] == 12
 
 
 @pytest.mark.parametrize(

@@ -62,6 +62,11 @@ class EmergencyRecoveryMixin:
 
     def _emergency_read_rooms(self, rooms):
         """读实际名单并清除本房间未出现的旧驻员；不生成工作站纠错。"""
+        for name in (getattr(self, "emergency_state", None) or {}).get("targets", {}):
+            op = self.op_data.operators.get(name)
+            if op is not None and not op.current_room and op.mood_is_prediction:
+                op.time_stamp = None
+                op.rest_mood_release_limit = None
         for room in sorted(set(rooms)):
             if room not in self.op_data.plan or room == "train":
                 continue
@@ -344,6 +349,12 @@ class EmergencyRecoveryMixin:
         from arknights_mower.utils import dorm_skills
 
         data = self.op_data
+        data.emergency_dorm_agents = {
+            name
+            for names in self.emergency_state["dorm_layout"].values()
+            for name in names
+            if name not in ("Free", "Current", "")
+        }
         times = {bed.position: bed.time for bed in data.all_dorms()}
         data.dorm = []
         data.group_dorm = []
@@ -578,11 +589,17 @@ class EmergencyRecoveryMixin:
             for task in self.tasks
         ):
             return False
+        if (
+            self.emergency_state["phase"] == "returning"
+            and "handoff_plan" in self.emergency_state
+        ):
+            return True
         return all(
             (op := self.op_data.operators.get(name)) is not None
             and (
                 self.op_data._can_standby(op)
                 or has_resting_mood(op)
+                and not op.mood_is_prediction
                 and op.mood >= target
             )
             for name, target in self.emergency_state["targets"].items()
@@ -625,18 +642,40 @@ class EmergencyRecoveryMixin:
             probe.tasks = []
             # 各组需要完整替班与床位；不同组不要求同时占满普通床位。
             groups = {}
+            feasible = True
             for name in primary_names(probe.op_data):
                 op = probe.op_data.operators[name]
                 if probe.op_data._can_standby(op):
                     continue
-                if not has_resting_mood(op) or op.mood < state["targets"].get(
-                    name, recovery_target(probe.op_data, name)[0]
+                actual = self.op_data.operators.get(name)
+                returned = (
+                    "handoff_plan" in state
+                    and actual is not None
+                    and actual.is_working()
+                    and (actual.current_room, actual.current_index)
+                    == (op.room, op.index)
+                )
+                if (
+                    not has_resting_mood(op)
+                    or op.mood_is_prediction
+                    or not returned
+                    and op.mood
+                    < state["targets"].get(
+                        name, recovery_target(probe.op_data, name)[0]
+                    )
                 ):
-                    return False
+                    feasible = False
+                    break
                 groups[op.group or name] = probe.op_data.groups.get(op.group, [name])
-            for members in groups.values():
-                if native_opportunity(probe, members).opportunity is None:
-                    return False
+            if feasible:
+                feasible = all(
+                    native_opportunity(probe, members).opportunity is not None
+                    for members in groups.values()
+                )
+            if not feasible:
+                for key in ("handoff_plan", "handoff_names", "handoff_conditions"):
+                    state.pop(key, None)
+                return False
             state["handoff_plan"] = copy.deepcopy(plan)
             state["handoff_names"] = names
             state["handoff_conditions"] = list(self.op_data.plan_condition)

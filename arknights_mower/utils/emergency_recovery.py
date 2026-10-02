@@ -454,7 +454,12 @@ def emergency_dorm_plan(data, state, tasks=()):
             if name in ("Free", "Current", "菲亚梅塔") or name in reserved:
                 continue
             op = data.operators.get(name)
-            if op is None or op.is_working() or name in need:
+            if (
+                op is None
+                or op.is_working()
+                or name in need
+                or data.rest_mood_complete(name)
+            ):
                 continue
             bed = next((bed for bed in beds if bed.position == (room, index)), None)
             if bed is None or bed.name in need or bed.name in reserved:

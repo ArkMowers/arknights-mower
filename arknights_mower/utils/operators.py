@@ -307,6 +307,7 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
         self.free_blacklist = []
         self.global_plan = plan
@@ -357,6 +358,7 @@ class Operators:
         return bool(self.maintenance_primary_slots)
 
     def swap_plan(self, condition, refresh=False):
+        self.emergency_dorm_agents.clear()
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         self.products = copy.deepcopy(self.global_plan["default_plan"].products)
         self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
@@ -658,7 +660,7 @@ class Operators:
         )
 
     def is_planned_operator(self, name):
-        return any(
+        return name in self.emergency_dorm_agents or any(
             name == slot.agent or name in slot.replacement
             for slots in self.plan.values()
             for slot in slots
@@ -1153,6 +1155,7 @@ class Operators:
         ) and (current_room, current_index) == (agent.room, agent.index)
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
+            agent.mood_is_prediction = False
             if (
                 not preserve_depletion_rate
                 and agent.time_stamp is not None
@@ -1288,6 +1291,7 @@ class Operators:
                             continue
                         op.mood = op.upper_limit
                         op.time_stamp = dorm.time
+                        op.mood_is_prediction = True
                         op.depletion_rate = 0
                         logger.debug(f"检测到{op.name}心情恢复满，设置心情至{op.mood}")
 
@@ -1356,6 +1360,7 @@ class Operators:
             exist = self.shadow_copy[operator.name]
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
+            operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
             operator.depletion_rate = exist.depletion_rate
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
@@ -2070,6 +2075,7 @@ class Operator:
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
+        self.mood_is_prediction = False
         self.workaholic = False
         self.arrange_order = ["技能", "false"]
         self.exhaust_time = None

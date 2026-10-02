@@ -1,5 +1,6 @@
 """智能救急的临时驻员、实测退出和普通收取的离线契约。"""
 
+import copy
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -392,6 +393,161 @@ def test_partial_handoff_persists_plan_and_retry_does_not_replan_temporary_staff
     assert solver.task is previous_task
     solver._emergency_schedule_staffing.assert_not_called()
     solver.backup_plan_solver.assert_called_once()
+
+
+def partial_handoff(solver, monkeypatch, failure="deferred"):
+    """物理安排首房成功后中断；交接与原生可行性判断使用实际实现。"""
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    state = make_episode(solver)
+    data = solver.op_data
+    for name in PRIMARY:
+        op = data.operators[name]
+        data.update_detail(name, 16, op.current_room, op.current_index, True)
+    plan = {}
+    for name, cover in zip(PRIMARY[:2], COVERS[:2]):
+        op = data.operators[name]
+        room = op.room
+        op.current_room, op.current_index = "", -1
+        data.operators[cover].current_room, data.operators[cover].current_index = (
+            room,
+            0,
+        )
+        plan[room] = [name]
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.agent_get_mood = MagicMock(side_effect=[copy.deepcopy(plan), None])
+    solver._emergency_read_rooms = MagicMock()
+    solver._read_initial_card_mood = MagicMock()
+    solver._emergency_collect = MagicMock()
+    # 此批次实测目标保持 16；这组回归不依赖历史不足时的较低目标。
+    solver._emergency_update_targets = MagicMock()
+    solver._emergency_schedule_staffing = MagicMock()
+    solver._emergency_plan_beds = MagicMock(wraps=solver._emergency_plan_beds)
+    attempts = []
+
+    def arrange(pending, get_time):
+        assert get_time
+        assert solver.task.type == TaskTypes.NOT_SPECIFIC
+        attempts.append(copy.deepcopy(pending))
+        if len(attempts) == 1:
+            room = data.operators[PRIMARY[0]].room
+            solver.op_data = solver.op_data.project_arrangements(
+                [{room: pending[room]}]
+            )
+            del pending[room]
+            if failure == "error":
+                raise RuntimeError("第二个房间安排失败")
+            return False
+        solver.op_data = solver.op_data.project_arrangements([pending])
+        pending.clear()
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
+    if failure == "error":
+        with pytest.raises(RuntimeError, match="第二个房间安排失败"):
+            solver._emergency_restore()
+    else:
+        assert not solver._emergency_restore()
+    assert state["phase"] == "returning" and state["handoff_plan"]
+    completed = solver.op_data.operators[PRIMARY[0]]
+    assert (completed.current_room, completed.current_index) == (
+        completed.room,
+        completed.index,
+    )
+    # 下一次真实房间观察读到已回岗主班消耗了 0.1 点心情。
+    solver.op_data.update_detail(
+        completed.name, 15.9, completed.current_room, completed.current_index, True
+    )
+    state["next_read"] = NOW
+    return state, attempts
+
+
+@pytest.mark.parametrize("failure", ["deferred", "error"])
+@pytest.mark.parametrize("restarted", [False, True])
+def test_returning_tick_continues_real_handoff_after_returned_primary_consumes_mood(
+    solver, monkeypatch, failure, restarted
+):
+    state, attempts = partial_handoff(solver, monkeypatch, failure)
+    if restarted:
+        solver.emergency_state = copy.deepcopy(state)
+        state = solver.emergency_state
+        solver._emergency_startup_pending = True
+        solver._emergency_startup()
+    assert solver.op_data.operators[PRIMARY[0]].mood < state["targets"][PRIMARY[0]]
+
+    solver._emergency_tick()
+
+    assert len(attempts) == 2
+    assert solver.emergency_state is None
+    assert solver.op_data.operators[PRIMARY[0]].mood == 15.9
+    assert state["targets"][PRIMARY[0]] == 16
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert not solver._emergency_handoff
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA])
+def test_returning_tick_waits_for_specialized_compensation_before_handoff(
+    solver, monkeypatch, kind
+):
+    state, attempts = partial_handoff(solver, monkeypatch)
+    room = solver.op_data.operators[PRIMARY[1]].room
+    compensation = SchedulerTask(task_type=kind, task_plan={room: [COVERS[1]]})
+    compensation.emergency_original_roster = {room: [COVERS[1]]}
+    solver.tasks = [compensation]
+
+    solver._emergency_tick()
+    assert len(attempts) == 1
+    assert state["phase"] == "returning"
+    assert compensation in solver.tasks
+
+    solver.tasks.remove(compensation)
+    state["next_read"] = NOW
+    solver._emergency_tick()
+    assert len(attempts) == 2
+    assert solver.emergency_state is None
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "pending_measurement",
+        "pending_prediction",
+        "returned_prediction",
+        "native_blocked",
+    ],
+)
+def test_returning_rejects_stale_handoff_and_resumes_recovery(
+    solver, monkeypatch, invalid
+):
+    state, attempts = partial_handoff(solver, monkeypatch)
+    pending = solver.op_data.operators[PRIMARY[1]]
+    if invalid == "pending_measurement":
+        solver.op_data.update_detail(
+            pending.name, 15.9, pending.current_room, pending.current_index, True
+        )
+    elif invalid == "pending_prediction":
+        pending.mood_is_prediction = True
+    elif invalid == "returned_prediction":
+        solver.op_data.operators[PRIMARY[0]].mood_is_prediction = True
+    else:
+        for name in COVERS:
+            solver.op_data.operators[name].mood = 0
+
+    solver._emergency_tick()
+
+    assert len(attempts) == 1
+    assert state["phase"] == "recovering"
+    assert not any(
+        key in state for key in ("handoff_plan", "handoff_names", "handoff_conditions")
+    )
+    assert state["targets"][PRIMARY[0]] == 16
+    solver._emergency_schedule_staffing.assert_called_once()
+    solver._emergency_plan_beds.assert_called_once_with(state)
+    if invalid == "pending_measurement":
+        assert any(
+            pending.name in row for task in solver.tasks for row in task.plan.values()
+        )
+    assert not solver._emergency_handoff
 
 
 @pytest.mark.parametrize(
