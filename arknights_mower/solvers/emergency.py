@@ -66,12 +66,17 @@ class EmergencyRecoveryMixin:
             if room not in self.op_data.plan or room == "train":
                 continue
             self.enter_room(room)
+            previous = {
+                op.name
+                for op in self.op_data.operators.values()
+                if op.current_room == room
+            }
             observed = self.get_agent_from_room(room, None, force_mood=True)
             actual = {item["agent"] for item in observed if item.get("agent")}
-            for op in self.op_data.operators.values():
-                if op.current_room == room and op.name not in actual:
-                    op.current_room, op.current_index = "", -1
-                    op.time_stamp = None
+            for name in previous - actual:
+                op = self.op_data.operators[name]
+                op.current_room, op.current_index = "", -1
+                op.time_stamp = None
             self.back()
         self.back_to_infrastructure()
 
@@ -633,10 +638,17 @@ class EmergencyRecoveryMixin:
             state["handoff_names"] = names
             state["handoff_conditions"] = list(self.op_data.plan_condition)
             self._emergency_save()
-            if plan and self.agent_arrange(plan, get_time=True) is False:
-                state["handoff_plan"] = copy.deepcopy(plan)
-                self._emergency_save()
-                return False
+            if plan:
+                previous_task = self.task
+                self.task = SchedulerTask(task_plan=plan)
+                try:
+                    arranged = self.agent_arrange(plan, get_time=True)
+                finally:
+                    self.task = previous_task
+                if arranged is False:
+                    state["handoff_plan"] = copy.deepcopy(plan)
+                    self._emergency_save()
+                    return False
             self._emergency_read_rooms(
                 room
                 for room in self.op_data.plan

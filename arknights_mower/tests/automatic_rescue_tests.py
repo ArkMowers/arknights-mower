@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from arknights_mower.solvers import emergency
@@ -17,6 +18,7 @@ from arknights_mower.utils.emergency_recovery import (
     recovery_target,
 )
 from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -143,24 +145,30 @@ def test_card_estimates_do_not_establish_entry_or_ready(solver):
     assert not solver._emergency_ready()
 
 
-def test_observed_absence_invalidates_only_departed_resident_reading(solver):
+@pytest.mark.parametrize("empty_slot", [True, False])
+def test_real_room_absence_invalidates_only_departed_resident_reading(
+    solver, empty_slot
+):
     missing = solver.op_data.operators[PRIMARY[0]]
     untouched = solver.op_data.operators[COVERS[0]]
     room = missing.current_room
     original_stamp = untouched.time_stamp
-    observed = [
-        {"agent": op.name}
-        for op in solver.op_data.operators.values()
-        if op.current_room == room and op.name != missing.name
-    ]
-    solver.get_agent_from_room = MagicMock(return_value=observed)
+    solver.recog = SimpleNamespace(
+        gray=np.zeros((1080, 1920), dtype=np.uint8), update=MagicMock()
+    )
+    solver.refresh_facility_state = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.find = MagicMock(return_value=empty_slot)
+    solver.read_screen = MagicMock(return_value="")
+    solver.sleep = MagicMock()
     solver.enter_room = MagicMock()
     solver.back = MagicMock()
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms([room])
-    solver.get_agent_from_room.assert_called_once_with(room, None, force_mood=True)
     assert missing.current_room == "" and missing.time_stamp is None
     assert untouched.time_stamp == original_stamp
+    assert untouched.mood == 24
     make_episode(solver)
     assert not solver._emergency_ready()
 
@@ -361,17 +369,83 @@ def test_partial_handoff_persists_plan_and_retry_does_not_replan_temporary_staff
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), None])
     solver._emergency_read_rooms = MagicMock()
-    solver.agent_arrange = MagicMock(side_effect=[False, True])
+    previous_task = SchedulerTask(task_type=TaskTypes.WORKSHOP)
+    solver.task = previous_task
+
+    def arrange(plan, get_time):
+        assert solver.task is not previous_task
+        assert solver.task.type == TaskTypes.NOT_SPECIFIC
+        assert solver.task.plan is plan
+        assert get_time
+        return solver.agent_arrange.call_count > 1
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
     solver.run_order_solver = MagicMock()
     solver.plan_metadata = MagicMock()
     solver._emergency_schedule_staffing = MagicMock()
     assert not solver._emergency_restore()
     assert state["phase"] == "returning"
     assert state["handoff_plan"] == plan
+    assert solver.task is previous_task
     assert solver._emergency_restore()
     assert solver.emergency_state is None
+    assert solver.task is previous_task
     solver._emergency_schedule_staffing.assert_not_called()
     solver.backup_plan_solver.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "previous_type", [None, TaskTypes.NOT_SPECIFIC, TaskTypes.FIAMMETTA]
+)
+def test_handoff_uses_real_arrangement_with_its_own_task_context(solver, previous_type):
+    make_episode(solver)
+    plan = {"room_1_1": [PRIMARY[0]]}
+    previous_task = (
+        SchedulerTask(task_type=previous_type, meta_data=emergency.CHECK_META)
+        if previous_type is not None
+        else None
+    )
+    solver.task = previous_task
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), None])
+    solver._emergency_read_rooms = MagicMock()
+    solver.enter_room = MagicMock()
+    observed_tasks = []
+    solver.turn_on_room_detail = MagicMock(
+        side_effect=lambda room: observed_tasks.append(solver.task)
+    )
+    solver.back = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.run_order_solver = MagicMock()
+    solver.plan_metadata = MagicMock()
+
+    assert solver._emergency_restore()
+    assert solver.emergency_state is None
+    assert solver.task is previous_task
+    assert len(observed_tasks) == 1
+    assert observed_tasks[0] is not previous_task
+    assert observed_tasks[0].type == TaskTypes.NOT_SPECIFIC
+    assert not solver._emergency_handoff
+    solver.enter_room.assert_called_once_with("room_1_1")
+
+
+@pytest.mark.parametrize(
+    "error", [RuntimeError("arrangement failed"), emergency.MowerExit()]
+)
+def test_handoff_restores_previous_task_after_arrangement_error(solver, error):
+    state = make_episode(solver)
+    plan = {"room_1_1": [PRIMARY[0]]}
+    previous_task = SchedulerTask(task_type=TaskTypes.WORKSHOP)
+    solver.task = previous_task
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.agent_get_mood = MagicMock(return_value=plan.copy())
+    solver.agent_arrange_room = MagicMock(side_effect=error)
+    with pytest.raises(type(error)):
+        solver._emergency_restore()
+    assert solver.task is previous_task
+    assert state["phase"] == "returning"
+    assert state["handoff_plan"] == plan
+    assert solver._emergency_frozen()
 
 
 def test_exhausted_replacements_prevent_exit_until_native_matching_is_feasible(solver):

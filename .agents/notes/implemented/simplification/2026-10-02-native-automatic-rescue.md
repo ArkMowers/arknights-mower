@@ -20,7 +20,7 @@ Selection compares supported effects within bounded candidate pools: 48 manufact
 
 ## Simplification
 
-Mower removes the rescue-only MAA connection, dispatch, callback and stop lifecycle. The unpublished configuration and snapshot keys are renamed directly, without aliases or compatibility migrations. Existing selection, resource reload, run-order compensation, dormitory planning and history data remain shared. The building-skill page consumes the same unlocked versions, marks unowned, locked and replaced entries, and filters by facility, ownership, skill state and text. Missing data adds no operator or skill status label.
+Existing selection, resource reload, run-order compensation, dormitory planning and history data remain shared. The building-skill page consumes the same unlocked versions, marks unowned, locked and replaced entries, and filters by facility, ownership, skill state and text. Missing data adds no operator or skill status label.
 
 ## Review
 
