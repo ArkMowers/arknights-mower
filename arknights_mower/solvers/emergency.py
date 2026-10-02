@@ -95,15 +95,14 @@ class EmergencyRecoveryMixin:
         return datetime.now() + timedelta(seconds=seconds + 1) < start
 
     def _emergency_defer_read(self):
-        state = self.emergency_state
-        state["next_read"] = datetime.now() + timedelta(minutes=1)
+        due = datetime.now() + timedelta(minutes=1)
+        if self._emergency_active():
+            self.emergency_state["next_read"] = due
         check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
         if check is None:
-            self.tasks.append(
-                SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
-            )
+            self.tasks.append(SchedulerTask(time=due, meta_data=CHECK_META))
         else:
-            check.time = state["next_read"]
+            check.time = due
         self._emergency_save()
 
     def _emergency_read_rooms(self, rooms, *, yield_to_releases=False):
@@ -113,12 +112,18 @@ class EmergencyRecoveryMixin:
             if op is not None and not op.current_room and op.mood_is_prediction:
                 op.time_stamp = None
                 op.rest_mood_release_limit = None
-        state = self.emergency_state if yield_to_releases else None
+        state = self.emergency_state if self._emergency_active() else None
         rooms = sorted(
             room for room in set(rooms) if room in self.op_data.plan and room != "train"
         )
-        if state is not None:
-            rooms = state.setdefault("pending_read_rooms", rooms)
+        if yield_to_releases:
+            if state is not None:
+                rooms = state.setdefault("pending_read_rooms", rooms)
+            else:
+                if getattr(self, "_emergency_startup_rooms", None) is None:
+                    self._emergency_startup_rooms = rooms
+                rooms = self._emergency_startup_rooms
+                rooms[:] = [room for room in rooms if room in self.op_data.plan]
         for room in list(rooms):
             if yield_to_releases and not self._emergency_operation_fits(
                 estimate_dorm_minutes(room) * 60
@@ -138,13 +143,13 @@ class EmergencyRecoveryMixin:
                 op.current_room, op.current_index = "", -1
                 op.time_stamp = None
             self.back()
-            if state is not None:
+            if yield_to_releases:
                 rooms.remove(room)
                 self._emergency_replan_releases()
                 protect_priority_tasks(self.tasks)
                 self._emergency_save()
         self.back_to_infrastructure()
-        if state is not None:
+        if yield_to_releases and state is not None:
             state.pop("pending_read_rooms", None)
         return True
 
@@ -156,23 +161,30 @@ class EmergencyRecoveryMixin:
         """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
         if getattr(self, "emergency_state", None) is not None:
             self._emergency_validate_state()
+        if not self._emergency_active() and getattr(
+            getattr(self, "task", None), "strict_mood_limit", False
+        ):
+            return
         if self._emergency_active():
             self._open_emergency_beds()
             self.plan_metadata()
-            protect_priority_tasks(self.tasks)
+        else:
+            self._emergency_replan_releases()
+        protect_priority_tasks(self.tasks)
         if self._emergency_active() and self.emergency_state.get("handoff_observing"):
             self._emergency_startup_pending = False
             self._emergency_defer_read()
             return
         observed = self._emergency_read_rooms(
             (room for room in self.op_data.plan if room in base_room_list),
-            yield_to_releases=self._emergency_active(),
+            yield_to_releases=True,
         )
-        if observed is False:
-            self._emergency_startup_pending = False
+        if observed is False or not self._emergency_operation_fits(45):
+            self._emergency_startup_pending = not self._emergency_active()
             self._emergency_defer_read()
             return
         self._read_initial_card_mood()
+        self._emergency_startup_rooms = None
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
             self._open_emergency_beds()

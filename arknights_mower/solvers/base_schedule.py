@@ -350,6 +350,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.train_room_state = None
         self.emergency_state = None
         self._emergency_startup_pending = False
+        self._emergency_startup_rooms = None
 
     def find_next_task(
         self,

@@ -404,6 +404,9 @@ def simulate(saved):
                 or bool(saved and saved.get("automatic_rescue_state"))
             )
             # 旧补读快照的实际宿舍可能已换人，只重读房态，不续跑临时试住。
+            base_scheduler._emergency_startup_rooms = copy.deepcopy(
+                saved.get("automatic_rescue_startup_rooms") if saved else None
+            )
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
             ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})

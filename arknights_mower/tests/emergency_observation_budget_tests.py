@@ -508,3 +508,166 @@ def test_handoff_does_not_restore_old_deadline_over_new_observation(
     _, bed = solver.op_data.get_dorm_by_name(episode.limited)
     assert bed.time == earlier
     assert bed.time < release.mood_limit_deadline
+
+
+@pytest.mark.parametrize("cached_task", [False, True])
+def test_inactive_startup_yields_before_strict_release(observation_solver, cached_task):
+    episode = observation_solver
+    solver = episode.solver
+    release = set_release_window(episode, 1)
+    if not cached_task:
+        solver.tasks.remove(release)
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.task = SchedulerTask(meta_data=emergency.CHECK_META)
+    solver.tasks.append(solver.task)
+    solver.skip = MagicMock()
+    solver.planned = True
+
+    solver.infra_main()
+
+    assert not episode.reads
+    assert solver._emergency_startup_pending
+    assert solver._emergency_startup_rooms == episode.rooms
+    assert solver.defer_backup_plan_until_mood_read
+    solver._read_initial_card_mood.assert_not_called()
+    solver.backup_plan_solver.assert_not_called()
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert episode.clock["now"] < release.mood_limit_deadline
+
+
+def test_inactive_startup_persists_and_resumes_unread_rooms(
+    observation_solver, monkeypatch
+):
+    episode = observation_solver
+    solver = episode.solver
+    release = set_release_window(episode, 120)
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    monkeypatch.setattr(emergency.config.conf, "automatic_rescue_enable", False)
+    from arknights_mower import __main__ as main
+
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, field, None)
+    solver.task_count = 0
+    solver._emergency_startup()
+    assert episode.reads == episode.rooms[:1]
+    snapshot = pickle.loads(pickle.dumps(record.current_state()))
+    assert snapshot["automatic_rescue_startup_rooms"] == episode.rooms[1:]
+    assert snapshot["automatic_rescue_state"] is None
+    assert snapshot["initial_mood_pending"]
+    solver._emergency_startup_rooms = snapshot["automatic_rescue_startup_rooms"]
+    solver.tasks = snapshot["tasks"]
+    solver.op_data.operators = snapshot["operators"]
+    solver.op_data.dorm = snapshot["dorm"]
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    finish_release(episode, release)
+
+    solver._emergency_startup()
+
+    assert episode.reads == episode.rooms
+    assert not solver._emergency_startup_pending
+    assert solver._emergency_startup_rooms is None
+    assert not solver.defer_backup_plan_until_mood_read
+    solver._read_initial_card_mood.assert_called_once()
+    solver.backup_plan_solver.assert_called_once()
+
+
+def test_inactive_startup_replans_new_deadline_and_defers_card_scan(
+    observation_solver, monkeypatch
+):
+    episode = observation_solver
+    solver = episode.solver
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    monkeypatch.setattr(emergency.config.conf, "automatic_rescue_enable", False)
+    previous_read = solver.get_agent_from_room.side_effect
+
+    def read_room(room, *args, **kwargs):
+        result = previous_read(room, *args, **kwargs)
+        if room == "dormitory_1":
+            solver.op_data.update_detail(episode.limited, 12, room, 2, True)
+        return result
+
+    solver.get_agent_from_room.side_effect = read_room
+    solver._emergency_startup()
+
+    assert episode.reads == ["dormitory_1"]
+    assert solver._emergency_startup_rooms == episode.rooms[1:]
+    assert solver._emergency_startup_pending
+    solver._read_initial_card_mood.assert_not_called()
+    solver.backup_plan_solver.assert_not_called()
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert release.mood_limit_deadline == episode.clock["now"]
+
+    finish_release(episode, release)
+    solver._emergency_startup()
+    assert episode.reads == episode.rooms
+    assert not solver._emergency_startup_pending
+
+
+def test_completed_startup_rooms_not_repeated_when_card_scan_yields(
+    observation_solver, monkeypatch
+):
+    episode = observation_solver
+    solver = episode.solver
+    release = set_release_window(episode, 300)
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    monkeypatch.setattr(emergency.config.conf, "automatic_rescue_enable", False)
+    solver._emergency_startup_rooms = [episode.rooms[0]]
+    episode.clock["now"] = release.time - timedelta(seconds=120)
+    previous_read = solver.get_agent_from_room.side_effect
+
+    def slow_read(*args, **kwargs):
+        result = previous_read(*args, **kwargs)
+        episode.clock["now"] += timedelta(seconds=60)
+        return result
+
+    solver.get_agent_from_room.side_effect = slow_read
+    solver._emergency_startup()
+    assert episode.reads == [episode.rooms[0]]
+    assert solver._emergency_startup_rooms == []
+    assert solver._emergency_startup_pending
+    solver._read_initial_card_mood.assert_not_called()
+    solver.backup_plan_solver.assert_not_called()
+
+    finish_release(episode, release)
+    solver._emergency_startup()
+    assert episode.reads == [episode.rooms[0]]
+    assert solver._emergency_startup_rooms is None
+    assert not solver._emergency_startup_pending
+    solver._read_initial_card_mood.assert_called_once()
+
+
+def test_pending_inactive_startup_allows_selected_release_to_dispatch(
+    observation_solver,
+):
+    episode = observation_solver
+    solver = episode.solver
+    release = set_release_window(episode, 1)
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.skip = MagicMock()
+    solver.planned = True
+    solver.task = release
+    episode.clock["now"] = release.time
+    solver.arrange_release_dorm = MagicMock(return_value=(False, False))
+
+    solver.infra_main()
+
+    solver.arrange_release_dorm.assert_called_once()
+    assert release in solver.tasks
+    assert solver._emergency_startup_pending
+    assert solver.defer_backup_plan_until_mood_read
+    assert not episode.reads
+    solver._read_initial_card_mood.assert_not_called()
+    solver.backup_plan_solver.assert_not_called()
