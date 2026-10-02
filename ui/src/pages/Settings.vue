@@ -30,6 +30,7 @@ const {
   package_type,
   simulator,
   theme,
+  automatic_rescue_enable,
   tap_to_launch_game,
   exit_game_when_idle,
   return_home_when_idle,
@@ -494,6 +495,16 @@ const idleOptions = computed(() => [
                   <n-radio value="dark">暗色</n-radio>
                 </n-space>
               </n-radio-group>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="智能救急">
+                智能救急
+                <help-text label="智能救急说明" :max-width="480">
+                  启动时确认普通轮休无法及时周转后，由 Mower
+                  按设施内技能安排临时驻员。临时上岗要求心情不低于个人正常下班线加 1
+                  点，保留全部跑单干员用于跑单。期间暂停副表与普通换班，心情复查时收取订单和产物；实测恢复后统一恢复排班。
+                </help-text>
+              </n-checkbox>
             </n-form-item>
             <n-form-item>
               <template #label>

@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
-  it('saves the automatic rescue checkbox independently', async () => {
+  it('saves the intelligent rescue checkbox independently', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const loaded = ref(false)

@@ -767,7 +767,7 @@ class BaseMixin:
                     self.op_data.dorm_mood_estimates[name] = (mood, datetime.now())
                 if not eligible_worker(self.op_data, name, mood, set()):
                     raise AgentSelectionNotReady(
-                        f"自动救急候选 {name} 心情不足或无法读取，取消本次选人"
+                        f"智能救急候选 {name} 心情不足或无法读取，取消本次选人"
                     )
         if estimates is None or train:
             return eligible

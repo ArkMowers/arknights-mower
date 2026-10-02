@@ -34,6 +34,7 @@ def test_unready_verification_does_not_sort_again_on_uncertain_page():
 @pytest.mark.parametrize("stopped", [False, True])
 def test_room_recovery_is_bounded_and_user_stop_is_not_retried(monkeypatch, stopped):
     solver = MagicMock()
+    solver.task = None
     solver.scene.return_value = Scene.INFRA_MAIN
     attempts = [AgentSelectionNotReady("排序未变化")] * 4
     if stopped:

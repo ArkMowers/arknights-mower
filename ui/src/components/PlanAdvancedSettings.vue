@@ -22,7 +22,6 @@ const {
   assistant_follows_schedule,
   fia_threshold,
   rescue_threshold,
-  automatic_rescue_enable,
   favorite
 } = storeToRefs(configStore)
 </script>
@@ -309,16 +308,6 @@ const {
             <template #suffix>%</template>
           </mower-input-number>
         </div>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
-          自动救急
-          <help-text label="自动救急说明" :max-width="480">
-            启动时确认普通轮休无法及时周转后，由 Mower
-            按设施内技能安排临时驻员。临时上岗要求心情不低于个人正常下班线加 1
-            点，保留全部跑单干员用于跑单。期间暂停副表与普通换班，心情复查时收取订单和产物；实测恢复后统一恢复排班。
-          </help-text>
-        </n-checkbox>
       </n-form-item>
       <n-form-item>
         <template #label>

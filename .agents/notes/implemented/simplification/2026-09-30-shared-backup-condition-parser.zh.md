@@ -13,4 +13,4 @@ date: 2026-09-30
 
 ## 验证
 
-维护与退役条件迁移测试覆盖嵌套调用、无效表达式及方法名字符串常量。[Mower 自动救急恢复](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md) 定义退役救急能力的替代契约。
+维护与退役条件迁移测试覆盖嵌套调用、无效表达式及方法名字符串常量。[Mower 智能救急恢复](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md) 定义退役救急能力的替代契约。

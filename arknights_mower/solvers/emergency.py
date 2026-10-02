@@ -1,4 +1,4 @@
-"""Mower 自动救急的临时驻员、宿舍恢复与正常排班交接。"""
+"""Mower 智能救急的临时驻员、宿舍恢复与正常排班交接。"""
 
 import copy
 from datetime import datetime, timedelta
@@ -77,7 +77,7 @@ class EmergencyRecoveryMixin:
 
     def _emergency_save(self):
         if not save_current_state():
-            raise RuntimeError("自动救急运行状态保存失败，未安排临时换班")
+            raise RuntimeError("智能救急运行状态保存失败，未安排临时换班")
 
     def _emergency_startup(self):
         """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
@@ -133,7 +133,7 @@ class EmergencyRecoveryMixin:
             self, required, now, deadlines=deadlines, rates=rates
         )
         if projection.opportunity is not None or not projection.complete:
-            logger.info("原生救急仍有恢复机会或观察不足，不启动自动救急")
+            logger.info("原生救急仍有恢复机会或观察不足，不启动智能救急")
             return
         state = {
             "phase": "staffing",
@@ -189,7 +189,7 @@ class EmergencyRecoveryMixin:
                 for value in state["targets"].values()
             )
         ):
-            raise MowerExit("自动救急缓存结构不完整，保留缓存并停止")
+            raise MowerExit("智能救急缓存结构不完整，保留缓存并停止")
 
     @fixed_selection_profile
     def _emergency_scan_workers(self, room, facility, reserved, *, snapshot=None):
@@ -207,7 +207,7 @@ class EmergencyRecoveryMixin:
                     break
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             else:
-                raise RuntimeError("未进入自动救急选人页")
+                raise RuntimeError("未进入智能救急选人页")
             self.profession_filter("ALL")
             self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
             self.switch_arrange_order("技能", room)
@@ -241,7 +241,7 @@ class EmergencyRecoveryMixin:
                     break
                 previous = page
                 _, observation = self.swipe_agent_page(
-                    page, "自动救急技能扫描", return_page=True
+                    page, "智能救急技能扫描", return_page=True
                 )
         finally:
             self.back_to_infrastructure()
@@ -320,7 +320,7 @@ class EmergencyRecoveryMixin:
                     pending[room] = row
                 if len(names) < len(row):
                     logger.warning(
-                        f"自动救急 {room} 合格临时驻员不足，保留 {len(row) - len(names)} 个空位"
+                        f"智能救急 {room} 合格临时驻员不足，保留 {len(row) - len(names)} 个空位"
                     )
         if pending:
             state["staffing_plan"] = copy.deepcopy(pending)
@@ -654,7 +654,7 @@ class EmergencyRecoveryMixin:
             self.run_order_solver()
             self.plan_metadata()
             self._emergency_save()
-            logger.info("主班实际心情满足目标且原生周转可行，自动救急结束")
+            logger.info("主班实际心情满足目标且原生周转可行，智能救急结束")
             return True
         finally:
             self._emergency_handoff = False

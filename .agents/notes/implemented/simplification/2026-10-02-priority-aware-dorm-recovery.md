@@ -9,7 +9,7 @@ date: 2026-10-02
 
 ## Contract
 
-[INV-SCHED-09] and [INV-SCHED-13] use the same strict recovery tier for ordinary and rescue bed allocation. Explicit priority precedes main primaries, low main primaries, priority replacements, standby primaries, ordinary replacements and idle operators. Rescue maintains completion targets without flattening these tiers. Equal tiers preserve current residents. Automatic rescue retains configured recovery tiers; only explicit configuration raises priority.
+[INV-SCHED-09] and [INV-SCHED-13] use the same strict recovery tier for ordinary and rescue bed allocation. Explicit priority precedes main primaries, low main primaries, priority replacements, standby primaries, ordinary replacements and idle operators. Rescue maintains completion targets without flattening these tiers. Equal tiers preserve current residents. Intelligent rescue retains configured recovery tiers; only explicit configuration raises priority.
 
 Higher-tier arrivals can displace lower-tier recovery residents. Explicit idle-release exclusions and pending bed ownership remain binding. Known idle and ordinary replacement identities never acquire formal rescue protection through a missing legacy admission flag. Unknown operator identity remains protected.
 

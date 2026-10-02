@@ -1,5 +1,5 @@
 {
-  "title": "Native Automatic Rescue",
+  "title": "Native Intelligent Rescue",
   "status": "implemented",
   "category": "simplification",
   "date": "2026-10-02",
@@ -23,6 +23,7 @@
     "arknights_mower/tests/mastery_skill_level_tests.py",
     "arknights_mower/tests/cultivate_depot_tests.py",
     "ui/src/pages/BasementSkill.test.js",
-    "ui/src/utils/basementSkills.test.js"
+    "ui/src/utils/basementSkills.test.js",
+    "arknights_mower/tests/agent_recovery_tests.py"
   ]
 }

@@ -10,11 +10,10 @@
     "[INV-01]"
   ],
   "code_symbols": [
-    "ui/src/components/PlanAdvancedSettings.vue",
-    "ui/src/components/MaaBasic.vue"
+    "ui/src/pages/Settings.vue",
+    "ui/src/components/PlanAdvancedSettings.vue"
   ],
   "test_suites": [
-    "ui/src/components/MaaBasic.test.js",
     "ui/src/stores/config.test.js"
   ]
 }

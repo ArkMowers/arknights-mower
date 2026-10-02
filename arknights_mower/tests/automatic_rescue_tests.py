@@ -1,4 +1,4 @@
-"""自动救急的临时驻员、实测退出和普通收取的离线契约。"""
+"""智能救急的临时驻员、实测退出和普通收取的离线契约。"""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
