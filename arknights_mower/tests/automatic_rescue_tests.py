@@ -1533,3 +1533,59 @@ def test_target_projection_reuses_eval_capsule_and_isolates_mutable_state(
     assert before_moods == {name: op.mood for name, op in source.operators.items()}
     assert before_beds == [(bed.name, bed.time) for bed in source.dorm]
     assert before_plan == repr(source.plan)
+
+
+@pytest.mark.parametrize("path", ["immediate", "blocked", "pending"])
+def test_native_projection_reuses_eval_capsule_across_search_branches(solver, path):
+    source = solver.op_data
+    make_capsule = ctypes.pythonapi.PyCapsule_New
+    make_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    make_capsule.restype = ctypes.py_object
+    capsule = make_capsule(ctypes.c_void_p(42), None, None)
+    source.eval_model.imported_functions["runtime_handle"] = capsule
+    source.evaluate_expression("True == True")
+    name = PRIMARY[0]
+    if path != "immediate":
+        for cover in COVERS:
+            source.operators[cover].mood = 0
+    if path == "pending":
+        primary = source.operators[name]
+        primary.depletion_rate = 1
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=10),
+                task_type=TaskTypes.SHIFT_OFF,
+                task_plan={
+                    primary.room: [COVERS[0]],
+                    "dormitory_1": ["Current", "Current", name, "Current", "Current"],
+                },
+            )
+        )
+    before_operators = {
+        n: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for n, op in source.operators.items()
+    }
+    before_beds = [(bed.name, bed.time) for bed in source.dorm]
+    before_plan = repr(source.plan)
+    before_tasks = [(task.time, copy.deepcopy(task.plan)) for task in solver.tasks]
+
+    result = emergency_recovery.native_opportunity(solver, [name], NOW)
+
+    assert result.complete
+    assert (
+        result.opportunity
+        == {
+            "immediate": NOW,
+            "blocked": None,
+            "pending": NOW + timedelta(minutes=10),
+        }[path]
+    )
+    assert before_operators == {
+        n: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for n, op in source.operators.items()
+    }
+    assert before_beds == [(bed.name, bed.time) for bed in source.dorm]
+    assert before_plan == repr(source.plan)
+    assert before_tasks == [(task.time, task.plan) for task in solver.tasks]
+    assert source.eval_model.imported_functions["runtime_handle"] is capsule
+    solver.enter_room.assert_not_called()

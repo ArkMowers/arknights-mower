@@ -150,7 +150,9 @@ def native_opportunity(
 ):
     """在副本上搜索轮休及已知恢复事件；预算不足不证明恢复阻塞。"""
     now = now or datetime.now()
-    initial = copy.deepcopy(solver.op_data)
+    initial = copy.deepcopy(
+        solver.op_data, {id(solver.op_data.eval_model): solver.op_data.eval_model}
+    )
     deadlines, rates, earliest = deadlines or {}, rates or {}, earliest or {}
     for name, rate in rates.items():
         if name in initial.operators:
@@ -237,7 +239,9 @@ def native_opportunity(
         progressed = False
         for members in groups.values():
             candidate = copy.copy(trial)
-            candidate.op_data = copy.deepcopy(data)
+            candidate.op_data = copy.deepcopy(
+                data, {id(data.eval_model): data.eval_model}
+            )
             candidate.tasks = copy.deepcopy(trial.tasks)
             plan = {}
             try:
@@ -300,7 +304,7 @@ def native_opportunity(
             if time - now > timedelta(hours=12):
                 uncertain = True
                 continue
-            projected = copy.deepcopy(data)
+            projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
             timely = True
             for name in remaining:
                 op = projected.operators[name]
