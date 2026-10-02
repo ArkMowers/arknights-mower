@@ -19,6 +19,14 @@ def setUpModule():
     schedule_patch = patch.object(config_mod, "plan", {})
     schedule_patch.start()
     unittest.addModuleCleanup(schedule_patch.stop)
+    # Synthetic occupants exercise confirmation against an explicit test roster.
+    roster_patch = patch.object(
+        mastery,
+        "agent_list",
+        set(mastery.agent_list) | {"测试干员", "错误干员", "路人干员", "char_test"},
+    )
+    roster_patch.start()
+    unittest.addModuleCleanup(roster_patch.stop)
 
 
 def make_plan(**overrides):

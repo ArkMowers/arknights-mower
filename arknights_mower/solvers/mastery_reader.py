@@ -399,6 +399,8 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
 
     只读文本、不读图标/倒计时，供确认开始等轻量归属校验用（避免依赖像素读取）。
     """
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
     if img is None:
         try:
             solver.recog.update()
@@ -434,12 +436,41 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
                 operator_name, skill_name = retry_name, retry_skill
         except Exception as e:
             logger.debug(f"训练室面板二次识别失败: {e}")
+    data = get_skill_data() if operator_name else {}
+    if operator_name not in agent_list and len(operator_name) >= 2 and skill_name:
+        # Both OCR passes can omit the same glyph. A roster candidate only
+        # supplies templates; the current pixels must confirm name and skill.
+        candidates = {
+            char["name"]
+            for char in data.get("characters", {}).values()
+            if char.get("name") in agent_list
+            and len(char["name"]) == len(operator_name) + 1
+            and any(
+                char["name"][:i] + char["name"][i + 1 :] == operator_name
+                for i in range(len(char["name"]))
+            )
+            and any(
+                normalize_skill_text(skill.get("name", ""))
+                == normalize_skill_text(skill_name)
+                for skill in char.get("skills", [])
+            )
+        }
+        confirmed = []
+        region = cropimg(img, PANEL_REGION)
+        for name in candidates:
+            match = recognize_skill(region, name, data)
+            if match is not None and normalize_skill_text(
+                match.name
+            ) == normalize_skill_text(skill_name):
+                confirmed.append(name)
+        if len(confirmed) == 1:
+            logger.info(
+                f"训练室面板模板纠正姓名：{operator_name} → {confirmed[0]}，技能：{skill_name}"
+            )
+            operator_name = confirmed[0]
     if operator_name in agent_list:
         # OCR can confidently drop one character (e.g. 沙缚镣锁 → 沙缚锁).
         # Compare the same pixels with this operator's known skill templates.
-        from arknights_mower.utils.mastery_recommendation import get_skill_data
-
-        data = get_skill_data()
         # Only named skill rosters can make a failed template check meaningful;
         # operators absent from skill_data keep the OCR-only behavior.
         has_named_skills = any(

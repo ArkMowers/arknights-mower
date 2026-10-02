@@ -87,15 +87,21 @@ def send_message(
     subject="",
     level: Literal["INFO", "WARNING", "ERROR"] = "INFO",
     attach_image: Optional[tp.Image] = None,
+    *,
+    archive_screenshots: bool = False,
 ):
-    """异步发送邮件
+    """错误通知先写日志，画面相关异常显式归档，再按配置异步发送邮件。
 
     Args:
         body: 邮件内容
         subject: 邮件标题
         level: 通知等级
         attach_image: 图片附件
+        archive_screenshots: 当前画面有助于定位异常时触发截图归档
     """
+    if level == "ERROR":
+        detail = f"{subject}：{body}" if subject and body else subject or body
+        logger.error("%s", detail, extra={"archive_screenshots": archive_screenshots})
     conf = config.conf
     if not conf.mail_enable:
         return

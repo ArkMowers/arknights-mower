@@ -88,6 +88,9 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
+- [ ] **[INV-REC-05] Training Panel Identity**: Does unknown training identity retain bounded readback without a false mismatch or plan-derived occupant, while any omitted-name correction uses unique same-frame name and skill template evidence?
+- [ ] **[INV-DIAG-06] Error Notification Evidence**: Does every ERROR notification log before mail configuration checks or delivery, while only explicit visual failures request screenshots, including disabled email, through the existing archive store?
+
 - [ ] **[INV-REC-03] Scene Recovery Limit**: Do recognition failures retain one game restart per navigation call, ordinary navigation input faults recover and refresh inside that call, and cancellation and unverified side effects propagate without input replay?
 
 - [ ] **[INV-DIAG-01] Archive Deletion Cohesion**: Do expiry and capacity deletion use the store's archive lock and cancel queued writes and active windows so late frames cannot recreate retired archives?

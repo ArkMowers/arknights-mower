@@ -37,6 +37,8 @@
 - **[INV-UI-02] Recovery Policy Binding**: Advanced recovery parameters must bidirectionally bind to backend defaults without local shadow overrides.
 
 ### 2.3 Vision & Recognition
+- **[INV-REC-05] Training Panel Identity**: Training confirmation treats an unrecognized operator name or missing skill as unknown, retries within its existing deadline, and never derives actual occupancy from the requested plan.
+- **[INV-DIAG-06] Error Notification Evidence**: Every ERROR notification emits a log record before mail configuration checks or delivery; screenshots are archived only when the caller explicitly identifies a visual failure, independently of email enablement.
 - **[INV-REC-03] Scene Recovery Limit**: Repeated recognition transition exceptions permit one game restart per navigation call; ordinary navigation input faults recover the same target and refresh the scene within that call, while cancellation and unverified side effects propagate without input replay.
 - **[INV-REC-01] Standard Canvas Frame Contract**: Recognition models operate exclusively on standard 1920×1080 pure RGB matrices; recognition failures must return structured verdicts without blocking the scheduler dispatch loop.
 - **[INV-REC-02] Occluded Operator Selection**: A card with an obscured upper selection border is confirmed only when both vertical borders and the leading portion of its lower border are visible; adjacent card borders cannot confirm selection.
