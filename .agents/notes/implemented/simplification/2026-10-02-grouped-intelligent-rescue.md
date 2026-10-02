@@ -1,6 +1,6 @@
 ---
 title: Grouped Intelligent Rescue
-status: proposed
+status: implemented
 category: simplification
 date: 2026-10-02
 ---
@@ -27,6 +27,6 @@ Offline group-bed, staffing and return regressions cover complete admission, rol
 
 ## Review
 
-Standards Findings: pending independent review.
+Standards Findings: PASS. Independent review of the unchanged production snapshot confirmed the selection boundary, fresh matching and complete reservations. The final test-only review of `8a489841` confirmed ordinary dormitory fixtures and effective assertions; governance, scoped Ruff and formatting passed. Glossary supplementation remains subject to explicit wording approval.
 
-Spec Findings: pending independent review.
+Spec Findings: PASS. The final independent review ran 142 targeted tests, 14 governance tests, 13 production diagnostics and 10 boundary or negative-control diagnostics. Earlier selection, retry and reservation findings are resolved. Four retired bed-opening tests now exercise ordinary dormitory allocation without restoring the removed interface. All verification remained offline.

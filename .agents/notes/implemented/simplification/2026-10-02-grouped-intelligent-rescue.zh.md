@@ -1,6 +1,6 @@
 ---
 title: Grouped Intelligent Rescue
-status: proposed
+status: implemented
 category: simplification
 date: 2026-10-02
 ---
@@ -27,6 +27,6 @@ date: 2026-10-02
 
 ## 审查
 
-Standards Findings：等待独立审查。
+Standards Findings：通过。独立审查确认生产快照的选人边界、重新匹配和完整预约；`8a489841` 的最终测试修正审查确认正常床位夹具及有效断言，治理、范围 Ruff 和格式检查通过。术语表补充仍需逐字批准。
 
-Spec Findings：等待独立审查。
+Spec Findings：通过。最终独立审查运行 142 个专项测试、14 个治理测试、13 个生产诊断及 10 个边界或负对照诊断。选人、重试和预约的既有缺陷均已修复；四个过时的床位开放测试改用正常宿舍规划，没有恢复退役接口。全部验证为离线执行。
