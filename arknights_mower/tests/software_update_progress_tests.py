@@ -443,7 +443,10 @@ class ProgressTests(unittest.TestCase):
             },
         ):
             worker = Worker(self.work / "job.json")
-        with patch.object(subprocess, "Popen") as process:
+        with (
+            patch.object(subprocess, "Popen") as process,
+            patch("arknights_mower.utils.software_update_worker.WindowsCommandJob"),
+        ):
             process.return_value.wait.return_value = 0
             worker.run_command([sys.executable, "-c", "pass"])
         env = process.call_args.kwargs["env"]

@@ -24,3 +24,5 @@ Focused command-progress and source-transaction tests cover cancellation, timeou
 Standards Findings: command containment uses only the standard library, retains fixed argument lists and bounded cleanup, and leaves unrelated instances untouched.
 
 Spec Findings: five new regressions cover containment before execution, cancellation and timeout ordering, failed assignment, descendant completion and cleanup deadlines. Focused command and transaction suites pass 112 tests and 152 subtests; two existing platform skips stay unchanged. Ruff and governance pass. Native Windows execution remains subject to CI.
+
+The proxy-environment test mocks command containment together with Popen, preserving environment assertions without passing a simulated handle to native Windows APIs.
