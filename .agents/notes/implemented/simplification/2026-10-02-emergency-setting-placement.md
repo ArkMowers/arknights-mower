@@ -9,7 +9,7 @@ date: 2026-10-02
 
 ## Contract
 
-[INV-01] preserves the existing configuration binding and disabled default. The intelligent rescue checkbox appears once in the Mower settings card, immediately after the display theme. The MAA settings form has no rescue checkbox or unused binding. The settings page uses the existing configuration autosave.
+[INV-01] preserves the existing configuration binding and disabled default. The intelligent rescue checkbox appears once in the infrastructure settings card on the Mower settings page. The MAA settings form has no rescue checkbox or unused binding. The settings page uses the existing configuration autosave.
 
 The two existing components exchange the control without adding configuration keys, migrations or wrappers. The [recovery lifecycle](../../implemented/simplification/2026-10-02-native-automatic-rescue.md) defines Mower temporary staffing and measured recovery.
 

@@ -496,16 +496,6 @@ const idleOptions = computed(() => [
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="智能救急">
-                智能救急
-                <help-text label="智能救急说明" :max-width="480">
-                  启动时确认普通轮休无法及时周转后，由 Mower
-                  按设施内技能安排临时驻员。临时上岗要求心情不低于个人正常下班线加 1
-                  点，保留全部跑单干员用于跑单。期间暂停副表与普通换班，心情复查时收取订单和产物；实测恢复后统一恢复排班。
-                </help-text>
-              </n-checkbox>
-            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>日常任务间隔</span>
@@ -541,6 +531,16 @@ const idleOptions = computed(() => [
             label-width="140"
             label-align="left"
           >
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="智能救急">
+                智能救急
+                <help-text label="智能救急说明" :max-width="480">
+                  启动时确认普通轮休无法及时周转后，由 Mower
+                  按设施内技能安排临时驻员。临时上岗要求心情不低于个人正常下班线加 1
+                  点，保留全部跑单干员用于跑单。期间暂停副表与普通换班，心情复查时收取订单和产物；实测恢复后统一恢复排班。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
             <n-form-item label="右侧房间位置">
               <n-checkbox v-model:checked="swap_contact_train"> 训练室在办公室上方 </n-checkbox>
             </n-form-item>
