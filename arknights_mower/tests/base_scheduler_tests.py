@@ -2750,6 +2750,7 @@ class TestDroneAccelerate(unittest.TestCase):
         solver = BaseSchedulerSolver()
         solver.error = False
         solver.tasks = [task]
+        solver.op_data = SimpleNamespace(dorm=[], operators={})
 
         def fake_arrange_room(new_plan, room, plan, get_time=False):
             del plan[room]  # 与真实 agent_arrange_room 一致：清空 self.task.plan
@@ -2762,11 +2763,15 @@ class TestDroneAccelerate(unittest.TestCase):
                 patch.object(solver, "find", return_value=((0, 0), (10, 10))),
                 patch.object(
                     solver, "agent_arrange_room", side_effect=fake_arrange_room
-                ),
-                patch.object(solver, "drone", side_effect=RecognizeError("boom")),
+                ) as arrange_room,
+                patch.object(
+                    solver, "drone", side_effect=RecognizeError("boom")
+                ) as drone,
                 patch.object(base_schedule, "save_exception"),
             ):
                 solver.infra_main()
+            arrange_room.assert_called_once()
+            drone.assert_called_once_with("trading_1", not_customize=True)
             self.assertEqual(solver.tasks, [task])  # 任务未被消费
             self.assertEqual(task.plan, {"trading_1": ["干员"]})  # 计划已恢复
         self.assertTrue(solver.error)  # 失败已置位，走既有退避

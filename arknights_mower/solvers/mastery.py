@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Optional
 
+from arknights_mower.data import agent_list
 from arknights_mower.solvers.mastery_reader import (
     ARRANGING_RETRY_BUFFER,
     PROTECT_OPERATORS,
@@ -493,7 +494,7 @@ def _exit_failed(solver, plan, reason, step_level=None):
 
     update_plan_status(plan["id"], "failed", failed_reason=reason)
     label = _plan_fail_label(plan, step_level)
-    send_message(f"{label} {reason}", level="ERROR")
+    send_message(f"{label} {reason}", level="ERROR", archive_screenshots=True)
     solver.back()
 
 
@@ -517,13 +518,14 @@ def _exit_arranging_timeout(solver, plan, stats, stuck_scene, step_level=None):
     update_plan_status(plan["id"], "failed", failed_reason=reason)
     label = _plan_fail_label(plan, step_level)
     logger.warning(
-        f"ARRANGING 超时退出: {reason} | 诊断: 最后持续停留在『{scene_name}』页面 | "
+        f"{label} ARRANGING 超时退出: {reason} | 诊断: 最后持续停留在『{scene_name}』页面 | "
         f"轨迹: {stats}"
     )
     send_message(
         f"{label}：开始训练超时，最后持续停留在『{scene_name}』页面，未能确认训练是否开始，"
         "已暂停，将在下次仓库扫描后重试",
         level="ERROR",
+        archive_screenshots=True,
     )
     solver.back()
 
@@ -1068,9 +1070,14 @@ def _confirm_training_started(
                 # - 面板不可读（OCR 失败）→ 不写 training，继续等到 deadline（超时走
                 #   统一失败出口），避免在无法确认归属时宣布"错误干员开始训练"。
                 panel = _read_panel_text(solver)
-                if panel.operator_name and not _plan_matches_room(
-                    plan, RoomState("training", panel)
-                ):
+                if panel.operator_name not in agent_list or not panel.skill_name:
+                    logger.debug(
+                        "训练室已出有效倒计时但面板干员或技能不可确认，"
+                        "暂不写入 training，等待归属可读"
+                    )
+                    solver.sleep(1)
+                    continue
+                if not _plan_matches_room(plan, RoomState("training", panel)):
                     # 面板可读但与计划不符：占用者的干员/技能/档位都读出来，一并告知
                     # 用户实际占房者（面板信息不该浪费）。占用者即本计划干员（仅技能名
                     # 不符，如 OCR 噪声）时，档位可作计划步级写进标签；占用者是路人时
@@ -1097,13 +1104,6 @@ def _confirm_training_started(
                         step_level=plan_step,
                     )
                     return "failed"
-                if not panel.operator_name or not panel.skill_name:
-                    logger.debug(
-                        "训练室已出有效倒计时但面板干员或技能不可确认，"
-                        "暂不写入 training，等待归属可读"
-                    )
-                    solver.sleep(1)
-                    continue
                 expires_at = execute_time.strftime("%Y-%m-%d %H:%M:%S")
                 _log_transition(plan, "training", "倒计时确认", 完成时间=expires_at)
                 update_plan_status(
