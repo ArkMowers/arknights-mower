@@ -199,6 +199,7 @@ class EmergencyRecoveryMixin:
             return
         self.backup_plan_solver()
         self._emergency_startup_pending = False
+        self._emergency_save()
         if not config.conf.automatic_rescue_enable:
             return
         data = self.op_data

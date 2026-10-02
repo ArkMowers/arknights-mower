@@ -405,7 +405,9 @@ def simulate(saved):
             )
             # 旧补读快照的实际宿舍可能已换人，只重读房态，不续跑临时试住。
             base_scheduler._emergency_startup_rooms = copy.deepcopy(
-                saved.get("automatic_rescue_startup_rooms") if saved else None
+                saved.get("automatic_rescue_startup_rooms")
+                if saved and saved.get("initial_mood_pending", False)
+                else None
             )
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
@@ -548,8 +550,10 @@ def simulate(saved):
             if task.type not in ORDINARY_SHIFTS
             and not getattr(task, "backup_shift_active", False)
         ]
-    if config.conf.automatic_rescue_enable or isinstance(
-        base_scheduler.emergency_state, dict
+    if (
+        config.conf.automatic_rescue_enable
+        or isinstance(base_scheduler.emergency_state, dict)
+        or base_scheduler._emergency_startup_rooms is not None
     ):
         base_scheduler._emergency_startup_pending = True
         base_scheduler.defer_backup_plan_until_mood_read = True

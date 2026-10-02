@@ -2,7 +2,8 @@
 
 import copy
 import pickle
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -671,3 +672,130 @@ def test_pending_inactive_startup_allows_selected_release_to_dispatch(
     assert not episode.reads
     solver._read_initial_card_mood.assert_not_called()
     solver.backup_plan_solver.assert_not_called()
+
+
+@pytest.mark.parametrize("pending", [[], ["room_1_2", "room_1_3"]])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_real_restart_restores_unfinished_startup_with_setting_disabled(
+    observation_solver, monkeypatch, pending, enabled
+):
+    from arknights_mower import __main__ as main
+
+    episode = observation_solver
+    solver = episode.solver
+    solver.emergency_state = None
+    solver._emergency_startup_pending = False
+    solver.defer_backup_plan_until_mood_read = True
+    solver._emergency_startup_rooms = pending.copy()
+    for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, field, date.min)
+    solver.task_count = 0
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    snapshot = pickle.loads(pickle.dumps(record.current_state()))
+    monkeypatch.setattr(main.config, "stop_mower", Event())
+    monkeypatch.setattr(main.config.conf, "automatic_rescue_enable", enabled)
+    monkeypatch.setattr(main, "initialize", lambda *args, **kwargs: solver)
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", lambda: None)
+    monkeypatch.setattr(
+        main, "_apply_version_update_resting_threshold", lambda *a: None
+    )
+    solver.initialize_operators = MagicMock(return_value=None)
+    solver.run = MagicMock(side_effect=emergency.MowerExit)
+
+    main.simulate(snapshot)
+
+    solver.run.assert_called_once()
+    assert solver._emergency_startup_pending
+    assert solver._emergency_startup_rooms == pending
+    assert solver.defer_backup_plan_until_mood_read
+    assert any(task.meta_data == emergency.CHECK_META for task in solver.tasks)
+    assert solver.emergency_state is None
+
+
+@pytest.mark.parametrize("pending", [[], ["room_1_2"]])
+def test_real_restart_discards_progress_from_completed_initialization(
+    observation_solver, monkeypatch, pending
+):
+    from arknights_mower import __main__ as main
+
+    episode = observation_solver
+    solver = episode.solver
+    solver.emergency_state = None
+    solver._emergency_startup_pending = False
+    solver.defer_backup_plan_until_mood_read = False
+    solver._emergency_startup_rooms = pending.copy()
+    for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, field, date.min)
+    solver.task_count = 0
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    snapshot = pickle.loads(pickle.dumps(record.current_state()))
+    monkeypatch.setattr(main.config, "stop_mower", Event())
+    monkeypatch.setattr(main.config.conf, "automatic_rescue_enable", True)
+    monkeypatch.setattr(main, "initialize", lambda *args, **kwargs: solver)
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", lambda: None)
+    monkeypatch.setattr(
+        main, "_apply_version_update_resting_threshold", lambda *a: None
+    )
+    solver.initialize_operators = MagicMock(return_value=None)
+    solver.run = MagicMock(side_effect=emergency.MowerExit)
+
+    main.simulate(snapshot)
+
+    assert solver._emergency_startup_pending
+    assert solver._emergency_startup_rooms is None
+    solver._emergency_startup()
+    assert episode.reads == episode.rooms
+
+
+def test_disabled_restart_completes_and_clears_progress_before_reenable(
+    observation_solver, monkeypatch
+):
+    from arknights_mower import __main__ as main
+
+    episode = observation_solver
+    solver = episode.solver
+    solver.emergency_state = None
+    solver._emergency_startup_pending = False
+    solver.defer_backup_plan_until_mood_read = True
+    solver._emergency_startup_rooms = []
+    for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, field, date.min)
+    solver.task_count = 0
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    snapshots = []
+
+    def persist():
+        snapshots.append(pickle.loads(pickle.dumps(record.current_state())))
+        return True
+
+    monkeypatch.setattr(emergency, "save_current_state", persist)
+    snapshot = pickle.loads(pickle.dumps(record.current_state()))
+    monkeypatch.setattr(main.config, "stop_mower", Event())
+    monkeypatch.setattr(main.config.conf, "automatic_rescue_enable", False)
+    monkeypatch.setattr(main, "initialize", lambda *args, **kwargs: solver)
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", lambda: None)
+    monkeypatch.setattr(
+        main, "_apply_version_update_resting_threshold", lambda *a: None
+    )
+    solver.initialize_operators = MagicMock(return_value=None)
+    solver.run = MagicMock(side_effect=emergency.MowerExit)
+
+    main.simulate(snapshot)
+    assert solver._emergency_startup_pending
+    solver._emergency_startup()
+    assert not episode.reads
+    assert solver.emergency_state is None
+    assert not solver._emergency_startup_pending
+    assert snapshots[-1]["automatic_rescue_startup_rooms"] is None
+    assert not snapshots[-1]["initial_mood_pending"]
+    solver._emergency_schedule_staffing.assert_not_called()
+
+    monkeypatch.setattr(main.config.conf, "automatic_rescue_enable", True)
+    main.simulate(snapshots[-1])
+    assert solver._emergency_startup_pending
+    assert solver._emergency_startup_rooms is None
+    solver._emergency_startup()
+    assert episode.reads == episode.rooms
