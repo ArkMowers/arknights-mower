@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
+from arknights_mower.solvers import emergency
 from arknights_mower.tests import (
     dorm_release_tests,
     ling_xi_rest_limit_tests,
@@ -10,9 +12,11 @@ from arknights_mower.tests import (
 )
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanConf
+from arknights_mower.utils.emergency_recovery import mood_context
 from arknights_mower.utils.operators import Operator, build_global_plan
 from arknights_mower.utils.plan import Plan, PlanConfig
 from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
     TaskTypes,
     plan_metadata,
     plan_mood_limit_releases,
@@ -50,6 +54,187 @@ def shift_solver(legacy_shift_solver):
 
 def bounds(lower=0, upper=24):
     return {"lower": lower, "upper": upper}
+
+
+@pytest.fixture
+def emergency_solver(solver, monkeypatch):
+    now = ling_xi_rest_limit_tests.NOW
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(emergency, "datetime", Clock)
+    monkeypatch.setattr(emergency, "save_current_state", lambda: True)
+    data = solver.op_data
+    data.config.ling_xi = 3
+    data.config.operator_mood_limits = {"银灰": bounds(0, 12)}
+    data.init_mood_limit()
+    limited = data.operators["银灰"]
+    data.update_detail("银灰", 10, limited.current_room, limited.current_index, True)
+    _, bed = data.get_dorm_by_name("银灰")
+    bed.time = now + timedelta(minutes=10)
+    solver.emergency_state = {
+        "phase": "recovering",
+        "backup_names": [],
+        "frozen_conditions": [],
+        "targets": {"银灰": 12, "絮雨": 24},
+        "target_sources": {"银灰": "fallback", "絮雨": "fallback"},
+        "work_contexts": {
+            name: mood_context(data, data.operators[name].room)
+            for name in ("银灰", "絮雨")
+        },
+        "dorm_layout": {
+            room: [slot.agent for slot in slots]
+            for room, slots in data.plan.items()
+            if room.startswith("dorm")
+        },
+        "next_read": now + timedelta(minutes=30),
+    }
+    return solver
+
+
+def test_emergency_plans_personal_limit_before_next_read_without_ordinary_shifts(
+    emergency_solver,
+):
+    solver = emergency_solver
+    solver.plan_metadata()
+    assert len(solver.tasks) == 1
+    release = solver.tasks[0]
+    assert release.type == TaskTypes.RELEASE_DORM
+    assert release.strict_mood_limit and release.mood_limit == 12
+    assert release.meta_data == "银灰"
+    assert release.time == ling_xi_rest_limit_tests.NOW + timedelta(minutes=10)
+    assert release.time < solver.emergency_state["next_read"]
+    assert release.release_dorm_targets() == {"银灰": (ROOM, 3)}
+    solver.plan_metadata()
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0].time == release.time
+    assert not solver._emergency_ready()
+
+
+def test_emergency_releases_completed_primary_without_exiting_or_clearing_new_resident(
+    emergency_solver,
+):
+    solver = emergency_solver
+    data = solver.op_data
+    data.update_detail("银灰", 12, ROOM, 3, True)
+    solver.plan_metadata()
+    release = solver.tasks[0]
+    assert release.time == ling_xi_rest_limit_tests.NOW
+    assert release.strict_mood_limit and release.meta_data == "银灰"
+    assert not solver._emergency_ready()
+    assert solver.prepare_release_dorm(release)
+    solver.op_data = data.project_arrangements(
+        [{ROOM: ["Current", "Current", "Current", "斥罪", "Current"]}]
+    )
+    assert not solver.prepare_release_dorm(release)
+    assert release.plan == {}
+    assert solver.op_data.get_current_operator(ROOM, 3).name == "斥罪"
+    solver.plan_metadata()
+    assert not solver.tasks
+    assert solver.emergency_state["phase"] == "recovering"
+    assert not solver._emergency_ready()
+
+
+def test_emergency_nonreading_tick_keeps_personal_limit_deadline(emergency_solver):
+    solver = emergency_solver
+    solver.emergency_state["phase"] = "staffing"
+    staffing = SchedulerTask(task_plan={"central": ["Mon3tr"]})
+    staffing.emergency_staffing = True
+    solver.tasks = [staffing]
+    solver._emergency_read_rooms = MagicMock(
+        side_effect=AssertionError("unexpected mood read")
+    )
+    solver._emergency_collect = MagicMock(
+        side_effect=AssertionError("unexpected collection")
+    )
+
+    solver._emergency_tick()
+    solver._emergency_tick()
+
+    releases = [task for task in solver.tasks if task.strict_mood_limit]
+    assert len(releases) == 1
+    assert releases[0].time == ling_xi_rest_limit_tests.NOW + timedelta(minutes=10)
+    assert releases[0].release_dorm_targets() == {"银灰": (ROOM, 3)}
+    assert solver.emergency_state["phase"] == "staffing"
+    assert staffing in solver.tasks
+    assert all(task.type != TaskTypes.SHIFT_ON for task in solver.tasks)
+
+
+def test_emergency_reading_tick_replans_limit_after_new_observation(emergency_solver):
+    solver = emergency_solver
+    state = solver.emergency_state
+    state["phase"] = "returning"
+    state["next_read"] = ling_xi_rest_limit_tests.NOW
+    solver.plan_metadata()
+    assert solver.tasks[0].time > ling_xi_rest_limit_tests.NOW
+
+    def observe(rooms):
+        assert ROOM in rooms
+        solver.op_data.update_detail("银灰", 12, ROOM, 3, True)
+
+    solver._emergency_read_rooms = MagicMock(side_effect=observe)
+    solver._emergency_collect = MagicMock()
+
+    solver._emergency_tick()
+
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert release.time == ling_xi_rest_limit_tests.NOW
+    assert release.release_dorm_targets() == {"银灰": (ROOM, 3)}
+    assert state["phase"] == "returning"
+    assert not solver._emergency_ready()
+    assert all(task.type != TaskTypes.SHIFT_ON for task in solver.tasks)
+
+
+def test_emergency_bed_planning_preserves_resident_awaiting_personal_limit_release(
+    emergency_solver,
+):
+    solver = emergency_solver
+    solver.plan_metadata()
+    release = solver.tasks[0]
+    assert solver.emergency_state["targets"]["银灰"] == release.mood_limit == 12
+    assert solver.op_data.operators["银灰"].mood == 10
+
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(solver.emergency_state)
+
+    arrangements = [
+        task.plan for task in solver.tasks if getattr(task, "emergency_dorm", False)
+    ]
+    assert "银灰" not in {
+        name for plan in arrangements for names in plan.values() for name in names
+    }
+    solver.op_data = solver.op_data.project_arrangements(arrangements)
+    assert solver.prepare_release_dorm(release)
+    assert release.release_dorm_targets() == {"银灰": (ROOM, 3)}
+    assert not solver._emergency_ready()
+
+
+def test_emergency_does_not_readmit_completed_limit_cycle_or_fabricate_target_mood(
+    emergency_solver,
+):
+    solver = emergency_solver
+    data = solver.op_data
+    data.update_detail("银灰", 11.8, "", -1, True)
+    limited = data.operators["银灰"]
+    limited.rest_mood_release_limit = limited.upper_limit
+    other = data.operators["絮雨"]
+    data.update_detail(other.name, 24, other.current_room, other.current_index, True)
+    assert data.rest_mood_complete(limited.name)
+    assert not solver._emergency_ready()
+
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(solver.emergency_state)
+
+    assert limited.name not in {
+        name for task in solver.tasks for names in task.plan.values() for name in names
+    }
+    assert limited.current_room == ""
+    assert limited.mood == 11.8
+    assert solver.emergency_state["targets"][limited.name] == 12
+    assert not solver._emergency_ready()
 
 
 @pytest.mark.parametrize(

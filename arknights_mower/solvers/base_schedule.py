@@ -123,6 +123,7 @@ from arknights_mower.utils.scheduler_task import (
     dorm_residents,
     find_next_task,
     plan_metadata,
+    plan_mood_limit_releases,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
     restore_displaced_resting,
@@ -969,6 +970,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def plan_metadata(self):
         if self._emergency_frozen():
             self._emergency_filter_tasks()
+            self.tasks[:] = [
+                task
+                for task in self.tasks
+                if not getattr(task, "strict_mood_limit", False)
+            ]
+            self.tasks.extend(plan_mood_limit_releases(self.op_data))
             return
         if any(getattr(task, "backup_shift_active", False) for task in self.tasks):
             # 部分房间已完成时不能拿中间状态重建并覆盖尚未完成的回班任务。
@@ -7702,8 +7709,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                     if _current_room[current_idx] != ""
                                     else "Free"
                                 )
-                            if _name == "" and not getattr(
-                                self.task, "emergency_staffing", False
+                            if _name == "" and not (
+                                getattr(self.task, "emergency_staffing", False)
+                                or (
+                                    self._emergency_frozen()
+                                    and self.task.type
+                                    in (TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA)
+                                )
                             ):
                                 plan[room][current_idx] = "Free"
                     if (

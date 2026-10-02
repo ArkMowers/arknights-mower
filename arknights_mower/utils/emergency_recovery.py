@@ -362,6 +362,12 @@ def emergency_dorm_plan(data, state, tasks=()):
     )
 
     reserved, slots = dorm_task_reservations(data, tasks)
+    reserved.update(
+        name
+        for task in tasks
+        if getattr(task, "strict_mood_limit", False)
+        for name in task.release_dorm_targets()
+    )
     need = []
     for name, target in state["targets"].items():
         op = data.operators.get(name)
@@ -369,6 +375,7 @@ def emergency_dorm_plan(data, state, tasks=()):
             op is not None
             and name not in reserved
             and (not has_resting_mood(op) or op.mood < target)
+            and not data.rest_mood_complete(name)
             and not op.is_working()
             and resting_tier(data, name) != RestingTier.EXCLUDED
         ):

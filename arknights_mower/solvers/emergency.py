@@ -489,7 +489,8 @@ class EmergencyRecoveryMixin:
                     if not room.startswith("dorm")
                 }
                 self.run_order_solver()
-        if now >= state.get("next_read", now):
+        read_due = now >= state.get("next_read", now)
+        if read_due:
             self._emergency_collect()
             if state.pop("observed_at", None) is None:
                 self._emergency_read_rooms(
@@ -502,6 +503,8 @@ class EmergencyRecoveryMixin:
                     }
                     | set(state.get("temporary_roster", {}))
                 )
+        self.plan_metadata()
+        if read_due:
             self._emergency_update_targets()
             if self._emergency_ready():
                 if self._emergency_restore():
