@@ -123,7 +123,6 @@ from arknights_mower.utils.scheduler_task import (
     dorm_residents,
     find_next_task,
     plan_metadata,
-    plan_mood_limit_releases,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
     restore_displaced_resting,
@@ -658,6 +657,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.check_current_focus()
         if self.error or force:
             now = datetime.now()
+            if self._emergency_active():
+                for task in self.tasks:
+                    if (
+                        task.type == TaskTypes.RUN_ORDER
+                        and task.meta_data
+                        and hasattr(task, "emergency_original_roster")
+                        and task.time < now - timedelta(minutes=15)
+                    ):
+                        task.plan = copy.deepcopy(task.emergency_original_roster)
+                        task.meta_data = ""
+                        task.time = now
+                        logger.warning("过期跑单停止插拔，保留原临时驻员恢复")
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (
                 self.find_next_task(now) is None
@@ -681,7 +692,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 TaskTypes.WORKSHOP,
             }
             if any(
-                t.time < now - timedelta(minutes=15) and t.type not in preserved
+                t.time < now - timedelta(minutes=15)
+                and t.type not in preserved
+                and not hasattr(t, "emergency_original_roster")
                 for t in self.tasks
             ):
                 logger.info(
@@ -692,6 +705,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     for t in self.tasks
                     if t.type in preserved
                     or (t.type in future_preserved and t.time > now)
+                    or hasattr(t, "emergency_original_roster")
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -970,12 +984,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def plan_metadata(self):
         if self._emergency_frozen():
             self._emergency_filter_tasks()
-            self.tasks[:] = [
-                task
-                for task in self.tasks
-                if not getattr(task, "strict_mood_limit", False)
-            ]
-            self.tasks.extend(plan_mood_limit_releases(self.op_data))
+            self._emergency_replan_releases()
             return
         if any(getattr(task, "backup_shift_active", False) for task in self.tasks):
             # 部分房间已完成时不能拿中间状态重建并覆盖尚未完成的回班任务。

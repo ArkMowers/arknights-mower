@@ -1,6 +1,7 @@
 """专项临时换人通过实际选人路径恢复智能救急的空岗位。"""
 
 import copy
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -8,9 +9,11 @@ import pytest
 
 from arknights_mower.solvers import base_schedule, emergency
 from arknights_mower.tests.automatic_rescue_tests import make_episode
+from arknights_mower.tests.automatic_rescue_tests import offline as offline
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
 from arknights_mower.utils import config
+from arknights_mower.utils.dorm_candidates import dorm_task_reservations
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.recognize import Scene
@@ -295,3 +298,170 @@ def test_run_order_sync_retains_started_responsibility_after_room_is_disabled(
     assert order.plan == {ROOM: ["但书", COVERS[1]]}
     assert order.emergency_original_roster == {ROOM: [COVERS[0], ""]}
     assert stale_refresh not in solver.tasks
+
+
+def queue_compensation(solver, monkeypatch, original):
+    """Run the actual insertion path before obtaining a queued restoration."""
+    make_episode(solver)
+    place = selection_harness(solver, monkeypatch)
+    place(original)
+    config.conf.run_order_grandet_mode.enable = False
+    config.conf.run_order_grandet_mode.buffer_time = 0
+    order = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={ROOM: ["但书", COVERS[1]]},
+        meta_data=ROOM,
+    )
+    order.adjusted = True
+    solver.task = order
+    solver.tasks = [order]
+    arrange_room = solver.agent_arrange_room
+
+    def swap(new_plan, room, plan, **kwargs):
+        if "但书" in plan[room]:
+            inserted = copy.deepcopy(plan[room])
+            place(inserted)
+            del plan[room]
+            return {room: inserted}
+        return arrange_room(new_plan, room, plan, **kwargs)
+
+    solver.agent_arrange_room = swap
+    solver.agent_arrange(order.plan)
+    restore = next(
+        task
+        for task in solver.tasks
+        if task is not order and task.type == TaskTypes.RUN_ORDER
+    )
+    assert restore.plan == {ROOM: original}
+    assert restore.emergency_original_roster == {ROOM: original}
+    assert solver.op_data.get_current_room(ROOM, True) == ["但书", COVERS[1]]
+    solver.tasks = [restore]
+    solver.task = None
+    solver.agent_arrange_room = arrange_room
+    return restore
+
+
+@pytest.mark.parametrize("buffer", [0, 1])
+@pytest.mark.parametrize("age", [timedelta(minutes=16), timedelta(days=2)])
+def test_overdue_started_order_is_converted_to_restoration_without_running_again(
+    solver, monkeypatch, buffer, age
+):
+    order = failed_started_order(solver, monkeypatch, buffer)
+    original = copy.deepcopy(order.emergency_original_roster)
+    order.time = NOW - age
+    solver.error = False
+
+    solver.handle_error(force=True)
+
+    restore = next(
+        (
+            task
+            for task in solver.tasks
+            if getattr(task, "emergency_original_roster", None)
+        ),
+        None,
+    )
+    assert restore is not None, "error cleanup discarded actual staffing responsibility"
+    assert restore.plan == original, "expired insertion must become compensation only"
+    assert restore.emergency_original_roster == original
+    reserved, _ = dorm_task_reservations(solver.op_data, solver.tasks)
+    assert COVERS[0] in reserved
+    solver.drone.reset_mock()
+    solver.drone.side_effect = None
+    solver.task = restore
+
+    solver.agent_arrange(restore.plan)
+
+    assert solver.op_data.get_current_room(ROOM, True) == original[ROOM]
+    solver.drone.assert_not_called()
+    solver.get_free_list.assert_not_called()
+
+
+@pytest.mark.parametrize("original", [[COVERS[0], ""], ["", ""]])
+@pytest.mark.parametrize("age", [timedelta(minutes=16), timedelta(days=7)])
+def test_overdue_queued_restoration_survives_cleanup_and_restores_empty_slots(
+    solver, monkeypatch, original, age
+):
+    restore = queue_compensation(solver, monkeypatch, original)
+    restore.time = NOW - age
+    solver.error = False
+    solver.drone.reset_mock()
+
+    solver.handle_error(force=True)
+
+    assert restore in solver.tasks
+    assert restore.plan == {ROOM: original}
+    assert not solver._emergency_ready()
+    solver.task = restore
+    solver.agent_arrange(restore.plan)
+    assert solver.op_data.get_current_room(ROOM, True) == original
+    solver.drone.assert_not_called()
+    solver.get_free_list.assert_not_called()
+
+
+def test_unrelated_overdue_cleanup_retains_recent_compensation_reservation(
+    solver, monkeypatch
+):
+    restore = queue_compensation(solver, monkeypatch, [COVERS[0], ""])
+    restore.time = NOW - timedelta(minutes=1)
+    solver.tasks.append(
+        SchedulerTask(
+            time=NOW - timedelta(minutes=30),
+            task_type=TaskTypes.SHIFT_OFF,
+            task_plan={"room_1_2": [COVERS[2]]},
+        )
+    )
+    solver.error = False
+
+    solver.handle_error(force=True)
+
+    assert restore in solver.tasks
+    reserved, _ = dorm_task_reservations(solver.op_data, solver.tasks)
+    assert COVERS[0] in reserved
+    assert not solver._emergency_ready()
+
+
+def test_queued_restoration_after_downtime_waits_for_foreign_worker_and_blocks_exit(
+    solver, monkeypatch
+):
+    restore = queue_compensation(solver, monkeypatch, [COVERS[0], ""])
+    restore.time = NOW - timedelta(days=2)
+    worker = solver.op_data.operators[COVERS[0]]
+    worker._current_room, worker.current_index = "room_1_2", 0
+    solver.error = False
+
+    solver.handle_error(force=True)
+
+    assert restore in solver.tasks
+    assert not solver._emergency_ready()
+    solver.task = restore
+    solver.choose_agent.reset_mock()
+    assert solver.agent_arrange(restore.plan) is False
+    assert restore in solver.tasks
+    assert restore.time == NOW + timedelta(minutes=1)
+    assert restore.plan == {ROOM: [COVERS[0], ""]}
+    assert worker.current_room == "room_1_2"
+    solver.choose_agent.assert_not_called()
+    assert not solver._emergency_ready()
+    worker._current_room, worker.current_index = "", -1
+    solver.agent_arrange(restore.plan)
+    assert solver.op_data.get_current_room(ROOM, True) == [COVERS[0], ""]
+
+
+def test_unstarted_overdue_order_can_be_discarded_without_restoration(solver):
+    make_episode(solver)
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.error = False
+    order = SchedulerTask(
+        time=NOW - timedelta(minutes=16),
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={ROOM: ["但书", COVERS[1]]},
+        meta_data=ROOM,
+    )
+    solver.tasks = [order]
+
+    solver.handle_error(force=True)
+
+    assert order not in solver.tasks
+    assert not any(hasattr(task, "emergency_original_roster") for task in solver.tasks)
+    assert solver.op_data.get_current_room(ROOM, True) == [PRIMARY[0]]

@@ -41,6 +41,7 @@ from arknights_mower.utils.resting_priority import busy_resting_names, has_resti
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    plan_mood_limit_releases,
     protect_priority_tasks,
     try_workshop_tasks,
 )
@@ -62,6 +63,25 @@ class EmergencyRecoveryMixin:
         return self._emergency_active() and not getattr(
             self, "_emergency_handoff", False
         )
+
+    def _emergency_replan_releases(self):
+        """每房实测后刷新强制清退；交接读房仍不生成普通换班。"""
+        releases = plan_mood_limit_releases(self.op_data)
+        refreshed = {task.meta_data for task in releases}
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if not getattr(task, "strict_mood_limit", False)
+            or (
+                getattr(self, "_emergency_handoff", False)
+                and task.meta_data not in refreshed
+                and (op := self.op_data.operators.get(task.meta_data)) is not None
+                and op.current_room in task.plan
+                and 0 <= op.current_index < len(task.plan[op.current_room])
+                and task.plan[op.current_room][op.current_index] == "Free"
+            )
+        ]
+        self.tasks.extend(releases)
 
     def _emergency_operation_fits(self, seconds):
         start = min(
@@ -120,6 +140,8 @@ class EmergencyRecoveryMixin:
             self.back()
             if state is not None:
                 rooms.remove(room)
+                self._emergency_replan_releases()
+                protect_priority_tasks(self.tasks)
                 self._emergency_save()
         self.back_to_infrastructure()
         if state is not None:
@@ -792,7 +814,7 @@ class EmergencyRecoveryMixin:
                 self._open_emergency_beds()
                 for bed in self.op_data.all_dorms():
                     saved = saved_beds.get(bed.position)
-                    if saved is not None and bed.name == saved[0]:
+                    if saved is not None and bed.name == saved[0] and bed.time is None:
                         bed.time = saved[1]
 
     def _emergency_handoff_feasible(self, plan):

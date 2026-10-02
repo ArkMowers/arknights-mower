@@ -418,3 +418,93 @@ def test_delayed_handoff_waits_for_queued_specialized_compensation(
     solver.agent_get_mood.assert_called_once()
     solver.agent_arrange.assert_not_called()
     solver.run_order_solver.assert_called_once()
+
+
+@pytest.mark.parametrize("known_deadline", [False, True])
+def test_new_measured_limit_replans_before_next_room(
+    observation_solver, known_deadline
+):
+    episode = observation_solver
+    solver = episode.solver
+    if known_deadline:
+        set_release_window(episode, 150)
+    previous_read = solver.get_agent_from_room.side_effect
+
+    def read_room(room, *args, **kwargs):
+        result = previous_read(room, *args, **kwargs)
+        if room == "dormitory_1":
+            solver.op_data.update_detail(episode.limited, 12, room, 2, True)
+            _, bed = solver.op_data.get_dorm_by_name(episode.limited)
+            bed.time = episode.clock["now"]
+        return result
+
+    solver.get_agent_from_room.side_effect = read_room
+    solver._emergency_tick()
+
+    assert episode.reads == ["dormitory_1"]
+    assert episode.state["pending_read_rooms"] == episode.rooms[1:]
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert release.mood_limit_deadline == episode.clock["now"]
+    assert release.time <= episode.clock["now"]
+    solver._emergency_update_targets.assert_not_called()
+    solver._emergency_ready.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+def test_new_countdown_replans_previously_unknown_limit_before_next_room(
+    observation_solver,
+):
+    episode = observation_solver
+    solver = episode.solver
+    previous_read = solver.get_agent_from_room.side_effect
+
+    def read_room(room, *args, **kwargs):
+        result = previous_read(room, *args, **kwargs)
+        if room == "dormitory_1":
+            solver.op_data.update_detail(episode.limited, 11, room, 2, True)
+            solver.op_data.refresh_dorm_time(
+                room,
+                2,
+                {
+                    "agent": episode.limited,
+                    "time": episode.clock["now"] + timedelta(minutes=26),
+                },
+            )
+        return result
+
+    solver.get_agent_from_room.side_effect = read_room
+    solver._emergency_tick()
+
+    assert episode.reads == ["dormitory_1"]
+    assert episode.state["pending_read_rooms"] == episode.rooms[1:]
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
+    assert release.mood_limit_deadline == episode.clock["now"] + timedelta(minutes=2)
+    solver._emergency_update_targets.assert_not_called()
+    solver._emergency_ready.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+def test_handoff_does_not_restore_old_deadline_over_new_observation(
+    observation_solver,
+):
+    episode = observation_solver
+    solver = episode.solver
+    episode.state["phase"] = "returning"
+    episode.state["handoff_plan"] = {}
+    solver._emergency_restore = solver.__class__._emergency_restore.__get__(solver)
+    release = set_release_window(episode, 600)
+    earlier = episode.clock["now"] + timedelta(seconds=120)
+    previous_read = solver.get_agent_from_room.side_effect
+
+    def read_room(room, *args, **kwargs):
+        result = previous_read(room, *args, **kwargs)
+        if room == "dormitory_1":
+            _, bed = solver.op_data.get_dorm_by_name(episode.limited)
+            bed.time = earlier
+        return result
+
+    solver.get_agent_from_room.side_effect = read_room
+    assert not solver._emergency_restore()
+    _, bed = solver.op_data.get_dorm_by_name(episode.limited)
+    assert bed.time == earlier
+    assert bed.time < release.mood_limit_deadline
