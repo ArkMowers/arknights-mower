@@ -2,6 +2,7 @@
 
 import pickle
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -473,3 +474,76 @@ def test_global_rescore_reserves_specialized_working_occupants(staffing):
     assert observed and all("阿" in reserved for reserved in observed)
     assert all("阿" not in row for row in staffing_task(solver).plan.values())
     assert solver.op_data.operators["阿"].current_room == "factory"
+
+
+@pytest.mark.parametrize("mood", [None, 0, 8])
+def test_group_departure_selection_does_not_apply_work_threshold_to_resting_primaries(
+    staffing, monkeypatch, mood
+):
+    from arknights_mower.solvers import base_mixin
+
+    solver = staffing.solver
+    assert solver._emergency_schedule_staffing()
+    solver.task = staffing_task(solver)
+    solver.recog = SimpleNamespace(img=object())
+    monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *args: mood)
+    name = PRIMARY[0]
+    op = solver.op_data.operators[name]
+    measured = (op.mood, op.time_stamp)
+
+    assert solver.observe_agent_moods(
+        [(name, ((0, 0), (1, 1)))], [name], None, False
+    ) == {name}
+    assert (op.mood, op.time_stamp) == measured
+
+
+@pytest.mark.parametrize("mood", [None, 0, 8])
+def test_group_departure_still_rechecks_working_replacement_mood(
+    staffing, monkeypatch, mood
+):
+    from arknights_mower.solvers import base_mixin
+
+    solver = staffing.solver
+    assert solver._emergency_schedule_staffing()
+    solver.task = staffing_task(solver)
+    name = next(
+        name
+        for room, row in solver.task.plan.items()
+        if not room.startswith("dorm")
+        for name in row
+        if name != "Current"
+    )
+    solver.recog = SimpleNamespace(img=object())
+    monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *args: mood)
+
+    with pytest.raises(base_mixin.AgentSelectionNotReady, match="心情不足或无法读取"):
+        solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
+
+
+@pytest.mark.parametrize("mood", [None, 0, 8])
+@pytest.mark.parametrize("role", ["dorm_replacement", "fixed_primary"])
+def test_group_selection_preserves_normal_dorm_and_original_primary_rules(
+    staffing, monkeypatch, mood, role
+):
+    from arknights_mower.solvers import base_mixin
+
+    solver = staffing.solver
+    assert solver._emergency_schedule_staffing()
+    solver.task = staffing_task(solver)
+    if role == "dorm_replacement":
+        name = "黑角"
+        assert name in solver.task.plan["dormitory_1"]
+    else:
+        name = PRIMARY[2]
+        room = solver.op_data.operators[name].room
+        # agent_arrange replaces Current with the actual name before observation.
+        solver.task.plan[room] = [name]
+    solver.recog = SimpleNamespace(img=object())
+    monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *args: mood)
+    op = solver.op_data.operators[name]
+    measured = (op.mood, op.time_stamp)
+
+    assert solver.observe_agent_moods(
+        [(name, ((0, 0), (1, 1)))], [name], None, False
+    ) == {name}
+    assert (op.mood, op.time_stamp) == measured

@@ -757,8 +757,15 @@ class BaseMixin:
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             from arknights_mower.utils.emergency_staffing import eligible_worker
 
+            temporary_workers = {
+                name
+                for room, row in self.task.plan.items()
+                if room in self.op_data.plan and not room.startswith("dorm")
+                for index, name in enumerate(row)
+                if name != self.op_data.plan[room][index].agent
+            }
             for name, scope in page:
-                if name not in eligible:
+                if name not in eligible or name not in temporary_workers:
                     continue
                 mood = estimate_agent_mood(self.recog.img, scope)
                 if mood is None:

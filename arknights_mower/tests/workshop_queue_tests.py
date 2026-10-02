@@ -31,7 +31,8 @@ def queue(monkeypatch):
         workshop_recommendation, "prioritize_workshop_settings", lambda items: items
     )
     data = SimpleNamespace(
-        operators={item.operator: SimpleNamespace(mood=24) for item in settings}
+        operators={item.operator: SimpleNamespace(mood=24) for item in settings},
+        is_standby=lambda name: False,
     )
     return data, []
 

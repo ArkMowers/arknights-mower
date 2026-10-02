@@ -354,6 +354,9 @@ class EmergencyRecoveryMixin:
         ):
             return True
         protect_priority_tasks(self.tasks)
+        if state.get("staffing_rescore"):
+            return self._emergency_rescore_staffing()
+
         pending = copy.deepcopy(state.get("staffing_plan", {}))
         if pending:
             self._emergency_save()
@@ -362,9 +365,6 @@ class EmergencyRecoveryMixin:
             task.emergency_staffing_members = list(state.get("staffing_members", ()))
             self.tasks.append(task)
             return True
-
-        if state.get("staffing_rescore"):
-            return self._emergency_rescore_staffing()
 
         reserved, _ = dorm_task_reservations(data, self.tasks)
         reserved |= busy_resting_names() | set(TRADE_ORDER_AGENTS)
@@ -627,8 +627,9 @@ class EmergencyRecoveryMixin:
             "meeting": "会客室",
         }
         supported = {"中枢", "人力办公室", "会客室", "制造站", "贸易站", "发电站"}
+        unfinished = copy.deepcopy(state.get("staffing_plan", {}))
         planned_slots, fixed_by_room = {}, {}
-        members = set()
+        members = set(state.get("staffing_members", ()))
         for room, configured in data.plan.items():
             if (
                 not configured
@@ -638,21 +639,31 @@ class EmergencyRecoveryMixin:
             fixed_by_room[room] = []
             for index, slot in enumerate(configured):
                 actual = data.get_current_operator(room, index)
-                if actual is not None and actual.name == slot.agent:
+                row = unfinished.get(room, ())
+                required = (
+                    index < len(row)
+                    and row[index] not in ("Current", "Free", "")
+                    and (actual is None or actual.name != row[index])
+                )
+                if actual is not None and actual.name == slot.agent and not required:
                     fixed_by_room[room].append(actual.name)
                 else:
                     planned_slots.setdefault(room, []).append((index, slot.agent))
                     if slot.agent in data.operators:
                         op = data.operators[slot.agent]
                         members.update(data.groups.get(op.group, [op.name]))
-        if not planned_slots:
-            state.pop("staffing_rescore", None)
-            return True
         reserved, _ = dorm_task_reservations(data, self.tasks)
         reserved |= (
             busy_resting_names() | set(TRADE_ORDER_AGENTS) | set(state["targets"])
         )
         reserved |= {name for names in fixed_by_room.values() for name in names}
+        reserved |= {
+            name
+            for room, row in unfinished.items()
+            if room.startswith("dorm")
+            for name in row
+            if name not in ("Current", "Free", "")
+        }
         reserved |= {
             op.name
             for op in data.operators.values()
@@ -730,7 +741,10 @@ class EmergencyRecoveryMixin:
         )
         if replacements is None:
             return False
-        pending, automatic = {}, {}
+        pending = {
+            room: row for room, row in unfinished.items() if room.startswith("dorm")
+        }
+        automatic = {}
         for room, slots in planned_slots.items():
             for index, primary in slots:
                 replacement = replacements[(room, index)]
@@ -741,21 +755,27 @@ class EmergencyRecoveryMixin:
                     ] = replacement
                 if primary in data.operators:
                     automatic[primary] = replacement
-        if pending and not self._emergency_operation_fits(len(pending) * 45):
+        duration = sum(
+            estimate_dorm_minutes(room) * 60 if room.startswith("dorm") else 45
+            for room in pending
+        )
+        if pending and not self._emergency_operation_fits(duration):
             return False
         for name in replacements.values():
             if name not in data.operators:
                 data.add(Operator(name, ""))
         state.setdefault("automatic_replacements", {}).update(automatic)
         state.pop("staffing_rescore", None)
+        state["staffing_plan"] = copy.deepcopy(pending)
         if pending:
-            state["staffing_plan"] = copy.deepcopy(pending)
             state["staffing_members"] = sorted(members)
             self._emergency_save()
             task = SchedulerTask(task_plan=copy.deepcopy(pending))
             task.emergency_staffing = True
             task.emergency_staffing_members = sorted(members)
             self.tasks.append(task)
+        else:
+            state.pop("staffing_members", None)
         return True
 
     def _emergency_update_targets(self):
@@ -964,16 +984,19 @@ class EmergencyRecoveryMixin:
                 state["next_read"] = datetime.now() + timedelta(
                     minutes=self._emergency_read_minutes() if scanned else 1
                 )
+        check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
+        if check is None:
+            check = SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
+            self.tasks.append(check)
+        else:
+            check.time = state["next_read"]
+        check.emergency_staffing_members = sorted(
+            set(state.get("staffing_members", ()))
+            | set(state.get("group_return_members", ()))
+        )
         if state["phase"] == "recovering":
             try_workshop_tasks(self.op_data, self.tasks)
             self.run_order_solver()
-        check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
-        if check is not None:
-            check.time = state["next_read"]
-        else:
-            self.tasks.append(
-                SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
-            )
         self._emergency_save()
 
     def _emergency_plan_beds(self, state):
@@ -1108,6 +1131,7 @@ class EmergencyRecoveryMixin:
                 self.task = SchedulerTask(task_plan=copy.deepcopy(plan))
                 self.task.emergency_staffing = True
                 self.task.emergency_group_return = True
+                self.task.emergency_staffing_members = list(members)
                 try:
                     self.agent_arrange(self.task.plan, get_time=True)
                 finally:

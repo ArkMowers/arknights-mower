@@ -4,6 +4,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from arknights_mower.utils.dorm_candidates import dorm_task_reservations
 from arknights_mower.utils.workshop_material_policy import workshop_recipe_allowed
 
 
@@ -118,8 +119,10 @@ def workshop_operator_block_reason(
         if (
             task is not current_task
             and getattr(task.type, "name", "") != "WORKSHOP"
-            and any(operator in names for names in task.plan.values())
+            and operator in dorm_task_reservations(op_data, [task])[0]
         ):
+            if operator in getattr(task, "emergency_staffing_members", ()):
+                return "已被智能救急整组换班任务预约"
             return f"已被{task.type.display_value}任务预约"
     op = op_data.operators.get(operator)
     if op is None:

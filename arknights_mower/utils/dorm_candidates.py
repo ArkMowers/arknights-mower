@@ -43,6 +43,7 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
     for task in tasks:
         if task is None:
             continue
+        names.update(getattr(task, "emergency_staffing_members", ()))
         names.update(
             name
             for row in getattr(task, "emergency_original_roster", {}).values()
