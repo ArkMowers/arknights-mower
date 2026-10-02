@@ -1,9 +1,11 @@
 ---
 title: 训练室面板身份与失败归档
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-02
 ---
+
+> 姓名识别决策已由[训练室主面板直接姓名模板](../../implemented/simplification/2026-10-02-mastery-direct-name-templates.zh.md)替代。选择性通知归档策略继续遵循[诊断契约](../../../../docs/subsystems/device-control.md)。
 
 # 训练室面板身份与失败归档
 

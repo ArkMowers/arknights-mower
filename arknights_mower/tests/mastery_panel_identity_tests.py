@@ -48,61 +48,45 @@ def panel_solver(text, pixels="[白面鸮]脑啡肽"):
     return solver
 
 
-@pytest.mark.parametrize("fragment", ["白面", "白鸮", "面鸮"])
-def test_same_frame_name_and_skill_recover_an_omitted_character(fragment, plan):
-    solver = panel_solver(f"[{fragment}]脑啡肽")
+@pytest.mark.parametrize("ocr_name", ["白面", "面鸮", "陌生人", ""])
+def test_name_comes_from_templates_independently_of_ocr(ocr_name, plan):
+    solver = panel_solver(f"[{ocr_name}]脑啡肽")
     panel = mastery_reader._read_panel_text(solver)
     assert (panel.operator_name, panel.skill_name) == ("白面鸮", "脑啡肽")
-    assert solver.read_screen.call_count == 2
+    solver.read_screen.assert_called_once()
     assert mastery_reader._plan_matches_room(
         plan, mastery_reader.RoomState("training", panel)
     )
 
 
 @pytest.mark.parametrize(
-    "name, fragment, skill",
-    [("八幡海铃", "幡海铃", "颤栗之弦"), ("卡涅利安", "卡涅利", "沙缚镣锁")],
+    "name, skill",
+    [
+        ("八幡海铃", "颤栗之弦"),
+        ("卡涅利安", "沙缚镣锁"),
+        ("森蚺", "荆棘"),
+        ("吽", "医疗模式"),
+    ],
 )
-def test_omitted_name_recovery_applies_to_other_operators(name, fragment, skill):
-    solver = panel_solver(f"[{fragment}]{skill}", f"[{name}]{skill}")
+def test_full_name_templates_cover_other_operators(name, skill):
+    panel = mastery_reader._read_panel_text(
+        panel_solver(f"[] {skill}", f"[{name}]{skill}")
+    )
+    assert panel.operator_name == name
+
+
+def test_blank_pixels_do_not_accept_a_valid_ocr_name():
+    solver = panel_solver("[白面鸮]脑啡肽", pixels="")
     panel = mastery_reader._read_panel_text(solver)
-    assert (panel.operator_name, panel.skill_name) == (name, skill)
+    assert panel.operator_name == ""
+    solver.read_screen.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "pixels",
-    ["[白面鸮]治疗强化·γ型", "[夜莺]圣域", "[白面]脑啡肽", ""],
-)
-def test_candidate_text_does_not_override_conflicting_pixels(pixels):
-    panel = mastery_reader._read_panel_text(panel_solver("[白面]脑啡肽", pixels))
-    assert panel.operator_name == "白面"
-
-
-def test_absent_model_preserves_unknown_name(monkeypatch):
-    monkeypatch.setattr(mastery_reader, "recognize_skill", lambda *_: None)
-    panel = mastery_reader._read_panel_text(panel_solver("[白面]脑啡肽"))
-    assert panel.operator_name == "白面"
-
-
-def test_ambiguous_confirmed_names_preserve_unknown(monkeypatch):
-    monkeypatch.setattr(
-        mastery_recommendation,
-        "get_skill_data",
-        lambda: {
-            "characters": {
-                "one": {"name": "白面鸮", "skills": [{"name": "脑啡肽"}]},
-                "two": {"name": "白面鹰", "skills": [{"name": "脑啡肽"}]},
-            }
-        },
-    )
-    monkeypatch.setattr(mastery_reader, "agent_list", {"白面鸮": {}, "白面鹰": {}})
-    monkeypatch.setattr(
-        mastery_reader,
-        "recognize_skill",
-        lambda *_: SimpleNamespace(name="脑啡肽"),
-    )
-    panel = mastery_reader._read_panel_text(panel_solver("[白面]脑啡肽"))
-    assert panel.operator_name == "白面"
+def test_unavailable_name_templates_preserve_unknown(monkeypatch):
+    monkeypatch.setattr(mastery_reader, "recognize_operator", lambda *_: None)
+    solver = panel_solver("[白面鸮]脑啡肽")
+    assert mastery_reader._read_panel_text(solver).operator_name == ""
+    solver.read_screen.assert_not_called()
 
 
 @pytest.fixture
@@ -126,16 +110,16 @@ def confirmation(monkeypatch):
 def test_unknown_name_waits_then_confirms_fresh_read(monkeypatch, confirmation, plan):
     deadline, update, send = confirmation
     solver = panel_solver("[白面]脑啡肽")
-    solver.read_screen.side_effect = ["[白面]脑啡肽", "[白面]脑啡肽", "[白面鸮]脑啡肽"]
-    monkeypatch.setattr(mastery_reader, "recognize_skill", lambda *_: None)
-
+    monkeypatch.setattr(
+        mastery_reader, "recognize_operator", MagicMock(side_effect=[None, "白面鸮"])
+    )
     assert mastery._confirm_training_started(solver, plan, deadline) == "started"
     assert [call.args[1] for call in update.call_args_list] == ["training"]
     solver.sleep.assert_any_call(1)
     assert all("与计划不符" not in call.args[0] for call in send.call_args_list)
 
 
-def test_corrected_alpha_notification_confirms_training(confirmation, plan):
+def test_direct_name_template_confirms_training(confirmation, plan):
     deadline, update, _ = confirmation
     solver = panel_solver("[白面]脑啡肽")
     assert mastery._confirm_training_started(solver, plan, deadline) == "started"
@@ -148,7 +132,7 @@ def test_unconfirmed_identity_times_out_without_false_mismatch(
 ):
     deadline, update, send = confirmation
     solver = panel_solver(text)
-    monkeypatch.setattr(mastery_reader, "recognize_skill", lambda *_: None)
+    monkeypatch.setattr(mastery_reader, "recognize_operator", lambda *_: None)
     assert mastery._confirm_training_started(solver, plan, deadline) == "timeout"
     update.assert_not_called()
     send.assert_not_called()
@@ -228,3 +212,93 @@ def test_terminal_failure_reaches_archive_before_notification_and_exit(
         "记录编号 mastery-archive" in call.args[0]
         for call in log.config.log_queue.put.call_args_list
     )
+
+
+@pytest.fixture
+def incident_solver():
+    """Replay only the panel pixels from the supplied 2026-10-02 Capture Frame."""
+    from PIL import Image
+
+    image = np.asarray(
+        Image.open(
+            Path(__file__).parent / "fixtures/mastery_panel_ptilopsis_enkephalin.png"
+        ).convert("RGB")
+    )
+    solver = panel_solver("[白面]脑啡肽", pixels="")
+    (x0, y0), (x1, y1) = mastery_reader.PANEL_REGION
+    assert image.shape == (y1 - y0, x1 - x0, 3)
+    solver.recog.img[y0:y1, x0:x1] = image
+    return solver
+
+
+def test_real_incident_panel_replays_production_ocr(monkeypatch, incident_solver, plan):
+    from unittest.mock import patch
+
+    from arknights_mower.solvers.base_mixin import BaseMixin
+    from arknights_mower.utils import rapidocr
+
+    with patch.object(rapidocr, "engine", None):
+        rapidocr.initialize_ocr()
+        incident_solver.read_screen.side_effect = lambda *args, **kwargs: (
+            BaseMixin.read_screen(incident_solver, *args, **kwargs)
+        )
+        panel = mastery_reader._read_panel_text(incident_solver)
+
+    assert (panel.operator_name, panel.skill_name) == ("白面鸮", "脑啡肽")
+    assert mastery_reader._plan_matches_room(
+        plan, mastery_reader.RoomState("training", panel)
+    )
+
+
+def test_real_incident_logged_ocr_confirms_training_once(
+    monkeypatch, confirmation, incident_solver, plan
+):
+    deadline, update, send = confirmation
+    recognize = MagicMock(wraps=mastery_reader.recognize_skill)
+    monkeypatch.setattr(mastery_reader, "recognize_skill", recognize)
+
+    assert (
+        mastery._confirm_training_started(incident_solver, plan, deadline) == "started"
+    )
+    assert [call.args[1] for call in update.call_args_list] == ["training"]
+    assert incident_solver.read_screen.call_count == 1
+    recognize.assert_called_once()
+    assert recognize.call_args.args[1] == "白面鸮"
+    assert all("与计划不符" not in call.args[0] for call in send.call_args_list)
+
+
+@pytest.mark.parametrize("evidence", ["missing_model", "stale_model", "blank_pixels"])
+def test_real_incident_unconfirmed_evidence_keeps_bounded_wait(
+    monkeypatch, confirmation, incident_solver, plan, evidence
+):
+    from copy import deepcopy
+
+    if evidence == "missing_model":
+        monkeypatch.setattr(mastery_reader, "recognize_operator", lambda *_: None)
+    elif evidence == "stale_model":
+        data = deepcopy(mastery_recommendation.get_skill_data())
+        data["characters"]["char_128_plosis"]["skills"][0]["name"] += "更新"
+        monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: data)
+    else:
+        incident_solver.recog.img[:] = 0
+    deadline, update, send = confirmation
+
+    assert (
+        mastery._confirm_training_started(incident_solver, plan, deadline) == "timeout"
+    )
+    update.assert_not_called()
+    send.assert_not_called()
+    incident_solver.sleep.assert_any_call(1)
+    incident_solver.back.assert_not_called()
+
+
+def test_real_incident_template_result_does_not_cross_reads(
+    monkeypatch, incident_solver
+):
+    recognize = MagicMock(wraps=mastery_reader.recognize_operator)
+    monkeypatch.setattr(mastery_reader, "recognize_operator", recognize)
+    assert mastery_reader._read_panel_text(incident_solver).operator_name == "白面鸮"
+
+    incident_solver.recog.img[:] = 0
+    assert mastery_reader._read_panel_text(incident_solver).operator_name == ""
+    assert recognize.call_count == 2

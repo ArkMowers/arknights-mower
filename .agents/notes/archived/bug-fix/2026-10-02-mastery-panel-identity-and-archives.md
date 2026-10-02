@@ -1,9 +1,11 @@
 ---
 title: Training Panel Identity and Failure Archives
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-02
 ---
+
+> The name-recognition decision is superseded by [Direct Training Panel Name Templates](../../implemented/simplification/2026-10-02-mastery-direct-name-templates.md). The selective notification archive policy remains active in the [diagnostics contract](../../../../docs/subsystems/device-control.md).
 
 # Training Panel Identity and Failure Archives
 

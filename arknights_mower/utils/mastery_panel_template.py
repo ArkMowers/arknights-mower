@@ -1,4 +1,4 @@
-"""Conservative runtime recognition of training-room skill names."""
+"""Conservative runtime recognition of training-room names and skills."""
 
 import lzma
 import pickle
@@ -18,6 +18,9 @@ from arknights_mower.utils.resource_pkg import (
 
 MODEL_PATH = "arknights_mower/models/mastery_panel.model"
 NAME_MIN_SCORE = 0.70
+NAME_MIN_MARGIN = 0.10
+NAME_BRACKET_WIDTH = 8
+NAME_BRACKET_MIN_SCORE = 0.80
 SKILL_MIN_SCORE = 0.70
 SKILL_MIN_MARGIN = 0.10
 _model = None
@@ -78,6 +81,53 @@ def _score(region, template):
     return float(
         cv2.minMaxLoc(cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED))[1]
     )
+
+
+def _name_score(region, template):
+    if (
+        template.size == 0
+        or template.shape[0] > region.shape[0]
+        or template.shape[1] > region.shape[1]
+    ):
+        return 0.0
+    response = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED)
+    _, score, _, (x, y) = cv2.minMaxLoc(response)
+    height, width = template.shape
+    # The closing bracket must align at the full-name boundary. A shorter name
+    # such as 凯尔希 cannot consume only the prefix of 凯尔希·思衡托.
+    boundary = region[y : y + height, x + width - NAME_BRACKET_WIDTH : x + width]
+    if _score(boundary, template[:, -NAME_BRACKET_WIDTH:]) < NAME_BRACKET_MIN_SCORE:
+        return 0.0
+    return float(score)
+
+
+def recognize_operator(img, data):
+    """Match the full bracketed name against the roster, independently of OCR."""
+    model = _load_model()
+    if not model or model.get("roster_sha256") != skill_roster_digest(data):
+        return None
+    if img.ndim == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    binary = cv2.threshold(img, PIXEL_THRESHOLD, 255, cv2.THRESH_BINARY)[1]
+    scores = {}
+    for cid, entry in model["entries"].items():
+        char = data.get("characters", {}).get(cid, {})
+        name = entry["name"]
+        if char.get("name") != name or char.get("rarity") not in (4, 5, 6):
+            continue
+        score = _name_score(
+            binary[:, : entry["prefix_width"] + 10], entry["name_template"]
+        )
+        # Alternate forms share an operator name and do not compete as identities.
+        scores[name] = max(scores.get(name, 0.0), score)
+    if not scores:
+        return None
+    ranked = sorted(scores.items(), key=lambda row: row[1], reverse=True)
+    name, score = ranked[0]
+    runner_up = ranked[1][1] if len(ranked) > 1 else 0.0
+    if score < NAME_MIN_SCORE or score - runner_up < NAME_MIN_MARGIN:
+        return None
+    return name
 
 
 def recognize_skill(img, operator_name, data):
