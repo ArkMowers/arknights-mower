@@ -2737,12 +2737,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data, [self.task, *self.tasks]
                 )
                 candidates = dorm_candidates(self.op_data, reserved)
-                if not candidates.recovering and not any(
-                    (mood := dorm_candidate_mood(self.op_data, name)) is not None
-                    and mood
-                    < getattr(self.op_data.operators.get(name), "upper_limit", 24)
-                    for name in candidates.unknown
-                ):
+                if not (candidates.recovering or candidates.estimated_recovering):
                     self._scan_card_moods()
             new_plan = self.resting()
         except (
@@ -6109,7 +6104,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (not room.startswith("dorm"))
             or task is None
             or task.type == TaskTypes.FIAMMETTA
-            or getattr(self.op_data, "idle_dorm_search_exhausted", False)
         ):
             return []
         if candidates is None:
@@ -6121,6 +6115,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 room=room,
             )
         names = candidates.filling
+        if (
+            getattr(self.op_data, "idle_dorm_search_exhausted", False)
+            and not candidates.estimated_recovering
+        ):
+            return []
         if (
             not any(
                 not self.op_data.operators[name].current_room
