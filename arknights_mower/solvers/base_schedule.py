@@ -6406,6 +6406,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
         max_swipe = 50
+        if getattr(getattr(self, "task", None), "emergency_staffing", False):
+            fast_mode = False
         position = [
             (0.35, 0.35),
             (0.35, 0.75),
@@ -7700,7 +7702,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                     if _current_room[current_idx] != ""
                                     else "Free"
                                 )
-                            if _name == "":
+                            if _name == "" and not getattr(
+                                self.task, "emergency_staffing", False
+                            ):
                                 plan[room][current_idx] = "Free"
                     if (
                         room in self.op_data.run_order_rooms
@@ -7883,6 +7887,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             except Exception as e:
                 save_exception(e)
                 logger.exception(e)
+                if getattr(self.task, "emergency_staffing", False) and isinstance(
+                    e, AgentSelectionNotReady
+                ):
+                    self.back_to_infrastructure()
+                    self._emergency_read_rooms([room])
+                    self.emergency_state.get("staffing_plan", {}).pop(room, None)
+                    plan.pop(room, None)
+                    self.emergency_state["next_read"] = datetime.now()
+                    self._emergency_save()
+                    return new_plan
                 record_selection_retry()
                 if selection_attempted and (
                     isinstance(e, AgentSelectionNotReady)
@@ -8045,12 +8059,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.task.emergency_original_roster = {
                         room: self.op_data.get_current_room(room, True) for room in plan
                     }
-            elif any(
-                not room.startswith("dorm") for room in plan
-            ) and self.task.type not in (
-                TaskTypes.WORKSHOP,
-                TaskTypes.SKILL_UPGRADE,
-                TaskTypes.SWAP_SUPPORT,
+            elif (
+                not getattr(self.task, "emergency_staffing", False)
+                and any(not room.startswith("dorm") for room in plan)
+                and self.task.type
+                not in (
+                    TaskTypes.WORKSHOP,
+                    TaskTypes.SKILL_UPGRADE,
+                    TaskTypes.SWAP_SUPPORT,
+                )
             ):
                 raise RuntimeError("救急期间暂停普通工作站换班")
         logger.info("基建：排班")

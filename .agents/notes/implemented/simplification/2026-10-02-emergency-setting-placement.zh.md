@@ -11,7 +11,7 @@ date: 2026-10-02
 
 [INV-01] 保留既有配置绑定与默认关闭状态。自动救急勾选项仅出现在排班高级设置中，紧接原生急救阈值。MAA 设置表单移除该勾选项及未使用的绑定。高级设置的编辑锁作用于移动后的控件。
 
-两个既有组件之间移动控件，不增加配置字段、迁移或包装。[恢复生命周期](../../implemented/simplification/2026-10-02-maa-assisted-emergency.zh.md)保留后端行为。
+两个既有组件之间移动控件，不增加配置字段、迁移或包装。[恢复生命周期](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md)定义 Mower 临时驻员与实测恢复。
 
 ## 审查与验证
 

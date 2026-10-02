@@ -1,9 +1,12 @@
 ---
 title: MAA Assisted Emergency Recovery
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
+
+由 [Mower 自动救急](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md) 取代。
+
 
 # MAA 协助救急恢复
 

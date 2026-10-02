@@ -5,7 +5,7 @@ category: simplification
 date: 2026-09-30
 ---
 
-Superseded by [MAA assisted emergency recovery](../../implemented/simplification/2026-10-02-maa-assisted-emergency.md).
+Superseded by [Native automatic rescue](../../implemented/simplification/2026-10-02-native-automatic-rescue.md).
 
 
 # Rescue Condition Help

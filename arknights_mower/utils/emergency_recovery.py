@@ -131,10 +131,13 @@ class NativeProjection:
 
 
 def primary_names(data):
+    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+
     return [
         op.name
         for op in data.operators.values()
         if op.is_high()
+        and op.name not in TRADE_ORDER_AGENTS
         and op.room in data.plan
         and not op.room.startswith("dorm")
         and op.room not in ("factory", "train")

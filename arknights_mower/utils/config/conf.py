@@ -298,8 +298,6 @@ class LongTaskPart(ConfModel):
 
 
 class MaaPart(ConfModel):
-    maa_emergency_infrast_enable: bool = False
-    "初始化确认原生轮休无法周转时，使用一次 MAA 临时换班"
     maa_path: str = Field(default_factory=default_maa_directory)
     maa_mirrorchyan_token: str = ""
     "Mirror酱下载 Token"
@@ -550,6 +548,8 @@ class RIICPart(ConfModel):
     "菲亚防呆"
     fia_threshold: float = 0.9
     "菲亚阈值"
+    automatic_rescue_enable: bool = False
+    "初始化确认原生轮休无法周转时，由 Mower 自动安排临时换班"
     rescue_threshold: float = 0.75
     "急救阈值"
     favorite: str = ""

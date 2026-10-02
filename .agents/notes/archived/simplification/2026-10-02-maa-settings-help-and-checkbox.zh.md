@@ -1,15 +1,18 @@
 ---
 title: MAA 设置帮助与勾选框
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
+
+由 [Mower 自动救急](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md) 取代。
+
 
 # MAA 设置帮助与勾选框
 
 ## 契约
 
-桌面和 Android 的 MAA 设置表单将协助勾选框放在恢复主题设置之后。可见标签为 `协助救急`，勾选状态直接绑定 `maa_emergency_infrast_enable`。[INV-SCHED-09] 保留[恢复契约](../../implemented/simplification/2026-10-02-maa-assisted-emergency.zh.md)定义的独立、默认关闭设置。
+桌面和 Android 的 MAA 设置表单将协助勾选框放在恢复主题设置之后。可见标签为 `协助救急`，勾选状态直接绑定 `maa_emergency_infrast_enable`。[INV-SCHED-09] 保留[恢复契约](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md)定义的独立、默认关闭设置。
 
 恢复主题说明使用表单标签旁已有的 `HelpText` 问号控件。表单不再重复显示独立的主题说明段落。帮助内容沿用现有焦点和指针交互，不新增显示抽象。
 

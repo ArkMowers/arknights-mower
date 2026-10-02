@@ -13,4 +13,4 @@ Backup capabilities depend on actual `op_data` method calls inside condition syn
 
 ## Verification
 
-Maintenance and retired-condition migration tests cover nested calls, malformed expressions and literal method-name strings. [MAA assisted emergency recovery](../../implemented/simplification/2026-10-02-maa-assisted-emergency.md) specifies the removed rescue capability.
+Maintenance and retired-condition migration tests cover nested calls, malformed expressions and literal method-name strings. [Native automatic rescue](../../implemented/simplification/2026-10-02-native-automatic-rescue.md) specifies the removed rescue capability.

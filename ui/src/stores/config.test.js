@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
-  it('saves the independent emergency switch without enabling ordinary MAA tasks', async () => {
+  it('saves the automatic rescue checkbox independently', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const loaded = ref(false)
@@ -23,14 +23,14 @@ describe('workshop config autosave', () => {
     app.provide('loaded', loaded)
     store = app.runWithContext(() => useConfigStore())
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
-    expect(store.maa_emergency_infrast_enable).toBe(false)
+    expect(store.automatic_rescue_enable).toBe(false)
     axios.patch.mockResolvedValue({ data: {} })
     loaded.value = true
     await nextTick()
     await store.flush_config_saves()
-    store.maa_emergency_infrast_enable = true
+    store.automatic_rescue_enable = true
     await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
-    expect(axios.patch.mock.calls[0][1]).toEqual({ maa_emergency_infrast_enable: true })
+    expect(axios.patch.mock.calls[0][1]).toEqual({ automatic_rescue_enable: true })
     loaded.value = false
   })
 

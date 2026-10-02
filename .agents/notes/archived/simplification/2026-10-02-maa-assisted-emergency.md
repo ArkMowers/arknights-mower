@@ -1,9 +1,12 @@
 ---
 title: MAA Assisted Emergency Recovery
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
+
+Superseded by [Native automatic rescue](../../implemented/simplification/2026-10-02-native-automatic-rescue.md).
+
 
 # MAA Assisted Emergency Recovery
 

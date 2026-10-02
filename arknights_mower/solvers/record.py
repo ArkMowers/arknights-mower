@@ -224,7 +224,7 @@ def current_state():
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
-        "maa_emergency_state": getattr(base_scheduler, "emergency_state", None),
+        "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
             data, "idle_dorm_search_exhausted", False

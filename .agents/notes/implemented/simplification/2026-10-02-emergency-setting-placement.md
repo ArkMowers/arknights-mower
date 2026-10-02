@@ -11,7 +11,7 @@ date: 2026-10-02
 
 [INV-01] preserves the existing configuration binding and disabled default. The automatic rescue checkbox appears once in scheduling advanced settings, immediately after the native rescue threshold. The MAA settings form has no rescue checkbox or unused binding. Advanced editing locks apply to the moved control.
 
-The two existing components exchange the control without adding configuration keys, migrations or wrappers. The [recovery lifecycle](../../implemented/simplification/2026-10-02-maa-assisted-emergency.md) retains its backend behavior.
+The two existing components exchange the control without adding configuration keys, migrations or wrappers. The [recovery lifecycle](../../implemented/simplification/2026-10-02-native-automatic-rescue.md) defines Mower temporary staffing and measured recovery.
 
 ## Review and Verification
 

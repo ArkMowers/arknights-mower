@@ -400,8 +400,8 @@ def simulate(saved):
             base_scheduler.defer_backup_plan_until_mood_read = (
                 saved is None
                 or bool(saved.get("initial_mood_pending", False))
-                or config.conf.maa_emergency_infrast_enable
-                or bool(saved and saved.get("maa_emergency_state"))
+                or config.conf.automatic_rescue_enable
+                or bool(saved and saved.get("automatic_rescue_state"))
             )
             # 旧补读快照的实际宿舍可能已换人，只重读房态，不续跑临时试住。
             base_scheduler._initial_mood_refresh_rooms = set(
@@ -485,7 +485,7 @@ def simulate(saved):
                 saved.get("facility_states", {})
             )
             base_scheduler.emergency_state = copy.deepcopy(
-                saved.get("maa_emergency_state")
+                saved.get("automatic_rescue_state")
             )
             if isinstance(base_scheduler.emergency_state, dict):
                 base_scheduler._emergency_validate_state()
@@ -544,7 +544,7 @@ def simulate(saved):
             if task.type not in ORDINARY_SHIFTS
             and not getattr(task, "backup_shift_active", False)
         ]
-    if config.conf.maa_emergency_infrast_enable or isinstance(
+    if config.conf.automatic_rescue_enable or isinstance(
         base_scheduler.emergency_state, dict
     ):
         base_scheduler._emergency_startup_pending = True

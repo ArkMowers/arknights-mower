@@ -3109,6 +3109,14 @@ def workshop_preset():
         return []
 
 
+@app.route("/basement-skill/operators", methods=["GET"])
+@require_token
+def basement_skill_operators():
+    from arknights_mower.utils.building_skills import load_skill_snapshot
+
+    return load_skill_snapshot()
+
+
 @app.route("/cultivate-fetch")
 def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate

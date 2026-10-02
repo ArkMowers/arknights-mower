@@ -1,13 +1,21 @@
-"""一次 MAA 接管后的宿舍恢复与正常排班交接。"""
+"""Mower 自动救急的临时驻员、宿舍恢复与正常排班交接。"""
 
 import copy
 from datetime import datetime, timedelta
 from time import monotonic
 
 from arknights_mower.data import base_room_list
+from arknights_mower.solvers.base_mixin import fixed_selection_profile
 from arknights_mower.solvers.record import emergency_mood_history, save_current_state
 from arknights_mower.utils import config, detector
-from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.building_skills import (
+    load_skill_snapshot,
+    owned_operator,
+    unlocked_skills,
+)
+from arknights_mower.utils.character_recognize import estimate_agent_mood
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.dorm_candidates import dorm_task_reservations
 from arknights_mower.utils.emergency_recovery import (
     ORDINARY_SHIFTS,
     emergency_dorm_plan,
@@ -18,17 +26,23 @@ from arknights_mower.utils.emergency_recovery import (
     primary_names,
     recovery_target,
 )
+from arknights_mower.utils.emergency_staffing import (
+    StaffingCandidate,
+    card_skills,
+    eligible_worker,
+    select_workers,
+)
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory
+from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory, Operator
 from arknights_mower.utils.recognize import Scene
-from arknights_mower.utils.resting_priority import has_resting_mood
+from arknights_mower.utils.resting_priority import busy_resting_names, has_resting_mood
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     try_workshop_tasks,
 )
 
-CHECK_META = "maa_emergency_check"
+CHECK_META = "automatic_rescue_check"
 COLLECTION_COOLDOWN = timedelta(minutes=15)
 
 
@@ -36,7 +50,7 @@ class EmergencyRecoveryMixin:
     def _emergency_active(self):
         state = getattr(self, "emergency_state", None)
         return isinstance(state, dict) and state.get("phase") in (
-            "dispatching",
+            "staffing",
             "recovering",
             "returning",
         )
@@ -63,10 +77,10 @@ class EmergencyRecoveryMixin:
 
     def _emergency_save(self):
         if not save_current_state():
-            raise RuntimeError("救急运行状态保存失败，未派发 MAA")
+            raise RuntimeError("自动救急运行状态保存失败，未安排临时换班")
 
     def _emergency_startup(self):
-        """初始化读取后检查一次；已派发批次只核对实际状态。"""
+        """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
         if getattr(self, "emergency_state", None) is not None:
             self._emergency_validate_state()
         self._emergency_read_rooms(
@@ -75,11 +89,6 @@ class EmergencyRecoveryMixin:
         self._read_initial_card_mood()
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
-            if self.emergency_state["phase"] == "dispatching":
-                self.emergency_state["phase"] = "recovering"
-            if self.emergency_state.get("dispatch") == "started":
-                self.emergency_state["dispatch"] = "unknown"
-                logger.warning("MAA 救急换班结果未知，按实际驻员继续恢复，不重复派发")
             self._open_emergency_beds()
             self.emergency_state["next_read"] = datetime.now()
             self.emergency_state["observed_at"] = datetime.now()
@@ -92,7 +101,7 @@ class EmergencyRecoveryMixin:
             return
         self.backup_plan_solver()
         self._emergency_startup_pending = False
-        if not config.conf.maa_emergency_infrast_enable:
+        if not config.conf.automatic_rescue_enable:
             return
         data = self.op_data
         names = primary_names(data)
@@ -124,11 +133,10 @@ class EmergencyRecoveryMixin:
             self, required, now, deadlines=deadlines, rates=rates
         )
         if projection.opportunity is not None or not projection.complete:
-            logger.info("原生救急仍有恢复机会或观察不足，不派发 MAA")
+            logger.info("原生救急仍有恢复机会或观察不足，不启动自动救急")
             return
         state = {
-            "phase": "dispatching",
-            "dispatch": "started",
+            "phase": "staffing",
             "frozen_conditions": list(data.plan_condition),
             "backup_names": [backup.name for backup in data.backup_plans],
             "dorm_layout": {
@@ -156,19 +164,12 @@ class EmergencyRecoveryMixin:
             and not (
                 task.type == TaskTypes.NOT_SPECIFIC
                 and any(not room.startswith("dorm") for room in task.plan)
+                and not getattr(task, "emergency_staffing", False)
             )
         ]
         self._emergency_save()
-        self._run_emergency_maa()
-        state["phase"] = "recovering"
-        self.back_to_infrastructure()
-        self._emergency_read_rooms(room for room in data.plan if room in base_room_list)
-        state["temporary_roster"] = {
-            room: data.get_current_room(room, True)
-            for room in data.plan
-            if not room.startswith("dorm")
-        }
         self._open_emergency_beds()
+        self._emergency_schedule_staffing(initial=True)
         state["observed_at"] = datetime.now()
         self._emergency_save()
 
@@ -176,9 +177,7 @@ class EmergencyRecoveryMixin:
         state = self.emergency_state
         if not (
             isinstance(state, dict)
-            and state.get("phase") in ("dispatching", "recovering", "returning")
-            and state.get("dispatch")
-            in ("started", "completed", "failed", "unknown", "interrupted")
+            and state.get("phase") in ("staffing", "recovering", "returning")
             and isinstance(state.get("targets"), dict)
             and isinstance(state.get("dorm_layout"), dict)
             and isinstance(state.get("backup_names"), list)
@@ -190,96 +189,151 @@ class EmergencyRecoveryMixin:
                 for value in state["targets"].values()
             )
         ):
-            raise MowerExit("MAA 救急缓存结构不完整，保留缓存并停止；未重复派发 MAA")
+            raise MowerExit("自动救急缓存结构不完整，保留缓存并停止")
 
-    def _run_emergency_maa(self):
-        state = self.emergency_state
-        deadline = monotonic() + 600
-        asst = None
-        state["dispatch"] = "failed"
+    @fixed_selection_profile
+    def _emergency_scan_workers(self, room, facility, reserved, *, snapshot=None):
+        """每个设施最多扫描二十页、四十五秒；观测后取消暂选。"""
+        deadline = monotonic() + 45
+        candidates, seen = [], set()
+        if snapshot is None:
+            snapshot = load_skill_snapshot()
         try:
-            self.initialize_maa()
-            asst = self.MAA
-            mapping = {
-                "制造站": "Mfg",
-                "贸易站": "Trade",
-                "发电站": "Power",
-                "控制中枢": "Control",
-                "会客室": "Reception",
-                "办公室": "Office",
-                "加工站": "Processing",
-            }
-            fixed = {
-                "central": "Control",
-                "meeting": "Reception",
-                "contact": "Office",
-                "factory": "Processing",
-            }
-            facilities = []
-            for room, slots in self.op_data.plan.items():
-                if not slots or room.startswith("dorm") or room == "train":
-                    continue
-                facility = fixed.get(room) or mapping.get(slots[0].facility)
-                if facility and facility not in facilities:
-                    facilities.append(facility)
-            if not facilities:
-                raise RuntimeError("没有可交给 MAA 的工作设施")
-            pending_moods = [
-                self.op_data.operators[name].mood
-                for name, target in state["targets"].items()
-                if has_resting_mood(self.op_data.operators.get(name))
-                and self.op_data.operators[name].mood < target
-            ]
-            params = {
-                "mode": 0,
-                "facility": facilities,
-                "threshold": min(1, (max(pending_moods, default=0) + 1) / 24),
-                "drones": "_NotUse",
-                "replenish": False,
-                "fiammetta_recovery_enabled": False,
-            }
-            if monotonic() >= deadline:
-                raise TimeoutError("MAA 救急初始化超时")
-            if not asst.append_task("Infrast", params) or not asst.start():
-                raise RuntimeError("MAA 救急换班未能启动")
-            state["dispatch"] = "started"
-            while asst.running():
-                if config.stop_mower.is_set() or config.stop_maa.is_set():
-                    raise MowerExit
+            self.enter_room(room, max_attempts=1)
+            self.turn_on_room_detail(room)
+            self.refresh_facility_state(room)
+            for _ in range(4):
+                if self.find("confirm_blue") is not None:
+                    break
+                self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
+            else:
+                raise RuntimeError("未进入自动救急选人页")
+            self.profession_filter("ALL")
+            self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+            self.switch_arrange_order("技能", room)
+            self.swipe_left(1, "ALL")
+            previous, observation = None, None
+            for page_index in range(20):
                 if monotonic() >= deadline:
-                    raise TimeoutError("MAA 救急换班超过十分钟")
-                csleep(1)
-            if not asst.run_successful:
-                raise RuntimeError("MAA 救急换班没有完整成功回调")
-            state["dispatch"] = "completed"
-        except MowerExit:
-            state["dispatch"] = "interrupted"
-            raise
-        except Exception as exc:
-            state["dispatch"] = "failed"
-            state["error"] = str(exc)
-            logger.error("MAA 救急换班失败：%s；核对实际驻员后继续恢复", exc)
+                    break
+                page = self.wait_for_agent_page(
+                    before=previous, observation=observation
+                )
+                if previous is not None and self.same_agent_page(
+                    page, previous, allow_unknown=True
+                ):
+                    break
+                for name, scope in page:
+                    if not name or name in seen:
+                        continue
+                    seen.add(name)
+                    mood = estimate_agent_mood(self.recog.img, scope)
+                    if owned_operator(name, snapshot) is False or not eligible_worker(
+                        self.op_data, name, mood, reserved
+                    ):
+                        continue
+                    self.op_data.dorm_mood_estimates[name] = (mood, datetime.now())
+                    skills = unlocked_skills(name, facility, snapshot)
+                    if skills is None:
+                        skills = card_skills(self.recog.img, scope, name, facility)
+                    candidates.append(StaffingCandidate(name, mood, skills))
+                if page_index == 19 or monotonic() >= deadline:
+                    break
+                previous = page
+                _, observation = self.swipe_agent_page(
+                    page, "自动救急技能扫描", return_page=True
+                )
         finally:
-            if asst is None:
-                asst = getattr(self, "MAA", None)
-            if asst is not None:
-                try:
-                    asst.stop()
-                    stop_deadline = monotonic() + 15
-                    while asst.running() and monotonic() < stop_deadline:
-                        csleep(1)
-                    if asst.running():
-                        raise RuntimeError("停止确认超时")
-                except Exception as exc:
-                    state["error"] = f"MAA 未确认停止，停止 Mower 设备操作：{exc}"
-                    try:
-                        self._emergency_save()
-                    except Exception:
-                        logger.exception("MAA 停止异常后的救急状态无法保存")
-                    raise MowerExit(state["error"]) from exc
-                self.MAA = None
+            self.back_to_infrastructure()
+        return candidates
+
+    def _emergency_schedule_staffing(self, *, initial=False):
+        """初次比较设施内组合；复查只修复空缺及不再合格的临时驻员。"""
+        state, data = self.emergency_state, self.op_data
+        if state["phase"] == "returning" or any(
+            getattr(t, "emergency_staffing", False) for t in self.tasks
+        ):
+            return
+        pending = state.get("staffing_plan", {})
+        if not pending:
+            reserved, _ = dorm_task_reservations(data, self.tasks)
+            reserved |= busy_resting_names()
+            reserved |= set(state["targets"])
+            facilities = {
+                "central": "中枢",
+                "contact": "人力办公室",
+                "meeting": "会客室",
+            }
+            supported = {"中枢", "人力办公室", "会客室", "制造站", "贸易站", "发电站"}
+            rooms = {
+                room: facilities.get(room, slots[0].facility)
+                for room, slots in data.plan.items()
+                if slots
+                and room != "train"
+                and facilities.get(room, slots[0].facility) in supported
+            }
+            repair = {
+                room
+                for room in rooms
+                if initial
+                or any(
+                    not eligible_worker(
+                        data,
+                        name,
+                        data.operators[name].current_mood()
+                        if has_resting_mood(data.operators.get(name))
+                        else None,
+                        reserved,
+                    )
+                    for name in data.get_current_room(room, True)
+                )
+            }
+            # 未参与修复的工作者继续占原岗位，不从其他设施借走。
+            reserved |= {
+                name
+                for room in rooms
+                if room not in repair
+                for name in data.get_current_room(room, True)
+                if name
+            }
+            snapshot = load_skill_snapshot() if repair else None
+            for room in rooms:
+                if room not in repair:
+                    continue
+                current = data.get_current_room(room, True)
+                candidates = self._emergency_scan_workers(
+                    room, rooms[room], reserved, snapshot=snapshot
+                )
+                names = select_workers(
+                    candidates,
+                    rooms[room],
+                    data.facility_states.get(room, {}).get("product"),
+                    len(data.plan[room]),
+                    current=current,
+                )
+                for name in names:
+                    if name not in data.operators:
+                        data.add(Operator(name, ""))
+                reserved.update(names)
+                row = names + [""] * (len(data.plan[room]) - len(names))
+                if row != current:
+                    pending[room] = row
+                if len(names) < len(row):
+                    logger.warning(
+                        f"自动救急 {room} 合格临时驻员不足，保留 {len(row) - len(names)} 个空位"
+                    )
+        if pending:
+            state["staffing_plan"] = copy.deepcopy(pending)
             self._emergency_save()
-            self.recog.reset_after_external_control()
+            task = SchedulerTask(task_plan=pending)
+            task.emergency_staffing = True
+            self.tasks.append(task)
+        state["phase"] = "recovering"
+        state["temporary_roster"] = {
+            room: data.get_current_room(room, True)
+            for room in data.plan
+            if not room.startswith("dorm")
+        }
 
     def _open_emergency_beds(self):
         from arknights_mower.utils import dorm_skills
@@ -402,6 +456,7 @@ class EmergencyRecoveryMixin:
             and not (
                 task.type == TaskTypes.NOT_SPECIFIC
                 and any(not room.startswith("dorm") for room in task.plan)
+                and not getattr(task, "emergency_staffing", False)
             )
             and not (
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
@@ -414,6 +469,21 @@ class EmergencyRecoveryMixin:
         self._emergency_filter_tasks()
         state = self.emergency_state
         now = datetime.now()
+        if not any(getattr(t, "emergency_staffing", False) for t in self.tasks):
+            pending = state.get("staffing_plan", {})
+            state["staffing_plan"] = {
+                room: row
+                for room, row in pending.items()
+                if self.op_data.get_current_room(room, True) != row
+            }
+            if pending and not state["staffing_plan"]:
+                state["phase"] = "recovering"
+                state["temporary_roster"] = {
+                    room: self.op_data.get_current_room(room, True)
+                    for room in self.op_data.plan
+                    if not room.startswith("dorm")
+                }
+                self.run_order_solver()
         if now >= state.get("next_read", now):
             self._emergency_collect()
             if state.pop("observed_at", None) is None:
@@ -425,6 +495,7 @@ class EmergencyRecoveryMixin:
                         if (op := self.op_data.operators.get(name)) is not None
                         and op.current_room in base_room_list
                     }
+                    | set(state.get("temporary_roster", {}))
                 )
             self._emergency_update_targets()
             if self._emergency_ready():
@@ -434,12 +505,14 @@ class EmergencyRecoveryMixin:
                 state["next_read"] = now + timedelta(minutes=5)
             else:
                 self._open_emergency_beds()
+                self._emergency_schedule_staffing(initial=state["phase"] == "staffing")
                 self._emergency_plan_beds(state)
                 state["next_read"] = now + timedelta(
                     minutes=self._emergency_read_minutes()
                 )
         if state["phase"] == "recovering":
             try_workshop_tasks(self.op_data, self.tasks)
+            self.run_order_solver()
         if not any(task.meta_data == CHECK_META for task in self.tasks):
             self.tasks.append(
                 SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
@@ -483,6 +556,10 @@ class EmergencyRecoveryMixin:
         return max(5, min(30, min(waits, default=15)))
 
     def _emergency_ready(self):
+        if self.emergency_state.get("staffing_plan") or any(
+            getattr(task, "emergency_staffing", False) for task in self.tasks
+        ):
+            return False
         if any(
             task.plan
             and (
@@ -504,7 +581,7 @@ class EmergencyRecoveryMixin:
         )
 
     def _emergency_restore(self):
-        """重新求值副表，交接成功后清除批次；重试不重新派发 MAA。"""
+        """重新求值副表，交接成功后清除批次；失败按实际驻员继续交接。"""
         state = self.emergency_state
         state["phase"] = "returning"
         self._emergency_handoff = True
@@ -577,7 +654,7 @@ class EmergencyRecoveryMixin:
             self.run_order_solver()
             self.plan_metadata()
             self._emergency_save()
-            logger.info("主班实际心情满足目标且原生周转可行，MAA 协助救急结束")
+            logger.info("主班实际心情满足目标且原生周转可行，自动救急结束")
             return True
         finally:
             self._emergency_handoff = False
