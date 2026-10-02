@@ -14,13 +14,15 @@ from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_support as support
 
 
+@pytest.mark.parametrize("early", [False, True])
 @pytest.mark.parametrize(
     "names,expected_alerts", [(("艾丽妮", "逻各斯"), 1), (("艾丽妮",), 1), ((), 0)]
 )
 def test_swap_insufficient_training_retains_current_and_alerts_only_if_reducers_exist(
-    names, expected_alerts
+    names, expected_alerts, early
 ):
     plan, panel, solver, options = swap_case(names)
+    solver.task = SimpleNamespace(advance_support_swap=early)
     panel.countdown = datetime.now() + timedelta(hours=1)
     with (
         patch.object(swap, "candidates", return_value=(options, 0)),
@@ -101,3 +103,32 @@ def test_placing_support_allows_scheduled_trainee_but_not_scheduled_assistant():
         with pytest.raises(support.SupportPlanError, match="不能作为专精协助者"):
             swap.place_support(solver, plan, 1, "教官")
     solver.choose_train.assert_not_called()
+
+
+@pytest.mark.parametrize("early", [False, True])
+def test_early_handoff_executes_without_requeueing_ideal_time(early):
+    plan, panel, solver, options = swap_case()
+    panel.countdown += timedelta(hours=2)
+    solver.task = SimpleNamespace(advance_support_swap=early)
+    with (
+        patch.object(swap, "candidates", return_value=(options, 0)),
+        patch.object(swap, "schedule_context", return_value=({}, 0)),
+        patch.object(swap, "confirm_training_panel", return_value=panel),
+        patch.object(swap, "save_runtime"),
+        patch.object(swap, "place_support", return_value=panel) as place,
+        patch.object(swap, "finish_support_swap") as finish,
+        patch.object(swap, "enqueue_support_swap") as enqueue,
+        patch(
+            "arknights_mower.solvers.mastery_reader._plan_matches_room",
+            return_value=True,
+        ),
+    ):
+        swap.perform_swap(solver, plan, panel, "快教官")
+    if early:
+        place.assert_called_once_with(solver, plan, 2, "艾丽妮")
+        finish.assert_called_once_with(solver, plan, 2, True)
+        enqueue.assert_not_called()
+    else:
+        place.assert_not_called()
+        finish.assert_not_called()
+        enqueue.assert_called_once()

@@ -2661,7 +2661,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             adj_0_task, adj_task = adj_tasks
         except TypeError:
             return None
-        # A mastery handoff is a fixed deadline, never a drone target.
+        # Only trade order runs can be Drone Acceleration targets.
         run_orders = [
             t for t in adj_tasks if t.type == TaskTypes.RUN_ORDER and t.meta_data
         ]
