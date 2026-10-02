@@ -1,6 +1,6 @@
 ---
 title: Rescue Capacity and Standby
-status: proposed
+status: implemented
 category: simplification
 date: 2026-10-03
 ---
@@ -15,9 +15,9 @@ A primary with a measured recovery target leaves the dormitory into reserved sta
 
 ## Simplification Evidence
 
-The replaced `_emergency_return_groups` has one production caller in the recovery tick. It couples group-wide measured readiness, early working return, native projection and whole-facility temporary rescoring. Individual target release reuses dormitory arrangement and stores `ready_members`; final handoff remains the single primary-return boundary. Existing temporary staffing rescoring remains available for rejected working candidates rather than running after each completed recovery.
+Removing the single-caller `_emergency_return_groups` separates individual measured readiness from final working return, native projection and temporary staffing rescoring. Individual target release reuses dormitory arrangement and stores `ready_members`; final handoff remains the single primary-return boundary. Existing temporary staffing rescoring remains available for rejected working candidates rather than running after each completed recovery.
 
-The shared `emergency_dorm_plan` currently allocates explicit members with complete-group bed admission. Its individual admission path retains shared candidates, reservations and recovery priorities while removing all-bed rollback. The normal shift planner retains complete group beds; the exception applies only during intelligent rescue. Manager capacity uses an episode-local layout, preserving the configured layout for final restoration. No unpublished-state compatibility, new setting, personal zero-mood exemption or independent collection timer is introduced. The [base scheduling contract](../../../../docs/subsystems/base-scheduler.md) owns the current interface guarantees.
+The shared `emergency_dorm_plan` allocates explicit individual recovery needs with shared candidates, reservations and priorities. It has no complete-group bed admission or all-bed rollback. The normal shift planner retains complete group beds; the exception applies only during intelligent rescue. Manager capacity uses an episode-local layout, preserving the configured layout for final restoration. No unpublished-state compatibility, new setting, personal zero-mood exemption or independent collection timer is introduced. The [base scheduling contract](../../../../docs/subsystems/base-scheduler.md) owns the current interface guarantees.
 
 ## Recovery Capacity
 
@@ -37,6 +37,6 @@ Offline tests cover individual admission for a group exceeding bed capacity, wor
 
 ## Review
 
-Standards Findings: pending implementation verification and independent review. The glossary retains its approved wording until the new exact bilingual replacement receives explicit user approval.
+Standards Findings: the first independent snapshot review identifies stale departure reservations after restart and continued room traversal after cancellation. Both fixes retain measured target responsibility and stop cancelled execution; fresh independent re-review verifies the repaired snapshot. The glossary retains its approved wording until the new exact bilingual replacement receives explicit user approval.
 
 Spec Findings: pending offline tests and a fresh independent review session. No live device validation is performed.

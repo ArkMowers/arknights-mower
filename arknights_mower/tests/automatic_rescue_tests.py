@@ -920,7 +920,7 @@ def test_rejected_staffing_candidate_cancels_only_failed_room_and_requests_repai
     solver._emergency_read_rooms = MagicMock()
     solver._emergency_save = MagicMock()
     monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
-    assert solver.agent_arrange_room({}, "room_1_1", plan) == {}
+    assert solver.agent_arrange_room({}, "room_1_1", plan) is False
     assert state["staffing_plan"] == {"room_1_2": [COVERS[1]]}
     assert plan == {"room_1_2": [COVERS[1]]}
     assert state["next_read"] == NOW

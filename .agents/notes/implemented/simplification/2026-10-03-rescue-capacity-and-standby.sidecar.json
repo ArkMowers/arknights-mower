@@ -1,6 +1,6 @@
 {
   "title": "Rescue Capacity and Standby",
-  "status": "proposed",
+  "status": "implemented",
   "category": "simplification",
   "date": "2026-10-03",
   "authors": [
@@ -23,6 +23,7 @@
     "arknights_mower/tests/emergency_group_staffing_tests.py",
     "arknights_mower/tests/emergency_group_reservation_tests.py",
     "arknights_mower/tests/emergency_staffing_replan_tests.py",
-    "arknights_mower/tests/emergency_manager_capacity_tests.py"
+    "arknights_mower/tests/emergency_manager_capacity_tests.py",
+    "arknights_mower/tests/emergency_release_failure_tests.py"
   ]
 }

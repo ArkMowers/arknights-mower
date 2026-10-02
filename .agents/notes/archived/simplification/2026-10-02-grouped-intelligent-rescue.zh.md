@@ -1,11 +1,13 @@
 ---
 title: Grouped Intelligent Rescue
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
 
 # 智能救急整组周转
+
+由[救急床位容量与待命](../../implemented/simplification/2026-10-03-rescue-capacity-and-standby.zh.md)取代。个人容量分床、实测待命及最终统一回班替代本文的整组入宿与提前回班规则。
 
 ## 契约
 

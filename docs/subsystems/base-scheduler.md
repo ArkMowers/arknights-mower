@@ -62,6 +62,9 @@ flowchart TD
 - Serves as the primary operational unit for operator assignment, production monitoring, and capacity validation.
 
 ### 2.4 Dormitory Recovery
+
+The [Rescue Capacity and Standby decision](../../.agents/notes/implemented/simplification/2026-10-03-rescue-capacity-and-standby.md) defines individual rescue bed allocation, measured standby and episode-local manager capacity.
+
 - Uses one policy for every configuration. Bed priority is high, normal, low, priority replacement, standby, ordinary replacement, then other idle operators; work shift order uses mood above each operator's lower limit. Equal bed priorities compare missing mood points to the recovery target, not percentages.
 - Existing ordinary beds remain stable. Higher-priority admissions can reassign single-target recovery. Only marked managers in slots 1–2 provide single-target recovery; moving the target or a provider invalidates the recorded assignment.
 - Establishes recovery with the target already at its final slot. Earlier non-manager slots retain full residents or use the highest-mood eligible idle operators; actual readback verifies the target before the final roster is restored without moving it.

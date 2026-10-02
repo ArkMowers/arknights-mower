@@ -7941,7 +7941,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         plan.pop(room, None)
                     self.emergency_state["next_read"] = datetime.now()
                     self._emergency_save()
-                    return new_plan
+                    return False
                 record_selection_retry()
                 if selection_attempted and (
                     isinstance(e, AgentSelectionNotReady)
@@ -8174,6 +8174,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 return False
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
+            if new_plan is False:
+                self._finish_idle_dorm_shift()
+                return False
         self._finish_idle_dorm_shift()
         if (
             len(new_plan) == 1

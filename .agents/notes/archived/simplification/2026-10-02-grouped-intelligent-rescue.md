@@ -1,11 +1,13 @@
 ---
 title: Grouped Intelligent Rescue
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
 
 # Grouped Intelligent Rescue
+
+Superseded by [Rescue Capacity and Standby](../../implemented/simplification/2026-10-03-rescue-capacity-and-standby.md). Individual capacity allocation, measured standby and final unified return replace this note's complete-group dormitory admission and early return.
 
 ## Contract
 

@@ -37,7 +37,7 @@ def reject_room(solver, task, room, monkeypatch):
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms = MagicMock()
     monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
-    assert solver.agent_arrange_room({}, room, task.plan) == {}
+    assert solver.agent_arrange_room({}, room, task.plan) is False
     assert not task.plan
     solver.tasks.remove(task)
     solver.task = None

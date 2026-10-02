@@ -1075,14 +1075,21 @@ class EmergencyRecoveryMixin:
                 plan.setdefault(
                     op.current_room, ["Current"] * len(data.plan[op.current_room])
                 )[op.current_index] = ""
-        # 已去往其他工作岗位者仍由 targets 承担恢复责任，旧清退不再碰新住客。
+        # 已离宿但实测失效者由 targets 重新入宿，旧清退只保留实际住客。
         members = {
             name
             for name in members
-            if name in data.operators and not data.operators[name].is_working()
+            if name in data.operators and data.operators[name].is_resting()
         }
-        changed = ready != set(state.get("ready_members", ()))
+        changed = ready != set(state.get("ready_members", ())) or members != set(
+            state.get("release_members", ())
+        )
         state["ready_members"] = sorted(ready)
+        for task in self.tasks:
+            if task.meta_data == CHECK_META:
+                task.emergency_staffing_members = sorted(
+                    ready | members | set(state.get("staffing_members", ()))
+                )
         if not members:
             state.pop("release_plan", None)
             state.pop("release_members", None)
@@ -1133,7 +1140,16 @@ class EmergencyRecoveryMixin:
                 ready.add(name)
                 op.depletion_rate = 0
         state["ready_members"] = sorted(ready)
-        remaining = members - ready
+        remaining = {
+            name
+            for name in members - ready
+            if self.op_data.operators[name].is_resting()
+        }
+        for task in self.tasks:
+            if task.meta_data == CHECK_META:
+                task.emergency_staffing_members = sorted(
+                    ready | remaining | set(state.get("staffing_members", ()))
+                )
         if not remaining:
             state.pop("release_plan", None)
             state.pop("release_members", None)
