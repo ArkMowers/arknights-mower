@@ -126,16 +126,14 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     if fixed:
         ordinary_ids = {id(task) for task in ordinary}
         tasks[:] = [task for task in tasks if id(task) in fixed | ordinary_ids]
-    swap_conflict = protect_priority_tasks(
-        tasks, run_order_delay, execution_time, time_now
-    )
-    if swap_conflict:
-        return swap_conflict
+    protect_priority_tasks(tasks, run_order_delay, execution_time, time_now)
     if enabled:
-        # Near a handoff, stop optional drone adjustment loops as well as dispatch.
+        # 临近换人暂停可选无人机调时，关键任务保护决定执行顺序。
         if any(
             t.type == TaskTypes.SWAP_SUPPORT
-            and t.time <= time_now + _support_swap_gap(run_order_delay)
+            and t.time
+            <= time_now
+            + timedelta(minutes=_ordinary_task_minutes(t, execution_time) + 1)
             for t in tasks
         ):
             return None
@@ -143,18 +141,10 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     return conflict
 
 
-def _support_swap_gap(run_order_delay):
-    # The order countdown is offset by the configured entry delay, even when a
-    # caller uses scheduling()'s default conflict interval.
-    return timedelta(
-        minutes=max(10, run_order_delay * 2, config.conf.run_order_delay * 2)
-    )
-
-
 def protect_priority_tasks(
     tasks, run_order_delay=5, execution_time=0.75, time_now=None
 ):
-    """保留专精与跑单的冲突处理，并统一保护二者不被宿舍操作挤占。"""
+    """按操作耗时保护关键任务，跑单冲突时提前专精换人。"""
     now = time_now or datetime.now()
     for task in tasks:
         simplify_dorm_fill(task, tasks, now)
@@ -166,11 +156,8 @@ def protect_priority_tasks(
         ),
         key=lambda t: t.time,
     )
-    gap = _support_swap_gap(run_order_delay)
-    conflict = None
     for swap in swaps:
-        order_conflict = _avoid_swap_with_orders(tasks, swap, (now, gap))
-        conflict = conflict or order_conflict
+        _advance_swap_before_orders(tasks, swap, now, run_order_delay, execution_time)
         _defer_work_before_swap(tasks, swap, (now, execution_time))
     cursor = now
     for task in sorted(tasks, key=lambda t: t.time):
@@ -190,13 +177,23 @@ def protect_priority_tasks(
             cursor = start + timedelta(minutes=minutes)
     _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now)
     _sort_dispatch_tasks(tasks, now)
-    return conflict
 
 
 def _sort_dispatch_tasks(tasks, now):
     # 尚未开始的清退可以提前；关键任务已经到点时，不再被清退抢占。
     due_priority = {id(task) for task in _priority_tasks(tasks) if task.time <= now}
-    tasks.sort(key=lambda task: (id(task) not in due_priority, task.time))
+    tasks.sort(
+        key=lambda task: (
+            id(task) not in due_priority,
+            not (
+                config.conf.enable_mastery
+                and task.type == TaskTypes.SWAP_SUPPORT
+                and getattr(task, "advance_support_swap", False)
+                and task.time <= now
+            ),
+            task.time,
+        )
+    )
 
 
 def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
@@ -251,7 +248,7 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
                     + 2 * execution_time
                 )
             elif task.type == TaskTypes.SWAP_SUPPORT:
-                minutes = max(3, _ordinary_task_minutes(task, execution_time))
+                minutes = _ordinary_task_minutes(task, execution_time)
             elif _is_dorm_only_task(task):
                 minutes = sum(estimate_dorm_minutes(room) for room in task.plan)
             else:
@@ -268,27 +265,34 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
         next_start = start
 
 
-def _avoid_swap_with_orders(tasks, swap, timing):
-    now, gap = timing
-    conflict = None
+def _advance_swap_before_orders(tasks, swap, now, run_order_delay, execution_time):
+    entry_delay = timedelta(minutes=max(run_order_delay, config.conf.run_order_delay))
+    order_operations = timedelta(minutes=2 * execution_time)
+    swap_duration = timedelta(minutes=_ordinary_task_minutes(swap, execution_time))
     for task in tasks:
         if task.type != TaskTypes.RUN_ORDER or not task.meta_data:
             continue
-        if max(now, task.time) + gap <= swap.time or task.time > swap.time + gap:
+        start = max(now, task.time)
+        # 已流逝的提前量不再占用后续时间，过期任务仍预留进驻与归位。
+        finish = max(start, task.time + entry_delay) + order_operations
+        if finish <= swap.time or start >= max(now, swap.time) + swap_duration:
             continue
-        if now + gap < swap.time:
-            conflict = conflict or (task, swap)
-        else:
-            task.time = max(now, swap.time) + gap + timedelta(seconds=1)
-            logger.warning("跑单来不及提前避开专精换人，先执行换人后再处理跑单")
-    return conflict
+        if swap.time > now:
+            original = swap.time
+            swap.time = max(now, task.time - swap_duration - timedelta(seconds=1))
+            logger.info(
+                f"专精换人与跑单冲突，换人从 {original:%H:%M:%S} "
+                f"提前至 {swap.time:%H:%M:%S}，随后执行跑单"
+            )
+        # 到点或已过期的换人同样先执行，跑单时间保持原值。
+        swap.advance_support_swap = True
 
 
 def _ordinary_task_minutes(task, execution_time):
     if task.type == TaskTypes.FURNITURE:
         return (FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS) / 60
     minutes = max(1, len(task.plan) * execution_time)
-    if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
+    if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY, TaskTypes.SWAP_SUPPORT):
         minutes = max(minutes, 3)
     # A downshift can insert an extra dorm-reordering action before itself.
     return minutes * 2 if task.type == TaskTypes.SHIFT_OFF else minutes
@@ -332,7 +336,7 @@ def simplify_dorm_fill(task, tasks, time_now=None):
     ):
         return
     now = time_now or datetime.now()
-    window_end = now + _support_swap_gap(5)
+    window_end = now + timedelta(minutes=max(10, config.conf.run_order_delay * 2))
     if not any(
         t.time <= window_end and (task.time <= now or task.time <= t.time)
         for t in _priority_tasks(tasks)

@@ -1,4 +1,4 @@
-"""Fixed mastery handoffs share run-order collision handling without being accelerated."""
+"""Shared clock and offline solver fixtures for mastery order scheduling."""
 
 import sys
 from datetime import datetime, timedelta
@@ -19,6 +19,7 @@ def clock():
     now = datetime(2026, 9, 8, 18, 20)
     with (
         patch.object(scheduler.config.conf, "enable_mastery", True),
+        patch.object(scheduler.config.conf, "run_order_delay", 5),
         patch.object(scheduler.config.conf.run_order_grandet_mode, "enable", False),
         patch.object(
             scheduler.NewsChecker, "get_update_time", return_value=(None, None)
@@ -47,6 +48,7 @@ def pair():
 def make_solver(tasks):
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.tasks = tasks
+    solver.drone_room = "room_1_1"
     solver.recog = SimpleNamespace(gray=None, w=1920, h=1080)
     solver.digit_reader = MagicMock()
     solver.tap = MagicMock()
