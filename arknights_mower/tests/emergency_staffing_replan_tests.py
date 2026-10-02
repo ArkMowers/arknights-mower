@@ -77,7 +77,7 @@ def test_rejection_stops_remaining_task_and_marks_persisted_group_for_rescore(
     assert staffing.solver.task is None
     assert staffing.state["staffing_rescore"]
     assert staffing.state["next_read"] == NOW
-    assert set(staffing.state["staffing_members"]) == {"塑心", *PRIMARY[:2]}
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
     assert not any(
         getattr(task, "emergency_staffing", False) for task in staffing.solver.tasks
     )
@@ -147,7 +147,7 @@ def test_replan_shortage_retains_group_state_without_replaying_bad_candidate(
 
     assert staffing.state["staffing_plan"] == original
     assert staffing.state["staffing_rescore"]
-    assert set(staffing.state["staffing_members"]) == {"塑心", *PRIMARY[:2]}
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
     assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
     assert solver._emergency_scan_workers.call_count == 2
 
@@ -163,7 +163,7 @@ def test_tick_reconciles_partial_progress_and_repairs_instead_of_requeueing(
     solver.plan_metadata = MagicMock()
     solver._emergency_collect = MagicMock()
     solver._emergency_update_targets = MagicMock()
-    solver._emergency_return_groups = MagicMock()
+    solver._emergency_release_ready = MagicMock()
     solver._emergency_ready = MagicMock(return_value=False)
     solver._emergency_plan_beds = MagicMock()
     solver._emergency_read_minutes = MagicMock(return_value=5)
@@ -203,7 +203,8 @@ def test_check_task_reserves_pending_members_before_workshop_and_clears_complete
     state["phase"] = "recovering"
     state["next_read"] = NOW + timedelta(minutes=5)
     state["staffing_members"] = ["塑心", *PRIMARY[:2]]
-    state["group_return_members"] = list(PRIMARY[2:])
+    state["release_members"] = list(PRIMARY[2:3])
+    state["ready_members"] = list(PRIMARY[3:])
     solver.plan_metadata = MagicMock()
     solver.tasks = (
         [SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)] if existing else []
@@ -222,46 +223,56 @@ def test_check_task_reserves_pending_members_before_workshop_and_clears_complete
         task for task in solver.tasks if task.meta_data == emergency.CHECK_META
     )
     state.pop("staffing_members")
-    state.pop("group_return_members")
+    state.pop("release_members")
+    state.pop("ready_members")
     solver._emergency_tick()
     assert observed[-1] == set()
     assert check.emergency_staffing_members == []
 
 
-def test_group_return_failure_preserves_return_obligation_without_staffing_rescore(
-    staffing, monkeypatch
+def test_release_failure_preserves_personal_obligation_without_staffing_rescore(
+    recovery_fixture,  # noqa: F811
+    monkeypatch,
 ):
-    solver = staffing.solver
-    state = staffing.state
-    room = solver.op_data.operators[PRIMARY[0]].room
-    solver.op_data = solver.op_data.project_arrangements(
-        [{"dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"]}]
-    )
-    plan = {room: [PRIMARY[0]]}
-    state["group_return_plan"] = copy.deepcopy(plan)
-    state["group_return_members"] = [PRIMARY[0]]
+    solver = recovery_fixture.solver
+    state = recovery_fixture.state
+    room = "dormitory_1"
+    plan = {room: ["Current", "Current", "", "Current", "Current"]}
+    state["release_plan"] = copy.deepcopy(plan)
+    state["release_members"] = [PRIMARY[0]]
     task = SchedulerTask(task_plan=copy.deepcopy(plan))
     task.emergency_staffing = True
-    task.emergency_group_return = True
+    task.emergency_recovery_release = True
     task.emergency_staffing_members = [PRIMARY[0]]
     solver.tasks.append(task)
+    solver.refresh_current_room = MagicMock()
+    solver.prepare_dorm_selection = MagicMock(return_value=None)
 
     reject_room(solver, task, room, monkeypatch)
 
-    assert state["group_return_plan"] == plan
-    assert state["group_return_members"] == [PRIMARY[0]]
+    assert state["release_plan"] == plan
+    assert state["release_members"] == [PRIMARY[0]]
     assert not state.get("staffing_rescore")
     assert not state.get("staffing_plan")
+    assert solver.op_data.operators[PRIMARY[0]].is_resting()
 
 
-def test_direct_group_return_task_carries_complete_members(recovery_fixture):  # noqa: F811
+def test_direct_release_task_reserves_only_ready_individuals(recovery_fixture):  # noqa: F811
     solver = recovery_fixture.solver
     observed = []
 
     def arrange(plan, **kwargs):
-        observed.append(list(solver.task.emergency_staffing_members))
+        observed.append(
+            (
+                list(solver.task.emergency_staffing_members),
+                solver.task.emergency_recovery_release,
+            )
+        )
+        assert all(room.startswith("dorm") for room in plan)
         recovery_fixture.place(plan, **kwargs)
 
     solver.agent_arrange = arrange
-    assert solver._emergency_return_groups()
-    assert observed and set(observed[0]) == {"塑心", *PRIMARY[:2]}
+    assert solver._emergency_release_ready()
+    assert len(observed) == 1
+    assert set(observed[0][0]) == set(PRIMARY[:2])
+    assert observed[0][1]

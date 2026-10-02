@@ -307,6 +307,7 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
         self.free_blacklist = []
         self.global_plan = plan
@@ -357,6 +358,7 @@ class Operators:
         return bool(self.maintenance_primary_slots)
 
     def swap_plan(self, condition, refresh=False):
+        self.emergency_dorm_agents.clear()
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         self.products = copy.deepcopy(self.global_plan["default_plan"].products)
         self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
@@ -658,7 +660,7 @@ class Operators:
         )
 
     def is_planned_operator(self, name):
-        return any(
+        return name in self.emergency_dorm_agents or any(
             name == slot.agent or name in slot.replacement
             for slots in self.plan.values()
             for slot in slots
@@ -1789,7 +1791,13 @@ class Operators:
             resting_tier(self, requester),
             resting_tier(self, name),
         )
-        return requester_tier < resident_tier
+        return requester_tier < resident_tier or (
+            name in self.emergency_dorm_agents
+            and (op.index < 2 or requester_tier == resident_tier)
+            and has_resting_mood(op)
+            and not op.mood_is_prediction
+            and op.mood >= op.upper_limit
+        )
 
     def _find_dorm_slot(self, name, used, *, active_groups=None):
         if self.rest_mood_complete(name):

@@ -1,7 +1,8 @@
-"""智能救急以完整分组的实测目标授权回到原工作岗位。"""
+"""智能救急按个人实测目标释放床位，退出时统一恢复工作岗位。"""
 
 import copy
 import pickle
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -32,7 +33,9 @@ def group_return(legacy_solver, monkeypatch):  # noqa: F811
     monkeypatch.setattr(record, "save_agent_action", MagicMock())
     monkeypatch.setattr(emergency, "datetime", Clock)
     monkeypatch.setattr(emergency_recovery, "datetime", Clock)
-    monkeypatch.setattr(operation_timing, "_dorm_durations", {})
+    monkeypatch.setattr(
+        operation_timing, "_dorm_durations", defaultdict(lambda: deque(maxlen=8))
+    )
     monkeypatch.setattr(emergency, "emergency_mood_history", lambda name: [])
     monkeypatch.setattr(emergency, "try_workshop_tasks", MagicMock())
     data = Operators(
@@ -119,10 +122,10 @@ def group_return(legacy_solver, monkeypatch):  # noqa: F811
     solver.agent_arrange = MagicMock(side_effect=place)
     solver._emergency_save = MagicMock(side_effect=save)
     solver.backup_plan_solver = MagicMock(
-        side_effect=AssertionError("智能救急分组回岗不能切换副表")
+        side_effect=AssertionError("智能救急恢复中不能切换副表")
     )
     solver.agent_get_mood = MagicMock(
-        side_effect=AssertionError("智能救急分组回岗不能触发普通纠错")
+        side_effect=AssertionError("智能救急离宿待命不能触发普通纠错")
     )
     solver.run_order_solver = MagicMock()
     return SimpleNamespace(
@@ -130,37 +133,37 @@ def group_return(legacy_solver, monkeypatch):  # noqa: F811
     )
 
 
-def assert_original_group_positions(solver, names=PRIMARY[:2]):
+def assert_temporary_workers_unchanged(solver):
+    for index, name in enumerate(PRIMARY):
+        room = solver.op_data.operators[name].room
+        assert solver.op_data.get_current_room(room, True) == [COVERS[index]]
+
+
+def assert_waiting(solver, names):
     for name in names:
         op = solver.op_data.operators[name]
-        assert (op.current_room, op.current_index) == (op.room, op.index)
+        assert (op.current_room, op.current_index) == ("", -1)
+        assert not op.is_working()
+        assert not op.is_resting()
 
 
-def assert_other_group_still_recovering(solver):
-    for index, name in enumerate(PRIMARY[2:], 2):
-        op = solver.op_data.operators[name]
-        assert op.is_resting()
-        assert solver.op_data.get_current_room(op.room, True) == [COVERS[index]]
-
-
-def test_measured_group_returns_together_while_other_group_keeps_temporary_workers(
+def test_individual_measured_target_releases_without_waiting_for_bound_partner(
     group_return,
 ):
     episode, solver = group_return, group_return.solver
+    second = solver.op_data.operators[PRIMARY[1]]
+    second.mood = episode.state["targets"][second.name] - 0.1
 
-    assert solver._emergency_return_groups()
+    assert solver._emergency_release_ready()
 
-    assert_original_group_positions(solver)
-    assert_other_group_still_recovering(solver)
-    assert solver.emergency_state is episode.state
-    assert episode.state["phase"] == "recovering"
-    assert solver.op_data.get_current_room("dormitory_1", True)[:2] == ["塑心", "冰酿"]
+    assert_waiting(solver, PRIMARY[:1])
+    assert solver.op_data.operators[PRIMARY[1]].is_resting()
+    assert set(episode.state["ready_members"]) == set(PRIMARY[:1])
+    assert set(episode.state["targets"]) == set(PRIMARY)
+    assert_temporary_workers_unchanged(solver)
     assert len(episode.plans) == 1
-    destinations = {
-        name for row in episode.plans[0].values() for name in row if name in PRIMARY
-    }
-    assert destinations == set(PRIMARY[:2])
-    assert episode.saves
+    assert all(room.startswith("dorm") for room in episode.plans[0])
+    assert not episode.state.get("staffing_rescore")
     solver.backup_plan_solver.assert_not_called()
     solver.agent_get_mood.assert_not_called()
     solver.enter_room.assert_not_called()
@@ -169,7 +172,7 @@ def test_measured_group_returns_together_while_other_group_keeps_temporary_worke
 @pytest.mark.parametrize(
     "unready", ["below_target", "prediction", "missing_measurement"]
 )
-def test_one_member_without_measured_individual_target_keeps_whole_group_resting(
+def test_unconfirmed_individual_stays_resting_while_ready_partner_leaves(
     group_return, unready
 ):
     solver = group_return.solver
@@ -181,58 +184,63 @@ def test_one_member_without_measured_individual_target_keeps_whole_group_resting
     else:
         op.time_stamp = None
 
-    assert not solver._emergency_return_groups()
+    assert solver._emergency_release_ready()
 
-    assert all(solver.op_data.operators[name].is_resting() for name in PRIMARY)
-    solver.agent_arrange.assert_not_called()
-
-
-def test_measured_ready_group_requires_actual_native_rotation(group_return):
-    solver = group_return.solver
-    for name in COVERS[:2]:
-        solver.op_data.operators[name].mood = 0
-
-    assert not solver._emergency_return_groups()
-
-    solver.agent_arrange.assert_not_called()
-    assert all(solver.op_data.operators[name].is_resting() for name in PRIMARY[:2])
+    assert_waiting(solver, PRIMARY[:1])
+    assert solver.op_data.operators[PRIMARY[1]].is_resting()
+    assert PRIMARY[1] not in solver.emergency_state["ready_members"]
+    assert_temporary_workers_unchanged(solver)
 
 
-def test_return_revalidates_already_working_group_before_returning_another(
+def test_ready_residents_leave_in_one_dorm_arrangement_without_return_or_rescore(
+    group_return,
+):
+    episode, solver = group_return, group_return.solver
+
+    assert solver._emergency_release_ready()
+
+    assert_waiting(solver, PRIMARY[:2])
+    assert set(episode.state["ready_members"]) == set(PRIMARY[:2])
+    assert len(episode.plans) == 1
+    assert set(episode.plans[0]) == {"dormitory_1"}
+    assert solver.op_data.get_current_room("dormitory_1", True)[2:4] == ["", ""]
+    assert solver.emergency_state is episode.state
+    assert episode.state["phase"] == "recovering"
+    assert not episode.state.get("staffing_rescore")
+    assert_temporary_workers_unchanged(solver)
+    assert all(solver.op_data.operators[name].is_resting() for name in PRIMARY[2:])
+    solver.run_order_solver.assert_not_called()
+
+
+def test_leaving_dorm_does_not_require_native_rotation_of_working_replacements(
     group_return,
 ):
     solver = group_return.solver
-    assert solver._emergency_return_groups()
-    solver.agent_arrange.reset_mock()
-    solver.emergency_state.pop("staffing_rescore", None)
-    for name in PRIMARY[2:]:
-        op = solver.op_data.operators[name]
-        solver.op_data.update_detail(name, 20, op.current_room, op.current_index, True)
-    for name in COVERS[:2]:
+    for name in COVERS:
         solver.op_data.operators[name].mood = 0
 
-    assert not solver._emergency_return_groups()
+    assert solver._emergency_release_ready()
 
-    solver.agent_arrange.assert_not_called()
-    assert_original_group_positions(solver)
-    assert_other_group_still_recovering(solver)
+    assert_waiting(solver, PRIMARY[:2])
+    assert_temporary_workers_unchanged(solver)
+    assert solver._emergency_frozen()
 
 
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA])
-def test_active_specialized_compensation_prevents_group_return(group_return, kind):
+def test_active_specialized_compensation_defers_resident_release(group_return, kind):
     solver = group_return.solver
     room = solver.op_data.operators[PRIMARY[0]].room
     task = SchedulerTask(time=NOW, task_type=kind, task_plan={room: [COVERS[0]]})
     task.emergency_original_roster = {room: [COVERS[0]]}
     solver.tasks.append(task)
 
-    assert not solver._emergency_return_groups()
+    assert not solver._emergency_release_ready()
 
     assert task in solver.tasks
     solver.agent_arrange.assert_not_called()
 
 
-def test_strict_release_window_prevents_group_arrangement(group_return):
+def test_strict_release_window_defers_ready_resident_arrangement(group_return):
     solver = group_return.solver
     release = SchedulerTask(
         time=NOW + timedelta(seconds=30),
@@ -242,103 +250,137 @@ def test_strict_release_window_prevents_group_arrangement(group_return):
     release.strict_mood_limit = True
     solver.tasks.append(release)
 
-    assert not solver._emergency_return_groups()
+    assert not solver._emergency_release_ready()
 
     solver.agent_arrange.assert_not_called()
     assert release in solver.tasks
 
 
-def test_group_return_does_not_recall_personal_limit_released_dorm_manager(
+def test_partial_release_retains_unfinished_obligations_after_state_reload(
     group_return,
 ):
-    solver = group_return.solver
-    manager = solver.op_data.operators["塑心"]
-    solver.op_data.config.operator_mood_limits[manager.name] = {
-        "upper_limit": 12,
-        "lower_limit": 0,
-    }
-    solver.op_data.set_mood_limit(manager.name, 12, 0)
-    solver.op_data.update_detail(manager.name, 12, "", -1, True)
-    manager.rest_mood_release_limit = 12
-    assert solver.op_data.rest_mood_complete(manager.name)
-
-    assert solver._emergency_return_groups()
-
-    assert_original_group_positions(solver)
-    assert solver.op_data.operators["塑心"].current_room == ""
-    assert all(
-        "塑心" not in row for plan in group_return.plans for row in plan.values()
-    )
-
-
-def test_partial_return_failure_remains_reserved_and_can_resume_after_state_reload(
-    group_return,
-):
-    solver = group_return.solver
-    state = group_return.state
-    first_room = solver.op_data.operators[PRIMARY[0]].room
+    episode, solver = group_return, group_return.solver
 
     def partial(plan, **kwargs):
         solver.op_data = solver.op_data.project_arrangements(
-            [{first_room: plan[first_room]}]
+            [{"dormitory_1": ["Current", "Current", "Free", "Current", "Current"]}]
         )
-        del plan[first_room]
         return False
 
     solver.agent_arrange.side_effect = partial
-    assert solver._emergency_return_groups()
-    assert solver.emergency_state is state
-    assert state["phase"] == "recovering"
-    assert_original_group_positions(solver, PRIMARY[:1])
+    assert solver._emergency_release_ready()
+    assert_waiting(solver, PRIMARY[:1])
     assert solver.op_data.operators[PRIMARY[1]].is_resting()
-    assert group_return.saves
-    solver.emergency_state = pickle.loads(pickle.dumps(state))
+    assert set(episode.state["release_members"]) == set(PRIMARY[1:2])
+    assert set(episode.state["ready_members"]) == set(PRIMARY[:1])
+    assert set(episode.state["release_members"]) | set(
+        episode.state["ready_members"]
+    ) == set(PRIMARY[:2])
+    assert episode.saves[0]["state"]["release_plan"]
+    assert not episode.state.get("staffing_rescore")
+    solver.emergency_state = pickle.loads(pickle.dumps(episode.state))
     solver.op_data = pickle.loads(pickle.dumps(solver.op_data))
-    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
-    solver.agent_arrange.side_effect = group_return.place
+    solver.agent_arrange.side_effect = episode.place
 
-    assert solver._emergency_return_groups()
+    assert solver._emergency_release_ready()
 
-    assert_original_group_positions(solver)
-    assert_other_group_still_recovering(solver)
-    assert solver.emergency_state is not None
+    assert_waiting(solver, PRIMARY[:2])
+    assert set(solver.emergency_state["ready_members"]) == set(PRIMARY[:2])
+    assert "release_plan" not in solver.emergency_state
+    assert "release_members" not in solver.emergency_state
+    assert_temporary_workers_unchanged(solver)
     solver.backup_plan_solver.assert_not_called()
 
 
-def test_returning_same_group_twice_does_not_repeat_arrangement(group_return):
+def test_release_success_return_value_without_actual_departure_keeps_pending_plan(
+    group_return,
+):
     solver = group_return.solver
-    assert solver._emergency_return_groups()
+    solver.agent_arrange.side_effect = lambda plan, **kwargs: True
+
+    assert solver._emergency_release_ready()
+
+    assert solver.emergency_state["release_plan"]
+    assert set(solver.emergency_state["release_members"]) == set(PRIMARY[:2])
+    assert not set(solver.emergency_state.get("ready_members", ())).intersection(
+        PRIMARY[:2]
+    )
+    assert all(solver.op_data.operators[name].is_resting() for name in PRIMARY[:2])
+    assert not solver.emergency_state.get("staffing_rescore")
+    assert_temporary_workers_unchanged(solver)
+
+
+def test_release_actual_departure_confirms_even_when_arrangement_returns_false(
+    group_return,
+):
+    solver = group_return.solver
+
+    def observed_complete(plan, **kwargs):
+        group_return.place(plan, **kwargs)
+        return False
+
+    solver.agent_arrange.side_effect = observed_complete
+
+    assert solver._emergency_release_ready()
+
+    assert_waiting(solver, PRIMARY[:2])
+    assert set(solver.emergency_state["ready_members"]) == set(PRIMARY[:2])
+    assert not solver.emergency_state.get("release_plan")
+    assert_temporary_workers_unchanged(solver)
+
+
+def test_ready_state_reconciles_resting_actual_position_before_skipping_release(
+    group_return,
+):
+    solver = group_return.solver
+    solver.emergency_state["ready_members"] = list(PRIMARY[:2])
+    assert all(solver.op_data.operators[name].is_resting() for name in PRIMARY[:2])
+
+    assert solver._emergency_release_ready()
+
+    assert_waiting(solver, PRIMARY[:2])
+    assert_temporary_workers_unchanged(solver)
+
+
+def test_already_waiting_ready_residents_do_not_repeat_arrangement(group_return):
+    solver = group_return.solver
+    assert solver._emergency_release_ready()
     solver.agent_arrange.reset_mock()
 
-    assert not solver._emergency_return_groups()
+    assert not solver._emergency_release_ready()
 
     solver.agent_arrange.assert_not_called()
-    assert_original_group_positions(solver)
-    assert_other_group_still_recovering(solver)
+    assert_waiting(solver, PRIMARY[:2])
+    assert_temporary_workers_unchanged(solver)
 
 
-def test_partial_group_return_rechecks_pending_member_measured_target(group_return):
+def test_partial_release_rechecks_pending_individual_measurement(group_return):
     solver = group_return.solver
-    room = solver.op_data.operators[PRIMARY[0]].room
 
     def partial(plan, **kwargs):
-        solver.op_data = solver.op_data.project_arrangements([{room: plan[room]}])
+        solver.op_data = solver.op_data.project_arrangements(
+            [{"dormitory_1": ["Current", "Current", "Free", "Current", "Current"]}]
+        )
         return False
 
     solver.agent_arrange.side_effect = partial
-    assert solver._emergency_return_groups()
+    assert solver._emergency_release_ready()
     solver.agent_arrange.reset_mock()
-    op = solver.op_data.operators[PRIMARY[1]]
-    op.mood_is_prediction = True
+    solver.op_data.operators[PRIMARY[1]].mood_is_prediction = True
 
-    assert not solver._emergency_return_groups()
-    assert set(solver.emergency_state["group_return_members"]) == {*PRIMARY[:2], "塑心"}
+    assert not solver._emergency_release_ready()
+
+    assert set(solver.emergency_state["release_members"]) == set(PRIMARY[1:2])
+    assert set(solver.emergency_state["ready_members"]) == set(PRIMARY[:1])
     solver.agent_arrange.assert_not_called()
-    solver.backup_plan_solver.assert_not_called()
+    assert_temporary_workers_unchanged(solver)
 
 
-def test_group_return_removes_only_its_obsolete_dorm_filling(group_return):
+def test_release_cancels_only_completed_individuals_from_pending_dorm_filling(
+    group_return,
+):
     solver = group_return.solver
+    solver.op_data.operators[PRIMARY[1]].mood = 8
     fill = SchedulerTask(
         task_type=TaskTypes.FILL_DORM,
         task_plan={
@@ -349,56 +391,112 @@ def test_group_return_removes_only_its_obsolete_dorm_filling(group_return):
     fill.emergency_dorm = True
     solver.tasks.append(fill)
 
-    assert solver._emergency_return_groups()
+    assert solver._emergency_release_ready()
 
     assert fill in solver.tasks
-    assert "dormitory_1" not in fill.plan
+    assert fill.plan["dormitory_1"][2:4] == ["Current", PRIMARY[1]]
     assert fill.plan["dormitory_2"][2:4] == PRIMARY[2:]
     assert solver._emergency_frozen()
     solver.backup_plan_solver.assert_not_called()
 
 
-def test_returned_group_does_not_need_old_target_again_to_exit(group_return):
-    solver = group_return.solver
-    assert solver._emergency_return_groups()
-    for name in PRIMARY:
-        op = solver.op_data.operators[name]
-        solver.op_data.update_detail(name, 16, op.current_room, op.current_index, True)
-
-    assert solver._emergency_ready()
-    assert solver._emergency_frozen()
-
-
-def test_automatic_cover_allows_return_when_configured_cover_is_exhausted(group_return):
-    solver = group_return.solver
-    state = solver.emergency_state
-    for name, cover, auto in zip(PRIMARY[:2], COVERS[:2], ["阿米娅", "米格鲁"]):
-        from arknights_mower.utils.operators import Operator
-
-        solver.op_data.add(Operator(auto, ""))
-        solver.op_data.update_detail(auto, 24, "", -1, True)
-        solver.op_data.operators[cover].mood = 0
-        state.setdefault("automatic_replacements", {})[name] = auto
-
-    assert solver._emergency_return_groups()
-    assert_original_group_positions(solver)
-    assert_other_group_still_recovering(solver)
-
-
-def test_group_return_restores_bound_dorm_member_displaced_by_normal_group_shift(
+def test_ready_residents_do_not_reenter_dorm_or_temporary_work_before_exit(
     group_return,
 ):
     solver = group_return.solver
-    manager = solver.op_data.operators["塑心"]
-    solver.op_data.update_detail(manager.name, 24, "", -1, True)
+    assert solver._emergency_release_ready()
 
-    assert solver._emergency_return_groups()
-
-    assert_original_group_positions(solver)
-    manager = solver.op_data.operators["塑心"]
-    assert (manager.current_room, manager.current_index) == (
-        manager.room,
-        manager.index,
+    plan = emergency_recovery.emergency_dorm_plan(
+        solver.op_data, solver.emergency_state, solver.tasks
     )
-    assert_other_group_still_recovering(solver)
-    solver.backup_plan_solver.assert_not_called()
+    selected = {name for row in plan.values() for name in row}
+
+    assert not selected.intersection(PRIMARY[:2])
+    assert_waiting(solver, PRIMARY[:2])
+    assert_temporary_workers_unchanged(solver)
+
+
+def test_waiting_residents_remain_reserved_for_processing_and_ordinary_dorms(
+    group_return,
+):
+    from arknights_mower.utils.dorm_candidates import dorm_task_reservations
+
+    solver = group_return.solver
+    assert solver._emergency_release_ready()
+    solver.plan_metadata = MagicMock()
+
+    solver._emergency_tick()
+
+    reserved, _ = dorm_task_reservations(solver.op_data, solver.tasks)
+    assert set(PRIMARY[:2]).issubset(reserved)
+    assert solver._emergency_frozen()
+    assert_temporary_workers_unchanged(solver)
+
+
+def test_cached_ready_member_below_stored_target_cannot_authorize_final_exit(
+    group_return,
+):
+    solver = group_return.solver
+    assert solver._emergency_release_ready()
+    for name in PRIMARY[2:]:
+        op = solver.op_data.operators[name]
+        solver.op_data.update_detail(name, 24, op.current_room, op.current_index, True)
+    op = solver.op_data.operators[PRIMARY[0]]
+    solver.op_data.update_detail(op.name, 15.9, "", -1, True)
+
+    assert not solver._emergency_ready()
+    assert_temporary_workers_unchanged(solver)
+
+
+def test_final_exit_restores_all_working_primaries_together(group_return):
+    solver = group_return.solver
+    assert solver._emergency_release_ready()
+    for name in PRIMARY[2:]:
+        op = solver.op_data.operators[name]
+        solver.op_data.update_detail(name, 24, op.current_room, op.current_index, True)
+    assert solver._emergency_release_ready()
+    assert_waiting(solver, PRIMARY)
+    assert_temporary_workers_unchanged(solver)
+    assert solver._emergency_ready()
+    original = {solver.op_data.operators[name].room: [name] for name in PRIMARY}
+    original_rooms = set(original)
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.agent_get_mood = MagicMock(side_effect=[original, {}])
+    solver._emergency_handoff_feasible = MagicMock(return_value=True)
+    solver._emergency_read_rooms = MagicMock(return_value=True)
+
+    assert solver._emergency_restore()
+
+    assert solver.emergency_state is None
+    assert solver.backup_plan_solver.call_count == 1
+    for name in PRIMARY:
+        op = solver.op_data.operators[name]
+        assert (op.current_room, op.current_index) == (op.room, op.index)
+    assert set(group_return.plans[-1]) == original_rooms
+
+
+def test_insufficient_beds_admit_one_member_without_waiting_for_bound_group(
+    group_return,
+):
+    solver = group_return.solver
+    empty = {
+        "dormitory_1": ["Current", "Current", "Free", "Free", "Free"],
+        "dormitory_2": ["Current", "Current", "Free", "Free", "Free"],
+    }
+    solver.op_data = solver.op_data.project_arrangements([empty])
+    solver.op_data.dorm = solver.op_data.dorm[:1]
+    for name in PRIMARY[:2]:
+        solver.op_data.update_detail(name, 8, "", -1, True)
+    solver.emergency_state["targets"] = {
+        name: solver.emergency_state["targets"][name] for name in PRIMARY[:2]
+    }
+
+    plan = emergency_recovery.emergency_dorm_plan(
+        solver.op_data, solver.emergency_state, members=PRIMARY[:2]
+    )
+
+    admitted = {name for row in plan.values() for name in row}.intersection(PRIMARY)
+    assert len(admitted) == 1
+    projected = solver.op_data.project_arrangements([plan])
+    assert sum(projected.operators[name].is_resting() for name in PRIMARY[:2]) == 1
+    assert_temporary_workers_unchanged(solver)

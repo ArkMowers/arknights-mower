@@ -36,7 +36,7 @@ from arknights_mower.utils.emergency_staffing import (
 from arknights_mower.utils.exhaust_replacement import match_replacements
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
-from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Operator
+from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory, Operator
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.resting_correction import suppress_completed_dorm_returns
 from arknights_mower.utils.resting_priority import busy_resting_names, has_resting_mood
@@ -188,6 +188,8 @@ class EmergencyRecoveryMixin:
         self._emergency_startup_rooms = None
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
+            if self.emergency_state["phase"] != "returning":
+                self._open_emergency_beds()
             self.emergency_state["next_read"] = datetime.now()
             self.emergency_state["observed_at"] = datetime.now()
             self.emergency_state["temporary_roster"] = {
@@ -245,10 +247,16 @@ class EmergencyRecoveryMixin:
             "target_sources": {name: "fallback" for name in names},
             "target_basis": {},
             "temporary_roster": {},
+            "dorm_layout": {
+                room: [slot.agent for slot in row]
+                for room, row in data.plan.items()
+                if room.startswith("dorm")
+            },
             "next_read": now,
         }
         self.emergency_state = state
         self._emergency_update_targets()
+        self._open_emergency_beds()
         self.tasks[:] = [
             task
             for task in self.tasks
@@ -345,10 +353,10 @@ class EmergencyRecoveryMixin:
         return candidates
 
     def _emergency_schedule_staffing(self, *, initial=False):
-        """整组床位和自动替班都可执行后离岗；未完成安排保留组预约。"""
+        """完整工作替班可执行后离岗；床位按个人需求分批安排。"""
         state, data = self.emergency_state, self.op_data
         if (
-            state.get("group_return_plan") is not None
+            state.get("release_plan") is not None
             or state["phase"] == "returning"
             or any(getattr(task, "emergency_staffing", False) for task in self.tasks)
         ):
@@ -369,7 +377,7 @@ class EmergencyRecoveryMixin:
         reserved, _ = dorm_task_reservations(data, self.tasks)
         reserved |= busy_resting_names() | set(TRADE_ORDER_AGENTS)
         reserved |= set(state["targets"])
-        reserved |= set(state.get("group_return_members", ()))
+        reserved |= set(state.get("release_members", ()))
         reserved |= {op.name for op in data.operators.values() if op.is_working()}
         facilities = {
             "central": "中枢",
@@ -383,7 +391,7 @@ class EmergencyRecoveryMixin:
                 continue
             op = data.operators[name]
             key = op.group or name
-            if key not in state.get("returned_groups", ()):
+            if name not in state.get("ready_members", ()):
                 groups[key] = list(data.groups.get(op.group, [name]))
         reserved.update(name for members in groups.values() for name in members)
         snapshot = None
@@ -443,60 +451,15 @@ class EmergencyRecoveryMixin:
                     for task in self.tasks
                 ):
                     continue
-                dorm_changes, dorm_options = {}, {}
-                for name in members:
-                    op = data.operators.get(name)
-                    if op is None or not op.room.startswith("dorm"):
-                        continue
-                    row = dorm_changes.setdefault(
-                        op.room, ["Current"] * len(data.plan[op.room])
-                    )
-                    if data.is_auto_free_dorm_operator(op):
-                        row[op.index] = "Free"
-                        continue
-                    actual = data.get_current_operator(op.room, op.index)
-                    if actual is not None and actual.name != name:
-                        continue
-                    dorm_options[name] = [
-                        candidate
-                        for candidate in data.replacement_candidates(op)
-                        if candidate not in reserved
-                        and candidate in data.operators
-                        and (
-                            data.operators[candidate].current_room == ""
-                            or data.operators[candidate].is_resting()
-                        )
-                        and not data.is_dorm_replacement(candidate)
-                        and data.operators[candidate].current_room != "train"
-                    ]
-                dorm_replacements = match_replacements(dorm_options)
-                if dorm_replacements is None:
-                    continue
-                group_reserved = reserved | set(dorm_replacements.values())
-                for name, replacement in dorm_replacements.items():
-                    op = data.operators[name]
-                    dorm_changes[op.room][op.index] = replacement
+                group_reserved = reserved
                 probe = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
-                probe = probe.project_arrangements([dorm_changes])
                 for name in working:
                     probe.operators[name]._current_room = ""
                     probe.operators[name].current_index = -1
-                probe_state = dict(state)
-                probe_state["targets"] = {
-                    name: state["targets"][name] for name in workers
-                }
                 dorm_plan = emergency_dorm_plan(
-                    probe, probe_state, self.tasks, members=members
+                    probe, state, self.tasks, members=workers
                 )
-                projected = probe.project_arrangements([dorm_plan])
-                if not all(projected.operators[name].is_resting() for name in workers):
-                    continue
-                pending = copy.deepcopy(dorm_changes)
-                for room, row in dorm_plan.items():
-                    target = pending.setdefault(room, ["Current"] * len(row))
-                    for index, name in enumerate(row):
-                        if name != "Current":
-                            target[index] = name
+                pending = copy.deepcopy(dorm_plan)
                 options, preferred = {}, {}
                 for room, slots in planned_slots.items():
                     if not self._emergency_operation_fits(45):
@@ -594,7 +557,7 @@ class EmergencyRecoveryMixin:
                         if name not in data.operators:
                             data.add(Operator(name, ""))
                     state["staffing_plan"] = copy.deepcopy(pending)
-                    state["staffing_members"] = list(members)
+                    state["staffing_members"] = list(workers)
                     state.setdefault("automatic_replacements", {}).update(replacements)
                     state["temporary_roster"] = {
                         room: data.get_current_room(room, True)
@@ -606,7 +569,7 @@ class EmergencyRecoveryMixin:
                     self._emergency_save()
                     task = SchedulerTask(task_plan=copy.deepcopy(pending))
                     task.emergency_staffing = True
-                    task.emergency_staffing_members = list(members)
+                    task.emergency_staffing_members = list(workers)
                     self.tasks.append(task)
                     return True
                 pending = {}
@@ -778,6 +741,68 @@ class EmergencyRecoveryMixin:
             state.pop("staffing_members", None)
         return True
 
+    def _open_emergency_beds(self):
+        """救急优先使用宿管床位，菲亚梅塔保留配置原位。"""
+        data, state = self.op_data, self.emergency_state
+        layout = state.get("dorm_layout", {})
+        if not layout:
+            return
+        data.emergency_dorm_agents = {
+            name
+            for row in layout.values()
+            for name in row
+            if name not in ("", "Free", "Current")
+        }
+        times = {bed.position: bed.time for bed in data.all_dorms()}
+        data.dorm, data.group_dorm = [], []
+        need = {
+            name
+            for name, target in state["targets"].items()
+            if name not in state.get("ready_members", ())
+            and (op := data.operators.get(name)) is not None
+            and not data._can_standby(op)
+            and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+        }
+        capacity = sum(name != "菲亚梅塔" for row in layout.values() for name in row)
+        spare = max(0, capacity - len(need))
+        reserved, _ = dorm_task_reservations(data, self.tasks)
+        restored = set()
+        for index in (0, 1):
+            for room, row in layout.items():
+                if index >= len(row) or spare <= 0:
+                    continue
+                name = row[index]
+                manager = data.operators.get(name)
+                resident = data.get_current_operator(room, index)
+                if (
+                    manager is None
+                    or name == "菲亚梅塔"
+                    or name in need
+                    or name in reserved
+                    or manager.is_working()
+                    or resident is not None
+                    and resident.name in need
+                ):
+                    continue
+                restored.add((room, index))
+                spare -= 1
+        for room, row in layout.items():
+            for index, name in enumerate(row):
+                fixed = name == "菲亚梅塔" or (room, index) in restored
+                data.plan[room][index].agent = name if fixed else "Free"
+                if fixed:
+                    continue
+                resident = data.get_current_operator(room, index)
+                data.dorm.append(
+                    Dormitory(
+                        (room, index),
+                        resident.name if resident else "",
+                        times.get((room, index)),
+                    )
+                )
+        if layout:
+            data.refresh_dorm_manager_flags(force=True)
+
     def _emergency_update_targets(self):
         data, state = self.op_data, self.emergency_state
         if state["phase"] == "returning":
@@ -796,7 +821,7 @@ class EmergencyRecoveryMixin:
         probe._emergency_handoff = True
         for name in state["targets"]:
             op = data.operators.get(name)
-            if op is None or (op.group or name) in state.get("returned_groups", ()):
+            if op is None or name in state.get("ready_members", ()):
                 continue
             rows = emergency_mood_history(name)
             rate = history_rate(rows, op.room, state["work_contexts"].get(name))
@@ -957,26 +982,24 @@ class EmergencyRecoveryMixin:
         self.plan_metadata()
         protect_priority_tasks(self.tasks)
         if read_due:
-            state["returned_groups"] = [
-                key
-                for key in state.get("returned_groups", [])
-                if all(
-                    (op.current_room, op.current_index) == (op.room, op.index)
-                    and has_resting_mood(op)
-                    and not op.mood_is_prediction
-                    and op.current_mood() >= self.op_data.resting_mood_threshold(op) + 1
-                    for name, op in self.op_data.operators.items()
-                    if name in state["targets"] and (op.group or name) == key
-                )
+            state["ready_members"] = [
+                name
+                for name in state.get("ready_members", [])
+                if (op := self.op_data.operators.get(name)) is not None
+                and not op.is_working()
+                and has_resting_mood(op)
+                and not op.mood_is_prediction
+                and op.mood >= state["targets"][name]
             ]
             self._emergency_update_targets()
-            self._emergency_return_groups()
+            self._emergency_release_ready()
             if self._emergency_ready():
                 if self._emergency_restore():
                     return
             if state["phase"] == "returning":
                 state["next_read"] = now + timedelta(minutes=5)
             else:
+                self._open_emergency_beds()
                 scanned = self._emergency_schedule_staffing(
                     initial=state["phase"] == "staffing"
                 )
@@ -991,8 +1014,9 @@ class EmergencyRecoveryMixin:
         else:
             check.time = state["next_read"]
         check.emergency_staffing_members = sorted(
-            set(state.get("staffing_members", ()))
-            | set(state.get("group_return_members", ()))
+            set(state.get("ready_members", ()))
+            | set(state.get("staffing_members", ()))
+            | set(state.get("release_members", ()))
         )
         if state["phase"] == "recovering":
             try_workshop_tasks(self.op_data, self.tasks)
@@ -1001,6 +1025,15 @@ class EmergencyRecoveryMixin:
 
     def _emergency_plan_beds(self, state):
         plan = emergency_dorm_plan(self.op_data, state, self.tasks)
+        for room, original in state.get("dorm_layout", {}).items():
+            for index, name in enumerate(original):
+                if (
+                    name not in ("", "Free", "Current")
+                    and self.op_data.plan[room][index].agent == name
+                ):
+                    current = self.op_data.get_current_operator(room, index)
+                    if current is None or current.name != name:
+                        plan.setdefault(room, ["Current"] * len(original))[index] = name
         if plan and not any(
             getattr(task, "emergency_dorm", False) for task in self.tasks
         ):
@@ -1008,153 +1041,106 @@ class EmergencyRecoveryMixin:
             task.emergency_dorm = True
             self.tasks.append(task)
 
-    def _emergency_return_groups(self):
-        """整组实测达标后回到冻结排班原位；副表仅在最终交接求值。"""
+    def _emergency_release_ready(self):
+        """个人实测达标后只清空宿舍位置，待命主班不改变临时工作组合。"""
         state, data = self.emergency_state, self.op_data
-        if (
-            state["phase"] == "returning"
-            or state.get("staffing_rescore")
-            or state.get("staffing_plan")
-            or any(
-                getattr(task, "emergency_staffing", False)
-                or hasattr(task, "emergency_original_roster")
-                or task.plan
-                and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
-                and task.time <= datetime.now()
-                for task in self.tasks
-            )
+        if state["phase"] == "returning" or any(
+            getattr(task, "emergency_staffing", False)
+            or hasattr(task, "emergency_original_roster")
+            or task.plan
+            and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
+            and task.time <= datetime.now()
+            for task in self.tasks
         ):
             return False
-        groups = {}
-        for name in state["targets"]:
+        ready = set(state.get("ready_members", ()))
+        members = set(state.get("release_members", ()))
+        plan = {}
+        for name, target in state["targets"].items():
             op = data.operators.get(name)
-            if op is not None:
-                groups[op.group or name] = list(data.groups.get(op.group, [name]))
-        pending = state.get("group_return_plan")
-        returning = state.get("group_return_members", [])
-        returned = set(state.get("returned_groups", []))
-        for key, members in groups.items():
-            if pending is not None:
-                if members != returning:
-                    continue
-                if any(
-                    (op.current_room, op.current_index) != (op.room, op.index)
-                    and not data._can_standby(op)
-                    and (
-                        not has_resting_mood(op)
-                        or op.mood_is_prediction
-                        or op.mood < state["targets"][name]
-                    )
-                    for name in members
-                    if name in state["targets"]
-                    and (op := data.operators.get(name)) is not None
-                ):
-                    return False
-                plan = copy.deepcopy(pending)
-            else:
-                if key in returned or not any(
-                    data.operators[name].is_resting() for name in members
-                ):
-                    continue
-                if any(
-                    not has_resting_mood(data.operators[name])
-                    or data.operators[name].mood_is_prediction
-                    or data.operators[name].mood < state["targets"][name]
-                    for name in members
-                    if name in state["targets"]
-                    and not data._can_standby(data.operators[name])
-                ):
-                    continue
-                plan = {}
-                for name in members:
-                    op = data.operators[name]
-                    if data._can_standby(op):
-                        continue
-                    plan.setdefault(op.room, ["Current"] * len(data.plan[op.room]))[
-                        op.index
-                    ] = name
-            suppress_completed_dorm_returns(data, plan)
-            plan = {
-                room: [
-                    "Current" if name == actual[index] else name
-                    for index, name in enumerate(row)
-                ]
-                for room, row in plan.items()
-                if (actual := data.get_current_room(room, True)) != row
-            }
-            plan = {
-                room: row
-                for room, row in plan.items()
-                if any(name != "Current" for name in row)
-            }
-            if not self._emergency_operation_fits(len(plan) * 45):
-                return False
-            probe = copy.copy(self)
-            probe.op_data = data.project_arrangements([plan])
-            probe.tasks = []
-            for name, replacement in state.get("automatic_replacements", {}).items():
-                op = probe.op_data.operators.get(name)
-                if op is not None and replacement in probe.op_data.operators:
-                    op.replacement = list(dict.fromkeys([replacement, *op.replacement]))
-            checked = [
-                members,
-                *(groups[group] for group in returned if group in groups),
-            ]
-            if any(
-                native_opportunity(
-                    probe,
-                    [name for name in group if name in state["targets"]],
-                ).opportunity
-                is None
-                for group in checked
+            if (
+                op is None
+                or op.is_working()
+                or not has_resting_mood(op)
+                or op.mood_is_prediction
+                or op.mood < target
             ):
                 continue
-            for task in self.tasks:
-                if not getattr(task, "emergency_dorm", False):
-                    continue
-                for room, row in list(task.plan.items()):
-                    task.plan[room] = [
-                        "Current" if name in members else name for name in row
-                    ]
-                    if all(name == "Current" for name in task.plan[room]):
-                        del task.plan[room]
-            self.tasks[:] = [
-                task
-                for task in self.tasks
-                if task.plan or not getattr(task, "emergency_dorm", False)
-            ]
-            state["group_return_plan"] = copy.deepcopy(plan)
-            state["group_return_members"] = list(members)
+            if not op.current_room:
+                ready.add(name)
+                members.discard(name)
+                op.depletion_rate = 0
+            elif op.is_resting():
+                members.add(name)
+                plan.setdefault(
+                    op.current_room, ["Current"] * len(data.plan[op.current_room])
+                )[op.current_index] = ""
+        # 已去往其他工作岗位者仍由 targets 承担恢复责任，旧清退不再碰新住客。
+        members = {
+            name
+            for name in members
+            if name in data.operators and not data.operators[name].is_working()
+        }
+        changed = ready != set(state.get("ready_members", ()))
+        state["ready_members"] = sorted(ready)
+        if not members:
+            state.pop("release_plan", None)
+            state.pop("release_members", None)
+            if changed:
+                self._emergency_save()
+            return changed
+        if not plan or not self._emergency_operation_fits(
+            sum(estimate_dorm_minutes(room) * 60 for room in plan)
+        ):
+            state["release_members"] = sorted(members)
+            state["release_plan"] = copy.deepcopy(plan)
             self._emergency_save()
-            if plan:
-                previous_task = self.task
-                self.task = SchedulerTask(task_plan=copy.deepcopy(plan))
-                self.task.emergency_staffing = True
-                self.task.emergency_group_return = True
-                self.task.emergency_staffing_members = list(members)
-                try:
-                    self.agent_arrange(self.task.plan, get_time=True)
-                finally:
-                    self.task = previous_task
-            if all(
-                data._can_standby(op := self.op_data.operators[name])
-                or op.room.startswith("dorm")
-                and self.op_data.rest_mood_complete(name)
-                or (op.current_room, op.current_index) == (op.room, op.index)
-                for name in members
+            return False
+        for task in self.tasks:
+            if not getattr(task, "emergency_dorm", False):
+                continue
+            for room, row in list(task.plan.items()):
+                task.plan[room] = [
+                    "Current" if name in members else name for name in row
+                ]
+                if all(name == "Current" for name in task.plan[room]):
+                    del task.plan[room]
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.plan or not getattr(task, "emergency_dorm", False)
+        ]
+        state["release_plan"] = copy.deepcopy(plan)
+        state["release_members"] = sorted(members)
+        self._emergency_save()
+        previous_task = self.task
+        self.task = SchedulerTask(task_plan=copy.deepcopy(plan))
+        self.task.emergency_staffing = True
+        self.task.emergency_recovery_release = True
+        self.task.emergency_staffing_members = sorted(members)
+        try:
+            self.agent_arrange(self.task.plan, get_time=True)
+        finally:
+            self.task = previous_task
+        for name in members:
+            op = self.op_data.operators[name]
+            if (
+                not op.current_room
+                and has_resting_mood(op)
+                and not op.mood_is_prediction
+                and op.mood >= state["targets"][name]
             ):
-                state.setdefault("returned_groups", []).append(key)
-                state["staffing_rescore"] = True
-                state.pop("group_return_plan", None)
-                state.pop("group_return_members", None)
-            state["temporary_roster"] = {
-                room: self.op_data.get_current_room(room, True)
-                for room in self.op_data.plan
-                if not room.startswith("dorm")
-            }
-            self._emergency_save()
-            return True
-        return False
+                ready.add(name)
+                op.depletion_rate = 0
+        state["ready_members"] = sorted(ready)
+        remaining = members - ready
+        if not remaining:
+            state.pop("release_plan", None)
+            state.pop("release_members", None)
+        else:
+            state["release_members"] = sorted(remaining)
+        self._emergency_save()
+        return True
 
     def _emergency_read_minutes(self):
         waits = []
@@ -1180,7 +1166,7 @@ class EmergencyRecoveryMixin:
     def _emergency_ready(self):
         if (
             self.emergency_state.get("staffing_plan")
-            or self.emergency_state.get("group_return_plan") is not None
+            or self.emergency_state.get("release_plan") is not None
         ) or any(getattr(task, "emergency_staffing", False) for task in self.tasks):
             return False
         if any(
@@ -1206,13 +1192,7 @@ class EmergencyRecoveryMixin:
                 self.op_data._can_standby(op)
                 or has_resting_mood(op)
                 and not op.mood_is_prediction
-                and (
-                    op.mood >= target
-                    or (op.group or name)
-                    in self.emergency_state.get("returned_groups", ())
-                    and (op.current_room, op.current_index) == (op.room, op.index)
-                    and op.current_mood() >= self.op_data.resting_mood_threshold(op) + 1
-                )
+                and op.mood >= target
             )
             for name, target in self.emergency_state["targets"].items()
         )
@@ -1292,6 +1272,8 @@ class EmergencyRecoveryMixin:
             if self.emergency_state:
                 if "handoff_plan" not in state:
                     state["phase"] = "recovering"
+                if state["phase"] != "returning":
+                    self._open_emergency_beds()
                 for bed in self.op_data.all_dorms():
                     saved = saved_beds.get(bed.position)
                     if saved is not None and bed.name == saved[0] and bed.time is None:
@@ -1311,10 +1293,7 @@ class EmergencyRecoveryMixin:
                 continue
             actual = self.op_data.operators.get(name)
             returned = (
-                (
-                    "handoff_plan" in state
-                    or (op.group or name) in state.get("returned_groups", ())
-                )
+                ("handoff_plan" in state)
                 and actual is not None
                 and actual.is_working()
                 and (actual.current_room, actual.current_index) == (op.room, op.index)

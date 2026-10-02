@@ -1,4 +1,4 @@
-"""救急绑定组入宿保持整组床位，并沿用共享候选与预约。"""
+"""救急个人分床沿用共享候选、预约和优先级。"""
 
 from types import SimpleNamespace
 
@@ -42,62 +42,63 @@ def admissions(plan):
     return {name for row in plan.values() for name in row} - {"Free", "Current"}
 
 
-def test_admission_includes_member_already_above_target(solver):
+def test_admission_excludes_member_already_above_target(solver):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group], capacity=2)
     data.operators[group[1]].mood = 20
     original_beds = [(bed.name, bed.position) for bed in data.dorm]
 
-    assert admissions(emergency_dorm_plan(data, state)) == set(group)
+    assert admissions(emergency_dorm_plan(data, state)) == {group[0]}
     assert [(bed.name, bed.position) for bed in data.dorm] == original_beds
     assert all(data.operators[name].current_room == "" for name in group)
 
 
-def test_multiple_complete_groups_share_capacity(solver):
+def test_members_from_multiple_groups_share_capacity(solver):
     data, state = prepare(solver, [PRIMARY[:2], PRIMARY[2:]], capacity=4)
 
     assert admissions(emergency_dorm_plan(data, state)) == set(PRIMARY)
 
 
-def test_group_failure_rolls_back_beds_for_next_complete_group(solver):
+def test_capacity_shortage_preserves_other_individual_priority(solver):
     rejected = PRIMARY[:3]
     admitted = PRIMARY[3]
     data, state = prepare(solver, [rejected], capacity=2)
     data.operators[admitted]._current_room = ""
     data.operators[admitted].mood = 8
 
+    data.config.ope_resting_priority = [admitted]
     names = admissions(emergency_dorm_plan(data, state))
-    assert not set(rejected) & names
+    assert len(names) == 2
+    assert len(set(rejected) & names) == 1
     assert admitted in names
 
 
-def test_group_priority_applies_to_all_members_before_next_group(solver):
+def test_completed_priority_member_does_not_reserve_beds_for_peers(solver):
     first, second = PRIMARY[:2], PRIMARY[2:]
     data, state = prepare(solver, [first, second], capacity=2)
     data.config.ope_resting_priority = [first[1]]
     data.operators[first[1]].mood = 20
+    data.operators[first[0]].mood = 6
     data.operators[second[0]].mood = 1
 
-    assert admissions(emergency_dorm_plan(data, state)) == set(first)
+    assert admissions(emergency_dorm_plan(data, state)) == {second[0], first[0]}
 
 
 @pytest.mark.parametrize("capacity", [1, 2])
-def test_partial_group_keeps_completed_resident_until_peer_is_ready(solver, capacity):
+def test_released_completed_member_bed_is_available_to_peer(solver, capacity):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group], capacity=capacity)
     resident, peer = (data.operators[name] for name in group)
-    resident._current_room, resident.current_index = data.dorm[0].position
     resident.mood = 20
-    data.dorm[0].name = resident.name
+    state["ready_members"] = [resident.name]
 
     plan = emergency_dorm_plan(data, state)
-    assert plan.get(resident.current_room, ["Current"] * 5)[resident.current_index] == (
-        "Current"
-    )
-    assert (peer.name in admissions(plan)) == (capacity == 2)
+
+    assert admissions(plan) == {peer.name}
+    assert resident.current_room == ""
 
 
-def test_completed_member_bed_is_not_taken_from_ongoing_group(solver):
+def test_completed_member_bed_can_be_taken_without_displacing_unready_peer(solver):
     group = PRIMARY[:2]
     incoming = PRIMARY[2]
     data, state = prepare(solver, [group], capacity=2)
@@ -110,11 +111,14 @@ def test_completed_member_bed_is_not_taken_from_ongoing_group(solver):
     data.operators[incoming]._current_room = ""
     data.operators[incoming].mood = 0
 
-    assert incoming not in admissions(emergency_dorm_plan(data, state))
+    plan = emergency_dorm_plan(data, state)
+    assert incoming in admissions(plan)
+    peer = data.operators[group[1]]
+    assert plan[peer.current_room][peer.current_index] == "Current"
 
 
 @pytest.mark.parametrize("reservation", ["name", "bed", "strict", "product"])
-def test_reservation_prevents_partial_group_admission(solver, reservation):
+def test_reservation_does_not_block_unreserved_peer(solver, reservation):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group], capacity=2)
     tasks = []
@@ -136,26 +140,30 @@ def test_reservation_prevents_partial_group_admission(solver, reservation):
     else:
         data.reserved_product_beds[data.dorm[0].position] = PRIMARY[2]
 
-    assert not set(group) & admissions(emergency_dorm_plan(data, state, tasks))
+    names = admissions(emergency_dorm_plan(data, state, tasks))
+    assert len(names) == 1
+    assert names <= set(group)
+    if reservation in ("name", "strict"):
+        assert names == {group[0]}
 
 
-def test_working_or_excluded_peer_blocks_whole_group(solver):
+def test_working_or_excluded_peer_is_not_pulled_from_work(solver):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group])
     peer = data.operators[group[1]]
     peer._current_room = peer.room
-    assert not set(group) & admissions(emergency_dorm_plan(data, state))
+    assert admissions(emergency_dorm_plan(data, state)) == {group[0]}
 
     peer._current_room = ""
     data.config.free_blacklist = [peer.name]
-    assert not set(group) & admissions(emergency_dorm_plan(data, state))
+    assert admissions(emergency_dorm_plan(data, state)) == {group[0]}
 
 
-def test_ordinary_bound_candidates_are_not_split_or_duplicated(solver):
+def test_ordinary_bound_candidates_can_be_split_without_duplicates(solver):
     group = COVERS[:2]
     data, state = prepare(solver, [group], capacity=1)
     data.config.ope_resting_priority = [group[0]]
-    assert not set(group) & admissions(emergency_dorm_plan(data, state))
+    assert admissions(emergency_dorm_plan(data, state)) == {group[0]}
 
     from arknights_mower.utils.operators import Dormitory
 
@@ -206,15 +214,13 @@ def test_standby_return_reservation_keeps_shared_exception(solver, monkeypatch):
     assert name in admissions(emergency_dorm_plan(data, state, [task]))
 
 
-def test_requested_group_skips_other_targets_fillers_and_manager_return(solver):
+def test_requested_members_skip_other_targets_fillers_and_manager_return(solver):
     selected, other = PRIMARY[:2], PRIMARY[2:]
     data, state = prepare(solver, [selected, other])
     for name in COVERS:
         data.operators[name].mood = 4
     for name in ("冰酿", "闪灵"):
         data.operators[name]._current_room = ""
-    for name in selected:
-        data.operators[name].mood = 24
 
     assert admissions(emergency_dorm_plan(data, state, members=selected)) == set(
         selected
@@ -223,18 +229,21 @@ def test_requested_group_skips_other_targets_fillers_and_manager_return(solver):
 
 
 @pytest.mark.parametrize("bound", [True, False])
-def test_requested_members_are_one_atomic_admission(solver, bound):
+def test_requested_members_use_available_capacity_without_group_expansion(
+    solver, bound
+):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group], capacity=1)
     if not bound:
         for name in group:
             data.operators[name].group = ""
 
-    assert emergency_dorm_plan(data, state, members=group) == {}
+    names = admissions(emergency_dorm_plan(data, state, members=group))
+    assert len(names) == 1 and names <= set(group)
 
 
 @pytest.mark.parametrize("reservation", ["name", "bed", "strict", "product"])
-def test_requested_group_keeps_all_reservations(solver, reservation):
+def test_requested_members_keep_person_and_slot_reservations(solver, reservation):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group], capacity=2)
     tasks = []
@@ -256,10 +265,13 @@ def test_requested_group_keeps_all_reservations(solver, reservation):
     else:
         data.reserved_product_beds[data.dorm[0].position] = PRIMARY[2]
 
-    assert emergency_dorm_plan(data, state, tasks, members=group) == {}
+    names = admissions(emergency_dorm_plan(data, state, tasks, members=group))
+    assert len(names) == 1 and names <= set(group)
+    if reservation in ("name", "strict"):
+        assert names == {group[0]}
 
 
-def test_requested_group_counts_existing_resident_without_relocating_it(solver):
+def test_requested_members_keep_existing_resident_without_relocating_it(solver):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group], capacity=2)
     bed = data.dorm[0]
@@ -273,20 +285,19 @@ def test_requested_group_counts_existing_resident_without_relocating_it(solver):
     assert set(group) <= admissions(plan) | {bed.name for bed in data.dorm}
 
 
-def test_requested_group_with_working_or_unknown_member_is_deferred(solver):
+def test_requested_members_skip_working_or_unknown_peers_independently(solver):
     group = PRIMARY[:2]
     data, state = prepare(solver, [group])
     data.operators[group[1]]._current_room = data.operators[group[1]].room
 
-    assert emergency_dorm_plan(data, state, members=group) == {}
-    assert emergency_dorm_plan(data, state, members=[group[0], "未注册成员"]) == {}
+    assert admissions(emergency_dorm_plan(data, state, members=group)) == {group[0]}
+    assert admissions(
+        emergency_dorm_plan(data, state, members=[group[0], "未注册成员"])
+    ) == {group[0]}
 
 
-@pytest.mark.parametrize("returned", [False, True])
 @pytest.mark.parametrize("selected_only", [False, True])
-def test_normal_manager_slots_are_never_added_to_bed_pool(
-    solver, returned, selected_only
-):
+def test_planner_does_not_open_closed_manager_slots(solver, selected_only):
     incoming = PRIMARY[0]
     data, state = prepare(solver, [], capacity=1)
     manager = data.operators["冰酿"]
@@ -296,8 +307,6 @@ def test_normal_manager_slots_are_never_added_to_bed_pool(
     data.config.ope_resting_priority = [manager.name]
     data.operators[incoming]._current_room = ""
     data.operators[incoming].mood = 8
-    if returned:
-        state["returned_groups"] = [manager.group]
 
     plan = emergency_dorm_plan(
         data, state, members=[incoming] if selected_only else None
@@ -306,11 +315,11 @@ def test_normal_manager_slots_are_never_added_to_bed_pool(
     assert plan["dormitory_1"][:2] == ["Current", "Current"]
     assert manager.current_room == "dormitory_1" and manager.current_index == 0
     assert all(bed.position[1] >= 2 for bed in data.all_dorms())
-    assert not hasattr(data, "emergency_dorm_agents")
+    assert not data.emergency_dorm_agents
 
 
 @pytest.mark.parametrize("completed", [True, False, "predicted"])
-def test_ordinary_bound_group_only_yields_when_all_members_measured_full(
+def test_ordinary_bound_residents_yield_individually_to_higher_priority(
     solver, completed
 ):
     ordinary = COVERS[:2]
@@ -328,7 +337,7 @@ def test_ordinary_bound_group_only_yields_when_all_members_measured_full(
         data.operators[ordinary[1]].mood_is_prediction = True
 
     plan = emergency_dorm_plan(data, state, members=incoming)
-    assert admissions(plan) == (set(incoming) if completed is True else set())
+    assert admissions(plan) == set(incoming)
 
 
 def test_explicit_free_group_member_opens_only_its_normal_dynamic_bed(solver):

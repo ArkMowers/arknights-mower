@@ -1,4 +1,4 @@
-"""智能救急离岗先证明整组床位和自动替班，不重排其他主班。"""
+"""智能救急整组替班，按个人需求分床，退出时统一恢复岗位。"""
 
 import pickle
 from datetime import timedelta
@@ -56,7 +56,7 @@ def test_startup_keeps_other_primary_groups_and_uses_automatic_substitutes(staff
     assert solver._emergency_schedule_staffing(initial=True)
 
     task = staffing_task(solver)
-    assert set(staffing.state["staffing_members"]) == {"塑心", *PRIMARY[:2]}
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
     working_rooms = {room for room in task.plan if not room.startswith("dorm")}
     assert working_rooms == {
         solver.op_data.operators[name].room for name in PRIMARY[:2]
@@ -73,22 +73,32 @@ def test_startup_keeps_other_primary_groups_and_uses_automatic_substitutes(staff
     for name in PRIMARY[2:]:
         op = projected.operators[name]
         assert (op.current_room, op.current_index) == (op.room, op.index)
-    assert projected.get_current_room("dormitory_1", True)[:2] == ["黑角", "冰酿"]
-    assert projected.operators["塑心"].current_room == ""
+    assert projected.get_current_room("dormitory_1", True)[:2] == ["塑心", "冰酿"]
+    assert projected.operators["塑心"].current_room == "dormitory_1"
     assert len(staffing.saves) == 1
     assert staffing.saves[0]["state"]["staffing_plan"] == task.plan
     assert not staffing.plans
     solver.backup_plan_solver.assert_not_called()
 
 
-def test_healthy_bound_member_rests_with_group_member_requiring_recovery(staffing):
+def test_healthy_group_peer_leaves_work_without_consuming_recovery_bed(staffing):
     solver = staffing.solver
     solver.op_data.operators[PRIMARY[1]].mood = 24
 
     assert solver._emergency_schedule_staffing()
 
     projected = solver.op_data.project_arrangements([staffing_task(solver).plan])
-    assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
+    assert projected.operators[PRIMARY[0]].is_resting()
+    healthy = projected.operators[PRIMARY[1]]
+    assert (healthy.current_room, healthy.current_index) == ("", -1)
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
+    assert set(staffing.state["automatic_replacements"]) == set(PRIMARY[:2])
+    assert PRIMARY[1] not in {
+        name
+        for room, row in staffing_task(solver).plan.items()
+        if room.startswith("dorm")
+        for name in row
+    }
 
 
 def test_staffing_does_not_scan_or_move_healthy_main_groups(staffing):
@@ -120,7 +130,7 @@ def test_missing_one_substitute_keeps_complete_group_working_and_stores_no_parti
     assert all(solver.op_data.operators[name].is_working() for name in PRIMARY)
 
 
-def test_reserved_beds_block_group_before_any_substitute_scan(staffing):
+def test_reserved_beds_do_not_block_complete_worker_substitution(staffing):
     solver = staffing.solver
     reservation = SchedulerTask(
         task_type=TaskTypes.FILL_DORM,
@@ -130,8 +140,15 @@ def test_reserved_beds_block_group_before_any_substitute_scan(staffing):
 
     assert solver._emergency_schedule_staffing()
 
-    solver._emergency_scan_workers.assert_not_called()
-    assert not staffing.state.get("staffing_plan")
+    solver._emergency_scan_workers.assert_called()
+    task = staffing_task(solver)
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
+    assert set(task.plan) == {
+        solver.op_data.operators[name].room for name in PRIMARY[:2]
+    }
+    projected = solver.op_data.project_arrangements([task.plan])
+    assert all(not projected.operators[name].is_working() for name in PRIMARY[:2])
+    assert all(not projected.operators[name].is_resting() for name in PRIMARY[:2])
     assert reservation in solver.tasks
     assert all(solver.op_data.operators[name].is_working() for name in PRIMARY)
 
@@ -178,7 +195,7 @@ def test_strict_release_budget_discards_complete_scan_without_queueing_group(sta
     assert release in solver.tasks
 
 
-def test_restart_requeues_saved_remaining_plan_and_preserves_full_group_reservation(
+def test_restart_requeues_saved_remaining_plan_and_preserves_worker_reservation(
     staffing,
 ):
     solver = staffing.solver
@@ -197,14 +214,17 @@ def test_restart_requeues_saved_remaining_plan_and_preserves_full_group_reservat
     resumed = staffing_task(solver)
     assert resumed.plan == saved["staffing_plan"]
     assert room not in resumed.plan
-    assert set(saved["staffing_members"]) == {"塑心", *PRIMARY[:2]}
+    assert set(saved["staffing_members"]) == set(PRIMARY[:2])
     assert set(resumed.emergency_staffing_members) == set(saved["staffing_members"])
     solver._emergency_scan_workers.assert_not_called()
 
 
-def test_returned_group_is_not_immediately_scheduled_for_another_recovery(staffing):
+def test_ready_individuals_remain_idle_until_unified_restore(staffing):
     solver = staffing.solver
-    staffing.state["returned_groups"] = ["先恢复"]
+    staffing.state["ready_members"] = list(PRIMARY[:2])
+    for name in PRIMARY[:2]:
+        op = solver.op_data.operators[name]
+        op._current_room, op.current_index = "", -1
     for name in PRIMARY[2:]:
         solver.op_data.operators[name].mood = 24
 
@@ -212,6 +232,11 @@ def test_returned_group_is_not_immediately_scheduled_for_another_recovery(staffi
 
     solver._emergency_scan_workers.assert_not_called()
     assert not staffing.state.get("staffing_plan")
+    assert not staffing.state.get("staffing_rescore")
+    assert staffing.state["ready_members"] == list(PRIMARY[:2])
+    for name in PRIMARY[:2]:
+        op = solver.op_data.operators[name]
+        assert (op.current_room, op.current_index) == ("", -1)
 
 
 def test_cross_room_matching_keeps_unique_candidate_for_constrained_facility(staffing):
@@ -239,9 +264,10 @@ def test_cross_room_matching_keeps_unique_candidate_for_constrained_facility(sta
     }
 
 
-def test_pending_group_return_blocks_new_group_departure(staffing):
+@pytest.mark.parametrize("release_plan", [{}, {"dormitory_1": ["Current"] * 5}])
+def test_pending_individual_release_blocks_new_group_departure(staffing, release_plan):
     solver = staffing.solver
-    staffing.state["group_return_plan"] = {}
+    staffing.state["release_plan"] = release_plan
 
     assert solver._emergency_schedule_staffing()
 
@@ -398,7 +424,7 @@ def test_initial_departure_scores_replacements_with_fixed_primary_skills(staffin
     assert solver._emergency_scan_workers.call_args_list[0].kwargs["fixed"] == ["泡泡"]
 
 
-def test_bound_free_dorm_member_changes_only_its_configured_position(staffing):
+def test_bound_manager_free_replacement_does_not_change_worker_departure(staffing):
     solver = staffing.solver
     data = solver.op_data
     manager = data.operators["塑心"]
@@ -407,27 +433,34 @@ def test_bound_free_dorm_member_changes_only_its_configured_position(staffing):
 
     assert solver._emergency_schedule_staffing()
 
-    row = staffing_task(solver).plan[manager.room]
-    assert row[manager.index] == "Free"
+    task = staffing_task(solver)
+    row = task.plan[manager.room]
+    assert row[manager.index] == "Current"
     assert row[1] == "Current"
-    assert (
-        not solver.op_data.project_arrangements([staffing_task(solver).plan])
-        .operators["塑心"]
-        .current_room
-    )
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
+    projected = data.project_arrangements([task.plan])
+    assert projected.operators["塑心"].current_room == manager.room
+    assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
 
 
-def test_bound_dorm_replacement_shortage_keeps_entire_group_working(staffing):
+def test_bound_manager_replacement_shortage_does_not_block_worker_substitution(
+    staffing,
+):
     solver = staffing.solver
     solver.op_data.operators["黑角"]._current_room = "train"
     for name in PRIMARY[2:]:
         solver.op_data.operators[name].mood = 24
 
-    solver._emergency_schedule_staffing()
+    assert solver._emergency_schedule_staffing()
 
-    assert not staffing.state.get("staffing_plan")
-    solver._emergency_scan_workers.assert_not_called()
-    assert all(solver.op_data.operators[name].is_working() for name in PRIMARY)
+    solver._emergency_scan_workers.assert_called()
+    task = staffing_task(solver)
+    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
+    assert all("黑角" not in row for row in task.plan.values())
+    projected = solver.op_data.project_arrangements([task.plan])
+    assert all(not projected.operators[name].is_working() for name in PRIMARY[:2])
+    assert projected.operators["塑心"].current_room == "dormitory_1"
+    assert solver.op_data.operators["黑角"].current_room == "train"
 
 
 @pytest.mark.parametrize("mood", [None, 0])
@@ -528,16 +561,16 @@ def test_group_selection_preserves_normal_dorm_and_original_primary_rules(
     from arknights_mower.solvers import base_mixin
 
     solver = staffing.solver
-    assert solver._emergency_schedule_staffing()
-    solver.task = staffing_task(solver)
-    if role == "dorm_replacement":
-        name = "黑角"
-        assert name in solver.task.plan["dormitory_1"]
-    else:
-        name = PRIMARY[2]
-        room = solver.op_data.operators[name].room
-        # agent_arrange replaces Current with the actual name before observation.
-        solver.task.plan[room] = [name]
+    name = "黑角" if role == "dorm_replacement" else PRIMARY[2]
+    room = solver.op_data.operators[PRIMARY[2]].room
+    solver.task = SchedulerTask(
+        task_plan={
+            "dormitory_1": ["黑角", "Current", "Current", "Current", "Current"],
+            room: [PRIMARY[2]],
+        }
+    )
+    solver.task.emergency_staffing = True
+    solver.task.emergency_staffing_members = list(PRIMARY[:2])
     solver.recog = SimpleNamespace(img=object())
     monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *args: mood)
     op = solver.op_data.operators[name]

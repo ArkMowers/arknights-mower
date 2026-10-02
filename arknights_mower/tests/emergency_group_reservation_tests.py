@@ -39,7 +39,7 @@ def test_complete_group_remains_reserved_as_individual_room_plans_finish(
     assert solver._emergency_schedule_staffing()
     task = staffing_task(solver)
     members = set(task.emergency_staffing_members)
-    assert members == {"塑心", *PRIMARY[:2]}
+    assert members == set(PRIMARY[:2])
     if remaining == "one_room":
         task.plan = {"room_1_1": ["红"]}
     elif remaining == "check_only":

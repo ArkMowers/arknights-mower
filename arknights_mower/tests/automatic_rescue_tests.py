@@ -1288,7 +1288,7 @@ def test_staffing_discards_unexecutable_group_scan_and_retries_after_release(
     state, clock, scans, saves, limited_name = staffing_deadline_episode(
         solver, monkeypatch, 180
     )
-    solver._emergency_return_groups = MagicMock(return_value=False)
+    solver._emergency_release_ready = MagicMock(return_value=False)
     healthy_room = solver.op_data.operators[PRIMARY[1]].room
     if healthy_remaining:
         solver.op_data.update_detail(PRIMARY[1], 8, "", -1, True)

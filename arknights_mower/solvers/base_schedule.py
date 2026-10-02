@@ -7931,7 +7931,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     self.back_to_infrastructure()
                     self._emergency_read_rooms([room])
-                    if getattr(self.task, "emergency_group_return", False):
+                    if getattr(self.task, "emergency_recovery_release", False):
                         plan.clear()
                     elif getattr(self.task, "emergency_staffing_members", ()):
                         self.emergency_state["staffing_rescore"] = True
