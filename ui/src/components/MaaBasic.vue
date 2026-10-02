@@ -16,7 +16,6 @@ const {
   maa_mirrorchyan_token,
   maa_update_channel,
   maa_auto_check_update,
-  maa_emergency_infrast_enable,
   maa_restore_theme_enable,
   maa_restore_theme,
   maa_conn_preset,
@@ -933,17 +932,6 @@ onUnmounted(() => {
           placeholder="请选择要恢复的主题"
           @update:value="maa_restore_theme = $event ?? ''"
         />
-      </n-form-item>
-      <n-form-item label="协助救急">
-        <template #label>
-          协助救急
-          <help-text label="协助救急说明" :max-width="480">
-            启动时确认 Mower 无法及时周转后，使用一次 MAA
-            临时换班。期间暂停副表与普通换班，继续收取订单和产物、恢复心情；跑单干员被占用时暂停跑单。肥鸭与专精不限制
-            MAA 选人。
-          </help-text>
-        </template>
-        <n-checkbox v-model:checked="maa_emergency_infrast_enable" aria-label="协助救急" />
       </n-form-item>
     </n-form>
     <n-divider />

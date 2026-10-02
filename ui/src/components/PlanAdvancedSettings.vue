@@ -22,6 +22,7 @@ const {
   assistant_follows_schedule,
   fia_threshold,
   rescue_threshold,
+  maa_emergency_infrast_enable,
   favorite
 } = storeToRefs(configStore)
 </script>
@@ -308,6 +309,16 @@ const {
             <template #suffix>%</template>
           </mower-input-number>
         </div>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="maa_emergency_infrast_enable" aria-label="自动救急">
+          自动救急
+          <help-text label="自动救急说明" :max-width="480">
+            启动时确认 Mower 无法及时周转后，使用一次 MAA
+            临时换班。期间暂停副表与普通换班，心情复查时收取订单和产物；跑单干员被占用时暂停跑单。肥鸭与专精不限制
+            MAA 选人。
+          </help-text>
+        </n-checkbox>
       </n-form-item>
       <n-form-item>
         <template #label>
