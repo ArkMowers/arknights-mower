@@ -19,6 +19,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 
+- [ ] **[INV-DEV-20] Command Output Ownership**: Do MuMu startup observations and default guarded ADB commands use bounded temporary-file output, preserve binary/text and stderr semantics, and return without descendant EOF waits while timeout cleanup targets only the owned command within its finite allowance?
+
 - [ ] **[INV-DEV-19] Shared ADB Recovery**: Do all ADB routes use the guarded shared server without private ports, foreground takeover or an SDK-release requirement? Do only at least two failed host handshakes sustained for at least thirty seconds permit an explicit restart under a host-shared cross-process lock, cooldown and locked re-probe within the same Recovery Budget, with healthy re-probes skipping restart and offline targets or version mismatch alone never authorizing it? Do cancellation and budget exhaustion remain non-failure observations? Does a restart initiated by this or another process revalidate the original Instance Binding and rebuild all helpers before dispatch while preserving pending tasks and uncertain-input pauses? Does application shutdown leave the shared server running?
 
 - [ ] **[INV-DEV-16] Absent Target Cleanup**: Does an absent DroidCast target permit idempotent cleanup and the next verified startup only after owned forwards are absent, while unconfirmed transport failures, residual owned mappings and host cleanup failures remain blocking without touching foreign resources or shared ADB state?

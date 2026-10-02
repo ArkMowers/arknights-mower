@@ -119,7 +119,7 @@ def test_legacy_manager_timeout_retains_the_selected_endpoint():
     with (
         patch("os.path.isfile", return_value=True),
         patch(
-            "arknights_mower.utils.device.adb_client.core.subprocess.run",
+            "arknights_mower.utils.device.adb_client.core.run_command",
             side_effect=subprocess.TimeoutExpired("MuMuManager.exe", 5),
         ),
     ):

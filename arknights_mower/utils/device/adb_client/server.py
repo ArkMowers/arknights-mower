@@ -10,6 +10,8 @@ import socket
 import subprocess
 import time
 
+from arknights_mower.utils.device.manager_io import run_command
+
 ADB_SERVER_ADDRESS = ("127.0.0.1", 5037)
 
 
@@ -109,7 +111,7 @@ def kill_adb_server(timeout, *, monotonic=time.monotonic, socket_factory=None):
 
 
 def adb_client_version(adb_path, *, timeout, run=None):
-    runner = run or subprocess.run
+    runner = run or run_command
     result = runner(
         [adb_path, "version"],
         stdout=subprocess.PIPE,
@@ -143,7 +145,7 @@ def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monoton
     """Check the existing server and return the same deadline's remaining time."""
     _check_server_environment(os.environ)
     deadline = monotonic() + max(0, timeout)
-    runner = run or subprocess.run
+    runner = run or run_command
     try:
         if probe is None:
             version = probe_adb_server(
@@ -182,7 +184,7 @@ def run_adb(argv, *, timeout, run=None, probe=None, monotonic=time.monotonic, **
     command = argv[index] if index < len(argv) else ""
     if command in {"kill-server", "start-server", "server", "fork-server", "nodaemon"}:
         raise SharedADBError("共享 ADB 服务生命周期只能由恢复协调器管理")
-    runner = run or subprocess.run
+    runner = run or run_command
     if command != "version":
         guard_adb(
             argv[0],
