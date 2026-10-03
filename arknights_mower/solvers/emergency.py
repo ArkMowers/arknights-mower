@@ -211,35 +211,32 @@ class EmergencyRecoveryMixin:
         data = self.op_data
         names = primary_names(data)
         required = []
-        rates, deadlines = {}, {}
+        low_groups = set()
         now = datetime.now()
         for name in names:
             op = data.operators[name]
-            if not has_resting_mood(op) or op.is_resting() or data._can_standby(op):
+            if (
+                not has_resting_mood(op)
+                or op.mood_is_prediction
+                or data._can_standby(op)
+            ):
                 continue
-            line = data.rescue_mood_threshold(op)
-            rate = history_rate(
-                emergency_mood_history(name),
-                op.current_room,
-                mood_context(data, op.current_room),
-            )
-            if rate:
-                rates[name] = rate
-            if op.mood < line:
-                required.append(name)
-            elif rate:
-                crossing = now + timedelta(hours=(op.mood - line) / rate)
-                if crossing <= now + timedelta(hours=12):
-                    deadlines[name] = crossing
+            if op.mood < data.rescue_mood_threshold(op):
+                low_groups.add(("group", op.group) if op.group else ("operator", name))
+                if not op.is_resting():
                     required.append(name)
-        if not required:
+        if not required or len(low_groups) < 2:
             return
-        projection = native_opportunity(
-            self, required, now, deadlines=deadlines, rates=rates
+        projection = native_opportunity(self, required, now, current_only=True)
+        if projection.opportunity is not None:
+            logger.info("当前原生轮休可执行，不启动智能救急")
+            return
+        if not projection.complete:
+            logger.info("原生轮休检查未完成，不启动智能救急：%s", projection.reason)
+            return
+        logger.info(
+            "多组主班实测低于救急线且当前原生轮休无法安排，启动智能救急：%s", required
         )
-        if projection.opportunity is not None or not projection.complete:
-            logger.info("原生救急仍有恢复机会或观察不足，不启动智能救急")
-            return
         state = {
             "phase": "staffing",
             "frozen_conditions": list(data.plan_condition),

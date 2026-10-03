@@ -335,24 +335,162 @@ def test_frozen_backup_and_ordinary_shift_are_rejected(solver):
     solver.enter_room.assert_not_called()
 
 
-def test_history_predicts_rescue_line_before_pending_native_opportunity(
-    solver, monkeypatch
-):
+def test_history_above_rescue_line_does_not_trigger_entry(solver, monkeypatch):
     setup_startup(solver)
     config.conf.automatic_rescue_enable = True
     for name in PRIMARY:
         solver.op_data.operators[name].mood = 14
-    monkeypatch.setattr(emergency, "history_rate", lambda *a: 2)
-    seen = {}
-
-    def projection(*args, **kwargs):
-        seen.update(kwargs)
-        return NativeProjection(None, True, "blocked")
-
+    history = MagicMock(side_effect=AssertionError("entry must not inspect rates"))
+    monkeypatch.setattr(emergency, "history_rate", history)
+    projection = MagicMock()
     monkeypatch.setattr(emergency, "native_opportunity", projection)
+
     solver._emergency_startup()
-    assert seen["deadlines"][PRIMARY[0]] == NOW + timedelta(hours=(14 - 11.7) / 2)
-    solver._emergency_schedule_staffing.assert_called_once()
+
+    history.assert_not_called()
+    projection.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+@pytest.mark.parametrize("mood", [0, 8])
+def test_real_blocked_startup_ignores_full_bed_timers_and_zero_rates(solver, mood):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in COVERS:
+        data.operators[name].mood = 0
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = mood
+        data.operators[name].depletion_rate = 0
+    for index, name in enumerate(PRIMARY[2:], 2):
+        op = data.operators[name]
+        op._current_room, op.current_index = "dormitory_1", index
+        op.mood = op.upper_limit
+        bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", index))
+        bed.name, bed.time = name, None
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+
+
+@pytest.mark.parametrize("bound_group", [False, True])
+def test_single_low_recovery_group_does_not_enter_even_when_blocked(
+    solver, monkeypatch, bound_group
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 24
+    members = PRIMARY[:2] if bound_group else PRIMARY[:1]
+    for name in members:
+        data.operators[name].mood = 0
+        if bound_group:
+            data.operators[name].group = "low_group"
+    if bound_group:
+        data.groups["low_group"] = list(members)
+    projection = MagicMock(return_value=NativeProjection(None, True, "blocked"))
+    monkeypatch.setattr(emergency, "native_opportunity", projection)
+
+    solver._emergency_startup()
+
+    projection.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert not solver._emergency_active()
+
+
+def test_multiple_low_groups_with_current_native_capacity_do_not_enter(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    for name in PRIMARY[2:]:
+        solver.op_data.operators[name].mood = 24
+
+    solver._emergency_startup()
+
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert not solver._emergency_active()
+
+
+def test_multiple_low_groups_competing_for_current_beds_enter(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    # Four independent low groups have available covers but only three native beds.
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+
+
+def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    data.operators[PRIMARY[0]].mood = 0
+    for name in PRIMARY[1:]:
+        op = data.operators[name]
+        op.group = "resting_group"
+        op.mood = 8
+        op._current_room = "dormitory_1"
+        op.current_index = PRIMARY.index(name) + 1
+        bed = next(
+            bed
+            for bed in data.dorm
+            if bed.position == (op.current_room, op.current_index)
+        )
+        bed.name = name
+        bed.time = NOW + timedelta(hours=2)
+    data.groups["resting_group"] = list(PRIMARY[1:])
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+
+
+@pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
+def test_second_group_needs_measured_mood_below_its_own_line(
+    solver, monkeypatch, reading
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    second = data.operators[PRIMARY[1]]
+    if reading == "prediction":
+        second.mood_is_prediction = True
+    elif reading == "missing":
+        second.time_stamp = None
+    else:
+        second.mood = data.rescue_mood_threshold(second)
+    projection = MagicMock()
+    monkeypatch.setattr(emergency, "native_opportunity", projection)
+
+    solver._emergency_startup()
+
+    projection.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+@pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
+def test_entry_requires_measured_mood_strictly_below_rescue_line(solver, reading):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    for name in PRIMARY:
+        op = solver.op_data.operators[name]
+        if reading == "prediction":
+            op.mood_is_prediction = True
+        elif reading == "missing":
+            op.time_stamp = None
+        else:
+            op.mood = solver.op_data.rescue_mood_threshold(op)
+
+    solver._emergency_startup()
+
+    assert not solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 def test_without_history_above_rescue_line_does_not_plan_temporary_staffing(solver):

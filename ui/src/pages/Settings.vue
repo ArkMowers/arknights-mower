@@ -535,8 +535,10 @@ const idleOptions = computed(() => [
               <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="智能救急">
                 智能救急
                 <help-text label="智能救急说明" :max-width="480">
-                  启动时确认普通轮休无法及时周转后，由 Mower
-                  按设施内技能安排临时驻员。临时上岗要求心情不低于个人正常下班线加 1
+                  启动时至少两组主班实测低于各自救急线，且有待下班主班无法通过当前普通轮休安排休息时，由
+                  Mower
+                  按设施内技能安排临时驻员；启动判断不依赖历史速率。临时上岗要求心情不低于个人正常下班线加
+                  1
                   点，保留全部跑单干员用于跑单。期间暂停副表与普通换班，心情复查时收取订单和产物；实测恢复后统一恢复排班。
                 </help-text>
               </n-checkbox>

@@ -85,3 +85,46 @@ def test_native_projection_distinguishes_blocked_and_unknown(solver):
     incomplete = native_opportunity(solver, PRIMARY, NOW, budget=0)
     assert not incomplete.complete
     solver.enter_room.assert_not_called()
+
+
+def test_current_rotation_accepts_measured_low_mood_without_rate(solver):
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+
+    for name in PRIMARY:
+        solver.op_data.operators[name].mood = 0
+    result = native_opportunity(solver, PRIMARY[:3], NOW, current_only=True)
+
+    assert result.complete and result.opportunity == NOW
+    solver.enter_room.assert_not_called()
+
+
+def test_current_rotation_does_not_wait_for_future_shift_or_unknown_bed(solver):
+    from datetime import timedelta
+
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    data = solver.op_data
+    required = PRIMARY[0]
+    data.operators[required].mood = 0
+    for name in COVERS:
+        data.operators[name].mood = 0
+    resident = data.operators[PRIMARY[-1]]
+    resident._current_room, resident.current_index = "dormitory_1", 2
+    bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 2))
+    bed.name, bed.time = resident.name, None
+    solver.tasks.append(
+        SchedulerTask(
+            time=NOW + timedelta(minutes=10),
+            task_type=TaskTypes.SHIFT_OFF,
+            task_plan={data.operators[required].room: [COVERS[0]]},
+        )
+    )
+    before = repr(data), repr(solver.tasks)
+
+    result = native_opportunity(solver, [required], NOW, current_only=True)
+
+    assert result.complete and result.opportunity is None
+    assert result.reason == "blocked"
+    assert (repr(data), repr(solver.tasks)) == before
+    solver.enter_room.assert_not_called()

@@ -145,18 +145,12 @@ def primary_names(data):
     ]
 
 
-def native_opportunity(
-    solver, required, now=None, *, budget=128, deadlines=None, rates=None, earliest=None
-):
-    """在副本上搜索轮休及已知恢复事件；预算不足不证明恢复阻塞。"""
+def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
+    """在副本上搜索轮休；当前模式只检查可立即执行的安排，不预测速率。"""
     now = now or datetime.now()
     initial = copy.deepcopy(
         solver.op_data, {id(solver.op_data.eval_model): solver.op_data.eval_model}
     )
-    deadlines, rates, earliest = deadlines or {}, rates or {}, earliest or {}
-    for name, rate in rates.items():
-        if name in initial.operators:
-            initial.operators[name].depletion_rate = rate
     required = set(required)
     pending = [
         task
@@ -229,14 +223,11 @@ def native_opportunity(
             op = data.operators[name]
             if op.is_resting():
                 continue
-            if earliest.get(name, now) > when:
-                continue
             if name in remaining or (
                 has_resting_mood(op)
                 and op.current_mood() <= data.resting_mood_threshold(op)
             ):
                 groups[op.group or name] = data.groups.get(op.group, [name])
-        progressed = False
         for members in groups.values():
             candidate = copy.copy(trial)
             candidate.op_data = copy.deepcopy(
@@ -255,7 +246,6 @@ def native_opportunity(
                 uncertain = True
                 continue
             if plan:
-                progressed = True
                 # 原生规划把床位预约放在 dorm 中，执行计划另行补全这些位置。
                 for bed in candidate.op_data.dorm:
                     if bed.name in members:
@@ -270,10 +260,9 @@ def native_opportunity(
                     if name in required and not projected.operators[name].is_working()
                 }
                 queue.append((projected, when, used, served | admitted))
+        if current_only:
+            continue
         events = []
-        for name in remaining:
-            if earliest.get(name, now) > when:
-                events.append((earliest[name], ("eligible", name), {}))
         for i, task in enumerate(pending):
             event_id = ("task", i)
             if event_id not in used:
@@ -308,9 +297,6 @@ def native_opportunity(
             timely = True
             for name in remaining:
                 op = projected.operators[name]
-                if time > deadlines.get(name, datetime.max):
-                    timely = False
-                    break
                 if time > when and op.is_working():
                     if not has_resting_mood(op) or op.depletion_rate <= 0:
                         uncertain = True
@@ -348,8 +334,6 @@ def native_opportunity(
                     served | charged,
                 )
             )
-        if progressed and len(queue) > budget:
-            uncertain = True
     return NativeProjection(
         None,
         not (queue or uncertain),
