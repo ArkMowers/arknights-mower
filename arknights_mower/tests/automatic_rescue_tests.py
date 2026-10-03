@@ -117,7 +117,7 @@ def test_measured_low_mood_plans_once_and_restart_only_reconciles(solver, monkey
     assert solver._emergency_active()
     solver._emergency_startup()
     solver._emergency_schedule_staffing.assert_called_once()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
     assert solver.emergency_state["phase"] == "staffing"
 
 
@@ -372,7 +372,7 @@ def test_real_blocked_startup_ignores_full_bed_timers_and_zero_rates(solver, moo
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
 
 
 @pytest.mark.parametrize("bound_group", [False, True])
@@ -420,7 +420,7 @@ def test_multiple_low_groups_competing_for_current_beds_enter(solver):
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
 
 
 def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
@@ -446,7 +446,7 @@ def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
 
 
 @pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
@@ -500,7 +500,7 @@ def test_startup_keeps_executable_native_return_before_rescue(solver, delay):
         solver._emergency_schedule_staffing.assert_not_called()
         assert task in solver.tasks
     else:
-        solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+        solver._emergency_schedule_staffing.assert_called_once_with()
 
 
 @pytest.mark.parametrize("delay,mood", [(0, 24), (10, 24), (0, 8)])
@@ -537,7 +537,7 @@ def test_startup_keeps_executable_fiammetta_before_rescue(solver, delay, mood):
         solver._emergency_schedule_staffing.assert_not_called()
         assert task in solver.tasks
     else:
-        solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+        solver._emergency_schedule_staffing.assert_called_once_with()
 
 
 @pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
@@ -1220,7 +1220,7 @@ def test_completed_primary_remains_reserved_during_another_group_departure(solve
         return [StaffingCandidate(COVERS[0], 24, ())]
 
     solver._emergency_scan_workers = scan
-    solver._emergency_schedule_staffing(initial=True)
+    solver._emergency_schedule_staffing()
     assert observations
     assert solver.tasks[0].plan[room] == [COVERS[0]]
     projected = data.project_arrangements([solver.tasks[0].plan])
@@ -1241,7 +1241,7 @@ def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver)
     solver._emergency_scan_workers = MagicMock(
         return_value=[StaffingCandidate(COVERS[0], 24, ())]
     )
-    solver._emergency_schedule_staffing(initial=True)
+    solver._emergency_schedule_staffing()
     assert not state.get("staffing_plan")
     assert state["temporary_roster"][room] == [COVERS[0]]
     assert not any(getattr(t, "emergency_staffing", False) for t in solver.tasks)
@@ -1281,7 +1281,7 @@ def test_staffing_reserves_original_worker_of_started_specialized_task(solver, k
 
     solver._emergency_scan_workers = MagicMock(side_effect=scan)
 
-    solver._emergency_schedule_staffing(initial=True)
+    solver._emergency_schedule_staffing()
 
     solver._emergency_scan_workers.assert_called_once()
     staffing = next(
@@ -1840,7 +1840,7 @@ def test_unexecutable_due_release_does_not_prevent_rescue(
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
 
 
 def test_current_fiammetta_charge_is_consumed_after_one_target(solver):
@@ -1885,4 +1885,54 @@ def test_current_fiammetta_charge_is_consumed_after_one_target(solver):
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_target_update_reuses_group_opportunity_only_within_one_update(
+    solver, monkeypatch, available
+):
+    data = solver.op_data
+    members = PRIMARY[:2]
+    for name in members:
+        op = data.operators[name]
+        op.group = "恢复组"
+        data.global_plan["default_plan"].plan[op.room][op.index].group = op.group
+    data.groups["恢复组"] = members.copy()
+    state = make_episode(solver)
+    state["targets"] = {name: 16 for name in PRIMARY[:3]}
+    rates = {PRIMARY[0]: 1, PRIMARY[1]: 3, PRIMARY[2]: None}
+    monkeypatch.setattr(emergency, "emergency_mood_history", lambda name: [name])
+    monkeypatch.setattr(emergency, "history_rate", lambda rows, *args: rates[rows[0]])
+    cycles = {PRIMARY[0]: 1, PRIMARY[1]: 2, PRIMARY[2]: None}
+    monkeypatch.setattr(emergency, "history_cycle", lambda rows, *args: cycles[rows[0]])
+    first = NOW + timedelta(hours=1) if available else None
+    projection = MagicMock(return_value=NativeProjection(first, True))
+    monkeypatch.setattr(emergency, "native_opportunity", projection)
+
+    solver._emergency_update_targets()
+
+    assert projection.call_count == 1
+    assert set(projection.call_args.args[1]) == set(members)
+    expected = {
+        PRIMARY[0]: first,
+        PRIMARY[1]: NOW + timedelta(hours=2) if available else None,
+        PRIMARY[2]: first,
+    }
+    for name in PRIMARY[:3]:
+        assert (
+            state["targets"][name]
+            == recovery_target(data, name, rates[name], expected[name], NOW)[0]
+        )
+    second = NOW + timedelta(hours=2)
+    projection.return_value = NativeProjection(second, True)
+
+    solver._emergency_update_targets()
+
+    assert projection.call_count == 2
+    for name in PRIMARY[:3]:
+        assert (
+            state["targets"][name]
+            == recovery_target(data, name, rates[name], second, NOW)[0]
+        )
+    assert state["targets"][PRIMARY[0]] != state["targets"][PRIMARY[1]]

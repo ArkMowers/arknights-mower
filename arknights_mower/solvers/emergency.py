@@ -272,7 +272,7 @@ class EmergencyRecoveryMixin:
         ]
         self._emergency_save()
         self.plan_metadata()
-        self._emergency_schedule_staffing(initial=True)
+        self._emergency_schedule_staffing()
         state["observed_at"] = datetime.now()
         self._emergency_save()
 
@@ -353,7 +353,49 @@ class EmergencyRecoveryMixin:
             self.back_to_infrastructure()
         return candidates
 
-    def _emergency_schedule_staffing(self, *, initial=False):
+    def _emergency_worker_options(
+        self, room, facility, count, reserved, *, snapshot, fixed_names, current=()
+    ):
+        """共用设施组合选人及替班候选排序；调用方保留各自的预约范围。"""
+        data = self.op_data
+        product = data.facility_states.get(room, {}).get("product")
+        observed = self._emergency_scan_workers(
+            room, facility, reserved, snapshot=snapshot, fixed=fixed_names
+        )
+        by_name = {candidate.name: candidate for candidate in observed}
+        fixed = []
+        for name in fixed_names:
+            skills = unlocked_skills(name, facility, snapshot)
+            if skills is None:
+                skills = by_name[name].skills if name in by_name else ()
+            op = data.operators.get(name)
+            fixed.append(
+                StaffingCandidate(
+                    name, op.current_mood() if has_resting_mood(op) else 0, skills
+                )
+            )
+        candidates = [
+            candidate
+            for candidate in observed
+            if eligible_worker(data, candidate.name, candidate.mood, reserved)
+        ]
+        names = select_workers(
+            candidates, facility, product, count, current=current, fixed=fixed
+        )
+        if len(names) != count:
+            return []
+        candidates.sort(
+            key=lambda candidate: (
+                facility_score([candidate, *fixed], facility, product),
+                candidate.name in current,
+                candidate.mood,
+            ),
+            reverse=True,
+        )
+        ranked = [candidate.name for candidate in candidates]
+        return [list(dict.fromkeys([name, *ranked])) for name in names]
+
+    def _emergency_schedule_staffing(self):
         """完整工作替班可执行后离岗；床位按个人需求分批安排。"""
         state, data = self.emergency_state, self.op_data
         if (
@@ -452,7 +494,6 @@ class EmergencyRecoveryMixin:
                     for task in self.tasks
                 ):
                     continue
-                group_reserved = reserved
                 probe = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
                 for name in working:
                     probe.operators[name]._current_room = ""
@@ -469,7 +510,6 @@ class EmergencyRecoveryMixin:
                     if snapshot is None:
                         snapshot = load_skill_snapshot()
                     facility = facilities.get(room, data.plan[room][0].facility)
-                    product = data.facility_states.get(room, {}).get("product")
                     current = data.get_current_room(room, True)
                     changed_indices = {index for index, _ in slots}
                     fixed_names = [
@@ -480,57 +520,21 @@ class EmergencyRecoveryMixin:
                         is not None
                         and actual.name == slot.agent
                     ]
-                    observed = self._emergency_scan_workers(
+                    room_options = self._emergency_worker_options(
                         room,
                         facility,
-                        group_reserved,
-                        snapshot=snapshot,
-                        fixed=fixed_names,
-                    )
-                    by_name = {candidate.name: candidate for candidate in observed}
-                    fixed = []
-                    for name in fixed_names:
-                        skills = unlocked_skills(name, facility, snapshot)
-                        if skills is None:
-                            skills = by_name[name].skills if name in by_name else ()
-                        op = data.operators[name]
-                        fixed.append(StaffingCandidate(name, op.current_mood(), skills))
-                    candidates = [
-                        candidate
-                        for candidate in observed
-                        if eligible_worker(
-                            data, candidate.name, candidate.mood, group_reserved
-                        )
-                    ]
-                    names = select_workers(
-                        candidates,
-                        facility,
-                        product,
                         len(slots),
+                        reserved,
+                        snapshot=snapshot,
+                        fixed_names=fixed_names,
                         current=current,
-                        fixed=fixed,
                     )
-                    if len(names) != len(slots):
+                    if not room_options:
                         completed = False
                         break
-                    candidates.sort(
-                        key=lambda candidate: (
-                            facility_score([candidate, *fixed], facility, product),
-                            candidate.name in current,
-                            candidate.mood,
-                        ),
-                        reverse=True,
-                    )
-                    for (_, primary), replacement in zip(slots, names):
-                        preferred[primary] = replacement
-                        options[primary] = list(
-                            dict.fromkeys(
-                                [
-                                    replacement,
-                                    *(candidate.name for candidate in candidates),
-                                ]
-                            )
-                        )
+                    for (_, primary), choices in zip(slots, room_options):
+                        preferred[primary] = choices[0]
+                        options[primary] = choices
                 else:
                     replacements = (
                         preferred
@@ -656,48 +660,21 @@ class EmergencyRecoveryMixin:
             if not self._emergency_operation_fits(45):
                 return False
             facility = facilities.get(room, data.plan[room][0].facility)
-            product = data.facility_states.get(room, {}).get("product")
             fixed_names = fixed_by_room[room]
-            observed = self._emergency_scan_workers(
-                room, facility, reserved, snapshot=snapshot, fixed=fixed_names
+            room_options = self._emergency_worker_options(
+                room,
+                facility,
+                len(slots),
+                reserved,
+                snapshot=snapshot,
+                fixed_names=fixed_names,
             )
-            by_name = {candidate.name: candidate for candidate in observed}
-            fixed = []
-            for name in fixed_names:
-                skills = unlocked_skills(name, facility, snapshot)
-                if skills is None:
-                    skills = by_name[name].skills if name in by_name else ()
-                op = data.operators.get(name)
-                fixed.append(
-                    StaffingCandidate(
-                        name, op.current_mood() if has_resting_mood(op) else 0, skills
-                    )
-                )
-            candidates = [
-                candidate
-                for candidate in observed
-                if eligible_worker(data, candidate.name, candidate.mood, reserved)
-            ]
-            names = select_workers(
-                candidates, facility, product, len(slots), fixed=fixed
-            )
-            if len(names) != len(slots):
+            if not room_options:
                 return False
-            candidates.sort(
-                key=lambda candidate: (
-                    facility_score([candidate, *fixed], facility, product),
-                    candidate.mood,
-                ),
-                reverse=True,
-            )
-            for (index, _), replacement in zip(slots, names):
+            for (index, _), choices in zip(slots, room_options):
                 key = (room, index)
-                preferred[key] = replacement
-                options[key] = list(
-                    dict.fromkeys(
-                        [replacement, *(candidate.name for candidate in candidates)]
-                    )
-                )
+                preferred[key] = choices[0]
+                options[key] = choices
         replacements = (
             preferred
             if len(set(preferred.values())) == len(preferred)
@@ -831,6 +808,7 @@ class EmergencyRecoveryMixin:
         probe.op_data = normal.project_arrangements([plan])
         probe.tasks = []
         probe._emergency_handoff = True
+        opportunities = {}
         for name in state["targets"]:
             op = data.operators.get(name)
             if op is None or name in state.get("ready_members", ()):
@@ -838,9 +816,10 @@ class EmergencyRecoveryMixin:
             rows = emergency_mood_history(name)
             rate = history_rate(rows, op.room, state["work_contexts"].get(name))
             members = data.groups.get(op.group, [name])
-            opportunity = (
-                native_opportunity(probe, members).opportunity if rate else None
-            )
+            group = tuple(members)
+            if rate and group not in opportunities:
+                opportunities[group] = native_opportunity(probe, members).opportunity
+            opportunity = opportunities.get(group) if rate else None
             cycle = history_cycle(rows, op.room, state["work_contexts"].get(name))
             immediate = opportunity
             if opportunity is not None and cycle is not None:
@@ -1012,9 +991,7 @@ class EmergencyRecoveryMixin:
                 state["next_read"] = now + timedelta(minutes=5)
             else:
                 self._open_emergency_beds()
-                scanned = self._emergency_schedule_staffing(
-                    initial=state["phase"] == "staffing"
-                )
+                scanned = self._emergency_schedule_staffing()
                 self._emergency_plan_beds(state)
                 state["next_read"] = datetime.now() + timedelta(
                     minutes=self._emergency_read_minutes() if scanned else 1

@@ -53,7 +53,7 @@ def staffing_task(solver):
 def test_startup_keeps_other_primary_groups_and_uses_automatic_substitutes(staffing):
     solver = staffing.solver
 
-    assert solver._emergency_schedule_staffing(initial=True)
+    assert solver._emergency_schedule_staffing()
 
     task = staffing_task(solver)
     assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
@@ -106,7 +106,7 @@ def test_staffing_does_not_scan_or_move_healthy_main_groups(staffing):
     for name in PRIMARY:
         solver.op_data.operators[name].mood = 24
 
-    assert solver._emergency_schedule_staffing(initial=True)
+    assert solver._emergency_schedule_staffing()
 
     solver._emergency_scan_workers.assert_not_called()
     assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
