@@ -48,7 +48,7 @@
       {% endfor %}       {% elif task.type %}
       <tr>
         <td>{{ task.time.strftime('%H:%M:%S') }}</td>
-        <td colspan="2">{% if task.meta_data == 'automatic_rescue_check' %}智能救急心情复查{% else %}{{ task.type }}{{ ' ' + task.meta_data if task.meta_data else '' }}{% endif %}</td>
+        <td colspan="2">{{ task.type }}{{ ' ' + task.meta_data if task.meta_data else '' }}</td>
       </tr>
       {% else %}
       <tr>

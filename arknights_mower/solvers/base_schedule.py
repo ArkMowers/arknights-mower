@@ -32,7 +32,7 @@ from arknights_mower.solvers.base_mixin import (
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
-from arknights_mower.solvers.emergency import CHECK_META, EmergencyRecoveryMixin
+from arknights_mower.solvers.emergency import RESUME_META, EmergencyRecoveryMixin
 from arknights_mower.solvers.local_operation import (
     FOLLOWUP_TASK_META,
     build_sanity_projection,
@@ -1136,7 +1136,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             arrangement_deferred = False
             completed_task = None
             try:
-                if self.task.meta_data == CHECK_META:
+                if self.task.meta_data == RESUME_META or getattr(
+                    self.task, "emergency_recovery_release", False
+                ):
                     if self._emergency_active():
                         self._emergency_tick()
                 elif self.task.type == TaskTypes.SKILL_UPGRADE:

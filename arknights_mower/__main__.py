@@ -539,7 +539,7 @@ def simulate(saved):
                 base_scheduler.backup_plan_solver()
         except Exception as ex:
             logger.exception(ex)
-    from arknights_mower.solvers.emergency import CHECK_META
+    from arknights_mower.solvers.emergency import RESUME_META
     from arknights_mower.utils.emergency_recovery import ORDINARY_SHIFTS
     from arknights_mower.utils.scheduler_task import SchedulerTask
 
@@ -558,10 +558,10 @@ def simulate(saved):
         base_scheduler._emergency_startup_pending = True
         base_scheduler.defer_backup_plan_until_mood_read = True
         base_scheduler.tasks[:] = [
-            task for task in base_scheduler.tasks if task.meta_data != CHECK_META
+            task for task in base_scheduler.tasks if task.meta_data != RESUME_META
         ]
         base_scheduler.tasks.insert(
-            0, SchedulerTask(time=datetime.now(), meta_data=CHECK_META)
+            0, SchedulerTask(time=datetime.now(), meta_data=RESUME_META)
         )
     while True:
         try:

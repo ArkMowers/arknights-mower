@@ -229,7 +229,7 @@ def test_partial_observation_advances_existing_check_wakeup(observation_solver):
     episode = observation_solver
     solver = episode.solver
     check = SchedulerTask(
-        time=NOW + timedelta(minutes=30), meta_data=emergency.CHECK_META
+        time=NOW + timedelta(minutes=30), meta_data=emergency.RESUME_META
     )
     solver.tasks.append(check)
     set_release_window(episode, 120)
@@ -240,7 +240,7 @@ def test_partial_observation_advances_existing_check_wakeup(observation_solver):
     assert check.time == episode.state["next_read"]
     assert check.time == episode.clock["now"] + timedelta(minutes=1)
     assert [
-        task for task in solver.tasks if task.meta_data == emergency.CHECK_META
+        task for task in solver.tasks if task.meta_data == emergency.RESUME_META
     ] == [check]
 
 
@@ -525,7 +525,7 @@ def test_inactive_startup_yields_before_strict_release(observation_solver, cache
     solver._emergency_startup_pending = True
     solver.defer_backup_plan_until_mood_read = True
     solver.find = MagicMock(return_value=(1, 1))
-    solver.task = SchedulerTask(meta_data=emergency.CHECK_META)
+    solver.task = SchedulerTask(meta_data=emergency.RESUME_META)
     solver.tasks.append(solver.task)
     solver.skip = MagicMock()
     solver.planned = True
@@ -712,7 +712,7 @@ def test_real_restart_restores_unfinished_startup_with_setting_disabled(
     assert solver._emergency_startup_pending
     assert solver._emergency_startup_rooms == pending
     assert solver.defer_backup_plan_until_mood_read
-    assert any(task.meta_data == emergency.CHECK_META for task in solver.tasks)
+    assert any(task.meta_data == emergency.RESUME_META for task in solver.tasks)
     assert solver.emergency_state is None
 
 

@@ -210,6 +210,8 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
             task
             for task in tasks
             if not getattr(task, "strict_mood_limit", False)
+            and not getattr(task, "emergency_recovery_release", False)
+            and (task.plan or task.type != TaskTypes.NOT_SPECIFIC)
             and (task.type != TaskTypes.SWAP_SUPPORT or config.conf.enable_mastery)
         ),
         key=lambda task: task.time,
@@ -1502,16 +1504,48 @@ def plan_metadata(op_data, tasks):
     return tasks
 
 
-def plan_mood_limit_releases(op_data):
+def plan_mood_limit_releases(op_data, *, recovery_targets=None):
     now = datetime.now()
     result = []
     for bed in op_data.all_dorms():
-        if not op_data.has_rest_mood_limit(bed.name):
-            continue
         op = op_data.operators.get(bed.name)
         if op is None or (op.current_room, op.current_index) != bed.position:
             continue
         if not op_data.is_recovery_dorm(bed, op.name):
+            continue
+        target = (recovery_targets or {}).get(op.name)
+        if (
+            target is not None
+            and 0 <= target <= op.upper_limit
+            and not (target == op.upper_limit and op_data.has_rest_mood_limit(op.name))
+            and has_resting_mood(op)
+        ):
+            due = None
+            if op.mood >= target:
+                due = now
+            elif (
+                bed.time is not None
+                and op.time_stamp is not None
+                and bed.time > op.time_stamp
+                and op.mood < op.upper_limit
+            ):
+                due = op.time_stamp + (bed.time - op.time_stamp) * (
+                    (target - op.mood) / (op.upper_limit - op.mood)
+                )
+            if due is not None:
+                room, index = bed.position
+                names = ["Current"] * len(op_data.plan[room])
+                names[index] = "Free"
+                task = SchedulerTask(
+                    time=max(now, due),
+                    task_plan={room: names},
+                    task_type=TaskTypes.RELEASE_DORM,
+                    meta_data=op.name,
+                    mood_limit=target,
+                )
+                task.emergency_recovery_release = True
+                result.append(task)
+        if not op_data.has_rest_mood_limit(bed.name):
             continue
         if op_data.rest_mood_complete(op.name):
             due = now

@@ -55,7 +55,7 @@ from arknights_mower.utils.scheduler_task import (
     try_workshop_tasks,
 )
 
-CHECK_META = "automatic_rescue_check"
+RESUME_META = "智能救急继续安排"
 COLLECTION_COOLDOWN = timedelta(minutes=15)
 
 
@@ -74,20 +74,25 @@ class EmergencyRecoveryMixin:
         )
 
     def _emergency_replan_releases(self):
-        """每房实测后刷新强制清退；交接读房仍不生成普通换班。"""
-        releases = plan_mood_limit_releases(self.op_data)
+        """恢复目标与个人上限共用清退规划；交接期间只保留个人上限。"""
+        state = getattr(self, "emergency_state", None) or {}
+        targets = state.get("targets", {}) if state.get("phase") != "returning" else {}
+        releases = plan_mood_limit_releases(self.op_data, recovery_targets=targets)
         refreshed = {task.meta_data for task in releases}
         self.tasks[:] = [
             task
             for task in self.tasks
-            if not getattr(task, "strict_mood_limit", False)
-            or (
-                getattr(self, "_emergency_handoff", False)
-                and task.meta_data not in refreshed
-                and (op := self.op_data.operators.get(task.meta_data)) is not None
-                and op.current_room in task.plan
-                and 0 <= op.current_index < len(task.plan[op.current_room])
-                and task.plan[op.current_room][op.current_index] == "Free"
+            if not getattr(task, "emergency_recovery_release", False)
+            and (
+                not getattr(task, "strict_mood_limit", False)
+                or (
+                    getattr(self, "_emergency_handoff", False)
+                    and task.meta_data not in refreshed
+                    and (op := self.op_data.operators.get(task.meta_data)) is not None
+                    and op.current_room in task.plan
+                    and 0 <= op.current_index < len(task.plan[op.current_room])
+                    and task.plan[op.current_room][op.current_index] == "Free"
+                )
             )
         ]
         self.tasks.extend(releases)
@@ -104,17 +109,20 @@ class EmergencyRecoveryMixin:
         return datetime.now() + timedelta(seconds=seconds + 1) < start
 
     def _emergency_defer_read(self):
+        """中断的实际操作使用一次续行任务，不创建周期读心情任务。"""
         due = datetime.now() + timedelta(minutes=1)
         if self._emergency_active():
             self.emergency_state["next_read"] = due
-            self._emergency_queue_check()
-            self._emergency_save()
-            return
-        check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
-        if check is None:
-            self.tasks.append(SchedulerTask(time=due, meta_data=CHECK_META))
+            self.tasks[:] = [
+                task
+                for task in self.tasks
+                if not getattr(task, "emergency_recovery_release", False)
+            ]
+        task = next((t for t in self.tasks if t.meta_data == RESUME_META), None)
+        if task is None:
+            self.tasks.append(SchedulerTask(time=due, meta_data=RESUME_META))
         else:
-            check.time = due
+            task.time = due
         self._emergency_save()
 
     def _emergency_read_rooms(self, rooms, *, yield_to_releases=False):
@@ -165,7 +173,16 @@ class EmergencyRecoveryMixin:
             state.pop("pending_read_rooms", None)
         return True
 
+    def _emergency_sync_reservations(self):
+        state = getattr(self, "emergency_state", None) or {}
+        self.op_data.emergency_reserved_agents = (
+            set(state.get("ready_members", ()))
+            | set(state.get("staffing_members", ()))
+            | set(state.get("release_members", ()))
+        )
+
     def _emergency_save(self):
+        self._emergency_sync_reservations()
         if not save_current_state():
             raise RuntimeError("智能救急运行状态保存失败，未安排临时换班")
 
@@ -962,17 +979,29 @@ class EmergencyRecoveryMixin:
         return True
 
     def _emergency_observe_recovery(self):
-        """到期复查收取与读房；初始化观测直接复用，延期从剩余房间续行。"""
+        """正常查询或预计换人时读取相关宿舍；初始化读数直接复用。"""
         state = self.emergency_state
 
         if state.pop("observed_at", None) is not None:
             return True
+        rotation_rooms = {
+            room
+            for task in self.tasks
+            if getattr(task, "emergency_recovery_release", False)
+            and task.time <= datetime.now()
+            for room in task.plan
+        }
         rooms = {
             op.current_room
             for name, target in state["targets"].items()
             if (op := self.op_data.operators.get(name)) is not None
             and op.is_resting()
             and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+            and (
+                op.current_room in rotation_rooms
+                or op.need_to_refresh()
+                or state["phase"] == "returning"
+            )
         }
         if "pending_read_rooms" not in state:
             state["read_collection_pending"] = True
@@ -990,23 +1019,10 @@ class EmergencyRecoveryMixin:
             return False
         return True
 
-    def _emergency_queue_check(self):
-        state = self.emergency_state
-        check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
-        if check is None:
-            check = SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
-            self.tasks.append(check)
-        else:
-            check.time = state["next_read"]
-        check.emergency_staffing_members = sorted(
-            set(state.get("ready_members", ()))
-            | set(state.get("staffing_members", ()))
-            | set(state.get("release_members", ()))
-        )
-
     def _emergency_tick(self, *, completed_task=None):
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
-        self._emergency_filter_tasks()
+        self.plan_metadata()
+        protect_priority_tasks(self.tasks)
         state = self.emergency_state
         pending_staffing = [
             task for task in self.tasks if getattr(task, "emergency_staffing", False)
@@ -1017,11 +1033,25 @@ class EmergencyRecoveryMixin:
                 min(task.time for task in pending_staffing) + timedelta(minutes=1),
                 datetime.now() + timedelta(minutes=1),
             )
-            self._emergency_queue_check()
             self._emergency_save()
             return
         staffing_completed = self._emergency_reconcile_staffing()
-        read_due = datetime.now() >= state.get("next_read", datetime.now())
+        read_due = datetime.now() >= state.get("next_read", datetime.now()) or any(
+            getattr(task, "emergency_recovery_release", False)
+            and task.time <= datetime.now()
+            for task in self.tasks
+        )
+        read_due = read_due or (
+            not any(
+                task.meta_data == RESUME_META and task.time > datetime.now()
+                for task in self.tasks
+            )
+            and any(
+                op.is_resting() and op.need_to_refresh()
+                for name in state["targets"]
+                if (op := self.op_data.operators.get(name)) is not None
+            )
+        )
         specialized_completed = completed_task is not None and (
             completed_task.type
             in (
@@ -1035,8 +1065,6 @@ class EmergencyRecoveryMixin:
             or getattr(completed_task, "strict_mood_limit", False)
         )
         plan_due = read_due or staffing_completed or specialized_completed
-        self.plan_metadata()
-        protect_priority_tasks(self.tasks)
         if read_due:
             if state.get("handoff_observing"):
                 if not self._emergency_restore():
@@ -1048,6 +1076,11 @@ class EmergencyRecoveryMixin:
             self.plan_metadata()
             protect_priority_tasks(self.tasks)
         if plan_due:
+            self.tasks[:] = [
+                task
+                for task in self.tasks
+                if not getattr(task, "emergency_recovery_release", False)
+            ]
             state["ready_members"] = [
                 name
                 for name in state.get("ready_members", [])
@@ -1062,16 +1095,19 @@ class EmergencyRecoveryMixin:
             if self._emergency_ready() and self._emergency_restore():
                 return
             if state["phase"] == "returning":
-                state["next_read"] = datetime.now() + timedelta(minutes=5)
+                self._emergency_defer_read()
             else:
                 self._open_emergency_beds()
                 scanned = self._emergency_schedule_staffing()
                 self._emergency_plan_beds(state)
-                if read_due or not scanned:
-                    state["next_read"] = datetime.now() + timedelta(
-                        minutes=self._emergency_read_minutes() if scanned else 1
-                    )
-        self._emergency_queue_check()
+                if not scanned:
+                    self._emergency_defer_read()
+                elif read_due:
+                    state["next_read"] = datetime.now() + timedelta(hours=2)
+        self._emergency_sync_reservations()
+        if plan_due:
+            self._emergency_replan_releases()
+            protect_priority_tasks(self.tasks)
         if (
             plan_due
             and state["phase"] == "recovering"
@@ -1145,11 +1181,8 @@ class EmergencyRecoveryMixin:
             state.get("release_members", ())
         )
         state["ready_members"] = sorted(ready)
-        for task in self.tasks:
-            if task.meta_data == CHECK_META:
-                task.emergency_staffing_members = sorted(
-                    ready | members | set(state.get("staffing_members", ()))
-                )
+        state["release_members"] = sorted(members)
+        self._emergency_sync_reservations()
         for task in self.tasks:
             if not getattr(task, "emergency_dorm", False):
                 continue
@@ -1205,11 +1238,6 @@ class EmergencyRecoveryMixin:
             for name in members - ready
             if self.op_data.operators[name].is_resting()
         }
-        for task in self.tasks:
-            if task.meta_data == CHECK_META:
-                task.emergency_staffing_members = sorted(
-                    ready | remaining | set(state.get("staffing_members", ()))
-                )
         if not remaining:
             state.pop("release_plan", None)
             state.pop("release_members", None)
@@ -1217,27 +1245,6 @@ class EmergencyRecoveryMixin:
             state["release_members"] = sorted(remaining)
         self._emergency_save()
         return True
-
-    def _emergency_read_minutes(self):
-        waits = []
-        for name, target in self.emergency_state["targets"].items():
-            op = self.op_data.operators.get(name)
-            if (
-                op is None
-                or not op.is_resting()
-                or not has_resting_mood(op)
-                or op.mood >= target
-            ):
-                continue
-            rate = history_rate(
-                emergency_mood_history(name),
-                op.current_room,
-                mood_context(self.op_data, op.current_room),
-                op.current_index,
-                recovering=True,
-            )
-            waits.append((target - op.mood) / rate * 60 if rate else 15)
-        return max(5, min(30, min(waits, default=15)))
 
     def _emergency_ready(self):
         if (
@@ -1421,7 +1428,13 @@ class EmergencyRecoveryMixin:
             self._emergency_save()
             return False
         self.emergency_state = None
-        self.tasks[:] = [task for task in self.tasks if task.meta_data != CHECK_META]
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.meta_data != RESUME_META
+            and not getattr(task, "emergency_recovery_release", False)
+        ]
+        self._emergency_sync_reservations()
         self.run_order_solver()
         self.plan_metadata()
         self._emergency_save()
@@ -1429,7 +1442,7 @@ class EmergencyRecoveryMixin:
         return True
 
     def _emergency_collect(self):
-        """心情复查时顺便收取，沿用普通收取的防重复间隔。"""
+        """正常查询或宿舍换人时顺便收取，沿用普通收取的防重复间隔。"""
         last = self.last_execution.get("todo")
         if last is not None and datetime.now() < last + COLLECTION_COOLDOWN:
             return

@@ -237,17 +237,12 @@ def test_targets_use_individual_rates_and_preserve_infeasible_value(solver):
 
 
 @pytest.mark.parametrize("last_collection", [None, NOW - timedelta(minutes=16)])
-def test_collection_waits_for_mood_check_instead_of_waking_early(
-    solver, last_collection
-):
+def test_collection_does_not_create_an_independent_wakeup(solver, last_collection):
     make_episode(solver)
     solver.last_execution["todo"] = last_collection
     solver._emergency_collect = MagicMock()
     solver._emergency_tick()
-    check = next(
-        task for task in solver.tasks if task.meta_data == emergency.CHECK_META
-    )
-    assert check.time == NOW + timedelta(minutes=30)
+    assert not solver.tasks
     assert solver.emergency_state["next_read"] == NOW + timedelta(minutes=30)
     solver._emergency_collect.assert_not_called()
 
@@ -318,7 +313,7 @@ def test_occupied_order_agents_remove_tasks_without_touching_collection(solver):
     order = SchedulerTask(
         task_type=TaskTypes.RUN_ORDER, task_plan={room: ["但书"]}, meta_data=room
     )
-    check = SchedulerTask(meta_data=emergency.CHECK_META)
+    check = SchedulerTask(meta_data=emergency.RESUME_META)
     solver.tasks = [order, check]
     solver._emergency_filter_tasks()
     assert solver.tasks == [check]
@@ -763,7 +758,7 @@ def test_handoff_uses_real_arrangement_with_its_own_task_context(solver, previou
     make_episode(solver)
     plan = {"room_1_1": [PRIMARY[0]]}
     previous_task = (
-        SchedulerTask(task_type=previous_type, meta_data=emergency.CHECK_META)
+        SchedulerTask(task_type=previous_type, meta_data=emergency.RESUME_META)
         if previous_type is not None
         else None
     )
@@ -821,15 +816,14 @@ def test_exhausted_replacements_prevent_exit_until_native_matching_is_feasible(s
     solver.agent_arrange.assert_not_called()
 
 
-def test_check_task_rearms_at_next_mood_read_after_consumed_check(solver):
+def test_consumed_continuation_does_not_create_periodic_check(solver):
     make_episode(solver)
-    solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)]
+    solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)]
     solver.last_execution["todo"] = NOW
     consumed = solver.tasks.pop()
     solver.task = consumed
     solver._emergency_tick()
-    assert len(solver.tasks) == 1
-    assert solver.tasks[0].time == NOW + timedelta(minutes=30)
+    assert not solver.tasks
 
 
 def test_history_cycle_keeps_charge_dependent_operator_separate():
@@ -928,7 +922,7 @@ def test_temporary_staffing_survives_filter_but_ordinary_working_plan_does_not(s
     staffing.emergency_staffing = True
     ordinary = SchedulerTask(task_plan={"room_1_2": [PRIMARY[1]]})
     dorm = SchedulerTask(task_plan={"dormitory_1": ["Current"] * 5})
-    check = SchedulerTask(meta_data=emergency.CHECK_META)
+    check = SchedulerTask(meta_data=emergency.RESUME_META)
     solver.tasks = [staffing, ordinary, dorm, check]
     solver._emergency_filter_tasks()
     assert solver.tasks == [staffing, dorm, check]
@@ -1043,7 +1037,7 @@ def test_run_order_compensation_restores_actual_temporary_original(solver, monke
         task_type=TaskTypes.RUN_ORDER, task_plan={room: ["但书"]}, meta_data=room
     )
     solver.task = order
-    solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)]
+    solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)]
     solver._track_idle_dorm_shift = MagicMock()
     solver._finish_idle_dorm_shift = MagicMock()
     solver.agent_arrange_room = MagicMock(return_value={room: ["但书"]})
@@ -1550,8 +1544,13 @@ def test_staffing_discards_unexecutable_group_scan_and_retries_after_release(
     release = next(task for task in solver.tasks if task.strict_mood_limit)
     assert len(scans) == 1
     assert release.mood_limit_deadline == NOW + timedelta(seconds=180)
-    assert release.time == NOW + timedelta(seconds=90)
-    assert clock["now"] < release.time <= clock["now"] + timedelta(seconds=46)
+    assert release.time <= NOW + timedelta(seconds=90)
+    if healthy_remaining:
+        # 已入队补床让原有上限调度优先执行强制清退。
+        assert solver.tasks[0] is release
+        assert release.time <= clock["now"]
+    else:
+        assert clock["now"] < release.time <= clock["now"] + timedelta(seconds=46)
     assert not state.get("staffing_plan")
     assert not state.get("staffing_members")
     assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
@@ -1587,7 +1586,7 @@ def test_staffing_deadline_yield_moves_existing_check_to_prompt_continuation(
 ):
     state, clock, scans, _, _ = staffing_deadline_episode(solver, monkeypatch, 120)
     check = SchedulerTask(
-        time=NOW + timedelta(minutes=30), meta_data=emergency.CHECK_META
+        time=NOW + timedelta(minutes=30), meta_data=emergency.RESUME_META
     )
     solver.tasks = [check]
 
@@ -1596,7 +1595,7 @@ def test_staffing_deadline_yield_moves_existing_check_to_prompt_continuation(
     assert not scans
     assert check.time == state["next_read"] == clock["now"] + timedelta(minutes=1)
     assert [
-        task for task in solver.tasks if task.meta_data == emergency.CHECK_META
+        task for task in solver.tasks if task.meta_data == emergency.RESUME_META
     ] == [check]
 
 
@@ -2076,26 +2075,28 @@ def test_rescue_scan_missing_data_keeps_card_fallback(solver, monkeypatch, missi
     solver.back_to_infrastructure.assert_called_once()
 
 
-def test_rescue_task_report_labels_staffing_and_mood_checks(solver):
+def test_rescue_task_report_labels_staffing_and_concrete_dorm_rotation(solver):
     from arknights_mower.solvers.base_schedule import task_template
 
     task = SchedulerTask(time=NOW, task_plan={"room_1_1": [COVERS[0]]})
     task.emergency_staffing = True
-    check = SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)
+    check = SchedulerTask(time=NOW, task_plan={"dormitory_1": [PRIMARY[0]]})
+    check.emergency_recovery_release = True
     report = task_template.render(
         tasks=[task.format(), check.format()], base_scheduler=solver
     )
     assert "智能救急换班" in report
-    assert "智能救急心情复查" in report
+    assert "智能救急离宿待命" in report
+    assert "智能救急心情复查" not in report
     assert COVERS[0] in report
-    assert emergency.CHECK_META not in report
+    assert emergency.RESUME_META not in report
     assert task.type == TaskTypes.NOT_SPECIFIC
 
 
 def test_idle_rescue_ticks_do_not_repeat_planning_or_workshop_checks(
     solver, monkeypatch
 ):
-    state = make_episode(solver)
+    make_episode(solver)
     workshop = MagicMock()
     monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
     solver._emergency_schedule_staffing = MagicMock()
@@ -2106,9 +2107,9 @@ def test_idle_rescue_ticks_do_not_repeat_planning_or_workshop_checks(
     solver.run_order_solver.assert_not_called()
     solver._emergency_schedule_staffing.assert_not_called()
     solver._emergency_read_rooms.assert_not_called()
-    checks = [task for task in solver.tasks if task.meta_data == emergency.CHECK_META]
-    assert len(checks) == 1
-    assert checks[0].time == state["next_read"]
+    checks = [task for task in solver.tasks if task.meta_data == emergency.RESUME_META]
+    assert not checks
+    assert not solver.tasks
 
 
 @pytest.mark.parametrize(
@@ -2231,6 +2232,7 @@ def test_regular_recovery_observes_only_unfinished_primary_dorms(solver):
     unfinished = solver.op_data.operators[PRIMARY[0]]
     unfinished._current_room, unfinished.current_index = "dormitory_1", 2
     unfinished.mood = 8
+    unfinished.time_stamp = NOW - timedelta(hours=3)
     state["targets"][PRIMARY[1]] = 16
     solver._emergency_read_rooms = MagicMock(return_value=True)
     solver._emergency_collect = MagicMock()

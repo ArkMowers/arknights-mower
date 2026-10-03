@@ -434,12 +434,7 @@ async function db_delete(keys) {
                 {{ task.time.split('T')[1].split('.')[0] }}
               </td>
               <td :colspan="2">
-                <template v-if="task.meta_data === 'automatic_rescue_check'"
-                  >智能救急心情复查</template
-                >
-                <template v-else>
-                  {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
-                </template>
+                {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
               </td>
             </tr>
           </template>

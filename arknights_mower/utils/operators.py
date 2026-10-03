@@ -307,6 +307,7 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.emergency_reserved_agents = set()
         self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
         self.free_blacklist = []

@@ -166,7 +166,6 @@ def test_tick_reconciles_partial_progress_and_repairs_instead_of_requeueing(
     solver._emergency_release_ready = MagicMock()
     solver._emergency_ready = MagicMock(return_value=False)
     solver._emergency_plan_beds = MagicMock()
-    solver._emergency_read_minutes = MagicMock(return_value=5)
     monkeypatch.setattr(emergency, "try_workshop_tasks", MagicMock())
 
     solver._emergency_tick()
@@ -195,7 +194,7 @@ def test_dorm_only_unfinished_plan_still_requeues_after_successful_rescore(staff
 
 
 @pytest.mark.parametrize("existing", [False, True])
-def test_check_task_reserves_pending_members_before_workshop_and_clears_completed_obligations(
+def test_episode_reserves_pending_members_without_polling_task(
     staffing, monkeypatch, existing
 ):
     solver = staffing.solver
@@ -207,14 +206,12 @@ def test_check_task_reserves_pending_members_before_workshop_and_clears_complete
     state["ready_members"] = list(PRIMARY[3:])
     solver.plan_metadata = MagicMock()
     solver.tasks = (
-        [SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)] if existing else []
+        [SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)] if existing else []
     )
     observed = []
 
     def workshop(data, tasks):
-        check = next(task for task in tasks if task.meta_data == emergency.CHECK_META)
-        observed.append(set(check.emergency_staffing_members))
-        assert check.time == state["next_read"]
+        observed.append(set(data.emergency_reserved_agents))
 
     monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
     solver._emergency_update_targets = MagicMock()
@@ -229,15 +226,12 @@ def test_check_task_reserves_pending_members_before_workshop_and_clears_complete
     completed = SchedulerTask(task_type=TaskTypes.WORKSHOP)
     solver._emergency_tick(completed_task=completed)
     assert observed == [{"塑心", *PRIMARY}]
-    check = next(
-        task for task in solver.tasks if task.meta_data == emergency.CHECK_META
-    )
     state.pop("staffing_members")
     state.pop("release_members")
     state.pop("ready_members")
     solver._emergency_tick(completed_task=completed)
     assert observed[-1] == set()
-    assert check.emergency_staffing_members == []
+    assert solver.op_data.emergency_reserved_agents == set()
 
 
 def test_release_failure_preserves_personal_obligation_without_staffing_rescore(
