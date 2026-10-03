@@ -11,27 +11,45 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 
-def wait_for(path, timeout=15):
+def wait_for(path, timeout=15, *, cancel=None):
     deadline = time.monotonic() + timeout
     while not path.exists():
+        if cancel is not None and cancel.exists():
+            return False
         if time.monotonic() >= deadline:
             raise TimeoutError(str(path))
         time.sleep(0.01)
+    return True
 
 
 def main():
     mode, folder, outcome = sys.argv[1:4]
     folder = Path(folder)
-    if mode == "descendant":
+    if mode in {"descendant", "writer"}:
         (folder / "descendant.ready").touch()
         try:
+            if mode == "writer":
+                for channel, descriptor in (("stdout", 1), ("stderr", 2)):
+                    if not wait_for(
+                        folder / f"write.{channel}", cancel=folder / "release"
+                    ):
+                        return
+                    os.write(descriptor, f"descendant {channel}\n".encode())
+                    (folder / f"wrote.{channel}").touch()
             wait_for(folder / "release")
         finally:
             (folder / "descendant.stopped").touch()
         return
-    if mode == "command":
+    if mode in {"command", "writer_command"}:
         subprocess.Popen(
-            [sys.executable, "-B", __file__, "descendant", str(folder), outcome],
+            [
+                sys.executable,
+                "-B",
+                __file__,
+                "writer" if mode == "writer_command" else "descendant",
+                str(folder),
+                outcome,
+            ],
             stdin=subprocess.DEVNULL,
             stdout=sys.stdout,
             stderr=sys.stderr,
