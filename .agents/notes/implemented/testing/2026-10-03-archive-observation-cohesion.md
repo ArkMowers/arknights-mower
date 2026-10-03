@@ -1,6 +1,6 @@
 ---
 title: Archive Observation Cohesion
-status: proposed
+status: implemented
 category: testing
 date: 2026-10-03
 ---
@@ -17,4 +17,4 @@ date: 2026-10-03
 
 ## Verification
 
-A controlled delay before the second manifest replacement reproduces the original stale-counter assertion. The same delay verifies the corrected observation boundary. Focused screenshot storage, cleanup and governance suites verify adjacent behavior. The three focused suites pass 93 tests and 22 subtests. Scoped Ruff, formatting, whitespace and the three governance gates pass. Independent review and CI results are recorded after execution.
+A controlled delay before the second manifest replacement reproduces the original stale-counter assertion. The same delay verifies the corrected observation boundary. Focused screenshot storage, cleanup and governance suites verify adjacent behavior. The three focused suites pass 93 tests and 22 subtests. Scoped Ruff, formatting, whitespace and the three governance gates pass. The first independent snapshot review confirms the regression and correction, independently passes 93 tests and 22 subtests, and reports Spec Findings PASS. Its standards finding identifies the proposed-note link; this triplet resides in implemented and the subsystem links to that location. Final independent review and CI results are recorded after execution.
