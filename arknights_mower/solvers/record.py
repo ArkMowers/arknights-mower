@@ -284,7 +284,7 @@ def save_state_to_db(saved_state):
             )
             connection.commit()
 
-        logger.info(f"储存缓存数据至数据库 {current_time}")
+        logger.debug(f"储存缓存数据至数据库 {current_time}")
         return True
 
     except sqlite3.Error as e:
