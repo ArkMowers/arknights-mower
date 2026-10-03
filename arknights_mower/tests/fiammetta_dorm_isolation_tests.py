@@ -181,3 +181,142 @@ def test_charge_return_keeps_work_rate_and_later_work_can_recalibrate(
     target.time_stamp = datetime.now() - timedelta(hours=1)
     data.update_detail(target.name, 20, "contact", 0, True)
     assert target.depletion_rate == pytest.approx(4, abs=0.01)
+
+
+@pytest.mark.parametrize(
+    "mood,known,targets,expected",
+    [
+        (24, True, True, True),
+        (23, True, True, False),
+        (24, False, True, False),
+        (24, True, False, False),
+    ],
+)
+def test_initial_fia_requires_measured_full_mood_and_targets(
+    solver, mood, known, targets, expected
+):
+    fia = Operator(
+        "菲亚梅塔",
+        ROOM,
+        index=3,
+        current_room=ROOM,
+        current_index=3,
+        mood=mood,
+        time_stamp=datetime.now() if known else None,
+    )
+    solver.op_data.operators[fia.name] = fia
+    solver.check_fia = lambda: (["伊内丝"] if targets else [], ROOM)
+    solver.tasks = []
+    assert solver._queue_initial_fia() is expected
+    assert len(solver.tasks) == int(expected)
+    if expected:
+        assert solver.tasks[0].initial_fia
+        assert solver.tasks[0].type == TaskTypes.FIAMMETTA
+    assert not solver._queue_initial_fia()
+    assert len(solver.tasks) == int(expected)
+
+
+def test_initial_fia_reuses_cached_wakeup_and_marks_charge(solver, monkeypatch):
+    from arknights_mower.utils.scheduler_task import protect_priority_tasks
+
+    now = datetime.now()
+    target = solver.op_data.operators["伊内丝"]
+    target.group = ""
+    target.mood = 1
+    target.time_stamp = now
+    solver.op_data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        ROOM,
+        index=3,
+        current_room=ROOM,
+        current_index=3,
+        mood=24,
+        time_stamp=now,
+    )
+    solver.check_fia = lambda: ([target.name], ROOM)
+    solver._refresh_fia_candidate_moods = MagicMock()
+    cached = SchedulerTask(time=now + timedelta(hours=1), task_type=TaskTypes.FIAMMETTA)
+    ordinary = SchedulerTask(
+        time=now - timedelta(minutes=5), task_type=TaskTypes.SHIFT_OFF
+    )
+    solver.tasks = [ordinary, cached]
+    assert solver._queue_initial_fia()
+    assert solver.tasks[-1] is cached
+    protect_priority_tasks(solver.tasks)
+    assert solver.tasks[0] is cached
+    solver.task = cached
+    solver.plan_fia()
+    charge = next(
+        task for task in solver.tasks if task.type == TaskTypes.FIAMMETTA and task.plan
+    )
+    assert charge.initial_fia
+    assert charge.plan == {ROOM: [target.name, "菲亚梅塔"]}
+
+
+@pytest.mark.parametrize(
+    "kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT, TaskTypes.RELEASE_DORM]
+)
+def test_initial_fia_respects_due_critical_tasks(solver, monkeypatch, kind):
+    from arknights_mower.utils.scheduler_task import protect_priority_tasks
+
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    now = datetime.now()
+    initial = SchedulerTask(time=now, task_type=TaskTypes.FIAMMETTA, initial_fia=True)
+    critical = SchedulerTask(
+        time=now - timedelta(minutes=1),
+        task_type=kind,
+        strict_mood_limit=kind == TaskTypes.RELEASE_DORM,
+        task_plan={ROOM: ["Current", "Current", "Free"]}
+        if kind == TaskTypes.RELEASE_DORM
+        else {},
+    )
+    tasks = [initial, critical]
+    protect_priority_tasks(tasks, time_now=now)
+    assert tasks[0] is critical
+
+
+def test_initial_fia_restoration_retains_startup_priority(solver):
+    from arknights_mower.utils.scheduler_task import protect_priority_tasks
+
+    now = datetime.now()
+    charge = SchedulerTask(
+        time=now,
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={ROOM: ["伊内丝", "菲亚梅塔"]},
+        initial_fia=True,
+    )
+    ordinary = SchedulerTask(
+        time=now - timedelta(minutes=1), task_type=TaskTypes.SHIFT_OFF
+    )
+    solver.task, solver.tasks = charge, [charge, ordinary]
+    original = {ROOM: ["塑心", "冰酿", "泥岩", "菲亚梅塔", "年"]}
+    solver.agent_arrange_room = MagicMock(return_value=original)
+    solver.skip = MagicMock()
+    solver.agent_arrange(charge.plan)
+    restoration = solver.tasks[-1]
+    assert restoration.initial_fia
+    assert restoration.plan == original
+    solver.tasks.remove(charge)
+    protect_priority_tasks(solver.tasks)
+    assert solver.tasks[0] is restoration
+
+
+@pytest.mark.parametrize("rescue_startup", [False, True])
+def test_initial_fia_dispatch_preempts_selected_ordinary_work(solver, rescue_startup):
+    now = datetime.now()
+    ordinary = SchedulerTask(
+        time=now - timedelta(minutes=1), task_type=TaskTypes.SHIFT_OFF
+    )
+    initial = SchedulerTask(time=now, task_type=TaskTypes.FIAMMETTA, initial_fia=True)
+    solver.task, solver.tasks = ordinary, [ordinary, initial]
+    solver._emergency_startup_pending = rescue_startup
+    solver._emergency_startup = MagicMock()
+    solver.find = MagicMock(return_value=True)
+    solver.plan_fia = MagicMock()
+    solver.agent_arrange = MagicMock()
+    solver._refresh_deferred_product_reservations = MagicMock()
+    solver.infra_main()
+    solver.plan_fia.assert_called_once()
+    solver.agent_arrange.assert_not_called()
+    assert ordinary in solver.tasks
+    assert initial not in solver.tasks

@@ -1946,3 +1946,28 @@ def test_absent_rescue_run_orders_do_not_inherit_normal_runners(solver):
     solver.emergency_state = None
     solver._emergency_sync_reservations()
     assert solver.op_data.run_order_replacements("room_1_1") == [["但书"]]
+
+
+def test_initial_full_fia_without_cached_task_precedes_rescue_evaluation(solver):
+    setup_startup(solver)
+    solver.check_fia = lambda: ([PRIMARY[-1]], "dormitory_1")
+    config.conf.automatic_rescue_enable = True
+    solver.op_data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=24,
+        time_stamp=NOW,
+        replacement=[PRIMARY[-1]],
+    )
+    solver._emergency_startup()
+    assert solver._emergency_startup_pending
+    task = next(task for task in solver.tasks if getattr(task, "initial_fia", False))
+    assert task.type == TaskTypes.FIAMMETTA
+    solver.backup_plan_solver.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+    solver._emergency_startup()
+    solver._read_agent_mood.assert_called_once()
+    assert solver._emergency_startup_pending

@@ -1,11 +1,13 @@
 ---
 title: Release Planning Log Level
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-04
 ---
 
 # Release Planning Log Level
+
+Superseded by [Initial Fiammetta and Release Stability](../../implemented/bug-fix/2026-10-04-initial-fia-and-release-stability.md). Unchanged release tasks are reused; actual advance notices remain visible.
 
 ## Contract
 

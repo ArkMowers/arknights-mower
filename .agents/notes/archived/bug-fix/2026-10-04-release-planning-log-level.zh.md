@@ -1,11 +1,13 @@
 ---
 title: Release Planning Log Level
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-04
 ---
 
 # 离宿规划日志级别
+
+由[初始化菲亚与离宿规划稳定性](../../implemented/bug-fix/2026-10-04-initial-fia-and-release-stability.zh.md)取代。复用未变的离宿任务，保留实际提前调整提示。
 
 ## 契约
 

@@ -192,19 +192,53 @@ def test_selected_ordinary_task_yields_to_newly_advanced_limit():
     solver._run_clue_flow.assert_not_called()
 
 
-def test_rebuilt_releases_keep_operation_windows_without_user_notices(caplog):
+def test_unchanged_release_reuses_advanced_task_and_logs_only_changes(caplog):
     import logging
 
-    now = datetime(2026, 10, 4, 6, 0)
-    caplog.set_level(logging.DEBUG)
-    for offset in (0, 0, 5):
-        deadline = now + timedelta(minutes=40 + offset)
-        release = release_at(deadline)
-        protect_priority_tasks([release], time_now=now)
-        assert release.time == deadline - timedelta(minutes=1.5)
-        assert release.mood_limit_deadline == deadline
-        protect_priority_tasks([release], time_now=now)
-        assert release.time == deadline - timedelta(minutes=1.5)
-    notices = [r for r in caplog.records if "心情上限离宿提前至" in r.getMessage()]
-    assert len(notices) == 3
-    assert all(r.levelno == logging.DEBUG for r in notices)
+    from arknights_mower.utils.operators import Dormitory, Operator
+    from arknights_mower.utils.scheduler_task import plan_mood_limit_releases
+
+    now = datetime.now()
+    op = Operator(
+        "令",
+        "dormitory_2",
+        current_room="dormitory_2",
+        current_index=2,
+        mood=10,
+        time_stamp=now,
+    )
+    op.upper_limit = 12
+    bed = Dormitory(("dormitory_2", 2), "令", now + timedelta(minutes=40))
+    data = SimpleNamespace(
+        operators={"令": op},
+        plan={"dormitory_2": [None] * 5},
+        all_dorms=lambda: [bed],
+        is_recovery_dorm=lambda *args: True,
+        has_rest_mood_limit=lambda name: True,
+        rest_mood_complete=lambda name: False,
+    )
+    caplog.set_level(logging.INFO)
+    tasks = plan_mood_limit_releases(data)
+    first = tasks[0]
+    for _ in range(3):
+        protect_priority_tasks(tasks, time_now=now)
+        tasks = plan_mood_limit_releases(data, previous_tasks=tasks)
+        assert tasks[0] is first
+        assert first.time == bed.time - timedelta(minutes=1.5)
+    assert len([r for r in caplog.records if "心情上限离宿提前至" in r.message]) == 1
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data, solver.tasks = data, tasks
+    solver._emergency_replan_releases()
+    assert solver.tasks[0] is first
+    bed.time += timedelta(minutes=5)
+    tasks = plan_mood_limit_releases(data, previous_tasks=tasks)
+    assert tasks[0] is not first
+    protect_priority_tasks(tasks, time_now=now)
+    assert tasks[0].time == bed.time - timedelta(minutes=1.5)
+    assert len([r for r in caplog.records if "心情上限离宿提前至" in r.message]) == 2
+    first = tasks[0]
+    bed.position = ("dormitory_2", 3)
+    op.current_index = 3
+    tasks = plan_mood_limit_releases(data, previous_tasks=tasks)
+    assert tasks[0] is not first
+    assert tasks[0].release_dorm_targets() == {"令": ("dormitory_2", 3)}

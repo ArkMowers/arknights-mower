@@ -107,6 +107,7 @@ def test_limit_has_independent_release_even_while_group_waits_for_full(
     assert data.operators[limited_name(solver)].is_resting()
     solver.plan_metadata()
     assert sum(t.strict_mood_limit for t in solver.tasks) == 1
+    assert release(solver) is task
 
 
 @pytest.mark.parametrize("mood", [12, 20.8, 24])

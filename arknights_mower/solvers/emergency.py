@@ -63,7 +63,9 @@ class EmergencyRecoveryMixin:
         """恢复目标与个人上限共用清退规划；交接期间只保留个人上限。"""
         state = getattr(self, "emergency_state", None) or {}
         targets = state.get("targets", {}) if state.get("phase") != "returning" else {}
-        releases = plan_mood_limit_releases(self.op_data, recovery_targets=targets)
+        releases = plan_mood_limit_releases(
+            self.op_data, recovery_targets=targets, previous_tasks=self.tasks
+        )
         refreshed = {task.meta_data for task in releases}
         self.tasks[:] = [
             task
@@ -190,6 +192,10 @@ class EmergencyRecoveryMixin:
             getattr(self, "task", None), "strict_mood_limit", False
         ):
             return
+        if getattr(self, "_initial_fia_checked", False) and any(
+            getattr(task, "initial_fia", False) for task in self.tasks
+        ):
+            return
         if self._emergency_active():
             self.plan_metadata()
         else:
@@ -209,6 +215,8 @@ class EmergencyRecoveryMixin:
             self._emergency_defer_read()
             return
         self._read_initial_card_mood()
+        if self._queue_initial_fia():
+            return
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
             self.emergency_state.pop("pending_read_rooms", None)

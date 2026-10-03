@@ -784,6 +784,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     task_type=TaskTypes.FIAMMETTA,
                     task_plan={fia_room: [target, "菲亚梅塔"]},
                     meta_data=target,
+                    initial_fia=getattr(self.task, "initial_fia", False),
                 )
             )
             # 充能结束后整组立即上班
@@ -823,6 +824,47 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.enter_room(room)
             self.get_agent_from_room(room, sorted(indexes))
             self.back()
+
+    def _queue_initial_fia(self):
+        """初始化实测满心情后优先充能，沿用目标筛选与原班恢复。"""
+        if getattr(self, "_initial_fia_checked", False):
+            return False
+        self._initial_fia_checked = True
+        for task in self.tasks:
+            if getattr(task, "initial_fia", False):
+                task.initial_fia = False
+        targets, room = self.check_fia()
+        fia = self.op_data.operators.get("菲亚梅塔")
+        if (
+            not targets
+            or not room
+            or not has_resting_mood(fia)
+            or fia.mood < 24
+            or not fia.current_room.startswith("dorm")
+            or fia.current_index < 0
+        ):
+            return False
+        existing = [task for task in self.tasks if task.type == TaskTypes.FIAMMETTA]
+        # 未完成的充能或回岗沿用原任务；防呆延期不在初始化时强行重试。
+        if any(
+            getattr(task, "fia_retry_after", datetime.min) > datetime.now()
+            for task in existing
+        ):
+            return False
+        if any(task.plan for task in existing):
+            for task in existing:
+                if task.plan and task.time <= datetime.now():
+                    task.initial_fia = True
+            return any(getattr(task, "initial_fia", False) for task in existing)
+        task = existing[0] if existing else SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+        task.time = datetime.now()
+        task.initial_fia = True
+        self.tasks[:] = [
+            queued for queued in self.tasks if queued.type != TaskTypes.FIAMMETTA
+        ]
+        self.tasks.append(task)
+        logger.info("初始化确认菲亚梅塔心情已满，优先执行充能任务")
+        return True
 
     def _refresh_fiammetta_task(self, ready_at):
         """读到新的回满时间后更新充能预约，保留正在执行的充能／回岗任务。"""
@@ -1113,13 +1155,38 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.tasks[:] = [task for task in self.tasks if task is not self.task]
                 self.task = None
             self._emergency_startup()
-            if self._emergency_startup_pending and not getattr(
-                self.task, "strict_mood_limit", False
-            ):
-                self.skip()
-                return True
             if self._emergency_active() and not self._emergency_startup_pending:
                 self._emergency_tick()
+        initial_fia_pending = any(
+            getattr(task, "initial_fia", False) for task in self.tasks
+        )
+        if initial_fia_pending:
+            protect_priority_tasks(self.tasks)
+            candidate = self.tasks[0]
+            if candidate.time <= datetime.now() and (
+                getattr(candidate, "initial_fia", False)
+                or getattr(candidate, "strict_mood_limit", False)
+                or candidate.type == TaskTypes.RUN_ORDER
+                or config.conf.enable_mastery
+                and candidate.type == TaskTypes.SWAP_SUPPORT
+            ):
+                self.task = candidate
+            else:
+                self.task = None
+                self.skip()
+                return True
+        if getattr(self, "_emergency_startup_pending", False) and not (
+            getattr(self.task, "strict_mood_limit", False)
+            or getattr(self.task, "initial_fia", False)
+            or initial_fia_pending
+            and (
+                getattr(self.task, "type", None) == TaskTypes.RUN_ORDER
+                or config.conf.enable_mastery
+                and getattr(self.task, "type", None) == TaskTypes.SWAP_SUPPORT
+            )
+        ):
+            self.skip()
+            return True
         if self.task is not None:
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
@@ -1132,6 +1199,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and self.tasks[0] is not self.task
                     and (
                         getattr(self.tasks[0], "strict_mood_limit", False)
+                        or getattr(self.tasks[0], "initial_fia", False)
                         or (
                             self.tasks[0].type == TaskTypes.RUN_ORDER
                             or config.conf.enable_mastery
@@ -1349,7 +1417,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.skip()
                     self.error = True
             self.task = None
-            if self._emergency_active():
+            if self._emergency_active() and not getattr(
+                self, "_emergency_startup_pending", False
+            ):
                 self._emergency_tick(completed_task=completed_task)
         elif not self.planned:
             if self._emergency_active():
@@ -1368,6 +1438,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         self._read_agent_mood()
                         self._read_initial_card_mood()
                         self.defer_backup_plan_until_mood_read = False
+                        if self._queue_initial_fia():
+                            self.skip()
+                            return True
                         self.backup_plan_solver()
                         self.queue_product_switches()
                         # 先执行副表差异、产物切换或扫描恢复出的训练室任务，
@@ -8344,6 +8417,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     time=self.tasks[0].time,
                     task_plan=new_plan,
                     task_type=TaskTypes.FIAMMETTA,
+                    initial_fia=getattr(self.task, "initial_fia", False),
                 )
             )
             # 急速换班
