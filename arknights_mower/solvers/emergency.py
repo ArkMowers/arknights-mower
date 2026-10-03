@@ -34,6 +34,7 @@ from arknights_mower.utils.emergency_recovery import (
     recovery_target,
 )
 from arknights_mower.utils.emergency_staffing import (
+    FACILITY_CAPACITIES,
     StaffingCandidate,
     card_skills,
     eligible_worker,
@@ -494,8 +495,15 @@ class EmergencyRecoveryMixin:
             for candidate in observed
             if eligible_worker(data, candidate.name, candidate.mood, reserved)
         ]
+        level = len(data.plan[room]) if facility in FACILITY_CAPACITIES else None
         names = select_workers(
-            candidates, facility, product, count, current=current, fixed=fixed
+            candidates,
+            facility,
+            product,
+            count,
+            current=current,
+            fixed=fixed,
+            level=level,
         )
         if len(names) != count:
             logger.info(
@@ -505,10 +513,24 @@ class EmergencyRecoveryMixin:
                 len(names),
             )
             return []
+        if level in (1, 2, 3):
+            logger.info(
+                "智能救急 %s：%s %d 级，基础容量 %d，组合效率加分 %.1f%%",
+                room,
+                facility,
+                level,
+                FACILITY_CAPACITIES[facility][level - 1],
+                facility_score(
+                    [by_name[name] for name in names] + fixed,
+                    facility,
+                    product,
+                    level=level,
+                ),
+            )
         logger.info("智能救急 %s：选定替班 %s，等待整组岗位匹配", room, names)
         candidates.sort(
             key=lambda candidate: (
-                facility_score([candidate, *fixed], facility, product),
+                facility_score([candidate, *fixed], facility, product, level=level),
                 candidate.name in current,
                 candidate.mood,
             ),
@@ -1231,6 +1253,30 @@ class EmergencyRecoveryMixin:
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
+        staffing = next(
+            (task for task in self.tasks if getattr(task, "emergency_staffing", False)),
+            None,
+        )
+        if plan and staffing is not None:
+            merged = copy.deepcopy(staffing.plan)
+            for room, row in plan.items():
+                target = merged.setdefault(room, ["Current"] * len(row))
+                for index, name in enumerate(row):
+                    if target[index] == "Current":
+                        target[index] = name
+            duration = sum(
+                estimate_dorm_minutes(room) * 60 if room.startswith("dorm") else 45
+                for room in merged
+            )
+            if not self._emergency_operation_fits(duration):
+                logger.info("智能救急：当前窗口不足以合并宿舍补位，先执行已规划换班")
+                return
+            staffing.plan = merged
+            state["staffing_plan"] = copy.deepcopy(merged)
+            logger.info(
+                "智能救急：宿舍补位已合并至换班任务，每个宿舍只安排一次：%s", plan
+            )
+            return
         if plan and not any(
             getattr(task, "emergency_dorm", False) for task in self.tasks
         ):

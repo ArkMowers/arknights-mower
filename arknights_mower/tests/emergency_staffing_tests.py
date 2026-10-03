@@ -148,3 +148,43 @@ def test_control_fixed_bonus_and_local_mood_recovery():
     assert facility_score([scavenger], "中枢", "") == 0.05
     # The same global trade bonus cannot stack through multiple carriers.
     assert facility_score([amiya, replace(amiya, name="Other")], "中枢", "") == 7
+
+
+@pytest.mark.parametrize("level,capacity", [(1, 6), (2, 8), (3, 10)])
+def test_jaye_uses_actual_trade_station_level(level, capacity):
+    jaye = candidate("孑", ["bskill_tra_limit_diff", "bskill_tra_limit_count"])
+    assert facility_score([jaye], "贸易站", "lmd", level=level) == capacity * 4
+    generic = StaffingCandidate(
+        "普通贸易干员", 24, ({"skillIcon": "trade30", "des": "订单获取效率+30%"},)
+    )
+    if level == 1:
+        assert select_workers([jaye, generic], "贸易站", "lmd", 1, level=level) == [
+            generic.name
+        ]
+    assert (
+        facility_score([jaye, generic], "贸易站", "lmd", level=level)
+        == 30 + (capacity - 3) * 4
+    )
+
+
+def test_unknown_trade_level_or_unmeasured_orders_have_no_assumed_jaye_bonus():
+    jaye = candidate("孑", ["bskill_tra_limit_diff", "bskill_tra_limit_count"])
+    assert facility_score([jaye], "贸易站", "lmd") == 0
+    e0 = candidate("孑", ["bskill_tra_limit_diff"])
+    assert facility_score([e0], "贸易站", "lmd", level=1) == 0
+
+
+def test_rhine_pair_beats_bubble_vulcan_in_two_slot_factory():
+    dorothy = candidate("多萝西", ["bskill_man_skill_spd2", "bskill_man_spd2"])
+    silence = candidate("淬羽赫默", ["bskill_man_spd3"])
+    bubble = candidate("泡泡", ["bskill_man_limit&cost2", "bskill_man_spd_variable31"])
+    vulcan = candidate("火神", ["bskill_man_spd&limit&cost2"])
+    assert facility_score([dorothy, silence], "制造站", "gold", level=2) == 65
+    assert facility_score([bubble, vulcan], "制造站", "gold", level=2) == 62
+    assert set(
+        select_workers([dorothy, silence, bubble, vulcan], "制造站", "gold", 2, level=2)
+    ) == {"多萝西", "淬羽赫默"}
+    bena = candidate("贝娜", ["bskill_man_spd&limit&cost4"])
+    assert facility_score([bubble, vulcan, bena], "制造站", "gold", level=3) == 93
+    # Base warehouse capacity never participates in operator-added storage synergy.
+    assert facility_score([bubble, vulcan], "制造站", "gold", level=3) == 62

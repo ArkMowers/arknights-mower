@@ -17,6 +17,9 @@ from arknights_mower.utils.resource_pkg import (
     resource_ui_path,
 )
 
+# Game building_data phases; manufacture capacity is not an operator storage bonus.
+FACILITY_CAPACITIES = {"贸易站": (6, 8, 10), "制造站": (24, 36, 54)}
+
 _TAGS = re.compile(r"<[^>]*>")
 _CROSS_FACILITY = re.compile(
     r"基建内|设施数量|其他设施|感知信息|烟火|梦境|小节|无声共鸣|情报储备|乌萨斯特饮"
@@ -102,7 +105,7 @@ def _amount(text, label):
     return float(match[1]) if match else 0
 
 
-def facility_score(workers, facility, product):
+def facility_score(workers, facility, product, *, level=None):
     """固定效果与已支持的同设施联动；未知、概率及跨设施收益不计分。"""
     skills = [s for worker in workers for s in worker.skills]
     icons = {s["skillIcon"] for s in skills}
@@ -136,9 +139,9 @@ def facility_score(workers, facility, product):
                 bonus += _amount(text, "生产力")
             elif facility == "贸易站":
                 capacity_match = re.search(r"订单上限([+-]\d+)", text)
-                if capacity_match:
-                    capacity += int(capacity_match[1])
                 if "每" not in text and "其他干员" not in text:
+                    if capacity_match:
+                        capacity += int(capacity_match[1])
                     bonus += _amount(text, "订单获取效率")
             elif facility == "发电站":
                 if "每" not in text:
@@ -165,6 +168,12 @@ def facility_score(workers, facility, product):
         storage.append(capacity)
     total = sum(bonuses)
     if facility == "制造站":
+        rhine_count = sum(s.get("skillname", "").startswith("莱茵科技") for s in skills)
+        total += (
+            5
+            * rhine_count
+            * sum(s["skillIcon"] == "bskill_man_skill_spd2" for s in skills)
+        )
         if "bskill_man_spd_variable31" in icons:
             total += sum(max(0, n) * (3 if n > 16 else 1) for n in storage)
         elif "bskill_man_spd_variable11" in icons:
@@ -174,14 +183,16 @@ def facility_score(workers, facility, product):
     elif facility == "贸易站":
         if "bskill_tra_vodfox" in icons and product == "lmd":
             total = 45 * max(0, len(workers) - 1)
-        elif "bskill_tra_limit_count" in icons:
-            total += max(1, 10 + sum(storage) - int(total / 10)) * 4
-        elif "bskill_tra_limit_diff" in icons:
-            total += (10 + sum(storage)) * 4 / 4.12
+        elif "bskill_tra_limit_count" in icons and level in (1, 2, 3):
+            capacity = FACILITY_CAPACITIES[facility][level - 1]
+            total += max(1, capacity + sum(storage) - int(total / 10)) * 4
+        # 精零孑依赖实际积单量；没有该读数时不假定空单或用固定系数计分。
     return total + sum(control.values())
 
 
-def select_workers(candidates, facility, product, slots, *, current=(), fixed=()):
+def select_workers(
+    candidates, facility, product, slots, *, current=(), fixed=(), level=None
+):
     """比较有界候选组合；同分优先保持当前阵容，再取较高心情。"""
     fixed = tuple({c.name: c for c in fixed}.values())
     fixed_names = {c.name for c in fixed}
@@ -195,7 +206,7 @@ def select_workers(candidates, facility, product, slots, *, current=(), fixed=()
     limit = 48 if facility in ("制造站", "贸易站") else 16
     candidates.sort(
         key=lambda c: (
-            facility_score([c, *fixed], facility, product),
+            facility_score([c, *fixed], facility, product, level=level),
             c.name in current,
             c.mood,
         ),
@@ -203,6 +214,7 @@ def select_workers(candidates, facility, product, slots, *, current=(), fixed=()
     )
     # Keep supported local synergy participants even when their isolated score is low.
     synergy_icons = {
+        "bskill_man_skill_spd2",
         "bskill_man_spd_variable31",
         "bskill_man_spd_variable11",
         "bskill_man_spd_variable21",
@@ -215,6 +227,7 @@ def select_workers(candidates, facility, product, slots, *, current=(), fixed=()
         for c in candidates
         if any(
             s["skillIcon"] in synergy_icons
+            or (facility == "制造站" and s.get("skillname", "").startswith("莱茵科技"))
             or (facility == "制造站" and "仓库容量上限" in s["des"])
             or (facility == "贸易站" and "订单上限" in s["des"])
             for s in c.skills
@@ -232,7 +245,7 @@ def select_workers(candidates, facility, product, slots, *, current=(), fixed=()
         return (
             producer,
             capacity,
-            facility_score([worker, *fixed], facility, product),
+            facility_score([worker, *fixed], facility, product, level=level),
             worker.mood,
         )
 
@@ -245,7 +258,7 @@ def select_workers(candidates, facility, product, slots, *, current=(), fixed=()
     best = max(
         combinations(candidates, count),
         key=lambda group: (
-            facility_score([*group, *fixed], facility, product),
+            facility_score([*group, *fixed], facility, product, level=level),
             sum(c.name in current for c in group),
             sum(c.mood for c in group),
         ),

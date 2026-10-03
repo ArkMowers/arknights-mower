@@ -2342,3 +2342,57 @@ def test_partial_snapshot_supplement_preserves_and_refreshes_known_workers(
     )
     assert len(candidates) == len({c.name for c in candidates})
     solver.enter_room.assert_called_once()
+
+
+@pytest.mark.parametrize("fits", [True, False])
+def test_same_cycle_dorm_fill_merges_into_staffing_with_budget(
+    solver, monkeypatch, fits
+):
+    state = make_episode(solver)
+    task = SchedulerTask(
+        task_plan={
+            "room_1_1": [COVERS[0]],
+            "dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"],
+        }
+    )
+    task.emergency_staffing = True
+    solver.tasks = [task]
+    state["staffing_plan"] = copy.deepcopy(task.plan)
+    before = copy.deepcopy(task.plan)
+    state["dorm_layout"] = {}
+    monkeypatch.setattr(
+        emergency,
+        "emergency_dorm_plan",
+        lambda *args: {
+            "dormitory_1": ["Current", "Current", COVERS[1], PRIMARY[1], "Current"]
+        },
+    )
+    solver._emergency_operation_fits = MagicMock(return_value=fits)
+    solver._emergency_plan_beds(state)
+    assert solver.tasks == [task]
+    if fits:
+        assert task.plan["dormitory_1"][2:4] == [PRIMARY[0], PRIMARY[1]]
+        assert state["staffing_plan"] == task.plan
+        assert state["staffing_plan"] is not task.plan
+    else:
+        assert task.plan == before == state["staffing_plan"]
+
+
+@pytest.mark.parametrize("level,expected", [(1, "普通贸易干员"), (2, "孑")])
+def test_worker_options_use_full_room_level_not_replacement_count(
+    solver, level, expected
+):
+    from arknights_mower.tests.emergency_staffing_tests import candidate
+    from arknights_mower.utils.emergency_staffing import StaffingCandidate
+    from arknights_mower.utils.plan import Room
+
+    solver.op_data.plan["room_1_1"] = [Room("Current", "", []) for _ in range(level)]
+    jaye = candidate("孑", ["bskill_tra_limit_diff", "bskill_tra_limit_count"])
+    generic = StaffingCandidate(
+        "普通贸易干员", 24, ({"skillIcon": "trade30", "des": "订单获取效率+30%"},)
+    )
+    solver._emergency_scan_workers = MagicMock(return_value=[jaye, generic])
+    options = solver._emergency_worker_options(
+        "room_1_1", "贸易站", 1, set(), snapshot={}, fixed_names=[]
+    )
+    assert options[0][0] == expected

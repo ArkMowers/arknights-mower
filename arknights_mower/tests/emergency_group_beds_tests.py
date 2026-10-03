@@ -373,3 +373,21 @@ def test_explicit_free_group_member_opens_only_its_normal_dynamic_bed(solver):
     projected = data.project_arrangements([plan])
     assert all(projected.operators[name].is_resting() for name in selected)
     assert projected.operators["冰酿"].current_room == ""
+
+
+@pytest.mark.parametrize("working", [True, False])
+def test_ordinary_replacement_waits_until_required_primary_is_resting(solver, working):
+    data, state = prepare(solver, [PRIMARY[:1]], capacity=3)
+    primary = data.operators[PRIMARY[0]]
+    primary._current_room = primary.room if working else ""
+    cover = data.operators[COVERS[0]]
+    cover._current_room = ""
+    cover.mood = 0
+    plan = emergency_dorm_plan(data, state)
+    if working:
+        assert COVERS[0] not in admissions(plan)
+    else:
+        assert {PRIMARY[0], COVERS[0]} <= admissions(plan)
+    primary._current_room, primary.current_index = data.dorm[0].position
+    data.dorm[0].name = primary.name
+    assert COVERS[0] in admissions(emergency_dorm_plan(data, state))
