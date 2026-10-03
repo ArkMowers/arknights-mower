@@ -304,8 +304,8 @@ class EmergencyRecoveryMixin:
             snapshot = load_skill_snapshot()
         try:
             self.enter_room(room, max_attempts=1)
-            self.turn_on_room_detail(room)
             self.refresh_facility_state(room)
+            self.turn_on_room_detail(room)
             for _ in range(4):
                 if self.find("confirm_blue") is not None:
                     break

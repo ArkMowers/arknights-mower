@@ -1179,6 +1179,50 @@ def test_known_skland_skills_skip_icon_recognition_and_missing_data_uses_fallbac
     solver.back_to_infrastructure.assert_called_once()
 
 
+@pytest.mark.parametrize("facility", ["制造站", "贸易站", "控制中枢"])
+def test_selection_scan_reopens_residents_after_product_refresh(solver, facility):
+    page_state = {"page": "room"}
+    solver._selection_profile_snapshot = object()
+    solver.recog = SimpleNamespace(img=object(), w=1920, h=1080)
+    solver.enter_room = MagicMock()
+
+    def open_residents(room):
+        page_state["page"] = "residents"
+
+    def refresh_product(room):
+        if facility in ("制造站", "贸易站"):
+            page_state["page"] = "room"
+
+    def tap(point, **kwargs):
+        if point == (1920 * 0.82, 1080 * 0.2):
+            if page_state["page"] == "residents":
+                page_state["page"] = "selection"
+
+    def read_cards(**kwargs):
+        assert page_state["page"] == "selection"
+        return []
+
+    solver.turn_on_room_detail = MagicMock(side_effect=open_residents)
+    solver.refresh_facility_state = MagicMock(side_effect=refresh_product)
+    solver.find = lambda resource: page_state["page"] == "selection" or None
+    solver.tap = MagicMock(side_effect=tap)
+    solver.profession_filter = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.swipe_left = MagicMock()
+    solver.wait_for_agent_page = MagicMock(side_effect=read_cards)
+    solver.same_agent_page = MagicMock(return_value=True)
+    solver.swipe_agent_page = MagicMock(return_value=(1, None))
+    solver.back_to_infrastructure = MagicMock()
+
+    assert (
+        solver._emergency_scan_workers("room_1_1", facility, set(), snapshot={}) == []
+    )
+    solver.wait_for_agent_page.assert_called()
+    solver.refresh_facility_state.assert_called_once_with("room_1_1")
+    solver.turn_on_room_detail.assert_called_once_with("room_1_1")
+    solver.back_to_infrastructure.assert_called_once()
+
+
 def test_selection_scan_cancels_page_on_recognition_failure(solver, monkeypatch):
     solver._selection_profile_snapshot = object()
     solver.recog = SimpleNamespace(img=object(), w=1920, h=1080)
