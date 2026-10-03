@@ -323,8 +323,11 @@ class EmergencyRecoveryMixin:
         self, room, facility, reserved, *, snapshot=None, fixed=(), required_count=1
     ):
         """复用初始化心情与技能；缺失时每设施最多扫描二十页、四十五秒。"""
-        deadline = monotonic() + 45
+        started = monotonic()
+        deadline = started + 45
         candidates, seen = [], set()
+        missing_details = []
+        available = 0
         if snapshot is None:
             snapshot = load_skill_snapshot()
         if snapshot and snapshot.get("has_data") and snapshot.get("operators"):
@@ -343,6 +346,14 @@ class EmergencyRecoveryMixin:
                 skills = unlocked_skills(name, facility, snapshot)
                 if operator["owned"] is not True or skills is None or mood is None:
                     missing = True
+                    reasons = []
+                    if operator["owned"] is not True:
+                        reasons.append("持有状态未知")
+                    if skills is None:
+                        reasons.append("技能解锁未知")
+                    if mood is None:
+                        reasons.append("无有效心情")
+                    missing_details.append(f"{name}：{'、'.join(reasons)}")
                     continue
                 candidates.append(StaffingCandidate(name, mood, skills))
             fixed_complete = all(
@@ -354,7 +365,28 @@ class EmergencyRecoveryMixin:
                 for c in candidates
             )
             if fixed_complete and (not missing or available >= required_count):
+                logger.info(
+                    "智能救急 %s：复用已有数据，合格替班 %d 人，需要 %d 人，不扫描技能列表",
+                    room,
+                    available,
+                    required_count,
+                )
                 return candidates
+        reason = (
+            "；".join(missing_details[:8]) or "没有可用的森空岛技能快照或固定驻员数据"
+        )
+        logger.info(
+            "智能救急 %s（%s）：开始游戏内技能扫描，需要替班 %d 人，已知合格 %d 人；"
+            "补扫原因：%s；未知共 %d 人，最多显示 8 人；上限 20 页、45 秒。扫描完成后才生成换班任务",
+            room,
+            facility,
+            required_count,
+            available,
+            reason,
+            len(missing_details),
+        )
+        pages = 0
+        stop_reason = "扫描中断"
         try:
             self.enter_room(room, max_attempts=1)
             self.refresh_facility_state(room)
@@ -372,6 +404,7 @@ class EmergencyRecoveryMixin:
             previous, observation = None, None
             for page_index in range(20):
                 if monotonic() >= deadline:
+                    stop_reason = "达到 45 秒预算"
                     break
                 page = self.wait_for_agent_page(
                     before=previous, observation=observation
@@ -379,7 +412,9 @@ class EmergencyRecoveryMixin:
                 if previous is not None and self.same_agent_page(
                     page, previous, allow_unknown=True
                 ):
+                    stop_reason = "列表末尾或翻页未推进"
                     break
+                pages += 1
                 for name, scope in page:
                     if not name or name in seen:
                         continue
@@ -397,13 +432,34 @@ class EmergencyRecoveryMixin:
                     if skills is None:
                         skills = card_skills(self.recog.img, scope, name, facility)
                     candidates.append(StaffingCandidate(name, mood, skills))
+                if pages % 5 == 0:
+                    logger.info(
+                        "智能救急 %s：技能扫描已读 %d 页、%d 名干员，候选 %d 人，耗时 %.1f 秒",
+                        room,
+                        pages,
+                        len(seen),
+                        len(candidates),
+                        monotonic() - started,
+                    )
                 if page_index == 19 or monotonic() >= deadline:
+                    stop_reason = (
+                        "达到 20 页上限" if page_index == 19 else "达到 45 秒预算"
+                    )
                     break
                 previous = page
                 _, observation = self.swipe_agent_page(
                     page, "智能救急技能扫描", return_page=True
                 )
         finally:
+            logger.info(
+                "智能救急 %s：技能扫描结束，%s；读取 %d 页、%d 名干员，保留候选 %d 人（含固定驻员），耗时 %.1f 秒",
+                room,
+                stop_reason,
+                pages,
+                len(seen),
+                len(candidates),
+                monotonic() - started,
+            )
             self.back_to_infrastructure()
         return candidates
 
@@ -442,7 +498,14 @@ class EmergencyRecoveryMixin:
             candidates, facility, product, count, current=current, fixed=fixed
         )
         if len(names) != count:
+            logger.info(
+                "智能救急 %s：需要替班 %d 人，筛选后仅 %d 人，无法组成完整替班，暂不生成该组换班任务",
+                room,
+                count,
+                len(names),
+            )
             return []
+        logger.info("智能救急 %s：选定替班 %s，等待整组岗位匹配", room, names)
         candidates.sort(
             key=lambda candidate: (
                 facility_score([candidate, *fixed], facility, product),
@@ -564,6 +627,9 @@ class EmergencyRecoveryMixin:
                 options, preferred = {}, {}
                 for room, slots in planned_slots.items():
                     if not self._emergency_operation_fits(45):
+                        logger.info(
+                            "智能救急 %s：临近任务需要优先执行，暂缓替班候选扫描", room
+                        )
                         completed = False
                         break
                     if snapshot is None:
@@ -601,6 +667,10 @@ class EmergencyRecoveryMixin:
                         else match_replacements(options)
                     )
                     if replacements is None:
+                        logger.info(
+                            "智能救急：%s 的替班候选存在占用冲突，无法完成整组匹配",
+                            workers,
+                        )
                         completed = False
                         continue
                     for room, slots in planned_slots.items():
@@ -616,6 +686,10 @@ class EmergencyRecoveryMixin:
                         for room in pending
                     )
                     if not self._emergency_operation_fits(duration):
+                        logger.info(
+                            "智能救急：%s 已完成替班匹配，但换班窗口不足，先处理临近任务",
+                            workers,
+                        )
                         return False
                     for name in replacements.values():
                         if name not in data.operators:
@@ -635,6 +709,12 @@ class EmergencyRecoveryMixin:
                     task.emergency_staffing = True
                     task.emergency_staffing_members = list(workers)
                     self.tasks.append(task)
+                    logger.info(
+                        "智能救急：已生成换班任务，主班 %s，替班对应 %s，安排 %s",
+                        workers,
+                        replacements,
+                        pending,
+                    )
                     return True
                 pending = {}
         state["phase"] = "recovering"
