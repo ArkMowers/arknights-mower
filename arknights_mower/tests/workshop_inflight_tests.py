@@ -64,6 +64,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         "plan_metadata",
     ]:
         setattr(solver, method, MagicMock())
+    solver.get_agent_from_room = MagicMock(return_value=[{"agent": "赫拉格"}])
     solver.factory_scene = MagicMock(
         side_effect=([base.Scene.FACTORY_FORMULA] if entry == "furniture-page" else [])
         + [
