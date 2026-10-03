@@ -114,3 +114,65 @@ def test_specialized_compensation_precedes_rescue_staffing(staffing):
     solver.tasks.append(task)
     assert not solver._emergency_schedule_staffing()
     assert solver.tasks == [task]
+
+
+def test_fixed_rooms_join_rescue_dispatch_and_reconcile(staffing, monkeypatch):
+    from arknights_mower.utils import config
+    from arknights_mower.utils.operators import Operator
+
+    monkeypatch.setattr(config.conf, "enable_mastery", False)
+    solver = staffing.solver
+    for name in ("泡普卡", "安赛尔"):
+        solver.op_data.add(Operator(name, "", mood=24, time_stamp=NOW))
+    staffing.state["rescue_plan"].update(
+        {"factory": ["泡普卡"], "train": ["安赛尔", ""]}
+    )
+    assert solver._emergency_schedule_staffing()
+    task = staffing_task(solver)
+    assert task.plan["factory"] == ["泡普卡"]
+    assert task.plan["train"] == ["安赛尔", ""]
+    assert "" not in solver.op_data.operators
+    solver.op_data = solver.op_data.project_arrangements([task.plan])
+    solver.tasks.clear()
+    assert solver._emergency_reconcile_staffing()
+    assert staffing.state["staffing_complete"]
+
+
+@pytest.mark.parametrize("follows", [False, True])
+def test_rescue_training_uses_existing_assistant_protection(
+    staffing, monkeypatch, follows
+):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from arknights_mower.solvers import base_schedule, emergency
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils import config
+    from arknights_mower.utils.operators import Operator
+
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(config.conf, "assistant_follows_schedule", follows)
+    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
+    monkeypatch.setattr(emergency, "busy_resting_names", lambda: set())
+    solver = staffing.solver
+    solver._suppress_train_correction = (
+        BaseSchedulerSolver._suppress_train_correction.__get__(solver)
+    )
+    solver._train_mastery_active = MagicMock(return_value=True)
+    solver._train_protected = MagicMock(return_value=False)
+    solver.train_room_state = SimpleNamespace(
+        state="training", locked=True, protected=False
+    )
+    solver.op_data.add(Operator("泡普卡", "", mood=24, time_stamp=NOW))
+    staffing.state["rescue_plan"]["train"] = ["泡普卡", "安赛尔"]
+    assert solver._emergency_schedule_staffing()
+    plan = staffing_task(solver).plan
+    if follows:
+        assert plan["train"] == ["泡普卡", "Current"]
+    else:
+        assert "train" not in plan
+    # 执行期间新出现的训练保护也不把已完成普通驻员部署卡在核对阶段。
+    staffing.state["staffing_plan"] = {"train": ["泡普卡", "安赛尔"]}
+    monkeypatch.setattr(config.conf, "assistant_follows_schedule", False)
+    solver.tasks.clear()
+    assert solver._emergency_reconcile_staffing()

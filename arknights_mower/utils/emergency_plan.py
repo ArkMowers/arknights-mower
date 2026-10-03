@@ -2,7 +2,7 @@
 
 from arknights_mower.data import agent_list
 
-RESCUE_ROOMS = {"central": 5, "meeting": 2, "contact": 1} | {
+RESCUE_ROOMS = {"central": 5, "meeting": 2, "contact": 1, "factory": 1, "train": 2} | {
     f"room_{floor}_{index}": 3 for floor in range(1, 4) for index in range(1, 4)
 }
 
@@ -18,6 +18,8 @@ def validate_rescue_roster(plan):
         if not names or len(names) > RESCUE_ROOMS[room]:
             raise ValueError(f"救急主表 {room} 岗位数量不正确")
         for name in names:
+            if name == "" and room in ("factory", "train"):
+                continue
             if name == "菲亚梅塔":
                 raise ValueError("救急排班的菲亚梅塔需要安排在宿舍")
             if name not in agent_list:
@@ -29,14 +31,18 @@ def validate_rescue_roster(plan):
 
 
 def rescue_plan_for(data, plan):
-    """检查生效救急排班覆盖当前普通设施及岗位数。"""
+    """检查普通设施完整性及已配置岗位容量。"""
     validate_rescue_roster(plan)
     rooms = {room for room, row in data.plan.items() if room in RESCUE_ROOMS and row}
-    if not rooms or set(plan) != rooms:
-        missing = sorted(rooms - set(plan))
-        extra = sorted(set(plan) - rooms)
+    rooms -= {"factory", "train"}
+    configured = set(plan) - {"factory", "train"}
+    if not rooms or configured != rooms:
+        missing = sorted(rooms - configured)
+        extra = sorted(configured - rooms)
         raise ValueError(f"救急排班与当前设施不一致：缺少 {missing}，多余 {extra}")
     for room, names in plan.items():
+        if room in ("factory", "train"):
+            continue
         if len(names) != len(data.plan[room]):
             raise ValueError(
                 f"救急排班 {room} 等级/岗位数不一致：正常排班 {len(data.plan[room])} 位，"

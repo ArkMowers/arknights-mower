@@ -328,7 +328,7 @@ class EmergencyRecoveryMixin:
             raise MowerExit("自动救急缓存结构不完整，保留缓存并停止")
 
     def _emergency_schedule_staffing(self):
-        """按本轮生效救急排班安排全部普通工作站。"""
+        """按本轮生效救急排班部署驻员，沿用训练室换人保护。"""
         state, data = self.emergency_state, self.op_data
         if (
             state.get("release_plan") is not None
@@ -339,6 +339,8 @@ class EmergencyRecoveryMixin:
         if state.get("staffing_complete"):
             return True
         plan = rescue_plan_for(data, state["rescue_plan"])
+        if "train" in plan:
+            self._suppress_train_correction(plan)
         reserved, _ = dorm_task_reservations(data, self.tasks)
         reserved |= busy_resting_names()
         reserved.update(
@@ -350,7 +352,10 @@ class EmergencyRecoveryMixin:
         pending = {}
         for room, names in plan.items():
             current = data.get_current_room(room, True)
-            if current == names:
+            if current is not None and all(
+                name == "Current" or index < len(current) and current[index] == name
+                for index, name in enumerate(names)
+            ):
                 continue
             if any(
                 hasattr(task, "emergency_original_roster")
@@ -360,6 +365,8 @@ class EmergencyRecoveryMixin:
                 logger.info("自动救急 %s：等待专项任务恢复原驻员后执行救急主表", room)
                 return False
             for index, name in enumerate(names):
+                if name in ("", "Current"):
+                    continue
                 if (
                     current is not None
                     and index < len(current)
@@ -385,7 +392,7 @@ class EmergencyRecoveryMixin:
             return False
         for row in pending.values():
             for name in row:
-                if name not in data.operators:
+                if name not in ("", "Current") and name not in data.operators:
                     data.add(Operator(name, ""))
         state["staffing_plan"] = copy.deepcopy(pending)
         state["staffing_members"] = list(state["targets"])
@@ -648,6 +655,8 @@ class EmergencyRecoveryMixin:
         pending = state.get("staffing_plan", {})
         if not pending:
             return False
+        if "train" in pending:
+            self._suppress_train_correction(pending)
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()

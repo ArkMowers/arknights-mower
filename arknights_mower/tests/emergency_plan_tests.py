@@ -414,3 +414,53 @@ def test_product_only_backup_keeps_rescue_roster_and_last_active_product():
     assert effective_rescue_plan(data, document)["rescue_plan"] == {
         "room_1_1": ["初雪"]
     }
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_rescue_fixed_rooms_apply_backups_and_keep_empty_training_slot(active):
+    from arknights_mower.utils.plan import Room
+
+    data = SimpleNamespace(
+        plan={"central": [Room("阿米娅", "", [])]},
+        evaluate_expression=lambda expression: active,
+    )
+    document = PlanModel(
+        plan1={
+            "central": {"plans": [{"agent": "红"}]},
+            "factory": {"plans": [{"agent": "砾"}]},
+            "train": {"plans": [{"agent": "初雪"}, {"agent": ""}]},
+        },
+        backup_plans=[
+            {
+                "name": "专项驻员",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {
+                    "factory": {"plans": [{"agent": "斑点"}]},
+                    "train": {"plans": [{"agent": "Current"}, {"agent": "阿米娅"}]},
+                },
+            }
+        ],
+    )
+    result = effective_rescue_plan(data, document)["rescue_plan"]
+    assert result["factory"] == ["斑点" if active else "砾"]
+    assert result["train"] == ["初雪", "阿米娅" if active else ""]
+    assert {"初雪", "砾", "斑点", "阿米娅"} <= configured_rescue_names(document)
+    assert "factory" not in data.plan
+
+
+@pytest.mark.parametrize(
+    "room,names",
+    [
+        ("factory", ["红", "初雪"]),
+        ("train", ["红", "初雪", "砾"]),
+        ("train", ["红", "红"]),
+    ],
+)
+def test_rescue_fixed_rooms_reject_over_capacity_and_duplicate_workers(room, names):
+    with pytest.raises(ValueError):
+        rescue_plan_for(
+            SimpleNamespace(plan={"central": [object()]}),
+            {"central": ["阿米娅"], room: names},
+        )
