@@ -50,7 +50,6 @@ def scheduler(monkeypatch):
         operators={},
         dorm=[],
         correct_dorm=MagicMock(),
-        rescue_needed=MagicMock(return_value=False),
         rescue_mode=False,
     )
     solver.recog = MagicMock()

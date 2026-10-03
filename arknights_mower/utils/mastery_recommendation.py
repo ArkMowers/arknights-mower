@@ -9,6 +9,7 @@ from arknights_mower.utils.resource_pkg import (
     resource_pkg_path,
 )
 from arknights_mower.utils.skill_label import format_skill_label
+from arknights_mower.utils.workshop_data import parse_roster
 
 # 肉鸽赠送干员不支持训练室专精，即使 BOX 包含精二和技能数据。
 UNTRAINABLE_CHAR_IDS = frozenset({"char_4195_radian", "char_4230_mcnist"})
@@ -81,19 +82,21 @@ def get_skill_real_name(char_id: str, skill_index: int):
 def _read_cultivate_characters(path, mtime_ns, size):
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return {char["id"]: char for char in data.get("data", {}).get("characters", [])}
+    return {char["id"]: char for char in parse_roster(data)}
 
 
-def _get_cultivate_character(char_id):
-    # 批量添加计划时共用 BOX 快照；同步文件变化后自动失效。
+def get_cultivate_characters():
+    """专精和基建技能共用 BOX 缓存，同步文件变化后自动失效。"""
     path = get_path("@app/tmp/cultivate.json")
     try:
         stat = os.stat(path)
-        return _read_cultivate_characters(
-            str(path), stat.st_mtime_ns, stat.st_size
-        ).get(char_id)
+        return _read_cultivate_characters(str(path), stat.st_mtime_ns, stat.st_size)
     except Exception:
         return None
+
+
+def _get_cultivate_character(char_id):
+    return (get_cultivate_characters() or {}).get(char_id)
 
 
 def get_current_mastery_level(char_id: str, skill_index: int) -> Optional[int]:

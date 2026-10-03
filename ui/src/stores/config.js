@@ -33,6 +33,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mirrorchyan_token = ref('')
   const maa_update_channel = ref('stable')
   const maa_auto_check_update = ref(false)
+  const automatic_rescue_enable = ref(false)
   const maa_restore_theme_enable = ref(false)
   const maa_restore_theme = ref('')
   const medicine_expire_days = ref(0)
@@ -481,6 +482,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
       maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
       maa_auto_check_update.value = response.data.maa_auto_check_update ?? false
+      automatic_rescue_enable.value = response.data.automatic_rescue_enable ?? false
       maa_restore_theme_enable.value = response.data.maa_restore_theme_enable ?? false
       maa_restore_theme.value = response.data.maa_restore_theme ?? ''
       maa_rg_enable.value = response.data.maa_rg_enable == 1
@@ -651,6 +653,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
       maa_update_channel: maa_update_channel.value,
       maa_auto_check_update: maa_auto_check_update.value,
+      automatic_rescue_enable: automatic_rescue_enable.value,
       maa_restore_theme_enable: maa_restore_theme_enable.value,
       maa_restore_theme: maa_restore_theme.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
@@ -980,6 +983,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_mirrorchyan_token,
     maa_update_channel,
     maa_auto_check_update,
+    automatic_rescue_enable,
     maa_restore_theme_enable,
     maa_restore_theme,
     maa_rg_enable,

@@ -247,10 +247,6 @@ class Plan:
         self.products = products or {}
 
     @property
-    def uses_rescue_condition(self) -> bool:
-        return self.uses_condition("rescue_needed")
-
-    @property
     def uses_major_maintenance_condition(self) -> bool:
         return self.uses_condition("major_maintenance_remaining_hours")
 

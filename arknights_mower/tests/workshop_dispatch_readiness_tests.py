@@ -36,14 +36,13 @@ def test_dorm_admission_reservation_blocks_workshop_borrowing(queue):
     ]
 
 
-def test_protected_recovery_cannot_be_interrupted_even_near_full(queue):
+def test_ordinary_resident_is_not_blanket_protected_from_crafting(queue):
     data, tasks = queue
     data.operators["年"].mood = 23
-    data.is_rescue_recovering = lambda name: name == "年"
 
     scheduler_task.try_workshop_tasks(data, tasks)
 
-    assert [task.meta_data for task in tasks] == ["泥岩"]
+    assert [task.meta_data for task in tasks] == ["年", "泥岩"]
 
 
 def test_legacy_unscoped_setting_with_only_forbidden_recipe_is_not_queued(
@@ -66,7 +65,7 @@ def test_legacy_unscoped_setting_with_only_forbidden_recipe_is_not_queued(
     assert "莱伊加工跳过：没有符合干员材料范围" in caplog.text
 
 
-@pytest.mark.parametrize("reason", ["mood", "unknown", "reserved", "recovery"])
+@pytest.mark.parametrize("reason", ["mood", "unknown", "reserved"])
 def test_automatic_crafting_reports_operator_block_reason(queue, caplog, reason):
     data, tasks = queue
     if reason == "mood":
@@ -75,14 +74,11 @@ def test_automatic_crafting_reports_operator_block_reason(queue, caplog, reason)
     elif reason == "unknown":
         data.operators["年"].current_mood = lambda: -1
         expected = "年加工跳过：心情尚未读取"
-    elif reason == "reserved":
+    else:
         tasks.append(
             SchedulerTask(task_plan={"meeting": ["年"]}, task_type=TaskTypes.SHIFT_ON)
         )
         expected = "年加工跳过：已被上班任务预约"
-    else:
-        data.is_rescue_recovering = lambda name: name == "年"
-        expected = "年加工跳过：正在集中恢复"
     scheduler_task.try_workshop_tasks(data, tasks)
     assert expected in caplog.text
     assert [t.meta_data for t in tasks if t.type == TaskTypes.WORKSHOP] == ["泥岩"]

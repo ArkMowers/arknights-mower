@@ -1,9 +1,12 @@
 ---
 title: Rescue backup condition
-status: implemented
+status: archived
 category: feature
 date: 2026-09-30
 ---
+
+Superseded by [Native automatic rescue](../../implemented/simplification/2026-10-02-native-automatic-rescue.md).
+
 
 # Rescue backup condition
 

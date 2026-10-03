@@ -223,26 +223,49 @@ def test_workshop_selection_does_not_override_schedule_identity(op_data):
     assert resting_tier(op_data, "红") == RestingTier.PRIORITY
 
 
-@pytest.mark.parametrize("state", ["rescue_mode", "rescue_plan_active"])
 @pytest.mark.parametrize(
-    "mood,known,temporary,expected",
+    "replacement_tier,expected",
     [
-        (8, True, False, RestingTier.PRIORITY_REPLACEMENT),
-        (20, True, False, RestingTier.PRIORITY_REPLACEMENT),
-        (24, False, False, RestingTier.PRIORITY_REPLACEMENT),
-        (8, True, True, RestingTier.PRIORITY_REPLACEMENT),
+        (RestingTier.PRIORITY_REPLACEMENT, "银灰"),
+        (RestingTier.PRIORITY, "红"),
     ],
 )
-def test_rescue_retains_configured_priority_for_every_admission_source(
-    op_data, state, mood, known, temporary, expected
+def test_intelligent_rescue_uses_configured_priority_for_last_available_bed(
+    op_data, replacement_tier, expected
 ):
-    op = set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT, mood)
-    op.upper_limit = 20
-    op.time_stamp = datetime.now() if known else None
-    op.temporary_dorm_fill = temporary
-    op_data.main_rescue_priority = {op.name}
-    setattr(op_data, state, True)
-    assert resting_tier(op_data, op.name) == expected
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    primary = set_tier(op_data, "银灰", RestingTier.MAIN, 8)
+    primary.current_room = ""
+    replacement = set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT, 1)
+    if replacement_tier == RestingTier.PRIORITY:
+        op_data.config.ope_resting_priority.append(replacement.name)
+    replacement.current_room = ""
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = op_data
+    solver.emergency_state = {
+        "phase": "recovering",
+        "targets": {primary.name: 16},
+    }
+    solver.tasks = [
+        SchedulerTask(
+            task_type=TaskTypes.FILL_DORM,
+            task_plan={ROOM: ["Free"] * 4 + ["Current"]},
+        )
+    ]
+
+    fixed_slots = [slot.agent for slot in op_data.plan[ROOM]][:4]
+    assert {bed.position for bed in op_data.all_dorms()} == {(ROOM, 4)}
+    solver._emergency_plan_beds(solver.emergency_state)
+
+    assert solver._emergency_active()
+    assert [slot.agent for slot in op_data.plan[ROOM]][:4] == fixed_slots
+    assert {bed.position for bed in op_data.all_dorms()} == {(ROOM, 4)}
+    assert resting_tier(op_data, replacement.name) == replacement_tier
+    assert len(solver.tasks) == 2
+    assert solver.tasks[-1].emergency_dorm
+    assert solver.tasks[-1].plan == {ROOM: ["Current"] * 4 + [expected]}
 
 
 def test_explicit_priority_replacement_is_protected_from_equal_or_lower_tiers(op_data):

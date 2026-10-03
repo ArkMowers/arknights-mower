@@ -912,6 +912,15 @@ onUnmounted(() => {
         </n-form-item>
       </template>
       <n-form-item label="恢复主题">
+        <template #label>
+          恢复主题
+          <help-text label="恢复主题说明" :max-width="480">
+            恢复主题需要 MAA v6.17.3 或更高版本。在本轮 MAA
+            日常及大型任务结束后、休息前，恢复到指定主题。
+            下拉列表包含国服游戏主题，请选择账号已解锁的主题；清空选择后不恢复。
+            手动停止、异常退出或调度时间不足时跳过。
+          </help-text>
+        </template>
         <n-checkbox v-model:checked="maa_restore_theme_enable">任务结束后恢复主题</n-checkbox>
       </n-form-item>
       <n-form-item v-if="maa_restore_theme_enable" label="目标主题">
@@ -925,11 +934,6 @@ onUnmounted(() => {
         />
       </n-form-item>
     </n-form>
-    <p>
-      恢复主题需要 MAA v6.17.3 或更高版本。在本轮 MAA 日常及大型任务结束后、休息前，恢复到指定主题。
-      下拉列表包含国服游戏主题，请选择账号已解锁的主题；清空选择后不恢复。
-      手动停止、异常退出或调度时间不足时跳过。
-    </p>
     <n-divider />
     <div class="misc-container">
       <n-button :loading="maa_testing" :disabled="maa_testing" @click="test_maa">

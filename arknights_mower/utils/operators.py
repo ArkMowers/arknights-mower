@@ -307,16 +307,9 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
         self.free_blacklist = []
-        self.rescue_mode = False
-        self.rescue_armed = True
-        self.rescue_completed = set()
-        self.main_recovery_limits = {}
-        self.main_rescue_limits = {}
-        self.main_rescue_priority = set()
-        self.rescue_plan_active = False
-        self.rescue_workers = set()
         self.global_plan = plan
         self.backup_plans = plan["backup_plans"]
         # 切换默认排班
@@ -352,7 +345,6 @@ class Operators:
                 "major_maintenance_remaining_hours",
                 "group_min_mood",
                 "group_max_mood",
-                "rescue_needed",
             ]
         )
         self.power_plant_count = 0
@@ -366,12 +358,11 @@ class Operators:
         return bool(self.maintenance_primary_slots)
 
     def swap_plan(self, condition, refresh=False):
+        self.emergency_dorm_agents.clear()
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         self.products = copy.deepcopy(self.global_plan["default_plan"].products)
         self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
-        rescue_slots = {}
         self.maintenance_primary_slots = set()
-        self.rescue_plan_active = False
         for index, success in enumerate(condition):
             if success:
                 self.plan, self.config = self.merge_plan(index, self.config, self.plan)
@@ -387,29 +378,6 @@ class Operators:
                         self.maintenance_primary_slots.discard((room, slot_index))
                         if maintenance and slot.agent in TRADE_ORDER_AGENTS:
                             self.maintenance_primary_slots.add((room, slot_index))
-                rescue = backup.uses_rescue_condition
-                self.rescue_plan_active |= rescue
-                for room, slots in backup.plan.items():
-                    if room.startswith("dorm"):
-                        continue
-                    for slot_index, slot in enumerate(slots):
-                        if slot.agent != "Current":
-                            rescue_slots[room, slot_index] = rescue
-        self.rescue_workers = {
-            self.plan[room][index].agent
-            for (room, index), rescue in rescue_slots.items()
-            if rescue and self.plan[room][index].agent not in ("Free", "Current")
-        }
-        self.config.workaholic = list(
-            dict.fromkeys([*self.config.workaholic, *sorted(self.rescue_workers)])
-        )
-        if self.rescue_plan_active:
-            self.config.operator_mood_limits.update(
-                {
-                    name: {"lower": limits[0], "upper": limits[1]}
-                    for name, limits in self.main_rescue_limits.items()
-                }
-            )
         self.plan_condition = condition
         if refresh:
             self.first_init = True
@@ -431,24 +399,6 @@ class Operators:
         return default_plan, ext_config.merge_config(plan.config)
 
     def init_and_validate(self, update=False):
-        if self.rescue_plan_active:
-            excluded = set(self.config.workaholic) | set(self.config.free_blacklist)
-            for active, backup in zip(self.plan_condition, self.backup_plans):
-                if not active or not backup.uses_rescue_condition:
-                    continue
-                dorm_names = {
-                    slot.agent
-                    for room, slots in backup.plan.items()
-                    if room.startswith("dorm")
-                    for slot in slots
-                } | {
-                    name
-                    for room, names in (backup.task or {}).items()
-                    if room.startswith("dorm")
-                    for name in names
-                }
-                if denied := (dorm_names - {"Current", "Free"}) & excluded:
-                    return f"救急副表禁止安排宿舍黑名单或0心情工作干员入宿：{','.join(sorted(denied))}"
         for name in self.config.operator_mood_limits:
             if name not in agent_list:
                 return f"心情上下限中的干员名无效：{name}"
@@ -521,13 +471,9 @@ class Operators:
                     for char in TRADE_ORDER_AGENTS
                 ):
                     r_count -= 1
-                if (
-                    r_count <= 0
-                    and data.agent not in self.rescue_workers
-                    and (
-                        (data.agent != "Free" and (not room.startswith("dorm")))
-                        or data.agent == "菲亚梅塔"
-                    )
+                if r_count <= 0 and (
+                    (data.agent != "Free" and (not room.startswith("dorm")))
+                    or data.agent == "菲亚梅塔"
                 ):
                     missing_replacements.append(data.agent)
                 for _replacement in data.replacement:
@@ -634,8 +580,6 @@ class Operators:
                     # 显式 Free 只负责开启“随组离岗时转为 Free”，不参与
                     # 组内替班唯一性校验。
                     continue
-                if name in self.rescue_workers:
-                    continue
                 _candidate = next(
                     (
                         r
@@ -671,31 +615,6 @@ class Operators:
             self.displaced_dorms = self.restore_dorm_state(saved_dorms)
         # 应用心情上下限：个人设置优先，其次令夕模式、全体设置。
         self.init_mood_limit()
-        if not any(self.plan_condition):
-            self.main_recovery_limits = {
-                name: (op.lower_limit, op.upper_limit)
-                for name, op in self.operators.items()
-                if op.is_high()
-                and op.room in base_room_list
-                and not op.room.startswith("dorm")
-                and op.room not in ("factory", "train")
-                and not op.workaholic
-                and name not in self.config.free_blacklist
-            }
-            self.main_rescue_priority = set(self.main_recovery_limits) | {
-                name
-                for name in self.config.resting_priority_replacement
-                if name in self.operators
-                and not self.operators[name].workaholic
-                and name not in self.config.free_blacklist
-            }
-            self.main_rescue_limits = {
-                name: (
-                    self.operators[name].lower_limit,
-                    self.operators[name].upper_limit,
-                )
-                for name in self.main_rescue_priority
-            }
         for name in self.workaholic_agent:
             if name not in self.config.free_blacklist:
                 self.config.free_blacklist.append(name)
@@ -741,10 +660,7 @@ class Operators:
         )
 
     def is_planned_operator(self, name):
-        return (
-            (self.rescue_mode or self.rescue_plan_active)
-            and name in self.main_rescue_priority
-        ) or any(
+        return name in self.emergency_dorm_agents or any(
             name == slot.agent or name in slot.replacement
             for slots in self.plan.values()
             for slot in slots
@@ -915,9 +831,6 @@ class Operators:
             self.apply_custom_mood_limits(op)
         # 按个人设置、令夕模式、全体设置的优先顺序收敛。
         self.apply_ling_xi_mood_limits()
-        if self.rescue_mode or self.rescue_plan_active:
-            for name, (lower, upper) in self.main_rescue_limits.items():
-                self.set_mood_limit(name, lower_limit=lower, upper_limit=upper)
         # 已读倒计时指向旧上限，切表后按同一恢复速度换算到新上限。
         for bed in self.all_dorms():
             op = self.operators.get(bed.name)
@@ -1242,6 +1155,7 @@ class Operators:
         ) and (current_room, current_index) == (agent.room, agent.index)
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
+            agent.mood_is_prediction = False
             if (
                 not preserve_depletion_rate
                 and agent.time_stamp is not None
@@ -1377,6 +1291,7 @@ class Operators:
                             continue
                         op.mood = op.upper_limit
                         op.time_stamp = dorm.time
+                        op.mood_is_prediction = True
                         op.depletion_rate = 0
                         logger.debug(f"检测到{op.name}心情恢复满，设置心情至{op.mood}")
 
@@ -1432,10 +1347,6 @@ class Operators:
             operator.resting_priority = "low"
         operator.exhaust_require = self.config.is_exhaust_require(operator.name)
         operator.rest_in_full = self.config.is_rest_in_full(operator.name)
-        if (self.rescue_mode or self.rescue_plan_active) and (
-            operator.name in self.main_rescue_priority
-        ):
-            operator.rest_in_full = True
         operator.workaholic = self.config.is_workaholic(operator.name)
         operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
         logger.debug(
@@ -1449,6 +1360,7 @@ class Operators:
             exist = self.shadow_copy[operator.name]
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
+            operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
             operator.depletion_rate = exist.depletion_rate
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
@@ -1492,11 +1404,7 @@ class Operators:
                 self.rest_in_full_group.add(operator.group)
         if (
             self.config.is_resting_standby(operator.name)
-            and (
-                operator.is_high()
-                or self.rescue_plan_active
-                and operator.name in self.main_recovery_limits
-            )
+            and operator.is_high()
             and not operator.room.startswith("dorm")
             and not operator.workaholic
             and not operator.exhaust_require
@@ -1521,72 +1429,6 @@ class Operators:
         """按个人心情上下限换算现有急救阈值。"""
         return op.lower_limit + (op.upper_limit - op.lower_limit) * (
             self.config.resting_threshold * config.conf.rescue_threshold
-        )
-
-    def rescue_needed(self):
-        """主表半数且至少两名主班低于救急线，持续至多数主班完成恢复。"""
-        now = datetime.now()
-        was_rescuing = self.rescue_mode
-        baseline = self.global_plan["default_plan"].config
-        targets = self.main_recovery_limits
-        below = sum(
-            has_resting_mood(self.operators.get(name), now)
-            and self.operators[name].current_mood(now)
-            < lower
-            + (upper - lower)
-            * baseline.resting_threshold
-            * config.conf.rescue_threshold
-            for name, (lower, upper) in targets.items()
-        )
-        entering = len(targets) >= 2 and below >= 2 and below * 2 >= len(targets)
-        if config.conf.rescue_threshold <= 0 or len(targets) < 2:
-            self.rescue_mode = False
-            self.rescue_armed = True
-            self.rescue_completed.clear()
-        elif self.rescue_mode:
-            self.rescue_completed.update(
-                name
-                for name, (_, upper) in targets.items()
-                if has_resting_mood(self.operators.get(name), now)
-                and self.operators[name].current_mood(now) >= upper
-            )
-            if len(self.rescue_completed & targets.keys()) * 2 > len(targets):
-                self.rescue_mode = False
-                self.rescue_armed = False
-                self.rescue_completed.clear()
-        elif not entering:
-            self.rescue_armed = True
-        elif self.rescue_armed:
-            self.rescue_mode = True
-            self.rescue_completed = {
-                name
-                for name, (_, upper) in targets.items()
-                if has_resting_mood(self.operators.get(name), now)
-                and self.operators[name].current_mood(now) >= upper
-            }
-        if self.rescue_mode != was_rescuing:
-            self.init_mood_limit()
-        if self.rescue_mode or self.rescue_plan_active or was_rescuing:
-            for name in self.main_rescue_priority:
-                if (op := self.operators.get(name)) is not None:
-                    op.rest_in_full = self.config.is_rest_in_full(name) or (
-                        self.rescue_mode or self.rescue_plan_active
-                    )
-        return self.rescue_mode
-
-    def is_rescue_recovering(self, name, now=None):
-        op = self.operators.get(name)
-        return bool(
-            (self.rescue_mode or self.rescue_plan_active)
-            and op is not None
-            and op.is_resting()
-            and (op.is_high() or name in self.main_rescue_priority)
-            and not getattr(op, "temporary_dorm_fill", False)
-            and resting_tier(self, name) != RestingTier.EXCLUDED
-            and not self.rest_mood_complete(name)
-            and (
-                not has_resting_mood(op, now) or resting_mood(op, now) < op.upper_limit
-            )
         )
 
     def resting_mood_threshold(self, op):
@@ -1725,7 +1567,6 @@ class Operators:
         产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
         """
         projected = copy.copy(self)
-        projected.rescue_completed = set(self.rescue_completed)
         projected.operators = copy.deepcopy(self.operators)
         projected.dorm = copy.deepcopy(self.dorm)
         for plan in plans:
@@ -1802,7 +1643,6 @@ class Operators:
             name
             for name in operator.replacement
             if name != "Free"
-            and not self.is_rescue_recovering(name)
             and not (operator.room.startswith("dorm") and self.rest_mood_complete(name))
         ]
         if not operator.room.startswith("dorm") and operator.name != "菲亚梅塔":
@@ -1919,7 +1759,7 @@ class Operators:
         )
 
     def _slot_takable(self, dorm, requester=None, active_groups=None):
-        """普通和救急均按严格层级接管；排除与待执行预约保留床位。"""
+        """有效动态床位按共享恢复层级决定是否允许接管。"""
         if not self.is_effective_free_slot(dorm, active_groups=active_groups):
             return False
         reserved_for = self.reserved_product_beds.get(dorm.position)
@@ -1945,8 +1785,18 @@ class Operators:
         # 已预留、尚未执行入驻的床位不能被本轮后续组重复分配。
         if (op.current_room, op.current_index) != dorm.position:
             return False
-        return requester is not None and resting_tier(self, requester) < resting_tier(
-            self, name
+        if requester is None:
+            return False
+        requester_tier, resident_tier = (
+            resting_tier(self, requester),
+            resting_tier(self, name),
+        )
+        return requester_tier < resident_tier or (
+            name in self.emergency_dorm_agents
+            and (op.index < 2 or requester_tier == resident_tier)
+            and has_resting_mood(op)
+            and not op.mood_is_prediction
+            and op.mood >= op.upper_limit
         )
 
     def _find_dorm_slot(self, name, used, *, active_groups=None):
@@ -2235,6 +2085,7 @@ class Operator:
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
+        self.mood_is_prediction = False
         self.workaholic = False
         self.arrange_order = ["技能", "false"]
         self.exhaust_time = None

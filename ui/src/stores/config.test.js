@@ -14,6 +14,26 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
+  it('saves the intelligent rescue checkbox independently', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.automatic_rescue_enable).toBe(false)
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.automatic_rescue_enable = true
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ automatic_rescue_enable: true })
+    loaded.value = false
+  })
+
   it('defaults T2 protection off and saves it without changing manual materials', async () => {
     pinia = createPinia()
     setActivePinia(pinia)

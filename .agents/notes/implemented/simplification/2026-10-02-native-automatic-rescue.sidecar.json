@@ -1,0 +1,29 @@
+{
+  "title": "Native Intelligent Rescue",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin",
+    "arknights_mower.utils.emergency_staffing",
+    "arknights_mower.utils.building_skills.unlocked_skills",
+    "arknights_mower.utils.mastery_recommendation.get_cultivate_characters",
+    "server.basement_skill_operators"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_staffing_tests.py",
+    "arknights_mower/tests/building_skills_tests.py",
+    "arknights_mower/tests/mastery_skill_level_tests.py",
+    "arknights_mower/tests/cultivate_depot_tests.py",
+    "ui/src/pages/BasementSkill.test.js",
+    "ui/src/utils/basementSkills.test.js",
+    "arknights_mower/tests/agent_recovery_tests.py"
+  ]
+}

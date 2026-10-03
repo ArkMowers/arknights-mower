@@ -20,6 +20,7 @@ from arknights_mower.utils.config.plan import (
     PlanModel,
     has_retired_dorm_options,
     migrate_legacy_dorm_order,
+    retire_rescue_backups,
 )
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
@@ -199,7 +200,12 @@ def save_plan():
 
 
 def load_plan():
-    global plan, _legacy_dorm_order, _retired_dorm_conf
+    global \
+        plan, \
+        _legacy_dorm_order, \
+        _retired_dorm_conf, \
+        retired_backup_indices, \
+        retired_backup_migrated
     created = not plan_path.is_file()
     if created:
         plan_path.parent.mkdir(exist_ok=True)
@@ -209,7 +215,22 @@ def load_plan():
         # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
         with plan_path.open("r", encoding="utf-8-sig") as f:
             data = json.load(f)
-        plan = PlanModel(**data)
+        migrated_data, retired_backup_indices = retire_rescue_backups(data)
+        retired_backup_migrated = len(migrated_data.get("backup_plans", [])) != len(
+            data.get("backup_plans", [])
+        )
+        if retired_backup_migrated:
+            backup_path = plan_path.with_suffix(".pre-maa-emergency.json")
+            if not backup_path.exists():
+                atomic_write(
+                    backup_path,
+                    lambda f: json.dump(data, f, ensure_ascii=False, indent=2),
+                )
+            data = migrated_data
+            plan = PlanModel(**data)
+            save_plan()
+        else:
+            plan = PlanModel(**data)
     migrated = migrate_legacy_dorm_order(plan, data, _legacy_dorm_order)
     if created or migrated or has_retired_dorm_options(data):
         save_plan()
@@ -219,6 +240,8 @@ def load_plan():
         _retired_dorm_conf = False
 
 
+retired_backup_indices = {}
+retired_backup_migrated = False
 plan: PlanModel
 load_plan()
 

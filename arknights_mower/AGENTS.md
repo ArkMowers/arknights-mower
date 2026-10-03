@@ -16,6 +16,7 @@ Local contract for Python backend implementation under `arknights_mower/`.
 - **Monotonic Deadlines**: All external process execution, socket I/O, and session recovery operate under finite budgets (`RecoveryPolicy.timeout`, `COMMAND_TIMEOUT`).
 - **Guaranteed Compensation**: Temporary display overrides (`wm size 1920x1080`), spawned child processes, and socket listeners register cleanup callbacks triggered on exit or error.
 - **Standard Frame Contract**: Decoded capture output across ADB gzip, DroidCast, and MuMu IPC backends strictly conforms to the `(1080, 1920, 3)` RGB matrix.
+- **Scheduling Projection Isolation**: Full `Operators` deep copies reuse the read-only `eval_model` through the deepcopy memo, while mutable operators, dormitory beds, plans and configuration remain isolated. Follow the existing projection boundaries in the [Base Scheduling Contract](../docs/subsystems/base-scheduler.md); runtime builtins and extension handles are not copied.
 
 ## 3. Testing Discipline
 

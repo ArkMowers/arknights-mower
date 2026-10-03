@@ -29,7 +29,6 @@ def test_rescue_fills_unreserved_vacancy_without_changing_other_residents(
     assert len(tasks) == 1
     assert tasks[0].type == TaskTypes.FILL_DORM
     assert tasks[0].plan == {ROOM: ["Current"] * 4 + ["红"]}
-    assert tasks[0].simple_dorm_fill
     assert not data.dorm[0].name
 
 
@@ -75,7 +74,6 @@ def test_rescue_metadata_keeps_only_filling_actual_vacancies(op_data, monkeypatc
     data = op_data
     open_bed(data, monkeypatch)
     data.rescue_mode = True
-    monkeypatch.setattr(data, "rescue_needed", lambda: True)
     filling = SchedulerTask(
         datetime.now(), {ROOM: ["Current"] * 4 + ["红"]}, TaskTypes.FILL_DORM
     )
@@ -113,7 +111,6 @@ def test_rescue_metadata_drops_filling_when_primary_later_reserves_same_bed(
     data = op_data
     open_bed(data, monkeypatch)
     data.rescue_mode = True
-    monkeypatch.setattr(data, "rescue_needed", lambda: True)
     fill = SchedulerTask(
         datetime.now(), {ROOM: ["Current"] * 4 + ["红"]}, TaskTypes.FILL_DORM
     )

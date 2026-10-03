@@ -14,9 +14,9 @@ from arknights_mower.solvers import cultivate_depot as module  # noqa: E402
 def syncer(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "get_path", lambda _: tmp_path / "cultivate.json")
     monkeypatch.setattr(
-        module.config,
-        "conf",
-        SimpleNamespace(skland_info=[SimpleNamespace(cultivate_select=True)]),
+        module.config.conf,
+        "skland_info",
+        [SimpleNamespace(account="test-account", cultivate_select=True)],
     )
     monkeypatch.setattr(module, "log", lambda _: "login")
     monkeypatch.setattr(module, "get_cred_by_token", lambda _: {})

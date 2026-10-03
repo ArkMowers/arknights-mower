@@ -291,7 +291,7 @@ class TestMoodInitialization(unittest.TestCase):
         scheduler = MagicMock()
         scheduler.initialize_operators.return_value = None
         scheduler.op_data.validate_backup_plans.return_value = {"success": True}
-        scheduler.op_data.backup_plans = [object()]
+        scheduler.op_data.backup_plans = [SimpleNamespace(name="backup")]
         scheduler.run.side_effect = base_schedule.MowerExit
         self.initialize.return_value = scheduler
         saved = {
@@ -2535,7 +2535,6 @@ class TestDormShiftOffMerge(unittest.TestCase):
             operators={},
             dorm=[],
             print=lambda: "{}",
-            rescue_needed=MagicMock(return_value=False),
         )
         solver._prepare_shift_cycle = MagicMock()
         solver._refresh_deferred_product_reservations = MagicMock()
@@ -2577,7 +2576,6 @@ class TestDormShiftOffMerge(unittest.TestCase):
         solver = BaseSchedulerSolver()
         solver.op_data = SimpleNamespace(
             config=SimpleNamespace(free_room=True),
-            rescue_needed=MagicMock(return_value=False),
         )
         order = SchedulerTask(task_type=TaskTypes.RUN_ORDER)
         solver.tasks = [order]
@@ -2750,7 +2748,7 @@ class TestDroneAccelerate(unittest.TestCase):
         solver = BaseSchedulerSolver()
         solver.error = False
         solver.tasks = [task]
-        solver.op_data = SimpleNamespace(dorm=[], operators={})
+        solver.op_data = SimpleNamespace(dorm=[], operators={}, plan={})
 
         def fake_arrange_room(new_plan, room, plan, get_time=False):
             del plan[room]  # 与真实 agent_arrange_room 一致：清空 self.task.plan

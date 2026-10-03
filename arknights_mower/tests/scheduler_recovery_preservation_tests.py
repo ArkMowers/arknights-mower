@@ -55,13 +55,13 @@ def scheduler(monkeypatch):
 
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.tasks = []
+    solver.emergency_state = None
     solver.error = False
     solver.op_data = SimpleNamespace(
         plan={},
         operators={},
         dorm=[],
         correct_dorm=Mock(),
-        rescue_needed=Mock(return_value=False),
         validate_backup_plans=Mock(return_value={"success": True}),
     )
     solver.device = Mock()

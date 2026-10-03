@@ -548,6 +548,8 @@ class RIICPart(ConfModel):
     "菲亚防呆"
     fia_threshold: float = 0.9
     "菲亚阈值"
+    automatic_rescue_enable: bool = False
+    "初始化确认原生轮休无法周转时，由 Mower 自动安排临时换班"
     rescue_threshold: float = 0.75
     "急救阈值"
     favorite: str = ""

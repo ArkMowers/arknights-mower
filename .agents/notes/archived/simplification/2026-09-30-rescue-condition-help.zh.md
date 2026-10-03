@@ -1,9 +1,12 @@
 ---
 title: 救急条件说明
-status: implemented
+status: archived
 category: simplification
 date: 2026-09-30
 ---
+
+由 [Mower 自动救急恢复](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md) 取代。
+
 
 # 救急条件说明
 
@@ -19,7 +22,7 @@ date: 2026-09-30
 
 ## 验证
 
-定向[救急表达式测试](../../../../ui/src/utils/trigger_rescue.test.js)、Vue 组件编译、格式检查和仓库治理检查验证保留的表达式契约与源码有效性。[原救急条件决策](../../implemented/feature/2026-09-30-rescue-backup-condition.zh.md)定义排班行为。
+定向已退役的救急表达式测试、Vue 组件编译、格式检查和仓库治理检查验证保留的表达式契约与源码有效性。[原救急条件决策](../feature/2026-09-30-rescue-backup-condition.zh.md)定义排班行为。
 
 ## 标准审查
 

@@ -134,7 +134,6 @@ def test_mass_recovery_takes_legacy_idle_beds_regardless_of_completion(solver):
         op._current_room, op.current_index = bed.position
         op.time_stamp = datetime.now()
         bed.name, bed.time = name, datetime.now() + timedelta(hours=5)
-    data.main_rescue_priority.update(["埃癸斯", "苏苏洛"])
     assert data._slot_takable(data.dorm[0], requester="令")
     assert data._slot_takable(data.dorm[1], requester="令")
 

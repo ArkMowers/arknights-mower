@@ -1,6 +1,6 @@
 {
   "title": "Rescue Condition Help",
-  "status": "implemented",
+  "status": "archived",
   "category": "simplification",
   "date": "2026-09-30",
   "authors": [
@@ -12,7 +12,5 @@
     "ui/src/components/TriggerString.vue",
     "ui/src/components/HelpText.vue"
   ],
-  "test_suites": [
-    "ui/src/utils/trigger_rescue.test.js"
-  ]
+  "test_suites": []
 }

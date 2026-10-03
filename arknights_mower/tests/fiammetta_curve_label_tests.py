@@ -24,7 +24,12 @@ def test_agent_action_schema_adds_fiammetta_fields_to_legacy_table():
     record._ensure_tables(connection)
 
     columns = [row[1] for row in connection.execute("PRAGMA table_info(agent_action)")]
-    assert columns[-2:] == ["related_operator", "mood_event"]
+    assert columns[-4:] == [
+        "related_operator",
+        "mood_event",
+        "context_key",
+        "current_index",
+    ]
     connection.close()
     record._tables_created = False
 

@@ -1049,7 +1049,6 @@ def generate_plan_by_drom(
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
         exhaust_exist = False
-        rescue_batch = any(op_data.is_rescue_recovering(bed.name) for bed in dorms)
         for room in dorms:
             if not room.name or room.name not in op_data.operators:
                 logger.debug(f"跳过已失效的宿舍回班项：{room}")
@@ -1084,7 +1083,7 @@ def generate_plan_by_drom(
                 if rest_in_full is None:
                     # 执行端按姓名和床位双重校验；同刻回满也分别记录身份，
                     # 避免空身份被跳过，或旧任务误清后来入住的人。
-                    if op_data.config.free_room or op_data.rescue_mode:
+                    if op_data.config.free_room:
                         release_plan = {
                             target_room: ["Current"] * len(op_data.plan[target_room])
                         }
@@ -1147,7 +1146,7 @@ def generate_plan_by_drom(
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
         earliest = _after_pending_arrangements(plan, pending_resources)
         if rest_in_full:
-            if exhaust_exist or rescue_batch:
+            if exhaust_exist:
                 time = max(time, current_time, earliest)
             else:
                 time = max(time - timedelta(minutes=8), current_time, earliest)
@@ -1160,9 +1159,7 @@ def generate_plan_by_drom(
             )
         else:
             added = False
-            if rest_in_full is None and not (
-                op_data.config.free_room or op_data.rescue_mode
-            ):
+            if rest_in_full is None and not (op_data.config.free_room):
                 continue
             for idx in range(len(result) - 1, -1, -1):
                 if result[idx].time < time:
@@ -1210,7 +1207,6 @@ def generate_plan_by_drom(
 
 
 def plan_metadata(op_data, tasks):
-    op_data.rescue_needed()
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task for task in tasks if (getattr(task, "product_shift_locked", False))
@@ -1240,20 +1236,20 @@ def plan_metadata(op_data, tasks):
         if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
         or id(t) in locked_ids
     ]
-    if op_data.rescue_mode:
-        _, reserved_slots = dorm_task_reservations(
-            op_data, [task for task in tasks if task.type != TaskTypes.FILL_DORM]
-        )
-        vacancies = vacant_dorm_slots(op_data, reserved_slots)
-        preserved = []
-        for task in tasks:
-            if task.type != TaskTypes.FILL_DORM or id(task) in locked_ids:
-                preserved.append(task)
-                continue
-            _, changed_slots = _arrangement_resources(task.plan)
-            if changed_slots and changed_slots <= vacancies:
-                preserved.append(task)
-        tasks = preserved
+    _, reserved_slots = dorm_task_reservations(
+        op_data, [task for task in tasks if task.type != TaskTypes.FILL_DORM]
+    )
+    vacancies = vacant_dorm_slots(op_data, reserved_slots)
+    tasks = [
+        task
+        for task in tasks
+        if task.type != TaskTypes.FILL_DORM
+        or id(task) in locked_ids
+        or getattr(task, "dorm_recovery_restore", [])
+        or bool(_arrangement_resources(getattr(task, "dorm_fill_plan", task.plan))[1])
+        and _arrangement_resources(getattr(task, "dorm_fill_plan", task.plan))[1]
+        <= vacancies
+    ]
     pending_arrangements = []
     # 按实际床位定时；迁移完成读房后会重建，避免清理尚未发生的未来位置。
     limited_releases = plan_mood_limit_releases(op_data)
@@ -1324,10 +1320,7 @@ def plan_metadata(op_data, tasks):
             dorm
             for dorm in dorms
             if op_data.operators[dorm.name].is_high()
-            and (
-                op_data.operators[dorm.name].resting_priority == "high"
-                or op_data.is_rescue_recovering(dorm.name)
-            )
+            and op_data.operators[dorm.name].resting_priority == "high"
         ]
         if len(_high_dorms) == 0:
             high_dorms = [
@@ -1342,26 +1335,13 @@ def plan_metadata(op_data, tasks):
                 ]
         else:
             high_dorms = _high_dorms
-        rescue_batch = any(op_data.is_rescue_recovering(dorm.name) for dorm in dorms)
-        if rescue_batch:
-            high_dorms = [
-                dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
-            ]
         rest_in_full_dorms = [
-            dorm
-            for dorm in high_dorms
-            if op_data.operators[dorm.name].rest_in_full
-            or op_data.is_rescue_recovering(dorm.name)
+            dorm for dorm in high_dorms if op_data.operators[dorm.name].rest_in_full
         ]
         if high_dorms and group_name:
-            if rescue_batch and any(dorm.time is None for dorm in high_dorms):
-                continue
             # 高优先干员恢复时间差过大时，可延后整组回班。
             base_time = high_dorms[0].time
-            need_early = (
-                not rescue_batch
-                and not op_data.operators[high_dorms[0].name].exhaust_require
-            )
+            need_early = not op_data.operators[high_dorms[0].name].exhaust_require
             mood_gap_full_rest = False
             if (
                 config.conf.group_rest_in_full_on_mood_gap
@@ -1381,11 +1361,7 @@ def plan_metadata(op_data, tasks):
                         need_early = False
             if rest_in_full_dorms:
                 max_rest_in_full_time = max(
-                    (
-                        dorm.time
-                        for dorm in (high_dorms if rescue_batch else rest_in_full_dorms)
-                        if dorm.time is not None
-                    ),
+                    (dorm.time for dorm in rest_in_full_dorms if dorm.time is not None),
                     default=None,
                 )
             nearest_dorm = min(
@@ -1427,9 +1403,7 @@ def plan_metadata(op_data, tasks):
             # high_droms 如果触发急救模式，后面的移送到急救前
             for room in high_dorms:
                 if room.time and room.name:
-                    rest_in_full = op_data.operators[
-                        room.name
-                    ].rest_in_full or op_data.is_rescue_recovering(room.name)
+                    rest_in_full = op_data.operators[room.name].rest_in_full
                     task_time = (
                         min(room.time, min_resting_time)
                         if not rest_in_full
@@ -1444,7 +1418,7 @@ def plan_metadata(op_data, tasks):
                             new_task[task_time][1] or rest_in_full,
                         )
     release_tasks = {}
-    if op_data.config.free_room or op_data.rescue_mode:
+    if op_data.config.free_room:
         for room in free_rooms:
             operator = op_data.operators[room.name]
             observed_full = (
@@ -1583,8 +1557,7 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
     for bed in op_data.dorm:
         op = op_data.operators.get(bed.name)
         if op is not None and (
-            op_data.is_rescue_recovering(bed.name)
-            or bed.name not in explicit_names
+            bed.name not in explicit_names
             and (op.current_room, op.current_index) != bed.position
         ):
             locked_rooms.add(bed.position[0])
@@ -1658,11 +1631,7 @@ def try_reorder(op_data, new_plan):
 
     # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
     # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。
-    protected_indices = {
-        index
-        for index, bed in enumerate(dorm)
-        if op_data.is_rescue_recovering(bed.name)
-    }
+    protected_indices = set()
     effective_free_indices = [
         idx
         for idx, room in enumerate(dorm)
@@ -1986,8 +1955,6 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
         task.dorm_fill_plan = copy.deepcopy(arrangement)
         if filling_vacancies:
             simplify_dorm_fill(task, tasks, now)
-            if op_data.rescue_mode:
-                task.simple_dorm_fill = True
         if not getattr(task, "simple_dorm_fill", False):
             task.plan = prioritize_new_dorm_recovery(op_data, task.plan, reserved_slots)
         tasks.append(task)

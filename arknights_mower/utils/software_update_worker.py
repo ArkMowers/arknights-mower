@@ -65,6 +65,127 @@ class UpdateCancelled(Exception):
     """Preparation was cancelled before any instance was stopped."""
 
 
+class WindowsCommandJob:
+    """Contain an update command and its descendants until they fully exit."""
+
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimits(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class ExtendedLimits(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BasicLimits),
+                ("IoInfo", ctypes.c_uint64 * 6),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        class Accounting(ctypes.Structure):
+            _fields_ = [
+                ("TotalUserTime", ctypes.c_int64),
+                ("TotalKernelTime", ctypes.c_int64),
+                ("ThisPeriodTotalUserTime", ctypes.c_int64),
+                ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+                ("TotalPageFaultCount", wintypes.DWORD),
+                ("TotalProcesses", wintypes.DWORD),
+                ("ActiveProcesses", wintypes.DWORD),
+                ("TotalTerminatedProcesses", wintypes.DWORD),
+            ]
+
+        self.ctypes, self.Accounting = ctypes, Accounting
+        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        for name, arguments, result in (
+            ("CreateJobObjectW", [ctypes.c_void_p, wintypes.LPCWSTR], wintypes.HANDLE),
+            (
+                "SetInformationJobObject",
+                [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
+                wintypes.BOOL,
+            ),
+            (
+                "QueryInformationJobObject",
+                [
+                    wintypes.HANDLE,
+                    ctypes.c_int,
+                    ctypes.c_void_p,
+                    wintypes.DWORD,
+                    ctypes.c_void_p,
+                ],
+                wintypes.BOOL,
+            ),
+            (
+                "AssignProcessToJobObject",
+                [wintypes.HANDLE, wintypes.HANDLE],
+                wintypes.BOOL,
+            ),
+            ("TerminateJobObject", [wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
+            ("CloseHandle", [wintypes.HANDLE], wintypes.BOOL),
+        ):
+            function = getattr(self.kernel, name)
+            function.argtypes, function.restype = arguments, result
+        self.resume = ctypes.WinDLL("ntdll").NtResumeProcess
+        self.resume.argtypes, self.resume.restype = [wintypes.HANDLE], wintypes.LONG
+        self.handle = self.kernel.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        limits = ExtendedLimits()
+        limits.BasicLimitInformation.LimitFlags = 0x00002000  # KILL_ON_JOB_CLOSE
+        if not self.kernel.SetInformationJobObject(
+            self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)
+        ):
+            error = ctypes.WinError(ctypes.get_last_error())
+            self.kernel.CloseHandle(self.handle)
+            raise error
+
+    def start(self, process):
+        # Popen starts suspended, so npm/cmd cannot spawn before containment.
+        if not self.kernel.AssignProcessToJobObject(self.handle, process._handle):
+            raise self.ctypes.WinError(self.ctypes.get_last_error())
+        status = self.resume(process._handle)
+        if status:
+            raise OSError(status, "无法恢复更新命令")
+
+    def close(self):
+        if self.handle is None:
+            return
+        try:
+            if not self.kernel.TerminateJobObject(self.handle, 1):
+                raise self.ctypes.WinError(self.ctypes.get_last_error())
+            deadline = time.monotonic() + 15
+            while True:
+                accounting = self.Accounting()
+                if not self.kernel.QueryInformationJobObject(
+                    self.handle,
+                    1,
+                    self.ctypes.byref(accounting),
+                    self.ctypes.sizeof(accounting),
+                    None,
+                ):
+                    raise self.ctypes.WinError(self.ctypes.get_last_error())
+                if not accounting.ActiveProcesses:
+                    return
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("更新命令的子进程未在15秒内退出")
+                time.sleep(0.05)
+        finally:
+            self.kernel.CloseHandle(self.handle)
+            self.handle = None
+
+
 class SourceChangesError(ValueError):
     """Local checkout edits that can be discarded by an explicit force update."""
 
@@ -608,45 +729,53 @@ class Worker:
             self.check_cancelled()
         # Commands and arguments are fixed by the installer. Never use shell=True.
         print("执行：" + " ".join(map(str, args)), flush=True)
-        process = subprocess.Popen(
-            list(map(str, args)),
-            cwd=cwd or self.root,
-            env=self.env if env is None else env,
-            stdin=subprocess.DEVNULL,
-            **detached_options(),
-        )
-        try:
-            deadline = time.monotonic() + timeout
-            while True:
-                if cancellable:
-                    self.check_cancelled()
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise subprocess.TimeoutExpired(args, timeout)
-                try:
-                    code = process.wait(timeout=min(0.25, remaining))
-                    break
-                except subprocess.TimeoutExpired:
-                    continue
-        except (subprocess.TimeoutExpired, UpdateCancelled):
-            # Only this command's own child tree is stopped. npm/git can have
-            # grandchildren; leaving them running would race with rollback.
+        with ExitStack() as cleanup:
+            windows_job = None
+            options = detached_options()
             if sys.platform == "win32":
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    check=False,
-                    timeout=15,
-                    **hidden_console_options(),
-                )
-            else:
+                windows_job = WindowsCommandJob()
+                cleanup.callback(windows_job.close)
+                options["creationflags"] |= 0x00000004  # CREATE_SUSPENDED
+            process = subprocess.Popen(
+                list(map(str, args)),
+                cwd=cwd or self.root,
+                env=self.env if env is None else env,
+                stdin=subprocess.DEVNULL,
+                **options,
+            )
+            if windows_job is not None:
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            process.wait(timeout=15)
-            raise
-        if code:
-            raise subprocess.CalledProcessError(code, args)
+                    windows_job.start(process)
+                except BaseException:
+                    process.kill()
+                    process.wait(timeout=15)
+                    raise
+            try:
+                deadline = time.monotonic() + timeout
+                while True:
+                    if cancellable:
+                        self.check_cancelled()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(args, timeout)
+                    try:
+                        code = process.wait(timeout=min(0.25, remaining))
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+            except (subprocess.TimeoutExpired, UpdateCancelled):
+                # Stop only the owned tree, including npm/cmd grandchildren.
+                if windows_job is not None:
+                    windows_job.close()
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                process.wait(timeout=15)
+                raise
+            if code:
+                raise subprocess.CalledProcessError(code, args)
 
     def git_output(self, *args, cwd=None):
         return subprocess.check_output(
@@ -973,7 +1102,7 @@ class Worker:
                 )
             except subprocess.CalledProcessError:
                 # Git removes the worktree registration even when Windows still
-                # holds a directory handle after taskkill. Retrying git remove
+                # holds a directory handle during teardown. Retrying git remove
                 # then fails with "not a working tree"; clean only our staging
                 # directory and give those handles a bounded time to close.
                 if sys.platform == "win32" and self.source_stage.is_dir():

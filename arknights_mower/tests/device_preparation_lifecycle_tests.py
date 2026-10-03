@@ -100,6 +100,8 @@ class PreparationLifecycleTests(unittest.TestCase):
             ),
             run=lambda: self.step(),
             recog=SimpleNamespace(update=lambda: self.refresh()),
+            emergency_state=None,
+            _emergency_active=lambda: False,
         )
         self.schedulers.append(scheduler)
         return scheduler

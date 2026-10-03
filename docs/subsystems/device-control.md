@@ -149,6 +149,8 @@ The subsystem integrates platform-specific emulators through deterministic disco
 
 - **[INV-DEV-08] Uncertain Input Delivery**: ADB input whose transmission or acknowledgement is uncertain fails without automatic command replay; the input boundary reports a structured delivery-unknown failure.
 - **[INV-DIAG-03] Accepted Archive Drain**: Shutdown preserves accepted screenshot and archive work until the common flush deadline; work discarded after that deadline is counted and starts no further file writes.
+- **[INV-DIAG-07] Archive Observation Cohesion**: Regression assertions spanning an error manifest and invalidated log files acquire the store's archive lock after observing the relevant archive transition.
+- The [archive observation decision](../../.agents/notes/implemented/testing/2026-10-03-archive-observation-cohesion.md) records the offline regression boundary.
 - **[INV-DIAG-04] Encoded Recent Cache**: With ordinary history disabled, the recent error context retains encoded frames under its count and byte limits; capture submission performs no encoding and pending raw frames remain bounded.
 - **[INV-DIAG-05] Shared Frame Encoding**: Each admitted RGB snapshot has at most one encoding attempt; preview, history and error context share its encoded bytes, release the source snapshot after completion, and preserve bounded admission and independent progress of newer previews.
 - **[INV-DIAG-06] Error Notification Evidence**: Every ERROR notification emits a log record before mail configuration checks or delivery; screenshots are archived only when the caller explicitly identifies a visual failure, independently of email enablement.
