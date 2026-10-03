@@ -9,7 +9,7 @@ watch(edit_locked, (locked) => {
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
 </script>
 

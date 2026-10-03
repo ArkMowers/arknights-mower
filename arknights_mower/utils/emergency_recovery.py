@@ -382,7 +382,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
 
 
 def emergency_dorm_plan(data, state, tasks=(), *, members=None):
-    """救急按个人恢复需求分床；余床沿用共享候选和预约。"""
+    """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
         dorm_candidates,
@@ -415,7 +415,18 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None):
     }
     residents = {bed.name for bed in data.all_dorms() if bed.name}
     ordinary = set()
-    if members is None:
+    waiting_primary = any(
+        name not in ready
+        and (op := data.operators.get(name)) is not None
+        and op.is_working()
+        and not op.room.startswith("dorm")
+        and not data._can_standby(op)
+        and not data.rest_mood_complete(name)
+        and resting_tier(data, name) != RestingTier.EXCLUDED
+        and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+        for name, target in targets.items()
+    )
+    if members is None and not waiting_primary:
         candidates = dorm_candidates(
             data, reserved | set(targets) | ready, current_residents=residents
         )
@@ -442,7 +453,13 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None):
     probe = copy.copy(data)
     probe.dorm = beds
     plan = {}
-    for name in sorted(need | ordinary, key=lambda name: resting_key(data, name)):
+    groups = {}
+    for name in sorted(need, key=lambda name: (resting_key(data, name), name)):
+        group = (resting_tier(data, name), data.operators[name].group or name)
+        groups.setdefault(group, []).append(name)
+    ordered = [name for members in groups.values() for name in members]
+    ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
+    for name in ordered:
         op = data.operators[name]
         if name in residents or op.is_working():
             continue

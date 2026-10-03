@@ -15,7 +15,7 @@ date: 2026-10-02
 
 ## 简化与审查
 
-三个独立收取调用合并为一个，移除独立收取截止时间。[协助恢复契约](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md)保留其余恢复边界。
+三个独立收取调用合并为一个，移除独立收取截止时间。[协助恢复契约](../../archived/simplification/2026-10-02-native-automatic-rescue.zh.md)保留其余恢复边界。
 
 Standards Findings：收取复用已有副作用边界和持久化心情检查时间；配置及术语定义继续适用。
 

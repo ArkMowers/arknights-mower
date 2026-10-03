@@ -102,8 +102,8 @@ def test_emergency_plans_personal_limit_before_next_read_without_ordinary_shifts
 ):
     solver = emergency_solver
     solver.plan_metadata()
-    assert len(solver.tasks) == 1
-    release = solver.tasks[0]
+    assert len([task for task in solver.tasks if task.strict_mood_limit]) == 1
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
     assert release.type == TaskTypes.RELEASE_DORM
     assert release.strict_mood_limit and release.mood_limit == 12
     assert release.meta_data == "银灰"
@@ -111,8 +111,11 @@ def test_emergency_plans_personal_limit_before_next_read_without_ordinary_shifts
     assert release.time < solver.emergency_state["next_read"]
     assert release.release_dorm_targets() == {"银灰": (ROOM, 3)}
     solver.plan_metadata()
-    assert len(solver.tasks) == 1
-    assert solver.tasks[0].time == release.time
+    assert len([task for task in solver.tasks if task.strict_mood_limit]) == 1
+    assert (
+        next(task for task in solver.tasks if task.strict_mood_limit).time
+        == release.time
+    )
     assert not solver._emergency_ready()
 
 
@@ -123,7 +126,7 @@ def test_emergency_releases_completed_primary_without_exiting_or_clearing_new_re
     data = solver.op_data
     data.update_detail("银灰", 12, ROOM, 3, True)
     solver.plan_metadata()
-    release = solver.tasks[0]
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
     assert release.time == ling_xi_rest_limit_tests.NOW
     assert release.strict_mood_limit and release.meta_data == "银灰"
     assert not solver._emergency_ready()
@@ -135,7 +138,7 @@ def test_emergency_releases_completed_primary_without_exiting_or_clearing_new_re
     assert release.plan == {}
     assert solver.op_data.get_current_operator(ROOM, 3).name == "斥罪"
     solver.plan_metadata()
-    assert not solver.tasks
+    assert not any(task.strict_mood_limit for task in solver.tasks)
     assert solver.emergency_state["phase"] == "recovering"
     assert not solver._emergency_ready()
 
@@ -200,7 +203,7 @@ def test_emergency_bed_planning_preserves_resident_awaiting_personal_limit_relea
 ):
     solver = emergency_solver
     solver.plan_metadata()
-    release = solver.tasks[0]
+    release = next(task for task in solver.tasks if task.strict_mood_limit)
     assert solver.emergency_state["targets"]["银灰"] == release.mood_limit == 12
     assert solver.op_data.operators["银灰"].mood == 10
 

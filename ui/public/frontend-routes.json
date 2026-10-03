@@ -13,5 +13,6 @@
   "/record/pie",
   "/record/report",
   "/record/trading_analysis",
-  "/record/log-schedule"
+  "/record/log-schedule",
+  "/rescue-plan-editor"
 ]

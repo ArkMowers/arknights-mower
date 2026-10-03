@@ -307,6 +307,7 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.emergency_reserved_agents = set()
         self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
         self.free_blacklist = []
@@ -355,9 +356,12 @@ class Operators:
 
     @property
     def run_order_paused(self) -> bool:
-        return bool(self.maintenance_primary_slots)
+        return self.emergency_run_order_replacements is None and bool(
+            self.maintenance_primary_slots
+        )
 
     def swap_plan(self, condition, refresh=False):
+        self.emergency_run_order_replacements = None
         self.emergency_dorm_agents.clear()
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         self.products = copy.deepcopy(self.global_plan["default_plan"].products)
@@ -953,6 +957,12 @@ class Operators:
             "updated_at": updated_at or datetime.now().isoformat(timespec="seconds"),
         }
 
+    def run_order_replacements(self, room):
+        """救急跑单名单独立于冻结的正常排班。"""
+        if self.emergency_run_order_replacements is not None:
+            return self.emergency_run_order_replacements.get(room, [])
+        return [slot.replacement for slot in self.plan.get(room, [])]
+
     def is_run_order_room(self, room: str) -> bool:
         """按维护副表、生效排班和实际订单过滤跑单。"""
         return (
@@ -961,8 +971,8 @@ class Operators:
             and self.products.get(room) != "orundum"
             and self.facility_states.get(room, {}).get("product") != "orundum"
             and any(
-                name in slot.replacement
-                for slot in self.plan.get(room, [])
+                name in replacements
+                for replacements in self.run_order_replacements(room)
                 for name in TRADE_ORDER_AGENTS
             )
         )

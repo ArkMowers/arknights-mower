@@ -14,6 +14,7 @@ from arknights_mower.utils.config.device_profile import (
     profile_from_legacy,
     updated_legacy_profile_fields,
 )
+from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
@@ -549,7 +550,10 @@ class RIICPart(ConfModel):
     fia_threshold: float = 0.9
     "菲亚阈值"
     automatic_rescue_enable: bool = False
-    "初始化确认原生轮休无法周转时，由 Mower 自动安排临时换班"
+    "初始化确认原生轮休无法周转时，使用用户救急主表"
+    automatic_rescue_plan: PlanModel = Field(default_factory=PlanModel)
+    "独立的救急主表及副表"
+
     rescue_threshold: float = 0.75
     "急救阈值"
     favorite: str = ""

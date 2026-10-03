@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from arknights_mower.solvers import base_schedule, emergency
+from arknights_mower.solvers import base_schedule
 from arknights_mower.solvers.base_mixin import AgentSelectionNotReady
 from arknights_mower.tests.emergency_group_return_tests import (
     group_return as group_return,
@@ -92,15 +92,14 @@ def test_uncertain_departure_retains_reachable_recovery_obligation(group_return)
     assert not solver.op_data.operators[name].current_room
     assert solver.op_data.operators[name].time_stamp is None
     assert name in state["release_members"]
-    check = SchedulerTask(meta_data=emergency.CHECK_META)
-    check.emergency_staffing_members = state["release_members"]
-    solver.tasks = [check]
+    solver._emergency_sync_reservations()
+    solver.tasks = []
     solver._emergency_operation_fits.return_value = True
     solver._emergency_release_ready()
     assert "release_plan" not in state
     assert "release_members" not in state
     assert name not in state.get("ready_members", ())
-    assert name not in check.emergency_staffing_members
+    assert name not in solver.op_data.emergency_reserved_agents
     assert not solver._emergency_ready()
     control_plan = emergency_dorm_plan(solver.op_data, state, [])
     assert name in {member for row in control_plan.values() for member in row}
@@ -168,6 +167,8 @@ def test_pending_admission_does_not_reinsert_newly_ready_idle_primary(
     group_return, monkeypatch, recalculate
 ):
     solver = group_return.solver
+    # 本用例验证清退与补床；正常交接另有独立契约用例。
+    solver._emergency_ready = MagicMock(return_value=False)
     state = solver.emergency_state
     name = PRIMARY[0]
     operator = solver.op_data.operators[name]

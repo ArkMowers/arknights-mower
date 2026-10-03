@@ -1,4 +1,4 @@
-"""专项临时换人通过实际选人路径恢复智能救急的空岗位。"""
+"""专项临时换人通过实际选人路径恢复自动救急的空岗位。"""
 
 import copy
 from datetime import timedelta
@@ -158,7 +158,7 @@ def test_run_order_immediate_and_queued_compensation_restore_observed_vacancies(
     )
     order.adjusted = True
     solver.task = order
-    solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)]
+    solver.tasks = [SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)]
     arrange_room = solver.agent_arrange_room
 
     def perform_swap(new_plan, room, plan, **kwargs):
@@ -196,7 +196,7 @@ def failed_started_order(solver, monkeypatch, buffer=0):
     )
     order.adjusted = True
     solver.task = order
-    solver.tasks = [order, SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)]
+    solver.tasks = [order, SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)]
     solver.drone.side_effect = RuntimeError("无人机加速失败")
     with pytest.raises(RuntimeError, match="无人机加速失败"):
         solver.agent_arrange(order.plan)

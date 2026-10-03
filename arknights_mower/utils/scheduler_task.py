@@ -182,9 +182,20 @@ def protect_priority_tasks(
 def _sort_dispatch_tasks(tasks, now):
     # 尚未开始的清退可以提前；关键任务已经到点时，不再被清退抢占。
     due_priority = {id(task) for task in _priority_tasks(tasks) if task.time <= now}
+    initial_fia_due = any(
+        getattr(task, "initial_fia", False) and task.time <= now for task in tasks
+    )
     tasks.sort(
         key=lambda task: (
             id(task) not in due_priority,
+            not (
+                initial_fia_due
+                and task.time <= now
+                and (
+                    getattr(task, "initial_fia", False)
+                    or getattr(task, "strict_mood_limit", False)
+                )
+            ),
             not (
                 config.conf.enable_mastery
                 and task.type == TaskTypes.SWAP_SUPPORT
@@ -210,6 +221,8 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
             task
             for task in tasks
             if not getattr(task, "strict_mood_limit", False)
+            and not getattr(task, "emergency_recovery_release", False)
+            and (task.plan or task.type != TaskTypes.NOT_SPECIFIC)
             and (task.type != TaskTypes.SWAP_SUPPORT or config.conf.enable_mastery)
         ),
         key=lambda task: task.time,
@@ -1229,6 +1242,7 @@ def plan_metadata(op_data, tasks):
                     for idx, name in enumerate(agents):
                         if name not in ("Current", "Free", ""):
                             existing_targets[name] = (room, idx)
+    previous_releases = [t for t in tasks if getattr(t, "strict_mood_limit", False)]
     # 切产物延期任务保留原对象、重试时间与资源锁，只重算其他回班/释放任务。
     tasks = [
         t
@@ -1252,7 +1266,9 @@ def plan_metadata(op_data, tasks):
     ]
     pending_arrangements = []
     # 按实际床位定时；迁移完成读房后会重建，避免清理尚未发生的未来位置。
-    limited_releases = plan_mood_limit_releases(op_data)
+    limited_releases = plan_mood_limit_releases(
+        op_data, previous_tasks=previous_releases
+    )
     # 纠偏／重排是已经确定的安排，普通回班属于其后的派生计划。
     # 从最终驻员和床位计算，避免两个规划器各自从旧床位召回同一个人。
     # 已锁定的产物任务继续由上面的资源锁管理，不能提前视为完成。
@@ -1502,18 +1518,56 @@ def plan_metadata(op_data, tasks):
     return tasks
 
 
-def plan_mood_limit_releases(op_data):
+def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=()):
+    previous = {
+        task.meta_data: task
+        for task in previous_tasks
+        if getattr(task, "strict_mood_limit", False)
+    }
     now = datetime.now()
     result = []
     for bed in op_data.all_dorms():
-        if not op_data.has_rest_mood_limit(bed.name):
-            continue
         op = op_data.operators.get(bed.name)
         if op is None or (op.current_room, op.current_index) != bed.position:
             continue
         if not op_data.is_recovery_dorm(bed, op.name):
             continue
-        if op_data.rest_mood_complete(op.name):
+        target = (recovery_targets or {}).get(op.name)
+        if (
+            target is not None
+            and 0 <= target <= op.upper_limit
+            and not (target == op.upper_limit and op_data.has_rest_mood_limit(op.name))
+            and has_resting_mood(op)
+        ):
+            due = None
+            if op.mood >= target:
+                due = now
+            elif (
+                bed.time is not None
+                and op.time_stamp is not None
+                and bed.time > op.time_stamp
+                and op.mood < op.upper_limit
+            ):
+                due = op.time_stamp + (bed.time - op.time_stamp) * (
+                    (target - op.mood) / (op.upper_limit - op.mood)
+                )
+            if due is not None:
+                room, index = bed.position
+                names = ["Current"] * len(op_data.plan[room])
+                names[index] = "Free"
+                task = SchedulerTask(
+                    time=max(now, due),
+                    task_plan={room: names},
+                    task_type=TaskTypes.RELEASE_DORM,
+                    meta_data=op.name,
+                    mood_limit=target,
+                )
+                task.emergency_recovery_release = True
+                result.append(task)
+        if not op_data.has_rest_mood_limit(bed.name):
+            continue
+        complete = op_data.rest_mood_complete(op.name)
+        if complete:
             due = now
         elif bed.time is not None:
             due = max(now, bed.time)
@@ -1523,8 +1577,14 @@ def plan_mood_limit_releases(op_data):
         room, index = bed.position
         names = ["Current"] * len(op_data.plan[room])
         names[index] = "Free"
-        result.append(
-            SchedulerTask(
+        source = (bed.time, op.upper_limit, complete)
+        task = previous.get(op.name)
+        if (
+            task is None
+            or task.plan != {room: names}
+            or getattr(task, "mood_limit_source", None) != source
+        ):
+            task = SchedulerTask(
                 time=due,
                 task_plan={room: names},
                 task_type=TaskTypes.RELEASE_DORM,
@@ -1532,7 +1592,8 @@ def plan_mood_limit_releases(op_data):
                 strict_mood_limit=True,
                 mood_limit=op.upper_limit,
             )
-        )
+            task.mood_limit_source = source
+        result.append(task)
     return result
 
 
@@ -2081,6 +2142,7 @@ class SchedulerTask:
         adjusted=False,
         strict_mood_limit=False,
         mood_limit=None,
+        initial_fia=False,
     ):
         if time is None:
             self.time = datetime.now()
@@ -2092,6 +2154,7 @@ class SchedulerTask:
         self.adjusted = adjusted
         self.strict_mood_limit = strict_mood_limit
         self.mood_limit = mood_limit
+        self.initial_fia = initial_fia
 
     def release_dorm_targets(self):
         """返回仍在任务中的姓名与原床位；兼容旧的单人清退任务。"""

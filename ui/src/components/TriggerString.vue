@@ -2,7 +2,7 @@
 const props = defineProps(['data'])
 const emit = defineEmits(['update'])
 
-import { ref, watch, computed, onMounted, h } from 'vue'
+import { ref, watch, computed, onMounted, h, inject } from 'vue'
 import { NAvatar } from 'naive-ui'
 import {
   inventory_expression,
@@ -253,7 +253,7 @@ import { usePlanStore } from '@/stores/plan'
 import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { operators, groups, plan } = storeToRefs(plan_store)
 const { left_side_facility } = plan_store
 const depot_store = usedepotStore()

@@ -6,7 +6,7 @@ import { swapPlanFacilities } from '@/utils/plan_edit'
 import { plan_facility_type_options } from '@/utils/base_facilities'
 import { ref, computed, watch, inject } from 'vue'
 const config_store = useConfigStore()
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store

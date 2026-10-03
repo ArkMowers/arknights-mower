@@ -225,9 +225,6 @@ def current_state():
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
-        "automatic_rescue_startup_rooms": getattr(
-            base_scheduler, "_emergency_startup_rooms", None
-        ),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
             data, "idle_dorm_search_exhausted", False
@@ -284,7 +281,7 @@ def save_state_to_db(saved_state):
             )
             connection.commit()
 
-        logger.info(f"储存缓存数据至数据库 {current_time}")
+        logger.debug(f"储存缓存数据至数据库 {current_time}")
         return True
 
     except sqlite3.Error as e:

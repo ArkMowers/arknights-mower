@@ -169,3 +169,37 @@ def test_snapshot_endpoint_is_read_only_and_authenticated(snapshot_path, monkeyp
     assert operator(response.json, "赫默")["active_skills"] == [
         {"skill_key": 0, "skill_level": 1}
     ]
+
+
+@pytest.mark.parametrize("extra_forms", [0, 1, 5])
+def test_amiya_forms_share_building_unlocks(snapshot_path, monkeypatch, extra_forms):
+    ids = ["char_002_amiya", "char_1001_amiya2", "char_1037_amiya3"]
+    ids += [f"future_amiya_{i}" for i in range(extra_forms)]
+    monkeypatch.setattr(module, "_operator_ids_by_name", lambda: {"阿米娅": set(ids)})
+    write_snapshot(
+        snapshot_path, *[{"id": cid, "evolvePhase": 2, "level": 80} for cid in ids]
+    )
+    snapshot = module.load_skill_snapshot()
+    entry = operator(snapshot, "阿米娅")
+    assert (entry["owned"], entry["phase"], entry["level"]) == (True, 2, 80)
+    assert module.unlocked_skills("阿米娅", "中枢", snapshot)
+    assert module.unlocked_skills("阿米娅", "发电站", snapshot) == ()
+    assert all(s["status"] != "unknown" for s in entry["skills"])
+
+
+def test_shared_forms_use_valid_progress_without_losing_unlocks(
+    snapshot_path, monkeypatch
+):
+    monkeypatch.setattr(
+        module,
+        "_operator_ids_by_name",
+        lambda: {"阿米娅": {"base", "other", "missing"}},
+    )
+    write_snapshot(
+        snapshot_path,
+        {"id": "base", "evolvePhase": 0, "level": 1},
+        {"id": "other", "evolvePhase": 2, "level": 80},
+        {"id": "missing"},
+    )
+    entry = operator(module.load_skill_snapshot(), "阿米娅")
+    assert (entry["phase"], entry["level"]) == (2, 80)

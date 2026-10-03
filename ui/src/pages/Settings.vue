@@ -26,11 +26,11 @@ const {
   selection_transition_timeout,
   drone_room,
   swap_contact_train,
+  automatic_rescue_enable,
   start_automatically,
   package_type,
   simulator,
   theme,
-  automatic_rescue_enable,
   tap_to_launch_game,
   exit_game_when_idle,
   return_home_when_idle,
@@ -532,16 +532,16 @@ const idleOptions = computed(() => [
             label-align="left"
           >
             <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="智能救急">
-                智能救急
-                <help-text label="智能救急说明" :max-width="480">
-                  启动时至少两组主班实测低于各自救急线，且有待下班主班无法通过当前普通轮休安排休息时，由
-                  Mower
-                  按设施内技能安排临时驻员；启动判断不依赖历史速率。临时上岗要求心情不低于个人正常下班线加
-                  1
-                  点，保留全部跑单干员用于跑单。期间暂停副表与普通换班，心情复查时收取订单和产物；实测恢复后统一恢复排班。
-                </help-text>
-              </n-checkbox>
+              <n-space align="center">
+                <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
+                  自动救急
+                  <help-text>
+                    初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
+                    恢复期间冻结正常副表，正常排班可接回周转后退出；双方副表生效后的设施类型、等级或产物不一致时不启动。
+                  </help-text>
+                </n-checkbox>
+                <router-link to="/rescue-plan-editor"><n-button>救急排班</n-button></router-link>
+              </n-space>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="swap_contact_train"> 训练室在办公室上方 </n-checkbox>
