@@ -105,6 +105,20 @@ async function importMainPlan() {
   }
 }
 
+async function clearRescueBindings() {
+  if (!rescue || !requireEditing()) return
+  try {
+    await import_saves.pauseAndDrain()
+    plan_store.clear_rescue_bindings()
+    await plan_store.save_plan()
+    message.success('已清空绑组与普通替班，保留跑单人选及菲亚梅塔充能对象')
+  } catch (error) {
+    message.error(error.response?.data?.error || error.message || '清空失败')
+  } finally {
+    import_saves.resume()
+  }
+}
+
 async function returnToSettings() {
   if (!requireEditing()) return
   try {
@@ -737,7 +751,8 @@ function movePlanForward() {
             生效救急表的工作站设施类型和等级（岗位数量）须与正常排班一致，否则不会进入救急。与正常主班重名的救急驻员会在启动时提示，但仍按救急表工作。
           </div>
           <div>
-            跑单人选、宿管及菲亚梅塔的位置和充能对象须在救急表中独立填写。Free 床位优先恢复正常主班，剩余空位按正常排班优先级补入替班或空闲干员。
+            跑单人选、宿管及菲亚梅塔的位置和充能对象须在救急表中独立填写。Free
+            床位优先恢复正常主班，剩余空位按正常排班优先级补入替班或空闲干员。
           </div>
           <div>
             救急驻员按表持续工作，填写普通替班不会触发轮休。贸易站的“替换”栏用于填写跑单干员，菲亚梅塔的“替换”栏用于填写充能对象；其他替班人选不参与救急换班。
@@ -746,10 +761,17 @@ function movePlanForward() {
             “导入排班”读取完整排班文件；右侧下拉的“导入主表”只复制正常主表，保留救急副表。“导出图片”和“导出JSON文件”均携带完整救急排班。
           </div>
           <div>
-            自动救急开关位于 Mower 设置 → 基建设置，不随正常排班导入导出。救急期间冻结正常副表，正常排班可接回周转后退出，仍需恢复的组继续休息。
+            自动救急开关位于 Mower 设置 →
+            基建设置，不随正常排班导入导出。救急期间冻结正常副表，正常排班可接回周转后退出，仍需恢复的组继续休息。
           </div>
         </n-space>
       </n-alert>
+    </div>
+    <div v-if="rescue" class="w-980 mx-auto mb-12 px-12 mw-980">
+      <n-space align="center">
+        <n-button :disabled="edit_locked" @click="clearRescueBindings">清空绑组与普通替班</n-button>
+        <span>清理救急主表及全部副表，保留跑单干员和菲亚梅塔充能对象。</span>
+      </n-space>
     </div>
     <div v-if="!rescue" class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
       <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>

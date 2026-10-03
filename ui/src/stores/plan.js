@@ -236,6 +236,27 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       sub_plan.value = 'main'
     }
 
+    function clear_rescue_bindings() {
+      if (!rescue) return
+      const runners = new Set(['但书', '龙舌兰', '佩佩', '可露希尔'])
+      const fia_positions = new Set()
+      for (const roster of [plan.value, ...backup_plans.value.map((backup) => backup.plan)]) {
+        for (const [room, facility] of Object.entries(roster)) {
+          for (const [index, slot] of facility.plans.entries()) {
+            slot.group = ''
+            const position = `${room}:${index}`
+            if (slot.agent === '菲亚梅塔') fia_positions.add(position)
+            if (
+              slot.agent === '菲亚梅塔' ||
+              (slot.agent === 'Current' && fia_positions.has(position))
+            )
+              continue
+            slot.replacement = slot.replacement.filter((name) => runners.has(name))
+          }
+        }
+      }
+    }
+
     async function load_operators() {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
       const option_list = []
@@ -329,6 +350,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       set_advanced_settings_source,
       load_plan,
       import_main_plan,
+      clear_rescue_bindings,
       load_operators,
       ling_xi,
       mood_limits,

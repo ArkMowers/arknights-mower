@@ -13,6 +13,8 @@ The [scheduler contract](../../../../docs/subsystems/base-scheduler.md) owns res
 
 The rescue editor displays a help panel below the facility editor covering activation, facility compatibility, independent operator selections, Free-bed priorities, import/export scope and normal handoff. Ordinary replacement entries do not schedule rescue rotations; trade-room replacements select trade order operators, and Fiammetta replacements select charging targets.
 
+The bottom cleanup action clears group labels and ordinary replacements across rescue main and backup plans. It preserves primary assignments, all trade order operators, Fiammetta charging targets (including inherited slots), and backup conditions and tasks; the normal schedule remains unchanged.
+
 ## Simplification
 
 Removing rescue-specific editor branches preserves one facility UI. The existing plan store and save coordinator own copying and persistence. The existing effective rescue-plan validator compares facility types and staffing capacities after backup overlays, before episode creation.

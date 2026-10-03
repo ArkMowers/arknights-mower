@@ -138,3 +138,76 @@ it('导入主表只复制设施，保留救急副表与独立配置', async () =
   await expect(store.import_main_plan()).rejects.toThrow('offline')
   expect(store.plan.central.plans[0].agent).toBe('陈')
 })
+
+it('清空救急主副表绑组与普通替班，保留全部跑单干员和充能对象', async () => {
+  const app = createApp({})
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  app.use(pinia)
+  app.provide('loaded', ref(false))
+  const [normal, rescue] = app.runWithContext(() => [usePlanStore(), useRescuePlanStore()])
+  stores = [normal, rescue]
+  const runners = ['但书', '龙舌兰', '佩佩', '可露希尔']
+  const source = {
+    room_1_1: {
+      name: '贸易站',
+      plans: [{ agent: '阿米娅', group: '一组', replacement: ['红', ...runners, '砾'] }]
+    },
+    dormitory_1: {
+      plans: [
+        { agent: '菲亚梅塔', group: '充能组', replacement: ['歌蕾蒂娅'] },
+        { agent: '杜林', group: '宿管组', replacement: ['芬'] }
+      ]
+    }
+  }
+  normal.plan = JSON.parse(JSON.stringify(source))
+  const backups = [
+    {
+      name: '副表',
+      conf: {},
+      trigger: { left: '1' },
+      task: {},
+      plan: {
+        room_1_1: { plans: [{ agent: '但书', group: '另一组', replacement: ['砾', ...runners] }] },
+        dormitory_1: { plans: [{ agent: 'Current', group: '继承组', replacement: ['斯卡蒂'] }] }
+      }
+    }
+  ]
+  axios.post.mockResolvedValue({ data: {} })
+  axios.get.mockResolvedValueOnce({
+    data: {
+      conf: {},
+      plan1: JSON.parse(JSON.stringify(source)),
+      backup_plans: backups
+    }
+  })
+  await rescue.load_plan()
+  rescue.clear_rescue_bindings()
+  expect(normal.plan).toEqual(source)
+  expect(rescue.plan.room_1_1.plans[0]).toEqual({
+    agent: '阿米娅',
+    group: '',
+    replacement: runners
+  })
+  expect(rescue.plan.dormitory_1.plans[0].replacement).toEqual(['歌蕾蒂娅'])
+  expect(rescue.plan.dormitory_1.plans[1].replacement).toEqual([])
+  expect(rescue.backup_plans[0].plan.room_1_1.plans[0]).toEqual({
+    agent: '但书',
+    group: '',
+    replacement: runners
+  })
+  expect(rescue.backup_plans[0].plan.dormitory_1.plans[0]).toEqual({
+    agent: 'Current',
+    group: '',
+    replacement: ['斯卡蒂']
+  })
+  expect(rescue.backup_plans[0].trigger).toEqual({ left: '1' })
+  const cleared = JSON.stringify(rescue.build_plan())
+  rescue.clear_rescue_bindings()
+  expect(JSON.stringify(rescue.build_plan())).toBe(cleared)
+  axios.post.mockResolvedValue({ data: {} })
+  await rescue.save_plan()
+  expect(axios.post.mock.lastCall[0]).toMatch(/\/rescue-plan$/)
+  normal.clear_rescue_bindings()
+  expect(normal.plan).toEqual(source)
+})
