@@ -117,7 +117,7 @@ def test_measured_low_mood_plans_once_and_restart_only_reconciles(solver, monkey
     assert solver._emergency_active()
     solver._emergency_startup()
     solver._emergency_schedule_staffing.assert_called_once()
-    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+    solver._emergency_schedule_staffing.assert_called_once_with()
     assert solver.emergency_state["phase"] == "staffing"
 
 
@@ -335,24 +335,228 @@ def test_frozen_backup_and_ordinary_shift_are_rejected(solver):
     solver.enter_room.assert_not_called()
 
 
-def test_history_predicts_rescue_line_before_pending_native_opportunity(
-    solver, monkeypatch
-):
+def test_history_above_rescue_line_does_not_trigger_entry(solver, monkeypatch):
     setup_startup(solver)
     config.conf.automatic_rescue_enable = True
     for name in PRIMARY:
         solver.op_data.operators[name].mood = 14
-    monkeypatch.setattr(emergency, "history_rate", lambda *a: 2)
-    seen = {}
-
-    def projection(*args, **kwargs):
-        seen.update(kwargs)
-        return NativeProjection(None, True, "blocked")
-
+    history = MagicMock(side_effect=AssertionError("entry must not inspect rates"))
+    monkeypatch.setattr(emergency, "history_rate", history)
+    projection = MagicMock()
     monkeypatch.setattr(emergency, "native_opportunity", projection)
+
     solver._emergency_startup()
-    assert seen["deadlines"][PRIMARY[0]] == NOW + timedelta(hours=(14 - 11.7) / 2)
-    solver._emergency_schedule_staffing.assert_called_once()
+
+    history.assert_not_called()
+    projection.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+@pytest.mark.parametrize("mood", [0, 8])
+def test_real_blocked_startup_ignores_full_bed_timers_and_zero_rates(solver, mood):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in COVERS:
+        data.operators[name].mood = 0
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = mood
+        data.operators[name].depletion_rate = 0
+    for index, name in enumerate(PRIMARY[2:], 2):
+        op = data.operators[name]
+        op._current_room, op.current_index = "dormitory_1", index
+        op.mood = op.upper_limit
+        bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", index))
+        bed.name, bed.time = name, None
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+@pytest.mark.parametrize("bound_group", [False, True])
+def test_single_low_recovery_group_does_not_enter_even_when_blocked(
+    solver, monkeypatch, bound_group
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 24
+    members = PRIMARY[:2] if bound_group else PRIMARY[:1]
+    for name in members:
+        data.operators[name].mood = 0
+        if bound_group:
+            data.operators[name].group = "low_group"
+    if bound_group:
+        data.groups["low_group"] = list(members)
+    projection = MagicMock(return_value=NativeProjection(None, True, "blocked"))
+    monkeypatch.setattr(emergency, "native_opportunity", projection)
+
+    solver._emergency_startup()
+
+    projection.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert not solver._emergency_active()
+
+
+def test_multiple_low_groups_with_current_native_capacity_do_not_enter(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    for name in PRIMARY[2:]:
+        solver.op_data.operators[name].mood = 24
+
+    solver._emergency_startup()
+
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert not solver._emergency_active()
+
+
+def test_multiple_low_groups_competing_for_current_beds_enter(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    # Four independent low groups have available covers but only three native beds.
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    data.operators[PRIMARY[0]].mood = 0
+    for name in PRIMARY[1:]:
+        op = data.operators[name]
+        op.group = "resting_group"
+        op.mood = 8
+        op._current_room = "dormitory_1"
+        op.current_index = PRIMARY.index(name) + 1
+        bed = next(
+            bed
+            for bed in data.dorm
+            if bed.position == (op.current_room, op.current_index)
+        )
+        bed.name = name
+        bed.time = NOW + timedelta(hours=2)
+    data.groups["resting_group"] = list(PRIMARY[1:])
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+@pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
+def test_second_group_needs_measured_mood_below_its_own_line(
+    solver, monkeypatch, reading
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    second = data.operators[PRIMARY[1]]
+    if reading == "prediction":
+        second.mood_is_prediction = True
+    elif reading == "missing":
+        second.time_stamp = None
+    else:
+        second.mood = data.rescue_mood_threshold(second)
+    projection = MagicMock()
+    monkeypatch.setattr(emergency, "native_opportunity", projection)
+
+    solver._emergency_startup()
+
+    projection.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+@pytest.mark.parametrize("delay", [0, 10])
+def test_startup_keeps_executable_native_return_before_rescue(solver, delay):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    owner = data.operators[PRIMARY[2]]
+    owner.mood = 24
+    cover = data.operators[COVERS[0]]
+    cover._current_room, cover.current_index = owner.room, owner.index
+    bed = data.dorm[0]
+    owner._current_room, owner.current_index = bed.position
+    bed.name, bed.time = owner.name, None
+    task = SchedulerTask(
+        time=NOW + timedelta(minutes=delay),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={owner.room: [owner.name]},
+    )
+    solver.tasks = [task]
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active() is (delay > 0)
+    if delay == 0:
+        solver._emergency_schedule_staffing.assert_not_called()
+        assert task in solver.tasks
+    else:
+        solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+@pytest.mark.parametrize("delay,mood", [(0, 24), (10, 24), (0, 8)])
+def test_startup_keeps_executable_fiammetta_before_rescue(solver, delay, mood):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=mood,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=[PRIMARY[-1]],
+    )
+    task = SchedulerTask(
+        time=NOW + timedelta(minutes=delay),
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={"dormitory_1": [PRIMARY[-1], "菲亚梅塔"]},
+        meta_data=PRIMARY[-1],
+    )
+    solver.tasks = [task]
+
+    solver._emergency_startup()
+
+    executable = delay == 0 and mood == 24
+    assert solver._emergency_active() is (not executable)
+    if executable:
+        solver._emergency_schedule_staffing.assert_not_called()
+        assert task in solver.tasks
+    else:
+        solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+@pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
+def test_entry_requires_measured_mood_strictly_below_rescue_line(solver, reading):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    for name in PRIMARY:
+        op = solver.op_data.operators[name]
+        if reading == "prediction":
+            op.mood_is_prediction = True
+        elif reading == "missing":
+            op.time_stamp = None
+        else:
+            op.mood = solver.op_data.rescue_mood_threshold(op)
+
+    solver._emergency_startup()
+
+    assert not solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 def test_without_history_above_rescue_line_does_not_plan_temporary_staffing(solver):
@@ -1016,7 +1220,7 @@ def test_completed_primary_remains_reserved_during_another_group_departure(solve
         return [StaffingCandidate(COVERS[0], 24, ())]
 
     solver._emergency_scan_workers = scan
-    solver._emergency_schedule_staffing(initial=True)
+    solver._emergency_schedule_staffing()
     assert observations
     assert solver.tasks[0].plan[room] == [COVERS[0]]
     projected = data.project_arrangements([solver.tasks[0].plan])
@@ -1037,7 +1241,7 @@ def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver)
     solver._emergency_scan_workers = MagicMock(
         return_value=[StaffingCandidate(COVERS[0], 24, ())]
     )
-    solver._emergency_schedule_staffing(initial=True)
+    solver._emergency_schedule_staffing()
     assert not state.get("staffing_plan")
     assert state["temporary_roster"][room] == [COVERS[0]]
     assert not any(getattr(t, "emergency_staffing", False) for t in solver.tasks)
@@ -1077,7 +1281,7 @@ def test_staffing_reserves_original_worker_of_started_specialized_task(solver, k
 
     solver._emergency_scan_workers = MagicMock(side_effect=scan)
 
-    solver._emergency_schedule_staffing(initial=True)
+    solver._emergency_schedule_staffing()
 
     solver._emergency_scan_workers.assert_called_once()
     staffing = next(
@@ -1599,3 +1803,136 @@ def test_native_projection_reuses_eval_capsule_across_search_branches(solver, pa
     assert before_tasks == [(task.time, task.plan) for task in solver.tasks]
     assert source.eval_model.imported_functions["runtime_handle"] is capsule
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("stale_identity", [False, True])
+@pytest.mark.parametrize("stale_completion", [False, True])
+def test_unexecutable_due_release_does_not_prevent_rescue(
+    solver, stale_identity, stale_completion
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 0
+    for name, bed in zip(PRIMARY[2:], data.dorm[:2]):
+        resident = data.operators[name]
+        resident._current_room, resident.current_index = bed.position
+        bed.name, bed.time = name, NOW if stale_completion else None
+    room, index = data.dorm[0].position
+    row = ["Current"] * len(data.plan[room])
+    row[index] = "Free"
+    task = SchedulerTask(
+        time=NOW,
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={room: row},
+        meta_data=PRIMARY[3] if stale_identity else PRIMARY[2],
+    )
+    solver.tasks = [task]
+    before_plan = copy.deepcopy(task.plan)
+    result = emergency_recovery.native_opportunity(
+        solver, PRIMARY[:2], NOW, current_only=True
+    )
+    assert result.complete and result.opportunity is None
+    assert task.plan == before_plan
+    assert data.operators[PRIMARY[2]].mood == 0
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+def test_current_fiammetta_charge_is_consumed_after_one_target(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 0
+    for name in COVERS[:2]:
+        data.operators[name].mood = 0
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=24,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=PRIMARY[:2],
+    )
+    tasks = [
+        SchedulerTask(
+            time=NOW,
+            task_type=TaskTypes.FIAMMETTA,
+            task_plan={"dormitory_1": [target, "菲亚梅塔"]},
+            meta_data=target,
+        )
+        for target in PRIMARY[:2]
+    ]
+    solver.tasks = tasks
+    result = emergency_recovery.native_opportunity(
+        solver, PRIMARY, NOW, current_only=True
+    )
+    assert result.complete and result.opportunity is None
+    assert data.operators["菲亚梅塔"].mood == 24
+    assert all(data.operators[name].mood == 0 for name in PRIMARY)
+    assert solver.tasks == tasks
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with()
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_target_update_reuses_group_opportunity_only_within_one_update(
+    solver, monkeypatch, available
+):
+    data = solver.op_data
+    members = PRIMARY[:2]
+    for name in members:
+        op = data.operators[name]
+        op.group = "恢复组"
+        data.global_plan["default_plan"].plan[op.room][op.index].group = op.group
+    data.groups["恢复组"] = members.copy()
+    state = make_episode(solver)
+    state["targets"] = {name: 16 for name in PRIMARY[:3]}
+    rates = {PRIMARY[0]: 1, PRIMARY[1]: 3, PRIMARY[2]: None}
+    monkeypatch.setattr(emergency, "emergency_mood_history", lambda name: [name])
+    monkeypatch.setattr(emergency, "history_rate", lambda rows, *args: rates[rows[0]])
+    cycles = {PRIMARY[0]: 1, PRIMARY[1]: 2, PRIMARY[2]: None}
+    monkeypatch.setattr(emergency, "history_cycle", lambda rows, *args: cycles[rows[0]])
+    first = NOW + timedelta(hours=1) if available else None
+    projection = MagicMock(return_value=NativeProjection(first, True))
+    monkeypatch.setattr(emergency, "native_opportunity", projection)
+
+    solver._emergency_update_targets()
+
+    assert projection.call_count == 1
+    assert set(projection.call_args.args[1]) == set(members)
+    expected = {
+        PRIMARY[0]: first,
+        PRIMARY[1]: NOW + timedelta(hours=2) if available else None,
+        PRIMARY[2]: first,
+    }
+    for name in PRIMARY[:3]:
+        assert (
+            state["targets"][name]
+            == recovery_target(data, name, rates[name], expected[name], NOW)[0]
+        )
+    second = NOW + timedelta(hours=2)
+    projection.return_value = NativeProjection(second, True)
+
+    solver._emergency_update_targets()
+
+    assert projection.call_count == 2
+    for name in PRIMARY[:3]:
+        assert (
+            state["targets"][name]
+            == recovery_target(data, name, rates[name], second, NOW)[0]
+        )
+    assert state["targets"][PRIMARY[0]] != state["targets"][PRIMARY[1]]

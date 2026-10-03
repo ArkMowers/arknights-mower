@@ -145,18 +145,12 @@ def primary_names(data):
     ]
 
 
-def native_opportunity(
-    solver, required, now=None, *, budget=128, deadlines=None, rates=None, earliest=None
-):
-    """在副本上搜索轮休及已知恢复事件；预算不足不证明恢复阻塞。"""
+def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
+    """在副本上搜索轮休；当前模式只检查可立即执行的安排，不预测速率。"""
     now = now or datetime.now()
     initial = copy.deepcopy(
         solver.op_data, {id(solver.op_data.eval_model): solver.op_data.eval_model}
     )
-    deadlines, rates, earliest = deadlines or {}, rates or {}, earliest or {}
-    for name, rate in rates.items():
-        if name in initial.operators:
-            initial.operators[name].depletion_rate = rate
     required = set(required)
     pending = [
         task
@@ -179,6 +173,7 @@ def native_opportunity(
         for task in solver.tasks
         if task.type == TaskTypes.FIAMMETTA
         and task.plan
+        and (not current_only or not getattr(task, "arrangement_retry_room", None))
         and task.meta_data in required
         and fia is not None
         and fia.current_room == fia.room
@@ -229,14 +224,11 @@ def native_opportunity(
             op = data.operators[name]
             if op.is_resting():
                 continue
-            if earliest.get(name, now) > when:
-                continue
             if name in remaining or (
                 has_resting_mood(op)
                 and op.current_mood() <= data.resting_mood_threshold(op)
             ):
                 groups[op.group or name] = data.groups.get(op.group, [name])
-        progressed = False
         for members in groups.values():
             candidate = copy.copy(trial)
             candidate.op_data = copy.deepcopy(
@@ -255,7 +247,6 @@ def native_opportunity(
                 uncertain = True
                 continue
             if plan:
-                progressed = True
                 # 原生规划把床位预约放在 dorm 中，执行计划另行补全这些位置。
                 for bed in candidate.op_data.dorm:
                     if bed.name in members:
@@ -271,18 +262,27 @@ def native_opportunity(
                 }
                 queue.append((projected, when, used, served | admitted))
         events = []
-        for name in remaining:
-            if earliest.get(name, now) > when:
-                events.append((earliest[name], ("eligible", name), {}))
         for i, task in enumerate(pending):
             event_id = ("task", i)
             if event_id not in used:
                 events.append((max(when, task.time), event_id, task.plan))
         for i, task in enumerate(charges):
             event_id = ("charge", i)
+            current_fia = data.operators.get("菲亚梅塔")
+            if current_only and (
+                current_fia is None
+                or not has_resting_mood(current_fia)
+                or current_fia.mood_is_prediction
+                or current_fia.mood < current_fia.upper_limit
+                or (current_fia.current_room, current_fia.current_index)
+                != (current_fia.room, current_fia.index)
+            ):
+                continue
             if event_id not in used:
                 events.append((max(when, task.time), event_id, {}))
         for bed in data.dorm:
+            if current_only:
+                continue
             op = data.operators.get(bed.name)
             event_id = ("bed", bed.name, bed.position)
             if op is None or event_id in used:
@@ -301,16 +301,39 @@ def native_opportunity(
                     )[worker.index] = member
             events.append((max(when, bed.time), event_id, plan))
         for time, event_id, plan in events:
+            if current_only and time > now:
+                continue
             if time - now > timedelta(hours=12):
                 uncertain = True
                 continue
             projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
+            if current_only and event_id[0] == "task":
+                event_task = copy.deepcopy(pending[event_id[1]])
+                if event_task.type == TaskTypes.RELEASE_DORM:
+                    for name in event_task.release_dorm_targets():
+                        resident = projected.operators.get(name)
+                        if not event_task.strict_mood_limit and (
+                            not has_resting_mood(resident)
+                            or resident.mood_is_prediction
+                            or resident.mood < resident.upper_limit
+                        ):
+                            event_task.remove_release_dorm_operator(name)
+                    if not event_task.plan:
+                        continue
+                    checker = copy.copy(trial)
+                    checker.op_data = projected
+                    checker.tasks = copy.deepcopy(trial.tasks)
+                    try:
+                        checker.prepare_release_dorm(event_task)
+                    except Exception:
+                        uncertain = True
+                        continue
+                    if not event_task.plan:
+                        continue
+                    plan = event_task.plan
             timely = True
             for name in remaining:
                 op = projected.operators[name]
-                if time > deadlines.get(name, datetime.max):
-                    timely = False
-                    break
                 if time > when and op.is_working():
                     if not has_resting_mood(op) or op.depletion_rate <= 0:
                         uncertain = True
@@ -329,7 +352,8 @@ def native_opportunity(
             for names in plan.values():
                 for name in names:
                     if (
-                        name in projected.operators
+                        not current_only
+                        and name in projected.operators
                         and projected.operators[name].is_resting()
                     ):
                         op = projected.operators[name]
@@ -340,6 +364,8 @@ def native_opportunity(
                 projected.operators[name].mood = projected.operators[name].upper_limit
                 projected.operators[name].time_stamp = datetime.now()
                 charged.add(name)
+                if current_only:
+                    projected.operators["菲亚梅塔"].mood = 0
             queue.append(
                 (
                     projected.project_arrangements([plan]),
@@ -348,8 +374,6 @@ def native_opportunity(
                     served | charged,
                 )
             )
-        if progressed and len(queue) > budget:
-            uncertain = True
     return NativeProjection(
         None,
         not (queue or uncertain),
