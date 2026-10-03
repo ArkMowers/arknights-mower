@@ -1,4 +1,4 @@
-"""救急开放宿管床位，余量仅补回群回和分摊恢复宿管。"""
+"""救急按余量先补每房一名群回，再补每房一名单回。"""
 
 import pytest
 
@@ -97,11 +97,18 @@ def test_fiammetta_keeps_configured_position_and_is_not_recovery_bed(solver):
         (10, set()),
         (9, {("dormitory_1", 0)}),
         (8, {("dormitory_1", 0), ("dormitory_2", 0)}),
-        (7, {("dormitory_1", 0), ("dormitory_2", 0)}),
-        (0, {("dormitory_1", 0), ("dormitory_2", 0)}),
+        (7, {("dormitory_1", 0), ("dormitory_2", 0), ("dormitory_1", 1)}),
+        (
+            0,
+            {
+                (room, index)
+                for room in ("dormitory_1", "dormitory_2")
+                for index in (0, 1)
+            },
+        ),
     ],
 )
-def test_only_group_and_shared_recovery_managers_use_spare_capacity(
+def test_group_and_shared_managers_restore_before_single_recovery(
     solver, need, restored
 ):
     data, state = setup_episode(solver, 10)
@@ -128,7 +135,12 @@ def test_only_group_and_shared_recovery_managers_use_spare_capacity(
     task = solver.tasks[0]
     for room, index in restored:
         assert task.plan[room][index] == state["dorm_layout"][room][index]
-    assert not {"闪灵", "安赛尔"} & {name for row in task.plan.values() for name in row}
+    for room, row in state["dorm_layout"].items():
+        for index, name in enumerate(row[:2]):
+            if (room, index) not in restored:
+                assert name not in {
+                    value for row in task.plan.values() for value in row
+                }
     assert not set(state["ready_members"]) & {
         name for row in task.plan.values() for name in row
     }
@@ -152,7 +164,7 @@ def test_group_recovery_manager_can_restore_its_configured_later_position(
     solver._open_emergency_beds()
     solver._emergency_plan_beds(state)
 
-    expected = ["Free"] * 5
+    expected = ["闪灵", *["Free"] * 4]
     expected[position] = "夜莺"
     assert [slot.agent for slot in data.plan["dormitory_1"]] == expected
     assert solver.tasks[0].plan["dormitory_1"][position] == "夜莺"
@@ -231,14 +243,14 @@ def test_rebuilding_capacity_preserves_actual_resident_and_recovery_deadline(sol
     assert len({candidate.position for candidate in data.dorm}) == 10
 
 
-@pytest.mark.parametrize("need", [9, 8, 7, 0])
-def test_at_most_one_group_or_shared_manager_restores_per_dorm(solver, need):
+@pytest.mark.parametrize("need", [9, 8, 7, 6, 0])
+def test_at_most_one_manager_of_each_recovery_kind_restores_per_dorm(solver, need):
     data = solver.op_data
     data.global_plan["default_plan"].plan["dormitory_1"] = [
         Room("冰酿", "", []),
         Room("夜莺", "", []),
         Room("赫拉格", "", []),
-        Room("Free", "", []),
+        Room("Lancet-2", "", []),
         Room("Free", "", []),
     ]
     data.swap_plan([])
@@ -261,9 +273,58 @@ def test_at_most_one_group_or_shared_manager_restores_per_dorm(solver, need):
         room: [slot.agent for slot in data.plan[room] if slot.agent != "Free"]
         for room in state["dorm_layout"]
     }
-    assert restored["dormitory_1"] == ["冰酿"]
-    assert restored["dormitory_2"] == ([] if need == 9 else ["杜林"])
-    assert len(data.dorm) == (9 if need == 9 else 8)
-    assert not {"夜莺", "赫拉格", "安赛尔"} & {
+    assert restored["dormitory_1"] == (["冰酿"] if need >= 7 else ["冰酿", "Lancet-2"])
+    assert restored["dormitory_2"] == (
+        [] if need == 9 else ["杜林"] if need == 8 else ["杜林", "安赛尔"]
+    )
+    assert len(data.dorm) == (
+        9 if need == 9 else 8 if need == 8 else 7 if need == 7 else 6
+    )
+    assert not {"夜莺", "赫拉格"} & {
         name for task in solver.tasks for row in task.plan.values() for name in row
     }
+
+
+def test_single_recovery_manager_does_not_restore_without_group_manager(solver):
+    data, state = setup_episode(solver, 0)
+    for name in ("冰酿", "杜林"):
+        data.operators[name]._current_room, data.operators[name].current_index = (
+            "room_1_1",
+            0,
+        )
+
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+
+    assert len(data.dorm) == 10
+    assert all(
+        slot.agent == "Free"
+        for room in state["dorm_layout"]
+        for slot in data.plan[room]
+    )
+    assert not solver.tasks
+
+
+def test_manager_with_both_recovery_skills_does_not_take_both_positions(solver):
+    data = solver.op_data
+    data.global_plan["default_plan"].plan["dormitory_1"] = [
+        Room("波登可", "", []),
+        Room("夜莺", "", []),
+        Room("闪灵", "", []),
+        Room("Free", "", []),
+        Room("Free", "", []),
+    ]
+    data.swap_plan([])
+    assert data.init_and_validate() is None
+    data, state = setup_episode(solver, 0)
+
+    solver._open_emergency_beds()
+
+    assert [slot.agent for slot in data.plan["dormitory_1"]] == [
+        "波登可",
+        "Free",
+        "闪灵",
+        "Free",
+        "Free",
+    ]
+    assert len(data.dorm) == 6

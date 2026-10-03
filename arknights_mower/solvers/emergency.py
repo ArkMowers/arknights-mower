@@ -16,7 +16,10 @@ from arknights_mower.utils.building_skills import (
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.dorm_candidates import dorm_task_reservations
-from arknights_mower.utils.dorm_skills import is_group_recovery_manager
+from arknights_mower.utils.dorm_skills import (
+    is_group_recovery_manager,
+    is_single_recovery_manager,
+)
 from arknights_mower.utils.emergency_recovery import (
     ORDINARY_SHIFTS,
     emergency_dorm_plan,
@@ -743,7 +746,7 @@ class EmergencyRecoveryMixin:
         return True
 
     def _open_emergency_beds(self):
-        """救急开放宿管床位，每房余量仅补回一名群回宿管；菲亚保持原位。"""
+        """每房先补一名群回，余量再补一名单回；菲亚保持原位。"""
         data, state = self.op_data, self.emergency_state
         layout = state.get("dorm_layout", {})
         if not layout:
@@ -768,29 +771,39 @@ class EmergencyRecoveryMixin:
         spare = max(0, capacity - len(need))
         reserved, _ = dorm_task_reservations(data, self.tasks)
         restored = {}
-        for index in range(max(map(len, layout.values()))):
-            for room, row in layout.items():
-                if index >= len(row) or spare <= 0 or room in restored:
-                    continue
-                name = row[index]
-                manager = data.operators.get(name)
-                resident = data.get_current_operator(room, index)
-                if (
-                    manager is None
-                    or name == "菲亚梅塔"
-                    or not is_group_recovery_manager(name)
-                    or name in need
-                    or name in reserved
-                    or manager.is_working()
-                    or resident is not None
-                    and resident.name in need
-                ):
-                    continue
-                restored[room] = index
-                spare -= 1
+        for classify, required_count in (
+            (is_group_recovery_manager, 0),
+            (is_single_recovery_manager, 1),
+        ):
+            for index in range(max(map(len, layout.values()))):
+                for room, row in layout.items():
+                    positions = restored.get(room, ())
+                    if (
+                        index >= len(row)
+                        or spare <= 0
+                        or len(positions) != required_count
+                        or index in positions
+                    ):
+                        continue
+                    name = row[index]
+                    manager = data.operators.get(name)
+                    resident = data.get_current_operator(room, index)
+                    if (
+                        manager is None
+                        or name == "菲亚梅塔"
+                        or not classify(name)
+                        or name in need
+                        or name in reserved
+                        or manager.is_working()
+                        or resident is not None
+                        and resident.name in need
+                    ):
+                        continue
+                    restored[room] = (*positions, index)
+                    spare -= 1
         for room, row in layout.items():
             for index, name in enumerate(row):
-                fixed = name == "菲亚梅塔" or restored.get(room) == index
+                fixed = name == "菲亚梅塔" or index in restored.get(room, ())
                 data.plan[room][index].agent = name if fixed else "Free"
                 if fixed:
                     continue
