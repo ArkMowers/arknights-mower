@@ -569,6 +569,27 @@ function movePlanForward() {
     <trigger-dialog />
     <task-dialog />
     <rename-dialog />
+    <div v-if="rescue" class="w-980 mx-auto mt-12 px-12 mw-980">
+      <n-alert title="救急排班说明" type="info">
+        <n-space vertical :size="6">
+          <div>
+            此页编辑独立的救急主表和副表，修改会自动保存。开启自动救急后，仅在初始化发现多组主班低于救急线、普通轮休无法安排休息时启用。
+          </div>
+          <div>
+            生效救急表的工作站设施类型和等级（岗位数量）须与正常排班一致，否则不会进入救急。与正常主班重名的救急驻员会在启动时提示，但仍按救急表工作。
+          </div>
+          <div>
+            跑单人选、宿管及菲亚梅塔的位置和充能对象须在救急表中独立填写。Free 床位优先恢复正常主班，剩余空位按正常排班优先级补入替班或空闲干员。
+          </div>
+          <div>
+            “导入排班”读取完整排班文件；右侧下拉的“导入主表”只复制正常主表，保留救急副表。“导出图片”和“导出JSON文件”均携带完整救急排班。
+          </div>
+          <div>
+            自动救急开关位于 Mower 设置 → 基建设置，不随正常排班导入导出。救急期间冻结正常副表，正常排班可接回周转后退出，仍需恢复的组继续休息。
+          </div>
+        </n-space>
+      </n-alert>
+    </div>
     <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
       <div class="plan-bar">
         <n-button-group class="plan-restore-group">
