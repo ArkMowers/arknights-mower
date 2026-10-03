@@ -26,6 +26,15 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const status = ref('stopped')
+  const status_label = computed(() =>
+    !running.value
+      ? '已停止'
+      : ({ starting: '启动中', recovering: '等待设备恢复', sleeping: '休眠中' }[status.value] ??
+        '运行中')
+  )
+  const scheduled_start_at = ref(null)
+  const auto_start_handled = ref(false)
   const plan_condition = ref([])
   const waiting = ref(false)
 
@@ -33,9 +42,9 @@ export const useMowerStore = defineStore('mower', () => {
 
   const get_task_id = ref(0)
   const task_list = ref([])
-  const sc_uri = ref('')
   const speed_msg = ref([])
   function listen_ws() {
+    const token = new URLSearchParams(window.location.search).get('token')
     let backend_url
     if (import.meta.env.DEV) {
       backend_url = import.meta.env.VITE_HTTP_URL
@@ -44,6 +53,9 @@ export const useMowerStore = defineStore('mower', () => {
     }
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(ws_url)
+    ws.value.onopen = () => {
+      if (token) ws.value.send(JSON.stringify({ token }))
+    }
     ws.value.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
@@ -51,14 +63,33 @@ export const useMowerStore = defineStore('mower', () => {
         if (data.screenshot) {
           sc_uri.value = data.screenshot
         }
+      } else if (data.type === 'resource_updated') {
+        // 资源包在别处被更新（安装/共享资源/手动上传）时，让标题栏的资源版本实时刷新
+        import('@/stores/resourceVersion')
+          .then(({ useResourceVersionStore }) =>
+            useResourceVersionStore().loadResourceVersionLocal()
+          )
+          .catch(() => {})
       }
     }
   }
 
   async function get_running() {
+    const wasRunning = running.value
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
-    running.value = response.data['status'] !== 'stopped'
+    status.value = response.data.status
+    running.value = status.value !== 'stopped'
+    scheduled_start_at.value = response.data.scheduled_start_at ?? null
+    auto_start_handled.value = response.data.auto_start_handled === true
     plan_condition.value = response.data['plan_condition']
+    if (running.value && !wasRunning) {
+      clearTimeout(get_task_id.value)
+      get_tasks()
+    } else if (!running.value && wasRunning) {
+      clearTimeout(get_task_id.value)
+      get_task_id.value = 0
+      task_list.value = []
+    }
   }
 
   async function get_tasks() {
@@ -77,6 +108,10 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    status,
+    status_label,
+    scheduled_start_at,
+    auto_start_handled,
     plan_condition,
     waiting,
     listen_ws,
@@ -85,7 +120,6 @@ export const useMowerStore = defineStore('mower', () => {
     task_list,
     get_task_id,
     get_tasks,
-    sc_uri,
     speed_msg
   }
 })

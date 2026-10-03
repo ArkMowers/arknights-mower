@@ -1,21 +1,31 @@
+import ast
 import copy
+import math
 from enum import Enum
 from typing import Optional, Self
 
 from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
+
+DEFAULT_DORM_ROOM_ORDER = [f"dormitory_{index}" for index in range(1, 5)]
 
 
-class PlanTriggerTiming(Enum):
-    "副表触发时机"
-
-    BEGINNING = 0
-    "任务开始"
-    BEFORE_PLANNING = 300
-    "下班结束"
-    AFTER_PLANNING = 600
-    "上班结束"
-    END = 999
-    "任务结束"
+def effective_dorm_room_order(values: list[str]) -> list[str]:
+    """将房间或旧具体床位顺序折叠为完整的四宿舍顺序。"""
+    result = []
+    for value in values:
+        parts = value.rsplit("_", 1)
+        room = (
+            parts[0]
+            if len(parts) == 2
+            and parts[0] in DEFAULT_DORM_ROOM_ORDER
+            and parts[1].isdigit()
+            else value
+        )
+        if room in DEFAULT_DORM_ROOM_ORDER and room not in result:
+            result.append(room)
+    result.extend(room for room in DEFAULT_DORM_ROOM_ORDER if room not in result)
+    return result
 
 
 class BaseProduct(Enum):
@@ -47,6 +57,13 @@ class PlanConfig:
         free_room: bool = False,
         refresh_drained: str = "",
         ope_resting_priority: str = "",
+        resting_standby: str = "",
+        dorm_order: str = "",
+        dorm_order_override: Optional[bool] = None,
+        mood_limits: Optional[dict] = None,
+        operator_mood_limits: Optional[dict] = None,
+        resting_priority_replacement: str = "",
+        free_room_exclusions: str = "",
     ):
         """排班的设置
 
@@ -65,11 +82,25 @@ class PlanConfig:
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
         self.resting_priority = to_list(resting_priority)
+        self.resting_priority_replacement = to_list(resting_priority_replacement)
+        self.free_room_exclusions = to_list(free_room_exclusions)
+        self.resting_standby = to_list(resting_standby)
         self.free_blacklist = to_list(free_blacklist)
         # 0 为均衡模式
         # 1 为感知信息模式
         # 2 为人间烟火模式
         self.ling_xi = ling_xi
+        from arknights_mower.utils.config.plan import MoodLimits
+
+        self.mood_limits = (
+            MoodLimits.model_validate(mood_limits).model_dump()
+            if mood_limits is not None
+            else None
+        )
+        self.operator_mood_limits = {
+            name: MoodLimits.model_validate(limits).model_dump()
+            for name, limits in (operator_mood_limits or {}).items()
+        }
         self.resting_threshold = resting_threshold
         self.free_room = free_room
         # 格式为 干员名字+ 括弧 +指定房间（逗号分隔）
@@ -79,9 +110,22 @@ class PlanConfig:
         self.refresh_trading_config = to_list(refresh_trading_config)
         self.refresh_drained = to_list(refresh_drained)
         self.ope_resting_priority = to_list(ope_resting_priority)
+        self.dorm_order = [name for name in to_list(dorm_order) if name]
+        self.dorm_order_override = (
+            dorm_order_override
+            if dorm_order_override is not None
+            else bool(
+                self.dorm_order
+                and effective_dorm_room_order(self.dorm_order)
+                != DEFAULT_DORM_ROOM_ORDER
+            )
+        )
 
     def is_rest_in_full(self, agent_name) -> bool:
         return agent_name in self.rest_in_full
+
+    def custom_mood_limits(self, name):
+        return self.operator_mood_limits.get(name, self.mood_limits)
 
     def is_exhaust_require(self, agent_name) -> bool:
         return agent_name in self.exhaust_require
@@ -91,6 +135,9 @@ class PlanConfig:
 
     def is_resting_priority(self, agent_name) -> bool:
         return agent_name in self.resting_priority
+
+    def is_resting_standby(self, agent_name) -> bool:
+        return agent_name in self.resting_standby
 
     def is_free_blacklist(self, agent_name) -> bool:
         return agent_name in self.free_blacklist
@@ -118,6 +165,9 @@ class PlanConfig:
             "exhaust_require",
             "workaholic",
             "resting_priority",
+            "resting_priority_replacement",
+            "free_room_exclusions",
+            "resting_standby",
             "free_blacklist",
             "refresh_trading_config",
             "refresh_drained",
@@ -130,6 +180,13 @@ class PlanConfig:
                 if item not in merged_list:
                     merged_list.append(item)
             setattr(n, p, merged_list)
+        # 副表未显式设置宿舍顺序时继承此前结果；只有显式设置的副表覆盖。
+        if target.dorm_order_override:
+            n.dorm_order = copy.deepcopy(target.dorm_order)
+            n.dorm_order_override = True
+        if target.mood_limits is not None:
+            n.mood_limits = copy.deepcopy(target.mood_limits)
+        n.operator_mood_limits.update(copy.deepcopy(target.operator_mood_limits))
         return n
 
 
@@ -172,28 +229,75 @@ class Plan:
         config: PlanConfig,
         trigger: Optional[LogicExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
-        trigger_timing: Optional[str] = None,
         name: Optional[str] = "",
+        products: Optional[dict[str, str]] = None,
     ):
         """
         Args:
             plan: 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
             config: 基建计划相关配置，必须填写全部配置
-            trigger: 触发备用plan 的条件（必填）就是每次最多只有一个备用plan触发
-            task: 触发备用plan 的时间生成的任务（选填）
-            trigger_timing: 触发时机
+            trigger: 副表生效条件；所有副表条件统一收敛
+            task: 副表生效时合入最终安排的换人名单（选填）
         """
         self.plan = plan
         self.config = config
         self.trigger = trigger
         self.task = task
-        self.trigger_timing = self.set_timing_enum(trigger_timing)
         self.name = name
+        self.products = products or {}
 
-    @staticmethod
-    def set_timing_enum(value: str) -> PlanTriggerTiming:
-        "将字符串转换为副表触发时机"
+    @property
+    def uses_major_maintenance_condition(self) -> bool:
+        return self.uses_condition("major_maintenance_remaining_hours")
+
+    def uses_condition(self, method: str) -> bool:
+        """识别条件中的实际调用；字符串常量不授予副表能力。"""
         try:
-            return PlanTriggerTiming[value.upper()]
-        except Exception:
-            return PlanTriggerTiming.AFTER_PLANNING
+            expression = ast.parse(str(self.trigger), mode="eval")
+        except SyntaxError:
+            return False
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "op_data"
+            and node.func.attr == method
+            for node in ast.walk(expression)
+        )
+
+    @property
+    def major_maintenance_thresholds(self) -> list[float]:
+        """读取定时条件的提前小时数，兼容嵌套条件中的原有比较式。"""
+        try:
+            expression = ast.parse(str(self.trigger), mode="eval")
+        except SyntaxError:
+            return []
+        thresholds = []
+        for node in ast.walk(expression):
+            if not (
+                isinstance(node, ast.Compare)
+                and len(node.ops) == 1
+                and isinstance(node.ops[0], ast.LtE)
+                and ast.unparse(node.left)
+                == "op_data.major_maintenance_remaining_hours()"
+            ):
+                continue
+            try:
+                hours = ast.literal_eval(node.comparators[0])
+            except (ValueError, TypeError):
+                continue
+            if type(hours) in (int, float) and 0 <= hours and math.isfinite(hours):
+                thresholds.append(float(hours))
+        return thresholds
+
+    def scheduled_names(self, include_tasks: bool = False) -> set[str]:
+        """Return assigned operators, including replacements and optional tasks."""
+        names = {
+            name
+            for room in self.plan.values()
+            for slot in room
+            for name in (slot.agent, *slot.replacement)
+        }
+        if include_tasks:
+            names.update(name for task in (self.task or {}).values() for name in task)
+        return names - IGNORED_NAMES

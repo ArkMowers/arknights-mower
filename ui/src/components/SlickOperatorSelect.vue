@@ -13,7 +13,7 @@
       :disabled="props.disabled"
       multiple
       filterable
-      :options="operators"
+      :options="selectOptions"
       :placeholder="props.select_placeholder"
       v-model:value="operatorValue"
       :filter="(p, o) => match(o.label, p)"
@@ -28,7 +28,7 @@ import { match } from 'pinyin-pro'
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { render_op_label, render_op_tag } from '@/utils/op_select'
-import { h } from 'vue'
+import { computed, h } from 'vue'
 import { SlickList, SlickItem } from 'vue-slicksort'
 
 const { operators } = storeToRefs(usePlanStore())
@@ -42,8 +42,15 @@ const props = defineProps({
   select_placeholder: {
     type: String,
     default: ''
+  },
+  includeFree: {
+    type: Boolean,
+    default: false
   }
 })
+const selectOptions = computed(() =>
+  props.includeFree ? [{ value: 'Free', label: 'Free' }, ...operators.value] : operators.value
+)
 const render_op_slick_tag = ({ option, handleClose }) => {
   return h(
     SlickItem,

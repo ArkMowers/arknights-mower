@@ -1,9 +1,8 @@
 import cv2
-from scipy.signal import argrelmin
 
 from arknights_mower.solvers.auto_fight import AutoFight
 from arknights_mower.solvers.navigation import NavigationSolver
-from arknights_mower.utils import config
+from arknights_mower.utils import config, vision_np
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres
@@ -30,7 +29,7 @@ class CreditFight(SceneGraphSolver):
         result = cv2.matchTemplate(img, res, cv2.TM_SQDIFF_NORMED)[0]
         threshold = 0.1
         match = []
-        for i in argrelmin(result, order=100)[0]:
+        for i in vision_np.argrelmin(result, order=100):
             if result[i] < threshold:
                 match.append(i)
         logger.debug(match)

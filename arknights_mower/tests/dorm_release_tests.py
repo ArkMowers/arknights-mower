@@ -1,0 +1,305 @@
+"""不养闲人按当前床位判断，不受干员字典插入顺序影响。"""
+
+from datetime import datetime, timedelta
+
+import pytest
+
+from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+from arknights_mower.utils import config
+from arknights_mower.utils.dorm_candidates import dorm_candidates
+from arknights_mower.utils.operators import Operator, Operators
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    plan_metadata,
+    try_add_release_dorm,
+)
+
+ROOM = "dormitory_1"
+
+
+@pytest.fixture
+def op_data(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "save_conf", lambda: None)
+    config.conf.enable_mastery = False
+    data = Operators(
+        {
+            "default_plan": Plan(
+                {
+                    "meeting": [Room("银灰", "", ["红"])],
+                    ROOM: [
+                        Room(name, "", [])
+                        for name in ["杜林", "闪灵", "爱丽丝", "桃金娘", "Free"]
+                    ],
+                },
+                PlanConfig("", "", "", free_room=True),
+            ),
+            "backup_plans": [],
+        }
+    )
+    assert data.init_and_validate() is None
+    data.add(Operator("空爆", ""))
+    for op in data.operators.values():
+        op.mood = 24
+        op.time_stamp = datetime.now()
+    data.operators["红"].mood = 10
+    occupant = data.operators["空爆"]
+    occupant.current_room = ROOM
+    occupant.current_index = 4
+    data.dorm[0].name = occupant.name
+    data.dorm[0].time = datetime.now() - timedelta(minutes=1)
+    return data
+
+
+@pytest.mark.parametrize("last", ["银灰", "红"])
+def test_full_occupant_replaced_regardless_of_last_operator(op_data, last):
+    op_data.operators[last] = op_data.operators.pop(last)
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+
+
+@pytest.mark.parametrize("lower,upper", [(0, 24), (8, 20), (0, 12)])
+@pytest.mark.parametrize("observed_full", [False, True])
+def test_free_room_release_uses_individual_full_deadline_with_exhausted_main(
+    op_data, lower, upper, observed_full
+):
+    now = datetime.now()
+    main = op_data.operators["银灰"]
+    main.current_room, main.current_index = "meeting", 0
+    main.mood, main.depletion_rate, main.time_stamp = 0, 1, now
+    occupant = op_data.operators["空爆"]
+    occupant.lower_limit, occupant.upper_limit = lower, upper
+    occupant.mood = upper if observed_full else lower + 1
+    occupant.time_stamp = now
+    due = now + timedelta(hours=3)
+    op_data.dorm[0].time = due
+
+    tasks = plan_metadata(op_data, [])
+
+    releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
+    assert len(releases) == 1
+    assert releases[0].release_dorm_targets() == {"空爆": (ROOM, 4)}
+    assert not hasattr(releases[0], "release_targets")
+    if observed_full:
+        assert now <= releases[0].time <= now + timedelta(seconds=1)
+    else:
+        assert releases[0].time == due
+
+
+@pytest.mark.parametrize("reading", ["unfinished", "unknown", "full"])
+def test_single_release_rechecks_personal_deadline_at_dispatch(op_data, reading):
+    now = datetime.now()
+    occupant = op_data.operators["空爆"]
+    occupant.mood = 24 if reading == "full" else 10
+    occupant.time_stamp = None if reading == "unknown" else now
+    due = now + timedelta(hours=3)
+    op_data.dorm[0].time = due
+    task = SchedulerTask(
+        time=now,
+        task_plan={ROOM: ["Current"] * 4 + ["Free"]},
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data=occupant.name,
+    )
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data, solver.task, solver.tasks = op_data, task, [task]
+
+    assert solver.prepare_release_dorm(task) is (reading == "full")
+
+    if reading == "full":
+        assert task.plan[ROOM][-1] == "Free"
+        assert solver.tasks == [task]
+    else:
+        assert task.plan == {}
+        pending = solver.tasks[1]
+        assert pending.time == due
+        assert pending.release_dorm_targets() == {occupant.name: (ROOM, 4)}
+    assert occupant.current_room == ROOM
+
+
+def test_single_release_without_completion_evidence_keeps_resident(op_data):
+    occupant = op_data.operators["空爆"]
+    occupant.mood, occupant.time_stamp = 10, datetime.now()
+    op_data.dorm[0].time = None
+    task = SchedulerTask(
+        task_plan={ROOM: ["Current"] * 4 + ["Free"]},
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data=occupant.name,
+    )
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data, solver.task, solver.tasks = op_data, task, [task]
+
+    assert solver.prepare_release_dorm(task) is False
+    assert task.plan == {}
+    assert solver.tasks == [task]
+    assert occupant.current_room == ROOM
+
+
+def test_full_main_is_replaced_by_free_room(op_data):
+    occupant = op_data.operators["空爆"]
+    occupant.operator_type = "high"
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+
+
+@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+def test_unfinished_standby_or_higher_is_protected_from_free_room(op_data, priority):
+    occupant = op_data.operators["空爆"]
+    occupant.operator_type = "high"
+    occupant.resting_priority = priority
+    occupant.mood = 10
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=4)
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks == []
+
+
+@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+def test_finished_standby_or_higher_is_replaced_by_free_room(op_data, priority):
+    occupant = op_data.operators["空爆"]
+    occupant.operator_type = "high"
+    occupant.resting_priority = priority
+    occupant.mood = 10
+    op_data.dorm[0].time = datetime.now() - timedelta(minutes=1)
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+
+
+def test_free_room_reads_dynamic_slot_countdown(op_data):
+    assert op_data.get_refresh_index(ROOM, ["Current"] * 4 + ["空爆"]) == [4]
+
+
+def test_non_free_room_skips_free_and_current_slots_without_keyerror(op_data):
+    op_data.config.free_room = False
+    assert op_data.get_refresh_index(
+        ROOM, ["杜林", "Free", "Free", "Current", "银灰"]
+    ) == [4]
+
+
+def test_disabled_free_room_keeps_full_resident_with_waiting_replacement(op_data):
+    op_data.config.free_room = False
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks == []
+    assert op_data.dorm[0].name == "空爆"
+
+
+def test_disabled_free_room_does_not_schedule_release_before_upcoming_work(op_data):
+    op_data.config.free_room = False
+    op_data.dorm[0].time = datetime.now() + timedelta(minutes=5)
+    tasks = []
+    try_add_release_dorm(
+        {"meeting": ["空爆"]},
+        datetime.now() + timedelta(minutes=10),
+        op_data,
+        tasks,
+    )
+    assert tasks == []
+
+
+def test_repeated_planning_does_not_duplicate_bed_or_candidate(op_data):
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert len(tasks) == 1
+
+
+def test_empty_dynamic_bed_also_accepts_waiting_operator(op_data):
+    op_data.dorm[0].reset()
+    op_data.operators["空爆"].current_room = ""
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks[0].plan[ROOM][-1] == "红"
+
+
+@pytest.mark.parametrize(
+    "excluded", ["blacklist", "workaholic", "full", "unknown_idle", "working"]
+)
+def test_non_recovering_operator_does_not_bypass_shared_candidate_check(
+    op_data, excluded
+):
+    op = op_data.operators["红"]
+    if excluded == "blacklist":
+        op_data.config.free_blacklist = [op.name]
+    elif excluded == "workaholic":
+        op.workaholic = True
+    elif excluded == "full":
+        op.mood = 24
+    elif excluded == "unknown_idle":
+        op.time_stamp = None
+        op_data.plan["meeting"][0].replacement.remove(op.name)
+    else:
+        op.current_room = "train"
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    candidates = dorm_candidates(op_data)
+    assert "红" not in candidates.recovering
+    if excluded not in ("full", "unknown_idle"):
+        assert "红" not in candidates.filling
+    assert all("红" not in names for task in tasks for names in task.plan.values())
+
+
+def test_replacement_precedes_lower_mood_unplanned_operator(op_data):
+    op_data.add(Operator("陈", "", mood=0, time_stamp=datetime.now()))
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks[0].plan[ROOM][-1] == "红"
+
+
+def test_same_tier_compares_absolute_mood(op_data):
+    op_data.add(Operator("陈", "", mood=12, lower_limit=10, time_stamp=datetime.now()))
+    op_data.plan["meeting"][0].replacement.append("陈")
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks[0].plan[ROOM][-1] == "红"
+
+
+@pytest.mark.parametrize("mood,expected", [(22, True), (22.01, True)])
+def test_free_room_obeys_strict_identity_priority(op_data, mood, expected):
+    op_data.operators["空爆"].mood = 2
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=5)
+    op_data.operators["红"].mood = mood
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert bool(tasks) == expected
+
+
+@pytest.mark.parametrize("cached_mood", [None, -1, 25])
+def test_free_room_unknown_replacement_keeps_recovering_idle(op_data, cached_mood):
+    op_data.operators["空爆"].mood = 2
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=5)
+    replacement = op_data.operators["红"]
+    replacement.mood = 24 if cached_mood is None else cached_mood
+    if cached_mood is None:
+        replacement.time_stamp = None
+    tasks = []
+
+    try_add_release_dorm({}, None, op_data, tasks)
+
+    assert tasks == []
+    assert op_data.dorm[0].name == "空爆"  # 规划阶段不改真实入住者
+
+
+def test_missing_countdown_in_explicit_plan_does_not_raise(op_data):
+    op_data.dorm[0].time = None
+    tasks = []
+    try_add_release_dorm({ROOM: ["Free", "Current", "空爆"]}, None, op_data, tasks)
+    try_add_release_dorm({ROOM: ["空爆"]}, datetime.now(), op_data, tasks)
+    assert tasks == []
+
+
+def test_active_training_operator_not_selected_even_with_stale_empty_room(
+    op_data, monkeypatch
+):
+    from arknights_mower.utils import mastery_db
+
+    config.conf.enable_mastery = True
+    monkeypatch.setattr(mastery_db, "get_active_plan", lambda: {"char_name": "红"})
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert "红" not in dorm_candidates(op_data).filling
+    assert all("红" not in names for task in tasks for names in task.plan.values())

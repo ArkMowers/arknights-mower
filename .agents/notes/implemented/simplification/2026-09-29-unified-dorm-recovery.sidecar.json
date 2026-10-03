@@ -1,0 +1,22 @@
+{
+  "title": "Unified dormitory recovery",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-02]",
+    "[INV-SCHED-03]",
+    "[INV-SCHED-07]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.dorm_recovery.recovery_order_plan",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/unified_dorm_tests.py"
+  ]
+}

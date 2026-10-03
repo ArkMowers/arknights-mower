@@ -4,15 +4,22 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from skimage.metrics import structural_similarity
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, vision_np
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
-from arknights_mower.utils.log import logger, save_screenshot
+from arknights_mower.utils.image import (
+    bytes2img,
+    cmatch,
+    cropimg,
+    img2bytes,
+    loadres,
+    thres2,
+)
+from arknights_mower.utils.log import logger, save_screenshot_frame
 from arknights_mower.utils.matcher import Matcher
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.vector import va
 
@@ -35,7 +42,7 @@ class Recognizer:
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
         self.last_scene = None
-        self.last_scene_time = time.time()
+        self.last_scene_time = datetime.now()
 
     def clear(self):
         self._screencap = None
@@ -46,8 +53,11 @@ class Recognizer:
 
     @property
     def screencap(self):
-        if self._screencap is None:
+        """Encode only explicit byte requests, retaining the current observation."""
+        if self._img is None:
             self.start()
+        if self._screencap is None:
+            self._screencap = bytes(img2bytes(self._img))
         return self._screencap
 
     @property
@@ -68,6 +78,7 @@ class Recognizer:
             self._matcher = Matcher(self.gray)
         return self._matcher
 
+    @timed_step("capture")
     def start(self, screencap: Optional[bytes] = None) -> None:
         """init with screencap"""
         retry_times = config.MAX_RETRYTIME
@@ -92,13 +103,20 @@ class Recognizer:
             raise MowerExit
         self.clear()
 
+    def reset_after_external_control(self) -> None:
+        """外部任务交还控制权时，丢弃旧画面及非连续观测的场景停留计时。"""
+        self.update()
+        self.last_scene = None
+        self.last_scene_time = datetime.now()
+        self.loading_time = 0
+
     def color(self, x: int, y: int) -> tp.Pixel:
         """get the color of the pixel"""
         return self.img[y][x]
 
     def save_screencap(self, folder):
         # del folder  # 兼容2024.05旧版接口
-        save_screenshot(self.screencap, folder)
+        save_screenshot_frame(self.img, folder)
 
     def detect_index_scene(self) -> bool:
         res = loadres("index_nav", True)
@@ -147,6 +165,8 @@ class Recognizer:
                 self.last_scene = None
                 self.last_scene_time = current_time
                 self.device.exit()
+                # 退出后旧场景已失效，导航必须重新获取画面。
+                self.clear()
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
@@ -159,8 +179,33 @@ class Recognizer:
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        # 导航栏会覆盖在原场景上；下层的制造站收取等特征仍可能可见。
+        elif self.find("nav_bar"):
+            self.scene = Scene.NAVIGATION_BAR
+
+        # 登录画面底部的厂商标识会误命中基建待办等通用特征。
+        # 先识别位置固定的登录元素，再判断游戏内场景。
+        elif self.find("login_logo") and self.find("hypergryph"):
+            if self.find("login_awake"):
+                self.scene = Scene.LOGIN_QUICKLY
+            elif self.find("login_account"):
+                self.scene = Scene.LOGIN_MAIN
+            else:
+                self.scene = Scene.LOGIN_MAIN_NOENTRY
+        elif self.find("login_loading"):
+            self.scene = Scene.LOGIN_LOADING
+        elif self.find("12cadpa"):
+            self.scene = Scene.LOGIN_START
+        elif self.find("login_connecting"):
+            self.scene = Scene.LOGIN_LOADING
 
         # 平均色匹配
+        elif self.find("trade_strategy_select"):
+            self.scene = Scene.TRADE_STRATEGY_SELECT
+        elif self.find("manufacture_product_change_confirm"):
+            self.scene = Scene.MANUFACTURE_PRODUCT_CHANGE_CONFIRM
+        elif self.find("manufacture_product_select"):
+            self.scene = Scene.MANUFACTURE_PRODUCT_SELECT
         elif self.find("confirm"):
             self.scene = Scene.CONFIRM
         elif self.find("order_label"):
@@ -169,8 +214,6 @@ class Recognizer:
             self.scene = Scene.DRONE_ACCELERATE
         elif self.find("factory_collect"):
             self.scene = Scene.FACTORY_ROOMS
-        elif self.find("nav_bar"):
-            self.scene = Scene.NAVIGATION_BAR
         elif self.find("read_mail"):
             self.scene = Scene.MAIL
         elif self.find("navigation/record_restoration"):
@@ -181,16 +224,29 @@ class Recognizer:
             self.scene = Scene.OPERATOR_SELECT
         elif self.find("ope_eliminate"):
             self.scene = Scene.OPERATOR_ELIMINATE
-        elif self.find("ope_elimi_agency_panel"):
+        # 其他画面的文字可能误命中弹窗标题；确认按钮也必须出现在固定位置。
+        elif self.find("ope_elimi_agency_confirm") and self.find(
+            "ope_elimi_agency_panel"
+        ):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
         elif self.find("riic/report_title"):
             self.scene = Scene.RIIC_REPORT
         elif self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
+        # 房间页仍会命中 infra_overview；先认进驻按钮，避免误报为基建全局视角。
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on")
+            or self.find("room_detail")
+            or self.find("arrange_check_in_small")
+        ):
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
         elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
+        elif self.find("clue/message_board_page"):
+            self.scene = Scene.CLUE_MESSAGE_BOARD
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("infra_overview_in"):
@@ -213,21 +269,8 @@ class Recognizer:
             self.scene = Scene.SHOP_OTHERS
         elif self.find("shop_cart"):
             self.scene = Scene.SHOP_CREDIT_CONFIRM
-        elif self.find("login_logo") and self.find("hypergryph"):
-            if self.find("login_awake"):
-                self.scene = Scene.LOGIN_QUICKLY
-            elif self.find("login_account"):
-                self.scene = Scene.LOGIN_MAIN
-            else:
-                self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find("login_loading"):
-            self.scene = Scene.LOGIN_LOADING
-        elif self.find("12cadpa"):
-            self.scene = Scene.LOGIN_START
         elif self.find("skip"):
             self.scene = Scene.SKIP
-        elif self.find("login_connecting"):
-            self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
         elif (
@@ -331,13 +374,6 @@ class Recognizer:
             self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
-        elif (
-            self.find("arrange_check_in")
-            or self.find("arrange_check_in_on")
-            or self.find("room_detail")
-            or self.find("arrange_check_in_small")
-        ):
-            self.scene = Scene.INFRA_DETAILS
         elif self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
         elif self.find("mission_daily_on"):
@@ -364,11 +400,13 @@ class Recognizer:
             self.scene = Scene.LOGIN_BILIBILI
         elif self.find("login_bilibili_privacy"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        elif self.find("login_captcha"):
+        # 启动画面的 Logo 偶尔误命中验证码特征；滑动求解器依赖
+        # 纯白验证码面板定位，缺少该面板时不应进入验证码场景。
+        elif np.any(self.gray == 255) and self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
+        elif self.find("factory_formula") or self.find("factory_furniture"):
             self.scene = Scene.FACTORY_FORMULA
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
@@ -629,6 +667,13 @@ class Recognizer:
             self.scene = Scene.CONNECTING
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
+        elif self.find("room_detail") or self.find("arrange_check_in_on"):
+            # 进驻详情浮窗（浮窗头 room_detail 或浮窗上的关闭按钮 arrange_check_in_on）：
+            # 浮窗开着时优先识别为详情浮层，须在 train_main/training_support 之前（否则
+            # 浮窗被误标 217/219）；不能用 arrange_check_in（裸主页面也有，加了会恒 205）。
+            # 205 是基建放大视角，back() 会退到基建主界面而非训练室主界面，关浮窗应点
+            # arrange_check_in_on（见 _close_room_detail）。
+            self.scene = Scene.INFRA_DETAILS
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
         elif self.find("skill_collect_confirm"):
@@ -662,8 +707,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
-            # 这是一个filter ，鉴于自动的话不会动，用来识别界面
+        elif self.find("factory_formula") or self.find("factory_furniture"):
+            # 家具分类选中后变为浅色，需要单独的模板。
             self.scene = Scene.FACTORY_FORMULA
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
@@ -692,6 +737,7 @@ class Recognizer:
         judge: bool = True,
         strict: bool = False,
         threshold: float = 0.0,
+        score: float | None = None,
     ) -> tp.Scope:
         """
         查找元素是否出现在画面中
@@ -706,7 +752,8 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"find: {res}")
+        if score is not None:
+            threshold = score
         normalized_res = str(res).replace("\\", "/")
         force_feature_match = "navigation/stage/" in normalized_res
 
@@ -825,14 +872,18 @@ class Recognizer:
                 if cmatch(img, res_img, draw=draw):
                     gray = cropimg(self.gray, scope)
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
-                    ssim = structural_similarity(gray, res_img)
-                    logger.debug(f"{ssim=}")
+                    ssim = vision_np.ssim(gray, res_img)
                     threshold = 0.9
                     if res in template_matching_score:
                         threshold = template_matching_score[res]
                     if ssim >= threshold:
+                        logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
+            if res == "confirm":
+                # 背景透出会改变整条按钮栏的颜色/纹理；保留原匹配，失败时
+                # 只复核固定位置的完整勾选图标，不扩大搜索区域或降低阈值。
+                return self.find_confirm_button()
             return None
 
         template_matching = {
@@ -848,6 +899,13 @@ class Recognizer:
             "fight/use": (858, 864),
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
+            "manufacture_product_cancel_confirm": ((500, 430), (1420, 540)),
+            "manufacture_product_select": ((1150, 15), (1900, 110)),
+            "manufacture_product_change_confirm": ((1190, 750), (1510, 840)),
+            "trade_strategy_select": ((590, 850), (1330, 970)),
+            "clue_next_black": ((1600, 850), (1920, 1030)),
+            # 会客室信息板页面：底栏「访问人次」固定在左下角
+            "clue/message_board_page": ((0, 960), (540, 1080)),
             "loading": (736, 333),
             "loading2": (630, 240),
             "loading3": (1681, 1000),
@@ -910,8 +968,10 @@ class Recognizer:
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
             "upgrade": (997, 501),
-            "op_select_1": (95, 474),
-            "op_select_2": (95, 474),
+            # 未选中干员时详情栏收起，技能页签比选中态上移约 4px。
+            # 留小范围容差，避免实际仍在选人页却被判未知并反复退出。
+            "op_select_1": ((90, 464), (470, 555)),
+            "op_select_2": ((90, 464), (470, 555)),
         }
 
         if not force_feature_match and res in template_matching:
@@ -920,6 +980,7 @@ class Recognizer:
                 threshold = template_matching_score[res]
 
             pos = template_matching[res]
+            res_name = res
             res = loadres(res, True)
             h, w = res.shape
 
@@ -932,8 +993,8 @@ class Recognizer:
             result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             top_left = va(max_loc, scope[0])
-            logger.debug(f"{top_left=} {max_val=}")
             if max_val >= threshold:
+                logger.debug(f"find: {res_name} {top_left=} {max_val=}")
                 return top_left, va(top_left, (w, h))
             return None
 
@@ -991,6 +1052,24 @@ class Recognizer:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
+    def find_confirm_button(self):
+        reference = loadres("confirm")
+        # 原按钮栏位于 (0, 683)，中央图标包含完整白圆、黑勾和窄边缘。
+        local_scope = ((928, 25), (992, 89))
+        scope = ((928, 708), (992, 772))
+        expected = cropimg(reference, local_scope)
+        actual = cropimg(self.img, scope)
+        if actual.shape != expected.shape or not cmatch(actual, expected):
+            return None
+        score = vision_np.ssim(
+            cv2.cvtColor(actual, cv2.COLOR_RGB2GRAY),
+            cv2.cvtColor(expected, cv2.COLOR_RGB2GRAY),
+        )
+        if score >= 0.9:
+            logger.debug(f"find: confirm foreground {scope=} {score=}")
+            return scope
+        return None
+
     def score(
         self,
         res: str,
@@ -1008,8 +1087,6 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"score: {res}")
-
         res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理

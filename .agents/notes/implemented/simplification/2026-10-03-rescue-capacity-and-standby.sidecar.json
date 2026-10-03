@@ -1,0 +1,29 @@
+{
+  "title": "Rescue Capacity and Standby",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-07]",
+    "[INV-SCHED-09]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_release_ready",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._open_emergency_beds",
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_group_return_tests.py",
+    "arknights_mower/tests/emergency_capacity_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_group_reservation_tests.py",
+    "arknights_mower/tests/emergency_staffing_replan_tests.py",
+    "arknights_mower/tests/emergency_manager_capacity_tests.py",
+    "arknights_mower/tests/emergency_release_failure_tests.py"
+  ]
+}

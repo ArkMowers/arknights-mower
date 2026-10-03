@@ -1,0 +1,23 @@
+{
+  "title": "Recovery Release and Task Retention",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]",
+    "[INV-SCHED-13]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/application.py",
+    "arknights_mower/solvers/base_schedule.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/device_adb_recovery_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py"
+  ]
+}

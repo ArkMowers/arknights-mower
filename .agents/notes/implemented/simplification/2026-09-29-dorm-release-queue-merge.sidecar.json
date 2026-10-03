@@ -1,0 +1,20 @@
+{
+  "title": "Dormitory release queue merge",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.merge_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.prepare_release_dorm"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_batch_release_tests.py",
+    "arknights_mower/tests/dorm_recovery_record_tests.py"
+  ]
+}

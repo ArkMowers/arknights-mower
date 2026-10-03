@@ -2,7 +2,10 @@ import platform
 import sys
 from pathlib import Path
 
-__version__ = "4.1.5.8"
+__version__ = "4.1.6-alpha.10"
+__release_system__ = ""
+__release_arch__ = ""
+__release_archive__ = ""
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     __rootdir__ = Path(sys._MEIPASS).joinpath("arknights_mower").resolve()

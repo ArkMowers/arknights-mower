@@ -1,0 +1,26 @@
+{
+  "title": "MuMu Native Back Dispatch and Input Transport Attribution",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-28",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-04]",
+    "[INV-DEV-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.device.Device.send_keyevent",
+    "arknights_mower.utils.device.device.Device._input_once",
+    "arknights_mower.utils.device.mumu12ipc.input.MuMuInputSession.back",
+    "arknights_mower.utils.device.touch_backend.TouchFailure",
+    "scripts.verify_agent_note_format.verify_agent_notes"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_touch_tests.py",
+    "arknights_mower/tests/device_mumu_input_tests.py",
+    "arknights_mower/tests/verify_governance_tests.py"
+  ]
+}

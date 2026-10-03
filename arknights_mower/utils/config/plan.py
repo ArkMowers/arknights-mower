@@ -1,19 +1,124 @@
 from __future__ import annotations
 
-from typing import Optional
+import ast
+import copy
+from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
+
+
+def contains_retired_rescue_condition(value) -> bool:
+    """识别实际救急调用；嵌套条件和字符串常量分别处理。"""
+    if isinstance(value, BaseModel):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        return any(contains_retired_rescue_condition(part) for part in value.values())
+    if not isinstance(value, str):
+        return False
+    try:
+        tree = ast.parse(value, mode="eval")
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "op_data"
+        and node.func.attr == "rescue_needed"
+        for node in ast.walk(tree)
+    )
+
+
+def retire_rescue_backups(data):
+    """返回退役副表后的独立文档和旧索引到新索引的映射。"""
+    result = copy.deepcopy(data)
+    backups, indices = [], {}
+    for index, backup in enumerate(data.get("backup_plans", [])):
+        if contains_retired_rescue_condition(backup.get("trigger", {})):
+            continue
+        indices[index] = len(backups)
+        backups.append(copy.deepcopy(backup))
+    if "backup_plans" in data:
+        result["backup_plans"] = backups
+    return result, indices
+
+
+def migrate_backup_tasks(tasks, old_names, new_names, indices, *, retired=False):
+    """迁移可识别的条件向量；移除退役副表的派生任务，保留专项任务。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    result = []
+    for original in tasks:
+        task = copy.deepcopy(original)
+        flags = getattr(task, "backup_shift_conditions", None)
+        derived = (
+            flags is not None
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "pending_backup_product_switch", False)
+        )
+        if retired and derived:
+            # 混合副表安排不能仅删除一个条件位后继续执行旧的实际名单。
+            continue
+        if flags is not None:
+            if old_names:
+                previous = dict(zip(old_names, flags))
+                task.backup_shift_conditions = [
+                    previous.get(name, False) for name in new_names
+                ]
+            elif len(flags) == len(new_names):
+                task.backup_shift_conditions = list(flags)
+            elif indices:
+                mapped = [False] * len(new_names)
+                for old, new in indices.items():
+                    if old < len(flags) and new < len(mapped):
+                        mapped[new] = flags[old]
+                task.backup_shift_conditions = mapped
+            else:
+                continue
+        if retired and task.type in (
+            TaskTypes.SHIFT_OFF,
+            TaskTypes.SHIFT_ON,
+            TaskTypes.EXHAUST_OFF,
+            TaskTypes.FILL_DORM,
+            TaskTypes.RELEASE_DORM,
+            TaskTypes.SELF_CORRECTION,
+            TaskTypes.RE_ORDER,
+        ):
+            continue
+        result.append(task)
+    return result
+
+
+class MoodLimits(BaseModel):
+    lower: float = Field(default=0, ge=0, lt=24, allow_inf_nan=False)
+    upper: float = Field(default=24, gt=0, le=24, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.lower >= self.upper:
+            raise ValueError("心情下限必须小于上限")
+        return self
 
 
 class PlanConf(BaseModel):
     ling_xi: int = 1
     "令夕模式，1感知 2烟火 3均衡"
+    mood_limits: Optional[MoodLimits] = None
+    "全体干员自定义心情上下限；空值沿用自动规则"
+    operator_mood_limits: dict[str, MoodLimits] = Field(default_factory=dict)
+    "指定干员上下限，优先于全体设置"
     exhaust_require: str = ""
     "耗尽"
     rest_in_full: str = ""
     "回满"
     resting_priority: str = ""
     "低优先级"
+    resting_priority_replacement: str = ""
+    "宿舍高优先级替班，仅提升替班身份"
+    free_room_exclusions: str = ""
+    "不养闲人排除干员，保留床位至上班；心情上限优先"
+    resting_standby: str = ""
+    "宿舍休息候补干员"
     workaholic: str = ""
     "0心情工作（主力宿舍黑名单）"
     refresh_trading: str = ""
@@ -22,11 +127,15 @@ class PlanConf(BaseModel):
     "用尽时间刷新干员"
     ope_resting_priority: str = ""
     "休息排序优先级"
+    dorm_order: str = ""
+    "当前排班的宿舍房间优先级"
 
 
 class BackupPlanConf(PlanConf):
     free_blacklist: str = ""
     "（非主力）宿舍黑名单"
+    dorm_order_override: Optional[bool] = None
+    "是否由该副表显式覆盖此前生效的宿舍房间优先级"
 
 
 class Plans(BaseModel):
@@ -116,7 +225,6 @@ class BackupPlan(BaseModel):
     plan: Plan1 = {}
     task: Task = {}
     trigger: Trigger = {}
-    trigger_timing: str = "AFTER_PLANNING"
     name: str = "plan"
 
 
@@ -125,3 +233,123 @@ class PlanModel(BaseModel):
     plan1: Plan1 = Plan1()
     conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []
+    # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
+    advanced_settings: Optional[dict[str, Any]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def retire_rescue_conditions(cls, data):
+        if isinstance(data, dict):
+            return retire_rescue_backups(data)[0]
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def retire_dorm_options(cls, data):
+        if not isinstance(data, dict) or not isinstance(
+            data.get("advanced_settings"), dict
+        ):
+            return data
+        data = dict(data)
+        settings = dict(data["advanced_settings"])
+        old_order = settings.pop("dorm_order", None)
+        if old_order:
+            conf = dict(data.get("conf") or {})
+            if not conf.get("dorm_order"):
+                conf["dorm_order"] = old_order
+            data["conf"] = conf
+        for key in (
+            "experimental_dorm_logic",
+            "refresh_backup_plan_after_mood",
+            "workshop_low_priority_rest",
+        ):
+            settings.pop(key, None)
+        data["advanced_settings"] = settings
+        return data
+
+
+def parse_plan_document(data) -> PlanModel:
+    """Reject unrelated JSON instead of silently constructing an empty plan."""
+    if not isinstance(data, dict) or not isinstance(data.get("plan1"), dict):
+        raise ValueError("排班文件必须包含 plan1 主排班")
+    if data.get("default", "plan1") != "plan1":
+        raise ValueError("不支持的主排班名称")
+    return PlanModel(**data)
+
+
+def migrate_legacy_dorm_order(
+    plan: PlanModel, data: dict, legacy_dorm_order: str
+) -> bool:
+    """迁移全局旧床位顺序，并折叠为每张排班独立的房间顺序。
+
+    主表缺少独立字段时继承旧全局值；副表只迁移显式的非默认顺序。
+    历史版本自动写入副表的 1→2→3→4 视为未覆盖，避免后续副表把
+    前一张副表的自定义顺序冲回默认值。
+    """
+    rooms = [f"dormitory_{index}" for index in range(1, 5)]
+
+    def room_order(value: str) -> str:
+        result = []
+        for item in (value or "").split(","):
+            parts = item.rsplit("_", 1)
+            room = (
+                parts[0]
+                if len(parts) == 2 and parts[0] in rooms and parts[1].isdigit()
+                else item
+            )
+            if room in rooms and room not in result:
+                result.append(room)
+        result.extend(room for room in rooms if room not in result)
+        return ",".join(result)
+
+    changed = False
+    main_conf = data.get("conf")
+    if not isinstance(main_conf, dict) or not main_conf.get("dorm_order"):
+        advanced = data.get("advanced_settings") or {}
+        inherited = advanced.get("dorm_order") or legacy_dorm_order
+        if inherited:
+            plan.conf.dorm_order = inherited
+            changed = True
+    normalized = room_order(plan.conf.dorm_order) if plan.conf.dorm_order else ""
+    if plan.conf.dorm_order != normalized:
+        plan.conf.dorm_order = normalized
+        changed = True
+    raw_backups = data.get("backup_plans")
+    if not isinstance(raw_backups, list):
+        raw_backups = []
+    for index, backup in enumerate(plan.backup_plans):
+        raw_conf = raw_backups[index].get("conf") if index < len(raw_backups) else None
+        raw_conf = raw_conf if isinstance(raw_conf, dict) else {}
+        raw_order = str(raw_conf.get("dorm_order", "") or "")
+        normalized = room_order(raw_order) if raw_order else ""
+        explicit = raw_conf.get("dorm_order_override")
+        if explicit is None and not raw_order:
+            continue
+        if explicit is None:
+            explicit = bool(normalized and normalized != ",".join(rooms))
+        explicit = bool(explicit)
+        desired_order = normalized if explicit else ""
+        if backup.conf.dorm_order != desired_order:
+            backup.conf.dorm_order = desired_order
+            changed = True
+        if backup.conf.dorm_order_override != explicit:
+            backup.conf.dorm_order_override = explicit
+            changed = True
+    return changed
+
+
+def has_retired_dorm_options(data: dict) -> bool:
+    """Whether a raw plan needs rewriting to remove retired settings."""
+    settings = data.get("advanced_settings") or {}
+    return bool(
+        {
+            "experimental_dorm_logic",
+            "refresh_backup_plan_after_mood",
+            "workshop_low_priority_rest",
+            "dorm_order",
+        }
+        & settings.keys()
+    ) or any(
+        "trigger_timing" in backup or "exit_trigger_timing" in backup
+        for backup in data.get("backup_plans", [])
+    )

@@ -1,0 +1,37 @@
+{
+  "title": "Shared Idle Recovery",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-14]",
+    "[INV-DEV-17]",
+    "[INV-DEV-09]",
+    "[INV-SCHED-12]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/session.py",
+    "arknights_mower/utils/device/application.py",
+    "arknights_mower/utils/device/session_io.py",
+    "arknights_mower/utils/device/device.py",
+    "arknights_mower/utils/device/scrcpy/core.py",
+    "arknights_mower/utils/simulator.py",
+    "arknights_mower/solvers/base_schedule.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_session_tests.py",
+    "arknights_mower/tests/device_session_io_tests.py",
+    "arknights_mower/tests/simulator_tests.py",
+    "arknights_mower/tests/device_idle_lifecycle_tests.py",
+    "arknights_mower/tests/device_scrcpy_tests.py",
+    "arknights_mower/tests/device_touch_tests.py",
+    "arknights_mower/tests/device_droidcast_tests.py",
+    "arknights_mower/tests/device_screenshot_runtime_tests.py",
+    "arknights_mower/tests/device_session_caller_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/maa_error_no_exit_tests.py"
+  ]
+}

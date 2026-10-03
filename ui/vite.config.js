@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
+import process from 'node:process'
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -10,7 +11,11 @@ import Components from 'unplugin-vue-components/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  server: {
+    port: Number(process.env.MOWER_DEV_PORT || 5173),
+    strictPort: true
+  },
   plugins: [
     Inspect(),
     vue(),
@@ -24,6 +29,7 @@ export default defineConfig({
       ]
     }),
     Components({
+      dts: command === 'serve' ? 'components.d.ts' : false,
       resolvers: [NaiveUiResolver()]
     })
   ],
@@ -35,9 +41,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
-        manager: resolve(__dirname, 'manager/index.html')
+        main: resolve(import.meta.dirname, 'index.html'),
+        manager: resolve(import.meta.dirname, 'manager/index.html')
       }
     }
   }
-})
+}))

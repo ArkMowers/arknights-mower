@@ -1,0 +1,20 @@
+{
+  "title": "Shared MuMu Parsing and Settings State",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-UI-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.mumu_info.select_mumu_instance"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_review_regression_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Intelligent Rescue Observation and Handoff",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_read_rooms",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_restore",
+    "arknights_mower.utils.resting_priority.has_resting_mood"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py"
+  ]
+}

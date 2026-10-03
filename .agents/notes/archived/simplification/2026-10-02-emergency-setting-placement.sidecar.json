@@ -1,0 +1,19 @@
+{
+  "title": "Emergency Setting Placement",
+  "status": "archived",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-01]"
+  ],
+  "code_symbols": [
+    "ui/src/pages/Settings.vue",
+    "ui/src/components/PlanAdvancedSettings.vue"
+  ],
+  "test_suites": [
+    "ui/src/stores/config.test.js"
+  ]
+}

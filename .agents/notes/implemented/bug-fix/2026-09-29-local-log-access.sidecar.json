@@ -1,0 +1,20 @@
+{
+  "title": "Local log access without a configured token",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": ["Codex"],
+  "invariants": ["[INV-WEB-01]"],
+  "code_symbols": [
+    "server._local_log_request_allowed",
+    "server.require_log_read",
+    "server._authorize_websocket",
+    "webview_ui.run_desktop",
+    "ui.src.stores.mower.listen_ws"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/log_access_tests.py",
+    "arknights_mower/tests/desktop_lifecycle_tests.py",
+    "ui/src/stores/mower.test.js"
+  ]
+}

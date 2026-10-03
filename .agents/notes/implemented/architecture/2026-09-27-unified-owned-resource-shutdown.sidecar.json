@@ -1,0 +1,24 @@
+{
+  "title": "Unified Owned Resource Shutdown & Process Lifecycle",
+  "status": "implemented",
+  "category": "architecture",
+  "date": "2026-09-27",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.shutdown",
+    "arknights_mower.utils.device.session.DeviceSession"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/device_owned_resources_tests.py"
+  ]
+}

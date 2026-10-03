@@ -195,7 +195,11 @@ def add_gamingroom(base_x1, base_x2, base_y1, base_y2, alpha, room_name, ret):
 
 
 def base(
-    img: tp.Image, central: tp.Scope, draw: bool = False
+    img: tp.Image,
+    central: tp.Scope,
+    draw: bool = False,
+    *,
+    swap_contact_train: bool = False,
 ) -> dict[str, tp.Rectangle]:
     """
     基建布局的图像分割算法
@@ -279,6 +283,9 @@ def base(
             "gaming_3",
             ret,
         )
+
+        if swap_contact_train:
+            ret["contact"], ret["train"] = ret["train"], ret["contact"]
 
         for floor in range(1, 4):
             x1, y1 = ret[f"dormitory_{floor}"][0]

@@ -82,5 +82,9 @@ def get_pyinstaller_common_datas():
         *[(src, dst) for src, dst in _collect_arknights_mower_datas()],
         (_require_path("logo.png"), "."),
         (_require_path("CHANGELOG.md"), "."),
+        (
+            _require_path("ui/src/pages/basement_skill/skill.json"),
+            "ui/src/pages/basement_skill",
+        ),
         *[(src, dst) for src, dst in _collect_ui_dist_datas()],
     ]

@@ -1,3 +1,6 @@
+import os
+from contextlib import contextmanager
+from threading import RLock
 from typing import Union
 
 from arknights_mower import __rootdir__
@@ -15,13 +18,62 @@ class Client:
 
     def __init__(self, client: ADBClient) -> None:
         self.client = client
+        self.owner_pid = os.getpid()
+        self._lock = RLock()
+        self._closed = False
+        self._interrupted = False
+        self._sessions = set()
         self.start()
 
     def start(self) -> None:
+        if self._closed or self._interrupted or self.owner_pid != os.getpid():
+            raise ConnectionError("MaaTouch 已关闭")
         self.__install()
 
-    def __del__(self) -> None:
-        pass
+    @contextmanager
+    def _operation(self):
+        session = None
+        try:
+            with self._lock:
+                if self._closed or self._interrupted or self.owner_pid != os.getpid():
+                    raise ConnectionError("MaaTouch 已关闭")
+                session = Session(self.client, defer_start=True)
+                self._sessions.add(session)
+            with session:
+                yield session
+        except BaseException as exc:
+            exc.delivery_unknown = (
+                session.input_started if session is not None else False
+            )
+            raise
+        finally:
+            if session is not None:
+                with self._lock:
+                    self._sessions.discard(session)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed or self.owner_pid != os.getpid():
+                return
+            self._closed = True
+            sessions = tuple(self._sessions)
+        failures = []
+        for session in sessions:
+            try:
+                session.close()
+            except Exception as exc:
+                failures.append(exc)
+        if failures:
+            raise RuntimeError("；".join(str(exc) for exc in failures))
+
+    def interrupt(self):
+        with self._lock:
+            if self.owner_pid != os.getpid() or self._interrupted:
+                return
+            self._interrupted = True
+            sessions = tuple(self._sessions)
+        for session in sessions:
+            session.interrupt()
 
     def __install(self) -> None:
         """install maatouch for android devices"""
@@ -88,11 +140,9 @@ class Client:
         :param duration: in milliseconds
         :param lift: if True, "lift" the touch point
         """
-        self.check_adb_alive()
-
         builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
-        with Session(self.client) as conn:
+        with self._operation() as conn:
             for id, point in enumerate(points):
                 x, y = self.convert_coordinate(
                     point, display_frames, int(conn.max_x), int(conn.max_y)
@@ -131,15 +181,13 @@ class Client:
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
         """
-        self.check_adb_alive()
-
         points = [list(map(int, point)) for point in points]
         if not isinstance(duration, list):
             duration = [duration] * (len(points) - 1)
         assert len(duration) + 1 == len(points)
 
         builder = CommandBuilder()
-        with Session(self.client) as conn:
+        with self._operation() as conn:
             if fall:
                 x, y = self.convert_coordinate(
                     points[0], display_frames, int(conn.max_x), int(conn.max_y)

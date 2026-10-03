@@ -2,6 +2,7 @@ import datetime
 import json
 import re
 from typing import Optional
+from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
@@ -102,11 +103,37 @@ tool_message_map = {
 
 
 def build_llm(api_key, with_tools=False):
+    ai_type = config.conf.ai_type
+    if ai_type in model_name_map:
+        model, base_url = model_name_map[ai_type]
+    elif ai_type in {"custom-local", "custom-online"}:
+        model = config.conf.ai_model.strip()
+        base_url = config.conf.ai_base_url.strip().rstrip("/")
+        parsed = urlsplit(base_url)
+        if (
+            not model
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("请填写有效的模型名称和接口地址")
+        if ai_type == "custom-online" and parsed.scheme != "https":
+            raise ValueError("在线模型接口必须使用 HTTPS")
+        if ai_type == "custom-local" and parsed.scheme not in {"http", "https"}:
+            raise ValueError("本地模型接口必须使用 HTTP 或 HTTPS")
+        if ai_type == "custom-local":
+            api_key = api_key or "local-model"
+    else:
+        raise ValueError("请先选择 AI 模型")
     kwargs = dict(
-        model=model_name_map[config.conf.ai_type][0],
-        base_url=model_name_map[config.conf.ai_type][1],
+        model=model,
+        base_url=base_url,
         api_key=api_key,
         temperature=0,
+        timeout=90,
+        max_retries=1,
     )
     if config.conf.ai_type == "deepseek-v4-pro":
         kwargs["reasoning_effort"] = "high"
@@ -177,7 +204,7 @@ def _run_manual_tool_loop(messages, api_key):
         ).get("tool_calls", [])
         if tool_calls:
             streamed.extend(
-                f"Mower助手正在{tool_message_map[call.get('name', '')]}...<br/>"
+                f"Mower助手正在{tool_message_map[call.get('name', '')]}...\n"
                 for call in getattr(response, "tool_calls", []) or []
                 if call.get("name") in tool_message_map
             )
@@ -212,7 +239,7 @@ def _build_ai_intro():
         "4. 分析漏单的时间线和原因。"
         f"当前本地时间为 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}，请使用24小时制。"
         f"当前软件的使用时区为 {datetime.datetime.now().astimezone().tzinfo}。"
-        "工具返回的结果如果是 HTML 表格，请直接返回 HTML 字符串，不要转换为 Markdown 或其他格式。"
+        "工具返回的结果如果是 HTML 表格，请用 Markdown 表格或纯文本概括，不要返回原始 HTML。"
         "优先检查用户问题是否属于常见FAQ，如果匹配FAQ则直接回复修复方法。工具名称是 get_faq。"
         "当用户问漏单原因时，优先启用 analyze_missed_order，不要自己拼 SQL 推理根因。"
         "如果数据库没有漏单日志，就要求用户直接提供漏单发生时间。"
@@ -433,7 +460,9 @@ def _handle_missed_order_flow(user_input, context, api_key):
 
 
 def ask_llm(user_input, context=None, api_key=None):
-    if api_key is None or not api_key.strip():
+    if config.conf.ai_type != "custom-local" and (
+        api_key is None or not api_key.strip()
+    ):
         yield "未检测到 API Key，请先在设置中配置你的 AI Key。"
         return
     if context is None:
@@ -461,7 +490,7 @@ def ask_llm(user_input, context=None, api_key=None):
                 for call in message_chunk.tool_calls:
                     tool_name = call.get("name")
                     if tool_name:
-                        yield f"Mower助手正在{tool_message_map[tool_name]}...<br/>"
+                        yield f"Mower助手正在{tool_message_map[tool_name]}...\n"
             elif hasattr(message_chunk, "content"):
                 content = message_chunk.content
                 if content:

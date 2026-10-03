@@ -1,0 +1,18 @@
+{
+  "title": "ADB Capture Timeout Preserves Budget",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.screenshot.capture_adb_frame"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_shared_transport_tests.py"
+  ]
+}

@@ -9,9 +9,14 @@ const {
   maa_mall_buy,
   maa_mall_blacklist,
   maa_mall_ignore_blacklist_when_full,
-  maa_enable,
+  maa_mall_only_buy_discount,
+  maa_mall_reserve_max_credit,
+  maa_mall_enable,
+  maa_mall_mode,
   maa_credit_fight,
-  credit_fight
+  credit_fight,
+  visit_friend_enable,
+  visit_friend_mode
 } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
@@ -85,6 +90,23 @@ const show_map = ref(false)
       <n-form-item label="编队">
         <n-select :options="squads" v-model:value="credit_fight.squad" />
       </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="visit_friend_enable">
+          <div class="item">访问好友</div>
+        </n-checkbox>
+      </n-form-item>
+      <n-form-item v-if="visit_friend_enable" label="处理方式">
+        <n-radio-group v-model:value="visit_friend_mode">
+          <n-space>
+            <n-radio value="maa">MAA</n-radio>
+            <n-radio value="mower">Mower</n-radio>
+          </n-space>
+        </n-radio-group>
+        <help-text>
+          <div>MAA：在执行日常任务时由 MAA 进入好友列表拜访并收取信用。</div>
+          <div>Mower：在轮询基建调度之余由 Mower 原生进入好友列表拜访并收取信用。</div>
+        </help-text>
+      </n-form-item>
       <!--<n-form-item label="干员">
         <n-select
           filterable
@@ -96,9 +118,9 @@ const show_map = ref(false)
       </n-form-item>
       <n-form-item label="部署">
         <div style="width: 40px; text-align: right">X</div>
-        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
+        <mower-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
         <div style="width: 40px; text-align: right">Y</div>
-        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
+        <mower-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
         <n-select
           style="width: 250px; margin-right: 8px"
           :options="deploy_directions"
@@ -111,7 +133,7 @@ const show_map = ref(false)
       </n-form-item>-->
     </n-form>
     <n-divider />
-    <n-checkbox v-model:checked="maa_enable" class="maa-shop">
+    <n-checkbox v-model:checked="maa_mall_enable" class="maa-shop">
       <div class="item">信用商店购物</div>
     </n-checkbox>
     <help-text>
@@ -128,11 +150,35 @@ const show_map = ref(false)
       <p>注意：跑单时赤金与作战记录均大幅升值</p>
     </help-text>
     <n-form
+      v-if="maa_mall_enable"
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
       label-width="72"
       label-align="left"
     >
+      <n-form-item label="处理方式">
+        <n-radio-group v-model:value="maa_mall_mode">
+          <n-space>
+            <n-radio value="maa">MAA</n-radio>
+            <n-radio value="mower">Mower</n-radio>
+          </n-space>
+        </n-radio-group>
+        <help-text>
+          <div>MAA：在执行日常任务时由 MAA 进入采购中心进行信用收取和购物。</div>
+          <div>Mower：在会客室线索流程处理完成后由 Mower 原生进入信用商店进行收取和购物。</div>
+        </help-text>
+      </n-form-item>
+      <n-form-item label="购物设置" v-if="maa_mall_mode === 'maa'">
+        <n-space :size="24">
+          <n-checkbox v-model:checked="maa_mall_only_buy_discount">只购买折扣物品</n-checkbox>
+          <n-checkbox v-model:checked="maa_mall_reserve_max_credit">
+            保留最大信用点（低于 300 停止购买）
+          </n-checkbox>
+        </n-space>
+        <help-text>
+          <div>两个设置均仅作用于第二轮购买。</div>
+        </help-text>
+      </n-form-item>
       <n-form-item label="信用溢出">
         <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
           <n-space>
@@ -142,17 +188,15 @@ const show_map = ref(false)
         </n-radio-group>
       </n-form-item>
       <n-form-item label="优先购买">
-        <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
-          <n-select
-            multiple
-            filterable
-            tag
-            :options="shop_list"
-            v-model:value="maa_mall_buy"
-            :render-tag="render_tag"
-            :render-label="render_label"
-          />
-        </n-radio-group>
+        <n-select
+          multiple
+          filterable
+          tag
+          :options="shop_list"
+          v-model:value="maa_mall_buy"
+          :render-tag="render_tag"
+          :render-label="render_label"
+        />
       </n-form-item>
       <n-form-item label="黑名单">
         <n-select

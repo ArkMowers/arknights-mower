@@ -1,0 +1,7 @@
+# Complete runtime environment
+-r requirements.txt
+
+# Recognition golden references and model retraining only
+scipy==1.13.0
+scikit-image==0.23.2
+scikit-learn==1.4.2
