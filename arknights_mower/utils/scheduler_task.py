@@ -259,7 +259,7 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
             if start <= end and max(now, start) + duration >= task.time:
                 start = min(start, task.time - duration - timedelta(seconds=1))
         if start < release.time:
-            logger.info(
+            logger.debug(
                 f"心情上限离宿提前至 {start:%H:%M:%S}，"
                 f"截止 {release.mood_limit_deadline:%H:%M:%S}：{release.meta_data}"
             )

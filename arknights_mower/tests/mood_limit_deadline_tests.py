@@ -190,3 +190,21 @@ def test_selected_ordinary_task_yields_to_newly_advanced_limit():
     assert solver.task is None
     assert solver.tasks[0] is limit
     solver._run_clue_flow.assert_not_called()
+
+
+def test_rebuilt_releases_keep_operation_windows_without_user_notices(caplog):
+    import logging
+
+    now = datetime(2026, 10, 4, 6, 0)
+    caplog.set_level(logging.DEBUG)
+    for offset in (0, 0, 5):
+        deadline = now + timedelta(minutes=40 + offset)
+        release = release_at(deadline)
+        protect_priority_tasks([release], time_now=now)
+        assert release.time == deadline - timedelta(minutes=1.5)
+        assert release.mood_limit_deadline == deadline
+        protect_priority_tasks([release], time_now=now)
+        assert release.time == deadline - timedelta(minutes=1.5)
+    notices = [r for r in caplog.records if "心情上限离宿提前至" in r.getMessage()]
+    assert len(notices) == 3
+    assert all(r.levelno == logging.DEBUG for r in notices)
