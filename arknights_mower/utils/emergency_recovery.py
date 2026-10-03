@@ -173,14 +173,11 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         for task in solver.tasks
         if task.type == TaskTypes.FIAMMETTA
         and task.plan
+        and (not current_only or not getattr(task, "arrangement_retry_room", None))
         and task.meta_data in required
         and fia is not None
         and fia.current_room == fia.room
         and has_resting_mood(fia)
-        and (
-            not current_only
-            or (not fia.mood_is_prediction and fia.mood >= fia.upper_limit)
-        )
         and task.meta_data in fia.replacement
         and any(
             "菲亚梅塔" in names and task.meta_data in names
@@ -271,6 +268,16 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 events.append((max(when, task.time), event_id, task.plan))
         for i, task in enumerate(charges):
             event_id = ("charge", i)
+            current_fia = data.operators.get("菲亚梅塔")
+            if current_only and (
+                current_fia is None
+                or not has_resting_mood(current_fia)
+                or current_fia.mood_is_prediction
+                or current_fia.mood < current_fia.upper_limit
+                or (current_fia.current_room, current_fia.current_index)
+                != (current_fia.room, current_fia.index)
+            ):
+                continue
             if event_id not in used:
                 events.append((max(when, task.time), event_id, {}))
         for bed in data.dorm:
@@ -300,6 +307,30 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 uncertain = True
                 continue
             projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
+            if current_only and event_id[0] == "task":
+                event_task = copy.deepcopy(pending[event_id[1]])
+                if event_task.type == TaskTypes.RELEASE_DORM:
+                    for name in event_task.release_dorm_targets():
+                        resident = projected.operators.get(name)
+                        if (
+                            not has_resting_mood(resident)
+                            or resident.mood_is_prediction
+                            or resident.mood < resident.upper_limit
+                        ):
+                            event_task.remove_release_dorm_operator(name)
+                    if not event_task.plan:
+                        continue
+                    checker = copy.copy(trial)
+                    checker.op_data = projected
+                    checker.tasks = copy.deepcopy(trial.tasks)
+                    try:
+                        checker.prepare_release_dorm(event_task)
+                    except Exception:
+                        uncertain = True
+                        continue
+                    if not event_task.plan:
+                        continue
+                    plan = event_task.plan
             timely = True
             for name in remaining:
                 op = projected.operators[name]
@@ -333,6 +364,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 projected.operators[name].mood = projected.operators[name].upper_limit
                 projected.operators[name].time_stamp = datetime.now()
                 charged.add(name)
+                if current_only:
+                    projected.operators["菲亚梅塔"].mood = 0
             queue.append(
                 (
                     projected.project_arrangements([plan]),

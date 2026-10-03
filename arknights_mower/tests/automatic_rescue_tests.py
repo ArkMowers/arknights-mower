@@ -1803,3 +1803,86 @@ def test_native_projection_reuses_eval_capsule_across_search_branches(solver, pa
     assert before_tasks == [(task.time, task.plan) for task in solver.tasks]
     assert source.eval_model.imported_functions["runtime_handle"] is capsule
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("stale_identity", [False, True])
+@pytest.mark.parametrize("stale_completion", [False, True])
+def test_unexecutable_due_release_does_not_prevent_rescue(
+    solver, stale_identity, stale_completion
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 0
+    for name, bed in zip(PRIMARY[2:], data.dorm[:2]):
+        resident = data.operators[name]
+        resident._current_room, resident.current_index = bed.position
+        bed.name, bed.time = name, NOW if stale_completion else None
+    room, index = data.dorm[0].position
+    row = ["Current"] * len(data.plan[room])
+    row[index] = "Free"
+    task = SchedulerTask(
+        time=NOW,
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={room: row},
+        meta_data=PRIMARY[3] if stale_identity else PRIMARY[2],
+    )
+    solver.tasks = [task]
+    before_plan = copy.deepcopy(task.plan)
+    result = emergency_recovery.native_opportunity(
+        solver, PRIMARY[:2], NOW, current_only=True
+    )
+    assert result.complete and result.opportunity is None
+    assert task.plan == before_plan
+    assert data.operators[PRIMARY[2]].mood == 0
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+
+
+def test_current_fiammetta_charge_is_consumed_after_one_target(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 0
+    for name in COVERS[:2]:
+        data.operators[name].mood = 0
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=24,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=PRIMARY[:2],
+    )
+    tasks = [
+        SchedulerTask(
+            time=NOW,
+            task_type=TaskTypes.FIAMMETTA,
+            task_plan={"dormitory_1": [target, "菲亚梅塔"]},
+            meta_data=target,
+        )
+        for target in PRIMARY[:2]
+    ]
+    solver.tasks = tasks
+    result = emergency_recovery.native_opportunity(
+        solver, PRIMARY, NOW, current_only=True
+    )
+    assert result.complete and result.opportunity is None
+    assert data.operators["菲亚梅塔"].mood == 24
+    assert all(data.operators[name].mood == 0 for name in PRIMARY)
+    assert solver.tasks == tasks
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_called_once_with(initial=True)

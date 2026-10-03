@@ -198,3 +198,47 @@ def test_current_rotation_accounts_for_executable_fiammetta(solver, delay, mood)
     assert solver.tasks == [task]
     assert all(data.operators[name].mood == 0 for name in PRIMARY)
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("invalid", ["slot", "retry", "prediction", "unknown"])
+def test_current_fiammetta_needs_confirmed_position_and_task(solver, invalid):
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+    from arknights_mower.utils.operators import Operator
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 0
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    fia = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=24,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=[PRIMARY[-1]],
+    )
+    data.operators[fia.name] = fia
+    task = SchedulerTask(
+        time=NOW,
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={"dormitory_1": [PRIMARY[-1], "菲亚梅塔"]},
+        meta_data=PRIMARY[-1],
+    )
+    if invalid == "slot":
+        fia.current_index = 1
+    elif invalid == "retry":
+        task.arrangement_retry_room = "dormitory_1"
+    elif invalid == "prediction":
+        fia.mood_is_prediction = True
+    else:
+        fia.time_stamp = None
+    solver.tasks = [task]
+    result = native_opportunity(solver, PRIMARY, NOW, current_only=True)
+    assert result.complete and result.opportunity is None
+    assert fia.mood == 24
+    solver.enter_room.assert_not_called()
