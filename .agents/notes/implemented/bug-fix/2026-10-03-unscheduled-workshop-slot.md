@@ -19,6 +19,10 @@ The shared cache reader and room reader already distinguish the training room by
 
 `Operators.get_current_room` returns the cached workshop slot. `BaseSchedulerSolver.get_agent_from_room` reads the physical workshop slot and updates actual occupancy and mood through the existing reader. Crafting admission, consecutive batches, staff restoration, and dormitory recovery remain authoritative. Existing domain glossary definitions remain unchanged.
 
+Before the first selection in each crafting batch, `_craft_material` reads the actual workshop occupant to establish the restoration snapshot. Missing occupancy cache never establishes vacancy. A confirmed vacant workshop retains the first crafter under the existing rule; consecutive tasks reuse the initial snapshot.
+
 ## Verification
 
 Offline regressions cover absent, empty, populated, and oversized workshop lists; vacant and occupied slots; unchanged Scheduling Plans; actual room arrangements and confirmation readback; consecutive crafting and restoration; and unchanged training and ordinary facility capacities. The pre-fix cache and reader regressions reproduce missing-room errors and zero-length reads.
+
+Actual arranging and room-reader regressions separate physical occupants from cached positions, cover uncached residents and stale occupied caches on a vacant workshop, require readback before the first selection, and verify the original resident and borrowed dormitory positions after consecutive crafting.

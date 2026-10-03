@@ -65,6 +65,16 @@ def batch(monkeypatch):
     ]
     solver.task = solver.tasks[0]
     solver.enter_room = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        side_effect=lambda room: (
+            [
+                {"agent": name}
+                for name, operator in solver.op_data.operators.items()
+                if operator.current_room == room
+            ]
+            or [{"agent": ""}]
+        )
+    )
     solver.find = MagicMock(return_value=True)
     solver.backup_plan_solver = MagicMock()
     arrangements = []
@@ -114,6 +124,7 @@ def test_consecutive_operators_restore_factory_and_shared_dorm_only_once(batch):
         },
     ]
     assert batch.solver.tasks == []
+    batch.solver.get_agent_from_room.assert_called_once_with("factory")
     assert batch.solver.task is None
     for room, names in batch.solver.op_data.plan.items():
         for i, name in enumerate(names):

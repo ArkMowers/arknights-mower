@@ -12,10 +12,12 @@
   ],
   "code_symbols": [
     "arknights_mower.utils.operators.Operators.get_current_room",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._craft_material"
   ],
   "test_suites": [
     "arknights_mower/tests/workshop_unconfigured_room_tests.py",
+    "arknights_mower/tests/workshop_resident_restore_tests.py",
     "arknights_mower/tests/workshop_batch_tests.py",
     "arknights_mower/tests/mastery_choose_train_tests.py"
   ]

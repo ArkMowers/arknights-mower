@@ -36,6 +36,7 @@ def crafting(monkeypatch):
     instance.enter_room = MagicMock()
     instance.agent_arrange = MagicMock()
     instance.generate_product = MagicMock()
+    instance.get_agent_from_room = MagicMock(return_value=[{"agent": "特克诺"}])
     instance.op_data = SimpleNamespace(
         operators={
             "谬因": SimpleNamespace(

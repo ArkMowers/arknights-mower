@@ -935,9 +935,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.enter_room("factory")
         if "factory" not in restore_plan:
             restore_plan["factory"] = [
-                key
-                for key, value in self.op_data.operators.items()
-                if value.current_room == "factory"
+                row["agent"]
+                for row in self.get_agent_from_room("factory")
+                if row["agent"]
             ] or [task.meta_data]
             # 原本无人时沿用单次加工行为，首位加工干员作为最终留驻干员。
         agent_room = operator.current_room if operator is not None else ""
