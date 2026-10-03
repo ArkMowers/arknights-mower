@@ -1,0 +1,93 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { createApp, ref, nextTick } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
+import axios from 'axios'
+import { usePlanStore, useRescuePlanStore } from './plan'
+
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+let stores = []
+afterEach(() => {
+  stores.forEach((store) => store.$dispose())
+  stores = []
+  vi.clearAllMocks()
+})
+
+it('救急页首次加载前不保存，主副表保存不改动正常排班', async () => {
+  const app = createApp({})
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  app.use(pinia)
+  app.provide('loaded', ref(false))
+  const [normal, rescue] = app.runWithContext(() => [usePlanStore(), useRescuePlanStore()])
+  stores = [normal, rescue]
+  axios.post.mockResolvedValue({ data: {} })
+  let resolveLoad
+  axios.get.mockReturnValue(
+    new Promise((resolve) => {
+      resolveLoad = resolve
+    })
+  )
+  const loading = rescue.load_plan()
+  await nextTick()
+  expect(axios.post).not.toHaveBeenCalled()
+  resolveLoad({
+    data: {
+      conf: {},
+      plan1: { central: { plans: [{ agent: '红' }] } },
+      backup_plans: [
+        {
+          name: '副表',
+          conf: {},
+          plan: { central: { plans: [{ agent: '初雪' }] } },
+          trigger: { left: '1', operator: '==', right: '1' }
+        }
+      ]
+    }
+  })
+  await loading
+  rescue.plan.central.plans[0].agent = '砾'
+  rescue.backup_plans[0].plan.central.plans[0].agent = '斑点'
+  await nextTick()
+  await rescue.wait_for_plan_save()
+  expect(normal.plan).toEqual({})
+  expect(normal.backup_plans).toEqual([])
+  expect(axios.post.mock.calls.every(([url]) => url.endsWith('/rescue-plan'))).toBe(true)
+  const saved = axios.post.mock.lastCall[1]
+  expect(saved.plan1.central.plans[0].agent).toBe('砾')
+  expect(saved.backup_plans[0].plan.central.plans[0].agent).toBe('斑点')
+})
+
+it('救急宿舍保留空床索引，副表空白位置继承主表', async () => {
+  const app = createApp({})
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  app.use(pinia)
+  app.provide('loaded', ref(false))
+  const store = app.runWithContext(() => useRescuePlanStore())
+  stores = [store]
+  axios.post.mockResolvedValue({ data: {} })
+  axios.get.mockResolvedValue({
+    data: { conf: {}, plan1: {}, backup_plans: [{ name: '副表', conf: {}, plan: {}, trigger: {} }] }
+  })
+  await store.load_plan()
+  store.plan.dormitory_1.plans[2].agent = '菲亚梅塔'
+  store.plan.dormitory_1.plans[2].replacement = ['歌蕾蒂娅']
+  store.backup_plans[0].plan.dormitory_1.plans[0].agent = '杜林'
+  const saved = store.build_plan()
+  expect(saved.plan1.dormitory_1.plans.map((slot) => slot.agent)).toEqual([
+    'Free',
+    'Free',
+    '菲亚梅塔',
+    'Free',
+    'Free'
+  ])
+  expect(saved.backup_plans[0].plan.dormitory_1.plans.map((slot) => slot.agent)).toEqual([
+    '杜林',
+    'Current',
+    'Current',
+    'Current',
+    'Current'
+  ])
+  expect(saved.backup_plans[0].plan).not.toHaveProperty('dormitory_2')
+  expect(saved.plan1.dormitory_1.plans[2].replacement).toEqual(['歌蕾蒂娅'])
+})

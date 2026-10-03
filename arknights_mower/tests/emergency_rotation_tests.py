@@ -125,7 +125,7 @@ def test_measured_target_releases_then_plans_new_resident(rotation):
     assert op.name in dorm_task_reservations(scheduler.op_data, [])[0]
     assert (
         workshop_operator_block_reason(scheduler.op_data, op.name, [])
-        == "已被智能救急恢复安排预约"
+        == "已被自动救急恢复安排预约"
     )
     scheduler._emergency_plan_beds.assert_called_once()
     assert not scheduler.tasks

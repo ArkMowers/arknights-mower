@@ -1699,14 +1699,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             and dorm_candidate_mood(self.op_data, name) is None
         }
         if not missing and config.conf.automatic_rescue_enable:
-            from arknights_mower.utils.building_skills import load_skill_snapshot
+            from arknights_mower.utils.emergency_plan import configured_rescue_names
 
-            snapshot = load_skill_snapshot()
             missing = any(
-                operator["owned"] is True
-                and dorm_candidate_mood(self.op_data, operator["name"], datetime.now())
-                is None
-                for operator in snapshot.get("operators", ())
+                dorm_candidate_mood(self.op_data, name) is None
+                for name in configured_rescue_names(config.conf.automatic_rescue_plan)
             )
         if missing:
             self._scan_card_moods()
@@ -2575,16 +2572,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self._sync_run_order_tasks()
         if room not in self.op_data.run_order_rooms:
             return
-        plan = self.op_data.plan
+        replacements = self.op_data.run_order_replacements(room)
         if self.find_next_task(meta_data=room, task_type=TaskTypes.RUN_ORDER):
             return
-        in_out_plan = {room: ["Current"] * len(plan[room])}
-        for idx, x in enumerate(plan[room]):
+        in_out_plan = {room: ["Current"] * len(replacements)}
+        for idx, choices in enumerate(replacements):
             if any(
-                any(char in replacement_str for replacement_str in x.replacement)
+                any(char in replacement_str for replacement_str in choices)
                 for char in TRADE_ORDER_AGENTS
             ):
-                in_out_plan[room][idx] = x.replacement[0]
+                in_out_plan[room][idx] = choices[0]
         execute_time = self.get_run_order_time(room)
         # 读取订单页可能首次发现实际仍在卖玉，不能据此创建空转任务。
         self._sync_run_order_tasks()
@@ -4337,6 +4334,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         logger.info("切产物并换班后重新读取订单倒计时：%s", sorted(rooms))
 
     def check_fia(self):
+        if self._emergency_frozen():
+            state = self.emergency_state
+            targets = state.get("fia_targets", [])
+            if not targets:
+                return None, None
+            fia = self.op_data.operators.get("菲亚梅塔")
+            for room, row in state.get("dorm_layout", {}).items():
+                if "菲亚梅塔" in row:
+                    index = row.index("菲亚梅塔")
+                    if fia is not None and (fia.current_room, fia.current_index) == (
+                        room,
+                        index,
+                    ):
+                        return targets, room
+            return None, None
         if "菲亚梅塔" in self.op_data.operators.keys() and self.op_data.operators[
             "菲亚梅塔"
         ].room.startswith("dormitory"):
@@ -7845,6 +7857,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             for i, slot in enumerate(self.op_data.plan[room])
                             if slot.agent == "Free"
                         ]
+                    if (
+                        getattr(self.task, "emergency_dorm", False)
+                        and "菲亚梅塔" in plan[room]
+                    ):
+                        refresh_indexes = sorted(
+                            set(refresh_indexes) | {plan[room].index("菲亚梅塔")}
+                        )
                     read_time_index = list(
                         dict.fromkeys([*read_time_index, *refresh_indexes])
                     )
@@ -7995,7 +8014,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if getattr(self.task, "emergency_recovery_release", False):
                         plan.clear()
                     elif getattr(self.task, "emergency_staffing_members", ()):
-                        self.emergency_state["staffing_rescore"] = True
+                        self.emergency_state["staffing_complete"] = False
                         plan.clear()
                     else:
                         self.emergency_state.get("staffing_plan", {}).pop(room, None)

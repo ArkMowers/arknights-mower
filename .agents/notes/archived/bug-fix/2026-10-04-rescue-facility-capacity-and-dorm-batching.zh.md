@@ -1,9 +1,11 @@
 ---
 title: Rescue Facility Capacity and Dorm Batching
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-04
 ---
+
+> Superseded by [Configured Rescue Schedule](../../implemented/simplification/2026-10-04-configured-rescue-schedule.md).
 
 # 救急设施容量与宿舍合并安排
 

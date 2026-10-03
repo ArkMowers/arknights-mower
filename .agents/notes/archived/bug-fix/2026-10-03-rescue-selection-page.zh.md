@@ -1,9 +1,11 @@
 ---
 title: Rescue Selection Page Restoration
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-03
 ---
+
+> Superseded by [Configured Rescue Schedule](../../implemented/simplification/2026-10-04-configured-rescue-schedule.md).
 
 # 救急选人页面恢复
 

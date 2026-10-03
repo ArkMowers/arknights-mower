@@ -14,7 +14,7 @@ import { useMessage } from 'naive-ui'
 import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
 const message = useMessage()
 const config_store = useConfigStore()
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { sub_plan, backup_plans, operators } = storeToRefs(plan_store)
 const masterySchedule = computed(() => masteryScheduleContext(plan_store.plan, backup_plans.value))
 

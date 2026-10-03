@@ -1,9 +1,11 @@
 ---
 title: Emergency Setting Placement
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
+
+> Superseded by [Configured Rescue Schedule](../../implemented/simplification/2026-10-04-configured-rescue-schedule.md).
 
 # Emergency Setting Placement
 
@@ -11,7 +13,7 @@ date: 2026-10-02
 
 [INV-01] preserves the existing configuration binding and disabled default. The intelligent rescue checkbox appears once in the infrastructure settings card on the Mower settings page. The MAA settings form has no rescue checkbox or unused binding. The settings page uses the existing configuration autosave.
 
-The two existing components exchange the control without adding configuration keys, migrations or wrappers. The [recovery lifecycle](../../implemented/simplification/2026-10-02-native-automatic-rescue.md) defines Mower temporary staffing and measured recovery.
+The two existing components exchange the control without adding configuration keys, migrations or wrappers. The [recovery lifecycle](../../archived/simplification/2026-10-02-native-automatic-rescue.md) defines Mower temporary staffing and measured recovery.
 
 ## Review and Verification
 

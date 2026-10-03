@@ -1,4 +1,4 @@
-"""智能救急按个人实测目标释放床位，退出时统一恢复工作岗位。"""
+"""自动救急按个人实测目标释放床位，退出时统一恢复工作岗位。"""
 
 import copy
 import pickle
@@ -122,10 +122,10 @@ def group_return(legacy_solver, monkeypatch):  # noqa: F811
     solver.agent_arrange = MagicMock(side_effect=place)
     solver._emergency_save = MagicMock(side_effect=save)
     solver.backup_plan_solver = MagicMock(
-        side_effect=AssertionError("智能救急恢复中不能切换副表")
+        side_effect=AssertionError("自动救急恢复中不能切换副表")
     )
     solver.agent_get_mood = MagicMock(
-        side_effect=AssertionError("智能救急离宿待命不能触发普通纠错")
+        side_effect=AssertionError("自动救急离宿待命不能触发普通纠错")
     )
     solver.run_order_solver = MagicMock()
     return SimpleNamespace(
@@ -433,7 +433,7 @@ def test_waiting_residents_remain_reserved_for_processing_and_ordinary_dorms(
     assert_temporary_workers_unchanged(solver)
 
 
-def test_cached_ready_member_below_stored_target_cannot_authorize_final_exit(
+def test_cached_ready_member_below_target_returns_to_rest_during_handoff(
     group_return,
 ):
     solver = group_return.solver
@@ -444,7 +444,11 @@ def test_cached_ready_member_below_stored_target_cannot_authorize_final_exit(
     op = solver.op_data.operators[PRIMARY[0]]
     solver.op_data.update_detail(op.name, 15.9, "", -1, True)
 
-    assert not solver._emergency_ready()
+    assert solver._emergency_ready()
+    plan = solver._emergency_resting_handoff({})
+    projected = solver.op_data.project_arrangements([plan])
+    assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
+    assert all(projected.operators[name].is_working() for name in PRIMARY[2:])
     assert_temporary_workers_unchanged(solver)
 
 

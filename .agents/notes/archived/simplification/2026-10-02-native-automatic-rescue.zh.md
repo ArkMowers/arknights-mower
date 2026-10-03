@@ -1,9 +1,11 @@
 ---
 title: Mower 智能救急
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-02
 ---
+
+> Superseded by [Configured Rescue Schedule](../../implemented/simplification/2026-10-04-configured-rescue-schedule.md).
 
 # Mower 智能救急
 

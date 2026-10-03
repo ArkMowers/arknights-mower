@@ -1,4 +1,4 @@
-"""专项临时换人通过实际选人路径恢复智能救急的空岗位。"""
+"""专项临时换人通过实际选人路径恢复自动救急的空岗位。"""
 
 import copy
 from datetime import timedelta

@@ -1,7 +1,6 @@
 """整组替班选择失败后保留未完成义务，以实测候选重新完整匹配。"""
 
 import copy
-import pickle
 from datetime import timedelta
 from unittest.mock import MagicMock
 
@@ -20,7 +19,6 @@ from arknights_mower.tests.emergency_group_staffing_tests import (
 )
 from arknights_mower.tests.emergency_group_staffing_tests import staffing_task
 from arknights_mower.tests.mass_mood_recovery_tests import NOW, PRIMARY
-from arknights_mower.utils.emergency_staffing import StaffingCandidate
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -60,137 +58,6 @@ def prepare_pending(staffing, monkeypatch, *, partial=False):
     rejected = task.plan[failed_room][0]
     reject_room(solver, task, failed_room, monkeypatch)
     return rooms, original, rejected
-
-
-def replacement_candidates(rejected, *, missing=False):
-    candidates = [StaffingCandidate("赫默", 24, ()), StaffingCandidate("火神", 24, ())]
-    if not missing:
-        candidates.append(StaffingCandidate(rejected, 0, ()))
-    return candidates
-
-
-def test_rejection_stops_remaining_task_and_marks_persisted_group_for_rescore(
-    staffing, monkeypatch
-):
-    rooms, original, _ = prepare_pending(staffing, monkeypatch)
-    assert staffing.state["staffing_plan"] == original
-    assert staffing.solver.task is None
-    assert staffing.state["staffing_rescore"]
-    assert staffing.state["next_read"] == NOW
-    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
-    assert not any(
-        getattr(task, "emergency_staffing", False) for task in staffing.solver.tasks
-    )
-
-
-@pytest.mark.parametrize("missing", [False, True])
-def test_replan_replaces_low_mood_or_missing_candidate_before_group_leaves(
-    staffing, monkeypatch, missing
-):
-    solver = staffing.solver
-    rooms, original, rejected = prepare_pending(staffing, monkeypatch)
-    solver._emergency_scan_workers = MagicMock(
-        return_value=replacement_candidates(rejected, missing=missing)
-    )
-
-    assert solver._emergency_schedule_staffing()
-
-    task = staffing_task(solver)
-    assert rejected not in {name for room in rooms for name in task.plan[room]}
-    assert task.plan["dormitory_1"] == original["dormitory_1"]
-    assert solver._emergency_scan_workers.call_count == 2
-    assert all(
-        not call.kwargs["fixed"]
-        for call in solver._emergency_scan_workers.call_args_list
-    )
-    assert set(task.emergency_staffing_members) == {"塑心", *PRIMARY[:2]}
-    assert not staffing.state.get("staffing_rescore")
-    projected = solver.op_data.project_arrangements([task.plan])
-    assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
-
-
-@pytest.mark.parametrize("restart", [False, True])
-def test_partial_group_replan_and_restart_keep_unfinished_dorm_obligation(
-    staffing, monkeypatch, restart
-):
-    solver = staffing.solver
-    rooms, original, rejected = prepare_pending(staffing, monkeypatch, partial=True)
-    if restart:
-        solver.emergency_state = pickle.loads(pickle.dumps(staffing.state))
-    solver._emergency_scan_workers = MagicMock(
-        return_value=replacement_candidates(rejected)
-    )
-
-    assert solver.op_data.operators[PRIMARY[0]].is_resting()
-    assert solver.op_data.operators[PRIMARY[1]].is_working()
-    assert solver._emergency_schedule_staffing()
-
-    task = staffing_task(solver)
-    assert task.plan[rooms[1]][0] != rejected
-    assert task.plan["dormitory_1"] == original["dormitory_1"]
-    assert set(task.emergency_staffing_members) == {"塑心", *PRIMARY[:2]}
-    projected = solver.op_data.project_arrangements([task.plan])
-    assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
-
-
-def test_replan_shortage_retains_group_state_without_replaying_bad_candidate(
-    staffing, monkeypatch
-):
-    solver = staffing.solver
-    _, original, rejected = prepare_pending(staffing, monkeypatch)
-    solver._emergency_scan_workers = MagicMock(
-        return_value=[StaffingCandidate(rejected, 0, ())]
-    )
-
-    assert not solver._emergency_schedule_staffing()
-    assert not solver._emergency_schedule_staffing()
-
-    assert staffing.state["staffing_plan"] == original
-    assert staffing.state["staffing_rescore"]
-    assert set(staffing.state["staffing_members"]) == set(PRIMARY[:2])
-    assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
-    assert solver._emergency_scan_workers.call_count == 2
-
-
-def test_tick_reconciles_partial_progress_and_repairs_instead_of_requeueing(
-    staffing, monkeypatch
-):
-    solver = staffing.solver
-    rooms, _, rejected = prepare_pending(staffing, monkeypatch, partial=True)
-    solver._emergency_scan_workers = MagicMock(
-        return_value=replacement_candidates(rejected)
-    )
-    solver.plan_metadata = MagicMock()
-    solver._emergency_collect = MagicMock()
-    solver._emergency_update_targets = MagicMock()
-    solver._emergency_release_ready = MagicMock()
-    solver._emergency_ready = MagicMock(return_value=False)
-    solver._emergency_plan_beds = MagicMock()
-    monkeypatch.setattr(emergency, "try_workshop_tasks", MagicMock())
-
-    solver._emergency_tick()
-
-    task = staffing_task(solver)
-    assert task.plan[rooms[1]][0] != rejected
-    assert solver._emergency_scan_workers.call_count == 2
-    assert set(task.emergency_staffing_members) == {"塑心", *PRIMARY[:2]}
-
-
-def test_dorm_only_unfinished_plan_still_requeues_after_successful_rescore(staffing):
-    solver = staffing.solver
-    state = staffing.state
-    state["staffing_plan"] = {
-        "dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"]
-    }
-    state["staffing_members"] = [PRIMARY[0]]
-    state["staffing_rescore"] = True
-    solver._emergency_scan_workers.reset_mock()
-
-    assert solver._emergency_schedule_staffing()
-
-    assert staffing_task(solver).plan == state["staffing_plan"]
-    assert not state.get("staffing_rescore")
-    solver._emergency_scan_workers.assert_not_called()
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -280,3 +147,18 @@ def test_direct_release_task_reserves_only_ready_individuals(recovery_fixture): 
     assert len(observed) == 1
     assert set(observed[0][0]) == set(PRIMARY[:2])
     assert observed[0][1]
+
+
+def test_rejected_roster_retains_plan_and_rechecks_the_same_worker(
+    staffing, monkeypatch
+):
+    solver = staffing.solver
+    _, original, rejected = prepare_pending(staffing, monkeypatch)
+    assert staffing.state["staffing_plan"] == original
+    assert not staffing.state["staffing_complete"]
+    solver.op_data.operators[rejected].mood = 0
+    assert not solver._emergency_schedule_staffing()
+    assert not solver.tasks
+    solver.op_data.operators[rejected].mood = 24
+    assert solver._emergency_schedule_staffing()
+    assert staffing_task(solver).plan == original

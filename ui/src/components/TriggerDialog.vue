@@ -12,7 +12,7 @@ import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
 
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
 const depot_store = usedepotStore()
 const facility_store = useFacilityStore()

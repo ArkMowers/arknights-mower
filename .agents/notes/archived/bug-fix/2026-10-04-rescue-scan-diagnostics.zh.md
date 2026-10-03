@@ -1,9 +1,11 @@
 ---
 title: Rescue Scan Diagnostics
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-04
 ---
+
+> Superseded by [Configured Rescue Schedule](../../implemented/simplification/2026-10-04-configured-rescue-schedule.md).
 
 # 智能救急扫描诊断
 

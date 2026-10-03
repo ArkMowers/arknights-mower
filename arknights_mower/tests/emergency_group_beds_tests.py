@@ -81,7 +81,7 @@ def test_completed_priority_member_does_not_reserve_beds_for_peers(solver):
     data.operators[first[0]].mood = 6
     data.operators[second[0]].mood = 1
 
-    assert admissions(emergency_dorm_plan(data, state)) == {second[0], first[0]}
+    assert admissions(emergency_dorm_plan(data, state)) == set(second)
 
 
 @pytest.mark.parametrize("capacity", [1, 2])

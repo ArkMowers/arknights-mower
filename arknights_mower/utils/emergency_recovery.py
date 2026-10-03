@@ -382,7 +382,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
 
 
 def emergency_dorm_plan(data, state, tasks=(), *, members=None):
-    """救急按个人恢复需求分床；余床沿用共享候选和预约。"""
+    """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
         dorm_candidates,
@@ -453,7 +453,13 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None):
     probe = copy.copy(data)
     probe.dorm = beds
     plan = {}
-    for name in sorted(need | ordinary, key=lambda name: resting_key(data, name)):
+    groups = {}
+    for name in sorted(need, key=lambda name: (resting_key(data, name), name)):
+        group = (resting_tier(data, name), data.operators[name].group or name)
+        groups.setdefault(group, []).append(name)
+    ordered = [name for members in groups.values() for name in members]
+    ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
+    for name in ordered:
         op = data.operators[name]
         if name in residents or op.is_working():
             continue

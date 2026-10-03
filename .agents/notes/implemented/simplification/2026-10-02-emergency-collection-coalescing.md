@@ -15,7 +15,7 @@ date: 2026-10-02
 
 ## Simplification and Review
 
-The three separate collection callers become one, and the independent collection deadline is removed. The [assisted recovery contract](../../implemented/simplification/2026-10-02-native-automatic-rescue.md) retains the remaining recovery boundaries.
+The three separate collection callers become one, and the independent collection deadline is removed. The [assisted recovery contract](../../archived/simplification/2026-10-02-native-automatic-rescue.md) retains the remaining recovery boundaries.
 
 Standards Findings: collection reuses the existing side-effect boundary and persisted mood-check timestamp. No configuration or glossary definition changes are required.
 

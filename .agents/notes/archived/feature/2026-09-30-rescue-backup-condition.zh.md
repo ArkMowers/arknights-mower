@@ -5,7 +5,7 @@ category: feature
 date: 2026-09-30
 ---
 
-由 [Mower 自动救急恢复](../../implemented/simplification/2026-10-02-native-automatic-rescue.zh.md) 取代。
+由 [Mower 自动救急恢复](../../archived/simplification/2026-10-02-native-automatic-rescue.zh.md) 取代。
 
 
 # 救急副表条件

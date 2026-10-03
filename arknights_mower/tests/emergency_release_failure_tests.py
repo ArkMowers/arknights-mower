@@ -167,6 +167,8 @@ def test_pending_admission_does_not_reinsert_newly_ready_idle_primary(
     group_return, monkeypatch, recalculate
 ):
     solver = group_return.solver
+    # 本用例验证清退与补床；正常交接另有独立契约用例。
+    solver._emergency_ready = MagicMock(return_value=False)
     state = solver.emergency_state
     name = PRIMARY[0]
     operator = solver.op_data.operators[name]

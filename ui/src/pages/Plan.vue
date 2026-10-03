@@ -2,7 +2,7 @@
 defineOptions({ name: 'MowerPlanPage' })
 
 import { useConfigStore } from '@/stores/config'
-import { usePlanStore } from '@/stores/plan'
+import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 import PlanAdvancedSettings from '@/components/PlanAdvancedSettings.vue'
 import { storeToRefs } from 'pinia'
@@ -13,7 +13,11 @@ import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPe
 const config_store = useConfigStore()
 const { free_blacklist, theme } = storeToRefs(config_store)
 
-const plan_store = usePlanStore()
+const { rescue = false } = defineProps({ rescue: Boolean })
+const plan_store = rescue ? useRescuePlanStore() : usePlanStore()
+provide('planStore', plan_store)
+provide('rescuePlan', rescue)
+const rescue_ready = ref(!rescue)
 const mower_store = useMowerStore()
 const { running } = storeToRefs(mower_store)
 const import_saves = createSaveCoordinator(config_store, plan_store)
@@ -132,7 +136,15 @@ function onSubPlanKeydown(event) {
   if (event.key === 'Escape') sub_plan_dropdown_open.value = false
 }
 
-onMounted(() => {
+onMounted(async () => {
+  if (rescue) {
+    try {
+      await Promise.all([load_plan(), plan_store.load_operators()])
+      rescue_ready.value = true
+    } catch (error) {
+      message.error('救急排班加载失败：' + error.message)
+    }
+  }
   void refreshRunningStatus()
   running_status_timer = setInterval(refreshRunningStatus, 5000)
   document.addEventListener('pointerdown', onSubPlanOutsidePointer, true)
@@ -178,9 +190,13 @@ async function save() {
   loading_bar.finish()
   const form_data = new FormData()
   form_data.append('img', blob)
-  const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data, {
-    responseType: 'blob'
-  })
+  const { data } = await axios.post(
+    `${import.meta.env.VITE_HTTP_URL}/dialog/save/img${rescue ? '?rescue=1' : ''}`,
+    form_data,
+    {
+      responseType: 'blob'
+    }
+  )
   const url = window.URL.createObjectURL(data)
   const link = document.createElement('a')
   link.href = url
@@ -284,7 +300,7 @@ watchEffect(() => {
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
       refresh_trading: refresh_trading.value,
-      free_blacklist: free_blacklist.value,
+      free_blacklist: rescue ? [] : free_blacklist.value,
       refresh_drained: refresh_drained.value,
       ope_resting_priority: ope_resting_priority.value,
       dorm_order: dorm_order.value
@@ -353,7 +369,7 @@ watch(show_replace_dialog, (open) => {
 async function validate_plan() {
   try {
     const { data } = await axios.post(
-      `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
+      `${import.meta.env.VITE_HTTP_URL}/${rescue ? 'rescue-plan/validate' : 'validate-plan'}`,
       {},
       {
         headers: { token: token }
@@ -382,7 +398,7 @@ function replace_main_conf() {
     resting_standby: resting_standby.value,
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
-    free_blacklist: free_blacklist.value,
+    free_blacklist: rescue ? [] : free_blacklist.value,
     ope_resting_priority: ope_resting_priority.value,
     operator_mood_limits: operator_mood_limits.value
   }
@@ -455,7 +471,7 @@ async function import_plan({ event }) {
     const msg = event.target.response
     if (msg == '排班已加载') {
       sub_plan.value = 'main'
-      await config_store.load_config()
+      if (!rescue) await config_store.load_config()
       await load_plan()
       message.success('成功导入排班表！')
     } else {
@@ -473,7 +489,7 @@ function import_error() {
   message.error('排班表上传失败')
 }
 
-const import_url = `${import.meta.env.VITE_HTTP_URL}/import`
+const import_url = `${import.meta.env.VITE_HTTP_URL}/import${rescue ? '?rescue=1' : ''}`
 
 const token = inject('token')
 
@@ -487,9 +503,12 @@ const export_options = [
 async function export_json() {
   await drainConfigurationSaves(config_store, plan_store)
   await plan_store.save_plan()
-  const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/export-json`, {
-    responseType: 'blob'
-  })
+  const { data } = await axios.get(
+    `${import.meta.env.VITE_HTTP_URL}/${rescue ? 'rescue-plan' : 'export-json'}`,
+    {
+      responseType: 'blob'
+    }
+  )
   const url = window.URL.createObjectURL(data)
   const link = document.createElement('a')
   link.href = url
@@ -520,436 +539,444 @@ function movePlanForward() {
 </script>
 
 <template>
-  <trigger-dialog />
-  <task-dialog />
-  <rename-dialog />
-  <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
-    <div class="plan-bar">
-      <n-button-group class="plan-restore-group">
-        <n-tooltip trigger="hover" placement="top">
-          <template #trigger>
-            <n-button
-              class="plan-restore-button"
-              aria-label="还原为当前运行排班表"
-              :disabled="!running || edit_locked"
-              :loading="restoring_running_plan"
-              @click="restoreRunningPlan"
-            >
-              <template #icon>
-                <n-icon><undo-round /></n-icon>
-              </template>
-            </n-button>
-          </template>
-          {{ running ? '还原为当前运行排班表' : 'Mower 运行时可还原排班表' }}
-        </n-tooltip>
-      </n-button-group>
-      <n-button-group class="mower-sub-plan-controls plan-sort-controls">
-        <n-button
-          title="副表上移"
-          aria-label="副表上移"
-          :disabled="edit_locked || sub_plan == 'main' || sub_plan == 0"
-          @click="movePlanBackward"
-        >
-          <template #icon>
-            <n-icon><ios-arrow-back /></n-icon>
-          </template>
-        </n-button>
-        <n-button
-          title="副表下移"
-          aria-label="副表下移"
-          :disabled="edit_locked || sub_plan == 'main' || sub_plan == backup_plans.length - 1"
-          @click="movePlanForward"
-        >
-          <template #icon>
-            <n-icon><ios-arrow-forward /></n-icon>
-          </template>
-        </n-button>
-      </n-button-group>
-      <n-button-group class="mower-sub-plan-controls">
-        <n-select
-          v-model:value="sub_plan"
-          :show="sub_plan_dropdown_open"
-          style="width: 150px"
-          :options="sub_plan_options"
-          :menu-props="{ class: 'mower-sub-plan-menu' }"
-          @update:show="onSubPlanShowUpdate"
-          @update:value="onSubPlanSelected"
-        />
-        <n-button :disabled="edit_locked || sub_plan == 'main'" @click="show_name_editor = true">
-          <template #icon>
-            <n-icon>
-              <Pencil />
-            </n-icon>
-          </template>
-        </n-button>
-      </n-button-group>
-      <n-button-group>
-        <n-button title="新建副表" :disabled="edit_locked" @click="create_sub_plan">
-          <template #icon>
-            <n-icon :size="22"><plus-round /></n-icon>
-          </template>
-          新建副表
-        </n-button>
-        <n-button v-if="sub_plan == 'main'" title="验证排班" @click="validate_plan">
-          <template #icon>
-            <n-icon><help /></n-icon>
-          </template>
-          验证排班
-        </n-button>
-        <n-button
-          v-else
-          title="编辑触发条件"
+  <template v-if="rescue_ready">
+    <trigger-dialog />
+    <task-dialog />
+    <rename-dialog />
+    <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
+      <div class="plan-bar">
+        <n-button-group v-if="!rescue" class="plan-restore-group">
+          <n-tooltip trigger="hover" placement="top">
+            <template #trigger>
+              <n-button
+                class="plan-restore-button"
+                aria-label="还原为当前运行排班表"
+                :disabled="!running || edit_locked"
+                :loading="restoring_running_plan"
+                @click="restoreRunningPlan"
+              >
+                <template #icon>
+                  <n-icon><undo-round /></n-icon>
+                </template>
+              </n-button>
+            </template>
+            {{ running ? '还原为当前运行排班表' : 'Mower 运行时可还原排班表' }}
+          </n-tooltip>
+        </n-button-group>
+        <n-button-group class="mower-sub-plan-controls plan-sort-controls">
+          <n-button
+            title="副表上移"
+            aria-label="副表上移"
+            :disabled="edit_locked || sub_plan == 'main' || sub_plan == 0"
+            @click="movePlanBackward"
+          >
+            <template #icon>
+              <n-icon><ios-arrow-back /></n-icon>
+            </template>
+          </n-button>
+          <n-button
+            title="副表下移"
+            aria-label="副表下移"
+            :disabled="edit_locked || sub_plan == 'main' || sub_plan == backup_plans.length - 1"
+            @click="movePlanForward"
+          >
+            <template #icon>
+              <n-icon><ios-arrow-forward /></n-icon>
+            </template>
+          </n-button>
+        </n-button-group>
+        <n-button-group class="mower-sub-plan-controls">
+          <n-select
+            v-model:value="sub_plan"
+            :show="sub_plan_dropdown_open"
+            style="width: 150px"
+            :options="sub_plan_options"
+            :menu-props="{ class: 'mower-sub-plan-menu' }"
+            @update:show="onSubPlanShowUpdate"
+            @update:value="onSubPlanSelected"
+          />
+          <n-button :disabled="edit_locked || sub_plan == 'main'" @click="show_name_editor = true">
+            <template #icon>
+              <n-icon>
+                <Pencil />
+              </n-icon>
+            </template>
+          </n-button>
+        </n-button-group>
+        <n-button-group>
+          <n-button title="新建副表" :disabled="edit_locked" @click="create_sub_plan">
+            <template #icon>
+              <n-icon :size="22"><plus-round /></n-icon>
+            </template>
+            新建副表
+          </n-button>
+          <n-button v-if="sub_plan == 'main'" title="验证排班" @click="validate_plan">
+            <template #icon>
+              <n-icon><help /></n-icon>
+            </template>
+            验证排班
+          </n-button>
+          <n-button
+            v-else
+            title="编辑触发条件"
+            :disabled="edit_locked"
+            @click="show_trigger_editor = true"
+          >
+            <template #icon>
+              <n-icon><code-slash /></n-icon>
+            </template>
+            编辑触发条件
+          </n-button>
+          <n-button
+            v-if="sub_plan == 'main'"
+            title="一键替换干员"
+            :disabled="edit_locked"
+            @click="show_replace_dialog = true"
+          >
+            <template #icon>
+              <n-icon><refresh-round /></n-icon>
+            </template>
+            一键替换干员
+          </n-button>
+          <n-button
+            v-else-if="!rescue"
+            title="编辑任务"
+            :disabled="edit_locked"
+            @click="show_task = true"
+          >
+            <template #icon>
+              <n-icon><add-task-round /></n-icon>
+            </template>
+            编辑任务
+          </n-button>
+          <n-button
+            title="删除此副表"
+            :disabled="edit_locked || sub_plan == 'main'"
+            @click="delete_sub_plan"
+          >
+            <template #icon>
+              <n-icon><trash-outline /></n-icon>
+            </template>
+            删除此副表
+          </n-button>
+        </n-button-group>
+        <n-upload
           :disabled="edit_locked"
-          @click="show_trigger_editor = true"
+          :on-before-upload="beforeImport"
+          style="width: auto"
+          :action="import_url"
+          :headers="{ token: token }"
+          :show-file-list="false"
+          name="img"
+          @finish="import_plan"
+          @error="import_error"
         >
-          <template #icon>
-            <n-icon><code-slash /></n-icon>
-          </template>
-          编辑触发条件
-        </n-button>
-        <n-button
-          v-if="sub_plan == 'main'"
-          title="一键替换干员"
-          :disabled="edit_locked"
-          @click="show_replace_dialog = true"
-        >
-          <template #icon>
-            <n-icon><refresh-round /></n-icon>
-          </template>
-          一键替换干员
-        </n-button>
-        <n-button v-else title="编辑任务" :disabled="edit_locked" @click="show_task = true">
-          <template #icon>
-            <n-icon><add-task-round /></n-icon>
-          </template>
-          编辑任务
-        </n-button>
-        <n-button
-          title="删除此副表"
-          :disabled="edit_locked || sub_plan == 'main'"
-          @click="delete_sub_plan"
-        >
-          <template #icon>
-            <n-icon><trash-outline /></n-icon>
-          </template>
-          删除此副表
-        </n-button>
-      </n-button-group>
-      <n-upload
-        :disabled="edit_locked"
-        :on-before-upload="beforeImport"
-        style="width: auto"
-        :action="import_url"
-        :headers="{ token: token }"
-        :show-file-list="false"
-        name="img"
-        @finish="import_plan"
-        @error="import_error"
-      >
-        <n-button title="导入排班" :disabled="edit_locked">
-          <template #icon>
-            <n-icon><document-import /></n-icon>
-          </template>
-          导入排班
-        </n-button>
-      </n-upload>
-      <drop-down :select="export_json" :options="export_options">
-        <n-button
-          title="导出图片"
-          @click="save"
-          :loading="generating_image"
-          :disabled="generating_image"
-        >
-          <template #icon>
-            <n-icon><document-export /></n-icon>
-          </template>
-          导出图片
-        </n-button>
-      </drop-down>
+          <n-button title="导入排班" :disabled="edit_locked">
+            <template #icon>
+              <n-icon><document-import /></n-icon>
+            </template>
+            导入排班
+          </n-button>
+        </n-upload>
+        <drop-down :select="export_json" :options="export_options">
+          <n-button
+            title="导出图片"
+            @click="save"
+            :loading="generating_image"
+            :disabled="generating_image"
+          >
+            <template #icon>
+              <n-icon><document-export /></n-icon>
+            </template>
+            导出图片
+          </n-button>
+        </drop-down>
+      </div>
     </div>
-  </div>
-  <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
-  <div class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
-    <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
-    <n-button @click="show_mood_limits_dialog = true"> 设置心情上下限 </n-button>
-  </div>
-  <n-form
-    class="w-980 mx-auto mb-12 px-12 mw-980"
-    :label-placement="mobile ? 'top' : 'left'"
-    :show-feedback="false"
-    label-width="160"
-    label-align="left"
-  >
-    <n-form-item>
-      <template #label
-        ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
-      >
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.rest_in_full"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>需要用尽心情的干员</span>
-        <help-text>
-          用尽按当前心情下限计算， 优先取得替班；被占用时先换替班，否则叫回占用组。
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.exhaust_require"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍高优先级干员</span>
-        <help-text>
-          <p>
-            名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
-            空闲；同级距心情上限更远者优先。
-          </p>
-          <p>
-            只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
-          </p>
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.ope_resting_priority"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍低优先级干员</span>
-        <help-text>
-          低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.resting_priority"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍高优先级替班</span>
-        <help-text
-          >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先，可接管候补床位。</help-text
+    <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
+    <div v-if="!rescue" class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
+      <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
+      <n-button @click="show_mood_limits_dialog = true"> 设置心情上下限 </n-button>
+    </div>
+    <n-form
+      v-if="!rescue"
+      class="w-980 mx-auto mb-12 px-12 mw-980"
+      :label-placement="mobile ? 'top' : 'left'"
+      :show-feedback="false"
+      label-width="160"
+      label-align="left"
+    >
+      <n-form-item>
+        <template #label
+          ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
         >
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.resting_priority_replacement"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍休息候补干员</span>
-        <help-text>
-          有床休息，无床或被更高优接管后待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线升为低优并保床。
-
-          <p>待命不恢复心情；用尽、回满、固定宿舍和零心情工作干员不适用。</p>
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.resting_standby"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.workaholic"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍黑名单</span>
-        <help-text> 不参与动态分床和补床，固定宿舍岗位不受影响。 </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.free_blacklist"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>跑单时间刷新干员</span>
-        <help-text>
-          <p>贸易站外影响贸易效率的干员</p>
-          <p>
-            默认情况下，mower 只在贸易站内干员换班后重读所有贸易站的订单剩余时间。<br />
-            若有贸易站外的干员影响贸易效率，且与贸易站内的干员不在一组，则需写入此选项中。
-          </p>
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.refresh_trading"
-        select_placeholder="填入在贸易站外影响贸易效率的干员"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>用尽刷新</span>
-        <help-text>
-          <p>会影响用尽干员心情消耗速率的干员</p>
-          <p>在填入该选项的干员上下班后，会重新读取用尽干员的下班时间</p>
-        </help-text>
-      </template>
-      <slick-operator-select
-        :disabled="edit_locked"
-        v-model="current_conf.refresh_drained"
-      ></slick-operator-select>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍优先级排序</span>
-        <help-text>
-          按所选顺序分床，日常不搬动已入住者。主表默认 1→2→3→4；副表留空继承，调整后覆盖。
-        </help-text>
-      </template>
-      <slick-dorm-select
-        :disabled="edit_locked"
-        v-model="current_conf.dorm_order"
-        room-only
-        @update:model-value="update_dorm_order_override"
-      ></slick-dorm-select>
-    </n-form-item>
-  </n-form>
-  <n-modal
-    v-model:show="show_advanced_settings_dialog"
-    :auto-focus="false"
-    preset="card"
-    title="高级设置"
-    :style="{ width: '800px', maxWidth: 'calc(100vw - 24px)' }"
-    :content-style="{ maxHeight: '75vh', overflowY: 'auto' }"
-  >
-    <PlanAdvancedSettings
-      v-model:free-room-exclusions="current_conf.free_room_exclusions"
-      :disabled="edit_locked"
-    />
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="show_advanced_settings_dialog = false">完成</n-button>
-      </n-space>
-    </template>
-  </n-modal>
-  <n-modal
-    v-model:show="show_mood_limits_dialog"
-    :auto-focus="false"
-    preset="card"
-    title="设置心情上下限"
-    :style="{ width: '680px', maxWidth: 'calc(100vw - 24px)' }"
-    :content-style="{ maxHeight: '70vh', overflowY: 'auto' }"
-  >
-    <n-form label-placement="top" :show-feedback="false">
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.rest_in_full"
+        ></slick-operator-select>
+      </n-form-item>
       <n-form-item>
         <template #label>
-          <span>令夕模式</span>
+          <span>需要用尽心情的干员</span>
           <help-text>
-            <div>令夕上班时起作用</div>
-            <div>启动Mower前需要手动对齐心情</div>
-            <div>感知：夕心情-令心情=12</div>
-            <div>烟火：令心情-夕心情=12</div>
-            <div>均衡：夕令心情一样</div>
-            <div>个人设置优先于令夕模式，令夕模式优先于全体设置。</div>
+            用尽按当前心情下限计算， 优先取得替班；被占用时先换替班，否则叫回占用组。
           </help-text>
         </template>
-        <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
-          <n-space>
-            <n-radio :value="1">感知信息</n-radio>
-            <n-radio :value="2">人间烟火</n-radio>
-            <n-radio :value="3">均衡模式</n-radio>
-          </n-space>
-        </n-radio-group>
-      </n-form-item>
-      <n-form-item label="自定义上下限">
-        <mood-limits-editor
-          v-model:defaults="current_conf.mood_limits"
-          v-model:overrides="current_conf.operator_mood_limits"
+        <slick-operator-select
           :disabled="edit_locked"
-          :operators="operators"
-          :is-backup="sub_plan !== 'main'"
-        />
+          v-model="current_conf.exhaust_require"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>宿舍高优先级干员</span>
+          <help-text>
+            <p>
+              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
+              空闲；同级距心情上限更远者优先。
+            </p>
+            <p>
+              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
+            </p>
+          </help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.ope_resting_priority"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>宿舍低优先级干员</span>
+          <help-text>
+            低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
+          </help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.resting_priority"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>宿舍高优先级替班</span>
+          <help-text
+            >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先，可接管候补床位。</help-text
+          >
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.resting_priority_replacement"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>宿舍休息候补干员</span>
+          <help-text>
+            有床休息，无床或被更高优接管后待命；需有正常优先级主班在休息。绑组随组回班，未绑组随下一批回班。低于急救线升为低优并保床。
+
+            <p>待命不恢复心情；用尽、回满、固定宿舍和零心情工作干员不适用。</p>
+          </help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.resting_standby"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.workaholic"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>宿舍黑名单</span>
+          <help-text> 不参与动态分床和补床，固定宿舍岗位不受影响。 </help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.free_blacklist"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>跑单时间刷新干员</span>
+          <help-text>
+            <p>贸易站外影响贸易效率的干员</p>
+            <p>
+              默认情况下，mower 只在贸易站内干员换班后重读所有贸易站的订单剩余时间。<br />
+              若有贸易站外的干员影响贸易效率，且与贸易站内的干员不在一组，则需写入此选项中。
+            </p>
+          </help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.refresh_trading"
+          select_placeholder="填入在贸易站外影响贸易效率的干员"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>用尽刷新</span>
+          <help-text>
+            <p>会影响用尽干员心情消耗速率的干员</p>
+            <p>在填入该选项的干员上下班后，会重新读取用尽干员的下班时间</p>
+          </help-text>
+        </template>
+        <slick-operator-select
+          :disabled="edit_locked"
+          v-model="current_conf.refresh_drained"
+        ></slick-operator-select>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>宿舍优先级排序</span>
+          <help-text>
+            按所选顺序分床，日常不搬动已入住者。主表默认 1→2→3→4；副表留空继承，调整后覆盖。
+          </help-text>
+        </template>
+        <slick-dorm-select
+          :disabled="edit_locked"
+          v-model="current_conf.dorm_order"
+          room-only
+          @update:model-value="update_dorm_order_override"
+        ></slick-dorm-select>
       </n-form-item>
     </n-form>
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="show_mood_limits_dialog = false">完成</n-button>
-      </n-space>
-    </template>
-  </n-modal>
-  <n-modal
-    v-model:show="show_replace_dialog"
-    preset="card"
-    title="一键替换干员"
-    :style="{ width: '560px' }"
-  >
-    <n-alert title="警告" type="warning">
-      该操作会一键替换主表+副表所有干员名字，不可逆，使用前最好复制现有排班表，以防出错
-    </n-alert>
-    <div class="replace-flow">
-      <div class="replace-side">
-        <div class="replace-side-label">被替换干员（排班中已有）</div>
-        <n-select
-          v-model:value="replace_source"
-          :disabled="edit_locked"
-          :options="replace_source_options"
-          placeholder="选择排班中的干员"
-          filterable
-          :filter="(p, o) => pinyin_match(o.label, p)"
-          :render-label="render_op_label"
-        />
-      </div>
-      <svg
-        class="replace-arrow"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M5 12h13m-5-5 5 5-5 5"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-      <div class="replace-side">
-        <div class="replace-side-label">替换为（全部干员池）</div>
-        <n-select
-          v-model:value="replace_target"
-          :disabled="edit_locked"
-          :options="operators"
-          placeholder="选择目标干员"
-          filterable
-          :filter="(p, o) => pinyin_match(o.label, p)"
-          :render-label="render_op_label"
-        />
-      </div>
-    </div>
-    <n-alert
-      v-if="target_already_in_plan"
-      title="目标干员已在排班中"
-      type="warning"
-      class="replace-duplicate"
+    <n-modal
+      v-model:show="show_advanced_settings_dialog"
+      :auto-focus="false"
+      preset="card"
+      title="高级设置"
+      :style="{ width: '800px', maxWidth: 'calc(100vw - 24px)' }"
+      :content-style="{ maxHeight: '75vh', overflowY: 'auto' }"
     >
-      目标干员已存在于排班（可能来自之前的替换，如主表换过、副表没换）。仍可替换：点「替换」后确认即可继续。
-    </n-alert>
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="show_replace_dialog = false">取消</n-button>
-        <n-button type="primary" :disabled="edit_locked" @click="apply_replace">替换</n-button>
-      </n-space>
-    </template>
-  </n-modal>
+      <PlanAdvancedSettings
+        v-model:free-room-exclusions="current_conf.free_room_exclusions"
+        :disabled="edit_locked"
+      />
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="show_advanced_settings_dialog = false">完成</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+    <n-modal
+      v-model:show="show_mood_limits_dialog"
+      :auto-focus="false"
+      preset="card"
+      title="设置心情上下限"
+      :style="{ width: '680px', maxWidth: 'calc(100vw - 24px)' }"
+      :content-style="{ maxHeight: '70vh', overflowY: 'auto' }"
+    >
+      <n-form label-placement="top" :show-feedback="false">
+        <n-form-item>
+          <template #label>
+            <span>令夕模式</span>
+            <help-text>
+              <div>令夕上班时起作用</div>
+              <div>启动Mower前需要手动对齐心情</div>
+              <div>感知：夕心情-令心情=12</div>
+              <div>烟火：令心情-夕心情=12</div>
+              <div>均衡：夕令心情一样</div>
+              <div>个人设置优先于令夕模式，令夕模式优先于全体设置。</div>
+            </help-text>
+          </template>
+          <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
+            <n-space>
+              <n-radio :value="1">感知信息</n-radio>
+              <n-radio :value="2">人间烟火</n-radio>
+              <n-radio :value="3">均衡模式</n-radio>
+            </n-space>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item label="自定义上下限">
+          <mood-limits-editor
+            v-model:defaults="current_conf.mood_limits"
+            v-model:overrides="current_conf.operator_mood_limits"
+            :disabled="edit_locked"
+            :operators="operators"
+            :is-backup="sub_plan !== 'main'"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="show_mood_limits_dialog = false">完成</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+    <n-modal
+      v-model:show="show_replace_dialog"
+      preset="card"
+      title="一键替换干员"
+      :style="{ width: '560px' }"
+    >
+      <n-alert title="警告" type="warning">
+        该操作会一键替换主表+副表所有干员名字，不可逆，使用前最好复制现有排班表，以防出错
+      </n-alert>
+      <div class="replace-flow">
+        <div class="replace-side">
+          <div class="replace-side-label">被替换干员（排班中已有）</div>
+          <n-select
+            v-model:value="replace_source"
+            :disabled="edit_locked"
+            :options="replace_source_options"
+            placeholder="选择排班中的干员"
+            filterable
+            :filter="(p, o) => pinyin_match(o.label, p)"
+            :render-label="render_op_label"
+          />
+        </div>
+        <svg
+          class="replace-arrow"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M5 12h13m-5-5 5 5-5 5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <div class="replace-side">
+          <div class="replace-side-label">替换为（全部干员池）</div>
+          <n-select
+            v-model:value="replace_target"
+            :disabled="edit_locked"
+            :options="operators"
+            placeholder="选择目标干员"
+            filterable
+            :filter="(p, o) => pinyin_match(o.label, p)"
+            :render-label="render_op_label"
+          />
+        </div>
+      </div>
+      <n-alert
+        v-if="target_already_in_plan"
+        title="目标干员已在排班中"
+        type="warning"
+        class="replace-duplicate"
+      >
+        目标干员已存在于排班（可能来自之前的替换，如主表换过、副表没换）。仍可替换：点「替换」后确认即可继续。
+      </n-alert>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="show_replace_dialog = false">取消</n-button>
+          <n-button type="primary" :disabled="edit_locked" @click="apply_replace">替换</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+  </template>
 </template>
 
 <style scoped lang="scss">

@@ -39,11 +39,11 @@ def test_complete_group_remains_reserved_as_individual_room_plans_finish(
     assert solver._emergency_schedule_staffing()
     task = staffing_task(solver)
     members = set(task.emergency_staffing_members)
-    assert members == set(PRIMARY[:2])
+    assert members == set(PRIMARY)
     if remaining == "one_room":
         task.plan = {"room_1_1": ["红"]}
     elif remaining == "check_only":
-        check = SchedulerTask(meta_data="智能救急继续安排")
+        check = SchedulerTask(meta_data="自动救急继续安排")
         check.emergency_staffing_members = list(members)
         task = check
     task = pickle.loads(pickle.dumps(task))
@@ -52,7 +52,7 @@ def test_complete_group_remains_reserved_as_individual_room_plans_finish(
 
     assert members <= reserved
     for name in members:
-        assert "智能救急整组换班任务预约" in workshop_operator_block_reason(
+        assert "自动救急换班任务预约" in workshop_operator_block_reason(
             solver.op_data, name, [task], minimum_mood=0
         )
 
@@ -73,7 +73,7 @@ def test_group_membership_reservation_does_not_block_unrelated_workshop_worker(
 
 def test_completed_group_releases_shared_obligation(staffing):  # noqa: F811
     solver = staffing.solver
-    check = SchedulerTask(meta_data="智能救急继续安排")
+    check = SchedulerTask(meta_data="自动救急继续安排")
     check.emergency_staffing_members = []
 
     assert "塑心" not in dorm_task_reservations(solver.op_data, [check])[0]

@@ -1151,6 +1151,48 @@ def load_plan_from_json():
         return {"message": "New plan saved。"}
 
 
+@app.route("/rescue-plan", methods=["GET", "POST"])
+@require_token
+def rescue_plan_route():
+    if request.method == "GET":
+        return config.conf.automatic_rescue_plan.model_dump(exclude_none=True)
+    try:
+        plan = config.PlanModel(**request.json)
+    except (ValueError, TypeError):
+        return {"error": "救急排班格式无效"}, 400
+    _save_rescue_plan(plan)
+    return {"message": "救急排班已保存"}
+
+
+def _save_rescue_plan(plan):
+    from arknights_mower.utils.workshop_config import workshop_lock
+
+    with workshop_lock:
+        previous = config.conf.automatic_rescue_plan
+        config.conf.automatic_rescue_plan = plan
+        try:
+            config.save_conf()
+        except Exception:
+            config.conf.automatic_rescue_plan = previous
+            raise
+
+
+@app.route("/rescue-plan/validate", methods=["POST"])
+@require_token
+def validate_rescue_plan_route():
+    from arknights_mower.utils.emergency_plan import effective_rescue_plan
+
+    try:
+        data = Operators(build_global_plan())
+        error = data.init_and_validate()
+        if error:
+            return {"success": False, "message": str(error)}
+        effective_rescue_plan(data, config.conf.automatic_rescue_plan)
+    except (ValueError, TypeError) as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "message": "救急排班验证通过"}
+
+
 @app.route("/plan/restore-running", methods=["POST"])
 @require_token
 def restore_running_plan():
@@ -1827,6 +1869,9 @@ def import_from_image():
             imported_plan = parse_plan_document(qrcode.decode(img))
     except (ValueError, TypeError, RecursionError, OSError, ZlibError):
         return "排班表导入失败：请选择有效的排班 JSON、排班图片或包含 config 文件夹的 ZIP 备份"
+    if request.args.get("rescue") == "1":
+        _save_rescue_plan(imported_plan)
+        return "排班已加载"
     try:
         imported_conf = apply_advanced_settings(
             config.conf, imported_plan.advanced_settings
@@ -1906,8 +1951,11 @@ def save_file_dialog():
 
     upper = Image.open(img)
 
-    plan_data = config.plan.model_dump(exclude_none=True)
-    plan_data["advanced_settings"] = export_advanced_settings(config.conf)
+    if request.args.get("rescue") == "1":
+        plan_data = config.conf.automatic_rescue_plan.model_dump(exclude_none=True)
+    else:
+        plan_data = config.plan.model_dump(exclude_none=True)
+        plan_data["advanced_settings"] = export_advanced_settings(config.conf)
     img = qrcode.export(plan_data, upper, config.conf.theme)
     buffer = BytesIO()
     img.save(buffer, format="JPEG")

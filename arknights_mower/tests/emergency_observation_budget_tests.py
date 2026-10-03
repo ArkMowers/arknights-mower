@@ -1,4 +1,4 @@
-"""智能救急逐房复查让出严格清退窗口并保存未完成房间。"""
+"""自动救急逐房复查让出严格清退窗口并保存未完成房间。"""
 
 import copy
 import pickle
@@ -94,7 +94,6 @@ def observation_solver(legacy_solver, monkeypatch):
     solver._emergency_ready = MagicMock(return_value=False)
     solver._emergency_restore = MagicMock(return_value=False)
     solver._emergency_schedule_staffing = MagicMock(return_value=False)
-    solver._emergency_scan_workers = MagicMock()
     solver._emergency_plan_beds = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.run_order_solver = MagicMock()
@@ -156,7 +155,6 @@ def test_due_observation_yields_each_room_before_strict_release(
     solver._emergency_ready.assert_not_called()
     solver._emergency_restore.assert_not_called()
     solver._emergency_schedule_staffing.assert_not_called()
-    solver._emergency_scan_workers.assert_not_called()
     if window == 90:
         solver._emergency_collect.assert_not_called()
 

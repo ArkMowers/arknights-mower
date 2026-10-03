@@ -116,7 +116,7 @@ def workshop_operator_block_reason(
 ):
     """返回加工受阻原因；自动入队和调人前共享心情及预约规则。"""
     if operator in getattr(op_data, "emergency_reserved_agents", ()):
-        return "已被智能救急恢复安排预约"
+        return "已被自动救急恢复安排预约"
     for task in tasks:
         if (
             task is not current_task
@@ -127,7 +127,7 @@ def workshop_operator_block_reason(
             )
         ):
             if operator in getattr(task, "emergency_staffing_members", ()):
-                return "已被智能救急整组换班任务预约"
+                return "已被自动救急换班任务预约"
             return f"已被{task.type.display_value}任务预约"
     op = op_data.operators.get(operator)
     if op is None:

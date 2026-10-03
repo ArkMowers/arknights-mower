@@ -1,4 +1,4 @@
-"""智能救急沿用正常宿舍床位和恢复层级，不修改工作主班。"""
+"""自动救急沿用正常宿舍床位和恢复层级，不修改工作主班。"""
 
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
@@ -82,3 +82,16 @@ def test_normal_managers_remain_while_required_primary_recovers(solver):
     assert [data.get_current_operator("dormitory_1", index) for index in (0, 1)] == (
         managers
     )
+
+
+def test_same_group_admitted_before_other_group_and_spare_fillers(solver):
+    data = solver.op_data
+    for index, name in enumerate(PRIMARY):
+        op = data.operators[name]
+        op._current_room, op.current_index = "", -1
+        op.mood = index * 3
+    for name in (PRIMARY[0], PRIMARY[3]):
+        data.operators[name].group = "同组"
+    data.groups["同组"] = [PRIMARY[0], PRIMARY[3]]
+    data.dorm = data.dorm[:2]
+    assert admissions(emergency_dorm_plan(data, episode())) == {PRIMARY[0], PRIMARY[3]}
