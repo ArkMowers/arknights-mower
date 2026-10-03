@@ -959,9 +959,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.enter_room("factory")
         if "factory" not in restore_plan:
             restore_plan["factory"] = [
-                key
-                for key, value in self.op_data.operators.items()
-                if value.current_room == "factory"
+                row["agent"]
+                for row in self.get_agent_from_room("factory")
+                if row["agent"]
             ] or [task.meta_data]
             # 原本无人时沿用单次加工行为，首位加工干员作为最终留驻干员。
         agent_room = operator.current_room if operator is not None else ""
@@ -7027,6 +7027,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.wait_product_complete()
         if room == "train":
             length = 2
+        elif room == "factory":
+            length = 1
         else:
             length = len(self.op_data.plan[room])
         if length > 3:
@@ -7053,9 +7055,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 swiped = True
             data = {}
             _name = ""
+            slot_empty = False
             for read_try in range(3):
                 if self.find("infra_no_operator", scope=slot_p[i]):
                     _name = ""
+                    slot_empty = True
                     break
                 _name = self.read_screen(
                     cropimg(self.recog.gray, name_p[i]), type="name"
@@ -7068,6 +7072,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
                     self.sleep(0.25)
                     self.recog.update()
+            if room == "factory" and not _name and not slot_empty:
+                raise RecognizeError("加工站驻员姓名三次读取失败，保留位置缓存")
             _mood = 24
             # 如果房间不为空
             update_time = False

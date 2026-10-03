@@ -371,6 +371,7 @@ def test_exhausted_operator_skips_before_entry_or_immediately_after_existing_moo
 
     solver.agent_arrange = MagicMock(side_effect=arrange)
     solver.factory_scene = MagicMock(wraps=solver.factory_scene)
+    solver.get_agent_from_room = MagicMock(return_value=[{"agent": "特克诺"}])
     sync = MagicMock()
     monkeypatch.setattr(
         base, "cultivateDepotSolver", lambda: SimpleNamespace(start=sync)
@@ -409,6 +410,7 @@ def test_resting_or_unknown_mood_is_refreshed_by_existing_entry_read(
         solver.op_data.operators["蜜莓"].current_room = "factory"
 
     solver.agent_arrange = MagicMock(side_effect=arrange)
+    solver.get_agent_from_room = MagicMock(return_value=[{"agent": ""}])
     solver.craft_material()
     base.save_exception.assert_not_called()
     solver.agent_arrange.assert_called_once_with({"factory": ["蜜莓"]})
