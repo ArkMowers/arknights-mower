@@ -6996,9 +6996,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 swiped = True
             data = {}
             _name = ""
+            slot_empty = False
             for read_try in range(3):
                 if self.find("infra_no_operator", scope=slot_p[i]):
                     _name = ""
+                    slot_empty = True
                     break
                 _name = self.read_screen(
                     cropimg(self.recog.gray, name_p[i]), type="name"
@@ -7011,6 +7013,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     self.sleep(0.25)
                     self.recog.update()
+            if room == "factory" and not _name and not slot_empty:
+                raise RecognizeError("加工站驻员姓名三次读取失败，保留位置缓存")
             _mood = 24
             # 如果房间不为空
             update_time = False

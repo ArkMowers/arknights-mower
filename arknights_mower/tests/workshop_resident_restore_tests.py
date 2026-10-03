@@ -8,6 +8,7 @@ import pytest
 from arknights_mower.tests import base_scheduler_tests
 from arknights_mower.tests.workshop_batch_tests import batch as batch
 from arknights_mower.utils.operators import Operators
+from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene
 
 BaseSchedulerSolver = base_scheduler_tests.BaseSchedulerSolver
@@ -15,9 +16,18 @@ BaseSchedulerSolver = base_scheduler_tests.BaseSchedulerSolver
 
 @pytest.mark.parametrize("factory_plan", [None, []])
 @pytest.mark.parametrize("cached", [True, False])
-@pytest.mark.parametrize("resident", ["特克诺", ""])
+@pytest.mark.parametrize(
+    "resident, name_readings",
+    [
+        ("特克诺", []),
+        ("", []),
+        ("特克诺", ["", "特克诺"]),
+        ("特克诺", ["", "", "特克诺"]),
+        ("特克诺", ["", "", ""]),
+    ],
+)
 def test_batch_reads_actual_resident_before_selection_and_restores_positions(
-    batch, factory_plan, cached, resident
+    batch, factory_plan, cached, resident, name_readings
 ):
     solver = batch.solver
     if factory_plan is None:
@@ -32,6 +42,7 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
     arrange = solver.agent_arrange.side_effect
     events = []
     pending_factory = []
+    pending_readings = name_readings[:]
     solver.waiting_scene = []
     solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
@@ -61,6 +72,8 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
         events.append(("confirm", actual_factory[:]))
 
     def read_name(*args, **kwargs):
+        if pending_readings:
+            return pending_readings.pop(0)
         return actual_factory[0]
 
     def find(name, **kwargs):
@@ -103,7 +116,33 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
         side_effect=MethodType(BaseSchedulerSolver.get_agent_from_room, solver)
     )
 
+    original_positions = {
+        name: (operator.current_room, operator.current_index)
+        for name, operator in solver.op_data.operators.items()
+    }
+    original_tasks = solver.tasks[:]
+    solver.sleep = MagicMock()
+
     solver.craft_material()
+
+    if name_readings == ["", "", ""]:
+        assert batch.crafts == []
+        assert solver.op_data.plan == original_plan
+        assert actual_factory == [resident]
+        assert {
+            name: (operator.current_room, operator.current_index)
+            for name, operator in solver.op_data.operators.items()
+        } == original_positions
+        assert solver.tasks == original_tasks
+        solver.choose_agent.assert_not_called()
+        solver.tap_confirm.assert_not_called()
+        solver.agent_arrange.assert_not_called()
+        batch.errors.assert_called_once()
+        assert isinstance(batch.errors.call_args.args[0], RecognizeError)
+        assert solver.read_screen.call_count == 3
+        assert solver.sleep.call_count == 2
+        batch.errors.reset_mock()
+        solver.craft_material()
 
     assert batch.crafts == ["蜜莓", "年", "空爆"]
     assert solver.op_data.plan == original_plan
