@@ -229,3 +229,41 @@ def test_rebuilding_capacity_preserves_actual_resident_and_recovery_deadline(sol
     )
     assert refreshed.name == resident.name and refreshed.time == NOW
     assert len({candidate.position for candidate in data.dorm}) == 10
+
+
+@pytest.mark.parametrize("need", [9, 8, 7, 0])
+def test_at_most_one_group_or_shared_manager_restores_per_dorm(solver, need):
+    data = solver.op_data
+    data.global_plan["default_plan"].plan["dormitory_1"] = [
+        Room("冰酿", "", []),
+        Room("夜莺", "", []),
+        Room("赫拉格", "", []),
+        Room("Free", "", []),
+        Room("Free", "", []),
+    ]
+    data.swap_plan([])
+    assert data.init_and_validate() is None
+    data, state = setup_episode(solver, 10)
+    solver._open_emergency_beds()
+    state["ready_members"] = RECOVERY_NAMES[need:]
+    for row in state["dorm_layout"].values():
+        for name in row:
+            if name in data.operators:
+                (
+                    data.operators[name]._current_room,
+                    data.operators[name].current_index,
+                ) = "", -1
+
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+
+    restored = {
+        room: [slot.agent for slot in data.plan[room] if slot.agent != "Free"]
+        for room in state["dorm_layout"]
+    }
+    assert restored["dormitory_1"] == ["冰酿"]
+    assert restored["dormitory_2"] == ([] if need == 9 else ["杜林"])
+    assert len(data.dorm) == (9 if need == 9 else 8)
+    assert not {"夜莺", "赫拉格", "安赛尔"} & {
+        name for task in solver.tasks for row in task.plan.values() for name in row
+    }

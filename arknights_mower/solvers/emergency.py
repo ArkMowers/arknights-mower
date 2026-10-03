@@ -743,7 +743,7 @@ class EmergencyRecoveryMixin:
         return True
 
     def _open_emergency_beds(self):
-        """救急开放宿管床位，余量仅补回群回宿管；菲亚保持原位。"""
+        """救急开放宿管床位，每房余量仅补回一名群回宿管；菲亚保持原位。"""
         data, state = self.op_data, self.emergency_state
         layout = state.get("dorm_layout", {})
         if not layout:
@@ -767,10 +767,10 @@ class EmergencyRecoveryMixin:
         capacity = sum(name != "菲亚梅塔" for row in layout.values() for name in row)
         spare = max(0, capacity - len(need))
         reserved, _ = dorm_task_reservations(data, self.tasks)
-        restored = set()
+        restored = {}
         for index in range(max(map(len, layout.values()))):
             for room, row in layout.items():
-                if index >= len(row) or spare <= 0:
+                if index >= len(row) or spare <= 0 or room in restored:
                     continue
                 name = row[index]
                 manager = data.operators.get(name)
@@ -786,11 +786,11 @@ class EmergencyRecoveryMixin:
                     and resident.name in need
                 ):
                     continue
-                restored.add((room, index))
+                restored[room] = index
                 spare -= 1
         for room, row in layout.items():
             for index, name in enumerate(row):
-                fixed = name == "菲亚梅塔" or (room, index) in restored
+                fixed = name == "菲亚梅塔" or restored.get(room) == index
                 data.plan[room][index].agent = name if fixed else "Free"
                 if fixed:
                     continue

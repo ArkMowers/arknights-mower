@@ -23,7 +23,7 @@ The shared `emergency_dorm_plan` allocates explicit individual recovery needs wi
 
 Unfinished recovery primaries use available beds by individual need and shared priority. Capacity shortage queues remaining recovery needs instead of rejecting a complete working-group replacement. Ready primaries release beds independently and retain measured target responsibility in `ready_members` across partial arrangements and restart. Actual occupancy confirms completed departures; an uncompleted physical departure keeps its bed identity and reservation.
 
-Manager positions participate in recovery except the configured Fiammetta position. Reduced recovery demand restores only configured dormitory group-recovery or shared-recovery managers, including Bingniang, to unneeded capacity. Single-target and self-recovery managers leave those positions open. Manager restoration never removes an unfinished recovery primary. Restoring a manager position does not perform an ordinary working-facility swap. Final handoff restores the normal dormitory layout together with working staffing.
+Manager positions participate in recovery except the configured Fiammetta position. Reduced recovery demand restores at most one configured dormitory group-recovery or shared-recovery manager per dormitory, including Bingniang, to unneeded capacity. Single-target and self-recovery managers leave those positions open. Manager restoration never removes an unfinished recovery primary. Restoring a manager position does not perform an ordinary working-facility swap. Final handoff restores the normal dormitory layout together with working staffing.
 
 ## Observation and Scheduling Boundaries
 
@@ -33,7 +33,7 @@ Strict personal-limit releases and their operation windows remain authoritative.
 
 ## Verification
 
-Offline tests cover individual admission for a group exceeding bed capacity, working-side complete replacement, manager-position capacity and restoration order, Fiammetta position retention, individual measured release, standby reservations and restart readback, stable temporary working combinations, and final target/native-feasibility handoff. Existing grouped staffing, strict-release, candidate-mood, processing and specialized compensation suites defend unchanged boundaries.
+Offline tests cover individual admission for a group exceeding bed capacity, working-side complete replacement, manager-position capacity and group-recovery eligibility, Fiammetta position retention, individual measured release, standby reservations and restart readback, stable temporary working combinations, and final target/native-feasibility handoff. Existing grouped staffing, strict-release, candidate-mood, processing and specialized compensation suites defend unchanged boundaries.
 
 ## Review
 
