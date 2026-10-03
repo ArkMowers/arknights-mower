@@ -3,7 +3,11 @@
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
+
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 
 
 def compile_mood_buff(buff):
@@ -47,8 +51,13 @@ def compile_mood_buff(buff):
 @lru_cache(maxsize=1)
 def _bundled_moods():
     return json.loads(
-        (Path(__file__).parents[1] / "data/skill_data.json").read_text("utf-8")
+        resource_pkg_path("arknights_mower/data/skill_data.json").read_text("utf-8")
     )["workshop"].get("mood_operators", {})
+
+
+@register_resource_reload
+def reload_workshop_moods():
+    _bundled_moods.cache_clear()
 
 
 def operator_mood_rules(name):

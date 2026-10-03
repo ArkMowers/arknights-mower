@@ -941,6 +941,31 @@ class Arknights数据处理器:
                 return name
         return ""
 
+    def 提取干员目录(self):
+        """Generate display metadata independently of mastery eligibility."""
+        catalog = {}
+        for char_id, info in (
+            self.干员表 | self.干员形态表.get("patchChars", {})
+        ).items():
+            if not char_id.startswith("char_") or not info.get("name"):
+                continue
+            rarity = info.get("rarity")
+            if isinstance(rarity, str) and rarity.startswith("TIER_"):
+                rarity = int(rarity.removeprefix("TIER_"))
+            elif isinstance(rarity, int):
+                rarity += 1
+            else:
+                continue
+            catalog[char_id] = {
+                "name": info["name"],
+                "profession": info.get("profession", ""),
+                "rarity": rarity,
+            }
+        output_path = "./arknights_mower/data/operator_catalog.json"
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(catalog, f, ensure_ascii=False, separators=(",", ":"))
+        print(f"  干员目录: {len(catalog)} 条")
+
     def 提取专精数据(self):
         import time as _time
 
@@ -1264,6 +1289,9 @@ print("训练训练室干员名的模型,完成")
 
 数据处理器.获取加工站配方类别()
 数据处理器.获取家具套装()
+
+数据处理器.提取干员目录()
+print("提取干员目录,完成")
 
 数据处理器.提取专精数据()
 print("提取专精数据,完成")
