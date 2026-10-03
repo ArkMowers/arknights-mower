@@ -15,7 +15,10 @@ from arknights_mower.utils.building_skills import (
 )
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.dorm_candidates import dorm_task_reservations
+from arknights_mower.utils.dorm_candidates import (
+    dorm_candidate_mood,
+    dorm_task_reservations,
+)
 from arknights_mower.utils.dorm_skills import (
     is_group_recovery_manager,
     is_single_recovery_manager,
@@ -104,6 +107,9 @@ class EmergencyRecoveryMixin:
         due = datetime.now() + timedelta(minutes=1)
         if self._emergency_active():
             self.emergency_state["next_read"] = due
+            self._emergency_queue_check()
+            self._emergency_save()
+            return
         check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
         if check is None:
             self.tasks.append(SchedulerTask(time=due, meta_data=CHECK_META))
@@ -256,8 +262,6 @@ class EmergencyRecoveryMixin:
             "next_read": now,
         }
         self.emergency_state = state
-        self._emergency_update_targets()
-        self._open_emergency_beds()
         self.tasks[:] = [
             task
             for task in self.tasks
@@ -270,9 +274,6 @@ class EmergencyRecoveryMixin:
                 and not getattr(task, "emergency_staffing", False)
             )
         ]
-        self._emergency_save()
-        self.plan_metadata()
-        self._emergency_schedule_staffing()
         state["observed_at"] = datetime.now()
         self._emergency_save()
 
@@ -297,11 +298,31 @@ class EmergencyRecoveryMixin:
     def _emergency_scan_workers(
         self, room, facility, reserved, *, snapshot=None, fixed=()
     ):
-        """每个设施最多扫描二十页、四十五秒；观测后取消暂选。"""
+        """复用初始化心情与技能；缺失时每设施最多扫描二十页、四十五秒。"""
         deadline = monotonic() + 45
         candidates, seen = [], set()
         if snapshot is None:
             snapshot = load_skill_snapshot()
+        if snapshot and snapshot.get("has_data") and snapshot.get("operators"):
+            for operator in snapshot["operators"]:
+                name = operator["name"]
+                if operator["owned"] is False or name in reserved and name not in fixed:
+                    continue
+                mood = dorm_candidate_mood(self.op_data, name, datetime.now())
+                if (
+                    name not in fixed
+                    and mood is not None
+                    and not eligible_worker(self.op_data, name, mood, reserved)
+                ):
+                    continue
+                skills = unlocked_skills(name, facility, snapshot)
+                if operator["owned"] is not True or skills is None or mood is None:
+                    break
+                candidates.append(StaffingCandidate(name, mood, skills))
+            else:
+                if all(any(c.name == name for c in candidates) for name in fixed):
+                    return candidates
+            candidates = []
         try:
             self.enter_room(room, max_attempts=1)
             self.refresh_facility_state(room)
@@ -910,92 +931,70 @@ class EmergencyRecoveryMixin:
             )
         ]
 
-    def _emergency_tick(self):
-        self._emergency_filter_tasks()
+    def _emergency_reconcile_staffing(self):
+        """已派发安排以实际驻员核销，尚未读到的房间保留待办。"""
         state = self.emergency_state
-        now = datetime.now()
-        if not any(getattr(t, "emergency_staffing", False) for t in self.tasks):
-            pending = state.get("staffing_plan", {})
-            state["staffing_plan"] = {
-                room: row
-                for room, row in pending.items()
-                if (actual := self.op_data.get_current_room(room, True)) is not None
-                and any(
-                    name != "Current" and name != actual[index]
-                    for index, name in enumerate(row)
-                )
-            }
-            if pending and not state["staffing_plan"]:
-                state.pop("staffing_members", None)
-                state["phase"] = "recovering"
-                state["temporary_roster"] = {
-                    room: self.op_data.get_current_room(room, True)
-                    for room in self.op_data.plan
-                    if not room.startswith("dorm")
-                }
-                self.run_order_solver()
-        read_due = now >= state.get("next_read", now)
-        self.plan_metadata()
-        protect_priority_tasks(self.tasks)
-        if read_due:
-            if state.get("handoff_observing"):
-                if not self._emergency_restore():
-                    self._emergency_defer_read()
-                return
-            rooms = (
-                {room for room in self.op_data.plan if room.startswith("dorm")}
-                | {
-                    op.current_room
-                    for name in state["targets"]
-                    if (op := self.op_data.operators.get(name)) is not None
-                    and op.current_room in base_room_list
-                }
-                | set(state.get("temporary_roster", {}))
+        if state["phase"] == "returning" or any(
+            getattr(task, "emergency_staffing", False) for task in self.tasks
+        ):
+            return False
+        pending = state.get("staffing_plan", {})
+        if not pending:
+            return False
+        state["staffing_plan"] = {
+            room: row
+            for room, row in pending.items()
+            if (actual := self.op_data.get_current_room(room, True)) is None
+            or any(
+                name != "Current" and (index >= len(actual) or name != actual[index])
+                for index, name in enumerate(row)
             )
-            if "pending_read_rooms" not in state:
-                state["read_collection_pending"] = True
-                if "observed_at" not in state:
-                    state["pending_read_rooms"] = sorted(rooms)
-            if state.get("read_collection_pending"):
-                last = self.last_execution.get("todo")
-                collection_due = (
-                    last is None or datetime.now() >= last + COLLECTION_COOLDOWN
-                )
-                if collection_due and not self._emergency_operation_fits(90):
-                    self._emergency_defer_read()
-                    return
-                self._emergency_collect()
-                state.pop("read_collection_pending", None)
-            if state.pop("observed_at", None) is None:
-                if self._emergency_read_rooms(rooms, yield_to_releases=True) is False:
-                    self._emergency_defer_read()
-                    return
-        self.plan_metadata()
-        protect_priority_tasks(self.tasks)
-        if read_due:
-            state["ready_members"] = [
-                name
-                for name in state.get("ready_members", [])
+        }
+        if state["staffing_plan"]:
+            return False
+        state.pop("staffing_members", None)
+        state["phase"] = "recovering"
+        state["temporary_roster"] = {
+            room: self.op_data.get_current_room(room, True)
+            for room in self.op_data.plan
+            if not room.startswith("dorm")
+        }
+        return True
+
+    def _emergency_observe_recovery(self):
+        """到期复查收取与读房；初始化观测直接复用，延期从剩余房间续行。"""
+        state = self.emergency_state
+
+        rooms = (
+            {room for room in self.op_data.plan if room.startswith("dorm")}
+            | {
+                op.current_room
+                for name in state["targets"]
                 if (op := self.op_data.operators.get(name)) is not None
-                and not op.is_working()
-                and has_resting_mood(op)
-                and not op.mood_is_prediction
-                and op.mood >= state["targets"][name]
-            ]
-            self._emergency_update_targets()
-            self._emergency_release_ready()
-            if self._emergency_ready():
-                if self._emergency_restore():
-                    return
-            if state["phase"] == "returning":
-                state["next_read"] = now + timedelta(minutes=5)
-            else:
-                self._open_emergency_beds()
-                scanned = self._emergency_schedule_staffing()
-                self._emergency_plan_beds(state)
-                state["next_read"] = datetime.now() + timedelta(
-                    minutes=self._emergency_read_minutes() if scanned else 1
-                )
+                and op.current_room in base_room_list
+            }
+            | set(state.get("temporary_roster", {}))
+        )
+        if "pending_read_rooms" not in state:
+            state["read_collection_pending"] = True
+            if "observed_at" not in state:
+                state["pending_read_rooms"] = sorted(rooms)
+        if state.get("read_collection_pending"):
+            last = self.last_execution.get("todo")
+            collection_due = (
+                last is None or datetime.now() >= last + COLLECTION_COOLDOWN
+            )
+            if collection_due and not self._emergency_operation_fits(90):
+                return False
+            self._emergency_collect()
+            state.pop("read_collection_pending", None)
+        if state.pop("observed_at", None) is None:
+            if self._emergency_read_rooms(rooms, yield_to_releases=True) is False:
+                return False
+        return True
+
+    def _emergency_queue_check(self):
+        state = self.emergency_state
         check = next((t for t in self.tasks if t.meta_data == CHECK_META), None)
         if check is None:
             check = SchedulerTask(time=state["next_read"], meta_data=CHECK_META)
@@ -1007,7 +1006,64 @@ class EmergencyRecoveryMixin:
             | set(state.get("staffing_members", ()))
             | set(state.get("release_members", ()))
         )
-        if state["phase"] == "recovering":
+
+    def _emergency_tick(self, *, completed_task=None):
+        """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
+        self._emergency_filter_tasks()
+        state = self.emergency_state
+        staffing_completed = self._emergency_reconcile_staffing()
+        read_due = datetime.now() >= state.get("next_read", datetime.now())
+        specialized_completed = completed_task is not None and (
+            completed_task.type
+            in (
+                TaskTypes.FIAMMETTA,
+                TaskTypes.WORKSHOP,
+                TaskTypes.SWAP_SUPPORT,
+                TaskTypes.RUN_ORDER,
+                TaskTypes.DEPOT,
+            )
+            or getattr(completed_task, "emergency_dorm", False)
+            or getattr(completed_task, "strict_mood_limit", False)
+        )
+        plan_due = read_due or staffing_completed or specialized_completed
+        self.plan_metadata()
+        protect_priority_tasks(self.tasks)
+        if read_due:
+            if state.get("handoff_observing"):
+                if not self._emergency_restore():
+                    self._emergency_defer_read()
+                return
+            if not self._emergency_observe_recovery():
+                self._emergency_defer_read()
+                return
+            self.plan_metadata()
+            protect_priority_tasks(self.tasks)
+        if plan_due:
+            state["ready_members"] = [
+                name
+                for name in state.get("ready_members", [])
+                if (op := self.op_data.operators.get(name)) is not None
+                and not op.is_working()
+                and has_resting_mood(op)
+                and not op.mood_is_prediction
+                and op.mood >= state["targets"][name]
+            ]
+            self._emergency_update_targets()
+            self._emergency_release_ready()
+            if self._emergency_ready() and self._emergency_restore():
+                return
+            if state["phase"] == "returning":
+                state["next_read"] = datetime.now() + timedelta(minutes=5)
+            else:
+                self._open_emergency_beds()
+                scanned = self._emergency_schedule_staffing()
+                self._emergency_plan_beds(state)
+                if read_due or not scanned:
+                    state["next_read"] = datetime.now() + timedelta(
+                        minutes=self._emergency_read_minutes() if scanned else 1
+                    )
+        self._emergency_queue_check()
+        if plan_due and state["phase"] == "recovering":
             try_workshop_tasks(self.op_data, self.tasks)
             self.run_order_solver()
         self._emergency_save()

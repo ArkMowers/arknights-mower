@@ -1134,6 +1134,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             product_tasks = []
             remove_current_task = True
             arrangement_deferred = False
+            completed_task = None
             try:
                 if self.task.meta_data == CHECK_META:
                     if self._emergency_active():
@@ -1273,6 +1274,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
                 if remove_current_task:
+                    completed_task = self.task
                     self.tasks[:] = [t for t in self.tasks if t is not self.task]
                     self._refresh_deferred_product_reservations()
                 if (
@@ -1333,7 +1335,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.error = True
             self.task = None
             if self._emergency_active():
-                self._emergency_tick()
+                self._emergency_tick(completed_task=completed_task)
         elif not self.planned:
             if self._emergency_active():
                 self._emergency_tick()
@@ -1654,6 +1656,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             and resting_tier(self.op_data, name) != RestingTier.EXCLUDED
             and dorm_candidate_mood(self.op_data, name) is None
         }
+        if not missing and config.conf.automatic_rescue_enable:
+            from arknights_mower.utils.building_skills import load_skill_snapshot
+
+            snapshot = load_skill_snapshot()
+            missing = any(
+                operator["owned"] is True
+                and dorm_candidate_mood(self.op_data, operator["name"], datetime.now())
+                is None
+                for operator in snapshot.get("operators", ())
+            )
         if missing:
             self._scan_card_moods()
 
@@ -1679,6 +1691,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         estimates = self.op_data.dorm_mood_estimates
         try:
             self.enter_room(room, max_attempts=1)
+            self.turn_on_room_detail(room)
             for _ in range(4):
                 if self.find("confirm_blue") is not None:
                     break
@@ -2626,6 +2639,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             time=result[fia_idx]["time"], task_type=TaskTypes.FIAMMETTA
                         )
                     )
+        if self._emergency_frozen():
+            return
         for name in self.op_data.exhaust_agent:
             op = self.op_data.operators[name]
             # skip operator_protected check (TrainingStateMachine removed)
@@ -2843,6 +2858,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         return True
 
     def plan_solver(self):
+        if self._emergency_frozen():
+            self._emergency_tick()
+            return
         if not self._plan_dorm_recovery():
             return
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):

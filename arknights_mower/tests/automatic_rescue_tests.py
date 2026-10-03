@@ -116,9 +116,9 @@ def test_measured_low_mood_plans_once_and_restart_only_reconciles(solver, monkey
     solver._emergency_startup()
     assert solver._emergency_active()
     solver._emergency_startup()
-    solver._emergency_schedule_staffing.assert_called_once()
-    solver._emergency_schedule_staffing.assert_called_once_with()
+    solver._emergency_schedule_staffing.assert_not_called()
     assert solver.emergency_state["phase"] == "staffing"
+    assert solver.emergency_state["observed_at"] == NOW
 
 
 @pytest.mark.parametrize("field", ["phase", "targets"])
@@ -372,7 +372,7 @@ def test_real_blocked_startup_ignores_full_bed_timers_and_zero_rates(solver, moo
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 @pytest.mark.parametrize("bound_group", [False, True])
@@ -420,7 +420,7 @@ def test_multiple_low_groups_competing_for_current_beds_enter(solver):
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
@@ -446,7 +446,7 @@ def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 @pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
@@ -500,7 +500,7 @@ def test_startup_keeps_executable_native_return_before_rescue(solver, delay):
         solver._emergency_schedule_staffing.assert_not_called()
         assert task in solver.tasks
     else:
-        solver._emergency_schedule_staffing.assert_called_once_with()
+        solver._emergency_schedule_staffing.assert_not_called()
 
 
 @pytest.mark.parametrize("delay,mood", [(0, 24), (10, 24), (0, 8)])
@@ -537,7 +537,7 @@ def test_startup_keeps_executable_fiammetta_before_rescue(solver, delay, mood):
         solver._emergency_schedule_staffing.assert_not_called()
         assert task in solver.tasks
     else:
-        solver._emergency_schedule_staffing.assert_called_once_with()
+        solver._emergency_schedule_staffing.assert_not_called()
 
 
 @pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
@@ -959,6 +959,9 @@ def test_restart_reuses_only_unfinished_room_plan_without_scanning(solver):
 def test_completed_staffing_plan_reconciles_actual_roster_and_rearms_orders(solver):
     state = make_episode(solver)
     state["staffing_plan"] = {"room_1_1": [PRIMARY[0]]}
+    solver.op_data.operators[PRIMARY[1]].mood = 0
+    solver._emergency_schedule_staffing = MagicMock(return_value=True)
+    solver._emergency_plan_beds = MagicMock()
     solver._emergency_tick()
     assert state["staffing_plan"] == {}
     assert state["temporary_roster"]["room_1_1"] == [PRIMARY[0]]
@@ -1884,7 +1887,7 @@ def test_unexecutable_due_release_does_not_prevent_rescue(
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 def test_current_fiammetta_charge_is_consumed_after_one_target(solver):
@@ -1929,7 +1932,7 @@ def test_current_fiammetta_charge_is_consumed_after_one_target(solver):
     solver._emergency_startup()
 
     assert solver._emergency_active()
-    solver._emergency_schedule_staffing.assert_called_once_with()
+    solver._emergency_schedule_staffing.assert_not_called()
 
 
 @pytest.mark.parametrize("available", [False, True])
@@ -1980,3 +1983,224 @@ def test_target_update_reuses_group_opportunity_only_within_one_update(
             == recovery_target(data, name, rates[name], second, NOW)[0]
         )
     assert state["targets"][PRIMARY[0]] != state["targets"][PRIMARY[1]]
+
+
+@pytest.mark.parametrize("phase", ["staffing", "recovering", "returning"])
+def test_rescue_run_order_checks_do_not_read_exhausted_primaries(solver, phase):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    state = make_episode(solver)
+    state["phase"] = phase
+    solver.op_data.exhaust_agent = [PRIMARY[0]]
+    solver.op_data.operators[PRIMARY[0]].mood = 0
+    solver._sync_run_order_tasks = MagicMock()
+    solver.op_data.run_order_rooms = {}
+    solver.check_fia = MagicMock(return_value=(None, None))
+    BaseSchedulerSolver.run_order_solver(solver)
+    solver.enter_room.assert_not_called()
+    assert not any(t.type == TaskTypes.EXHAUST_OFF for t in solver.tasks)
+
+
+def test_completed_staffing_continues_next_group_before_mood_check(solver):
+    state = make_episode(solver)
+    state["staffing_plan"] = {"room_1_1": [PRIMARY[0]]}
+    solver._emergency_read_rooms = MagicMock()
+    solver.op_data.operators[PRIMARY[1]].mood = 0
+    solver._emergency_schedule_staffing = MagicMock(return_value=True)
+    solver._emergency_plan_beds = MagicMock()
+    solver._emergency_tick()
+    solver._emergency_schedule_staffing.assert_called_once()
+    solver._emergency_read_rooms.assert_not_called()
+    assert state["next_read"] == NOW + timedelta(minutes=30)
+
+
+def test_rescue_scan_reuses_known_skills_and_initial_mood(solver, monkeypatch):
+    name = COVERS[0]
+    snapshot = {"has_data": True, "operators": [{"name": name, "owned": True}]}
+    skills = ({"skillIcon": "known"},)
+    monkeypatch.setattr(emergency, "unlocked_skills", lambda *args: skills)
+    solver._selection_profile_snapshot = object()
+    solver.back_to_infrastructure = MagicMock()
+    candidates = solver._emergency_scan_workers(
+        "room_1_1", "制造站", set(), snapshot=snapshot
+    )
+    assert [(c.name, c.mood, c.skills) for c in candidates] == [(name, 24, skills)]
+    solver.enter_room.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "enabled,missing,expected",
+    [(True, True, True), (True, False, False), (False, True, False)],
+)
+def test_initial_card_scan_covers_owned_rescue_candidates(
+    solver, monkeypatch, enabled, missing, expected
+):
+    from arknights_mower.utils import building_skills
+
+    config.conf.automatic_rescue_enable = enabled
+    name = "红"
+    monkeypatch.setattr(
+        building_skills,
+        "load_skill_snapshot",
+        lambda: {"has_data": True, "operators": [{"name": name, "owned": True}]},
+    )
+    if not missing:
+        solver.op_data.dorm_mood_estimates[name] = (24, NOW)
+    solver._scan_card_moods = MagicMock()
+    solver._read_initial_card_mood()
+    assert solver._scan_card_moods.called is expected
+
+
+@pytest.mark.parametrize("missing", ["mood", "skills", "ownership"])
+def test_rescue_scan_missing_data_keeps_card_fallback(solver, monkeypatch, missing):
+    name = COVERS[0]
+    snapshot = {
+        "has_data": True,
+        "operators": [
+            {"name": name, "owned": None if missing == "ownership" else True}
+        ],
+    }
+    if missing == "mood":
+        solver.op_data.operators[name].time_stamp = None
+        solver.op_data.operators[name].mood = -1
+    monkeypatch.setattr(
+        emergency, "unlocked_skills", lambda *args: None if missing == "skills" else ()
+    )
+    solver._selection_profile_snapshot = object()
+    solver.enter_room = MagicMock(side_effect=RuntimeError("card fallback"))
+    solver.back_to_infrastructure = MagicMock()
+    with pytest.raises(RuntimeError, match="card fallback"):
+        solver._emergency_scan_workers("room_1_1", "制造站", set(), snapshot=snapshot)
+    solver.enter_room.assert_called_once()
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_rescue_task_report_labels_staffing_and_mood_checks(solver):
+    from arknights_mower.solvers.base_schedule import task_template
+
+    task = SchedulerTask(time=NOW, task_plan={"room_1_1": [COVERS[0]]})
+    task.emergency_staffing = True
+    check = SchedulerTask(time=NOW, meta_data=emergency.CHECK_META)
+    report = task_template.render(
+        tasks=[task.format(), check.format()], base_scheduler=solver
+    )
+    assert "智能救急换班" in report
+    assert "智能救急心情复查" in report
+    assert COVERS[0] in report
+    assert emergency.CHECK_META not in report
+    assert task.type == TaskTypes.NOT_SPECIFIC
+
+
+def test_idle_rescue_ticks_do_not_repeat_planning_or_workshop_checks(
+    solver, monkeypatch
+):
+    state = make_episode(solver)
+    workshop = MagicMock()
+    monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
+    solver._emergency_schedule_staffing = MagicMock()
+    solver._emergency_read_rooms = MagicMock()
+    for _ in range(3):
+        solver._emergency_tick()
+    workshop.assert_not_called()
+    solver.run_order_solver.assert_not_called()
+    solver._emergency_schedule_staffing.assert_not_called()
+    solver._emergency_read_rooms.assert_not_called()
+    checks = [task for task in solver.tasks if task.meta_data == emergency.CHECK_META]
+    assert len(checks) == 1
+    assert checks[0].time == state["next_read"]
+
+
+@pytest.mark.parametrize(
+    "task_type", [TaskTypes.WORKSHOP, TaskTypes.FIAMMETTA, TaskTypes.SWAP_SUPPORT]
+)
+def test_completed_specialized_task_replans_from_local_readback(
+    solver, monkeypatch, task_type
+):
+    make_episode(solver)
+    solver.op_data.operators[PRIMARY[0]].mood = 0
+    solver._emergency_schedule_staffing = MagicMock(return_value=True)
+    solver._emergency_plan_beds = MagicMock()
+    solver._emergency_read_rooms = MagicMock()
+    workshop = MagicMock()
+    monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
+    solver._emergency_tick(completed_task=SchedulerTask(task_type=task_type))
+    solver._emergency_schedule_staffing.assert_called_once()
+    solver._emergency_read_rooms.assert_not_called()
+    workshop.assert_called_once()
+    solver._emergency_tick()
+    workshop.assert_called_once()
+
+
+def test_unknown_staffing_room_does_not_complete_pending_arrangement(solver):
+    state = make_episode(solver)
+    state["staffing_plan"] = {"room_1_1": [COVERS[0]]}
+    solver.op_data.get_current_room = MagicMock(return_value=None)
+    assert solver._emergency_reconcile_staffing() is False
+    assert state["staffing_plan"] == {"room_1_1": [COVERS[0]]}
+
+
+def test_startup_observation_is_consumed_by_single_dispatch_path(solver, monkeypatch):
+    setup_startup(solver)
+    solver.last_execution = {"todo": NOW}
+    config.conf.automatic_rescue_enable = True
+    monkeypatch.setattr(
+        emergency,
+        "native_opportunity",
+        lambda *args, **kwargs: NativeProjection(None, True, "blocked"),
+    )
+    solver._emergency_update_targets = MagicMock()
+    solver._open_emergency_beds = MagicMock()
+    solver._emergency_startup()
+    solver._emergency_schedule_staffing.assert_not_called()
+    solver._emergency_update_targets.assert_not_called()
+    solver._open_emergency_beds.assert_not_called()
+    solver._emergency_read_rooms.reset_mock()
+    solver._emergency_ready = MagicMock(return_value=False)
+    solver._emergency_plan_beds = MagicMock()
+    solver._emergency_tick()
+    solver._emergency_schedule_staffing.assert_called_once()
+    solver._emergency_update_targets.assert_called_once()
+    solver._open_emergency_beds.assert_called_once()
+    solver._emergency_read_rooms.assert_not_called()
+    solver._emergency_tick()
+    solver._emergency_schedule_staffing.assert_called_once()
+
+
+@pytest.mark.parametrize("blocked", ["low_mood", "reserved", "unowned"])
+def test_cached_rescue_candidates_preserve_worker_restrictions(
+    solver, monkeypatch, blocked
+):
+    name = COVERS[0]
+    snapshot = {
+        "has_data": True,
+        "operators": [{"name": name, "owned": blocked != "unowned"}],
+    }
+    if blocked == "low_mood":
+        solver.op_data.operators[name].mood = 0
+    monkeypatch.setattr(emergency, "unlocked_skills", lambda *args: ())
+    solver._selection_profile_snapshot = object()
+    assert (
+        solver._emergency_scan_workers(
+            "room_1_1",
+            "制造站",
+            {name} if blocked == "reserved" else set(),
+            snapshot=snapshot,
+        )
+        == []
+    )
+    solver.enter_room.assert_not_called()
+
+
+def test_normal_planner_hands_rescue_all_planning_ownership(solver, monkeypatch):
+    from arknights_mower.solvers import base_schedule
+
+    make_episode(solver)
+    solver._emergency_tick = MagicMock()
+    solver.agent_get_mood = MagicMock()
+    workshop = MagicMock()
+    monkeypatch.setattr(base_schedule, "try_workshop_tasks", workshop)
+    solver.plan_solver()
+    solver._emergency_tick.assert_called_once()
+    workshop.assert_not_called()
+    solver.agent_get_mood.assert_not_called()

@@ -21,7 +21,7 @@ from arknights_mower.tests.emergency_group_staffing_tests import (
 from arknights_mower.tests.emergency_group_staffing_tests import staffing_task
 from arknights_mower.tests.mass_mood_recovery_tests import NOW, PRIMARY
 from arknights_mower.utils.emergency_staffing import StaffingCandidate
-from arknights_mower.utils.scheduler_task import SchedulerTask
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 def reject_room(solver, task, room, monkeypatch):
@@ -217,7 +217,17 @@ def test_check_task_reserves_pending_members_before_workshop_and_clears_complete
         assert check.time == state["next_read"]
 
     monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
-    solver._emergency_tick()
+    solver._emergency_update_targets = MagicMock()
+    solver._emergency_release_ready = MagicMock()
+    solver._emergency_ready = MagicMock(return_value=False)
+    solver._emergency_schedule_staffing = MagicMock(return_value=True)
+    solver._emergency_plan_beds = MagicMock()
+    for name in state["ready_members"]:
+        op = solver.op_data.operators[name]
+        op._current_room, op.current_index = "", -1
+        op.mood, op.time_stamp = 24, NOW
+    completed = SchedulerTask(task_type=TaskTypes.WORKSHOP)
+    solver._emergency_tick(completed_task=completed)
     assert observed == [{"塑心", *PRIMARY}]
     check = next(
         task for task in solver.tasks if task.meta_data == emergency.CHECK_META
@@ -225,7 +235,7 @@ def test_check_task_reserves_pending_members_before_workshop_and_clears_complete
     state.pop("staffing_members")
     state.pop("release_members")
     state.pop("ready_members")
-    solver._emergency_tick()
+    solver._emergency_tick(completed_task=completed)
     assert observed[-1] == set()
     assert check.emergency_staffing_members == []
 

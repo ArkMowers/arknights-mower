@@ -419,6 +419,9 @@ async function db_delete(keys) {
               <tr v-for="(value, key, idx) in task.plan">
                 <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
                   {{ task.time.split('T')[1].split('.')[0] }}
+                  <div v-if="task.emergency_recovery_release">智能救急离宿待命</div>
+                  <div v-else-if="task.emergency_staffing">智能救急换班</div>
+                  <div v-else-if="task.emergency_dorm">智能救急宿舍安排</div>
                 </td>
                 <td>{{ key }}</td>
                 <td>
@@ -431,7 +434,12 @@ async function db_delete(keys) {
                 {{ task.time.split('T')[1].split('.')[0] }}
               </td>
               <td :colspan="2">
-                {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
+                <template v-if="task.meta_data === 'automatic_rescue_check'"
+                  >智能救急心情复查</template
+                >
+                <template v-else>
+                  {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
+                </template>
               </td>
             </tr>
           </template>

@@ -580,3 +580,29 @@ def test_group_selection_preserves_normal_dorm_and_original_primary_rules(
         [(name, ((0, 0), (1, 1)))], [name], None, False
     ) == {name}
     assert (op.mood, op.time_stamp) == measured
+
+
+def test_confirmed_first_group_immediately_queues_next_group(staffing):
+    solver = staffing.solver
+    solver._emergency_scan_workers.return_value = [
+        StaffingCandidate(name, 24, ()) for name in ("红", "初雪", "砾", "黑角")
+    ]
+    assert solver._emergency_schedule_staffing()
+    first = staffing_task(solver)
+    first_members = set(first.emergency_staffing_members)
+    solver.op_data = solver.op_data.project_arrangements([first.plan])
+    for name in staffing.state["automatic_replacements"].values():
+        op = solver.op_data.operators[name]
+        solver.op_data.update_detail(name, 24, op.current_room, op.current_index, True)
+    solver.tasks = []
+    staffing.state["next_read"] = NOW + timedelta(minutes=30)
+    solver._emergency_read_rooms = MagicMock()
+
+    solver._emergency_tick()
+
+    second = staffing_task(solver)
+    assert set(second.emergency_staffing_members) == set(PRIMARY) - first_members
+    assert second.time == NOW
+    solver._emergency_read_rooms.assert_not_called()
+    projected = solver.op_data.project_arrangements([second.plan])
+    assert all(projected.operators[name].is_resting() for name in PRIMARY)
