@@ -1,6 +1,6 @@
 ---
 title: Measured Intelligent Rescue Entry
-status: proposed
+status: implemented
 category: simplification
 date: 2026-10-03
 ---
@@ -25,6 +25,6 @@ Offline tests distinguish one bound group from multiple independent recovery gro
 
 ## Review
 
-Standards Findings: pending independent review. Mutable projection state remains isolated and the read-only evaluation model remains shared.
+Standards Findings: PASS at immutable implementation commit `e113afa7`. The independent review verifies isolated mutable state, shared read-only evaluation, bounded search and governance. Focused implementation tests pass with 286 cases and 4 subtests. Independent verification passes with 719 backend cases and 4 subtests, 10 additional boundary cases and 61 frontend cases.
 
-Spec Findings: pending independent review. The measured-entry glossary replacement is approved and synchronized; the exact group-contention qualification awaits separate user approval.
+Spec Findings: PASS. The independent review verifies measured multigroup contention, executable due releases and one-use Fiammetta charges, with historical targets and handoff retained. The measured-entry glossary replacement is approved and synchronized; the exact group-contention qualification awaits separate user approval.

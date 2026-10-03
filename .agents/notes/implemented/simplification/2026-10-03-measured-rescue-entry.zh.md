@@ -1,6 +1,6 @@
 ---
 title: Measured Intelligent Rescue Entry
-status: proposed
+status: implemented
 category: simplification
 date: 2026-10-03
 ---
@@ -25,6 +25,6 @@ date: 2026-10-03
 
 ## 审查
 
-Standards Findings：等待独立审查。可变预演状态保持隔离，只读表达式评估器保持共用。
+Standards Findings：不可变实现提交 `e113afa7` 的独立审查通过。审查核验可变状态隔离、只读求值模型共用、搜索预算及治理。实现定向测试通过 286 项及 4 项子测试；独立验证通过 719 项后端测试及 4 项子测试、另增 10 项边界测试及 61 项前端测试。
 
-Spec Findings：等待独立审查。实测启动的双语术语替换已获批并同步；多组竞争的逐字限定措辞等待单独批准。
+Spec Findings：独立审查通过。审查核验实测多组竞争、实际可执行的到期清退及菲亚单次充能，保留历史目标和交接。实测启动的双语术语替换已获批并同步；多组竞争的逐字限定措辞等待单独批准。
