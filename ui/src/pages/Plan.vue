@@ -741,6 +741,12 @@ function movePlanForward() {
       </div>
     </div>
     <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
+    <div v-if="rescue" class="w-980 mx-auto mb-12 px-12 mw-980">
+      <n-space align="center">
+        <n-button :disabled="edit_locked" @click="clearRescueBindings">清空绑组与普通替班</n-button>
+        <span>清理救急主表及全部副表，保留跑单干员和菲亚梅塔充能对象。</span>
+      </n-space>
+    </div>
     <div v-if="rescue" class="w-980 mx-auto mt-12 mb-12 px-12 mw-980">
       <n-alert title="救急排班说明" type="info">
         <n-space vertical :size="6">
@@ -766,12 +772,6 @@ function movePlanForward() {
           </div>
         </n-space>
       </n-alert>
-    </div>
-    <div v-if="rescue" class="w-980 mx-auto mb-12 px-12 mw-980">
-      <n-space align="center">
-        <n-button :disabled="edit_locked" @click="clearRescueBindings">清空绑组与普通替班</n-button>
-        <span>清理救急主表及全部副表，保留跑单干员和菲亚梅塔充能对象。</span>
-      </n-space>
     </div>
     <div v-if="!rescue" class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
       <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
