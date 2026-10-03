@@ -38,7 +38,10 @@ def rescue_plan_for(data, plan):
         raise ValueError(f"救急排班与当前设施不一致：缺少 {missing}，多余 {extra}")
     for room, names in plan.items():
         if len(names) != len(data.plan[room]):
-            raise ValueError(f"救急排班 {room} 需要填写 {len(data.plan[room])} 名干员")
+            raise ValueError(
+                f"救急排班 {room} 等级/岗位数不一致：正常排班 {len(data.plan[room])} 位，"
+                f"救急排班 {len(names)} 位"
+            )
     return {room: list(names) for room, names in plan.items()}
 
 
@@ -83,6 +86,16 @@ def effective_rescue_plan(data, schedule):
         if room in RESCUE_ROOMS and facility["plans"]
     }
     work = rescue_plan_for(data, roster)
+    for room in work:
+        if not room.startswith("room_"):
+            continue
+        normal_type = getattr(data.plan[room][0], "facility", "")
+        rescue_type = facilities[room].get("name", "")
+        if rescue_type != normal_type:
+            raise ValueError(
+                f"救急排班 {room} 设施类型不一致：正常排班 {normal_type or '未填写'}，"
+                f"救急排班 {rescue_type or '未填写'}"
+            )
     for room in RESCUE_DORMS - data.plan.keys():
         if any(
             slot["agent"] not in ("", "Free")
@@ -110,11 +123,6 @@ def effective_rescue_plan(data, schedule):
         managers[room] = row
     from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 
-    for room in work:
-        for slot in facilities[room]["plans"]:
-            for name in slot.get("replacement", []):
-                if name not in TRADE_ORDER_AGENTS:
-                    raise ValueError(f"救急排班 {room} 的跑单人选 {name} 无效")
     run_orders = {
         room: [
             [name for name in slot.get("replacement", []) if name in TRADE_ORDER_AGENTS]

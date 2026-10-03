@@ -17,7 +17,7 @@ Same-tier recovery candidates are ordered by group before spare-bed fillers. Han
 
 ## Implementation
 
-The editor and condition controls share an injected plan store. Independent endpoints, autosave readiness and import routing preserve normal schedule data. Schedule advanced settings contain the checkbox and rescue-editor entry. The editor presents main and backup plans and facility assignments; operator-rule sections remain hidden.
+The editor and condition controls share an injected plan store. Independent endpoints, autosave readiness and import routing preserve normal schedule data. Mower infrastructure settings contain the checkbox and rescue-editor entry, independently of normal schedule imports and exports. The editor retains the normal toolbar, facility interactions, group and replacement fields. Only the lower operator-rule sections remain hidden. The rescue toolbar returns to Mower settings. Its file-import button has a right dropdown that copies only the normal main roster. Export includes the entire rescue schedule. Effective facility types and staffing capacities must match the normal schedule before entry.
 
 ## Simplification
 

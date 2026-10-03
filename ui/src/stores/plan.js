@@ -230,6 +230,12 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       initialized.value = true
     }
 
+    async function import_main_plan() {
+      const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
+      plan.value = fill_empty(deepcopy(data.plan1))
+      sub_plan.value = 'main'
+    }
+
     async function load_operators() {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
       const option_list = []
@@ -322,6 +328,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       save_plan,
       set_advanced_settings_source,
       load_plan,
+      import_main_plan,
       load_operators,
       ling_xi,
       mood_limits,

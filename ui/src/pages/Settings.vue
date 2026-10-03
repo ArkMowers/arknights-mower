@@ -26,6 +26,7 @@ const {
   selection_transition_timeout,
   drone_room,
   swap_contact_train,
+  automatic_rescue_enable,
   start_automatically,
   package_type,
   simulator,
@@ -530,6 +531,18 @@ const idleOptions = computed(() => [
             label-width="140"
             label-align="left"
           >
+            <n-form-item :show-label="false">
+              <n-space align="center">
+                <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
+                  自动救急
+                  <help-text>
+                    初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
+                    恢复期间冻结正常副表，正常排班可接回周转后退出；设施类型或等级不一致时不启动。
+                  </help-text>
+                </n-checkbox>
+                <router-link to="/rescue-plan-editor"><n-button>救急排班</n-button></router-link>
+              </n-space>
+            </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="swap_contact_train"> 训练室在办公室上方 </n-checkbox>
             </n-form-item>

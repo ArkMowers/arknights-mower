@@ -91,3 +91,50 @@ it('救急宿舍保留空床索引，副表空白位置继承主表', async () =
   expect(saved.backup_plans[0].plan).not.toHaveProperty('dormitory_2')
   expect(saved.plan1.dormitory_1.plans[2].replacement).toEqual(['歌蕾蒂娅'])
 })
+
+it('导入主表只复制设施，保留救急副表与独立配置', async () => {
+  const app = createApp({})
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  app.use(pinia)
+  app.provide('loaded', ref(false))
+  const store = app.runWithContext(() => useRescuePlanStore())
+  stores = [store]
+  axios.post.mockResolvedValue({ data: {} })
+  axios.get.mockResolvedValueOnce({
+    data: {
+      conf: { resting_priority: '红' },
+      plan1: {},
+      backup_plans: [{ name: '救急副表', conf: {}, plan: {}, trigger: {} }]
+    }
+  })
+  await store.load_plan()
+  const backups = JSON.stringify(store.backup_plans)
+  const source = {
+    central: { plans: [{ agent: '阿米娅', group: '中枢', replacement: ['红'] }] },
+    dormitory_1: {
+      plans: [
+        { agent: '杜林' },
+        { agent: 'Free' },
+        { agent: '菲亚梅塔', replacement: ['歌蕾蒂娅'] }
+      ]
+    }
+  }
+  axios.get.mockResolvedValueOnce({ data: { plan1: source, conf: {}, backup_plans: [] } })
+  store.sub_plan = 0
+  await store.import_main_plan()
+  await nextTick()
+  await store.wait_for_plan_save()
+  expect(axios.get.mock.lastCall[0]).toMatch(/\/plan$/)
+  expect(store.sub_plan).toBe('main')
+  expect(store.plan.central.plans[0]).toEqual(source.central.plans[0])
+  expect(store.plan.dormitory_1.plans[2].replacement).toEqual(['歌蕾蒂娅'])
+  expect(JSON.stringify(store.backup_plans)).toBe(backups)
+  expect(store.resting_priority).toEqual(['红'])
+  expect(axios.post.mock.calls.every(([url]) => url.endsWith('/rescue-plan'))).toBe(true)
+  store.plan.central.plans[0].agent = '陈'
+  expect(source.central.plans[0].agent).toBe('阿米娅')
+  axios.get.mockRejectedValueOnce(new Error('offline'))
+  await expect(store.import_main_plan()).rejects.toThrow('offline')
+  expect(store.plan.central.plans[0].agent).toBe('陈')
+})

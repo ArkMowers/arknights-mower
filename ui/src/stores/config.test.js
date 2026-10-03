@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
-  it('saves the intelligent rescue checkbox independently', async () => {
+  it('saves the automatic rescue checkbox independently', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const loaded = ref(false)
@@ -24,6 +24,8 @@ describe('workshop config autosave', () => {
     store = app.runWithContext(() => useConfigStore())
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
     expect(store.automatic_rescue_enable).toBe(false)
+    expect(store.build_advanced_settings()).not.toHaveProperty('automatic_rescue_enable')
+    expect(store.build_advanced_settings()).not.toHaveProperty('automatic_rescue_plan')
     axios.patch.mockResolvedValue({ data: {} })
     loaded.value = true
     await nextTick()

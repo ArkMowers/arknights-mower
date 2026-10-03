@@ -22,7 +22,6 @@ const {
   assistant_follows_schedule,
   fia_threshold,
   rescue_threshold,
-  automatic_rescue_enable,
   favorite
 } = storeToRefs(configStore)
 </script>
@@ -289,20 +288,6 @@ const {
             <template #suffix>%</template>
           </mower-input-number>
         </div>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-space align="center">
-          <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
-            自动救急
-            <help-text>
-              初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
-              恢复期间冻结正常副表，恢复完成后回到正常排班。
-            </help-text>
-          </n-checkbox>
-          <router-link to="/rescue-plan-editor"
-            ><n-button :disabled="disabled">救急排班</n-button></router-link
-          >
-        </n-space>
       </n-form-item>
       <n-form-item>
         <template #label>

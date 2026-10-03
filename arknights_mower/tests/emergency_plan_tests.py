@@ -206,5 +206,73 @@ def test_rescue_runner_and_fia_targets_are_independent(solver):
     assert result["run_order_replacements"]["room_1_1"] == [["但书"]]
     assert result["fia_targets"] == [PRIMARY[0]]
     document.plan1.room_1_1.plans[0].replacement = ["红"]
-    with pytest.raises(ValueError, match="跑单人选"):
-        effective_rescue_plan(solver.op_data, document)
+    assert effective_rescue_plan(solver.op_data, document)["run_order_replacements"][
+        "room_1_1"
+    ] == [[]]
+
+
+@pytest.mark.parametrize("mismatch", ["type", "level"])
+def test_facility_mismatch_prevents_rescue_entry(solver, monkeypatch, caplog, mismatch):
+    from arknights_mower.utils.config.plan import Plans
+
+    setup_startup(solver)
+    monkeypatch.setattr(emergency, "save_current_state", lambda: True)
+    config.conf.automatic_rescue_enable = True
+    solver.op_data.plan["room_1_1"][0].facility = "贸易站"
+    rescue = config.conf.automatic_rescue_plan.plan1.room_1_1
+    rescue.name = "制造站" if mismatch == "type" else "贸易站"
+    if mismatch == "level":
+        rescue.plans.append(Plans(agent="红"))
+    monkeypatch.setattr(
+        emergency,
+        "native_opportunity",
+        lambda *args, **kwargs: NativeProjection(None, True, "blocked"),
+    )
+    solver._emergency_startup()
+    assert not solver._emergency_active()
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert "room_1_1" in caplog.text
+    assert (
+        "设施类型不一致" if mismatch == "type" else "等级/岗位数不一致"
+    ) in caplog.text
+
+
+def test_effective_rescue_backup_must_match_normal_facility():
+    from arknights_mower.utils.plan import Room
+
+    data = SimpleNamespace(
+        plan={"room_1_1": [Room("阿米娅", "", [], "制造站")]},
+        evaluate_expression=lambda expression: True,
+    )
+    document = PlanModel(
+        plan1={"room_1_1": {"name": "贸易站", "plans": [{"agent": "红"}]}},
+        backup_plans=[
+            {
+                "name": "制造站",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {"room_1_1": {"name": "制造站", "plans": [{"agent": "砾"}]}},
+            }
+        ],
+    )
+    assert effective_rescue_plan(data, document)["rescue_plan"] == {"room_1_1": ["砾"]}
+    data.evaluate_expression = lambda expression: False
+    with pytest.raises(ValueError, match="设施类型不一致"):
+        effective_rescue_plan(data, document)
+
+
+def test_normal_schedule_advanced_export_excludes_rescue_configuration():
+    from arknights_mower.utils.config.plan_advanced import (
+        apply_advanced_settings,
+        export_advanced_settings,
+    )
+
+    conf = config.Conf(automatic_rescue_enable=True)
+    original = conf.automatic_rescue_plan.model_dump()
+    advanced = export_advanced_settings(conf)
+    assert "automatic_rescue_enable" not in advanced
+    assert "automatic_rescue_plan" not in advanced
+    restored = apply_advanced_settings(conf, {"rescue_threshold": 0.8})
+    assert restored.automatic_rescue_enable
+    assert restored.automatic_rescue_plan.model_dump() == original

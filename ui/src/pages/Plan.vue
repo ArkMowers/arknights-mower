@@ -5,18 +5,20 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 import PlanAdvancedSettings from '@/components/PlanAdvancedSettings.vue'
+import DropDown from '@/components/DropDown.vue'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { swap } from '@/utils/common'
 import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edit'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
 
+const router = useRouter()
 const config_store = useConfigStore()
 const { free_blacklist, theme } = storeToRefs(config_store)
 
 const { rescue = false } = defineProps({ rescue: Boolean })
 const plan_store = rescue ? useRescuePlanStore() : usePlanStore()
 provide('planStore', plan_store)
-provide('rescuePlan', rescue)
 const rescue_ready = ref(!rescue)
 const mower_store = useMowerStore()
 const { running } = storeToRefs(mower_store)
@@ -73,7 +75,7 @@ function requireEditing() {
 const restoring_running_plan = ref(false)
 
 async function restoreRunningPlan() {
-  if (!running.value || restoring_running_plan.value || edit_locked.value) return
+  if (rescue || !running.value || restoring_running_plan.value || edit_locked.value) return
   restoring_running_plan.value = true
   try {
     await import_saves.pauseAndDrain()
@@ -86,6 +88,30 @@ async function restoreRunningPlan() {
   } finally {
     import_saves.resume()
     restoring_running_plan.value = false
+  }
+}
+
+async function importMainPlan() {
+  if (!rescue || !requireEditing()) return
+  try {
+    await import_saves.pauseAndDrain()
+    await plan_store.import_main_plan()
+    await plan_store.save_plan()
+    message.success('已复制正常主表')
+  } catch (error) {
+    message.error(error.response?.data?.error || error.message || '导入主表失败')
+  } finally {
+    import_saves.resume()
+  }
+}
+
+async function returnToSettings() {
+  if (!requireEditing()) return
+  try {
+    await drainConfigurationSaves(config_store, plan_store)
+    await router.push('/mowersettings')
+  } catch (error) {
+    message.error(error.message || '保存排班失败，请重试')
   }
 }
 
@@ -545,22 +571,22 @@ function movePlanForward() {
     <rename-dialog />
     <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
       <div class="plan-bar">
-        <n-button-group v-if="!rescue" class="plan-restore-group">
+        <n-button-group class="plan-restore-group">
           <n-tooltip trigger="hover" placement="top">
             <template #trigger>
               <n-button
                 class="plan-restore-button"
-                aria-label="还原为当前运行排班表"
-                :disabled="!running || edit_locked"
+                :aria-label="rescue ? '返回' : '还原为当前运行排班表'"
+                :disabled="edit_locked || (!rescue && !running)"
                 :loading="restoring_running_plan"
-                @click="restoreRunningPlan"
+                @click="rescue ? returnToSettings() : restoreRunningPlan()"
               >
                 <template #icon>
-                  <n-icon><undo-round /></n-icon>
+                  <n-icon><ios-arrow-back v-if="rescue" /><undo-round v-else /></n-icon>
                 </template>
               </n-button>
             </template>
-            {{ running ? '还原为当前运行排班表' : 'Mower 运行时可还原排班表' }}
+            {{ rescue ? '返回' : running ? '还原为当前运行排班表' : 'Mower 运行时可还原排班表' }}
           </n-tooltip>
         </n-button-group>
         <n-button-group class="mower-sub-plan-controls plan-sort-controls">
@@ -638,12 +664,7 @@ function movePlanForward() {
             </template>
             一键替换干员
           </n-button>
-          <n-button
-            v-else-if="!rescue"
-            title="编辑任务"
-            :disabled="edit_locked"
-            @click="show_task = true"
-          >
+          <n-button v-else title="编辑任务" :disabled="edit_locked" @click="show_task = true">
             <template #icon>
               <n-icon><add-task-round /></n-icon>
             </template>
@@ -660,24 +681,36 @@ function movePlanForward() {
             删除此副表
           </n-button>
         </n-button-group>
-        <n-upload
-          :disabled="edit_locked"
-          :on-before-upload="beforeImport"
-          style="width: auto"
-          :action="import_url"
-          :headers="{ token: token }"
-          :show-file-list="false"
-          name="img"
-          @finish="import_plan"
-          @error="import_error"
+        <component
+          :is="rescue ? DropDown : 'div'"
+          v-bind="
+            rescue
+              ? {
+                  select: importMainPlan,
+                  options: [{ label: '导入主表', key: 'main', disabled: edit_locked }]
+                }
+              : {}
+          "
         >
-          <n-button title="导入排班" :disabled="edit_locked">
-            <template #icon>
-              <n-icon><document-import /></n-icon>
-            </template>
-            导入排班
-          </n-button>
-        </n-upload>
+          <n-upload
+            :disabled="edit_locked"
+            :on-before-upload="beforeImport"
+            style="width: auto"
+            :action="import_url"
+            :headers="{ token: token }"
+            :show-file-list="false"
+            name="img"
+            @finish="import_plan"
+            @error="import_error"
+          >
+            <n-button title="导入排班" :disabled="edit_locked">
+              <template #icon>
+                <n-icon><document-import /></n-icon>
+              </template>
+              导入排班
+            </n-button>
+          </n-upload>
+        </component>
         <drop-down :select="export_json" :options="export_options">
           <n-button
             title="导出图片"

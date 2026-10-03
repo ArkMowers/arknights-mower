@@ -17,7 +17,6 @@ const outer = ref(null)
 const facility_types = plan_facility_type_options
 
 const facility = inject('facility')
-const rescue = inject('rescuePlan', false)
 const edit_locked = inject('planEditLocked', ref(false))
 
 const button_type = {
@@ -151,13 +150,6 @@ function drop_facility(target, event) {
   if (edit_locked.value) return
   const source = event.dataTransfer.getData('text/plain')
 
-  if (
-    rescue &&
-    [source, target].some(
-      (room) => !/^(central|meeting|contact|room_[1-3]_[1-3]|dormitory_[1-4])$/.test(room)
-    )
-  )
-    return
   swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
 }
 
@@ -229,7 +221,6 @@ const fia_list = computed(() => {
 })
 
 function set_facility(e) {
-  if (rescue && !/^(central|meeting|contact|room_[1-3]_[1-3]|dormitory_[1-4])$/.test(e)) return
   if (facility.value == e) {
     facility.value = ''
   } else {
@@ -617,7 +608,7 @@ function set_facility(e) {
               :render-label="render_op_label"
             />
           </td>
-          <td v-if="!rescue" class="select-label">
+          <td class="select-label">
             <span>组</span>
             <help-text>
               <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
@@ -625,39 +616,18 @@ function set_facility(e) {
               <p>宿舍替换填 Free 可在下班时开放休息床位；具体替班须为非主班。</p>
             </help-text>
           </td>
-          <td v-if="!rescue" class="table-space group">
+          <td class="table-space group">
             <n-input
               v-model:value="current_plan[facility].plans[i - 1].group"
               :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
             />
           </td>
-          <td
-            v-if="
-              !rescue ||
-              current_plan[facility].name == '贸易站' ||
-              current_plan[facility].plans[i - 1].agent == '菲亚梅塔'
-            "
-            class="select-label"
-          >
-            {{
-              rescue
-                ? current_plan[facility].plans[i - 1].agent == '菲亚梅塔'
-                  ? '充能对象：'
-                  : '跑单人选：'
-                : '替换：'
-            }}
-          </td>
-          <td
-            v-if="
-              !rescue ||
-              current_plan[facility].name == '贸易站' ||
-              current_plan[facility].plans[i - 1].agent == '菲亚梅塔'
-            "
-          >
+          <td class="select-label">替换：</td>
+          <td>
             <n-form-item :show-label="false" :show-feedback="false">
               <slick-operator-select
                 :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
-                :include-free="!rescue && facility.startsWith('dorm')"
+                :include-free="facility.startsWith('dorm')"
                 v-model="current_plan[facility].plans[i - 1].replacement"
                 class="replacement-select"
               />
