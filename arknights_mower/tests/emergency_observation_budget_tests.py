@@ -56,6 +56,9 @@ def observation_solver(legacy_solver, monkeypatch):
     state["phase"] = "staffing"
     state["next_read"] = NOW
     data = solver.op_data
+    # These cases resume an unfinished initialization/final reconciliation.
+    state["pending_read_rooms"] = sorted(data.plan)
+    state["read_collection_pending"] = True
     for name in PRIMARY:
         op = data.operators[name]
         data.update_detail(name, 8, op.current_room, op.current_index, True)

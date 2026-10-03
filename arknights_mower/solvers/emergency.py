@@ -965,20 +965,18 @@ class EmergencyRecoveryMixin:
         """到期复查收取与读房；初始化观测直接复用，延期从剩余房间续行。"""
         state = self.emergency_state
 
-        rooms = (
-            {room for room in self.op_data.plan if room.startswith("dorm")}
-            | {
-                op.current_room
-                for name in state["targets"]
-                if (op := self.op_data.operators.get(name)) is not None
-                and op.current_room in base_room_list
-            }
-            | set(state.get("temporary_roster", {}))
-        )
+        if state.pop("observed_at", None) is not None:
+            return True
+        rooms = {
+            op.current_room
+            for name, target in state["targets"].items()
+            if (op := self.op_data.operators.get(name)) is not None
+            and op.is_resting()
+            and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+        }
         if "pending_read_rooms" not in state:
             state["read_collection_pending"] = True
-            if "observed_at" not in state:
-                state["pending_read_rooms"] = sorted(rooms)
+            state["pending_read_rooms"] = sorted(rooms)
         if state.get("read_collection_pending"):
             last = self.last_execution.get("todo")
             collection_due = (
@@ -988,9 +986,8 @@ class EmergencyRecoveryMixin:
                 return False
             self._emergency_collect()
             state.pop("read_collection_pending", None)
-        if state.pop("observed_at", None) is None:
-            if self._emergency_read_rooms(rooms, yield_to_releases=True) is False:
-                return False
+        if self._emergency_read_rooms(rooms, yield_to_releases=True) is False:
+            return False
         return True
 
     def _emergency_queue_check(self):
@@ -1011,6 +1008,18 @@ class EmergencyRecoveryMixin:
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
         self._emergency_filter_tasks()
         state = self.emergency_state
+        pending_staffing = [
+            task for task in self.tasks if getattr(task, "emergency_staffing", False)
+        ]
+        if pending_staffing:
+            state["next_read"] = max(
+                state.get("next_read", datetime.now()),
+                min(task.time for task in pending_staffing) + timedelta(minutes=1),
+                datetime.now() + timedelta(minutes=1),
+            )
+            self._emergency_queue_check()
+            self._emergency_save()
+            return
         staffing_completed = self._emergency_reconcile_staffing()
         read_due = datetime.now() >= state.get("next_read", datetime.now())
         specialized_completed = completed_task is not None and (
@@ -1063,7 +1072,13 @@ class EmergencyRecoveryMixin:
                         minutes=self._emergency_read_minutes() if scanned else 1
                     )
         self._emergency_queue_check()
-        if plan_due and state["phase"] == "recovering":
+        if (
+            plan_due
+            and state["phase"] == "recovering"
+            and not any(
+                getattr(task, "emergency_staffing", False) for task in self.tasks
+            )
+        ):
             try_workshop_tasks(self.op_data, self.tasks)
             self.run_order_solver()
         self._emergency_save()

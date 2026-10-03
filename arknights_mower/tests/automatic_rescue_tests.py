@@ -276,9 +276,9 @@ def test_due_mood_check_collects_even_with_paused_order_agents(solver, observed)
     solver._emergency_ready = MagicMock(return_value=False)
     solver._emergency_plan_beds = MagicMock()
     solver._emergency_tick()
-    assert activity == (["collect"] if observed else ["collect", "read"])
+    assert activity == ([] if observed else ["collect", "read"])
     assert order not in solver.tasks
-    solver._emergency_collect.assert_called_once()
+    assert solver._emergency_collect.call_count == (0 if observed else 1)
 
 
 def test_due_mood_check_collects_before_ready_handoff(solver):
@@ -294,7 +294,7 @@ def test_due_mood_check_collects_before_ready_handoff(solver):
         side_effect=lambda: activity.append("restore") or True
     )
     solver._emergency_tick()
-    assert activity == ["collect", "restore"]
+    assert activity == ["restore"]
 
 
 def test_collection_reuses_todo_and_never_arranges_staff(solver, monkeypatch):
@@ -1275,7 +1275,7 @@ def test_completed_primary_remains_reserved_during_another_group_departure(solve
     assert projected.operators[completed].current_room == data.operators[completed].room
 
 
-def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver):
+def test_unchanged_temporary_staffing_does_not_expand_dorm_observation(solver):
     from arknights_mower.utils.emergency_staffing import StaffingCandidate
 
     state = make_episode(solver)
@@ -1299,7 +1299,7 @@ def test_unchanged_initial_staffing_still_monitors_temporary_worker_mood(solver)
     solver._emergency_ready = MagicMock(return_value=False)
     solver._emergency_plan_beds = MagicMock()
     solver._emergency_tick()
-    assert room in solver._emergency_read_rooms.call_args.args[0]
+    assert room not in solver._emergency_read_rooms.call_args.args[0]
     solver._emergency_scan_workers.assert_not_called()
 
 
@@ -2204,3 +2204,63 @@ def test_normal_planner_hands_rescue_all_planning_ownership(solver, monkeypatch)
     solver._emergency_tick.assert_called_once()
     workshop.assert_not_called()
     solver.agent_get_mood.assert_not_called()
+
+
+def test_pending_rescue_staffing_precedes_due_observation_and_specialized_planning(
+    solver, monkeypatch
+):
+    state = make_episode(solver)
+    state["next_read"] = NOW
+    task = SchedulerTask(time=NOW, task_plan={"room_1_1": [COVERS[0]]})
+    task.emergency_staffing = True
+    solver.tasks = [task]
+    solver._emergency_observe_recovery = MagicMock()
+    workshop = MagicMock()
+    monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
+    solver._emergency_tick()
+    solver._emergency_observe_recovery.assert_not_called()
+    solver.run_order_solver.assert_not_called()
+    workshop.assert_not_called()
+    assert any(t is task for t in solver.tasks)
+    assert state["next_read"] > task.time
+
+
+def test_regular_recovery_observes_only_unfinished_primary_dorms(solver):
+    state = make_episode(solver)
+    state["temporary_roster"] = {"room_1_1": [COVERS[0]]}
+    unfinished = solver.op_data.operators[PRIMARY[0]]
+    unfinished._current_room, unfinished.current_index = "dormitory_1", 2
+    unfinished.mood = 8
+    state["targets"][PRIMARY[1]] = 16
+    solver._emergency_read_rooms = MagicMock(return_value=True)
+    solver._emergency_collect = MagicMock()
+    assert solver._emergency_observe_recovery()
+    solver._emergency_read_rooms.assert_called_once_with(
+        {"dormitory_1"}, yield_to_releases=True
+    )
+
+
+def test_fresh_initial_observation_goes_directly_to_staffing(solver):
+    state = make_episode(solver)
+    state["phase"] = "staffing"
+    state["next_read"] = NOW
+    state["observed_at"] = NOW
+    solver.op_data.operators[PRIMARY[0]].mood = 0
+    solver._emergency_collect = MagicMock()
+    solver._emergency_read_rooms = MagicMock()
+    solver._emergency_update_targets = MagicMock()
+    solver._emergency_plan_beds = MagicMock()
+
+    def queue():
+        task = SchedulerTask(time=NOW, task_plan={"room_1_1": [COVERS[0]]})
+        task.emergency_staffing = True
+        solver.tasks.append(task)
+        state["phase"] = "recovering"
+        return True
+
+    solver._emergency_schedule_staffing = MagicMock(side_effect=queue)
+    solver._emergency_tick()
+    solver._emergency_schedule_staffing.assert_called_once()
+    solver._emergency_collect.assert_not_called()
+    solver._emergency_read_rooms.assert_not_called()
+    solver.run_order_solver.assert_not_called()
