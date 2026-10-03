@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 from threading import Lock, Timer
 
+from arknights_mower.data import base_room_list
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
@@ -395,19 +396,13 @@ def simulate(saved):
             if config.stop_mower.is_set():
                 raise MowerExit
             base_scheduler = initialize([], connection_retries=connection_retries)
-            # saved=None 表示没有可载入的运行缓存。此时干员 current_room 尚未读取，
+            # saved 为空表示没有可载入的运行缓存。此时干员 current_room 尚未读取，
             # 首轮任务开始前必须暂缓副表判断，避免把“未知”误判成“不在工作”。
             base_scheduler.defer_backup_plan_until_mood_read = (
-                saved is None
+                not saved
                 or bool(saved.get("initial_mood_pending", False))
                 or config.conf.automatic_rescue_enable
                 or bool(saved and saved.get("automatic_rescue_state"))
-            )
-            # 旧补读快照的实际宿舍可能已换人，只重读房态，不续跑临时试住。
-            base_scheduler._emergency_startup_rooms = copy.deepcopy(
-                saved.get("automatic_rescue_startup_rooms")
-                if saved and saved.get("initial_mood_pending", False)
-                else None
             )
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
@@ -553,16 +548,18 @@ def simulate(saved):
     if (
         config.conf.automatic_rescue_enable
         or isinstance(base_scheduler.emergency_state, dict)
-        or base_scheduler._emergency_startup_rooms is not None
+        or bool(saved and saved.get("initial_mood_pending"))
     ):
         base_scheduler._emergency_startup_pending = True
         base_scheduler.defer_backup_plan_until_mood_read = True
         base_scheduler.tasks[:] = [
             task for task in base_scheduler.tasks if task.meta_data != RESUME_META
         ]
-        base_scheduler.tasks.insert(
-            0, SchedulerTask(time=datetime.now(), meta_data=RESUME_META)
-        )
+        if not (saved and saved.get("initial_mood_pending")):
+            base_scheduler._initial_mood_refresh_rooms = {
+                room for room in base_scheduler.op_data.plan if room in base_room_list
+            }
+        base_scheduler.tasks.insert(0, SchedulerTask(time=datetime.now()))
     while True:
         try:
             config.maintenance_recheck.clear()

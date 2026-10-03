@@ -56,6 +56,7 @@ def observation_solver(legacy_solver, monkeypatch):
     state["phase"] = "staffing"
     state["next_read"] = NOW
     data = solver.op_data
+    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
     # These cases resume an unfinished initialization/final reconciliation.
     state["pending_read_rooms"] = sorted(data.plan)
     state["read_collection_pending"] = True
@@ -73,7 +74,7 @@ def observation_solver(legacy_solver, monkeypatch):
         reads.append(room)
         clock["now"] += timedelta(seconds=30)
         return [
-            {"agent": op.name}
+            {"agent": op.name, "mood": op.mood}
             for op in solver.op_data.operators.values()
             if op.current_room == room
         ]
@@ -287,10 +288,11 @@ def test_restart_preserves_partial_observation_before_release(observation_solver
     assert episode.reads == episode.rooms[:1]
     assert persisted["pending_read_rooms"] == episode.rooms[1:]
     assert "observed_at" not in persisted
-    assert not solver._emergency_startup_pending
+    assert solver._emergency_startup_pending
     finish_release(episode, release)
-    solver._emergency_tick()
-    assert episode.reads == episode.rooms
+    solver._emergency_startup()
+    assert not solver._emergency_startup_pending
+    assert episode.reads == [*episode.rooms[:1], *episode.rooms]
     assert not persisted.get("pending_read_rooms")
 
 
@@ -525,7 +527,7 @@ def test_inactive_startup_yields_before_strict_release(observation_solver, cache
     solver._emergency_startup_pending = True
     solver.defer_backup_plan_until_mood_read = True
     solver.find = MagicMock(return_value=(1, 1))
-    solver.task = SchedulerTask(meta_data=emergency.RESUME_META)
+    solver.task = SchedulerTask()
     solver.tasks.append(solver.task)
     solver.skip = MagicMock()
     solver.planned = True
@@ -534,7 +536,7 @@ def test_inactive_startup_yields_before_strict_release(observation_solver, cache
 
     assert not episode.reads
     assert solver._emergency_startup_pending
-    assert solver._emergency_startup_rooms == episode.rooms
+    assert solver._initial_mood_refresh_rooms == set(episode.rooms)
     assert solver.defer_backup_plan_until_mood_read
     solver._read_initial_card_mood.assert_not_called()
     solver.backup_plan_solver.assert_not_called()
@@ -561,10 +563,10 @@ def test_inactive_startup_persists_and_resumes_unread_rooms(
     solver._emergency_startup()
     assert episode.reads == episode.rooms[:1]
     snapshot = pickle.loads(pickle.dumps(record.current_state()))
-    assert snapshot["automatic_rescue_startup_rooms"] == episode.rooms[1:]
+    assert snapshot["initial_mood_refresh_rooms"] == episode.rooms[1:]
     assert snapshot["automatic_rescue_state"] is None
     assert snapshot["initial_mood_pending"]
-    solver._emergency_startup_rooms = snapshot["automatic_rescue_startup_rooms"]
+    solver._initial_mood_refresh_rooms = set(snapshot["initial_mood_refresh_rooms"])
     solver.tasks = snapshot["tasks"]
     solver.op_data.operators = snapshot["operators"]
     solver.op_data.dorm = snapshot["dorm"]
@@ -575,7 +577,7 @@ def test_inactive_startup_persists_and_resumes_unread_rooms(
 
     assert episode.reads == episode.rooms
     assert not solver._emergency_startup_pending
-    assert solver._emergency_startup_rooms is None
+    assert solver._initial_mood_refresh_rooms == set()
     assert not solver.defer_backup_plan_until_mood_read
     solver._read_initial_card_mood.assert_called_once()
     solver.backup_plan_solver.assert_called_once()
@@ -602,7 +604,7 @@ def test_inactive_startup_replans_new_deadline_and_defers_card_scan(
     solver._emergency_startup()
 
     assert episode.reads == ["dormitory_1"]
-    assert solver._emergency_startup_rooms == episode.rooms[1:]
+    assert solver._initial_mood_refresh_rooms == set(episode.rooms[1:])
     assert solver._emergency_startup_pending
     solver._read_initial_card_mood.assert_not_called()
     solver.backup_plan_solver.assert_not_called()
@@ -625,7 +627,7 @@ def test_completed_startup_rooms_not_repeated_when_card_scan_yields(
     solver._emergency_startup_pending = True
     solver.defer_backup_plan_until_mood_read = True
     monkeypatch.setattr(emergency.config.conf, "automatic_rescue_enable", False)
-    solver._emergency_startup_rooms = [episode.rooms[0]]
+    solver._initial_mood_refresh_rooms = {episode.rooms[0]}
     episode.clock["now"] = release.time - timedelta(seconds=120)
     previous_read = solver.get_agent_from_room.side_effect
 
@@ -637,7 +639,7 @@ def test_completed_startup_rooms_not_repeated_when_card_scan_yields(
     solver.get_agent_from_room.side_effect = slow_read
     solver._emergency_startup()
     assert episode.reads == [episode.rooms[0]]
-    assert solver._emergency_startup_rooms == []
+    assert solver._initial_mood_refresh_rooms == set()
     assert solver._emergency_startup_pending
     solver._read_initial_card_mood.assert_not_called()
     solver.backup_plan_solver.assert_not_called()
@@ -645,7 +647,7 @@ def test_completed_startup_rooms_not_repeated_when_card_scan_yields(
     finish_release(episode, release)
     solver._emergency_startup()
     assert episode.reads == [episode.rooms[0]]
-    assert solver._emergency_startup_rooms is None
+    assert solver._initial_mood_refresh_rooms == set()
     assert not solver._emergency_startup_pending
     solver._read_initial_card_mood.assert_called_once()
 
@@ -689,7 +691,7 @@ def test_real_restart_restores_unfinished_startup_with_setting_disabled(
     solver.emergency_state = None
     solver._emergency_startup_pending = False
     solver.defer_backup_plan_until_mood_read = True
-    solver._emergency_startup_rooms = pending.copy()
+    solver._initial_mood_refresh_rooms = set(pending)
     for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
         setattr(solver, field, date.min)
     solver.task_count = 0
@@ -710,9 +712,10 @@ def test_real_restart_restores_unfinished_startup_with_setting_disabled(
 
     solver.run.assert_called_once()
     assert solver._emergency_startup_pending
-    assert solver._emergency_startup_rooms == pending
+    assert solver._initial_mood_refresh_rooms == set(pending)
     assert solver.defer_backup_plan_until_mood_read
-    assert any(task.meta_data == emergency.RESUME_META for task in solver.tasks)
+    assert any(not task.meta_data and not task.plan for task in solver.tasks)
+    assert not any(task.meta_data == emergency.RESUME_META for task in solver.tasks)
     assert solver.emergency_state is None
 
 
@@ -727,7 +730,7 @@ def test_real_restart_discards_progress_from_completed_initialization(
     solver.emergency_state = None
     solver._emergency_startup_pending = False
     solver.defer_backup_plan_until_mood_read = False
-    solver._emergency_startup_rooms = pending.copy()
+    solver._initial_mood_refresh_rooms = set(pending)
     for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
         setattr(solver, field, date.min)
     solver.task_count = 0
@@ -747,7 +750,7 @@ def test_real_restart_discards_progress_from_completed_initialization(
     main.simulate(snapshot)
 
     assert solver._emergency_startup_pending
-    assert solver._emergency_startup_rooms is None
+    assert solver._initial_mood_refresh_rooms == set(episode.rooms)
     solver._emergency_startup()
     assert episode.reads == episode.rooms
 
@@ -762,7 +765,7 @@ def test_disabled_restart_completes_and_clears_progress_before_reenable(
     solver.emergency_state = None
     solver._emergency_startup_pending = False
     solver.defer_backup_plan_until_mood_read = True
-    solver._emergency_startup_rooms = []
+    solver._initial_mood_refresh_rooms = set()
     for field in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
         setattr(solver, field, date.min)
     solver.task_count = 0
@@ -792,13 +795,80 @@ def test_disabled_restart_completes_and_clears_progress_before_reenable(
     assert not episode.reads
     assert solver.emergency_state is None
     assert not solver._emergency_startup_pending
-    assert snapshots[-1]["automatic_rescue_startup_rooms"] is None
+    assert snapshots[-1]["initial_mood_refresh_rooms"] == []
     assert not snapshots[-1]["initial_mood_pending"]
     solver._emergency_schedule_staffing.assert_not_called()
 
     monkeypatch.setattr(main.config.conf, "automatic_rescue_enable", True)
     main.simulate(snapshots[-1])
     assert solver._emergency_startup_pending
-    assert solver._emergency_startup_rooms is None
+    assert solver._initial_mood_refresh_rooms == set(episode.rooms)
     solver._emergency_startup()
     assert episode.reads == episode.rooms
+
+
+def test_shared_initial_reader_logs_facilities_before_rescue_admission(
+    observation_solver, monkeypatch
+):
+    episode = observation_solver
+    solver = episode.solver
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    solver._emergency_read_rooms = MagicMock(
+        side_effect=AssertionError("startup must use the ordinary mood reader")
+    )
+    monkeypatch.setattr(emergency.config.conf, "automatic_rescue_enable", True)
+    events, logs = [], []
+    monkeypatch.setattr(
+        base_schedule.logger, "info", lambda message, *args: logs.append(message)
+    )
+
+    def cards():
+        assert episode.reads == episode.rooms
+        assert solver.emergency_state is None
+        events.append("cards")
+
+    def backup():
+        assert events == ["cards"]
+        events.append("backup")
+        return False
+
+    def admission(*args, **kwargs):
+        assert events == ["cards", "backup"]
+        events.append("admission")
+        return emergency_recovery.NativeProjection(episode.clock["now"], True)
+
+    solver._read_initial_card_mood.side_effect = cards
+    solver.backup_plan_solver.side_effect = backup
+    monkeypatch.setattr(emergency, "native_opportunity", admission)
+    solver._emergency_startup()
+    assert events == ["cards", "backup", "admission"]
+    for room in episode.rooms:
+        assert any(
+            f"房间 {solver.translate_room(room)}" in line and "心情:" in line
+            for line in logs
+        )
+    assert not solver._emergency_startup_pending
+    assert solver.emergency_state is None
+
+
+def test_initial_wakeup_does_not_block_its_own_card_scan(observation_solver):
+    solver = observation_solver.solver
+    solver.emergency_state = None
+    solver._emergency_startup_pending = True
+    solver.task = SchedulerTask(time=NOW)
+    solver.tasks = [solver.task]
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.planned = solver.todo_task = solver.collect_notification = True
+    solver.handle_error = MagicMock(return_value=True)
+
+    def initialize():
+        assert solver.task is None
+        assert solver.no_pending_task(1)
+        solver._emergency_startup_pending = False
+
+    solver._emergency_startup = MagicMock(side_effect=initialize)
+    assert solver.infra_main()
+    solver._emergency_startup.assert_called_once()
+    assert not solver.tasks

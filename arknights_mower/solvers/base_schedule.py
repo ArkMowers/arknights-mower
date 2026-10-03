@@ -95,6 +95,7 @@ from arknights_mower.utils.manufacture_product import (
     product_task_meta,
 )
 from arknights_mower.utils.operation_timing import (
+    estimate_dorm_minutes,
     record_selection_retry,
     timed_room,
     timed_step,
@@ -350,7 +351,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.train_room_state = None
         self.emergency_state = None
         self._emergency_startup_pending = False
-        self._emergency_startup_rooms = None
 
     def find_next_task(
         self,
@@ -1104,8 +1104,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.back()
             return
         if getattr(self, "_emergency_startup_pending", False):
+            if (
+                self.task is not None
+                and self.task.type == TaskTypes.NOT_SPECIFIC
+                and not self.task.plan
+                and not self.task.meta_data
+            ):
+                self.tasks[:] = [task for task in self.tasks if task is not self.task]
+                self.task = None
             self._emergency_startup()
-            if self._emergency_active():
+            if self._emergency_startup_pending and not getattr(
+                self.task, "strict_mood_limit", False
+            ):
+                self.skip()
+                return True
+            if self._emergency_active() and not self._emergency_startup_pending:
                 self._emergency_tick()
         if self.task is not None:
             # Navigation/reconnection may have consumed the margin since run().
@@ -1475,12 +1488,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         # 实际扫描仍受房间级 2.5 小时限频保护。
         need_read.add("train")
 
-        for room in need_read:
+        for room in sorted(need_read):
             if room == "train":
                 if _training_room_scan_disabled:
+                    force_rooms.discard(room)
                     continue
                 last_read = getattr(self, "last_train_mood_read", None)
-                if last_read and datetime.now() - last_read < timedelta(hours=2.5):
+                if (
+                    room not in force_rooms
+                    and last_read
+                    and datetime.now() - last_read < timedelta(hours=2.5)
+                ):
                     continue
             error_count = 0
             # 近期读过的房内干员无需重复扫描。训练室为空或识别失败时，上面的
@@ -1508,6 +1526,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     logger.debug(e.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
+            if getattr(
+                self, "_emergency_startup_pending", False
+            ) and not self._emergency_operation_fits(estimate_dorm_minutes(room) * 60):
+                self.back_to_infrastructure()
+                return False
             if room == "train":
                 self.last_train_mood_read = datetime.now()
             skip_room_exit = False
@@ -1601,12 +1624,25 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 )
                     else:
                         num = len(self.op_data.plan[room])
+                        previous = {
+                            op.name
+                            for op in self.op_data.operators.values()
+                            if op.current_room == room
+                        }
                         _mood_data = self.get_agent_from_room(
                             room,
                             list(range(num))
                             if room in self.op_data.true_exhaust_room
                             else None,
+                            **({"force_mood": True} if room in force_rooms else {}),
                         )
+                        actual = {
+                            item["agent"] for item in _mood_data if item.get("agent")
+                        }
+                        for name in previous - actual:
+                            op = self.op_data.operators[name]
+                            op.current_room, op.current_index = "", -1
+                            op.time_stamp = None
                         mood_info = [
                             f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                             for item in _mood_data
@@ -1640,6 +1676,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not skip_room_exit:
                 self.back()
             force_rooms.discard(room)
+            if getattr(self, "_emergency_startup_pending", False):
+                self._emergency_replan_releases()
+                protect_priority_tasks(self.tasks)
+                self._emergency_save()
 
     def _read_initial_card_mood(self):
         """首次规划复用选人卡片预估，不选人或确认换班；失败仍继续启动。"""

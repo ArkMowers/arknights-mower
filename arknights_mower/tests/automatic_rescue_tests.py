@@ -40,6 +40,7 @@ def offline(monkeypatch):
 
 
 def setup_startup(solver):
+    solver._read_agent_mood = MagicMock()
     solver._emergency_read_rooms = MagicMock()
     solver._read_initial_card_mood = MagicMock()
     solver.backup_plan_solver = MagicMock(return_value=False)
@@ -673,6 +674,7 @@ def test_returning_tick_continues_real_handoff_after_returned_primary_consumes_m
         solver.emergency_state = copy.deepcopy(state)
         state = solver.emergency_state
         solver._emergency_startup_pending = True
+        solver._read_agent_mood = MagicMock()
         solver._emergency_startup()
     assert solver.op_data.operators[PRIMARY[0]].mood < state["targets"][PRIMARY[0]]
 

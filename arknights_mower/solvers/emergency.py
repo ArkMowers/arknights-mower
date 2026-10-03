@@ -118,9 +118,19 @@ class EmergencyRecoveryMixin:
                 for task in self.tasks
                 if not getattr(task, "emergency_recovery_release", False)
             ]
-        task = next((t for t in self.tasks if t.meta_data == RESUME_META), None)
+        meta = "" if getattr(self, "_emergency_startup_pending", False) else RESUME_META
+        task = next(
+            (
+                t
+                for t in self.tasks
+                if t.meta_data == meta
+                and not t.plan
+                and t.type == TaskTypes.NOT_SPECIFIC
+            ),
+            None,
+        )
         if task is None:
-            self.tasks.append(SchedulerTask(time=due, meta_data=RESUME_META))
+            self.tasks.append(SchedulerTask(time=due, meta_data=meta))
         else:
             task.time = due
         self._emergency_save()
@@ -139,11 +149,6 @@ class EmergencyRecoveryMixin:
         if yield_to_releases:
             if state is not None:
                 rooms = state.setdefault("pending_read_rooms", rooms)
-            else:
-                if getattr(self, "_emergency_startup_rooms", None) is None:
-                    self._emergency_startup_rooms = rooms
-                rooms = self._emergency_startup_rooms
-                rooms[:] = [room for room in rooms if room in self.op_data.plan]
         for room in list(rooms):
             if yield_to_releases and not self._emergency_operation_fits(
                 estimate_dorm_minutes(room) * 60
@@ -203,18 +208,20 @@ class EmergencyRecoveryMixin:
             self._emergency_startup_pending = False
             self._emergency_defer_read()
             return
-        observed = self._emergency_read_rooms(
-            (room for room in self.op_data.plan if room in base_room_list),
-            yield_to_releases=True,
-        )
+        if not hasattr(self, "_initial_mood_refresh_rooms"):
+            self._initial_mood_refresh_rooms = {
+                room for room in self.op_data.plan if room in base_room_list
+            }
+        observed = self._read_agent_mood()
         if observed is False or not self._emergency_operation_fits(45):
-            self._emergency_startup_pending = not self._emergency_active()
+            self._emergency_startup_pending = True
             self._emergency_defer_read()
             return
         self._read_initial_card_mood()
-        self._emergency_startup_rooms = None
         self.defer_backup_plan_until_mood_read = False
         if self._emergency_active():
+            self.emergency_state.pop("pending_read_rooms", None)
+            self.emergency_state.pop("read_collection_pending", None)
             if self.emergency_state["phase"] != "returning":
                 self._open_emergency_beds()
             self.emergency_state["next_read"] = datetime.now()

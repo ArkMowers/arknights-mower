@@ -225,9 +225,6 @@ def current_state():
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
-        "automatic_rescue_startup_rooms": getattr(
-            base_scheduler, "_emergency_startup_rooms", None
-        ),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
             data, "idle_dorm_search_exhausted", False
