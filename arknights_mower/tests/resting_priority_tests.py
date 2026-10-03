@@ -224,14 +224,12 @@ def test_workshop_selection_does_not_override_schedule_identity(op_data):
 
 
 @pytest.mark.parametrize(
-    "replacement_tier,expected",
-    [
-        (RestingTier.PRIORITY_REPLACEMENT, "银灰"),
-        (RestingTier.PRIORITY, "红"),
-    ],
+    "replacement_tier",
+    [RestingTier.PRIORITY_REPLACEMENT, RestingTier.PRIORITY],
 )
-def test_intelligent_rescue_uses_configured_priority_for_last_available_bed(
-    op_data, replacement_tier, expected
+@pytest.mark.parametrize("primary_ready", [False, True])
+def test_rescue_fills_spare_bed_only_after_primary_recovery(
+    op_data, replacement_tier, primary_ready
 ):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -247,6 +245,7 @@ def test_intelligent_rescue_uses_configured_priority_for_last_available_bed(
     solver.emergency_state = {
         "phase": "recovering",
         "targets": {primary.name: 16},
+        "ready_members": [primary.name] if primary_ready else [],
     }
     solver.tasks = [
         SchedulerTask(
@@ -265,6 +264,7 @@ def test_intelligent_rescue_uses_configured_priority_for_last_available_bed(
     assert resting_tier(op_data, replacement.name) == replacement_tier
     assert len(solver.tasks) == 2
     assert solver.tasks[-1].emergency_dorm
+    expected = replacement.name if primary_ready else primary.name
     assert solver.tasks[-1].plan == {ROOM: ["Current"] * 4 + [expected]}
 
 
