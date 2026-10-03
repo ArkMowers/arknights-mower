@@ -177,6 +177,10 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         and fia is not None
         and fia.current_room == fia.room
         and has_resting_mood(fia)
+        and (
+            not current_only
+            or (not fia.mood_is_prediction and fia.mood >= fia.upper_limit)
+        )
         and task.meta_data in fia.replacement
         and any(
             "菲亚梅塔" in names and task.meta_data in names
@@ -260,8 +264,6 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     if name in required and not projected.operators[name].is_working()
                 }
                 queue.append((projected, when, used, served | admitted))
-        if current_only:
-            continue
         events = []
         for i, task in enumerate(pending):
             event_id = ("task", i)
@@ -272,6 +274,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             if event_id not in used:
                 events.append((max(when, task.time), event_id, {}))
         for bed in data.dorm:
+            if current_only:
+                continue
             op = data.operators.get(bed.name)
             event_id = ("bed", bed.name, bed.position)
             if op is None or event_id in used:
@@ -290,6 +294,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     )[worker.index] = member
             events.append((max(when, bed.time), event_id, plan))
         for time, event_id, plan in events:
+            if current_only and time > now:
+                continue
             if time - now > timedelta(hours=12):
                 uncertain = True
                 continue
@@ -315,7 +321,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             for names in plan.values():
                 for name in names:
                     if (
-                        name in projected.operators
+                        not current_only
+                        and name in projected.operators
                         and projected.operators[name].is_resting()
                     ):
                         op = projected.operators[name]

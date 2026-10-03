@@ -128,3 +128,73 @@ def test_current_rotation_does_not_wait_for_future_shift_or_unknown_bed(solver):
     assert result.reason == "blocked"
     assert (repr(data), repr(solver.tasks)) == before
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("delay", [0, 10])
+def test_current_rotation_accounts_for_due_return_but_not_future_return(solver, delay):
+    from datetime import timedelta
+
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    data = solver.op_data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 0
+    owner = data.operators[PRIMARY[2]]
+    cover = data.operators[COVERS[0]]
+    cover._current_room, cover.current_index = owner.room, owner.index
+    bed = data.dorm[0]
+    owner._current_room, owner.current_index = bed.position
+    bed.name, bed.time = owner.name, None
+    due = SchedulerTask(
+        time=NOW + timedelta(minutes=delay),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={owner.room: [owner.name]},
+    )
+    solver.tasks = [due]
+    result = native_opportunity(solver, PRIMARY[:2], NOW, current_only=True)
+    assert result.complete
+    assert (result.opportunity == NOW) is (delay == 0)
+    assert solver.tasks == [due]
+    assert bed.name == owner.name
+    assert cover.current_room == owner.room
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("delay,mood", [(0, 24), (10, 24), (0, 8)])
+def test_current_rotation_accounts_for_executable_fiammetta(solver, delay, mood):
+    from datetime import timedelta
+
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+    from arknights_mower.utils.operators import Operator
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    data = solver.op_data
+    for name in PRIMARY:
+        data.operators[name].mood = 0
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=mood,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=[PRIMARY[-1]],
+    )
+    task = SchedulerTask(
+        time=NOW + timedelta(minutes=delay),
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={"dormitory_1": [PRIMARY[-1], "菲亚梅塔"]},
+        meta_data=PRIMARY[-1],
+    )
+    solver.tasks = [task]
+    result = native_opportunity(solver, PRIMARY, NOW, current_only=True)
+    assert result.complete
+    assert (result.opportunity == NOW) is (delay == 0 and mood == 24)
+    assert solver.tasks == [task]
+    assert all(data.operators[name].mood == 0 for name in PRIMARY)
+    solver.enter_room.assert_not_called()
