@@ -20,6 +20,7 @@ from arknights_mower.utils.resting_priority import (  # noqa: E402
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
+    SchedulerTask,
     TaskTypes,
     plan_metadata,
     try_add_release_dorm,
@@ -417,8 +418,8 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     assert data.is_standby(name)
 
     tasks = plan_metadata(data, [])
-    assert all(
-        name not in {agent for agents in task.plan.values() for agent in agents}
+    assert any(
+        name in {agent for agents in task.plan.values() for agent in agents}
         for task in tasks
         if task.type == TaskTypes.SHIFT_ON
     )
@@ -435,6 +436,151 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     assert tasks
     room, index = bed.position
     assert tasks[0].plan[room][index] == name
+
+
+@pytest.fixture
+def ungrouped_standby(solver):
+    data = solver.op_data
+    data.operators[DEEP[0]].mood = 20
+    now = datetime.now()
+    primary = data.operators[OTHERS[0]]
+    data.config.resting_standby = [primary.name]
+    primary.resting_priority = "standby"
+    primary.current_room, primary.current_index = "", -1
+    primary.mood, primary.time_stamp = 24, now
+    cover = data.operators[OTHER_COVERS[0]]
+    cover.current_room, cover.current_index = primary.room, primary.index
+    cover.mood, cover.time_stamp = 0, now
+    anchor = data.operators[OTHERS[1]]
+    bed = data.dorm[0]
+    bed.name, bed.time = anchor.name, now + timedelta(hours=1)
+    anchor.current_room, anchor.current_index = bed.position
+    anchor.mood, anchor.time_stamp = 10, now
+    anchor_cover = data.operators[OTHER_COVERS[1]]
+    anchor_cover.current_room, anchor_cover.current_index = anchor.room, anchor.index
+    return solver, primary, cover, anchor, bed
+
+
+@pytest.mark.parametrize("primary_mood", [10, 24])
+@pytest.mark.parametrize("cover_mood", [0, 10])
+def test_ungrouped_standby_joins_next_return_batch(
+    ungrouped_standby, primary_mood, cover_mood
+):
+    solver, primary, cover, anchor, bed = ungrouped_standby
+    data = solver.op_data
+    primary.mood, cover.mood = primary_mood, cover_mood
+    original_beds = [(item.position, item.name, item.time) for item in data.dorm]
+    assert data.is_standby(primary.name)
+    assert not data.rest_mood_complete(primary.name)
+    for _ in range(2):
+        tasks = plan_metadata(data, [])
+        returns = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
+        assert len(returns) == 1
+        assert returns[0].time == bed.time - timedelta(minutes=8)
+        assert returns[0].plan[primary.room][primary.index] == primary.name
+        assert returns[0].plan[anchor.room][anchor.index] == anchor.name
+        assert primary.current_room == ""
+        assert cover.current_room == primary.room
+        assert [(item.position, item.name, item.time) for item in data.dorm] == (
+            original_beds
+        )
+
+
+def test_ungrouped_standby_does_not_create_independent_return(ungrouped_standby):
+    solver, primary, _, _, bed = ungrouped_standby
+    bed.time = None
+    solver.op_data.config.free_room = False
+    assert solver.op_data.is_standby(primary.name)
+    assert plan_metadata(solver.op_data, []) == []
+
+
+def test_ungrouped_standby_does_not_join_release_only_batch(ungrouped_standby):
+    solver, primary, _, anchor, bed = ungrouped_standby
+    anchor.operator_type = "low"
+    solver.op_data.operators[DEEP[0]].current_room = "dormitory_2"
+    other_bed = solver.op_data.dorm[3]
+    other_bed.name, other_bed.time = DEEP[0], None
+    solver.op_data.config.free_room = True
+    assert solver.op_data.is_standby(primary.name)
+    tasks = plan_metadata(solver.op_data, [])
+    assert any(task.type == TaskTypes.RELEASE_DORM for task in tasks)
+    assert all(
+        primary.name not in names for task in tasks for names in task.plan.values()
+    )
+    assert bed.name == anchor.name
+
+
+@pytest.mark.parametrize("reservation", ["name", "slot", "busy"])
+def test_reserved_ungrouped_standby_keeps_waiting(
+    ungrouped_standby, monkeypatch, reservation
+):
+    solver, primary, cover, _, _ = ungrouped_standby
+    tasks = []
+    if reservation == "busy":
+        monkeypatch.setattr(
+            "arknights_mower.utils.scheduler_task.busy_resting_names",
+            lambda: {primary.name},
+        )
+    else:
+        locked = SchedulerTask(
+            task_plan={primary.room: [cover.name, "Current", "Current"]},
+            task_type=TaskTypes.SELF_CORRECTION,
+        )
+        locked.product_shift_locked = True
+        locked.product_lock_names = {primary.name} if reservation == "name" else set()
+        locked.product_lock_groups = set()
+        locked.product_lock_slots = (
+            {(primary.room, primary.index)} if reservation == "slot" else set()
+        )
+        tasks.append(locked)
+    rebuilt = plan_metadata(solver.op_data, tasks)
+    assert any(task.type == TaskTypes.SHIFT_ON for task in rebuilt)
+    assert all(
+        primary.name not in names
+        for task in rebuilt
+        if task.type == TaskTypes.SHIFT_ON
+        for names in task.plan.values()
+    )
+
+
+@pytest.mark.parametrize("later_batch", [False, True])
+def test_ungrouped_standby_respects_pending_native_slot_arrangement(
+    ungrouped_standby, later_batch
+):
+    solver, primary, cover, anchor, bed = ungrouped_standby
+    pending = SchedulerTask(
+        time=bed.time + timedelta(hours=1),
+        task_plan={primary.room: [cover.name, "Current", "Current"]},
+        task_type=TaskTypes.SELF_CORRECTION,
+    )
+    later_anchor = solver.op_data.operators[OTHERS[3]]
+    later_bed = solver.op_data.dorm[1]
+    if later_batch:
+        later_bed.name, later_bed.time = (
+            later_anchor.name,
+            bed.time + timedelta(hours=2),
+        )
+        later_anchor.current_room, later_anchor.current_index = later_bed.position
+        later_anchor.mood = 10
+        later_cover = solver.op_data.operators[OTHER_COVERS[3]]
+        later_cover.current_room, later_cover.current_index = (
+            later_anchor.room,
+            later_anchor.index,
+        )
+    tasks = plan_metadata(solver.op_data, [pending])
+    returns = sorted(
+        (task for task in tasks if task.type == TaskTypes.SHIFT_ON),
+        key=lambda task: task.time,
+    )
+    assert returns[0].time == bed.time - timedelta(minutes=8)
+    assert returns[0].plan[anchor.room][anchor.index] == anchor.name
+    assert returns[0].plan[primary.room][primary.index] == "Current"
+    if later_batch:
+        assert len(returns) == 2
+        assert returns[1].time == later_bed.time - timedelta(minutes=8)
+        assert returns[1].plan[primary.room][primary.index] == primary.name
+    else:
+        assert len(returns) == 1
 
 
 def test_full_standby_does_not_refill_vacant_bed(solver):

@@ -1497,6 +1497,32 @@ def plan_metadata(op_data, tasks):
             )
         )
         returning.update(members | recalled)
+    return_tasks = sorted(
+        (
+            task
+            for task in tasks
+            if task.type == TaskTypes.SHIFT_ON and id(task) not in locked_ids
+        ),
+        key=lambda task: task.time,
+    )
+    for op in op_data.operators.values():
+        if (
+            op.group
+            or op.name in returning | locked_names | busy
+            or (op.room, op.index) in locked_slots
+            or not op_data.is_standby(op.name)
+        ):
+            continue
+        return_plan = {}
+        _native_return(op_data, return_plan, [op.name])
+        earliest = _after_pending_arrangements(return_plan, pending_resources)
+        for task in return_tasks:
+            slots = task.plan.get(op.room, ["Current"] * len(op_data.plan[op.room]))
+            if task.time < earliest or slots[op.index] != "Current":
+                continue
+            _native_return(op_data, task.plan, [op.name])
+            returning.add(op.name)
+            break
     tasks.extend(limited_releases)
     merge_release_dorm(tasks, config.conf.merge_interval)
     return tasks
