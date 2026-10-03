@@ -2268,3 +2268,77 @@ def test_fresh_initial_observation_goes_directly_to_staffing(solver):
     solver._emergency_collect.assert_not_called()
     solver._emergency_read_rooms.assert_not_called()
     solver.run_order_solver.assert_not_called()
+
+
+@pytest.mark.parametrize("missing", ["mood", "skills", "ownership"])
+def test_partial_snapshot_keeps_sufficient_known_workers(solver, monkeypatch, missing):
+    unknown, known = COVERS[:2]
+    snapshot = {
+        "has_data": True,
+        "operators": [
+            {"name": unknown, "owned": None if missing == "ownership" else True},
+            {"name": known, "owned": True},
+        ],
+    }
+    if missing == "mood":
+        solver.op_data.operators[unknown].time_stamp = None
+        solver.op_data.operators[unknown].mood = -1
+    monkeypatch.setattr(
+        emergency,
+        "unlocked_skills",
+        lambda name, *args: None if name == unknown and missing == "skills" else (),
+    )
+    candidates = solver._emergency_scan_workers(
+        "room_1_1", "制造站", set(), snapshot=snapshot
+    )
+    assert [c.name for c in candidates] == [known]
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("observed_mood", [0, 24])
+def test_partial_snapshot_supplement_preserves_and_refreshes_known_workers(
+    solver, monkeypatch, observed_mood
+):
+    retained, refreshed, unknown = COVERS[:3]
+    snapshot = {
+        "has_data": True,
+        "operators": [
+            {"name": name, "owned": True} for name in (retained, refreshed, unknown)
+        ],
+    }
+    monkeypatch.setattr(
+        emergency,
+        "unlocked_skills",
+        lambda name, *args: None if name == unknown else (),
+    )
+    page = [(refreshed, ((0, 0), (1, 1))), (unknown, ((1, 0), (2, 1)))]
+    solver.recog = SimpleNamespace(img=object(), w=1920, h=1080)
+    for method in (
+        "enter_room",
+        "turn_on_room_detail",
+        "refresh_facility_state",
+        "profession_filter",
+        "tap",
+        "switch_arrange_order",
+        "swipe_left",
+        "back_to_infrastructure",
+    ):
+        setattr(solver, method, MagicMock())
+    solver.find = MagicMock(return_value=True)
+    solver.wait_for_agent_page = MagicMock(side_effect=[page, page])
+    solver.same_agent_page = MagicMock(return_value=True)
+    solver.swipe_agent_page = MagicMock(return_value=(1, None))
+    monkeypatch.setattr(
+        emergency,
+        "estimate_agent_mood",
+        lambda image, scope: observed_mood if scope[0][0] == 0 else 24,
+    )
+    monkeypatch.setattr(emergency, "card_skills", lambda *args: ())
+    candidates = solver._emergency_scan_workers(
+        "room_1_1", "制造站", set(), snapshot=snapshot, required_count=3
+    )
+    assert {c.name for c in candidates} == (
+        {retained, unknown, refreshed} if observed_mood else {retained, unknown}
+    )
+    assert len(candidates) == len({c.name for c in candidates})
+    solver.enter_room.assert_called_once()

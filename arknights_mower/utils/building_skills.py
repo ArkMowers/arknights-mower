@@ -86,15 +86,16 @@ def load_skill_snapshot():
         ids = name_to_ids.get(name)
         owned = [roster[cid] for cid in ids or () if cid in roster]
         progress = None
-        if len(owned) == 1:
-            phase, level = owned[0].get("evolvePhase"), owned[0].get("level")
+        # 同名形态共用基建技能目录，任一有效形态的练度均可证明解锁。
+        for character in owned:
+            phase, level = character.get("evolvePhase"), character.get("level")
             if (
                 type(phase) is int
                 and phase in (0, 1, 2)
                 and type(level) is int
                 and level > 0
             ):
-                progress = (phase, level)
+                progress = max(progress or (0, 0), (phase, level))
         skills = _operator_skills(name, progress)
         operators.append(
             {

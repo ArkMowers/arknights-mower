@@ -320,7 +320,7 @@ class EmergencyRecoveryMixin:
 
     @fixed_selection_profile
     def _emergency_scan_workers(
-        self, room, facility, reserved, *, snapshot=None, fixed=()
+        self, room, facility, reserved, *, snapshot=None, fixed=(), required_count=1
     ):
         """复用初始化心情与技能；缺失时每设施最多扫描二十页、四十五秒。"""
         deadline = monotonic() + 45
@@ -328,6 +328,7 @@ class EmergencyRecoveryMixin:
         if snapshot is None:
             snapshot = load_skill_snapshot()
         if snapshot and snapshot.get("has_data") and snapshot.get("operators"):
+            missing = False
             for operator in snapshot["operators"]:
                 name = operator["name"]
                 if operator["owned"] is False or name in reserved and name not in fixed:
@@ -341,12 +342,19 @@ class EmergencyRecoveryMixin:
                     continue
                 skills = unlocked_skills(name, facility, snapshot)
                 if operator["owned"] is not True or skills is None or mood is None:
-                    break
+                    missing = True
+                    continue
                 candidates.append(StaffingCandidate(name, mood, skills))
-            else:
-                if all(any(c.name == name for c in candidates) for name in fixed):
-                    return candidates
-            candidates = []
+            fixed_complete = all(
+                any(c.name == name for c in candidates) for name in fixed
+            )
+            available = sum(
+                eligible_worker(self.op_data, c.name, c.mood, reserved)
+                and c.name not in fixed
+                for c in candidates
+            )
+            if fixed_complete and (not missing or available >= required_count):
+                return candidates
         try:
             self.enter_room(room, max_attempts=1)
             self.refresh_facility_state(room)
@@ -376,6 +384,7 @@ class EmergencyRecoveryMixin:
                     if not name or name in seen:
                         continue
                     seen.add(name)
+                    candidates = [c for c in candidates if c.name != name]
                     mood = estimate_agent_mood(self.recog.img, scope)
                     if name not in fixed and (
                         owned_operator(name, snapshot) is False
@@ -405,7 +414,12 @@ class EmergencyRecoveryMixin:
         data = self.op_data
         product = data.facility_states.get(room, {}).get("product")
         observed = self._emergency_scan_workers(
-            room, facility, reserved, snapshot=snapshot, fixed=fixed_names
+            room,
+            facility,
+            reserved,
+            snapshot=snapshot,
+            fixed=fixed_names,
+            required_count=count,
         )
         by_name = {candidate.name: candidate for candidate in observed}
         fixed = []
