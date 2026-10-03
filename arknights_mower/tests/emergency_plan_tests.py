@@ -211,7 +211,7 @@ def test_rescue_runner_and_fia_targets_are_independent(solver):
     ] == [[]]
 
 
-@pytest.mark.parametrize("mismatch", ["type", "level"])
+@pytest.mark.parametrize("mismatch", ["type", "level", "product"])
 def test_facility_mismatch_prevents_rescue_entry(solver, monkeypatch, caplog, mismatch):
     from arknights_mower.utils.config.plan import Plans
 
@@ -223,6 +223,9 @@ def test_facility_mismatch_prevents_rescue_entry(solver, monkeypatch, caplog, mi
     rescue.name = "制造站" if mismatch == "type" else "贸易站"
     if mismatch == "level":
         rescue.plans.append(Plans(agent="红"))
+    if mismatch == "product":
+        solver.op_data.products["room_1_1"] = "lmd"
+        rescue.product = "orundum"
     monkeypatch.setattr(
         emergency,
         "native_opportunity",
@@ -232,9 +235,11 @@ def test_facility_mismatch_prevents_rescue_entry(solver, monkeypatch, caplog, mi
     assert not solver._emergency_active()
     solver._emergency_schedule_staffing.assert_not_called()
     assert "room_1_1" in caplog.text
-    assert (
-        "设施类型不一致" if mismatch == "type" else "等级/岗位数不一致"
-    ) in caplog.text
+    assert {
+        "type": "设施类型不一致",
+        "level": "等级/岗位数不一致",
+        "product": "产物不一致",
+    }[mismatch] in caplog.text
 
 
 def test_effective_rescue_backup_must_match_normal_facility():
@@ -276,3 +281,136 @@ def test_normal_schedule_advanced_export_excludes_rescue_configuration():
     restored = apply_advanced_settings(conf, {"rescue_threshold": 0.8})
     assert restored.automatic_rescue_enable
     assert restored.automatic_rescue_plan.model_dump() == original
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_both_effective_backup_plans_control_facility_and_product(active):
+    from arknights_mower.utils.logic_expression import LogicExpression
+    from arknights_mower.utils.operators import Operators
+    from arknights_mower.utils.plan import Plan, PlanConfig, Room
+
+    data = Operators(
+        {
+            "default_plan": Plan(
+                {"room_1_1": [Room("阿米娅", "", [], "贸易站")]},
+                PlanConfig("", "", ""),
+                products={"room_1_1": "lmd"},
+            ),
+            "backup_plans": [
+                Plan(
+                    {"room_1_1": [Room("红", "", [], "制造站")]},
+                    PlanConfig("", "", ""),
+                    trigger=LogicExpression("1", "==", "1"),
+                    products={"room_1_1": "gold"},
+                )
+            ],
+        }
+    )
+    data.swap_plan([active])
+    data.evaluate_expression = lambda expression: active
+    document = PlanModel(
+        plan1={
+            "room_1_1": {"name": "贸易站", "product": "lmd", "plans": [{"agent": "砾"}]}
+        },
+        backup_plans=[
+            {
+                "name": "制造",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {
+                    "room_1_1": {
+                        "name": "制造站",
+                        "product": "gold",
+                        "plans": [{"agent": "初雪"}],
+                    }
+                },
+            }
+        ],
+    )
+    result = effective_rescue_plan(data, document)
+    assert result["rescue_plan"] == {"room_1_1": ["初雪" if active else "砾"]}
+    if active:
+        document.backup_plans[0].plan.room_1_1.product = "exp3"
+        with pytest.raises(ValueError, match="产物不一致.*赤金.*中级作战记录"):
+            effective_rescue_plan(data, document)
+    else:
+        document.backup_plans[0].plan.room_1_1.product = "exp3"
+        assert effective_rescue_plan(data, document) == result
+
+
+def test_backup_capacity_is_checked_after_conditions_and_overlay():
+    from arknights_mower.utils.plan import Room
+
+    data = SimpleNamespace(
+        plan={"room_1_1": [Room("红", "", [], "制造站"), Room("砾", "", [], "制造站")]},
+        products={"room_1_1": "gold"},
+        evaluate_expression=lambda expression: True,
+    )
+    document = PlanModel(
+        plan1={
+            "room_1_1": {
+                "name": "制造站",
+                "product": "gold",
+                "plans": [{"agent": "初雪"}],
+            }
+        },
+        backup_plans=[
+            {
+                "name": "二级",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {
+                    "room_1_1": {
+                        "name": "制造站",
+                        "plans": [{"agent": "Current"}, {"agent": "斑点"}],
+                    }
+                },
+            }
+        ],
+    )
+    assert effective_rescue_plan(data, document)["rescue_plan"] == {
+        "room_1_1": ["初雪", "斑点"]
+    }
+    data.evaluate_expression = lambda expression: False
+    with pytest.raises(ValueError, match="等级/岗位数不一致"):
+        effective_rescue_plan(data, document)
+
+
+def test_product_only_backup_keeps_rescue_roster_and_last_active_product():
+    from arknights_mower.utils.plan import Room
+
+    data = SimpleNamespace(
+        plan={"room_1_1": [Room("红", "", [], "制造站", product="gold")]},
+        products={"room_1_1": "exp3"},
+        evaluate_expression=lambda expression: expression == "(1 == 1)",
+    )
+    document = PlanModel(
+        plan1={
+            "room_1_1": {
+                "name": "制造站",
+                "product": "gold",
+                "plans": [{"agent": "初雪"}],
+            }
+        },
+        backup_plans=[
+            {
+                "name": "产物",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {"room_1_1": {"product": "exp3", "plans": []}},
+            },
+            {
+                "name": "未启用",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "0"},
+                "plan": {"room_1_1": {"product": "orirock", "plans": []}},
+            },
+        ],
+    )
+    assert effective_rescue_plan(data, document)["rescue_plan"] == {
+        "room_1_1": ["初雪"]
+    }

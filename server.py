@@ -1187,6 +1187,12 @@ def validate_rescue_plan_route():
         error = data.init_and_validate()
         if error:
             return {"success": False, "message": str(error)}
+        if data.backup_plans or config.conf.automatic_rescue_plan.backup_plans:
+            return {
+                "success": True,
+                "status": "incomplete",
+                "message": "排班含副表条件，设施类型、等级及产物需在初始化实测后，按双方生效排班核验；当前静态验证不能确认是否可进入救急。",
+            }
         effective_rescue_plan(data, config.conf.automatic_rescue_plan)
     except (ValueError, TypeError) as exc:
         return {"success": False, "message": str(exc)}

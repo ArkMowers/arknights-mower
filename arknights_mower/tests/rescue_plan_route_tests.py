@@ -56,3 +56,49 @@ def test_save_failure_preserves_rescue_roster(client):
             config.PlanModel(plan1={"central": {"plans": [{"agent": "红"}]}})
         )
     assert config.conf.automatic_rescue_plan is original
+
+
+@pytest.mark.parametrize("backup_source", ["normal", "rescue", None])
+def test_validation_defers_conditional_plans_and_rejects_product_mismatch(
+    client, monkeypatch, backup_source
+):
+    from types import SimpleNamespace
+
+    from arknights_mower.utils.plan import Room
+
+    normal = SimpleNamespace(
+        plan={"room_1_1": [Room("红", "", [], "贸易站")]},
+        products={"room_1_1": "lmd"},
+        backup_plans=[object()] if backup_source == "normal" else [],
+        init_and_validate=lambda: None,
+    )
+    monkeypatch.setattr(server, "build_global_plan", lambda: {})
+    monkeypatch.setattr(server, "Operators", lambda plan: normal)
+    config.conf.automatic_rescue_plan = config.PlanModel(
+        plan1={
+            "room_1_1": {
+                "name": "贸易站",
+                "product": "orundum",
+                "plans": [{"agent": "砾"}],
+            }
+        },
+        backup_plans=(
+            [{"name": "条件", "plan": {}, "conf": {}, "task": {}, "trigger": {}}]
+            if backup_source == "rescue"
+            else []
+        ),
+    )
+    before = config.conf.model_dump()
+    response = client.post(
+        "/rescue-plan/validate", headers={"token": "rescue-route"}
+    ).get_json()
+    if backup_source:
+        assert response["success"]
+        assert response["status"] == "incomplete"
+        assert "初始化实测后" in response["message"]
+    else:
+        assert not response["success"]
+        assert "room_1_1 产物不一致" in response["message"]
+    assert config.conf.model_dump() == before
+    config.save_conf.assert_not_called()
+    config.save_plan.assert_not_called()

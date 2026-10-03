@@ -69,7 +69,8 @@ def effective_rescue_plan(data, schedule):
         for room, facility in definition["plan"].items():
             if room not in RESCUE_ROOMS.keys() | RESCUE_DORMS:
                 continue
-            previous = facilities.get(room, {}).get("plans", [])
+            previous_facility = facilities.get(room, {})
+            previous = previous_facility.get("plans", [])
             rows = []
             for index, slot in enumerate(facility["plans"]):
                 if slot["agent"] == "Current":
@@ -79,7 +80,13 @@ def effective_rescue_plan(data, schedule):
                         )
                     slot = previous[index]
                 rows.append(slot)
-            facilities[room] = {**facility, "plans": rows}
+            facilities[room] = {
+                **previous_facility,
+                **facility,
+                "plans": rows or previous,
+            }
+            if not facility.get("name"):
+                facilities[room]["name"] = previous_facility.get("name", "")
     roster = {
         room: [slot["agent"] for slot in facility["plans"]]
         for room, facility in facilities.items()
@@ -96,6 +103,29 @@ def effective_rescue_plan(data, schedule):
                 f"救急排班 {room} 设施类型不一致：正常排班 {normal_type or '未填写'}，"
                 f"救急排班 {rescue_type or '未填写'}"
             )
+        if normal_type in ("制造站", "贸易站"):
+            normal_product = (
+                getattr(data, "products", {}).get(room)
+                or getattr(data.plan[room][0], "product", None)
+                or None
+            )
+            rescue_product = facilities[room].get("product") or None
+            if rescue_product != normal_product:
+                from arknights_mower.utils.manufacture_product import (
+                    MANUFACTURE_PRODUCTS,
+                    TRADE_PRODUCTS,
+                )
+
+                labels = {
+                    key: value.name for key, value in MANUFACTURE_PRODUCTS.items()
+                }
+                labels.update(
+                    {key: value.strategy_name for key, value in TRADE_PRODUCTS.items()}
+                )
+                raise ValueError(
+                    f"救急排班 {room} 产物不一致：正常排班 {labels.get(normal_product, normal_product or '未填写')}，"
+                    f"救急排班 {labels.get(rescue_product, rescue_product or '未填写')}"
+                )
     for room in RESCUE_DORMS - data.plan.keys():
         if any(
             slot["agent"] not in ("", "Free")
