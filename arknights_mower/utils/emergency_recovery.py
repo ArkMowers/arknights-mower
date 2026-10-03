@@ -312,7 +312,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 if event_task.type == TaskTypes.RELEASE_DORM:
                     for name in event_task.release_dorm_targets():
                         resident = projected.operators.get(name)
-                        if (
+                        if not event_task.strict_mood_limit and (
                             not has_resting_mood(resident)
                             or resident.mood_is_prediction
                             or resident.mood < resident.upper_limit

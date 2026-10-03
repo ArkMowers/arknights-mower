@@ -242,3 +242,79 @@ def test_current_fiammetta_needs_confirmed_position_and_task(solver, invalid):
     assert result.complete and result.opportunity is None
     assert fia.mood == 24
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "case", ["due", "future", "wrong_bed", "changed_limit", "removed_limit", "ordinary"]
+)
+def test_current_rotation_honors_strict_release_operation_window(solver, case):
+    import copy
+    from datetime import timedelta
+
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+    from arknights_mower.utils.scheduler_task import (
+        SchedulerTask,
+        TaskTypes,
+        protect_priority_tasks,
+    )
+
+    data = solver.op_data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 0
+    for name, bed in zip(PRIMARY[2:], data.dorm[:2]):
+        resident = data.operators[name]
+        resident.mood = 10
+        resident._current_room, resident.current_index = bed.position
+        bed.name, bed.time = name, None
+    limited = data.operators[PRIMARY[2]]
+    data.config.operator_mood_limits = {limited.name: {"lower": 0, "upper": 12}}
+    data.init_mood_limit()
+    room, index = data.dorm[0].position
+    row = ["Current"] * len(data.plan[room])
+    row[index] = "Free"
+    task = SchedulerTask(
+        time=NOW + timedelta(seconds=45),
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={room: row},
+        meta_data=limited.name,
+        strict_mood_limit=True,
+        mood_limit=12,
+    )
+    protect_priority_tasks([task], time_now=NOW)
+    assert task.time <= NOW < task.mood_limit_deadline
+    assert limited.mood < limited.upper_limit
+    if case == "future":
+        task.time = NOW + timedelta(minutes=5)
+    elif case == "wrong_bed":
+        task.plan[room][index] = "Current"
+        task.plan[room][index + 1] = "Free"
+    elif case == "changed_limit":
+        task.mood_limit = 11
+    elif case == "removed_limit":
+        data.config.operator_mood_limits.clear()
+    elif case == "ordinary":
+        task.strict_mood_limit = False
+    solver.tasks = [task]
+    before_task = copy.deepcopy(vars(task))
+    before_operators = {
+        name: copy.deepcopy(vars(op)) for name, op in data.operators.items()
+    }
+    before_beds = [copy.deepcopy(vars(bed)) for bed in data.dorm]
+
+    # Compare the projected opportunity with the same real dispatch guard.
+    dispatch = copy.copy(solver)
+    dispatch.op_data = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
+    dispatch.tasks = []
+    dispatched_task = copy.deepcopy(task)
+    dispatch.prepare_release_dorm(dispatched_task)
+    assert bool(dispatched_task.plan) is (case in ("due", "future"))
+
+    result = native_opportunity(solver, PRIMARY[:2], NOW, current_only=True)
+
+    assert result.complete
+    assert (result.opportunity == NOW) is (case == "due")
+    assert vars(task) == before_task
+    assert {name: vars(op) for name, op in data.operators.items()} == before_operators
+    assert [vars(bed) for bed in data.dorm] == before_beds
+    assert solver.op_data is data and solver.tasks == [task]
+    solver.enter_room.assert_not_called()
