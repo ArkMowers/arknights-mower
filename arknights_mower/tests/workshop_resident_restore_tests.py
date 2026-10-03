@@ -123,7 +123,7 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
     original_tasks = solver.tasks[:]
     solver.sleep = MagicMock()
 
-    solver.craft_material()
+    solver.infra_main()
 
     if name_readings == ["", "", ""]:
         assert batch.crafts == []
@@ -134,6 +134,8 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
             for name, operator in solver.op_data.operators.items()
         } == original_positions
         assert solver.tasks == original_tasks
+        assert solver.task is None
+        assert solver.error is True
         solver.choose_agent.assert_not_called()
         solver.tap_confirm.assert_not_called()
         solver.agent_arrange.assert_not_called()
@@ -142,7 +144,8 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
         assert solver.read_screen.call_count == 3
         assert solver.sleep.call_count == 2
         batch.errors.reset_mock()
-        solver.craft_material()
+        solver.task = original_tasks[0]
+        solver.infra_main()
 
     assert batch.crafts == ["蜜莓", "年", "空爆"]
     assert solver.op_data.plan == original_plan
@@ -156,3 +159,4 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
         ("dormitory_1", 0) if resident else ("factory", 0)
     )
     batch.errors.assert_not_called()
+    assert solver.tasks == []

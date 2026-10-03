@@ -21,7 +21,7 @@ The shared cache reader and room reader already distinguish the training room by
 
 Before the first selection in each crafting batch, `_craft_material` reads the actual workshop occupant to establish the restoration snapshot. Missing occupancy cache never establishes vacancy. A confirmed vacant workshop retains the first crafter under the existing rule; consecutive tasks reuse the initial snapshot.
 
-The workshop reader establishes vacancy only from the empty-slot marker. An unknown occupant name receives up to three reads with two 0.25-second waits; exhaustion raises `RecognizeError` before clearing occupancy caches or establishing a restoration snapshot. The task remains pending without selecting or crafting.
+The workshop reader establishes vacancy only from the empty-slot marker. An unknown occupant name uses the existing three-read limit with two 0.25-second waits; exhaustion raises `RecognizeError` before clearing occupancy caches or establishing a restoration snapshot. Initial observation errors propagate through the scheduler's existing error handling without selecting, crafting, or consuming the pending task. No fallback occupant or separate recovery flow substitutes for a recognition error.
 
 ## Verification
 
@@ -29,4 +29,4 @@ Offline regressions cover absent, empty, populated, and oversized workshop lists
 
 Actual arranging and room-reader regressions separate physical occupants from cached positions, cover uncached residents and stale occupied caches on a vacant workshop, require readback before the first selection, and verify the original resident and borrowed dormitory positions after consecutive crafting.
 
-Recognition regressions cover recovery on the second and third name reads and exhausted retries with both cached and uncached residents. Unknown names preserve actual occupancy, cached positions, Scheduling Plans, and pending tasks without selection or confirmation.
+Recognition regressions cover recovery on the second and third name reads and exhausted retries with both cached and uncached residents. Through the real `infra_main` dispatch entry, unknown names report an error and preserve actual occupancy, cached positions, Scheduling Plans, and pending tasks without selection or confirmation; a subsequent dispatch with successful recognition completes crafting and restoration.

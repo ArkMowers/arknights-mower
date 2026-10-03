@@ -858,6 +858,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 except MowerExit:
                     raise
                 except Exception as e:
+                    if isinstance(e, RecognizeError) and not restore_plan:
+                        raise
                     last_agent = None
                     save_exception(e)
                     logger.exception("工厂任务失败: %s", e)
