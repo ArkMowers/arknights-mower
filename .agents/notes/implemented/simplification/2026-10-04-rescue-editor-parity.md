@@ -11,7 +11,7 @@ date: 2026-10-04
 
 The [scheduler contract](../../../../docs/subsystems/base-scheduler.md) owns rescue document isolation and facility compatibility under [INV-SCHED-09]. Mower infrastructure settings own the independent checkbox and editor entry. The editor shares normal controls, group fields and replacement fields, hiding only lower operator rules. Its return action drains saves before navigating to Mower settings. File import remains available; the right dropdown copies normal main facilities without replacing rescue backups. Export retains the complete document.
 
-The rescue editor displays a compact help panel covering activation, facility compatibility, independent operator selections, Free-bed priorities, import/export scope and normal handoff.
+The rescue editor displays a help panel below the facility editor covering activation, facility compatibility, independent operator selections, Free-bed priorities, import/export scope and normal handoff. Ordinary replacement entries do not schedule rescue rotations; trade-room replacements select trade order operators, and Fiammetta replacements select charging targets.
 
 ## Simplification
 
