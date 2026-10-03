@@ -474,6 +474,72 @@ def test_second_group_needs_measured_mood_below_its_own_line(
     solver._emergency_schedule_staffing.assert_not_called()
 
 
+@pytest.mark.parametrize("delay", [0, 10])
+def test_startup_keeps_executable_native_return_before_rescue(solver, delay):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    owner = data.operators[PRIMARY[2]]
+    owner.mood = 24
+    cover = data.operators[COVERS[0]]
+    cover._current_room, cover.current_index = owner.room, owner.index
+    bed = data.dorm[0]
+    owner._current_room, owner.current_index = bed.position
+    bed.name, bed.time = owner.name, None
+    task = SchedulerTask(
+        time=NOW + timedelta(minutes=delay),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={owner.room: [owner.name]},
+    )
+    solver.tasks = [task]
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active() is (delay > 0)
+    if delay == 0:
+        solver._emergency_schedule_staffing.assert_not_called()
+        assert task in solver.tasks
+    else:
+        solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+
+
+@pytest.mark.parametrize("delay,mood", [(0, 24), (10, 24), (0, 8)])
+def test_startup_keeps_executable_fiammetta_before_rescue(solver, delay, mood):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=0,
+        mood=mood,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=[PRIMARY[-1]],
+    )
+    task = SchedulerTask(
+        time=NOW + timedelta(minutes=delay),
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={"dormitory_1": [PRIMARY[-1], "菲亚梅塔"]},
+        meta_data=PRIMARY[-1],
+    )
+    solver.tasks = [task]
+
+    solver._emergency_startup()
+
+    executable = delay == 0 and mood == 24
+    assert solver._emergency_active() is (not executable)
+    if executable:
+        solver._emergency_schedule_staffing.assert_not_called()
+        assert task in solver.tasks
+    else:
+        solver._emergency_schedule_staffing.assert_called_once_with(initial=True)
+
+
 @pytest.mark.parametrize("reading", ["prediction", "missing", "at_line"])
 def test_entry_requires_measured_mood_strictly_below_rescue_line(solver, reading):
     setup_startup(solver)
