@@ -16,6 +16,7 @@ from arknights_mower.utils.building_skills import (
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.dorm_candidates import dorm_task_reservations
+from arknights_mower.utils.dorm_skills import is_group_recovery_manager
 from arknights_mower.utils.emergency_recovery import (
     ORDINARY_SHIFTS,
     emergency_dorm_plan,
@@ -742,7 +743,7 @@ class EmergencyRecoveryMixin:
         return True
 
     def _open_emergency_beds(self):
-        """救急优先使用宿管床位，菲亚梅塔保留配置原位。"""
+        """救急开放宿管床位，余量仅补回群回宿管；菲亚保持原位。"""
         data, state = self.op_data, self.emergency_state
         layout = state.get("dorm_layout", {})
         if not layout:
@@ -767,7 +768,7 @@ class EmergencyRecoveryMixin:
         spare = max(0, capacity - len(need))
         reserved, _ = dorm_task_reservations(data, self.tasks)
         restored = set()
-        for index in (0, 1):
+        for index in range(max(map(len, layout.values()))):
             for room, row in layout.items():
                 if index >= len(row) or spare <= 0:
                     continue
@@ -777,6 +778,7 @@ class EmergencyRecoveryMixin:
                 if (
                     manager is None
                     or name == "菲亚梅塔"
+                    or not is_group_recovery_manager(name)
                     or name in need
                     or name in reserved
                     or manager.is_working()

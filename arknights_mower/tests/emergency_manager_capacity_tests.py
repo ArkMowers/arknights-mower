@@ -1,4 +1,4 @@
-"""救急开放宿管床位，需求减少后先恢复各宿舍一号再二号宿管。"""
+"""救急开放宿管床位，余量仅补回群回和分摊恢复宿管。"""
 
 import pytest
 
@@ -94,23 +94,20 @@ def test_fiammetta_keeps_configured_position_and_is_not_recovery_bed(solver):
 @pytest.mark.parametrize(
     ("need", "restored"),
     [
+        (10, set()),
+        (9, {("dormitory_1", 0)}),
         (8, {("dormitory_1", 0), ("dormitory_2", 0)}),
-        (7, {("dormitory_1", 0), ("dormitory_2", 0), ("dormitory_1", 1)}),
-        (
-            6,
-            {
-                (room, index)
-                for room in ("dormitory_1", "dormitory_2")
-                for index in (0, 1)
-            },
-        ),
+        (7, {("dormitory_1", 0), ("dormitory_2", 0)}),
+        (0, {("dormitory_1", 0), ("dormitory_2", 0)}),
     ],
 )
-def test_manager_restoration_uses_room_first_then_slot_order(solver, need, restored):
+def test_only_group_and_shared_recovery_managers_use_spare_capacity(
+    solver, need, restored
+):
     data, state = setup_episode(solver, 10)
     solver._open_emergency_beds()
     state["ready_members"] = RECOVERY_NAMES[need:]
-    for room, row in state["dorm_layout"].items():
+    for row in state["dorm_layout"].values():
         for name in row[:2]:
             data.operators[name]._current_room, data.operators[name].current_index = (
                 "",
@@ -123,17 +120,42 @@ def test_manager_restoration_uses_room_first_then_slot_order(solver, need, resto
     actual = {
         (room, index)
         for room, row in state["dorm_layout"].items()
-        for index, name in enumerate(row[:2])
-        if data.plan[room][index].agent == name
+        for index, name in enumerate(row)
+        if name != "Free" and data.plan[room][index].agent == name
     }
     assert actual == restored
     assert len(data.dorm) == 10 - len(restored)
     task = solver.tasks[0]
     for room, index in restored:
         assert task.plan[room][index] == state["dorm_layout"][room][index]
+    assert not {"闪灵", "安赛尔"} & {name for row in task.plan.values() for name in row}
     assert not set(state["ready_members"]) & {
         name for row in task.plan.values() for name in row
     }
+
+
+@pytest.mark.parametrize("position", [1, 2])
+def test_group_recovery_manager_can_restore_its_configured_later_position(
+    solver, position
+):
+    data = solver.op_data
+    row = [Room("闪灵", "", []), Room("Lancet-2", "", [])] + [
+        Room("Free", "", []) for _ in range(3)
+    ]
+    row[position] = Room("夜莺", "", [])
+    data.global_plan["default_plan"].plan["dormitory_1"] = row
+    data.swap_plan([])
+    assert data.init_and_validate() is None
+    data, state = setup_episode(solver, 0)
+    data.operators["夜莺"]._current_room, data.operators["夜莺"].current_index = "", -1
+
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+
+    expected = ["Free"] * 5
+    expected[position] = "夜莺"
+    assert [slot.agent for slot in data.plan["dormitory_1"]] == expected
+    assert solver.tasks[0].plan["dormitory_1"][position] == "夜莺"
 
 
 def test_manager_restoration_does_not_evict_unready_recovery_resident(solver):
