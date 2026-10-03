@@ -16,11 +16,11 @@ from arknights_mower.utils.device import manager_io
 FIXTURE = Path(__file__).parent / "fixtures" / "inherited_command.py"
 
 
-def wait_for(path, timeout):
+def wait_for(path, timeout, *, exists=True):
     deadline = time.monotonic() + timeout
-    while not path.exists() and time.monotonic() < deadline:
+    while path.exists() != exists and time.monotonic() < deadline:
         time.sleep(0.01)
-    return path.exists()
+    return path.exists() == exists
 
 
 @pytest.mark.parametrize(
@@ -86,6 +86,11 @@ def record_processes(monkeypatch):
     processes, streams = [], []
     original = subprocess.Popen
 
+    def open_reader(*args, **kwargs):
+        stream = open(*args, **kwargs)
+        streams.append(stream)
+        return stream
+
     def spawn(*args, **kwargs):
         streams.extend(
             stream
@@ -97,7 +102,82 @@ def record_processes(monkeypatch):
         return process
 
     monkeypatch.setattr(manager_io.subprocess, "Popen", spawn)
+    monkeypatch.setattr(manager_io, "open", open_reader, raising=False)
     return processes, streams
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "timeout"])
+@pytest.mark.parametrize("stderr", [subprocess.PIPE, subprocess.STDOUT])
+def test_inherited_writes_during_collection_preserve_existing_output(
+    monkeypatch, tmp_path, outcome, stderr
+):
+    processes, streams = record_processes(monkeypatch)
+    original_read = manager_io._read_output
+    channels = iter(("stdout", "stderr"))
+
+    def read_with_inherited_write(stream, limit):
+        if stream is None:
+            return original_read(stream, limit)
+        channel = next(channels)
+
+        def seek(offset):
+            position = stream.seek(offset)
+            writing = (
+                ("stdout", "stderr") if stderr == subprocess.STDOUT else (channel,)
+            )
+            for name in writing:
+                (tmp_path / f"write.{name}").touch()
+                assert wait_for(tmp_path / f"wrote.{name}", 3)
+            return position
+
+        return original_read(SimpleNamespace(seek=seek, read=stream.read), limit)
+
+    monkeypatch.setattr(manager_io, "_read_output", read_with_inherited_write)
+    started = time.monotonic()
+    try:
+        try:
+            result = manager_io.run_command(
+                [
+                    sys.executable,
+                    "-B",
+                    str(FIXTURE),
+                    "writer_command",
+                    str(tmp_path),
+                    outcome,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=stderr,
+                check=True,
+                timeout=0.5 if outcome == "timeout" else 3,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except subprocess.TimeoutExpired as exc:
+            assert outcome == "timeout"
+            result = exc
+        except subprocess.CalledProcessError as exc:
+            assert outcome == "failure"
+            assert exc.returncode == 7
+            result = exc
+        else:
+            assert outcome == "success"
+            assert result.returncode == 0
+        assert time.monotonic() - started < 2
+        assert not (tmp_path / "descendant.stopped").exists()
+        if stderr == subprocess.STDOUT:
+            assert result.stdout == (
+                b"command stdout\ncommand stderr\n"
+                b"descendant stdout\ndescendant stderr\n"
+            )
+            assert result.stderr is None
+        else:
+            assert result.stdout == b"command stdout\ndescendant stdout\n"
+            assert result.stderr == b"command stderr\ndescendant stderr\n"
+        assert all(process.poll() is not None for process in processes)
+        assert all(stream.closed for stream in streams)
+    finally:
+        (tmp_path / "release").touch()
+        assert wait_for(tmp_path / "descendant.stopped", 3)
+    assert all(wait_for(Path(stream.name), 3, exists=False) for stream in streams)
 
 
 def test_captured_binary_streams_preserve_bytes_and_close(monkeypatch):
@@ -211,14 +291,14 @@ def test_timeout_preserves_partial_bytes_and_reaps_only_owned_process(monkeypatc
 
 def test_launch_failure_closes_every_temporary_stream(monkeypatch, tmp_path):
     streams = []
-    original = manager_io.tempfile.TemporaryFile
+    original = manager_io.tempfile.NamedTemporaryFile
 
     def open_stream():
         stream = original()
         streams.append(stream)
         return stream
 
-    monkeypatch.setattr(manager_io.tempfile, "TemporaryFile", open_stream)
+    monkeypatch.setattr(manager_io.tempfile, "NamedTemporaryFile", open_stream)
     with pytest.raises(OSError):
         manager_io.run_command(
             [str(tmp_path / "missing-command")],
@@ -227,6 +307,33 @@ def test_launch_failure_closes_every_temporary_stream(monkeypatch, tmp_path):
         )
     assert len(streams) == 2
     assert all(stream.closed for stream in streams)
+    assert all(not Path(stream.name).exists() for stream in streams)
+
+
+def test_reader_open_failure_closes_output_before_process_creation(monkeypatch):
+    streams = []
+    original = manager_io.tempfile.NamedTemporaryFile
+
+    def open_stream():
+        stream = original()
+        streams.append(stream)
+        return stream
+
+    spawn = Mock()
+    monkeypatch.setattr(manager_io.tempfile, "NamedTemporaryFile", open_stream)
+    monkeypatch.setattr(
+        manager_io,
+        "open",
+        Mock(side_effect=OSError("reader unavailable")),
+        raising=False,
+    )
+    monkeypatch.setattr(manager_io.subprocess, "Popen", spawn)
+    with pytest.raises(OSError, match="reader unavailable"):
+        manager_io.run_command(["manager", "info"], timeout=1, capture_output=True)
+    spawn.assert_not_called()
+    assert len(streams) == 1
+    assert streams[0].closed
+    assert not Path(streams[0].name).exists()
 
 
 @pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])

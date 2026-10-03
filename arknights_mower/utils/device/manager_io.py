@@ -15,6 +15,22 @@ MAX_COMMAND_OUTPUT = 32 * 1024 * 1024
 COMMAND_CLEANUP_TIMEOUT = 1
 
 
+def _capture_stream(stack):
+    writer = stack.enter_context(tempfile.NamedTemporaryFile())
+    # Reopening gives the reader its own offset; duplicated handles share one.
+    # Windows readers also share delete access with the temporary writer.
+    reader = stack.enter_context(
+        open(
+            writer.name,
+            "rb",
+            opener=lambda path, flags: os.open(
+                path, flags | getattr(os, "O_TEMPORARY", 0)
+            ),
+        )
+    )
+    return writer, reader
+
+
 def _read_output(stream, limit):
     if stream is None:
         return None
@@ -55,15 +71,11 @@ def run_command(
         stdout = stderr = subprocess.PIPE
     deadline = time.monotonic() + timeout
     with ExitStack() as stack:
-        output = (
-            stack.enter_context(tempfile.TemporaryFile())
-            if stdout == subprocess.PIPE
-            else None
+        output, output_reader = (
+            _capture_stream(stack) if stdout == subprocess.PIPE else (None, None)
         )
-        error = (
-            stack.enter_context(tempfile.TemporaryFile())
-            if stderr == subprocess.PIPE
-            else None
+        error, error_reader = (
+            _capture_stream(stack) if stderr == subprocess.PIPE else (None, None)
         )
         streams = [stream for stream in (output, error) if stream is not None]
         process = subprocess.Popen(
@@ -89,11 +101,11 @@ def run_command(
                     process.wait(timeout=min(0.02, remaining))
                 except subprocess.TimeoutExpired:
                     continue
-            stdout_data = _read_output(output, max_output + 1)
+            stdout_data = _read_output(output_reader, max_output + 1)
             remaining_output = max_output - len(stdout_data or b"")
             if remaining_output < 0:
                 raise ValueError(f"设备命令输出超过 {max_output} 字节上限")
-            stderr_data = _read_output(error, remaining_output + 1)
+            stderr_data = _read_output(error_reader, remaining_output + 1)
             if len(stderr_data or b"") > remaining_output:
                 raise ValueError(f"设备命令输出超过 {max_output} 字节上限")
         except BaseException as exc:
@@ -111,9 +123,9 @@ def run_command(
                     failure.cleanup_failed = True
             if isinstance(failure, subprocess.TimeoutExpired):
                 try:
-                    failure.output = _read_output(output, max_output)
+                    failure.output = _read_output(output_reader, max_output)
                     failure.stderr = _read_output(
-                        error, max_output - len(failure.output or b"")
+                        error_reader, max_output - len(failure.output or b"")
                     )
                 except OSError as exc:
                     failure.add_note(f"设备命令超时输出读取失败：{exc}")

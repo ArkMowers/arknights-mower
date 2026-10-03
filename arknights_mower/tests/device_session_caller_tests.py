@@ -48,6 +48,9 @@ class DeviceSessionCallerTests(unittest.TestCase):
         self.device.client = MagicMock()
         self.session = SessionControl(self.device)
         self.device.session_control = self.session
+        self.enterContext(
+            patch("subprocess.Popen", side_effect=AssertionError("unexpected process"))
+        )
 
     def incompatible_server(self):
         self.enterContext(
@@ -56,7 +59,7 @@ class DeviceSessionCallerTests(unittest.TestCase):
                 return_value=40,
             )
         )
-        return self.enterContext(
+        run = self.enterContext(
             patch(
                 "subprocess.run",
                 return_value=subprocess.CompletedProcess(
@@ -64,6 +67,12 @@ class DeviceSessionCallerTests(unittest.TestCase):
                 ),
             )
         )
+        for target in (
+            "arknights_mower.utils.device.device.run_command",
+            "arknights_mower.utils.device.maatouch.session.run_command",
+        ):
+            self.enterContext(patch(target, new=run))
+        return run
 
     def test_custom_adb_capture_does_not_execute_with_incompatible_server(self):
         run = self.incompatible_server()
@@ -78,12 +87,11 @@ class DeviceSessionCallerTests(unittest.TestCase):
                 config.conf.custom_screenshot, "command", "adb shell screencap -p"
             ),
             patch.object(config, "screenshot_time", datetime.min),
-            patch("subprocess.check_output") as capture,
             self.assertRaises(SharedADBError),
         ):
             self.device.screencap()
         self.assertEqual(run.call_args.args[0], ["chosen-adb", "version"])
-        capture.assert_not_called()
+        self.assertEqual(run.call_count, 1)
 
     def test_maatouch_does_not_spawn_with_incompatible_server(self):
         from arknights_mower.utils.device.maatouch.session import Session
