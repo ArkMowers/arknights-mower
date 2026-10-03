@@ -98,6 +98,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DIAG-02] Archive Error Isolation**: Does malformed archive metadata leave the worker able to process subsequent archives?
 
 - [ ] **[INV-DIAG-03] Accepted Archive Drain**: Does shutdown preserve accepted screenshot and archive work through one flush deadline, then count discarded work and stop new file writes?
+- [ ] **[INV-DIAG-07] Archive Observation Cohesion**: Do regression assertions over a manifest and invalidated logs acquire the archive lock after observing the relevant transition, instead of treating log removal as manifest completion?
 - [ ] **[INV-DIAG-04] Encoded Recent Cache**: With ordinary history disabled, does the recent cache retain encoded frames within count and byte bounds, while raw submission remains non-blocking and bounded?
 - [ ] **[INV-DIAG-05] Shared Frame Encoding**: Does each RGB snapshot encode at most once, release its source after completion, share encoded bytes across consumers and preserve capacity, newer preview progress and the shutdown deadline?
 

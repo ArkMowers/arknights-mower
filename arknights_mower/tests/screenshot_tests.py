@@ -172,10 +172,11 @@ class ScreenshotTests(unittest.TestCase):
         deadline = time.monotonic() + 3
         while saved.exists() and time.monotonic() < deadline:
             Event().wait(0.01)
-        self.assertFalse(saved.exists())
-        event = json.loads(manifest.read_text(encoding="utf-8"))
-        self.assertEqual(event["error_count"], 2)
-        self.assertEqual(event["last_error_ns"], now)
+        with self.store._archive_lock:
+            self.assertFalse(saved.exists())
+            event = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(event["error_count"], 2)
+            self.assertEqual(event["last_error_ns"], now)
 
     def test_existing_archived_frame_is_not_replaced_during_recovery(self):
         archive_id = self.store.mark_error(time.time_ns(), "运行失败")
