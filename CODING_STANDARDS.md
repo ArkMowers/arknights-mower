@@ -32,6 +32,8 @@
 - **[INV-SCHED-14] Complete Group Replacement Matching**: A grouped shift considers all eligible replacement assignments and accepts a complete matching whenever one exists; insufficient replacements or beds preserve the group's original arrangement.
 - **[INV-SCHED-15] Selection Estimate Isolation**: Selection-card mood estimates support candidate screening, ordering, and primary shift selection only; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks. Regular candidate planning scans cards only when no eligible idle recovery candidate has valid measured or estimated mood.
 
+- **[INV-SCHED-18] Unscheduled Workshop Slot**: Workshop tasks read and arrange the single physical workshop slot without requiring or inserting static workshop staff; other facilities retain their existing slot contracts.
+
 ### 2.2 Presentation Layer (UI)
 - **[INV-UI-03] Selected Instance Persistence**: Selecting a detected instance saves its explicit identity before connection testing or startup; failure preserves that choice without an unverified endpoint, while a rejected identity save prevents lifecycle actions and preserves the previous saved Device Profile.
 - **[INV-UI-01] Unpersisted Candidate State**: Discovery candidate tables must remain in ephemeral Pinia/component state without mutating persisted profile until user explicit save.

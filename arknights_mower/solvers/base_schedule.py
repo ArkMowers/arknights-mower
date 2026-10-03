@@ -6968,6 +6968,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.wait_product_complete()
         if room == "train":
             length = 2
+        elif room == "factory":
+            length = 1
         else:
             length = len(self.op_data.plan[room])
         if length > 3:

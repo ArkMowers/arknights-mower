@@ -1139,9 +1139,12 @@ class Operators:
             for k, v in self.operators.items()
             if v.current_room == room
         }
-        # 训练室的两个槽位由设施决定，自动专精不要求静态排班配置该房间。
-        # 只读取缓存，不向排班表补人，避免常规排班接管自动专精。
-        res = [""] * 2 if room == "train" else [obj.agent for obj in self.plan[room]]
+        if room == "train":
+            res = [""] * 2
+        elif room == "factory":
+            res = [""]
+        else:
+            res = [obj.agent for obj in self.plan[room]]
         not_found = False
         for idx, op in enumerate(res):
             if idx in room_data:

@@ -122,6 +122,36 @@ def test_consecutive_operators_restore_factory_and_shared_dorm_only_once(batch):
     batch.errors.assert_not_called()
 
 
+@pytest.mark.parametrize("factory_plan", [None, []])
+def test_batch_restores_actual_staff_without_static_factory_staff(batch, factory_plan):
+    solver = batch.solver
+    if factory_plan is None:
+        del solver.op_data.plan["factory"]
+    else:
+        solver.op_data.plan["factory"] = factory_plan
+    original = deepcopy(solver.op_data.plan)
+    for name, operator in solver.op_data.operators.items():
+        operator.name = name
+    arrange = solver.agent_arrange.side_effect
+
+    def arrange_without_static_staff(plan, get_time=False):
+        cached = Operators.get_current_room(solver.op_data, "factory", True)
+        assert len(cached) == 1
+        return arrange(plan, get_time)
+
+    solver.agent_arrange.side_effect = arrange_without_static_staff
+    solver.infra_main()
+
+    assert batch.crafts == ["蜜莓", "年", "空爆"]
+    assert batch.arrangements[-1] == {
+        "factory": ["特克诺"],
+        "dormitory_1": ["蜜莓", "年", "空爆", "Current", "Current"],
+    }
+    assert solver.op_data.plan == original
+    assert solver.tasks == []
+    batch.errors.assert_not_called()
+
+
 @pytest.mark.parametrize("boundary", ["other", "future", "plan", "release"])
 def test_batch_stops_at_task_boundary(batch, boundary):
     solver = batch.solver
