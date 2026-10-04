@@ -247,7 +247,7 @@ def test_context_ignores_inspection_timestamp_but_detects_roster_change(solver):
 def test_targets_use_individual_rates_and_preserve_infeasible_value(solver):
     data = solver.op_data
     normal = data.resting_mood_threshold(data.operators[PRIMARY[0]])
-    assert recovery_target(data, PRIMARY[0]) == (normal + 1, "fallback")
+    assert recovery_target(data, PRIMARY[0]) == (normal, "fallback")
     target, source = recovery_target(data, PRIMARY[0], 2, NOW + timedelta(hours=2), NOW)
     assert target == normal + 5 and source == "history"
     target, _ = recovery_target(data, PRIMARY[0], 10, NOW + timedelta(hours=2), NOW)

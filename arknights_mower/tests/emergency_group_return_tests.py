@@ -536,3 +536,21 @@ def test_normal_full_rest_requirement_overrides_rescue_target(group_return):
     solver.op_data.operators[name].mood = 24
     solver._emergency_release_ready()
     assert_waiting(solver, [name])
+
+
+def test_existing_fallback_targets_release_at_normal_threshold(group_return):
+    solver = group_return.solver
+    for name in PRIMARY:
+        op = solver.op_data.operators[name]
+        threshold = solver.op_data.resting_mood_threshold(op)
+        solver.emergency_state["targets"][name] = threshold + 1
+        op.mood = threshold
+    solver._emergency_update_targets()
+    for name in PRIMARY:
+        op = solver.op_data.operators[name]
+        assert solver.emergency_state["targets"][name] == (
+            solver.op_data.resting_mood_threshold(op)
+        )
+        assert solver.emergency_state["target_sources"][name] == "fallback"
+    assert solver._emergency_release_ready()
+    assert_waiting(solver, PRIMARY)
