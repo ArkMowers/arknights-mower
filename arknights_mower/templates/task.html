@@ -32,7 +32,7 @@
         {% if loop.first %}
         <td rowspan="{{ task.plan|length }}">
           {{ task.time.strftime('%H:%M:%S') }}
-          {% if task.emergency_recovery_release %}<br />自动救急离宿待命
+          {% if task.emergency_recovery_release %}<br />自动救急
           {% elif task.emergency_staffing %}<br />自动救急换班
           {% elif task.emergency_dorm %}<br />自动救急宿舍安排{% endif %}
         </td>

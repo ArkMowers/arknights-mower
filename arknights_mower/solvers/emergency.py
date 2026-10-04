@@ -773,6 +773,36 @@ class EmergencyRecoveryMixin:
             if name not in ("", "Free", "Current")
         )
 
+    def _emergency_fia_fallback(self, configured):
+        """配置对象均满心情后，按心情选择无特殊上限的正常主班。"""
+        if not self._emergency_frozen() or not configured:
+            return None
+        data = self.op_data
+        if not all(
+            (op := data.operators.get(name)) is not None
+            and has_resting_mood(op)
+            and not op.mood_is_prediction
+            and op.current_mood() >= 24
+            for name in configured
+        ):
+            return None
+        reserved, _ = dorm_task_reservations(data, self.tasks)
+        reserved |= busy_resting_names()
+        candidates = [
+            name
+            for name in primary_names(data)
+            if not data.has_rest_mood_limit(name)
+            and name not in reserved
+            and (op := data.operators[name]).upper_limit == 24
+            and op.current_room not in ("train", "factory")
+            and has_resting_mood(op)
+            and not op.mood_is_prediction
+            and op.current_mood() < 24
+        ]
+        return sorted(
+            candidates, key=lambda name: (data.operators[name].current_mood(), name)
+        )
+
     def _emergency_filter_tasks(self):
         if not self._emergency_frozen():
             return
@@ -795,7 +825,17 @@ class EmergencyRecoveryMixin:
                     or not fia_rooms
                     or task.meta_data
                     and (
-                        task.meta_data not in fia_targets or set(task.plan) != fia_rooms
+                        (
+                            task.meta_data not in fia_targets
+                            and not (
+                                getattr(task, "emergency_fia_fallback", False)
+                                and task.meta_data in primary_names(self.op_data)
+                                and not self.op_data.has_rest_mood_limit(task.meta_data)
+                                and self.op_data.operators[task.meta_data].upper_limit
+                                == 24
+                            )
+                        )
+                        or set(task.plan) != fia_rooms
                     )
                 )
             )

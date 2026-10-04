@@ -1694,7 +1694,8 @@ def test_rescue_task_report_labels_staffing_and_concrete_dorm_rotation(solver):
         tasks=[task.format(), check.format()], base_scheduler=solver
     )
     assert "自动救急换班" in report
-    assert "自动救急离宿待命" in report
+    assert "自动救急离宿待命" not in report
+    assert "自动救急" in report
     assert "自动救急心情复查" not in report
     assert COVERS[0] in report
     assert emergency.RESUME_META not in report
@@ -2192,3 +2193,37 @@ def test_expired_card_moods_do_not_establish_rescue_contention(solver):
         solver.op_data.dorm_mood_estimates[name] = (0, NOW - timedelta(hours=1))
     solver._emergency_startup()
     assert not solver._emergency_active()
+
+
+@pytest.mark.parametrize("configured_mood", [20, 24])
+def test_rescue_fia_fallback_uses_lowest_uncapped_primary(solver, configured_mood):
+    state = make_episode(solver)
+    data = solver.op_data
+    state["fia_targets"] = [PRIMARY[0]]
+    state["dorm_layout"] = {"dormitory_1": ["菲亚梅塔", "Free", "Free", "Free", "Free"]}
+    for name, mood in zip(PRIMARY, [configured_mood, 1, 5, 8]):
+        data.operators[name].mood = mood
+    data.config.operator_mood_limits[PRIMARY[1]] = {"lower": 0, "upper": 12}
+    data.operators[PRIMARY[1]].upper_limit = 12
+    solver.check_fia = lambda: ([PRIMARY[0]], "dormitory_1")
+    solver._refresh_fia_candidate_moods = MagicMock()
+    solver.task = SchedulerTask(time=NOW, task_type=TaskTypes.FIAMMETTA)
+    solver.plan_fia()
+    task = next(t for t in solver.tasks if t.type == TaskTypes.FIAMMETTA and t.plan)
+    assert task.meta_data == (PRIMARY[2] if configured_mood == 24 else PRIMARY[0])
+    assert task.emergency_fia_fallback is (configured_mood == 24)
+    solver._emergency_filter_tasks()
+    assert task in solver.tasks
+
+
+def test_rescue_fia_fallback_respects_unknown_reserved_and_normal_mode(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    data.operators[PRIMARY[0]].mood = 24
+    data.operators[PRIMARY[1]].time_stamp = None
+    solver.tasks.append(SchedulerTask(task_plan={"room_1_3": [PRIMARY[2]]}))
+    data.operators[PRIMARY[3]].mood = 8
+    assert solver._emergency_fia_fallback([PRIMARY[0]]) == [PRIMARY[3]]
+    assert solver._emergency_fia_fallback([]) is None
+    state["phase"] = "done"
+    assert solver._emergency_fia_fallback([PRIMARY[0]]) is None

@@ -142,3 +142,5 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Definition**: A special sequence uses Fiammetta to restore a target operator’s mood, including temporary placements, charging, and follow-up arrangements. Suspend backup switching during the sequence. Update mood and timestamps while preserving the work depletion rate for later calibration from normal work readings.
 - After initial observations, fully recovered Fiammetta with configured charging targets completes charging and staffing restoration before ordinary post-initialization scheduling and automatic rescue evaluation. Personal mood-limit releases and due critical tasks retain their existing protection rules.
 - **Code Mapping**: [`BaseSchedulerSolver.plan_fia`](arknights_mower/solvers/base_schedule.py)
+
+- During automatic rescue, when all configured Fiammetta charging targets have full mood, eligible normal primary operators without special mood caps or reservation conflicts may be selected in ascending mood order under existing charging rules.

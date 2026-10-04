@@ -723,6 +723,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if fia_room is None or fia_plan is None:
             return
         self._refresh_fia_candidate_moods(fia_plan)
+        fallback = self._emergency_fia_fallback(fia_plan)
+        if fallback is not None:
+            self._refresh_fia_candidate_moods(fallback)
+            fia_plan = self._emergency_fia_fallback(fia_plan) or []
+            logger.info(
+                "自动救急：配置充能目标已满心情，按心情选择正常主班：%s", fia_plan
+            )
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         target = None
         if not config.conf.fia_fool:
@@ -749,7 +756,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         continue
                     # Lancet-2
                     if (
-                        self.op_data.operators[member].room.startswith("dorm")
+                        fallback is not None
+                        and self.op_data.has_rest_mood_limit(member)
+                        or self.op_data.operators[member].room.startswith("dorm")
                         or self.op_data.operators[member].workaholic
                         and member not in fia_plan
                     ):
@@ -766,7 +775,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             target = operator
             break
         # 若全部跳过且关闭防呆则令目标干员为心情最低干员
-        if target is None and not config.conf.fia_fool:
+        if target is None and fia_plan and not config.conf.fia_fool:
             target = fia_plan[0]
             op_mood = 24
             for op in fia_plan:
@@ -788,6 +797,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     initial_fia=getattr(self.task, "initial_fia", False),
                 )
             )
+            self.tasks[-1].emergency_fia_fallback = fallback is not None
             # 充能结束后整组立即上班
             for task in self.tasks:
                 if task.type == TaskTypes.SHIFT_ON:

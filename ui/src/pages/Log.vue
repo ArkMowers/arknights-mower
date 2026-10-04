@@ -419,7 +419,7 @@ async function db_delete(keys) {
               <tr v-for="(value, key, idx) in task.plan">
                 <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
                   {{ task.time.split('T')[1].split('.')[0] }}
-                  <div v-if="task.emergency_recovery_release">自动救急离宿待命</div>
+                  <div v-if="task.emergency_recovery_release">自动救急</div>
                   <div v-else-if="task.emergency_staffing">自动救急换班</div>
                   <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
                 </td>
