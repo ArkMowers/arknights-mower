@@ -84,6 +84,7 @@ def emergency_solver(solver, monkeypatch):
     bed.time = now + timedelta(minutes=10)
     solver.emergency_state = {
         "phase": "recovering",
+        "staffing_complete": True,
         "backup_names": [],
         "frozen_conditions": [],
         "targets": {"银灰": 12, "絮雨": 24},
@@ -329,6 +330,10 @@ def test_emergency_fixed_manager_keeps_personal_limit_and_completed_cycle_identi
 def predicted_emergency_solver(emergency_solver):
     solver = emergency_solver
     data = solver.op_data
+    # 无替班可接手时，离宿实测必须达标；可提前交接另有覆盖。
+    for name in data.plan["central"][0].replacement:
+        op = data.operators[name]
+        data.update_detail(name, 0, op.current_room, op.current_index, True)
     data.global_plan["default_plan"].plan = copy.deepcopy(data.plan)
     data.global_plan["default_plan"].config = copy.deepcopy(data.config)
     data.update_detail("银灰", 11.8, ROOM, 3, True)
@@ -526,6 +531,19 @@ def completed_manager_exit_solver(emergency_solver):
 
     solver.agent_arrange = MagicMock(side_effect=arrange)
     return solver
+
+
+@pytest.mark.parametrize("staffing_complete", [False, None])
+def test_completed_mood_requires_staffing_completion_before_exit(
+    completed_manager_exit_solver, staffing_complete
+):
+    solver = completed_manager_exit_solver
+    if staffing_complete is None:
+        solver.emergency_state.pop("staffing_complete")
+    else:
+        solver.emergency_state["staffing_complete"] = staffing_complete
+    assert not solver._emergency_ready()
+    solver.agent_arrange.assert_not_called()
 
 
 @pytest.mark.parametrize("source", ["correction", "cached", "backup"])

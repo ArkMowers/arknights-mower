@@ -13,6 +13,7 @@
 ## 2. Subsystem Invariants
 
 ### 2.1 Base Infrastructure & Scheduling
+- **[INV-SCHED-20] Vacated Single-Bed Recovery**: Departure from the only effective Free bed in a dormitory triggers one cross-dormitory single-target priority allocation, preserving occupants, reservations and actual occupancy; mood changes alone do not trigger it.
 - **[INV-SCHED-19] Ungrouped Standby Return**: An ungrouped standby primary joins the earliest eligible ordinary shift-on batch without changing its deadline, bypassing reservations, altering actual occupancy or creating an independent return; grouped standby and exhausted replacement handling retain their existing rules.
 - **[INV-SCHED-17] Mastery Order Timing**: Mastery conflicts preserve trade order task times and advance eligible handoffs using remaining completion and operation allowances; due handoffs run first, and early execution retains training and candidate checks without requeueing the ideal handoff time.
 - **[INV-SCHED-16] Backup Validation Coverage**: Validation excludes only backup activation combinations disproved by supported trigger logic, reports success only after every remaining combination passes the same merged-plan validation as shift projection, and preserves the caller's active plan and actual occupancy. Budget exhaustion is an incomplete warning that permits startup; confirmed configuration errors remain blocking.

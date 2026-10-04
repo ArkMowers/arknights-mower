@@ -124,6 +124,7 @@ from arknights_mower.utils.scheduler_task import (
     dorm_residents,
     find_next_task,
     plan_metadata,
+    prioritize_new_dorm_recovery,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
     restore_displaced_resting,
@@ -1129,12 +1130,40 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         task = self.task
         get_time = self.prepare_release_dorm(task)
         original_plan = copy.deepcopy(task.plan)
+        before = self.op_data.project_arrangements([])
         completed = False
         try:
             result = self.agent_arrange(task.plan, get_time)
             completed = result is not False
             return result, get_time
         finally:
+            released = {
+                room: names
+                for room, names in original_plan.items()
+                if completed or room not in task.plan
+            }
+            reserved_names, reserved_slots = dorm_task_reservations(
+                self.op_data,
+                [
+                    pending
+                    for pending in self.tasks
+                    if pending is not task and pending.type != TaskTypes.SHIFT_ON
+                ],
+            )
+            if not completed:
+                reserved_slots.update(
+                    (room, index)
+                    for room, names in task.plan.items()
+                    for index, name in enumerate(names)
+                    if name != "Current"
+                )
+            rearranged = prioritize_new_dorm_recovery(
+                before, released, reserved_slots, reserved_names=reserved_names
+            )
+            if rearranged != released:
+                self.tasks.append(
+                    SchedulerTask(task_type=TaskTypes.RE_ORDER, task_plan=rearranged)
+                )
             # Free 在选人时会解析成姓名；重试仍按原身份核验，已完成房间不复原。
             task.plan = (
                 {} if completed else {room: original_plan[room] for room in task.plan}
@@ -1303,6 +1332,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         self._switch_products_before_arrangement(self.task)
                         self._activate_shift_backup(self.task)
                         get_time |= getattr(self.task, "backup_shift_active", False)
+                        get_time |= any(
+                            room.startswith("dorm") for room in self.task.plan
+                        )
                     if self.task.type == TaskTypes.RELEASE_DORM:
                         result, get_time = self.arrange_release_dorm()
                         arrangement_deferred = result is False
@@ -3874,6 +3906,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             or getattr(task, "product_shift_locked", False)
         ):
             self._prepare_shift_backup(task)
+            reserved_names, reserved_slots = dorm_task_reservations(
+                self.op_data,
+                [
+                    pending
+                    for pending in self.tasks
+                    if pending is not task and pending.type != TaskTypes.SHIFT_ON
+                ],
+            )
+            task.plan = prioritize_new_dorm_recovery(
+                self.op_data,
+                task.plan,
+                reserved_slots,
+                reserved_names=reserved_names,
+            )
             return
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         ordinary = {
@@ -3925,6 +3971,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             if error := simulation.op_data.swap_plan(conditions, refresh=True):
                 raise ValueError(f"完整换班预演失败：{error}")
+            reserved_names, reserved_slots = dorm_task_reservations(
+                simulation.op_data,
+                [
+                    pending
+                    for pending in simulation.tasks
+                    if pending.type != TaskTypes.SHIFT_ON
+                ],
+            )
+            step.plan = prioritize_new_dorm_recovery(
+                simulation.op_data,
+                step.plan,
+                reserved_slots,
+                reserved_names=reserved_names,
+            )
             returning.update(
                 name
                 for name in _assigned_operator_names(step.plan)
