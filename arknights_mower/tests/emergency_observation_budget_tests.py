@@ -352,7 +352,7 @@ def prepare_observing_handoff(episode):
     finish_release(episode, release)
 
 
-def test_delayed_handoff_rechecks_native_rotation_after_mood_changes(
+def test_delayed_handoff_rechecks_measured_target_after_mood_changes(
     observation_solver,
 ):
     episode = observation_solver
@@ -493,6 +493,8 @@ def test_handoff_does_not_restore_old_deadline_over_new_observation(
 ):
     episode = observation_solver
     solver = episode.solver
+    for name in PRIMARY:
+        solver.op_data.operators[name].mood = 24
     episode.state["phase"] = "returning"
     episode.state["handoff_plan"] = {}
     solver._emergency_restore = solver.__class__._emergency_restore.__get__(solver)

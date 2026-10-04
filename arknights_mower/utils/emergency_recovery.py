@@ -116,6 +116,8 @@ def recovery_target(data, name, rate=None, opportunity=None, now=None):
     op = data.operators[name]
     if op.rest_in_full:
         return op.upper_limit, "rest_in_full"
+    if data._can_standby(op):
+        return min(op.upper_limit, data.rescue_mood_threshold(op)), "standby"
     normal = data.resting_mood_threshold(op)
     if rate is None or opportunity is None:
         return min(op.upper_limit, normal), "fallback"

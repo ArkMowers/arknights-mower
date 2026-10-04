@@ -430,8 +430,8 @@ def test_departure_room_read_replaces_prediction_before_emergency_exit(
     assert not limited.mood_is_prediction
     assert not solver._emergency_ready()
     solver.tasks.remove(release)
-    # 达标仍须正常替班可用；夹具中的替班此前已耗尽心情。
-    assert not solver._emergency_ready()
+    # 实测达到个人上限即可回班；未达标时仍须有替班覆盖继续休息。
+    assert solver._emergency_ready() is (actual_mood == limited.upper_limit)
     for name in solver.op_data.plan["central"][0].replacement:
         op = solver.op_data.operators[name]
         solver.op_data.update_detail(name, 24, op.current_room, op.current_index, True)
