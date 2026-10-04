@@ -1,0 +1,21 @@
+{
+  "title": "Current rescue handoff coverage",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_handoff_feasible"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_group_return_tests.py",
+    "arknights_mower/tests/emergency_observation_budget_tests.py"
+  ]
+}

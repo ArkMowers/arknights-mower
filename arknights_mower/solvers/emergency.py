@@ -318,7 +318,7 @@ class EmergencyRecoveryMixin:
                 projection = native_opportunity(trial, required, now, current_only=True)
                 if (
                     projection.opportunity is not None
-                    and not trial._emergency_handoff_feasible({}, check_rotation=False)
+                    and not trial._emergency_handoff_feasible({})
                 ):
                     projection = NativeProjection(None, True, "normal_handoff_blocked")
         else:
@@ -732,6 +732,11 @@ class EmergencyRecoveryMixin:
                         for member in state.get("ready_members", ())
                         if member != name
                     ]
+                continue
+            if normal._can_standby(normal.operators[name]):
+                state["targets"][name], state["target_sources"][name] = recovery_target(
+                    normal, name
+                )
                 continue
             if name in state.get("ready_members", ()):
                 continue
@@ -1505,43 +1510,38 @@ class EmergencyRecoveryMixin:
                     if saved is not None and bed.name == saved[0] and bed.time is None:
                         bed.time = saved[1]
 
-    def _emergency_handoff_feasible(self, plan, *, check_rotation=True):
+    def _emergency_handoff_feasible(self, plan):
         state = self.emergency_state
-        probe = copy.copy(self)
-        probe.op_data = self.op_data.project_arrangements([plan])
-        probe.tasks = []
-        # 各组需要完整替班与床位；不同组不要求同时占满普通床位。
-        groups = {}
+        data = self.op_data.project_arrangements([plan])
+        # 当前正常岗位覆盖即可交接，后续轮休由正常调度处理。
         feasible = True
-        for name in primary_names(probe.op_data):
-            op = probe.op_data.operators[name]
-            if probe.op_data._can_standby(op):
+        for name in primary_names(data):
+            op = data.operators[name]
+            if data._can_standby(op):
                 continue
             if op.is_resting():
                 if not has_resting_mood(op) or op.mood_is_prediction:
                     return False
                 if any(
-                    not (member := probe.op_data.operators[other]).room.startswith(
-                        "dorm"
-                    )
+                    not (member := data.operators[other]).room.startswith("dorm")
                     and member.is_working()
                     and not member.workaholic
-                    for other in probe.op_data.groups.get(op.group, [name])
+                    for other in data.groups.get(op.group, [name])
                 ):
                     return False
-                occupant = probe.op_data.get_current_operator(op.room, op.index)
+                occupant = data.get_current_operator(op.room, op.index)
                 if (
                     occupant is None
-                    or occupant.name not in probe.op_data.replacement_candidates(op)
+                    or occupant.name not in data.replacement_candidates(op)
                     or not has_resting_mood(occupant)
                     or occupant.mood_is_prediction
-                    or probe.op_data.replacement_exhausted(occupant.name)
+                    or data.replacement_exhausted(occupant.name)
                 ):
                     return False
                 continue
             actual = self.op_data.operators.get(name)
             returned = (
-                ("handoff_plan" in state)
+                "handoff_plan" in state
                 and actual is not None
                 and actual.is_working()
                 and (actual.current_room, actual.current_index) == (op.room, op.index)
@@ -1549,24 +1549,17 @@ class EmergencyRecoveryMixin:
             if (
                 not has_resting_mood(op)
                 or op.mood_is_prediction
-                or not returned
-                and op.mood
+                or op.mood
                 < (
-                    op.upper_limit
+                    data.resting_mood_threshold(op)
+                    if returned
+                    else op.upper_limit
                     if op.rest_in_full
-                    else state["targets"].get(
-                        name, recovery_target(probe.op_data, name)[0]
-                    )
+                    else state["targets"].get(name, recovery_target(data, name)[0])
                 )
             ):
                 feasible = False
                 break
-            groups[op.group or name] = probe.op_data.groups.get(op.group, [name])
-        if feasible and check_rotation:
-            feasible = all(
-                native_opportunity(probe, members).opportunity is not None
-                for members in groups.values()
-            )
         return feasible
 
     def _emergency_finish_handoff(self):

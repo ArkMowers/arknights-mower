@@ -554,3 +554,22 @@ def test_existing_fallback_targets_release_at_normal_threshold(group_return):
         assert solver.emergency_state["target_sources"][name] == "fallback"
     assert solver._emergency_release_ready()
     assert_waiting(solver, PRIMARY)
+
+
+def test_normal_standby_threshold_updates_existing_rescue_target(group_return):
+    solver = group_return.solver
+    name = PRIMARY[0]
+    data = solver.op_data
+    data.global_plan["default_plan"].config.resting_standby = [name]
+    # 救急表没有候补配置，恢复目标仍取正常表规则。
+    data.config.resting_standby = []
+    target = data.rescue_mood_threshold(data.operators[name])
+    data.operators[name].mood = target - 0.01
+    solver._emergency_update_targets()
+    assert solver.emergency_state["targets"][name] == target
+    assert solver.emergency_state["target_sources"][name] == "standby"
+    solver._emergency_release_ready()
+    assert solver.op_data.operators[name].is_resting()
+    solver.op_data.operators[name].mood = target
+    assert solver._emergency_release_ready()
+    assert_waiting(solver, [name])

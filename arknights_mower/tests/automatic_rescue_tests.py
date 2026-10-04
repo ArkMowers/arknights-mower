@@ -736,7 +736,6 @@ def test_returning_tick_waits_for_specialized_compensation_before_handoff(
         "pending_measurement",
         "pending_prediction",
         "returned_prediction",
-        "native_blocked",
     ],
 )
 def test_returning_rejects_stale_handoff_and_resumes_recovery(
@@ -752,9 +751,6 @@ def test_returning_rejects_stale_handoff_and_resumes_recovery(
         pending.mood_is_prediction = True
     elif invalid == "returned_prediction":
         solver.op_data.operators[PRIMARY[0]].mood_is_prediction = True
-    else:
-        for name in COVERS:
-            solver.op_data.operators[name].mood = 0
 
     solver._emergency_tick()
 
@@ -827,8 +823,9 @@ def test_handoff_restores_previous_task_after_arrangement_error(solver, error):
     assert solver._emergency_frozen()
 
 
-def test_exhausted_replacements_prevent_exit_until_native_matching_is_feasible(solver):
+def test_exhausted_replacements_block_handoff_for_unfinished_primary(solver):
     make_episode(solver)
+    solver.op_data.operators[PRIMARY[0]].mood = 8
     for name in COVERS:
         solver.op_data.operators[name].mood = 0
     solver.backup_plan_solver = MagicMock(return_value=False)
@@ -2007,11 +2004,11 @@ def test_startup_checks_normal_coverage_for_low_primaries_already_resting(
     solver.enter_room.assert_not_called()
 
 
-def test_measured_targets_do_not_exit_when_normal_replacements_are_exhausted(solver):
+def test_ready_primaries_can_exit_without_future_replacement_capacity(solver):
     make_episode(solver)
     for name in COVERS:
         solver.op_data.operators[name].mood = 0
-    assert not solver._emergency_ready()
+    assert solver._emergency_ready()
 
 
 def test_early_exit_rejects_shared_cover_required_by_two_resting_groups(solver):
@@ -2256,6 +2253,90 @@ def test_handoff_rejects_below_full_normal_worker_even_with_lower_episode_target
     op = solver.op_data.operators[PRIMARY[0]]
     op.rest_in_full = True
     op.mood = state["targets"][op.name]
-    assert not solver._emergency_handoff_feasible({}, check_rotation=False)
+    assert not solver._emergency_handoff_feasible({})
     op.mood = 24
-    assert solver._emergency_handoff_feasible({}, check_rotation=False)
+    assert solver._emergency_handoff_feasible({})
+
+
+@pytest.mark.parametrize("bed_time_known", [False, True])
+def test_exit_accepts_current_coverage_with_shared_future_replacements(
+    solver, monkeypatch, bed_time_known
+):
+    state = make_episode(solver)
+    data = solver.op_data
+    # 已达标的下一组和仍需休息的组共享替班；只需当前岗位完整覆盖。
+    waiting, ready = PRIMARY[:2]
+    data.operators[waiting].mood = 8
+    data.operators[ready].replacement = [COVERS[0]]
+    data.global_plan["default_plan"].plan[data.operators[ready].room][0].replacement = [
+        COVERS[0]
+    ]
+    solver.op_data = data.project_arrangements([state["rescue_plan"]])
+    monkeypatch.setattr(
+        emergency,
+        "native_opportunity",
+        MagicMock(side_effect=AssertionError("exit must not forecast future rotation")),
+    )
+    plan = solver._emergency_resting_handoff({})
+    assert plan is not None
+    projected = solver.op_data.project_arrangements([plan])
+    assert projected.operators[waiting].is_resting()
+    assert projected.operators[ready].is_working()
+    assert projected.operators[COVERS[0]].current_room == data.operators[waiting].room
+    assert solver._emergency_handoff_feasible(plan)
+    assert solver._emergency_ready()
+    # 实际交接后的核验同样不依赖恢复倒计时或消耗速率。
+    solver.op_data = projected
+    for bed in projected.dorm:
+        if bed.name == waiting:
+            bed.time = NOW + timedelta(hours=2) if bed_time_known else None
+    assert solver._emergency_handoff_feasible({})
+
+
+@pytest.mark.parametrize(
+    "invalid", ["unknown_primary", "predicted_primary", "exhausted_cover"]
+)
+def test_current_coverage_exit_retains_measured_and_replacement_checks(solver, invalid):
+    state = make_episode(solver)
+    waiting, ready = PRIMARY[:2]
+    solver.op_data.operators[waiting].mood = 8
+    solver.op_data = solver.op_data.project_arrangements([state["rescue_plan"]])
+    plan = solver._emergency_resting_handoff({})
+    assert plan is not None
+    if invalid == "unknown_primary":
+        solver.op_data.operators[ready].time_stamp = None
+    elif invalid == "predicted_primary":
+        solver.op_data.operators[ready].mood_is_prediction = True
+    else:
+        solver.op_data.operators[COVERS[0]].mood = 0
+    assert not solver._emergency_handoff_feasible(plan)
+
+
+def test_exit_uses_normal_free_beds_not_rescue_manager_capacity(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    # 正常表只有三个 Free 位；救急开放宿管位后虽可容纳四人，不能退出。
+    for name in PRIMARY:
+        data.operators[name].mood = 8
+    solver.op_data = data.project_arrangements([state["rescue_plan"]])
+    solver._open_emergency_beds()
+    assert len(solver.op_data.dorm) >= 4
+    assert not solver._emergency_ready()
+    assert len(solver.op_data.dorm) >= 4
+
+
+@pytest.mark.parametrize("with_history", [False, True])
+def test_standby_recovery_target_is_personal_rescue_threshold(solver, with_history):
+    data = solver.op_data
+    name = PRIMARY[0]
+    data.config.resting_standby = [name]
+    op = data.operators[name]
+    op.resting_priority = "standby"
+    op.lower_limit, op.upper_limit = 4, 20
+    args = (2, NOW + timedelta(hours=3), NOW) if with_history else ()
+    assert recovery_target(data, name, *args) == (
+        data.rescue_mood_threshold(op),
+        "standby",
+    )
+    op.rest_in_full = True
+    assert recovery_target(data, name, *args) == (20, "rest_in_full")
