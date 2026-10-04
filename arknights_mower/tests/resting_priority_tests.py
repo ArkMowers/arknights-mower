@@ -234,7 +234,7 @@ def test_rescue_fills_spare_bed_only_after_primary_recovery(
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
-    primary = set_tier(op_data, "银灰", RestingTier.MAIN, 8)
+    primary = set_tier(op_data, "银灰", RestingTier.MAIN, 16 if primary_ready else 8)
     primary.current_room = ""
     replacement = set_tier(op_data, "红", RestingTier.PRIORITY_REPLACEMENT, 1)
     if replacement_tier == RestingTier.PRIORITY:
