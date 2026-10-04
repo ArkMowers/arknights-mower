@@ -193,8 +193,8 @@ def test_rescue_group_leaves_together_without_reserving_beds(staffing, complete)
     rooms = list(state["rescue_plan"])[:2]
     state["worker_groups"] = {room: ["救急绑组"] for room in rooms}
     state["worker_replacements"] = {
-        rooms[0]: [["年", "杜林"]],
-        rooms[1]: [["年"] if complete else []],
+        rooms[0]: [["年", "杜林"] if complete else ["年"]],
+        rooms[1]: [["年"]],
     }
     for name in ("年", "杜林"):
         data.add(Operator(name, "", mood=24, time_stamp=NOW))
@@ -249,3 +249,30 @@ def test_configured_zero_mood_worker_does_not_trigger_replacement(staffing):
     state["staffing_complete"] = True
     assert solver._emergency_schedule_staffing()
     assert not solver.tasks
+
+
+@pytest.mark.parametrize("configured_low", [False, True])
+def test_group_member_without_replacement_keeps_working_at_zero(
+    staffing, configured_low
+):
+    from arknights_mower.utils.operators import Operator
+
+    solver, state = staffing.solver, staffing.state
+    solver.op_data = solver.op_data.project_arrangements([state["rescue_plan"]])
+    data = solver.op_data
+    rooms = list(state["rescue_plan"])[:2]
+    state["worker_groups"] = {room: ["同组"] for room in rooms}
+    state["worker_replacements"] = {rooms[0]: [[]], rooms[1]: [["年"]]}
+    state["staffing_complete"] = True
+    data.operators[COVERS[0]].mood = 0
+    data.operators[COVERS[1]].mood = 0 if configured_low else 24
+    data.add(Operator("年", "", mood=24, time_stamp=NOW))
+
+    assert solver._emergency_schedule_staffing()
+
+    assert state["rescue_plan"][rooms[0]] == [COVERS[0]]
+    assert COVERS[0] not in state.get("standby_workers", [])
+    if configured_low:
+        assert staffing_task(solver).plan == {rooms[1]: ["年"]}
+    else:
+        assert not solver.tasks

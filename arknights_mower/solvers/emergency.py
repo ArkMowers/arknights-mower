@@ -382,7 +382,7 @@ class EmergencyRecoveryMixin:
             raise MowerExit("自动救急缓存结构不完整，保留缓存并停止")
 
     def _emergency_replace_low_workers(self):
-        """救急替班仅接管工作位，离岗驻员待命，不预约宿舍。"""
+        """救急替班接管工作位；离岗正常主班纳入恢复，其他驻员待命。"""
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         state, data = self.emergency_state, self.op_data
@@ -420,11 +420,12 @@ class EmergencyRecoveryMixin:
             if key in blocked:
                 continue
             if not any(
-                not data.config.is_workaholic(op.name)
+                bool(candidates)
+                and not data.config.is_workaholic(op.name)
                 and has_resting_mood(op)
                 and not op.mood_is_prediction
                 and op.current_mood() < data.resting_mood_threshold(op)
-                for _, _, op, _ in members
+                for _, _, op, candidates in members
             ):
                 continue
             options = {
@@ -446,7 +447,7 @@ class EmergencyRecoveryMixin:
                     is None
                 ]
                 for room, index, op, candidates in members
-                if not data.config.is_workaholic(op.name)
+                if candidates and not data.config.is_workaholic(op.name)
             }
             matched = match_replacements(options)
             if matched:

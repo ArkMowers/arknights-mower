@@ -11,7 +11,7 @@ date: 2026-10-04
 
 [INV-SCHED-09] preserves the next rescue retry when the active continuation finishes. Known zero mood permits initial rescue deployment; unknown readings, reservations and training protection remain blocking. Specialized crafting and mastery retain their own requirements.
 
-Rescue grouping uses the effective roster and shared complete replacement matching [INV-SCHED-14]. A low-mood member triggers a complete group replacement, excluding configured zero-mood workers. Incomplete matching preserves the group. Displaced normal primaries join recovery demand; other workers remain reserved standby without bed requests.
+Rescue grouping uses the effective roster and shared complete replacement matching [INV-SCHED-14]. A low-mood member triggers a complete group replacement, excluding configured zero-mood workers and workers without ordinary replacements. Workers without ordinary replacements keep their positions and neither trigger nor require group replacement. Incomplete matching preserves the group. Displaced normal primaries join recovery demand; other workers remain reserved standby without bed requests.
 
 ## Simplification
 
