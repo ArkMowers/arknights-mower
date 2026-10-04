@@ -194,7 +194,10 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       exhaust_require.value = str2list(response.data.conf.exhaust_require)
       rest_in_full.value = str2list(response.data.conf.rest_in_full)
       ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
-      dorm_order.value = rescue && !response.data.conf.dorm_order ? [] : normalizeDormOrder(response.data.conf.dorm_order)
+      dorm_order.value =
+        rescue && !response.data.conf.dorm_order
+          ? []
+          : normalizeDormOrder(response.data.conf.dorm_order)
       resting_priority.value = str2list(response.data.conf.resting_priority)
       resting_priority_replacement.value = str2list(response.data.conf.resting_priority_replacement)
       free_room_exclusions.value = str2list(response.data.conf.free_room_exclusions)

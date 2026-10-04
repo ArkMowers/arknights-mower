@@ -43,7 +43,9 @@ const {
   operators,
   plan
 } = storeToRefs(plan_store)
-const free_blacklist = rescue ? storeToRefs(plan_store).rescue_free_blacklist : normal_free_blacklist
+const free_blacklist = rescue
+  ? storeToRefs(plan_store).rescue_free_blacklist
+  : normal_free_blacklist
 const { load_plan, fill_empty } = plan_store
 
 import { computed, inject, onMounted, onUnmounted, provide, ref, watch, watchEffect } from 'vue'

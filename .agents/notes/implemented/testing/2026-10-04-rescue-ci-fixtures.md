@@ -26,3 +26,5 @@ Existing invariants remain unchanged. Fixtures use real operator updates and exi
 ## Spec Findings
 
 The assertions preserve staffing completion, measured recovery and ordinary training protection. They match the current independent rescue schedule contract.
+
+Rejected rescue staffing retains its original roster while mood is unknown; valid zero or full mood permits retry. Frontend changes pass the same Prettier formatter used by CI.
