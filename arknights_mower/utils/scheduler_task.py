@@ -2126,8 +2126,24 @@ def set_type_enum(value):
     return TaskTypes.NOT_SPECIFIC
 
 
-def merge_release_dorm(tasks, merge_interval):
+def merge_release_dorm(tasks, merge_interval, *, previous_tasks=None):
     """同一时间窗口按宿舍合并清退，逐人保留原床位身份。"""
+
+    def summaries(queue):
+        result = {}
+        for task in sorted(queue, key=lambda task: task.time):
+            if getattr(task, "strict_mood_limit", False):
+                continue
+            for name, (room, index) in task.release_dorm_targets().items():
+                result.setdefault(room, {}).setdefault(task.time, []).append(
+                    (index, name)
+                )
+        return {
+            room: tuple((time, tuple(sorted(names))) for time, names in batches.items())
+            for room, batches in result.items()
+        }
+
+    previous = summaries(tasks if previous_tasks is None else previous_tasks)
     tasks.sort(key=lambda task: task.time)
     chunks, rooms = [], {}
     latest = None
@@ -2189,9 +2205,15 @@ def merge_release_dorm(tasks, merge_interval):
         batch.release_targets = targets | existing
         batch.meta_data = ",".join(batch.release_targets)
         batch.release_start = min(start, getattr(batch, "release_start", batch.time))
-        logger.info(f"合并{room}清退任务：{batch.meta_data}，执行时间 {latest}")
     flush()
     tasks[:] = [task for chunk in reversed(chunks) for task in chunk]
+    for room, batches in summaries(tasks).items():
+        if batches != previous.get(room):
+            detail = "；".join(
+                f"{time:%H:%M:%S}：{'、'.join(name for _, name in names)}"
+                for time, names in batches
+            )
+            logger.info("%s清退任务：%s", room, detail)
 
 
 class SchedulerTask:

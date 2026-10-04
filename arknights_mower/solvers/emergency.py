@@ -74,6 +74,7 @@ class EmergencyRecoveryMixin:
         releases = plan_mood_limit_releases(
             self.op_data, recovery_targets=targets, previous_tasks=self.tasks
         )
+        previous_tasks = list(self.tasks)
         refreshed = {task.meta_data for task in releases}
         self.tasks[:] = [
             task
@@ -92,7 +93,9 @@ class EmergencyRecoveryMixin:
             )
         ]
         self.tasks.extend(releases)
-        merge_release_dorm(self.tasks, config.conf.merge_interval)
+        merge_release_dorm(
+            self.tasks, config.conf.merge_interval, previous_tasks=previous_tasks
+        )
 
     def _emergency_operation_fits(self, seconds):
         start = min(

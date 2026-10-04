@@ -444,3 +444,27 @@ def test_rescue_and_ordinary_release_do_not_share_batch():
     assert ordinary.time == now
     assert ordinary.release_dorm_targets() == {"甲": (ROOM, 2)}
     assert rescue.release_dorm_targets() == {"乙": (ROOM, 3)}
+
+
+def test_merge_logs_one_final_summary_per_room_and_skips_unchanged_rebuild(monkeypatch):
+    from arknights_mower.utils import scheduler_task
+
+    log = MagicMock()
+    monkeypatch.setattr(scheduler_task.logger, "info", log)
+    now = datetime.now().replace(microsecond=0)
+
+    def queue():
+        return [
+            release(name, ROOM, index, now + timedelta(seconds=offset))
+            for name, index, offset in (("甲", 2, 0), ("乙", 3, 20), ("丙", 4, 30))
+        ]
+
+    tasks = queue()
+    merge_release_dorm(tasks, 10)
+    log.assert_called_once()
+    assert log.call_args.args[1] == ROOM
+    assert "甲、乙、丙" in log.call_args.args[2]
+    log.reset_mock()
+    rebuilt = queue()
+    merge_release_dorm(rebuilt, 10, previous_tasks=tasks)
+    log.assert_not_called()

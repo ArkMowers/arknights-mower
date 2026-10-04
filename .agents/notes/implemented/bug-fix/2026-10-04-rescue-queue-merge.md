@@ -16,3 +16,5 @@ The existing `merge_release_dorm` function runs after rescue release regeneratio
 ## CI and review
 
 The isolated fill projection shares an instance mock with the live solver. The rotation regression counts the live-state planning call separately and continues to require one actual arrangement. Standards review checks bed identity, task boundaries and shared merge behavior. Specification review checks same-room merging, cross-room timing, repeated regeneration and measured recovery.
+
+Final queue logs aggregate all batches into one line per changed dormitory. Rescue regeneration compares against the preceding queue, so unchanged member identities and execution times produce no repeated summary. The log regression verifies one final line and silence after an equivalent rebuild.
