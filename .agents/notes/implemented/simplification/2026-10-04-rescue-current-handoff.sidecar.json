@@ -16,6 +16,7 @@
   "test_suites": [
     "arknights_mower/tests/automatic_rescue_tests.py",
     "arknights_mower/tests/emergency_group_return_tests.py",
-    "arknights_mower/tests/emergency_observation_budget_tests.py"
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py"
   ]
 }
