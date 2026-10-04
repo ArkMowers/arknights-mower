@@ -211,3 +211,28 @@ it('清空救急主副表绑组与普通替班，保留全部跑单干员和充�
   normal.clear_rescue_bindings()
   expect(normal.plan).toEqual(source)
 })
+
+it('救急恢复配置独立保存并随救急表导出', async () => {
+  const app = createApp({})
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  app.use(pinia)
+  app.provide('loaded', ref(false))
+  const [normal, rescue] = app.runWithContext(() => [usePlanStore(), useRescuePlanStore()])
+  stores = [normal, rescue]
+  axios.get.mockResolvedValue({ data: { conf: {}, plan1: {}, backup_plans: [] } })
+  axios.post.mockResolvedValue({ data: {} })
+  await rescue.load_plan()
+  expect(rescue.dorm_order).toEqual([])
+  rescue.workaholic = ['年']
+  rescue.rescue_free_blacklist = ['杜林']
+  rescue.dorm_order = ['dormitory_3', 'dormitory_1', 'dormitory_2', 'dormitory_4']
+  await nextTick()
+  await rescue.wait_for_plan_save()
+  const saved = axios.post.mock.lastCall[1]
+  expect(saved.conf.workaholic).toBe('年')
+  expect(saved.conf.free_blacklist).toBe('杜林')
+  expect(saved.conf.dorm_order).toBe('dormitory_3,dormitory_1,dormitory_2,dormitory_4')
+  expect(normal.workaholic).toEqual([])
+  expect(normal.rescue_free_blacklist).toEqual([])
+})

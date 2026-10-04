@@ -66,12 +66,28 @@ def configured_rescue_names(schedule):
 def effective_rescue_plan(data, schedule):
     """使用共享条件表达式选择救急副表，后面的生效副表覆盖前面的岗位。"""
     from arknights_mower.utils.logic_expression import get_logic_exp
+    from arknights_mower.utils.plan import PlanConfig
 
+    def recovery_config(conf):
+        return PlanConfig(
+            "",
+            "",
+            "",
+            workaholic=conf.workaholic,
+            free_blacklist=conf.free_blacklist,
+            dorm_order=conf.dorm_order,
+            dorm_order_override=getattr(
+                conf, "dorm_order_override", bool(conf.dorm_order)
+            ),
+        )
+
+    worker_config = recovery_config(schedule.conf)
     facilities = schedule.plan1.model_dump(exclude_none=True)
     for backup in schedule.backup_plans:
         definition = backup.model_dump(exclude_none=True)
         if not data.evaluate_expression(str(get_logic_exp(definition["trigger"]))):
             continue
+        worker_config = worker_config.merge_config(recovery_config(backup.conf))
         for room, facility in definition["plan"].items():
             if room not in RESCUE_ROOMS.keys() | RESCUE_DORMS:
                 continue
@@ -178,6 +194,25 @@ def effective_rescue_plan(data, schedule):
             raise ValueError(f"救急排班的菲亚梅塔充能对象 {name} 无效")
     return {
         "rescue_plan": work,
+        "worker_config": {
+            key: ",".join(getattr(worker_config, key))
+            for key in ("workaholic", "free_blacklist", "dorm_order")
+        },
+        "worker_groups": {
+            room: [slot.get("group", "") for slot in facilities[room]["plans"]]
+            for room in work
+        },
+        "worker_replacements": {
+            room: [
+                [
+                    name
+                    for name in slot.get("replacement", [])
+                    if name not in TRADE_ORDER_AGENTS
+                ]
+                for slot in facilities[room]["plans"]
+            ]
+            for room in work
+        },
         "dorm_layout": managers,
         "run_order_replacements": run_orders,
         "fia_targets": fia_targets,

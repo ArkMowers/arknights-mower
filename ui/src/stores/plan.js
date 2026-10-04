@@ -24,6 +24,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     const free_room_exclusions = ref([])
     const resting_standby = ref([])
     const workaholic = ref([])
+    const rescue_free_blacklist = ref([])
     const refresh_trading = ref([])
     const refresh_drained = ref([])
 
@@ -193,12 +194,13 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       exhaust_require.value = str2list(response.data.conf.exhaust_require)
       rest_in_full.value = str2list(response.data.conf.rest_in_full)
       ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
-      dorm_order.value = normalizeDormOrder(response.data.conf.dorm_order)
+      dorm_order.value = rescue && !response.data.conf.dorm_order ? [] : normalizeDormOrder(response.data.conf.dorm_order)
       resting_priority.value = str2list(response.data.conf.resting_priority)
       resting_priority_replacement.value = str2list(response.data.conf.resting_priority_replacement)
       free_room_exclusions.value = str2list(response.data.conf.free_room_exclusions)
       resting_standby.value = str2list(response.data.conf.resting_standby)
       workaholic.value = str2list(response.data.conf.workaholic)
+      rescue_free_blacklist.value = str2list(response.data.conf.free_blacklist)
       refresh_trading.value = str2list(response.data.conf.refresh_trading)
       refresh_drained.value = str2list(response.data.conf.refresh_drained)
       const gamings = ['gaming_1', 'gaming_2', 'gaming_3']
@@ -286,6 +288,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
           free_room_exclusions: list2str(free_room_exclusions.value),
           resting_standby: list2str(resting_standby.value),
           workaholic: list2str(workaholic.value),
+          ...(rescue ? { free_blacklist: list2str(rescue_free_blacklist.value) } : {}),
           refresh_trading: list2str(refresh_trading.value),
           refresh_drained: list2str(refresh_drained.value)
         },
@@ -363,6 +366,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       resting_standby,
       ope_resting_priority,
       workaholic,
+      rescue_free_blacklist,
       refresh_trading,
       refresh_drained,
       dorm_order,

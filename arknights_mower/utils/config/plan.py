@@ -119,6 +119,8 @@ class PlanConf(BaseModel):
     "不养闲人排除干员，保留床位至上班；心情上限优先"
     resting_standby: str = ""
     "宿舍休息候补干员"
+    free_blacklist: str = ""
+    "宿舍黑名单，救急主表独立保存"
     workaholic: str = ""
     "0心情工作（主力宿舍黑名单）"
     refresh_trading: str = ""
@@ -132,8 +134,6 @@ class PlanConf(BaseModel):
 
 
 class BackupPlanConf(PlanConf):
-    free_blacklist: str = ""
-    "（非主力）宿舍黑名单"
     dorm_order_override: Optional[bool] = None
     "是否由该副表显式覆盖此前生效的宿舍房间优先级"
 

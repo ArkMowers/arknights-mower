@@ -1086,7 +1086,12 @@ def test_selection_rechecks_card_mood_and_preserves_actual_readings(
     solver.task.emergency_staffing = True
     solver.recog = SimpleNamespace(img=object())
     monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *a: mood)
-    with pytest.raises(base_mixin.AgentSelectionNotReady, match="心情不足或无法读取"):
+    if mood is None:
+        with pytest.raises(
+            base_mixin.AgentSelectionNotReady, match="心情读数未知或无效"
+        ):
+            solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
+    else:
         solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
     assert (op.mood, op.time_stamp) == (24, NOW)
     if mood is None:

@@ -27,7 +27,7 @@ from arknights_mower.utils.emergency_recovery import (
     primary_names,
     recovery_target,
 )
-from arknights_mower.utils.emergency_staffing import eligible_worker
+from arknights_mower.utils.emergency_staffing import worker_block_reason
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory, Operator
@@ -112,7 +112,8 @@ class EmergencyRecoveryMixin:
             (
                 t
                 for t in self.tasks
-                if t.meta_data == meta
+                if t is not getattr(self, "task", None)
+                and t.meta_data == meta
                 and not t.plan
                 and t.type == TaskTypes.NOT_SPECIFIC
             ),
@@ -169,6 +170,14 @@ class EmergencyRecoveryMixin:
 
     def _emergency_sync_reservations(self):
         state = getattr(self, "emergency_state", None) or {}
+        if state.get("worker_config") is not None and state.get("phase") != "returning":
+            from arknights_mower.utils.plan import PlanConfig
+
+            self.op_data.config = self.op_data.config.merge_config(
+                PlanConfig("", "", "", **state["worker_config"])
+            )
+            for op in self.op_data.operators.values():
+                op.workaholic = self.op_data.config.is_workaholic(op.name)
         self.op_data.emergency_run_order_replacements = (
             state.get("run_order_replacements", {})
             if state and state.get("phase") != "returning"
@@ -178,6 +187,7 @@ class EmergencyRecoveryMixin:
             set(state.get("ready_members", ()))
             | set(state.get("staffing_members", ()))
             | set(state.get("release_members", ()))
+            | set(state.get("standby_workers", ()))
         )
 
     def _emergency_save(self):
@@ -371,6 +381,99 @@ class EmergencyRecoveryMixin:
         ):
             raise MowerExit("自动救急缓存结构不完整，保留缓存并停止")
 
+    def _emergency_replace_low_workers(self):
+        """救急替班仅接管工作位，离岗驻员待命，不预约宿舍。"""
+        from arknights_mower.utils.exhaust_replacement import match_replacements
+
+        state, data = self.emergency_state, self.op_data
+        reserved, _ = dorm_task_reservations(data, self.tasks)
+        reserved |= busy_resting_names()
+        protected = set(reserved)
+        reserved |= set(state["targets"])
+        reserved.update(
+            name
+            for rows in state.get("run_order_replacements", {}).values()
+            for row in rows
+            for name in row
+        )
+        reserved.update(name for row in state["rescue_plan"].values() for name in row)
+        groups, blocked = {}, set()
+        for room, rows in state.get("worker_replacements", {}).items():
+            for index, candidates in enumerate(rows):
+                op = data.get_current_operator(room, index)
+                configured_groups = state.get("worker_groups", {}).get(room, [])
+                group = (
+                    configured_groups[index] if index < len(configured_groups) else ""
+                )
+                key = group or (room, index)
+                if (
+                    room == "train"
+                    or op is None
+                    or op.name in protected
+                    or op.name != state["rescue_plan"][room][index]
+                ):
+                    blocked.add(key)
+                    continue
+                groups.setdefault(key, []).append((room, index, op, candidates))
+        assignments = {}
+        for key, members in groups.items():
+            if key in blocked:
+                continue
+            if not any(
+                not data.config.is_workaholic(op.name)
+                and has_resting_mood(op)
+                and not op.mood_is_prediction
+                and op.current_mood() < data.resting_mood_threshold(op)
+                for _, _, op, _ in members
+            ):
+                continue
+            options = {
+                (room, index): [
+                    name
+                    for name in candidates
+                    if name not in reserved
+                    and (
+                        (candidate := data.operators.get(name)) is None
+                        or not candidate.is_working()
+                    )
+                    and worker_block_reason(
+                        data,
+                        name,
+                        dorm_candidate_mood(data, name, datetime.now()),
+                        reserved,
+                        allow_zero=False,
+                    )
+                    is None
+                ]
+                for room, index, op, candidates in members
+                if not data.config.is_workaholic(op.name)
+            }
+            matched = match_replacements(options)
+            if matched:
+                assignments.update(matched)
+                reserved.update(matched.values())
+        if not assignments:
+            return False
+        standby = set(state.get("standby_workers", ()))
+        normal_primaries = set(primary_names(data))
+        for (room, index), name in assignments.items():
+            previous = data.get_current_operator(room, index).name
+            if previous in normal_primaries:
+                target, source = recovery_target(data, previous)
+                state["targets"].setdefault(previous, target)
+                state.setdefault("target_sources", {}).setdefault(previous, source)
+                state.setdefault("work_contexts", {}).setdefault(
+                    previous, mood_context(data, room)
+                )
+            else:
+                standby.add(previous)
+            standby.discard(name)
+            state["rescue_plan"][room][index] = name
+        state["standby_workers"] = sorted(standby)
+        state["staffing_complete"] = False
+        self._emergency_save()
+        return True
+
     def _emergency_schedule_staffing(self):
         """按本轮生效救急排班部署驻员，沿用训练室换人保护。"""
         state, data = self.emergency_state, self.op_data
@@ -380,7 +483,7 @@ class EmergencyRecoveryMixin:
             or any(getattr(task, "emergency_staffing", False) for task in self.tasks)
         ):
             return True
-        if state.get("staffing_complete"):
+        if state.get("staffing_complete") and not self._emergency_replace_low_workers():
             return True
         plan = rescue_plan_for(data, state["rescue_plan"])
         if "train" in plan:
@@ -418,11 +521,13 @@ class EmergencyRecoveryMixin:
                 ):
                     continue
                 mood = dorm_candidate_mood(data, name, datetime.now())
-                if not eligible_worker(data, name, mood, reserved):
+                reason = worker_block_reason(data, name, mood, reserved)
+                if reason:
                     logger.warning(
-                        "自动救急 %s：救急主表干员 %s 心情不足、读数未知或被预约，暂缓换班",
+                        "自动救急 %s：救急主表干员 %s %s，暂缓换班",
                         room,
                         name,
+                        reason,
                     )
                     return False
             pending[room] = list(names)
@@ -747,6 +852,17 @@ class EmergencyRecoveryMixin:
                 or state["phase"] == "returning"
             )
         }
+        rooms.update(
+            room
+            for room, rows in state.get("worker_replacements", {}).items()
+            if room != "train"
+            and any(
+                candidates
+                and (op := self.op_data.get_current_operator(room, index)) is not None
+                and op.need_to_refresh()
+                for index, candidates in enumerate(rows)
+            )
+        )
         if "pending_read_rooms" not in state:
             state["read_collection_pending"] = True
             state["pending_read_rooms"] = sorted(rooms)
