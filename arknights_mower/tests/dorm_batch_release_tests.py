@@ -431,3 +431,16 @@ def test_queue_merge_keeps_intervening_task_order(barrier):
     assert all(task is before for task, before in zip(tasks, original))
     assert len(tasks) == 3
     assert tasks[0].time == now
+
+
+def test_rescue_and_ordinary_release_do_not_share_batch():
+    now = datetime.now()
+    ordinary = release("甲", ROOM, 2, now)
+    rescue = release("乙", ROOM, 3, now + timedelta(seconds=20))
+    rescue.emergency_recovery_release = True
+    tasks = [ordinary, rescue]
+    merge_release_dorm(tasks, 10)
+    assert len(tasks) == 2
+    assert ordinary.time == now
+    assert ordinary.release_dorm_targets() == {"甲": (ROOM, 2)}
+    assert rescue.release_dorm_targets() == {"乙": (ROOM, 3)}

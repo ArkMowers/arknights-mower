@@ -38,6 +38,7 @@ from arknights_mower.utils.resting_priority import busy_resting_names, has_resti
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    merge_release_dorm,
     plan_mood_limit_releases,
     protect_priority_tasks,
     try_workshop_tasks,
@@ -91,6 +92,7 @@ class EmergencyRecoveryMixin:
             )
         ]
         self.tasks.extend(releases)
+        merge_release_dorm(self.tasks, config.conf.merge_interval)
 
     def _emergency_operation_fits(self, seconds):
         start = min(

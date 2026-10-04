@@ -2166,7 +2166,12 @@ def merge_release_dorm(tasks, merge_interval):
         batch = rooms.get(room)
         existing = batch.release_dorm_targets() if batch is not None else {}
         if rooms and (
-            (latest != start and latest - start >= timedelta(minutes=merge_interval))
+            any(
+                getattr(queued, "emergency_recovery_release", False)
+                != getattr(task, "emergency_recovery_release", False)
+                for queued in rooms.values()
+            )
+            or (latest != start and latest - start >= timedelta(minutes=merge_interval))
             or existing.keys() & targets.keys()
             or set(existing.values()) & set(targets.values())
         ):
