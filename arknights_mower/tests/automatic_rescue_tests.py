@@ -1971,3 +1971,67 @@ def test_initial_full_fia_without_cached_task_precedes_rescue_evaluation(solver)
     solver._emergency_startup()
     solver._read_agent_mood.assert_called_once()
     assert solver._emergency_startup_pending
+
+
+@pytest.mark.parametrize("normal_cover_available", [False, True])
+def test_startup_checks_normal_coverage_for_low_primaries_already_resting(
+    solver, normal_cover_available
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    data.operators[COVERS[0]].mood = 24 if normal_cover_available else 0
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], "Free"]}]
+    )
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active() is (not normal_cover_available)
+    if normal_cover_available:
+        handoff = next(
+            task for task in solver.tasks if task.meta_data == "初始化正常轮休交接"
+        )
+        projected = solver.op_data.project_arrangements([handoff.plan])
+        assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
+        assert projected.get_current_operator("room_1_1", 0).name == COVERS[0]
+        assert projected.get_current_operator("room_1_2", 0).name == COVERS[1]
+    solver.enter_room.assert_not_called()
+
+
+def test_measured_targets_do_not_exit_when_normal_replacements_are_exhausted(solver):
+    make_episode(solver)
+    for name in COVERS:
+        solver.op_data.operators[name].mood = 0
+    assert not solver._emergency_ready()
+
+
+def test_early_exit_rejects_shared_cover_required_by_two_resting_groups(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 8
+        data.plan[data.operators[name].room][0].replacement = [COVERS[0]]
+        data.global_plan["default_plan"].plan[data.operators[name].room][
+            0
+        ].replacement = [COVERS[0]]
+        data.operators[name].replacement = [COVERS[0]]
+    solver.op_data = data.project_arrangements([state["rescue_plan"]])
+    assert not solver._emergency_ready()
+
+
+def test_unknown_normal_primary_does_not_establish_startup_handoff_failure(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    data.operators[PRIMARY[-1]].time_stamp = None
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], "Free"]}]
+    )
+    solver._emergency_startup()
+    assert not solver._emergency_active()
+    assert not any(task.meta_data == "初始化正常轮休交接" for task in solver.tasks)

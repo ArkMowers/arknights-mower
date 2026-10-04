@@ -18,6 +18,7 @@ from arknights_mower.utils.dorm_skills import (
 from arknights_mower.utils.emergency_plan import effective_rescue_plan, rescue_plan_for
 from arknights_mower.utils.emergency_recovery import (
     ORDINARY_SHIFTS,
+    NativeProjection,
     emergency_dorm_plan,
     history_cycle,
     history_rate,
@@ -252,12 +253,55 @@ class EmergencyRecoveryMixin:
                 continue
             if op.mood < data.rescue_mood_threshold(op):
                 low_groups.add(("group", op.group) if op.group else ("operator", name))
-                if not op.is_resting():
-                    required.append(name)
+                required.append(name)
         if not required or len(low_groups) < 2:
             return
-        projection = native_opportunity(self, required, now, current_only=True)
+        # 已在宿舍不代表正常排班能接回：清缓存后实际岗位可能仍是救急驻员。
+        normal_handoff = None
+        if any(data.operators[name].is_resting() for name in required):
+            trial = copy.copy(self)
+            trial.emergency_state = {
+                "targets": {name: recovery_target(data, name)[0] for name in names}
+            }
+            plan = trial._emergency_resting_handoff({})
+            if plan is None:
+                unknown = any(
+                    not has_resting_mood(data.operators[name])
+                    or data.operators[name].mood_is_prediction
+                    for name in names
+                    if not data._can_standby(data.operators[name])
+                )
+                projection = NativeProjection(
+                    None,
+                    not unknown,
+                    "normal_handoff_unknown" if unknown else "normal_handoff_blocked",
+                )
+            else:
+                normal_handoff = plan
+                trial.op_data = data.project_arrangements([plan])
+                projection = native_opportunity(trial, required, now, current_only=True)
+                if (
+                    projection.opportunity is not None
+                    and not trial._emergency_handoff_feasible({}, check_rotation=False)
+                ):
+                    projection = NativeProjection(None, True, "normal_handoff_blocked")
+        else:
+            projection = native_opportunity(self, required, now, current_only=True)
         if projection.opportunity is not None:
+            if normal_handoff:
+                self.tasks[:] = [
+                    task
+                    for task in self.tasks
+                    if task.type not in ORDINARY_SHIFTS - {TaskTypes.SWITCH_PRODUCT}
+                ]
+                self.tasks.append(
+                    SchedulerTask(
+                        task_plan=normal_handoff,
+                        task_type=TaskTypes.SELF_CORRECTION,
+                        meta_data="初始化正常轮休交接",
+                    )
+                )
+                self._emergency_save()
             logger.info("当前原生轮休可执行，不启动自动救急")
             return
         if not projection.complete:
@@ -982,12 +1026,6 @@ class EmergencyRecoveryMixin:
             for name in self.emergency_state["targets"]
         ):
             return False
-        if all(
-            self.op_data._can_standby(self.op_data.operators[name])
-            or self.op_data.operators[name].mood >= target
-            for name, target in self.emergency_state["targets"].items()
-        ):
-            return True
         # 尚未离开工作站的待恢复主班先完成救急换班，避免入口立即交回。
         if any(
             self.op_data.operators[name].is_working()
@@ -1006,7 +1044,15 @@ class EmergencyRecoveryMixin:
         )
         if error:
             return False
-        plan = probe._emergency_resting_handoff({})
+        from arknights_mower.utils.emergency_plan import RESCUE_ROOMS
+
+        normal = {
+            room: [slot.agent for slot in row]
+            for room, row in probe.op_data.plan.items()
+            if room in RESCUE_ROOMS or room.startswith("dorm")
+        }
+        suppress_completed_dorm_returns(probe.op_data, normal)
+        plan = probe._emergency_resting_handoff(normal)
         return plan is not None and probe._emergency_handoff_feasible(plan)
 
     def _emergency_resting_handoff(self, plan):
@@ -1152,7 +1198,7 @@ class EmergencyRecoveryMixin:
                     if saved is not None and bed.name == saved[0] and bed.time is None:
                         bed.time = saved[1]
 
-    def _emergency_handoff_feasible(self, plan):
+    def _emergency_handoff_feasible(self, plan, *, check_rotation=True):
         state = self.emergency_state
         probe = copy.copy(self)
         probe.op_data = self.op_data.project_arrangements([plan])
@@ -1203,7 +1249,7 @@ class EmergencyRecoveryMixin:
                 feasible = False
                 break
             groups[op.group or name] = probe.op_data.groups.get(op.group, [name])
-        if feasible:
+        if feasible and check_rotation:
             feasible = all(
                 native_opportunity(probe, members).opportunity is not None
                 for members in groups.values()
