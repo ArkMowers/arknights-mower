@@ -7940,6 +7940,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 )
                             if _name == "" and not (
                                 getattr(self.task, "emergency_staffing", False)
+                                or getattr(self.task, "emergency_dorm", False)
                                 or (
                                     self._emergency_frozen()
                                     and self.task.type

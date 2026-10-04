@@ -123,3 +123,24 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
                 if retained[index] is None:
                     return None
     return retained
+
+
+def compact_dorm_vacancies(data, plan):
+    """显式空床放到末尾；菲亚位置之前的空缺交由普通补位填充。"""
+    for room, row in plan.items():
+        if not room.startswith("dorm") or "" not in row:
+            continue
+        current = data.get_current_room(room, True)
+        resolved = [
+            current[index] if name == "Current" else name
+            for index, name in enumerate(row)
+        ]
+        occupants = [name for name in resolved if name]
+        if "菲亚梅塔" in resolved:
+            fixed = resolved.index("菲亚梅塔")
+            missing = fixed - occupants.index("菲亚梅塔")
+            occupants[fixed - missing : fixed - missing] = ["Free"] * missing
+        compacted = occupants + [""] * (len(row) - len(occupants))
+        if compacted != resolved:
+            plan[room] = compacted
+    return plan

@@ -11,6 +11,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_task_reservations,
 )
+from arknights_mower.utils.dorm_recovery import compact_dorm_vacancies
 from arknights_mower.utils.dorm_skills import (
     is_group_recovery_manager,
     is_single_recovery_manager,
@@ -918,6 +919,7 @@ class EmergencyRecoveryMixin:
             self._emergency_save()
             return
         staffing_completed = self._emergency_reconcile_staffing()
+        self._emergency_sync_reservations()
         read_due = datetime.now() >= state.get("next_read", datetime.now()) or any(
             getattr(task, "emergency_recovery_release", False)
             and task.time <= datetime.now()
@@ -974,6 +976,9 @@ class EmergencyRecoveryMixin:
             ]
             self._emergency_update_targets()
             self._emergency_release_ready()
+            if state.get("release_plan") is not None:
+                self._emergency_defer_read()
+                return
             if self._emergency_ready() and self._emergency_restore():
                 return
             if state["phase"] == "returning":
@@ -1014,7 +1019,9 @@ class EmergencyRecoveryMixin:
         if previous and all(
             (actual := self.op_data.get_current_room(room, True)) is not None
             and all(
-                name == "Current" or index < len(actual) and actual[index] == name
+                name in ("Current", "Free")
+                or index < len(actual)
+                and actual[index] == name
                 for index, name in enumerate(row)
             )
             for room, row in previous.items()
@@ -1038,6 +1045,7 @@ class EmergencyRecoveryMixin:
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
+        compact_dorm_vacancies(self.op_data, plan)
         if not plan:
             if reallocate:
                 state["dorm_replan_pending"] = False
@@ -1125,6 +1133,7 @@ class EmergencyRecoveryMixin:
             state["release_plan"] = copy.deepcopy(plan)
             self._emergency_save()
             return False
+        compact_dorm_vacancies(data, plan)
         state["release_plan"] = copy.deepcopy(plan)
         state["release_members"] = sorted(members)
         self._emergency_save()
@@ -1135,6 +1144,11 @@ class EmergencyRecoveryMixin:
         self.task.emergency_staffing_members = sorted(members)
         try:
             self.agent_arrange(self.task.plan, get_time=True)
+        except MowerExit:
+            raise
+        except Exception:
+            self._emergency_defer_read()
+            raise
         finally:
             self.task = previous_task
         for name in members:
@@ -1158,6 +1172,8 @@ class EmergencyRecoveryMixin:
             state.pop("release_members", None)
         else:
             state["release_members"] = sorted(remaining)
+        if remaining:
+            self._emergency_defer_read()
         self._emergency_save()
         return True
 

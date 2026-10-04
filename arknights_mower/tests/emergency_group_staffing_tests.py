@@ -277,3 +277,28 @@ def test_group_member_without_replacement_keeps_working_at_zero(
         assert staffing_task(solver).plan == {rooms[1]: ["年"]}
     else:
         assert not solver.tasks
+
+
+def test_staffing_completion_syncs_reservations_before_first_dorm_plan(staffing):
+    from unittest.mock import MagicMock
+
+    solver, state = staffing.solver, staffing.state
+    state["dorm_replan_pending"] = True
+    assert solver._emergency_schedule_staffing()
+    solver.op_data = solver.op_data.project_arrangements([staffing_task(solver).plan])
+    solver.tasks.clear()
+    solver._emergency_sync_reservations()
+    assert set(PRIMARY) <= solver.op_data.emergency_reserved_agents
+    state["next_read"] = NOW + timedelta(hours=1)
+    solver.plan_metadata = MagicMock()
+    solver._emergency_update_targets = MagicMock()
+    solver._emergency_ready = MagicMock(return_value=False)
+    solver._open_emergency_beds = MagicMock()
+    solver._emergency_replan_releases = MagicMock()
+
+    def plan_beds(current_state):
+        assert not set(PRIMARY) & solver.op_data.emergency_reserved_agents
+
+    solver._emergency_plan_beds = MagicMock(side_effect=plan_beds)
+    solver._emergency_tick()
+    solver._emergency_plan_beds.assert_called_once_with(state)
