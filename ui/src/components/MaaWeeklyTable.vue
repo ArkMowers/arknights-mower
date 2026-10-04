@@ -112,12 +112,12 @@ function isSelected(stage, weekday) {
   return Array.isArray(stages) && stages.includes(stage)
 }
 
+function isUnavailable(stage, weekday) {
+  return props.filterStageByAvailability && !isStageAvailableOnWeekday(stage, weekday)
+}
+
 function canToggle(stage, weekday) {
-  return (
-    !props.filterStageByAvailability ||
-    isStageAvailableOnWeekday(stage, weekday) ||
-    isSelected(stage, weekday)
-  )
+  return !isUnavailable(stage, weekday) || isSelected(stage, weekday)
 }
 
 function toggleStage(stage, weekday) {
@@ -134,9 +134,7 @@ function toggleStage(stage, weekday) {
 }
 
 function selectableDays(stage) {
-  return WEEKDAYS.filter(
-    (weekday) => !props.filterStageByAvailability || isStageAvailableOnWeekday(stage, weekday)
-  )
+  return WEEKDAYS.filter((weekday) => !isUnavailable(stage, weekday))
 }
 
 function selectedDayCount(stage) {
@@ -247,7 +245,7 @@ function applyStageOrder() {
                 class="stage-cell"
                 :class="{
                   selected: isSelected(option.value, weekday),
-                  unavailable: !isStageAvailableOnWeekday(option.value, weekday)
+                  unavailable: isUnavailable(option.value, weekday)
                 }"
               >
                 <button
@@ -259,7 +257,7 @@ function applyStageOrder() {
                   @click="toggleStage(option.value, weekday)"
                 >
                   <span v-if="isSelected(option.value, weekday)">打</span>
-                  <span v-else-if="!isStageAvailableOnWeekday(option.value, weekday)">—</span>
+                  <span v-else-if="isUnavailable(option.value, weekday)">—</span>
                 </button>
               </td>
             </tr>
