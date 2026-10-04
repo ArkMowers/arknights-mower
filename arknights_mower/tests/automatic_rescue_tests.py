@@ -2237,3 +2237,25 @@ def test_rescue_fia_fallback_respects_unknown_reserved_and_normal_mode(solver):
     assert solver._emergency_fia_fallback([]) is None
     state["phase"] = "done"
     assert solver._emergency_fia_fallback([PRIMARY[0]]) is None
+
+
+@pytest.mark.parametrize("upper", [12, 24])
+def test_full_rest_target_uses_personal_upper_limit_despite_history(solver, upper):
+    op = solver.op_data.operators[PRIMARY[0]]
+    op.rest_in_full, op.upper_limit = True, upper
+    assert recovery_target(solver.op_data, op.name) == (upper, "rest_in_full")
+    assert recovery_target(
+        solver.op_data, op.name, 1, NOW + timedelta(minutes=15), NOW
+    ) == (upper, "rest_in_full")
+
+
+def test_handoff_rejects_below_full_normal_worker_even_with_lower_episode_target(
+    solver,
+):
+    state = make_episode(solver)
+    op = solver.op_data.operators[PRIMARY[0]]
+    op.rest_in_full = True
+    op.mood = state["targets"][op.name]
+    assert not solver._emergency_handoff_feasible({}, check_rotation=False)
+    op.mood = 24
+    assert solver._emergency_handoff_feasible({}, check_rotation=False)

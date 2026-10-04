@@ -1517,9 +1517,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.error = True
             self.planned = True
         elif not self.todo_task:
-            if self._emergency_active():
-                self.todo_task = True
-                return True
             if (
                 self.enable_party
                 and (
@@ -8874,8 +8871,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         )
 
     def has_maa_tasks(self) -> bool:
-        if self._emergency_frozen():
-            return False
         conf = config.conf
         if hasattr(conf, "has_maa_tasks"):
             return conf.has_maa_tasks

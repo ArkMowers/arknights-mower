@@ -114,6 +114,8 @@ def history_cycle(rows, room, context):
 def recovery_target(data, name, rate=None, opportunity=None, now=None):
     """无适用历史时使用正常下班线加一点；超上限目标保持不可行。"""
     op = data.operators[name]
+    if op.rest_in_full:
+        return op.upper_limit, "rest_in_full"
     normal = data.resting_mood_threshold(op)
     if rate is None or opportunity is None:
         return min(op.upper_limit, normal + 1), "fallback"

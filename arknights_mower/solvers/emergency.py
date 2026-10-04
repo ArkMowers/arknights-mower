@@ -713,7 +713,23 @@ class EmergencyRecoveryMixin:
         opportunities = {}
         for name in state["targets"]:
             op = data.operators.get(name)
-            if op is None or name in state.get("ready_members", ()):
+            if op is None:
+                continue
+            if normal.operators[name].rest_in_full:
+                state["targets"][name] = normal.operators[name].upper_limit
+                state["target_sources"][name] = "rest_in_full"
+                if (
+                    op.mood_is_prediction
+                    or not has_resting_mood(op)
+                    or op.mood < state["targets"][name]
+                ):
+                    state["ready_members"] = [
+                        member
+                        for member in state.get("ready_members", ())
+                        if member != name
+                    ]
+                continue
+            if name in state.get("ready_members", ()):
                 continue
             rows = emergency_mood_history(name)
             rate = history_rate(rows, op.room, state["work_contexts"].get(name))
@@ -1204,6 +1220,33 @@ class EmergencyRecoveryMixin:
             self._emergency_save()
             return False
         compact_dorm_vacancies(data, plan)
+        if state.get("staffing_complete") and not any(
+            getattr(task, "emergency_dorm", False) for task in self.tasks
+        ):
+            # 在离宿后的隔离驻员上规划补床，一次执行最终宿舍名单。
+            probe = copy.copy(self)
+            probe.op_data = data.project_arrangements([plan])
+            probe.emergency_state = copy.deepcopy(state)
+            probe.emergency_state["ready_members"] = sorted(ready | members)
+            probe.tasks = copy.deepcopy(self.tasks)
+            probe._open_emergency_beds()
+            probe._emergency_plan_beds(probe.emergency_state)
+            fills = [
+                task.plan
+                for task in probe.tasks
+                if getattr(task, "emergency_dorm", False)
+            ]
+            if fills:
+                final = probe.op_data.project_arrangements(fills)
+                rooms = set(plan) | {room for fill in fills for room in fill}
+                if self._emergency_operation_fits(
+                    sum(estimate_dorm_minutes(room) * 60 for room in rooms)
+                ):
+                    plan = {
+                        room: final.get_current_room(room, True)
+                        for room in sorted(rooms)
+                    }
+                    compact_dorm_vacancies(data, plan)
         state["release_plan"] = copy.deepcopy(plan)
         state["release_members"] = sorted(members)
         self._emergency_save()
@@ -1321,8 +1364,12 @@ class EmergencyRecoveryMixin:
                 continue
             if not has_resting_mood(op) or op.mood_is_prediction:
                 return None
-            target = self.emergency_state["targets"].get(
-                name, recovery_target(data, name)[0]
+            target = (
+                op.upper_limit
+                if op.rest_in_full
+                else self.emergency_state["targets"].get(
+                    name, recovery_target(data, name)[0]
+                )
             )
             if op.mood < target:
                 groups[op.group or name] = data.groups.get(op.group, [name])
@@ -1500,7 +1547,13 @@ class EmergencyRecoveryMixin:
                 or op.mood_is_prediction
                 or not returned
                 and op.mood
-                < state["targets"].get(name, recovery_target(probe.op_data, name)[0])
+                < (
+                    op.upper_limit
+                    if op.rest_in_full
+                    else state["targets"].get(
+                        name, recovery_target(probe.op_data, name)[0]
+                    )
+                )
             ):
                 feasible = False
                 break

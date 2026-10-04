@@ -504,3 +504,35 @@ def test_insufficient_beds_admit_one_member_without_waiting_for_bound_group(
     projected = solver.op_data.project_arrangements([plan])
     assert sum(projected.operators[name].is_resting() for name in PRIMARY[:2]) == 1
     assert_temporary_workers_unchanged(solver)
+
+
+def test_ready_release_and_waiting_primary_fill_share_one_arrangement(group_return):
+    solver = group_return.solver
+    waiting = solver.op_data.operators[PRIMARY[2]]
+    waiting._current_room, waiting.current_index = "", -1
+    for bed in solver.op_data.all_dorms():
+        if bed.name == waiting.name:
+            bed.name, bed.time = "", None
+    assert solver._emergency_release_ready()
+    assert_waiting(solver, PRIMARY[:2])
+    assert solver.op_data.operators[waiting.name].is_resting()
+    assert solver.agent_arrange.call_count == 1
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(solver.emergency_state)
+    assert not any(getattr(task, "emergency_dorm", False) for task in solver.tasks)
+
+
+def test_normal_full_rest_requirement_overrides_rescue_target(group_return):
+    solver = group_return.solver
+    name = PRIMARY[0]
+    solver.op_data.global_plan["default_plan"].config.rest_in_full = [name]
+    solver.emergency_state["ready_members"] = [name]
+    solver._emergency_update_targets()
+    assert solver.emergency_state["targets"][name] == 24
+    assert solver.emergency_state["target_sources"][name] == "rest_in_full"
+    assert name not in solver.emergency_state["ready_members"]
+    solver._emergency_release_ready()
+    assert solver.op_data.operators[name].is_resting()
+    solver.op_data.operators[name].mood = 24
+    solver._emergency_release_ready()
+    assert_waiting(solver, [name])

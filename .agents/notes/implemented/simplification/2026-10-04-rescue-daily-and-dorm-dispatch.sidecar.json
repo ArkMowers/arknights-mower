@@ -1,0 +1,24 @@
+{
+  "title": "Rescue daily and dormitory dispatch",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_release_ready",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.infra_main",
+    "arknights_mower.utils.emergency_recovery.recovery_target"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/stage_plan_scheduler_tests.py",
+    "arknights_mower/tests/emergency_group_return_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py"
+  ]
+}
