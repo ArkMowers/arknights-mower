@@ -27,4 +27,4 @@ Pass: projection isolation, identity checks, bounded event allocation, explicit 
 
 ## Spec Findings
 
-Pass: one effective Free bed is the departure trigger; all eligible dormitory residents compete through the shared priority key. Multi-Free departures, ordinary mood changes and protected or reserved positions retain their boundaries. The alpha-based focused run reports 468 passing tests, nine failures and four passing subtests. The same nine rescue failures reproduce on unmodified alpha; all 18 new departure tests pass. Ruff checks pass.
+Pass: one effective Free bed is the departure trigger; all eligible dormitory residents compete through the shared priority key. Multi-Free departures, ordinary mood changes and protected or reserved positions retain their boundaries. All 18 new departure tests pass. The [scheduler CI fixture decision](../testing/2026-10-04-scheduler-ci-fixtures.md) verifies the existing rescue and dispatch boundaries alongside the departure regressions. Ruff checks pass.

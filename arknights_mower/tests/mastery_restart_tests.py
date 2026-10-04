@@ -324,6 +324,7 @@ class MasteryRestartTests(unittest.TestCase):
     def test_unavailable_training_does_not_block_other_rooms_or_create_correction(self):
         solver = self.mood_solver(count=2)
         op = SimpleNamespace(
+            name="干员",
             room="meeting",
             need_to_refresh=lambda: True,
             current_room="meeting",
