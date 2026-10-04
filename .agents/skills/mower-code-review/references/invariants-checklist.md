@@ -60,6 +60,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
+- [ ] **[INV-SCHED-20] Vacated Single-Bed Recovery**: Departure from the only effective Free bed in a dormitory triggers one cross-dormitory single-target priority allocation, preserving occupants, reservations and actual occupancy; mood changes alone do not trigger it.
 - [ ] **[INV-SCHED-19] Ungrouped Standby Return**: Does an ungrouped standby primary join the earliest eligible ordinary shift-on batch without changing its deadline, bypassing reservations, altering actual occupancy or creating an independent return, while grouped standby and exhausted replacement handling retain their existing rules?
 - [ ] **[INV-SCHED-17] Mastery Order Timing**: Do genuine conflicts advance mastery handoffs while preserving order times, prioritize due handoffs over overdue orders and retain training and candidate checks without requeueing the ideal handoff time?
 - [ ] **[INV-SCHED-16] Backup Validation Coverage**: Does validation exclude only logically disproven activation combinations, cover all remaining combinations with the runtime merged-plan checker, distinguish incomplete budget warnings from blocking configuration failures, identify active backups on error and preserve the caller's active plan and actual occupancy?

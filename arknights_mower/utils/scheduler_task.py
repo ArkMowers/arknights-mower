@@ -21,10 +21,12 @@ from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import (
+    RestingTier,
     busy_resting_names,
     has_resting_mood,
     resting_key,
     resting_mood,
+    resting_tier,
 )
 
 
@@ -1623,16 +1625,19 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
     return result
 
 
-def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_plan=None):
-    """新入住者优先竞争单回位，其余入住者保留已选床位。
+def prioritize_new_dorm_recovery(
+    op_data, plan, reserved_slots=(), preceding_plan=None, *, reserved_names=()
+):
+    """新入住者竞争单回位；单 Free 宿舍离宿时跨宿舍分配一次。
 
     先投影完整入住计划，再按宿舍顺序比较每房首个动态位。新入住者
     可填空位（含本轮替班腾出的位），或与排名更低的目标交换床位；
     被替换者继续竞争后面的单回位，填入空位后结束本次交换。
+    单 Free 宿舍原住客离宿时，已有休息者也参与本次竞争。
     不增加/淘汰休息者，也不因已有入住者心情交叉而搬床。返回计划
     副本，不提前改变真实位置或单回标记。
     """
-    if not plan:
+    if not plan and not preceding_plan:
         return plan
     projected = op_data.project_arrangements([preceding_plan or {}, plan])
     beds = [bed for bed in projected.dorm if projected.is_effective_free_slot(bed)]
@@ -1648,13 +1653,39 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
             and (op.current_room, op.current_index) != bed.position
         ):
             locked_rooms.add(bed.position[0])
+    room_beds = defaultdict(list)
+    for bed in beds:
+        room_beds[bed.position[0]].append(bed)
+        if bed.name and (
+            bed.name not in op_data.operators
+            or bed.name in reserved_names
+            or op_data.is_free_room_excluded(bed.name)
+            or projected.rest_mood_complete(bed.name)
+            or resting_tier(projected, bed.name) == RestingTier.EXCLUDED
+        ):
+            locked_rooms.add(bed.position[0])
     beds = [bed for bed in beds if bed.position[0] not in locked_rooms]
+    departed_single = any(
+        len(room_beds[bed.position[0]]) == 1
+        and (old := op_data.get_current_operator(*bed.position)) is not None
+        and op_data.is_dynamic_dorm_position(*bed.position, old.name)
+        and not projected.is_dynamic_dorm_position(
+            projected.operators[old.name].current_room,
+            projected.operators[old.name].current_index,
+            old.name,
+        )
+        for bed in beds
+    )
+    now = datetime.now()
     arrivals = []
     for bed in beds:
         op = op_data.operators.get(bed.name)
-        if (
-            op is not None
-            and op.name in explicit_names
+        if op is not None and (
+            departed_single
+            and not (
+                has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
+            )
+            or op.name in explicit_names
             and not op_data.is_dynamic_dorm_position(
                 op.current_room, op.current_index, op.name
             )
@@ -1662,8 +1693,15 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
             arrivals.append(op.name)
     if not arrivals:
         return plan
-    now = datetime.now()
-    arrivals.sort(key=lambda name: resting_key(op_data, name, now))
+
+    def ranking(name):
+        op = op_data.operators[name]
+        complete = departed_single and (
+            has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
+        )
+        return complete, resting_key(op_data, name, now)
+
+    arrivals.sort(key=ranking)
     targets = {}
     for bed in beds:
         targets.setdefault(bed.position[0], bed)
@@ -1674,9 +1712,7 @@ def prioritize_new_dorm_recovery(op_data, plan, reserved_slots=(), preceding_pla
             if target is source:
                 # 已获得本房单回位，不为更低顺序的宿舍继续搬动。
                 break
-            if target.name and resting_key(op_data, source.name, now) >= resting_key(
-                op_data, target.name, now
-            ):
+            if target.name and ranking(source.name) >= ranking(target.name):
                 continue
             source.name, target.name = target.name, source.name
             for bed in (source, target):
