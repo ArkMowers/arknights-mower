@@ -643,17 +643,15 @@ class EmergencyRecoveryMixin:
                 state["dorm_replan_pending"] = True
                 state.pop("dorm_replan_plan", None)
         restored = {}
-        for classify, required_count in (
-            (is_group_recovery_manager, 0),
-            (is_single_recovery_manager, 1),
-        ):
+        for classify in (is_group_recovery_manager, is_single_recovery_manager):
+            selected_rooms = set()
             for index in range(max(map(len, layout.values()))):
                 for room, row in layout.items():
                     positions = restored.get(room, ())
                     if (
                         index >= len(row)
                         or spare <= 0
-                        or len(positions) != required_count
+                        or room in selected_rooms
                         or index in positions
                     ):
                         continue
@@ -672,6 +670,7 @@ class EmergencyRecoveryMixin:
                     ):
                         continue
                     restored[room] = (*positions, index)
+                    selected_rooms.add(room)
                     spare -= 1
         for room, row in layout.items():
             for index, name in enumerate(row):

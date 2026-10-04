@@ -328,7 +328,7 @@ def test_at_most_one_manager_of_each_recovery_kind_restores_per_dorm(solver, nee
     }
 
 
-def test_single_recovery_manager_does_not_restore_without_group_manager(solver):
+def test_single_manager_precedes_fillers_when_group_manager_is_unavailable(solver):
     data, state = setup_episode(solver, 0)
     for name in ("冰酿", "杜林"):
         data.operators[name]._current_room, data.operators[name].current_index = (
@@ -339,12 +339,9 @@ def test_single_recovery_manager_does_not_restore_without_group_manager(solver):
     solver._open_emergency_beds()
     solver._emergency_plan_beds(state)
 
-    assert len(data.dorm) == 10
-    assert all(
-        slot.agent == "Free"
-        for room in state["dorm_layout"]
-        for slot in data.plan[room]
-    )
+    assert len(data.dorm) == 8
+    assert data.plan["dormitory_1"][1].agent == "闪灵"
+    assert data.plan["dormitory_2"][1].agent == "安赛尔"
     assert not solver.tasks
 
 
@@ -417,3 +414,33 @@ def test_fiammetta_away_cancels_wakeup_but_keeps_compensation(solver):
     assert solver.tasks == [restore]
     fia._current_room, fia.current_index = "dormitory_1", 0
     assert solver.check_fia() == ([PRIMARY[0]], "dormitory_1")
+
+
+@pytest.mark.parametrize("group_available", [True, False])
+def test_managers_replace_ordinary_residents_before_idle_fill(solver, group_available):
+    data, state = setup_episode(solver, 0)
+    for name in ("冰酿", "闪灵", "杜林", "安赛尔"):
+        data.operators[name]._current_room, data.operators[name].current_index = "", -1
+    if not group_available:
+        for name in ("冰酿", "杜林"):
+            data.operators[name]._current_room = "room_3_1"
+            data.operators[name].current_index = 0
+    for name, index in zip(COVERS[:2], range(2)):
+        op = data.operators[name]
+        op._current_room, op.current_index, op.mood = "dormitory_1", index, 5
+    data.config.free_room = True
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+    task = solver.tasks[0]
+    assert task.plan["dormitory_1"][1] == "闪灵"
+    if group_available:
+        assert task.plan["dormitory_1"][0] == "冰酿"
+    projected = data.project_arrangements([task.plan])
+    assert projected.get_current_operator("dormitory_1", 1).name == "闪灵"
+
+
+def test_single_manager_returns_in_fiammetta_dorm_without_group_manager(solver):
+    data, state = setup_episode(solver, 0, fiammetta=True)
+    solver._open_emergency_beds()
+    assert data.plan["dormitory_1"][0].agent == "菲亚梅塔"
+    assert data.plan["dormitory_1"][1].agent == "闪灵"
