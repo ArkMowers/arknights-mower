@@ -135,6 +135,166 @@ def test_switch_without_existing_rest_schedule_does_not_create_one(solver):
     assert all(t.type != TaskTypes.SHIFT_ON for t in solver.tasks)
 
 
+@pytest.mark.parametrize("path", ["cached", "shift"])
+@pytest.mark.parametrize("activating", [False, True])
+def test_backup_commit_invalidates_dynamic_exhaust_deadlines(solver, path, activating):
+    if not activating:
+        assert solver.op_data.swap_plan([True], refresh=True) is None
+        solver.op_data.operators["黑键"].current_room = "contact"
+    unaffected = SchedulerTask(
+        time=base.datetime.now() - timedelta(minutes=9),
+        task_type=TaskTypes.EXHAUST_OFF,
+        meta_data="黑键",
+    )
+    deadlines = [
+        SchedulerTask(
+            time=base.datetime.now() + timedelta(minutes=minutes),
+            task_type=TaskTypes.EXHAUST_OFF,
+            meta_data=name,
+        )
+        for minutes, name in [(-9, "歌蕾蒂娅"), (30, "黑键,歌蕾蒂娅")]
+    ]
+    concrete = SchedulerTask(
+        task_type=TaskTypes.EXHAUST_OFF,
+        task_plan={"contact": ["红"]},
+        meta_data="黑键",
+    )
+    depot = SchedulerTask(task_type=TaskTypes.DEPOT)
+    support = SchedulerTask(
+        task_type=TaskTypes.SWAP_SUPPORT,
+        task_plan={"train": ["红"]},
+    )
+    solver.tasks = [*deadlines, unaffected, concrete, depot, support]
+    before = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+
+    if path == "cached":
+        solver.backup_plan_solver()
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+        task.backup_shift_conditions = [activating]
+        solver.task = task
+        solver.tasks.append(task)
+        solver._activate_shift_backup(task)
+
+    assert solver.op_data.plan_condition == [activating]
+    assert all(not any(task is old for task in solver.tasks) for old in deadlines)
+    assert all(
+        any(task is kept for task in solver.tasks)
+        for kept in (unaffected, concrete, depot, support)
+    )
+    assert {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    } == before
+    assert any(task.type == TaskTypes.NOT_SPECIFIC for task in solver.tasks)
+
+
+@pytest.mark.parametrize("path", ["cached", "shift"])
+def test_unchanged_backup_preserves_dynamic_exhaust_deadline(solver, path):
+    assert solver.op_data.swap_plan([True], refresh=True) is None
+    old = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="歌蕾蒂娅")
+    solver.tasks = [old]
+    if path == "cached":
+        solver.backup_plan_solver()
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+        task.backup_shift_conditions = [True]
+        solver._activate_shift_backup(task)
+    assert solver.tasks == [old]
+
+
+@pytest.mark.parametrize("path", ["cached", "shift"])
+def test_failed_backup_commit_preserves_dynamic_exhaust_deadline(solver, path):
+    old = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="歌蕾蒂娅")
+    solver.tasks = [old]
+    swap = solver.op_data.swap_plan
+    solver.op_data.swap_plan = MagicMock(
+        side_effect=lambda conditions, refresh=False: (
+            "invalid merged plan" if conditions == [True] else swap(conditions, refresh)
+        )
+    )
+    if path == "cached":
+        assert solver.backup_plan_solver() is False
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+        task.backup_shift_conditions = [True]
+        with pytest.raises(ValueError, match="最终排班生效失败"):
+            solver._activate_shift_backup(task)
+    assert solver.tasks == [old]
+    assert solver.op_data.plan_condition == [False]
+
+
+@pytest.mark.parametrize("change", ["room", "replacement", "group", "group_member"])
+def test_backup_staffing_change_invalidates_corresponding_exhaust_task(solver, change):
+    backup = solver.op_data.backup_plans[0]
+    backup.config.exhaust_require = []
+    if change == "room":
+        backup.plan = {
+            "central": [Room("陈", "", ["红"])],
+            "meeting": [Room("歌蕾蒂娅", "", ["陈"])],
+        }
+    elif change == "replacement":
+        backup.plan = {"central": [Room("歌蕾蒂娅", "", ["红"])]}
+    elif change == "group":
+        backup.plan = {"central": [Room("歌蕾蒂娅", "感知", ["陈"])]}
+    else:
+        backup.plan = {"dormitory_1": [Room("塑心", "", ["隐德来希"])]}
+    affected_name = "黑键" if change == "group_member" else "歌蕾蒂娅"
+    old = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data=affected_name)
+    solver.tasks = [old]
+
+    solver.backup_plan_solver()
+
+    assert solver.op_data.plan_condition == [True]
+    assert not any(task is old for task in solver.tasks)
+
+
+def test_backup_projection_preserves_exhaust_deadline_until_commit(solver):
+    old = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="歌蕾蒂娅")
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan={"contact": ["红"]})
+    solver.tasks = [old, task]
+
+    solver._prepare_shift_backup(task)
+
+    assert task.backup_shift_conditions == [True]
+    assert solver.op_data.plan_condition == [False]
+    assert solver.tasks == [old, task]
+
+
+def test_changed_exhaust_deadline_rebuilds_from_new_schedule_and_readback(solver):
+    old = SchedulerTask(
+        time=base.datetime.now() - timedelta(minutes=9),
+        task_type=TaskTypes.EXHAUST_OFF,
+        meta_data="歌蕾蒂娅",
+    )
+    solver.tasks = [old]
+    solver.backup_plan_solver()
+    assert solver.op_data.operators["歌蕾蒂娅"].exhaust_require
+    assert not any(task is old for task in solver.tasks)
+    solver.tasks = [
+        task for task in solver.tasks if task.type != TaskTypes.NOT_SPECIFIC
+    ]
+    solver.enter_room = MagicMock()
+    solver.back = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        return_value=[
+            {"agent": "歌蕾蒂娅", "time": base.datetime.now() + timedelta(minutes=40)}
+        ]
+    )
+
+    solver.run_order_solver()
+
+    rebuilt = [task for task in solver.tasks if task.type == TaskTypes.EXHAUST_OFF]
+    assert len(rebuilt) == 1
+    assert rebuilt[0].meta_data == "歌蕾蒂娅"
+    assert rebuilt[0].time == base.datetime.now() + timedelta(minutes=10)
+    assert rebuilt[0].time != old.time
+    solver.get_agent_from_room.assert_called_once_with("central", [0])
+
+
 def reset_default_plan(solver):
     assert solver.op_data.swap_plan([False], refresh=True) is None
 

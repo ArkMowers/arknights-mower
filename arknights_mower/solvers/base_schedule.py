@@ -569,7 +569,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.op_data.operators[candidates[0]].group
             ]
         logger.debug(f"更新下班小组信息为{candidates}")
-        if all(self.op_data.operators[name].is_resting() for name in candidates):
+        resting_members = [
+            self.op_data.operators[name]
+            for name in candidates
+            if not self.op_data.operators[name].room.startswith("dorm")
+            and not self.op_data.operators[name].workaholic
+        ]
+        if resting_members and all(op.is_resting() for op in resting_members):
             logger.info(f"{self.task.meta_data} 已完成用尽下班，继续正常规划")
             return
         # 在candidate 中，计算出需要的high free 和 Low free 数量
@@ -3394,6 +3400,59 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _initial_mood_read_pending(self):
         return getattr(self, "defer_backup_plan_until_mood_read", False)
 
+    def _exhaust_task_signatures(self):
+        """动态用尽预约依赖生效岗位和组配置，不依赖临时驻员或心情读数。"""
+        signatures = {}
+        for task in self.tasks:
+            if task.type != TaskTypes.EXHAUST_OFF or task.plan:
+                continue
+            names = set(task.meta_data.split(","))
+            for name in tuple(names):
+                op = self.op_data.operators.get(name)
+                if op is not None and op.group:
+                    names.update(self.op_data.groups.get(op.group, []))
+            members = []
+            for name in sorted(names):
+                op = self.op_data.operators.get(name)
+                if op is None:
+                    members.append((name, None))
+                    continue
+                slots = self.op_data.plan.get(op.room, [])
+                facility = (
+                    slots[op.index].facility if 0 <= op.index < len(slots) else None
+                )
+                members.append(
+                    (
+                        name,
+                        op.room,
+                        op.index,
+                        op.group,
+                        tuple(op.replacement),
+                        op.is_high(),
+                        op.exhaust_require,
+                        op.workaholic,
+                        op.rest_in_full,
+                        op.lower_limit,
+                        op.upper_limit,
+                        facility,
+                        self.op_data.products.get(op.room),
+                    )
+                )
+            signatures[id(task)] = tuple(members)
+        return signatures
+
+    def _invalidate_changed_exhaust_tasks(self, previous):
+        current = self._exhaust_task_signatures()
+        invalid = {
+            task_id
+            for task_id, signature in previous.items()
+            if task_id in current and current[task_id] != signature
+        }
+        if invalid:
+            self.tasks[:] = [task for task in self.tasks if id(task) not in invalid]
+            logger.info("副表生效后移除 %s 条配置已改变的动态用尽预约", len(invalid))
+        return bool(invalid)
+
     def _advance_orders_before_maintenance(self, conditions):
         """复用停服前提前跑单，完成无人机加速及原班恢复后才切副表。"""
         entering = any(
@@ -3495,6 +3554,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     return False
 
             original = list(self.op_data.plan_condition)
+            previous_exhaust = self._exhaust_task_signatures()
             previous_plan = copy.deepcopy(self.op_data.plan)
             previous_dorms = copy.deepcopy(self.op_data.all_dorms())
             previous_dorm_layout = dorm_rebalance_signature(self.op_data)
@@ -3537,6 +3597,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 return False
 
             logger.info("副表条件一次性收敛：%s -> %s", original, current)
+            self._invalidate_changed_exhaust_tasks(previous_exhaust)
             self._sync_run_order_tasks()
             had_rest_schedule = any(
                 task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM)
@@ -4241,10 +4302,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
             )
         previous = list(self.op_data.plan_condition)
+        previous_exhaust = self._exhaust_task_signatures()
         if error := self.op_data.swap_plan(conditions, refresh=True):
             self.op_data.swap_plan(previous, refresh=True)
             raise ValueError(f"上下班最终排班生效失败：{error}")
         task.backup_shift_active = True
+        if previous != conditions and self._invalidate_changed_exhaust_tasks(
+            previous_exhaust
+        ):
+            # 重排任务完成后仍需按实读驻员重新计算用尽时间。
+            self.tasks.append(SchedulerTask())
         self._sync_run_order_tasks()
 
     @staticmethod
