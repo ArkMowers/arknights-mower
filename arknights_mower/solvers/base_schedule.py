@@ -4486,9 +4486,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for room, row in state.get("dorm_layout", {}).items():
                 if "菲亚梅塔" in row:
                     index = row.index("菲亚梅塔")
-                    if fia is not None and (fia.current_room, fia.current_index) == (
-                        room,
-                        index,
+                    if (
+                        fia is not None
+                        and self.op_data.plan[room][index].agent == "菲亚梅塔"
+                        and (fia.current_room, fia.current_index) == (room, index)
                     ):
                         return targets, room
             return None, None

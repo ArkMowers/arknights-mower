@@ -2201,6 +2201,16 @@ def test_rescue_fia_fallback_uses_lowest_uncapped_primary(solver, configured_moo
     data = solver.op_data
     state["fia_targets"] = [PRIMARY[0]]
     state["dorm_layout"] = {"dormitory_1": ["菲亚梅塔", "Free", "Free", "Free", "Free"]}
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.add(
+        Operator(
+            "菲亚梅塔",
+            "dormitory_1",
+            index=0,
+            current_room="dormitory_1",
+            current_index=0,
+        )
+    )
     for name, mood in zip(PRIMARY, [configured_mood, 1, 5, 8]):
         data.operators[name].mood = mood
     data.config.operator_mood_limits[PRIMARY[1]] = {"lower": 0, "upper": 12}

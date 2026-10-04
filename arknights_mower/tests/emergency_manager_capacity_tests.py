@@ -78,17 +78,60 @@ def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):
     assert data.emergency_dorm_agents == {"冰酿", "闪灵", "杜林", "安赛尔"}
 
 
-def test_fiammetta_keeps_configured_position_and_is_not_recovery_bed(solver):
+def test_waiting_primaries_receive_fiammetta_bed(solver):
     data, state = setup_episode(solver, 10, fiammetta=True)
 
     solver._open_emergency_beds()
     solver._emergency_plan_beds(state)
 
-    assert len(data.dorm) == 9
-    assert ("dormitory_1", 0) not in {bed.position for bed in data.dorm}
+    assert len(data.dorm) == 10
+    assert data.plan["dormitory_1"][0].agent == "Free"
+    task = solver.tasks[0]
+    assert "菲亚梅塔" not in {name for row in task.plan.values() for name in row}
+    assert set(RECOVERY_NAMES) == {name for row in task.plan.values() for name in row}
+    projected = data.project_arrangements([task.plan])
+    assert not projected.operators["菲亚梅塔"].is_resting()
+
+
+@pytest.mark.parametrize("count", [0, 9])
+def test_fiammetta_returns_before_managers_when_primaries_have_beds(solver, count):
+    data, state = setup_episode(solver, count, fiammetta=True)
+    for op in data.operators.values():
+        op._current_room, op.current_index = "", -1
+    positions = [
+        (room, i)
+        for room in state["dorm_layout"]
+        for i in range(5)
+        if (room, i) != ("dormitory_1", 0)
+    ]
+    for name, position in zip(RECOVERY_NAMES[:count], positions):
+        data.operators[name]._current_room, data.operators[name].current_index = (
+            position
+        )
+    data.plan["dormitory_1"][0].agent = "Free"
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
     assert data.plan["dormitory_1"][0].agent == "菲亚梅塔"
-    assert solver.tasks[0].plan["dormitory_1"][0] == "Current"
-    assert data.operators["菲亚梅塔"].current_room == "dormitory_1"
+    assert solver.tasks[0].plan["dormitory_1"][0] == "菲亚梅塔"
+    if count == 9:
+        assert len(data.dorm) == 9
+        assert all(slot.agent == "Free" for slot in data.plan["dormitory_2"])
+
+
+@pytest.mark.parametrize("kind", ["charge", "dorm"])
+def test_pending_arrangement_preserves_fiammetta_bed_until_completion(solver, kind):
+    data, state = setup_episode(solver, 10, fiammetta=True)
+    task = SchedulerTask(
+        task_plan={"dormitory_1": ["菲亚梅塔"]},
+        task_type=TaskTypes.FIAMMETTA if kind == "charge" else TaskTypes.FILL_DORM,
+    )
+    task.emergency_dorm = kind == "dorm"
+    solver.tasks.append(task)
+    solver._open_emergency_beds()
+    assert data.plan["dormitory_1"][0].agent == "菲亚梅塔"
+    solver.tasks.clear()
+    solver._open_emergency_beds()
+    assert data.plan["dormitory_1"][0].agent == "Free"
 
 
 @pytest.mark.parametrize(
@@ -328,3 +371,49 @@ def test_manager_with_both_recovery_skills_does_not_take_both_positions(solver):
         "Free",
     ]
     assert len(data.dorm) == 6
+
+
+def test_yielded_fiammetta_does_not_plan_or_retain_charging_wakeup(solver):
+    del solver.check_fia
+    data, state = setup_episode(solver, 10, fiammetta=True)
+    state["fia_targets"] = [PRIMARY[0]]
+    solver._open_emergency_beds()
+    assert solver.check_fia() == (None, None)
+    wakeup = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    solver.tasks.append(wakeup)
+    solver._emergency_filter_tasks()
+    assert wakeup not in solver.tasks
+
+
+def test_return_does_not_displace_unfinished_primary_in_fiammetta_position(solver):
+    data, state = setup_episode(solver, 1, fiammetta=True)
+    fia = data.operators["菲亚梅塔"]
+    fia._current_room, fia.current_index = "", -1
+    resident = data.operators[RECOVERY_NAMES[0]]
+    resident._current_room, resident.current_index = "dormitory_1", 0
+    data.plan["dormitory_1"][0].agent = "Free"
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+    assert data.plan["dormitory_1"][0].agent == "Free"
+    assert all(
+        "菲亚梅塔" not in row for task in solver.tasks for row in task.plan.values()
+    )
+
+
+def test_fiammetta_away_cancels_wakeup_but_keeps_compensation(solver):
+    del solver.check_fia
+    data, state = setup_episode(solver, 0, fiammetta=True)
+    state["fia_targets"] = [PRIMARY[0]]
+    fia = data.operators["菲亚梅塔"]
+    fia._current_room, fia.current_index = "", -1
+    assert solver.check_fia() == (None, None)
+    wakeup = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    restore = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA, task_plan={"dormitory_1": ["菲亚梅塔"]}
+    )
+    restore.emergency_original_roster = {"dormitory_1": ["菲亚梅塔"]}
+    solver.tasks.extend([wakeup, restore])
+    solver._emergency_filter_tasks()
+    assert solver.tasks == [restore]
+    fia._current_room, fia.current_index = "dormitory_1", 0
+    assert solver.check_fia() == ([PRIMARY[0]], "dormitory_1")

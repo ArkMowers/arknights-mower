@@ -581,12 +581,17 @@ class EmergencyRecoveryMixin:
         return True
 
     def _open_emergency_beds(self):
-        """按救急宿舍配置，每房先补一名群回，余量再补一名单回。"""
+        """主班优先占床，余床依次恢复菲亚、群回和单回宿管。"""
         data, state = self.op_data, self.emergency_state
         layout = state.get("dorm_layout", {})
         if not layout:
             return
-        if any(task.type == TaskTypes.FIAMMETTA and task.plan for task in self.tasks):
+        if any(
+            task.type == TaskTypes.FIAMMETTA
+            and task.plan
+            or getattr(task, "emergency_dorm", False)
+            for task in self.tasks
+        ):
             return
         data.emergency_dorm_agents = {
             name
@@ -615,9 +620,28 @@ class EmergencyRecoveryMixin:
             and not data._can_standby(op)
             and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
         }
-        capacity = sum(name != "菲亚梅塔" for row in layout.values() for name in row)
+        capacity = sum(len(row) for row in layout.values())
         spare = max(0, capacity - len(need))
         reserved, _ = dorm_task_reservations(data, self.tasks)
+        waiting = any(not data.operators[name].is_resting() for name in need)
+        fia_position = None
+        for room, row in layout.items():
+            if "菲亚梅塔" not in row:
+                continue
+            index = row.index("菲亚梅塔")
+            resident = data.get_current_operator(room, index)
+            if (
+                spare > 0
+                and not waiting
+                and "菲亚梅塔" not in reserved
+                and (resident is None or resident.name not in need)
+            ):
+                fia_position = (room, index)
+                spare -= 1
+            was_fixed = data.plan[room][index].agent == "菲亚梅塔"
+            if was_fixed != (fia_position == (room, index)):
+                state["dorm_replan_pending"] = True
+                state.pop("dorm_replan_plan", None)
         restored = {}
         for classify, required_count in (
             (is_group_recovery_manager, 0),
@@ -655,7 +679,7 @@ class EmergencyRecoveryMixin:
                     fia = data.operators[name]
                     if (fia.current_room, fia.current_index) == (room, index):
                         fia.room, fia.index = room, index
-                fixed = name == "菲亚梅塔" or index in restored.get(room, ())
+                fixed = (room, index) == fia_position or index in restored.get(room, ())
                 data.plan[room][index].agent = name if fixed else "Free"
                 if fixed:
                     continue
@@ -807,10 +831,16 @@ class EmergencyRecoveryMixin:
         if not self._emergency_frozen():
             return
         fia_targets = set(self.emergency_state.get("fia_targets", ()))
+        fia = self.op_data.operators.get("菲亚梅塔")
         fia_rooms = {
             room
             for room, row in self.emergency_state.get("dorm_layout", {}).items()
             if "菲亚梅塔" in row
+            and fia is not None
+            and (fia.current_room, fia.current_index) == (room, row.index("菲亚梅塔"))
+            and any(
+                slot.agent == "菲亚梅塔" for slot in self.op_data.plan.get(room, ())
+            )
         }
         self.tasks[:] = [
             task

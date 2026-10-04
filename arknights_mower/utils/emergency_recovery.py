@@ -466,6 +466,7 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False
         group = (resting_tier(data, name), data.operators[name].group or name)
         groups.setdefault(group, []).append(name)
     ordered = [name for members in groups.values() for name in members]
+    ordinary.discard("菲亚梅塔")
     ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
     for name in ordered:
         op = data.operators[name]
