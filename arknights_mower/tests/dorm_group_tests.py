@@ -151,6 +151,55 @@ def test_group_larger_than_bed_count_validates_and_round_trip_converges(solver):
     assert shift_off(solver)[0]["dormitory_1"][0] == "黑角"
 
 
+@pytest.mark.parametrize("replacement", ["黑角", "Free"])
+def test_completed_exhaust_ignores_departed_group_dorm_resident(
+    solver, monkeypatch, replacement
+):
+    if replacement == "Free":
+        configure_explicit_free_bed(solver)
+    shift_off(solver)
+    data = solver.op_data
+    assert data.operators["塑心"].current_room == ""
+    assert all(data.operators[name].is_resting() for name in ("伊内丝", "银灰", "讯使"))
+    stale = SchedulerTask(
+        time=datetime.now() - timedelta(minutes=9),
+        task_type=TaskTypes.EXHAUST_OFF,
+        meta_data="伊内丝",
+    )
+    solver.task = stale
+    future = SchedulerTask(time=datetime.now() + timedelta(hours=3))
+    solver.tasks = [stale, future]
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    solver.find = MagicMock(return_value=True)
+    solver._refresh_deferred_product_reservations = MagicMock()
+    solver.get_resting_plan = MagicMock(wraps=solver.get_resting_plan)
+    solver._plan_exhaust_support = MagicMock(wraps=solver._plan_exhaust_support)
+    notification = MagicMock()
+    monkeypatch.setattr(base_schedule, "send_message", notification)
+    before = deepcopy(data.dorm)
+    positions = {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    }
+
+    solver.infra_main()
+
+    assert solver.tasks == [future]
+    assert solver.task is None
+    assert not solver.planned
+    assert not solver.todo_task
+    assert not solver.collect_notification
+    assert [(bed.name, bed.time) for bed in data.dorm] == [
+        (bed.name, bed.time) for bed in before
+    ]
+    assert {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    } == positions
+    solver.get_resting_plan.assert_not_called()
+    solver._plan_exhaust_support.assert_not_called()
+    notification.assert_not_called()
+    solver.enter_room.assert_not_called()
+
+
 def test_group_mood_gap_full_rest_can_be_disabled(solver):
     config.conf.rescue_threshold = 0
     shift_off(solver)

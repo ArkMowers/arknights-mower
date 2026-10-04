@@ -1,0 +1,24 @@
+{
+  "title": "Backup Exhaust Task Invalidation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-10]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.backup_plan_solver",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._activate_shift_backup",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.overtake_room",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._exhaust_task_signatures",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._invalidate_changed_exhaust_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_rest_schedule_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/exhaust_replacement_tests.py"
+  ]
+}

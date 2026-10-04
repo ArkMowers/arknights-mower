@@ -245,8 +245,9 @@ def test_completed_exhaust_off_preserves_normal_planning(solver, grouped, mood):
 
 
 @pytest.mark.parametrize("primaries_zero_mood", [False, True])
+@pytest.mark.parametrize("departed_dorm_member", [False, True])
 def test_residual_exhaust_off_requeues_run_order_after_coordination(
-    solver, monkeypatch, primaries_zero_mood
+    solver, monkeypatch, primaries_zero_mood, departed_dorm_member
 ):
     if primaries_zero_mood:
         for op in solver.op_data.operators.values():
@@ -260,6 +261,12 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     solver.op_data = solver.op_data.project_arrangements([solver.tasks[0].plan])
     assert solver.op_data.operators["机械师"].is_resting()
     assert all(bed.name for bed in solver.op_data.dorm)
+    if departed_dorm_member:
+        worker = solver.op_data.operators["机械师"]
+        resident = solver.op_data.operators["闪灵"]
+        worker.group = resident.group = "用尽"
+        solver.op_data.groups["用尽"] = [worker.name, resident.name]
+        resident.current_room, resident.current_index = "", -1
     solver.op_data.plan["room_1_1"] = [Room("鸿雪", "", ["但书"])]
     solver.op_data.products["room_1_1"] = "lmd"
     solver.op_data.add(Operator("鸿雪", "room_1_1", index=0, replacement=["但书"]))
@@ -304,6 +311,52 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     solver.get_run_order_time.assert_called_once()
     solver.enter_room.assert_not_called()
     base_schedule.send_message.assert_not_called()
+
+
+@pytest.mark.parametrize("member_room", ["", "meeting"])
+def test_completed_exhaust_ignores_nonresting_workaholic(solver, member_room):
+    solver.op_data = solver.op_data.project_arrangements(
+        [{"room_3_3": ["槐琥"], "dormitory_1": ["Current"] * 4 + ["机械师"]}]
+    )
+    worker = solver.op_data.operators["机械师"]
+    member = solver.op_data.operators["能天使"]
+    worker.group = member.group = "用尽"
+    member.workaholic = True
+    member.current_room = member_room
+    solver.op_data.groups["用尽"] = [worker.name, member.name]
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    solver.get_resting_plan = MagicMock(wraps=solver.get_resting_plan)
+    solver._plan_exhaust_support = MagicMock(wraps=solver._plan_exhaust_support)
+
+    solver.overtake_room()
+
+    assert solver.tasks == []
+    assert not solver.planned
+    solver.get_resting_plan.assert_not_called()
+    solver._plan_exhaust_support.assert_not_called()
+    base_schedule.send_message.assert_not_called()
+
+
+@pytest.mark.parametrize("member_room", ["", "meeting"])
+def test_unfinished_group_member_still_requires_exhaust_planning(solver, member_room):
+    solver.op_data = solver.op_data.project_arrangements(
+        [{"room_3_3": ["槐琥"], "dormitory_1": ["Current"] * 4 + ["机械师"]}]
+    )
+    worker = solver.op_data.operators["机械师"]
+    member = solver.op_data.operators["能天使"]
+    worker.group = member.group = "用尽"
+    member.current_room = member_room
+    solver.op_data.groups["用尽"] = [worker.name, member.name]
+    solver.get_resting_plan = MagicMock()
+    solver._plan_exhaust_support = MagicMock(return_value=None)
+    solver.skip = MagicMock()
+
+    solver.overtake_room()
+
+    solver.get_resting_plan.assert_called_once()
+    solver._plan_exhaust_support.assert_called_once()
+    solver.skip.assert_called_once()
+    base_schedule.send_message.assert_called_once()
 
 
 def test_exhaust_off_without_workable_replacements_preserves_occupancy(solver):
