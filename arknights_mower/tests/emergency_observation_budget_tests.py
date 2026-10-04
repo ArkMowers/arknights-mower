@@ -870,3 +870,29 @@ def test_initial_wakeup_does_not_block_its_own_card_scan(observation_solver):
     assert solver.infra_main()
     solver._emergency_startup.assert_called_once()
     assert not solver.tasks
+
+
+def test_running_resume_retains_next_retry_after_dispatch_cleanup(observation_solver):
+    episode = observation_solver
+    solver = episode.solver
+    current = SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)
+    release = SchedulerTask(
+        time=NOW + timedelta(hours=4), task_type=TaskTypes.RELEASE_DORM
+    )
+    solver.task = current
+    solver.tasks = [current, release]
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.planned = solver.todo_task = solver.collect_notification = True
+    solver.handle_error = MagicMock(return_value=True)
+    solver._emergency_tick = MagicMock(
+        side_effect=lambda **kwargs: solver._emergency_defer_read()
+    )
+
+    solver.infra_main()
+
+    retries = [task for task in solver.tasks if task.meta_data == emergency.RESUME_META]
+    assert len(retries) == 1
+    assert retries[0] is not current
+    assert retries[0].time == NOW + timedelta(minutes=1)
+    assert release in solver.tasks
+    assert current not in solver.tasks

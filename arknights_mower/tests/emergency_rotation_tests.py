@@ -127,7 +127,13 @@ def test_measured_target_releases_then_plans_new_resident(rotation):
         workshop_operator_block_reason(scheduler.op_data, op.name, [])
         == "已被自动救急恢复安排预约"
     )
-    scheduler._emergency_plan_beds.assert_called_once()
+    assert (
+        sum(
+            call.args[0] is scheduler.emergency_state
+            for call in scheduler._emergency_plan_beds.call_args_list
+        )
+        == 1
+    )
     assert not scheduler.tasks
 
 
@@ -173,3 +179,110 @@ def test_equal_personal_upper_uses_existing_mandatory_release_only(rotation):
     assert task.strict_mood_limit
     assert task.mood_limit == 16
     assert not getattr(task, "emergency_recovery_release", False)
+
+
+@pytest.fixture
+def merged_rotation(rotation):
+    from arknights_mower.utils.operators import Dormitory
+    from arknights_mower.utils.plan import Room
+
+    scheduler, op, bed, clock = rotation
+    data = scheduler.op_data
+    data.plan["dormitory_2"] = [Room("Free", "", []) for _ in range(5)]
+    for name, room, index, seconds, target in (
+        (PRIMARY[1], "dormitory_1", 3, 21, 12),
+        (PRIMARY[2], "dormitory_2", 2, 141, 18),
+    ):
+        member = data.operators[name]
+        member._current_room, member.current_index = room, index
+        member.mood, member.time_stamp = 8, NOW
+        scheduler.emergency_state["targets"][name] = target
+        full_time = NOW + timedelta(seconds=(7200 + seconds) * 16 / (target - 8))
+        existing = next(
+            (b for b in data.all_dorms() if b.position == (room, index)), None
+        )
+        if existing is None:
+            data.dorm.append(Dormitory((room, index), name, full_time))
+        else:
+            existing.name, existing.time = name, full_time
+    return rotation
+
+
+def test_rescue_queue_merges_same_dorm_and_aligns_other_dorms(merged_rotation):
+    scheduler, op, bed, clock = merged_rotation
+    scheduler._emergency_replan_releases()
+    assert len(scheduler.tasks) == 2
+    assert {task.time for task in scheduler.tasks} == {NOW + timedelta(seconds=7341)}
+    first = next(task for task in scheduler.tasks if "dormitory_1" in task.plan)
+    assert first.plan["dormitory_1"].count("Free") == 2
+    assert first.release_dorm_targets() == {
+        PRIMARY[0]: ("dormitory_1", 2),
+        PRIMARY[1]: ("dormitory_1", 3),
+    }
+    assert all(task.emergency_recovery_release for task in scheduler.tasks)
+    assert scheduler.emergency_state["targets"] == {
+        PRIMARY[0]: 16,
+        PRIMARY[1]: 12,
+        PRIMARY[2]: 18,
+    }
+    snapshot = [
+        (task.time, task.plan.copy(), task.release_dorm_targets())
+        for task in scheduler.tasks
+    ]
+    scheduler._emergency_replan_releases()
+    assert [
+        (task.time, task.plan, task.release_dorm_targets()) for task in scheduler.tasks
+    ] == snapshot
+
+
+@pytest.mark.parametrize("kind", ["RUN_ORDER", "FIAMMETTA", "WORKSHOP"])
+def test_rescue_merge_does_not_cross_specialized_task(merged_rotation, kind):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    scheduler, op, bed, clock = merged_rotation
+    barrier = SchedulerTask(
+        time=NOW + timedelta(seconds=7210), task_type=getattr(TaskTypes, kind)
+    )
+    scheduler.tasks.append(barrier)
+    scheduler._emergency_replan_releases()
+    first = next(task for task in scheduler.tasks if task.meta_data == PRIMARY[0])
+    assert first.time == NOW + timedelta(hours=2)
+    assert barrier.time == NOW + timedelta(seconds=7210)
+    assert len(scheduler.tasks) == 4
+
+
+def test_rescue_queue_obeys_disabled_merge_interval(merged_rotation, monkeypatch):
+    from arknights_mower.utils import config
+
+    scheduler, op, bed, clock = merged_rotation
+    monkeypatch.setattr(config.conf, "merge_interval", 0)
+    scheduler._emergency_replan_releases()
+    assert len(scheduler.tasks) == 3
+    assert len({task.time for task in scheduler.tasks}) == 3
+
+
+def test_merged_rescue_reads_all_due_rooms_and_keeps_unready_member(merged_rotation):
+    scheduler, op, bed, clock = merged_rotation
+    scheduler._emergency_replan_releases()
+    clock["now"] = scheduler.tasks[0].time
+
+    def observe(rooms, **kwargs):
+        assert rooms == {"dormitory_1", "dormitory_2"}
+        for name, mood in zip(PRIMARY, [16, 11, 18]):
+            member = scheduler.op_data.operators[name]
+            member.mood, member.time_stamp = mood, clock["now"]
+        scheduler.emergency_state.pop("pending_read_rooms", None)
+        return True
+
+    def arrange(plan, **kwargs):
+        scheduler.op_data = scheduler.op_data.project_arrangements([plan])
+        plan.clear()
+
+    scheduler._emergency_read_rooms = MagicMock(side_effect=observe)
+    scheduler.agent_arrange.side_effect = arrange
+    scheduler._emergency_tick()
+    scheduler.agent_arrange.assert_called_once()
+    assert scheduler.op_data.operators[PRIMARY[1]].is_resting()
+    assert not scheduler.op_data.operators[PRIMARY[0]].is_resting()
+    assert not scheduler.op_data.operators[PRIMARY[2]].is_resting()
+    assert PRIMARY[1] not in scheduler.emergency_state["ready_members"]

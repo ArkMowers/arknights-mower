@@ -330,7 +330,7 @@ def test_emergency_fixed_manager_keeps_personal_limit_and_completed_cycle_identi
 def predicted_emergency_solver(emergency_solver):
     solver = emergency_solver
     data = solver.op_data
-    # 无替班可接手时，离宿实测必须达标；可提前交接另有覆盖。
+    # 无替班可接手时，离宿实测必须达到目标；可交接提前退出另有覆盖。
     for name in data.plan["central"][0].replacement:
         op = data.operators[name]
         data.update_detail(name, 0, op.current_room, op.current_index, True)
@@ -430,7 +430,12 @@ def test_departure_room_read_replaces_prediction_before_emergency_exit(
     assert not limited.mood_is_prediction
     assert not solver._emergency_ready()
     solver.tasks.remove(release)
-    assert solver._emergency_ready() is (actual_mood == 12)
+    # 达标仍须正常替班可用；夹具中的替班此前已耗尽心情。
+    assert not solver._emergency_ready()
+    for name in solver.op_data.plan["central"][0].replacement:
+        op = solver.op_data.operators[name]
+        solver.op_data.update_detail(name, 24, op.current_room, op.current_index, True)
+    assert solver._emergency_ready()
     assert solver.emergency_state["targets"][limited.name] == 12
 
 
@@ -534,7 +539,7 @@ def completed_manager_exit_solver(emergency_solver):
 
 
 @pytest.mark.parametrize("staffing_complete", [False, None])
-def test_completed_mood_requires_staffing_completion_before_exit(
+def test_completed_mood_cannot_exit_before_staffing_completion(
     completed_manager_exit_solver, staffing_complete
 ):
     solver = completed_manager_exit_solver
@@ -543,7 +548,9 @@ def test_completed_mood_requires_staffing_completion_before_exit(
     else:
         solver.emergency_state["staffing_complete"] = staffing_complete
     assert not solver._emergency_ready()
+    assert not solver._emergency_restore()
     solver.agent_arrange.assert_not_called()
+    assert solver.emergency_state is not None
 
 
 @pytest.mark.parametrize("source", ["correction", "cached", "backup"])

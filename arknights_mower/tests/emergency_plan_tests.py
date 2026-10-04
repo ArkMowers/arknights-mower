@@ -464,3 +464,24 @@ def test_rescue_fixed_rooms_reject_over_capacity_and_duplicate_workers(room, nam
             SimpleNamespace(plan={"central": [object()]}),
             {"central": ["阿米娅"], room: names},
         )
+
+
+def test_rescue_recovery_settings_append_and_dorm_order_overrides(solver):
+    from arknights_mower.utils.plan import PlanConfig
+
+    setup_startup(solver)
+    document = config.conf.automatic_rescue_plan.model_copy(deep=True)
+    document.conf.workaholic = "年"
+    document.conf.free_blacklist = "杜林"
+    document.conf.dorm_order = "dormitory_3,dormitory_1,dormitory_2,dormitory_4"
+    normal = solver.op_data.config
+    normal.workaholic = ["清流"]
+    normal.free_blacklist = ["初雪"]
+    result = effective_rescue_plan(solver.op_data, document)
+    overlay = PlanConfig("", "", "", **result["worker_config"])
+    combined = normal.merge_config(overlay)
+    assert set(combined.workaholic) >= {"清流", "年"}
+    assert set(combined.free_blacklist) >= {"初雪", "杜林"}
+    assert combined.dorm_order[0] == "dormitory_3"
+    assert normal.workaholic == ["清流"]
+    assert normal.free_blacklist == ["初雪"]

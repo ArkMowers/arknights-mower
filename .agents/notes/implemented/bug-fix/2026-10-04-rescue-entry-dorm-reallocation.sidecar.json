@@ -1,0 +1,20 @@
+{
+  "title": "Rescue Entry Dormitory Reallocation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_plan_beds"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py"
+  ]
+}

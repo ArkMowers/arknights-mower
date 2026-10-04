@@ -14,7 +14,7 @@ import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPe
 
 const router = useRouter()
 const config_store = useConfigStore()
-const { free_blacklist, theme } = storeToRefs(config_store)
+const { free_blacklist: normal_free_blacklist, theme } = storeToRefs(config_store)
 
 const { rescue = false } = defineProps({ rescue: Boolean })
 const plan_store = rescue ? useRescuePlanStore() : usePlanStore()
@@ -43,6 +43,9 @@ const {
   operators,
   plan
 } = storeToRefs(plan_store)
+const free_blacklist = rescue
+  ? storeToRefs(plan_store).rescue_free_blacklist
+  : normal_free_blacklist
 const { load_plan, fill_empty } = plan_store
 
 import { computed, inject, onMounted, onUnmounted, provide, ref, watch, watchEffect } from 'vue'
@@ -340,7 +343,7 @@ watchEffect(() => {
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
       refresh_trading: refresh_trading.value,
-      free_blacklist: rescue ? [] : free_blacklist.value,
+      free_blacklist: free_blacklist.value,
       refresh_drained: refresh_drained.value,
       ope_resting_priority: ope_resting_priority.value,
       dorm_order: dorm_order.value
@@ -438,7 +441,7 @@ function replace_main_conf() {
     resting_standby: resting_standby.value,
     refresh_trading: refresh_trading.value,
     refresh_drained: refresh_drained.value,
-    free_blacklist: rescue ? [] : free_blacklist.value,
+    free_blacklist: free_blacklist.value,
     ope_resting_priority: ope_resting_priority.value,
     operator_mood_limits: operator_mood_limits.value
   }
@@ -741,54 +744,18 @@ function movePlanForward() {
       </div>
     </div>
     <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
-    <div v-if="rescue" class="w-980 mx-auto mb-12 px-12 mw-980">
-      <n-space align="center">
-        <n-button :disabled="edit_locked" @click="clearRescueBindings">清空绑组与普通替班</n-button>
-        <span>清理救急主表及全部副表，保留跑单干员和菲亚梅塔充能对象。</span>
-      </n-space>
-    </div>
-    <div v-if="rescue" class="w-980 mx-auto mt-12 mb-12 px-12 mw-980">
-      <n-alert title="救急排班说明" type="info">
-        <n-space vertical :size="6">
-          <div>
-            此页编辑独立的救急主表和副表，修改会自动保存。开启自动救急后，仅在初始化发现多组主班低于救急线、普通轮休无法安排休息时启用。
-          </div>
-          <div>
-            启动时先按当前条件确定正常表和救急表各自生效的副表，再核对工作站设施类型、等级（岗位数量）及产物；任一不一致都不会进入救急。与正常主班重名的救急驻员会在启动时提示，但仍按救急表工作。
-          </div>
-          <div>
-            加工站和训练室按救急表部署驻员，加工及专精仍按原任务执行，训练室换人保留现有保护规则。
-          </div>
-          <div>
-            跑单人选、宿管及菲亚梅塔的位置和充能对象须在救急表中独立填写。Free
-            床位优先恢复正常主班，剩余空位按正常排班优先级补入替班或空闲干员。
-          </div>
-          <div>
-            救急驻员按表持续工作，填写普通替班不会触发轮休。贸易站的“替换”栏用于填写跑单干员，菲亚梅塔的“替换”栏用于填写充能对象；其他替班人选不参与救急换班。
-          </div>
-          <div>
-            “导入排班”读取完整排班文件；右侧下拉的“导入主表”只复制正常主表，保留救急副表。“导出图片”和“导出JSON文件”均携带完整救急排班。
-          </div>
-          <div>
-            自动救急开关位于 Mower 设置 →
-            基建设置，不随正常排班导入导出。救急期间冻结正常副表，正常排班可接回周转后退出，仍需恢复的组继续休息。
-          </div>
-        </n-space>
-      </n-alert>
-    </div>
     <div v-if="!rescue" class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
       <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
       <n-button @click="show_mood_limits_dialog = true"> 设置心情上下限 </n-button>
     </div>
     <n-form
-      v-if="!rescue"
       class="w-980 mx-auto mb-12 px-12 mw-980"
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
       label-width="160"
       label-align="left"
     >
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label
           ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
         >
@@ -797,7 +764,7 @@ function movePlanForward() {
           v-model="current_conf.rest_in_full"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>需要用尽心情的干员</span>
           <help-text>
@@ -809,7 +776,7 @@ function movePlanForward() {
           v-model="current_conf.exhaust_require"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>宿舍高优先级干员</span>
           <help-text>
@@ -827,7 +794,7 @@ function movePlanForward() {
           v-model="current_conf.ope_resting_priority"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>宿舍低优先级干员</span>
           <help-text>
@@ -839,7 +806,7 @@ function movePlanForward() {
           v-model="current_conf.resting_priority"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>宿舍高优先级替班</span>
           <help-text
@@ -851,7 +818,7 @@ function movePlanForward() {
           v-model="current_conf.resting_priority_replacement"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>宿舍休息候补干员</span>
           <help-text>
@@ -884,7 +851,7 @@ function movePlanForward() {
           v-model="current_conf.free_blacklist"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>跑单时间刷新干员</span>
           <help-text>
@@ -901,7 +868,7 @@ function movePlanForward() {
           select_placeholder="填入在贸易站外影响贸易效率的干员"
         ></slick-operator-select>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="!rescue">
         <template #label>
           <span>用尽刷新</span>
           <help-text>
@@ -929,6 +896,41 @@ function movePlanForward() {
         ></slick-dorm-select>
       </n-form-item>
     </n-form>
+    <div v-if="rescue" class="w-980 mx-auto mb-12 px-12 mw-980">
+      <n-space align="center">
+        <n-button :disabled="edit_locked" @click="clearRescueBindings">清空绑组与普通替班</n-button>
+        <span>清理救急主表及全部副表，保留跑单干员和菲亚梅塔充能对象。</span>
+      </n-space>
+    </div>
+    <div v-if="rescue" class="w-980 mx-auto mt-12 mb-12 px-12 mw-980">
+      <n-alert title="救急排班说明" type="info">
+        <n-space vertical :size="6">
+          <div>
+            此页编辑独立的救急主表和副表，修改会自动保存。开启自动救急后，仅在初始化发现多组主班低于救急线、普通轮休无法安排休息时启用。
+          </div>
+          <div>
+            启动时先按当前条件确定正常表和救急表各自生效的副表，再核对工作站设施类型、等级（岗位数量）及产物；任一不一致都不会进入救急。与正常主班重名的救急驻员会在启动时提示，但仍按救急表工作。
+          </div>
+          <div>
+            加工站和训练室按救急表部署驻员，加工及专精仍按原任务执行，训练室换人保留现有保护规则。
+          </div>
+          <div>
+            跑单人选、宿管及菲亚梅塔的位置和充能对象须在救急表中独立填写。Free
+            床位优先恢复正常主班，剩余空位按正常排班优先级补入替班或空闲干员。
+          </div>
+          <div>
+            救急驻员支持绑组和普通替班；组内非零心情工作干员低于下班线时，完整替班接岗后整组离岗；正常主班可预约宿舍恢复，其他驻员待命。未配置普通替班的驻员视为零心情工作干员，持续在岗，不触发下班，也不参与同组替班。跑单和菲亚充能仍使用各自的替换人选。
+          </div>
+          <div>
+            “导入排班”读取完整排班文件；右侧下拉的“导入主表”只复制正常主表，保留救急副表。“导出图片”和“导出JSON文件”均携带完整救急排班。
+          </div>
+          <div>
+            自动救急开关位于 Mower 设置 →
+            基建设置，不随正常排班导入导出。救急期间冻结正常副表，正常排班可接回周转后退出，仍需恢复的组继续休息。
+          </div>
+        </n-space>
+      </n-alert>
+    </div>
     <n-modal
       v-model:show="show_advanced_settings_dialog"
       :auto-focus="false"

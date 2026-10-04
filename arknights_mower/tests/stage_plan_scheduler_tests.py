@@ -384,3 +384,32 @@ def test_mower_plan_solver_does_not_rest_until_next_task(scheduler, monkeypatch)
     )
     scheduler.mower_plan_solver()
     scheduler.rest_until_next_task.assert_not_called()
+
+
+@pytest.mark.parametrize("phase", ["staffing", "recovering", "returning"])
+def test_rescue_keeps_configured_maa_daily_tasks(scheduler, monkeypatch, phase):
+    monkeypatch.setattr(
+        base_schedule.config,
+        "conf",
+        Conf(stage_plan_enable=True, stage_plan_runner="maa", maa_mall_enable=True),
+    )
+    scheduler.emergency_state = {"phase": phase}
+    scheduler.append_maa_task = MagicMock()
+    assert scheduler.has_maa_tasks()
+    maa = scheduler.MAA
+    scheduler.maa_plan_solver()
+    assert [call.args[0] for call in scheduler.append_maa_task.call_args_list] == [
+        "StartUp",
+        "Fight",
+        "Mall",
+        "Award",
+    ]
+    maa.start.assert_called_once()
+
+
+def test_rescue_daily_yields_to_near_base_task(scheduler, monkeypatch):
+    monkeypatch.setattr(base_schedule.config, "conf", Conf())
+    scheduler.emergency_state = {"phase": "recovering"}
+    scheduler.tasks[0].time = datetime.now() + timedelta(minutes=2)
+    scheduler.maa_plan_solver()
+    scheduler.initialize_maa.assert_not_called()

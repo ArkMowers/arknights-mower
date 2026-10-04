@@ -1,0 +1,18 @@
+{
+  "title": "Card Mood for Rescue Admission",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_startup"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py"
+  ]
+}

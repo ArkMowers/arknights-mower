@@ -575,7 +575,7 @@ def simulate(saved):
                 remaining_time = (
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
-                if remaining_time > 540 and not base_scheduler._emergency_active():
+                if remaining_time > 540:
                     if base_scheduler.daily_visit_friend < get_server_time().date():
                         if base_scheduler.visit_friend_plan_solver():
                             base_scheduler.daily_visit_friend = get_server_time().date()

@@ -247,7 +247,7 @@ def test_context_ignores_inspection_timestamp_but_detects_roster_change(solver):
 def test_targets_use_individual_rates_and_preserve_infeasible_value(solver):
     data = solver.op_data
     normal = data.resting_mood_threshold(data.operators[PRIMARY[0]])
-    assert recovery_target(data, PRIMARY[0]) == (normal + 1, "fallback")
+    assert recovery_target(data, PRIMARY[0]) == (normal, "fallback")
     target, source = recovery_target(data, PRIMARY[0], 2, NOW + timedelta(hours=2), NOW)
     assert target == normal + 5 and source == "history"
     target, _ = recovery_target(data, PRIMARY[0], 10, NOW + timedelta(hours=2), NOW)
@@ -1086,7 +1086,12 @@ def test_selection_rechecks_card_mood_and_preserves_actual_readings(
     solver.task.emergency_staffing = True
     solver.recog = SimpleNamespace(img=object())
     monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *a: mood)
-    with pytest.raises(base_mixin.AgentSelectionNotReady, match="心情不足或无法读取"):
+    if mood is None:
+        with pytest.raises(
+            base_mixin.AgentSelectionNotReady, match="心情读数未知或无效"
+        ):
+            solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
+    else:
         solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
     assert (op.mood, op.time_stamp) == (24, NOW)
     if mood is None:
@@ -1689,7 +1694,8 @@ def test_rescue_task_report_labels_staffing_and_concrete_dorm_rotation(solver):
         tasks=[task.format(), check.format()], base_scheduler=solver
     )
     assert "自动救急换班" in report
-    assert "自动救急离宿待命" in report
+    assert "自动救急离宿待命" not in report
+    assert "自动救急" in report
     assert "自动救急心情复查" not in report
     assert COVERS[0] in report
     assert emergency.RESUME_META not in report
@@ -1851,7 +1857,7 @@ def test_dorm_filling_queues_one_task_after_staffing(solver, monkeypatch):
     state["dorm_layout"] = {}
     expected = {"dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"]}
     monkeypatch.setattr(
-        emergency, "emergency_dorm_plan", lambda *a: copy.deepcopy(expected)
+        emergency, "emergency_dorm_plan", lambda *a, **kw: copy.deepcopy(expected)
     )
     solver._emergency_plan_beds(state)
     solver._emergency_plan_beds(state)
@@ -1971,3 +1977,285 @@ def test_initial_full_fia_without_cached_task_precedes_rescue_evaluation(solver)
     solver._emergency_startup()
     solver._read_agent_mood.assert_called_once()
     assert solver._emergency_startup_pending
+
+
+@pytest.mark.parametrize("normal_cover_available", [False, True])
+def test_startup_checks_normal_coverage_for_low_primaries_already_resting(
+    solver, normal_cover_available
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    data.operators[COVERS[0]].mood = 24 if normal_cover_available else 0
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], "Free"]}]
+    )
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active() is (not normal_cover_available)
+    if normal_cover_available:
+        handoff = next(
+            task for task in solver.tasks if task.meta_data == "初始化正常轮休交接"
+        )
+        projected = solver.op_data.project_arrangements([handoff.plan])
+        assert all(projected.operators[name].is_resting() for name in PRIMARY[:2])
+        assert projected.get_current_operator("room_1_1", 0).name == COVERS[0]
+        assert projected.get_current_operator("room_1_2", 0).name == COVERS[1]
+    solver.enter_room.assert_not_called()
+
+
+def test_measured_targets_do_not_exit_when_normal_replacements_are_exhausted(solver):
+    make_episode(solver)
+    for name in COVERS:
+        solver.op_data.operators[name].mood = 0
+    assert not solver._emergency_ready()
+
+
+def test_early_exit_rejects_shared_cover_required_by_two_resting_groups(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 8
+        data.plan[data.operators[name].room][0].replacement = [COVERS[0]]
+        data.global_plan["default_plan"].plan[data.operators[name].room][
+            0
+        ].replacement = [COVERS[0]]
+        data.operators[name].replacement = [COVERS[0]]
+    solver.op_data = data.project_arrangements([state["rescue_plan"]])
+    assert not solver._emergency_ready()
+
+
+def test_unknown_normal_primary_does_not_establish_startup_handoff_failure(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    data.operators[PRIMARY[-1]].time_stamp = None
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], "Free"]}]
+    )
+    solver._emergency_startup()
+    assert not solver._emergency_active()
+    assert not any(task.meta_data == "初始化正常轮休交接" for task in solver.tasks)
+
+
+def test_entry_reallocates_residents_and_clears_full_occupants(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    state["targets"] = {name: 16 for name in PRIMARY[:2]}
+    # 原恢复者在最后一床；满心情候补占住前床。
+    data = data.project_arrangements(
+        [
+            {
+                data.operators[PRIMARY[1]].room: [""],
+                "dormitory_1": ["冰酿", "闪灵", COVERS[0], "", PRIMARY[0]],
+            }
+        ]
+    )
+    solver.op_data = data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 8
+    data.operators[PRIMARY[0]].group = "恢复组"
+    data.operators[PRIMARY[1]].group = "恢复组"
+    before = data.get_current_room("dormitory_1", True)
+    plan = emergency_recovery.emergency_dorm_plan(data, state, reallocate=True)
+    row = plan["dormitory_1"]
+    assert set(row[2:4]) == set(PRIMARY[:2])
+    assert row[4] == ""
+    assert COVERS[0] not in row
+    assert data.get_current_room("dormitory_1", True) == before
+
+
+def test_entry_dorm_plan_is_retried_until_observed_and_then_releases_rebuilt(solver):
+    state = make_episode(solver)
+    state["dorm_replan_pending"] = True
+    state["targets"] = {PRIMARY[0]: 16}
+    data = solver.op_data
+    solver.op_data = data.project_arrangements(
+        [
+            {
+                "dormitory_1": ["冰酿", "闪灵", "", "", PRIMARY[0]],
+            }
+        ]
+    )
+    solver.op_data.operators[PRIMARY[0]].mood = 8
+    solver._emergency_plan_beds(state)
+    first = solver.tasks.pop()
+    assert state["dorm_replan_pending"]
+    solver._emergency_replan_releases()
+    assert not any(
+        getattr(t, "emergency_recovery_release", False) for t in solver.tasks
+    )
+    solver.emergency_state = state = pickle.loads(pickle.dumps(state))
+    solver._emergency_plan_beds(state)
+    assert solver.tasks.pop().plan == first.plan
+    solver.op_data = solver.op_data.project_arrangements([first.plan])
+    solver._emergency_plan_beds(state)
+    assert not state["dorm_replan_pending"]
+    assert "dorm_replan_plan" not in state
+    assert not solver.tasks
+    bed = solver.op_data.get_dorm_by_name(PRIMARY[0])[1]
+    bed.time = NOW + timedelta(hours=4)
+    solver._emergency_replan_releases()
+    release = next(t for t in solver.tasks if t.emergency_recovery_release)
+    assert release.plan[bed.position[0]][bed.position[1]] == "Free"
+    assert release.time == NOW + timedelta(hours=2)
+
+
+def test_entry_reallocation_preserves_reserved_bed(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    solver.op_data = data.project_arrangements(
+        [
+            {
+                data.operators[PRIMARY[1]].room: [""],
+                "dormitory_1": ["冰酿", "闪灵", COVERS[0], "", PRIMARY[0]],
+            }
+        ]
+    )
+    data = solver.op_data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 8
+    task = SchedulerTask(
+        task_plan={
+            "dormitory_1": ["Current", "Current", COVERS[0], "Current", "Current"]
+        }
+    )
+    plan = emergency_recovery.emergency_dorm_plan(data, state, [task], reallocate=True)
+    assert plan["dormitory_1"][2] == "Current"
+    assert set(plan["dormitory_1"][3:]) == set(PRIMARY[:2])
+
+
+@pytest.mark.parametrize("resting", [False, True])
+@pytest.mark.parametrize("estimate", [8, None])
+def test_startup_card_moods_admit_rescue_without_changing_observations(
+    solver, resting, estimate
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    if resting:
+        solver.op_data = data = data.project_arrangements(
+            [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], ""]}]
+        )
+    for name in PRIMARY:
+        data.operators[name].time_stamp = None
+        if estimate is not None:
+            data.dorm_mood_estimates[name] = (estimate, NOW)
+    for name in COVERS:
+        data.operators[name].mood = 0
+    solver._emergency_startup()
+    assert solver._emergency_active() is (estimate is not None)
+    assert all(data.operators[name].time_stamp is None for name in PRIMARY)
+    solver.enter_room.assert_not_called()
+
+
+def test_card_estimates_do_not_confirm_recovery_exit(solver):
+    make_episode(solver)
+    for name in PRIMARY:
+        solver.op_data.operators[name].time_stamp = None
+        solver.op_data.dorm_mood_estimates[name] = (24, NOW)
+    assert solver._emergency_resting_handoff({}) is None
+    assert not solver._emergency_ready()
+
+
+@pytest.mark.parametrize("normal_cover_available", [False, True])
+def test_startup_known_resting_groups_use_card_only_missing_primary(
+    solver, normal_cover_available
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+        data.operators[name].time_stamp = None
+        data.dorm_mood_estimates[name] = (24, NOW)
+    data.operators[COVERS[0]].mood = 24 if normal_cover_available else 0
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], ""]}]
+    )
+    solver._emergency_startup()
+    assert solver._emergency_active() is (not normal_cover_available)
+    assert all(
+        solver.op_data.operators[name].time_stamp is None for name in PRIMARY[2:]
+    )
+
+
+def test_expired_card_moods_do_not_establish_rescue_contention(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    for name in PRIMARY:
+        solver.op_data.operators[name].time_stamp = None
+        solver.op_data.dorm_mood_estimates[name] = (0, NOW - timedelta(hours=1))
+    solver._emergency_startup()
+    assert not solver._emergency_active()
+
+
+@pytest.mark.parametrize("configured_mood", [20, 24])
+def test_rescue_fia_fallback_uses_lowest_uncapped_primary(solver, configured_mood):
+    state = make_episode(solver)
+    data = solver.op_data
+    state["fia_targets"] = [PRIMARY[0]]
+    state["dorm_layout"] = {"dormitory_1": ["菲亚梅塔", "Free", "Free", "Free", "Free"]}
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.add(
+        Operator(
+            "菲亚梅塔",
+            "dormitory_1",
+            index=0,
+            current_room="dormitory_1",
+            current_index=0,
+        )
+    )
+    for name, mood in zip(PRIMARY, [configured_mood, 1, 5, 8]):
+        data.operators[name].mood = mood
+    data.config.operator_mood_limits[PRIMARY[1]] = {"lower": 0, "upper": 12}
+    data.operators[PRIMARY[1]].upper_limit = 12
+    solver.check_fia = lambda: ([PRIMARY[0]], "dormitory_1")
+    solver._refresh_fia_candidate_moods = MagicMock()
+    solver.task = SchedulerTask(time=NOW, task_type=TaskTypes.FIAMMETTA)
+    solver.plan_fia()
+    task = next(t for t in solver.tasks if t.type == TaskTypes.FIAMMETTA and t.plan)
+    assert task.meta_data == (PRIMARY[2] if configured_mood == 24 else PRIMARY[0])
+    assert task.emergency_fia_fallback is (configured_mood == 24)
+    solver._emergency_filter_tasks()
+    assert task in solver.tasks
+
+
+def test_rescue_fia_fallback_respects_unknown_reserved_and_normal_mode(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    data.operators[PRIMARY[0]].mood = 24
+    data.operators[PRIMARY[1]].time_stamp = None
+    solver.tasks.append(SchedulerTask(task_plan={"room_1_3": [PRIMARY[2]]}))
+    data.operators[PRIMARY[3]].mood = 8
+    assert solver._emergency_fia_fallback([PRIMARY[0]]) == [PRIMARY[3]]
+    assert solver._emergency_fia_fallback([]) is None
+    state["phase"] = "done"
+    assert solver._emergency_fia_fallback([PRIMARY[0]]) is None
+
+
+@pytest.mark.parametrize("upper", [12, 24])
+def test_full_rest_target_uses_personal_upper_limit_despite_history(solver, upper):
+    op = solver.op_data.operators[PRIMARY[0]]
+    op.rest_in_full, op.upper_limit = True, upper
+    assert recovery_target(solver.op_data, op.name) == (upper, "rest_in_full")
+    assert recovery_target(
+        solver.op_data, op.name, 1, NOW + timedelta(minutes=15), NOW
+    ) == (upper, "rest_in_full")
+
+
+def test_handoff_rejects_below_full_normal_worker_even_with_lower_episode_target(
+    solver,
+):
+    state = make_episode(solver)
+    op = solver.op_data.operators[PRIMARY[0]]
+    op.rest_in_full = True
+    op.mood = state["targets"][op.name]
+    assert not solver._emergency_handoff_feasible({}, check_rotation=False)
+    op.mood = 24
+    assert solver._emergency_handoff_feasible({}, check_rotation=False)

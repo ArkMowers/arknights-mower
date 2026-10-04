@@ -258,3 +258,54 @@ def test_deferred_release_prunes_queued_admission_before_budget_return(group_ret
     assert PRIMARY[0] in state["release_members"]
     assert not state.get("ready_members")
     solver.agent_arrange.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["exception", "incomplete"])
+def test_release_failure_retains_near_retry_before_distant_order(group_return, failure):
+    from arknights_mower.solvers.emergency import RESUME_META
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    solver = group_return.solver
+    original_task = solver.task
+    distant = SchedulerTask(
+        time=NOW + timedelta(hours=4), task_type=TaskTypes.RUN_ORDER
+    )
+    solver.tasks.append(distant)
+    if failure == "exception":
+        solver.agent_arrange = MagicMock(side_effect=RuntimeError("selection failed"))
+        with pytest.raises(RuntimeError, match="selection failed"):
+            solver._emergency_release_ready()
+    else:
+        solver.agent_arrange = MagicMock(return_value=False)
+        solver._emergency_release_ready()
+    assert solver.task is original_task
+    assert solver.emergency_state["release_members"]
+    retry = next(t for t in solver.tasks if t.meta_data == RESUME_META)
+    assert retry.time == NOW + timedelta(minutes=1)
+    assert distant in solver.tasks
+
+
+def test_middle_bed_departure_matches_game_compaction(group_return):
+    solver = group_return.solver
+    survivor = solver.op_data.operators[PRIMARY[1]]
+    survivor.mood = 8
+
+    def arrange(plan, **kwargs):
+        for room, row in plan.items():
+            if "" in row:
+                assert all(not name for name in row[row.index("") :])
+        return group_return.place(plan, **kwargs)
+
+    solver.agent_arrange = arrange
+    assert solver._emergency_release_ready()
+    assert solver.op_data.operators[PRIMARY[0]].current_room == ""
+    assert solver.op_data.operators[PRIMARY[1]].current_index == 2
+    assert "release_members" not in solver.emergency_state
+
+
+def test_dorm_compaction_keeps_fiammetta_position(group_return):
+    from arknights_mower.utils.dorm_recovery import compact_dorm_vacancies
+
+    plan = {"dormitory_1": ["塑心", "", "菲亚梅塔", "银灰", ""]}
+    compact_dorm_vacancies(group_return.solver.op_data, plan)
+    assert plan["dormitory_1"] == ["塑心", "Free", "菲亚梅塔", "银灰", ""]

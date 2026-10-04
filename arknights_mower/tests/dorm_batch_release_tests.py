@@ -431,3 +431,40 @@ def test_queue_merge_keeps_intervening_task_order(barrier):
     assert all(task is before for task, before in zip(tasks, original))
     assert len(tasks) == 3
     assert tasks[0].time == now
+
+
+def test_rescue_and_ordinary_release_do_not_share_batch():
+    now = datetime.now()
+    ordinary = release("甲", ROOM, 2, now)
+    rescue = release("乙", ROOM, 3, now + timedelta(seconds=20))
+    rescue.emergency_recovery_release = True
+    tasks = [ordinary, rescue]
+    merge_release_dorm(tasks, 10)
+    assert len(tasks) == 2
+    assert ordinary.time == now
+    assert ordinary.release_dorm_targets() == {"甲": (ROOM, 2)}
+    assert rescue.release_dorm_targets() == {"乙": (ROOM, 3)}
+
+
+def test_merge_logs_one_final_summary_per_room_and_skips_unchanged_rebuild(monkeypatch):
+    from arknights_mower.utils import scheduler_task
+
+    log = MagicMock()
+    monkeypatch.setattr(scheduler_task.logger, "info", log)
+    now = datetime.now().replace(microsecond=0)
+
+    def queue():
+        return [
+            release(name, ROOM, index, now + timedelta(seconds=offset))
+            for name, index, offset in (("甲", 2, 0), ("乙", 3, 20), ("丙", 4, 30))
+        ]
+
+    tasks = queue()
+    merge_release_dorm(tasks, 10)
+    log.assert_called_once()
+    assert log.call_args.args[1] == ROOM
+    assert "甲、乙、丙" in log.call_args.args[2]
+    log.reset_mock()
+    rebuilt = queue()
+    merge_release_dorm(rebuilt, 10, previous_tasks=tasks)
+    log.assert_not_called()

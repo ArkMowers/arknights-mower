@@ -112,11 +112,13 @@ def history_cycle(rows, room, context):
 
 
 def recovery_target(data, name, rate=None, opportunity=None, now=None):
-    """无适用历史时使用正常下班线加一点；超上限目标保持不可行。"""
+    """无适用历史时使用正常下班线；超上限目标保持不可行。"""
     op = data.operators[name]
+    if op.rest_in_full:
+        return op.upper_limit, "rest_in_full"
     normal = data.resting_mood_threshold(op)
     if rate is None or opportunity is None:
-        return min(op.upper_limit, normal + 1), "fallback"
+        return min(op.upper_limit, normal), "fallback"
     now = now or datetime.now()
     hours = max(0, (opportunity - now).total_seconds() / 3600)
     floor = op.lower_limit if op.exhaust_require else normal
@@ -381,7 +383,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
     )
 
 
-def emergency_dorm_plan(data, state, tasks=(), *, members=None):
+def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False):
     """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
@@ -448,20 +450,29 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None):
     beds = [
         bed
         for bed in data.all_dorms()
-        if bed.position not in slots and bed.name not in reserved | protected
+        if bed.position not in slots
+        and bed.name not in reserved | (set() if reallocate else protected)
     ]
-    probe = copy.copy(data)
-    probe.dorm = beds
     plan = {}
+    if reallocate:
+        # 独立空床预演让旧住客与新恢复者共用排序，不修改实测床位。
+        beds = [copy.copy(bed) for bed in beds]
+        for bed in beds:
+            room, index = bed.position
+            plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = ""
+            bed.name, bed.time = "", None
+    probe = data.project_arrangements([plan]) if reallocate else copy.copy(data)
+    probe.dorm = beds
     groups = {}
     for name in sorted(need, key=lambda name: (resting_key(data, name), name)):
         group = (resting_tier(data, name), data.operators[name].group or name)
         groups.setdefault(group, []).append(name)
     ordered = [name for members in groups.values() for name in members]
+    ordinary.discard("菲亚梅塔")
     ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
     for name in ordered:
         op = data.operators[name]
-        if name in residents or op.is_working():
+        if (name in residents and not reallocate) or op.is_working():
             continue
         active_groups = {op.group} if op.group else set()
         index = probe._find_dorm_slot(name, set(), active_groups=active_groups)
