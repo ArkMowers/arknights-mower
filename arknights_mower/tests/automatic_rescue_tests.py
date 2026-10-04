@@ -1856,7 +1856,7 @@ def test_dorm_filling_queues_one_task_after_staffing(solver, monkeypatch):
     state["dorm_layout"] = {}
     expected = {"dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"]}
     monkeypatch.setattr(
-        emergency, "emergency_dorm_plan", lambda *a: copy.deepcopy(expected)
+        emergency, "emergency_dorm_plan", lambda *a, **kw: copy.deepcopy(expected)
     )
     solver._emergency_plan_beds(state)
     solver._emergency_plan_beds(state)
@@ -2040,3 +2040,90 @@ def test_unknown_normal_primary_does_not_establish_startup_handoff_failure(solve
     solver._emergency_startup()
     assert not solver._emergency_active()
     assert not any(task.meta_data == "初始化正常轮休交接" for task in solver.tasks)
+
+
+def test_entry_reallocates_residents_and_clears_full_occupants(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    state["targets"] = {name: 16 for name in PRIMARY[:2]}
+    # 原恢复者在最后一床；满心情候补占住前床。
+    data = data.project_arrangements(
+        [
+            {
+                data.operators[PRIMARY[1]].room: [""],
+                "dormitory_1": ["冰酿", "闪灵", COVERS[0], "", PRIMARY[0]],
+            }
+        ]
+    )
+    solver.op_data = data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 8
+    data.operators[PRIMARY[0]].group = "恢复组"
+    data.operators[PRIMARY[1]].group = "恢复组"
+    before = data.get_current_room("dormitory_1", True)
+    plan = emergency_recovery.emergency_dorm_plan(data, state, reallocate=True)
+    row = plan["dormitory_1"]
+    assert set(row[2:4]) == set(PRIMARY[:2])
+    assert row[4] == ""
+    assert COVERS[0] not in row
+    assert data.get_current_room("dormitory_1", True) == before
+
+
+def test_entry_dorm_plan_is_retried_until_observed_and_then_releases_rebuilt(solver):
+    state = make_episode(solver)
+    state["dorm_replan_pending"] = True
+    state["targets"] = {PRIMARY[0]: 16}
+    data = solver.op_data
+    solver.op_data = data.project_arrangements(
+        [
+            {
+                "dormitory_1": ["冰酿", "闪灵", "", "", PRIMARY[0]],
+            }
+        ]
+    )
+    solver.op_data.operators[PRIMARY[0]].mood = 8
+    solver._emergency_plan_beds(state)
+    first = solver.tasks.pop()
+    assert state["dorm_replan_pending"]
+    solver._emergency_replan_releases()
+    assert not any(
+        getattr(t, "emergency_recovery_release", False) for t in solver.tasks
+    )
+    solver.emergency_state = state = pickle.loads(pickle.dumps(state))
+    solver._emergency_plan_beds(state)
+    assert solver.tasks.pop().plan == first.plan
+    solver.op_data = solver.op_data.project_arrangements([first.plan])
+    solver._emergency_plan_beds(state)
+    assert not state["dorm_replan_pending"]
+    assert "dorm_replan_plan" not in state
+    assert not solver.tasks
+    bed = solver.op_data.get_dorm_by_name(PRIMARY[0])[1]
+    bed.time = NOW + timedelta(hours=4)
+    solver._emergency_replan_releases()
+    release = next(t for t in solver.tasks if t.emergency_recovery_release)
+    assert release.plan[bed.position[0]][bed.position[1]] == "Free"
+    assert release.time == NOW + timedelta(hours=2)
+
+
+def test_entry_reallocation_preserves_reserved_bed(solver):
+    state = make_episode(solver)
+    data = solver.op_data
+    solver.op_data = data.project_arrangements(
+        [
+            {
+                data.operators[PRIMARY[1]].room: [""],
+                "dormitory_1": ["冰酿", "闪灵", COVERS[0], "", PRIMARY[0]],
+            }
+        ]
+    )
+    data = solver.op_data
+    for name in PRIMARY[:2]:
+        data.operators[name].mood = 8
+    task = SchedulerTask(
+        task_plan={
+            "dormitory_1": ["Current", "Current", COVERS[0], "Current", "Current"]
+        }
+    )
+    plan = emergency_recovery.emergency_dorm_plan(data, state, [task], reallocate=True)
+    assert plan["dormitory_1"][2] == "Current"
+    assert set(plan["dormitory_1"][3:]) == set(PRIMARY[:2])

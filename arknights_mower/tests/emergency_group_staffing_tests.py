@@ -71,6 +71,7 @@ def test_restart_only_requeues_outstanding_rooms(staffing):
 
 def test_finished_manual_workers_keep_working_after_mood_drops(staffing):
     solver = staffing.solver
+    staffing.state["dorm_replan_pending"] = True
     assert solver._emergency_schedule_staffing()
     solver.op_data = solver.op_data.project_arrangements([staffing_task(solver).plan])
     solver.tasks.clear()

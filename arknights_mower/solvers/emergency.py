@@ -63,7 +63,12 @@ class EmergencyRecoveryMixin:
     def _emergency_replan_releases(self):
         """恢复目标与个人上限共用清退规划；交接期间只保留个人上限。"""
         state = getattr(self, "emergency_state", None) or {}
-        targets = state.get("targets", {}) if state.get("phase") != "returning" else {}
+        targets = (
+            state.get("targets", {})
+            if state.get("phase") != "returning"
+            and not state.get("dorm_replan_pending")
+            else {}
+        )
         releases = plan_mood_limit_releases(
             self.op_data, recovery_targets=targets, previous_tasks=self.tasks
         )
@@ -336,6 +341,7 @@ class EmergencyRecoveryMixin:
         state = {
             **resolved,
             "phase": "staffing",
+            "dorm_replan_pending": True,
             "frozen_conditions": list(data.plan_condition),
             "backup_names": [backup.name for backup in data.backup_plans],
             "work_contexts": {
@@ -982,7 +988,32 @@ class EmergencyRecoveryMixin:
         self._emergency_save()
 
     def _emergency_plan_beds(self, state):
-        plan = emergency_dorm_plan(self.op_data, state, self.tasks)
+        if any(getattr(task, "emergency_dorm", False) for task in self.tasks):
+            return
+        reallocate = state.get("dorm_replan_pending", False)
+        if reallocate and any(
+            task.type == TaskTypes.FIAMMETTA and task.plan for task in self.tasks
+        ):
+            return
+        previous = state.get("dorm_replan_plan")
+        if previous and all(
+            (actual := self.op_data.get_current_room(room, True)) is not None
+            and all(
+                name == "Current" or index < len(actual) and actual[index] == name
+                for index, name in enumerate(row)
+            )
+            for room, row in previous.items()
+        ):
+            state.pop("dorm_replan_plan", None)
+            state["dorm_replan_pending"] = False
+            return
+        plan = (
+            copy.deepcopy(previous)
+            if previous
+            else emergency_dorm_plan(
+                self.op_data, state, self.tasks, reallocate=reallocate
+            )
+        )
         for room, original in state.get("dorm_layout", {}).items():
             for index, name in enumerate(original):
                 if (
@@ -992,23 +1023,30 @@ class EmergencyRecoveryMixin:
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
-        if plan and not any(
-            getattr(task, "emergency_dorm", False) for task in self.tasks
-        ):
-            task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
-            task.emergency_dorm = True
-            self.tasks.append(task)
+        if not plan:
+            if reallocate:
+                state["dorm_replan_pending"] = False
+            return
+        if reallocate:
+            state["dorm_replan_plan"] = copy.deepcopy(plan)
+        task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
+        task.emergency_dorm = True
+        self.tasks.append(task)
 
     def _emergency_release_ready(self):
         """个人实测达标后只清空宿舍位置，待命主班不改变临时工作组合。"""
         state, data = self.emergency_state, self.op_data
-        if state["phase"] == "returning" or any(
-            getattr(task, "emergency_staffing", False)
-            or hasattr(task, "emergency_original_roster")
-            or task.plan
-            and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
-            and task.time <= datetime.now()
-            for task in self.tasks
+        if (
+            state.get("dorm_replan_pending")
+            or state["phase"] == "returning"
+            or any(
+                getattr(task, "emergency_staffing", False)
+                or hasattr(task, "emergency_original_roster")
+                or task.plan
+                and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
+                and task.time <= datetime.now()
+                for task in self.tasks
+            )
         ):
             return False
         ready = set(state.get("ready_members", ()))

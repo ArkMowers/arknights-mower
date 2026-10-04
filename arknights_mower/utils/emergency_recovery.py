@@ -381,7 +381,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
     )
 
 
-def emergency_dorm_plan(data, state, tasks=(), *, members=None):
+def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False):
     """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
@@ -448,11 +448,19 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None):
     beds = [
         bed
         for bed in data.all_dorms()
-        if bed.position not in slots and bed.name not in reserved | protected
+        if bed.position not in slots
+        and bed.name not in reserved | (set() if reallocate else protected)
     ]
-    probe = copy.copy(data)
-    probe.dorm = beds
     plan = {}
+    if reallocate:
+        # 独立空床预演让旧住客与新恢复者共用排序，不修改实测床位。
+        beds = [copy.copy(bed) for bed in beds]
+        for bed in beds:
+            room, index = bed.position
+            plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = ""
+            bed.name, bed.time = "", None
+    probe = data.project_arrangements([plan]) if reallocate else copy.copy(data)
+    probe.dorm = beds
     groups = {}
     for name in sorted(need, key=lambda name: (resting_key(data, name), name)):
         group = (resting_tier(data, name), data.operators[name].group or name)
@@ -461,7 +469,7 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None):
     ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
     for name in ordered:
         op = data.operators[name]
-        if name in residents or op.is_working():
+        if (name in residents and not reallocate) or op.is_working():
             continue
         active_groups = {op.group} if op.group else set()
         index = probe._find_dorm_slot(name, set(), active_groups=active_groups)
