@@ -23,6 +23,7 @@ from arknights_mower.utils.device.adb_client.server import run_adb
 from arknights_mower.utils.device.droidcast import DroidCastSession
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
+from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.mumu_info import (
     mumu_endpoint,
@@ -31,6 +32,7 @@ from arknights_mower.utils.device.mumu_info import (
 )
 from arknights_mower.utils.device.owned import close_process
 from arknights_mower.utils.device.screenshot import capture_adb_frame
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import resolve_config_path
 
 COMMAND_TIMEOUT = 10
@@ -174,14 +176,18 @@ class ProductionPreflightIO:
         return [path] if path else []
 
     def _run(self, argv: list[str]) -> bytes:
-        return subprocess.run(
+        timeout = io_timeout(COMMAND_TIMEOUT)
+        logger.debug(f"设备预检命令开始：{argv}，超时 {timeout:.3f} 秒")
+        output = run_command(
             argv,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
-            timeout=io_timeout(COMMAND_TIMEOUT),
+            timeout=timeout,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         ).stdout
+        logger.debug(f"设备预检命令完成：{argv}")
+        return output
 
     def _adb(self, adb_path: str, serial: str, args: list[str]) -> bytes:
         if not serial.strip():
@@ -189,15 +195,19 @@ class ProductionPreflightIO:
         return self._run_adb([adb_path, "-s", serial, *args])
 
     def _run_adb(self, argv: list[str]) -> bytes:
-        return run_adb(
+        timeout = io_timeout(COMMAND_TIMEOUT)
+        logger.debug(f"设备预检 ADB 命令开始：{argv}，超时 {timeout:.3f} 秒")
+        output = run_adb(
             argv,
-            run=subprocess.run,
+            run=run_command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
-            timeout=io_timeout(COMMAND_TIMEOUT),
+            timeout=timeout,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         ).stdout
+        logger.debug(f"设备预检 ADB 命令完成：{argv}")
+        return output
 
     def validate_adb(self, path: str) -> bool:
         try:

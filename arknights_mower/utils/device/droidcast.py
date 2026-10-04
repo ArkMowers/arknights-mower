@@ -21,6 +21,7 @@ from arknights_mower.utils.device.adb_client.server import (
     run_adb,
 )
 from arknights_mower.utils.device.io_budget import budget_sleep, io_timeout
+from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.network import get_new_port
 
@@ -79,7 +80,7 @@ class DroidCastSession:
         try:
             return run_adb(
                 [self.adb_path, *selector, *args],
-                run=runner or subprocess.run,
+                run=runner or run_command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=True,
@@ -206,7 +207,7 @@ class DroidCastSession:
         try:
             self._create_forward(port)
             guard_adb(
-                self.adb_path, timeout=io_timeout(COMMAND_TIMEOUT), run=subprocess.run
+                self.adb_path, timeout=io_timeout(COMMAND_TIMEOUT), run=run_command
             )
             self.process = subprocess.Popen(
                 [
@@ -248,7 +249,7 @@ class DroidCastSession:
         expected = [self.adb_path, "-s", self.serial, *args]
 
         def record_success(argv, **options):
-            result = subprocess.run(argv, **options)
+            result = run_command(argv, **options)
             if argv == expected and result.returncode == 0:
                 # run_adb checks its deadline again after the command returns.
                 # Preserve confirmed ownership even if that check then fails.

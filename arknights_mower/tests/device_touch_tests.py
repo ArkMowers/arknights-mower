@@ -755,7 +755,7 @@ class TouchTests(unittest.TestCase):
         )
         self.enterContext(
             patch(
-                "arknights_mower.utils.device.mumu12ipc.input.subprocess.run",
+                "arknights_mower.utils.device.mumu12ipc.input.run_command",
                 return_value=SimpleNamespace(stdout="4.1.21"),
             )
         )

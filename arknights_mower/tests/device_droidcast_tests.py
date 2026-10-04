@@ -495,7 +495,7 @@ class DroidCastTests(unittest.TestCase):
 
         with (
             patch(f"{MODULE}.run_adb", guarded_run_adb),
-            patch(f"{MODULE}.subprocess.run", run_cli),
+            patch(f"{MODULE}.run_command", run_cli),
             patch(
                 "arknights_mower.utils.device.adb_client.server.probe_adb_server",
                 return_value=41,
@@ -809,7 +809,7 @@ class DroidCastTests(unittest.TestCase):
 
         with (
             patch(f"{MODULE}.run_adb", postcheck),
-            patch(f"{MODULE}.subprocess.run", self.android.run),
+            patch(f"{MODULE}.run_command", self.android.run),
         ):
             result = self.control.capture()
         self.assert_adb_degraded(
