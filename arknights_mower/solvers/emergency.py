@@ -253,11 +253,27 @@ class EmergencyRecoveryMixin:
         self._emergency_save()
         if not config.conf.automatic_rescue_enable:
             return
-        data = self.op_data
+        now = datetime.now()
+        trial = copy.copy(self)
+        data = trial.op_data = self.op_data.project_arrangements([])
+        estimated = []
+        for name, op in data.operators.items():
+            if name == "菲亚梅塔" or (
+                has_resting_mood(op) and not op.mood_is_prediction
+            ):
+                continue
+            op.time_stamp = None
+            mood = dorm_candidate_mood(data, name, now)
+            if mood is not None and 0 <= mood <= 24:
+                # 只在准入预演中使用卡牌心情，不写入实测或恢复计时。
+                op.mood, op.time_stamp = mood, now
+                op.mood_is_prediction, op.depletion_rate = False, 0
+                estimated.append(name)
+        if estimated:
+            logger.info("自动救急准入使用卡牌心情预估：%s", "、".join(estimated))
         names = primary_names(data)
         required = []
         low_groups = set()
-        now = datetime.now()
         for name in names:
             op = data.operators[name]
             if (
@@ -274,7 +290,6 @@ class EmergencyRecoveryMixin:
         # 已在宿舍不代表正常排班能接回：清缓存后实际岗位可能仍是救急驻员。
         normal_handoff = None
         if any(data.operators[name].is_resting() for name in required):
-            trial = copy.copy(self)
             trial.emergency_state = {
                 "targets": {name: recovery_target(data, name)[0] for name in names}
             }
@@ -301,7 +316,7 @@ class EmergencyRecoveryMixin:
                 ):
                     projection = NativeProjection(None, True, "normal_handoff_blocked")
         else:
-            projection = native_opportunity(self, required, now, current_only=True)
+            projection = native_opportunity(trial, required, now, current_only=True)
         if projection.opportunity is not None:
             if normal_handoff:
                 self.tasks[:] = [
@@ -336,7 +351,7 @@ class EmergencyRecoveryMixin:
             )
         names = [name for name in names if name not in shared]
         logger.info(
-            "多组主班实测低于救急线且当前原生轮休无法安排，启动自动救急：%s", required
+            "多组主班心情低于救急线且当前原生轮休无法安排，启动自动救急：%s", required
         )
         state = {
             **resolved,

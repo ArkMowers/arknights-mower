@@ -2127,3 +2127,68 @@ def test_entry_reallocation_preserves_reserved_bed(solver):
     plan = emergency_recovery.emergency_dorm_plan(data, state, [task], reallocate=True)
     assert plan["dormitory_1"][2] == "Current"
     assert set(plan["dormitory_1"][3:]) == set(PRIMARY[:2])
+
+
+@pytest.mark.parametrize("resting", [False, True])
+@pytest.mark.parametrize("estimate", [8, None])
+def test_startup_card_moods_admit_rescue_without_changing_observations(
+    solver, resting, estimate
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    if resting:
+        solver.op_data = data = data.project_arrangements(
+            [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], ""]}]
+        )
+    for name in PRIMARY:
+        data.operators[name].time_stamp = None
+        if estimate is not None:
+            data.dorm_mood_estimates[name] = (estimate, NOW)
+    for name in COVERS:
+        data.operators[name].mood = 0
+    solver._emergency_startup()
+    assert solver._emergency_active() is (estimate is not None)
+    assert all(data.operators[name].time_stamp is None for name in PRIMARY)
+    solver.enter_room.assert_not_called()
+
+
+def test_card_estimates_do_not_confirm_recovery_exit(solver):
+    make_episode(solver)
+    for name in PRIMARY:
+        solver.op_data.operators[name].time_stamp = None
+        solver.op_data.dorm_mood_estimates[name] = (24, NOW)
+    assert solver._emergency_resting_handoff({}) is None
+    assert not solver._emergency_ready()
+
+
+@pytest.mark.parametrize("normal_cover_available", [False, True])
+def test_startup_known_resting_groups_use_card_only_missing_primary(
+    solver, normal_cover_available
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+        data.operators[name].time_stamp = None
+        data.dorm_mood_estimates[name] = (24, NOW)
+    data.operators[COVERS[0]].mood = 24 if normal_cover_available else 0
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], ""]}]
+    )
+    solver._emergency_startup()
+    assert solver._emergency_active() is (not normal_cover_available)
+    assert all(
+        solver.op_data.operators[name].time_stamp is None for name in PRIMARY[2:]
+    )
+
+
+def test_expired_card_moods_do_not_establish_rescue_contention(solver):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    for name in PRIMARY:
+        solver.op_data.operators[name].time_stamp = None
+        solver.op_data.dorm_mood_estimates[name] = (0, NOW - timedelta(hours=1))
+    solver._emergency_startup()
+    assert not solver._emergency_active()
