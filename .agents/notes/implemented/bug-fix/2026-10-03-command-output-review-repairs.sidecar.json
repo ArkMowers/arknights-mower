@@ -11,11 +11,17 @@
     "[INV-DEV-20]"
   ],
   "code_symbols": [
+    "arknights_mower.utils.device.manager_io._capture_stream",
     "arknights_mower.utils.device.manager_io.run_command",
-    "arknights_mower.utils.device.manager_io.CommandOutputLimit"
+    "arknights_mower.utils.device.manager_io.run_manager_command",
+    "arknights_mower.utils.device.manager_io.CommandOutputLimit",
+    "arknights_mower.utils.device.session_io.ProductionSimulator",
+    "arknights_mower.utils.device.screenshot_backend.ScreenshotFailure"
   ],
   "test_suites": [
     "arknights_mower/tests/device_command_tests.py",
+    "arknights_mower/tests/device_session_io_tests.py",
+    "arknights_mower/tests/device_screenshot_backend_tests.py",
     "arknights_mower/tests/device_bluestacks_air_io_tests.py",
     "arknights_mower/tests/device_io_budget_tests.py",
     "arknights_mower/tests/device_session_caller_tests.py"

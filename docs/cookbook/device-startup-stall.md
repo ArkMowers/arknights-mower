@@ -1,32 +1,32 @@
-# 设备连接后启动停滞的诊断
+# Device Startup Stall Diagnosis
 
-设备连接消息仅确认实例与端点就绪。预检和截图、触控初始化完成后，任务才进入游戏检查。[设备控制契约](../subsystems/device-control.md)定义阶段日志和 [INV-DEV-20] 命令输出所有权。
+The connection message confirms only that the instance and its endpoint are ready. The task reaches the game check after preflight and after capture and touch initialization complete. The [device contract](../subsystems/device-control.md) defines the stage records and the [INV-DEV-20] command output ownership.
 
-1. 保存覆盖启动前后至少五分钟的 `log/runtime.log.<日期>_<小时>` 文件。UI 的 `/log` WebSocket 仅显示 INFO 及以上；文件包含 DEBUG。跨整点时同时保存相邻文件。对外提供前移除令牌和账户信息，保留时间、函数名、命令参数、错误码及异常栈。
+1. Save the `log/runtime.log.<date>_<hour>` files covering at least five minutes before and after startup. The UI `/log` WebSocket shows INFO and above only; the files carry DEBUG. Save the neighbouring file too when the window crosses an hour boundary. Remove tokens and account details before sharing, and keep timestamps, function names, command arguments, error codes and tracebacks.
 
    ```powershell
-   Get-ChildItem -LiteralPath '.\log' -Filter 'runtime.log.2026-10-02_*'
-   Get-Content -LiteralPath '.\log\runtime.log.2026-10-02_12' -Tail 2000
+   Get-ChildItem -LiteralPath '.\log' -Filter 'runtime.log.<YYYY-MM-DD>_*'
+   Get-Content -LiteralPath '.\log\runtime.log.<YYYY-MM-DD>_<HH>' -Tail 2000
    ```
 
-2. 对照文件日志和模拟器画面判断停滞类型。
+2. Classify the stall from the file log against the emulator display.
 
-   | 文件日志与画面 | 判定依据 |
+   | File log and display | Verdict |
    | --- | --- |
-   | 连接消息后文件也停止增长，持续无错误 | 存在无日志等待；单凭 UI 无法定位调用 |
-   | DEBUG 持续增长，随后出现设备或截图错误 | Recovery Budget 内等待后产生失败结果 |
-   | 文件继续增长且游戏进入前台，只有 UI 停止更新 | 日志传递或 UI 展示路径需要检查 |
+   | The file stops growing after the connection message, with no error | A wait without a record; the UI alone cannot name the call |
+   | DEBUG keeps growing, then a device or capture error appears | Waiting inside the Recovery Budget ends in a failure result |
+   | The file keeps growing and the game reaches the foreground, but only the UI stops updating | The log delivery or UI presentation path needs inspection |
 
-3. 使用阶段和命令边界定位操作。`正在检查设备 ADB、游戏安装与截图...` 标记预检开始；`设备预检通过，正在初始化截图与触控...` 标记辅助服务初始化；`设备初始化完成` 标记完成。DEBUG 的 `设备预检命令开始`、`设备预检 ADB 命令开始` 和 `MuMu 输入版本查询开始` 包含参数或实例与有效超时。只有开始记录而没有完成记录时，结合随后的异常栈确认对应命令。共享 ADB 检查和命令共用预算。
+3. Locate the operation through stage and command boundaries. `正在检查设备 ADB、游戏安装与截图...` marks preflight start; `设备预检通过，正在初始化截图与触控...` marks helper initialization start; `设备初始化完成` marks completed initialization. The DEBUG records `设备预检命令开始`, `设备预检 ADB 命令开始` and `MuMu 输入版本查询开始` carry arguments or the instance together with the effective timeout. A start record without its completion record names the command once the following traceback is read with it. A shared ADB check and its command spend one budget.
 
-4. 同时记录 Mower 进程数量、是否共用目录、卡住实例是否响应鼠标以及该进程的 CPU 使用情况。保留所选实例号、窗口标题与 ADB serial。设置页在启动阶段也锁定设备设置；锁定标签不证明初始化完成。
+4. Record the Mower process count, whether instances share a directory, whether the stalled instance answers the mouse, and that process's CPU usage. Keep the selected instance index, the window title and the ADB serial. The settings page also locks device settings during startup; the lock label does not prove initialization finished.
 
-5. 开发环境使用离线继承句柄夹具检查命令返回期限，不连接模拟器。
+5. Reproduce the command return deadline offline with the inherited-handle fixture, without connecting an emulator.
 
-   ```powershell
-   .\venv\Scripts\python.exe -B -m pytest arknights_mower/tests/device_command_tests.py -q
+   ```bash
+   pytest arknights_mower/tests/device_command_tests.py -q
    ```
 
-   夹具让命令的后代保留 stdout/stderr，分别验证命令超时、成功退出和非零退出。测试释放后代并回收自有进程。命令等待不依赖后代 EOF；超时清理不停止共享 ADB 服务或其他实例。
+   The fixture lets a descendant of the command retain stdout/stderr and verifies command timeout, successful exit and non-zero exit separately. The test releases the descendant and reaps the owned process. Command waiting does not depend on descendant EOF, and timeout cleanup stops neither the shared ADB server nor another instance.
 
-6. 现场验证保存完整阶段日志与最终结果。离线复现证明继承句柄缺陷；将其归因为某次 MuMu 故障仍需要该次 DEBUG 文件日志或现场复测记录。
+6. Verify on site against the complete stage log and the final result. The offline reproduction proves the inherited-handle defect; attributing one MuMu stall to it still requires that stall's DEBUG file log or a repeated run with this change.
