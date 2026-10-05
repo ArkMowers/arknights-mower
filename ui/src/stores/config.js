@@ -157,6 +157,7 @@ export const useConfigStore = defineStore('config', () => {
   const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
+  const dorm_isolation = ref([])
   const merge_interval = ref(10)
   const group_rest_in_full_on_mood_gap = ref(true)
   const group_mood_gap_max_extra_wait_hours = ref(0)
@@ -587,6 +588,7 @@ export const useConfigStore = defineStore('config', () => {
       sf_target.value = response.data.secret_front.target
       touch_method.value = response.data.touch_method
       free_room.value = response.data.free_room
+      dorm_isolation.value = response.data.dorm_isolation ?? []
       merge_interval.value = response.data.merge_interval
       group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
       group_mood_gap_max_extra_wait_hours.value =
@@ -756,6 +758,7 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
+      dorm_isolation: dorm_isolation.value,
       merge_interval: merge_interval.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
@@ -801,6 +804,7 @@ export const useConfigStore = defineStore('config', () => {
       version_update_resting_threshold: version_update_resting_threshold.value / 100,
       version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       free_room: free_room.value,
+      dorm_isolation: dorm_isolation.value,
       merge_interval: merge_interval.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
@@ -1096,6 +1100,7 @@ export const useConfigStore = defineStore('config', () => {
     sf_target,
     touch_method,
     free_room,
+    dorm_isolation,
     merge_interval,
     group_rest_in_full_on_mood_gap,
     group_mood_gap_max_extra_wait_hours,

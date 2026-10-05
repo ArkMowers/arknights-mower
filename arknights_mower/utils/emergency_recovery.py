@@ -477,10 +477,18 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False
         if (name in residents and not reallocate) or op.is_working():
             continue
         active_groups = {op.group} if op.group else set()
-        index = probe._find_dorm_slot(name, set(), active_groups=active_groups)
+        index = probe._find_dorm_slot(
+            name,
+            set(),
+            active_groups=active_groups,
+            plan=plan,
+            isolation=not reallocate,
+        )
         if index is None:
             continue
         bed = beds.pop(index)
         room, position = bed.position
         plan.setdefault(room, ["Current"] * len(data.plan[room]))[position] = name
-    return plan
+    from arknights_mower.utils.scheduler_task import plan_dorm_isolation
+
+    return plan_dorm_isolation(data, plan, slots)

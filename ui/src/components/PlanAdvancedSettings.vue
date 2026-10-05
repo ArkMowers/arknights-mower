@@ -15,6 +15,7 @@ const {
   version_update_resting_threshold,
   version_update_threshold_advance_hours,
   free_room,
+  dorm_isolation,
   merge_interval,
   group_rest_in_full_on_mood_gap,
   group_mood_gap_max_extra_wait_hours,
@@ -210,6 +211,32 @@ const {
         ></slick-operator-select>
       </n-form-item>
 
+      <n-form-item>
+        <template #label>
+          <span>宿舍隔离</span>
+          <help-text>
+            可添加多个分组，每组人数不限。遵守原有分床与单回位优先级，在同等条件的可用床位中尽量减少同组同住。
+            无法分开时允许同宿，不因隔离抢占单回位或阻止入宿。干员可以加入多个分组，各组分散偏好同时生效。
+          </help-text>
+        </template>
+        <div class="isolation-groups">
+          <div v-for="(_group, index) in dorm_isolation" :key="index" class="isolation-group">
+            <span class="group-label">分组 {{ index + 1 }}</span>
+            <slick-operator-select
+              v-model="dorm_isolation[index]"
+              :disabled="disabled"
+              select_placeholder="选择需要分开住宿的干员"
+            />
+            <n-button :disabled="disabled" @click="dorm_isolation.splice(index, 1)">
+              删除
+            </n-button>
+          </div>
+          <n-button :disabled="disabled" dashed @click="dorm_isolation.push([])">
+            添加分组
+          </n-button>
+        </div>
+      </n-form-item>
+
       <n-form-item v-if="free_room">
         <template #label>
           <span>任务合并间隔</span>
@@ -333,5 +360,32 @@ const {
   align-items: center;
   gap: 14px;
   width: 100%;
+}
+.isolation-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+.isolation-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.isolation-group > .width100 {
+  flex: 1;
+  min-width: 0;
+}
+.group-label {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .isolation-group {
+    flex-wrap: wrap;
+  }
+  .isolation-group > .width100 {
+    flex-basis: calc(100% - 70px);
+  }
 }
 </style>
