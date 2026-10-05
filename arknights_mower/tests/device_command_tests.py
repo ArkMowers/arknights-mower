@@ -282,6 +282,51 @@ def test_output_limit_is_a_device_verdict_not_an_application_fault():
     assert isinstance(error, RECOVERABLE_DEVICE_ERRORS)
 
 
+def test_manager_output_limit_states_the_limit_and_the_repair_step(monkeypatch):
+    monkeypatch.setattr(manager_io, "MAX_OUTPUT", 4096)
+    with pytest.raises(manager_io.CommandOutputLimit) as raised:
+        manager_io.run_manager_command(
+            [
+                sys.executable,
+                "-B",
+                "-c",
+                "import os, time; os.write(1, b'x' * 8192); time.sleep(15)",
+            ],
+            timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+    assert "4096" in str(raised.value)
+    assert "请检查管理器后重试" in str(raised.value)
+    assert isinstance(raised.value, subprocess.SubprocessError)
+
+
+def test_manager_runner_satisfies_the_shared_capture_shape():
+    result = manager_io.run_manager_command(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            "import os; os.write(1, b'out'); os.write(2, b'err')",
+        ],
+        timeout=3,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    assert result.stdout == b"outerr"
+    assert result.stderr == b""
+
+
+@pytest.mark.parametrize("option", [{"text": True}, {"max_output": 1}, {"shell": True}])
+def test_manager_runner_rejects_options_it_cannot_honor(monkeypatch, option):
+    spawn = Mock()
+    monkeypatch.setattr(manager_io.subprocess, "Popen", spawn)
+    with pytest.raises(ValueError, match="不支持参数"):
+        manager_io.run_manager_command(["manager", "info"], timeout=1, **option)
+    spawn.assert_not_called()
+
+
 def test_stdin_pipe_sees_eof_like_subprocess_run_without_input():
     argv = [
         sys.executable,
@@ -320,20 +365,39 @@ def test_universal_newlines_alias_selects_text_output():
     assert result.stdout == "text\n"
 
 
-def test_timeout_preserves_partial_bytes_and_reaps_only_owned_process(monkeypatch):
+@pytest.mark.parametrize("text", [False, True])
+def test_timeout_partial_output_follows_the_text_selection(monkeypatch, text):
     processes, streams = record_processes(monkeypatch)
     with pytest.raises(subprocess.TimeoutExpired) as raised:
         run_python(
-            "import os, time; os.write(1, b'output'); os.write(2, b'error'); time.sleep(15)",
+            "import os, time; os.write(1, b'output\\r\\n'); os.write(2, b'error\\r\\n'); time.sleep(15)",
+            timeout=0.5,
+            capture_output=True,
+            text=text,
+        )
+    assert raised.value.timeout == 0.5
+    if text:
+        assert raised.value.output == "output\n"
+        assert raised.value.stderr == "error\n"
+    else:
+        assert raised.value.output == b"output\r\n"
+        assert raised.value.stderr == b"error\r\n"
+    assert all(process.poll() is not None for process in processes)
+    assert all(stream.closed for stream in streams)
+
+
+def test_undecodable_timeout_fragment_keeps_the_timeout_as_the_failure():
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        run_python(
+            "import os, time; os.write(1, b'\\xff'); time.sleep(15)",
             timeout=0.5,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
-    assert raised.value.timeout == 0.5
-    assert raised.value.output == b"output"
-    assert raised.value.stderr == b"error"
-    assert all(process.poll() is not None for process in processes)
-    assert all(stream.closed for stream in streams)
+    assert raised.value.output == b"\xff"
+    assert raised.value.stderr == b""
+    assert any("解码失败" in note for note in raised.value.__notes__)
 
 
 def test_launch_failure_closes_every_temporary_stream(monkeypatch, tmp_path):

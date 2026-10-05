@@ -110,6 +110,10 @@ class MuMuInputSession:
             ],
             capture_output=True,
             text=True,
+            # A version query is read for its ASCII answer; a stray byte in the
+            # vendor's own diagnostics must not replace that answer with a
+            # decoding failure.
+            errors="replace",
             check=True,
             timeout=timeout,
             max_output=MAX_OUTPUT,

@@ -69,7 +69,8 @@ def run_command(
     targets this process only and has a separate one-second reaping allowance.
     ``stdin=PIPE`` receives EOF at once, matching the ``communicate()`` close
     that has no input to write, so ``input`` stays unsupported and rejected.
-    ``universal_newlines`` selects text output exactly like ``text``.
+    ``universal_newlines`` selects text output exactly like ``text``, and that
+    selection covers the partial output a timeout carries.
     """
     if not math.isfinite(timeout):
         raise ValueError("设备命令需要有限的超时时间")
@@ -82,6 +83,18 @@ def run_command(
     if "input" in kwargs:
         raise ValueError("设备命令不支持 input，请改用 stdin 或临时文件")
     text = text or bool(universal_newlines)
+    decode_text = text or encoding is not None or errors is not None
+    codec = encoding or ("utf-8" if sys.flags.utf8_mode else locale.getencoding())
+
+    def decode(data):
+        if data is None:
+            return None
+        return (
+            data.decode(codec, errors or "strict")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
+
     if capture_output:
         if stdout is not None or stderr is not None:
             raise ValueError("capture_output 不能与 stdout/stderr 同时指定")
@@ -144,24 +157,26 @@ def run_command(
                     failure.cleanup_failed = True
             if isinstance(failure, subprocess.TimeoutExpired):
                 try:
-                    failure.output = _read_output(output_reader, max_output)
-                    failure.stderr = _read_output(
-                        error_reader, max_output - len(failure.output or b"")
+                    output_data = _read_output(output_reader, max_output)
+                    stderr_data = _read_output(
+                        error_reader, max_output - len(output_data or b"")
                     )
+                    if decode_text:
+                        # A timeout fragment follows the same binary/text
+                        # selection as a returned result. A fragment that cannot
+                        # be decoded stays raw, because the timeout remains the
+                        # failure this device command reports.
+                        try:
+                            output_data, stderr_data = (
+                                decode(output_data),
+                                decode(stderr_data),
+                            )
+                        except UnicodeDecodeError as exc:
+                            failure.add_note(f"设备命令超时输出解码失败：{exc}")
+                    failure.output, failure.stderr = output_data, stderr_data
                 except OSError as exc:
                     failure.add_note(f"设备命令超时输出读取失败：{exc}")
-    if text or encoding is not None or errors is not None:
-        codec = encoding or ("utf-8" if sys.flags.utf8_mode else locale.getencoding())
-
-        def decode(data):
-            if data is None:
-                return None
-            return (
-                data.decode(codec, errors or "strict")
-                .replace("\r\n", "\n")
-                .replace("\r", "\n")
-            )
-
+    if decode_text:
         stdout_data, stderr_data = decode(stdout_data), decode(stderr_data)
     result = subprocess.CompletedProcess(
         argv, process.returncode, stdout_data, stderr_data
@@ -172,16 +187,34 @@ def run_command(
 
 
 def run_manager_command(argv, *, timeout, **kwargs):
-    """Retain the manager's checked, merged binary output and 1 MiB limit."""
-    result = run_command(
-        argv,
-        timeout=timeout,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        max_output=MAX_OUTPUT,
-        creationflags=kwargs.get("creationflags", 0),
-        env=kwargs.get("env"),
+    """Retain the manager's checked, merged binary output and 1 MiB limit.
+
+    The merged channel and the return-code check are this function's own
+    contract, so the ``stdout``, ``stderr`` and ``check`` of the shared command
+    call shape are satisfied here, while ``creationflags`` and ``env`` reach
+    process creation. Any other option is rejected instead of being dropped.
+    """
+    unsupported = sorted(
+        set(kwargs) - {"check", "creationflags", "env", "stdout", "stderr"}
     )
+    if unsupported:
+        raise ValueError(f"模拟器管理器命令不支持参数：{unsupported}")
+    try:
+        result = run_command(
+            argv,
+            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            max_output=MAX_OUTPUT,
+            creationflags=kwargs.get("creationflags", 0),
+            env=kwargs.get("env"),
+        )
+    except CommandOutputLimit as exc:
+        # A manager budget overrun is the vendor's own verdict, so its caller
+        # needs the repair step rather than the generic capture wording.
+        raise CommandOutputLimit(
+            f"模拟器管理器输出超过 {MAX_OUTPUT} 字节上限，请检查管理器后重试。"
+        ) from exc
     result.stderr = b""
     result.check_returncode()
     return result
