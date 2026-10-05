@@ -504,3 +504,31 @@ def test_partially_resting_exhaust_group_retains_planning(solver):
     solver._plan_exhaust_support.assert_called_once_with(["苍苔", "机械师"])
     assert solver.planned
     base_schedule.send_message.assert_called_once()
+
+
+@pytest.mark.parametrize("coordinatable", [False, True])
+def test_rescue_projection_checks_occupied_cover_coordination(solver, coordinatable):
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+
+    data = solver.op_data
+    if not coordinatable:
+        data.operators["苍苔"].rest_in_full = True
+        data.operators["苍苔"].exhaust_require = True
+        for name in ("引星棘刺", "结城理"):
+            data.operators[name].mood = 0
+    before = {
+        name: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for name, op in data.operators.items()
+    }
+    now = datetime.now()
+    result = native_opportunity(solver, ["机械师"], now, current_only=True)
+
+    assert result.complete
+    assert (result.opportunity == now) is coordinatable
+    assert before == {
+        name: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for name, op in data.operators.items()
+    }
+    assert solver.tasks == []
+    solver.enter_room.assert_not_called()
+    base_schedule.send_message.assert_not_called()

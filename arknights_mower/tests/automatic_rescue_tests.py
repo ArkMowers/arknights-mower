@@ -2402,3 +2402,82 @@ def test_recovery_order_bounds_projections_and_excludes_blacklisted_workers(solv
     assert all(rank == 1 for rank, _ in order.values())
     assert all(data.operators[name].mood == 1 for name in order)
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("due", [False, True])
+def test_exhaustion_workers_do_not_trigger_rescue_before_shift_deadline(solver, due):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    data.config.exhaust_require = PRIMARY[:2]
+    for name in PRIMARY[:2]:
+        data.operators[name].exhaust_require = True
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=-1 if due else 10),
+                task_type=TaskTypes.EXHAUST_OFF,
+                meta_data=name,
+            )
+        )
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    for name in COVERS:
+        data.operators[name].mood = 0
+
+    solver._emergency_startup()
+
+    assert solver._emergency_active() is due
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "case,expected",
+    [
+        ("working", False),
+        ("floor", True),
+        ("resting", True),
+        ("future", False),
+        ("due", True),
+    ],
+)
+def test_exhaust_group_uses_personal_floor_and_existing_deadline(
+    solver, case, expected
+):
+    data = solver.op_data
+    owner, peer = [data.operators[name] for name in PRIMARY[:2]]
+    owner.exhaust_require = True
+    owner.lower_limit, owner.mood = 4, 6
+    owner.group = peer.group = "用尽组"
+    data.groups[owner.group] = PRIMARY[:2]
+    if case == "floor":
+        owner.mood = 4
+    elif case == "resting":
+        peer._current_room = "dormitory_1"
+    elif case in ("future", "due"):
+        solver.tasks = [
+            SchedulerTask(
+                time=NOW + timedelta(minutes=1 if case == "future" else 0),
+                task_type=TaskTypes.EXHAUST_OFF,
+                meta_data=owner.name,
+            )
+        ]
+    assert (
+        emergency_recovery.exhaust_rest_due(data, peer, solver.tasks, NOW) is expected
+    )
+
+
+def test_rescue_training_selection_never_reads_card_mood(solver, monkeypatch):
+    from arknights_mower.solvers import base_mixin
+
+    make_episode(solver)
+    name = "余"
+    solver.task = SchedulerTask(task_plan={"train": ["黍", name]})
+    solver.task.emergency_staffing = True
+    read = MagicMock(side_effect=AssertionError("training cards have no mood"))
+    monkeypatch.setattr(base_mixin, "estimate_agent_mood", read)
+    estimates = {name: (24, NOW)}
+    assert solver.observe_agent_moods(
+        [(name, ((0, 0), (1, 1)))], [name], estimates, False, train=True
+    ) == {name}
+    assert estimates == {name: (24, NOW)}
+    read.assert_not_called()

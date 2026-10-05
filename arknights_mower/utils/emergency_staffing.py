@@ -5,11 +5,13 @@ from math import isfinite
 from arknights_mower.utils.operators import Operator
 
 
-def worker_block_reason(data, name, mood, reserved, *, allow_zero=True):
+def worker_block_reason(data, name, mood, reserved, *, allow_zero=True, room=None):
     if name in reserved:
         return "已被其他任务预约"
     if name == "菲亚梅塔":
         return "菲亚梅塔保留在充能位置"
+    if room == "train":
+        return None
     if mood is None or not isfinite(mood) or not 0 <= mood <= 24:
         return "心情读数未知或无效"
     op = data.operators.get(name)

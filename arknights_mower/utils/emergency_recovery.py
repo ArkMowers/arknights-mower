@@ -149,6 +149,27 @@ def primary_names(data):
     ]
 
 
+def exhaust_rest_due(data, op, tasks, now):
+    """用尽组仅在已休息、个人下限或既有用尽任务到期时参与当前轮休。"""
+    members = data.groups.get(op.group, [op.name])
+    exhausted = [
+        data.operators[name] for name in members if data.operators[name].exhaust_require
+    ]
+    if not exhausted or op.is_resting():
+        return True
+    if any(
+        has_resting_mood(member) and member.current_mood(now) <= member.lower_limit
+        for member in exhausted
+    ):
+        return True
+    return any(
+        task.type == TaskTypes.EXHAUST_OFF
+        and task.time <= now
+        and set(task.meta_data.split(",")) & set(members)
+        for task in tasks
+    )
+
+
 def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
     """在副本上搜索轮休；当前模式只检查可立即执行的安排，不预测速率。"""
     now = now or datetime.now()
@@ -226,7 +247,9 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         groups = {}
         for name in primary_names(data):
             op = data.operators[name]
-            if op.is_resting():
+            if op.is_resting() or (
+                current_only and not exhaust_rest_due(data, op, trial.tasks, when)
+            ):
                 continue
             if name in remaining or (
                 has_resting_mood(op)
@@ -247,6 +270,15 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     plan,
                     candidate.op_data.active_high_resting_count(),
                 )
+                if (
+                    not plan
+                    and current_only
+                    and any(data.operators[name].exhaust_require for name in members)
+                ):
+                    support = candidate._plan_exhaust_support(list(members))
+                    if support:
+                        coordinated = data.project_arrangements([support])
+                        queue.append((coordinated, when, used, served))
             except Exception:
                 uncertain = True
                 continue
