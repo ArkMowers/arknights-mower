@@ -198,9 +198,10 @@ const {
       </n-form-item>
       <n-form-item>
         <template #label>
-          <span>不养闲人排除干员</span>
+          <span>宿舍保留干员</span>
           <help-text
-            >名单内干员留宿至上班，不让床；开关关闭时仍生效，个人及令夕上限优先。</help-text
+            >名单内干员保留 Free
+            宿舍床位，不因满心情而离宿，仍按正常回班及个人心情上限规则离宿。</help-text
           >
         </template>
         <slick-operator-select
