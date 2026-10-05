@@ -7810,7 +7810,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         manager_names = {
             name for name, _, _ in recovery_managers(self.op_data, room, agents)
         }
-        padding = set(retained[:vip_index]) - manager_names
+        # 菲亚梅塔不接受单回加成，不参与垫位者的心情比较。
+        padding = set(retained[:vip_index]) - manager_names - {"菲亚梅塔"}
         if any(
             not has_resting_mood(self.op_data.operators[name])
             or self.op_data.operators[name].mood <= target.mood
