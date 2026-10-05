@@ -546,9 +546,12 @@ def test_other_group_cannot_borrow_occupied_dorm_cover(solver):
     assert data.is_dorm_replacement("黑角")
 
 
-def test_full_mood_cover_is_preserved_during_actual_selection(solver, monkeypatch):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_full_mood_cover_is_preserved_during_actual_selection(
+    solver, monkeypatch, free_room
+):
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
-    solver.op_data.config.free_room = True
+    solver.op_data.config.free_room = free_room
     monkeypatch.setattr(solver, "preserve_resting_crafters", lambda agents, room: None)
     monkeypatch.setattr(
         solver.op_data,
@@ -557,7 +560,7 @@ def test_full_mood_cover_is_preserved_during_actual_selection(solver, monkeypatc
     )
     with pytest.raises(RuntimeError, match="before UI"):
         solver.choose_agent(agents, "dormitory_1")
-    assert agents == ["黑角", "冰酿", "Free", "Free", "Free"]
+    assert agents == ["黑角", "冰酿", "陈", "红", "初雪"]
 
 
 @pytest.mark.parametrize("field", ["exhaust_require", "rest_in_full"])
@@ -1298,11 +1301,12 @@ def test_ungrouped_resident_keeps_exhaust_flag(ungrouped_solver):
     assert not ungrouped_solver.op_data.has_dorm_groups()
 
 
-def test_ungrouped_fixed_slot_keeps_legacy_full_mood_release(
-    ungrouped_solver, monkeypatch
+@pytest.mark.parametrize("free_room", [False, True])
+def test_ungrouped_explicit_full_roster_is_preserved(
+    ungrouped_solver, monkeypatch, free_room
 ):
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
-    ungrouped_solver.op_data.config.free_room = True
+    ungrouped_solver.op_data.config.free_room = free_room
     monkeypatch.setattr(
         ungrouped_solver, "preserve_resting_crafters", lambda agents, room: None
     )
@@ -1313,7 +1317,7 @@ def test_ungrouped_fixed_slot_keeps_legacy_full_mood_release(
     )
     with pytest.raises(RuntimeError, match="before UI"):
         ungrouped_solver.choose_agent(agents, "dormitory_1")
-    assert agents == ["Free", "冰酿", "Free", "Free", "Free"]
+    assert agents == ["黑角", "冰酿", "陈", "红", "初雪"]
 
 
 @pytest.mark.parametrize("operation", ["shift", "priority"])

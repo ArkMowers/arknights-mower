@@ -136,8 +136,8 @@ def test_idle_recovery_reads_new_factory_arrival_despite_recent_cache(
     op.mood = 24
     op.current_mood.return_value = 24
     result = solver.get_agent_from_room("factory")
-    assert result[0]["mood"] == (7 if enabled else 24)
-    assert solver.read_accurate_mood.call_count == int(enabled)
+    assert result[0]["mood"] == 7
+    solver.read_accurate_mood.assert_called_once()
     solver.read_operator_time.assert_not_called()
 
 

@@ -108,7 +108,7 @@ def test_custom_limit_release_still_takes_priority(solver, mood):
     assert agents[-1] != "空爆"
 
 
-def test_disabling_feature_or_removing_name_restores_takeover(op_data):
+def test_exclusion_removal_restores_takeover_independently_of_release_switch(op_data):
     op_data.config.free_room_exclusions = ["空爆"]
     op_data.config.free_room_exclusions.clear()
     tasks = []
@@ -119,4 +119,7 @@ def test_disabling_feature_or_removing_name_restores_takeover(op_data):
     try_add_release_dorm({}, None, op_data, tasks)
     assert tasks == []
     op_data.config.free_room = False
-    assert not op_data.is_free_room_excluded("空爆")
+    assert op_data.is_free_room_excluded("空爆")
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks == []

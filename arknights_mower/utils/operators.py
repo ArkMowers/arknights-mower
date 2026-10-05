@@ -694,7 +694,6 @@ class Operators:
         """名单内入住者不被清退或接管床位；达到个人上限仍须离宿。"""
         return (
             (bool(name))
-            and getattr(self.config, "free_room", False)
             and name in getattr(self.config, "free_room_exclusions", ())
             and resting_tier(self, name) != RestingTier.EXCLUDED
             and not self.rest_mood_complete(name)
@@ -742,8 +741,7 @@ class Operators:
         """游戏心情升序选出的替班也已满时，停止本轮无效清退。"""
         op = self.operators.get(name)
         return bool(
-            (self.config.free_room)
-            and op is not None
+            op is not None
             and op.current_room.startswith("dorm")
             and getattr(op, "dorm_mood_fallback", "") == op.current_room
             and resting_tier(self, name) != RestingTier.EXCLUDED
@@ -1316,25 +1314,21 @@ class Operators:
         return None
 
     def get_refresh_index(self, room, plan):
+        """动态恢复位置共用计时读取，不受满心情清退开关影响。"""
+        if not room.startswith("dorm"):
+            return []
+        recovery_indices = {
+            bed.position[1] for bed in self.all_dorms() if bed.position[0] == room
+        }
         ret = []
-        if room.startswith("dorm") and self.config.free_room:
-            return [i for i, slot in enumerate(self.plan[room]) if slot.agent == "Free"]
-        for idx, dorm in enumerate(self.all_dorms()):
-            if dorm.position[0] == room:
-                for i, _name in enumerate(plan):
-                    if _name in ("Free", "Current", "") or _name not in agent_list:
-                        continue
-                    if _name not in self.operators:
-                        self.add(Operator(_name, ""))
-                    if _name in self.operators:
-                        if not self.config.free_room:
-                            if self.operators[_name].is_high() and not self.operators[
-                                _name
-                            ].room.startswith("dorm"):
-                                ret.append(i)
-                        elif not self.operators[_name].room.startswith("dorm"):
-                            ret.append(i)
-                break
+        for i, name in enumerate(plan):
+            if i not in recovery_indices:
+                continue
+            if name == "Current":
+                current = self.get_current_operator(room, i)
+                name = current.name if current is not None else None
+            if self.is_dynamic_dorm_position(room, i, name):
+                ret.append(i)
         return ret
 
     def get_dorm_by_name(self, name):

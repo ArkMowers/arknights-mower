@@ -36,13 +36,15 @@ def estimated_candidate(instance, monkeypatch, *, registered=True, stopped=True)
     return name
 
 
+@pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("registered", [True, False])
 @pytest.mark.parametrize("stopped", [True, False])
 def test_low_card_replaces_retained_full_resident_without_rescanning(
-    solver, monkeypatch, registered, stopped
+    solver, monkeypatch, registered, stopped, free_room
 ):
     instance, selected = solver
     data = instance.op_data
+    data.config.free_room = free_room
     name = estimated_candidate(
         instance, monkeypatch, registered=registered, stopped=stopped
     )

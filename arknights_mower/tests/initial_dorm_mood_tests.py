@@ -369,7 +369,7 @@ def test_real_primary_planning_observes_cards_before_candidate_selection(
     solver.resting = MagicMock(side_effect=lambda: events.append("primary") or {})
     monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
     assert solver._plan_primary_recovery(scan_moods=scan_moods)
-    assert events == (["scan", "primary"] if enabled and scan_moods else ["primary"])
+    assert events == (["scan", "primary"] if scan_moods else ["primary"])
 
 
 @pytest.mark.parametrize(

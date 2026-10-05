@@ -192,15 +192,16 @@ const {
         <n-checkbox v-model:checked="free_room">
           宿舍不养闲人
           <help-text>
-            心情回满后清退并补人；排除干员留宿至上班。候补可让位给更高优先级者。
+            开启后创建满心情清退任务。关闭后仍安排恢复、补床和优先级接管；个人及令夕上限仍生效。
           </help-text>
         </n-checkbox>
       </n-form-item>
-      <n-form-item v-if="free_room">
+      <n-form-item>
         <template #label>
-          <span>不养闲人排除干员</span>
+          <span>宿舍保留干员</span>
           <help-text
-            >开启不养闲人时，回满仍留宿，不让床，至上班离宿；个人及令夕上限优先。</help-text
+            >名单内干员保留 Free
+            宿舍床位，不因满心情而离宿，仍按正常回班及个人心情上限规则离宿。</help-text
           >
         </template>
         <slick-operator-select
