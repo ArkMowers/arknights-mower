@@ -5,6 +5,7 @@ import { useMessage } from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import {
+  applyChipLimitPreset,
   createInventoryItemOption,
   createLimitRule,
   createRatioMember,
@@ -16,6 +17,7 @@ import {
 import { WEEKDAYS, getGameWeekdayIndex } from '@/utils/maa_weekly_plan'
 
 const message = useMessage()
+const emit = defineEmits(['chip-limits-applied'])
 const store = useConfigStore()
 const {
   maa_stage_inventory_enable,
@@ -209,6 +211,15 @@ function addLimitRule() {
   limitStageToAdd.value = null
 }
 
+function applyChipLimits() {
+  maa_stage_limit_rules.value = applyChipLimitPreset(
+    maa_stage_limit_rules.value,
+    stageOptions.value
+  )
+  emit('chip-limits-applied')
+  message.success('已绑定芯片上限，并将芯片关卡排序提升到剿灭之后')
+}
+
 function removeLimitRule(index) {
   maa_stage_limit_rules.value.splice(index, 1)
 }
@@ -350,6 +361,19 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
               <n-button type="primary" :disabled="!limitStageToAdd" @click="addLimitRule">
                 添加关卡上限
               </n-button>
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    :disabled="loading || !!loadError || stageOptions.length === 0"
+                    @click="applyChipLimits"
+                  >
+                    一键芯片上限
+                  </n-button>
+                </template>
+                绑定全部 8 个芯片关卡：小芯片上限 5、芯片组上限 8，两种都达到才跳过。
+                覆盖已有芯片上限，仅对当前方案已选关卡生效。
+                同时将全部芯片关卡排在剿灭之后，保留已有勾选。
+              </n-tooltip>
               <n-text depth="3">
                 这里只列出周计划已经选择的关卡；绑定后自动载入常规掉落，也可添加自定义物品。
               </n-text>

@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   buildStageOptions,
   buildTableStageOptions,
+  CHIP_STAGES,
   getGameWeekdayIndex,
   isStageAvailableOnWeekday,
   mergeTableStageOrder,
   normalizeCreatedStage,
+  promoteChipStageOrder,
   reorderWeeklyPlanStages,
   setStageForWeekday,
   splitStageInventoryLabel
@@ -64,10 +66,44 @@ describe('刷理智周计划双视图同步', () => {
 
     const userOrdered = mergeTableStageOrder(options, ['1-7', 'Annihilation', 'ACT-9'], ['ACT-9'])
     expect(userOrdered.slice(0, 3).map((option) => option.value)).toEqual([
-      '1-7',
       'Annihilation',
+      '1-7',
       'ACT-9'
     ])
+  })
+
+  it('芯片一键排序保留其他关卡相对顺序，剿灭固定第一且包含全部八个芯片关卡', () => {
+    const current = ['CE-6', 'PR-D-2', '1-7', 'Annihilation', 'ACT-9']
+    const order = promoteChipStageOrder(current)
+    expect(order).toEqual(['Annihilation', ...CHIP_STAGES, 'CE-6', '1-7', 'ACT-9'])
+    expect(CHIP_STAGES).toHaveLength(8)
+    expect(promoteChipStageOrder(order)).toEqual(order)
+    expect(promoteChipStageOrder([])).toEqual(['Annihilation', ...CHIP_STAGES])
+    expect(current).toEqual(['CE-6', 'PR-D-2', '1-7', 'Annihilation', 'ACT-9'])
+  })
+
+  it('芯片排序同步每天的执行顺序，保留勾选、未勾选剿灭及每日其他设置', () => {
+    const plan = [
+      { weekday: '周一', stage: ['1-7', 'PR-A-1', 'Annihilation', 'PR-B-2'], medicine: 2 },
+      { weekday: '周二', stage: ['CUSTOM-1', 'PR-D-2', 'CE-6'], sanity_threshold: 50 },
+      { weekday: '周三', stage: [] }
+    ]
+    reorderWeeklyPlanStages(plan, promoteChipStageOrder([]))
+    expect(plan).toEqual([
+      { weekday: '周一', stage: ['Annihilation', 'PR-A-1', 'PR-B-2', '1-7'], medicine: 2 },
+      { weekday: '周二', stage: ['PR-D-2', 'CUSTOM-1', 'CE-6'], sanity_threshold: 50 },
+      { weekday: '周三', stage: [] }
+    ])
+  })
+
+  it('芯片提升后加载新活动不打断顶部芯片关卡', () => {
+    const options = buildTableStageOptions([{ value: 'ACT-9', label: 'ACT-9' }])
+    const order = promoteChipStageOrder(['1-7'])
+    expect(
+      mergeTableStageOrder(options, order, ['ACT-9'])
+        .slice(0, 11)
+        .map((option) => option.value)
+    ).toEqual(['Annihilation', ...CHIP_STAGES, 'ACT-9', '1-7'])
   })
 
   it('点击表格格子直接更新列表计划使用的同一份 stage 数组', () => {

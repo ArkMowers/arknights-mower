@@ -1,6 +1,6 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { useConfigStore } from '@/stores/config'
 import {
@@ -17,6 +17,10 @@ import {
 } from '@/utils/maa_weekly_plan'
 
 const props = defineProps({
+  stageOrder: {
+    type: Array,
+    default: () => []
+  },
   latestActivityOptions: {
     type: Array,
     default: () => []
@@ -26,29 +30,13 @@ const props = defineProps({
     default: true
   }
 })
+const emit = defineEmits(['update:stageOrder'])
 
 const store = useConfigStore()
 const { maa_weekly_plan } = storeToRefs(store)
 
 const manuallyAddedOptions = ref([])
 const stageToAdd = ref(null)
-const stageOrderStorageKey = 'maa-weekly-plan-table-stage-order'
-const stageOrderVersionStorageKey = 'maa-weekly-plan-table-stage-order-version'
-const stageOrderVersion = 'annihilation-first-v1'
-
-function loadSavedStageOrder() {
-  try {
-    const order = JSON.parse(window.localStorage.getItem(stageOrderStorageKey) || '[]')
-    return Array.isArray(order) ? order.filter((value) => typeof value === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-const savedStageOrder = loadSavedStageOrder()
-const sortableStageOptions = ref([])
-let needsDefaultOrderMigration =
-  window.localStorage.getItem(stageOrderVersionStorageKey) !== stageOrderVersion
 
 const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
 
@@ -63,41 +51,43 @@ const availableStageOptions = computed(() =>
   }))
 )
 
-watch(
-  availableStageOptions,
-  (options) => {
-    let currentOrder = sortableStageOptions.value.length
-      ? sortableStageOptions.value.map((option) => option.value)
-      : savedStageOrder
-    if (needsDefaultOrderMigration) {
-      currentOrder = [
-        ANNIHILATION_STAGE,
-        ...currentOrder.filter((value) => value !== ANNIHILATION_STAGE)
-      ]
-      needsDefaultOrderMigration = false
-      window.localStorage.setItem(stageOrderVersionStorageKey, stageOrderVersion)
-    }
-    sortableStageOptions.value = mergeTableStageOrder(
-      options,
-      currentOrder,
+const sortableStageOptions = computed({
+  get: () =>
+    mergeTableStageOrder(
+      availableStageOptions.value,
+      props.stageOrder,
       props.latestActivityOptions.map((option) => option.value)
+    ),
+  set: (options) => {
+    const order = mergeTableStageOrder(
+      options,
+      options.map((option) => option.value)
     )
+    emit(
+      'update:stageOrder',
+      order.map((option) => option.value)
+    )
+  }
+})
+
+const priorityOrder = computed(() => sortableStageOptions.value.map((option) => option.value))
+
+watch(
+  priorityOrder,
+  (order) => {
+    if (JSON.stringify(order) !== JSON.stringify(props.stageOrder)) {
+      emit('update:stageOrder', order)
+    }
   },
   { immediate: true }
 )
 
-watch(
-  sortableStageOptions,
-  (options) => {
-    window.localStorage.setItem(
-      stageOrderStorageKey,
-      JSON.stringify(options.map((option) => option.value))
-    )
-  },
-  { deep: true }
-)
-
-const priorityOrder = computed(() => sortableStageOptions.value.map((option) => option.value))
+function canMoveStage(event) {
+  return (
+    event.draggedContext.element.value !== ANNIHILATION_STAGE &&
+    (event.relatedContext.element?.value !== ANNIHILATION_STAGE || event.willInsertAfter)
+  )
+}
 
 function dayPlan(weekday) {
   return maa_weekly_plan.value.find((plan) => plan.weekday === weekday)
@@ -160,7 +150,8 @@ function addStageRow(value) {
   stageToAdd.value = null
 }
 
-function applyStageOrder() {
+async function applyStageOrder() {
+  await nextTick()
   reorderWeeklyPlanStages(maa_weekly_plan.value, priorityOrder.value)
 }
 </script>
@@ -180,7 +171,7 @@ function applyStageOrder() {
         @update:value="addStageRow"
       />
       <span class="table-editor-hint">
-        当期剿灭默认置顶，活动关卡紧随其后；可拖动把手调整，表格只选择关卡
+        当期剿灭固定置顶；一键芯片上限可将芯片排在剿灭之后，其他关卡可拖动把手调整
       </span>
     </div>
 
@@ -206,6 +197,7 @@ function applyStageOrder() {
           tag="tbody"
           item-key="value"
           handle=".stage-drag-handle"
+          :move="canMoveStage"
           @end="applyStageOrder"
         >
           <template #item="{ element: option }">
@@ -224,6 +216,7 @@ function applyStageOrder() {
               <td class="stage-column">
                 <div class="stage-label" :title="option.label">
                   <button
+                    v-if="option.value !== ANNIHILATION_STAGE"
                     type="button"
                     class="stage-drag-handle"
                     :aria-label="`拖动调整 ${option.label} 的优先级`"
