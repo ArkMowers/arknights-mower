@@ -89,23 +89,26 @@ def main():
         return process
 
     manager_io.subprocess.Popen = spawn
-    preflight_io.COMMAND_TIMEOUT = 0.5
+    # The synthetic command needs about 0.4 s to start and hand over its
+    # inherited handles, so the deadline keeps a margin above that while still
+    # staying far below the descendant's fifteen-second hold.
+    preflight_io.COMMAND_TIMEOUT = 1.0
     if adapter == "adb":
         server.probe_adb_server = lambda *args, **kwargs: None
         operation = partial(preflight_io.ProductionPreflightIO()._run_adb, argv)
     elif adapter == "guard_version":
-        operation = partial(server.adb_client_version, "synthetic-adb", timeout=0.5)
+        operation = partial(server.adb_client_version, "synthetic-adb", timeout=1.0)
     elif adapter == "shared_start":
         coordinator = shared.SharedADBRecovery(probe=lambda timeout: None)
 
         def operation():
-            return coordinator._start("synthetic-adb", 41, time.monotonic() + 0.5, None)
+            return coordinator._start("synthetic-adb", 41, time.monotonic() + 1.0, None)
     elif adapter == "mumu_input":
         mumu_input.resolve_mumu_paths = lambda *args: (
             "synthetic-root",
             "synthetic-manager",
         )
-        mumu_input.io_timeout = lambda maximum: min(0.5, maximum)
+        mumu_input.io_timeout = lambda maximum: min(1.0, maximum)
         mumu_input.multiprocessing.get_context = Mock()
         device = SimpleNamespace(profile=DeviceProfile(instance_id="1"))
         operation = partial(mumu_input.MuMuInputSession, device)

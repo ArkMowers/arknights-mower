@@ -46,8 +46,8 @@ def test_inherited_output_does_not_extend_command_deadline(tmp_path, adapter, ou
     try:
         assert wait_for(tmp_path / "probe.ready", 10), "probe import failed"
         (tmp_path / "go").touch()
-        completed = wait_for(tmp_path / "result.json", 2)
-        assert wait_for(tmp_path / "descendant.ready", 1)
+        completed = wait_for(tmp_path / "result.json", 5)
+        assert wait_for(tmp_path / "descendant.ready", 3)
         assert not (tmp_path / "descendant.stopped").exists()
     finally:
         (tmp_path / "release").touch()
@@ -56,8 +56,8 @@ def test_inherited_output_does_not_extend_command_deadline(tmp_path, adapter, ou
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=1)
-        assert wait_for(tmp_path / "descendant.stopped", 3)
-    assert completed, "0.5s command still waits for inherited output after 2s"
+        assert wait_for(tmp_path / "descendant.stopped", 5)
+    assert completed, "a one-second command still waits for inherited output"
     result = json.loads((tmp_path / "result.json").read_text(encoding="utf-8"))
     assert result["elapsed"] < 2
     assert result["reaped"]
@@ -262,15 +262,62 @@ def test_combined_output_limit_reaps_running_command_and_closes_streams(
     monkeypatch, stderr
 ):
     processes, streams = record_processes(monkeypatch)
-    with pytest.raises(ValueError, match="1024"):
+    with pytest.raises(manager_io.CommandOutputLimit, match="1024") as raised:
         run_python(
             "import os, time; os.write(1, b'x' * 600); os.write(2, b'y' * 500); time.sleep(15)",
             stdout=subprocess.PIPE,
             stderr=stderr,
             max_output=1024,
         )
+    assert isinstance(raised.value, subprocess.SubprocessError)
+    assert isinstance(raised.value, ValueError)
     assert all(process.poll() is not None for process in processes)
     assert all(stream.closed for stream in streams)
+
+
+def test_output_limit_is_a_device_verdict_not_an_application_fault():
+    from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
+
+    error = manager_io.CommandOutputLimit("设备命令输出超过 1 字节上限")
+    assert isinstance(error, RECOVERABLE_DEVICE_ERRORS)
+
+
+def test_stdin_pipe_sees_eof_like_subprocess_run_without_input():
+    argv = [
+        sys.executable,
+        "-B",
+        "-c",
+        "import sys; print('got', len(sys.stdin.read()))",
+    ]
+    options = dict(
+        stdin=subprocess.PIPE,
+        capture_output=True,
+        text=True,
+        timeout=3,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    reference = subprocess.run(argv, check=True, **options)
+    result = manager_io.run_command(argv, check=True, **options)
+    assert reference.stdout == "got 0\n"
+    assert result.stdout == reference.stdout
+    assert result.stderr == reference.stderr == ""
+
+
+def test_input_argument_is_rejected_before_process_creation(monkeypatch):
+    spawn = Mock()
+    monkeypatch.setattr(manager_io.subprocess, "Popen", spawn)
+    with pytest.raises(ValueError, match="input"):
+        manager_io.run_command(["manager", "info"], timeout=1, input=b"payload")
+    spawn.assert_not_called()
+
+
+def test_universal_newlines_alias_selects_text_output():
+    result = run_python(
+        "import os; os.write(1, b'text\\r\\n')",
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    assert result.stdout == "text\n"
 
 
 def test_timeout_preserves_partial_bytes_and_reaps_only_owned_process(monkeypatch):

@@ -11,7 +11,8 @@
     "[INV-DEV-20]"
   ],
   "code_symbols": [
-    "arknights_mower.utils.device.manager_io.run_command"
+    "arknights_mower.utils.device.manager_io.run_command",
+    "arknights_mower.utils.device.manager_io.CommandOutputLimit"
   ],
   "test_suites": [
     "arknights_mower/tests/device_command_tests.py",

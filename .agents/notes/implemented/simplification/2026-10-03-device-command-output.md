@@ -15,7 +15,7 @@ Device commands share the temporary-file execution mechanism in [manager_io.py](
 
 ## Caller Evidence
 
-Vendor discovery and instance readiness use `run_manager_command`; preflight, ADB version checks, resolution queries and MuMu input initialization use separate pipe-based calls. Reusing the manager mechanism removes that execution-policy split. `run_command` preserves separate stdout/stderr, merged output, binary output, text decoding and optional return-code checking. The manager adapter retains its existing merged binary output and 1 MiB limit. General device commands accept at most 32 MiB across captured streams, including custom Capture Frame bytes.
+Vendor discovery and instance readiness already used `run_manager_command`; preflight, ADB version checks, resolution queries and MuMu input initialization ran through separate pipe-based calls before this decision. Reusing the manager mechanism removed that execution-policy split. `run_command` preserves separate stdout/stderr, merged output, binary output, text decoding and optional return-code checking. The manager adapter retains its existing merged binary output and 1 MiB limit. General device commands accept at most 32 MiB across captured streams, including custom Capture Frame bytes.
 
 ## Verification
 

@@ -15,6 +15,16 @@ MAX_COMMAND_OUTPUT = 32 * 1024 * 1024
 COMMAND_CLEANUP_TIMEOUT = 1
 
 
+class CommandOutputLimit(subprocess.SubprocessError, ValueError):
+    """A captured command exceeded its byte budget.
+
+    An output budget is a device-command verdict: the owning session reports it
+    and keeps running instead of treating it as an application fault. The
+    ValueError base preserves callers that classify command input and output
+    problems as value errors.
+    """
+
+
 def _capture_stream(stack):
     writer = stack.enter_context(tempfile.NamedTemporaryFile())
     # Reopening gives the reader its own offset; duplicated handles share one.
@@ -47,6 +57,7 @@ def run_command(
     capture_output=False,
     check=False,
     text=False,
+    universal_newlines=None,
     encoding=None,
     errors=None,
     max_output=MAX_COMMAND_OUTPUT,
@@ -56,6 +67,9 @@ def run_command(
 
     PIPE options select temporary files, never pipe readers. Timeout cleanup
     targets this process only and has a separate one-second reaping allowance.
+    ``stdin=PIPE`` receives EOF at once, matching the ``communicate()`` close
+    that has no input to write, so ``input`` stays unsupported and rejected.
+    ``universal_newlines`` selects text output exactly like ``text``.
     """
     if not math.isfinite(timeout):
         raise ValueError("设备命令需要有限的超时时间")
@@ -65,6 +79,9 @@ def run_command(
         raise ValueError("设备命令输出上限必须为正整数")
     if kwargs.get("shell"):
         raise ValueError("设备命令不能使用主机 shell")
+    if "input" in kwargs:
+        raise ValueError("设备命令不支持 input，请改用 stdin 或临时文件")
+    text = text or bool(universal_newlines)
     if capture_output:
         if stdout is not None or stderr is not None:
             raise ValueError("capture_output 不能与 stdout/stderr 同时指定")
@@ -86,12 +103,16 @@ def run_command(
         )
         failure = None
         try:
+            if process.stdin is not None:
+                # No input is accepted, so the reader sees the same EOF a
+                # subprocess.run() call produced by closing its stdin pipe.
+                process.stdin.close()
             while True:
                 if (
                     sum(os.fstat(stream.fileno()).st_size for stream in streams)
                     > max_output
                 ):
-                    raise ValueError(f"设备命令输出超过 {max_output} 字节上限")
+                    raise CommandOutputLimit(f"设备命令输出超过 {max_output} 字节上限")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise subprocess.TimeoutExpired(argv, timeout)
@@ -104,10 +125,10 @@ def run_command(
             stdout_data = _read_output(output_reader, max_output + 1)
             remaining_output = max_output - len(stdout_data or b"")
             if remaining_output < 0:
-                raise ValueError(f"设备命令输出超过 {max_output} 字节上限")
+                raise CommandOutputLimit(f"设备命令输出超过 {max_output} 字节上限")
             stderr_data = _read_output(error_reader, remaining_output + 1)
             if len(stderr_data or b"") > remaining_output:
-                raise ValueError(f"设备命令输出超过 {max_output} 字节上限")
+                raise CommandOutputLimit(f"设备命令输出超过 {max_output} 字节上限")
         except BaseException as exc:
             failure = exc
             raise

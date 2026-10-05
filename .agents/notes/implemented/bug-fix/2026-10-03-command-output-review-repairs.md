@@ -19,11 +19,13 @@ date: 2026-10-03
 
 BlueStacks Air, I/O-budget and session-caller tests mock the execution function at its consuming module. The budget fixture returns a `CompletedProcess`; incompatible Shared ADB Guard tests reject capture and MaaTouch startup before process creation.
 
+The review round tightens the shared contract. An over-budget capture reports `CommandOutputLimit`, which is both a `ValueError` and a `subprocess.SubprocessError`, so the session classifies it as a device verdict instead of an application fault. `universal_newlines` selects text output exactly like `text`, `stdin=PIPE` receives immediate EOF like the `communicate()` close with no input to write, and `input` is rejected before process creation. The inherited-handle fixture keeps its command deadline above the synthetic command's startup so coverage does not depend on machine load.
+
 ## Verification
 
 An offline fixture writes initial stdout/stderr, retains both in a descendant and synchronizes further writes between the reader's seek and read. Assertions cover successful completion, checked failure, timeout partial output, separate and merged channels, owned-process cleanup and temporary-file deletion after descendant exit. Focused caller tests cover the updated execution seams.
 
-Targeted offline verification passes 529 tests and 163 subtests. All six inherited-write scenarios fail before the repair and pass after it. Ruff lint and format checks, repository governance and diff whitespace checks pass.
+Targeted offline verification passes 529 tests and 163 subtests. All six inherited-write scenarios fail before the repair and pass after it. Ruff lint and format checks, repository governance and diff whitespace checks pass. The review round extends `device_command_tests.py` to 36 tests, covering the budget verdict classification, `stdin` EOF, rejected `input` and `universal_newlines` text output; repeated runs of the inherited-handle fixture complete without deadline flakes.
 
 ## Standards Findings
 

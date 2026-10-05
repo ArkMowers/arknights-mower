@@ -19,11 +19,13 @@ date: 2026-10-03
 
 BlueStacks Air、I/O 预算和会话调用方测试在消费模块中模拟执行函数。预算夹具返回 `CompletedProcess`；Shared ADB Guard 不兼容测试在创建进程前拒绝截图和 MaaTouch 启动。
 
+审查轮次收紧共用契约。输出超限报告 `CommandOutputLimit`，它同时是 `ValueError` 与 `subprocess.SubprocessError`，因此会话按设备判定处理而不当作应用故障。`universal_newlines` 与 `text` 一样选择文本输出，`stdin=PIPE` 立即收到 EOF（等同无输入可写时 `communicate()` 的关闭），`input` 在创建进程前被拒绝。继承句柄夹具的命令期限高于合成命令启动耗时，覆盖不再依赖机器负载。
+
 ## 验证
 
 离线夹具写入初始 stdout/stderr，由后代保留两个句柄，并在读句柄定位与读取之间同步追加写入。断言覆盖成功完成、退出码失败、超时部分输出、分离与合并通道、自有进程清理，以及后代退出后的临时文件删除。定向调用方测试覆盖更新后的执行接缝。
 
-定向离线验证通过 529 项测试和 163 个子测试。六个继承写入场景在修复前全部失败，修复后全部通过。Ruff 检查和格式检查、仓库治理与 diff 空白检查均通过。
+定向离线验证通过 529 项测试和 163 个子测试。六个继承写入场景在修复前全部失败，修复后全部通过。Ruff 检查和格式检查、仓库治理与 diff 空白检查均通过。审查轮次将 `device_command_tests.py` 扩展到 36 项测试，覆盖输出上限判定分类、`stdin` EOF、拒绝 `input` 与 `universal_newlines` 文本输出；继承句柄夹具重复运行不再出现期限抖动。
 
 ## 规范审查
 
