@@ -309,6 +309,7 @@ class TestMoodInitialization(unittest.TestCase):
         ):
             self.main.simulate(None)
         scheduler.run.assert_called_once_with()
+        scheduler.op_data.validate_backup_plans.assert_called_once_with(max_seconds=5)
         warning.assert_called_once()
         self.assertIn("允许启动", warning.call_args.args[0])
 

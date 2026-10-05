@@ -247,3 +247,46 @@ def test_product_conditions_cover_real_runtime_cached_and_baseline_values():
         tuple(bool(data.evaluate_expression(expression)) for expression in expressions)
         in combinations
     )
+
+
+@pytest.mark.parametrize("phase", ["parsing", "enumeration", "sorting"])
+def test_elapsed_budget_interrupts_analysis_without_becoming_an_unknown_condition(
+    monkeypatch, phase
+):
+    clock = [100.0]
+    monkeypatch.setattr(backup_validation, "monotonic", lambda: clock[0])
+    if phase == "parsing":
+        original = backup_validation.ast.parse
+
+        def slow_parse(*args, **kwargs):
+            tree = original(*args, **kwargs)
+            clock[0] += 5
+            return tree
+
+        monkeypatch.setattr(backup_validation.ast, "parse", slow_parse)
+    elif phase == "enumeration":
+        original = backup_validation.product
+
+        def slow_assignments(*args):
+            for index, state in enumerate(original(*args)):
+                if index == 2:
+                    clock[0] += 5
+                yield state
+
+        monkeypatch.setattr(backup_validation, "product", slow_assignments)
+    else:
+        original = sorted
+
+        def slow_sort(*args, **kwargs):
+            result = original(*args, **kwargs)
+            clock[0] += 5
+            return result
+
+        monkeypatch.setattr(backup_validation, "sorted", slow_sort, raising=False)
+    plans = [
+        SimpleNamespace(trigger=expression) for expression in ("unknown1", "unknown2")
+    ]
+    with pytest.raises(
+        backup_validation.BackupValidationLimitExceeded, match="耗时预算"
+    ):
+        possible_backup_conditions(plans, 16384, deadline=105)
