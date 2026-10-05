@@ -87,6 +87,7 @@
 - **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
 
 ### 2.6 Configuration Backup
+- **[INV-CFG-02] Running Plan Restore Cohesion**: Restoring the running Scheduling Plan restores its startup advanced settings with it, preserves unrelated configuration, retains previous models and files on validation or write failure, and resumes frontend autosave only after both stores reload successfully.
 - **[INV-CFG-01] Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.
 
 

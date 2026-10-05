@@ -80,16 +80,25 @@ const restoring_running_plan = ref(false)
 async function restoreRunningPlan() {
   if (rescue || !running.value || restoring_running_plan.value || edit_locked.value) return
   restoring_running_plan.value = true
+  let keepPaused = false
   try {
     await import_saves.pauseAndDrain()
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/plan/restore-running`)
+    keepPaused = true
     sub_plan.value = 'main'
+    await config_store.load_config()
     await load_plan()
-    message.success('已还原为当前运行排班表')
+    keepPaused = false
+    message.success('已还原为当前运行排班表及高级设置')
   } catch (error) {
-    message.error(error.response?.data?.error || error.message || '还原运行排班失败')
+    const detail = error.response?.data?.error || error.message || '还原运行排班失败'
+    message.error(
+      keepPaused
+        ? `排班及高级设置已还原，但读取失败，请刷新页面；自动保存已暂停：${detail}`
+        : detail
+    )
   } finally {
-    import_saves.resume()
+    if (!keepPaused) import_saves.resume()
     restoring_running_plan.value = false
   }
 }
@@ -593,7 +602,7 @@ function movePlanForward() {
             <template #trigger>
               <n-button
                 class="plan-restore-button"
-                :aria-label="rescue ? '返回' : '还原为当前运行排班表'"
+                :aria-label="rescue ? '返回' : '还原为当前运行排班表及高级设置'"
                 :disabled="edit_locked || (!rescue && !running)"
                 :loading="restoring_running_plan"
                 @click="rescue ? returnToSettings() : restoreRunningPlan()"
@@ -603,7 +612,13 @@ function movePlanForward() {
                 </template>
               </n-button>
             </template>
-            {{ rescue ? '返回' : running ? '还原为当前运行排班表' : 'Mower 运行时可还原排班表' }}
+            {{
+              rescue
+                ? '返回'
+                : running
+                  ? '还原为当前运行排班表及高级设置'
+                  : 'Mower 运行时可还原排班表及高级设置'
+            }}
           </n-tooltip>
         </n-button-group>
         <n-button-group class="mower-sub-plan-controls plan-sort-controls">

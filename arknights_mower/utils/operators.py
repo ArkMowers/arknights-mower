@@ -7,6 +7,7 @@ from typing import Any, Literal, overload
 from evalidate import Expr, base_eval_model
 
 from arknights_mower.utils import config
+from arknights_mower.utils.config.plan_advanced import export_advanced_settings
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -191,6 +192,8 @@ def build_global_plan(
     plan = source_model.model_dump(exclude_none=True)
     source_plan = copy.deepcopy(plan) if include_source else None
     conf = config.conf
+    if source_plan is not None:
+        source_plan["advanced_settings"] = export_advanced_settings(conf)
     plan_config = PlanConfig(
         rest_in_full=source_model.conf.rest_in_full,
         exhaust_require=source_model.conf.exhaust_require,
