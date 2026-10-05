@@ -433,7 +433,7 @@ def simulate(saved):
     if validation_msg is not None:
         logger.error(validation_msg)
         return
-    validation_msg = base_scheduler.op_data.validate_backup_plans()
+    validation_msg = base_scheduler.op_data.validate_backup_plans(max_seconds=5)
     if validation_msg.get("status") == "incomplete":
         logger.warning(f"排班校验未完成: {validation_msg['message']}")
     elif not validation_msg["success"]:

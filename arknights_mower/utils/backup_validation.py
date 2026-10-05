@@ -2,6 +2,7 @@
 
 import ast
 from itertools import product
+from time import monotonic
 
 from arknights_mower.data import base_room_list
 from arknights_mower.utils.manufacture_product import (
@@ -18,6 +19,11 @@ STRING_CONSTANTS = (
 
 class BackupValidationLimitExceeded(ValueError):
     """条件分析或组合检查超出预算；不表示已确认排班错误。"""
+
+
+def check_validation_deadline(deadline):
+    if deadline is not None and monotonic() >= deadline:
+        raise BackupValidationLimitExceeded("验证未完成：副表校验超过耗时预算")
 
 
 def _string_literal(node):
@@ -65,7 +71,9 @@ def _returns_boolean(node, known_operators):
     return _state_method(node, known_operators) in BOOLEAN_METHODS
 
 
-def possible_backup_conditions(backups, combination_limit, *, known_operators=None):
+def possible_backup_conditions(
+    backups, combination_limit, *, known_operators=None, deadline=None
+):
     """仅删除条件逻辑能证明不成立的组合，不读取驻员或执行导入表达式。"""
     domains = {}
 
@@ -150,6 +158,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
 
     conditions = []
     for index, backup in enumerate(backups):
+        check_validation_deadline(deadline)
         condition_domains = {}
         try:
             source = str(backup.trigger)
@@ -168,6 +177,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
         except (SyntaxError, ValueError, RecursionError, OverflowError):
             condition_domains = {}
             conditions.append(unknown(("unparsed", index)))
+        check_validation_deadline(deadline)
         for key, literals in condition_domains.items():
             if literals is None:
                 domains[key] = None
@@ -177,6 +187,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
     values = []
     state_count = 1
     for literals in domains.values():
+        check_validation_deadline(deadline)
         if literals is None:
             domain = [False, True]
         else:
@@ -191,6 +202,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
 
     combinations = set()
     for assignment in product(*values):
+        check_validation_deadline(deadline)
         state = dict(zip(domains, assignment))
         flags = tuple(bool(condition(state)) for condition in conditions)
         combinations.add(flags)
@@ -198,4 +210,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
             raise BackupValidationLimitExceeded(
                 f"验证未完成：可能生效的副表组合数量超过校验上限 {combination_limit}"
             )
-    return sorted(combinations, key=lambda flags: (sum(flags), flags))
+    check_validation_deadline(deadline)
+    result = sorted(combinations, key=lambda flags: (sum(flags), flags))
+    check_validation_deadline(deadline)
+    return result

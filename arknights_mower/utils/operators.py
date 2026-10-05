@@ -1,6 +1,7 @@
 import ast
 import copy
 from datetime import datetime, timedelta
+from time import monotonic
 from typing import Any, Literal, overload
 
 from evalidate import Expr, base_eval_model
@@ -2090,10 +2091,11 @@ class Operators:
         ret += "'dorms': [" + ",".join(dorm) + "]}"
         return ret
 
-    def validate_backup_plans(self):
-        """使用换班预演的合并校验检查可能的副表组合，保留当前排班与驻员。"""
+    def validate_backup_plans(self, *, max_seconds=None):
+        """独立检查可能的副表组合；可选耗时预算覆盖条件分析和组合检查。"""
         from arknights_mower.utils.backup_validation import (
             BackupValidationLimitExceeded,
+            check_validation_deadline,
             possible_backup_conditions,
         )
         from arknights_mower.utils.schedule_roster import validate_owned_operators
@@ -2109,42 +2111,46 @@ class Operators:
                 "message": f"基础验证失败：{error}",
             }
         backup_count = len(self.backup_plans)
+        deadline = None if max_seconds is None else monotonic() + max_seconds
+        tested_count = 0
         # 仅按条件证明互斥；主力不重叠不能证明合并配置互不影响。
         try:
             combinations = possible_backup_conditions(
                 self.backup_plans,
                 MAX_BACKUP_VALIDATION_COMBINATIONS,
                 known_operators=baseline.operators,
+                deadline=deadline,
             )
+            for flags in combinations:
+                check_validation_deadline(deadline)
+                condition = list(flags)
+                # 每个组合从独立模型开始，失败及检查顺序都不影响实际排班和驻员。
+                simulation = copy.copy(baseline)
+                simulation.operators, simulation.dorm = {}, []
+                error = simulation.swap_plan(condition, refresh=True)
+                tested_count += 1
+                if error is not None:
+                    active = "、".join(
+                        backup.name or f"副表{index + 1}"
+                        for index, (backup, enabled) in enumerate(
+                            zip(self.backup_plans, flags)
+                        )
+                        if enabled
+                    )
+                    message = (
+                        f"副表组合验证失败（{active}）：{error}"
+                        if active
+                        else f"基础验证失败：{error}"
+                    )
+                    logger.info(message)
+                    return {"success": False, "status": "failed", "message": message}
+                check_validation_deadline(deadline)
         except BackupValidationLimitExceeded as error:
             return {
                 "success": False,
                 "status": "incomplete",
-                "message": f"{error}。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
+                "message": f"{error}，已验证 {tested_count} 次。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
             }
-        tested_count = 0
-        for flags in combinations:
-            condition = list(flags)
-            # 每个组合从独立模型开始，失败及检查顺序都不影响实际排班和驻员。
-            simulation = copy.copy(baseline)
-            simulation.operators, simulation.dorm = {}, []
-            error = simulation.swap_plan(condition, refresh=True)
-            tested_count += 1
-            if error is not None:
-                active = "、".join(
-                    backup.name or f"副表{index + 1}"
-                    for index, (backup, enabled) in enumerate(
-                        zip(self.backup_plans, flags)
-                    )
-                    if enabled
-                )
-                message = (
-                    f"副表组合验证失败（{active}）：{error}"
-                    if active
-                    else f"基础验证失败：{error}"
-                )
-                logger.info(message)
-                return {"success": False, "status": "failed", "message": message}
         if backup_count == 0:
             return {
                 "success": True,
