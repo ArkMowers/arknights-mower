@@ -777,6 +777,54 @@ def test_full_preceding_resident_is_not_replaced_by_idle_padding(solver):
     assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
 
 
+@pytest.mark.parametrize("index", [0, 2])
+@pytest.mark.parametrize("mood", [0, 5, 23, None])
+def test_preceding_fiammetta_keeps_position_and_does_not_block_recovery(
+    solver, index, mood
+):
+    solver.op_data.plan[ROOM][index] = Room("菲亚梅塔", "", ["银灰"])
+    solver.op_data.add(
+        Operator(
+            "菲亚梅塔",
+            ROOM,
+            index=index,
+            mood=mood if mood is not None else 1,
+            time_stamp=datetime.now() if mood is not None else None,
+        )
+    )
+    solver.physical[index] = "菲亚梅塔"
+    solver.get_agent_from_room()
+    final = FINAL.copy()
+    final[index] = "菲亚梅塔"
+    temporary = ["杜林", "琴柳", "黑角", "银灰", ""]
+    temporary[index] = "菲亚梅塔"
+
+    arrange(solver, final)
+
+    assert solver.confirms == [temporary, final]
+    assert all(names[index] == "菲亚梅塔" for names in solver.confirms)
+    target = solver.op_data.operators["银灰"]
+    assert (target.dorm_recovery_room, target.dorm_recovery_index) == (ROOM, 3)
+    assert solver.op_data.operators["菲亚梅塔"].dorm_recovery_room == ""
+    assert recovery_order_plan(solver.op_data, ROOM, final) is None
+
+
+def test_preceding_fiammetta_needs_no_idle_padding(solver):
+    solver.op_data.plan[ROOM][2] = Room("菲亚梅塔", "", ["银灰"])
+    solver.op_data.add(
+        Operator("菲亚梅塔", ROOM, index=2, mood=0, time_stamp=datetime.now())
+    )
+    solver.physical[2] = "菲亚梅塔"
+    solver.get_agent_from_room()
+    solver.op_data.config.free_blacklist.extend(["黑角", "红"])
+    final = ["杜林", "琴柳", "菲亚梅塔", "银灰", "陈"]
+
+    arrange(solver, final)
+
+    assert solver.confirms == [["杜林", "琴柳", "菲亚梅塔", "银灰", ""], final]
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
 def test_retained_full_resident_readback_must_not_compete_with_target(solver):
     solver.op_data.operators["红"].mood = 24
     read = solver.get_agent_from_room.side_effect

@@ -120,7 +120,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **代码映射**: [`BaseSchedulerSolver.resting`](arknights_mower/solvers/base_schedule.py)
 
 ### 单回宿管／单回目标 (`Single-Target Recovery Manager and Target`)
-- **定义**: 单回宿管是宿舍第 1 或第 2 位具有指定单人心情恢复技能的干员；单回目标是安排接受加成的休息干员。目标直接占住最终位置；前方非宿管位置保留已满心情的原住者，否则用最高心情的可用空闲干员垫位，确认后恢复其余入住者。相关宿管与目标均未移动或替换时保留配置；目标回满后，游戏可自动转移加成。
+- **定义**: 单回宿管是宿舍第 1 或第 2 位具有指定单人心情恢复技能的干员；单回目标是安排接受加成的休息干员。目标直接占住最终位置；前方非宿管位置保留已满心情的原住者，否则用最高心情的可用空闲干员垫位，确认后恢复其余入住者。相关宿管与目标均未移动或替换时保留配置；目标回满后，游戏可自动转移加成。菲亚梅塔不成为单回目标；建立单回时，无论心情是否已满，均保留她在目标前方的原位。
 - **代码映射**: [`recovery_order_plan`](arknights_mower/utils/dorm_recovery.py)
 
 ### 回满目标／强制离宿上限 (`Recovery Target and Mandatory Release Limit`)

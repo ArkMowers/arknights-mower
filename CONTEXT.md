@@ -120,7 +120,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`BaseSchedulerSolver.resting`](arknights_mower/solvers/base_schedule.py)
 
 ### Single-Target Recovery Manager and Target
-- **Definition**: Managers occupy dorm slots 1 or 2 and have the recognized single-operator recovery skill. The target occupies its final slot throughout setup. Earlier non-manager slots retain confirmed full residents or use the highest-mood eligible idle operators as padding; the remaining roster is then restored. Preserve the assignment while relevant managers and target keep their positions. The game may transfer the buff after the target becomes full.
+- **Definition**: Managers occupy dorm slots 1 or 2 and have the recognized single-operator recovery skill. The target occupies its final slot throughout setup. Earlier non-manager slots retain confirmed full residents or use the highest-mood eligible idle operators as padding; the remaining roster is then restored. Preserve the assignment while relevant managers and target keep their positions. The game may transfer the buff after the target becomes full. Fiammetta never becomes a single-target recovery recipient; recovery setup preserves her existing position before the target regardless of mood.
 - **Code Mapping**: [`recovery_order_plan`](arknights_mower/utils/dorm_recovery.py)
 
 ### Recovery Target and Mandatory Release Limit
