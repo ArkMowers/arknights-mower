@@ -23,10 +23,7 @@ from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.ldplayer_endpoint import LDPlayerEndpointResolver
 from arknights_mower.utils.device.manager_io import run_command, run_manager_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
-from arknights_mower.utils.device.mumu_discovery import (
-    parse_mumu_instances,
-    run_mumu_command,
-)
+from arknights_mower.utils.device.mumu_discovery import parse_mumu_instances
 from arknights_mower.utils.device.mumu_pro import MUMU_PRO_PRESET, MuMuProController
 from arknights_mower.utils.device.nox_endpoint import NoxBindingReader
 from arknights_mower.utils.device.preflight_io import ProductionPreflightIO
@@ -500,6 +497,10 @@ _INSTANCE_MANAGERS = {
     "windows.nox": _NoxManager,
 }
 
+# Lifecycle commands of these managers keep the vendor's merged binary output
+# and its own 1 MiB budget instead of the general captured-command channel.
+_MERGED_OUTPUT_MANAGERS = frozenset({_MuMuManager, _LDPlayerManager})
+
 # Presets whose own multi-instance manager can launch an already bound instance.
 MANAGED_INSTANCE_PRESETS = frozenset(_INSTANCE_MANAGERS) | {
     MUMU_PRO_PRESET,
@@ -524,6 +525,9 @@ class ProductionSimulator:
         genymotion=None,
     ):
         self._run = run or run_command
+        # A vendor lifecycle command keeps merged binary output and the manager
+        # budget, so it needs its own runner whenever the caller injects none.
+        self._manager_run = run or run_manager_command
         self._monotonic = monotonic
         self._avd = avd
         self._redroid = redroid or RedroidController(run=run, monotonic=monotonic)
@@ -548,15 +552,15 @@ class ProductionSimulator:
     def discover_mumu_pro(self, profile, timeout=6):
         return self._mumu_pro.discover(profile, timeout)
 
+    def _manager_runner(self, factory):
+        """The lifecycle runner an adapter needs when the caller injected none."""
+        return self._manager_run if factory in _MERGED_OUTPUT_MANAGERS else self._run
+
     def _adapter(self, profile, timeout):
         factory = _INSTANCE_MANAGERS.get(profile.preset_id)
         if factory is None:
             return None
-        run = self._run
-        if factory is _MuMuManager and run is run_command:
-            run = run_mumu_command
-        if factory is _LDPlayerManager and run is run_command:
-            run = run_manager_command
+        run = self._manager_runner(factory)
         query_timeout = getattr(profile, "manager_query_timeout", 3.0)
         adapter = factory(
             profile,
