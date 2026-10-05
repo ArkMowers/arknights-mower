@@ -1,0 +1,19 @@
+{
+  "title": "Restart Readiness Scan Budget",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.update_runtime.instances"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/process_control_tests.py",
+    "arknights_mower/tests/update_runtime_tests.py"
+  ]
+}
