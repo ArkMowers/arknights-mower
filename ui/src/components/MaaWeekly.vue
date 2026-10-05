@@ -5,12 +5,16 @@ import axios from 'axios'
 import { computed, h, inject, onMounted, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import {
+  CHIP_STAGES,
   WEEKDAYS,
   buildStageOptions,
   createStageOption,
   formatStageLabel,
   getGameWeekdayIndex,
-  isStageAvailableOnWeekday
+  isStageAvailableOnWeekday,
+  promoteChipStageOrder,
+  reorderWeeklyPlanStages,
+  setStageForWeekday
 } from '@/utils/maa_weekly_plan'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
 import MaaStageInventory from './MaaStageInventory.vue'
@@ -58,6 +62,33 @@ const filterStageByAvailability = ref(true)
 const editorModeStorageKey = 'maa-weekly-plan-editor-mode'
 const savedEditorMode = window.localStorage.getItem(editorModeStorageKey)
 const editorMode = ref(savedEditorMode === 'table' ? 'table' : 'list')
+const stageOrderStorageKey = 'maa-weekly-plan-table-stage-order'
+const tableStageOrder = ref(loadSavedStageOrder())
+
+function loadSavedStageOrder() {
+  try {
+    const order = JSON.parse(window.localStorage.getItem(stageOrderStorageKey) || '[]')
+    return Array.isArray(order) ? order.filter((stage) => typeof stage === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+watch(tableStageOrder, (order) => {
+  window.localStorage.setItem(stageOrderStorageKey, JSON.stringify(order))
+})
+
+function applyChipStageSelection() {
+  tableStageOrder.value = promoteChipStageOrder(tableStageOrder.value)
+  for (const plan of maa_weekly_plan.value) {
+    for (const stage of CHIP_STAGES) {
+      if (!filterStageByAvailability.value || isStageAvailableOnWeekday(stage, plan.weekday)) {
+        setStageForWeekday(maa_weekly_plan.value, plan.weekday, stage, true, tableStageOrder.value)
+      }
+    }
+  }
+  reorderWeeklyPlanStages(maa_weekly_plan.value, tableStageOrder.value)
+}
 
 watch(editorMode, (mode) => {
   if (mode === 'list' || mode === 'table') {
@@ -421,12 +452,13 @@ function cancelCopyDialogLongPress() {
       </n-tab-pane>
       <n-tab-pane name="table" tab="表格计划">
         <MaaWeeklyTable
+          v-model:stage-order="tableStageOrder"
           :latest-activity-options="latestActivityOptions"
           :filter-stage-by-availability="filterStageByAvailability"
         />
       </n-tab-pane>
       <n-tab-pane name="inventory" tab="库存选关">
-        <MaaStageInventory />
+        <MaaStageInventory @chip-limits-applied="applyChipStageSelection" />
       </n-tab-pane>
     </n-tabs>
 

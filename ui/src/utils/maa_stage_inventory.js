@@ -2,6 +2,8 @@
 // 即时预览镜像。修改物品解析、上限回退、比例参与条件或同分选择顺序时，需要同步
 // 更新两处实现及对应测试。
 
+import { CHIP_STAGES } from './maa_weekly_plan'
+
 export function createInventoryItemOption(label) {
   const value = typeof label === 'string' ? label.trim() : ''
   return { value, label: value, id: value, name: value }
@@ -35,7 +37,7 @@ export function inventoryCount(item, inventory = {}, itemAliases = {}) {
   return count
 }
 
-export function createLimitRule(stageOption) {
+export function createLimitRule(stageOption, limit = 0) {
   return {
     stage: stageOption.value,
     operator: 'and',
@@ -43,9 +45,17 @@ export function createLimitRule(stageOption) {
     items: (stageOption.materials || []).map((item) => ({
       item_id: item.id,
       item_name: item.name,
-      limit: 0
+      limit
     }))
   }
+}
+
+export function applyChipLimitPreset(limitRules, stageOptions) {
+  const chipRules = stageOptions
+    .filter((option) => CHIP_STAGES.includes(option.value))
+    .map((option) => createLimitRule(option, option.value.endsWith('-1') ? 5 : 8))
+  const chipStages = new Set(chipRules.map((rule) => rule.stage))
+  return [...limitRules.filter((rule) => !chipStages.has(rule.stage)), ...chipRules]
 }
 
 export function createRatioMember() {

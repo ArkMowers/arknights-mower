@@ -2,6 +2,7 @@ import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, h, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
+import { CHIP_STAGES, formatStageLabel, promoteChipStageOrder } from '@/utils/maa_weekly_plan'
 
 const state = vi.hoisted(() => ({ config: {} }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
@@ -9,13 +10,13 @@ vi.mock('pinia', () => ({ storeToRefs: () => state.config }))
 vi.mock('vuedraggable', () => ({
   default: defineComponent({
     props: ['modelValue'],
-    setup:
-      (props, { slots }) =>
-      () =>
+    setup(props, { slots }) {
+      return () =>
         h(
           'tbody',
           props.modelValue.map((element) => slots.item({ element }))
         )
+    }
   })
 }))
 vi.mock('naive-ui', () => ({
@@ -63,5 +64,33 @@ describe('周计划表格开放日显示', () => {
     expect(cells[1]).not.toContain('disabled')
     expect(rowCells(html, '1-7')[0]).toContain('打')
     expect(JSON.stringify(state.config.maa_weekly_plan.value)).toBe(planBefore)
+  })
+
+  it('外部排序将全部芯片排在剿灭之后，所有关卡均有拖动把手', async () => {
+    const html = await renderToString(
+      createSSRApp(MaaWeeklyTable, {
+        stageOrder: promoteChipStageOrder(['1-7']),
+        latestActivityOptions: [{ value: 'ACT-9', label: '活动' }]
+      })
+    )
+    const rows = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).slice(1)
+    expect(rows[0]).toContain('当期剿灭')
+    expect(rows[0]).toContain('stage-drag-handle')
+    for (const [index, stage] of CHIP_STAGES.entries()) {
+      expect(rows[index + 1]).toContain(formatStageLabel(stage))
+      expect(rows[index + 1]).toContain('stage-drag-handle')
+    }
+  })
+
+  it('保留手动排序中的剿灭位置，不强制重新置顶', async () => {
+    const html = await renderToString(
+      createSSRApp(MaaWeeklyTable, {
+        stageOrder: ['1-7', 'Annihilation', 'PR-A-1']
+      })
+    )
+    const rows = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).slice(1)
+    expect(rows[0]).toContain('1-7')
+    expect(rows[1]).toContain('当期剿灭')
+    expect(rows[1]).toContain('stage-drag-handle')
   })
 })

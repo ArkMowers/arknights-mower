@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applyChipLimitPreset,
   createLimitRule,
   createRatioMember,
   evaluateLimitRule,
@@ -8,6 +9,71 @@ import {
   previewInventorySelection,
   selectRatioMember
 } from './maa_stage_inventory.js'
+
+const chipStageOptions = [
+  ['PR-A', ['323', '重装'], ['326', '医疗']],
+  ['PR-B', ['324', '狙击'], ['325', '术师']],
+  ['PR-C', ['321', '先锋'], ['327', '辅助']],
+  ['PR-D', ['322', '近卫'], ['328', '特种']]
+].flatMap(([stage, ...materials]) =>
+  [1, 2].map((tier) => ({
+    value: `${stage}-${tier}`,
+    materials: materials.map(([id, name]) => ({
+      id: `${id}${tier}`,
+      name: `${name}${tier === 1 ? '芯片' : '芯片组'}`
+    }))
+  }))
+)
+
+describe('一键芯片上限', () => {
+  it('绑定全部八个芯片关卡的两种掉落，小芯片 5、大芯片 8', () => {
+    const rules = applyChipLimitPreset([], chipStageOptions)
+    expect(rules.map((rule) => rule.stage)).toEqual(chipStageOptions.map((option) => option.value))
+    for (const [index, rule] of rules.entries()) {
+      const limit = rule.stage.endsWith('-1') ? 5 : 8
+      expect(rule).toEqual({
+        stage: chipStageOptions[index].value,
+        operator: 'and',
+        enabled: true,
+        items: chipStageOptions[index].materials.map((item) => ({
+          item_id: item.id,
+          item_name: item.name,
+          limit
+        }))
+      })
+      const [first, second] = rule.items
+      expect(
+        evaluateLimitRule(rule, { [first.item_id]: limit, [second.item_id]: limit - 1 }).reached
+      ).toBe(false)
+      expect(
+        evaluateLimitRule(rule, { [first.item_id]: limit, [second.item_id]: limit }).reached
+      ).toBe(true)
+    }
+  })
+
+  it('替换已有芯片规则并启用，重复点击不增加规则且保留其他关卡', () => {
+    const other = createLimitRule({ value: '1-7', materials: [{ id: '30012', name: '固源岩' }] })
+    other.items[0].limit = 100
+    const existing = { stage: 'PR-A-1', enabled: false, operator: 'or', items: [] }
+    const original = [other, existing, { ...existing }]
+    const before = structuredClone(original)
+    const rules = applyChipLimitPreset(original, chipStageOptions)
+    expect(rules).toHaveLength(9)
+    expect(rules[0]).toBe(other)
+    expect(original).toEqual(before)
+    expect(applyChipLimitPreset(rules, chipStageOptions)).toEqual(rules)
+  })
+
+  it('忽略其他关卡且只影响执行计划中的芯片关卡', () => {
+    const options = [...chipStageOptions, { value: 'PR-A-3' }, { value: '1-7' }]
+    const rules = applyChipLimitPreset([], options)
+    expect(rules).toHaveLength(8)
+    const plan = ['PR-A-1', '1-7']
+    expect(previewInventorySelection(plan, rules, [], { 3231: 5, 3261: 5 }).stages).toEqual(['1-7'])
+    expect(plan).toEqual(['PR-A-1', '1-7'])
+    expect(applyChipLimitPreset(rules, [])).toEqual(rules)
+  })
+})
 
 describe('刷理智库存选关', () => {
   it('新绑定的比例成员默认比例为 0', () => {

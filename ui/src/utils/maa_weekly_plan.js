@@ -41,6 +41,12 @@ export const STAGE_DISPLAY_NAMES = {
 
 export const PRESET_STAGES = Object.keys(STAGE_DISPLAY_NAMES)
 export const ANNIHILATION_STAGE = 'Annihilation'
+export const CHIP_STAGES = PRESET_STAGES.filter((stage) => /^PR-[ABCD]-[12]$/.test(stage))
+
+export function promoteChipStageOrder(currentOrder = []) {
+  const promoted = new Set([ANNIHILATION_STAGE, ...CHIP_STAGES])
+  return [...promoted, ...currentOrder.filter((stage) => !promoted.has(stage))]
+}
 
 const STAGE_VALUE_MAP = Object.fromEntries(
   Object.entries(STAGE_DISPLAY_NAMES).map(([value, label]) => [label, value])
@@ -215,7 +221,11 @@ export function mergeTableStageOrder(options, currentOrder = [], activityValues 
     ordered.unshift(newAnnihilationOption)
   }
   const annihilationIndex = ordered.findIndex((option) => option.value === ANNIHILATION_STAGE)
-  ordered.splice(annihilationIndex >= 0 ? annihilationIndex + 1 : 0, 0, ...newActivityOptions)
+  let activityInsertIndex = annihilationIndex >= 0 ? annihilationIndex + 1 : 0
+  while (CHIP_STAGES.includes(ordered[activityInsertIndex]?.value)) {
+    activityInsertIndex += 1
+  }
+  ordered.splice(activityInsertIndex, 0, ...newActivityOptions)
 
   for (const option of optionsByValue.values()) {
     if (!activitySet.has(option.value)) {
