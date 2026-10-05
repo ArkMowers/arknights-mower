@@ -196,3 +196,7 @@ The [rescue daily and dormitory dispatch decision](../../.agents/notes/implement
 The [rescue manager priority decision](../../.agents/notes/implemented/bug-fix/2026-10-04-rescue-manager-before-fillers.md) verifies available single-target managers preceding ordinary fillers without a group-manager prerequisite.
 
 The [rescue queue merging decision](../../.agents/notes/implemented/bug-fix/2026-10-04-rescue-queue-merge.md) defines shared interval batching and per-member measured verification.
+
+Rescue worker groups use personal rescue thresholds for replacement triggers. Workers referenced by the normal main plan, including replacement lists, remain eligible for shared spare-bed recovery after leaving rescue work; episode standby tracking does not independently reserve them. Concrete staffing, departure and specialized reservations remain binding. Normal primary recovery targets retain precedence over ordinary filling.
+
+Within each explicit resting-priority tier, rescue bed planning compares at most 64 isolated recovery combinations through the normal handoff check. Remaining measured mood deficits estimate group recovery effort; selected combinations precede other groups in the same tier. Projections share only the read-only evaluation model and never update live observations or authorize exit.

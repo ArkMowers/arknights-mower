@@ -2340,3 +2340,65 @@ def test_standby_recovery_target_is_personal_rescue_threshold(solver, with_histo
     )
     op.rest_in_full = True
     assert recovery_target(data, name, *args) == (20, "rest_in_full")
+
+
+@pytest.mark.parametrize("capacity", [2, 3])
+def test_recovery_order_projects_combinations_without_changing_measured_state(
+    solver, capacity
+):
+    state = make_episode(solver)
+    data = solver.op_data
+    for i, name in enumerate(PRIMARY):
+        group = "较慢组" if i < 2 else ("较快组" if capacity == 3 else name)
+        data.operators[name].group = group
+        data.global_plan["default_plan"].plan[data.operators[name].room][
+            0
+        ].group = group
+        data.operators[name].mood = [3, 4, 14, 15][i]
+    data.groups = {"较慢组": PRIMARY[:2]}
+    if capacity == 3:
+        data.groups["较快组"] = PRIMARY[2:]
+    else:
+        data.groups.update({name: [name] for name in PRIMARY[2:]})
+    if capacity == 2:
+        # 固定宿管位不能算作退出后可用床位。
+        from arknights_mower.utils.plan import Room
+
+        data.global_plan["default_plan"].plan["dormitory_1"][2] = Room("杜林", "", [])
+        data.add(Operator("杜林", "", time_stamp=NOW))
+    solver.op_data = data.project_arrangements([state["rescue_plan"]])
+    before = {
+        n: (o.mood, o.time_stamp, o.current_room, o.current_index)
+        for n, o in solver.op_data.operators.items()
+    }
+    state_before = copy.deepcopy(state)
+    order = solver._emergency_recovery_order()
+    assert all(order[name][0] == 0 for name in PRIMARY[2:])
+    assert all(order[name][0] == 1 for name in PRIMARY[:2])
+    assert before == {
+        n: (o.mood, o.time_stamp, o.current_room, o.current_index)
+        for n, o in solver.op_data.operators.items()
+    }
+    assert state == state_before
+    solver.enter_room.assert_not_called()
+
+
+def test_recovery_order_bounds_projections_and_excludes_blacklisted_workers(solver):
+    state = make_episode(solver)
+    solver.op_data = solver.op_data.project_arrangements([state["rescue_plan"]])
+    data = solver.op_data
+    for name in ("杜林", "白面鸮", "桃金娘", "砾"):
+        data.add(Operator(name, "", mood=1, time_stamp=NOW))
+        state["targets"][name] = 16
+    for name in PRIMARY:
+        data.operators[name].mood = 1
+    data.config.free_blacklist = ["砾"]
+    solver._emergency_ready = MagicMock(return_value=False)
+
+    order = solver._emergency_recovery_order()
+
+    assert solver._emergency_ready.call_count == 64
+    assert "砾" not in order
+    assert all(rank == 1 for rank, _ in order.values())
+    assert all(data.operators[name].mood == 1 for name in order)
+    solver.enter_room.assert_not_called()
