@@ -162,9 +162,7 @@ async function applyStageOrder() {
         :on-create="createStageOption"
         @update:value="addStageRow"
       />
-      <span class="table-editor-hint">
-        可拖动把手调整关卡顺序；一键芯片上限可将芯片排在剿灭之后
-      </span>
+      <span class="table-editor-hint">可拖动把手调整关卡顺序</span>
     </div>
 
     <div class="task-table-wrap">
