@@ -625,6 +625,7 @@ class Operators:
                     and self.is_same_group_dorm_replacement(
                         self.operators[name], replacement
                     )
+                    and not self.operators[replacement].room.startswith("dorm")
                     and not self.operators[replacement].workaholic
                 }
                 required_beds = total_count - len(fixed_replacements)
@@ -640,6 +641,7 @@ class Operators:
             if not self.is_auto_free_dorm_slot(room, index)
             and any(
                 self.is_same_group_dorm_replacement(self.operators[slot.agent], name)
+                and not self.operators[name].room.startswith("dorm")
                 for name in slot.replacement
             )
         ]
@@ -1537,7 +1539,7 @@ class Operators:
         )
 
     def is_same_group_dorm_replacement(self, operator, name):
-        """主班替班只跨同一非空组内的工作岗位与宿舍绑组岗位。"""
+        """同一非空组内，宿舍绑组主班可与工作或宿舍主班互填替班。"""
         cover = self.operators.get(name)
         return bool(
             operator.is_high()
@@ -1547,7 +1549,7 @@ class Operators:
             and operator.group == cover.group
             and name in operator.replacement
             and operator.name != name
-            and operator.room.startswith("dorm") != cover.room.startswith("dorm")
+            and (operator.room.startswith("dorm") or cover.room.startswith("dorm"))
         )
 
     def is_auto_free_dorm_operator(self, operator):
@@ -1610,6 +1612,7 @@ class Operators:
             self.is_auto_free_dorm_operator(self.operators[name])
             or any(
                 self.is_same_group_dorm_replacement(self.operators[name], cover)
+                and not self.operators[cover].room.startswith("dorm")
                 and not self.operators[cover].workaholic
                 for cover in self.operators[name].replacement
             )
@@ -1701,8 +1704,12 @@ class Operators:
             if not 0 <= index < len(slots):
                 return False
             resident = self.operators.get(slots[index].agent)
-            return resident is not None and self.is_same_group_dorm_replacement(
-                resident, name
+            cover = self.operators.get(name)
+            return (
+                resident is not None
+                and cover is not None
+                and not cover.room.startswith("dorm")
+                and self.is_same_group_dorm_replacement(resident, name)
             )
         return False
 

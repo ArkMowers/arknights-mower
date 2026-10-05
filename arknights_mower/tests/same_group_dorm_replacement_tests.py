@@ -81,9 +81,7 @@ def test_cross_role_replacements_preserve_primary_identity(monkeypatch, reciproc
     )
 
 
-@pytest.mark.parametrize(
-    "invalid", ["empty", "different", "work_work", "dorm_dorm", "self"]
-)
+@pytest.mark.parametrize("invalid", ["empty", "different", "work_work", "self"])
 def test_primary_replacements_reject_invalid_relationships(monkeypatch, invalid):
     solver = make_solver(monkeypatch, reciprocal=True)
     plan = solver.global_plan["default_plan"].plan
@@ -94,9 +92,6 @@ def test_primary_replacements_reject_invalid_relationships(monkeypatch, invalid)
     elif invalid == "work_work":
         plan["meeting"] = [plan[ROOM][0]]
         plan[ROOM][0] = Room("杜林", "", [])
-    elif invalid == "dorm_dorm":
-        plan[ROOM][1].group = "公招"
-        plan[ROOM][0].replacement = ["蜜莓"]
     else:
         plan["contact"][0].replacement = [WORKER]
     assert "替换组不可用高效组干员" in solver.initialize_operators()
@@ -183,7 +178,7 @@ def resting_state(solver, reciprocal=False, index=0):
     return bed
 
 
-def mock_arrangement(solver, monkeypatch, final):
+def mock_arrangement(solver, monkeypatch, final, *, contact_cover=RESIDENT):
     """模拟游戏确认与读房，使用真实位置、恢复记录和倒计时更新。"""
     from arknights_mower.utils.operators import Operator
     from arknights_mower.utils.scheduler_task import SchedulerTask
@@ -193,7 +188,7 @@ def mock_arrangement(solver, monkeypatch, final):
         solver.op_data.add(Operator(name, "", mood=24, time_stamp=datetime.now()))
     solver.physical = final.copy()
     solver.op_data = solver.op_data.project_arrangements(
-        [{"contact": [RESIDENT], ROOM: final}]
+        [{"contact": [contact_cover], ROOM: final}]
     )
     solver.task = SchedulerTask(
         task_plan={ROOM: final.copy()}, task_type=TaskTypes.SHIFT_OFF
@@ -526,3 +521,201 @@ def test_fixed_alternative_matches_group_when_dynamic_capacity_is_insufficient(
     solver.get_resting_plan(solver.op_data.groups["公招"].copy(), covers, plan, 0)
     assert plan[ROOM][0] == WORKER
     assert {bed.name for bed in solver.op_data.dorm} == {"陈", "银灰", "能天使"}
+
+
+def make_dorm_pair(monkeypatch, *, different_rooms=False, mixed=False):
+    solver = make_solver(monkeypatch)
+    plan = solver.global_plan["default_plan"].plan
+    plan["contact"][0].replacement = ["黑角"]
+    plan[ROOM][0].replacement = ["蜜莓"]
+    other_room, other_index = ROOM, 1
+    if different_rooms:
+        plan[ROOM][1] = Room("杜林", "", [])
+        other_room, other_index = "dormitory_2", 0
+        plan[other_room] = [Room("蜜莓", "公招", [RESIDENT]), Room("冰酿", "", [])]
+        plan[other_room] += [Room("Free", "", []) for _ in range(3)]
+    else:
+        plan[ROOM][1] = Room("蜜莓", "公招", [WORKER] if mixed else [RESIDENT])
+    if mixed:
+        plan["contact"][0].replacement = [RESIDENT]
+    return solver, (other_room, other_index)
+
+
+@pytest.mark.parametrize("different_rooms", [False, True])
+def test_same_group_dorm_primaries_swap_without_recovery_bed_records(
+    monkeypatch, different_rooms
+):
+    solver, other = make_dorm_pair(monkeypatch, different_rooms=different_rooms)
+    initialize(solver)
+    data = solver.op_data
+    assert data.group_dorm == []
+    assert data.group_dorm_bed_count(data.groups["公招"]) == 0
+    plan, covers = {}, []
+    solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert plan["contact"] == ["黑角"]
+    assert plan[ROOM][0] == "蜜莓"
+    assert plan[other[0]][other[1]] == RESIDENT
+    base_schedule._merge_dorm_arrangement(plan, try_reorder(data, plan) or {})
+    projected = data.project_arrangements([plan])
+    for name, native, index in ((RESIDENT, ROOM, 0), ("蜜莓", *other)):
+        op = projected.operators[name]
+        assert (op.room, op.index, op.group) == (native, index, "公招")
+        assert op.is_high()
+        assert projected.get_dorm_by_name(name) == (None, None)
+    assert sum(bool(bed.name) for bed in projected.all_dorms()) == 1
+    assert projected.get_dorm_by_name(WORKER)[1] is not None
+    solver.op_data = projected
+    solver._suppress_train_correction = lambda plan: None
+    assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
+    projected.get_dorm_by_name(WORKER)[1].time = datetime.now() + timedelta(hours=2)
+    returned = next(
+        task for task in plan_metadata(projected, []) if task.type == TaskTypes.SHIFT_ON
+    )
+    assert returned.plan["contact"] == [WORKER]
+    assert returned.plan[ROOM][0] == RESIDENT
+    assert returned.plan[other[0]][other[1]] == "蜜莓"
+
+
+def test_dorm_and_working_primary_cycle_tracks_only_working_recovery(monkeypatch):
+    solver, other = make_dorm_pair(monkeypatch, mixed=True)
+    initialize(solver)
+    data = solver.op_data
+    assert data.get_group_dorm(ROOM, 0) is None
+    assert data.get_group_dorm(*other) is not None
+    assert data.group_dorm_bed_count(data.groups["公招"]) == 1
+    plan, covers = {}, []
+    solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert plan["contact"] == [RESIDENT]
+    assert plan[ROOM][:2] == ["蜜莓", WORKER]
+    assert all(not bed.name for bed in data.dorm)
+    projected = data.project_arrangements([plan])
+    assert projected.get_dorm_by_name("蜜莓") == (None, None)
+    assert projected.get_dorm_by_name(WORKER)[1].position == other
+    assert not projected.is_effective_free_slot(projected.get_group_dorm(*other))
+    solver.op_data = projected
+    solver._suppress_train_correction = lambda plan: None
+    assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
+
+
+@pytest.mark.parametrize("blocked", ["busy", "reserved", "missing"])
+def test_unavailable_dorm_primary_keeps_entire_group_native(monkeypatch, blocked):
+    solver, _ = make_dorm_pair(monkeypatch)
+    initialize(solver)
+    data = solver.op_data
+    if blocked == "busy":
+        monkeypatch.setattr(
+            base_schedule, "_is_mastery_busy", lambda name: name == "蜜莓"
+        )
+    elif blocked == "reserved":
+        data.reserved_product_replacements.add("蜜莓")
+    else:
+        data.operators["蜜莓"].current_room = "train"
+    before = data.get_current_room(ROOM, True)
+    plan, covers = {}, []
+    solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert plan == {} and covers == []
+    assert data.get_current_room(ROOM, True) == before
+    assert all(not bed.name for bed in data.all_dorms())
+
+
+def test_dorm_swap_exhaust_matching_does_not_add_dorm_exhaustion_triggers(monkeypatch):
+    solver, _ = make_dorm_pair(monkeypatch)
+    solver.global_plan["default_plan"].config.exhaust_require = [
+        WORKER,
+        RESIDENT,
+        "蜜莓",
+    ]
+    initialize(solver)
+    data = solver.op_data
+    assert data.exhaust_agent == {WORKER}
+    data.operators[WORKER].mood = 0
+    data.operators[RESIDENT].mood = data.operators["蜜莓"].mood = 0
+    assert solver._plan_exhaust_support(data.groups["公招"].copy()) == {}
+    plan, covers = {}, []
+    solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert plan[ROOM][:2] == ["蜜莓", RESIDENT]
+    assert sum(bool(bed.name) for bed in data.all_dorms()) == 1
+
+
+def test_temporarily_absent_dorm_primaries_do_not_trigger_normal_shift(monkeypatch):
+    solver, _ = make_dorm_pair(monkeypatch)
+    initialize(solver)
+    data = solver.op_data
+    data.operators[WORKER].mood = 24
+    for name in (RESIDENT, "蜜莓"):
+        data.operators[name].current_room, data.operators[name].current_index = "", -1
+        data.operators[name].mood = 0
+    solver.find_next_task = MagicMock(return_value=None)
+    assert solver._plan_primary_recovery(scan_moods=False)
+    assert solver.tasks == []
+    assert RESIDENT not in {op.name for op in solver.total_agent}
+    assert "蜜莓" not in {op.name for op in solver.total_agent}
+    solver._suppress_train_correction = lambda plan: None
+    correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert "contact" not in correction
+    assert correction[ROOM][:2] == [RESIDENT, "蜜莓"]
+
+
+@pytest.mark.parametrize("invalid", ["empty", "different", "self"])
+def test_dorm_primary_replacements_reject_invalid_group_or_self(monkeypatch, invalid):
+    solver, _ = make_dorm_pair(monkeypatch)
+    plan = solver.global_plan["default_plan"].plan
+    if invalid == "empty":
+        plan[ROOM][0].group = plan[ROOM][1].group = ""
+    elif invalid == "different":
+        plan[ROOM][1].group = "其他"
+    else:
+        plan[ROOM][0].replacement = [RESIDENT]
+    assert "替换组不可用高效组干员: 房间->dormitory_3" in solver.initialize_operators()
+
+
+def test_dorm_swaps_do_not_reduce_required_working_bed_capacity(monkeypatch):
+    solver, _ = make_dorm_pair(monkeypatch)
+    plan = solver.global_plan["default_plan"].plan
+    for i, (primary, cover) in enumerate(
+        (("陈", "夜莺"), ("银灰", "芬"), ("能天使", "砾"))
+    ):
+        plan[f"room_{i + 1}_1"] = [Room(primary, "公招", [cover])]
+    assert (
+        solver.initialize_operators()
+        == "公招 分组无法排班,所需宿舍数4大于当前有效宿舍数3"
+    )
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_dorm_primary_exchange_confirms_actual_single_recovery_and_countdown(
+    monkeypatch, mixed
+):
+    from arknights_mower.utils.operators import Operator
+
+    solver, _ = make_dorm_pair(monkeypatch, mixed=mixed)
+    initialize(solver)
+    final = [
+        "蜜莓",
+        WORKER if mixed else RESIDENT,
+        "陈" if mixed else WORKER,
+        "银灰" if mixed else "陈",
+        "黑角" if mixed else "银灰",
+    ]
+    mock_arrangement(
+        solver, monkeypatch, final, contact_cover=RESIDENT if mixed else "黑角"
+    )
+    if not mixed:
+        solver.op_data.operators[RESIDENT].mood = 0
+        solver.op_data.add(Operator("芬", "", mood=24, time_stamp=datetime.now()))
+    solver.agent_arrange_room({}, ROOM, solver.task.plan)
+    target = solver.op_data.operators[WORKER]
+    assert solver.physical == final
+    assert target.dorm_recovery_index == (1 if mixed else 2)
+    assert tuple(name for name, _, _ in target.dorm_recovery_fixed) == ("蜜莓",)
+    assert target.dorm_recovery_index in solver.reads[-1]
+    assert solver.op_data.get_dorm_by_name(WORKER)[1].time == solver.deadline
+    assert solver.op_data.get_dorm_by_name("蜜莓") == (None, None)
+    assert solver.op_data.get_dorm_by_name(RESIDENT) == (None, None)
+    assert (
+        sum(
+            bool(bed.name) and solver.op_data.operators[bed.name].is_high()
+            for bed in solver.op_data.all_dorms()
+        )
+        == 1
+    )
