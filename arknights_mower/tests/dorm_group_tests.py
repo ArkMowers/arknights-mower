@@ -633,13 +633,16 @@ def test_multiple_residents_swap_without_using_extra_beds(solver):
     assert solver.agent_get_mood() is None
 
 
-def test_same_group_name_cannot_be_used_as_dorm_replacement(solver):
+def test_same_group_worker_can_be_used_as_dorm_replacement(solver):
     resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
     resident.replacement = ["伊内丝"]
 
-    assert solver.initialize_operators() == (
-        "替换组不可用高效组干员: 房间->dormitory_1, 干员->伊内丝"
-    )
+    assert solver.initialize_operators() is None
+    worker = solver.op_data.operators["伊内丝"]
+    assert worker.is_high() and worker.room == "meeting" and worker.group == "联动"
+    fixed = solver.op_data.get_group_dorm("dormitory_1", 0)
+    assert solver.op_data.is_recovery_dorm(fixed, worker.name)
+    assert not solver.op_data.is_effective_free_slot(fixed)
 
 
 def test_explicit_free_uses_resident_slot_as_resting_bed(solver):

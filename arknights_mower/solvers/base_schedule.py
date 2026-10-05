@@ -3740,6 +3740,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not success:
                 break
             x = self.op_data.operators[agent]
+            if (x.room, x.index) in self.op_data.reserved_product_beds:
+                success = False
+                break
             if x.room not in base_room_list:
                 logger.debug(f"干员房间出错:{agent}")
                 success = False
@@ -3759,7 +3762,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
             def replacement_available(obj):
                 replacement = self.op_data.operators[obj]
-                if replacement.current_room != "" and not replacement.is_resting():
+                same_group_cover = self.op_data.is_same_group_dorm_replacement(x, obj)
+                if (
+                    replacement.current_room
+                    and not replacement.is_resting()
+                    and not (
+                        same_group_cover
+                        and obj in agents
+                        and (replacement.current_room, replacement.current_index)
+                        == (replacement.room, replacement.index)
+                    )
+                ):
                     return False
                 if not x.room.startswith("dorm") and self.op_data.replacement_exhausted(
                     obj
@@ -3781,6 +3794,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for obj in self.op_data.replacement_candidates(x)
                 if replacement_available(obj)
             ]
+        assignments = {}
         if success:
             assignments = match_replacements(replacement_options)
             if assignments is None:
@@ -3794,28 +3808,51 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     replacement_options,
                 )
                 return
-            for agent in replacement_options:
+        if success:
+            working = tuple(
+                name
+                for name in agents
+                if not self.op_data.operators[name].room.startswith("dorm")
+                and not self.op_data.operators[name].workaholic
+            )
+            previous = dorm_residents(self.op_data)
+            for attempt in range(2):
+                if attempt:
+                    assignments = match_replacements(
+                        replacement_options, preferred=working
+                    )
+                    if assignments is None:
+                        return
+                fixed_resting = {
+                    cover
+                    for owner, cover in assignments.items()
+                    if self.op_data.operators[owner].room.startswith("dorm")
+                    and self.op_data.is_same_group_dorm_replacement(
+                        self.op_data.operators[owner], cover
+                    )
+                }
+                resting_agents = [
+                    x
+                    for x in agents
+                    if not self.op_data.operators[x].workaholic
+                    and not self.op_data.operators[x].room.startswith("dorm")
+                    and x not in fixed_resting
+                ]
+                # 先按配置首选验证整组分床；床位不足时，完整匹配优先
+                # 保留可恢复工作替班，不把固定宿舍位开放为普通 Free。
+                dorms = self.op_data.assign_dorm_group(
+                    resting_agents, active_groups=active_groups
+                )
+                if dorms is not None:
+                    break
+            else:
+                return
+            for agent, replacement in assignments.items():
                 x = self.op_data.operators[agent]
-                _rep = assignments[agent]
-                __replacement.append(_rep)
+                __replacement.append(replacement)
                 __plan.setdefault(x.room, ["Current"] * len(self.op_data.plan[x.room]))[
                     x.index
-                ] = _rep
-        if success:
-            resting_agents = [
-                x
-                for x in agents
-                if not self.op_data.operators[x].workaholic
-                and not self.op_data.operators[x].room.startswith("dorm")
-            ]
-            # 床位判断和分配使用同一套规则。先为整组模拟预留，避免低优占床
-            # 提前挡住大组，也避免分到一半才失败留下脏状态。
-            previous = dorm_residents(self.op_data)
-            dorms = self.op_data.assign_dorm_group(
-                resting_agents, active_groups=active_groups
-            )
-            if dorms is None:
-                return
+                ] = replacement
             restore_displaced_resting(self.op_data, previous, __plan, self.tasks)
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
@@ -8032,11 +8069,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 elif get_time or recovery_ordered:
                     refresh_indexes = self.op_data.get_refresh_index(room, plan[room])
                     if recovery_ordered:
-                        refresh_indexes = [
-                            i
-                            for i, slot in enumerate(self.op_data.plan[room])
-                            if slot.agent == "Free"
-                        ]
+                        refresh_indexes = sorted(
+                            set(refresh_indexes)
+                            | {
+                                i
+                                for i, slot in enumerate(self.op_data.plan[room])
+                                if slot.agent == "Free"
+                            }
+                        )
                     if (
                         getattr(self.task, "emergency_dorm", False)
                         and "菲亚梅塔" in plan[room]

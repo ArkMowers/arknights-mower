@@ -35,6 +35,8 @@ def recovery_target(op_data, room, agents):
             i
             for i, name in enumerate(agents)
             if op_data.is_dynamic_dorm_position(room, i, name)
+            or (bed := op_data.get_group_dorm(room, i)) is not None
+            and op_data.is_recovery_dorm(bed, name)
         ),
         None,
     )

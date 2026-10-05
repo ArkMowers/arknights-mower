@@ -1,0 +1,21 @@
+{
+  "title": "Shared Same-Group Dormitory Replacements",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-05",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-22]",
+    "[INV-SCHED-02]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_resting_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/same_group_dorm_replacement_tests.py"
+  ]
+}

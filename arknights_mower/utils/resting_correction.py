@@ -143,6 +143,7 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     or name in reserved
                     or name in TRADE_ORDER_AGENTS
                     or candidate.is_high()
+                    and not op_data.is_same_group_dorm_replacement(owner, name)
                     or candidate.current_room
                     and not candidate.is_resting()
                     or candidate.time_stamp is None
@@ -193,6 +194,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 if (
                     cover is None
                     or cover.is_high()
+                    and not op_data.is_same_group_dorm_replacement(op, candidate)
                     or candidate in reserved | resting
                     or candidate in TRADE_ORDER_AGENTS
                     or op_data.is_dorm_replacement(candidate)
@@ -291,7 +293,10 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                             name not in TRADE_ORDER_AGENTS
                             and name not in reserved
                             and not is_busy(name)
-                            and not op_data.operators[name].is_high()
+                            and (
+                                not op_data.operators[name].is_high()
+                                or op_data.is_same_group_dorm_replacement(op, name)
+                            )
                             and (
                                 actual is not None
                                 and actual.name == name
@@ -309,7 +314,7 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                     # 部分执行失败后没有可用替班，先保留原宿舍干员；
                     # 不抢占其他岗位，也不绕过训练室保护把整组叫回。
                     logger.debug(f"{op.name}宿舍替班暂不可用，保留本人并等待后续纠错")
-                    desired = op.name
+                    desired = "Current" if op.is_working() else op.name
             changes[op.room, op.index] = desired
         for (room, index), name in changes.items():
             current = op_data.get_current_operator(room, index)

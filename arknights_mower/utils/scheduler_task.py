@@ -1052,6 +1052,7 @@ def generate_plan_by_drom(
     # 批次另行复制，避免床位换人后把原入住者的时间套给新入住者。
     op_data = copy.copy(op_data)
     op_data.dorm = copy.deepcopy(op_data.dorm)
+    op_data.group_dorm = copy.deepcopy(getattr(op_data, "group_dorm", []))
     op_data.operators = copy.deepcopy(op_data.operators)
     batches = copy.deepcopy(batches)
     ordered = sorted(batches, key=lambda batch: batch[0])
@@ -1325,8 +1326,10 @@ def plan_metadata(op_data, tasks):
                 continue
             grouped_dorms[operator.group].append(dorm)
             if (
-                not op_data.has_rest_mood_limit(dorm.name)
-            ) and not op_data.skip_idle_dorm_release(dorm.name):
+                dorm in op_data.dorm
+                and not op_data.has_rest_mood_limit(dorm.name)
+                and not op_data.skip_idle_dorm_release(dorm.name)
+            ):
                 free_rooms.append(dorm)
     new_task = {}
     for group_name, dorms in grouped_dorms.items():
