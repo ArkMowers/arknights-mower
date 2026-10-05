@@ -211,7 +211,7 @@ def test_rescue_group_leaves_together_without_reserving_beds(staffing, complete)
         assert not any(room.startswith("dorm") for room in task.plan)
         assert set(state["standby_workers"]) == set(COVERS[:2])
         solver._emergency_sync_reservations()
-        assert set(COVERS[:2]) <= data.emergency_reserved_agents
+        assert not set(COVERS[:2]) & data.emergency_reserved_agents
     else:
         assert not solver.tasks
         assert state["rescue_plan"] == original
@@ -302,3 +302,51 @@ def test_staffing_completion_syncs_reservations_before_first_dorm_plan(staffing)
     solver._emergency_plan_beds = MagicMock(side_effect=plan_beds)
     solver._emergency_tick()
     solver._emergency_plan_beds.assert_called_once_with(state)
+
+
+@pytest.mark.parametrize("offset,replace", [(-0.01, True), (0, False), (0.01, False)])
+def test_rescue_worker_rotates_only_below_personal_rescue_line(
+    staffing, offset, replace
+):
+    from arknights_mower.utils.operators import Operator
+
+    solver, state = staffing.solver, staffing.state
+    solver.op_data = solver.op_data.project_arrangements([state["rescue_plan"]])
+    data = solver.op_data
+    state["staffing_complete"] = True
+    state["phase"] = "recovering"
+    room = next(iter(state["rescue_plan"]))
+    state["worker_replacements"] = {room: [["杜林"]]}
+    data.add(Operator("杜林", "", mood=24, time_stamp=NOW))
+    op = data.operators[COVERS[0]]
+    op.lower_limit, op.upper_limit = 4, 20
+    op.mood = data.rescue_mood_threshold(op) + offset
+    assert op.mood < data.resting_mood_threshold(op)
+    assert solver._emergency_replace_low_workers() is replace
+
+
+@pytest.mark.parametrize("normal_member", [False, True])
+def test_departed_rescue_workers_can_fill_beds_only_when_in_normal_roster(
+    staffing, normal_member
+):
+    from arknights_mower.utils.dorm_candidates import (
+        dorm_candidates,
+        dorm_task_reservations,
+    )
+    from arknights_mower.utils.operators import Operator
+
+    solver, state = staffing.solver, staffing.state
+    name = COVERS[0] if normal_member else "杜林"
+    if not normal_member:
+        solver.op_data.add(Operator(name, "", mood=0, time_stamp=NOW))
+    op = solver.op_data.operators[name]
+    op._current_room, op.current_index, op.mood = "", -1, 0
+    state["standby_workers"] = [name]
+    solver._emergency_sync_reservations()
+    reserved, _ = dorm_task_reservations(solver.op_data, [])
+    candidates = dorm_candidates(solver.op_data, reserved)
+    assert (name in candidates.recovering) is normal_member
+    # 专项任务预约仍保护正常表中出现的离岗干员。
+    task = SchedulerTask(task_plan={"central": [name]})
+    reserved, _ = dorm_task_reservations(solver.op_data, [task])
+    assert name not in dorm_candidates(solver.op_data, reserved).recovering

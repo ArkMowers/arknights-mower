@@ -1,0 +1,21 @@
+{
+  "title": "Rescue worker release and spare beds",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_sync_reservations",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_replace_low_workers"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_staffing_replan_tests.py"
+  ]
+}

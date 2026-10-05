@@ -194,11 +194,18 @@ class EmergencyRecoveryMixin:
             if state and state.get("phase") != "returning"
             else None
         )
+        normal_names = {
+            name
+            for room in self.op_data.global_plan["default_plan"].plan.values()
+            for slot in room
+            for name in (slot.agent, *slot.replacement)
+            if name not in ("", "Free", "Current")
+        }
         self.op_data.emergency_reserved_agents = (
             set(state.get("ready_members", ()))
             | set(state.get("staffing_members", ()))
             | set(state.get("release_members", ()))
-            | set(state.get("standby_workers", ()))
+            | (set(state.get("standby_workers", ())) - normal_names)
         )
 
     def _emergency_save(self):
@@ -451,7 +458,7 @@ class EmergencyRecoveryMixin:
                 and not data.config.is_workaholic(op.name)
                 and has_resting_mood(op)
                 and not op.mood_is_prediction
-                and op.current_mood() < data.resting_mood_threshold(op)
+                and op.current_mood() < data.rescue_mood_threshold(op)
                 for _, _, op, candidates in members
             ):
                 continue
