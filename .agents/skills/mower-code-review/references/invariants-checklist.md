@@ -122,12 +122,14 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-WEB-01] Local Log Read Boundary**: In a WebView session without a configured token, do read-only log requests require loopback and valid browser origin metadata while AI chat and mutating endpoints retain credential checks?
 
 ### 2.6 Configuration Backup
+- [ ] **[INV-CFG-02] Running Plan Restore Cohesion**: Does running-plan restoration include actual startup advanced settings, preserve unrelated configuration and previous models/files on failure, and reload both frontend stores before resuming autosave?
 
 - [ ] **[INV-CFG-01] Configuration Data Cohesion**: Does import validate configuration and tmp data before writing, preserve local access settings, clear saved scheduling state, and restore original files when any write or database restore fails?
 
 ### 2.7 Software Update
 
 - [ ] **[INV-UPD-01] Owned Command Completion**: Does each Windows update command own descendants before execution, verify completion within its budget, and preserve other instances when preparation is cancelled?
+- [ ] **[INV-UPD-02] Complete Registration Scan**: Do strict registration scans retry within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` instead of returning an incomplete snapshot after budget exhaustion?
 
 ---
 

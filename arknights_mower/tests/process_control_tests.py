@@ -404,7 +404,9 @@ class ProcessRestartPersistenceTests(unittest.TestCase):
         def ready():
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
-                records = runtime.instances(state, timeout=0)
+                records = runtime.instances(
+                    state, timeout=min(5, max(0, deadline - time.monotonic()))
+                )
                 if len(records) == 1 and records[0].get("ready"):
                     return records[0]
                 time.sleep(0.05)
@@ -418,7 +420,20 @@ class ProcessRestartPersistenceTests(unittest.TestCase):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            record = ready()
+            read_text = Path.read_text
+            read_attempts = 0
+
+            def read_registration(path, *args, **kwargs):
+                nonlocal read_attempts
+                if path.parent == state / "instances":
+                    read_attempts += 1
+                    if read_attempts == 1:
+                        raise PermissionError("registration temporarily locked")
+                return read_text(path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", read_registration):
+                record = ready()
+            self.assertGreaterEqual(read_attempts, 2)
             assert record["account"] == "original"
             assert record["notice"] is True
             acknowledged = (config_dir / "state.json").read_bytes()

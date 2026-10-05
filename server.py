@@ -1213,16 +1213,45 @@ def restore_running_plan():
 
     with workshop_lock:
         previous_plan = config.plan
-        restored = config.PlanModel(**source_plan)
-        # Advanced settings belong to the live configuration, not the schedule snapshot.
-        restored.advanced_settings = previous_plan.advanced_settings
+        previous_conf = config.conf
+        try:
+            restored = config.PlanModel(**source_plan)
+            if restored.advanced_settings is None:
+                return {"error": "运行排班缺少高级设置快照，请重启 Mower 后重试"}, 409
+            restored_conf = apply_advanced_settings(
+                previous_conf, restored.advanced_settings
+            )
+        except (ValidationError, ValueError, TypeError) as exc:
+            return {"error": "运行排班快照无效", "message": str(exc)}, 400
+        try:
+            originals = {
+                path: path.read_bytes() if path.exists() else None
+                for path in (config.plan_path, config.conf_path)
+            }
+        except OSError:
+            logger.exception("读取还原前的配置文件失败")
+            return {"error": "无法读取当前配置文件，请检查文件权限"}, 500
         config.plan = restored
+        config.conf = restored_conf
         try:
             config.save_plan()
+            config.save_conf()
         except Exception:
             config.plan = previous_plan
-            raise
-    return {"message": "已还原为当前运行排班"}
+            config.conf = previous_conf
+            for path, content in originals.items():
+                try:
+                    if content is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        config.atomic_write(
+                            path, lambda stream, raw=content: stream.buffer.write(raw)
+                        )
+                except OSError:
+                    logger.exception("还原失败后的配置文件回滚失败：%s", path)
+            logger.exception("运行排班及高级设置还原失败")
+            return {"error": "还原写入失败，请检查文件权限及日志"}, 500
+    return {"message": "已还原为当前运行排班及高级设置"}
 
 
 @app.route("/operator")
