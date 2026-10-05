@@ -23,7 +23,7 @@ Startup and manual callers share `Operators.validate_backup_plans`; condition an
 
 ## Verification
 
-Virtual-clock regressions cover analysis and merged-plan exhaustion, confirmed-error precedence, caller isolation, successful checks within budget, untimed manual coverage and the startup budget argument. The [Scheduling Plan contract](../../../../docs/subsystems/base-scheduler.md) retains runtime validation and resource limits.
+Virtual-clock regressions cover analysis and merged-plan exhaustion, confirmed-error precedence, caller isolation, successful checks within budget, untimed manual coverage, the startup budget argument and device preparation cleanup with the updated validator signature. The [Scheduling Plan contract](../../../../docs/subsystems/base-scheduler.md) retains runtime validation and resource limits.
 
 ## Standards Findings
 

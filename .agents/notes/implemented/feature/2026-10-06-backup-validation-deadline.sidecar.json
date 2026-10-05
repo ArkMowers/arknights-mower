@@ -18,6 +18,7 @@
   "test_suites": [
     "arknights_mower/tests/backup_validation_tests.py",
     "arknights_mower/tests/backup_condition_coverage_tests.py",
-    "arknights_mower/tests/base_scheduler_tests.py"
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/device_preparation_lifecycle_tests.py"
   ]
 }
