@@ -7,9 +7,21 @@ from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 from arknights_mower.utils.scheduler_task import rebalance_closing_dorm_slots
 
 
-def match_replacements(options, *, allow_partial=False):
-    """保留可行首选；默认要求完整匹配，协调阶段可取得最大部分匹配。"""
-    owners = {}
+def match_replacements(options, *, allow_partial=False, preferred=()):
+    """保留可行首选；床位不足时先保留固定恢复替班的最大匹配。"""
+    preferred = set(preferred)
+    seed = (
+        match_replacements(
+            {
+                name: [cover for cover in covers if cover in preferred]
+                for name, covers in options.items()
+            },
+            allow_partial=True,
+        )
+        if preferred
+        else {}
+    )
+    owners = {cover: name for name, cover in seed.items()}
 
     def reserve(name, seen):
         for cover in options[name]:
@@ -26,6 +38,8 @@ def match_replacements(options, *, allow_partial=False):
         return False
 
     for name in options:
+        if name in owners.values():
+            continue
         if not reserve(name, set()) and not allow_partial:
             return None
     return {name: cover for cover, name in owners.items()}
@@ -48,8 +62,12 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         op = state.operators.get(name)
         return (
             op is not None
-            and not op.is_high()
-            and name not in protected | selected | required | set(TRADE_ORDER_AGENTS)
+            and (not op.is_high() or state.is_same_group_dorm_replacement(target, name))
+            and name not in protected | selected | set(TRADE_ORDER_AGENTS)
+            and (
+                name not in required
+                or state.is_same_group_dorm_replacement(target, name)
+            )
             and not state.is_dorm_replacement(name)
             and (
                 target.room.startswith("dorm") or not state.replacement_exhausted(name)
@@ -60,7 +78,11 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
     def available(state, name, target):
         op = state.operators.get(name)
         return eligible(state, name, target) and (
-            not op.current_room or op.is_resting()
+            not op.current_room
+            or op.is_resting()
+            or state.is_same_group_dorm_replacement(target, name)
+            and name in required
+            and (op.current_room, op.current_index) == (op.room, op.index)
         )
 
     def protected_rest(state, name):
@@ -83,7 +105,18 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         for member in members:
             worker = state.operators[member]
             if worker.is_working() and worker.current_room != worker.room:
-                return None
+                working_slots = state.plan.get(worker.current_room, [])
+                covered = (
+                    state.operators.get(working_slots[worker.current_index].agent)
+                    if 0 <= worker.current_index < len(working_slots)
+                    else None
+                )
+                if (
+                    covered is None
+                    or covered.name not in members
+                    or not state.is_same_group_dorm_replacement(covered, member)
+                ):
+                    return None
             if (worker.current_room, worker.current_index) != (
                 worker.room,
                 worker.index,
