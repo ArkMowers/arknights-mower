@@ -27,6 +27,7 @@ from arknights_mower.utils.device.io_budget import (
 )
 from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
 from arknights_mower.utils.device.maatouch import MaaTouch
+from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.mumu12ipc.capture import MuMuCaptureSession
 from arknights_mower.utils.device.mumu12ipc.input import MuMuInputSession as MuMu12IPC
 from arknights_mower.utils.device.recovery import (
@@ -540,15 +541,17 @@ class Device:
             )
             timeout = io_timeout(10)
             if argv[0] == self.client.adb_bin:
-                timeout = guard_adb(argv[0], timeout=timeout, run=subprocess.run)
-            data = subprocess.check_output(
+                timeout = guard_adb(argv[0], timeout=timeout, run=run_command)
+            data = run_command(
                 argv,
+                stdout=subprocess.PIPE,
+                check=True,
                 timeout=timeout,
                 stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if __system__ == "windows"
                 else 0,
-            )
+            ).stdout
             return bytes2img(data)
         raise ValueError(f"不支持的截图后端：{backend}")
 

@@ -9,6 +9,7 @@ from arknights_mower import __system__
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.server import guard_adb
 from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.log import logger
 
 
@@ -36,7 +37,7 @@ class Session:
             return
         client = self.client
         deadline = time.monotonic() + io_timeout(10)
-        guard_adb(client.adb_bin, timeout=io_timeout(10), run=subprocess.run)
+        guard_adb(client.adb_bin, timeout=io_timeout(10), run=run_command)
         with self._lock:
             if self._closed_event.is_set() or self.owner_pid != os.getpid():
                 raise ConnectionError("MaaTouch 会话已关闭")

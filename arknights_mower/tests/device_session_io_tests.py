@@ -566,6 +566,28 @@ class SimulatorStopBindingTests(unittest.TestCase):
 
 
 class SimulatorIOTests(unittest.TestCase):
+    def test_lifecycle_runner_follows_the_manager_class(self):
+        from arknights_mower.utils.device import session_io
+        from arknights_mower.utils.device.manager_io import (
+            run_command,
+            run_manager_command,
+        )
+
+        simulator = ProductionSimulator()
+        for factory, expected in (
+            (session_io._MuMuManager, run_manager_command),
+            (session_io._LDPlayerManager, run_manager_command),
+            (session_io._NoxManager, run_command),
+        ):
+            with self.subTest(factory=factory.__name__):
+                self.assertIs(simulator._manager_runner(factory), expected)
+        injected = Mock()
+        for factory in session_io._INSTANCE_MANAGERS.values():
+            with self.subTest(injected=factory.__name__):
+                self.assertIs(
+                    ProductionSimulator(run=injected)._manager_runner(factory), injected
+                )
+
     def test_manager_zero_exit_error_output_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             manager = Path(folder) / "MuMuManager.exe"

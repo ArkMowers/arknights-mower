@@ -14,7 +14,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
     run_endpoint_command,
 )
-from arknights_mower.utils.device.manager_io import MAX_OUTPUT
+from arknights_mower.utils.device.manager_io import MAX_OUTPUT, run_command
 from arknights_mower.utils.path import resolve_config_path
 
 MUMU_PRO_PRESET = "macos.mumu_pro"
@@ -107,7 +107,7 @@ class MuMuProController:
     def __init__(
         self,
         *,
-        run=subprocess.run,
+        run=run_command,
         monotonic=time.monotonic,
         sleep=csleep,
         connect=socket.create_connection,

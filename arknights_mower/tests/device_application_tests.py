@@ -39,6 +39,52 @@ class ManualAdapter:
 
 
 class DeviceControlTests(unittest.TestCase):
+    def test_preflight_command_timeout_unlocks_settings_and_preserves_target(self):
+        import subprocess
+
+        from arknights_mower.tests.device_preflight_tests import PreflightIO
+        from arknights_mower.utils.config.conf import Conf
+        from arknights_mower.utils.device.preflight import PreflightService
+
+        serial = "127.0.0.1:16416"
+        configuration = Conf(
+            device={
+                "preset_id": "windows.mumu12",
+                "instance_id": "1",
+                "last_serial": serial,
+                "adb_path": "manual-adb",
+                "screenshot_backend": "mumu_ipc",
+                "touch_backend": "mumu_ipc",
+            }
+        )
+        saved_profile = configuration.device.model_dump()
+        io = PreflightIO()
+        io.host = "windows"
+        io.targets = [(serial, "device")]
+        adapter = MagicMock()
+        control = DeviceControl(
+            lambda: configuration, adapter, preflight=PreflightService(io)
+        )
+        self.addCleanup(control.close)
+
+        def capture(*args):
+            self.assertTrue(control.settings_status()["active"])
+            raise subprocess.TimeoutExpired(
+                ["MuMuManager.exe", "info", "-v", "all"], 0.5
+            )
+
+        io.capture_frame = capture
+        with patch("arknights_mower.utils.device.application.logger.info") as info:
+            result = control.start()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "frame_failed")
+        self.assertEqual(result.status, "failed")
+        self.assertFalse(control.settings_status()["active"])
+        self.assertIsNotNone(control.settings_status()["error"])
+        self.assertEqual(configuration.device.model_dump(), saved_profile)
+        adapter.open_verified.assert_not_called()
+        info.assert_called_once_with("正在检查设备 ADB、游戏安装与截图...")
+
     def test_production_adapter_retains_discovery_on_one_attempt_startup(self):
         for online_serial in ("127.0.0.1:16384", "127.0.0.1:16416"):
             with (

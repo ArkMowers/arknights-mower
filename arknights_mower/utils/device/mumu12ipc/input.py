@@ -8,6 +8,7 @@ from threading import Event, Lock
 
 from arknights_mower.utils import config
 from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.manager_io import MAX_OUTPUT, run_command
 from arknights_mower.utils.device.mumu12ipc.core import (
     MuMu12IPC,
     MuMuIpcError,
@@ -15,6 +16,7 @@ from arknights_mower.utils.device.mumu12ipc.core import (
 )
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.owned import close_process
+from arknights_mower.utils.log import logger
 
 INPUT_TIMEOUT = 10
 _INPUT_EVENTS = frozenset(
@@ -93,7 +95,11 @@ class MuMuInputSession:
         )
         # Read the coordinate-version flag before spawning the native worker.
         # Killing that worker must never orphan its own manager subprocess.
-        result = subprocess.run(
+        timeout = io_timeout(5)
+        logger.debug(
+            f"MuMu 输入版本查询开始：实例 {profile.instance_id}，超时 {timeout:.3f} 秒"
+        )
+        result = run_command(
             [
                 manager,
                 "setting",
@@ -104,10 +110,16 @@ class MuMuInputSession:
             ],
             capture_output=True,
             text=True,
+            # A version query is read for its ASCII answer; a stray byte in the
+            # vendor's own diagnostics must not replace that answer with a
+            # decoding failure.
+            errors="replace",
             check=True,
-            timeout=io_timeout(5),
+            timeout=timeout,
+            max_output=MAX_OUTPUT,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
+        logger.debug(f"MuMu 输入版本查询完成：实例 {profile.instance_id}")
         version = tuple(int(value) for value in result.stdout.strip().split(".")[:3])
         self._check_open()
         io_timeout(0)

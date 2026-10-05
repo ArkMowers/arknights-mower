@@ -70,7 +70,7 @@ FAQ_LIST = [
     {
         "keywords": ["无法", "模拟器", "启动", "设备"],
         "question": "没有adb.exe?\nA: 通过下方网站下载后解压，或直接使用 mower 安装路径下adb-buildin里的adb.exe\nhttps://dl.google.​co​m/android/repository/​platform-tool​s-latest-windows.zip​\nQ：“未检测到相应设备”无法启动模拟器（如图）。",
-        "answer": "ADB路径/ABD连接地址填写有误，方法详见Q&A怎么设置模拟器地址；\n模拟器文件夹/多开编号填写有误，详见输入框上❓提示，(MuMu默认模拟器多开编号为0)\nMuMu模拟器专属问题：选项“任务结束后关闭模拟器”与“关闭MuMu模拟器12时结束ADB进程”应一起勾选或都不勾选",
+        "answer": "ADB路径/ABD连接地址填写有误，方法详见Q&A怎么设置模拟器地址；\n模拟器文件夹/多开编号填写有误，详见输入框上❓提示，(MuMu默认模拟器多开编号为0)\nMuMu模拟器专属问题：选项“任务结束后关闭模拟器”与“关闭MuMu模拟器12时断开该实例的adb连接”应一起勾选或都不勾选",
     },
     {
         "keywords": ["目录名称无效", "WinError 267"],

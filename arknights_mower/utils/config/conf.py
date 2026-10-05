@@ -699,7 +699,7 @@ class SimulatorPart(ConfModel):
     close_simulator_when_idle: bool = False
     "任务结束后关闭模拟器"
     fix_mumu12_adb_disconnect: bool = False
-    "关闭MuMu模拟器12时结束adb进程"
+    "关闭MuMu模拟器12时断开该实例的adb连接"
     touch_method: str = "scrcpy"
     "触控模式"
     droidcast: DroidCastConf = Field(default_factory=DroidCastConf)
