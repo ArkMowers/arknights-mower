@@ -1885,7 +1885,52 @@ class Operators:
             and op.mood >= op.upper_limit
         )
 
-    def _find_dorm_slot(self, name, used, *, active_groups=None):
+    def dorm_roommates(self, room, index=None, *, plan=None):
+        """合并实际驻员、床位预约和本轮明确安排，排除离岗及被替换者。"""
+        plan = plan or {}
+        moving = {
+            name
+            for row in plan.values()
+            for name in row
+            if name not in ("", "Free", "Current")
+        }
+        beds = {bed.position: bed for bed in self.all_dorms()}
+        row = plan.get(room, [])
+        names = []
+        for position in range(len(self.plan.get(room, []))):
+            if position == index:
+                continue
+            if position < len(row) and row[position] != "Current":
+                name = row[position]
+            else:
+                current = self.get_current_operator(room, position)
+                name = current.name if current else ""
+                bed = beds.get((room, position))
+                if bed is not None and bed.name:
+                    name = bed.name
+                if name in moving:
+                    continue
+            if name not in ("", "Free", "Current"):
+                names.append(name)
+        return names
+
+    def dorm_isolation_cost(self, name, room, index=None, *, plan=None):
+        """同等分床条件下优先减少同组同住人数，不改变恢复层级。"""
+        if not config.conf.dorm_isolation:
+            return 0
+        roommates = set(self.dorm_roommates(room, index, plan=plan))
+        roommates.discard(name)
+        cost = 0
+        for group in config.conf.dorm_isolation:
+            if name not in group:
+                continue
+            shared = roommates.intersection(group)
+            cost += len(shared)
+        return cost
+
+    def _find_dorm_slot(
+        self, name, used, *, active_groups=None, plan=None, isolation=True
+    ):
         if self.rest_mood_complete(name):
             return None
         if resting_tier(self, name) == RestingTier.EXCLUDED:
@@ -1910,10 +1955,24 @@ class Operators:
         def takeover_cost(index):
             bed = self.dorm[index]
             if not bed.name:
-                return (0, 0, 0)
+                return (
+                    0,
+                    0,
+                    0,
+                    self.dorm_isolation_cost(name, *bed.position, plan=plan)
+                    if isolation
+                    else 0,
+                )
             tier, recovery_order = resting_key(self, bed.name, now)
             # 先使用空位，再接管层级最低、同级距回满最近的占位者。
-            return (1, -tier, -recovery_order)
+            return (
+                1,
+                -tier,
+                -recovery_order,
+                self.dorm_isolation_cost(name, *bed.position, plan=plan)
+                if isolation
+                else 0,
+            )
 
         return min(candidates, key=takeover_cost, default=None)
 
@@ -1957,7 +2016,7 @@ class Operators:
             )
         }
 
-    def assign_dorm_group(self, names, active_groups=None):
+    def assign_dorm_group(self, names, active_groups=None, plan=None):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
         # 达到个人上限后随组离岗即可，不再占床恢复。
         names = [name for name in names if not self.rest_mood_complete(name)]
@@ -1971,11 +2030,10 @@ class Operators:
                 resting_key(self, name),
             ),
         )
+        pending = copy.deepcopy(plan or {})
         for name in ordered_names:
             index = self._find_dorm_slot(
-                name,
-                used,
-                active_groups=active_groups,
+                name, used, active_groups=active_groups, plan=pending
             )
             if index is None:
                 if name in optional:
@@ -1984,6 +2042,10 @@ class Operators:
                 return None
             used.add(index)
             assignments.append((name, index))
+            room, position = self.dorm[index].position
+            pending.setdefault(room, ["Current"] * len(self.plan[room]))[position] = (
+                name
+            )
 
         rooms = []
         for name, index in assignments:

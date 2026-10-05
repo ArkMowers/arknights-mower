@@ -10,6 +10,7 @@ ADVANCED_SETTING_KEYS = (
     "version_update_resting_threshold",
     "version_update_threshold_advance_hours",
     "free_room",
+    "dorm_isolation",
     "merge_interval",
     "group_rest_in_full_on_mood_gap",
     "group_mood_gap_max_extra_wait_hours",

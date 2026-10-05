@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils.config.device_profile import (
@@ -541,6 +541,19 @@ class RIICPart(ConfModel):
 
     free_room: bool = False
     "宿舍不养闲人模式"
+    dorm_isolation: list[list[str]] = Field(default_factory=list)
+    "宿舍隔离分组；在原有分床优先级下尽量分散同组干员"
+
+    @field_validator("dorm_isolation")
+    @classmethod
+    def validate_dorm_isolation(cls, groups):
+        for group in groups:
+            if any(not name.strip() or name in {"Free", "Current"} for name in group):
+                raise ValueError("宿舍隔离分组只能填写干员姓名")
+            if len(group) != len(set(group)):
+                raise ValueError("宿舍隔离分组内不能重复填写干员")
+        return groups
+
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)

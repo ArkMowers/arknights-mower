@@ -123,6 +123,7 @@ from arknights_mower.utils.scheduler_task import (
     dorm_rebalance_signature,
     dorm_residents,
     find_next_task,
+    plan_dorm_isolation,
     plan_metadata,
     prioritize_new_dorm_recovery,
     protect_priority_tasks,
@@ -3841,7 +3842,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 # 先按配置首选验证整组分床；床位不足时，完整匹配优先
                 # 保留可恢复工作替班，不把固定宿舍位开放为普通 Free。
                 dorms = self.op_data.assign_dorm_group(
-                    resting_agents, active_groups=active_groups
+                    resting_agents,
+                    active_groups=active_groups,
+                    plan={**plan, **__plan},
                 )
                 if dorms is not None:
                     break
@@ -4018,6 +4021,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 reserved_slots,
                 reserved_names=reserved_names,
             )
+            task.plan = plan_dorm_isolation(self.op_data, task.plan, reserved_slots)
             return
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         ordinary = {
@@ -4082,6 +4086,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 step.plan,
                 reserved_slots,
                 reserved_names=reserved_names,
+            )
+            step.plan = plan_dorm_isolation(
+                simulation.op_data, step.plan, reserved_slots
             )
             returning.update(
                 name
