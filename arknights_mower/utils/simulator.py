@@ -40,9 +40,10 @@ def _clear_mumu_adb_transport() -> None:
         if not target or not adb_bin or not is_tcp_serial(target):
             return
         try:
+            # No runner override: the guarded route's default bounded runner
+            # cannot wait for an output handle a descendant inherited.
             run_adb(
                 [adb_bin, "disconnect", target],
-                run=subprocess.run,
                 check=False,
                 capture_output=True,
                 timeout=5,

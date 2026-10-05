@@ -59,16 +59,15 @@ class DeviceSessionCallerTests(unittest.TestCase):
                 return_value=40,
             )
         )
-        # ``simulator`` hands ``subprocess.run`` to the guarded route by name,
-        # so the same stand-in answers that consumer and every bounded-runner
-        # consumer; it is never a factory for the other patches.
+        # Every guarded route consumes the bounded runner at its own module, so
+        # one stand-in answers each consumer and never builds another patch.
         run = MagicMock(
             return_value=subprocess.CompletedProcess(
                 [], 0, b"Android Debug Bridge version 1.0.41\n", b""
             )
         )
         for target in (
-            "subprocess.run",
+            "arknights_mower.utils.device.adb_client.server.run_command",
             "arknights_mower.utils.device.device.run_command",
             "arknights_mower.utils.device.maatouch.session.run_command",
         ):
