@@ -244,7 +244,7 @@ class TestChooseTrainCurrentReplacement(unittest.TestCase):
                     self.assertEqual(invocation.args, ("train",))
                     self.assertEqual(
                         invocation.kwargs,
-                        {"departing_plan": desired} if enabled else {},
+                        {"departing_plan": desired},
                     )
 
 

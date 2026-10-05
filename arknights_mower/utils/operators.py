@@ -1315,8 +1315,15 @@ class Operators:
 
     def get_refresh_index(self, room, plan):
         """动态恢复位置共用计时读取，不受满心情清退开关影响。"""
+        if not room.startswith("dorm"):
+            return []
+        recovery_indices = {
+            bed.position[1] for bed in self.all_dorms() if bed.position[0] == room
+        }
         ret = []
         for i, name in enumerate(plan):
+            if i not in recovery_indices:
+                continue
             if name == "Current":
                 current = self.get_current_operator(room, i)
                 name = current.name if current is not None else None

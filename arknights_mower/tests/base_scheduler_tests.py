@@ -2600,6 +2600,8 @@ class TestDormShiftOffMerge(unittest.TestCase):
         )
         solver._prepare_shift_cycle = MagicMock()
         solver._refresh_deferred_product_reservations = MagicMock()
+        solver._scan_card_moods = MagicMock()
+        solver.task = None
         solver.tasks = []
         solver.find_next_task = MagicMock(return_value=None)
         solver.plan_metadata = MagicMock()
@@ -2620,12 +2622,18 @@ class TestDormShiftOffMerge(unittest.TestCase):
         dorm_plan = {"dormitory_1": ["Current", "Current", "银灰", "讯使", "Current"]}
         with (
             patch.object(base_schedule, "try_reorder", return_value=dorm_plan),
+            patch.object(
+                base_schedule,
+                "dorm_candidates",
+                return_value=SimpleNamespace(recovering=[], estimated_recovering=[]),
+            ),
             patch.object(base_schedule, "try_workshop_tasks"),
             patch.object(base_schedule, "try_add_release_dorm"),
         ):
             solver.plan_solver()
 
         shift_off = [task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF]
+        solver._scan_card_moods.assert_called_once()
         self.assertEqual(len(shift_off), 1)
         self.assertEqual(shift_off[0].plan["meeting"], ["陈", "初雪"])
         self.assertEqual(

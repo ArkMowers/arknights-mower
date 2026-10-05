@@ -6664,6 +6664,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 agents[idx] = "Free"
             if (
                 room.startswith("dorm")
+                and agents[idx] in self.op_data.operators
                 and self.op_data.rest_mood_complete(agents[idx])
                 and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
             ):

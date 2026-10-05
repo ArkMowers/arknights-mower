@@ -17,6 +17,8 @@ Vacancies precede takeover. Unfinished residents retain strict tier protection; 
 
 `try_add_release_dorm` serves vacant-bed filling, ordinary recovery planning and complete shift projection without a switch-dependent admission branch. Ordinary release creation checks the switch in `plan_metadata`, `generate_plan_by_drom` and `add_release_dorm`. Candidate scans, departure observation, changed-position reads, recovery countdown indices and stale release cancellation share the enabled policy. Selection preserves explicit full-mood names; ordinary release tasks provide their own Free placeholders, and mandatory personal-limit completion still prevents re-entry.
 
+Countdown indices cover known potential recovery beds only; non-dormitory facilities never request dormitory countdowns. Personal-limit selection checks apply only to registered names. Offline primary-planning and wakeup fixtures isolate card observation while retaining real shift planning, and changed-position and training departure tests require mood reads in both switch states.
+
 ## Verification
 
 `priority_replacement_admission_tests.py` pairs both switch states for priority takeover, ordinary admission near pending work, dynamic and auto-Free recovery timing, explicit roster selection and each ordinary release creation entry. Focused candidate, mood observation, dormitory recovery, group convergence, exclusions and personal-limit suites preserve reservations, actual occupancy, compensation and measured-mood isolation without device or network I/O.
