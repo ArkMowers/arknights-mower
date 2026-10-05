@@ -129,6 +129,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 
 ### 不养闲人清退／上限强制离宿 (`Idle Dormitory Release and Mood-Limit Release`)
 - **定义**: 不养闲人清退为其他人腾出休息位，受开关、排除名单和满员兜底规则约束。上限强制离宿遵守个人心情限制，不受不养闲人开关和排除名单豁免。离宿不等于安排上班；执行前须核验原住者仍在对应床位。
+- **开关边界**：不养闲人开关仅控制普通满心情清退任务的创建。
 - **代码映射**: [`BaseSchedulerSolver.prepare_release_dorm`](arknights_mower/solvers/base_schedule.py)
 
 ### 动态 Free 位／实际空床 (`Dynamic Free Slot and Vacant Bed`)

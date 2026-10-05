@@ -180,11 +180,13 @@ def test_non_free_room_skips_free_and_current_slots_without_keyerror(op_data):
     ) == [4]
 
 
-def test_disabled_free_room_keeps_full_resident_with_waiting_replacement(op_data):
-    op_data.config.free_room = False
+@pytest.mark.parametrize("free_room", [False, True])
+def test_full_resident_replacement_is_independent_of_idle_release(op_data, free_room):
+    op_data.config.free_room = free_room
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
-    assert tasks == []
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+    assert tasks[0].type == TaskTypes.NOT_SPECIFIC
     assert op_data.dorm[0].name == "空爆"
 
 

@@ -79,9 +79,13 @@ def test_recovery_record_lifecycle(solver, destination):
         assert not any(bed.name == name for bed in data.dorm)
 
 
+@pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("swapped", [False, True])
-def test_daily_room_read_only_ocr_changed_positions(solver, monkeypatch, swapped):
+def test_daily_room_read_only_ocr_changed_positions(
+    solver, monkeypatch, swapped, free_room
+):
     data = solver.op_data
+    data.config.free_room = free_room
     populate(data)
     monkeypatch.setattr(
         "arknights_mower.solvers.record.save_agent_action", lambda *a, **kw: None
@@ -216,7 +220,10 @@ def test_default_merge_window_is_ten_minutes():
     assert config.Conf().merge_interval == 10
 
 
-def test_room_read_cancels_only_departed_member_of_merged_release(solver, monkeypatch):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_room_read_cancels_only_departed_member_of_merged_release(
+    solver, monkeypatch, free_room
+):
     from arknights_mower.utils.scheduler_task import SchedulerTask
 
     data = solver.op_data
@@ -225,6 +232,7 @@ def test_room_read_cancels_only_departed_member_of_merged_release(solver, monkey
     for bed in data.dorm:
         bed.time = NOW
     solver.tasks = plan_metadata(data, [])
+    data.config.free_room = free_room
     assert len(solver.tasks) == 1
     solver.task = SchedulerTask()
     monkeypatch.setattr(

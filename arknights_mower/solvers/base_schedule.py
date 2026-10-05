@@ -2957,11 +2957,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if self.find_next_task(task_type=TaskTypes.SHIFT_OFF):
                 logger.info("有未完成的下班任务")
                 return
-            if (
-                scan_moods
-                and self.op_data.config.free_room
-                and not self._initial_mood_read_pending()
-            ):
+            if scan_moods and not self._initial_mood_read_pending():
                 reserved, _ = dorm_task_reservations(
                     self.op_data, [self.task, *self.tasks]
                 )
@@ -3008,10 +3004,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if not self._plan_primary_recovery(scan_moods=scan_moods):
             return False
         self._fill_empty_dorms(primary_planned=True)
-        if self.op_data.config.free_room or not self.find_next_task(
-            datetime.now() + timedelta(minutes=5)
-        ):
-            try_add_release_dorm({}, None, self.op_data, self.tasks)
+        try_add_release_dorm({}, None, self.op_data, self.tasks)
         return True
 
     def plan_solver(self):
@@ -6264,12 +6257,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 continue
             elif scene == Scene.INFRA_DETAILS and self.find("room_detail"):
                 if tasks[0] == "scan":
-                    if self.op_data.config.free_room:
-                        scan_result = self.get_agent_from_room(
-                            "train", departing_plan=agents
-                        )
-                    else:
-                        scan_result = self.get_agent_from_room("train")
+                    scan_result = self.get_agent_from_room(
+                        "train", departing_plan=agents
+                    )
                     logger.debug(f"需要选择的干员：{scan_result}")
                     if len(scan_result) < len(agents):
                         scan_result.extend([""] * (len(agents) - len(scan_result)))
@@ -6672,29 +6662,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 current_list.add(n)
             elif n not in ("", "Free", "Current"):
                 agents[idx] = "Free"
-            if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
-                __agent = self.op_data.operators[agents[idx]]
-                if (
-                    self.op_data.rest_mood_complete(agents[idx])
-                    and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
-                ) or (
-                    (getattr(self.op_data.config, "free_room", False))
-                    and not preserve_dorm_occupants
-                    and has_resting_mood(__agent)
-                    and __agent.mood == __agent.upper_limit
-                    and not (
-                        __agent.is_resting()
-                        and self.op_data.skip_idle_dorm_release(__agent.name)
-                        or (getattr(__agent, "dorm_mood_fallback", "") == room)
-                    )
-                    and not __agent.room.startswith("dorm")
-                    and not self.op_data.is_dorm_replacement_for_slot(
-                        __agent.name, room, idx
-                    )
-                ):
-                    agents[idx] = "Free"
-                    __agent.depletion_rate = 0
-                    logger.info("检测满心情释放休息位")
+            if (
+                room.startswith("dorm")
+                and self.op_data.rest_mood_complete(agents[idx])
+                and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
+            ):
+                self.op_data.operators[agents[idx]].depletion_rate = 0
+                agents[idx] = "Free"
+                logger.info("检测个人心情上限释放休息位")
         if not preserve_dorm_occupants:
             return self.preserve_resting_crafters(agents, room) or []
         return []
@@ -7370,9 +7345,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         and departing_plan[i] != "Current"
                         and _name not in departing_plan
                     )
-                    or (
-                        self.op_data.config.free_room and previous_position != (room, i)
-                    )
+                    or previous_position != (room, i)
                 )
                 if (
                     room.startswith("dorm")
@@ -7549,11 +7522,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     op.rest_mood_release_limit = op.upper_limit
                 if _operator == "菲亚梅塔":
                     self._refresh_fiammetta_task(None)
-                if (
-                    self.op_data.config.free_room
-                    and self.task is not None
-                    and self.task.type != TaskTypes.SHIFT_OFF
-                ):
+                if self.task is not None and self.task.type != TaskTypes.SHIFT_OFF:
                     release_task = self.find_next_task(
                         task_type=TaskTypes.RELEASE_DORM, meta_data=_operator
                     )
@@ -8111,7 +8080,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         or self._can_refresh_idle_dorm_search()
                         and self.task.type != TaskTypes.RUN_ORDER
                         and room != "train"
-                        and self.op_data.config.free_room
                     ):
                         # 换人前顺路读取离开者，不额外读取其工作／恢复倒计时。
                         self.get_agent_from_room(room, departing_plan=plan[room])

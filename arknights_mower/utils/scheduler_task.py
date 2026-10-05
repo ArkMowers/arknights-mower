@@ -8,6 +8,7 @@ from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
 from arknights_mower.utils.dorm_candidates import (
+    dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
     vacant_dorm_slots,
@@ -1959,12 +1960,7 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
 
 
 def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
-    """普通宿舍补位先使用真空床，再按统一候选与接管规则替换住客。"""
-    if not op_data.config.free_room:
-        if plan:
-            return
-        # 空床补位独立于不养闲人；关闭清退时只填空床，不替换已入住者。
-        empty_only = True
+    """共用空床与层级接管；不养闲人只控制满心情清退任务创建。"""
     if plan:
         for names in plan.values():
             for name in names:
@@ -1984,18 +1980,39 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
         now = datetime.now()
         reserved_names, reserved_slots = dorm_task_reservations(op_data, tasks)
         vacancies = vacant_dorm_slots(op_data, reserved_slots)
-        logger.info("检查宿舍空床" if empty_only else "启动不养闲人安排空余宿舍位")
-        if empty_only and not vacancies:
-            return
+        priority_only = empty_only and not vacancies
+        logger.info("检查宿舍空床与恢复接管")
         candidates = dorm_candidates(op_data, reserved_names, now=now)
-        recovering = iter(candidates.recovering)
+        recovery_names = sorted(
+            candidates.recovering
+            + [
+                name
+                for name in candidates.estimated_recovering
+                if name in op_data.operators
+                and resting_tier(op_data, name) <= RestingTier.PRIORITY_REPLACEMENT
+            ],
+            key=lambda name: (
+                resting_tier(op_data, name),
+                dorm_candidate_mood(op_data, name, now)
+                - op_data.operators[name].upper_limit,
+            ),
+        )
+        if priority_only:
+            recovery_names = [
+                name
+                for name in recovery_names
+                if resting_tier(op_data, name) <= RestingTier.PRIORITY_REPLACEMENT
+            ]
+            if not recovery_names:
+                return
+        recovering = iter(recovery_names)
         waiting = next(recovering, None)
         full = iter(
             name
             for name in candidates.filling
             if name not in candidates.recovering and name not in candidates.unknown
         )
-        search_unknown = bool(candidates.unknown)
+        search_unknown = bool(candidates.unknown) and not priority_only
         estimated_recovery = bool(candidates.estimated_recovering)
         replacement_search = estimated_recovery or (
             search_unknown and not op_data.idle_dorm_search_exhausted
@@ -2027,7 +2044,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                     has_resting_mood(occupant, now)
                     and resting_mood(occupant, now) >= occupant.upper_limit
                 ) or (bed.time is not None and bed.time <= now)
-                if not complete:
+                if priority_only or not complete:
                     if waiting is None or not op_data._slot_takable(
                         bed, requester=waiting
                     ):
@@ -2083,7 +2100,11 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
         tasks.append(task)
         logger.info(
             "添加%s任务完成：%s",
-            "宿舍补位" if filling_vacancies else "不养闲人",
+            "宿舍补位"
+            if filling_vacancies
+            else "高优恢复"
+            if priority_only
+            else "宿舍恢复接管",
             task.plan,
         )
     except Exception as ex:
@@ -2091,7 +2112,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
 
 
 def add_release_dorm(tasks, op_data, name):
-    if op_data.skip_idle_dorm_release(name):
+    if not op_data.config.free_room or op_data.skip_idle_dorm_release(name):
         return
     _idx, __dorm = op_data.get_dorm_by_name(name)
     if (
