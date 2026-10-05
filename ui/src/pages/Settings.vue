@@ -311,9 +311,10 @@ const idleOptions = computed(() => [
               "
             >
               <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
-                关闭MuMu模拟器12时结束adb进程
+                关闭MuMu模拟器12时断开该实例的adb连接
                 <help-text>
-                  <div>运行命令<code>taskkill /f /t /im adb.exe</code></div>
+                  <div>仅执行<code>adb disconnect</code>，断开当前实例的adb端点</div>
+                  <div>不结束adb进程，也不影响其他模拟器或工具共用的adb连接</div>
                   <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
                 </help-text>
               </n-checkbox>
