@@ -9,7 +9,7 @@ date: 2026-10-05
 
 ## Contract
 
-The [weekly plan editor contract](../../../../docs/subsystems/weekly-plan-editor.md) defines [INV-UI-05]. The inventory limit toolbar provides one button for all eight chip stages. Its tooltip states the small-chip limit of 5, chip-pack limit of 8, replacement of existing chip rules and execution only for selected stages.
+The [weekly plan editor contract](../../../../docs/subsystems/weekly-plan-editor.md) defines [INV-UI-05]. The inventory limit toolbar provides one button for all eight chip stages. The question-mark help button immediately to its right states the small-chip limit of 5, chip-pack limit of 8, replacement of existing chip rules and execution only for selected stages.
 
 ## Simplification Review
 

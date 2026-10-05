@@ -4,7 +4,6 @@ import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { useConfigStore } from '@/stores/config'
 import {
-  ANNIHILATION_STAGE,
   WEEKDAYS,
   buildTableStageOptions,
   createStageOption,
@@ -81,13 +80,6 @@ watch(
   },
   { immediate: true }
 )
-
-function canMoveStage(event) {
-  return (
-    event.draggedContext.element.value !== ANNIHILATION_STAGE &&
-    (event.relatedContext.element?.value !== ANNIHILATION_STAGE || event.willInsertAfter)
-  )
-}
 
 function dayPlan(weekday) {
   return maa_weekly_plan.value.find((plan) => plan.weekday === weekday)
@@ -171,7 +163,7 @@ async function applyStageOrder() {
         @update:value="addStageRow"
       />
       <span class="table-editor-hint">
-        当期剿灭固定置顶；一键芯片上限可将芯片排在剿灭之后，其他关卡可拖动把手调整
+        可拖动把手调整关卡顺序；一键芯片上限可将芯片排在剿灭之后
       </span>
     </div>
 
@@ -197,7 +189,6 @@ async function applyStageOrder() {
           tag="tbody"
           item-key="value"
           handle=".stage-drag-handle"
-          :move="canMoveStage"
           @end="applyStageOrder"
         >
           <template #item="{ element: option }">
@@ -216,7 +207,6 @@ async function applyStageOrder() {
               <td class="stage-column">
                 <div class="stage-label" :title="option.label">
                   <button
-                    v-if="option.value !== ANNIHILATION_STAGE"
                     type="button"
                     class="stage-drag-handle"
                     :aria-label="`拖动调整 ${option.label} 的优先级`"

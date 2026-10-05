@@ -87,7 +87,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-15] Selection Estimate Isolation**: Selection-card mood estimates support candidate screening, ordering, and primary shift selection only; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks. Regular candidate planning scans cards only when no eligible idle recovery candidate has valid measured or estimated mood.
 
 ### 2.3 Presentation Layer (UI)
-- [ ] **[INV-UI-06] Pinned Annihilation Priority**: Is annihilation pinned through saved-order loading and dragging, and does the chip-limit button promote all eight chip rows while preserving selected membership, other row order and daily settings through tab changes and activity refresh?
+- [ ] **[INV-UI-06] Chip Priority Selection**: Does the chip-limit button promote all eight chip rows while preserving selected membership, other row order and daily settings, and do manual sorting and saved-order loading retain the chosen annihilation position?
 - [ ] **[INV-UI-05] Chip Limit Preset Isolation**: Does the button bind both endpoint-provided drops for every chip stage at 5 small chips or 8 chip packs, replace existing chip rules with enabled AND conditions without duplicates, and preserve other stage rules, weekly selections and inventory enablement?
 - [ ] **[INV-UI-04] Weekly Availability Display**: Does disabling the weekly availability filter remove unavailable placeholders and styling, permit every weekday, and preserve saved selections through filter changes?
 

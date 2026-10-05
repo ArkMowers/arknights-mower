@@ -4,14 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
 import { CHIP_STAGES, formatStageLabel, promoteChipStageOrder } from '@/utils/maa_weekly_plan'
 
-const state = vi.hoisted(() => ({ config: {}, move: null }))
+const state = vi.hoisted(() => ({ config: {} }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
 vi.mock('pinia', () => ({ storeToRefs: () => state.config }))
 vi.mock('vuedraggable', () => ({
   default: defineComponent({
-    props: ['modelValue', 'move'],
+    props: ['modelValue'],
     setup(props, { slots }) {
-      state.move = props.move
       return () =>
         h(
           'tbody',
@@ -67,7 +66,7 @@ describe('周计划表格开放日显示', () => {
     expect(JSON.stringify(state.config.maa_weekly_plan.value)).toBe(planBefore)
   })
 
-  it('外部排序将全部芯片排在剿灭之后，剿灭没有拖动把手', async () => {
+  it('外部排序将全部芯片排在剿灭之后，所有关卡均有拖动把手', async () => {
     const html = await renderToString(
       createSSRApp(MaaWeeklyTable, {
         stageOrder: promoteChipStageOrder(['1-7']),
@@ -76,24 +75,22 @@ describe('周计划表格开放日显示', () => {
     )
     const rows = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).slice(1)
     expect(rows[0]).toContain('当期剿灭')
-    expect(rows[0]).not.toContain('stage-drag-handle')
+    expect(rows[0]).toContain('stage-drag-handle')
     for (const [index, stage] of CHIP_STAGES.entries()) {
       expect(rows[index + 1]).toContain(formatStageLabel(stage))
       expect(rows[index + 1]).toContain('stage-drag-handle')
     }
   })
 
-  it('禁止拖动剿灭或将其他关卡插入剿灭上方，允许正常调整其他关卡', async () => {
-    await renderToString(createSSRApp(MaaWeeklyTable))
-    const move = (stage, related, willInsertAfter) =>
-      state.move({
-        draggedContext: { element: { value: stage } },
-        relatedContext: { element: { value: related } },
-        willInsertAfter
+  it('保留手动排序中的剿灭位置，不强制重新置顶', async () => {
+    const html = await renderToString(
+      createSSRApp(MaaWeeklyTable, {
+        stageOrder: ['1-7', 'Annihilation', 'PR-A-1']
       })
-    expect(move('Annihilation', '1-7', true)).toBe(false)
-    expect(move('1-7', 'Annihilation', false)).toBe(false)
-    expect(move('1-7', 'Annihilation', true)).toBe(true)
-    expect(move('PR-D-2', 'PR-A-1', false)).toBe(true)
+    )
+    const rows = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g).slice(1)
+    expect(rows[0]).toContain('1-7')
+    expect(rows[1]).toContain('当期剿灭')
+    expect(rows[1]).toContain('stage-drag-handle')
   })
 })

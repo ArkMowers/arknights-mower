@@ -66,13 +66,13 @@ describe('刷理智周计划双视图同步', () => {
 
     const userOrdered = mergeTableStageOrder(options, ['1-7', 'Annihilation', 'ACT-9'], ['ACT-9'])
     expect(userOrdered.slice(0, 3).map((option) => option.value)).toEqual([
-      'Annihilation',
       '1-7',
+      'Annihilation',
       'ACT-9'
     ])
   })
 
-  it('芯片一键排序保留其他关卡相对顺序，剿灭固定第一且包含全部八个芯片关卡', () => {
+  it('芯片一键排序保留其他关卡相对顺序，剿灭后包含全部八个芯片关卡', () => {
     const current = ['CE-6', 'PR-D-2', '1-7', 'Annihilation', 'ACT-9']
     const order = promoteChipStageOrder(current)
     expect(order).toEqual(['Annihilation', ...CHIP_STAGES, 'CE-6', '1-7', 'ACT-9'])

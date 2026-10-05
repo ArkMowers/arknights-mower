@@ -221,10 +221,7 @@ export function mergeTableStageOrder(options, currentOrder = [], activityValues 
     ordered.unshift(newAnnihilationOption)
   }
   const annihilationIndex = ordered.findIndex((option) => option.value === ANNIHILATION_STAGE)
-  if (annihilationIndex > 0) {
-    ordered.unshift(...ordered.splice(annihilationIndex, 1))
-  }
-  let activityInsertIndex = ordered[0]?.value === ANNIHILATION_STAGE ? 1 : 0
+  let activityInsertIndex = annihilationIndex >= 0 ? annihilationIndex + 1 : 0
   while (CHIP_STAGES.includes(ordered[activityInsertIndex]?.value)) {
     activityInsertIndex += 1
   }
