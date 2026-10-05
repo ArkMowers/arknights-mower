@@ -217,7 +217,7 @@ function applyChipLimits() {
     stageOptions.value
   )
   emit('chip-limits-applied')
-  message.success('已绑定芯片上限，并将芯片关卡排序提升到剿灭之后')
+  message.success('已绑定芯片上限、勾选芯片关卡，并将排序提升到剿灭之后')
 }
 
 function removeLimitRule(index) {
@@ -371,7 +371,8 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
                 <help-text label="一键芯片上限说明">
                   绑定全部 8 个芯片关卡：小芯片上限 5、芯片组上限 8，两种都达到才跳过。
                   覆盖已有芯片上限，仅对当前方案已选关卡生效。
-                  同时将全部芯片关卡排在剿灭之后，保留已有勾选；之后所有关卡均可自由拖动排序。
+                  同时勾选全部芯片关卡：开启开放日过滤时仅勾选开放日，关闭时每天勾选。
+                  将全部芯片关卡排在剿灭之后，保留原有其他关卡勾选；之后所有关卡均可自由拖动排序。
                 </help-text>
               </n-space>
               <n-text depth="3">

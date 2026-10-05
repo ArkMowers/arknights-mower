@@ -2,7 +2,7 @@ import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, getCurrentInstance, h, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaaWeekly from './MaaWeekly.vue'
-import { CHIP_STAGES } from '@/utils/maa_weekly_plan'
+import { CHIP_STAGES, WEEKDAYS } from '@/utils/maa_weekly_plan'
 
 const state = vi.hoisted(() => ({
   config: {},
@@ -106,7 +106,7 @@ describe('周计划芯片按钮排序联动', () => {
       ].map((key) => [key, ref('')])
     )
     state.config.maa_weekly_plan = ref([
-      { weekday: '周一', stage: ['1-7', 'PR-B-2', 'Annihilation'], medicine: 2 },
+      { weekday: '周一', stage: ['1-7', 'PR-B-2', 'Annihilation', 'PR-D-2'], medicine: 2 },
       { weekday: '周二', stage: ['1-7', 'PR-D-2', 'CE-6'], sanity_threshold: 50 }
     ])
   })
@@ -131,8 +131,44 @@ describe('周计划芯片按钮排序联动', () => {
       '1-7'
     ])
     expect(state.config.maa_weekly_plan.value).toEqual([
-      { weekday: '周一', stage: ['Annihilation', 'PR-B-2', '1-7'], medicine: 2 },
-      { weekday: '周二', stage: ['PR-D-2', 'CE-6', '1-7'], sanity_threshold: 50 }
+      {
+        weekday: '周一',
+        stage: ['Annihilation', 'PR-A-1', 'PR-A-2', 'PR-B-1', 'PR-B-2', 'PR-D-2', '1-7'],
+        medicine: 2
+      },
+      {
+        weekday: '周二',
+        stage: ['PR-B-1', 'PR-B-2', 'PR-D-1', 'PR-D-2', 'CE-6', '1-7'],
+        sanity_threshold: 50
+      }
     ])
+    const selected = JSON.stringify(state.config.maa_weekly_plan.value)
+    state.applyChips()
+    expect(JSON.stringify(state.config.maa_weekly_plan.value)).toBe(selected)
+  })
+
+  it.each([true, false])('开放日过滤为 %s 时一键勾选全部芯片关卡', async (filterEnabled) => {
+    state.config.maa_weekly_plan.value = WEEKDAYS.map((weekday) => ({ weekday, stage: ['1-7'] }))
+    const app = createSSRApp(MaaWeekly)
+    app.provide('mobile', false)
+    await renderToString(app)
+    state.editor.setupState.filterStageByAvailability = filterEnabled
+    state.applyChips()
+    const openFamilies = [
+      ['A', 'B'],
+      ['B', 'D'],
+      ['C', 'D'],
+      ['A', 'C'],
+      ['A', 'B'],
+      ['B', 'C', 'D'],
+      ['A', 'C', 'D']
+    ]
+    for (const [index, plan] of state.config.maa_weekly_plan.value.entries()) {
+      const expected = filterEnabled
+        ? openFamilies[index].flatMap((family) => [`PR-${family}-1`, `PR-${family}-2`])
+        : CHIP_STAGES
+      expect(plan.stage).toEqual([...expected, '1-7'])
+      expect(plan.stage).not.toContain('Annihilation')
+    }
   })
 })

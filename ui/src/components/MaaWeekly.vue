@@ -5,6 +5,7 @@ import axios from 'axios'
 import { computed, h, inject, onMounted, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import {
+  CHIP_STAGES,
   WEEKDAYS,
   buildStageOptions,
   createStageOption,
@@ -12,7 +13,8 @@ import {
   getGameWeekdayIndex,
   isStageAvailableOnWeekday,
   promoteChipStageOrder,
-  reorderWeeklyPlanStages
+  reorderWeeklyPlanStages,
+  setStageForWeekday
 } from '@/utils/maa_weekly_plan'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
 import MaaStageInventory from './MaaStageInventory.vue'
@@ -76,8 +78,15 @@ watch(tableStageOrder, (order) => {
   window.localStorage.setItem(stageOrderStorageKey, JSON.stringify(order))
 })
 
-function prioritizeChipStages() {
+function applyChipStageSelection() {
   tableStageOrder.value = promoteChipStageOrder(tableStageOrder.value)
+  for (const plan of maa_weekly_plan.value) {
+    for (const stage of CHIP_STAGES) {
+      if (!filterStageByAvailability.value || isStageAvailableOnWeekday(stage, plan.weekday)) {
+        setStageForWeekday(maa_weekly_plan.value, plan.weekday, stage, true, tableStageOrder.value)
+      }
+    }
+  }
   reorderWeeklyPlanStages(maa_weekly_plan.value, tableStageOrder.value)
 }
 
@@ -449,7 +458,7 @@ function cancelCopyDialogLongPress() {
         />
       </n-tab-pane>
       <n-tab-pane name="inventory" tab="库存选关">
-        <MaaStageInventory @chip-limits-applied="prioritizeChipStages" />
+        <MaaStageInventory @chip-limits-applied="applyChipStageSelection" />
       </n-tab-pane>
     </n-tabs>
 

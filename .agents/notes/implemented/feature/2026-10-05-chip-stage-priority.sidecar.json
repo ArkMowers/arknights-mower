@@ -12,7 +12,7 @@
   ],
   "code_symbols": [
     "ui/src/utils/maa_weekly_plan.js:promoteChipStageOrder",
-    "ui/src/components/MaaWeekly.vue:prioritizeChipStages",
+    "ui/src/components/MaaWeekly.vue:applyChipStageSelection",
     "ui/src/components/MaaWeeklyTable.vue:applyStageOrder"
   ],
   "test_suites": [
