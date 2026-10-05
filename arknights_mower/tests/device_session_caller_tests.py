@@ -59,15 +59,16 @@ class DeviceSessionCallerTests(unittest.TestCase):
                 return_value=40,
             )
         )
-        run = self.enterContext(
-            patch(
-                "subprocess.run",
-                return_value=subprocess.CompletedProcess(
-                    [], 0, b"Android Debug Bridge version 1.0.41\n", b""
-                ),
+        # ``simulator`` hands ``subprocess.run`` to the guarded route by name,
+        # so the same stand-in answers that consumer and every bounded-runner
+        # consumer; it is never a factory for the other patches.
+        run = MagicMock(
+            return_value=subprocess.CompletedProcess(
+                [], 0, b"Android Debug Bridge version 1.0.41\n", b""
             )
         )
         for target in (
+            "subprocess.run",
             "arknights_mower.utils.device.device.run_command",
             "arknights_mower.utils.device.maatouch.session.run_command",
         ):
