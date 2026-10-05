@@ -120,7 +120,10 @@ def test_specialized_compensation_precedes_rescue_staffing(staffing):
     assert solver.tasks == [task]
 
 
-def test_fixed_rooms_join_rescue_dispatch_and_reconcile(staffing, monkeypatch):
+@pytest.mark.parametrize("training_mood_known", [False, True])
+def test_fixed_rooms_join_rescue_dispatch_and_reconcile(
+    staffing, monkeypatch, training_mood_known
+):
     from arknights_mower.utils import config
     from arknights_mower.utils.operators import Operator
 
@@ -128,6 +131,8 @@ def test_fixed_rooms_join_rescue_dispatch_and_reconcile(staffing, monkeypatch):
     solver = staffing.solver
     for name in ("泡普卡", "安赛尔"):
         solver.op_data.add(Operator(name, "", mood=24, time_stamp=NOW))
+    if not training_mood_known:
+        solver.op_data.operators["安赛尔"].time_stamp = None
     staffing.state["rescue_plan"].update(
         {"factory": ["泡普卡"], "train": ["安赛尔", ""]}
     )

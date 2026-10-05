@@ -754,6 +754,8 @@ class BaseMixin:
     ):
         """复用识别帧记录候选预估，不刷新截图或修改干员实读数据。"""
         eligible = set(candidates)
+        if train:
+            return eligible
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             from arknights_mower.utils.emergency_staffing import worker_block_reason
 
@@ -778,7 +780,7 @@ class BaseMixin:
                     raise AgentSelectionNotReady(
                         f"自动救急候选 {name} {reason}，取消本次选人"
                     )
-        if estimates is None or train:
+        if estimates is None:
             return eligible
         now = datetime.now()
         for name, scope in page:

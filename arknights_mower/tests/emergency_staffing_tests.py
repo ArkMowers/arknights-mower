@@ -57,3 +57,16 @@ def test_invalid_reading_never_allows_zero_mood_staffing(solver, mood):
     assert (
         worker_block_reason(solver.op_data, name, mood, set()) == "心情读数未知或无效"
     )
+
+
+def test_training_deployment_ignores_unreadable_mood_but_keeps_reservations(solver):
+    name = "余"
+    assert worker_block_reason(solver.op_data, name, None, set(), room="train") is None
+    assert (
+        worker_block_reason(solver.op_data, name, None, {name}, room="train")
+        == "已被其他任务预约"
+    )
+    assert (
+        worker_block_reason(solver.op_data, name, None, set(), room="room_1_1")
+        == "心情读数未知或无效"
+    )

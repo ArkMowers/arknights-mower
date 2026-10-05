@@ -318,3 +318,16 @@ def test_current_rotation_honors_strict_release_operation_window(solver, case):
     assert [vars(bed) for bed in data.dorm] == before_beds
     assert solver.op_data is data and solver.tasks == [task]
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("at_floor", [False, True])
+def test_current_native_projection_does_not_advance_exhaustion_shift(solver, at_floor):
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+
+    op = solver.op_data.operators[PRIMARY[0]]
+    op.exhaust_require = True
+    op.mood = op.lower_limit if at_floor else 3
+    result = native_opportunity(solver, [op.name], NOW, current_only=True)
+    assert result.complete
+    assert (result.opportunity == NOW) is at_floor
+    solver.enter_room.assert_not_called()

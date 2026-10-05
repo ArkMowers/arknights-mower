@@ -21,6 +21,7 @@ from arknights_mower.utils.emergency_recovery import (
     ORDINARY_SHIFTS,
     NativeProjection,
     emergency_dorm_plan,
+    exhaust_rest_due,
     history_cycle,
     history_rate,
     mood_context,
@@ -298,6 +299,7 @@ class EmergencyRecoveryMixin:
                 not has_resting_mood(op)
                 or op.mood_is_prediction
                 or data._can_standby(op)
+                or not exhaust_rest_due(data, op, self.tasks, now)
             ):
                 continue
             if op.mood < data.rescue_mood_threshold(op):
@@ -561,7 +563,7 @@ class EmergencyRecoveryMixin:
                 ):
                     continue
                 mood = dorm_candidate_mood(data, name, datetime.now())
-                reason = worker_block_reason(data, name, mood, reserved)
+                reason = worker_block_reason(data, name, mood, reserved, room=room)
                 if reason:
                     logger.warning(
                         "自动救急 %s：救急主表干员 %s %s，暂缓换班",
