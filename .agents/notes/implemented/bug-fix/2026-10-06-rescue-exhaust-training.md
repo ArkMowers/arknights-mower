@@ -16,3 +16,5 @@ The fix moves the existing training-page bypass before rescue card observation a
 ## Verification and review
 
 Offline regressions cover the observed pre-exhaustion false admission, due and future tasks, grouped members, custom floors, training cards without mood, training protection and occupied-replacement coordination. Standards review checks isolated current projections and shared staffing guards. Specification review retains ordinary unknown-mood rejection outside training and existing recovery completion requirements.
+
+Current native projections also apply feasible exhaustion-support arrangements in an isolated branch and verify that the group can then rest. A workable coordination result prevents rescue admission; blocked coordination does not count as successful recovery.

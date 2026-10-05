@@ -270,6 +270,15 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     plan,
                     candidate.op_data.active_high_resting_count(),
                 )
+                if (
+                    not plan
+                    and current_only
+                    and any(data.operators[name].exhaust_require for name in members)
+                ):
+                    support = candidate._plan_exhaust_support(list(members))
+                    if support:
+                        coordinated = data.project_arrangements([support])
+                        queue.append((coordinated, when, used, served))
             except Exception:
                 uncertain = True
                 continue
