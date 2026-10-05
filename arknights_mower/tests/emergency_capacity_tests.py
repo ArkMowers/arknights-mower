@@ -189,3 +189,17 @@ def test_normal_plan_swap_clears_opened_manager_identity(solver):
 
     assert data.emergency_dorm_agents == set()
     assert [slot.agent for slot in data.plan["dormitory_1"][:2]] == ["冰酿", "闪灵"]
+
+
+def test_exit_order_breaks_ties_but_preserves_explicit_priority(solver):
+    data = solver.op_data
+    state = recovery(data, capacity=1)
+    order = {name: (1, 20) for name in PRIMARY}
+    order[PRIMARY[-1]] = (0, 1)
+    assert admissions(emergency_dorm_plan(data, state, recovery_order=order)) == {
+        PRIMARY[-1]
+    }
+    data.config.ope_resting_priority = [PRIMARY[0]]
+    assert admissions(emergency_dorm_plan(data, state, recovery_order=order)) == {
+        PRIMARY[0]
+    }

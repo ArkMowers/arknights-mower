@@ -16,3 +16,5 @@ Episode standby tracking no longer creates a blanket dormitory reservation for w
 ## Verification and review
 
 Offline regressions cover the exact rescue threshold, personal mood limits, complete group matching, normal replacement eligibility, rescue-only standby and specialized reservations. Standards review preserves shared matching and candidate selection. Specification review distinguishes eligibility for spare beds from guaranteed admission or an independent bed reservation.
+
+Within an explicit priority tier, the planner compares at most 64 recovery combinations using the existing isolated handoff check. Remaining mood deficit ranks recovery effort when future-bed recovery rates are unavailable. This bounded search favors combinations that unblock exit without claiming a globally shortest recovery time or changing measured exit requirements. Regression tests cover multi-group combinations, normal fixed-bed exclusion, explicit priority and unchanged live observations.

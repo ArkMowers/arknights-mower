@@ -12,10 +12,13 @@
   ],
   "code_symbols": [
     "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_sync_reservations",
-    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_replace_low_workers"
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_replace_low_workers",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_recovery_order"
   ],
   "test_suites": [
     "arknights_mower/tests/emergency_group_staffing_tests.py",
-    "arknights_mower/tests/emergency_staffing_replan_tests.py"
+    "arknights_mower/tests/emergency_staffing_replan_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_capacity_tests.py"
   ]
 }

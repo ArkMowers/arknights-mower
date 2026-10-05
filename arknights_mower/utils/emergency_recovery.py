@@ -385,7 +385,9 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
     )
 
 
-def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False):
+def emergency_dorm_plan(
+    data, state, tasks=(), *, members=None, reallocate=False, recovery_order=None
+):
     """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
@@ -466,7 +468,16 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False
     probe = data.project_arrangements([plan]) if reallocate else copy.copy(data)
     probe.dorm = beds
     groups = {}
-    for name in sorted(need, key=lambda name: (resting_key(data, name), name)):
+    recovery_order = recovery_order or {}
+    for name in sorted(
+        need,
+        key=lambda name: (
+            resting_tier(data, name),
+            recovery_order.get(name, (2, float("inf"))),
+            resting_key(data, name),
+            name,
+        ),
+    ):
         group = (resting_tier(data, name), data.operators[name].group or name)
         groups.setdefault(group, []).append(name)
     ordered = [name for members in groups.values() for name in members]
