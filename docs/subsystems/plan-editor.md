@@ -15,3 +15,11 @@ The setting remains in local configuration and is absent from Scheduling Plan da
 The [display order decision](../../.agents/notes/implemented/simplification/2026-10-06-plan-facility-display-order.md) records shared rendering and verification.
 
 Facility cards retain the [global update drop exclusion](software-update.md#2-global-update-drop).
+
+## 4. Operator Group Columns
+
+The plus button beside an operator's group field adds an independent group/replacement column beneath the first column. Deleting any column preserves the others; deleting the first promotes the next column into the legacy fields. Empty operators, `Free`, `Current` and Fiammetta cannot add bindings. Running-plan edit locks cover addition, deletion and every field. Facility clearing removes all bindings with the operator.
+
+Every avatar uses one equal-width color segment per configured column. Unfinished empty columns retain a transparent segment. Group colors come from the currently edited main or backup plan. Plan saving, import, export and facility movement retain nested bindings.
+
+The [scheduling contract](base-scheduler.md#211-multiple-group-bindings) defines persisted fields, validation and shift behavior. The [shared rendering decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-group-shift-selection.md) records the simplification.

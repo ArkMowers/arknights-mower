@@ -799,7 +799,9 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
         for room, names in plan.items()
         for index, name in enumerate(names)
         if name not in ("Current", "Free", "")
-        and op_data.is_auto_free_dorm_slot(room, index)
+        and room.startswith("dorm")
+        and index < len(op_data.plan.get(room, []))
+        and "Free" in op_data.plan[room][index].all_replacements
         and op_data.plan[room][index].agent == name
     }
     if not closing:
@@ -1055,6 +1057,7 @@ def generate_plan_by_drom(
     op_data.dorm = copy.deepcopy(op_data.dorm)
     op_data.group_dorm = copy.deepcopy(getattr(op_data, "group_dorm", []))
     op_data.operators = copy.deepcopy(op_data.operators)
+    op_data.groups = copy.deepcopy(op_data.groups)
     batches = copy.deepcopy(batches)
     ordered = sorted(batches, key=lambda batch: batch[0])
     result = []
@@ -1074,6 +1077,8 @@ def generate_plan_by_drom(
             if room.name in planned:
                 continue
             op = op_data.operators[room.name]
+            if op.multi_group and rest_in_full is not None:
+                continue
             if op.exhaust_require:
                 exhaust_exist = True
             # 不养闲人只释放个人床位；主班身份不能把清退变成整组回班。
@@ -1129,7 +1134,11 @@ def generate_plan_by_drom(
                 )[target_index] = "Free"
             else:
                 # 拉全组
-                agents = op_data.groups[op.group] if op.group != "" else [op.name]
+                agents = (
+                    op_data.shift_group_members(op.group)
+                    if op.group != ""
+                    else [op.name]
+                )
                 for agent in agents:
                     o = op_data.operators[agent]
                     target_room, target_index = o.room, o.index
@@ -1161,6 +1170,7 @@ def generate_plan_by_drom(
         if not plan:
             continue
         if rest_in_full is not None:
+            op_data.select_arrangement_bindings(plan)
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
         earliest = _after_pending_arrangements(plan, pending_resources)
         if rest_in_full:
@@ -1295,6 +1305,7 @@ def plan_metadata(op_data, tasks):
             v
             for v in op_data.operators.values()
             if v.is_high()
+            and not v.multi_group
             and not v.room.startswith("dorm")
             and not v.is_resting()
             and not op_data.is_standby(v.name)
@@ -1325,7 +1336,8 @@ def plan_metadata(op_data, tasks):
                 or dorm.position in locked_slots
             ):
                 continue
-            grouped_dorms[operator.group].append(dorm)
+            if not operator.multi_group:
+                grouped_dorms[operator.group].append(dorm)
             if (
                 dorm in op_data.dorm
                 and not op_data.has_rest_mood_limit(dorm.name)
@@ -1469,19 +1481,26 @@ def plan_metadata(op_data, tasks):
     for op in op_data.operators.values():
         if (
             not op.is_high()
+            or op.multi_group
             or op.room.startswith("dorm")
             or op.current_room
             or not op_data.rest_mood_complete(op.name)
         ):
             continue
-        members = set(op_data.groups[op.group]) if op.group else {op.name}
-        if members & (returning | locked_names | busy) or op.group in locked_groups:
+        members = set(op_data.shift_group_members(op.group)) if op.group else {op.name}
+        anchors = {name for name in members if not op_data.operators[name].multi_group}
+        if (
+            anchors & returning
+            or members & (locked_names | busy)
+            or op.group in locked_groups
+        ):
             continue
         workers = [
             op_data.operators[name]
             for name in members
             if not op_data.operators[name].room.startswith("dorm")
             and not op_data.operators[name].workaholic
+            and not op_data.operators[name].multi_group
         ]
         if not all(
             not worker.current_room

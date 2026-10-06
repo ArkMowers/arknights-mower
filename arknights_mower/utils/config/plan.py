@@ -138,10 +138,14 @@ class BackupPlanConf(PlanConf):
     "是否由该副表显式覆盖此前生效的宿舍房间优先级"
 
 
-class Plans(BaseModel):
-    agent: str
+class GroupBinding(BaseModel):
     group: str = ""
-    replacement: list[str] = []
+    replacement: list[str] = Field(default_factory=list)
+
+
+class Plans(GroupBinding):
+    agent: str
+    group_bindings: list[GroupBinding] = Field(default_factory=list)
 
 
 class Facility(BaseModel):

@@ -296,7 +296,8 @@ class EmergencyRecoveryMixin:
         for name in names:
             op = data.operators[name]
             if (
-                not has_resting_mood(op)
+                op.multi_group
+                or not has_resting_mood(op)
                 or op.mood_is_prediction
                 or data._can_standby(op)
                 or not exhaust_rest_due(data, op, self.tasks, now)

@@ -248,15 +248,19 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         groups = {}
         for name in primary_names(data):
             op = data.operators[name]
-            if op.is_resting() or (
-                current_only and not exhaust_rest_due(data, op, trial.tasks, when)
+            if (
+                op.multi_group
+                or op.is_resting()
+                or (current_only and not exhaust_rest_due(data, op, trial.tasks, when))
             ):
                 continue
             if name in remaining or (
                 has_resting_mood(op)
                 and op.current_mood() <= data.resting_mood_threshold(op)
             ):
-                groups[op.group or name] = data.groups.get(op.group, [name])
+                groups[op.group or name] = (
+                    data.shift_group_members(op.group) if op.group else [name]
+                )
         for members in groups.values():
             candidate = copy.copy(trial)
             candidate.op_data = copy.deepcopy(
@@ -322,13 +326,13 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 continue
             op = data.operators.get(bed.name)
             event_id = ("bed", bed.name, bed.position)
-            if op is None or event_id in used:
+            if op is None or op.multi_group or event_id in used:
                 continue
             if bed.time is None:
                 if op.is_high():
                     uncertain = True
                 continue
-            members = data.groups.get(op.group, [op.name])
+            members = data.shift_group_members(op.group) if op.group else [op.name]
             plan = {}
             for member in members:
                 worker = data.operators[member]

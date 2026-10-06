@@ -576,6 +576,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for name in candidates
             if not self.op_data.operators[name].room.startswith("dorm")
             and not self.op_data.operators[name].workaholic
+            and not self.op_data.operators[name].multi_group
         ]
         if resting_members and all(op.is_resting() for op in resting_members):
             logger.info(f"{self.task.meta_data} 已完成用尽下班，继续正常规划")
@@ -766,6 +767,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if (
                         fallback is not None
                         and self.op_data.has_rest_mood_limit(member)
+                        or self.op_data.operators[member].multi_group
                         or self.op_data.operators[member].room.startswith("dorm")
                         or self.op_data.operators[member].workaholic
                         and member not in fia_plan
@@ -1345,6 +1347,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         TaskTypes.RE_ORDER,
                         TaskTypes.SELF_CORRECTION,
                     ):
+                        self.op_data.select_arrangement_bindings(self.task.plan)
                         self._prepare_shift_cycle(self.task)
                         self._defer_conflicting_product_shift_slots(self.task)
                         self._switch_products_before_arrangement(self.task)
@@ -1950,6 +1953,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             _current_room = self.op_data.get_current_room(key, True)
             # 训练室读取固定两格；纠错只管理排班中明确配置的槽位。
             for idx, name in enumerate(_current_room[: len(plan[key])]):
+                slot = plan[key][idx]
+                owner = self.op_data.operators.get(slot.agent)
+                replacements = (
+                    owner.replacement if owner is not None else slot.replacement
+                )
                 if (key.startswith("dorm")) and plan[key][idx].agent == "Free":
                     # 动态床位允许空着；补床由需要休息的候选触发。
                     continue
@@ -1966,11 +1974,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if not (
                     name == plan[key][idx].agent
                     or (
-                        (
-                            name in plan[key][idx].replacement
-                            and name not in TRADE_ORDER_AGENTS
-                        )
-                        and len(plan[key][idx].replacement) > 0
+                        (name in replacements and name not in TRADE_ORDER_AGENTS)
+                        and len(replacements) > 0
                     )
                 ):
                     if not need_fix:
@@ -2000,6 +2005,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if v.not_valid()
             and not (v.room == "train" and _training_room_scan_disabled)
             and not (v.group and v.room.startswith("dorm"))
+            and not v.multi_group
             and not self.op_data.is_standby(k)
             and not (
                 train_blocked
@@ -3041,7 +3047,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 (moods[op.name] or 0) - op.lower_limit,
             )
         )
-        shift_candidates = [op for op in self.total_agent if op.is_high()]
+        shift_candidates = [
+            op for op in self.total_agent if op.is_high() and not op.multi_group
+        ]
         # 宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
         # 床位并生成普通重排任务，会使真空床又被跑单避让推迟。
         self.plan_metadata()
@@ -3175,7 +3183,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     old.agent,
                     old.group,
                     tuple(old.replacement),
-                ) == (slot.agent, slot.group, tuple(slot.replacement))
+                    old.group_bindings,
+                ) == (
+                    slot.agent,
+                    slot.group,
+                    tuple(slot.replacement),
+                    slot.group_bindings,
+                )
                 if unchanged:
                     continue
                 if room.startswith("dormitory_") and slot.group:
@@ -3692,6 +3706,65 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             high_count -= 1
 
     def get_resting_plan(self, agents, exist_replacement, plan, current_resting):
+        groups = list(
+            dict.fromkeys(
+                self.op_data.operators[name].group
+                for name in agents
+                if not self.op_data.operators[name].multi_group
+                and self.op_data.operators[name].group
+            )
+        )
+        if not any(
+            self.op_data.operators[name].multi_group
+            for group in groups
+            for name in self.op_data.shift_group_members(group)
+        ):
+            return self._get_resting_plan(
+                agents, exist_replacement, plan, current_resting
+            )
+        for group in groups:
+            for name in self.op_data.shift_group_members(group):
+                op = self.op_data.operators[name]
+                if not op.multi_group or not op.room.startswith("dorm"):
+                    continue
+                bed = next(
+                    (
+                        bed
+                        for bed in self.op_data.dorm
+                        if bed.position == (op.room, op.index)
+                    ),
+                    None,
+                )
+                if (
+                    bed is not None
+                    and bed.name
+                    and "Free" not in op.replacements_for_group(group)
+                ):
+                    return
+        members = list(agents)
+        previous_groups = copy.deepcopy(self.op_data.groups)
+        previous = {}
+        for group in groups:
+            for name in self.op_data.shift_group_members(group):
+                op = self.op_data.operators[name]
+                if op.multi_group:
+                    previous.setdefault(name, op.group)
+                    self.op_data.select_group_binding(name, group)
+                if name not in members:
+                    members.append(name)
+        admitted = False
+        try:
+            admitted = self._get_resting_plan(
+                members, exist_replacement, plan, current_resting
+            )
+            return admitted
+        finally:
+            if not admitted:
+                for name, group in previous.items():
+                    self.op_data.select_group_binding(name, group)
+                self.op_data.groups = previous_groups
+
+    def _get_resting_plan(self, agents, exist_replacement, plan, current_resting):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         self._refresh_deferred_product_reservations()
@@ -3749,7 +3822,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 logger.debug(f"干员房间出错:{agent}")
                 success = False
                 break
-            if self.op_data.get_dorm_by_name(x.name)[0] is not None:
+            if (
+                not x.multi_group
+                and self.op_data.get_dorm_by_name(x.name)[0] is not None
+            ):
                 # 如果干员已经被安排了
                 success = False
                 break
@@ -3764,10 +3840,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
             def replacement_available(obj):
                 replacement = self.op_data.operators[obj]
+                in_slot = (replacement.current_room, replacement.current_index) == (
+                    x.room,
+                    x.index,
+                )
                 same_group_cover = self.op_data.is_same_group_dorm_replacement(x, obj)
                 if (
                     replacement.current_room
                     and not replacement.is_resting()
+                    and not (x.multi_group and in_slot)
                     and not (
                         same_group_cover
                         and obj in agents
@@ -3783,11 +3864,22 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 return (
                     obj not in TRADE_ORDER_AGENTS
                     and not _is_mastery_busy(obj)
-                    and obj not in exist_replacement
-                    and obj not in reserved_names
-                    and not self.op_data.is_dorm_replacement(obj)
                     and (
-                        x.room.startswith("dorm") or replacement.current_room != x.room
+                        obj not in exist_replacement
+                        or x.multi_group
+                        and plan.get(x.room, [])[x.index : x.index + 1] == [obj]
+                    )
+                    and obj not in reserved_names
+                    and (
+                        not self.op_data.is_dorm_replacement(obj)
+                        or x.multi_group
+                        and in_slot
+                    )
+                    and (
+                        x.room.startswith("dorm")
+                        or replacement.current_room != x.room
+                        or x.multi_group
+                        and in_slot
                     )
                 )
 
@@ -3839,6 +3931,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if not self.op_data.operators[x].workaholic
                     and not self.op_data.operators[x].room.startswith("dorm")
                     and x not in fixed_resting
+                    and self.op_data.get_dorm_by_name(x)[0] is None
                 ]
                 # 先按配置首选验证整组分床；床位不足时，完整匹配优先
                 # 保留可恢复工作替班，不把固定宿舍位开放为普通 Free。
@@ -3865,9 +3958,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if k not in plan.keys():
                     plan[k] = __plan[k]
                 for idx, name in enumerate(__plan[k]):
-                    if plan[k][idx] == "Current" and name != "Current":
+                    owner = self.op_data.operators.get(self.op_data.plan[k][idx].agent)
+                    if name != "Current" and (
+                        plan[k][idx] == "Current"
+                        or owner is not None
+                        and owner.multi_group
+                    ):
+                        previous_cover = plan[k][idx]
+                        if (
+                            previous_cover in exist_replacement
+                            and previous_cover != name
+                        ):
+                            exist_replacement.remove(previous_cover)
                         plan[k][idx] = name
             logger.debug(f"当前plan{plan}")
+            return True
 
     def initialize_operators(self):
         self.op_data = Operators(self.global_plan)

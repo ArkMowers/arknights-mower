@@ -122,10 +122,13 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
             if index >= len(actual) or _requested(fix_plan, room, index) != "Current":
                 continue
             current = actual[index]
-            if (
-                current not in getattr(slot, "replacement", ())
-                or current in TRADE_ORDER_AGENTS
-            ):
+            owner = op_data.operators.get(slot.agent)
+            replacements = (
+                owner.replacement
+                if owner is not None and owner.multi_group
+                else getattr(slot, "replacement", ())
+            )
+            if current not in replacements or current in TRADE_ORDER_AGENTS:
                 continue
             cover = op_data.operators.get(current)
             if cover is None or not op_data.replacement_exhausted(current, now):

@@ -1,3 +1,4 @@
+import { planBindings } from '@/utils/plan_bindings'
 import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
@@ -249,6 +250,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
         for (const [room, facility] of Object.entries(roster)) {
           for (const [index, slot] of facility.plans.entries()) {
             slot.group = ''
+            delete slot.group_bindings
             const position = `${room}:${index}`
             if (slot.agent === '菲亚梅塔') fia_positions.add(position)
             if (
@@ -330,10 +332,10 @@ const createPlanStore = (id, endpoint, rescue = false) =>
 
     const groups = computed(() => {
       const result = []
-      for (const facility in plan.value) {
-        for (const p of plan.value[facility].plans) {
-          if (p.group) {
-            result.push(p.group)
+      for (const facility in current_plan.value) {
+        for (const p of current_plan.value[facility].plans) {
+          for (const binding of planBindings(p)) {
+            if (binding.group) result.push(binding.group)
           }
         }
       }
