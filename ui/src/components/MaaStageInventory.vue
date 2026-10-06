@@ -332,6 +332,12 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
         <n-divider />
         <n-space vertical :size="4">
           <n-text depth="3">• 刷理智前刷新库存；物品上限优先于比例。</n-text>
+          <n-text depth="3">
+            • 剿灭优先；有效上限或比例绑定关卡仍需刷取时，只执行剿灭和这些关卡。
+          </n-text>
+          <n-text depth="3">
+            • 已选库存关卡全部达到上限后，才执行无有效库存规则的后备关卡（含上次作战）。
+          </n-text>
           <n-text depth="3">• 上限填 0 表示该物品不限上限。</n-text>
           <n-text depth="3">• 比例填 0 表示该关卡不参与比例关系计算。</n-text>
           <n-text depth="3">

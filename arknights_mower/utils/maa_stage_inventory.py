@@ -238,7 +238,10 @@ def _rule_item_count(item, inventory: dict) -> int:
     )
 
 
-def _stage_limit_reached(stage: str, limit_rules: Iterable, inventory: dict) -> bool:
+def _stage_limit_status(
+    stage: str, limit_rules: Iterable, inventory: dict
+) -> tuple[bool, bool]:
+    bound = False
     for rule in limit_rules or []:
         if not _value(rule, "enabled", True):
             continue
@@ -253,10 +256,24 @@ def _stage_limit_reached(stage: str, limit_rules: Iterable, inventory: dict) -> 
                 active_items.append(_rule_item_count(item, inventory) >= limit)
         if not active_items:
             continue
+        bound = True
         operator = str(_value(rule, "operator", "and") or "and").lower()
         if any(active_items) if operator == "or" else all(active_items):
-            return True
-    return False
+            return True, True
+    return bound, False
+
+
+def _active_ratio_members(rule):
+    if not _value(rule, "enabled", True):
+        return
+    for member in _value(rule, "members", []) or []:
+        stage = str(_value(member, "stage", "") or "").strip()
+        if (
+            stage not in UNBOUND_STAGE_IDS
+            and float(_value(member, "ratio", 0) or 0) > 0
+            and (_value(member, "item_id", "") or _value(member, "item_name", ""))
+        ):
+            yield member
 
 
 def _apply_ratio_rules(stages: list[str], ratio_rules: Iterable, inventory: dict):
@@ -266,20 +283,12 @@ def _apply_ratio_rules(stages: list[str], ratio_rules: Iterable, inventory: dict
     stage_positions = {stage: index for index, stage in enumerate(stages)}
 
     for rule in ratio_rules or []:
-        if not _value(rule, "enabled", True):
-            continue
         candidates = []
         seen = set()
-        for member in _value(rule, "members", []) or []:
+        for member in _active_ratio_members(rule):
             stage = str(_value(member, "stage", "") or "").strip()
             ratio = float(_value(member, "ratio", 0) or 0)
-            if (
-                not stage
-                or stage in seen
-                or stage in claimed_stages
-                or stage not in kept
-                or ratio <= 0
-            ):
+            if stage in seen or stage in claimed_stages or stage not in kept:
                 continue
             seen.add(stage)
             count = _rule_item_count(member, inventory)
@@ -320,19 +329,36 @@ def select_stages_by_inventory(
     ratio_rules: Iterable = (),
     inventory: dict | None = None,
 ) -> dict:
-    """先执行物品上限，再对剩余关卡执行比例选择。"""
+    """剿灭与有效库存规则关卡优先，无库存规则关卡仅作后备。"""
     original = list(stages)
+    limit_rules = list(limit_rules or [])
+    ratio_rules = list(ratio_rules or [])
     inventory = inventory or {}
-    kept = []
+    annihilation = []
+    priority = []
+    fallback = []
     limit_skipped = []
+    ratio_bound_stages = {
+        str(_value(member, "stage", "") or "").strip()
+        for rule in ratio_rules
+        for member in _active_ratio_members(rule)
+    }
     for stage in original:
-        if stage in UNBOUND_STAGE_IDS or not _stage_limit_reached(
-            stage, limit_rules, inventory
-        ):
-            kept.append(stage)
-        else:
+        if stage == "Annihilation":
+            annihilation.append(stage)
+            continue
+        if stage in UNBOUND_STAGE_IDS:
+            fallback.append(stage)
+            continue
+        bound, reached = _stage_limit_status(stage, limit_rules, inventory)
+        if reached:
             limit_skipped.append(stage)
+        elif bound or stage in ratio_bound_stages:
+            priority.append(stage)
+        else:
+            fallback.append(stage)
 
+    kept = annihilation + (priority if priority else fallback)
     # 所有候选都达到上限时，按用户约定忽略整次跳过设置，避免当天完全无关可刷。
     if original and not kept and limit_skipped:
         return {

@@ -50,6 +50,7 @@ Success logs one INFO line. A penguin failure logs one WARNING line naming the d
 
 ## 3. Subsystem Invariants
 
+- **[INV-MAA-04] Inventory Stage Priority**: Inventory selection keeps selected annihilation first and defers unbound stages while any selected inventory-bound stage survives its limits; when all bound stages are skipped, ordinary stages remain eligible even with annihilation present, and backend dispatch and frontend preview agree without changing saved selections.
 - **[INV-MAA-01] Total Callback Handling**: Every MAA callback is consumed without raising; a missing, empty, or unrecognized payload field yields at most one diagnostic line at the C callback boundary instead of an exception.
 - **[INV-MAA-02] Callback-Derived MAA Progress**: A MAA run's runtime log derives progress from core callbacks — each task-chain transition and each whitelisted milestone produces one line, while the polling loop contributes at most one heartbeat line per interval.
 - **[INV-MAA-03] Detached Bounded Upload**: A delegated report upload runs off the MAA callback thread, applies a finite connect and read deadline within a bounded number of attempts, and reports its outcome as a log line rather than an exception.
@@ -64,3 +65,9 @@ Failure modes: an exception raised inside the C callback is reported by ctypes a
 - Regression coverage: `arknights_mower/tests/maa_callback_tests.py`, `arknights_mower/tests/maa_report_tests.py`.
 - Decision records: [MAA Callback Logging](../../.agents/notes/implemented/feature/2026-09-30-maa-callback-logging.md), [Delegated Battle Report Upload](../../.agents/notes/implemented/feature/2026-10-01-maa-report-upload.md).
 - Interface evidence: [MAA callback protocol](https://docs.maa.plus/zh-cn/protocol/callback-schema.html), [MAA desktop client callback handler](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/src/MaaWpfGui/Main/AsstProxy.cs).
+
+## 5. Inventory Stage Selection
+
+`select_stages_by_inventory` evaluates enabled positive item limits before ratios. A stage with an enabled, identified positive limit or an enabled, identified positive ratio member is inventory-bound. Selected annihilation runs first. Surviving bound stages retain their daily-plan order and exclude unbound stages from this dispatch; ratios then choose among surviving members. When no bound stage survives, unbound selections, including last operation, supply the fallback even if annihilation remains. Disabled rules, empty conditions and zero limits or ratios confer no priority. With only capped stages and no remaining selection, the existing whole-plan fallback remains authoritative. Source plans are never rewritten.
+
+MAA Fight and local operation planning consume this same selection. `previewInventorySelection` mirrors it for the inventory panel. Focused selection and scheduler tests cover partial and complete chip limits, annihilation, inactive rules, ratio bindings and unchanged saved selections. The [inventory priority decision](../../.agents/notes/implemented/feature/2026-10-06-inventory-stage-priority.md) records reuse and verification.

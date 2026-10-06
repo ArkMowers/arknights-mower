@@ -140,6 +140,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.8 MAA Integration
 
+- [ ] **[INV-MAA-04] Inventory Stage Priority**: Do backend dispatch and frontend preview put selected annihilation first, defer unbound stages while selected inventory-bound stages survive their limits, admit ordinary fallback stages after all bound stages are skipped even with annihilation present, and preserve saved selections?
+
 - [ ] **[INV-MAA-01] Total Callback Handling**: Does every callback path consume its payload without raising, so a missing, empty, or unrecognized field stays confined to at most one diagnostic line at the C callback boundary?
 
 - [ ] **[INV-MAA-02] Callback-Derived MAA Progress**: Does each task-chain transition and each whitelisted milestone produce one line, with the polling loop contributing at most one heartbeat line per interval and no finished or stopped chain reported as running?
