@@ -1,6 +1,7 @@
 """宿舍候选、分床和重排共用的排班身份与心情排序。"""
 
 from enum import IntEnum
+from itertools import zip_longest
 
 from arknights_mower.data import agent_list
 
@@ -91,6 +92,44 @@ def resting_key(op_data, name, now=None):
     # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
     mood -= op.upper_limit if op is not None else 24
     return resting_tier(op_data, name), mood
+
+
+def crafting_rest_candidates(op_data, names):
+    """按加工顺序返回本轮符合条件的普通空闲候选。"""
+    from arknights_mower.utils import config
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    conf = config.conf
+    if not (conf.enable_mastery and conf.workshop_auto_active):
+        return []
+    present = set(names)
+    configured = dict.fromkeys(
+        name
+        for row in zip_longest(
+            conf.fodder_operators, conf.t5_operators, conf.book_operators
+        )
+        for name in row
+        if name
+    )
+    return [
+        name
+        for name in configured
+        if name in present
+        and resting_tier(op_data, name) == RestingTier.IDLE
+        and not op_data.rest_mood_complete(name)
+        and (mood := dorm_candidate_mood(op_data, name)) is not None
+        and mood < getattr(op_data.operators.get(name), "upper_limit", 24)
+    ]
+
+
+def crafting_rest_order(op_data, names):
+    """只交换已排序名单中普通空闲加工干员的位置，不提升整个加工层。"""
+    names = list(names)
+    ordered = crafting_rest_candidates(op_data, names)
+    positions = [index for index, name in enumerate(names) if name in ordered]
+    for index, name in zip(positions, ordered):
+        names[index] = name
+    return names
 
 
 def busy_resting_names():
