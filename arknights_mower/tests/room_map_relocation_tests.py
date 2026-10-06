@@ -21,6 +21,24 @@ from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 ROOM = "room_1_1"
 
 
+@pytest.mark.parametrize(
+    ("hue", "facility"),
+    [(25, "制造站"), (99, "贸易站"), (36, "发电站")],
+)
+def test_facility_type_uses_actual_header_icon(hue, facility):
+    hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    hsv[25:84, 580:626] = (hue, 230, 220)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB))
+    assert solver.detect_room_type() == facility
+
+
+def test_facility_type_is_unknown_without_matching_header_icon():
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=np.zeros((1080, 1920, 3), dtype=np.uint8))
+    assert solver.detect_room_type() is None
+
+
 def test_room_name_uses_header_icon_instead_of_warm_room_background():
     hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
     # 加工站暖色背景与制造站图标色相相近；只有图标是加工站黄色。

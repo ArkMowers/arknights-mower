@@ -60,6 +60,23 @@ async function setup(overrides = {}) {
 }
 
 describe('partial configuration saves', () => {
+  it('enables switching for legacy configuration and saves only the master toggle', async () => {
+    await setup({
+      product_switching: { grandet_mode: false, waiting_seconds: 4 },
+      run_order_grandet_mode: { enable: true }
+    })
+    expect(store.product_switching.enable).toBe(true)
+    store.product_switching.enable = false
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      product_switching: { enable: false }
+    })
+    expect(store.product_switching.grandet_mode).toBe(false)
+    expect(store.product_switching.waiting_seconds).toBe(4)
+    expect(store.run_order_grandet_mode.enable).toBe(true)
+  })
+
   it('saves the existing startup protection independently of device identity', async () => {
     await setup({ simulator: { name: 'ReDroid', index: '0', wait_time: 75 } })
     store.simulator.wait_time = 90
