@@ -32,6 +32,8 @@ The [shared field decision](../../.agents/notes/implemented/simplification/2026-
 
 The plus button beside an operator's group field adds an independent group/replacement column beneath the first column. Deleting any column preserves the others; deleting the first promotes the next column into the legacy fields. Empty operators, `Free`, `Current` and Fiammetta cannot add bindings. Running-plan edit locks cover addition, deletion and every field. Facility clearing removes all bindings with the operator.
 
-Every avatar uses one equal-width color segment per configured column. Unfinished empty columns retain a transparent segment. Group colors come from the currently edited main or backup plan. Plan saving, import, export and facility movement retain nested bindings.
+Every avatar uses one equal-width color segment per configured column in a 5-pixel bottom strip, with its neutral background preserved in the editor and exported images. Unfinished empty columns retain a transparent segment. The main plan and all backup plans share a color map, so selecting another table preserves the colors of identically named groups. Plan saving, import, export and facility movement retain nested bindings.
 
 The [scheduling contract](base-scheduler.md#211-multiple-group-bindings) defines persisted fields, validation and shift behavior. The [shared rendering decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-group-shift-selection.md) records the simplification.
+
+The [shared color decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-plan-group-colors.md) defines color assignment and rendering.

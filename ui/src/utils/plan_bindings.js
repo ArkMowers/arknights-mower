@@ -31,7 +31,10 @@ export function bindingColorStyle(slot, colors) {
     ]
   })
   return {
-    borderBottom: '5px solid transparent',
-    borderImage: `linear-gradient(to right, ${stops.join(', ')}) 1`
+    paddingBottom: '5px',
+    backgroundImage: `linear-gradient(to right, ${stops.join(', ')})`,
+    backgroundSize: '100% 5px',
+    backgroundPosition: 'left bottom',
+    backgroundRepeat: 'no-repeat'
   }
 }

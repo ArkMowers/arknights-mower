@@ -128,6 +128,8 @@ it.each([false, true])('renders group rows, segmented avatar and edit lock %s', 
   expect(html).toContain('rowspan="2"')
   expect(html).toContain('linear-gradient(to right')
   expect(html).toContain('50%')
+  expect(html).toContain('background-size:100% 5px')
+  expect(html).not.toContain('border-image')
   const buttons = html.match(/<button\b[^>]*aria-label="(?:新增绑组|删除此绑组)"[^>]*>/g)
   expect(buttons).toHaveLength(3)
   expect(buttons.every((button) => /\bdisabled(?:[\s=>])/.test(button))).toBe(locked)

@@ -22,9 +22,14 @@ describe('operator group bindings', () => {
   it('uses one equal segment per column, including unfinished columns', () => {
     const slot = { group: '甲', group_bindings: [{ group: '乙' }, { group: '' }] }
     const style = bindingColorStyle(slot, { 甲: 'red', 乙: 'blue' })
-    expect(style.borderImage).toBe(
-      'linear-gradient(to right, red 0%, red 33.333333333333336%, blue 33.333333333333336%, blue 66.66666666666667%, transparent 66.66666666666667%, transparent 100%) 1'
+    expect(style.backgroundImage).toBe(
+      'linear-gradient(to right, red 0%, red 33.333333333333336%, blue 33.333333333333336%, blue 66.66666666666667%, transparent 66.66666666666667%, transparent 100%)'
     )
+    expect(style.backgroundSize).toBe('100% 5px')
+    expect(style.backgroundRepeat).toBe('no-repeat')
+    expect(style.backgroundPosition).toBe('left bottom')
+    expect(style.paddingBottom).toBe('5px')
+    expect(style).not.toHaveProperty('borderImage')
     expect(bindingColorStyle({ group: '甲' }, { 甲: 'red' })).toEqual({
       borderBottom: '5px solid red'
     })
@@ -83,4 +88,34 @@ it('operator replacement updates every binding while retaining groups', () => {
   expect(plan.contact.plans[0].group_bindings).toEqual([
     { group: '乙', replacement: ['砾', '黑角'] }
   ])
+})
+
+it('shares colors across main and backup tables independently of the selected table', () => {
+  const app = createApp({})
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  const store = app.runWithContext(() => usePlanStore())
+  store.plan = store.fill_empty({})
+  Object.assign(store.plan.contact.plans[0], {
+    agent: '讯使',
+    group: '甲',
+    group_bindings: [{ group: '乙', replacement: ['黑角'] }]
+  })
+  store.backup_plans = [{ plan: store.fill_empty({}) }, { plan: store.fill_empty({}) }]
+  Object.assign(store.backup_plans[0].plan.central.plans[0], { agent: '银灰', group: '丙' })
+  Object.assign(store.backup_plans[0].plan.contact.plans[0], { agent: '讯使', group: '乙' })
+  Object.assign(store.backup_plans[1].plan.contact.plans[0], { agent: '讯使', group: '甲' })
+  const colors = { ...store.group_colors }
+  expect(new Set([colors.甲, colors.乙, colors.丙]).size).toBe(3)
+  expect(colors['']).toBe('transparent')
+  for (const selected of ['main', 0, 1, 'main']) {
+    store.sub_plan = selected
+    expect(store.group_colors).toEqual(colors)
+  }
+  store.sub_plan = 0
+  expect(store.groups).toEqual(['丙', '乙'])
+  store.backup_plans[1].plan.contact.plans[0].group = '丁'
+  expect(store.group_colors).toHaveProperty('丁')
+  expect(store.group_colors).toHaveProperty('甲')
+  store.$dispose()
 })

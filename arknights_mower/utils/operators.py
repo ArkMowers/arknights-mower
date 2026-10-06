@@ -1668,7 +1668,11 @@ class Operators:
             and cover is not None
             and cover.is_high()
             and group
-            and group == cover.group
+            and (
+                any(binding["group"] == group for binding in cover.group_bindings)
+                if cover.multi_group
+                else group == cover.group
+            )
             and name in operator.replacements_for_group(group)
             and operator.name != name
             and (operator.room.startswith("dorm") or cover.room.startswith("dorm"))

@@ -339,6 +339,23 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       return [...new Set(result)]
     })
 
+    const group_colors = computed(() => {
+      const names = new Set()
+      for (const table of [plan.value, ...backup_plans.value.map((backup) => backup.plan)]) {
+        for (const room of Object.values(table)) {
+          for (const slot of room.plans) {
+            for (const binding of planBindings(slot)) {
+              if (binding.group) names.add(binding.group)
+            }
+          }
+        }
+      }
+      return Object.fromEntries([
+        ['', 'transparent'],
+        ...[...names].map((name, index) => [name, `hsl(${(360 / names.size) * index}, 80%, 45%)`])
+      ])
+    })
+
     const sub_plan = ref('main')
     const current_plan = computed(() => {
       if (sub_plan.value == 'main') {
@@ -378,6 +395,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       left_side_facility,
       build_plan,
       groups,
+      group_colors,
       backup_plans,
       sub_plan,
       current_plan,

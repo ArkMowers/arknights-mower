@@ -13,7 +13,7 @@ import { plan_facility_type_options } from '@/utils/base_facilities'
 import { ref, computed, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = inject('planStore', null) || usePlanStore()
-const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
+const { operators, groups, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme, swap_contact_train } = storeToRefs(config_store)
@@ -134,16 +134,6 @@ const facility_empty = computed(() => {
     }
   }
   return empty
-})
-
-const color_map = computed(() => {
-  const count = groups.value.length
-  const result = {}
-  for (let i = 0; i < count; ++i) {
-    result[groups.value[i]] = `hsl(${(360 / count) * i}, 80%, 45%)`
-  }
-  result[''] = 'transparent'
-  return result
 })
 
 function drag_facility(room, event) {
@@ -277,7 +267,7 @@ function set_facility(e) {
                       :src="`avatar/${i.agent}.webp`"
                       width="45"
                       height="45"
-                      :style="bindingColorStyle(i, color_map)"
+                      :style="bindingColorStyle(i, group_colors)"
                       draggable="false"
                     />
                     <div
@@ -310,7 +300,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -330,7 +320,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -350,7 +340,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -370,7 +360,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -390,7 +380,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -413,7 +403,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -433,7 +423,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -456,7 +446,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -478,7 +468,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -498,7 +488,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -518,7 +508,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="bindingColorStyle(i, color_map)"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
